@@ -877,9 +877,7 @@ import { createLLMProvider } from "../services/llm/provider-registry.js";
 import { withConnectionFallbackProvider } from "../services/llm/connection-fallback-provider.js";
 import {
   fitMessagesForModelAccess,
-  mergeModelContextLimit,
   resolveModelAccessPolicy,
-  resolveStoredModelContextLimit,
 } from "../services/generation/model-access-policy.js";
 import {
   promptPreviewForAgents,
@@ -3831,7 +3829,6 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           presetOwnsAgentPlacement = true;
           characterAdvancedPromptsInjected = true;
           temperature = assembled.parameters.temperature;
-          maxTokens = assembled.parameters.maxTokens;
           topP = assembled.parameters.topP ?? 1;
           topK = assembled.parameters.topK ?? 0;
           minP = assembled.parameters.minP ?? 0;
@@ -3851,12 +3848,6 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           stopSequences = (assembled.parameters.stopSequences ?? [])
             .map((value) => value.trim())
             .filter((value) => value.length > 0);
-
-          effectiveMaxContext = mergeModelContextLimit(
-            modelAccessPolicy,
-            effectiveMaxContext,
-            resolveStoredModelContextLimit(modelAccessPolicy, assembled.parameters),
-          );
 
           Object.assign(
             chatMeta,

@@ -4,7 +4,7 @@ import { seedUIState } from "./ui-state-fixture.js";
 
 const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
 
-test("provider-aware controls narrow to model capabilities while presets keep all controls", async ({
+test("provider-aware controls narrow to model capabilities while presets omit token limits", async ({
   page,
   request,
 }, info) => {
@@ -84,6 +84,7 @@ test("provider-aware controls narrow to model capabilities while presets keep al
     const editor = page.locator(".mari-editor-shell");
     await expect(editor.locator(".mari-editor-title-input")).toBeVisible();
     const presetParameters = editor.locator('[data-editor-section="parameters"]');
+    await expect(presetParameters.getByRole("textbox", { name: "Max Output Tokens", exact: true })).toHaveCount(0);
     await expect(presetParameters.getByRole("textbox", { name: "Temperature", exact: true })).toBeVisible();
     await expect(presetParameters.getByRole("textbox", { name: "Top K", exact: true })).toBeVisible();
     await expect(presetParameters.getByRole("textbox", { name: "Frequency", exact: true })).toBeVisible();
@@ -95,5 +96,91 @@ test("provider-aware controls narrow to model capabilities while presets keep al
     await request.delete(`/api/prompts/${preset.id}`);
     await request.delete(`/api/chats/${chat.id}`);
     await request.delete(`/api/connections/${connection.id}`);
+  }
+});
+
+test("game chat inherits connection send switches after editing another value and preserves explicit overrides", async ({
+  page,
+  request,
+}, info) => {
+  const connections = [];
+  let chatId: string | undefined;
+  try {
+    for (const enabled of [true, false]) {
+      const response = await request.post("/api/connections", {
+        data: {
+          name: `Inherited reasoning ${enabled}`,
+          provider: "openai",
+          model: "gpt-5.5",
+          apiKey: "synthetic-ui-fixture-key",
+          baseUrl: "http://127.0.0.1:9/v1",
+          defaultParameters: {
+            reasoningEffort: enabled ? "high" : "low",
+            enabledParameters: { reasoningEffort: enabled },
+          },
+        },
+      });
+      expect(response.ok()).toBeTruthy();
+      connections.push(await response.json());
+    }
+    const response = await request.post("/api/chats", {
+      data: { name: "Inherited reasoning game", mode: "game", characterIds: [], connectionId: connections[0].id },
+    });
+    expect(response.ok()).toBeTruthy();
+    const created = await response.json();
+    chatId = created.sessionChat.id;
+    expect(JSON.parse(created.sessionChat.metadata).chatParameters).toBeUndefined();
+    await request.patch(`/api/chats/${chatId}/metadata`, {
+      data: { gameSessionStatus: "active", gameIntroPresented: true },
+    });
+    await seedUIState(page, {
+      hasCompletedOnboarding: true,
+      rightPanelOpen: false,
+      sidebarOpen: false,
+      chatHelpSeenModes: ["conversation", "roleplay", "game"],
+    });
+    await page.addInitScript(
+      ({ id, appVersion }) => {
+        localStorage.setItem("marinara-active-chat-id", id);
+        localStorage.setItem("marinara:whats-new:seen-version", appVersion);
+      },
+      { id: chatId!, appVersion: version },
+    );
+    await page.goto("/");
+    await page.getByRole("button", { name: "Chat Settings", exact: true }).filter({ visible: true }).click();
+    const drawer = page.locator(".mari-chat-settings-drawer");
+    const parameters = drawer.locator('[data-chat-settings-section="advanced-parameters"]');
+    await parameters.getByText("Advanced Parameters", { exact: true }).click();
+    const reasoning = parameters.getByRole("switch", { name: "Send Reasoning Effort parameter", exact: true });
+    await expect(reasoning).toHaveAttribute("aria-checked", "true");
+    const output = parameters.getByRole("textbox", { name: "Max Output Tokens", exact: true });
+    await output.fill("12000");
+    await output.press("Enter");
+    await expect
+      .poll(async () => {
+        const saved = await (await request.get(`/api/chats/${chatId}`)).json();
+        return JSON.parse(saved.metadata).chatParameters;
+      })
+      .toEqual({ maxTokens: 12000 });
+    const connectionSelect = drawer
+      .locator("select")
+      .filter({ has: page.locator(`option[value="${connections[0].id}"]`) })
+      .first();
+    await connectionSelect.selectOption(connections[1].id);
+    await expect(reasoning).toHaveAttribute("aria-checked", "false");
+    await connectionSelect.selectOption(connections[0].id);
+    await expect(reasoning).toHaveAttribute("aria-checked", "true");
+    await reasoning.click();
+    await expect(reasoning).toHaveAttribute("aria-checked", "false");
+    await connectionSelect.selectOption(connections[1].id);
+    await connectionSelect.selectOption(connections[0].id);
+    await expect(reasoning).toHaveAttribute("aria-checked", "false");
+    await info.attach("game-reasoning-inheritance", {
+      body: await page.screenshot({ animations: "disabled" }),
+      contentType: "image/png",
+    });
+  } finally {
+    if (chatId) await request.delete(`/api/chats/${chatId}`);
+    for (const connection of connections) await request.delete(`/api/connections/${connection.id}`);
   }
 });

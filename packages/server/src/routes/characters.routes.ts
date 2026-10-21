@@ -98,6 +98,7 @@ import {
   resolveChatSummaryTemperatureOptions,
 } from "../services/chat-summary/connection-resolution.js";
 import { resolveBaseUrl } from "../services/generation/connection-base-url.js";
+import { cardFieldGenerationSchema, generateCardField } from "../services/generation/card-field-generation.js";
 import { importSTLorebook } from "../services/import/st-lorebook.importer.js";
 import { embeddedSpriteSizesAreWithinLimits, MAX_EMBEDDED_SPRITE_COUNT } from "../services/import/marinara.importer.js";
 import {
@@ -1141,6 +1142,38 @@ export async function charactersRoutes(app: FastifyInstance) {
     }
     return result;
   });
+
+  // Both editors use the summary connection policy, without saving the generated draft.
+  for (const kind of ["character", "persona"] as const) {
+    const path = kind === "persona" ? "/personas/:id/card-field/generate" : "/:id/card-field/generate";
+    app.post<{ Params: { id: string }; Body: unknown }>(path, async (req, reply) => {
+      const parsed = cardFieldGenerationSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ error: "Invalid card field generation request", issues: parsed.error.issues });
+      }
+      const entity =
+        kind === "persona" ? await storage.getPersona(req.params.id) : await storage.getById(req.params.id);
+      if (!entity)
+        return reply.status(404).send({ error: kind === "persona" ? "Persona not found" : "Character not found" });
+      const defaultConnection = await connections.getDefault();
+      const connection = await resolveChatSummaryConnection({
+        chatMetadata: {},
+        defaultConnectionId: defaultConnection?.id,
+        connections,
+        resolveBaseUrl,
+      });
+      if (!connection.ok) return reply.status(400).send({ error: connection.error });
+      try {
+        const text = await generateCardField({ kind, entityId: req.params.id, ...parsed.data, connection });
+        return reply.send({ text });
+      } catch (error) {
+        logger.error(error, "Card field generation failed");
+        return reply.status(502).send({
+          error: error instanceof Error ? error.message : "Card field generation failed",
+        });
+      }
+    });
+  }
 
   app.post<{
     Params: { id: string };

@@ -1405,6 +1405,8 @@ export async function galleryRoutes(app: FastifyInstance) {
     if (!chat) return reply.status(404).send({ error: "Chat not found" });
     if (chat.mode !== "roleplay") return reply.status(400).send({ error: "This command is for Roleplay chats." });
     const meta = parseChatMetadata(chat.metadata);
+    // Ends the clip's writing and making when the request goes away, as the other video routes do.
+    const signal = createResponseAbortSignal(reply, SCENE_VIDEO_GENERATION_TIMEOUT_MS, "Roleplay video");
     try {
       const setup = await resolveChatVideoSetup(app.db, meta);
       const connections = createConnectionsStorage(app.db);
@@ -1441,7 +1443,7 @@ export async function galleryRoutes(app: FastifyInstance) {
             withoutPicture: true,
             characterNames: await collectChatSceneCharacterNames(chat),
             debugMode: input.debugMode,
-            signal: createResponseAbortSignal(reply, SCENE_VIDEO_GENERATION_TIMEOUT_MS, "Roleplay video"),
+            signal,
           });
       if (input.previewOnly) {
         return {
@@ -1537,6 +1539,7 @@ export async function galleryRoutes(app: FastifyInstance) {
         // Filed under the people the clip shows; a clip that names no one belongs to the whole chat.
         characterIds: shown.length ? shown : [...characterIds, ...personaIds],
         queue: true,
+        signal,
         debugMode: input.debugMode,
       });
       // Picked after generating, so a reply that arrived meanwhile gets the clip. The clip is saved by now, so a

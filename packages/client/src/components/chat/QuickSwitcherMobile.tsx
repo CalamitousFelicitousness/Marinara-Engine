@@ -206,10 +206,10 @@ export function QuickSwitcherMobile({ contextBudget }: { contextBudget?: Profess
     [activeChatId, activeConnectionId, updateChat],
   );
   useEffect(() => {
-    if (!open) setModelsStep(null);
-  }, [open]);
+    if (!open || !modelsEnabled) setModelsStep(null);
+  }, [open, modelsEnabled]);
   const modelsConnection =
-    tab === "connections" && modelsStep && !isRandom
+    modelsEnabled && tab === "connections" && modelsStep && !isRandom
       ? sortedConnections.find(
           (connection) => connection.id === modelsStep && !isLocalSidecarConnectionOption(connection),
         )

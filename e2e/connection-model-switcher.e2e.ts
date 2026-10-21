@@ -407,6 +407,41 @@ test("the Models toggle persists a changed preference after reload (#7928)", asy
   }
 });
 
+test("a synchronized connection-only preference closes an open model picker (#7928)", async ({
+  page,
+  request,
+}, testInfo) => {
+  const { main, cleanup } = await setup(page, request, testInfo, "dark", { quickSwitcherShowModels: true });
+  let releaseSettings: (() => void) | undefined;
+  const settingsReady = new Promise<void>((resolve) => {
+    releaseSettings = resolve;
+  });
+  await page.route("**/api/app-settings/ui", async (route) => {
+    if (route.request().method() === "GET") {
+      await settingsReady;
+      await route.fulfill({ json: { value: JSON.stringify({ quickSwitcherShowModels: false }) } });
+    } else {
+      await route.fulfill({ json: { value: "" } });
+    }
+  });
+  try {
+    await page.goto("/");
+    const picker = await openModels(page, testInfo, main.id);
+    await expect(picker).toBeVisible();
+    releaseSettings?.();
+    const menu = page.locator(isPhone(testInfo) ? "[data-quick-switcher-mobile-menu]" : "[data-quick-connection-menu]");
+    await expect(menu.locator("[data-connection-model-picker], [data-connection-models]")).toHaveCount(0);
+    await expect(menu.getByRole("button", { name: "Show models in Quick Switcher", exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+    await expect(menu.locator(`[data-connection-option="${main.id}"]`)).toBeVisible();
+  } finally {
+    releaseSettings?.();
+    await cleanup();
+  }
+});
+
 // #7928: the fast path never mounts a catalog; an enabled, slow catalog cannot hold up a switch.
 for (const theme of ["dark", "light"] as const) {
   test(`connection-only switching skips model requests in ${theme} theme (#7928)`, async ({

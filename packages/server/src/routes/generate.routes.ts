@@ -1534,6 +1534,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
       // fall back to the active Persona; Roleplay and Game can stay Persona-less.
       if (userMsg?.id) {
         resolvedUserIdentity = await resolveChatUserIdentity(chars, {
+          id: input.chatId,
           personaId: chat.personaId,
           personaCharacterId: chat.personaCharacterId,
           mode: requestChatMode,
@@ -2455,6 +2456,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
       let personaPhoneticName = "";
       let personaDescription = "";
       let personaFields: {
+        example?: string;
         phoneticName?: string;
         personality?: string;
         scenario?: string;
@@ -2485,6 +2487,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         roomHostIdentity() ??
         resolvedUserIdentity ??
         (await resolveChatUserIdentity(chars, {
+          id: input.chatId,
           personaId: chat.personaId,
           personaCharacterId: chat.personaCharacterId,
           mode: chatMode,
@@ -2498,6 +2501,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
 
         personaFields = {
           phoneticName: personaPhoneticName,
+          example: cardPromptText(identity.mesExample),
           personality: cardPromptText(identity.personality),
           scenario: cardPromptText(identity.scenario),
           backstory: cardPromptText(identity.backstory),
@@ -2558,7 +2562,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
 
       let groupHistoryCharacterNamesByIdPromise: Promise<Map<string, string>> | null = null;
       const getGroupHistoryCharacterNamesById = () => {
-        groupHistoryCharacterNamesByIdPromise ??= resolveCharacterNameMap(allCharacterIds, (id) => chars.getById(id));
+        groupHistoryCharacterNamesByIdPromise ??= resolveCharacterNameMap(allCharacterIds, (id) =>
+          chars.getById(id, input.chatId),
+        );
         return groupHistoryCharacterNamesByIdPromise;
       };
       // Every agent reads Roleplay whispers, each with its recipient's name (#7430). Null where they don't.
@@ -2674,6 +2680,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             chars,
             characterIds: allCharacterIds,
             chatMode,
+            chatId: input.chatId,
           });
           const characterInfoById = new Map(routingCharacterInfo.map((character) => [character.id, character]));
           const activeCharacterSet = new Set(characterIds);
@@ -3208,6 +3215,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         const { profilesById: historyMacroProfilesById, unreadableIds } = await resolveCharacterMacroData(
           app.db,
           allCharacterIds,
+          input.chatId,
         );
         const chatSummaryReaders = mergedChatSummaryReaders({
           characterIds,
@@ -3419,6 +3427,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         personaDescription = resolvePersonaPromptMacros(personaDescription);
         personaFields = {
           ...personaFields,
+          example: resolvePersonaPromptMacros(personaFields.example ?? ""),
           personality: resolvePersonaPromptMacros(personaFields.personality ?? ""),
           scenario: resolvePersonaPromptMacros(personaFields.scenario ?? ""),
           backstory: resolvePersonaPromptMacros(personaFields.backstory ?? ""),
@@ -3976,7 +3985,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           };
           const profileParticipants: ConversationProfileParticipant[] = [];
           for (const info of convoCharInfo) {
-            const charRow = await chars.getById(info.charId);
+            const charRow = await chars.getById(info.charId, input.chatId);
             let cdata: CharacterData | null = null;
             if (charRow) {
               try {
@@ -4623,7 +4632,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           }
         }
 
-        const charInfo = await loadCharacterPromptInfo({ chars, characterIds, chatMode });
+        const charInfo = await loadCharacterPromptInfo({ chars, characterIds, chatMode, chatId: input.chatId });
         const roleplayRollParticipants = identity
           ? [
               ...charInfo.filter((character) => character.id !== identity.id),
@@ -4702,7 +4711,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               return knownCharacter.name;
             }
 
-            const gmRow = await chars.getById(gmCharacterId);
+            const gmRow = await chars.getById(gmCharacterId, input.chatId);
             if (gmRow) {
               try {
                 const gmData = JSON.parse(gmRow.data as string);
@@ -6222,7 +6231,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           for (const char of agentContext.characters) {
             let publicAboutMe = "";
             try {
-              const row = await chars.getById(char.id);
+              const row = await chars.getById(char.id, input.chatId);
               const data = row ? (typeof row.data === "string" ? JSON.parse(row.data) : row.data) : null;
               const ext = (data?.extensions ?? {}) as Record<string, unknown>;
               if (typeof ext.aboutMe === "string") publicAboutMe = ext.aboutMe;
@@ -8939,7 +8948,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 roleplayInlinePrefixes,
                 toolDiceRollResults,
                 pendingGameStateToolCalls,
-                getCharacter: (id) => chars.getById(id),
+                getCharacter: (id) => chars.getById(id, input.chatId),
                 sendAgentResult: sendAgentResultEvent,
               },
               fullResponse,
@@ -14388,7 +14397,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             const members: Array<{ id: string; name: string }> = charInfo.map((c) => ({ id: c.id, name: c.name }));
             for (const cid of allCharacterIds) {
               if (members.some((m) => m.id === cid)) continue;
-              const row = await chars.getById(cid);
+              const row = await chars.getById(cid, input.chatId);
               if (!row) continue;
               try {
                 const name = JSON.parse(row.data as string)?.name;

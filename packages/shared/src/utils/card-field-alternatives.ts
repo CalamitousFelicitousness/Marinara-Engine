@@ -49,12 +49,11 @@ export function cardEntityBelongsToChat(chatValue: unknown, kind: "character" | 
   if ((Array.isArray(characterIds) && characterIds.includes(entityId)) || chat.personaCharacterId === entityId)
     return true;
   if (chat.mode !== "game") return false;
-  return (
-    metadata.gameGmCharacterId === entityId ||
-    setup.gmCharacterId === entityId ||
-    (Array.isArray(metadata.gamePartyCharacterIds) && metadata.gamePartyCharacterIds.includes(entityId)) ||
-    (Array.isArray(setup.partyCharacterIds) && setup.partyCharacterIds.includes(entityId))
-  );
+  const gmId = Object.hasOwn(metadata, "gameGmCharacterId") ? metadata.gameGmCharacterId : setup.gmCharacterId;
+  const partyIds = Array.isArray(metadata.gamePartyCharacterIds)
+    ? metadata.gamePartyCharacterIds
+    : setup.partyCharacterIds;
+  return gmId === entityId || (Array.isArray(partyIds) && partyIds.includes(entityId));
 }
 
 export function cardFieldAlternativeValues(

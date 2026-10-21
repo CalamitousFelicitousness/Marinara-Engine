@@ -52,6 +52,7 @@ export interface MarkerContext {
   personaName: string;
   personaDescription: string;
   personaFields?: {
+    example?: string;
     personality?: string;
     scenario?: string;
     backstory?: string;
@@ -223,7 +224,7 @@ async function expandCharacter(config: MarkerConfig, ctx: MarkerContext): Promis
   const charStorage = createCharactersStorage(ctx.db);
   const parts: string[] = [];
   for (const charId of ctx.characterIds) {
-    const row = await charStorage.getById(charId);
+    const row = await charStorage.getById(charId, ctx.chatId);
     if (!row) continue;
     const data = JSON.parse(row.data) as CharacterData;
     const profile = characterMacroProfileFromData(data);
@@ -374,6 +375,18 @@ async function expandPersona(_config: MarkerConfig, ctx: MarkerContext): Promise
   }
   if (personaScenario) {
     parts.push(wrapContent(resolveSanitizedPromptLeaf(personaScenario, ctx), "scenario", ctx.wrapFormat, 2));
+  }
+
+  const personaExample = cardPromptText(ctx.personaFields?.example);
+  if (personaExample) {
+    parts.push(
+      wrapContent(
+        sanitizeExampleDialoguePromptLeaf(resolveMacros(personaExample, ctx.macroCtx), ctx.wrapFormat),
+        "example_dialogue",
+        ctx.wrapFormat,
+        2,
+      ),
+    );
   }
 
   // Include RPG attributes if enabled
@@ -565,7 +578,7 @@ async function expandDialogueExamples(_config: MarkerConfig, ctx: MarkerContext)
   const parts: string[] = [];
 
   for (const charId of ctx.characterIds) {
-    const row = await charStorage.getById(charId);
+    const row = await charStorage.getById(charId, ctx.chatId);
     if (!row) continue;
     const data = JSON.parse(row.data) as CharacterData;
 

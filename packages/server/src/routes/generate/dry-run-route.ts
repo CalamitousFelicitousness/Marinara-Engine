@@ -779,7 +779,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
             content: rawUserMessage,
             extra: body.replyTo ? { replyTo: body.replyTo } : {},
             metadata: chatMeta,
-            characters: [...(await resolveCharacterNameMap(allCharacterIds, (id) => chars.getById(id)))].map(
+            characters: [...(await resolveCharacterNameMap(allCharacterIds, (id) => chars.getById(id, chatId)))].map(
               ([id, name]) => ({ id, name }),
             ),
           })
@@ -1007,6 +1007,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
     let lorebookIdentityCharacterId: string | null = null;
     try {
       const identity = await resolveChatUserIdentity(chars, {
+        id: chatId,
         personaId: chat.personaId,
         personaCharacterId: chat.personaCharacterId,
         mode: chatMode,
@@ -1018,6 +1019,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
         personaName = identity.name;
         personaDescription = cardPromptText(identity.description);
         personaFields = {
+          example: cardPromptText(identity.mesExample),
           personality: cardPromptText(identity.personality),
           scenario: cardPromptText(identity.scenario),
           backstory: cardPromptText(identity.backstory),
@@ -1164,6 +1166,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
     const { profilesById: historyMacroProfilesById, unreadableIds } = await resolveCharacterMacroData(
       app.db,
       allCharacterIds,
+      chatId,
     );
     const chatSummaryReaders = mergedChatSummaryReaders({
       characterIds,
@@ -1364,7 +1367,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
       dryRunGroupChatMode === "individual" &&
       (chatMode === "conversation" || chatMeta.groupSpeakerNamesInHistory === true);
     if (shouldPrefixGroupHistorySpeakers && !deferGroupPromptRegex) {
-      const characterNamesById = await resolveCharacterNameMap(allCharacterIds, (id) => chars.getById(id));
+      const characterNamesById = await resolveCharacterNameMap(allCharacterIds, (id) => chars.getById(id, chatId));
       mappedMessages = prefixGroupIndividualHistorySpeakers(mappedMessages, {
         personaName,
         characterNamesById,
@@ -1487,12 +1490,14 @@ export async function registerDryRunRoute(app: FastifyInstance) {
         if (resolvedPersonaBackstory.trim()) personaLines.push(`Backstory: ${resolvedPersonaBackstory.trim()}`);
         if (resolvedPersonaAppearance.trim()) personaLines.push(`Appearance: ${resolvedPersonaAppearance.trim()}`);
         if (resolvedPersonaScenario.trim()) personaLines.push(`Scenario: ${resolvedPersonaScenario.trim()}`);
+        const example = resolvePromptMacros(personaFields.example ?? "").trim();
+        if (example) personaLines.push(`Example dialogue:\n${example}`);
         return wrapContent(personaLines.join("\n"), "Persona", wrapFormat).trim();
       })();
 
       const characterBlocks: string[] = [];
       if (includeCharacters && promptCharacterIds.length > 0) {
-        const charRows = await Promise.all(promptCharacterIds.map((id) => chars.getById(id)));
+        const charRows = await Promise.all(promptCharacterIds.map((id) => chars.getById(id, chatId)));
         for (const row of charRows) {
           if (!row?.data) continue;
           try {
@@ -1921,7 +1926,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
         effectivePreset as Record<string, unknown> | null,
         "conversationPrompt",
       );
-      const characterNamesById = await resolveCharacterNameMap(promptCharacterIds, (id) => chars.getById(id));
+      const characterNamesById = await resolveCharacterNameMap(promptCharacterIds, (id) => chars.getById(id, chatId));
       const charNameList =
         promptCharacterIds
           .map((id) => characterNamesById.get(id))
@@ -2123,7 +2128,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
     if (deferGroupPromptRegex) {
       const regexScripts = await regexScriptsStore.list();
       const regexSpeakerNames = shouldPrefixGroupHistorySpeakers
-        ? await resolveCharacterNameMap(allCharacterIds, (id) => chars.getById(id))
+        ? await resolveCharacterNameMap(allCharacterIds, (id) => chars.getById(id, chatId))
         : null;
       finalMessages = scopeIndividualGroupMessagesForTarget(
         finalMessages,
@@ -2219,9 +2224,9 @@ export async function registerDryRunRoute(app: FastifyInstance) {
     }
 
     if (chatMode === "roleplay" && !impersonate) {
-      const personalCharacters = [...(await resolveCharacterNameMap(allCharacterIds, (id) => chars.getById(id)))].map(
-        ([id, name]) => ({ id, name }),
-      );
+      const personalCharacters = [
+        ...(await resolveCharacterNameMap(allCharacterIds, (id) => chars.getById(id, chatId))),
+      ].map(([id, name]) => ({ id, name }));
       const target = promptTargetCharacterId ?? (allCharacterIds.length === 1 ? allCharacterIds[0]! : null);
       const individual = dryRunGroupChatMode === "individual";
       const endIndex = regenerateMessageId

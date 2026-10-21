@@ -745,7 +745,7 @@ async function buildNativeCharacterExport(
   const extensions = parseCharacterDataRecord(data?.extensions);
   const characterSheetImageId =
     typeof extensions.characterSheetImageId === "string" ? extensions.characterSheetImageId : null;
-  const portableExtensions = {
+  const portableExtensions: Record<string, unknown> = {
     ...extensions,
     cardFieldAlternatives: unassignCardFieldAlternatives(extensions.cardFieldAlternatives),
   };
@@ -936,6 +936,7 @@ function canonicalizePersonaForExport(persona: Record<string, unknown>): {
   const row: Record<string, unknown> = { ...persona, ...extra, name, description };
   // Export the public boolean contract rather than the storage-only text flag
   // so compatible and native Persona payloads can be imported unchanged.
+  row.cardFieldAlternatives = parsed.data.cardFieldAlternatives ?? [];
   row.versioningEnabled = parsed.data.versioningEnabled ?? true;
   // Same text-column-to-boolean conversion for the image-appearance toggle
   // (#7053): `row` is spread from the raw row above, so without this the export

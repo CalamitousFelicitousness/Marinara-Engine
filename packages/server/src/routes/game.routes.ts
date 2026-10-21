@@ -791,13 +791,13 @@ export async function addChatPersonaIllustrationAssets(args: {
   maps: IllustrationCharacterAssetMaps;
   characters: ReturnType<typeof createCharactersStorage>;
   personaGallery: ReturnType<typeof createPersonaGalleryStorage>;
-  chat: { personaId?: string | null } | null | undefined;
+  chat: { id?: string; personaId?: string | null } | null | undefined;
   setupConfig: Record<string, unknown> | null | undefined;
 }): Promise<string | null> {
   const personaId = args.chat?.personaId || readTrimmedString(args.setupConfig?.personaId);
   if (!personaId) return null;
   try {
-    const persona = await args.characters.getPersona(personaId);
+    const persona = await args.characters.getPersona(personaId, args.chat?.id);
     return await addPersonaIllustrationAssets(args.maps, persona, args.personaGallery);
   } catch {
     // An unresolvable persona must not break illustration generation.
@@ -836,7 +836,7 @@ function storyboardTrackedNpcsFromState(latestState: unknown): Array<Record<stri
 
 async function buildStoryboardCharacterContext(args: {
   characters: ReturnType<typeof createCharactersStorage>;
-  chat: { characterIds?: unknown; personaId?: string | null };
+  chat: { id?: string; characterIds?: unknown; personaId?: string | null };
   meta: Record<string, unknown>;
   setupConfig: Record<string, unknown> | null;
   latestState: unknown;
@@ -852,7 +852,7 @@ async function buildStoryboardCharacterContext(args: {
 
   for (const id of libraryCharacterIds) {
     try {
-      const character = await args.characters.getById(id);
+      const character = await args.characters.getById(id, args.chat.id);
       if (!character) continue;
       const name = await addCharacterRowIllustrationAssets(maps, character, args.characterGallery);
       addUniqueCharacterName(allowedCharacterNames, seenAllowedNames, name);
@@ -864,7 +864,7 @@ async function buildStoryboardCharacterContext(args: {
   const personaId = args.chat.personaId || readTrimmedString(args.setupConfig?.personaId);
   if (personaId) {
     try {
-      const persona = await args.characters.getPersona(personaId);
+      const persona = await args.characters.getPersona(personaId, args.chat?.id);
       const name = await addPersonaIllustrationAssets(maps, persona, args.personaGallery);
       personaName = name;
       addUniqueCharacterName(allowedCharacterNames, seenAllowedNames, name);
@@ -7259,7 +7259,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
 
     let gmCharacterCard: string | null = null;
     if (setupConfig.gmMode === "character" && setupConfig.gmCharacterId) {
-      const gmChar = await characters.getById(setupConfig.gmCharacterId);
+      const gmChar = await characters.getById(setupConfig.gmCharacterId, chatId);
       if (gmChar) {
         const data = typeof gmChar.data === "string" ? JSON.parse(gmChar.data) : gmChar.data;
         const parts = [`Name: ${data.name}`];
@@ -7278,12 +7278,17 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const setupPersona = currentRoomGeneration()
       ? roomHostIdentity()
       : setupPersonaId
-        ? await characters.getPersona(setupPersonaId)
+        ? await characters.getPersona(setupPersonaId, chatId)
         : null;
 
     // Load persona info so the GM can tailor the experience
     let personaCard: string | null = null;
     const setupPersonaFields = {
+      example: setupPersona
+        ? "mes_example" in setupPersona
+          ? setupPersona.mes_example
+          : (setupPersona.mesExample ?? "")
+        : "",
       description: setupPersona?.description ?? "",
       personality: setupPersona?.personality ?? "",
       backstory: setupPersona?.backstory ?? "",
@@ -7296,6 +7301,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       if (setupPersona.personality) parts.push(`Personality: ${setupPersona.personality}`);
       if (setupPersona.backstory) parts.push(`Backstory: ${setupPersona.backstory}`);
       if (setupPersona.appearance) parts.push(`Appearance: ${setupPersona.appearance}`);
+      if (setupPersonaFields.example) parts.push(`Example dialogue: ${setupPersonaFields.example}`);
       personaCard = parts.join("\n");
     }
 
@@ -7304,7 +7310,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const partyNames: string[] = [];
     const partyRpgStats: Record<string, RPGStatsConfig> = {};
     for (const pcId of setupConfig.partyCharacterIds) {
-      const pc = await characters.getById(pcId);
+      const pc = await characters.getById(pcId, chatId);
       if (pc) {
         const data = typeof pc.data === "string" ? JSON.parse(pc.data) : pc.data;
         const parts = [data.name];
@@ -13424,7 +13430,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     }
     for (const charId of partyCharIds) {
       try {
-        const charRow = await chars.getById(charId);
+        const charRow = await chars.getById(charId, input.chatId);
         if (!charRow) continue;
         const charData = typeof charRow.data === "string" ? JSON.parse(charRow.data) : charRow.data;
         const description = typeof charData.description === "string" ? charData.description : "";

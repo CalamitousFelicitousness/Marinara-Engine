@@ -123,10 +123,14 @@ function fallbackActionResult(input: EncounterActionRequest): CombatActionResult
 }
 
 /** Build character context from the chat's character IDs. */
-async function buildCharacterContext(chars: ReturnType<typeof createCharactersStorage>, characterIds: string[]) {
+async function buildCharacterContext(
+  chars: ReturnType<typeof createCharactersStorage>,
+  characterIds: string[],
+  chatId?: string,
+) {
   let ctx = "";
   for (const cid of characterIds) {
-    const row = await chars.getById(cid);
+    const row = await chars.getById(cid, chatId);
     if (!row) continue;
     const data = typeof row.data === "string" ? JSON.parse(row.data) : row.data;
     ctx += `<character="${data.name}">\n`;
@@ -159,8 +163,10 @@ async function buildPersonaContext(
   chatPersonaId: string | null,
   chatMode?: string | null,
   personaCharacterId?: string | null,
+  chatId?: string,
 ) {
   const persona = await resolveChatUserIdentity(chars, {
+    id: chatId,
     personaId: chatPersonaId,
     personaCharacterId,
     mode: chatMode,
@@ -897,12 +903,13 @@ export async function encounterRoutes(app: FastifyInstance) {
       );
 
       const characterIds: string[] = JSON.parse(chat.characterIds as string);
-      const characterCtx = await buildCharacterContext(chars, characterIds);
+      const characterCtx = await buildCharacterContext(chars, characterIds, chat.id);
       const { personaName, personaCtx } = await buildPersonaContext(
         chars,
         chat.personaId ?? null,
         chat.mode,
         chat.personaCharacterId,
+        chat.id,
       );
       let chatMeta: Record<string, unknown> | null = null;
       if (typeof chat.metadata === "string") {
@@ -1066,12 +1073,13 @@ export async function encounterRoutes(app: FastifyInstance) {
       );
 
       const characterIds: string[] = JSON.parse(chat.characterIds as string);
-      const characterCtx = await buildCharacterContext(chars, characterIds);
+      const characterCtx = await buildCharacterContext(chars, characterIds, chat.id);
       const { personaName, personaCtx } = await buildPersonaContext(
         chars,
         chat.personaId ?? null,
         chat.mode,
         chat.personaCharacterId,
+        chat.id,
       );
       const spellbookCtx = await loadSpellbookContext(spellbookId);
 
@@ -1176,12 +1184,13 @@ export async function encounterRoutes(app: FastifyInstance) {
       );
 
       const characterIds: string[] = JSON.parse(chat.characterIds as string);
-      const characterCtx = await buildCharacterContext(chars, characterIds);
+      const characterCtx = await buildCharacterContext(chars, characterIds, chat.id);
       const { personaName, personaCtx } = await buildPersonaContext(
         chars,
         chat.personaId ?? null,
         chat.mode,
         chat.personaCharacterId,
+        chat.id,
       );
 
       const prompt = buildSummaryPrompt(

@@ -310,7 +310,7 @@ type PersonaContext = {
   identitySource: "persona" | "character" | null;
   personaName: string;
   personaDescription: string;
-  personaFields: { personality?: string; scenario?: string; backstory?: string; appearance?: string };
+  personaFields: { example?: string; personality?: string; scenario?: string; backstory?: string; appearance?: string };
   /** Image-prompt appearance override (#7053); empty when the user has none. */
   imageAppearanceOverride: string;
   personaAvatarPath?: string | null;
@@ -708,6 +708,7 @@ async function resolvePersonaContext(
 
   const chatMode = ((chat as { mode?: ChatMode }).mode ?? "conversation") as ChatMode;
   const persona = await resolveChatUserIdentity(chars, {
+    id: chat.id,
     personaId: chat.personaId,
     personaCharacterId: chat.personaCharacterId,
     mode: chatMode,
@@ -735,6 +736,7 @@ async function resolvePersonaContext(
   const personaAvatarPath = typeof persona.avatarPath === "string" ? persona.avatarPath : null;
   imageAppearanceOverride = persona.imageAppearanceOverride ?? "";
   personaFields = {
+    example: cardPromptText(persona.mesExample),
     personality: cardPromptText(persona.personality),
     scenario: cardPromptText(persona.scenario),
     backstory: cardPromptText(persona.backstory),
@@ -904,7 +906,7 @@ async function buildRetryAgentContext(args: {
     : [];
   const charInfo: AgentContext["characters"] = [];
   for (const cid of characterIds) {
-    const charRow = await chars.getById(cid);
+    const charRow = await chars.getById(cid, chatId);
     if (!charRow) continue;
     const charData = parseJsonIfString<Record<string, unknown>>(charRow.data as string);
     const extensions =
@@ -962,7 +964,7 @@ async function buildRetryAgentContext(args: {
       typeof chatMeta.authorNotes === "string" ? chatMeta.authorNotes : "",
     ],
   });
-  const historyMacroProfilesById = (await resolveCharacterMacroData(db, allCharacterIds)).profilesById;
+  const historyMacroProfilesById = (await resolveCharacterMacroData(db, allCharacterIds, chatId)).profilesById;
   const resolveHistoryMessageMacros = <T extends { content: string; characterId?: string | null }>(
     messages: T[],
   ): T[] => resolvePromptMessageMacros(messages, promptMacroContext, historyMacroProfilesById);
@@ -3753,7 +3755,7 @@ async function applyRetryResultEffects(args: {
                 ? agentContext.memory._userIdentitySource
                 : null;
             const retryPersonaId = retryIdentitySource === "persona" ? retryIdentityId : null;
-            const retryPersonaReference = retryPersonaId ? await chars.getPersona(retryPersonaId) : null;
+            const retryPersonaReference = retryPersonaId ? await chars.getPersona(retryPersonaId, chatId) : null;
             assertRetryActive();
             // #7053: a character-backed user identity ("Add persona as character")
             // carries its override on the identity, not on `_personaId`, which is

@@ -14344,6 +14344,10 @@ const combatConditionSchema = z
      *  holds one off holds it off, a save against one is a save against it, and what ends one ends
      *  it. 5e's Enthrall and Geas, `["charmed"]`. */
     countsAs: z.array(sheetId).min(1).max(4).optional(),
+    /** Other conditions put on with it (Capability API 1.712), each lasting as it does when nothing
+     *  says how long: until what ends it on its own, such as standing up for prone. They stay when this
+     *  one comes off. 5e's unconscious, `["prone"]`. */
+    alsoApplies: z.array(sheetId).min(1).max(4).optional(),
     /** It comes off once whoever applied it does one of `effects` or holds one of `conditions`, is
      *  stopped from using one of `components`, or its holder lacks one of `holderLacks` (Capability API
      *  1.531): 5e's Enthrall, which ends if its caster is incapacitated or can no longer speak, and
@@ -19475,6 +19479,12 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         if (id === entry.condition) issue([...path, "countsAs", at], "A condition does not count as itself");
         else if (!def.sheet.live.conditions.some((one) => one.id === id))
           issue([...path, "countsAs", at], `Unknown condition "${id}"`);
+      });
+      // What it puts on as well (1.712): other conditions of the ruleset's, never itself.
+      entry.alsoApplies?.forEach((id, at) => {
+        if (id === entry.condition) issue([...path, "alsoApplies", at], "A condition does not put itself on");
+        else if (!def.sheet.live.conditions.some((one) => one.id === id))
+          issue([...path, "alsoApplies", at], `Unknown condition "${id}"`);
       });
       // Cover it gives its source (1.535), in a fight that has cover.
       if (entry.coverFor && !combat.cover) {

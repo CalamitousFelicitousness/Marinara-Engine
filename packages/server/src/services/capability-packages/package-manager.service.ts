@@ -2742,6 +2742,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A condition that puts others on with it (1.712): unconscious, prone. */
+function carriesAlsoApplies712(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesAlsoApplies712(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.condition !== undefined && record.alsoApplies !== undefined) return true;
+  return featureValues(record).some((one) => carriesAlsoApplies712(one, depth + 1));
+}
+
 /** A zone whose `enter` catches only a creature moving into it (1.711): Spirit Guardians. */
 function carriesEnterOnlyByMoving711(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -9315,6 +9325,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A condition that puts others on with it, 1.712.
+  if (
+    !declaresApi(712) &&
+    (carriesAlsoApplies712(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesAlsoApplies712(document)))
+  )
+    return "A ruleset with a condition that puts others on with it (alsoApplies) requires schemaVersion 2 and capabilityApi 1.712 or newer";
   // A zone caught only by moving into it, 1.711.
   if (
     !declaresApi(711) &&

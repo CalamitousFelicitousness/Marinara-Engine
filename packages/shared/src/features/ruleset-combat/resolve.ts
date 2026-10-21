@@ -3683,6 +3683,12 @@ function applyConditionId(
       ? { type: "condition", targetId: target.id, condition, active: true, reason: "stacked", stacks }
       : { type: "condition", targetId: target.id, condition, active: true, reason: "applied" },
   );
+  // What it puts on as well (1.712), staying after it ends until it comes off on its own: unconscious's
+  // prone, there until its holder stands.
+  for (const also of rule?.alsoApplies ?? []) {
+    if (also === condition || target.tracked.some((entry) => entry.condition === also)) continue;
+    applyConditionId(ctx, target, also, { condition: also, duration: "instant" });
+  }
   // Its holder's health maximum raised while it holds, and their health with it (1.420): Aid.
   if (applies.raisesMax) raiseMax(ctx, target, condition, applies.raisesMax, extra.steps ?? 0);
   // The shape it holds (1.342), in place of any other.

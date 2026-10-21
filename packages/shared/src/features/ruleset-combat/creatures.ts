@@ -560,6 +560,7 @@ function blockFromCreature(creature: RulesetCreature, budgets: ReadonlySet<strin
     ...(creature.alignment !== undefined ? { alignment: creature.alignment } : {}),
     // How much thought it puts into a fight (1.708), and its nerve (1.709).
     ...(creature.mind !== undefined ? { mind: creature.mind } : {}),
+    ...(creature.behavior ? { behavior: structuredClone(creature.behavior) } : {}),
     ...(creature.morale !== undefined ? { morale: creature.morale } : {}),
     ...(creature.leader ? { leader: true as const } : {}),
     ...(creature.soak

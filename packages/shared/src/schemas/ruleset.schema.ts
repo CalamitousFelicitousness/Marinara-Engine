@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { GAME_INVENTORY_MAX_NEW_STACKS, GAME_INVENTORY_MAX_QUANTITY } from "../utils/game-inventory-stacks.js";
-import { COMBAT_MINDS } from "../features/combat-minds.js";
+import { COMBAT_MINDS, COMBAT_ROLES, COMBAT_TEMPERAMENTS } from "../features/combat-minds.js";
 
 // Game Mode rulesets. A ruleset is validated DATA: it parameterises one of a closed set of
 // Engine-owned resolution kinds and declares a character sheet from a closed set of primitives.
@@ -9802,6 +9802,46 @@ const creatureHideEntrySchema = z.union([
 ]);
 export type RulesetCreatureHideEntry = z.infer<typeof creatureHideEntrySchema>;
 
+/** Whom a combatant the Engine plays goes for first (Capability API 1.710), in its `behavior`. */
+export const RULESET_TARGET_PREFERENCES = [
+  "nearest",
+  "weakest",
+  "wounded",
+  "strongest",
+  "casters",
+  "healers",
+  "attacker",
+  "concentrating",
+  "leader",
+] as const;
+export type RulesetTargetPreference = (typeof RULESET_TARGET_PREFERENCES)[number];
+
+/**
+ * How a combatant the Engine plays goes about a fight (Capability API 1.710), beside its `mind`: its
+ * `temperament` and `role` in place of the ones it would be dealt; whom it goes for first
+ * (`targets`, in order); the actions or spells it opens with (`opens`, the first of them it can use
+ * on its first turns); `pack`, going for whoever a friend of its stands beside; and `ambush`, lying
+ * in wait, hidden where it can, until an opponent comes within reach or it is hurt. A Game Master's
+ * temperament for one fight wins over it; a mindless creature has none of it.
+ */
+const combatBehaviorSchema = z
+  .object({
+    temperament: z.enum(COMBAT_TEMPERAMENTS).optional(),
+    role: z.enum(COMBAT_ROLES).optional(),
+    targets: z
+      .array(z.enum(RULESET_TARGET_PREFERENCES))
+      .min(1)
+      .max(4)
+      .refine((targets) => new Set(targets).size === targets.length, { message: "Name each once" })
+      .optional(),
+    opens: z.array(sheetId).min(1).max(4).optional(),
+    pack: z.literal(true).optional(),
+    ambush: z.literal(true).optional(),
+  })
+  .strict()
+  .refine((behavior) => Object.keys(behavior).length > 0, { message: "Say something about how it fights" });
+export type RulesetCombatBehavior = z.infer<typeof combatBehaviorSchema>;
+
 const creatureFields = {
   health: creatureHealthSchema,
   defense: z.number().int().min(0).max(1000),
@@ -9974,6 +10014,9 @@ const creatureFields = {
   /** How much thought it puts into a fight (Capability API 1.708), over its type's and its score's:
    *  a 5e zombie or skeleton `mindless`, whatever its Intelligence. */
   mind: z.enum(COMBAT_MINDS).optional(),
+  /** How it goes about a fight (Capability API 1.710), over its type's and `combat.behavior`, each
+   *  key on its own: a 5e wolf's `{ "targets": ["wounded"], "pack": true }`. */
+  behavior: combatBehaviorSchema.optional(),
   /** Its morale score (Capability API 1.709), what a `combat.morale` check that rolls is thrown
    *  against: it breaks on a roll above it. Old-School Essentials' 2 to 12, 12 never breaking. */
   morale: z.number().int().min(0).max(100).optional(),
@@ -15783,9 +15826,19 @@ const combatObjectSchema = z
       .object({
         /** A type's `mind` (Capability API 1.708) is how every creature of it fights unless its own
          *  stat block says otherwise, whatever its `combat.minds` ability: 5e's beasts `instinct`, its
-         *  constructs and oozes `mindless`. */
+         *  constructs and oozes `mindless`. A type's `behavior` (Capability API 1.710) is how every
+         *  creature of it goes about a fight, key by key, unless its own says otherwise. */
         types: z
-          .array(z.object({ id: sheetId, label, mind: z.enum(COMBAT_MINDS).optional() }).strict())
+          .array(
+            z
+              .object({
+                id: sheetId,
+                label,
+                mind: z.enum(COMBAT_MINDS).optional(),
+                behavior: combatBehaviorSchema.optional(),
+              })
+              .strict(),
+          )
           .min(1)
           .max(40),
         tags: z
@@ -15855,6 +15908,9 @@ const combatObjectSchema = z
      *  takes legendary actions or has Legendary Resistance is a `genius` where it would be
      *  `tactical`. 5e: Intelligence, `mindless` from 0, `cunning` from 3, `tactical` from 8,
      *  `genius` from 15. */
+    /** How every combatant the Engine plays goes about a fight unless its type or its own stat block
+     *  says otherwise (Capability API 1.710), key by key: see a creature's `behavior`. */
+    behavior: combatBehaviorSchema.optional(),
     minds: z
       .object({
         ability: sheetId,

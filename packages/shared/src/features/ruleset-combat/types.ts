@@ -25,6 +25,7 @@ import type {
   RulesetValueRef,
   RulesetLastsDays,
   RulesetCatalogWhere,
+  RulesetCombatBehavior,
 } from "../../schemas/ruleset.schema.js";
 import type { CombatMind } from "../combat-minds.js";
 import type { RulesetLiveState } from "../rulesets/live-state.js";
@@ -785,6 +786,8 @@ export interface RulesetStatBlock {
   alignment?: string;
   /** How much thought it puts into a fight (1.708), over its type's and its score's. */
   mind?: CombatMind;
+  /** How it goes about a fight (1.710), over its type's and the ruleset's. */
+  behavior?: RulesetCombatBehavior;
   /** Its morale score, and whether its side follows it (1.709). */
   morale?: number;
   leader?: true;

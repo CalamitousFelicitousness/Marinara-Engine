@@ -78,6 +78,7 @@ import {
   rulesetGap,
   rulesetAtBoardEdge,
   rulesetInCells,
+  rulesetCombatantBehavior,
   rulesetCombatantMind,
   withRulesetPlanMemo,
   rulesetSheetBuildsByName,
@@ -119,7 +120,9 @@ import {
   type RulesetCombatOption,
   type RulesetCombatant,
   type RulesetCombatantInput,
+  type RulesetCombatBehavior,
   type RulesetDefinition,
+  type RulesetTargetPreference,
   type RulesetEncounterState,
   type RulesetHeldGround,
   type RulesetLiveState,
@@ -2497,6 +2500,13 @@ function pickChoice(
       delete unit.tactics;
       unit.tactics = assignCombatTactics(unit, state.seed, mind);
     }
+    // How its own data says it goes about a fight (1.710): its temperament, unless the Game Master
+    // gave it one for this fight, and its role.
+    const behavior = rulesetCombatantBehavior(definition, actor);
+    if (behavior && unit.tactics.mind !== "mindless") {
+      if (behavior.temperament && !unit.aiHints?.temperament) unit.tactics.adjective = behavior.temperament;
+      if (behavior.role) unit.tactics.role = behavior.role;
+    }
   }
   let candidates = menu
     ? rulesetCandidatesFrom(definition, encounter, actorId, null, brokenLairMenu(definition, encounter, actorId, menu))
@@ -2506,7 +2516,101 @@ function pickChoice(
   if (unit.tactics!.mind === "mindless")
     candidates = mindlessCandidates(encounter, actor, unit.tactics!, candidates, !!menu);
   weighRulesetTeam(definition, state, encounter, actor, candidates);
-  return chooseCombatCandidate(unit, candidates, encounter.round, normalizeGameDifficulty(state.difficulty));
+  const behavior = unit.tactics!.mind === "mindless" ? undefined : rulesetCombatantBehavior(definition, actor);
+  const opening = !menu && !!behavior?.opens && !unit.tactics!.opened && encounter.round <= 2;
+  if (behavior) weighRulesetBehavior(definition, encounter, actor, behavior, candidates, opening);
+  const chosen = chooseCombatCandidate(unit, candidates, encounter.round, normalizeGameDifficulty(state.difficulty));
+  if (opening && behavior!.opens!.some((id) => rulesetOpensWith(actor, chosen, id))) unit.tactics!.opened = true;
+  return chosen;
+}
+
+/** Whether a pick is the action or spell an `opens` names: its own id, or the catalog entry it was
+ *  made from (`fireball`, or `spells/fireball`). */
+function rulesetOpensWith(actor: RulesetCombatant, candidate: RulesetCandidate, id: string): boolean {
+  if (candidate.option.id === id) return true;
+  const entry = actor.actions.find((action) => action.id === candidate.option.id)?.entry;
+  return entry !== undefined && (entry === id || entry.endsWith(`/${id}`));
+}
+
+/**
+ * What a creature's own data says it goes for (1.710), onto each candidate as `focus`: whom it goes
+ * for first (`targets`, the first named most), a friend's opponent for a `pack` hunter, and on its
+ * first turns the opener it names, ahead of anything else worth doing.
+ */
+function weighRulesetBehavior(
+  definition: RulesetDefinition,
+  encounter: RulesetEncounterState,
+  actor: RulesetCombatant,
+  behavior: RulesetCombatBehavior,
+  candidates: Array<CombatAiCandidate<RulesetCandidate>>,
+  opening: boolean,
+): void {
+  const combat = definition.combat;
+  if (!combat) return;
+  const foes = encounter.combatants.filter((one) => one.side !== actor.side && rulesetCombatStanding(one));
+  const allies = encounter.combatants.filter(
+    (one) => one.side === actor.side && one.id !== actor.id && rulesetCombatStanding(one),
+  );
+  const at = rulesetPositionOf(actor);
+  const near = (a: RulesetCombatant, b: RulesetCombatant) =>
+    !!rulesetPositionOf(a) && !!rulesetPositionOf(b) && rulesetGap(a, b) <= 1;
+  const health = (one: RulesetCombatant) => rulesetCombatHealth(definition, combat, one);
+  const lowest = (score: (one: RulesetCombatant) => number) => {
+    const scored = foes.map((one) => ({ one, score: score(one) }));
+    const best = Math.min(...scored.map((entry) => entry.score));
+    return new Set(scored.filter((entry) => entry.score === best).map((entry) => entry.one.id));
+  };
+  const preferred = (preference: RulesetTargetPreference): Set<string> => {
+    switch (preference) {
+      case "nearest":
+        return at ? lowest((one) => (rulesetPositionOf(one) ? rulesetGap(actor, one) : Infinity)) : new Set();
+      case "weakest":
+        return lowest((one) => health(one).value + health(one).temp);
+      case "strongest":
+        return lowest((one) => -rulesetThreat(definition, combat, encounter, one));
+      case "wounded":
+        return new Set(foes.filter((one) => health(one).value < health(one).max * 0.5).map((one) => one.id));
+      case "casters":
+        return new Set(
+          foes
+            .filter((one) => one.actions.some((action) => (action.catalog && !action.itemUse) || action.concentration))
+            .map((one) => one.id),
+        );
+      case "healers":
+        return new Set(foes.filter((one) => one.actions.some((action) => action.heal)).map((one) => one.id));
+      case "attacker":
+        return new Set(actor.harmedBy && foes.some((one) => one.id === actor.harmedBy) ? [actor.harmedBy] : []);
+      case "concentrating":
+        return new Set(foes.filter((one) => one.concentrating).map((one) => one.id));
+      case "leader":
+        return new Set(foes.filter((one) => one.block?.leader).map((one) => one.id));
+    }
+  };
+  const ranked = (behavior.targets ?? []).map(preferred);
+  const hunted = behavior.pack
+    ? new Set(foes.filter((foe) => allies.some((ally) => near(ally, foe))).map((one) => one.id))
+    : new Set<string>();
+  // Its opener: the first named that it can do and that is worth doing.
+  const opener = opening
+    ? behavior.opens!.find((id) => candidates.some((one) => rulesetOpensWith(actor, one.action, id)))
+    : undefined;
+  for (const candidate of candidates) {
+    let focus = 0;
+    const target = candidate.targetId;
+    // Only something done to an opponent: a heal or a help is aimed by need, never by preference.
+    const harms =
+      target !== undefined &&
+      foes.some((one) => one.id === target) &&
+      ((candidate.damage ?? 0) > 0 || (candidate.setup ?? 0) > 0);
+    if (harms) {
+      ranked.forEach((ids, place) => {
+        if (ids.has(target!)) focus += Math.max(0.1, 0.4 - 0.1 * place);
+      });
+      if (hunted.has(target!)) focus += 0.25;
+    }
+    if (opener !== undefined && rulesetOpensWith(actor, candidate.action, opener)) focus += 1;
+    if (focus > 0) candidate.focus = (candidate.focus ?? 0) + focus;
+  }
 }
 
 /**
@@ -2722,6 +2826,15 @@ function playRulesetTurn(
     advanceTurn(definition, state, fight);
     return;
   }
+  // Lying in wait (1.710): it hides where it can and keeps still until its prey comes to it.
+  if (actor && rulesetLiesInWait(definition, state, fight.encounter, actor)) {
+    const hide = rulesetCombatOptions(definition, fight.encounter, actorId).find(
+      (option) => option.kind === "standard" && rulesetStandardName(option.id) === "hide",
+    );
+    if (hide && !actor.hiding) applyChoice(definition, state, fight, { actorId, optionId: hide.id, targetIds: [] });
+    advanceTurn(definition, state, fight);
+    return;
+  }
   // Everybody it could fight is hidden from it (1.287): it looks for them first.
   const looking = searchOption(
     definition,
@@ -2764,6 +2877,47 @@ function playRulesetTurn(
     if (applyChoice(definition, state, fight, picked.choice).refused) break;
   }
   advanceTurn(definition, state, fight);
+}
+
+/**
+ * Whether an ambusher (a `behavior.ambush`, 1.710) still lies in wait: until an opponent stands where
+ * it could strike them this turn, walking first, or it has been hurt. Once it springs it never waits
+ * again. Never a mindless one, and never one the Game Master or a player decides for.
+ */
+function rulesetLiesInWait(
+  definition: RulesetDefinition,
+  state: CombatDirectorState,
+  encounter: RulesetEncounterState,
+  actor: RulesetCombatant,
+): boolean {
+  const combat = definition.combat;
+  const unit = [...state.party, ...state.enemies].find((one) => one.id === actor.id);
+  if (!combat || !unit?.tactics || unit.tactics.sprung || unit.tactics.mind === "mindless") return false;
+  if (!rulesetCombatantBehavior(definition, actor)?.ambush) return false;
+  const at = rulesetPositionOf(actor);
+  const health = rulesetCombatHealth(definition, combat, actor);
+  const perCell = combat.distance?.perCell;
+  const walks = perCell ? rulesetInCells(actor.speed, perCell) : 6;
+  const reach = Math.max(
+    1,
+    ...actor.actions
+      .filter((action) => action.damage || action.applies?.length)
+      .map((action) => (action.range ? (action.range.long ?? action.range.normal) : (action.reach ?? 1))),
+  );
+  const prey =
+    !at ||
+    encounter.combatants.some(
+      (one) =>
+        one.side !== actor.side &&
+        rulesetCombatStanding(one) &&
+        !!rulesetPositionOf(one) &&
+        rulesetGapFrom(at, rulesetSpanOf(actor), one) <= reach + walks,
+    );
+  if (prey || actor.harmedBy !== undefined || health.value < health.max) {
+    unit.tactics.sprung = true;
+    return false;
+  }
+  return true;
 }
 
 /**

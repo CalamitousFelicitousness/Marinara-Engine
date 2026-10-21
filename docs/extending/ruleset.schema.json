@@ -64824,6 +64824,77 @@
                         "genius"
                       ]
                     },
+                    "behavior": {
+                      "type": "object",
+                      "properties": {
+                        "temperament": {
+                          "type": "string",
+                          "enum": [
+                            "reckless",
+                            "cautious",
+                            "opportunistic",
+                            "protective",
+                            "supportive",
+                            "disciplined",
+                            "cowardly",
+                            "patient",
+                            "methodical",
+                            "coordinated"
+                          ]
+                        },
+                        "role": {
+                          "type": "string",
+                          "enum": [
+                            "bruiser",
+                            "bulwark",
+                            "skirmisher",
+                            "marksman",
+                            "spellcaster",
+                            "supporter",
+                            "controller"
+                          ]
+                        },
+                        "targets": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "enum": [
+                              "nearest",
+                              "weakest",
+                              "wounded",
+                              "strongest",
+                              "casters",
+                              "healers",
+                              "attacker",
+                              "concentrating",
+                              "leader"
+                            ]
+                          },
+                          "minItems": 1,
+                          "maxItems": 4
+                        },
+                        "opens": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 4
+                        },
+                        "pack": {
+                          "type": "boolean",
+                          "const": true
+                        },
+                        "ambush": {
+                          "type": "boolean",
+                          "const": true
+                        },
+                        "$comment": {}
+                      },
+                      "additionalProperties": false
+                    },
                     "morale": {
                       "type": "integer",
                       "minimum": 0,
@@ -251757,6 +251828,77 @@
                       "genius"
                     ]
                   },
+                  "behavior": {
+                    "type": "object",
+                    "properties": {
+                      "temperament": {
+                        "type": "string",
+                        "enum": [
+                          "reckless",
+                          "cautious",
+                          "opportunistic",
+                          "protective",
+                          "supportive",
+                          "disciplined",
+                          "cowardly",
+                          "patient",
+                          "methodical",
+                          "coordinated"
+                        ]
+                      },
+                      "role": {
+                        "type": "string",
+                        "enum": [
+                          "bruiser",
+                          "bulwark",
+                          "skirmisher",
+                          "marksman",
+                          "spellcaster",
+                          "supporter",
+                          "controller"
+                        ]
+                      },
+                      "targets": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "nearest",
+                            "weakest",
+                            "wounded",
+                            "strongest",
+                            "casters",
+                            "healers",
+                            "attacker",
+                            "concentrating",
+                            "leader"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 4
+                      },
+                      "opens": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        "minItems": 1,
+                        "maxItems": 4
+                      },
+                      "pack": {
+                        "type": "boolean",
+                        "const": true
+                      },
+                      "ambush": {
+                        "type": "boolean",
+                        "const": true
+                      },
+                      "$comment": {}
+                    },
+                    "additionalProperties": false
+                  },
                   "$comment": {}
                 },
                 "required": [
@@ -252768,6 +252910,77 @@
           "required": [
             "tiers"
           ],
+          "additionalProperties": false
+        },
+        "behavior": {
+          "type": "object",
+          "properties": {
+            "temperament": {
+              "type": "string",
+              "enum": [
+                "reckless",
+                "cautious",
+                "opportunistic",
+                "protective",
+                "supportive",
+                "disciplined",
+                "cowardly",
+                "patient",
+                "methodical",
+                "coordinated"
+              ]
+            },
+            "role": {
+              "type": "string",
+              "enum": [
+                "bruiser",
+                "bulwark",
+                "skirmisher",
+                "marksman",
+                "spellcaster",
+                "supporter",
+                "controller"
+              ]
+            },
+            "targets": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "nearest",
+                  "weakest",
+                  "wounded",
+                  "strongest",
+                  "casters",
+                  "healers",
+                  "attacker",
+                  "concentrating",
+                  "leader"
+                ]
+              },
+              "minItems": 1,
+              "maxItems": 4
+            },
+            "opens": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 40,
+                "pattern": "^[a-z][a-z0-9_]*$"
+              },
+              "minItems": 1,
+              "maxItems": 4
+            },
+            "pack": {
+              "type": "boolean",
+              "const": true
+            },
+            "ambush": {
+              "type": "boolean",
+              "const": true
+            },
+            "$comment": {}
+          },
           "additionalProperties": false
         },
         "minds": {

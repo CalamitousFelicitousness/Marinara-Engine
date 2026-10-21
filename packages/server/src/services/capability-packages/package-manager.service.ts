@@ -2742,6 +2742,20 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** How a creature goes about a fight (1.710): a `behavior` saying its temperament, role, targets,
+ *  openers, pack or ambush, on a creature, a creature type or `combat`. A condition's `behavior` says
+ *  none of those. */
+const BEHAVIOR_KEYS_710 = ["temperament", "role", "targets", "opens", "pack", "ambush"];
+function carriesBehavior710(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesBehavior710(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const behavior = plainRecord(record.behavior);
+  if (behavior && BEHAVIOR_KEYS_710.some((key) => behavior[key] !== undefined)) return true;
+  return featureValues(record).some((one) => carriesBehavior710(one, depth + 1));
+}
+
 /** Losing heart (1.709): `combat.morale`, or a stat block's `morale` score or `leader`. */
 function carriesMorale709(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -9291,6 +9305,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // How a creature goes about a fight, 1.710.
+  if (
+    !declaresApi(710) &&
+    (carriesBehavior710(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesBehavior710(document)))
+  )
+    return "A ruleset with how a creature goes about a fight (a behavior saying its temperament, role, targets, openers, pack or ambush) requires schemaVersion 2 and capabilityApi 1.710 or newer";
   // Losing heart, 1.709.
   if (
     !declaresApi(709) &&

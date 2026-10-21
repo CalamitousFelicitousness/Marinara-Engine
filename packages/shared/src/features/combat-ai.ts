@@ -2,21 +2,16 @@ import { ENEMY_AI_VARIATION, type GameDifficulty } from "./combat-conditions.js"
 import { z } from "zod";
 import type { CombatSkill, CombatStatusEffect } from "../types/game.js";
 
-export const COMBAT_ADJECTIVES = [
-  "mindless",
-  "reckless",
-  "cautious",
-  "opportunistic",
-  "protective",
-  "supportive",
-  "disciplined",
-  "cowardly",
-  "patient",
-  "methodical",
-  "coordinated",
-] as const;
-import { COMBAT_MINDS, type CombatMind } from "./combat-minds.js";
-export { COMBAT_MINDS, type CombatMind } from "./combat-minds.js";
+import { COMBAT_MINDS, COMBAT_ROLES, COMBAT_TEMPERAMENTS, type CombatMind } from "./combat-minds.js";
+export {
+  COMBAT_MINDS,
+  COMBAT_ROLES,
+  COMBAT_TEMPERAMENTS,
+  type CombatMind,
+  type CombatRole,
+  type CombatTemperament,
+} from "./combat-minds.js";
+export const COMBAT_ADJECTIVES = ["mindless", ...COMBAT_TEMPERAMENTS] as const;
 /** The temperaments an animal's nature may have: none that plans. */
 const INSTINCT_ADJECTIVES: readonly (typeof COMBAT_ADJECTIVES)[number][] = [
   "reckless",
@@ -39,12 +34,16 @@ export const combatTacticsSchema = z
     seed: z.number().int().min(0).max(0xffffffff),
     category: z.enum(["beast", "monstrosity", "other", "unknown"]),
     proficiency: z.enum(["novice", "trained", "veteran", "master"]),
-    role: z.enum(["bruiser", "bulwark", "skirmisher", "marksman", "spellcaster", "supporter", "controller"]),
+    role: z.enum(COMBAT_ROLES),
     adjective: z.enum(COMBAT_ADJECTIVES),
     targetId: z.string().max(256).optional(),
     holds: z.number().int().min(0).max(2).optional(),
     /** Its mind (see `COMBAT_MINDS`); one saved before minds were read is played as `tactical`. */
     mind: z.enum(COMBAT_MINDS).optional(),
+    /** It has made its opening move (a ruleset creature's `behavior.opens`, 1.710). */
+    opened: z.literal(true).optional(),
+    /** It lay in wait and has sprung (a ruleset creature's `behavior.ambush`, 1.710). */
+    sprung: z.literal(true).optional(),
   })
   .superRefine((value, ctx) => {
     // A mindless creature has no temperament but its own, and nothing else is mindless.
@@ -162,6 +161,8 @@ export interface CombatAiCandidate<T> {
   cost?: number;
   protection?: number;
   coordination?: number;
+  /** What its own data says it goes for first (a ruleset creature's `behavior`, 1.710). */
+  focus?: number;
   hold?: boolean;
 }
 
@@ -209,6 +210,7 @@ export function chooseCombatCandidate<T>(
     cost: adjective === "reckless" ? 0 : adjective === "cautious" ? 0.6 : 0.2,
     protection: adjective === "protective" ? 2 : 0,
     coordination: adjective === "coordinated" ? 1.5 : 0,
+    focus: 1,
   };
   // What it is bends how it weighs things. A mindless creature knows only to hit; an animal drags down
   // the weakest and minds its own hide once hurt; a genius never ignores the danger it stands in.
@@ -222,6 +224,7 @@ export function chooseCombatCandidate<T>(
       cost: 0,
       protection: 0,
       coordination: 0,
+      focus: 0,
     });
   else if (profile.mind === "instinct") {
     weights.finish *= 2;
@@ -239,7 +242,8 @@ export function chooseCombatCandidate<T>(
         (candidate.risk ?? 0) * weights.risk -
         (candidate.cost ?? 0) * weights.cost +
         (candidate.protection ?? 0) * weights.protection +
-        (candidate.coordination ?? 0) * weights.coordination;
+        (candidate.coordination ?? 0) * weights.coordination +
+        (candidate.focus ?? 0) * weights.focus;
       if (adjective === "methodical" && profile.targetId !== undefined && candidate.targetId === profile.targetId)
         score += 0.35;
       if (candidate.hold && (profile.holds ?? 0) < 1 && profile.mind !== "mindless") {

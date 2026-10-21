@@ -1,5 +1,5 @@
 import type { CombatMind } from "../combat-minds.js";
-import type { RulesetDefinition } from "../../schemas/ruleset.schema.js";
+import type { RulesetCombatBehavior, RulesetDefinition } from "../../schemas/ruleset.schema.js";
 import { rulesetAbilityScore, rulesetCreatureKind } from "./encounter.js";
 import type { RulesetCombatant } from "./types.js";
 
@@ -36,4 +36,24 @@ export function rulesetCombatantMind(
     combatant.actions.some((action) => action.signature !== undefined);
   if (reached === "tactical" && legendary) return "genius";
   return reached;
+}
+
+/**
+ * How a combatant goes about a fight (Capability API 1.710), as its own data says: the ruleset's
+ * `combat.behavior`, its type's over that, and its stat block's over both, each key on its own.
+ * Undefined when nothing says.
+ */
+export function rulesetCombatantBehavior(
+  definition: RulesetDefinition,
+  combatant: RulesetCombatant,
+): RulesetCombatBehavior | undefined {
+  const kind = rulesetCreatureKind(definition, combatant);
+  const typed =
+    kind.type !== undefined
+      ? definition.combat?.creatureTypes?.types.find((one) => one.id === kind.type)?.behavior
+      : undefined;
+  const layers = [definition.combat?.behavior, typed, combatant.block?.behavior].filter(
+    (one): one is RulesetCombatBehavior => !!one,
+  );
+  return layers.length > 0 ? Object.assign({}, ...layers) : undefined;
 }

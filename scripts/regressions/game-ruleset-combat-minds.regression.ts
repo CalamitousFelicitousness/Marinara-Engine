@@ -261,6 +261,61 @@ try {
     assert.ok(!picks[4]?.defensive, `one careful turn after a blow: ${seen}`);
   }
 
+  // Standing in burning oil, it steps out of it to fight rather than taking the flames next turn.
+  {
+    const { encounter, state } = fight(
+      { wolf: { x: 4, y: 2 }, hero: { x: 5, y: 2 } },
+      {
+        wolf: { side: "enemy", block: block({ type: "beast", mind: "instinct" }) },
+        hero: { side: "party", block: block({ health: 40 }) },
+      },
+      { wolf: master },
+    );
+    const hero = rulesetCombatant(encounter, "hero")!;
+    const rule = { rounds: 10, anchor: "point", triggers: ["turn-start"], atCast: false };
+    hero.actions.push({
+      ...hero.actions[0]!,
+      id: "oil",
+      label: "Burning oil",
+      damage: { count: 3, sides: 6, flat: 0 },
+      zone: rule,
+    } as never);
+    hero.zones = [
+      { actionId: "oil", label: "Burning oil", ...rule, at: { x: 4, y: 2 }, cells: [{ x: 4, y: 2 }] } as never,
+    ];
+    const picked = pickRulesetChoice(definition, state, encounter, "wolf");
+    assert.ok(
+      picked?.to && (picked.to.x !== 4 || picked.to.y !== 2),
+      `it steps out of the fire: ${JSON.stringify(picked?.to)}`,
+    );
+  }
+
+  // A healthy wolf beside its prey bites; a hurt coward with nobody beside it never Disengages.
+  {
+    const { encounter, state } = fight(
+      { wolf: { x: 4, y: 2 }, hero: { x: 5, y: 2 } },
+      {
+        wolf: { side: "enemy", block: block({ type: "beast", mind: "instinct" }) },
+        hero: { side: "party", block: block({ health: 40 }) },
+      },
+      { wolf: master },
+    );
+    const picked = pickRulesetChoice(definition, state, encounter, "wolf");
+    assert.equal(picked?.targetId, "hero", `it bites: ${JSON.stringify(picked?.choice)}`);
+  }
+  {
+    const { encounter, state } = fight(
+      { goblin: { x: 0, y: 0 }, hero: { x: 9, y: 5 } },
+      {
+        goblin: { side: "enemy", block: block({ type: "humanoid" }), health: 2 },
+        hero: { side: "party", block: block({ health: 40 }) },
+      },
+      { goblin: { ...master, temperament: "cowardly" } },
+    );
+    const picked = pickRulesetChoice(definition, state, encounter, "goblin");
+    assert.notEqual(picked?.defensive, "disengage", `nobody to get away from: ${JSON.stringify(picked?.choice)}`);
+  }
+
   // A protective guard goes at whoever is on its hurt friend.
   {
     const { encounter, state } = fight(

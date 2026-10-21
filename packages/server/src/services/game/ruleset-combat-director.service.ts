@@ -1218,11 +1218,23 @@ function rulesetCandidates(
   // cannot reach from here, where it is worth anything: whoever is on a friend.
   const roams = tactics?.adjective === "protective" || tactics?.adjective === "coordinated";
   const reachable = new Set(here.map((candidate) => candidate.targetId));
+  // Standing in burning oil or a Cloud of Daggers: a step out of it that does as much is weighed too,
+  // so the danger it stands in can tell them apart.
+  const actor = rulesetCombatant(encounter, actorId);
+  const home = rulesetPositionOf(actor);
+  const burning = actor && home ? rulesetZoneHarmAt(encounter, actor, home) : 0;
+  const cooler = (candidate: CombatAiCandidate<RulesetCandidate>) =>
+    burning > 0 &&
+    !!actor &&
+    !!candidate.action.to &&
+    worth(candidate) >= staying &&
+    rulesetZoneHarmAt(encounter, actor, candidate.action.to) < burning;
   const candidates = [
     ...here,
     ...moved.filter(
       (candidate) =>
         worth(candidate) > staying ||
+        cooler(candidate) ||
         (roams && worth(candidate) > 0 && candidate.targetId !== undefined && !reachable.has(candidate.targetId)),
     ),
   ];
@@ -1233,7 +1245,6 @@ function rulesetCandidates(
   // the WHOLE list, walks included, so a creature that has to take a step first still takes it.
   if (everything) return candidates;
   // A free trait taken before an attack (1.553) is taken as the attack is made, never in its place.
-  const actor = rulesetCombatant(encounter, actorId);
   const own = candidates.filter((candidate) => {
     const action = actor?.actions.find((one) => one.id === candidate.action.option.id);
     if (action?.free && action.beforeAttack) return false;
@@ -1265,8 +1276,8 @@ function rulesetDefensiveName(option: RulesetCombatOption): RulesetCandidate["de
 }
 
 /** Whether a creature weighs dodging, getting away or hiding against its attacks (1.708): a careful,
- *  cowardly or patient one, or an animal, once it is hurt or stands where a turn of blows would take
- *  a good share of what it has left. Never a mindless one, and never one in no real danger: a sturdy
+ *  cowardly or patient one once it is hurt or stands where a turn of blows would take a good share of
+ *  what it has left, and an animal once it is hurt. Never a mindless one, and never one in no real danger: a sturdy
  *  creature trading small blows fights on rather than dodging all fight. */
 function rulesetKeepsDefensive(
   definition: RulesetDefinition,
@@ -1280,15 +1291,17 @@ function rulesetKeepsDefensive(
   if (orders?.posture === "retreat") return true;
   // Two turns of it in a row and nothing has changed: it fights again, or the fight never ends.
   if ((tactics.wary ?? 0) >= 2) return false;
-  const minded =
+  const careful =
     orders?.posture === "back" ||
     tactics.adjective === "cautious" ||
     tactics.adjective === "cowardly" ||
-    tactics.adjective === "patient" ||
-    tactics.mind === "instinct";
-  if (!minded) return false;
+    tactics.adjective === "patient";
+  if (!careful && tactics.mind !== "instinct") return false;
   const health = rulesetCombatHealth(definition, definition.combat, actor);
   if (health.value < health.max * 0.5) return true;
+  // An animal minds itself once it is hurt, not before: a wolf beside its prey bites rather than
+  // dodging because the prey could hit back.
+  if (!careful) return false;
   const home = rulesetPositionOf(actor);
   return !!home && rulesetDangerAt(definition, encounter, actor, home) >= 0.3;
 }
@@ -1324,7 +1337,31 @@ function rulesetDangerAt(
     }
     harm += worst;
   }
+  harm += rulesetZoneHarmAt(encounter, actor, cell);
   return Math.min(3, harm / pool);
+}
+
+/** The harm a zone at a cell does whoever starts or ends a turn in it, whoever left it (1.708):
+ *  burning oil, a Cloud of Daggers, its own side's Spirit Guardians aside (it spares them). */
+function rulesetZoneHarmAt(
+  encounter: RulesetEncounterState,
+  actor: RulesetCombatant,
+  cell: { x: number; y: number },
+): number {
+  const filled = rulesetFootprintAt(cell, rulesetSpanOf(actor));
+  let harm = 0;
+  for (const caster of encounter.combatants) {
+    for (const zone of caster.zones ?? []) {
+      const action = caster.actions.find((entry) => entry.id === zone.actionId);
+      if (!action?.damage || !action.zone?.triggers.some((when) => when === "turn-start" || when === "turn-end"))
+        continue;
+      const cells = rulesetZoneCells(encounter, caster, zone);
+      if (!filled.some((one) => cells.some((at) => at.x === one.x && at.y === one.y))) continue;
+      if (!rulesetZoneCatches(caster, zone, action, actor)) continue;
+      harm += rulesetSafeAverage(action.damage);
+    }
+  }
+  return harm;
 }
 
 /** The cell furthest from every opponent a combatant may walk to (1.708), its danger breaking ties:
@@ -1394,6 +1431,12 @@ function weighRulesetTeam(
   // Only one that means to keep itself whole takes these in place of closing in: anybody else's
   // standard action is what is left when nothing is in reach, and it walks instead.
   const keeps = rulesetKeepsDefensive(definition, encounter, actor, units.get(actor.id)?.tactics, orders);
+  // Getting away from nobody gets it nothing: with no opponent beside it, Disengage is left out (a
+  // goblin's Nimble Escape spent eight times out in the open).
+  if (!foes.some((foe) => near(actor, foe))) {
+    const kept = candidates.filter((candidate) => rulesetDefensiveName(candidate.action.option) !== "disengage");
+    if (kept.length > 0) candidates.splice(0, candidates.length, ...kept);
+  }
   for (const candidate of candidates) {
     const defensive = keeps ? rulesetDefensiveName(candidate.action.option) : undefined;
     if (defensive) {
@@ -2939,12 +2982,25 @@ function weighRulesetOrders(
   // squares from them for, so it never runs off across the board after the first foe it sees. With
   // nothing left, its turn walks back toward them (see `walkTowardsTrouble`).
   if (guarded) {
-    const kept = candidates.filter(
-      (candidate) =>
-        !candidate.action.to ||
-        rulesetGapFrom(candidate.action.to, rulesetSpanOf(actor), guarded) <= RULESET_LEASH ||
-        rulesetGapFrom(candidate.action.to, rulesetSpanOf(actor), guarded) < rulesetGap(actor, guarded),
-    );
+    const gap = rulesetGap(actor, guarded);
+    // Already off it, it does nothing where it stands but harm or help: no hiding, dodging, readying
+    // or waiting out there, so its turn goes to walking back.
+    const strayed = gap > RULESET_LEASH;
+    const kept = candidates.filter((candidate) => {
+      const to = candidate.action.to;
+      if (to) {
+        const after = rulesetGapFrom(to, rulesetSpanOf(actor), guarded);
+        return after <= RULESET_LEASH || after < gap;
+      }
+      return (
+        !strayed ||
+        (candidate.damage ?? 0) > 0 ||
+        (candidate.healing ?? 0) > 0 ||
+        (candidate.support ?? 0) > 0 ||
+        // Setting somebody up, not merely itself (a Ready or a Dash on the spot).
+        ((candidate.setup ?? 0) > 0 && !!candidate.targetId)
+      );
+    });
     candidates.splice(0, candidates.length, ...kept);
   }
   for (const candidate of candidates) {

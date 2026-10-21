@@ -1,4 +1,5 @@
 import {
+  MariWorkspaceStatus,
   MariSuggestionChip,
   ProfessorMariAskContext,
   LOCAL_SIDECAR_CONNECTION_ID,
@@ -32,6 +33,7 @@ import { useUIStore } from "../../../stores/ui.store";
 import { InlineGhostText } from "../../ui/InlineGhostText";
 import { ConnectionModelPicker } from "../../connections/ConnectionModelPicker";
 import { MariRow } from "../mari-primitives";
+import { MariConnectionGuidance } from "./MariConnectionGuidance";
 import { MariAttachButton } from "../MariAttachButton";
 import { MariContextFacetChips } from "../MariContextFacetChips";
 import { MariSuggestionChips } from "../MariSuggestionChips";
@@ -43,10 +45,13 @@ import {
   MARI_PERMISSIONS_MODE_ICONS,
   MARI_PERMISSIONS_MODE_FACT_KEYS,
 } from "./mari-chat-helpers";
+import { MariRuntimeRecovery } from "./MariRuntimeRecovery";
 import { CompactMarkdown, ProfessorMariAttachmentPreviews } from "./MariReplyContent";
 
 /** R11 (composer v5): her composer dock: the question strip, context chips, the field, attach, connection and mode menus, and Send/Stop. */
 type MariComposerProps = {
+  workspaceStatus: MariWorkspaceStatus | null;
+  refreshWorkspaceStatus: () => Promise<MariWorkspaceStatus>;
   acceptDraftCompletion: () => void;
   attachComposerDock: (dock: HTMLFormElement | null) => (() => void) | undefined;
   attachedContext: MariWorkspaceContextItem[] | undefined;
@@ -112,6 +117,8 @@ type MariComposerProps = {
 };
 
 export function MariComposer({
+  workspaceStatus,
+  refreshWorkspaceStatus,
   acceptDraftCompletion,
   attachComposerDock,
   attachedContext,
@@ -257,6 +264,7 @@ export function MariComposer({
         void handleSubmit();
       }}
     >
+      <MariRuntimeRecovery status={workspaceStatus} busy={isBusy} refreshStatus={refreshWorkspaceStatus} />
       <AnimatePresence>
         {showJumpToLatest ? (
           <motion.button
@@ -519,6 +527,9 @@ export function MariComposer({
                       }}
                     />
                   )}
+                  <div className="px-3 py-2">
+                    <MariConnectionGuidance />
+                  </div>
                 </div>
                 {modelsConnection && (
                   <div className="mari-connection-picker__models">

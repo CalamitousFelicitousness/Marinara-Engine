@@ -57,7 +57,7 @@ Guidelines:
 
 - **Base your feature branch on `staging`**, not `main`. Run `git checkout staging && git pull` before branching.
 - **Open PRs against `staging`**. The GitHub web UI defaults to `main` (the repo's default branch); change the base to `staging` when filing the PR.
-- Every PR must pass the required GitHub checks and complete its CodeRabbit review before merge. These gates cannot be bypassed by developers.
+- Every PR must pass the required GitHub checks and complete [Dottore Review](.github/dottore-review/README.md) before merge. Ready PRs are reviewed automatically; if no review starts, an owner, organization member or collaborator can comment `/dottore`. Outside contributors should ask a maintainer. These gates cannot be bypassed by developers.
 - PRs authored by active Pasta-Devs organization members or owners do not require a separate human approval. Organization members with repository merge permission may merge a ready PR into `staging` after the automated gates pass.
 - Outside and first-time contributors may submit only to `staging` and need an approving review from repository owner `SpicyMarinara` in addition to the automated gates. Approval from another Pasta-Devs member does not satisfy this gate.
 - Only `SpicyMarinara` may update or merge into `main`. Normal releases are promoted from the same repository's tested `staging` branch; direct mainline work is reserved for an owner-owned `hotfix/*` branch in this repository.
@@ -140,7 +140,7 @@ server and HTTP-only container health checks cannot detect.
 
 Regression guards:
 
-- `pnpm regression` (or `pnpm regression:node`) builds the shared package once, discovers the complete Node regression set from the filesystem, and runs it serially. Pull requests and staging pushes retain this complete lane on a hosted runner.
+- `pnpm regression` (or `pnpm regression:node`) builds the shared package once, discovers the complete Node regression set from the filesystem, and runs the files in parallel, one per CPU core by default. Each file's output prints as one block with its result. Set the number with `--concurrency <n>` or `REGRESSION_CONCURRENCY`; `--concurrency 1` runs one file at a time with live output. A file that fails or times out beside others runs once more on its own after the rest, and that second run decides its result (unless more than 20 files missed). Pull requests and staging pushes retain this complete lane on a hosted runner.
 - `pnpm regression:prompt` runs fast deterministic checks for prompt assembly, lorebook keyword matching, macros, summaries, and mode-specific generation gates.
 - `pnpm smoke:ui` runs only the `@smoke` tests on desktop Chromium, with one worker. This small suite covers the Home shell, settings persistence, chat-mode navigation, generation stop/refusal, Conversation and Roleplay reasoning, and Game narration. Development PRs into `staging` run it inside the existing required `pnpm-validate` check, so a smoke failure blocks merging. Staging pushes run it as `browser-smoke`. Both replace the full browser matrix at those development boundaries. Keep the smoke selection small; feature-specific regressions belong in focused local runs and the full matrix.
 - `pnpm regression:ui` still runs the full Playwright suite across desktop Chromium, Android-sized Chromium, and iPhone-sized WebKit. GitHub runs the full matrix nightly at 02:17 UTC against `staging`, on manual dispatch, and on PRs into `main` (including promotion and hotfix candidates). Every test job uses the same immutable commit from its triggering event; the `regression-revision` job records that SHA in its summary. Full-matrix checks retain the `desktop-chromium`, `mobile-chromium`, and `mobile-webkit` verdicts; ordinary development runs skip those full lanes.
@@ -243,8 +243,8 @@ The overlay is not a substitute for this guide. When instructions conflict, foll
 ## Pull Request Expectations
 
 - Target the `staging` branch. The GitHub UI defaults to `main`; change the base before submitting. See [Branches](#branches).
-- Wait for every required check and the CodeRabbit review to complete. Outside and first-time contributors must also obtain an approving review from `SpicyMarinara`.
-- CodeRabbit can fix common review findings on your PR when you comment `@coderabbitai run localize` (moves new UI text into `en.json`), `@coderabbitai run theme colours` (swaps hard-coded colours for theme tokens) or `@coderabbitai resolve merge conflict`. Check what it pushes before you ask for review.
+- Wait for every required check and [Dottore Review](.github/dottore-review/README.md) to complete. Outside and first-time contributors must also obtain an approving review from `SpicyMarinara`.
+- Optional manual CodeRabbit commands can fix common review findings on your PR: `@coderabbitai run localize` (moves new UI text into `en.json`), `@coderabbitai run theme colours` (swaps hard-coded colours for theme tokens) or `@coderabbitai resolve merge conflict`. Check what it pushes before you ask for review.
 - Link the issue or feature request your PR addresses. If there isn't one yet, open one first (see [Before You Open a Pull Request](#before-you-open-a-pull-request)).
 - Keep PRs focused. Separate unrelated refactors from user-facing fixes or documentation work.
 - Explain the why clearly in the PR description. Reviewers should understand the user problem, regression, or tradeoff being addressed, not just the implementation summary.
@@ -363,6 +363,54 @@ Release helpers now in the repo:
 - `pnpm credits:check` compares the in-app Credits modal with the GitHub contributors list, and `pnpm credits:sync` refreshes it.
 - `pnpm guard:installer-artifacts` fails when tracked installer binaries appear under `win/installer/*.exe`.
 - `pnpm release:notes -- <version>` renders the matching `CHANGELOG.md` entry for release publication and prepends the temporary Android APK / Termux notice.
+
+## Marinara Notices
+
+Running installations fetch `notices.json` from the `notices` branch at startup and every hour, and show the owner
+(never an anonymous remote visitor) at most one matching notice as a banner. Owners can turn this off with
+`MARINARA_NOTICES_ENABLED=false` (see `docs/CONFIGURATION.md`).
+
+**When to post one:** only when the owner must act and something bad happens if they do not: a security risk, data
+loss, or an update that needs a manual step (for example "Docker users must do X"). Expect a handful per year. Never
+post new features, releases, surveys, events, community news, or tips; the update card and What's New cover releases.
+If owners learn to close the banner without reading, the one notice that matters is lost.
+
+**How to post one:** open a PR against the `notices` branch that edits `notices.json`. It needs a second maintainer's
+approval, and the PR description must say why owners must act now. The file is a JSON array:
+
+```json
+[
+  {
+    "id": "2026-10-proxy-auth",
+    "level": "critical",
+    "versions": "<=2.5.1",
+    "title": "Security update available",
+    "text": "If you use a reverse proxy or tunnel, anyone who can reach Marinara can use it.",
+    "action": "Update Marinara now, or set a password.",
+    "expires": "2026-12-31",
+    "link": "https://github.com/Pasta-Devs/Marinara-Engine/releases"
+  }
+]
+```
+
+| Field      | Rule                                                                                                      |
+| ---------- | --------------------------------------------------------------------------------------------------------- |
+| `id`       | Required. Letters, digits and `-`, at most 64. Dismissals are stored per `id`.                            |
+| `level`    | Required. `warning` (dismissed for good) or `critical` (comes back each browser session). No `info`.      |
+| `versions` | Required. Matching app versions: `<`, `<=`, `>`, `>=`, `=` or a bare version; space = and, `\|\|` = or. Any other syntax drops the notice without a warning. |
+| `title`    | Required. Plain text, at most 120 characters.                                                             |
+| `text`     | Required. One sentence, plain text, at most 500 characters.                                               |
+| `action`   | Required. What the owner must do, one sentence, at most 200 characters.                                   |
+| `expires`  | Required. `YYYY-MM-DD` (UTC). The notice shows through that day, then the app ignores it.                 |
+| `link`     | Optional. Must start with `https://github.com/Pasta-Devs/`; any other link is dropped.                    |
+
+The app drops a notice that breaks any rule, and ignores the whole file if it is not a JSON array or has more than
+20 entries. If the file is not valid JSON, the app keeps the last good notices; a valid file with the wrong shape
+shows nothing. Text is shown as written: HTML and Markdown are not rendered. The banner has no "Update now" button; put
+the update step in `action` and the release in `link`.
+
+**Retiring a notice:** delete it from the file, or let it expire. To show a changed notice again to owners who
+dismissed it, give it a new `id`. Remove expired entries now and then so the file stays short.
 
 ## Immediate Way Forward
 

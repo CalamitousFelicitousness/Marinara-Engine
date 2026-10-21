@@ -490,6 +490,26 @@ assert.deepEqual(
   { mouthOpen: 0.58, mouthForm: -0.7 },
   "preserved held form precedence is unchanged",
 );
+// The painted mouth opens over |s| < wf of the rig's halfLen (centre to lip corner): every vowel and motion
+// opens across the whole drawn line, not only its middle.
+const mouthWidth = meshRuntime.match(/float wf = ([^;]+);\n\s*float k = 1\.0 - \(s \/ wf\) \* \(s \/ wf\);/u)?.[1];
+assert.ok(mouthWidth, "the pinned runtime's painted mouth width exists");
+const paintedWidth = new Function("form", "mix", "clamp", `return ${mouthWidth};`) as (
+  form: number,
+  mix: unknown,
+  clamp: unknown,
+) => number;
+for (const form of [-1, -0.85, -0.4, 0, 0.6, 0.9, 1]) {
+  assert.equal(
+    paintedWidth(
+      form,
+      (a: number, b: number, t: number) => a + (b - a) * t,
+      (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v)),
+    ),
+    1,
+    `mouth form ${form} opens to the lip corners`,
+  );
+}
 
 // Every mesh avatar draws at the shared canvas's size and is scaled onto its own canvas as if drawn there:
 // mesh-avatar fits the picture plus margins, centred and standing on the bottom edge.

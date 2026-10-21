@@ -14,7 +14,7 @@ import { createServer } from "node:http";
 import type { HomeCustomWidgetCatalog } from "@marinara-engine/shared";
 import { downloadExport } from "./export-save.js";
 import { forceColorValueEnablesColor } from "./playwright-color-environment.js";
-import { mockUILanguagePacks } from "./ui-language-fixtures.js";
+import { mockUILanguagePacks, selectUILanguage } from "./ui-language-fixtures.js";
 import { seedUIState } from "./ui-state-fixture.js";
 import {
   chatSettingsDrawer,
@@ -834,7 +834,7 @@ test("Android status bar setting reads and updates the native bridge", async ({ 
     )
     .toEqual([false, true]);
 
-  await page.locator("#settings-control-language select").selectOption("pl");
+  await selectUILanguage(page, "pl");
   await expect(page.getByLabel("Pokaż pasek stanu Androida")).toBeChecked();
 });
 
@@ -13176,8 +13176,12 @@ test("Professor Mari opens a named character directly in its editor", async ({ p
     const navigationInput = omnibar.getByRole("searchbox", { name: "Search Marinara" });
     await expect(navigationInput).toBeFocused();
     await navigationInput.fill(resourceName);
+    // Enter acts on the selected row, so wait until the typed results select this character. The empty
+    // list's Try row can quote the newest character's name before those results arrive.
     await expect(
-      omnibar.locator("[data-command-center-result-row]").filter({ hasText: resourceName }).first(),
+      omnibar.locator(
+        `[data-command-center-result-row][data-result-id$=":${character.id}"]:has([data-selected='true'])`,
+      ),
     ).toBeVisible();
     await navigationInput.press("Enter");
     const editor = page.locator(".mari-editor-shell");
@@ -13985,7 +13989,7 @@ test("UI language selection downloads packs on demand and persists across reload
   await page.route("**/api/capability-packages/catalog", (route) =>
     route.fulfill({ json: { schemaVersion: 1, generatedAt: "2026-09-17T00:00:00.000Z", packages: [] } }),
   );
-  const languageSelect = page.locator("#settings-control-language select");
+  const languageSelect = page.locator("#settings-control-language-select");
 
   // UI settings are normally synchronized through a single server record. Keep
   // this preference test browser-local so parallel desktop/mobile projects do
@@ -14022,18 +14026,20 @@ test("UI language selection downloads packs on demand and persists across reload
   });
   await page.goto("/");
   await openGeneralSettings();
-  await expect(languageSelect).toHaveValue("en");
+  await expect(languageSelect).toHaveAttribute("data-value", "en");
   await expect(page.getByText("App Behavior", { exact: true })).toBeVisible();
   expect(packs.downloads).toEqual([]);
   await testInfo.attach("ui-language-pack-before-download", {
     body: await page.screenshot(),
     contentType: "image/png",
   });
+  await languageSelect.click();
   for (const locale of ["en", "ar", "de", "es", "fr", "hi", "ja", "ko", "pl", "pt-BR", "ru", "zh-Hans"]) {
-    await expect(languageSelect.locator(`option[value="${locale}"]`)).toHaveCount(1);
+    await expect(page.locator(`[role="option"][id="settings-control-language-select-list-${locale}"]`)).toHaveCount(1);
   }
 
-  await languageSelect.selectOption("pl");
+  await page.keyboard.press("Escape");
+  await selectUILanguage(page, "pl");
   await expect(page.getByText("Działanie aplikacji", { exact: true })).toBeVisible();
   await expect(page.getByPlaceholder("Szukaj w ustawieniach")).toBeVisible();
   await expect(page.getByRole("tab", { name: "Ogólne" })).toBeVisible();
@@ -14047,7 +14053,7 @@ test("UI language selection downloads packs on demand and persists across reload
   packs.setOffline(true);
   await page.getByRole("button", { name: "Refresh language pack", exact: true }).click();
   await expect(page.getByText("Could not download the language pack.", { exact: false })).toBeVisible();
-  await expect(languageSelect).toHaveValue("pl");
+  await expect(languageSelect).toHaveAttribute("data-value", "pl");
   packs.setOffline(false);
   await expect(page.locator('[data-tour="panel-settings"]')).toHaveAttribute("title", "Ustawienia");
   await expect.poll(() => page.evaluate(() => document.documentElement.lang)).toBe("pl");
@@ -14065,7 +14071,7 @@ test("UI language selection downloads packs on demand and persists across reload
 
   await page.reload();
   await openGeneralSettings();
-  await expect(languageSelect).toHaveValue("pl");
+  await expect(languageSelect).toHaveAttribute("data-value", "pl");
   await expect(page.getByText("Działanie aplikacji", { exact: true })).toBeVisible();
   await expect(page.getByPlaceholder("Szukaj w ustawieniach")).toBeVisible();
   await expect(page.getByText("Potwierdzaj przed usunięciem", { exact: true })).toBeVisible();
@@ -14084,13 +14090,13 @@ test("UI language selection downloads packs on demand and persists across reload
   ] as const;
 
   for (const translation of translatedApplicationTitles) {
-    await languageSelect.selectOption(translation.locale);
+    await selectUILanguage(page, translation.locale);
     await expect(page.getByText(translation.title, { exact: true })).toBeVisible();
     await expect.poll(() => page.evaluate(() => document.documentElement.lang)).toBe(translation.locale);
     await expect.poll(() => page.evaluate(() => document.documentElement.dir)).toBe(translation.direction);
   }
 
-  await languageSelect.selectOption("ko");
+  await selectUILanguage(page, "ko");
   await expect
     .poll(() =>
       page.evaluate(async () => {
@@ -14122,11 +14128,11 @@ test("UI language selection downloads packs on demand and persists across reload
 
   // Community locales are intentionally partial. A newly extracted English
   // key must render in English when the selected locale has not translated it.
-  await languageSelect.selectOption("es");
+  await selectUILanguage(page, "es");
   await expect(page.getByPlaceholder("Search settings")).toBeVisible();
   await expect(page.getByText("Confirm before deleting", { exact: true })).toBeVisible();
 
-  await languageSelect.selectOption("en");
+  await selectUILanguage(page, "en");
   await expect(page.getByText("App Behavior", { exact: true })).toBeVisible();
   await expect.poll(() => page.evaluate(() => document.documentElement.dir)).toBe("ltr");
   await expect
@@ -14169,7 +14175,7 @@ test("UI language selection downloads packs on demand and persists across reload
   });
   await page.reload();
   await openGeneralSettings();
-  await expect(languageSelect).toHaveValue("en");
+  await expect(languageSelect).toHaveAttribute("data-value", "en");
   await expect.poll(() => page.evaluate(() => document.documentElement.lang)).toBe("en");
   // The deliberately failed refresh is the only expected browser resource error.
   expect(errors).toEqual(["Failed to load resource: the server responded with a status of 502 (Bad Gateway)"]);
@@ -18511,6 +18517,10 @@ function respondWithProfessorMariAction(response: import("node:http").ServerResp
 test("Professor Mari creates a character when its own authorization quote omits the intent verb", async ({
   request,
 }) => {
+  // This scripted provider exercises the Classic JSON-frame protocol.
+  expect((await request.put("/api/professor-mari/workspace/runtime", { data: { runtime: "classic" } })).ok()).toBe(
+    true,
+  );
   const suffix = Date.now().toString(36);
   const characterName = `Juli Bellona ${suffix}`;
   let callCount = 0;
@@ -18629,6 +18639,10 @@ test("Professor Mari creates a character when its own authorization quote omits 
 test("Professor Mari creates a character from a German instruction and a card with quoted denial-like dialogue", async ({
   request,
 }) => {
+  // This scripted provider exercises the Classic JSON-frame protocol.
+  expect((await request.put("/api/professor-mari/workspace/runtime", { data: { runtime: "classic" } })).ok()).toBe(
+    true,
+  );
   const suffix = Date.now().toString(36);
   const characterName = `Juli Bellona DE ${suffix}`;
   const cardWithQuotedDialogue = `Character - Juli

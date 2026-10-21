@@ -1,3 +1,4 @@
+import { ChatButtonLayoutSettings } from "../../features/chat-settings/ChatButtonLayoutSettings";
 // ──────────────────────────────────────────────
 // Chat: Settings Drawer — per-chat configuration
 // ──────────────────────────────────────────────
@@ -5483,6 +5484,8 @@ export function ChatSettingsDrawer({
             </button>
           </div>
         )}
+
+        <ChatButtonLayoutSettings />
 
         <div
           className={cn(

@@ -162,6 +162,7 @@ import {
 } from "./encounter.js";
 import {
   rulesetAreaCells,
+  rulesetAroundCells,
   rulesetBlowKind,
   rulesetChargeRun,
   rulesetCellDistance,
@@ -5880,15 +5881,10 @@ function placeZone(
   const cells = wall
     ? wall.cells
     : grid && at && rule.anchor === "point"
-      ? action.onDeath && action.around
-        ? // Left as its maker dies (1.487): around every cell it filled, as nobody aimed it.
-          [
-            ...new Map(
-              rulesetFootprint(actor)
-                .flatMap((cell) => rulesetAreaCells("burst", action.around!.size, cell, cell, grid))
-                .map((cell) => [`${cell.x},${cell.y}`, cell] as const),
-            ).values(),
-          ]
+      ? action.around && (action.onDeath || !action.area)
+        ? // Left as its maker dies (1.487), or a burst centred on it (1.282): around every cell it
+          // fills, as nobody aimed it. A kraken's Ink Cloud, bought between turns.
+          rulesetAroundCells(actor, action.around, grid)
         : areaCellsFor(ctx.state, actor, action.id, at, resume.also ? { also: resume.also } : undefined)
       : undefined;
   const stamp = turnStamp(ctx);

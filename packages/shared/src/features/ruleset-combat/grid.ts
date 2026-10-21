@@ -925,6 +925,29 @@ function burstCells(reach: number, centre: RulesetCombatCell, grid: TacticalGrid
   return cells;
 }
 
+/** The cells a burst centred on its maker (1.282) covers: within its size of every cell its maker
+ *  fills, each once, and behind walls too when it goes through them. A kraken's Ink Cloud. */
+export function rulesetAroundCells(
+  maker: RulesetCombatant,
+  around: { size: number; throughWalls?: true },
+  grid: TacticalGrid,
+  grow = 0,
+): RulesetCombatCell[] {
+  const reach = Math.max(1, Math.round(around.size + grow));
+  const cells = new Map<string, RulesetCombatCell>();
+  for (const from of rulesetFootprint(maker)) {
+    const box = boardBox(grid, from, reach);
+    for (let y = box.top; y <= box.bottom; y++) {
+      for (let x = box.left; x <= box.right; x++) {
+        if (cells.has(`${x},${y}`) || rulesetCellBlocked(grid, x, y)) continue;
+        if (!around.throughWalls && !rulesetLineOfSight(grid, from, { x, y })) continue;
+        cells.set(`${x},${y}`, { x, y });
+      }
+    }
+  }
+  return [...cells.values()];
+}
+
 function lineCells(
   reach: number,
   origin: RulesetCombatCell,
@@ -1748,6 +1771,10 @@ function zoneCellsAsCast(
   if (zone.anchor === "point" && !(holder && rulesetPositionOf(holder))) return zone.cells ?? [];
   const action = caster.actions.find((entry) => entry.id === zone.actionId);
   const at = rulesetPositionOf(holder ?? caster);
+  // Centred on its maker (1.282), carried as it moves.
+  if (action?.around && !action.area && at) {
+    return rulesetAroundCells(holder ?? caster, action.around, grid, zone.widened ?? 0);
+  }
   if (!action?.area || !at) return [];
   // A line or cone held by its caster points the way it was cast, or last turned (1.182).
   if (action.area.shape === "line" || action.area.shape === "cone") {

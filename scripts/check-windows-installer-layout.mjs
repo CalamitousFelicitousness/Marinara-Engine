@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -57,7 +57,8 @@ try {
       console.log("PowerShell unavailable; native prerequisite command proof runs in the Windows platform check.");
     } else {
       assert.equal(probe.status, 0, `PowerShell must be available: ${probe.error ?? probe.stderr}`);
-      const temp = await mkdtemp(resolve(tmpdir(), "Marinara O'Brien & (prereq) "));
+      // Windows PowerShell expands 8.3 aliases such as RUNNER~1; compare the same canonical directory.
+      const temp = await realpath(await mkdtemp(resolve(tmpdir(), "Marinara O'Brien & (prereq) ")));
       try {
         const definitions = new Map(
           [...content.matchAll(/^!define (\w+) "([^"\r\n]+)"$/gm)].map((match) => match.slice(1)),

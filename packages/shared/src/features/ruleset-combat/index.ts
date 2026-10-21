@@ -257,6 +257,7 @@ export {
   rulesetBorrowedTurn,
   rulesetAttackMode,
   rulesetHitChances,
+  rulesetSaveFailChances,
   type RulesetAttackModeWhy,
   rulesetAttachedHolds,
   rulesetAttachedOffLimits,

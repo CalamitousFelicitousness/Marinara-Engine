@@ -223,6 +223,8 @@ export interface DirectedRulesetOption extends RulesetCombatOption {
   /** An attack's chance to land on each of `targetIds`, by id: the forecast reads only the first,
    *  and a player picking a target wants the odds for the one they pick. */
   hitChances?: Record<string, number>;
+  /** The chance each target fails the option's save, for one that calls for a save (playtest). */
+  saveChances?: Record<string, number>;
   /** The level it is paid at as it is, and at each pool `payWith` offers, where a level changes
    *  what it does (Sculpt Spells spares one more a level). */
   levels?: { base: number; pay: Record<string, number> };

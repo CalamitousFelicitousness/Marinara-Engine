@@ -55,9 +55,14 @@ import {
   rulesetPoolDistribution,
   rulesetSoakOf,
 } from "./pool.js";
+import type { RulesetSaveAgainst } from "../rulesets/check-effects.js";
 import {
   currentRulesetActor,
   rulesetActedThisRound,
+  rulesetCombatFailsSave,
+  rulesetCombatHide,
+  rulesetImmuneToCondition,
+  rulesetSaveMode,
   rulesetActiveConditions,
   rulesetItemSuppressed,
   rulesetSuppressedOn,
@@ -4281,6 +4286,83 @@ export function rulesetHitChances(
     const target = rulesetCombatant(state, id);
     const chance = target ? hitChanceAgainst(definition, combat, state, actor, action, target) : null;
     if (chance !== null) chances[id] = Math.round(chance * 1000) / 1000;
+  }
+  return chances;
+}
+
+/** A save option's chance each target fails its save, for a player picking one (playtest): the save
+ *  as it will be thrown, its own modifier and what its conditions add against the difficulty, rolled
+ *  twice where they say so. Nought for one that saves outright or has a Legendary Resistance left,
+ *  one for one that fails without rolling. Empty for anything rolled to hit first, with no save, or
+ *  in a fight of dice pools, whose saves count successes. */
+export function rulesetSaveFailChances(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  actorId: string,
+  optionId: string,
+  targetIds: readonly string[],
+): Record<string, number> {
+  const combat = definition.combat;
+  const actor = rulesetCombatant(state, actorId);
+  const action = actor?.actions.find((one) => one.id === optionId);
+  const save = action?.save;
+  if (!combat?.attackRoll || rulesetCombatIsPool(combat) || !actor || !action || !save || action.toHit !== undefined)
+    return {};
+  // A save has no natural that lands or misses on its own: the total against the difficulty.
+  const plain: RulesetCombat = {
+    ...combat,
+    attackRoll: { ...combat.attackRoll, naturals: { ...combat.attackRoll.naturals, max: "none", min: "none" } },
+  };
+  const against: RulesetSaveAgainst = {
+    conditions: [...(action.applies?.map((one) => one.condition) ?? []), ...(save.against?.conditions ?? [])],
+    damage: [
+      action.damage?.type,
+      ...(action.damage?.plus ?? []).map((one) => one.type),
+      ...(save.against?.damage ?? []),
+    ].filter((type): type is string => type !== undefined),
+    magic: (action.qualities ?? action.damage?.qualities)?.includes("magical") === true,
+    ...(save.against?.qualities ? { qualities: save.against.qualities } : {}),
+    action: [action.id, action.label, ...(action.recharge?.group ? [action.recharge.group] : [])],
+    ...((action.casts ?? action.catalog) ? { catalog: action.casts ?? action.catalog } : {}),
+    ...(targetIds.length === 1 ? { alone: true } : {}),
+  };
+  const chances: Record<string, number> = {};
+  for (const id of targetIds) {
+    const target = rulesetCombatant(state, id);
+    if (!target) continue;
+    if (target.object || rulesetCombatFailsSave(definition, combat, target, save.save, state)) {
+      chances[id] = 1;
+      continue;
+    }
+    const outright =
+      (save.succeeds?.is && rulesetTargetIs(definition, target, save.succeeds.is)) ||
+      save.succeeds?.conditionImmune?.some((condition) =>
+        rulesetImmuneToCondition(target, condition, definition, state),
+      ) ||
+      (save.succeeds?.immune?.length &&
+        save.succeeds.immune.some((type) =>
+          rulesetCombatHide(definition, target, state).immune.some(
+            (entry) =>
+              (typeof entry === "string" ? entry : entry.type).trim().toLowerCase() === type.trim().toLowerCase(),
+          ),
+        ));
+    const resists = (target.block?.legendaryResistance ?? 0) > (target.legendaryResisted ?? 0);
+    if (outright || resists) {
+      chances[id] = 0;
+      continue;
+    }
+    const leans = new Set(
+      (save.modes ?? []).filter((entry) => rulesetTargetIs(definition, target, entry.is)).map((entry) => entry.mode),
+    );
+    if (save.advantageIfFought && target.side !== actor.side) leans.add("advantage");
+    const lean = leans.size === 1 ? [...leans][0] : undefined;
+    const seen = target.id === actor.id || rulesetCanSee(definition, state, target, actor);
+    const mode = rulesetSaveMode(definition, combat, target, save.save, state, against, lean, seen);
+    const bonus = rulesetBonusDice(
+      rulesetConditionModifiers(definition, combat, target, "saves", state, save.save, against),
+    );
+    const saves = rulesetHitChance(plain, target.saves[save.save] ?? 0, save.difficulty, mode, bonus);
+    if (saves !== null) chances[id] = Math.round((1 - saves) * 1000) / 1000;
   }
   return chances;
 }

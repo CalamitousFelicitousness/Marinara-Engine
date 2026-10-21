@@ -211,6 +211,14 @@ const ball = {
   assert.match(fourth, /gainTargets\{"count":2\}/);
   assert.match(rulesetPayGainText(option, "slots_5", t, distance), /gainSize/);
   assert.equal(rulesetPayGainText(option, "slots_6", t, distance), "", "nothing said of nothing");
+  // Sculpt Spells spares one more for each level paid above its own, said only once it is picked.
+  const sculpted = {
+    ...option,
+    alters: [{ id: "sculpt", label: "Sculpt Spells", cost: 0, spares: 4, sparesByLevel: true }],
+    levels: { base: 3, pay: { slots_4: 4, slots_5: 5 } },
+  } as unknown as DirectedRulesetOption;
+  assert.match(rulesetPayGainText(sculpted, "slots_5", t, distance, ["sculpt"]), /gainSpared\{"count":2\}/);
+  assert.doesNotMatch(rulesetPayGainText(sculpted, "slots_5", t, distance), /gainSpared/);
 }
 
 console.log(

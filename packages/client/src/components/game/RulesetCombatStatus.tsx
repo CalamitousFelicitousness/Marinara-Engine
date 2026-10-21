@@ -340,7 +340,8 @@ function zoneLine(
   t: TFunction,
 ): string {
   const caster = view.combatants.find((one) => one.id === zone.casterId)?.name ?? zone.casterId;
-  // Hours of turns (ball bearings left for a day) is no count anybody reads: it lasts the fight.
-  if (zone.rounds > 100) return t("game.combat.ruleset.status.zoneLasting", { caster, label: zone.label });
+  // More turns than a fight runs (Spirit Guardians' ten minutes, ball bearings left for a day) is no
+  // count anybody reads: it lasts the fight.
+  if (zone.rounds > 20) return t("game.combat.ruleset.status.zoneLasting", { caster, label: zone.label });
   return t("game.combat.ruleset.status.zone", { caster, label: zone.label, count: zone.rounds });
 }

@@ -637,6 +637,19 @@ export function RulesetCombatMenu({
                     })}
                   </span>
                 )}
+                {/* How many of its user's side it spares (Sculpt Spells, Careful Spell). */}
+                {(offer.spares ?? 0) > 0 && (
+                  <span className="block text-[0.65rem] text-white/55">
+                    {t(
+                      offer.sparesByLevel
+                        ? "game.combat.ruleset.alter.sparesByLevel"
+                        : "game.combat.ruleset.alter.spares",
+                      {
+                        count: offer.spares,
+                      },
+                    )}
+                  </span>
+                )}
               </button>
             );
           })}
@@ -878,9 +891,9 @@ export function RulesetCombatMenu({
                     })
                   : t("game.combat.ruleset.upcast.pool", { pool: option.payLabels?.[pool] ?? pool })}
               {/* What the higher payment gets: Fireball's +1d6, Hold Person's other target. */}
-              {rulesetPayGainText(option, pool, t, distance) && (
+              {rulesetPayGainText(option, pool, t, distance, step.alters) && (
                 <span className="block text-[0.65rem] text-white/60">
-                  {rulesetPayGainText(option, pool, t, distance)}
+                  {rulesetPayGainText(option, pool, t, distance, step.alters)}
                 </span>
               )}
             </button>
@@ -1160,6 +1173,10 @@ export function RulesetCombatMenu({
                   {option.hitChances?.[combatant.id] !== undefined &&
                     ` · ${t("game.combat.ruleset.option.forecastHit", {
                       percent: Math.round(option.hitChances[combatant.id]! * 100),
+                    })}`}
+                  {option.saveChances?.[combatant.id] !== undefined &&
+                    ` · ${t("game.combat.ruleset.option.forecastFailSave", {
+                      percent: Math.round(option.saveChances[combatant.id]! * 100),
                     })}`}
                 </span>
                 {times > 1 && (

@@ -384,9 +384,7 @@ export function rulesetSparePick(
   targets: string[],
   cell?: RulesetCellChoice,
 ): { ids: string[]; most: number } | null {
-  // One more for each level it is paid above its own, for one that counts them (Sculpt Spells).
-  const levels = step.option.levels;
-  const above = levels && step.payWith ? Math.max(0, (levels.pay[step.payWith] ?? levels.base) - levels.base) : 0;
+  const above = rulesetLevelsAbove(step.option, step.payWith);
   const most = Math.max(
     0,
     ...(step.alters ?? []).map((id) => {
@@ -485,11 +483,20 @@ export function rulesetSendsOnPick(option: DirectedRulesetOption): boolean {
 
 /** What paying for an option with a higher pool gets, in a few words for its button: more dice, more
  *  targets, a bigger shape. Empty where the server sent nothing it adds. */
+/** How many levels above its own a payment pays it at, for an option whose alterations count them:
+ *  Sculpt Spells spares one more for each. */
+export function rulesetLevelsAbove(option: DirectedRulesetOption, payWith: string | undefined): number {
+  const levels = option.levels;
+  return levels && payWith ? Math.max(0, (levels.pay[payWith] ?? levels.base) - levels.base) : 0;
+}
+
 export function rulesetPayGainText(
   option: DirectedRulesetOption,
   pool: string,
   t: TFunction,
   distance: RulesetBoardDistance | undefined,
+  /** The alterations it is used with: Sculpt Spells spares more at a higher level. */
+  alters?: readonly string[],
 ): string {
   const said: string[] = [];
   const gain = option.payGains?.[pool];
@@ -515,6 +522,9 @@ export function rulesetPayGainText(
   }
   if (gain?.size)
     said.push(t("game.combat.ruleset.upcast.gainSize", { amount: rulesetDistanceText(gain.size, distance, t) }));
+  const above = rulesetLevelsAbove(option, pool);
+  if (above > 0 && option.alters?.some((offer) => offer.sparesByLevel && alters?.includes(offer.id)))
+    said.push(t("game.combat.ruleset.upcast.gainSpared", { count: above }));
   // Grows only every so many levels (Spiritual Weapon, every two): a level between says it adds nothing.
   if (said.length === 0 && gain) said.push(t("game.combat.ruleset.upcast.gainNothing"));
   return said.join(", ");

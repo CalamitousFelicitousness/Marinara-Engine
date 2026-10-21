@@ -37,6 +37,7 @@ import {
   placeSpawns,
   readRulesetLive,
   rulesetHitChances,
+  rulesetSaveFailChances,
   rulesetAimCells,
   rulesetAnswerDeflects,
   rulesetItemSlotPayment,
@@ -873,7 +874,7 @@ export function rulesetMenu(
         (option) => !asked || rulesetAnswerDeflects(definition, encounter, asked, option.id) !== false,
       )
     : rulesetCombatOptions(definition, encounter, actorId).filter((option) => !option.futile);
-  return menu.map((option) => {
+  const offered = menu.map((option) => {
     // A teleport is aimed as a shape is (1.276): at a cell it may go to, catching nobody.
     const aim = option.area
       ? rulesetAimCells(encounter, actorId, option.id, RULESET_AIM_LIMIT)
@@ -896,6 +897,11 @@ export function rulesetMenu(
       targetIds.length > 1 && option.forecast?.hitChance !== undefined
         ? rulesetHitChances(definition, encounter, actorId, option.id, targetIds)
         : undefined;
+    // And the chance each fails the save, for one that calls for a save: Hold Person's.
+    const saveChances =
+      targetIds.length > 0 && action?.save && option.forecast?.hitChance === undefined
+        ? rulesetSaveFailChances(definition, encounter, actorId, option.id, targetIds)
+        : undefined;
     // What each way of paying is worth in levels, for an alteration that counts them (Sculpt Spells).
     const levels =
       payWith && actor && action && option.alters?.some((offer) => offer.sparesByLevel)
@@ -911,7 +917,14 @@ export function rulesetMenu(
       targetIds,
       ...(aim.length > 0 ? { aim } : {}),
       ...(hitChances && Object.keys(hitChances).length > 0 ? { hitChances } : {}),
+      ...(saveChances && Object.keys(saveChances).length > 0 ? { saveChances } : {}),
     };
+  });
+  // Treating somebody with nobody to treat is no choice: pulling a friend out of a cube nobody is
+  // in, or first aid with nobody dying, is left off rather than offered all fight.
+  return offered.filter((option) => {
+    const contest = asked?.actions.find((one) => one.id === option.id)?.contest;
+    return !(contest?.pulls || contest?.targetHolds || contest?.targetDying) || option.targetIds.length > 0;
   });
 }
 

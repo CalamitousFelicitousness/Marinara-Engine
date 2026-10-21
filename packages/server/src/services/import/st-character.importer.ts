@@ -330,7 +330,7 @@ export async function importSTCharacter(raw: Record<string, unknown>, db: DB, op
           updatedAt: normalizedTimestamps?.updatedAt ?? normalizedTimestamps?.createdAt ?? null,
           skipVersionSnapshot: true,
         });
-        await syncCharacterBookFromLorebook(db, result.lorebookId as string);
+        await syncCharacterBookFromLorebook(db, result.lorebookId as string, { throwOnError: true });
       } else if (hasEmbeddedLorebook) {
         throw new Error(
           typeof result?.error === "string"

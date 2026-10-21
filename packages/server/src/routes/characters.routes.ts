@@ -2327,7 +2327,7 @@ export async function charactersRoutes(app: FastifyInstance) {
       extensions: extensions as any,
     });
 
-    await syncCharacterBookFromLorebook(app.db, result.lorebookId);
+    await syncCharacterBookFromLorebook(app.db, result.lorebookId, { throwOnError: true });
     return {
       success: true,
       lorebookId: result.lorebookId,

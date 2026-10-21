@@ -617,7 +617,7 @@ function getAccessConfig(): AccessFacts["config"] {
   };
 }
 
-export type PasswordlessPeer = "internet" | "privateNetwork" | "tailscale" | "docker" | "proxy";
+export type PasswordlessPeer = "internet" | "privateNetwork" | "allowlist" | "tailscale" | "docker" | "proxy";
 
 /** True when a bind address is loopback only, so other devices reach it only through a local proxy. */
 export function isLoopbackBind(host: string): boolean {
@@ -651,7 +651,8 @@ export function getPasswordlessPeers(
   const config = getAccessConfig();
   const direct = !isLoopbackBind(bindHost);
   // A tailnet device connects directly only when the bind covers the tailnet address.
-  const tailscaleBind = ["0.0.0.0", "::", ""].includes(bindHost) || isTailscaleIp(bindHost);
+  const anyAddress = ["0.0.0.0", "::", ""].includes(bindHost);
+  const tailscaleBind = anyAddress || isTailscaleIp(bindHost);
   const tailscaleHere =
     tailscaleBind &&
     (config.tailscaleMode === "enabled" ||
@@ -660,11 +661,13 @@ export function getPasswordlessPeers(
   const samples: [PasswordlessPeer, Partial<AccessFacts>, boolean][] = [
     ["internet", {}, direct],
     ["privateNetwork", { privateNetworkIp: true }, direct],
+    ["allowlist", { allowlisted: true }, direct && config.ipAllowlistConfigured],
     ["tailscale", { tailscaleIp: true, privateNetworkIp: true, tailscaleLocalAddress: true }, direct && tailscaleHere],
     // No relayed Host: the client picks the Host header, and `localhost` passes host validation.
     ["docker", { dockerIp: true, privateNetworkIp: true, dockerRuntimeMatch: isDockerRuntime() }, direct && dockerHere],
     // A remote device behind a local proxy names this server by its own address, so it looks relayed.
-    ["proxy", { loopbackIp: true, forwardingHeaders: true, relayedHost: true }, true],
+    // The proxy dials 127.0.0.1, which a bind to one LAN address does not listen on.
+    ["proxy", { loopbackIp: true, forwardingHeaders: true, relayedHost: true }, !direct || anyAddress],
   ];
   return samples
     .filter(([, facts, reachable]) => {

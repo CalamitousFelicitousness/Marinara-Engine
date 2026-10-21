@@ -120,13 +120,20 @@ try {
   // Bound to one LAN address, the tailnet interface is not listening.
   setEnv({});
   assert.deepEqual(getPasswordlessPeers("192.168.1.5", TAILNET), []);
+  // A local proxy dials 127.0.0.1, which that bind does not listen on.
+  setEnv({ ALLOW_UNAUTHENTICATED_REMOTE: "true" });
+  assert.deepEqual(getPasswordlessPeers("192.168.1.5", NO_TAILNET), ["internet", "privateNetwork"]);
   // A default Docker install trusts gateway peers until a login or allowlist is set.
   assert.deepEqual(networkPeers({ MARINARA_DOCKER: "true" }), ["docker"]);
   assert.deepEqual(networkPeers({ MARINARA_DOCKER: "true", ...LOGIN }), []);
   assert.deepEqual(networkPeers({ BYPASS_AUTH_DOCKER: "true" }), ["docker"]);
-  // A password wins over the unauthenticated opt-ins; an allowlist keeps everyone else out.
+  // A password wins over the unauthenticated opt-ins; an allowlist keeps everyone else out,
+  // but its own devices always skip the password.
   assert.deepEqual(networkPeers({ ALLOW_UNAUTHENTICATED_REMOTE: "true", ...LOGIN }), []);
-  assert.deepEqual(networkPeers({ ALLOW_UNAUTHENTICATED_REMOTE: "true", IP_ALLOWLIST: "192.168.1.0/24" }), []);
+  assert.deepEqual(networkPeers({ ALLOW_UNAUTHENTICATED_REMOTE: "true", IP_ALLOWLIST: "192.168.1.0/24" }), [
+    "allowlist",
+  ]);
+  assert.deepEqual(networkPeers({ IP_ALLOWLIST: "192.168.1.0/24", ...LOGIN }), ["allowlist"]);
 } finally {
   await app.close();
   for (const key of ENV_KEYS) {

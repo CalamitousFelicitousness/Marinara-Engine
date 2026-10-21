@@ -61,7 +61,9 @@ export function AccessStatusSettings({ anchorId }: { anchorId: string }) {
             {peers.includes("docker") && (
               <p className="mt-2 text-[var(--muted-foreground)]">{t("settings.accessStatus.dockerHint")}</p>
             )}
-            <p className="mt-2 text-[var(--muted-foreground)]">{t("settings.accessStatus.nextStep")}</p>
+            <p className="mt-2 text-[var(--muted-foreground)]">
+              {t(data.basicAuth ? "settings.accessStatus.bypassStep" : "settings.accessStatus.nextStep")}
+            </p>
             <button
               type="button"
               onClick={() => useUIStore.getState().openModal("docs-viewer", { initialDoc: "REMOTE_ACCESS.md" })}
@@ -73,7 +75,6 @@ export function AccessStatusSettings({ anchorId }: { anchorId: string }) {
         ) : (
           <p className="text-[var(--muted-foreground)]">{t("settings.accessStatus.closed")}</p>
         )}
-        {data.allowlist && <p className="text-[var(--muted-foreground)]">{t("settings.accessStatus.allowlistNote")}</p>}
         <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5">
           {rows.map(([key, value]) => (
             <Fragment key={key}>

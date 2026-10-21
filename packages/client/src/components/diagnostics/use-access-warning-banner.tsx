@@ -10,7 +10,7 @@ import { api } from "../../lib/api-client";
 import { executeStateNavigation } from "../../lib/state-navigation";
 import type { AppBannerCandidate } from "../ui/AppBanner";
 
-export type PasswordlessPeer = "internet" | "privateNetwork" | "tailscale" | "docker" | "proxy";
+export type PasswordlessPeer = "internet" | "privateNetwork" | "allowlist" | "tailscale" | "docker" | "proxy";
 
 export type AccessStatus = {
   loopbackOnly: boolean;
@@ -28,6 +28,9 @@ export function useAccessStatus() {
     queryFn: () => api.get<AccessStatus>("/access/status"),
     retry: false,
     staleTime: 5 * 60_000,
+    // Env edits apply without a restart, so keep the mounted banner current.
+    refetchInterval: 60_000,
+    refetchOnMount: "always",
   });
 }
 

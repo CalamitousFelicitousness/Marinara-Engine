@@ -171,7 +171,9 @@ async function main() {
     startSessionPostmortem();
     stopRuntimeMemoryMonitor = startRuntimeMemoryMonitor();
     logCsrfTrustSummary();
-    const passwordlessPeers = getPasswordlessPeers(host);
+    // The bound address, not HOST: a DNS name in HOST hides a Tailscale bind.
+    const bound = app.server.address();
+    const passwordlessPeers = getPasswordlessPeers(bound && typeof bound === "object" ? bound.address : host);
     if (passwordlessPeers.length > 0) {
       logger.warn(
         "[access] These visitors get in without a password: %s. See Settings → Advanced → Access and docs/REMOTE_ACCESS.md.",

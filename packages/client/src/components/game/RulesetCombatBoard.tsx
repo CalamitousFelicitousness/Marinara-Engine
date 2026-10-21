@@ -120,10 +120,11 @@ export function RulesetCombatBoard({
   // The shape it would land in, drawn on the board while it is aimed, and who of the caster's own
   // side it would catch, who are marked apart and warned about before the cast.
   const aimedAt = aimed ? reading : null;
-  const template = useMemo(
-    () => new Set(rulesetAimTemplate(view, step, aimedAt).map(rulesetCellKey)),
-    [view, step, aimedAt],
-  );
+  // Or, while somebody is asked whether to stop a cast (Counterspell), the area it was aimed at.
+  const template = useMemo(() => {
+    const own = rulesetAimTemplate(view, step, aimedAt);
+    return new Set((own.length ? own : (view.window?.held?.cells ?? [])).map(rulesetCellKey));
+  }, [view, step, aimedAt]);
   const alliesCaught = useMemo(() => new Set(rulesetAimCatchesAllies(view, aimed?.targetIds ?? [])), [view, aimed]);
   // A cast that catches allies, or any aim tapped on a touch screen, is armed by the first pick of
   // its square and cast by the second: the first only shows what it would do.
@@ -131,7 +132,11 @@ export function RulesetCombatBoard({
   // Used with one that spares its user's side (Sculpt Spells), who is spared is picked next, so
   // catching them is nothing to stop the cast for.
   const sparing = !!step?.alters?.some((id) => step.option.alters?.find((offer) => offer.id === id)?.spares);
-  const lastPointer = useRef<string>("mouse");
+  // A touch screen's first tap arms like every later one: before any pointer is seen, a coarse
+  // pointer is taken for a finger.
+  const lastPointer = useRef<string>(
+    typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches ? "touch" : "mouse",
+  );
 
   // The keyboard starts on whoever is up, so a player who never touches the pointer is already
   // where the turn is. It follows the turn, and nothing else moves it.

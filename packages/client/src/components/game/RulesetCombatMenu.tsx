@@ -33,6 +33,7 @@ import {
   rulesetOptionCostText,
   rulesetModeText,
   rulesetOptionForecastText,
+  rulesetOptionUnaimable,
   rulesetOptionLabel,
   rulesetOptionNeedsTargets,
   rulesetPickTarget,
@@ -1348,8 +1349,14 @@ export function RulesetCombatMenu({
                       level: view.window.held.level,
                     })
                   : t("game.combat.ruleset.menu.heldFree", { label: view.window.label ?? "" }),
-                view.window.targetIds?.length
-                  ? t("game.combat.ruleset.menu.heldAt", { names: view.window.targetIds.map(nameOf).join(", ") })
+                // Who it would catch, by name: an area's whole catch, not the square it was aimed at.
+                view.window.held.targetIds?.length || view.window.targetIds?.length
+                  ? t(
+                      view.window.held.at ? "game.combat.ruleset.menu.heldCatches" : "game.combat.ruleset.menu.heldAt",
+                      {
+                        names: (view.window.held.targetIds ?? view.window.targetIds ?? []).map(nameOf).join(", "),
+                      },
+                    )
                   : view.window.held.at
                     ? t("game.combat.ruleset.menu.heldArea", { x: view.window.held.at.x, y: view.window.held.at.y })
                     : "",
@@ -1378,11 +1385,13 @@ export function RulesetCombatMenu({
               {group.options.map((option) => {
                 const cost = rulesetOptionCostText(option, budgetLabel, t, distance);
                 const forecast = rulesetOptionForecastText(option, t);
+                const unaimable = rulesetOptionUnaimable(option);
                 return (
                   <button
                     key={option.id}
                     type="button"
-                    disabled={busy}
+                    disabled={busy || unaimable}
+                    title={unaimable ? t("game.combat.ruleset.menu.nobodyToAim") : undefined}
                     onClick={() => take(option)}
                     className={cn(
                       buttonClass,
@@ -1393,6 +1402,11 @@ export function RulesetCombatMenu({
                       <ArtIcon ids={option.icons ?? []} className="h-5 w-5" />
                       {rulesetOptionLabel(option, t)}
                     </span>
+                    {unaimable && (
+                      <span className="block text-[0.65rem] text-white/45">
+                        {t("game.combat.ruleset.menu.nobodyToAim")}
+                      </span>
+                    )}
                     {option.cancelSave && (
                       <span className="block text-[0.65rem] text-white/55">
                         {t("game.combat.ruleset.menu.cancelSave", {

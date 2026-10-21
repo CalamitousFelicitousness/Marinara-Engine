@@ -3804,7 +3804,9 @@ function optionFrom(
         if (action.heal && !action.damage) gain.heals = true;
       }
       if (action.area?.sizePerCostStep) gain.size = action.area.sizePerCostStep * steps;
-      if (Object.keys(gain).length) gains[pool] = gain;
+      // A pool between its steps (Spiritual Weapon's 3rd level, growing every two) is said to add
+      // nothing: kept empty rather than left out, so the menu can say so.
+      if (Object.keys(gain).length || step) gains[pool] = gain;
     }
     if (Object.keys(gains).length) option.payGains = gains;
   }
@@ -4175,17 +4177,28 @@ export function rulesetAlterOffers(
     const alter = one.alters;
     if (!alter || !rulesetAlterFits(alter, action) || !rulesetActionAvailable(actor, one, state, definition)) return [];
     if (!rulesetAlterLevelFits(alter, level)) return [];
-    if (!planRulesetAlterCost(definition, actor, one, action)) return [];
+    const planned = planRulesetAlterCost(definition, actor, one, action);
+    if (!planned) return [];
+    // What it really spends: a feature with no uses to count (Sculpt Spells) costs nothing at all.
+    const spends = planned.cost.reduce((sum, entry) => sum + entry.amount, 0);
     return [
       {
         id: one.id,
         label: one.label,
-        cost: one.usesSpentByLevel ? Math.max(1, level) : one.use ? (one.use.count ?? 1) : 0,
+        cost: one.usesSpentByLevel
+          ? Math.max(1, level)
+          : spends > 0
+            ? spends
+            : one.use && planned.steps.length > 0
+              ? (one.use.count ?? 1)
+              : 0,
         ...(one.usesSpentByLevel ? { perLevel: true as const } : {}),
         ...(alter.twins ? { twins: true as const } : {}),
         ...(alter.joins ? { joins: true as const } : {}),
         ...(alter.budget ? { budget: alter.budget.to } : {}),
-        ...(alter.spares ? { spares: alter.spares } : {}),
+        // As many as the resolver spares: and the level it is paid at, for Sculpt Spells (1.361).
+        ...(alter.spares ? { spares: alter.spares + (alter.sparesByLevel ? level : 0) } : {}),
+        ...(alter.sparesByLevel ? { sparesByLevel: true as const } : {}),
         ...(alter.heightens ? { heightens: true as const } : {}),
       },
     ];

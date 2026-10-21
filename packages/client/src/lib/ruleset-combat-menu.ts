@@ -320,6 +320,27 @@ export function rulesetStyleForecastText(
   return parts.join(", ");
 }
 
+/** Whether this option must be pointed at somebody and has nobody it may be pointed at now (all of
+ *  them out of sight or reach): offered greyed out, never opening a pay step that leads nowhere. */
+export function rulesetOptionUnaimable(option: DirectedRulesetOption): boolean {
+  return (
+    (option.kind === "attack" ||
+      option.kind === "ability" ||
+      option.kind === "item" ||
+      option.kind === "block" ||
+      option.kind === "contest") &&
+    (option.targets.side === "enemy" || option.targets.side === "any") &&
+    option.targets.count > 0 &&
+    !option.area &&
+    !option.teleport &&
+    option.targetIds.length === 0 &&
+    (option.aim?.length ?? 0) === 0 &&
+    (option.walls?.length ?? 0) === 0 &&
+    (option.dispels?.length ?? 0) === 0 &&
+    (option.cuts?.length ?? 0) === 0
+  );
+}
+
 /** Whether taking this option asks the player to point it at anybody at all. An option with
  *  nothing legal to hit is still on the menu, and taking it simply sends no targets. */
 export function rulesetOptionNeedsTargets(option: DirectedRulesetOption): boolean {
@@ -359,13 +380,19 @@ export function rulesetPickTarget(option: DirectedRulesetOption, picked: string[
  */
 export function rulesetSparePick(
   view: DirectedRulesetView,
-  step: Pick<RulesetMenuStep, "option" | "alters">,
+  step: Pick<RulesetMenuStep, "option" | "alters" | "payWith">,
   targets: string[],
   cell?: RulesetCellChoice,
 ): { ids: string[]; most: number } | null {
+  // One more for each level it is paid above its own, for one that counts them (Sculpt Spells).
+  const levels = step.option.levels;
+  const above = levels && step.payWith ? Math.max(0, (levels.pay[step.payWith] ?? levels.base) - levels.base) : 0;
   const most = Math.max(
     0,
-    ...(step.alters ?? []).map((id) => step.option.alters?.find((offer) => offer.id === id)?.spares ?? 0),
+    ...(step.alters ?? []).map((id) => {
+      const offer = step.option.alters?.find((one) => one.id === id);
+      return (offer?.spares ?? 0) + (offer?.sparesByLevel ? above : 0);
+    }),
   );
   if (most === 0) return null;
   const user = rulesetMenuUser(view);
@@ -479,9 +506,16 @@ export function rulesetPayGainText(
   }
   const targets = option.targetsWith?.[pool];
   if (targets !== undefined && targets > option.targets.count) {
-    said.push(t("game.combat.ruleset.upcast.gainTargets", { count: targets }));
+    // Aimed more than once at whoever it likes (Magic Missile's darts): more shots, not more people.
+    said.push(
+      t(option.targets.repeat ? "game.combat.ruleset.upcast.gainShots" : "game.combat.ruleset.upcast.gainTargets", {
+        count: targets,
+      }),
+    );
   }
   if (gain?.size)
     said.push(t("game.combat.ruleset.upcast.gainSize", { amount: rulesetDistanceText(gain.size, distance, t) }));
+  // Grows only every so many levels (Spiritual Weapon, every two): a level between says it adds nothing.
+  if (said.length === 0 && gain) said.push(t("game.combat.ruleset.upcast.gainNothing"));
   return said.join(", ");
 }

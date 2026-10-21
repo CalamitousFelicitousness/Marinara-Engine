@@ -598,7 +598,9 @@ export function GameCharacterSheet({
                 </button>
               </>
             ) : (
-              onSave && (
+              // Not mid-fight: the card is the fight's then, the same as the sheet below it.
+              onSave &&
+              !(ruleset?.status === "ok" && ruleset.readOnly) && (
                 <button
                   onClick={() => {
                     // Reseed on entry: the parked draft can hold residue from

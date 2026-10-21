@@ -54,6 +54,7 @@ import {
   rulesetAverageAmount,
   rulesetImmuneToCondition,
   rulesetAreaTargets,
+  rulesetAimedCells,
   rulesetCombatIsPool,
   rulesetDamageAverage,
   planRulesetCombatCost,
@@ -894,9 +895,18 @@ export function rulesetMenu(
       targetIds.length > 1 && option.forecast?.hitChance !== undefined
         ? rulesetHitChances(definition, encounter, actorId, option.id, targetIds)
         : undefined;
+    // What each way of paying is worth in levels, for an alteration that counts them (Sculpt Spells).
+    const levels =
+      payWith && actor && action && option.alters?.some((offer) => offer.sparesByLevel)
+        ? {
+            base: rulesetPaidLevel(definition, actor, action),
+            pay: Object.fromEntries(payWith.map((pool) => [pool, rulesetPaidLevel(definition, actor, action, pool)])),
+          }
+        : undefined;
     return {
       ...rest,
       ...(payWith ? { payWith, payLabels: rulesetPoolLabels(definition, payWith) } : {}),
+      ...(levels ? { levels } : {}),
       targetIds,
       ...(aim.length > 0 ? { aim } : {}),
       ...(hitChances && Object.keys(hitChances).length > 0 ? { hitChances } : {}),
@@ -939,7 +949,14 @@ function rulesetHeldUse(
   definition: RulesetDefinition,
   encounter: RulesetEncounterState,
   window: NonNullable<RulesetEncounterState["window"]>,
-): { level: number; at?: { x: number; y: number } } | undefined {
+):
+  | {
+      level: number;
+      at?: { x: number; y: number };
+      targetIds?: string[];
+      cells?: Array<{ x: number; y: number }>;
+    }
+  | undefined {
   const resume = window.resume;
   if (
     (resume?.kind !== "action" && resume?.kind !== "answer") ||
@@ -949,9 +966,31 @@ function rulesetHeldUse(
   const caster = rulesetCombatant(encounter, resume.actorId);
   const action = caster?.actions.find((entry) => entry.id === resume.optionId);
   if (!caster || !action) return undefined;
+  // Whom it would catch and where, so the one asked sees what they would stop: the ones it was aimed
+  // at, everybody its area takes in, and that area on the board. An answer is aimed at whoever cast
+  // what it answers.
+  const lay =
+    resume.kind === "action"
+      ? {
+          ...(resume.toward ? { toward: resume.toward } : {}),
+          ...(resume.ring ? { ring: true } : {}),
+          ...(resume.also ? { also: resume.also } : {}),
+        }
+      : undefined;
+  const at = resume.kind === "action" ? resume.at : undefined;
+  const targetIds = [
+    ...new Set([
+      ...(resume.kind === "action" ? resume.targetIds : []),
+      ...(window.trigger.kind === "aimed" ? (window.trigger.targetIds ?? []) : []),
+      ...(at ? rulesetAreaTargets(encounter, caster.id, action.id, at, lay) : []),
+    ]),
+  ];
+  const cells = at ? rulesetAimedCells(encounter, caster.id, action.id, at, lay) : [];
   return {
     level: rulesetPaidLevel(definition, caster, action, resume.payWith),
-    ...(resume.kind === "action" && resume.at ? { at: { ...resume.at } } : {}),
+    ...(at ? { at: { ...at } } : {}),
+    ...(targetIds.length ? { targetIds } : {}),
+    ...(cells.length ? { cells: cells.map((cell) => ({ x: cell.x, y: cell.y })) } : {}),
   };
 }
 
@@ -2001,8 +2040,12 @@ function rulesetCandidatesFrom(
         fallingAction?.reaction?.cancels &&
         (encounter.window?.trigger.kind === "aimed" || encounter.window?.trigger.kind === "used")
       ) {
-        // Stopping what is coming (Counterspell) is worth what it would have done.
-        candidate.setup = rulesetStoppedWorth(definition, combat, encounter, actor) * chance;
+        // Stopping what is coming (Counterspell) is worth what it would have done, weighed as the harm
+        // it saves rather than by temperament: a cantrip is let through, a Fireball at the party is
+        // stopped by anybody who can. The first quarter is what a reaction and its slot are worth.
+        const saved = Math.max(0, rulesetStoppedWorth(definition, combat, encounter, actor) - 0.25) * chance;
+        if (saved <= 0) continue;
+        candidate.damage = saved;
       } else {
         // What it does to them, read off what it puts on them: nothing, for what they already have
         // or cannot take.
@@ -2336,13 +2379,19 @@ function weighCaught(
     }, 0);
   } else if (average > 0) {
     if (foes.length === 0) return false;
+    // Never a blast that could kill its own maker: a mage's Fireball at its own feet.
+    if (caught.some((target) => target.id === actor.id)) {
+      const own = rulesetCombatHealth(definition, combat, actor);
+      if (average >= own.value + own.temp) return false;
+    }
     const share = foes.reduce((total, target) => {
       const health = rulesetCombatHealth(definition, combat, target);
       return total + average / Math.max(1, health.value + health.temp);
     }, 0);
+    // Its own side caught counts against it, and its own hide twice over.
     const hurt = friends.reduce((total, target) => {
       const health = rulesetCombatHealth(definition, combat, target);
-      return total + average / Math.max(1, health.value + health.temp);
+      return total + ((target.id === actor.id ? 2 : 1) * average) / Math.max(1, health.value + health.temp);
     }, 0);
     candidate.damage = Math.max(0, Math.min(2, share - hurt)) * chance;
     if (candidate.damage <= 0) return false;

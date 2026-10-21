@@ -246,11 +246,17 @@ export function rulesetUsefulAlters(
   option: DirectedRulesetOption,
 ): NonNullable<DirectedRulesetOption["alters"]> {
   const offers = option.alters ?? [];
-  if (!option.area || !option.aim || !view.grid) return offers;
+  const sparing = (offer: (typeof offers)[number]) => !!offer.spares && offer.id !== option.alterNeeded;
+  // Nothing aimed at a square catches anybody it did not pick: Light has nobody to spare.
+  if (!option.area) return offers.filter((offer) => !sparing(offer));
+  if (!option.aim || !view.grid) return offers;
+  // Its user is not who it spares: a caster in their own blast asked about every Fireball otherwise.
   const actor = view.combatants.find((one) => one.id === (view.window?.actorId ?? view.actorId));
-  const own = new Set(view.combatants.filter((one) => one.side === actor?.side).map((one) => one.id));
+  const own = new Set(
+    view.combatants.filter((one) => one.side === actor?.side && one.id !== actor?.id).map((one) => one.id),
+  );
   if (option.aim.some((aim) => aim.targetIds.some((id) => own.has(id)))) return offers;
-  return offers.filter((offer) => !offer.spares || offer.id === option.alterNeeded);
+  return offers.filter((offer) => !sparing(offer));
 }
 
 /** Who an aim at this cell would catch of the actor's own side, the actor included: what the

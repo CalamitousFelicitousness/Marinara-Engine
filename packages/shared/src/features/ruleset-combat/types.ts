@@ -4244,6 +4244,9 @@ export interface RulesetCombatAlterOffer {
   budget?: string;
   /** How many of its user's side it catches it may spare (Careful), each picked by `spares` (1.254). */
   spares?: number;
+  /** `spares` counts the level the action is paid at (1.361): one more for each level it is paid
+   *  above its own. */
+  sparesByLevel?: true;
   /** It gives one it catches disadvantage on their first save (Heightened), picked by `heightens`
    *  (1.255). */
   heightens?: true;

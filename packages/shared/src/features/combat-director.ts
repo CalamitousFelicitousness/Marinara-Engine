@@ -223,6 +223,9 @@ export interface DirectedRulesetOption extends RulesetCombatOption {
   /** An attack's chance to land on each of `targetIds`, by id: the forecast reads only the first,
    *  and a player picking a target wants the odds for the one they pick. */
   hitChances?: Record<string, number>;
+  /** The level it is paid at as it is, and at each pool `payWith` offers, where a level changes
+   *  what it does (Sculpt Spells spares one more a level). */
+  levels?: { base: number; pay: Record<string, number> };
 }
 export interface DirectedRulesetView {
   /** What the fight is resolved by, as the game pinned it. */
@@ -297,7 +300,9 @@ export interface DirectedRulesetView {
     label?: string;
     /** What is held while they answer, where it is something being used: the level it was paid at
      *  (0 for what costs nothing of a family, a cantrip), the cell an area was aimed at. */
-    held?: { level: number; at?: RulesetCombatCell };
+    /** What is held for the answer: the level it is cast at, where its area was aimed, whom it
+     *  would catch or was aimed at, and the cells of that area for a board to draw. */
+    held?: { level: number; at?: RulesetCombatCell; targetIds?: string[]; cells?: RulesetCombatCell[] };
     /** For a held hit: what the roll came to, and what it was made against. */
     total?: number;
     defense?: number;

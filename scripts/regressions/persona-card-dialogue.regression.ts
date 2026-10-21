@@ -47,6 +47,24 @@ try {
   );
   assert.match(marker.content, /<example_dialogue>/);
   assert.match(marker.content, /Observe Subject carefully/);
+  const { injectGameGmPromptRuntime } =
+    await import("../../packages/server/src/services/generation/game-gm-prompt-runtime.js");
+  const game = await injectGameGmPromptRuntime({
+    messages: [],
+    chatId: "dialogue-game",
+    chat: { personaId: saved.id },
+    chatMetadata: {},
+    world: null,
+    characterIds: [],
+    chars: storage,
+    chats: { getById: async () => null, updateMetadata: async () => {} },
+    selectedGameStateSnapshotPromise: Promise.resolve(null),
+    mappedMessages: [],
+    personaName: identity!.name,
+    resolvePromptMacros: (value) => value,
+  });
+  assert.match(game.gmCtx.playerCard ?? "", /Example dialogue: Example Persona/);
+  assert.match(game.gmCtx.playerCard ?? "", /Observe/);
   console.info("Persona dialogue survives persistence, selected identity, macros, and the assembled persona marker.");
 } finally {
   await app.close();

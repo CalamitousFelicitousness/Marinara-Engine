@@ -7284,6 +7284,11 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     // Load persona info so the GM can tailor the experience
     let personaCard: string | null = null;
     const setupPersonaFields = {
+      example: setupPersona
+        ? "mes_example" in setupPersona
+          ? setupPersona.mes_example
+          : (setupPersona.mesExample ?? "")
+        : "",
       description: setupPersona?.description ?? "",
       personality: setupPersona?.personality ?? "",
       backstory: setupPersona?.backstory ?? "",
@@ -7296,6 +7301,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       if (setupPersona.personality) parts.push(`Personality: ${setupPersona.personality}`);
       if (setupPersona.backstory) parts.push(`Backstory: ${setupPersona.backstory}`);
       if (setupPersona.appearance) parts.push(`Appearance: ${setupPersona.appearance}`);
+      if (setupPersonaFields.example) parts.push(`Example dialogue: ${setupPersonaFields.example}`);
       personaCard = parts.join("\n");
     }
 

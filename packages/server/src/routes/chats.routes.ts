@@ -3636,6 +3636,7 @@ export async function chatsRoutes(app: FastifyInstance) {
             personaDescription = cardPromptText(identity.description);
 
             personaFields = {
+              example: cardPromptText(identity.mesExample),
               personality: cardPromptText(identity.personality),
               scenario: cardPromptText(identity.scenario),
               backstory: cardPromptText(identity.backstory),
@@ -4213,6 +4214,10 @@ export async function chatsRoutes(app: FastifyInstance) {
               if (personaFields.appearance && !alreadyInPrompt(personaFields.appearance))
                 fieldParts.push(
                   wrapContent(resolvePromptMacros(personaFields.appearance), "appearance", wrapFormat, 2),
+                );
+              if (personaFields.example && !alreadyInPrompt(personaFields.example))
+                fieldParts.push(
+                  wrapContent(resolvePromptMacros(personaFields.example), "example_dialogue", wrapFormat, 2),
                 );
               if (personaFields.scenario && !alreadyInPrompt(personaFields.scenario))
                 fieldParts.push(wrapContent(resolvePromptMacros(personaFields.scenario), "scenario", wrapFormat, 2));

@@ -140,6 +140,7 @@ export interface AssemblerInput {
   personaPhoneticName?: string;
   personaDescription: string;
   personaFields?: {
+    example?: string;
     phoneticName?: string;
     personality?: string;
     scenario?: string;

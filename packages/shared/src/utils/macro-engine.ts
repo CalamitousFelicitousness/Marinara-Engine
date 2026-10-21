@@ -88,6 +88,7 @@ export interface MacroContext {
   };
   /** Active persona card fields used by {{persona}} */
   personaFields?: {
+    example?: string;
     phoneticName?: string;
     description?: string;
     personality?: string;
@@ -1345,6 +1346,7 @@ function resolvePersonaText(ctx: MacroContext): string {
     ctx.personaFields?.backstory,
     ctx.personaFields?.appearance,
     ctx.personaFields?.scenario,
+    ctx.personaFields?.example,
   ]
     .filter((part): part is string => typeof part === "string" && part.trim().length > 0)
     .join("\n");
@@ -3324,6 +3326,7 @@ export function resolveMacros(template: string, ctx: MacroContext, options: Reso
       ctx.personaFields?.backstory,
       ctx.personaFields?.appearance,
       ctx.personaFields?.scenario,
+      ctx.personaFields?.example,
     ]
       .map((part) => (typeof part === "string" ? resolveNestedFieldMacros(part) : part))
       .filter((part): part is string => typeof part === "string" && part.trim().length > 0)

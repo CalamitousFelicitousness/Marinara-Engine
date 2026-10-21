@@ -52,6 +52,7 @@ export interface MarkerContext {
   personaName: string;
   personaDescription: string;
   personaFields?: {
+    example?: string;
     personality?: string;
     scenario?: string;
     backstory?: string;
@@ -374,6 +375,18 @@ async function expandPersona(_config: MarkerConfig, ctx: MarkerContext): Promise
   }
   if (personaScenario) {
     parts.push(wrapContent(resolveSanitizedPromptLeaf(personaScenario, ctx), "scenario", ctx.wrapFormat, 2));
+  }
+
+  const personaExample = cardPromptText(ctx.personaFields?.example);
+  if (personaExample) {
+    parts.push(
+      wrapContent(
+        sanitizeExampleDialoguePromptLeaf(resolveMacros(personaExample, ctx.macroCtx), ctx.wrapFormat),
+        "example_dialogue",
+        ctx.wrapFormat,
+        2,
+      ),
+    );
   }
 
   // Include RPG attributes if enabled

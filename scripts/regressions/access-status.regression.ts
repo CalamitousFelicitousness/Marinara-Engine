@@ -135,12 +135,16 @@ try {
     "allowlist",
   ]);
   assert.deepEqual(networkPeers({ IP_ALLOWLIST: "192.168.1.0/24", ...LOGIN }), ["allowlist"]);
-// A broad allowlist is the open internet in practice; private, CGNAT and small public ranges are not.
-assert.deepEqual(networkPeers({ IP_ALLOWLIST: "0.0.0.0/0" }), ["internet", "allowlist"]);
-assert.deepEqual(networkPeers({ IP_ALLOWLIST: "::/0" }), ["internet", "allowlist"]);
-for (const range of ["10.0.0.0/8", "203.0.113.0/24", "100.64.0.0/10"]) {
-  assert.deepEqual(networkPeers({ IP_ALLOWLIST: range }), ["allowlist"], range);
-}
+  // A broad allowlist is the open internet in practice; private, CGNAT and small public ranges are not.
+  assert.deepEqual(networkPeers({ IP_ALLOWLIST: "0.0.0.0/0" }), ["internet", "allowlist"]);
+  assert.deepEqual(networkPeers({ IP_ALLOWLIST: "::/0" }), ["internet", "allowlist"]);
+  // IPv6 entries that cover the whole IPv4-mapped block admit every IPv4 peer.
+  for (const range of ["::/64", "::ffff:0.0.0.0/80", "::ffff:0:0/96"]) {
+    assert.deepEqual(networkPeers({ IP_ALLOWLIST: range }), ["internet", "allowlist"], range);
+  }
+  for (const range of ["10.0.0.0/8", "203.0.113.0/24", "100.64.0.0/10"]) {
+    assert.deepEqual(networkPeers({ IP_ALLOWLIST: range }), ["allowlist"], range);
+  }
 
   // The remedy split: a login closes opt-in and auto-Docker peers, never allowlisted or trusted ones.
   const peersAfterLogin = (env: Env, interfaces: Record<string, NetworkInterfaceInfo[]> = NO_TAILNET) => {

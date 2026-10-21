@@ -632,6 +632,8 @@ const BROAD_ALLOWLIST_V6_PREFIX = 32;
 
 /** True when an allowlist entry is wide enough to admit public address space (private, CGNAT and loopback ranges never count). */
 function isBroadAllowlistEntry(entry: CIDREntry): boolean {
+  // An IPv6 entry that covers the whole ::ffff:0:0/96 block admits every IPv4 peer.
+  if (entry.prefixLen <= 96 && matchesCIDR(ipToBytes("::ffff:0.0.0.0")!, entry)) return true;
   const isV4 =
     entry.prefixLen >= 96 &&
     entry.bytes.slice(0, 10).every((b) => b === 0) &&

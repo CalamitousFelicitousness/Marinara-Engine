@@ -14,6 +14,8 @@ export interface AccessFacts {
   forwardingHeaders: boolean;
   /** Loopback socket, but the Host header names another client-facing host. */
   relayedHost: boolean;
+  /** Request arrived over HTTP/1.0, which browsers never use but default reverse proxies do. */
+  http10: boolean;
   /** Peer address is in the active IP_ALLOWLIST. */
   allowlisted: boolean;
   /** Peer is in a trusted private / non-routable range. */
@@ -87,7 +89,7 @@ export function evaluateAccessPolicy(f: AccessFacts): AccessPolicy {
   const { config } = f;
   const forwardedLoopback = isForwardedLoopbackPeer(
     f.loopbackIp,
-    f.forwardingHeaders || f.relayedHost,
+    f.forwardingHeaders || f.relayedHost || f.http10,
     config.loopbackProxyAuthRequired,
   );
   const local = f.loopbackIp && !forwardedLoopback;
@@ -100,12 +102,16 @@ export function evaluateAccessPolicy(f: AccessFacts): AccessPolicy {
     config.dockerMode === "enabled"
       ? f.dockerIp || f.dockerRuntimeMatch || f.dockerCompatibilityNetwork
       : config.dockerMode === "auto" && f.dockerRuntimeMatch && !dockerAutoWithheld;
-  const dockerProxyForwarded = dockerTrusted && f.forwardingHeaders;
+  const dockerProxyForwarded = dockerTrusted && (f.forwardingHeaders || f.relayedHost || f.http10);
   const tailscaleTrusted =
     f.tailscaleIp &&
     (config.tailscaleMode === "enabled" || (config.tailscaleMode === "auto" && f.tailscaleLocalAddress));
+  // Forwarding headers on a Tailscale peer mean a proxy relays another client.
+  const tailscaleProxyForwarded = tailscaleTrusted && f.forwardingHeaders;
   const trustedInterface =
-    dockerProxyForwarded && config.dockerProxyAuthRequired ? false : tailscaleTrusted || dockerTrusted;
+    (dockerProxyForwarded || tailscaleProxyForwarded) && config.dockerProxyAuthRequired
+      ? false
+      : tailscaleTrusted || dockerTrusted;
 
   const trustedPeer = !forwardedLoopback && (f.loopbackIp || f.allowlisted || trustedInterface);
   const openAccess =

@@ -71,6 +71,15 @@ try {
 
   assert.equal(getAccessPolicy(request("127.0.0.1", { host: `${os.hostname()}:7860` })).local, true, "own hostname");
 
+  const http10 = (ip: string) =>
+    ({
+      ...request(ip),
+      raw: { httpVersion: "1.0", socket: { localAddress: "127.0.0.1" } },
+    }) as unknown as FastifyRequest;
+  const nginx = getAccessPolicy(http10("127.0.0.1"));
+  assert.equal(nginx.forwardedLoopback, true, "an HTTP/1.0 loopback request is a proxy relay");
+  assert.equal(nginx.reason, "forwarded-loopback-locked");
+
   const lan = getAccessPolicy(request("192.168.1.50"));
   assert.equal(lan.trustedPeer, false);
   assert.equal(lan.lockedDown, true);
@@ -124,6 +133,15 @@ try {
   const forwarded = getAccessPolicy(request("192.168.215.1", { "x-forwarded-for": "203.0.113.66" }), network);
   assert.equal(forwarded.trustedInterface, false, "a Docker proxy that forwards a client needs normal auth");
   assert.equal(forwarded.dockerProxyForwarded, true);
+  const relayedHost = getAccessPolicy(request("192.168.215.1", { host: "marinara:7860" }), network);
+  assert.equal(relayedHost.trustedInterface, false, "a gateway request with a relayed Host needs auth");
+  assert.equal(relayedHost.dockerProxyForwarded, true);
+  assert.equal(
+    getAccessPolicy(http10("192.168.215.1"), network).trustedInterface,
+    false,
+    "an HTTP/1.0 gateway request needs auth",
+  );
+
   process.env.REQUIRE_AUTH_FOR_DOCKER_PROXY = "false";
   assert.equal(
     getAccessPolicy(request("192.168.215.1", { "x-forwarded-for": "203.0.113.66" }), network).trustedInterface,
@@ -132,6 +150,16 @@ try {
   delete process.env.REQUIRE_AUTH_FOR_DOCKER_PROXY;
   process.env.BASIC_AUTH_USER = "mari";
   process.env.BASIC_AUTH_PASS = "secret";
+  const tsRaw = { socket: { localAddress: "100.100.10.20" } };
+  const tsPeer = (headers: Record<string, string>) =>
+    getAccessPolicy({ ...request("100.64.0.42", headers), raw: tsRaw } as unknown as FastifyRequest);
+  assert.equal(tsPeer({}).trustedInterface, true, "a direct Tailscale peer stays passwordless");
+  assert.equal(
+    tsPeer({ "x-forwarded-for": "203.0.113.66" }).trustedInterface,
+    false,
+    "a forwarded Tailscale peer needs auth",
+  );
+
   const withheld = getAccessPolicy(request("192.168.215.1"), network);
   assert.equal(withheld.trustedInterface, false, "automatic Docker trust stands down once a password is set");
   assert.equal(withheld.dockerAutoWithheld, true);

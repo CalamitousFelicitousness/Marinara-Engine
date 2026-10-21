@@ -14,7 +14,7 @@ import { compareVersions } from "./updates.routes.js";
 import { OWNER_NOTICES_RATE_LIMIT } from "../middleware/rate-limit.js";
 
 const DEFAULT_NOTICES_URL = "https://raw.githubusercontent.com/Pasta-Devs/Marinara-Engine/notices/notices.json";
-const REFRESH_MS = 3 * 60 * 60_000;
+const REFRESH_MS = 60 * 60_000;
 const FETCH_TIMEOUT_MS = 10_000;
 const MAX_FILE_CHARS = 64_000;
 const MAX_NOTICES = 20;

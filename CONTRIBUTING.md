@@ -366,7 +366,7 @@ Release helpers now in the repo:
 
 ## Owner Notices
 
-Running installations fetch `notices.json` from the `notices` branch at startup and every 3 hours, and show the owner
+Running installations fetch `notices.json` from the `notices` branch at startup and every hour, and show the owner
 (never an anonymous remote visitor) at most one matching notice as a banner. Owners can turn this off with
 `OWNER_NOTICES_ENABLED=false` (see `docs/CONFIGURATION.md`).
 

@@ -1,7 +1,7 @@
 // ──────────────────────────────────────────────
 // Owner notices: maintainer-published warnings from the `notices` branch
 // ──────────────────────────────────────────────
-// The server validates the file and only answers the owner. Polls so a tab
+// The server validates the file and only answers the owner. Polls hourly so a tab
 // that stays open for days still sees a newly published notice.
 import { useEffect, useState } from "react";
 import { ExternalLink } from "lucide-react";
@@ -18,7 +18,7 @@ type OwnerNotice = {
   link: string | null;
 };
 
-const POLL_MS = 15 * 60_000;
+const POLL_MS = 60 * 60_000;
 
 export function useOwnerNoticeBanners(): AppBannerCandidate[] {
   const { t: localizeUi } = useUiTranslation();
@@ -27,7 +27,6 @@ export function useOwnerNoticeBanners(): AppBannerCandidate[] {
   useEffect(() => {
     let cancelled = false;
     const load = () => {
-      if (document.visibilityState !== "visible") return;
       void api
         .get<{ notices?: OwnerNotice[] } | null>("/notices")
         .then((value) => {
@@ -39,11 +38,9 @@ export function useOwnerNoticeBanners(): AppBannerCandidate[] {
     };
     load();
     const timer = window.setInterval(load, POLL_MS);
-    document.addEventListener("visibilitychange", load);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
-      document.removeEventListener("visibilitychange", load);
     };
   }, []);
 

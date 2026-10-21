@@ -61,6 +61,7 @@ import {
   type SpriteInfo,
 } from "../../hooks/use-characters";
 import { ConvoProfileFields } from "./ConvoProfileFields";
+import { CardFieldAlternatives } from "./CardFieldAlternatives";
 import { CardFieldWand } from "./CardFieldWand";
 import { useCardFieldGeneration } from "../../hooks/use-card-field-generation";
 import { ONBOARDING_FIELD_COPY } from "./onboarding-field-copy";
@@ -183,6 +184,8 @@ import {
   withUniqueOnboardingIds,
   validateOnboarding,
   type CharacterCardVersion,
+  normalizeCardFieldAlternatives,
+  unassignCardFieldAlternatives,
   type CardFieldKey,
   type CharacterData,
   type CharacterOnboarding,
@@ -967,6 +970,7 @@ export function CharacterEditor() {
         creatorNotes: formData.creator_notes ?? "",
         summary: formData.summary ?? "",
         mes_example: formData.mes_example ?? "",
+        cardFieldAlternatives: unassignCardFieldAlternatives(formData.extensions.cardFieldAlternatives),
         description: formData.description ?? "",
         personality: formData.personality ?? "",
         scenario: formData.scenario ?? "",
@@ -1524,30 +1528,37 @@ function CharacterCardTab({
 }) {
   const { t: localizeUi } = useUiTranslation();
   const characterId = useUIStore((state) => state.characterDetailId);
-  const generation = useCardFieldGeneration(
-    "character",
-    characterId,
-    {
-      name: formData.name,
-      summary: formData.summary ?? "",
-      description: formData.description,
-      personality: formData.personality,
-      backstory: String(formData.extensions.backstory ?? ""),
-      appearance: String(formData.extensions.appearance ?? ""),
-      scenario: formData.scenario,
-      mes_example: formData.mes_example,
-    },
-    (field, text) => {
-      if (field === "backstory" || field === "appearance") updateExtension(field, text);
-      else updateField(field, text);
-    },
-  );
+  const card = {
+    name: formData.name,
+    summary: formData.summary ?? "",
+    description: formData.description,
+    personality: formData.personality,
+    backstory: String(formData.extensions.backstory ?? ""),
+    appearance: String(formData.extensions.appearance ?? ""),
+    scenario: formData.scenario,
+    mes_example: formData.mes_example,
+  };
+  const generation = useCardFieldGeneration("character", characterId, card, (field, text) => {
+    if (field === "backstory" || field === "appearance") updateExtension(field, text);
+    else updateField(field, text);
+  });
   const wandFor = (field: CardFieldKey) => (
     <CardFieldWand
       label={generation.labels[field]}
       onGenerate={() => void generation.generate(field)}
       disabled={!characterId || generation.isPending}
       loading={generation.pendingField === field}
+    />
+  );
+  const alternativesFor = (field: CardFieldKey) => (
+    <CardFieldAlternatives
+      kind="character"
+      entityId={characterId}
+      field={field}
+      label={generation.labels[field]}
+      card={card}
+      alternatives={normalizeCardFieldAlternatives(formData.extensions.cardFieldAlternatives)}
+      onChange={(alternatives) => updateExtension("cardFieldAlternatives", alternatives)}
     />
   );
   const seedHint = localizeUi("ui.cardFields.seedPlaceholder");
@@ -1630,14 +1641,24 @@ function CharacterCardTab({
       <EditorSectionJumps items={CHARACTER_CARD_SECTIONS} />
       <div className="space-y-10">
         <EditorSectionAnchor id="character-card-summary">
-          <CharacterSummaryField formData={formData} updateField={updateField} actions={wandFor("summary")} />
+          <CharacterSummaryField
+            formData={formData}
+            updateField={updateField}
+            actions={wandFor("summary")}
+            footer={alternativesFor("summary")}
+          />
         </EditorSectionAnchor>
         <EditorSectionAnchor id="character-card-description">
           <CharacterDescriptionTab
             formData={formData}
             updateField={updateField}
             actions={wandFor("description")}
-            descriptionFooter={chipsFor("description")}
+            descriptionFooter={
+              <>
+                {chipsFor("description")}
+                {alternativesFor("description")}
+              </>
+            }
             descriptionRef={(element) => {
               fieldRefs.current.description = element;
             }}
@@ -1662,7 +1683,12 @@ function CharacterCardTab({
               fieldRefs.current.personality = element;
             }}
             onFocus={() => setActiveField("personality")}
-            footer={chipsFor("personality")}
+            footer={
+              <>
+                {chipsFor("personality")}
+                {alternativesFor("personality")}
+              </>
+            }
           />
         </EditorSectionAnchor>
         <EditorSectionAnchor id="character-card-backstory">
@@ -1681,7 +1707,12 @@ function CharacterCardTab({
               fieldRefs.current.backstory = element;
             }}
             onFocus={() => setActiveField("backstory")}
-            footer={chipsFor("backstory")}
+            footer={
+              <>
+                {chipsFor("backstory")}
+                {alternativesFor("backstory")}
+              </>
+            }
           />
         </EditorSectionAnchor>
         <EditorSectionAnchor id="character-card-appearance">
@@ -1704,7 +1735,12 @@ function CharacterCardTab({
               fieldRefs.current.appearance = element;
             }}
             onFocus={() => setActiveField("appearance")}
-            footer={chipsFor("appearance")}
+            footer={
+              <>
+                {chipsFor("appearance")}
+                {alternativesFor("appearance")}
+              </>
+            }
           />
           <div className="mt-3">
             <SettingsSwitch
@@ -1751,7 +1787,12 @@ function CharacterCardTab({
               fieldRefs.current.scenario = element;
             }}
             onFocus={() => setActiveField("scenario")}
-            footer={chipsFor("scenario")}
+            footer={
+              <>
+                {chipsFor("scenario")}
+                {alternativesFor("scenario")}
+              </>
+            }
           />
         </EditorSectionAnchor>
         <EditorSectionAnchor id="character-card-dialogue">
@@ -1760,6 +1801,7 @@ function CharacterCardTab({
             updateField={updateField}
             updateFormData={updateFormData}
             exampleActions={wandFor("mes_example")}
+            exampleFooter={alternativesFor("mes_example")}
           />
         </EditorSectionAnchor>
       </div>
@@ -2263,10 +2305,12 @@ function CharacterSummaryField({
   formData,
   updateField,
   actions,
+  footer,
 }: {
   formData: CharacterData;
   updateField: <K extends keyof CharacterData>(key: K, value: CharacterData[K]) => void;
   actions: ReactNode;
+  footer?: ReactNode;
 }) {
   const { t: localizeUi } = useUiTranslation();
   const characterId = useUIStore((state) => state.characterDetailId);
@@ -2293,6 +2337,7 @@ function CharacterSummaryField({
         selfCharacterId={characterId}
         className="w-full resize-y rounded-xl border border-[var(--border)] bg-[var(--secondary)] p-3 text-sm leading-relaxed outline-none placeholder:text-[var(--muted-foreground)]/40 focus:border-[var(--primary)]/40 focus:ring-1 focus:ring-[var(--primary)]/20"
       />
+      {footer}
     </div>
   );
 }
@@ -3311,9 +3356,11 @@ function DialogueTab({
   updateField,
   updateFormData,
   exampleActions,
+  exampleFooter,
 }: {
   formData: CharacterData;
   exampleActions?: ReactNode;
+  exampleFooter?: ReactNode;
   updateField: <K extends keyof CharacterData>(key: K, value: CharacterData[K]) => void;
   updateFormData: (update: (data: CharacterData) => CharacterData) => void;
 }) {
@@ -3576,6 +3623,7 @@ function DialogueTab({
             localizeUi("ui.cardFields.seedPlaceholder")
           }
         />
+        {exampleFooter}
       </div>
     </div>
   );

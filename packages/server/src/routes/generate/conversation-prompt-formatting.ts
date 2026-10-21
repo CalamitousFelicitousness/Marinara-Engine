@@ -139,7 +139,8 @@ function videoPromptWords(prompt: string): string {
               .filter(([key]) => !/negative/iu.test(key))
               .flatMap(([, item]) => strings(item))
           : [];
-    if (parsed && typeof parsed === "object") text = strings(parsed).join(" ");
+    // One field per line, so an unclosed cue in one field can't take the next one with it.
+    if (parsed && typeof parsed === "object") text = strings(parsed).join("\n");
   } catch {
     // Not JSON: plain text, perhaps with field labels.
   }

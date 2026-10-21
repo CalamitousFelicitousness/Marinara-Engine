@@ -499,6 +499,17 @@ try {
     formatSentVideoNotes([{ type: "video", characterName: "Ana", prompt: "Ana waves. [cut to window" }]),
     "\n[Ana sent a video message: Ana waves.]",
   );
+  assert.equal(
+    formatSentVideoNotes([
+      {
+        type: "video",
+        characterName: "Ana",
+        prompt: JSON.stringify({ description: "Ana waves. [unfinished", style: "cinematic" }),
+      },
+    ]),
+    "\n[Ana sent a video message: Ana waves. cinematic]",
+    "an unclosed cue ends with its own field",
+  );
   // A word_word: inside a sentence isn't a field label, so the prose stays as written.
   assert.equal(
     formatSentVideoNotes([

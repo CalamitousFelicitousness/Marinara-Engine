@@ -3,6 +3,8 @@
  *
  *   - A paralysing hold goes on the most dangerous opponent, never on one already held or one that
  *     cannot be held; a condition worth nothing is not cast at all.
+ *   - Healing is worth what is missing: no Second Wind at 35 of 44.
+ *   - Oil that makes fire hurt more is thrown only where a fire will follow.
  *   - A Counterspell is worth what it stops: a blast at the party far more than a flick.
  */
 import assert from "node:assert/strict";
@@ -25,7 +27,7 @@ const dataDir = mkdtempSync(join(tmpdir(), "marinara-spell-worth-"));
 process.env.DATA_DIR = dataDir;
 process.env.FILE_STORAGE_DIR = join(dataDir, "storage");
 const { createCombatDirector } = await import("../../packages/server/src/services/game/combat-director.service.js");
-const { pickRulesetChoice, rulesetStoppedWorth } =
+const { pickRulesetChoice, rulesetEffectWorth, rulesetStoppedWorth } =
   await import("../../packages/server/src/services/game/ruleset-combat-director.service.js");
 
 try {
@@ -74,7 +76,14 @@ try {
     reach: 1,
     damage: { count: 3, sides: 10, flat: 5 },
   };
-  const poke = { id: "poke", name: "Poke", budget: "action", toHit: 2, reach: 1, damage: { flat: 1 } };
+  const poke = {
+    id: "poke",
+    name: "Poke",
+    budget: "action",
+    toHit: 2,
+    reach: 1,
+    damage: { count: 1, sides: 2, flat: 0 },
+  };
   const unit = (id: string, side: "player" | "enemy") => ({
     id,
     name: id,
@@ -144,6 +153,92 @@ try {
     assert.equal(pickRulesetChoice(definition, nobody.state, nobody.encounter, "mage")?.option.id, "flick");
   }
 
+  // ── Healing is worth what is missing: no Second Wind for a scratch ──
+  {
+    const mend = { id: "mend", name: "Mend", budget: "action", self: true, heal: { count: 1, sides: 10, flat: 5 } };
+    const at = (value: number) => {
+      const { encounter, state } = fight({
+        brom: { side: "enemy", block: block([smash, mend], { health: 44 }), at: { x: 5, y: 4 } },
+        foe: { side: "party", block: block([poke]), at: { x: 6, y: 4 } },
+      });
+      const brom = rulesetCombatant(encounter, "brom")!;
+      brom.health = { ...brom.health!, value };
+      // A steady fighter, not a reckless one that never stops to mend.
+      state.enemies[0]!.tactics = {
+        version: 1,
+        seed: 0,
+        category: "unknown",
+        proficiency: "master",
+        role: "bruiser",
+        adjective: "disciplined",
+      };
+      return pickRulesetChoice(definition, state, encounter, "brom")?.option.id;
+    };
+    assert.equal(at(35), "smash", "at 35 of 44 it fights");
+    assert.equal(at(8), "mend", "at 8 of 44 it mends");
+  }
+
+  // ── Oil is worth throwing only where a fire will follow ──
+  {
+    combat.conditions = [
+      ...(combat.conditions ?? []),
+      { condition: "oiled", modifiers: [{ to: "damage-taken", damageType: "fire", flat: 5 }] },
+    ] as typeof combat.conditions;
+    const rapier = {
+      id: "rapier",
+      name: "Rapier",
+      budget: "action",
+      toHit: 5,
+      reach: 1,
+      damage: { count: 1, sides: 8, flat: 3, type: "piercing" },
+    };
+    const oil = {
+      id: "oil",
+      name: "Lamp oil",
+      budget: "action",
+      toHit: 5,
+      range: { normal: 20 },
+      applies: [{ condition: "oiled", duration: { rounds: 10 } }],
+    };
+    const torch = {
+      id: "torch",
+      name: "Torch",
+      budget: "action",
+      toHit: 5,
+      reach: 1,
+      damage: { count: 1, sides: 4, flat: 0, type: "fire" },
+    };
+    const pick = (withFire: boolean) => {
+      const { encounter, state } = fight({
+        vex: { side: "enemy", block: block([rapier, oil]), at: { x: 5, y: 4 } },
+        ...(withFire ? { torcher: { side: "enemy" as const, block: block([torch]), at: { x: 5, y: 2 } } } : {}),
+        foe: { side: "party", block: block([poke]), at: { x: 6, y: 4 } },
+      });
+      state.enemies.find((one) => one.id === "vex")!.tactics = {
+        version: 1,
+        seed: 0,
+        category: "unknown",
+        proficiency: "master",
+        role: "skirmisher",
+        adjective: "methodical",
+      };
+      const vex = rulesetCombatant(encounter, "vex")!;
+      const worth = rulesetEffectWorth(
+        definition,
+        combat,
+        encounter,
+        vex,
+        vex.actions.find((action) => action.id === "oil"),
+        rulesetCombatant(encounter, "foe")!,
+      );
+      return { worth, picked: pickRulesetChoice(definition, state, encounter, "vex")?.option.id };
+    };
+    const dry = pick(false);
+    assert.equal(dry.worth, 0, "no fire on its side: oil does nothing worth a turn");
+    assert.notEqual(dry.picked, "oil", "so it stays in the pack");
+    assert.ok((pick(true).worth ?? 0) > 0, "a torch beside it: oil is worth something");
+  }
+
   // ── A Counterspell is worth what it stops ──
   {
     const counter = {
@@ -187,7 +282,7 @@ try {
   }
 
   console.log(
-    "Spell worth: a hold goes on the most dangerous opponent and never on one that cannot be held; a Counterspell is worth what it stops.",
+    "Spell worth: a hold goes on the most dangerous opponent and never on one that cannot be held; healing is worth what is missing; oil waits for a fire; a Counterspell is worth what it stops.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

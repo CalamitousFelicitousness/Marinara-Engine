@@ -182,7 +182,9 @@ export function parseRulesetCombatDice(text: unknown): RulesetCombatAmount | nul
 
 /** The average of a roll. Never a future die: the expected amount, as it stands. */
 export function rulesetAverageAmount(amount: { count: number; sides: number; flat: number }): number {
-  return amount.count * ((amount.sides + 1) / 2) + amount.flat;
+  // A flat amount written without dice (`{ flat: 1 }`) averages to its flat part, never NaN.
+  const dice = amount.count > 0 && amount.sides > 0 ? amount.count * ((amount.sides + 1) / 2) : 0;
+  return dice + (amount.flat ?? 0);
 }
 
 /**

@@ -34,3 +34,45 @@ export function rulesetPlanMemo<T>(keys: readonly unknown[], make: () => T): T {
   level.set(last, made);
   return made;
 }
+
+/**
+ * What a sheet works out to, by what it is made of rather than by which objects hold it: kept across
+ * a whole command, resolution included, where the same unchanged sheet is read for every step, every
+ * hiding check and every reaction. A sheet that changes is a different key, so nothing stale is ever
+ * read back. Kept per definition, the least recently read let go past a few hundred.
+ *
+ * What comes back is shared: callers read it and never change it.
+ */
+const byContent = new WeakMap<object, Map<string, unknown>>();
+const CONTENT_MEMO_SIZE = 400;
+const freezes =
+  (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.MARINARA_MEMO_FREEZE === "1";
+
+export function rulesetContentMemo<T>(owner: object, name: string, parts: readonly unknown[], make: () => T): T {
+  let key: string;
+  try {
+    key = `${name}\u0000${JSON.stringify(parts)}`;
+  } catch {
+    return make();
+  }
+  let cache = byContent.get(owner);
+  if (!cache) byContent.set(owner, (cache = new Map()));
+  if (cache.has(key)) {
+    const hit = cache.get(key) as T;
+    cache.delete(key);
+    cache.set(key, hit);
+    return hit;
+  }
+  const made = make();
+  if (freezes) deepFreeze(made);
+  cache.set(key, made);
+  if (cache.size > CONTENT_MEMO_SIZE) cache.delete(cache.keys().next().value!);
+  return made;
+}
+
+/** For tests: a shared answer that something changes throws where it is changed. */
+function deepFreeze(value: unknown): void {
+  if (!value || typeof value !== "object" || Object.isFrozen(value)) return;
+  Object.freeze(value);
+  for (const one of Object.values(value)) deepFreeze(one);
+}

@@ -30,7 +30,7 @@ import {
   type RulesetValueRef,
 } from "../../schemas/ruleset.schema.js";
 import { rulesetCatalogEntriesByRef } from "./scaled-rows.js";
-import { rulesetPlanMemo } from "./plan-memo.js";
+import { rulesetContentMemo, rulesetPlanMemo } from "./plan-memo.js";
 import { parseRulesetCombatDice } from "../ruleset-combat/dice.js";
 import {
   evaluateRulesetSheet,
@@ -1128,7 +1128,9 @@ export function readRulesetLive(
 ): ResolvedRulesetLive {
   // Once a planning pass (see `withRulesetPlanMemo`).
   return rulesetPlanMemo(["readRulesetLive", definition, build, stored], () =>
-    resolveLive(definition, build, readStoredLiveState(definition, build, stored)),
+    rulesetContentMemo(definition, "readRulesetLive", [build, stored], () =>
+      resolveLive(definition, build, readStoredLiveState(definition, build, stored)),
+    ),
   );
 }
 
@@ -1147,7 +1149,9 @@ export function evaluateRulesetSheetLive(
   conditions?: readonly string[],
 ): ReturnType<typeof evaluateRulesetSheet> {
   return rulesetPlanMemo(["evaluateRulesetSheetLive", definition, build, stored, items, conditions?.join("|")], () =>
-    evaluateSheetLive(definition, build, stored, items, conditions),
+    rulesetContentMemo(definition, "evaluateRulesetSheetLive", [build, stored, items, conditions], () =>
+      evaluateSheetLive(definition, build, stored, items, conditions),
+    ),
   );
 }
 

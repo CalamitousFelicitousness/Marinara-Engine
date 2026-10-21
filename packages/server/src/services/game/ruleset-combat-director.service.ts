@@ -1087,7 +1087,7 @@ function rulesetDangerAt(
       if (!action.damage) continue;
       const reach = action.range ? (action.range.long ?? action.range.normal) : (action.reach ?? 1);
       const at = gap <= reach ? 1 : gap <= reach + walks ? 0.5 : 0;
-      worst = Math.max(worst, rulesetAverageAmount(action.damage) * at);
+      worst = Math.max(worst, rulesetSafeAverage(action.damage) * at);
     }
     harm += worst;
   }
@@ -1343,7 +1343,7 @@ export function priced(
 ): PricedOption[] {
   const out: PricedOption[] = [];
   // What is left in each pool of its sheet: the fewer left, the dearer each one, so the last is kept
-  // for when it matters (twice its price) and a full pool is spent freely.
+  // for when it matters (half again its price) and a full pool is spent freely.
   const left = actor.sheet
     ? new Map(
         readRulesetLive(definition, actor.sheet.build, actor.sheet.live).pools.map((pool) => [pool.key, pool.value]),
@@ -1352,9 +1352,12 @@ export function priced(
   for (const option of menu ?? rulesetCombatOptions(definition, encounter, actor.id)) {
     const base =
       (option.cost ?? []).reduce(
-        (total, entry) => total + entry.amount * (1 + 1 / Math.max(1, left?.get(entry.pool) ?? Infinity)),
+        (total, entry) => total + entry.amount * (1 + 0.5 / Math.max(1, left?.get(entry.pool) ?? Infinity)),
         0,
-      ) + (option.signature?.cost ?? 0);
+      ) +
+      (option.signature?.cost ?? 0) +
+      // An item used up by using it (a flask of oil, a vial of acid) is not thrown for nothing.
+      (actor.actions.find((action) => action.id === option.id)?.itemUse?.consumes ? 0.25 : 0);
     // One that only a higher pool can pay for now (1.171) is never taken at its own price.
     const ways: PricedOption[] = [
       ...(option.upcastOnly ? [] : [{ option, price: base }]),
@@ -1685,11 +1688,26 @@ function rulesetCandidatesFrom(
     if (option.targets.count <= 0 && !lands) {
       // Holding the thing it is already holding would end it and start it again for the same price.
       if (actor.concentrating?.actionId === option.id) continue;
-      candidates.push({
+      const self: CombatAiCandidate<RulesetCandidate> = {
         action: { choice: { actorId, optionId: option.id, targetIds: [], ...paying(way) }, option },
-        setup: option.kind === "standard" ? 0.05 : 0.4,
         cost: price,
-      });
+      };
+      if (option.heals && option.targets.side === "self") {
+        // Mending itself (Second Wind) is worth what it is missing, and nothing when whole.
+        const health = rulesetCombatHealth(definition, combat, actor);
+        const worth = rulesetHealingWorth(option.forecast?.averageDamage ?? 0, health);
+        if (worth <= 0) continue;
+        self.healing = worth;
+      } else {
+        // What it puts on itself, where that can be read; else the old modest guess.
+        const own =
+          option.targets.side === "self"
+            ? rulesetEffectWorth(definition, combat, encounter, actor, fallingAction, actor)
+            : undefined;
+        if (own === 0 && option.kind !== "standard") continue;
+        self.setup = option.kind === "standard" ? 0.05 : (own ?? 0.4);
+      }
+      candidates.push(self);
       continue;
     }
     // A shape lands on a cell, so the aims are the candidates: each one is worth what it catches,
@@ -1749,7 +1767,7 @@ function rulesetCandidatesFrom(
       if (option.heals) {
         // Never on the other side, and never on somebody with nothing to gain by it.
         if (!ally || (health.value >= health.max && !target.down)) continue;
-        candidate.healing = Math.min(1, average / Math.max(1, health.max)) + (target.down ? 1 : 0);
+        candidate.healing = rulesetHealingWorth(average, health) + (target.down ? 1 : 0);
       } else if (average > 0) {
         // Never its own side, and never somebody who is already down: the rules let a blow land on
         // them, and a table where every opponent finishes off the dying is not one anybody plays
@@ -1891,6 +1909,21 @@ function rulesetThreat(
   return 0.5 + Math.min(1, best / mean);
 }
 
+/** Whether anybody standing against this side deals this damage type with one of their actions. */
+function rulesetSideDeals(encounter: RulesetEncounterState, side: string, damageType: string): boolean {
+  const wanted = damageType.trim().toLowerCase();
+  return encounter.combatants.some(
+    (one) =>
+      one.side !== side &&
+      rulesetCombatStanding(one) &&
+      one.actions.some((action) =>
+        [action.damage?.type, ...(action.damage?.plus ?? []).map((clause) => clause.type)].some(
+          (type) => type?.trim().toLowerCase() === wanted,
+        ),
+      ),
+  );
+}
+
 /**
  * What an action is worth by what it puts on a target, read off the ruleset's own conditions: what
  * their effects and behaviours do, how long they last, the chance it lands, and how much the target
@@ -1898,7 +1931,7 @@ function rulesetThreat(
  * helps. Nothing for a condition the target already holds or cannot take. Undefined when the action
  * puts nothing readable on anybody, so its caller keeps its own guess.
  */
-function rulesetEffectWorth(
+export function rulesetEffectWorth(
   definition: RulesetDefinition,
   combat: NonNullable<RulesetDefinition["combat"]>,
   encounter: RulesetEncounterState,
@@ -1932,8 +1965,16 @@ function rulesetEffectWorth(
       else if (behavior.wastes) each += 0.4;
       else each += 0.15;
     }
-    // A number added or taken off, whichever way it points, is worth a little.
-    each += Math.min(0.3, (rule?.modifiers?.length ?? 0) * 0.1);
+    // A number added or taken off, whichever way it points, is worth a little; more damage of one
+    // type taken only when somebody on the other side deals that type (lamp oil wants a fire).
+    const counted = (rule?.modifiers ?? []).filter(
+      (modifier) =>
+        modifier.to !== "damage-taken" ||
+        !modifier.damageType ||
+        (modifier.flat ?? 0) <= 0 ||
+        rulesetSideDeals(encounter, target.side, modifier.damageType),
+    );
+    each += Math.min(0.3, counted.length * 0.1);
     if (rule?.effects?.includes("ends-on-damage")) each *= 0.6;
     worth += Math.min(1.2, each) * rulesetDurationWorth(applied.duration);
   }
@@ -1985,6 +2026,14 @@ export function rulesetStoppedWorth(
   // Something it could read and found small is worth that little; only what says nothing gets a guess.
   const read = average > 0 || !!action.heal || !!action.applies?.length || !!action.summons || !!action.calls;
   return Math.min(2, read ? worth : 0.4);
+}
+
+/** What healing is worth to one: only what they are missing counts, and less the less they miss, so
+ *  a Second Wind is kept for when it matters rather than spent on a scratch. */
+function rulesetHealingWorth(average: number, health: { value: number; max: number }): number {
+  const max = Math.max(1, health.max);
+  const missing = Math.max(0, health.max - health.value);
+  return (Math.min(average, missing) / max) * Math.min(1, (2 * missing) / max);
 }
 
 /** Whether a pool of this fighter's sheet has room for more. */
@@ -2085,7 +2134,7 @@ function weighCaught(
     if (helped.length === 0) return false;
     candidate.healing = helped.reduce((total, target) => {
       const health = rulesetCombatHealth(definition, combat, target);
-      return total + Math.min(1, average / Math.max(1, health.max)) + (target.down ? 1 : 0);
+      return total + rulesetHealingWorth(average, health) + (target.down ? 1 : 0);
     }, 0);
   } else if (average > 0) {
     if (foes.length === 0) return false;
@@ -2110,6 +2159,8 @@ function weighCaught(
     if (read && worth <= 0) return false;
     candidate.setup = read ? Math.min(2, worth) : 0.4;
   } else {
+    // Something meant for the other side that would catch only its own: ball bearings under a friend.
+    if (option.targets.side === "enemy") return false;
     if (option.restores && !friends.some((friend) => rulesetPoolHasRoom(definition, friend, option.restores!))) {
       return false;
     }

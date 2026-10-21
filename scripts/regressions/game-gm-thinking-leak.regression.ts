@@ -53,6 +53,20 @@ assert.match(
   "a talk-to-GM turn still keeps its plan hidden",
 );
 
+// A non-English talk-to-GM turn still answers in the game's language, but as an answer, not a scene.
+const germanTalkToGm = buildGmFormatReminder({
+  hasSceneModel: false,
+  turnNumber: 1,
+  language: "Deutsch",
+  addressMode: "gm",
+} as ReminderContext);
+assert.match(germanTalkToGm, /Write your answer directly in German as a native speaker would\./);
+assert.doesNotMatch(
+  germanTalkToGm,
+  /Write the scene text directly in German/,
+  "scene-language guidance must not apply to a talk-to-GM answer",
+);
+
 // A reply that follows the reminder loses its plan to the thinking slot, whatever language it plans in.
 const reply = [
   "<think>",

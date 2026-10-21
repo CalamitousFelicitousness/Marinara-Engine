@@ -1747,7 +1747,7 @@ export function buildGmFormatReminder(
     ...(normalizedLanguage && normalizedLanguage.toLowerCase() !== "english"
       ? [
           `LANGUAGE:`,
-          `Write the scene text directly in ${normalizedLanguage} as a native speaker would. The English examples below illustrate structure and format only.`,
+          `Write ${ctx.addressMode === "gm" ? "your answer" : "the scene text"} directly in ${normalizedLanguage} as a native speaker would. The English examples below illustrate structure and format only.`,
           ``,
         ]
       : []),

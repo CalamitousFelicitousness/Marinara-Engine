@@ -2701,7 +2701,7 @@ function buildMinimalCharacterData(
     const val = flagString(flags, flagName);
     if (val !== undefined) data[fieldName] = val;
   }
-  data.summary = typeof data.summary === "string" ? data.summary.trim().slice(0, 500) : "";
+  data.summary = typeof data.summary === "string" ? data.summary.trim() : "";
   // backstory and appearance are Marinara extensions stored under data.extensions.*
   const extensions = data.extensions as Record<string, unknown>;
   const extMap: Array<[string, string]> = [

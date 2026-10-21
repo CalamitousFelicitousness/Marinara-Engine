@@ -586,17 +586,28 @@ try {
     url: "/api/generate/",
     payload: { chatId: thinkingChat.id },
   });
+  assert.equal(thinkingResponse.statusCode, 200, thinkingResponse.body);
+  const thinkingEvents = thinkingResponse.body
+    .split("\n")
+    .filter((line) => line.startsWith("data: "))
+    .map((line) => JSON.parse(line.slice("data: ".length)) as { type: string; data: unknown });
+  // The empty reply is reported as one, not swapped for the plan, and the stream ends normally.
+  const thinkingErrors = thinkingEvents.filter((event) => event.type === "error").map((event) => String(event.data));
+  assert.equal(thinkingErrors.length, 1, thinkingResponse.body);
+  assert.match(thinkingErrors[0]!, /returned no visible text/, "only the empty-reply error, never a provider failure");
+  assert.equal(thinkingEvents.at(-1)?.type, "done", thinkingResponse.body);
   assert.deepEqual(order, ["thinking-main", "thinking-main"]);
   const thinkingMessages = await chats.listMessages(thinkingChat.id);
   assert.ok(
     thinkingMessages.every((message) => !message.content.includes("PRIVATE TOOL ROUND PLAN")),
     "an earlier tool round's planning never becomes the narration",
   );
-  assert.doesNotMatch(
-    thinkingResponse.body,
-    /"type":"token","data":"[^"]*PRIVATE TOOL ROUND PLAN/,
-    "the planning is not streamed as narration either",
-  );
+  // Tokens are joined in stream order so a plan split across events is still caught.
+  const streamedNarration = thinkingEvents
+    .filter((event) => event.type === "token" || event.type === "content_replace")
+    .map((event) => String(event.data))
+    .join("");
+  assert.doesNotMatch(streamedNarration, /PRIVATE TOOL ROUND PLAN/, "the planning is not streamed as narration either");
 
   const refusalChat = (await chats.create({
     name: "Refused commands",

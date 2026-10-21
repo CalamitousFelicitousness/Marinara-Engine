@@ -119,11 +119,12 @@ export function conversationPromptHistoryContent(
 
 const SENT_SELFIE_DESCRIPTION_MAX_CHARS = 600;
 
-/**
- * History notes for video messages a character sent, so the next reply knows a clip went out and
- * what it shows. Only Conversation video messages name a sender; Roleplay scene clips stay hidden
- * like Illustrator images.
- */
+// Bracketed cues ("[Shot 1: close-up]", "[cut to window]") would nest inside the note's own brackets.
+const BRACKETED_CUE_RE = /\[[^\]\n]*\]/gu;
+// A field label starts a line ("overall_soundscape: …"); a word_word: inside a sentence is left alone.
+const FIELD_LABEL_RE = /^\s*[a-z]+(?:_[a-z]+)+\s*:/gimu;
+
+/** The words of a video prompt in a technical format: no JSON, field labels or bracketed cues. */
 function videoPromptWords(prompt: string): string {
   let text = prompt;
   try {
@@ -132,7 +133,7 @@ function videoPromptWords(prompt: string): string {
     // prompt lists what the clip must not show, so it is left out.
     const strings = (value: unknown): string[] =>
       typeof value === "string"
-        ? [/^\s*[[{]/u.test(value) ? videoPromptWords(value) : value]
+        ? [/^\s*[[{]/u.test(value) ? videoPromptWords(value) : value.replace(FIELD_LABEL_RE, " ")]
         : value && typeof value === "object"
           ? Object.entries(value)
               .filter(([key]) => !/negative/iu.test(key))
@@ -142,8 +143,14 @@ function videoPromptWords(prompt: string): string {
   } catch {
     // Not JSON: plain text, perhaps with field labels.
   }
-  return text.replace(/\[\s*shot\s*\d+\s*\]/giu, " ").replace(/\b[a-z]+(?:_[a-z]+)+\s*:/giu, " ");
+  return text.replace(BRACKETED_CUE_RE, " ").replace(FIELD_LABEL_RE, " ");
 }
+
+/**
+ * History notes for video messages a character sent, so the next reply knows a clip went out and
+ * what it shows. Only Conversation video messages name a sender; Roleplay scene clips stay hidden
+ * like Illustrator images.
+ */
 
 export function formatSentVideoNotes(attachments: PromptAttachment[] | undefined): string {
   return (attachments ?? [])
@@ -151,7 +158,9 @@ export function formatSentVideoNotes(attachments: PromptAttachment[] | undefined
     .map((attachment) => {
       // The video model's prompt may follow a technical format (JSON, "overall_soundscape: …", "[Shot 1] …"); the
       // note keeps only its words, so characters don't copy that format into their own [video] tags.
+      // Any bracket left over (an unclosed one) goes too, so the note holds exactly one pair.
       const description = videoPromptWords(attachment.prompt ?? "")
+        .replace(/[[\]]/gu, " ")
         .replace(/\s+/g, " ")
         .trim()
         .slice(0, SENT_SELFIE_DESCRIPTION_MAX_CHARS);
@@ -192,7 +201,7 @@ export function appendSentMediaNotes(
 ): string {
   const userUploadedImages = attachments?.filter((attachment) => attachment.type?.startsWith("image/"));
   if (userUploadedImages?.length) {
-    const photoName = userUploadedImages[0]?.filename ?? userUploadedImages[0]?.name;
+    const photoName = userUploadedImages[0]!.filename ?? userUploadedImages[0]!.name;
     content += `\n[Sent a photo${photoName ? `: ${photoName}` : ""}]`;
   }
   content += formatSentSelfieNotes(selfieAttachments);

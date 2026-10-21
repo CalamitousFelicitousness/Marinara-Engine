@@ -480,6 +480,27 @@ try {
     ]),
     "\n[Ana sent a video message: Ana waves. She laughs.]",
   );
+  // Every bracketed cue goes, and an unclosed bracket too, so the note holds exactly one pair of brackets.
+  const cueNote = formatSentVideoNotes([
+    {
+      type: "video",
+      characterName: "Ana",
+      prompt: JSON.stringify({ shots: [{ description: "[Shot 1: close-up] Ana waves. [cut to window] Rain falls." }] }),
+    },
+  ]);
+  assert.equal(cueNote, "\n[Ana sent a video message: Ana waves. Rain falls.]");
+  const longNote = formatSentVideoNotes([
+    { type: "video", characterName: "Ana", prompt: `${"Ana waves. ".repeat(60)}[unfinished cue that runs on` },
+  ]);
+  assert.equal(longNote.split("[").length - 1, 1, "one opening bracket");
+  assert.equal(longNote.split("]").length - 1, 1, "one closing bracket");
+  // A word_word: inside a sentence isn't a field label, so the prose stays as written.
+  assert.equal(
+    formatSentVideoNotes([
+      { type: "video", characterName: "Ana", prompt: "Ana opens the file named my_notes: it is empty." },
+    ]),
+    "\n[Ana sent a video message: Ana opens the file named my_notes: it is empty.]",
+  );
   // A negative prompt is what the clip must not show, and JSON kept inside a string is read as JSON too.
   assert.equal(
     formatSentVideoNotes([

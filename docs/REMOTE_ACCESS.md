@@ -285,6 +285,16 @@ To open Marinara from a phone or tablet on the same network:
 
 If the page does not load at all, the server may not be reachable. Check `HOST=0.0.0.0` and the `PORT` value. If you get a 403 instead, your device is reachable but not yet allowed in. Recheck your chosen option above.
 
+## Locked out after updating
+
+Newer versions ask for a login when a visit comes through a reverse proxy, a tunnel, Tailscale Serve, or Tailscale Funnel. Older versions let these visits in without a password. If you now see a login page, a setup page, or a **403**, this is why.
+
+To get back in:
+
+1. Open Marinara on the computer that runs it, at `http://localhost:7860`. Local use needs no password.
+2. Open the `.env` file on that computer and set `BASIC_AUTH_USER` and `BASIC_AUTH_PASS`.
+3. Restart Marinara, then sign in from your other device with that user name and password.
+
 ## Search engines
 
 Marinara asks search engines not to index its pages (`X-Robots-Tag: noindex, nofollow`). This does not protect your installation and does not remove pages that are already indexed. Use the access controls above to keep your installation private.

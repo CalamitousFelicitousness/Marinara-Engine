@@ -326,6 +326,17 @@ for (const owner of ["character", "persona"] as const) {
 
       hold = true;
       started = new Promise<void>((resolve) => (arrived = resolve));
+      await input.fill("Stable alternative seed while another field changes.");
+      await generate.click();
+      await started;
+      const editedReference = "A newer base description written while the alternative was generating.";
+      await editor.getByRole("textbox", { name: "Description", exact: true }).fill(editedReference);
+      release!();
+      await expect(generate).toBeEnabled();
+      await expect(input).toHaveValue(generated);
+      await expect(editor.getByRole("textbox", { name: "Description", exact: true })).toHaveValue(editedReference);
+
+      started = new Promise<void>((resolve) => (arrived = resolve));
       await generate.click();
       await started;
       await input.fill("Later handwritten alternative appearance.");

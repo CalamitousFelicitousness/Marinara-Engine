@@ -15,10 +15,23 @@ export const COMBAT_ADJECTIVES = [
   "methodical",
   "coordinated",
 ] as const;
+import { COMBAT_MINDS, type CombatMind } from "./combat-minds.js";
+export { COMBAT_MINDS, type CombatMind } from "./combat-minds.js";
+/** The temperaments an animal's nature may have: none that plans. */
+const INSTINCT_ADJECTIVES: readonly (typeof COMBAT_ADJECTIVES)[number][] = [
+  "reckless",
+  "cautious",
+  "opportunistic",
+  "protective",
+  "cowardly",
+  "coordinated",
+];
 export const combatAiHintsSchema = z.object({
   category: z.enum(["beast", "monstrosity", "other", "unknown"]).optional(),
   proficiency: z.enum(["novice", "trained", "veteran", "master"]).optional(),
   temperament: z.enum(COMBAT_ADJECTIVES).optional(),
+  /** Its mind, where the story says what the creature's own data cannot: one dominated, one enraged. */
+  mind: z.enum(COMBAT_MINDS).optional(),
 });
 export const combatTacticsSchema = z
   .object({
@@ -30,10 +43,13 @@ export const combatTacticsSchema = z
     adjective: z.enum(COMBAT_ADJECTIVES),
     targetId: z.string().max(256).optional(),
     holds: z.number().int().min(0).max(2).optional(),
+    /** Its mind (see `COMBAT_MINDS`); one saved before minds were read is played as `tactical`. */
+    mind: z.enum(COMBAT_MINDS).optional(),
   })
   .superRefine((value, ctx) => {
-    if ((value.category === "beast" || value.category === "monstrosity") && value.adjective !== "mindless") {
-      ctx.addIssue({ code: "custom", path: ["adjective"], message: "Beasts and Monstrosities must be Mindless." });
+    // A mindless creature has no temperament but its own, and nothing else is mindless.
+    if ((value.mind === "mindless") !== (value.adjective === "mindless") && value.mind !== undefined) {
+      ctx.addIssue({ code: "custom", path: ["adjective"], message: "Only a mindless creature is Mindless." });
     }
   });
 export type CombatTactics = z.infer<typeof combatTacticsSchema>;
@@ -64,14 +80,19 @@ export function combatAiHash(value: string): number {
   return hash >>> 0;
 }
 
-export function assignCombatTactics(unit: AiCombatant, seed: number): CombatTactics {
+/**
+ * A combatant's profile, made once and kept. `mind` is what its own data says it is (a ruleset's
+ * creature, see `rulesetCombatantMind`); the Game Master's hint wins over it, and with neither an
+ * animal (`category` beast) is `instinct` and anything else plays as `tactical`.
+ */
+export function assignCombatTactics(unit: AiCombatant, seed: number, mind?: CombatMind): CombatTactics {
   const hints = combatAiHintsSchema.parse(unit.aiHints ?? {});
-  if (unit.tactics) {
-    const saved = combatTacticsSchema.parse(unit.tactics);
-    if ((hints.category === "beast" || hints.category === "monstrosity") && saved.adjective !== "mindless")
-      throw new Error("Beasts and Monstrosities must be Mindless.");
-    return saved;
-  }
+  if (unit.tactics) return combatTacticsSchema.parse(unit.tactics);
+  const minded: CombatMind =
+    hints.mind ??
+    (hints.temperament === "mindless" ? "mindless" : undefined) ??
+    mind ??
+    (hints.category === "beast" ? "instinct" : "tactical");
   const skills = unit.skills ?? [];
   const support = skills.some((s) => s.type === "heal" || s.type === "buff");
   const control = skills.some((s) => s.type === "debuff");
@@ -90,9 +111,12 @@ export function assignCombatTactics(unit: AiCombatant, seed: number): CombatTact
               : skills.some((s) => s.element && s.type === "attack")
                 ? "spellcaster"
                 : "bruiser";
-  const proficiency =
+  const trained =
     hints.proficiency ??
     (unit.level >= 15 ? "master" : unit.level >= 8 ? "veteran" : unit.level >= 3 ? "trained" : "novice");
+  // A genius is never less than a veteran at it.
+  const proficiency: CombatTactics["proficiency"] =
+    minded === "genius" && (trained === "novice" || trained === "trained") ? "veteran" : trained;
   const competence = ["novice", "trained", "veteran", "master"].indexOf(proficiency) / 3;
   const suited: Record<CombatTactics["role"], readonly CombatTactics["adjective"][]> = {
     bruiser: ["reckless", "disciplined", "opportunistic"],
@@ -103,13 +127,13 @@ export function assignCombatTactics(unit: AiCombatant, seed: number): CombatTact
     supporter: ["supportive", "protective", "coordinated"],
     controller: ["methodical", "coordinated", "disciplined"],
   };
-  const weighted = COMBAT_ADJECTIVES.filter((a) => a !== "mindless" && (a !== "supportive" || support)).map(
-    (adjective) => ({
-      adjective,
-      weight:
-        1 + (suited[role].includes(adjective) ? 2 + 4 * competence : 0) + (hints.temperament === adjective ? 8 : 0),
-    }),
-  );
+  const weighted = COMBAT_ADJECTIVES.filter(
+    (a) =>
+      a !== "mindless" && (a !== "supportive" || support) && (minded !== "instinct" || INSTINCT_ADJECTIVES.includes(a)),
+  ).map((adjective) => ({
+    adjective,
+    weight: 1 + (suited[role].includes(adjective) ? 2 + 4 * competence : 0) + (hints.temperament === adjective ? 8 : 0),
+  }));
   let draw =
     (combatAiHash(`assignment:${seed}:${unit.id}`) / 0x100000000) * weighted.reduce((sum, p) => sum + p.weight, 0);
   let adjective: CombatTactics["adjective"] = "disciplined";
@@ -121,8 +145,8 @@ export function assignCombatTactics(unit: AiCombatant, seed: number): CombatTact
     }
   }
   const category = hints.category ?? "unknown";
-  if (category === "beast" || category === "monstrosity" || hints.temperament === "mindless") adjective = "mindless";
-  return { version: 1, seed: seed >>> 0, category, proficiency, role, adjective };
+  if (minded === "mindless") adjective = "mindless";
+  return { version: 1, seed: seed >>> 0, category, proficiency, role, adjective, mind: minded };
 }
 
 /** Mode adapters enumerate only actions their resolver can actually execute. */
@@ -148,7 +172,16 @@ export function combatAiScoreNoise(
   index: number,
   difficulty: GameDifficulty = "normal",
 ): number {
-  const variation = profile.proficiency === "novice" ? 0.12 : profile.proficiency === "trained" ? 0.07 : 0.02;
+  const trained = profile.proficiency === "novice" ? 0.12 : profile.proficiency === "trained" ? 0.07 : 0.02;
+  // What it is adds to how well it was trained: an animal's choices wander, a genius's do not.
+  const variation =
+    profile.mind === "instinct"
+      ? trained + 0.06
+      : profile.mind === "cunning"
+        ? trained + 0.03
+        : profile.mind === "genius"
+          ? trained / 2
+          : trained;
   return (
     (variation * ENEMY_AI_VARIATION[difficulty] * combatAiHash(`${index}:decision:${profile.seed}:${id}:${turn}`)) /
     0x100000000
@@ -177,6 +210,24 @@ export function chooseCombatCandidate<T>(
     protection: adjective === "protective" ? 2 : 0,
     coordination: adjective === "coordinated" ? 1.5 : 0,
   };
+  // What it is bends how it weighs things. A mindless creature knows only to hit; an animal drags down
+  // the weakest and minds its own hide once hurt; a genius never ignores the danger it stands in.
+  if (profile.mind === "mindless")
+    Object.assign(weights, {
+      finish: 0,
+      healing: 0,
+      support: 0,
+      setup: 0,
+      risk: 0,
+      cost: 0,
+      protection: 0,
+      coordination: 0,
+    });
+  else if (profile.mind === "instinct") {
+    weights.finish *= 2;
+    weights.setup = Math.min(weights.setup, 0.1);
+    if (wounded) weights.risk = Math.max(weights.risk, 3);
+  } else if (profile.mind === "genius") weights.risk = Math.max(weights.risk, 0.8);
   const scores = candidates
     .map((candidate, i) => {
       let score =
@@ -191,7 +242,7 @@ export function chooseCombatCandidate<T>(
         (candidate.coordination ?? 0) * weights.coordination;
       if (adjective === "methodical" && profile.targetId !== undefined && candidate.targetId === profile.targetId)
         score += 0.35;
-      if (candidate.hold && (profile.holds ?? 0) < 1) {
+      if (candidate.hold && (profile.holds ?? 0) < 1 && profile.mind !== "mindless") {
         if (adjective === "patient") score += 0.65;
         if (adjective === "cowardly" && wounded) score += 0.8;
       }

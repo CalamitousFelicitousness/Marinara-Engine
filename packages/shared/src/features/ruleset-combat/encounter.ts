@@ -62,6 +62,7 @@ import {
 } from "../rulesets/check-effects.js";
 import { rulesetItemGateDifficulty, rulesetItemGateLabel } from "../rulesets/item-book.js";
 import { rulesetCatalogEntriesByRef } from "../rulesets/scaled-rows.js";
+import { rulesetPlanMemo } from "../rulesets/plan-memo.js";
 import {
   lookupStepTable,
   resolveRulesetValueRef,
@@ -293,6 +294,19 @@ export interface RulesetCombatHealth {
  * question they already ask. A track carries no buffer, so `temp` is always 0 on one.
  */
 export function rulesetCombatHealth(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  combatant: RulesetCombatant,
+): RulesetCombatHealth {
+  // Once a planning pass (see `withRulesetPlanMemo`), and a copy every time.
+  return {
+    ...rulesetPlanMemo(["rulesetCombatHealth", definition, combat, combatant], () =>
+      combatHealth(definition, combat, combatant),
+    ),
+  };
+}
+
+function combatHealth(
   definition: RulesetDefinition,
   combat: RulesetCombat,
   combatant: RulesetCombatant,
@@ -756,6 +770,22 @@ function brokenCommand<T extends RulesetCombatCondition>(entry: T): T {
 }
 
 export function rulesetActiveConditions(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  combatant: RulesetCombatant,
+  state?: RulesetEncounterState,
+  rawLevels = false,
+): RulesetActiveCondition[] {
+  // Once a planning pass (see `withRulesetPlanMemo`) for where they stand, a fresh list every time.
+  return [
+    ...rulesetPlanMemo(
+      ["rulesetActiveConditions", definition, combat, combatant, state, rawLevels, combatant.x, combatant.y],
+      () => activeConditions(definition, combat, combatant, state, rawLevels),
+    ),
+  ];
+}
+
+function activeConditions(
   definition: RulesetDefinition,
   combat: RulesetCombat,
   combatant: RulesetCombatant,

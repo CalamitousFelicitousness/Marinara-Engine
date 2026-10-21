@@ -30,6 +30,7 @@ import {
   type RulesetValueRef,
 } from "../../schemas/ruleset.schema.js";
 import { rulesetCatalogEntriesByRef } from "./scaled-rows.js";
+import { rulesetPlanMemo } from "./plan-memo.js";
 import { parseRulesetCombatDice } from "../ruleset-combat/dice.js";
 import {
   evaluateRulesetSheet,
@@ -1125,7 +1126,10 @@ export function readRulesetLive(
   build: RulesetSheetBuild,
   stored: unknown,
 ): ResolvedRulesetLive {
-  return resolveLive(definition, build, readStoredLiveState(definition, build, stored));
+  // Once a planning pass (see `withRulesetPlanMemo`).
+  return rulesetPlanMemo(["readRulesetLive", definition, build, stored], () =>
+    resolveLive(definition, build, readStoredLiveState(definition, build, stored)),
+  );
 }
 
 /** Every number the sheet yields, with its live tracks and pools read as they stand in `stored`:
@@ -1140,6 +1144,18 @@ export function evaluateRulesetSheetLive(
   /** The items the character holds, which an `itemStat` reads; none outside a game. */
   items?: ReadonlyArray<RulesetSheetItem>,
   /** Conditions a fight has on them besides the sheet's own (1.462), for what they do to abilities. */
+  conditions?: readonly string[],
+): ReturnType<typeof evaluateRulesetSheet> {
+  return rulesetPlanMemo(["evaluateRulesetSheetLive", definition, build, stored, items, conditions?.join("|")], () =>
+    evaluateSheetLive(definition, build, stored, items, conditions),
+  );
+}
+
+function evaluateSheetLive(
+  definition: RulesetDefinition,
+  build: RulesetSheetBuild,
+  stored?: unknown,
+  items?: ReadonlyArray<RulesetSheetItem>,
   conditions?: readonly string[],
 ): ReturnType<typeof evaluateRulesetSheet> {
   // What an item asks of its bearer (1.614): bound without it, it reads as not worn.

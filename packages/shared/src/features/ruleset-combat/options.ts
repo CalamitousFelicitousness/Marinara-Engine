@@ -1169,10 +1169,13 @@ export function rulesetAimedCells(
       : rulesetAreaCells(area.shape, area.size + (lay?.grow ?? 0), origin, aim, grid, area.width);
   };
   const cells = new Map<string, RulesetCombatCell>();
+  // Asked once for the whole shape, not once a cell: most fights have no zone that blocks spells.
+  const caged =
+    rulesetIsSpell(action) && rulesetStandingZones(state).some(({ action: made }) => made.zone?.blocks?.spells);
   for (const aim of [at, ...(lay?.also ?? [])]) {
     for (const cell of one(aim)) {
       // Not over into the far side of a zone that blocks spells (1.549): Forcecage's box.
-      if (rulesetSpellsBlocked(state, action, aim, cell)) continue;
+      if (caged && rulesetSpellsBlocked(state, action, aim, cell)) continue;
       cells.set(`${cell.x},${cell.y}`, cell);
     }
   }

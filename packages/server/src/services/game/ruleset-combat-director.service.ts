@@ -72,6 +72,10 @@ import {
   rulesetSpanOf,
   rulesetBehaviorAnchor,
   rulesetGapFrom,
+  rulesetGap,
+  rulesetInCells,
+  rulesetCombatantMind,
+  withRulesetPlanMemo,
   rulesetSheetBuildsByName,
   rulesetCardCreaturesByName,
   readProposedRulesetSheet,
@@ -940,6 +944,9 @@ interface RulesetCandidate {
   choice: RulesetCombatChoice;
   option: RulesetCombatOption;
   targetId?: string;
+  /** A dodge, a getaway or a hide taken in place of an attack (1.708): made where it stands, and a
+   *  getaway walks off to `to` once it is taken. */
+  defensive?: "dodge" | "disengage" | "hide";
   /** Where the actor walks to before doing it, on a board. The move is its own step, resolved
    *  through the same menu a player's would be. */
   to?: { x: number; y: number };
@@ -950,6 +957,10 @@ interface RulesetCandidate {
  *  ponytail: the cheapest cells, cut at a fixed number. The upgrade path is to rank them by what
  *  they open up before cutting, which needs a scoring pass this slice does not have. */
 const RULESET_MOVE_CANDIDATE_CELLS = 48;
+/** How long the picker may spend weighing places to walk to before it settles for those it weighed.
+ *  On every board the Engine draws it is done long before; this is what keeps a huge imported board
+ *  or a creature with a hundred options from holding the server while it thinks. */
+const RULESET_MOVE_PLAN_MS = 2000;
 
 /** The largest board on which a shape is also aimed from the cells an actor could walk to. The
  *  generator's own largest board is 14 by 10; this is a few times that. */
@@ -971,6 +982,8 @@ function rulesetCandidates(
   actorId: string,
   /** The Game Master's window is shown everything; the Engine's own picker is not (see the end). */
   everything = false,
+  /** Who it is (1.708): a careful, cowardly or patient one keeps its dodge, getaway and hide. */
+  tactics?: CombatTactics,
 ): Array<CombatAiCandidate<RulesetCandidate>> {
   const worth = (candidate: CombatAiCandidate<RulesetCandidate>) => (candidate.damage ?? 0) + (candidate.healing ?? 0);
   const here = rulesetCandidatesFrom(definition, encounter, actorId, null);
@@ -978,7 +991,18 @@ function rulesetCandidates(
   // Standing still is preferred when it can already do its best from where it is: a candidate that
   // walks first has to be strictly better than every one that does not, not merely as good.
   const staying = here.reduce((most, candidate) => Math.max(most, worth(candidate)), 0);
-  const candidates = [...here, ...moved.filter((candidate) => worth(candidate) > staying)];
+  // One that stands by its friends or fights beside them (1.708) also weighs walking to an opponent it
+  // cannot reach from here, where it is worth anything: whoever is on a friend.
+  const roams = tactics?.adjective === "protective" || tactics?.adjective === "coordinated";
+  const reachable = new Set(here.map((candidate) => candidate.targetId));
+  const candidates = [
+    ...here,
+    ...moved.filter(
+      (candidate) =>
+        worth(candidate) > staying ||
+        (roams && worth(candidate) > 0 && candidate.targetId !== undefined && !reachable.has(candidate.targetId)),
+    ),
+  ];
   // Somebody who can hurt an opponent or help a friend does that. The scoring weighs a blow by the
   // share of the target's health it takes, so against a sturdy target a careful creature would score
   // a standard action (dodging, say) above every attack it has and stand there all fight. A standard
@@ -992,7 +1016,197 @@ function rulesetCandidates(
     return !(action?.free && action.beforeAttack);
   });
   if (!own.some((candidate) => worth(candidate) > 0)) return own;
-  return own.filter((candidate) => !candidate.hold && candidate.action.option.kind !== "standard");
+  const keeps = !!actor && rulesetKeepsDefensive(definition, encounter, actor, tactics);
+  return own.filter(
+    (candidate) =>
+      (!candidate.hold && candidate.action.option.kind !== "standard") ||
+      (keeps && rulesetDefensiveName(candidate.action.option) !== undefined),
+  );
+}
+
+/** The standard actions a creature may take in place of an attack to keep itself whole (1.708). */
+function rulesetDefensiveName(option: RulesetCombatOption): RulesetCandidate["defensive"] {
+  if (option.kind !== "standard") return undefined;
+  const name = rulesetStandardName(option.id);
+  return name === "dodge" || name === "disengage" || name === "hide" ? name : undefined;
+}
+
+/** Whether a creature weighs dodging, getting away or hiding against its attacks (1.708): a careful,
+ *  cowardly or patient one, or an animal, once it is hurt or stands where a turn of blows would take
+ *  a good share of what it has left. Never a mindless one, and never one in no real danger: a sturdy
+ *  creature trading small blows fights on rather than dodging all fight. */
+function rulesetKeepsDefensive(
+  definition: RulesetDefinition,
+  encounter: RulesetEncounterState,
+  actor: RulesetCombatant,
+  tactics: CombatTactics | undefined,
+): boolean {
+  if (!tactics || tactics.mind === "mindless" || !definition.combat) return false;
+  const minded =
+    tactics.adjective === "cautious" ||
+    tactics.adjective === "cowardly" ||
+    tactics.adjective === "patient" ||
+    tactics.mind === "instinct";
+  if (!minded) return false;
+  const health = rulesetCombatHealth(definition, definition.combat, actor);
+  if (health.value < health.max * 0.5) return true;
+  const home = rulesetPositionOf(actor);
+  return !!home && rulesetDangerAt(definition, encounter, actor, home) >= 0.3;
+}
+
+/**
+ * The harm a combatant would stand in at a cell (1.708), as a share of what it has left: for every
+ * opponent still standing, the worst of its blows that could reach it there next turn, in full from
+ * where it is and at half from a walk away. What the cautious weigh against standing there.
+ */
+function rulesetDangerAt(
+  definition: RulesetDefinition,
+  encounter: RulesetEncounterState,
+  actor: RulesetCombatant,
+  cell: { x: number; y: number },
+): number {
+  const combat = definition.combat;
+  if (!combat) return 0;
+  const perCell = combat.distance?.perCell;
+  const health = rulesetCombatHealth(definition, combat, actor);
+  const pool = Math.max(1, health.value + health.temp);
+  const span = rulesetSpanOf(actor);
+  let harm = 0;
+  for (const foe of encounter.combatants) {
+    if (foe.side === actor.side || !rulesetCombatStanding(foe) || !rulesetPositionOf(foe)) continue;
+    const gap = rulesetGapFrom(cell, span, foe);
+    const walks = perCell ? rulesetInCells(foe.speed, perCell) : 6;
+    let worst = 0;
+    for (const action of foe.actions) {
+      if (!action.damage) continue;
+      const reach = action.range ? (action.range.long ?? action.range.normal) : (action.reach ?? 1);
+      const at = gap <= reach ? 1 : gap <= reach + walks ? 0.5 : 0;
+      worst = Math.max(worst, rulesetAverageAmount(action.damage) * at);
+    }
+    harm += worst;
+  }
+  return Math.min(3, harm / pool);
+}
+
+/** The cell furthest from every opponent a combatant may walk to (1.708), its danger breaking ties:
+ *  where a getaway goes. Null when no cell is further than where it stands. */
+function rulesetRetreatCell(
+  definition: RulesetDefinition,
+  encounter: RulesetEncounterState,
+  actorId: string,
+): { x: number; y: number } | null {
+  const actor = rulesetCombatant(encounter, actorId);
+  const from = rulesetPositionOf(actor);
+  if (!actor || !from || !encounter.board?.grid) return null;
+  const foes = encounter.combatants.filter(
+    (one) => one.side !== actor.side && rulesetCombatStanding(one) && rulesetPositionOf(one),
+  );
+  if (foes.length === 0) return null;
+  const span = rulesetSpanOf(actor);
+  const nearest = (cell: { x: number; y: number }) => Math.min(...foes.map((foe) => rulesetGapFrom(cell, span, foe)));
+  let best: { cell: { x: number; y: number }; away: number; danger: number } | null = null;
+  const here = nearest(from);
+  for (const cell of rulesetWalkableCells(definition, encounter, actorId)) {
+    const away = nearest(cell);
+    if (away <= here) continue;
+    const danger = rulesetDangerAt(definition, encounter, actor, cell);
+    if (!best || away > best.away || (away === best.away && danger < best.danger))
+      best = { cell: { x: cell.x, y: cell.y }, away, danger };
+  }
+  return best?.cell ?? null;
+}
+
+/**
+ * The rest of what a creature weighs beside harm and help (1.708), onto each candidate: the danger it
+ * would stand in (`risk`), less for a dodge or a hide, and a getaway's from the cell it would run to;
+ * standing up for a friend an opponent is on (`protection`), more for one who is hurt or who it
+ * guards; and going at whoever its own side is already on (`coordination`).
+ */
+function weighRulesetTeam(
+  definition: RulesetDefinition,
+  state: CombatDirectorState,
+  encounter: RulesetEncounterState,
+  actor: RulesetCombatant,
+  candidates: Array<CombatAiCandidate<RulesetCandidate>>,
+): void {
+  const combat = definition.combat;
+  if (!combat) return;
+  const home = rulesetPositionOf(actor);
+  const dangers = new Map<string, number>();
+  const danger = (cell: { x: number; y: number }) => {
+    const key = `${cell.x},${cell.y}`;
+    if (!dangers.has(key)) dangers.set(key, rulesetDangerAt(definition, encounter, actor, cell));
+    return dangers.get(key)!;
+  };
+  const allies = encounter.combatants.filter(
+    (one) => one.side === actor.side && one.id !== actor.id && rulesetCombatStanding(one),
+  );
+  const foes = encounter.combatants.filter((one) => one.side !== actor.side && rulesetCombatStanding(one));
+  const near = (a: RulesetCombatant, b: RulesetCombatant) =>
+    !!rulesetPositionOf(a) && !!rulesetPositionOf(b) && rulesetGap(a, b) <= 1;
+  const hurt = (one: RulesetCombatant) => {
+    const health = rulesetCombatHealth(definition, combat, one);
+    return health.value < health.max * 0.5;
+  };
+  const threatened = allies.filter((ally) => foes.some((foe) => near(ally, foe)));
+  const units = new Map([...state.party, ...state.enemies].map((unit) => [unit.id, unit]));
+  const focus = new Set(allies.map((ally) => units.get(ally.id)?.tactics?.targetId).filter(Boolean));
+  // Only one that means to keep itself whole takes these in place of closing in: anybody else's
+  // standard action is what is left when nothing is in reach, and it walks instead.
+  const keeps = rulesetKeepsDefensive(definition, encounter, actor, units.get(actor.id)?.tactics);
+  for (const candidate of candidates) {
+    const defensive = keeps ? rulesetDefensiveName(candidate.action.option) : undefined;
+    if (defensive) {
+      candidate.action.defensive = defensive;
+      candidate.hold = true;
+      candidate.setup = 0;
+    }
+    if (home) {
+      if (defensive === "disengage") {
+        const away = rulesetRetreatCell(definition, encounter, actor.id);
+        candidate.risk = away ? danger(away) : danger(home);
+        if (away) candidate.action.to = away;
+      } else {
+        const cell = candidate.action.to ?? home;
+        // Hiding is worth something only out of an opponent's reach: next to one, it is seen.
+        const seen = foes.some((foe) => near(actor, foe));
+        candidate.risk = danger(cell) * (defensive === "dodge" ? 0.7 : defensive === "hide" && !seen ? 0.6 : 1);
+      }
+    }
+    const target = candidate.targetId ? rulesetCombatant(encounter, candidate.targetId) : undefined;
+    if (!target || target.side === actor.side) continue;
+    const guarding = threatened.filter((ally) => near(ally, target));
+    if (guarding.length > 0)
+      candidate.protection = Math.min(
+        1,
+        guarding.reduce((sum, ally) => sum + 0.5 + (hurt(ally) ? 0.3 : 0), 0),
+      );
+    const engaged = allies.filter((ally) => near(ally, target)).length;
+    const together = Math.min(1, 0.35 * engaged + (focus.has(target.id) ? 0.3 : 0));
+    if (together > 0) candidate.coordination = together;
+  }
+}
+
+/** What a mindless creature does (1.708): whoever it went for, while they stand, else whoever is
+ *  nearest, and nothing between turns but strike at one walking away. */
+function mindlessCandidates(
+  encounter: RulesetEncounterState,
+  actor: RulesetCombatant,
+  tactics: CombatTactics,
+  candidates: Array<CombatAiCandidate<RulesetCandidate>>,
+  menu: boolean,
+): Array<CombatAiCandidate<RulesetCandidate>> {
+  if (menu) {
+    if (encounter.window?.trigger.kind === "leaves-reach") return candidates;
+    const pass = candidates.filter((candidate) => candidate.hold);
+    return pass.length > 0 ? pass : candidates;
+  }
+  const foes = encounter.combatants.filter((one) => one.side !== actor.side && rulesetCombatStanding(one));
+  const kept = foes.find((one) => one.id === tactics.targetId);
+  const target = kept ?? [...foes].sort((a, b) => rulesetGap(actor, a) - rulesetGap(actor, b))[0];
+  if (!target) return candidates;
+  const at = candidates.filter((candidate) => candidate.targetId === target.id && (candidate.damage ?? 0) > 0);
+  return at.length > 0 ? at : candidates;
 }
 
 /**
@@ -1042,7 +1256,10 @@ function rulesetCandidatesAfterMoving(
   if (cells.length === 0) return [];
   const home = { x: actor.x, y: actor.y, movementLeft: actor.movementLeft };
   const candidates: Array<CombatAiCandidate<RulesetCandidate>> = [];
+  const deadline = Date.now() + RULESET_MOVE_PLAN_MS;
   for (const cell of cells) {
+    // The places nearest an opponent come first, so what a long think leaves out mattered least.
+    if (Date.now() > deadline) break;
     // Standing the actor in the cell for exactly as long as the menu is read from it. Nothing else
     // is touched, and everything is put straight back, so the fight is the one it was. The
     // allowance is emptied for the pass because a candidate that walks here has spent it getting
@@ -1959,7 +2176,7 @@ function rulesetDrivenFrom(
 }
 
 /** The choice the picker would make, or null when the actor has nothing at all to pick from. */
-function pickRulesetChoice(
+export function pickRulesetChoice(
   definition: RulesetDefinition,
   state: CombatDirectorState,
   encounter: RulesetEncounterState,
@@ -1967,13 +2184,44 @@ function pickRulesetChoice(
   /** A window's own menu, when the pick is an answer to one rather than a turn. */
   menu?: RulesetCombatOption[],
 ): RulesetCandidate | null {
-  const candidates = menu
-    ? rulesetCandidatesFrom(definition, encounter, actorId, null, brokenLairMenu(definition, encounter, actorId, menu))
-    : rulesetCandidates(definition, encounter, actorId);
-  if (candidates.length === 0) return null;
+  // Every sheet, health and condition read while weighing is worked out once for the whole pick.
+  return withRulesetPlanMemo(() => pickChoice(definition, state, encounter, actorId, menu));
+}
+
+function pickChoice(
+  definition: RulesetDefinition,
+  state: CombatDirectorState,
+  encounter: RulesetEncounterState,
+  actorId: string,
+  menu?: RulesetCombatOption[],
+): RulesetCandidate | null {
   const unit = [...state.party, ...state.enemies].find((entry) => entry.id === actorId);
-  if (!unit) return candidates[0]!.action;
-  unit.tactics ??= assignCombatTactics(unit, state.seed);
+  const actor = rulesetCombatant(encounter, actorId);
+  // Its mind as its own data says (1.708), unless the Game Master said otherwise for this fight: a
+  // profile made before that was read is made again with it.
+  if (unit && actor) {
+    // How hurt it is, as the fight has it now: what a coward or a hurt animal weighs.
+    if (definition.combat) {
+      const health = rulesetCombatHealth(definition, definition.combat, actor);
+      unit.maxHp = Math.max(1, Math.floor(health.max));
+      unit.hp = Math.min(unit.maxHp, Math.max(0, Math.floor(health.value)));
+    }
+    const mind = rulesetCombatantMind(definition, actor);
+    const hinted = unit.aiHints?.mind ?? (unit.aiHints?.temperament === "mindless" ? "mindless" : undefined);
+    const wanted = hinted ?? mind;
+    if (!unit.tactics || (wanted !== undefined && unit.tactics.mind !== wanted)) {
+      delete unit.tactics;
+      unit.tactics = assignCombatTactics(unit, state.seed, mind);
+    }
+  }
+  let candidates = menu
+    ? rulesetCandidatesFrom(definition, encounter, actorId, null, brokenLairMenu(definition, encounter, actorId, menu))
+    : rulesetCandidates(definition, encounter, actorId, false, unit?.tactics);
+  if (candidates.length === 0) return null;
+  if (!unit || !actor) return candidates[0]!.action;
+  if (unit.tactics!.mind === "mindless")
+    candidates = mindlessCandidates(encounter, actor, unit.tactics!, candidates, !!menu);
+  weighRulesetTeam(definition, state, encounter, actor, candidates);
   return chooseCombatCandidate(unit, candidates, encounter.round, normalizeGameDifficulty(state.difficulty));
 }
 
@@ -2193,20 +2441,32 @@ function playRulesetTurn(
     true,
   );
   if (looking) applyChoice(definition, state, fight, { actorId, optionId: looking.id, targetIds: [] });
+  // Once it has dodged, got away or hidden (1.708), it does not walk back into the fight this turn.
+  let defended = false;
   for (let action = 0; action < RULESET_TURN_ACTION_LIMIT; action++) {
     if (rulesetEncounterOutcome(fight.encounter) !== "ongoing") break;
     const picked = pickRulesetChoice(definition, state, fight.encounter, actorId);
     const idle = !picked || picked.option.kind === "end-turn";
     if (idle) {
-      if (!walkTowardsTrouble(definition, state, fight, actorId)) break;
+      if (defended || !walkTowardsTrouble(definition, state, fight, actorId)) break;
       continue;
     }
+    if (picked.defensive) defended = true;
     // A standard action is only ever picked when nothing it has can hurt or help anybody from
     // anywhere it can get to. On a board that means it is out of reach, and the action is worth
     // more as a sprint towards the fight than as a dodge nobody is swinging at; the standard is
     // what is left once there is nowhere better to stand.
-    if (picked.option.kind === "standard" && walkTowardsTrouble(definition, state, fight, actorId)) continue;
-    if (picked.to && !stepBefore(definition, state, fight, actorId, picked.to)) break;
+    if (picked.option.kind === "standard" && !picked.defensive && walkTowardsTrouble(definition, state, fight, actorId))
+      continue;
+    // A getaway is taken where it stands, and then it runs (1.708).
+    if (picked.defensive === "disengage") {
+      if (applyChoice(definition, state, fight, picked.choice).refused) break;
+      const away = rulesetRetreatCell(definition, fight.encounter, actorId);
+      if (away)
+        applyChoice(definition, state, fight, { actorId, optionId: RULESET_MOVE_OPTION, targetIds: [], to: away });
+      continue;
+    }
+    if (picked.to && !picked.defensive && !stepBefore(definition, state, fight, actorId, picked.to)) break;
     // Reckless first (1.553), as it is about to make a melee weapon attack.
     takeBeforeMelee(definition, state, fight, actorId, picked.choice);
     // A refusal here would be an Engine bug rather than a player's mistake, so the turn ends
@@ -2341,7 +2601,7 @@ function windowOptions(
 ): CombatDecisionOption[] {
   const candidates = menu
     ? rulesetCandidatesFrom(definition, encounter, actorId, null, menu)
-    : rulesetCandidates(definition, encounter, actorId, true);
+    : withRulesetPlanMemo(() => rulesetCandidates(definition, encounter, actorId, true));
   const worth = (candidate: (typeof candidates)[number]) =>
     (candidate.damage ?? 0) + (candidate.healing ?? 0) + (candidate.support ?? 0) + (candidate.setup ?? 0);
   const ending = candidates.filter((candidate) => candidate.action.option.kind === "end-turn");

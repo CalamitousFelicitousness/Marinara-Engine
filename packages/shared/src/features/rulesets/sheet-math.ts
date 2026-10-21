@@ -6,6 +6,7 @@
 // number reads as its default. Definitions are assumed validated (`parseRulesetDefinition`), but a
 // dangling reference still reads as 0 instead of failing a turn.
 
+import { rulesetPlanMemo } from "./plan-memo.js";
 import {
   rulesetPartyDefinition,
   RULESET_POOL_MAX_DICE,
@@ -658,6 +659,17 @@ export function rulesetSheetTotalsOver(
 }
 
 export function evaluateRulesetSheet(
+  definition: RulesetDefinition,
+  stored: RulesetSheetBuild,
+  live?: RulesetSheetLiveValues,
+): EvaluatedRulesetSheet {
+  // Once a planning pass (see `withRulesetPlanMemo`).
+  return rulesetPlanMemo(["evaluateRulesetSheet", definition, stored, live], () =>
+    evaluateSheet(definition, stored, live),
+  );
+}
+
+function evaluateSheet(
   definition: RulesetDefinition,
   stored: RulesetSheetBuild,
   live?: RulesetSheetLiveValues,

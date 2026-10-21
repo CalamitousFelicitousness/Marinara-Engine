@@ -296,7 +296,7 @@ try {
   assert.equal(validTerrainInput.battlefield.terrainBriefError, "model-authored spoof");
 
   const invalidProfile = structuredClone(state);
-  invalidProfile.units[0].tactics.category = "beast";
+  invalidProfile.units[0].tactics.mind = "mindless";
   invalidProfile.units[0].tactics.adjective = "cautious";
   const rejectedProfile = await app.inject({
     method: "POST",

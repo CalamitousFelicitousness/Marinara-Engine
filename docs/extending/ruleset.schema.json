@@ -64814,6 +64814,16 @@
                       "minLength": 1,
                       "maxLength": 60
                     },
+                    "mind": {
+                      "type": "string",
+                      "enum": [
+                        "mindless",
+                        "instinct",
+                        "cunning",
+                        "tactical",
+                        "genius"
+                      ]
+                    },
                     "resist": {
                       "type": "array",
                       "items": {
@@ -251728,6 +251738,16 @@
                     "minLength": 1,
                     "maxLength": 80
                   },
+                  "mind": {
+                    "type": "string",
+                    "enum": [
+                      "mindless",
+                      "instinct",
+                      "cunning",
+                      "tactical",
+                      "genius"
+                    ]
+                  },
                   "$comment": {}
                 },
                 "required": [
@@ -252737,6 +252757,53 @@
             "$comment": {}
           },
           "required": [
+            "tiers"
+          ],
+          "additionalProperties": false
+        },
+        "minds": {
+          "type": "object",
+          "properties": {
+            "ability": {
+              "type": "string",
+              "maxLength": 40,
+              "pattern": "^[a-z][a-z0-9_]*$"
+            },
+            "tiers": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "atLeast": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000
+                  },
+                  "mind": {
+                    "type": "string",
+                    "enum": [
+                      "mindless",
+                      "instinct",
+                      "cunning",
+                      "tactical",
+                      "genius"
+                    ]
+                  },
+                  "$comment": {}
+                },
+                "required": [
+                  "atLeast",
+                  "mind"
+                ],
+                "additionalProperties": false
+              },
+              "minItems": 1,
+              "maxItems": 5
+            },
+            "$comment": {}
+          },
+          "required": [
+            "ability",
             "tiers"
           ],
           "additionalProperties": false

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { GAME_INVENTORY_MAX_NEW_STACKS, GAME_INVENTORY_MAX_QUANTITY } from "../utils/game-inventory-stacks.js";
+import { COMBAT_MINDS } from "../features/combat-minds.js";
 
 // Game Mode rulesets. A ruleset is validated DATA: it parameterises one of a closed set of
 // Engine-owned resolution kinds and declares a character sheet from a closed set of primitives.
@@ -9970,6 +9971,9 @@ const creatureFields = {
    *  of `combat.creatureTypes.tags` it names by label or id as whole words is one of its tags too,
    *  never one it names after "non-" or "not". What a target test by alignment reads. */
   alignment: promptSafeText(60).optional(),
+  /** How much thought it puts into a fight (Capability API 1.708), over its type's and its score's:
+   *  a 5e zombie or skeleton `mindless`, whatever its Intelligence. */
+  mind: z.enum(COMBAT_MINDS).optional(),
   /** Damage types, matched without case: half, double, none at all. A resistance or an immunity may
    *  say what gets through it (`{ "type": "cut", "except": ["silver"] }`): a blow from a weapon item
    *  with any of those tags is taken as it comes. */
@@ -15768,8 +15772,11 @@ const combatObjectSchema = z
      *  or else `default`; a creature from its own `type` and `tags`. */
     creatureTypes: z
       .object({
+        /** A type's `mind` (Capability API 1.708) is how every creature of it fights unless its own
+         *  stat block says otherwise, whatever its `combat.minds` ability: 5e's beasts `instinct`, its
+         *  constructs and oozes `mindless`. */
         types: z
-          .array(z.object({ id: sheetId, label }).strict())
+          .array(z.object({ id: sheetId, label, mind: z.enum(COMBAT_MINDS).optional() }).strict())
           .min(1)
           .max(40),
         tags: z
@@ -15831,6 +15838,25 @@ const combatObjectSchema = z
       .optional(),
     threat: z
       .object({ tiers: z.array(combatThreatTierSchema).min(1).max(40) })
+      .strict()
+      .optional(),
+    /** How much thought a combatant the Engine plays puts into a fight (Capability API 1.708), read
+     *  off one of its ability scores: the mind of the highest tier whose `atLeast` it reaches, its
+     *  tiers in rising order. A creature's own `mind`, and then its type's, win over it, and one that
+     *  takes legendary actions or has Legendary Resistance is a `genius` where it would be
+     *  `tactical`. 5e: Intelligence, `mindless` from 0, `cunning` from 3, `tactical` from 8,
+     *  `genius` from 15. */
+    minds: z
+      .object({
+        ability: sheetId,
+        tiers: z
+          .array(z.object({ atLeast: z.number().int().min(0).max(1000), mind: z.enum(COMBAT_MINDS) }).strict())
+          .min(1)
+          .max(5)
+          .refine((tiers) => tiers.every((tier, i) => i === 0 || tier.atLeast > tiers[i - 1]!.atLeast), {
+            message: "Each tier starts above the one before it",
+          }),
+      })
       .strict()
       .optional(),
     /** How much of a live pool one combatant may spend in a fight per turn or per round. A cost past

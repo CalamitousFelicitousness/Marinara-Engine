@@ -25,6 +25,7 @@ import type {
   RulesetLastsDays,
   RulesetCatalogWhere,
 } from "../../schemas/ruleset.schema.js";
+import type { CombatMind } from "../combat-minds.js";
 import type { RulesetLiveState } from "../rulesets/live-state.js";
 import type { RulesetItemCallRoll, RulesetSheetItem, RulesetStoredEntry } from "../rulesets/sheet-math.js";
 import type { TacticalBattlefieldProvenance, TacticalGrid, TacticalTerrain } from "../tactical-combat/types.js";
@@ -781,6 +782,8 @@ export interface RulesetStatBlock {
   tags?: string[];
   /** Its alignment in words (1.646): the tags it names are its tags too. */
   alignment?: string;
+  /** How much thought it puts into a fight (1.708), over its type's and its score's. */
+  mind?: CombatMind;
   /** Ability scores by the ruleset's own ability ids. Carried for the Game Master, not resolved. */
   abilities?: Record<string, number>;
   /** Save modifiers by the ruleset's own save ids. A save it does not name reads as zero. */

@@ -37,11 +37,39 @@ assert.deepEqual(chooseClassicAction(actor("unprofiled"), [], [actor("target")],
   targetId: "target",
 });
 const weaken: CombatSkill = { id: "weaken", name: "Weaken", type: "debuff", mpCost: 5, power: 1, cooldown: 2 };
+// A thing that never thinks (the pursuer below), and an animal, which fights by its nature (1.708).
 const beast = {
   ...actor("beast"),
-  aiHints: { category: "beast" as const, temperament: "cautious" as const, proficiency: "master" as const },
+  aiHints: { category: "other" as const, temperament: "mindless" as const, proficiency: "master" as const },
 };
 assert.equal(assignCombatTactics(beast, 7).adjective, "mindless");
+assert.equal(assignCombatTactics(beast, 7).mind, "mindless");
+const wolf = {
+  ...actor("wolf"),
+  aiHints: { category: "beast" as const, temperament: "cautious" as const, proficiency: "master" as const },
+};
+assert.equal(assignCombatTactics(wolf, 7).mind, "instinct");
+for (const seed of [0, 7, 21, 33, 99]) {
+  const adjective = assignCombatTactics({ ...wolf, aiHints: { category: "beast" as const } }, seed).adjective;
+  assert.ok(
+    ["reckless", "cautious", "opportunistic", "protective", "cowardly", "coordinated"].includes(adjective),
+    `an animal is never ${adjective}`,
+  );
+}
+assert.equal(assignCombatTactics(wolf, 7, "cunning").mind, "cunning", "its own data over the Game Master's guess");
+assert.equal(
+  assignCombatTactics({ ...wolf, aiHints: { category: "beast" as const, mind: "genius" as const } }, 7, "cunning").mind,
+  "genius",
+  "a mind the Game Master names for this fight over everything",
+);
+assert.equal(assignCombatTactics(actor("kraken"), 7, "genius").mind, "genius");
+assert.equal(
+  assignCombatTactics(actor("kraken"), 7, "genius").proficiency,
+  "veteran",
+  "a genius is at least a veteran",
+);
+assert.equal(assignCombatTactics(actor("kraken"), 7, "mindless").adjective, "mindless");
+assert.equal(assignCombatTactics(actor("plain"), 7).mind, "tactical");
 for (const category of ["other", "unknown"] as const) {
   for (const seed of [0, 7, 21]) {
     assert.equal(
@@ -52,11 +80,14 @@ for (const category of ["other", "unknown"] as const) {
   }
 }
 assert.throws(
-  () =>
-    assignCombatTactics({ ...beast, tactics: { ...assignCombatTactics(actor("other"), 1), adjective: "reckless" } }, 7),
+  () => assignCombatTactics({ ...beast, tactics: { ...assignCombatTactics(actor("other"), 1), mind: "mindless" } }, 7),
   /Mindless/,
 );
 assert.equal(combatTacticsSchema.safeParse({ ...assignCombatTactics(beast, 7), adjective: "cautious" }).success, false);
+assert.equal(combatTacticsSchema.safeParse({ ...assignCombatTactics(wolf, 7), adjective: "mindless" }).success, false);
+// A profile saved before minds were read still reads.
+const { mind: _mind, ...unminded } = assignCombatTactics(actor("old"), 3);
+assert.equal(combatTacticsSchema.safeParse({ ...unminded, adjective: "mindless" }).success, true);
 assert.equal(combatTacticsSchema.safeParse({ ...assignCombatTactics(beast, 7), version: 99 }).success, false);
 assert.deepEqual(assignCombatTactics(actor("same"), 21), assignCombatTactics(actor("same"), 21));
 const saved = assignCombatTactics(actor("same"), 21);

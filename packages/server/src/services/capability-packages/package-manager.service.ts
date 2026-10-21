@@ -2742,6 +2742,19 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** How much thought a creature puts into a fight (1.708): a stat block's or a creature type's `mind`,
+ *  or `combat.minds`. */
+const MINDS_708 = new Set(["mindless", "instinct", "cunning", "tactical", "genius"]);
+function carriesMinds708(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesMinds708(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if ((typeof record.mind === "string" && MINDS_708.has(record.mind)) || plainRecord(record.minds)?.tiers !== undefined)
+    return true;
+  return featureValues(record).some((one) => carriesMinds708(one, depth + 1));
+}
+
 /** What is made lasting a while before it vanishes (1.707): `makesItems.lasts`. 5e's Creation. */
 function carriesMadeLasting707(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -9267,6 +9280,12 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // How much thought a creature puts into a fight, 1.708.
+  if (
+    !declaresApi(708) &&
+    (carriesMinds708(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesMinds708(document)))
+  )
+    return "A ruleset with how much thought a creature puts into a fight (a creature's or a creature type's mind, or combat.minds) requires schemaVersion 2 and capabilityApi 1.708 or newer";
   // What is made lasting a while before it vanishes, 1.707.
   if (
     !declaresApi(707) &&

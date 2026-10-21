@@ -244,6 +244,7 @@ try {
   assertSafeLockdownHint(lockdownPage.body, "the proxied lockdown page");
   assertSafeLockdownHint(lockdownJson.body, "the proxied lockdown JSON");
   assert.doesNotMatch(lockdownPage.body, /IP_ALLOWLIST/u, "a proxied visitor gets no allowlist advice");
+  assert.doesNotMatch(lockdownJson.body, /IP_ALLOWLIST/u, "a proxied JSON visitor gets no allowlist advice");
 
   // ── Explicit opt-out for proxies that handle the login themselves ──
   process.env.REQUIRE_AUTH_FOR_LOOPBACK_PROXY = "false";

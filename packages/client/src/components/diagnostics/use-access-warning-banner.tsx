@@ -29,7 +29,7 @@ export function useAccessStatus() {
     retry: false,
     staleTime: 5 * 60_000,
     // Env edits apply without a restart, so keep the mounted banner current.
-    refetchInterval: 60_000,
+    refetchInterval: 5 * 60_000,
     refetchOnMount: "always",
   });
 }

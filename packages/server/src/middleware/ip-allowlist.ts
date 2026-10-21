@@ -514,7 +514,8 @@ function hasProxyForwardingHeaders(request: Pick<FastifyRequest, "headers">): bo
 /**
  * A browser on this computer addresses Marinara by a loopback name. A loopback socket that
  * announces any other Host (a domain or a LAN address) was relayed by a local proxy or tunnel,
- * even when that proxy adds no forwarding headers.
+ * even when that proxy adds no forwarding headers. A Docker gateway peer that
+ * names another Host is relayed too.
  */
 function hasRelayedHost(request: Pick<FastifyRequest, "headers">): boolean {
   const hostname = parseRequestHostname(

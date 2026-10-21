@@ -12,7 +12,7 @@ export interface AccessFacts {
   loopbackIp: boolean;
   /** Request carries reverse-proxy forwarding headers. */
   forwardingHeaders: boolean;
-  /** Loopback socket, but the Host header names another client-facing host. */
+  /** The Host header names another client-facing host (loopback or Docker peer). */
   relayedHost: boolean;
   /** Request arrived over HTTP/1.0, which browsers never use but default reverse proxies do. */
   http10: boolean;
@@ -80,18 +80,15 @@ export interface AccessPolicy {
   reason: AccessReason;
 }
 
-/** A loopback peer that relays a remote client (forwarding headers or relayed Host) counts as remote. */
+/** A loopback peer that relays a remote client (forwarding headers, relayed Host or HTTP/1.0) counts as remote. */
 export function isForwardedLoopbackPeer(loopbackIp: boolean, relayed: boolean, proxyAuthRequired: boolean): boolean {
   return loopbackIp && relayed && proxyAuthRequired;
 }
 
 export function evaluateAccessPolicy(f: AccessFacts): AccessPolicy {
   const { config } = f;
-  const forwardedLoopback = isForwardedLoopbackPeer(
-    f.loopbackIp,
-    f.forwardingHeaders || f.relayedHost || f.http10,
-    config.loopbackProxyAuthRequired,
-  );
+  const proxied = f.forwardingHeaders || f.relayedHost || f.http10;
+  const forwardedLoopback = isForwardedLoopbackPeer(f.loopbackIp, proxied, config.loopbackProxyAuthRequired);
   const local = f.loopbackIp && !forwardedLoopback;
 
   // Docker Desktop and OrbStack show LAN clients at the gateway address, so
@@ -102,14 +99,14 @@ export function evaluateAccessPolicy(f: AccessFacts): AccessPolicy {
     config.dockerMode === "enabled"
       ? f.dockerIp || f.dockerRuntimeMatch || f.dockerCompatibilityNetwork
       : config.dockerMode === "auto" && f.dockerRuntimeMatch && !dockerAutoWithheld;
-  const dockerProxyForwarded = dockerTrusted && (f.forwardingHeaders || f.relayedHost || f.http10);
+  const dockerProxyForwarded = dockerTrusted && proxied;
   const tailscaleTrusted =
     f.tailscaleIp &&
     (config.tailscaleMode === "enabled" || (config.tailscaleMode === "auto" && f.tailscaleLocalAddress));
   // Forwarding headers on a Tailscale peer mean a proxy relays another client.
   const tailscaleProxyForwarded = tailscaleTrusted && f.forwardingHeaders;
   const trustedInterface =
-    (dockerProxyForwarded || tailscaleProxyForwarded) && config.dockerProxyAuthRequired
+    (dockerProxyForwarded && config.dockerProxyAuthRequired) || tailscaleProxyForwarded
       ? false
       : tailscaleTrusted || dockerTrusted;
 

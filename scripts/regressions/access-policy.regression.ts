@@ -159,6 +159,18 @@ try {
     false,
     "a forwarded Tailscale peer needs auth",
   );
+  assert.equal(
+    tsPeer({ host: "box.tail1234.ts.net:7860" }).trustedInterface,
+    true,
+    "a Host name alone does not end direct Tailscale trust",
+  );
+  process.env.REQUIRE_AUTH_FOR_DOCKER_PROXY = "false";
+  assert.equal(
+    tsPeer({ "x-forwarded-for": "203.0.113.66" }).trustedInterface,
+    false,
+    "REQUIRE_AUTH_FOR_DOCKER_PROXY=false does not restore trust for a forwarded Tailscale peer",
+  );
+  delete process.env.REQUIRE_AUTH_FOR_DOCKER_PROXY;
 
   const withheld = getAccessPolicy(request("192.168.215.1"), network);
   assert.equal(withheld.trustedInterface, false, "automatic Docker trust stands down once a password is set");

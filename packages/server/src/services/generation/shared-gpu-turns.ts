@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { ChatCompletionResult, ChatMessage, ChatOptions, LLMUsage } from "../llm/base-provider.js";
 import { BaseLLMProvider } from "../llm/base-provider.js";
+import { resolveGlobalMediaGenerationWaitTimeoutMs } from "../image/image-generation-queue.js";
 
 // Opt-in turn-taking for one GPU shared by a local LLM and a local image/video backend. A swapper
 // such as llama-swap unloads one to load the other, so it only sees requests: a media request
@@ -123,7 +124,25 @@ export async function runSharedGpuTurn<T>(
   const host = sharedGpuHostFor(url);
   const held = heldTurns.getStore();
   if (!host || held?.has(host)) return task();
-  const release = await acquireTurn(host, work, signal);
+  // A media request waits for its turn no longer than for a media permit, so a stalled text stream can't hold it, and
+  // the text queued behind it, forever. Text keeps waiting for the render it follows.
+  const waitMs = work === "media" ? resolveGlobalMediaGenerationWaitTimeoutMs() : Number.POSITIVE_INFINITY;
+  const deadline = Number.isFinite(waitMs) ? AbortSignal.timeout(waitMs) : null;
+  let release: () => void;
+  try {
+    release = await acquireTurn(
+      host,
+      work,
+      deadline ? (signal ? AbortSignal.any([signal, deadline]) : deadline) : signal,
+    );
+  } catch (err) {
+    if (deadline?.aborted && !signal?.aborted) {
+      throw new Error(
+        `Waited over ${Math.round(waitMs / 1000)} seconds for the shared GPU (MARINARA_SHARED_GPU_HOSTS) while text requests kept it busy`,
+      );
+    }
+    throw err;
+  }
   try {
     return await heldTurns.run(new Map([...(held ?? []), [host, work]]), task);
   } finally {

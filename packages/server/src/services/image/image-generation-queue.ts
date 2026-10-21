@@ -55,7 +55,7 @@ let warnedInvalidWaitTimeoutEnv = false;
 
 /** Bound on how long a caller may WAIT for a permit (`0` disables the bound); invalid values
  *  warn once and use the default, matching `resolveGlobalMediaGenerationLimit`. */
-function resolveGlobalMediaGenerationWaitTimeoutMs(): number {
+export function resolveGlobalMediaGenerationWaitTimeoutMs(): number {
   const raw = (process.env.MARINARA_MEDIA_GENERATION_WAIT_TIMEOUT_MS ?? "").trim();
   if (!raw) return DEFAULT_MEDIA_GENERATION_WAIT_TIMEOUT_MS;
   const value = parseStrictNonNegativeInt(raw);

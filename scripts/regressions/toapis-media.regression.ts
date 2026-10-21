@@ -309,7 +309,7 @@ try {
       false,
     );
   });
-  await check("default compatible image deadline is nonretryable too", async () => {
+  await check("custom connection image deadline is nonretryable too", async () => {
     mode = "stall";
     await assert.rejects(
       generateImage("custom", "https://toapis.com/v1", "fixture-key", "custom", {

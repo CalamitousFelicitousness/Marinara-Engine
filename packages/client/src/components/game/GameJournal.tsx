@@ -854,7 +854,7 @@ function WorldView({ chatId, turnKey }: { chatId: string; turnKey: string | null
                       {localizeUi("ui.game.worldview.clockFilled", { filled: clock.filled, segments: clock.segments })}
                     </span>
                   </div>
-                  <div>{clock.text}</div>
+                  <div className="text-white/60">{clock.text}</div>
                 </div>
               </div>
             )),

@@ -217,6 +217,13 @@ assert.deepEqual(roster, [
   { name: "Scarecrow 2", creature: "Scarecrow" },
   { name: "The Owed", creature: "The Owed" },
 ]);
+// A creature id the bestiary doesn't have is named from its entry id, never shown as the raw reference.
+assert.deepEqual(
+  storyFightRoster({ ...fight!, creatures: [{ creature: "creatures/hollow-scarecrow", count: 1 }] }).map(
+    (each) => each.name,
+  ),
+  ["Hollow scarecrow"],
+);
 // The blueprint keeps the model's own enemy where it wrote one, copies one where it did not, and never
 // keeps an enemy the story did not ask for or a stat block the model proposed instead.
 const enemies = storyFightBlueprintEnemies(

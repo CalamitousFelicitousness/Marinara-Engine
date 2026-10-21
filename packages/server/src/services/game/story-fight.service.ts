@@ -50,6 +50,11 @@ export async function storyFightOpponents(
       const entry = read?.ok ? read.entries.find((each) => each.id === entryId) : undefined;
       if (entry) labels.set(ref, entry.label);
     }
+    for (const ref of refs) {
+      if (!labels.has(ref)) {
+        logger.warn("Story fight %s names creature %s, which the game's ruleset doesn't have", fight.id, ref);
+      }
+    }
   }
   return storyFightRoster(fight, (ref) => labels.get(ref));
 }

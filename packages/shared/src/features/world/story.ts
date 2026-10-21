@@ -1126,19 +1126,28 @@ function storyActionTags(
 
 /** A story fight's opponents, one by one (1.343): each creature as many times as it counts, called by its
  *  own name in the fight (numbered when there are several), `creature` the bestiary's name for it (`label`
- *  reads an id; a creature by name is its own). */
+ *  reads an id; a creature by name is its own). An id the bestiary doesn't have is named from its entry id
+ *  ("creatures/goblin-boss" is "Goblin boss"), never shown to the player as the raw reference. */
 export function storyFightRoster(
   fight: StoryFight,
   label: (creature: string) => string | undefined = () => undefined,
 ): Array<{ name: string; creature: string }> {
   return fight.creatures.flatMap((each) => {
-    const creature = (storyIsRef(each.creature) ? label(each.creature) : undefined) ?? each.creature;
+    const creature = storyIsRef(each.creature)
+      ? (label(each.creature) ?? storyRefEntryName(each.creature))
+      : each.creature;
     const base = each.name ?? creature;
     return Array.from({ length: each.count }, (_, index) => ({
       name: each.count > 1 ? `${base} ${index + 1}` : base,
       creature,
     }));
   });
+}
+
+/** A readable name from a `catalog/entry` reference's entry id, for an entry no catalog has. */
+function storyRefEntryName(ref: string): string {
+  const words = (ref.split("/").at(-1) ?? ref).replace(/[-_]+/g, " ").trim();
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : ref;
 }
 
 /** An ending as the player is shown it (1.343). */

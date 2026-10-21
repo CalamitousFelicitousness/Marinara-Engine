@@ -4025,9 +4025,23 @@ function GameSurfaceComponent({
   );
   const storyClocks = storyJournalQuery.data?.clocks ?? [];
   const storyEnding = storyJournalQuery.data?.ending ?? null;
-  // The story's ending (Capability API 1.343), shown once per game until the player closes it.
+  // The story's ending (Capability API 1.343), shown once per game until the player closes it. The close
+  // is kept in this browser too, so reopening the game doesn't bring the ending back.
   const [storyEndingClosed, setStoryEndingClosed] = useState<string | null>(null);
   const storyEndingKey = storyEnding ? `${activeChatId}:${storyEnding.id}` : null;
+  const storyEndingClosedBefore = useMemo(
+    () => (storyEndingKey ? readIntroPresentedFlag(`story-ending-closed:${storyEndingKey}`) : false),
+    [storyEndingKey],
+  );
+  const closeStoryEnding = useCallback(() => {
+    if (!storyEndingKey) return;
+    setStoryEndingClosed(storyEndingKey);
+    try {
+      localStorage.setItem(`story-ending-closed:${storyEndingKey}`, "1");
+    } catch {
+      // Storage can be unavailable (private mode); the close still holds for this visit.
+    }
+  }, [storyEndingKey]);
   const turnStoryboardsQuery = useGameTurnStoryboards(
     activeChatId,
     latestAssistantMsg?.id,
@@ -8907,13 +8921,17 @@ function GameSurfaceComponent({
     : null;
   const experienceTrackUrl = experienceTrack ? (experienceMusic?.urls[experienceTrack] ?? null) : null;
   useEffect(() => {
-    if (!mapPackId || !experienceTrack || !experienceTrackUrl || useMusicDjPlayerMusic || replayActive) {
+    if (useMusicDjPlayerMusic || replayActive) {
+      audioManager.setExperienceMusic(null, { resume: false });
+      return;
+    }
+    if (!mapPackId || !experienceTrack || !experienceTrackUrl) {
       audioManager.setExperienceMusic(null);
       return;
     }
     audioManager.setExperienceMusic({ tag: `experience:${mapPackId}:${experienceTrack}`, url: experienceTrackUrl });
   }, [experienceTrack, experienceTrackUrl, mapPackId, replayActive, useMusicDjPlayerMusic]);
-  useEffect(() => () => audioManager.setExperienceMusic(null), []);
+  useEffect(() => () => audioManager.setExperienceMusic(null, { resume: false }), []);
   // The overworld (worldgen W8): a game with a world opens on it, and the player can switch to the scene
   // view and back. A fight, a replay and a package that draws the game itself keep their own screens.
   // A dungeon, cave or station map the Game Master opened with [map:] is shown over everything else,
@@ -13949,11 +13967,12 @@ function GameSurfaceComponent({
           open={
             storyEnding !== null &&
             storyEndingKey !== storyEndingClosed &&
+            !storyEndingClosedBefore &&
             sessionStatus !== "concluded" &&
             !replayActive &&
             !confirmEndSessionOpen
           }
-          onClose={() => setStoryEndingClosed(storyEndingKey)}
+          onClose={closeStoryEnding}
           title={storyEnding?.title ?? ""}
           width="max-w-lg"
         >
@@ -13965,7 +13984,7 @@ function GameSurfaceComponent({
             <div className="flex justify-end gap-2">
               <button
                 type="button"
-                onClick={() => setStoryEndingClosed(storyEndingKey)}
+                onClick={closeStoryEnding}
                 className="rounded-xl px-3 py-2 text-xs text-[var(--muted-foreground)] hover:bg-[var(--accent)]"
               >
                 {localizeUi("ui.game.storyEnding.keepReading")}
@@ -13973,7 +13992,7 @@ function GameSurfaceComponent({
               <button
                 type="button"
                 onClick={() => {
-                  setStoryEndingClosed(storyEndingKey);
+                  closeStoryEnding();
                   handleRequestEndSession();
                 }}
                 className="rounded-xl bg-[var(--primary)] px-3 py-2 text-xs font-medium text-[var(--primary-foreground)]"

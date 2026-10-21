@@ -13911,10 +13911,13 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                       } catch (videoErr) {
                         await videoRun.settle(false);
                         logger.warn(videoErr, "[illustrator] Clip failed");
-                        sendSseEvent(reply, {
-                          type: "video_error",
-                          data: { error: videoErr instanceof Error ? videoErr.message : String(videoErr) },
-                        });
+                        // A clip the user stopped is no failure to report.
+                        if (!agentSignal.aborted) {
+                          sendSseEvent(reply, {
+                            type: "video_error",
+                            data: { error: videoErr instanceof Error ? videoErr.message : String(videoErr) },
+                          });
+                        }
                       }
                     })(),
                   );
@@ -14371,10 +14374,12 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                         } catch (videoErr) {
                           await videoRun.settle(false);
                           logger.warn(videoErr, "[illustrator] Generated video failed");
-                          sendSseEvent(reply, {
-                            type: "video_error",
-                            data: { error: videoErr instanceof Error ? videoErr.message : String(videoErr) },
-                          });
+                          if (!agentSignal.aborted) {
+                            sendSseEvent(reply, {
+                              type: "video_error",
+                              data: { error: videoErr instanceof Error ? videoErr.message : String(videoErr) },
+                            });
+                          }
                           // Clips only: a failed clip still leaves its picture in the reply.
                           await showPicturesInstead();
                         }

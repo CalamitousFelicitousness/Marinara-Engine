@@ -4165,6 +4165,8 @@ export function useGenerate() {
             case "video_error": {
               const errData = event.data as { error: string };
               console.warn("[video] Generation failed:", errData.error);
+              // The retry made no clip, so it must not end with a success notice.
+              hasError = true;
               toast.error(translate("generation.video.failed", { error: errData.error }));
               break;
             }

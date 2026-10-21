@@ -86,7 +86,14 @@ In a Roleplay chat, **Chat Settings**, **Agents**, **Illustrator** has an **Illu
 
 Clips use the **Video Connection** under **Scene Videos**, and each one is a video request. Without a working video connection, Illustrator makes pictures instead, even with **Clips only**. Custom agents that create images follow the same setting.
 
-**Video Run Interval**, shown once Illustrator makes clips, is how many user and assistant messages must pass after one of these clips before the next. It is separate from the **Image Run Interval**, which still decides how often Illustrator makes pictures. With **Clips only**, every Illustrator run is a clip, so the Video Run Interval decides how often Illustrator runs and the Image Run Interval is hidden. A chat with no value uses the **Video Run Interval** on the Illustrator card's **Open Setup** screen, and otherwise 5. **0** stops the clips Illustrator makes on its own, including clips for the pictures the storyteller asks for with `[illustrate]`; those get their picture instead. One reply gets at most **Videos per reply** clips (under **Settings**, **Generations**, **Video Generation**). You can still animate a picture from the Gallery, and with **Clips only** a message's **Illustrate** button makes a clip. Swiping a reply that got a clip counts as a new reply, so the new swipe can get its own clip, and the earlier swipe keeps its clip.
+**Video Run Interval**, shown once Illustrator makes clips, is how many user and assistant messages must pass after one of these clips before the next. It is separate from the **Image Run Interval**, which still decides how often Illustrator makes pictures.
+
+- **Clips only**: every Illustrator run is a clip. The Video Run Interval decides how often Illustrator runs, and the Image Run Interval is hidden.
+- **Default**: a chat with no value uses the **Video Run Interval** on the Illustrator card's **Open Setup** screen. Without one, it is 5.
+- **0**: Illustrator makes no clips on its own. This includes clips for the pictures the storyteller asks for with `[illustrate]`; those get their picture instead.
+- **Limit**: one reply gets at most **Videos per reply** clips (under **Settings**, **Generations**, **Video Generation**).
+- **Manual clips**: you can still animate a picture from the Gallery. With **Clips only**, a message's **Illustrate** button makes a clip.
+- **Swipes**: swiping a reply that got a clip counts as a new reply. The new swipe can get its own clip, and the earlier swipe keeps its clip.
 
 **First frame**, shown once Illustrator makes clips, decides what every clip Illustrator makes starts from: a new Illustrator picture, the named character's avatar or sprite, the picture with the avatar as fallback, or no picture at all. It is the same setting Conversation chats use for video messages.
 

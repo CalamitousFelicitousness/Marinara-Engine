@@ -342,6 +342,7 @@ async function fitVideoContext(
       "Keep who is in it, what they wear and do, the setting, the camera, and any spoken lines. " +
       "Reply with the shortened description only.";
     logDebugOverride(debugOverrideEnabled, "[debug/conversation/video] shorten-context system:\n%s", system);
+    logDebugOverride(debugOverrideEnabled, "[debug/conversation/video] shorten-context user:\n%s", context);
     const result = await promptRuntime.provider.chatComplete(
       [
         { role: "system", content: system },

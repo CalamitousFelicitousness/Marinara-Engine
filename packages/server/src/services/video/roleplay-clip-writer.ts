@@ -121,6 +121,8 @@ export async function writeRoleplayClipDirection(
       [videoConn.videoPromptInstructions],
     );
   } catch (err) {
+    // A Stop is a cancellation, not a failed plan.
+    if (args.signal?.aborted) throw err;
     logger.warn(err, "[roleplay-clip-writer] Failed to write a clip for chat %s", args.chat.id);
     throw new ChatVideoError(
       502,

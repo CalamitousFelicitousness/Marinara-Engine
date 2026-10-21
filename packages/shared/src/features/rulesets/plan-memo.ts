@@ -19,6 +19,19 @@ export function withRulesetPlanMemo<T>(plan: () => T): T {
   }
 }
 
+/** Runs `plan` in a pass of its own, whatever pass is open, and goes back to that one after: for a
+ *  read made as things would stand otherwise (1.591's defiance), which the open pass's answers would
+ *  get wrong. */
+export function withOwnRulesetPlanMemo<T>(plan: () => T): T {
+  const outer = pass;
+  pass = new Map();
+  try {
+    return plan();
+  } finally {
+    pass = outer;
+  }
+}
+
 /** `make()`, remembered under `keys` while a planning pass is open. */
 export function rulesetPlanMemo<T>(keys: readonly unknown[], make: () => T): T {
   if (!pass) return make();

@@ -62,7 +62,7 @@ import {
 } from "../rulesets/check-effects.js";
 import { rulesetItemGateDifficulty, rulesetItemGateLabel } from "../rulesets/item-book.js";
 import { rulesetCatalogEntriesByRef } from "../rulesets/scaled-rows.js";
-import { rulesetPlanMemo } from "../rulesets/plan-memo.js";
+import { rulesetPlanMemo, withRulesetPlanMemo } from "../rulesets/plan-memo.js";
 import {
   lookupStepTable,
   resolveRulesetValueRef,
@@ -777,12 +777,14 @@ export function rulesetActiveConditions(
   rawLevels = false,
 ): RulesetActiveCondition[] {
   // Once a planning pass (see `withRulesetPlanMemo`) for where they stand, a fresh list every time.
-  return [
+  // A read on its own is a pass of its own: every level it reaches asks the holder's immunities, which
+  // read its conditions again, and each of those read the same sheet.
+  return withRulesetPlanMemo(() => [
     ...rulesetPlanMemo(
       ["rulesetActiveConditions", definition, combat, combatant, state, rawLevels, combatant.x, combatant.y],
       () => activeConditions(definition, combat, combatant, state, rawLevels),
     ),
-  ];
+  ]);
 }
 
 function activeConditions(

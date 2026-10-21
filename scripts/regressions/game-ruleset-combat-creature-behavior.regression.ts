@@ -210,6 +210,12 @@ try {
     const feature = { ...brute.actions[0]!, id: "second_wind", catalog: "features", damage: undefined };
     brute.actions = [...brute.actions, feature];
     assert.equal(rulesetCombatantRole(brute), "bruiser", "a catalog feature");
+    // Nor a spell only a condition would give it: 5e's Potion of Animal Friendship,
+    // on every combatant's list and offered only while drunk.
+    const potion = { ...feature, id: "granted:animal_friend:spells/animal-friendship", components: ["verbal"] };
+    brute.actions = [...brute.actions, { ...potion, whileHolds: "animal_friend", applies: [{ condition: "charmed" }] }];
+    assert.equal(rulesetCombatantRole(brute), "bruiser", "a spell a potion would give");
+    brute.actions = brute.actions.filter((action) => action.id !== potion.id);
     brute.actions = [...brute.actions, { ...feature, id: "bolt_spell", components: ["verbal"] }];
     assert.equal(rulesetCombatantRole(brute), "spellcaster", "a spell cast with words");
   }

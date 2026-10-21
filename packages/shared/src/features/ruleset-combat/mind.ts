@@ -80,7 +80,9 @@ export function rulesetActionIsSpell(action: RulesetCombatant["actions"][number]
  * one to hit a `bulwark`, and anybody else a `bruiser`.
  */
 export function rulesetCombatantRole(combatant: RulesetCombatant): CombatRole {
-  const actions = combatant.actions;
+  // Not what a condition would give it: those are on every list, offered only while held, and are no
+  // part of what it is (5e's Potion of Animal Friendship would make everybody a controller).
+  const actions = combatant.actions.filter((action) => !action.whileHolds);
   if (actions.some((action) => action.heal && action.targets.side !== "self")) return "supporter";
   const spells = actions.filter(rulesetActionIsSpell);
   if (spells.length > 0)

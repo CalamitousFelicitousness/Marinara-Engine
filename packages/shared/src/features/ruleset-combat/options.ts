@@ -3,6 +3,7 @@
 // computes it.
 
 import { rulesetStepAverageTimes } from "./creatures.js";
+import { withOwnRulesetPlanMemo, withRulesetPlanMemo } from "../rulesets/plan-memo.js";
 import { rulesetEntryIcons } from "../rulesets/art-icons.js";
 import type {
   RulesetCombat,
@@ -4777,6 +4778,16 @@ export function rulesetCombatOptions(
   state: RulesetEncounterState,
   actorId: string,
 ): RulesetCombatOption[] {
+  // One planning pass: nothing changes while a menu is worked out, and every sheet on the board is
+  // read for every option and target, which worked each one out afresh thousands of times a menu.
+  return withRulesetPlanMemo(() => combatOptions(definition, state, actorId));
+}
+
+function combatOptions(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  actorId: string,
+): RulesetCombatOption[] {
   rulesetNoteFight(state);
   const options = commandedOptions(definition, state, actorId);
   // What a command its actor may break at a cost stops is offered too (1.591), marked with the
@@ -4786,14 +4797,19 @@ export function rulesetCombatOptions(
   if (!actor || !combat || rulesetDefiance()) return options;
   const defiable = rulesetDefiableConditions(definition, combat, actor, state);
   if (defiable.length === 0) return options;
-  const freed = rulesetDefying(actorId, defiable, () => commandedOptions(definition, state, actorId));
+  // Read as it stands with them broken, so in a pass of its own: what is on whom changes with it.
+  const freed = rulesetDefying(actorId, defiable, () =>
+    withOwnRulesetPlanMemo(() => commandedOptions(definition, state, actorId)),
+  );
   const normal = new Map(options.map((option) => [option.id, option]));
   // Which of them each is broken by alone, or all of them where it takes more than one.
   let each: Array<[string, RulesetCombatOption[]]> | undefined;
   const brokenBy = (has: (options: RulesetCombatOption[]) => boolean): string[] => {
     each ??= defiable.map((condition) => [
       condition,
-      rulesetDefying(actorId, [condition], () => commandedOptions(definition, state, actorId)),
+      rulesetDefying(actorId, [condition], () =>
+        withOwnRulesetPlanMemo(() => commandedOptions(definition, state, actorId)),
+      ),
     ]);
     const by = each.flatMap(([condition, list]) => (has(list) ? [condition] : []));
     return by.length > 0 ? by : defiable;
@@ -5890,6 +5906,15 @@ export const RULESET_PASS_OPTION = "pass";
  * legality of its own.
  */
 export function rulesetWindowOptions(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  actorId: string,
+): RulesetCombatOption[] {
+  // One planning pass, as a turn's menu is.
+  return withRulesetPlanMemo(() => windowOptions(definition, state, actorId));
+}
+
+function windowOptions(
   definition: RulesetDefinition,
   state: RulesetEncounterState,
   actorId: string,

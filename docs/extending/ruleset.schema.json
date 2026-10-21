@@ -13842,7 +13842,7 @@
                       "pattern": "^[a-z][a-z0-9_]*$"
                     },
                     "minItems": 1,
-                    "maxItems": 24
+                    "maxItems": 32
                   },
                   "budgets": {
                     "type": "object",
@@ -14732,13 +14732,13 @@
                       "min": {
                         "type": "integer",
                         "minimum": 0,
-                        "maximum": 40,
+                        "maximum": 60,
                         "default": 1
                       },
                       "max": {
                         "type": "integer",
                         "minimum": 1,
-                        "maximum": 40,
+                        "maximum": 60,
                         "default": 1
                       },
                       "field": {
@@ -23249,7 +23249,7 @@
                 ]
               },
               "minItems": 1,
-              "maxItems": 24
+              "maxItems": 32
             },
             "ratingTiers": {
               "type": "array",
@@ -26684,7 +26684,7 @@
                       "pattern": "^[a-z][a-z0-9_]*$"
                     },
                     "minItems": 1,
-                    "maxItems": 24
+                    "maxItems": 32
                   },
                   "budgets": {
                     "type": "object",
@@ -27574,13 +27574,13 @@
                       "min": {
                         "type": "integer",
                         "minimum": 0,
-                        "maximum": 40,
+                        "maximum": 60,
                         "default": 1
                       },
                       "max": {
                         "type": "integer",
                         "minimum": 1,
-                        "maximum": 40,
+                        "maximum": 60,
                         "default": 1
                       },
                       "field": {
@@ -36091,7 +36091,7 @@
                 ]
               },
               "minItems": 1,
-              "maxItems": 24
+              "maxItems": 32
             },
             "ratingTiers": {
               "type": "array",

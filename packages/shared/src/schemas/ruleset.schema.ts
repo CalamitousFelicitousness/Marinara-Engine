@@ -1430,8 +1430,12 @@ const sheetMigrationSchema = z
 // ── The guided builder (Capability API 1.86) ──
 
 /** How many steps one guided builder may have. */
-export const RULESET_BUILDER_STEPS_MAX = 24;
+export const RULESET_BUILDER_STEPS_MAX = 32;
+export const RULESET_BUILDER_STEPS_MAX_BEFORE_1715 = 24;
 export const RULESET_BUILDER_STEPS_MAX_BEFORE_1107 = 16;
+/** How many entries one catalog step may ask for or take (60 from Capability API 1.715, 40 before). */
+export const RULESET_BUILDER_CATALOG_PICKS_MAX = 60;
+export const RULESET_BUILDER_CATALOG_PICKS_MAX_BEFORE_1715 = 40;
 
 /** Point buy: every score a player may buy and what it costs, lowest score first. The lowest is
  *  where every score starts, and the highest the most one score may be bought up to. */
@@ -1794,8 +1798,8 @@ const builderStepSchema = z.discriminatedUnion("kind", [
       /** A catalog of rows whose entries are offered as cards. */
       catalog: sheetId,
       /** How many entries the step asks for, and at most takes. */
-      min: z.number().int().min(0).max(40).default(1),
-      max: z.number().int().min(1).max(40).default(1),
+      min: z.number().int().min(0).max(RULESET_BUILDER_CATALOG_PICKS_MAX).default(1),
+      max: z.number().int().min(1).max(RULESET_BUILDER_CATALOG_PICKS_MAX).default(1),
       /** A text or enum field the picked entries' labels are written to (a race, a class). */
       field: sheetId.optional(),
       /** Values written onto every row this step adds (1.108). Later edits remain the player's.

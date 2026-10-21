@@ -42,6 +42,8 @@ import {
   RULESET_COMBAT_SENSES_MAX_BEFORE_1690,
   RULESET_FIELDS_MAX_BEFORE_1203,
   RULESET_BUILDER_STEPS_MAX_BEFORE_1107,
+  RULESET_BUILDER_STEPS_MAX_BEFORE_1715,
+  RULESET_BUILDER_CATALOG_PICKS_MAX_BEFORE_1715,
   RULESET_COMBAT_MODIFIER_TARGETS,
   type RulesetCatalogItem,
 } from "@marinara-engine/shared";
@@ -13072,6 +13074,23 @@ export function getCapabilityPackageInstallIssue(
   if (!declaresApi(111) && Array.isArray(derivedValues) && derivedValues.length > RULESET_DERIVED_MAX_BEFORE_1106) {
     return `A ruleset with more than ${RULESET_DERIVED_MAX_BEFORE_1106} derived values requires schemaVersion 2 and capabilityApi 1.111 or newer`;
   }
+  // More builder steps and bigger catalog steps again, 1.715: a wizard's own spellbook step, every
+  // spell of the SRD's 20th level, and the mark step after it.
+  if (
+    !declaresApi(715) &&
+    Array.isArray(countSteps) &&
+    (countSteps.length > RULESET_BUILDER_STEPS_MAX_BEFORE_1715 ||
+      countSteps.some((value) => {
+        const step = plainRecord(value);
+        return (
+          step?.kind === "catalog" &&
+          [step.min, step.max].some(
+            (count) => typeof count === "number" && count > RULESET_BUILDER_CATALOG_PICKS_MAX_BEFORE_1715,
+          )
+        );
+      }))
+  )
+    return `A ruleset with more than ${RULESET_BUILDER_STEPS_MAX_BEFORE_1715} builder steps, or a catalog step that asks for or takes more than ${RULESET_BUILDER_CATALOG_PICKS_MAX_BEFORE_1715} entries, requires schemaVersion 2 and capabilityApi 1.715 or newer`;
   // More builder steps, 1.112: an older Engine refused a builder with more than 16.
   if (!declaresApi(112) && Array.isArray(countSteps) && countSteps.length > RULESET_BUILDER_STEPS_MAX_BEFORE_1107) {
     return `A ruleset with more than ${RULESET_BUILDER_STEPS_MAX_BEFORE_1107} builder steps requires schemaVersion 2 and capabilityApi 1.112 or newer`;

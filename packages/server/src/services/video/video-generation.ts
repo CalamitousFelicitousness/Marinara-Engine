@@ -1292,7 +1292,7 @@ async function generateSeedanceVideo(
   apiKey: string,
   request: VideoGenerationRequest,
 ): Promise<VideoGenerationResult> {
-  if (isToAPIsMediaUrl(baseUrl)) return generateToAPIsVideo(baseUrl, apiKey, request);
+  if (isToAPIsMediaUrl(baseUrl)) return generateToAPIsVideo(baseUrl, apiKey, request, MAX_VIDEO_RESPONSE_BYTES);
   if (!apiKey.trim()) throw new Error("Seedance video generation requires a Seedance API key");
   const model = request.model?.trim() || DEFAULT_SEEDANCE_VIDEO_MODEL;
   const startUrl = buildSeedanceUrl(baseUrl, "v1/videos/generations");

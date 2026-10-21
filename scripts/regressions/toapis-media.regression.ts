@@ -7,6 +7,8 @@ import { join } from "node:path";
 process.env.TOAPIS_POLL_INTERVAL_MS = "1";
 process.env.SEEDANCE_VIDEO_POLL_INTERVAL_MS = "1";
 process.env.IMAGE_GEN_TIMEOUT_MS = "1000";
+process.env.IMAGE_GEN_MAX_RESPONSE_BYTES = "1024";
+process.env.VIDEO_GEN_MAX_RESPONSE_BYTES = "1024";
 process.env.LOG_LEVEL = "silent";
 const originalFetch = globalThis.fetch;
 const originalLookup = dns.lookup;
@@ -25,6 +27,10 @@ globalThis.fetch = async (input, init) => {
   calls.push({ url: url.href, method: init?.method || "GET", headers: new Headers(init?.headers), body });
   if (url.hostname === "media.toapis.com") {
     assert.equal(new Headers(init?.headers).has("Authorization"), false, "Never leak Key to storage");
+    if (mode === "oversized-media")
+      return new Response(
+        Buffer.concat([url.pathname.endsWith(".png") ? Buffer.from(png, "base64") : mp4, Buffer.alloc(2048)]),
+      );
     return new Response(
       mode === "bad-media"
         ? Buffer.from("not media")
@@ -299,6 +305,16 @@ try {
   await check("invalid media rejected", async () => {
     mode = "bad-media";
     await assert.rejects(video(), /non-MP4/);
+  });
+  await check("image output honors the configured image response ceiling without paid fallback", async () => {
+    mode = "oversized-media";
+    await assert.rejects(image({ fallback: imageFallback }), { message: /exceeded 1024 bytes/, retryable: false });
+    assert.equal(submissions().length, 1);
+  });
+  await check("video output honors the configured video response ceiling without paid fallback", async () => {
+    mode = "oversized-media";
+    await assert.rejects(video({ fallback: videoFallback }), { message: /exceeded 1024 bytes/, retryable: false });
+    assert.equal(submissions().length, 1);
   });
   await check("image deadline never submits a paid fallback", async () => {
     mode = "stall";

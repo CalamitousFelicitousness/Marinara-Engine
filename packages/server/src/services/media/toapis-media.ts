@@ -215,11 +215,11 @@ async function runTask(
   }
 }
 
-async function download(url: string, signal?: AbortSignal): Promise<Buffer> {
+async function download(url: string, maxResponseBytes: number, signal?: AbortSignal): Promise<Buffer> {
   const response = await safeFetch(url, {
     signal,
     policy,
-    maxResponseBytes: 160 * 1024 * 1024,
+    maxResponseBytes,
     decodeCompressedResponse: true,
   });
   // Provider credentials are deliberately never forwarded to media storage.
@@ -235,6 +235,7 @@ export async function generateToAPIsImage(
   key: string,
   request: ImageGenRequest,
   references: Array<{ base64: string; mimeType: string }>,
+  maxResponseBytes: number,
 ): Promise<ImageGenResult> {
   if (!key.trim()) throw new Error("ToAPIs API key is required");
   if (request.model !== "gpt-image-2")
@@ -277,7 +278,7 @@ export async function generateToAPIsImage(
   );
   const outputUrl = await runTask(base, key, "images", body, request.signal);
   try {
-    const raw = await download(outputUrl, request.signal);
+    const raw = await download(outputUrl, maxResponseBytes, request.signal);
     const info = resolveValidatedImage(raw);
     if (!info) throw new Error("ToAPIs returned an invalid image payload");
     const ext = info.mimeType === "image/jpeg" ? "jpg" : info.mimeType.split("/")[1]!;
@@ -291,6 +292,7 @@ export async function generateToAPIsVideo(
   base: string,
   key: string,
   request: VideoGenerationRequest,
+  maxResponseBytes: number,
 ): Promise<VideoGenerationResult> {
   if (!key.trim()) throw new Error("ToAPIs API key is required");
   if (request.model !== "seedance-2-mini")
@@ -322,7 +324,7 @@ export async function generateToAPIsVideo(
   );
   const outputUrl = await runTask(base, key, "videos", body, request.signal);
   try {
-    const raw = await download(outputUrl, request.signal);
+    const raw = await download(outputUrl, maxResponseBytes, request.signal);
     if (raw.length < 12 || raw.subarray(4, 8).toString("ascii") !== "ftyp")
       throw new Error("ToAPIs returned a non-MP4 payload");
     return { base64: raw.toString("base64"), mimeType: "video/mp4", ext: "mp4" };

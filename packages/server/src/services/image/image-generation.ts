@@ -1324,6 +1324,7 @@ async function generateOpenAI(baseUrl: string, apiKey: string, request: ImageGen
       apiKey,
       { ...request, prompt: openAITextPrompt(request) },
       openAIReferenceImages(request).map(decodeReferenceImage),
+      MAX_IMAGE_RESPONSE_BYTES,
     );
   }
   const usesGptImageApi = isOpenAIGptImageModel(request.model);

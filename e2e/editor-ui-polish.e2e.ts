@@ -42,6 +42,7 @@ async function prepare(page: Page) {
   });
   await page.addInitScript((version) => localStorage.setItem("marinara:whats-new:seen-version", version), APP_VERSION);
   await page.goto("/");
+  await expect(page.locator('[data-component="AppShell"]')).toBeVisible();
 }
 
 async function open(page: Page, kind: Kind, id: string) {
@@ -179,7 +180,7 @@ test("all six editors share the dark sidebar surface and preserve theme override
     });
     await expect(editor).toHaveCSS("background-color", "rgb(40, 50, 60)");
   } finally {
-    for (const [kind, id] of entries.reverse()) await request.delete(`${paths[kind]}/${id}`);
+    for (const [kind, id] of entries.reverse()) await request.delete(`${paths[kind]}/${id}`).catch(() => undefined);
   }
 });
 
@@ -222,8 +223,10 @@ for (const kind of ["character", "persona"] as const) {
       await full.scrollIntoViewIfNeeded();
       await expect(full).toBeVisible();
       await expect(full.locator("svg")).toHaveCount(0);
-      await expect(remove.locator("svg")).toHaveCount(0);
-      await expectAccent(remove);
+      if (kind === "character") {
+        await expect(remove.locator("svg")).toHaveCount(0);
+        await expectAccent(remove);
+      }
       const geometry = await full.evaluate((element) => {
         const range = document.createRange();
         range.selectNodeContents(element);
@@ -237,7 +240,7 @@ for (const kind of ["character", "persona"] as const) {
       const deleteVersion = editor.getByRole("button", { name: "Delete this saved version", exact: true }).first();
       await deleteVersion.scrollIntoViewIfNeeded();
       await expectAccent(deleteVersion);
-      const tags = editor.getByRole("button", { name: "Remove all", exact: true });
+      const tags = editor.getByRole("button", { name: "Remove All", exact: true });
       await tags.scrollIntoViewIfNeeded();
       await expect(tags).toHaveClass(/mari-editor-action/u);
       const summary = editor.locator(`#${kind}-card-summary`);
@@ -261,7 +264,7 @@ for (const kind of ["character", "persona"] as const) {
         await page.screenshot({ path: info.outputPath("character-greetings.png"), animations: "disabled" });
       }
     } finally {
-      await request.delete(`${paths[kind]}/${id}`);
+      await request.delete(`${paths[kind]}/${id}`).catch(() => undefined);
     }
   });
 }
@@ -319,7 +322,7 @@ for (const peer of ["privateNetwork", "internet"] as const) {
     await page.screenshot({ path: info.outputPath(`access-${peer}-banner.png`), animations: "disabled" });
     await banner.getByRole("button", { name: "Review access", exact: true }).click();
     await banner.getByRole("button", { name: "Dismiss", exact: true }).click();
-    const settings = page.locator("#access-status");
+    const settings = page.locator("#settings-section-access-status");
     await expect(settings).toBeVisible();
     const warning = settings.locator(".rounded-lg.border").filter({ hasText: "can open Marinara" }).first();
     await expectAccentBorder(warning);

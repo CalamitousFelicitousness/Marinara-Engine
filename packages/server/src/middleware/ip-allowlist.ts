@@ -117,7 +117,9 @@ function parseCIDR(entry: string): CIDREntry | null {
 
     // If the original was an IPv4 CIDR (e.g. /24), shift it into the IPv6-mapped range
     const isV4 = ip.includes(".") && !ip.includes(":");
-    if (isV4 && prefixLen <= 32) {
+    if (isV4) {
+      // An IPv4 prefix above /32 is a typo; left unshifted it would match every IPv4 address.
+      if (prefixLen > 32) return null;
       prefixLen += 96; // offset into the ::ffff: prefix
     }
   }

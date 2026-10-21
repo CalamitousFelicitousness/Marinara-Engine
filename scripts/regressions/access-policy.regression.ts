@@ -126,6 +126,11 @@ try {
   assert.equal(unlisted.trustedPeer, false);
   reset();
 
+  // An IPv4 prefix above /32 is invalid, not an allow-everything entry.
+  process.env.IP_ALLOWLIST = "0.0.0.0/33";
+  assert.equal(getAccessPolicy(request("198.51.100.1")).ipAllowed, false);
+  reset();
+
   process.env.MARINARA_DOCKER = "true";
   const gateway = getAccessPolicy(request("192.168.215.1"), network);
   assert.equal(gateway.trustedInterface, true);

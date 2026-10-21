@@ -482,23 +482,24 @@ export function isTailscaleIp(ip: string): boolean {
   return matchesCIDR(bytes, TAILSCALE_CIDR);
 }
 
-// Tailscale's interface: tailscale0 on Linux, "Tailscale" on Windows, utun* on macOS, tun* on Android.
-// ponytail: macOS/Android give every VPN the same name pattern; BYPASS_AUTH_TAILSCALE=false covers other VPNs there.
-const TAILSCALE_INTERFACE_NAME =
-  process.platform === "darwin" ? /^utun\d/ : process.platform === "android" ? /^tun\d/ : /^tailscale/i;
+// Tailscale's interface: tailscale0 on Linux, "Tailscale" on Windows. macOS (utun*) and Android (tun*) give
+// every VPN the same name, so there the interface must also hold Tailscale's IPv6 range.
+const GENERIC_VPN_NAME = process.platform === "darwin" ? /^utun\d/ : process.platform === "android" ? /^tun\d/ : null;
+const TAILSCALE_INTERFACE_NAME = GENERIC_VPN_NAME ?? /^tailscale/i;
+const TAILSCALE_IPV6_CIDR = parseCIDR("fd7a:115c:a1e0::/48")!;
 
 /**
  * True when a Tailscale interface holds a 100.64.0.0/10 address — `address` itself when given.
  * Carriers use the same range for mobile data, so the address alone does not prove a tailnet.
  */
 function hasTailscaleInterfaceAddress(interfaces: ReturnType<typeof networkInterfaces>, address?: string): boolean {
-  return Object.entries(interfaces).some(
-    ([name, addresses]) =>
-      TAILSCALE_INTERFACE_NAME.test(name) &&
-      (addresses ?? []).some(
-        (a) => isTailscaleIp(a.address) && (address === undefined || matchesIp(address, a.address)),
-      ),
-  );
+  return Object.entries(interfaces).some(([name, addresses = []]) => {
+    if (!TAILSCALE_INTERFACE_NAME.test(name)) return false;
+    if (GENERIC_VPN_NAME && !addresses.some((a) => matchesCIDR(ipToBytes(a.address) ?? [], TAILSCALE_IPV6_CIDR))) {
+      return false;
+    }
+    return addresses.some((a) => isTailscaleIp(a.address) && (address === undefined || matchesIp(address, a.address)));
+  });
 }
 
 /** True if the given IP is in the Docker bridge range (172.16.0.0/12). */

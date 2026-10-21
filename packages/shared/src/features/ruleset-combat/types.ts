@@ -138,6 +138,8 @@ export interface RulesetCombatSaveEnds {
   at: "turn-end" | "turn-start" | "damaged" | "action" | "source-turn-start" | "days";
   days?: number;
   successes?: number;
+  /** With `days`, dealt to its holder's sheet on each failed day's save (1.697). */
+  harmsOnFail?: { dice?: string; flat?: number; type?: string };
   /** Or, with `dismisses` (1.430), its holder leaves the fight for good, alive. */
   failures?: { count: number; becomes?: string; dismisses?: true };
   /** Rolled only while its holder cannot see whoever put it on (1.266). */
@@ -260,7 +262,7 @@ export interface RulesetCombatApplies {
   /** A number off its applier's sheet, fixed as it goes on, for the condition's `temporary` (1.274). */
   value?: RulesetValueRef;
   /** Days it lasts, off its applier's sheet as it goes on (1.610): no clock in the fight. */
-  lastsDays?: RulesetValueRef;
+  lastsDays?: RulesetValueRef | "midnight";
   /** Put on by an item's use, it ends once that item is no longer worn (1.611). */
   whileItemWorn?: true;
   /** The inventory stack of the item whose use put it on, where `whileItemWorn` (1.611). */
@@ -1900,6 +1902,8 @@ export interface RulesetCombatAgainst {
 export interface RulesetTrackedCondition {
   /** What its `harms` have dealt in all, where its `attaches` lets go at a most (1.623). */
   harmedTotal?: number;
+  /** What of a block's health it has kept off healing (1.697), given back as it ends. */
+  keptDamage?: number;
   /** Its `harms` has dealt its once (1.509): Geas. */
   harmedOnce?: true;
   /** Its `holderDies` save has been thrown (1.524), its holder dead. */

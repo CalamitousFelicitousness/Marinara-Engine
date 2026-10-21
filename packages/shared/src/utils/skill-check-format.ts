@@ -205,6 +205,8 @@ export interface SkillCheckTagExtras {
   symbolFaces?: string[][];
   criticalSuccess?: boolean;
   criticalFailure?: boolean;
+  /** `for="climb"` (1.699): what the check was made for, which a change narrowed to it read. */
+  for?: string;
 }
 
 /** A name in `from=`: no brackets, which would end the tag, and no semicolons, which part the names. */
@@ -294,6 +296,7 @@ function serializeSkillCheckExtras(extras: SkillCheckTagExtras | undefined): str
     if (extras.darkLabel) parts.push(`darkLabel="${serializeSkillCheckAttribute(extras.darkLabel)}"`);
     if (extras.darkHighest) parts.push(`darkHighest="true"`);
   }
+  if (extras.for) parts.push(`for="${serializeSkillCheckAttribute(extras.for)}"`);
   return parts.length > 0 ? ` ${parts.join(" ")}` : "";
 }
 
@@ -329,6 +332,7 @@ export function serializeResolvedSkillCheckTag(result: SkillCheckResult, extras?
     ...(result.threshold != null ? { threshold: result.threshold } : {}),
     ...(result.who ? { who: result.who } : {}),
     ...(result.withAbility ? { with: result.withAbility } : {}),
+    ...(result.purpose ? { for: result.purpose } : {}),
     ...(result.bonusDice ? { bonus: result.bonusDice } : {}),
     ...(result.spent ? { spend: `${result.spent.pool}:${result.spent.amount}` } : {}),
     ...(result.autoSuccesses ? { auto: result.autoSuccesses } : {}),

@@ -997,6 +997,8 @@ interface RulesetDamageInput {
   seals?: true;
   /** Not even with a rest, only something that unseals (1.203): a clay golem's Slam. */
   lasting?: true;
+  /** Dealt by this condition, which keeps it off healing while it holds (1.697): Pale tincture. */
+  keptBy?: string;
   /** Passed on by a condition (1.354, 1.356), so never passed on again. */
   passedOn?: true;
   /** Neither resistance nor immunity counts against it (1.362): Overchannel's necrotic. */
@@ -1132,7 +1134,16 @@ function applyDamage(
         noteOverflow(ctx, target, over - own.temp - own.value);
         if (target.sheet) {
           if (!deferWound)
-            writeHealthLoss(ctx, target, over, input.damageType, input.seals, input.lasting, input.pool?.kind);
+            writeHealthLoss(
+              ctx,
+              target,
+              over,
+              input.damageType,
+              input.seals,
+              input.lasting,
+              input.pool?.kind,
+              input.keptBy,
+            );
         } else if (target.health) {
           const fromTemp = Math.min(target.health.temp, over);
           target.health.temp -= fromTemp;
@@ -1144,13 +1155,26 @@ function applyDamage(
     noteOverflow(ctx, target, dealt - toTemp - before.value);
     if (target.sheet) {
       if (!deferWound)
-        writeHealthLoss(ctx, target, dealt, input.damageType, input.seals, input.lasting, input.pool?.kind);
+        writeHealthLoss(
+          ctx,
+          target,
+          dealt,
+          input.damageType,
+          input.seals,
+          input.lasting,
+          input.pool?.kind,
+          input.keptBy,
+        );
     } else if (target.health) {
       target.health.temp = before.temp - toTemp;
       const value = Math.max(0, before.value - (dealt - toTemp));
       // What only a rest gives back (1.193): the points it took off, not the buffer.
-      if (input.seals) {
-        target.health.sealed = Math.min(before.max, (target.health.sealed ?? 0) + (target.health.value - value));
+      if (input.seals || input.keptBy) {
+        const sealed = Math.min(before.max, (target.health.sealed ?? 0) + (target.health.value - value));
+        // Kept off healing by the condition that dealt it until it ends (1.697).
+        const holding = input.keptBy ? target.tracked.find((one) => one.condition === input.keptBy) : undefined;
+        if (holding) holding.keptDamage = (holding.keptDamage ?? 0) + sealed - (target.health.sealed ?? 0);
+        target.health.sealed = sealed;
       }
       target.health.value = value;
     }
@@ -1797,6 +1821,8 @@ function writeHealthLoss(
   /** Not even with a rest (1.203). */
   lasting?: true,
   kind?: string,
+  /** Kept off healing by this condition while it holds (1.697). */
+  keptBy?: string,
 ): void {
   const health = ctx.combat.health;
   if (!("track" in health)) {
@@ -1806,6 +1832,7 @@ function writeHealthLoss(
       amount: dealt,
       ...(seals ? { seals } : {}),
       ...(seals && lasting ? { lasting } : {}),
+      ...(keptBy ? { keptBy } : {}),
     });
     return;
   }
@@ -3512,6 +3539,8 @@ function applyConditionId(
   // Days, off its applier's sheet (1.610): Quivering Palm's monk level.
   const days = ((ref) => {
     if (ref === undefined) return undefined;
+    // Until the next midnight (1.698): the next day that passes on its sheet.
+    if (ref === "midnight") return 1;
     const read = giver?.sheet
       ? rulesetSheetValue(ctx.definition, giver, ref)
       : typeof ref === "number"
@@ -4357,6 +4386,9 @@ function removeCondition(
   // told twice.
   if (!removed && !rulesetCombatConditions(ctx.definition, target).includes(condition)) return;
   target.tracked = target.tracked.filter((entry) => entry.condition !== condition);
+  // What it kept off a block's healing, healable again (1.697). A sheet's is given back by its sheet.
+  if (removed?.keptDamage && target.health && !target.sheet)
+    target.health.sealed = Math.max(0, (target.health.sealed ?? 0) - removed.keptDamage);
   // What was left of it, come off before it ran out (1.563): Wind Walk's cloud, for the way back.
   if (removed?.rounds && removed.rounds > 0 && reason !== "expired")
     (target.conditionLeft ??= {})[condition] = { rounds: removed.rounds, round: ctx.state.round };
@@ -4446,7 +4478,14 @@ function removeCondition(
     !target.defeated &&
     !(ending.harm.unless && rulesetTargetIs(ctx.definition, target, ending.harm.unless))
   ) {
-    conditionHarm(ctx, target, condition, removed?.source, ending.harm, 1);
+    conditionHarm(
+      ctx,
+      target,
+      condition,
+      removed?.source,
+      { ...ending.harm, ...(ending.harm.save ? { halfOnSave: ending.harm.save } : {}) },
+      1,
+    );
   }
   if (ending?.applies && !target.defeated) {
     // Ended in the middle of its holder's own turn (their own concentration broken, say), the clock
@@ -5069,7 +5108,14 @@ function conditionHarm(
   holder: RulesetCombatant,
   condition: string,
   source: string | undefined,
-  harms: { dice?: string; flat?: number; type?: string; healedOnlyByRest?: true },
+  harms: {
+    dice?: string;
+    flat?: number;
+    type?: string;
+    healedOnlyByRest?: true;
+    /** An ending's save for half (1.698), thrown as it is dealt. */
+    halfOnSave?: { save: string; difficulty: number };
+  },
   times: number,
   /** On top of its own, from the higher cost it was put on with (1.255), as many times over. */
   more?: RulesetCombatAmount,
@@ -5100,12 +5146,21 @@ function conditionHarm(
         return { rolls, flat: amount.flat, amount: sumOf(rolls) + amount.flat };
       })();
   const label = ctx.definition.sheet.live.conditions.find((one) => one.id === condition)?.label ?? condition;
+  // Saved against for half (1.698): Midnight tears' DC 17 Constitution.
+  if (harms.halfOnSave && rollSave(ctx, holder, harms.halfOnSave.save, harms.halfOnSave.difficulty, source))
+    harm.amount = Math.floor(harm.amount / 2);
   const dealt = applyDamage(ctx, holder, {
     ...(source ? { sourceId: source } : {}),
     label,
     ...(harms.type ? { damageType: harms.type } : {}),
     ...harm,
     ...(harms.healedOnlyByRest ? { seals: true as const } : {}),
+    // Kept off healing while it holds (1.697): Pale tincture. Dealt as it ends, there is nothing left to
+    // keep it.
+    ...(holder.tracked.some((one) => one.condition === condition) &&
+    ctx.combat.conditions?.some((one) => one.condition === condition && one.keepsDamage)
+      ? { keptBy: condition }
+      : {}),
   });
   afterBlow(ctx, holder, dealt, false);
   // Let go once it has dealt its most in all (1.623): a stirge full of blood.
@@ -9887,10 +9942,17 @@ export function liftRulesetFightEffects(
         const ends = entry.saveEnds;
         if (ends?.at !== "days" || !ends.days || entry.difficulty === undefined || entry.rounds !== null) continue;
         if (entry.aura || entry.kept || entry.endsAfter || entry.endsWhenHolder || entry.concentration) continue;
+        // So many made to end it, and what a failure deals (1.697), kept off healing as it says.
+        const keeps = definition.combat?.conditions?.some(
+          (one) => one.condition === entry.condition && one.keepsDamage,
+        );
         combatant.sheet.live = rulesetLiveWithDaySave(combatant.sheet.live, entry.condition, {
           save: ends.save,
           difficulty: entry.difficulty,
           every: ends.days,
+          ...(ends.successes !== undefined ? { successes: ends.successes } : {}),
+          ...(ends.harmsOnFail ? { harm: { ...ends.harmsOnFail } } : {}),
+          ...(keeps ? { keeps: true as const } : {}),
         });
       }
       // Days it lasts (1.610) go onto the sheet it stays on, to be counted as days pass.

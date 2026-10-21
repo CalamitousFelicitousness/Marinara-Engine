@@ -150,7 +150,10 @@ try {
   // ── Refusals ──
   refused(document({ save: "int_save", at: "days" }), /"days" says how often/);
   refused(document({ save: "int_save", at: "turn-end", days: 30 }), /"days" says how often/);
-  refused(document({ save: "int_save", at: "days", days: 30, successes: 2 }), /first success/);
+  refused(
+    document({ save: "int_save", at: "days", days: 30, failures: { count: 2, dismisses: true } }),
+    /ends it on its successes/,
+  );
 
   // ── The install gate ──
   {

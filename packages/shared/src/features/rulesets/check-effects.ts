@@ -356,7 +356,9 @@ export function rulesetCheckEffects(
           ? modifier.to === "saves" && about(modifier.saves ?? source.saves, save)
           : modifier.to === "checks" &&
             about(modifier.skills ?? source.skills, skill) &&
-            about(modifier.abilities, ability);
+            about(modifier.abilities, ability) &&
+            // Only a check made for one of its purposes (1.699): climbing or swimming.
+            about(modifier.for, target?.purpose);
       if (!applies || !rulesetSaveAgainstMatches(modifier.against)) continue;
       if (modifier.proficient && (skill === undefined || !trained)) continue;
       if (modifier.mode) lean(modifier.mode, source.name);

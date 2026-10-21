@@ -192,6 +192,8 @@ export interface SkillCheckRequest {
   who?: string;
   /** `with=`: roll the skill or save with another ability than its own. Ruleset games only. */
   withAbility?: string;
+  /** `for=`: what the check is made for (1.699), "climb" or "swim", for a change narrowed to it. */
+  purpose?: string;
   /** `threshold=`: the per-die target a pool check counts with, where the ruleset lets it move. */
   threshold?: number;
   /** `bonus=`: dice a pool check adds or takes, where the ruleset declares situational dice. */
@@ -723,9 +725,18 @@ export function rulesetCheckTargetFor(
   skill: string,
   who?: string,
   withAbility?: string,
+  /** What it is made for (1.699), read without case. */
+  purpose?: string,
 ): RulesetCheckTarget | null {
   const key = who ? normalizeCharacterLookupName(who) : ruleset.playerKey;
-  return matchRulesetCheckTarget(ruleset.definition, skill, withAbility, key ? ruleset.builds.get(key) : undefined);
+  const target = matchRulesetCheckTarget(
+    ruleset.definition,
+    skill,
+    withAbility,
+    key ? ruleset.builds.get(key) : undefined,
+  );
+  const named = purpose?.trim().toLowerCase();
+  return target && named ? { ...target, purpose: named } : target;
 }
 
 /** The sheet modifier a ruleset game applies for `who` (or the player) on the named check. Under
@@ -820,7 +831,7 @@ export function rulesetContextualFor(
 export function rulesetCheckThrowsTwice(ruleset: SkillCheckRulesetContext, request: SkillCheckRequest): boolean {
   const resolution = ruleset.definition.resolution;
   if (resolution.kind !== "dice-sum" || !resolution.advantage) return false;
-  const target = rulesetCheckTargetFor(ruleset, request.skill, request.who, request.withAbility);
+  const target = rulesetCheckTargetFor(ruleset, request.skill, request.who, request.withAbility, request.purpose);
   const applied = rulesetContextualFor(ruleset, target, request).map((item) => item.source);
   return rulesetCheckRollMode(request, rulesetCheckEffectsFor(ruleset, target, request.who, applied)) !== "normal";
 }
@@ -907,7 +918,7 @@ function resolveRulesetSkillCheck(
    *  every path that does not persist, which then rolls exactly as it would have with no spend. */
   onSpend?: (key: string, live: RulesetLiveState) => void,
 ): SkillCheckResult {
-  const target = rulesetCheckTargetFor(ruleset, request.skill, request.who, request.withAbility);
+  const target = rulesetCheckTargetFor(ruleset, request.skill, request.who, request.withAbility, request.purpose);
   // A check the ruleset rolls its own way (1.140): its dice and rules come from the override, its
   // sheet math from the ruleset, and `when` reads the roller's own sheet.
   const override = rulesetCheckOverride(
@@ -1132,6 +1143,8 @@ function resolveRulesetSkillCheck(
     : undefined;
   const applied = {
     ...(swapped ? { withAbility: swapped } : {}),
+    // What it was made for (1.699), kept on the record so a reload reads the same changes.
+    ...(target?.purpose ? { purpose: target.purpose } : {}),
     // Said even on a summed check, where it is also inside `modifier`: "-2 because you are Wounded"
     // is not something a player can read out of one number.
     ...(penalty !== 0 ? { penalty } : {}),
@@ -1402,7 +1415,7 @@ function rulesetVouchesFor(ruleset: SkillCheckRulesetContext, tag: SkillCheckTag
   // cannot have counted what it is not shown, and a bonus in dice has no one right number.
   const changed = rulesetCheckEffectsFor(
     ruleset,
-    rulesetCheckTargetFor(ruleset, tag.skill, tag.who, tag.withAbility),
+    rulesetCheckTargetFor(ruleset, tag.skill, tag.who, tag.withAbility, tag.purpose),
     tag.who,
   );
   if (
@@ -1678,6 +1691,7 @@ export async function resolveSkillCheckTagsInContent(
       ...(tag.threshold != null && Number.isFinite(tag.threshold) ? { threshold: tag.threshold } : {}),
       ...(tag.who ? { who: tag.who } : {}),
       ...(tag.withAbility ? { with: tag.withAbility } : {}),
+      ...(tag.purpose ? { for: tag.purpose } : {}),
       ...(tag.bonusDice != null ? { bonus: tag.bonusDice } : {}),
       ...(tag.darkDice != null ? { dark: tag.darkDice } : {}),
       ...(tag.upgrades != null ? { upgrade: tag.upgrades } : {}),
@@ -1707,6 +1721,7 @@ export async function resolveSkillCheckTagsInContent(
         preRolledD20: tag.preRolledD20,
         who: tag.who,
         withAbility: tag.withAbility,
+        ...(tag.purpose ? { purpose: tag.purpose } : {}),
         threshold: tag.threshold,
         bonusDice: tag.bonusDice,
         ...(tag.darkDice != null ? { darkDice: tag.darkDice } : {}),
@@ -2133,6 +2148,7 @@ export function boundPoolCheckRequest(tag: SkillCheckTag): SkillCheckRequest | n
     // say it applied, whether the pool serves the check or the Engine rolls it blind.
     who: tag.who,
     withAbility: tag.withAbility,
+    ...(tag.purpose ? { purpose: tag.purpose } : {}),
     threshold: tag.threshold,
     bonusDice: tag.bonusDice,
     ...(tag.darkDice != null ? { darkDice: tag.darkDice } : {}),

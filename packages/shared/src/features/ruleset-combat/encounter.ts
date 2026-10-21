@@ -1538,6 +1538,8 @@ export function rulesetConditionModifiers(
           return false;
         const skills = modifier.skills ?? entry.skills;
         if (to === "checks" && skills && !(save !== undefined && skills.includes(save))) return false;
+        // Only for a purpose the Game Master names (1.699), which none of a fight's checks has.
+        if (to === "checks" && modifier.for) return false;
         // Only a skill its holder adds their whole proficiency to (1.376): Natural Explorer.
         if (modifier.proficient && !rulesetTrainedIn(definition, combatant, save)) return false;
         if (!rulesetAbilityNarrowing(modifier, to, ability)) return false;
@@ -1789,6 +1791,8 @@ export function rulesetCheckMode(
     for (const modifier of entry.modifiers ?? []) {
       if (modifier.to !== "checks" || !modifier.mode || narrowedAway(modifier.skills ?? entry.skills)) continue;
       if (!rulesetAbilityNarrowing(modifier, "checks", ability)) continue;
+      // Only for a purpose the Game Master names (1.699).
+      if (modifier.for) continue;
       // Only in looking for anybody but whoever put it on (1.514): Enthrall.
       if (
         modifier.exceptSource &&

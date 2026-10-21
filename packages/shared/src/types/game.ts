@@ -491,6 +491,8 @@ export interface SkillCheckResult {
    * ignored. Only a ruleset game sets them.
    */
   withAbility?: string;
+  /** What the check was made for (1.699), as its tag's `for=` said. */
+  purpose?: string;
   bonusDice?: number;
   /**
    * What the roller's wound track took off this check, when the ruleset names one with

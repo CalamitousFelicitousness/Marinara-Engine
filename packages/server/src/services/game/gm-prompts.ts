@@ -1012,6 +1012,26 @@ function renderRulesetKindCheckLine(
         contextualLists.length ? ` (${contextualLists.join(", ")})` : ""
       } applies to this particular roll, add apply="Its name" to that check, several separated by ";". Name only what the situation makes apply: having it is not enough. The engine works out what it does and what it costs.`,
     );
+  // What checks are made for (1.699), where something changes only a check made for it: Gloves of
+  // Swimming and Climbing.
+  const purposes = new Set<string>();
+  const findPurposes = (value: unknown, depth: number): void => {
+    if (!value || typeof value !== "object" || depth > 40) return;
+    if (Array.isArray(value)) {
+      for (const one of value) findPurposes(one, depth + 1);
+      return;
+    }
+    const record = value as Record<string, unknown>;
+    if (record.to === "checks" && Array.isArray(record.for))
+      for (const one of record.for) if (typeof one === "string") purposes.add(one);
+    for (const one of Object.values(record)) findPurposes(one, depth + 1);
+  };
+  findPurposes(ruleset.combat?.conditions, 0);
+  findPurposes(ruleset.catalogs, 0);
+  if (purposes.size > 0)
+    effectsClause.push(
+      `When a check is made for one of these, add for="..." to it: ${[...purposes].map((one) => `"${one}"`).join(", ")}. What some characters have adds only to a check made for it.`,
+    );
   const untrainedClause =
     untrainedItems.length > 0
       ? [

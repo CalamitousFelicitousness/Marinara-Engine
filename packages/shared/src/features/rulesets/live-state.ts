@@ -108,6 +108,13 @@ export interface RulesetLiveDaySave {
   difficulty: number;
   every: number;
   waited?: number;
+  /** The saves it takes to end it (1.697), and how many have been made: Pale tincture's seven. */
+  successes?: number;
+  made?: number;
+  /** Dealt to health on each failed save (1.697), its damage kept off healing while it holds when
+   *  `keeps`. */
+  harm?: { dice?: string; flat?: number; type?: string };
+  keeps?: true;
 }
 
 /** Live state of every card, keyed by normalized name, plus RULESET_PARTY_KEY for the shared sheet. */
@@ -188,6 +195,17 @@ const liveDaySaveSchema = z
     difficulty: z.number().int().min(-100).max(1000),
     every: z.number().int().min(1).max(3650),
     waited: z.number().int().min(0).max(3650).optional(),
+    successes: z.number().int().min(1).max(10).optional(),
+    made: z.number().int().min(0).max(10).optional(),
+    harm: z
+      .object({
+        dice: z.string().min(1).max(40).optional(),
+        flat: z.number().int().min(0).max(1000).optional(),
+        type: z.string().min(1).max(40).optional(),
+      })
+      .strict()
+      .optional(),
+    keeps: z.literal(true).optional(),
   })
   .strict();
 
@@ -949,7 +967,7 @@ export function raiseRulesetLiveAbilities(
 export function rulesetLiveWithDaySave(
   stored: unknown,
   condition: string,
-  save: { save: string; difficulty: number; every: number },
+  save: Omit<RulesetLiveDaySave, "waited" | "made">,
 ): RulesetLiveState {
   const state = readStoredLiveStateAsIs(stored);
   return { ...state, daySaves: { ...state.daySaves, [condition]: { ...save } } };
@@ -1138,6 +1156,9 @@ export type RulesetSheetOp =
       seals?: true;
       /** On `damage` that `seals`: not even a rest gives it back, only something that unseals (1.203). */
       lasting?: true;
+      /** On `damage`: dealt by this condition, which keeps it off healing while it holds (1.697),
+       *  given back as it ends. */
+      keptBy?: string;
       /** On `restore`: what only a rest gives back is given back too (1.201), and then `amount` may
        *  be nothing. */
       unseals?: true;
@@ -1453,6 +1474,75 @@ export function applyRulesetSheetOp(
     );
     return `, ${pool.label}'s maximum back up by ${back}`;
   };
+  /** Damage a condition deals its holder's health as days pass (1.697), and what of it the condition
+   *  keeps off healing while it holds. Says how much it took. */
+  const dayHarm = (condition: string, harm: { dice?: string; flat?: number; type?: string }, keeps: boolean) => {
+    const rule = definition.combat?.health;
+    const pool = rule && "pool" in rule ? resolved.pools.find((entry) => entry.key === rule.pool) : undefined;
+    if (!pool) return 0;
+    const dice = harm.dice ? parseRulesetCombatDice(harm.dice) : null;
+    let amount = harm.flat ?? 0;
+    if (dice) {
+      if (roll) for (let index = 0; index < dice.count; index += 1) amount += roll(dice.sides);
+      else amount += Math.floor((dice.count * (dice.sides + 1)) / 2);
+      amount += dice.flat;
+    }
+    if (amount <= 0) return 0;
+    const stored = own(next.pools, pool.key);
+    const value = stored?.value ?? pool.value;
+    const temp = stored?.temp ?? 0;
+    const sealedBefore = stored?.sealed ?? 0;
+    const fromTemp = Math.min(temp, amount);
+    const after = Math.max(0, value - (amount - fromTemp));
+    const sealed = keeps ? Math.min(pool.max, sealedBefore + (value - after)) : sealedBefore;
+    const lasting = keeps ? Math.min(sealed, (stored?.lasting ?? 0) + (value - after)) : (stored?.lasting ?? 0);
+    setPool(pool, after, temp - fromTemp, sealed, lasting);
+    if (sealed > sealedBefore)
+      next.lowered = { ...next.lowered, [condition]: (own(next.lowered, condition) ?? 0) + sealed - sealedBefore };
+    return amount;
+  };
+  /** What a condition deals as it ends this way as days pass (1.245, 1.698), its save for half rolled
+   *  off the sheet: Midnight tears at midnight. Spared by holding what its `unless` names. Says what
+   *  happened as ", …". */
+  const endHarm = (condition: string, how: "expired" | "save"): string => {
+    const ending = definition.combat?.conditions?.find((one) => one.condition === condition)?.onEnd;
+    const harm = ending?.harm;
+    if (!harm || (ending.when && !ending.when.includes(how))) return "";
+    if (harm.unless?.holding?.some((id) => (next.conditions ?? []).includes(id))) return "";
+    const health = definition.combat?.health;
+    const pool = health && "pool" in health ? resolved.pools.find((entry) => entry.key === health.pool) : undefined;
+    if (!pool) return "";
+    let half = false;
+    let saidSave = "";
+    if (harm.save) {
+      const save = definition.sheet.saves.find((one) => one.id === harm.save!.save);
+      const modifier = save
+        ? rulesetCheckModifier(evaluateRulesetSheetLive(definition, build, next, items), {
+            type: "save",
+            id: save.id,
+            label: save.label,
+            ...(save.ability ? { ability: save.ability } : {}),
+          })
+        : 0;
+      const { dice } = definition.resolution as { dice: { count: number; sides: number } };
+      let total = modifier;
+      if (roll) for (let index = 0; index < dice.count; index += 1) total += roll(dice.sides);
+      else total += Math.floor((dice.count * (dice.sides + 1)) / 2);
+      half = total >= harm.save.difficulty;
+      saidSave = `, ${save?.label ?? harm.save.save} ${total} against ${harm.save.difficulty}${half ? " for half" : ""}`;
+    }
+    const dice = harm.dice ? parseRulesetCombatDice(harm.dice) : null;
+    let rolled = harm.flat ?? 0;
+    if (dice) {
+      if (roll) for (let index = 0; index < dice.count; index += 1) rolled += roll(dice.sides);
+      else rolled += Math.floor((dice.count * (dice.sides + 1)) / 2);
+      rolled += dice.flat;
+    }
+    const amount = half ? Math.floor(rolled / 2) : rolled;
+    const took = amount > 0 ? dayHarm(condition, { flat: amount }, false) : 0;
+    const now = own(next.pools, pool.key)?.value ?? pool.value;
+    return `${saidSave}, took ${took}${harm.type ? ` ${harm.type}` : ""} (${pool.label} ${now}/${pool.max})`;
+  };
   const done = (now: string): RulesetSheetOpResult => ({
     ok: true,
     live: normalizeLiveState(next),
@@ -1547,9 +1637,14 @@ export function applyRulesetSheetOp(
     const temp = pool.temp - fromTemp;
     const value = Math.max(0, pool.value - (op.amount - fromTemp));
     // What it took off the pool itself, not the buffer, comes back only with a rest (1.193).
-    const sealed = op.seals ? Math.min(pool.max, pool.sealed + (pool.value - value)) : pool.sealed;
-    const lasting = op.seals && op.lasting ? Math.min(sealed, pool.lasting + (pool.value - value)) : pool.lasting;
+    const kept = op.keptBy !== undefined;
+    const sealed = op.seals || kept ? Math.min(pool.max, pool.sealed + (pool.value - value)) : pool.sealed;
+    const lasting =
+      (op.seals && op.lasting) || kept ? Math.min(sealed, pool.lasting + (pool.value - value)) : pool.lasting;
     setPool(pool, value, temp, sealed, lasting);
+    // Kept off healing by the condition that dealt it (1.697), and given back as it ends.
+    if (kept && sealed > pool.sealed)
+      next.lowered = { ...next.lowered, [op.keptBy!]: (own(next.lowered, op.keptBy!) ?? 0) + sealed - pool.sealed };
     return done(poolNow(pool, value, temp));
   }
 
@@ -1662,21 +1757,53 @@ export function applyRulesetSheetOp(
           })
         : 0;
       const { dice } = definition.resolution as { dice: { count: number; sides: number } };
+      // So many made to end it (1.697), counted across the days: Pale tincture's seven.
+      const needs = owed.successes ?? 1;
+      let made = owed.made ?? 0;
       let ended = false;
+      const rolled: Array<{ total: number; success: boolean }> = [];
+      let took = 0;
       while (counted >= owed.every && !ended) {
         counted -= owed.every;
         let total = modifier;
         if (roll) for (let index = 0; index < dice.count; index += 1) total += roll(dice.sides);
         else total += Math.floor((dice.count * (dice.sides + 1)) / 2);
-        ended = total >= owed.difficulty;
+        const success = total >= owed.difficulty;
+        if (success) made += 1;
+        ended = made >= needs;
+        rolled.push({ total, success });
+        // What a failed day's save deals (1.697), kept off healing while it holds when it `keeps`.
+        if (!success && owed.harm) took += dayHarm(condition, owed.harm, owed.keeps === true);
+      }
+      const named = `${label}: ${save?.label ?? owed.save}`;
+      const health = definition.combat?.health;
+      const pool = health && "pool" in health ? resolved.pools.find((entry) => entry.key === health.pool) : undefined;
+      const hurt =
+        took > 0 && pool
+          ? `, took ${took}${owed.harm?.type ? ` ${owed.harm.type}` : ""} (${pool.label} ${own(next.pools, pool.key)?.value ?? pool.value}/${pool.max})`
+          : "";
+      const tally = needs > 1 && !ended ? ` (${made} of ${needs})` : "";
+      if (rolled.length === 1) {
+        const [one] = rolled;
         back.push(
-          `${label}: ${save?.label ?? owed.save} ${total} against ${owed.difficulty}, ${ended ? "ended" : "failed"}`,
+          `${named} ${one!.total} against ${owed.difficulty}, ${ended ? "ended" : one!.success ? "made" : "failed"}${tally}${hurt}`,
+        );
+      } else if (rolled.length > 1) {
+        // Many days at once, counted rather than each told.
+        const wins = rolled.filter((one) => one.success).length;
+        back.push(
+          `${named} against ${owed.difficulty}, ${wins} made and ${rolled.length - wins} failed${ended ? ", ended" : tally}${hurt}`,
         );
       }
       if (ended) {
         next.conditions = (next.conditions ?? []).filter((id) => id !== condition);
         delete daySaves[condition];
-      } else daySaves[condition] = { ...owed, waited: counted };
+        const restored = giveBackLowered(condition);
+        if (restored) back.push(restored.slice(2));
+        // What it leaves as a save ends it (1.698).
+        const left = endHarm(condition, "save");
+        if (left) back.push(`${label} ends${left}`);
+      } else daySaves[condition] = { ...owed, waited: counted, ...(made > 0 ? { made } : {}) };
     }
     next.daySaves = daySaves;
     // A condition that lasts so many days (1.610) comes off once they have passed.
@@ -1693,7 +1820,7 @@ export function applyRulesetSheetOp(
       delete dayClocks[condition];
       next.conditions = (next.conditions ?? []).filter((id) => id !== condition);
       const label = definition.sheet.live.conditions.find((one) => one.id === condition)?.label ?? condition;
-      back.push(`${label} ended`);
+      back.push(`${label} ended${giveBackLowered(condition)}${endHarm(condition, "expired")}`);
     }
     next.dayClocks = dayClocks;
     const days = `${op.days} ${op.days === 1 ? "day passes" : "days pass"}`;

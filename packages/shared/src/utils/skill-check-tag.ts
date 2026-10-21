@@ -94,6 +94,9 @@ export interface SkillCheckTag {
    * no ability answers to is ignored there rather than refused here.
    */
   withAbility?: string;
+  /** `for=` as the GM wrote it (1.699): what the check is made for, "climb" or "swim", for a change
+   *  narrowed to that purpose. Carried, never judged. */
+  purpose?: string;
   /**
    * `bonus=` as a whole number, when the GM wrote a readable one: dice a pool ruleset adds or
    * takes for this one check. Read like `threshold=` and held to the same rule — `Number` rather
@@ -499,6 +502,8 @@ export function parseSkillCheckTagBody(body: string): SkillCheckTag | null {
   if (who) tag.who = who.slice(0, 100);
   const withAbility = values.get("with")?.trim();
   if (withAbility) tag.withAbility = withAbility.slice(0, 100);
+  const purpose = values.get("for")?.trim();
+  if (purpose) tag.purpose = purpose.slice(0, 40);
   if (values.has("pool")) {
     tag.poolDeclared = true;
     tag.poolRaw = values.get("pool")!;

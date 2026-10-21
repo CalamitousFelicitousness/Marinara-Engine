@@ -2924,6 +2924,7 @@ export interface RulesetConditionEndHarm {
   flat?: number;
   type?: string;
   unless?: RulesetTargetIs;
+  save?: { save: string; difficulty: number; onSuccess: "half" };
 }
 const conditionEndHarmSchema: z.ZodType<RulesetConditionEndHarm, z.ZodTypeDef, unknown> = z
   .object({
@@ -2931,6 +2932,16 @@ const conditionEndHarmSchema: z.ZodType<RulesetConditionEndHarm, z.ZodTypeDef, u
     flat: z.number().int().min(0).max(1000).optional(),
     type: promptSafeText(40).optional(),
     unless: z.lazy(() => targetIsSchema).optional(),
+    /** A save its holder makes as it is dealt, for half on a success (Capability API 1.698): 5e's
+     *  Midnight tears, DC 17 Constitution for half of 9d6. */
+    save: z
+      .object({
+        save: sheetId,
+        difficulty: z.number().int().min(0).max(1000),
+        onSuccess: z.literal("half"),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .refine((harm) => harm.dice !== undefined || harm.flat !== undefined, {
@@ -5283,6 +5294,7 @@ export interface RulesetCatalogSaveEnds {
   at: "turn-end" | "turn-start" | "damaged" | "action" | "source-turn-start" | "days";
   days?: number;
   successes?: number;
+  harmsOnFail?: { dice?: string; flat?: number; type?: string };
   failures?: { count: number; becomes?: string; dismisses?: true };
   unseen?: true;
   seenLean?: "advantage" | "disadvantage";
@@ -5320,7 +5332,7 @@ export interface RulesetCatalogApplies {
   raisesMax?: { dice?: string; flat?: number; perStep?: number };
   destroysUpTo?: RulesetDestroysUpTo[];
   value?: RulesetValueRef;
-  lastsDays?: RulesetValueRef;
+  lastsDays?: RulesetValueRef | "midnight";
   whileItemWorn?: true;
   targetHolds?: RulesetTargetHolds;
   endsOnTarget?: string[];
@@ -5396,8 +5408,22 @@ const catalogAppliesSchema: z.ZodType<RulesetCatalogApplies, z.ZodTypeDef, unkno
         at: z.enum(["turn-end", "turn-start", "damaged", "action", "source-turn-start", "days"]),
         days: z.number().int().min(1).max(3650).optional(),
         /** It takes this many successes, counted over the turns, to end it (Capability API 1.258):
-         *  5e's Contagion, three. */
+         *  5e's Contagion, three. With `at: "days"` (Capability API 1.697), counted over the days and
+         *  kept on the sheet: Pale tincture's seven. */
         successes: z.number().int().min(2).max(10).optional(),
+        /** With `at: "days"` (Capability API 1.697), dealt to its holder's sheet on each failed day's
+         *  save: Pale tincture's 1d6 poison. */
+        harmsOnFail: z
+          .object({
+            dice: catalogDice.optional(),
+            flat: z.number().int().min(0).max(1000).optional(),
+            type: promptSafeText(40).optional(),
+          })
+          .strict()
+          .refine((harm) => harm.dice !== undefined || harm.flat !== undefined, {
+            message: "What it harms with names dice, a flat amount, or both",
+          })
+          .optional(),
         /** After this many failures it `becomes` another condition, put on in its place with no
          *  clock, and no more saves are made (Capability API 1.258): Contagion's disease setting in
          *  after three, Flesh to Stone's petrification. */
@@ -5436,9 +5462,13 @@ const catalogAppliesSchema: z.ZodType<RulesetCatalogApplies, z.ZodTypeDef, unkno
         message: '"days" says how often a save "at": "days" is made, and goes only with it',
         path: ["days"],
       })
-      .refine((ends) => ends.at !== "days" || (ends.successes === undefined && ends.failures === undefined), {
-        message: 'A save made as days pass ends it on its first success: no "successes" or "failures"',
+      .refine((ends) => ends.at !== "days" || ends.failures === undefined, {
+        message: 'A save made as days pass ends it on its successes: no "failures"',
         path: ["at"],
+      })
+      .refine((ends) => ends.harmsOnFail === undefined || ends.at === "days", {
+        message: '"harmsOnFail" is dealt as a failed day\'s save is: it goes with "at": "days"',
+        path: ["harmsOnFail"],
       })
       .optional(),
     /** It comes off after the first of these that happens to its holder: their own next attack roll,
@@ -5559,8 +5589,11 @@ const catalogAppliesSchema: z.ZodType<RulesetCatalogApplies, z.ZodTypeDef, unkno
     /** With `duration: "until-dispelled"`, it lasts this many days, read off the sheet of whoever
      *  applies it as it goes on (Capability API 1.610): no clock in the fight, and on a sheet it is
      *  still on as the fight ends, counted down by the days that pass. 5e's Quivering Palm, "a
-     *  number of days equal to your monk level". */
-    lastsDays: (rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>).optional(),
+     *  number of days equal to your monk level". Or `"midnight"` (Capability API 1.698): until the
+     *  next midnight, the sheet's next `pass` of a day, 5e's Midnight tears. */
+    lastsDays: z
+      .union([z.literal("midnight"), rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>])
+      .optional(),
     /** Put on by an item's use, it ends once that item is no longer worn (Capability API 1.611): 5e's
      *  Armor of Invulnerability, "for 10 minutes or until you are no longer wearing the armor". */
     whileItemWorn: z.literal(true).optional(),
@@ -12381,6 +12414,11 @@ const combatModifierBaseSchema = z
      *  (Capability API 1.247): 5e's Brutal Critical and Savage Attacks. Damage dealt only. */
     criticalDice: z.number().int().min(1).max(6).optional(),
     skills: z.array(sheetId).min(1).max(24).optional(),
+    /** Only a check made for one of these purposes (Capability API 1.699), as the Game Master's check
+     *  tag names it (`for="climb"`): 5e's Gloves of Swimming and Climbing, +5 to Strength (Athletics)
+     *  checks made to climb or swim, `["climb", "swim"]`, never a grapple or a shove. A fight's own
+     *  checks are made for no such purpose. */
+    for: z.array(sheetId).min(1).max(8).optional(),
     saves: z.array(sheetId).min(1).max(12).optional(),
     /** What this save is against (Capability API 1.134): any named condition, damage type or
      *  magic qualifies; `saves` still narrows which save. Nothing matches a save with no source. */
@@ -12468,6 +12506,7 @@ const combatModifierBaseSchema = z
     if (modifier.orDamage && (modifier.to !== "attacks" || !modifier.rescue))
       add("orDamage", '"orDamage" moves a held-back change to attacks ("rescue") onto the damage');
     if (modifier.proficient && modifier.to !== "checks") add("proficient", '"proficient" narrows checks');
+    if (modifier.for !== undefined && modifier.to !== "checks") add("for", '"for" narrows checks to their purpose');
     if (modifier.atLeast !== undefined) {
       if (modifier.to !== "defense") add("atLeast", '"atLeast" is a floor under defense only');
       if (
@@ -14399,6 +14438,11 @@ const combatConditionSchema = z
     /** What it leaves behind is on a clock of its holder's turns: nothing rolls a save against it (it
      *  has no difficulty) and an instant one would never come off. */
     onEnd: conditionOnEndSchema.optional(),
+    /** The damage it deals itself (its `harms`, and what a save made as days pass harms on a
+     *  failure) cannot be healed while it holds (Capability API 1.697): it lowers its
+     *  holder's health maximum, given back as it ends. 5e's Pale tincture, "Until this poison ends,
+     *  the damage the poison deals can't be healed by any means". */
+    keepsDamage: z.literal(true).optional(),
     /** As its holder first sees another creature (Capability API 1.585), it gives way to what
      *  `applies` puts on, with that creature its source: the nearest, where they see several at once.
      *  5e's Philter of Love, "The next time you see a creature within 10 minutes ... you become
@@ -19162,6 +19206,10 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         issue([...path, "onEnd", "harm", "type"], `Unknown damage type "${endType}"`);
       }
       targetIsIssues(def, entry.onEnd?.harm?.unless, [...path, "onEnd", "harm", "unless"], issue);
+      // Saved against for half (1.698), with a save the sheet has.
+      const endSave = entry.onEnd?.harm?.save?.save;
+      if (endSave && !def.sheet.saves.some((one) => one.id === endSave))
+        issue([...path, "onEnd", "harm", "save", "save"], `Unknown save "${endSave}"`);
       // Inside (1.352): room by the fight's own sizes, a save the sheet has, and somebody to lay prone.
       if (entry.inside && entry.inside !== true) {
         insideRoomIssues(def, entry.inside.room, [...path, "inside", "room"], issue);
@@ -23799,6 +23847,10 @@ export function rulesetCatalogEntryIssues(
       if (applies.saveEnds && !saves.has(applies.saveEnds.save)) {
         add([...path, "saveEnds", "save"], `Unknown save "${applies.saveEnds.save}"`);
       }
+      // What a failed day's save deals (1.697), of the ruleset's damage types.
+      const dayHarm = applies.saveEnds?.harmsOnFail?.type;
+      if (dayHarm && declaredTypes && !declaredTypes.has(dayHarm.trim().toLowerCase()))
+        add([...path, "saveEnds", "harmsOnFail", "type"], `Unknown damage type "${dayHarm}"`);
       const becomes = applies.saveEnds?.failures?.becomes;
       if (becomes !== undefined && !liveConditions.has(becomes)) {
         add([...path, "saveEnds", "failures", "becomes"], `Unknown condition "${becomes}"`);

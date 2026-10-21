@@ -44,6 +44,7 @@ import {
   raiseRulesetLiveAbilities,
   readRulesetLive,
   readRulesetWoundPenalty,
+  rulesetLiveWithDayClock,
   rulesetLiveWithWornFrom,
   rulesetItemNeedsMet,
   rulesetRecoverPicks,
@@ -322,6 +323,11 @@ export function useRulesetItemOutsideFight(input: {
       const needs = gameInventoryWearNeeds(item);
       if (applies.whileItemWorn && (needs.equipped || needs.bound))
         live = rulesetLiveWithWornFrom(live, applies.condition, stack.id);
+      // Its days (1.610), off its user's sheet, or until midnight (1.698), counted as days pass.
+      if (applies.lastsDays !== undefined) {
+        const days = applies.lastsDays === "midnight" ? 1 : sheetValue(applies.lastsDays);
+        if (days >= 1) live = rulesetLiveWithDayClock(live, applies.condition, days);
+      }
       const label =
         definition.sheet.live.conditions.find((condition) => condition.id === applies.condition)?.label ??
         applies.condition;

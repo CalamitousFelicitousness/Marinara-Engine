@@ -918,6 +918,9 @@ interface RulesetTrainedCheckTarget {
   withAbility?: string;
   /** A row of a list that is a check of its own (1.161), rather than a skill the sheet declares. */
   row?: true;
+  /** What the check is made for, as the Game Master's tag says (`for="climb"`, 1.699), for a change
+   *  narrowed to it. */
+  purpose?: string;
 }
 
 /** A raw ability check. `withAbility` is the second ability a pool ruleset with
@@ -927,6 +930,8 @@ interface RulesetAbilityCheckTarget {
   id: string;
   label: string;
   withAbility?: string;
+  /** What the check is made for (1.699). */
+  purpose?: string;
 }
 
 export type RulesetCheckTarget = RulesetTrainedCheckTarget | RulesetAbilityCheckTarget;

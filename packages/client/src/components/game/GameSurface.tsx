@@ -5153,6 +5153,7 @@ function GameSurfaceComponent({
                     preRolledD20: sc.preRolledD20,
                     who: sc.who,
                     withAbility: sc.withAbility,
+                    ...(sc.purpose ? { purpose: sc.purpose } : {}),
                     // Only a whole number in the endpoint's range is worth sending: anything else
                     // means "use the ruleset's own", which is what leaving it out says.
                     threshold:

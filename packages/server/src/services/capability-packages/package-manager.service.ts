@@ -2743,6 +2743,41 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
 }
 
 /** An item of only further uses, rolled for (1.696): a Necklace of Prayer Beads. */
+/** A change to checks made only for some purposes (1.699): Gloves of Swimming and Climbing. */
+function carriesCheckPurposes699(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesCheckPurposes699(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (typeof record.to === "string" && record.for !== undefined) return true;
+  return featureValues(record).some((one) => carriesCheckPurposes699(one, depth + 1));
+}
+
+/** A condition lasting until midnight, or what one deals as it ends saved against for half (1.698):
+ *  Midnight tears. */
+function carriesMidnightOrEndSave698(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesMidnightOrEndSave698(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (typeof record.condition === "string" && record.lastsDays === "midnight") return true;
+  if (plainRecord(plainRecord(plainRecord(record.onEnd)?.harm)?.save) !== undefined) return true;
+  return featureValues(record).some((one) => carriesMidnightOrEndSave698(one, depth + 1));
+}
+
+/** A save made as days pass that counts its successes or harms on a failure, or a condition that
+ *  keeps the damage it deals off healing (1.697): Pale tincture. */
+function carriesDaySaveHarm697(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesDaySaveHarm697(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.keepsDamage !== undefined) return true;
+  const ends = plainRecord(record.saveEnds);
+  if (ends?.at === "days" && (ends.successes !== undefined || ends.harmsOnFail !== undefined)) return true;
+  return featureValues(record).some((one) => carriesDaySaveHarm697(one, depth + 1));
+}
+
 function carriesOnlyMoreUses696(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesOnlyMoreUses696(one, depth + 1));
@@ -9143,6 +9178,27 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Changes to checks made only for some purposes, 1.699.
+  if (
+    !declaresApi(699) &&
+    (carriesCheckPurposes699(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesCheckPurposes699(document)))
+  )
+    return 'A ruleset with a change to checks made only for some purposes (a modifier\'s "for") requires schemaVersion 2 and capabilityApi 1.699 or newer';
+  // Conditions until midnight, and what one deals as it ends saved against for half, 1.698.
+  if (
+    !declaresApi(698) &&
+    (carriesMidnightOrEndSave698(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesMidnightOrEndSave698(document)))
+  )
+    return 'A ruleset with a condition lasting until midnight (lastsDays "midnight") or one whose onEnd harm is saved against (onEnd.harm.save) requires schemaVersion 2 and capabilityApi 1.698 or newer';
+  // Saves made as days pass that count successes or harm on a failure, and damage kept off healing, 1.697.
+  if (
+    !declaresApi(697) &&
+    (carriesDaySaveHarm697(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesDaySaveHarm697(document)))
+  )
+    return 'A ruleset with a save made as days pass that counts successes or harms on a failure (saveEnds "at": "days" with successes or harmsOnFail), or a condition that keepsDamage, requires schemaVersion 2 and capabilityApi 1.697 or newer';
   // An item of only further uses, rolled for, 1.696.
   if (
     !declaresApi(696) &&

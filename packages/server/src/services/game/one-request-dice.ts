@@ -292,6 +292,7 @@ export function planGameTurnBranches(content: string, blocks: GameBranchBlock[])
               // grant, so the arm rolls (or refuses) what the content resolver would.
               who: tag.who,
               withAbility: tag.withAbility,
+              ...(tag.purpose ? { purpose: tag.purpose } : {}),
               threshold: tag.threshold,
               bonusDice: tag.bonusDice,
             }
@@ -376,6 +377,7 @@ export async function resolveGameTurnBranches(
               ...(request.who ? { who: request.who } : {}),
               ...(request.withAbility ? { with: request.withAbility } : {}),
               ...(request.bonusDice != null ? { bonus: request.bonusDice } : {}),
+              ...(request.purpose ? { for: request.purpose } : {}),
               reason: "untrained",
             },
           ),

@@ -97,9 +97,9 @@ try {
     apiKey: "fixture",
     maxContext: 16_384,
     maxTokensOverride: 512,
-    defaultParameters: { maxContext: 8192, maxTokens: 512 },
     embeddingModel: "fixture-embedding",
   });
+  await createConnectionsStorage(db).updateDefaultParameters(connection.id, { maxContext: 8192, maxTokens: 512 });
   const characters = createCharactersStorage(db);
   const first = await characters.create(characterDataSchema.parse({ name: "Powers That Be" }));
   const second = await characters.create(characterDataSchema.parse({ name: "Maukie" }));

@@ -215,6 +215,8 @@
 
   /* Theme hooks for shared chat, roleplay, and game chrome. */
   --marinara-topbar-surface: color-mix(in srgb, var(--card) 80%, transparent);
+  /* Home's page is this card wash over --background; Professor Mari's window and page paint the same. */
+  --marinara-home-page-wash: color-mix(in oklab, var(--card) 65%, transparent);
   --marinara-topbar-border: color-mix(in srgb, var(--border) 30%, transparent);
   --marinara-shell-edge-border: color-mix(in srgb, var(--primary) 14%, var(--background) 86%);
   --marinara-music-player-shell-bg: var(--marinara-topbar-surface);
@@ -2398,6 +2400,10 @@
    Used by character, persona, preset, lorebook, connection, and agent editors.
    Custom themes can override --marinara-editor-* without touching component code.
    ───────────────────────────────────────────── */
+:root:where(:not([data-theme="light"], [data-visual-theme])) {
+  --marinara-editor-bg: var(--sidebar);
+}
+
 .mari-editor-shell {
   background: var(--marinara-editor-bg);
   color: var(--marinara-editor-text);
@@ -3239,15 +3245,18 @@ html[data-mari-ios-webkit] :is([data-component="RightPanelMobile"], [data-compon
   }
 
   .mari-editor-action--primary {
-    margin-right: auto;
     padding-inline: 0.75rem;
+  }
+
+  .mari-editor-actions .mari-editor-action--primary {
+    margin-right: auto;
   }
 
   .mari-editor-action--compact {
     min-height: auto;
   }
 
-  .mari-editor-action--compact.mari-editor-action--primary {
+  .mari-editor-actions .mari-editor-action--compact.mari-editor-action--primary {
     margin-right: 0;
   }
 

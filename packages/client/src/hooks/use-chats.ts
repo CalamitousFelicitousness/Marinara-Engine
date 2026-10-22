@@ -1617,7 +1617,7 @@ export function useUpdateMessageExtra(chatId: string | null) {
           pages: old.pages.map((page) =>
             page.map((msg) => {
               if (msg.id !== messageId || (swipeIndex !== undefined && msg.activeSwipeIndex !== swipeIndex)) return msg;
-              let currentExtra: Record<string, unknown> = {};
+              let currentExtra: Record<string, unknown>;
               try {
                 currentExtra =
                   typeof msg.extra === "string"

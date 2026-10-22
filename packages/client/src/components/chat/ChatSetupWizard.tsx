@@ -88,6 +88,7 @@ import {
   type Lorebook,
   type Message,
   type Persona,
+  isConversationCommandToggleOn,
 } from "@marinara-engine/shared";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -429,15 +430,6 @@ function readConversationCommandToggles(value: unknown): Partial<Record<Conversa
     if (typeof source[key] === "boolean") toggles[key] = source[key] as boolean;
   }
   return toggles;
-}
-
-function isConversationCommandToggleEnabled(
-  toggles: Partial<Record<ConversationCommandKey, boolean>>,
-  command: ConversationCommandKey,
-): boolean {
-  // Videos is opt-in, unlike the other commands: each video message is a video request.
-  if (command === "video") return toggles.video === true;
-  return toggles[command] !== false;
 }
 
 function normalizePositiveInteger(value: unknown, fallback: number, max: number, min = 1): number {
@@ -1484,7 +1476,7 @@ function ConversationQuickSetup({ chat, onFinish, defaultsApplied, defaultsActio
     const selfieCommandEnabled =
       commandsEnabled &&
       availableConversationCommandIds.has("selfie") &&
-      isConversationCommandToggleEnabled(conversationCommandToggles, "selfie");
+      isConversationCommandToggleOn(conversationCommandToggles, "selfie");
     const selfieSetup = resolveConversationSelfieSetup({
       commandToggles: conversationCommandToggles,
       selfieCommandAvailable: availableConversationCommandIds.has("selfie"),
@@ -2000,7 +1992,7 @@ function ConversationQuickSetup({ chat, onFinish, defaultsApplied, defaultsActio
       {hasConversationCommands && commandsEnabled && (
         <div className="grid gap-1.5 pt-1 sm:grid-cols-2">
           {availableConversationCommandOptions.map((command) => {
-            const enabled = isConversationCommandToggleEnabled(conversationCommandToggles, command.id);
+            const enabled = isConversationCommandToggleOn(conversationCommandToggles, command.id);
             return (
               <button
                 key={command.id}

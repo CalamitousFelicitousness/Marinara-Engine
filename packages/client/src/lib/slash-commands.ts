@@ -664,7 +664,7 @@ export function parseTargetedHideArguments(
 }
 
 function readHiddenFromAICharacterIds(extra: unknown): string[] {
-  let parsed: Record<string, unknown> = {};
+  let parsed: Record<string, unknown>;
   try {
     parsed =
       typeof extra === "string"

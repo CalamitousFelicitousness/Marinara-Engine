@@ -261,6 +261,40 @@ try {
   assert.equal(shortName.avatar?.name, "Dr. Lena Kowalski", "a short name finds its card's avatar");
   assert.equal(shortName.avatar?.base64, avatarPng.toString("base64"));
 
+  // ── A clip animated from a picture is filed under the people the picture shows, not the whole chat ──
+  const duo = await h.createRoleplay("Duo", { characterIds: [h.aster.id, bram.id] });
+  await h.saveChatSettings(duo.id, {
+    enableAgents: true,
+    activeAgentIds: ["illustrator"],
+    illustratorVideoMode: "pictures_and_clips",
+    illustratorRunInterval: 1,
+    illustratorVideoRunInterval: 1,
+    sceneVideoConnectionId: h.video.id,
+    sceneVideoFirstFrame: "picture",
+    automaticSummaryEnabled: false,
+  });
+  replies.agent = {
+    shouldGenerate: true,
+    prompt: "Aster alone on the porch, rain",
+    characters: ["Aster"],
+    generateVideo: true,
+    videoPrompt: "Rain falls on Aster",
+  };
+  replies.main = "Aster waits on the porch.";
+  await h.generate(duo.id, "It rains.");
+  const duoClip = (await h.attachments(duo.id, "video")).at(-1) as { videoId?: string } | undefined;
+  assert.ok(duoClip?.videoId, "the picture became a clip");
+  const { createGameSceneVideosStorage } =
+    await import("../../packages/server/src/services/storage/game-scene-videos.storage.js");
+  const duoRow = (await createGameSceneVideosStorage(h.db).getById(duoClip.videoId)) as {
+    characterIds?: unknown;
+  } | null;
+  assert.deepEqual(
+    typeof duoRow?.characterIds === "string" ? JSON.parse(duoRow.characterIds) : duoRow?.characterIds,
+    [h.aster.id],
+    "filed under the one the picture shows, not the whole chat",
+  );
+
   // Stop reaches a clip that has not gone out yet: nothing is sent to the video service.
   const { generateRoleplayClip } = await import("../../packages/server/src/services/video/chat-video-generation.js");
   const stopped = new AbortController();

@@ -716,12 +716,12 @@ export async function galleryRoutes(app: FastifyInstance) {
     const names = new Set<string>();
     const { characterIds, personaIds } = await collectChatAssetParticipants(chat);
     for (const characterId of characterIds.slice(0, 8)) {
-      const character = await characters.getById(characterId);
+      const character = await characters.getById(characterId, chat.id);
       const name = getCharacterName(character, "");
       if (name) names.add(name);
     }
     for (const personaId of personaIds.slice(0, 2)) {
-      const persona = await characters.getPersona(personaId);
+      const persona = await characters.getPersona(personaId, chat.id);
       const name = getPersonaName(persona, "");
       if (name) names.add(name);
     }
@@ -738,7 +738,7 @@ export async function galleryRoutes(app: FastifyInstance) {
   ): Promise<{ characterIds: string[]; appearanceBlock: string | null }> {
     const chatCharacters = [];
     for (const id of (await collectChatAssetParticipants(chat)).characterIds) {
-      const row = await characters.getById(id);
+      const row = await characters.getById(id, chat.id);
       if (!row) continue;
       const data = parseJsonRecord(row.data);
       chatCharacters.push({
@@ -1048,7 +1048,7 @@ export async function galleryRoutes(app: FastifyInstance) {
     const { characterIds, personaIds } = await collectChatAssetParticipants(chat);
     for (const characterId of characterIds) {
       if (!isSafeAssetSegment(characterId)) continue;
-      const character = await characters.getById(characterId);
+      const character = await characters.getById(characterId, chatId);
       if (!character) continue;
       const ownerName = getCharacterName(character, "Character");
       const images = await characterGallery.listByCharacterId(characterId);
@@ -1074,7 +1074,7 @@ export async function galleryRoutes(app: FastifyInstance) {
 
     for (const personaId of personaIds) {
       if (!isSafeAssetSegment(personaId)) continue;
-      const persona = await characters.getPersona(personaId);
+      const persona = await characters.getPersona(personaId, chat.id);
       if (!persona) continue;
       const ownerName = getPersonaName(persona, "Persona");
       const images = await personaGallery.listByPersonaId(personaId);
@@ -1283,7 +1283,7 @@ export async function galleryRoutes(app: FastifyInstance) {
     }
     const charInfo = [];
     for (const id of chatCharacterIds) {
-      const row = await characters.getById(id);
+      const row = await characters.getById(id, chatId);
       if (!row) continue;
       const data = parseJsonRecord(row.data);
       const { appearance, imageAppearance } = getCharacterAppearance(data);
@@ -1462,7 +1462,7 @@ export async function galleryRoutes(app: FastifyInstance) {
       if (firstFrame !== "none") {
         const candidates: Array<{ name: string; read: () => Promise<{ base64: string } | null> }> = [];
         for (const id of characterIds) {
-          const row = await characters.getById(id);
+          const row = await characters.getById(id, chat.id);
           if (!row) continue;
           candidates.push({
             name: readTrimmedString(parseJsonRecord(row.data).name) ?? "",
@@ -1475,7 +1475,9 @@ export async function galleryRoutes(app: FastifyInstance) {
           });
         }
         const persona =
-          chat.personaId && personaIds.includes(chat.personaId) ? await characters.getPersona(chat.personaId) : null;
+          chat.personaId && personaIds.includes(chat.personaId)
+            ? await characters.getPersona(chat.personaId, chat.id)
+            : null;
         const people = [
           ...candidates,
           ...(persona
@@ -1591,7 +1593,7 @@ export async function galleryRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: "Selected character is not in this conversation." });
     }
 
-    const character = await characters.getById(input.characterId);
+    const character = await characters.getById(input.characterId, chatId);
     if (!character) return reply.status(404).send({ error: "Character not found" });
 
     const meta = parseChatMetadata(chat.metadata);

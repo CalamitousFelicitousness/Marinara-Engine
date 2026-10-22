@@ -141,6 +141,7 @@ import {
   normalizeGroupChatMode,
   normalizeSemanticSummaryRetrievalSettings,
   resolveScopedRegexMode,
+  isConversationCommandToggleOn,
 } from "@marinara-engine/shared";
 import { cn, getAvatarCropStyle } from "../../lib/utils";
 import { showAlertDialog, showChoiceDialog, showConfirmDialog, showPromptDialog } from "../../lib/app-dialogs";
@@ -719,15 +720,6 @@ function readConversationCommandToggles(value: unknown): Partial<Record<Conversa
     if (typeof source[key] === "boolean") toggles[key] = source[key] as boolean;
   }
   return toggles;
-}
-
-function isConversationCommandToggleEnabled(
-  toggles: Partial<Record<ConversationCommandKey, boolean>>,
-  command: ConversationCommandKey,
-): boolean {
-  // Videos is opt-in, unlike the other commands: each video message is a video request.
-  if (command === "video") return toggles.video === true;
-  return toggles[command] !== false;
 }
 
 const MARINARA_UNIVERSAL_PRESET_NAME = "Marinara's Universal Preset";
@@ -3017,7 +3009,7 @@ export function ChatSettingsDrawer({
     const confirmation = firstMesConfirm;
     const selectedGreeting = confirmation.greetings[confirmation.selectedIndex];
     if (!selectedGreeting) return;
-    let messageId: string | null = null;
+    let messageId: string | null;
     try {
       const msg = await createMessage.mutateAsync({
         role: "assistant",
@@ -3597,7 +3589,7 @@ export function ChatSettingsDrawer({
     ) : null;
 
   const renderStandaloneRoleplayAgentSettingsCard = (agent: (typeof availableAgents)[number]) => {
-    let settings: React.ReactNode = null;
+    let settings: React.ReactNode;
 
     if (agent.id === "hierarchical-maps" && mapsPackage) {
       settings = (
@@ -7412,7 +7404,7 @@ export function ChatSettingsDrawer({
                       {conversationCommandsEnabled && (
                         <div className="grid gap-2 @lg:grid-cols-2">
                           {availableConversationCommandOptions.map((command) => {
-                            const enabled = isConversationCommandToggleEnabled(conversationCommandToggles, command.id);
+                            const enabled = isConversationCommandToggleOn(conversationCommandToggles, command.id);
                             return (
                               <SettingsSwitch
                                 key={command.id}

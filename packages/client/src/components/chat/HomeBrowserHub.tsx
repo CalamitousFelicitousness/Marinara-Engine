@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useInsertionEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -1025,8 +1026,15 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
   const activeBrowserPackageId = pageActive && browserPackages.some((item) => item.id === activeTab) ? activeTab : null;
   const activeBrowserPackageIdRef = useRef(activeBrowserPackageId);
   const browserFullscreen = activeBrowserPackageId !== null && fullscreenPackageId === activeBrowserPackageId;
-  useLayoutEffect(() => {
+  // CapabilityElement delivers props in a child layout effect. Publish the committed identity
+  // before that delivery, while leaving abandoned renders unable to change the request guard.
+  useInsertionEffect(() => {
     activeBrowserPackageIdRef.current = activeBrowserPackageId;
+    return () => {
+      activeBrowserPackageIdRef.current = null;
+    };
+  }, [activeBrowserPackageId]);
+  useLayoutEffect(() => {
     setFullscreenPackageId((current) => (current === activeBrowserPackageId ? current : null));
   }, [activeBrowserPackageId]);
   const setBrowserFullscreen = useCallback(

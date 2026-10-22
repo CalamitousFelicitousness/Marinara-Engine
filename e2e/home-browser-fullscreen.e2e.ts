@@ -17,6 +17,10 @@ customElements.define('marinara-capability-${id}', class extends HTMLElement {
       button.textContent = control.active ? control.exitLabel : control.enterLabel;
       button.setAttribute('aria-pressed', String(control.active));
       button.onclick = () => control.setActive(!control.active);
+      if (this.getAttribute('data-auto-requested') !== 'true' && this.localName.endsWith('fullscreen-auto')) {
+        this.setAttribute('data-auto-requested', 'true');
+        control.setActive(true);
+      }
       root.querySelector('[data-close]').onclick = () => this.capabilityProps.onClose();
       root.querySelector('[data-error]').onclick = () => this.dispatchEvent(new CustomEvent('marinara-capability-runtime-error', {detail:{message:'Fixture failure'}}));
     };
@@ -36,7 +40,7 @@ test.beforeEach(async ({ page }) => {
   }, appVersion);
   await page.route("**/api/capability-packages/installed", (route) =>
     route.fulfill({
-      json: ["fullscreen-one", "fullscreen-two"].map((id) => ({
+      json: ["fullscreen-one", "fullscreen-two", "fullscreen-auto"].map((id) => ({
         id,
         version: "1.0.0",
         status: "active",
@@ -78,7 +82,7 @@ test("package fullscreen fills Home while keeping the Engine topbar and unfinish
   const topbar = page.locator('[data-component="TopBar"]');
   const draft = surface.getByRole("textbox", { name: "Unfinished draft" });
   await draft.fill("Keep this unfinished world");
-  // Focus identity and selection must survive the host prop update, not only the text value.
+  // Preserve DOM identity as well as the draft value across the host prop update.
   await draft.evaluate((node) => {
     node.dataset.identity = "original";
   });
@@ -131,4 +135,15 @@ test("leaving a package restores chrome and stale callbacks cannot fullscreen an
   await two.getByRole("button", { name: "Fail package" }).click();
   await expect(page.locator(".mari-home-browser-chrome")).toBeVisible();
   await expect(page.getByRole("alert")).toContainText("fullscreen-two stopped");
+});
+
+test("a package can request fullscreen during its first prop delivery", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("tab", { name: "fullscreen-auto", exact: true }).click();
+  const surface = page.locator("marinara-capability-fullscreen-auto");
+  await expect(surface).toHaveAttribute("data-auto-requested", "true");
+  await expect(page.locator(".mari-home-browser-chrome")).toBeHidden();
+  await expect(surface.getByRole("button", { name: "Exit fullscreen" })).toHaveAttribute("aria-pressed", "true");
+  await surface.getByRole("button", { name: "Exit fullscreen" }).click();
+  await expect(page.locator(".mari-home-browser-chrome")).toBeVisible();
 });

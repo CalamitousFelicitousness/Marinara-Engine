@@ -9,8 +9,8 @@ This is the canonical contributor guide for Marinara Engine. Use it with `README
 | Frontend | React 19, Tailwind CSS v4, Framer Motion, Zustand, React Query |
 | Backend  | Fastify 5, file-native JSON storage                            |
 | PWA      | vite-plugin-pwa, Web App Manifest                              |
-| Shared   | TypeScript 5, Zod                                              |
-| Build    | Vite 7, pnpm workspaces                                        |
+| Shared   | TypeScript 6, Zod                                              |
+| Build    | Vite 8, pnpm workspaces                                        |
 
 ## Development Setup
 

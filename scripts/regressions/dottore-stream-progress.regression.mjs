@@ -99,6 +99,36 @@ class StreamProgress(unittest.TestCase):
         self.assertEqual(captured["thinking"], {"type": "adaptive", "display": "summarized"})
         self.assertEqual(captured["output_config"], {"effort": "xhigh"})
 
+    def test_provider_transport_failures_use_httpx2_without_legacy_httpx(self):
+        class TransportError(Exception): pass
+        def fail(**request): raise TransportError("stream disconnected")
+        modules = {
+            "httpx": None,
+            "httpx2": NS(TimeoutException=TimeoutError, TransportError=TransportError),
+            "openai": NS(Timeout=lambda *args, **kwargs: None, APIConnectionError=ConnectionError),
+            "anthropic": NS(Timeout=lambda *args, **kwargs: None),
+        }
+        client = NS(chat=NS(completions=NS(create=fail)), responses=NS(create=fail), messages=NS(stream=fail))
+        ctx = NS(clients={"large": client})
+        settings = {"slot": "large", "model": "claude-opus-5-5", "effort": "xhigh", "max_tokens": 64000}
+        for reply in (reviewer.openai_reply, reviewer.responses_reply, reviewer.claude_reply):
+            with self.subTest(provider=reply.__name__), patch.dict(sys.modules, modules):
+                with self.assertRaisesRegex(reviewer.StreamStalled, "stream disconnected"):
+                    reply(ctx, settings, [{"role": "user", "content": "Review."}], [], "auto", 600, 0, {}, "")
+
+        class DroppedStream:
+            def __enter__(self): return self
+            def __exit__(self, *args): return False
+            def __iter__(self): raise ConnectionError("SDK-wrapped disconnect")
+        def connect_failure(**request): raise ConnectionError("connection never opened")
+        for create, expected in ((lambda **request: DroppedStream(), reviewer.StreamStalled), (connect_failure, ConnectionError)):
+            client.chat.completions.create = client.responses.create = create
+            for reply in (reviewer.openai_reply, reviewer.responses_reply):
+                with self.subTest(provider=reply.__name__, error=expected), patch.dict(sys.modules, modules):
+                    with self.assertRaises(expected) as stopped:
+                        reply(ctx, settings, [{"role": "user", "content": "Review."}], [], "auto", 600, 0, {}, "")
+                    self.assertIs(type(stopped.exception), expected)
+
 unittest.main(argv=["dottore-stream-progress"], verbosity=2)
 `;
 const result = spawnSync(python, ["-c", proof, reviewer], {

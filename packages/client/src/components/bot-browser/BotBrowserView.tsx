@@ -1326,8 +1326,8 @@ const datacatProvider: ProviderConfig = {
     // text-search support, so any user query forces the recent-public path.
     const useFresh = p.sort === "fresh" && tagIds.length === 0 && trimmedQuery.length === 0;
 
-    let list: any[] = [];
-    let totalCount = 0;
+    let list: any[];
+    let totalCount: number;
 
     if (useFresh) {
       const params = new URLSearchParams({

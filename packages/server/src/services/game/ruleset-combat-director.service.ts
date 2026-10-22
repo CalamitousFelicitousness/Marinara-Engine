@@ -2681,6 +2681,9 @@ function weighCaught(
       const health = rulesetCombatHealth(definition, combat, target);
       return total + ((target.id === actor.id ? 4 : 3) * average) / Math.max(1, health.value + health.temp);
     }, 0);
+    // And worth at least twice what it costs its own: a blast that only just outweighs burning a
+    // friend is one no tactician throws.
+    if (hurt > 0 && share < 2 * hurt) return false;
     candidate.damage = Math.max(0, Math.min(2, share - hurt)) * chance;
     if (candidate.damage <= 0) return false;
     // What it puts on those it catches as well, less what it puts on its own (a burst that stuns).
@@ -3358,12 +3361,17 @@ function weighRulesetMindFocus(
             [dangerous(), 0.1],
           ]
         : [[dangerous(), tactics.mind === "genius" ? 0.25 : 0.2]];
+  const worth = (candidate: CombatAiCandidate<RulesetCandidate>) => (candidate.damage ?? 0) + (candidate.setup ?? 0);
+  const best = Math.max(0, ...candidates.map(worth));
   for (const candidate of candidates) {
     const target = candidate.targetId;
     // Only something done to an opponent: a heal or a help is aimed by need.
     if (target === undefined || ((candidate.damage ?? 0) <= 0 && (candidate.setup ?? 0) <= 0)) continue;
     let focus = 0;
     for (const [ids, by] of leanings) if (ids.has(target)) focus += by;
+    // Shrunk by how far short of its best this falls: liking the look of a target never makes a token
+    // blow (a long-range dagger at a healer) beat stepping in for a full Multiattack.
+    if (best > 0) focus *= Math.min(1, worth(candidate) / best);
     if (focus > 0) candidate.focus = (candidate.focus ?? 0) + focus;
   }
 }

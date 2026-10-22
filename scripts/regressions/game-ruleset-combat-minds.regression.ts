@@ -469,6 +469,63 @@ try {
     assert.equal(picked?.choice.optionId === "surge", spent, `spent ${spent}: ${JSON.stringify(picked?.choice)}`);
   }
 
+  // A captain one step from a sturdy fighter, with the healer it would rather see fall 25 ft off,
+  // walks round the fighter's reach to the healer for its whole Multiattack: never a dagger thrown at
+  // long range and then a step.
+  {
+    const scimitar = {
+      id: "scimitar",
+      name: "Scimitar",
+      budget: "action",
+      toHit: 5,
+      reach: 1,
+      damage: { count: 1, sides: 6, flat: 3 },
+    };
+    const dagger = {
+      id: "dagger",
+      name: "Dagger",
+      budget: "action",
+      toHit: 5,
+      reach: 1,
+      range: { normal: 20, long: 60 },
+      damage: { count: 1, sides: 4, flat: 3 },
+    };
+    const multiattack = {
+      id: "multiattack",
+      name: "Multiattack",
+      budget: "action",
+      sequence: [
+        { action: "scimitar", times: 2 },
+        { action: "dagger", times: 1 },
+      ],
+    };
+    const { encounter, state } = fight(
+      { captain: { x: 4, y: 2 }, fighter: { x: 6, y: 0 }, healer: { x: 9, y: 0 } },
+      {
+        captain: {
+          side: "enemy",
+          block: block({ type: "humanoid", mind: "tactical", actions: [scimitar, dagger, multiattack] }),
+        },
+        fighter: { side: "party", block: block({ health: 84, defense: 18 }) },
+        healer: { side: "party", block: block({ health: 62, defense: 13 }) },
+      },
+      { captain: { ...master, temperament: "disciplined" } },
+    );
+    rulesetCombatant(encounter, "healer")!.done = { dealt: 40 };
+    encounter.round = 3;
+    const picked = pickRulesetChoice(definition, state, encounter, "captain");
+    assert.equal(picked?.choice.optionId, "multiattack", JSON.stringify(picked?.choice));
+    assert.equal(picked?.targetId, "healer", "on the healer");
+    assert.ok(picked?.to && Math.max(Math.abs(picked.to.x - 9), Math.abs(picked.to.y)) === 1, "from beside her");
+    assert.ok(
+      !picked?.to ||
+        rulesetReachableCells(definition, encounter, "captain").find(
+          (cell) => cell.x === picked.to!.x && cell.y === picked.to!.y,
+        )?.provokes.length === 0,
+      "walking round the fighter's reach",
+    );
+  }
+
   // A tactician keeps the slot its Counterspell needs (P8): with one 3rd-level slot left it casts its
   // cantrip, and spends the slot freely with another left or as a creature that thinks less.
   {

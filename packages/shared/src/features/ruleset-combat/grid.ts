@@ -1336,6 +1336,8 @@ export function rulesetReachableCells(
   // (burning oil, a friend's Spirit Guardians): what anybody walking round it would pick.
   const harmful = rulesetHarmfulCells(state, actor);
   const burns = new Map<string, number>([[`${from.x},${from.y}`, 0]]);
+  // And then the one that steps out of fewer reaches: the long way round a fighter, not past it.
+  const leaves = new Map<string, number>([[`${from.x},${from.y}`, 0]]);
   const cameFrom = new Map<string, string>();
   const cells = new Map<string, RulesetReachableCell>();
   // A small board and a small allowance: the cheapest open cell is found by a scan rather than by a
@@ -1409,9 +1411,18 @@ export function rulesetReachableCells(
       const cost = cheapest + step;
       const burnt = (burns.get(key) ?? 0) + (harmful.has(next) ? 1 : 0);
       const known = best.get(next) ?? Infinity;
-      if (cost > budget || cost > known || (cost === known && burnt >= (burns.get(next) ?? 0))) continue;
+      const left =
+        (leaves.get(key) ?? 0) + threats.filter((threat) => rulesetStepLeavesReach(threat, at!, { x, y })).length;
+      if (
+        cost > budget ||
+        cost > known ||
+        (cost === known &&
+          (burnt > (burns.get(next) ?? 0) || (burnt === (burns.get(next) ?? 0) && left >= (leaves.get(next) ?? 0))))
+      )
+        continue;
       best.set(next, cost);
       burns.set(next, burnt);
+      leaves.set(next, left);
       cameFrom.set(next, key);
       open.set(next, { x, y });
       // A friend can be walked past and not stood on, so their cell is searched through and never

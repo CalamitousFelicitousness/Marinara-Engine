@@ -1649,10 +1649,10 @@ const cellsOf = (cells: Array<{ x: number; y: number }>) =>
   //  0 . . # . . . .
   //  1 . . # . . . .
   //  2 B . S . . . .     Snag reaches one cell around 2,2
-  //  3 . . # . . . .
-  //  4 . . . . . . .
+  //  3 . . # . # . .
+  //  4 . . . . # . .     the rocks at 4,3 and 4,4 send the way back through the reach
   const maze = {
-    grid: drawn("..#....", "..#....", ".......", "..#....", "......."),
+    grid: drawn("..#....", "..#....", ".......", "..#.#..", "....#.."),
     placements: { brenna: { x: 0, y: 2 }, snag: { x: 2, y: 2 } },
   };
   const twice = fight(fiveE, [fighter(), snag()], [12, 9], maze);

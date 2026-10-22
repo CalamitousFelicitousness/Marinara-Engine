@@ -15,6 +15,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  applyRulesetCombatChoice,
   createRulesetEncounter,
   parseRulesetDefinition,
   rulesetCombatant,
@@ -225,6 +226,30 @@ try {
     assert.equal(state.enemies[0]!.tactics!.mind, mind, "its profile made with its mind");
   }
 
+  // Whom it goes for by what it is (P6): a genius at whoever has done its side the most harm, an animal
+  // at the weaker.
+  for (const [mind, expected] of [
+    ["genius", "striker"],
+    ["instinct", "near"],
+  ] as const) {
+    const { encounter, state } = fight(
+      { it: { x: 2, y: 2 }, near: { x: 3, y: 2 }, striker: { x: 3, y: 3 } },
+      {
+        it: { side: "enemy", block: block({ type: mind === "genius" ? "monstrosity" : "beast", mind }) },
+        near: { side: "party", block: block({ health: 30 }), health: 20 },
+        striker: { side: "party", block: block({ health: 30 }) },
+      },
+      { it: master },
+    );
+    rulesetCombatant(encounter, "striker")!.done = { dealt: 40 };
+    encounter.round = 2;
+    const picked = pickRulesetChoice(definition, state, encounter, "it");
+    assert.equal(picked?.targetId, expected, `${mind}: ${JSON.stringify(picked?.choice)}`);
+    // What it then deals is counted to it, against the other side only.
+    const step = applyRulesetCombatChoice(definition, encounter, picked!.choice, () => 19);
+    assert.ok((rulesetCombatant(step.state, "it")!.done?.dealt ?? 0) > 0, JSON.stringify(step.events.slice(0, 4)));
+  }
+
   // A cowardly goblin that is hurt gets away; a reckless one fights on.
   for (const [temperament, gets] of [
     ["cowardly", true],
@@ -375,7 +400,7 @@ try {
   }
 
   console.log(
-    "Combat minds: a kraken a genius, an ape by instinct, a golem and a zombie mindless; the mindless go at the nearest, a hurt coward gets away, a guard goes at whoever is on its friend; gated at 1.708.",
+    "Combat minds: a kraken a genius, an ape by instinct, a golem and a zombie mindless; the mindless go at the nearest, a hurt coward gets away, a guard goes at whoever is on its friend, a genius at whoever does its side most harm, an animal at the weaker; gated at 1.708.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

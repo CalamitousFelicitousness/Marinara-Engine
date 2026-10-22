@@ -1189,6 +1189,11 @@ function applyDamage(
   }
   const after = healthOf(ctx, target);
   if (dealt > 0 && input.sourceId && input.sourceId !== target.id) target.harmedBy = input.sourceId;
+  // Counted to whoever dealt it, against the other side only: what it is weighed by.
+  const dealer = input.sourceId ? rulesetCombatant(ctx.state, input.sourceId) : undefined;
+  const lost = before.value + before.temp - (after.value + after.temp);
+  if (dealer && lost > 0 && dealer.side !== target.side)
+    dealer.done = { ...dealer.done, dealt: (dealer.done?.dealt ?? 0) + lost };
   ctx.events.push({
     type: "damage",
     targetId: target.id,
@@ -1939,6 +1944,9 @@ function dealHeal(
     }
   }
   const after = healthOf(ctx, target);
+  const healer = input.sourceId ? rulesetCombatant(ctx.state, input.sourceId) : undefined;
+  if (healer && after.value > before.value && healer.side === target.side)
+    healer.done = { ...healer.done, healed: (healer.done?.healed ?? 0) + after.value - before.value };
   ctx.events.push({
     type: "heal",
     targetId: target.id,

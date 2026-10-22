@@ -2518,6 +2518,9 @@ export interface RulesetCombatant {
   /** Down at 0 but not out while it may regenerate (1.346): a troll, until its turn. */
   /** Who dealt them damage last (1.359), for what grants points as a foe drops. */
   harmedBy?: string;
+  /** What they have done this fight: the health they took off the other side and gave back to their
+   *  own. What the other side's combat AI weighs them by. */
+  done?: { dealt?: number; healed?: number };
   /** Has made an attack at a foe, or taken damage, since their last turn ended (1.383). */
   stirred?: true;
   /** The presence senses already said since they came on (1.391), by condition. */

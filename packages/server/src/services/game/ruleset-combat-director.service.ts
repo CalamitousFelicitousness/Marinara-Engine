@@ -2217,7 +2217,12 @@ function rulesetThreat(
     return Math.max(1, health.value + health.temp);
   });
   const mean = pools.reduce((sum, pool) => sum + pool, 0) / pools.length;
-  return 0.5 + Math.min(1, best / mean);
+  // And what it has shown this fight: the harm it has dealt and the health it has given back a round,
+  // the spell it holds, and how many of the other side it holds down.
+  const shown = Math.min(0.4, ((one.done?.dealt ?? 0) + (one.done?.healed ?? 0)) / Math.max(1, encounter.round) / mean);
+  const holding = others.filter((other) => other.tracked.some((entry) => entry.source === one.id)).length;
+  const control = Math.min(0.3, 0.15 * holding) + (one.concentrating ? 0.1 : 0);
+  return 0.5 + Math.min(1, best / mean) + shown + control;
 }
 
 /** Whether anybody standing against this side deals this damage type with one of their actions. */
@@ -2868,6 +2873,8 @@ function pickChoice(
   const behavior = unit.tactics!.mind === "mindless" ? undefined : rulesetCombatantBehavior(definition, actor);
   const opening = !menu && !!behavior?.opens && !unit.tactics!.opened && encounter.round <= 2;
   if (behavior) weighRulesetBehavior(definition, encounter, actor, behavior, candidates, opening);
+  // Whom it goes for by what it is, where its own data names nobody.
+  if (!behavior?.targets?.length) weighRulesetMindFocus(definition, encounter, actor, unit.tactics!, candidates);
   const chosen = chooseCombatCandidate(
     unit,
     candidates,
@@ -3048,6 +3055,62 @@ function rulesetOpensWith(actor: RulesetCombatant, candidate: RulesetCandidate, 
   if (candidate.option.id === id) return true;
   const entry = actor.actions.find((action) => action.id === candidate.option.id)?.entry;
   return entry !== undefined && (entry === id || entry.endsWith(`/${id}`));
+}
+
+/**
+ * Whom a creature goes for by what it is (combat AI P6), onto each candidate as `focus`, where its
+ * own data names nobody: an animal the nearest and the weakest, a cunning one the weakest and then the
+ * most dangerous, a tactician and a genius whoever is doing its side the most harm (its blows, the
+ * health it gives back, the spell it holds and who of its side it holds down). A mindless one is
+ * played apart.
+ */
+function weighRulesetMindFocus(
+  definition: RulesetDefinition,
+  encounter: RulesetEncounterState,
+  actor: RulesetCombatant,
+  tactics: CombatTactics,
+  candidates: Array<CombatAiCandidate<RulesetCandidate>>,
+): void {
+  const combat = definition.combat;
+  if (!combat || tactics.mind === undefined || tactics.mind === "mindless") return;
+  const foes = encounter.combatants.filter((one) => one.side !== actor.side && rulesetCombatStanding(one));
+  if (foes.length < 2) return;
+  const lowest = (score: (one: RulesetCombatant) => number) => {
+    const scored = foes.map((one) => ({ one, score: score(one) }));
+    const best = Math.min(...scored.map((entry) => entry.score));
+    // Nobody stands out when they are all alike.
+    if (scored.every((entry) => entry.score === best)) return new Set<string>();
+    return new Set(scored.filter((entry) => entry.score === best).map((entry) => entry.one.id));
+  };
+  const at = rulesetPositionOf(actor);
+  const nearest = () =>
+    at ? lowest((one) => (rulesetPositionOf(one) ? rulesetGap(actor, one) : Infinity)) : new Set<string>();
+  const weakest = () =>
+    lowest((one) => {
+      const health = rulesetCombatHealth(definition, combat, one);
+      return health.value + health.temp;
+    });
+  const dangerous = () => lowest((one) => -rulesetThreat(definition, combat, encounter, one));
+  const leanings: Array<[Set<string>, number]> =
+    tactics.mind === "instinct"
+      ? [
+          [nearest(), 0.15],
+          [weakest(), 0.15],
+        ]
+      : tactics.mind === "cunning"
+        ? [
+            [weakest(), 0.15],
+            [dangerous(), 0.1],
+          ]
+        : [[dangerous(), tactics.mind === "genius" ? 0.25 : 0.2]];
+  for (const candidate of candidates) {
+    const target = candidate.targetId;
+    // Only something done to an opponent: a heal or a help is aimed by need.
+    if (target === undefined || ((candidate.damage ?? 0) <= 0 && (candidate.setup ?? 0) <= 0)) continue;
+    let focus = 0;
+    for (const [ids, by] of leanings) if (ids.has(target)) focus += by;
+    if (focus > 0) candidate.focus = (candidate.focus ?? 0) + focus;
+  }
 }
 
 /**

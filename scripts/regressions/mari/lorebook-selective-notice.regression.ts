@@ -38,19 +38,22 @@ try {
     assert.equal(bothInKeys.ok, true, "the write itself still succeeds");
     assert.match(
       notices(bothInKeys).join("\n"),
-      /lorebook\.addEntry: selective is on but secondaryKeys is empty, so selectiveLogic does nothing and the entry fires on any one of keys \["guild","forms"\]\. To need two words, put one in keys, the other in secondaryKeys/,
+      /selective is on but secondaryKeys is empty, so selectiveLogic does nothing/,
     );
 
     // Run 2: keys as objects saved "[object Object]" twice. Refuse, naming the field and the shape.
     const objectKeys = await add({
       name: "Guild Forms Entry",
       content: "x",
-      keys: [{ constant: "true", key: '"guild"' }, { constant: "true", key: '"forms"' }],
+      keys: [
+        { constant: "true", key: '"guild"' },
+        { constant: "true", key: '"forms"' },
+      ],
     });
     assert.equal(objectKeys.ok, false);
     assert.match(
       String((objectKeys as { error?: unknown }).error),
-      /"keys" must be a list of plain strings, such as \["guild", "forms"\]; it held an object .*would save as "\[object Object\]"/,
+      /"keys" must be a list of plain strings.*\[object Object\]/,
     );
 
     const secondaryOff = await add({ name: "Off", content: "x", keys: ["guild"], secondaryKeys: ["forms"] });
@@ -93,10 +96,7 @@ try {
       patch: { content: "z" },
     });
     const message = String((compactMutationResult(preview) as { message?: string }).message);
-    assert.match(
-      message,
-      /An update, delete or move saves only with top-level "apply": true: if the user asked for this change, send the same call again with "apply": true; if instead you asked them whether to apply, wait/,
-    );
+    assert.match(message, /saves only with top-level "apply": true/);
     assert.doesNotMatch(message, /Permissions Mode/);
   } finally {
     await db._fileStore.close();

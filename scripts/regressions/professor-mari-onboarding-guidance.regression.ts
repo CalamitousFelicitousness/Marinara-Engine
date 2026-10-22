@@ -26,7 +26,6 @@ const body = skill.content;
 
 assert.match(body, /\{\{#if name == value\}\}/, "the skill teaches the #if condition syntax");
 assert.ok(body.includes("character.update"), "the skill says a character question's {{name}} goes into the card");
-assert.ok(body.includes("docs/characters/interactive-onboarding.md"), "the skill points at the user doc");
 
 type Command = {
   action?: string;

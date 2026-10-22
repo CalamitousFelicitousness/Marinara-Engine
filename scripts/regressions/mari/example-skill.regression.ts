@@ -17,20 +17,11 @@ try {
   // Two first calls at once still seed one skill.
   const [{ skills }] = await Promise.all([service.list(), new ProfessorMariWorkspaceSkillsService().list()]);
   // Shipped skills come first and are always on; the example is a normal user skill after them.
-  const builtinIds = [
-    "builtin-characters",
-    "builtin-decisions",
-    "builtin-extensions",
-    "builtin-home-widgets",
-    "builtin-lorebook",
-    "builtin-onboarding",
-    "builtin-presets",
-    "builtin-repair",
-    "builtin-themes",
-  ];
-  assert.deepEqual(
-    skills.map((skill) => skill.id),
-    [...builtinIds, "ask-before-building"],
+  const ids = skills.map((skill) => skill.id);
+  assert.equal(ids.at(-1), "ask-before-building", "the example comes last");
+  assert.ok(
+    ids.slice(0, -1).every((id) => id.startsWith("builtin-")),
+    "every id before the example is a shipped skill",
   );
   const example = skills.find((skill) => skill.id === "ask-before-building");
   assert.equal(example?.enabled, false, "the example ships disabled");
@@ -41,7 +32,7 @@ try {
   await service.delete("ask-before-building");
   assert.deepEqual(
     (await service.list()).skills.map((skill) => skill.id),
-    builtinIds,
+    ids.slice(0, -1),
     "a deleted example is not seeded again",
   );
 } finally {

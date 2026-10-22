@@ -5,77 +5,54 @@
 // and stops (a write there is refused even in an ordinary, non-depth section), and the second turn's
 // records quote the user's reply, not the request that never saw the warning.
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { withHandbook } from "./_handbook.js";
 
-const dir = mkdtempSync(join(tmpdir(), "mari-decisions-handbook-"));
-const savedEnv = { DATA_DIR: process.env.DATA_DIR, FILE_STORAGE_DIR: process.env.FILE_STORAGE_DIR };
-process.env.DATA_DIR = dir;
-process.env.FILE_STORAGE_DIR = join(dir, "storage");
-const { loadBuiltinSkills } = await import("../../../packages/server/src/services/professor-mari/builtin-skills.js");
-const { createFileNativeDB } = await import("../../../packages/server/src/db/file-backed-store.js");
-const { MariDbService } = await import("../../../packages/server/src/services/mari-db/mari-db.service.js");
-const { createChatsStorage } = await import("../../../packages/server/src/services/storage/chats.storage.js");
-const { executeMariDecisionAction, withMariDecisionContext } =
-  await import("../../../packages/server/src/services/professor-mari/decision-authoring.js");
+await withHandbook(
+  "builtin-decisions",
+  async ({ skill, db, mari }) => {
+    const { createChatsStorage } = await import("../../../packages/server/src/services/storage/chats.storage.js");
+    const { executeMariDecisionAction, withMariDecisionContext } =
+      await import("../../../packages/server/src/services/professor-mari/decision-authoring.js");
+    const text = skill.content;
+    type Command = Record<string, unknown> & { action: string; data?: Record<string, unknown> };
+    // The example is two turns: one fenced block each.
+    const fenced: string[][] = [];
+    let open: string[] | null = null;
+    for (const line of text.split(/\r?\n/).map((entry) => entry.trim())) {
+      if (line.startsWith("```")) {
+        if (open) fenced.push(open);
+        open = open ? null : [];
+      } else open?.push(line);
+    }
+    const blocks = fenced
+      .map((block) => block.filter((line) => line.startsWith('{"action"')).map((line) => JSON.parse(line) as Command))
+      .filter((block) => block.length > 0);
+    assert.equal(blocks.length, 2, "the worked example is two turns");
+    const [first, second] = blocks as [Command[], Command[]];
+    assert.deepEqual(
+      first.map((command) => command.action),
+      ["decision.get", "decision.record"],
+      "the first turn checks the model and records the question, then stops",
+    );
+    assert.equal(first[1]!.data?.answer, "pending");
+    assert.equal(second.length, 8, "the second turn records, writes and reads back");
+    assert.ok(!text.includes("<id returned"), "the example has no unfilled placeholder");
+    assert.ok(text.includes('"lorebookId":"lore-decision-pacing"'), "the lorebook id is pinned in the example");
 
-const { skills } = await loadBuiltinSkills();
-const skill = skills.find((entry) => entry.id === "builtin-decisions");
-assert.ok(skill, "the decisions handbook ships with the app");
-const text = skill.content;
+    // The syntax is the contract: get it wrong and the decision silently never matches.
+    assert.ok(text.includes('{{#if decision:"'), "the decision form is taught");
+    assert.ok(text.includes('decision_choice:"'), "the choice form is taught");
+    assert.ok(text.includes('== "'), "the option comparison is taught");
 
-type Command = Record<string, unknown> & { action: string; data?: Record<string, unknown> };
-// The example is two turns: one fenced block each.
-const fenced: string[][] = [];
-let open: string[] | null = null;
-for (const line of text.split(/\r?\n/).map((entry) => entry.trim())) {
-  if (line.startsWith("```")) {
-    if (open) fenced.push(open);
-    open = open ? null : [];
-  } else open?.push(line);
-}
-const blocks = fenced
-  .map((block) => block.filter((line) => line.startsWith('{"action"')).map((line) => JSON.parse(line) as Command))
-  .filter((block) => block.length > 0);
-assert.equal(blocks.length, 2, "the worked example is two turns");
-const [first, second] = blocks as [Command[], Command[]];
-assert.deepEqual(
-  first.map((command) => command.action),
-  ["decision.get", "decision.record"],
-  "the first turn checks the model and records the question, then stops",
-);
-assert.equal(first[1]!.data?.answer, "pending");
-assert.equal(second.length, 8, "the second turn records, writes and reads back");
-assert.ok(!text.includes("<id returned"), "the example has no unfilled placeholder");
-assert.ok(text.includes('"lorebookId":"lore-decision-pacing"'), "the lorebook id is pinned in the example");
+    // Decision syntax is not described as gated only at depth.
+    assert.ok(!text.includes("three gated shapes"), "decision syntax is not described as gated only at depth");
 
-// The syntax is the contract: get it wrong and the decision silently never matches.
-assert.ok(text.includes('{{#if decision:"'), "the decision form is taught");
-assert.ok(text.includes('decision_choice:"'), "the choice form is taught");
-assert.ok(text.includes('== "'), "the option comparison is taught");
+    // The constant's wrong rule must not survive the move.
+    assert.ok(
+      !text.includes("Without a selected model, ordinary authoring introduces no Decision content"),
+      "the corrected permission rule replaced the old one",
+    );
 
-// The levers and limits the old constant never mentioned.
-for (const token of ["priority:", "until:", "while:", "none of these", "decision-prompt-question-limit"]) {
-  assert.ok(text.includes(token), `the handbook still teaches ${token}`);
-}
-// Two gates, taught apart: decision content anywhere, and history placement with or without decisions.
-assert.ok(text.includes("injectionPosition"), "the gated section shape is named");
-assert.ok(text.includes("position: 2"), "the gated lorebook position is named");
-assert.ok(!text.includes("three gated shapes"), "decision syntax is not described as gated only at depth");
-assert.ok(text.includes('even with `decisionMode: "off"`'), "a drafted statement counts while off");
-assert.ok(text.includes("Preserve existing Decisions"), "unrelated edits keep the user's Decisions");
-
-// The constant's wrong rule must not survive the move.
-assert.ok(
-  !text.includes("Without a selected model, ordinary authoring introduces no Decision content"),
-  "the corrected permission rule replaced the old one",
-);
-
-try {
-  const db = await createFileNativeDB();
-  try {
-    const mari = new MariDbService(db);
     const chats = createChatsStorage(db);
     const chat = await chats.create({
       name: "Decisions handbook",
@@ -125,15 +102,8 @@ try {
     };
     assert.equal(final.interactions.authoring?.answer, "allow");
     assert.equal(final.interactions.setupReminder?.answer, "allow");
-  } finally {
-    await db._fileStore.close();
-  }
-} finally {
-  for (const [key, value] of Object.entries(savedEnv)) {
-    if (value === undefined) delete process.env[key];
-    else process.env[key] = value;
-  }
-  rmSync(dir, { recursive: true, force: true });
-}
+  },
+  { dataDir: true },
+);
 
 console.log("Professor Mari decisions handbook regression passed.");

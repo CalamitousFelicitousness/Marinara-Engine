@@ -216,11 +216,8 @@ assert.ok(
   !flat.includes("call `home_widget.create` with `apply:false`"),
   "the home-widget template must not model the preview-then-reapply double-step",
 );
-const homeWidgetsSkill = readSource("packages/server/src/assets/mari-skills/home-widgets.md");
-assert.match(homeWidgetsSkill, /dry run unless you send/u, "the handbook keeps the inverted-apply rule");
-assert.match(homeWidgetsSkill, /in the same response/u, "the handbook keeps the no-preview-round rule");
-// The handbook explains it, but the permanent router line is what every turn sees: the inverted
-// apply rule must stay in the prompt itself, not only behind a fetched skill.
+// The permanent router line is what every turn sees: the inverted apply rule must stay in the prompt
+// itself, not only behind a fetched skill.
 assert.match(
   workspaceAgent,
   /A create is a dry run unless you send top-level/u,

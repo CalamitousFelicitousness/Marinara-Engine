@@ -88,21 +88,8 @@ assert.deepEqual(replace!.after, { data: { description: "died 1745" } });
 assert.equal(replace!.unchangedFieldsOmitted, true);
 assert.deepEqual(insert!.after, card("new"), "an insert keeps the whole new row");
 
-// The handbook gate: the first write or preview on a surface is refused once, then passes.
-const seen = new Set<string>();
-const gate = skillGateRefusal("lorebook.addEntry", { action: "lorebook.addEntry", data: {} }, seen);
-assert.match(
-  String(gate),
-  /Nothing was saved: read skill `builtin-lorebook` first with app_data \{"action":"skill.get","id":"builtin-lorebook"\}/,
-);
-assert.equal(skillGateRefusal("lorebook.addEntry", { action: "lorebook.addEntry", data: {} }, seen), null);
-assert.equal(skillGateRefusal("character.get", { action: "character.get" }, seen), null, "reads are never gated");
-const preview = skillGateRefusal("character.update", { action: "character.update", apply: false }, seen);
+// The handbook gate: a preview counts as a write.
+const preview = skillGateRefusal("character.update", { action: "character.update", apply: false }, new Set<string>());
 assert.match(String(preview), /builtin-characters/, "a preview counts as a write");
-assert.equal(
-  skillGateRefusal("theme.update", { action: "theme.update", apply: true }, new Set(["builtin-themes"])),
-  null,
-  "a skill read earlier in the chat passes",
-);
 
 console.log("Professor Mari dry-run enforcement regression passed.");

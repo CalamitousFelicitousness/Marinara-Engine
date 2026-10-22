@@ -231,7 +231,9 @@ Persist the accepted hints/provenance needed to explain assignment, not model re
 - Tactical currently shares a seeded cursor for decisions and outcomes. Changing its use is a versioned behavior change; preserve old in-progress policy behavior or supply an explicit tested migration.
 - Classic's unseeded resolver needs a separate RNG/persistence adapter before claiming exact replay there.
 - How much a unit wavers is a share of what its turn stands to gain, full once the best candidate gains about a third of a foe. Against a party too sturdy for any one blow to dent, every blow is a small share of a foe, and a flat wobble would decide between a full Multiattack and two daggers thrown at disadvantage. A methodical unit's pull toward its last target shrinks the same way, and with how much less the blow at that target is worth.
-- What a unit likes about a target (its mind's focus: the most dangerous, the weakest) only tips a blow that does at least nine tenths of the harm of its hardest one, fading to nothing at seven tenths.
+- A blow that gains clearly less than the best one on the table (under 97 hundredths) and already scores behind it gets no wavering at all, so a novice never wavers two daggers worth 93 hundredths of a Multiattack past it.
+- What a unit likes about a target (its mind's focus: the most dangerous, the weakest) only tips a choice between blows that hurt alike: one doing less than 97 hundredths of the harm of its hardest gets none of it.
+- In ruleset fights a blow's damage score is its expected harm against its target side's mean health, whoever takes it, so a knight's greater health does not make a Multiattack on him worth less than the same harm on the wizard. A blow that would drop its target is weighed by the target's own health, never as frailer than three quarters of that mean.
 
 ## 6. Mindless: an exact pursuit contract
 

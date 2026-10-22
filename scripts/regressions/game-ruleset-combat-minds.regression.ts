@@ -590,11 +590,27 @@ try {
       budget: "action",
       sequence: [{ action: "dagger", times: 2 }],
     };
-    const target = (gap: number, armour: number, temperament: CombatAiHints["temperament"]) => {
+    const target = (
+      gap: number,
+      armour: number,
+      temperament: CombatAiHints["temperament"],
+      how: {
+        seed?: number;
+        proficiency?: CombatAiHints["proficiency"];
+        locked?: boolean;
+        speed?: number;
+      } = {},
+    ) => {
       const blocks = {
         captain: {
           side: "enemy" as const,
-          block: block({ type: "humanoid", mind: "tactical", health: 65, actions: [scimitar, dagger, melee, ranged] }),
+          block: block({
+            type: "humanoid",
+            mind: "tactical",
+            health: 65,
+            speed: how.speed ?? 30,
+            actions: [scimitar, dagger, melee, ranged],
+          }),
         },
         brom: { side: "party" as const, block: block({ health: 70, defense: armour }) },
         elara: {
@@ -621,18 +637,32 @@ try {
         anchor: "anchor",
         style: "ruleset",
         party: [unit("brom", "player"), unit("elara", "player")],
-        enemies: [unit("captain", "enemy", { ...master, temperament })],
+        enemies: [unit("captain", "enemy", { proficiency: how.proficiency ?? "master", temperament })],
         gm: false,
         difficulty: "normal",
-        seed: 3,
+        seed: how.seed ?? 3,
       } as never);
       state.enemies[0]!.tactics!.adjective = temperament!;
+      if (how.locked) state.enemies[0]!.tactics!.targetId = "elara";
       return pickRulesetChoice(definition, state, encounter, "captain")?.targetId;
     };
     for (const temperament of ["disciplined", "opportunistic", "cautious", "reckless"] as const) {
       assert.equal(target(10, 18, temperament), "brom", `${temperament}: no throw at long range`);
       assert.equal(target(11, 18, temperament), "brom", `${temperament}: nor further`);
     }
+    // Two daggers at the wizard in normal range do some 93 hundredths of the Multiattack on the knight
+    // in plate (re-test 13), with her too far over rough ground to walk to: neither its liking for the
+    // dangerous one, nor having last gone for her, nor a novice's wavering throws them past it. A
+    // methodical one sticks with whom it went for: that is what it is.
+    for (let seed = 1; seed <= 12; seed++)
+      for (const temperament of ["disciplined", "opportunistic", "reckless"] as const)
+        for (const proficiency of ["novice", "trained", "master"] as const)
+          for (const gap of [4, 5])
+            assert.equal(
+              target(gap, 17, temperament, { seed, proficiency, locked: true, speed: 10 }),
+              "brom",
+              `${temperament} ${proficiency} seed ${seed} gap ${gap}: the harder blow`,
+            );
   }
 
   // A tactician keeps the slot its Counterspell needs (P8): with one 3rd-level slot left it casts its

@@ -1391,6 +1391,8 @@ const RULESET_AREA_WALK_BOARD_CELLS = 400;
  *  not walk through three people's reach for a marginally better target, and not so much that it
  *  will stand still rather than take one hit to reach the only enemy it can fight. */
 const RULESET_PROVOKE_PENALTY = 0.25;
+/** How close to its hardest blow one must come for a mind's lean to count on it (re-test 13). */
+const RULESET_FOCUS_ALIKE = 0.97;
 
 /**
  * Everything the actor could do, scored the way every other combat AI in the Engine is scored.
@@ -2468,8 +2470,12 @@ function rulesetCandidatesFrom(
         // the frail one is still a scratch, and a full Multiattack on the one beside it is worth more
         // than a dagger thrown far at disadvantage. Nobody counts as frailer than its side's mean, so
         // two daggers thrown at long range at the wizard do not beat the Multiattack on the fighter
-        // two steps away (re-test 12). Finishing one off is weighed by its own health.
-        const weighed = Math.max(pool, rulesetSideHealthMean(definition, combat, encounter, target.side));
+        // two steps away (re-test 12). By what it does, not by who takes it (re-test 13): the knight's
+        // greater health makes a Multiattack on him worth no less than the same harm on the wizard.
+        // Finishing one off is weighed by its own health, though never as frailer than three quarters
+        // of its side's mean.
+        const mean = rulesetSideHealthMean(definition, combat, encounter, target.side);
+        const weighed = average >= pool ? Math.max(pool, mean * 0.75) : mean;
         candidate.damage = Math.min(2, (average / weighed) * (1 + others.length + again)) * chance;
         candidate.action.expected = average * chance * (1 + others.length + again);
         if (average >= pool) candidate.finish = chance;
@@ -4095,9 +4101,11 @@ function weighRulesetMindFocus(
     // disadvantage at a wizard do some six tenths of a Multiattack on the knight beside it, and win
     // nothing by its liking (re-test 10). Full only for its hardest, none below 85 hundredths: two
     // daggers worth nine tenths of a Multiattack on the fighter two steps off no longer walk it away
-    // from him (re-test 12).
+    // from him (re-test 12). Nor at all for a blow weaker than its hardest (re-test 13): the lean picks
+    // between blows that hurt alike, and never lets two daggers worth 94 hundredths of a Multiattack
+    // win over it.
     const expected = candidate.action.expected;
-    if (expected !== undefined && hardest > 0) focus *= Math.max(0, Math.min(1, (expected / hardest - 0.85) / 0.15));
+    if (expected !== undefined && hardest > 0 && expected < hardest * RULESET_FOCUS_ALIKE) focus = 0;
     if (focus > 0) candidate.focus = (candidate.focus ?? 0) + focus;
   }
 }

@@ -330,6 +330,8 @@ export type CombatAiScoreParts = Partial<
 
 /** What a turn must stand to gain for its wavering to be felt in full: about a third of a foe. */
 const COMBAT_AI_FULL_STAKES = 0.4;
+/** How close to the best gain on the table a blow must come to count as alike (re-test 13). */
+const COMBAT_AI_ALIKE = 0.97;
 
 /**
  * Every candidate scored the way `chooseCombatCandidate` scores it, best first, with what each part
@@ -454,38 +456,47 @@ export function rankCombatCandidates<T>(
     (candidate.setup ?? 0) * weights.setup;
   const most = Math.max(0, ...candidates.map(gains));
   const stakes = Math.min(1, Math.max(0.1, most / COMBAT_AI_FULL_STAKES));
-  return candidates
-    .map((candidate, i) => {
-      const parts: CombatAiScoreParts = {};
-      // Summed in this order, as it always was: risk and cost count against it.
-      let score = 0;
-      for (const key of [
-        "damage",
-        "finish",
-        "healing",
-        "support",
-        "setup",
-        "risk",
-        "cost",
-        "protection",
-        "coordination",
-        "focus",
-      ] as const) {
-        const part = (candidate[key] ?? 0) * weights[key] * (key === "risk" || key === "cost" ? -1 : 1);
-        score += part;
-        if (part !== 0) parts[key] = part;
-      }
-      // Sticking with its target is worth as much as the turn is, and less for a weaker blow at them:
-      // never two daggers at disadvantage past a Multiattack beside it (re-test 10).
-      if (adjective === "methodical" && profile.targetId !== undefined && candidate.targetId === profile.targetId)
-        score += 0.35 * stakes * (most > 0 ? Math.min(1, gains(candidate) / most) : 1);
-      if (candidate.hold && orders?.posture === "retreat") score += 0.8;
-      if (candidate.hold && (profile.holds ?? 0) < 1 && profile.mind !== "mindless") {
-        if (adjective === "patient") score += 0.65;
-        if (adjective === "cowardly" && wounded) score += 0.8;
-      }
-      score += stakes * combatAiScoreNoise(profile, unit.id, turn, i, difficulty);
-      return { candidate, score, parts };
+  const scored = candidates.map((candidate) => {
+    const parts: CombatAiScoreParts = {};
+    // Summed in this order, as it always was: risk and cost count against it.
+    let score = 0;
+    for (const key of [
+      "damage",
+      "finish",
+      "healing",
+      "support",
+      "setup",
+      "risk",
+      "cost",
+      "protection",
+      "coordination",
+      "focus",
+    ] as const) {
+      const part = (candidate[key] ?? 0) * weights[key] * (key === "risk" || key === "cost" ? -1 : 1);
+      score += part;
+      if (part !== 0) parts[key] = part;
+    }
+    // Sticking with its target is worth as much as the turn is, and less for a weaker blow at them:
+    // never two daggers at disadvantage past a Multiattack beside it (re-test 10).
+    if (adjective === "methodical" && profile.targetId !== undefined && candidate.targetId === profile.targetId)
+      score += 0.35 * stakes * (most > 0 ? Math.min(1, gains(candidate) / most) : 1);
+    if (candidate.hold && orders?.posture === "retreat") score += 0.8;
+    if (candidate.hold && (profile.holds ?? 0) < 1 && profile.mind !== "mindless") {
+      if (adjective === "patient") score += 0.65;
+      if (adjective === "cowardly" && wounded) score += 0.8;
+    }
+    return { candidate, score, parts };
+  });
+  const leading = Math.max(...scored.map((one) => one.score));
+  return scored
+    .map((one, i) => {
+      // A blow that gains clearly less than the best one on the table, and is behind already, never
+      // wavers past it (re-test 13): two daggers worth 93 hundredths of a Multiattack stay behind it.
+      const gained = gains(one.candidate);
+      const weaker = one.score < leading && gained > 0 && gained < most * COMBAT_AI_ALIKE;
+      return weaker
+        ? one
+        : { ...one, score: one.score + stakes * combatAiScoreNoise(profile, unit.id, turn, i, difficulty) };
     })
     .sort((a, b) => b.score - a.score);
 }

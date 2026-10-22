@@ -214,18 +214,25 @@ export function offerCombatStart(
 
 /**
  * The pin and anchor of a fight a registered style took over, from a saved combat snapshot: such a
- * fight saves no party, only those two. `style` is null when this client no longer has that style,
- * or has it without an isActive() to report the fight, so the save is stale. Null for any other snapshot, which restores as before.
+ * fight saves no party, only those two. `style` is null when that style does not report the fight
+ * as live for `chatId` (or is gone), so the save is stale. Null for any other snapshot, which restores as before.
  */
 export function styleOwnedFightFromSnapshot(
   snapshot:
     { party?: unknown[] | null; combatStyle?: string | null; startMessageId?: string | null } | null | undefined,
+  chatId: string,
 ): { style: GameCombatStyle | null; startMessageId: string | null } | null {
   if (!snapshot || snapshot.party?.length || !snapshot.combatStyle || isBuiltInCombatStyle(snapshot.combatStyle)) {
     return null;
   }
-  // Only a style that reports its own fight (isActive) can draw one without a party: any other,
-  // or a style no longer registered, would leave a combat nothing draws.
+  // A fight without a party shows only while its style reports it (isActive), so a style that
+  // does not report this one live, has no isActive, or is no longer registered leaves a stale save.
   const surface = registeredStyles.get(snapshot.combatStyle);
-  return { style: surface?.isActive ? snapshot.combatStyle : null, startMessageId: snapshot.startMessageId ?? null };
+  let live: boolean;
+  try {
+    live = surface?.isActive?.(chatId) ?? false;
+  } catch {
+    live = false;
+  }
+  return { style: live ? snapshot.combatStyle : null, startMessageId: snapshot.startMessageId ?? null };
 }

@@ -4827,7 +4827,7 @@ function GameSurfaceComponent({
     combatRestoredChatIdRef.current = activeChatId;
     // A fight a registered style took over (#8109) saves only its pin and anchor; the style keeps
     // the rest itself.
-    const styleOwnedFight = styleOwnedFightFromSnapshot(snapshot);
+    const styleOwnedFight = styleOwnedFightFromSnapshot(snapshot, activeChatId);
     if (styleOwnedFight) {
       // A style this client can no longer play leaves nothing to draw, so its save is stale.
       if (styleOwnedFight.style === null || chatMeta.gameActiveState !== "combat") {

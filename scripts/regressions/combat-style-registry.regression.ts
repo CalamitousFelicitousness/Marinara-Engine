@@ -116,23 +116,47 @@ assert.equal(resolveCombatStyle("duel"), "classic");
 {
   const unregisterPlain = registerCombatStyle("duel", { render: () => null });
   assert.deepEqual(
-    styleOwnedFightFromSnapshot({ party: [], combatStyle: "duel", startMessageId: "m1" }),
+    styleOwnedFightFromSnapshot({ party: [], combatStyle: "duel", startMessageId: "m1" }, "c"),
     { style: null, startMessageId: "m1" },
     "a style with no isActive() cannot draw a party-less fight, so its save is stale",
   );
   unregisterPlain();
-  const unregister = registerCombatStyle("duel", { render: () => null, isActive: () => true });
-  assert.deepEqual(styleOwnedFightFromSnapshot({ party: [], combatStyle: "duel", startMessageId: "m1" }), {
+  const unregisterDead = registerCombatStyle("duel", { render: () => null, isActive: () => false });
+  assert.deepEqual(
+    styleOwnedFightFromSnapshot({ party: [], combatStyle: "duel", startMessageId: "m1" }, "c"),
+    { style: null, startMessageId: "m1" },
+    "a style that reports no live fight for the chat leaves a stale save",
+  );
+  unregisterDead();
+  const unregisterThrowing = registerCombatStyle("duel", {
+    render: () => null,
+    isActive: () => {
+      throw new Error("not loaded");
+    },
+  });
+  assert.equal(
+    styleOwnedFightFromSnapshot({ party: [], combatStyle: "duel", startMessageId: "m1" }, "c")?.style,
+    null,
+    "a throwing isActive() counts as no live fight",
+  );
+  unregisterThrowing();
+  const unregister = registerCombatStyle("duel", { render: () => null, isActive: (chatId) => chatId === "c" });
+  assert.equal(
+    styleOwnedFightFromSnapshot({ party: [], combatStyle: "duel", startMessageId: "m1" }, "other")?.style,
+    null,
+    "the style is asked about this chat",
+  );
+  assert.deepEqual(styleOwnedFightFromSnapshot({ party: [], combatStyle: "duel", startMessageId: "m1" }, "c"), {
     style: "duel",
     startMessageId: "m1",
   });
-  assert.equal(styleOwnedFightFromSnapshot({ party: [{}], combatStyle: "duel" }), null, "a fight with a party");
-  assert.equal(styleOwnedFightFromSnapshot({ party: [], combatStyle: "tactical" }), null, "a built-in style");
-  assert.equal(styleOwnedFightFromSnapshot({ party: [], combatStyle: null }), null);
-  assert.equal(styleOwnedFightFromSnapshot(null), null);
+  assert.equal(styleOwnedFightFromSnapshot({ party: [{}], combatStyle: "duel" }, "c"), null, "a fight with a party");
+  assert.equal(styleOwnedFightFromSnapshot({ party: [], combatStyle: "tactical" }, "c"), null, "a built-in style");
+  assert.equal(styleOwnedFightFromSnapshot({ party: [], combatStyle: null }, "c"), null);
+  assert.equal(styleOwnedFightFromSnapshot(null, "c"), null);
   unregister();
   assert.deepEqual(
-    styleOwnedFightFromSnapshot({ party: [], combatStyle: "duel", startMessageId: "m1" }),
+    styleOwnedFightFromSnapshot({ party: [], combatStyle: "duel", startMessageId: "m1" }, "c"),
     { style: null, startMessageId: "m1" },
     "a style no longer registered leaves a stale save",
   );
@@ -143,7 +167,7 @@ const surface = readSource("packages/client/src/components/game/GameSurface.tsx"
 assert.match(surface, /combatStyleSurface\.render\(combatSurfaceContext\)/);
 assert.match(surface, /combatStyleSurface\.ownsTopChrome/);
 assert.match(surface, /offerCombatStart\(\s*combatStyleSurface,/);
-assert.match(surface, /styleOwnedFightFromSnapshot\(snapshot\)/);
+assert.match(surface, /styleOwnedFightFromSnapshot\(snapshot, activeChatId\)/);
 // The once-per-message latch is released wherever a fight ends or a start is abandoned.
 assert.equal(
   surface.match(/combatStyleStartedMessageIdRef\.current = null;/g)?.length,

@@ -23,6 +23,7 @@ const ENV_KEYS = [
   "MARINARA_REQUIRE_ADMIN_SECRET_ON_LOOPBACK",
   "REQUIRE_AUTH_FOR_DOCKER_PROXY",
   "REQUIRE_AUTH_FOR_LOOPBACK_PROXY",
+  "TRUSTED_AUTH_PROXY",
 ] as const;
 type Env = Partial<Record<(typeof ENV_KEYS)[number], string>>;
 const originalEnv = Object.fromEntries(ENV_KEYS.map((key) => [key, process.env[key]]));
@@ -60,7 +61,7 @@ const status = (remoteAddress: string, headers: Record<string, string> = {}) =>
 try {
   // Owner on loopback: facts only, never the values behind them. HOST edited after start
   // does not move the real bind.
-  setEnv({ ...LOGIN, HOST: "0.0.0.0", IP_ALLOWLIST: "192.168.1.0/24" });
+  setEnv({ ...LOGIN, HOST: "0.0.0.0", IP_ALLOWLIST: "192.168.1.0/24", TRUSTED_AUTH_PROXY: "192.168.1.5" });
   const owner = await status("127.0.0.1");
   assert.equal(owner.statusCode, 200);
   assert.deepEqual(owner.json(), {
@@ -70,6 +71,7 @@ try {
     loginSource: "env",
     adminSecret: true,
     allowlist: true,
+    trustedAuthProxy: true,
     passwordlessPeers: [],
     loginKeepsOpen: [],
     viaProxy: false,

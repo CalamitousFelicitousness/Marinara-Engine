@@ -21,6 +21,7 @@ import {
   getDockerBypassMode,
   getIpAllowlist,
   getTailscaleBypassMode,
+  getTrustedAuthProxy,
   getTrustedPrivateNetworksOverride,
   isDockerProxyAuthRequired,
   isDockerRuntime,
@@ -408,6 +409,47 @@ function getAllowlist() {
   return cachedAllowlist.entries;
 }
 
+let cachedAuthProxies: { raw: string | null; entries: CIDREntry[] } | null = null;
+
+/** TRUSTED_AUTH_PROXY entries. Broad ones are dropped: they would let whole ISPs skip the login. */
+export function getTrustedAuthProxies(): CIDREntry[] {
+  const raw = getTrustedAuthProxy();
+  if (cachedAuthProxies?.raw === raw) return cachedAuthProxies.entries;
+  const entries: CIDREntry[] = [];
+  const accepted: string[] = [];
+  for (const part of (raw ?? "").split(",")) {
+    const trimmed = part.trim();
+    if (!trimmed) continue;
+    const cidr = parseCIDR(trimmed);
+    if (!cidr) {
+      logger.warn(`[trusted-auth-proxy] Ignoring invalid entry: "${trimmed}"`);
+    } else if (isBroadAllowlistEntry(cidr)) {
+      logger.error(
+        `[trusted-auth-proxy] Ignoring "${trimmed}": it covers public address space. List only the proxy's address.`,
+      );
+    } else {
+      if (cidr.prefixLen < 128) {
+        logger.warn(
+          `[trusted-auth-proxy] "${trimmed}" is a range: every device in it skips the login, not only the proxy.`,
+        );
+      }
+      entries.push(cidr);
+      accepted.push(trimmed);
+    }
+  }
+  if (accepted.length > 0) {
+    logger.warn("[auth-bypass] Requests from TRUSTED_AUTH_PROXY %s skip the Marinara login", accepted.join(", "));
+  }
+  cachedAuthProxies = { raw, entries };
+  return entries;
+}
+
+/** True when the socket peer is a configured forward-auth proxy. Forwarded headers never count. */
+export function isTrustedAuthProxyIp(ip: string): boolean {
+  const bytes = ipToBytes(ip);
+  return Boolean(bytes && getTrustedAuthProxies().some((entry) => matchesCIDR(bytes, entry)));
+}
+
 // ── Reusable predicates (shared with basic-auth) ──
 
 /** True if the given IP string is a loopback address. */
@@ -626,6 +668,8 @@ function computeAccessPolicy(request: AccessRequest, dockerNetwork: DockerNetwor
     dockerRuntimeMatch,
     dockerCompatibilityNetwork:
       isDockerRuntime() && isDockerCompatibilityNetworkIp(ip, dockerInterfaces, dockerGatewayIp, parsedDockerCidrs),
+    // request.ip is the socket peer: the app never sets Fastify's trustProxy.
+    trustedAuthProxy: isTrustedAuthProxyIp(ip),
     config: getAccessConfig(),
   });
 }
@@ -634,6 +678,7 @@ function getAccessConfig(): AccessFacts["config"] {
   return {
     basicAuthConfigured: getLoginConfig() !== null,
     ipAllowlistConfigured: getIpAllowlist() !== null,
+    trustedAuthProxyConfigured: getTrustedAuthProxies().length > 0,
     adminSecretConfigured: Boolean(getAdminSecret()),
     loopbackProxyAuthRequired: isLoopbackProxyAuthRequired(),
     dockerProxyAuthRequired: isDockerProxyAuthRequired(),
@@ -683,6 +728,7 @@ const NO_PEER_FACTS: Omit<AccessFacts, "config"> = {
   dockerIp: false,
   dockerRuntimeMatch: false,
   dockerCompatibilityNetwork: false,
+  trustedAuthProxy: false,
 };
 
 /**
@@ -740,7 +786,7 @@ function announceBypass(policy: AccessPolicy, ip: string): void {
   const dockerMode = getDockerBypassMode();
   if (policy.dockerAutoWithheld && !bypassAnnounced.dockerAutoWithheld) {
     logger.warn(
-      "[auth-bypass] Docker peer %s must pass Basic Auth/IP_ALLOWLIST: automatic Docker trust is off while either is configured, because Docker Desktop and OrbStack show LAN clients at the gateway address. Set BYPASS_AUTH_DOCKER=true only if every client of the published port is trusted.",
+      "[auth-bypass] Docker peer %s must pass Basic Auth/IP_ALLOWLIST: automatic Docker trust is off while a login, IP_ALLOWLIST or TRUSTED_AUTH_PROXY is set, because Docker Desktop and OrbStack show LAN clients at the gateway address. Set BYPASS_AUTH_DOCKER=true only if every client of the published port is trusted.",
       ip,
     );
     bypassAnnounced.dockerAutoWithheld = true;

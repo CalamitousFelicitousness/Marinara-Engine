@@ -4462,6 +4462,7 @@
   "settings.accessStatus.peersIntro": "These can open Marinara without a password:",
   "settings.accessStatus.row.adminSecret": "Admin secret",
   "settings.accessStatus.row.allowlist": "IP allowlist",
+  "settings.accessStatus.row.authProxy": "Trusted login proxy",
   "settings.accessStatus.row.connection": "This page",
   "settings.accessStatus.row.listen": "Listens on",
   "settings.accessStatus.row.login": "Login password",

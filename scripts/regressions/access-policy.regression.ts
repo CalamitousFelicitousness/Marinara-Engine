@@ -18,6 +18,7 @@ const ENV_KEYS = [
   "MARINARA_DOCKER",
   "REQUIRE_AUTH_FOR_DOCKER_PROXY",
   "REQUIRE_AUTH_FOR_LOOPBACK_PROXY",
+  "TRUSTED_AUTH_PROXY",
 ] as const;
 const originalEnv = Object.fromEntries(ENV_KEYS.map((key) => [key, process.env[key]]));
 
@@ -209,6 +210,36 @@ try {
   assert.equal(withheld.trustedInterface, false, "automatic Docker trust stands down once a password is set");
   assert.equal(withheld.dockerAutoWithheld, true);
   assert.equal(withheld.authRequired, true);
+
+  // A forward-auth proxy is trusted by its socket address only, past the login and IP_ALLOWLIST.
+  // Broad and invalid entries are dropped, so 0.0.0.0/0 opens nothing.
+  process.env.TRUSTED_AUTH_PROXY = "192.168.1.5, 0.0.0.0/0, not-an-ip";
+  process.env.IP_ALLOWLIST = "203.0.113.0/24";
+  const viaProxy = getAccessPolicy(request("192.168.1.5", { "x-forwarded-for": "198.51.100.1" }));
+  assert.equal(viaProxy.trustedPeer, true);
+  assert.equal(viaProxy.authRequired, false);
+  assert.equal(viaProxy.ipAllowed, true, "the proxy passes IP_ALLOWLIST like a BYPASS_AUTH_* peer");
+  assert.equal(viaProxy.local, false);
+  assert.equal(viaProxy.reason, "trusted-auth-proxy");
+  const spoofed = getAccessPolicy(request("192.168.1.6", { "x-forwarded-for": "192.168.1.5" }));
+  assert.equal(spoofed.trustedPeer, false, "a forwarded header never names the proxy");
+  assert.equal(spoofed.ipAllowed, false);
+  assert.equal(getAccessPolicy(request("198.51.100.1")).trustedPeer, false, "0.0.0.0/0 is refused");
+  reset();
+
+  // A proxy on this computer: its visitors skip the login but never get local trust.
+  process.env.TRUSTED_AUTH_PROXY = "127.0.0.1";
+  const localProxy = getAccessPolicy(request("127.0.0.1", { "x-forwarded-for": "203.0.113.66" }));
+  assert.equal(localProxy.trustedPeer, true);
+  assert.equal(localProxy.lockedDown, false);
+  assert.equal(localProxy.forwardedLoopback, true);
+  assert.equal(localProxy.local, false);
+  process.env.MARINARA_DOCKER = "true";
+  assert.equal(
+    getAccessPolicy(request("192.168.215.1"), network).trustedInterface,
+    false,
+    "a trusted auth proxy withholds automatic Docker trust like a login does",
+  );
 } finally {
   for (const key of ENV_KEYS) {
     if (originalEnv[key] === undefined) delete process.env[key];

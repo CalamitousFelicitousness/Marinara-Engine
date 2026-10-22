@@ -18,7 +18,13 @@ import {
 import { getHost, getIpAllowlist } from "../config/runtime-config.js";
 import { logger } from "../lib/logger.js";
 import { describeSessions, endSession, rememberLoginInBrowser } from "../middleware/basic-auth.js";
-import { getAccessPolicy, getPasswordlessPeers, isLoopbackBind, isProxiedRequest } from "../middleware/ip-allowlist.js";
+import {
+  getAccessPolicy,
+  getPasswordlessPeers,
+  getTrustedAuthProxies,
+  isLoopbackBind,
+  isProxiedRequest,
+} from "../middleware/ip-allowlist.js";
 import { requirePrivilegedAccess } from "../middleware/privileged-gate.js";
 import { ACCESS_LOGIN_RATE_LIMIT, RUNTIME_DIAGNOSTICS_RATE_LIMIT } from "../middleware/rate-limit.js";
 
@@ -38,6 +44,7 @@ export async function accessStatusRoutes(app: FastifyInstance) {
       loginSource: getLoginConfig()?.source ?? null,
       adminSecret: policy.adminSecretConfigured,
       allowlist: getIpAllowlist() !== null,
+      trustedAuthProxy: getTrustedAuthProxies().length > 0,
       passwordlessPeers: getPasswordlessPeers(host),
       loginKeepsOpen: getPasswordlessPeers(host, undefined, true),
       viaProxy: isProxiedRequest(request),

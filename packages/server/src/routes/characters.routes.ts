@@ -2866,6 +2866,8 @@ export async function charactersRoutes(app: FastifyInstance) {
   });
 
   app.delete<{ Params: { id: string } }>("/personas/:id/avatar", async (req, reply) => {
+    // ponytail: clear the card reference and retain files for frozen chat identities.
+    // Reclaim them only after checking current, historical and trashed references.
     const updated = await enqueueUpdate(personaUpdateQueues, req.params.id, () =>
       storage.updatePersona(req.params.id, { avatarPath: null, avatarCrop: "" }, { versionReason: "Avatar removal" }),
     );

@@ -3,7 +3,16 @@
 // Replaces the chat area when editing a persona.
 // Sections: Metadata, Card, Convo, Lorebook, Sprites, Gallery, Colors, Stats
 // ──────────────────────────────────────────────
-import { useState, useEffect, useRef, useCallback, useMemo, type ChangeEvent, type ReactNode } from "react";
+import {
+  useState,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useCallback,
+  useMemo,
+  type ChangeEvent,
+  type ReactNode,
+} from "react";
 import { toast } from "sonner";
 import {
   useCreateCharacter,
@@ -1520,7 +1529,7 @@ export function PersonaEditor() {
   // Forced teardown (unmount, or a Persona switch that never re-hydrates) drops the
   // local identity so an in-flight completion can still update shared caches through
   // the hooks but can no longer write this editor's state.
-  useEffect(() => {
+  useLayoutEffect(() => {
     return () => {
       editorSessionRef.current = generateClientId();
       loadedPersonaIdRef.current = null;

@@ -386,10 +386,21 @@ test("persona avatar removal progress belongs to the active editor session", asy
     // exercise the editor's separate forced-teardown/session-isolation contract.
     await open(page, "persona", next);
     await expect(editor.locator(".mari-editor-title-input")).toHaveValue("Removal owner");
-    await page.evaluate(async (id) => {
+    const firstFrame = await page.evaluate(async (id) => {
       const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
       useUIStore.setState({ personaDetailId: id });
+      return new Promise<{ disabled: boolean[]; removeLabel: string | null | undefined }>((resolve) => {
+        requestAnimationFrame(() => {
+          const fields = document.querySelectorAll<HTMLFieldSetElement>('[data-editor-section="metadata"] fieldset');
+          resolve({
+            disabled: [...fields].map((field) => field.disabled),
+            removeLabel: document.querySelector('[title="Remove avatar"]')?.textContent,
+          });
+        });
+      });
     }, next);
+    expect(firstFrame.disabled).toEqual([false, false]);
+    expect(firstFrame.removeLabel).toBe("Remove");
     const nextEditor = await open(page, "persona", next);
     await expect(nextEditor.locator(".mari-editor-title-input")).toHaveValue("Next persona");
     const nextRemove = nextEditor.getByTitle("Remove avatar", { exact: true });

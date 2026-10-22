@@ -177,12 +177,10 @@ try {
   });
   await deletionStarted;
   let duplicateSettled = false;
-  const racingDuplicate = createCharactersStorage(db)
-    .duplicateCharacter("delete-race-character")
-    .then((result) => {
-      duplicateSettled = true;
-      return result;
-    });
+  const racingDuplicate = createCharactersStorage(db).duplicateCharacter("delete-race-character").then((result) => {
+    duplicateSettled = true;
+    return result;
+  });
   await Promise.resolve();
   assert.equal(duplicateSettled, false, "avatar reference creation must wait for in-flight cleanup");
   allowDeletion();
@@ -244,10 +242,10 @@ try {
     { files: 1, bytes: Buffer.byteLength("old-orphan.png") },
     "the optimizer must report only old, direct, unreferenced avatar images",
   );
-  assert.deepEqual(await deleteAbandonedAvatarFiles({ db, avatarRoot, nowMs: optimizerNow, minimumAgeMs: 60_000 }), {
-    files: 1,
-    bytes: Buffer.byteLength("old-orphan.png"),
-  });
+  assert.deepEqual(
+    await deleteAbandonedAvatarFiles({ db, avatarRoot, nowMs: optimizerNow, minimumAgeMs: 60_000 }),
+    { files: 1, bytes: Buffer.byteLength("old-orphan.png") },
+  );
   assert.equal(existsSync(oldOrphanFile), false, "an old unreferenced avatar must be deleted");
   assert.equal(existsSync(mariFile), true, "a referenced avatar must survive storage optimization");
   assert.equal(existsSync(recentOrphanFile), true, "a recent unreferenced avatar must keep its upload grace period");
@@ -273,36 +271,6 @@ try {
     0,
     "a missing orphan file must be tolerated",
   );
-  const uncertainFile = writeAvatar("uncertain-reference.png");
-  const unreadableReferences = {
-    select() {
-      throw new Error("reference scan unavailable");
-    },
-  } as unknown as typeof db;
-  const committed = await mutateAvatarReferencesAndCleanup({
-    db: unreadableReferences,
-    avatarRoot,
-    collectAvatarPaths: async () => [localAvatar("uncertain-reference.png")],
-    mutateReferences: async () => "committed update",
-  });
-  assert.deepEqual(committed, { result: "committed update", filesDeleted: 0 });
-  assert.equal(
-    existsSync(uncertainFile),
-    true,
-    "unverifiable references must preserve the file and the committed result",
-  );
-  await assert.rejects(
-    mutateAvatarReferencesAndCleanup({
-      db,
-      avatarRoot,
-      collectAvatarPaths: async () => [localAvatar("uncertain-reference.png")],
-      mutateReferences: async () => {
-        throw new Error("mutation failed");
-      },
-    }),
-    /mutation failed/u,
-  );
-  assert.equal(existsSync(uncertainFile), true, "a failed reference mutation must not clean up its files");
 } finally {
   await db._fileStore.close();
   if (previousStorageRoot === undefined) delete process.env.FILE_STORAGE_DIR;

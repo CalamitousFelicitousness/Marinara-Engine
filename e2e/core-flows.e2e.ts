@@ -19867,6 +19867,194 @@ test("a landscape phone keeps Home's compact chrome", async ({ page }, testInfo)
   await expect(menu).toHaveCount(0);
 });
 
+test("a phone turned sideways keeps the app out from under its camera", async ({ page, request }, testInfo) => {
+  test.skip(!testInfo.project.name.includes("mobile"), "Touch-device proof.");
+  await seedUIState(page, { hasCompletedOnboarding: true, sidebarOpen: false, rightPanelOpen: false }, "merge");
+  await page.addInitScript(({ key, version }) => localStorage.setItem(key, version), {
+    key: WHATS_NEW_SEEN_VERSION_KEY,
+    version: APP_VERSION,
+  });
+  await page.setViewportSize({ width: 874, height: 402 });
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "What shall we cook tonight?" })).toBeVisible({ timeout: 30_000 });
+  await page.evaluate(async () => {
+    const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
+    await new Promise<void>((resolve) => {
+      if (module.useUIStore.getState().settingsSyncReady) return resolve();
+      const stop = module.useUIStore.subscribe((state) => {
+        if (!state.settingsSyncReady) return;
+        stop();
+        resolve();
+      });
+    });
+    module.useUIStore.getState().setSidebarOpen(false);
+  });
+  // An iPhone with a Dynamic Island reports 59px either side in landscape. Chromium can emulate the real
+  // env() insets; WebKit (the iOS shell path) stands them in through the variables env() feeds.
+  const chromium = testInfo.project.name.includes("chromium");
+  const cdp = chromium ? await page.context().newCDPSession(page) : null;
+  const setSideInsets = async (side: number) => {
+    if (cdp) {
+      await cdp.send(
+        "Emulation.setSafeAreaInsetsOverride" as never,
+        {
+          insets: { top: 0, left: side, right: side, bottom: side ? 21 : 0 },
+        } as never,
+      );
+    } else {
+      await page.locator("html").evaluate((element, px) => {
+        element.style.setProperty("--mari-safe-area-inset-left", `${px}px`);
+        element.style.setProperty("--mari-safe-area-inset-right", `${px}px`);
+      }, side);
+    }
+  };
+  // Sheets slide in, so wait for each to settle before measuring it.
+  const expectInside = (locator: Locator, label: string) =>
+    expect
+      .poll(
+        async () => {
+          const bounds = await locator.boundingBox();
+          return bounds && bounds.x >= 59 - 0.5 && bounds.x + bounds.width <= 874 - 59 + 0.5;
+        },
+        { message: `${label} stays clear of the camera` },
+      )
+      .toBe(true);
+
+  await setSideInsets(59);
+  const shell = page.locator(".mari-app");
+  await expect.poll(async () => (await shell.boundingBox())!.x).toBeCloseTo(59, 0);
+  expect((await shell.boundingBox())!.width).toBeCloseTo(874 - 2 * 59, 0);
+  const topBar = page.locator('[data-component="TopBar"]');
+  await expectInside(topBar, "the TopBar");
+  for (const button of await topBar.locator(".mari-topbar-action:visible").all())
+    await expectInside(button, "a bar button");
+  await expectInside(page.locator(".mari-home-browser-chrome"), "Home's tabs");
+  // The strips are the page backing, as the status-bar strip is in portrait.
+  const strips = await page.evaluate(() => {
+    const bar = document.querySelector<HTMLElement>('[data-component="TopBar"]')!;
+    return {
+      inShell: [document.elementFromPoint(20, 200), document.elementFromPoint(854, 200)].map((hit) =>
+        Boolean(hit?.closest(".mari-app")),
+      ),
+      backing: getComputedStyle(document.body).backgroundColor,
+      bar: getComputedStyle(bar).backgroundColor,
+    };
+  });
+  expect(strips.inShell).toEqual([false, false]);
+  expect(strips.backing).toBe(strips.bar);
+  // Nothing of the app's own paints into them, such as its decorative stars. The shell clips what flows inside
+  // it, so the elements that can reach a strip are the fixed ones, which escape that clip: none may touch either.
+  const strayInStrips = await shell.evaluate((element) =>
+    Array.from(element.querySelectorAll<HTMLElement>("*"))
+      .filter((node) => {
+        const style = getComputedStyle(node);
+        if (style.position !== "fixed" || style.visibility === "hidden" || style.opacity === "0") return false;
+        const bounds = node.getBoundingClientRect();
+        if (bounds.width <= 1 || bounds.height <= 1) return false;
+        return (bounds.left < 59 && bounds.right > 0) || (bounds.right > 874 - 59 && bounds.left < 874);
+      })
+      .map((node) => node.getAttribute("data-component") ?? node.className.toString().slice(0, 60)),
+  );
+  expect(strayInStrips).toEqual([]);
+
+  await page.getByRole("button", { name: "Chats", exact: true }).click();
+  const chatList = page.locator('[data-component="ChatSidebarPanel"]');
+  await expect(chatList).toBeVisible();
+  await expectInside(chatList, "the chat list");
+  await page.getByRole("button", { name: "Close chats" }).click();
+  await expect(chatList).toBeHidden();
+
+  // A wide dialog, whose panel only clears the camera through the overlay's own side padding.
+  await openHomeBookmark(page, "FAQ");
+  const faq = page.getByRole("dialog", { name: "Professor Mari's FAQ" });
+  await expect(faq).toBeVisible();
+  await expectInside(faq.locator(".mari-modal-panel"), "a dialog");
+  await page.keyboard.press("Escape");
+  await expect(faq).toBeHidden();
+
+  // A sheet's own fixed selection bar lines up with the sheet, not the screen, on every engine.
+  // The mobile projects share one server, so the fixture is named for this run.
+  const regexName = `Camera strip ${testInfo.project.name} ${testInfo.retry} ${Date.now()}`;
+  const regexResponse = await request.post("/api/regex-scripts", {
+    data: {
+      name: regexName,
+      findRegex: "fixture",
+      replaceString: "replacement",
+      placement: ["ai_output"],
+    },
+  });
+  expect(regexResponse.ok()).toBeTruthy();
+  const regexScript = (await regexResponse.json()) as { id: string };
+  try {
+    await page.evaluate(async () => {
+      const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
+      module.useUIStore.getState().openRightPanel("presets");
+    });
+    const panelSheet = page.locator('[data-component="RightPanelMobile"]');
+    await expectInside(panelSheet, "the panel sheet");
+    await page.getByRole("button", { name: "Select regex scripts", exact: true }).click();
+    await page.getByRole("checkbox", { name: `Select ${regexName}`, exact: true }).check();
+    const actionBar = page.locator(".mari-selection-action-bar");
+    await expect(actionBar).toBeVisible();
+    await expect
+      .poll(async () => {
+        const [bar, sheet] = await Promise.all([actionBar.boundingBox(), panelSheet.boundingBox()]);
+        return bar && sheet
+          ? [Math.abs(bar.x - sheet.x) <= 1, Math.abs(bar.x + bar.width - (sheet.x + sheet.width)) <= 1]
+          : null;
+      })
+      .toEqual([true, true]);
+    await page.evaluate(async () => {
+      const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
+      module.useUIStore.getState().closeRightPanel();
+    });
+
+    // The detail sheet opens without crossing a strip: every frame of its entrance is sampled, not just the end.
+    await page.evaluate(() => {
+      const extent = { left: Infinity, right: -Infinity };
+      (window as unknown as { __detailExtent: typeof extent }).__detailExtent = extent;
+      // Sample from the sheet's first frame until its entrance is long over, however long the editor takes to load.
+      const giveUpAt = performance.now() + 15_000;
+      let stopAt = Infinity;
+      const sample = () => {
+        const sheet = document.querySelector('[data-component="MobileDetailSheet"]');
+        if (sheet) {
+          if (stopAt === Infinity) stopAt = performance.now() + 1200;
+          const bounds = sheet.getBoundingClientRect();
+          extent.left = Math.min(extent.left, bounds.left);
+          extent.right = Math.max(extent.right, bounds.right);
+        }
+        const now = performance.now();
+        if (now < stopAt && now < giveUpAt) requestAnimationFrame(sample);
+      };
+      requestAnimationFrame(sample);
+    });
+    await page.evaluate(async (id) => {
+      const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
+      module.useUIStore.getState().openRegexDetail(id);
+    }, regexScript.id);
+    await expect(page.locator('[data-component="MobileDetailSheet"]')).toBeVisible();
+    await page.waitForTimeout(1400);
+    const detailExtent = await page.evaluate(
+      () => (window as unknown as { __detailExtent: { left: number; right: number } }).__detailExtent,
+    );
+    expect(Number.isFinite(detailExtent.left), "the sampler saw the sheet").toBe(true);
+    expect(detailExtent.left).toBeGreaterThanOrEqual(59 - 0.5);
+    expect(detailExtent.right).toBeLessThanOrEqual(874 - 59 + 0.5);
+    await page.evaluate(async () => {
+      const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
+      module.useUIStore.getState().closeAllDetails();
+    });
+  } finally {
+    await request.delete(`/api/regex-scripts/${regexScript.id}`);
+  }
+
+  // No camera, no strips: the shell takes the whole width again.
+  await setSideInsets(0);
+  await expect.poll(async () => (await shell.boundingBox())!.x).toBe(0);
+  expect((await shell.boundingBox())!.width).toBe(874);
+});
+
 test("a sideways phone gives a package tab the screen while you type", async ({ page }, testInfo) => {
   test.skip(!testInfo.project.name.includes("mobile"), "Touch-device proof.");
   const manifest = {

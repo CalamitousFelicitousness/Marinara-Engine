@@ -415,7 +415,7 @@ html[data-marinara-effects-paused="true"] .mari-topbar-status::before {
   .mari-topbar-status {
     position: absolute;
     top: 50%;
-    right: calc(max(4px, env(safe-area-inset-right)) + 4.25rem);
+    right: calc(4px + 4.25rem);
     max-width: calc(100% - 13rem);
     margin: 0;
     translate: 0 -50%;
@@ -4179,7 +4179,8 @@ details[open] > .mari-disclosure .mari-disclosure__chevron {
    capsules. Neutral at rest; the primary colour is only the focus ring (and the semantic Plan mode/Fix chip).
    Send is neutral: grey while empty, solid foreground once there is something to send. */
 .mari-workspace-composer {
-  --mari-composer-fill: linear-gradient(var(--marinara-home-page-wash), var(--marinara-home-page-wash)) var(--background);
+  --mari-composer-fill: linear-gradient(var(--marinara-home-page-wash), var(--marinara-home-page-wash))
+    var(--background);
   position: relative;
   display: flex;
   flex-wrap: wrap;

@@ -35,7 +35,7 @@ export function AppBanner({
     <div className="fixed inset-x-0 top-0 z-[9999] max-h-[50dvh] overflow-y-auto bg-[var(--background)] text-[var(--foreground)] shadow-md">
       <div
         className={cn(
-          "flex items-start gap-3 border-b pt-[max(0.5rem,env(safe-area-inset-top))] pr-[max(0.5rem,env(safe-area-inset-right))] pb-2 pl-[max(1rem,env(safe-area-inset-left))] text-sm",
+          "flex items-start gap-3 border-b pt-[max(0.5rem,env(safe-area-inset-top))] pr-[max(0.5rem,var(--mari-safe-area-inset-right))] pb-2 pl-[max(1rem,var(--mari-safe-area-inset-left))] text-sm",
           tone === "accent"
             ? "border-[var(--marinara-chat-chrome-accent)]/40 bg-[var(--marinara-chat-chrome-accent)]/15"
             : critical

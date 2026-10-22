@@ -1199,6 +1199,18 @@ function rulesetSummonsShown(
       : [],
   );
 }
+/** Whether the party may give itself up (combat AI T6): every opponent still standing is one the
+ *  Engine plays as honourable. */
+function rulesetPartyMayYield(state: CombatDirectorState, encounter: RulesetEncounterState): boolean {
+  const standing = encounter.combatants.filter(
+    (one) => one.side !== "party" && !one.object && one.calledBy === undefined && rulesetCombatStanding(one),
+  );
+  return (
+    standing.length > 0 &&
+    standing.every((one) => state.enemies?.find((unit) => unit.id === one.id)?.tactics?.adjective === "honourable")
+  );
+}
+
 /** The fight as a screen reads it. A projection: no sheet build, no live blob and no catalogs.
  *  Nothing changes while it is drawn, so every fighter's sheet is worked out once for it, however
  *  many options, targets and forecasts read it. */
@@ -1241,6 +1253,7 @@ function rulesetViewOf(definition: RulesetDefinition, state: CombatDirectorState
   return {
     ruleset: { ...encounter.ruleset },
     round: encounter.round,
+    ...(!over && rulesetPartyMayYield(state, encounter) ? { canYield: true as const } : {}),
     order: [...encounter.order],
     ...(grid && distance
       ? {
@@ -5346,6 +5359,16 @@ export function commandRulesetCombatDirector(
   if (command.type === "flee") {
     state.outcome = "flee";
     fight.encounter = settleRulesetFledFight(definition, fight.encounter, rollerFor(fight)).state;
+    return settled(state);
+  }
+
+  // Given up to opponents who are all honourable (combat AI T6): they take the party alive.
+  if (command.type === "yield") {
+    if (state.window) return refuse("Resolve the open decision first.", "ruleset_combat_decision_open");
+    if (!rulesetPartyMayYield(state, fight.encounter))
+      return refuse("Only honourable opponents accept a surrender.", "ruleset_combat_no_yield");
+    state.outcome = "defeat";
+    state.yielded = true;
     return settled(state);
   }
 

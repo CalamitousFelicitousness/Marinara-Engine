@@ -197,6 +197,7 @@ export function DirectedCombatUI(props: Props) {
               busy={busy}
               onChoose={choose}
               onFlee={() => send({ type: "flee" })}
+              onYield={() => send({ type: "yield" })}
               controls={
                 <CombatAiControls
                   // A ruleset fight takes a companion's controller at any time but a decision (the
@@ -235,6 +236,7 @@ export function DirectedCombatUI(props: Props) {
                         busy,
                         onChoose: choose,
                         onFlee: () => send({ type: "flee" }),
+                        onYield: () => send({ type: "yield" }),
                       },
                     }
                   : {}),

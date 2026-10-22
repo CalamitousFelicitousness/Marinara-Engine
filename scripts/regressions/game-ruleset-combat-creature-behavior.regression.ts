@@ -38,6 +38,7 @@ const { createCombatDirector } = await import("../../packages/server/src/service
 const {
   commandRulesetCombatDirector,
   createRulesetFight,
+  directedRulesetView,
   pickRulesetChoice,
   rulesetDirectorStage,
   syncRulesetCombatants,
@@ -567,6 +568,33 @@ try {
       "b",
       "never one running from it",
     );
+    // Before honourable opponents alone, the party may give itself up, and is taken alive.
+    const surrender = (temperament: string) => {
+      const { encounter, state } = fight({
+        hero: { side: "party", block: block([smash]), at: { x: 4, y: 2 } },
+        knight: { side: "enemy", block: block([smash], { behavior: { temperament } }), at: { x: 5, y: 2 } },
+      });
+      state.rulesetFight = {
+        encounter,
+        events: [],
+        eventSeq: 0,
+        controllers: { hero: "manual" },
+        bosses: [],
+        adjustments: [],
+      } as never;
+      syncRulesetCombatants(definition, state);
+      state.stage = rulesetDirectorStage(state);
+      return { state, view: directedRulesetView(definition, state) };
+    };
+    const yielding = surrender("honourable");
+    assert.equal(yielding.view?.canYield, true, "offered");
+    assert.ok(commandRulesetCombatDirector(definition, yielding.state, { type: "yield" }).ok);
+    assert.equal(yielding.state.outcome, "defeat");
+    assert.equal(yielding.state.summary?.yielded, true, "taken alive");
+    const fierce = surrender("reckless");
+    assert.equal(fierce.view?.canYield, undefined, "not before one that would not take it");
+    assert.equal(commandRulesetCombatDirector(definition, fierce.state, { type: "yield" }).ok, false);
+    assert.equal(fierce.state.outcome, undefined);
   }
 
   // ── Hungry (combat AI T8): its prey in hand, it drags them off away from the rest ──

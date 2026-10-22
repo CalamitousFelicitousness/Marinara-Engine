@@ -276,6 +276,7 @@ const command = z.discriminatedUnion("type", [
   z.object({ type: z.literal("continue") }),
   z.object({ type: z.literal("fallback") }),
   z.object({ type: z.literal("flee") }),
+  z.object({ type: z.literal("yield") }),
   z.object({ type: z.literal("control"), unitId: key, controller: z.enum(["manual", "ai"]) }),
   z.object({ type: z.literal("orders"), unitId: key, orders: combatOrdersSchema.nullable() }),
 ]);

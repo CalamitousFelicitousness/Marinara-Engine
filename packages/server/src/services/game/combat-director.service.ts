@@ -79,6 +79,8 @@ export interface CombatDirectorState extends DirectedCombatView {
   gmAll?: boolean;
   /** The game lets a cruel opponent strike those already down (combat AI T3). */
   cruel?: boolean;
+  /** The party gave itself up to honourable opponents (combat AI T6): a defeat nobody died of. */
+  yielded?: true;
   difficulty: string;
   weather?: CombatWeather;
   /** The game's elements (worldgen W6c); the classic six when absent. */
@@ -185,6 +187,7 @@ function sync(s: CombatDirectorState) {
     s.summary = {
       outcome: s.outcome,
       rounds: s.round,
+      ...(s.yielded ? { yielded: true as const } : {}),
       // The board fought on, either style's: a ruleset's is the tactical style's own board.
       battlefieldSummary: s.tactical
         ? (summarizeTacticalBattlefield(s.tactical) ?? undefined)
@@ -1410,6 +1413,7 @@ export function commandCombatDirector(s: CombatDirectorState, command: DirectedC
     sync(s);
     return;
   }
+  if (command.type === "yield") throw new Error("Only a ruleset fight's party may yield.");
   if (command.type === "control") {
     const u = get(s, command.unitId);
     if (!u || side(u) !== "party" || s.window || s.actorId === u.id)

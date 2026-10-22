@@ -11531,6 +11531,11 @@ function GameSurfaceComponent({
 
         const recapLines: string[] = [];
         recapLines.push(`OUTCOME: ${outcome.toUpperCase()} (${roundsPhrase})`);
+        // Given up to honourable opponents (combat AI T6): beaten, but taken alive.
+        if (summary.yielded)
+          recapLines.push(
+            "The party surrendered to its honourable opponents, who accepted and take them alive as prisoners.",
+          );
         if (defeatedEnemies.length > 0) recapLines.push(`Defeated: ${defeatedEnemies.join(", ")}`);
         if (survivingEnemies.length > 0 && !fought) {
           recapLines.push(`Survived: ${survivingEnemies.map((e) => `${e.name} (${e.hp}/${e.maxHp} HP)`).join(", ")}`);
@@ -11558,7 +11563,8 @@ function GameSurfaceComponent({
         const recap = recapLines.join("\n");
         let prefix: string;
         if (outcome === "victory") prefix = "*The battle is won.*";
-        else if (outcome === "defeat") prefix = "*The party has been defeated...*";
+        else if (outcome === "defeat")
+          prefix = summary.yielded ? "*The party lays down its arms...*" : "*The party has been defeated...*";
         else prefix = "*The party flees from battle!*";
 
         // Wrap the recap in a clearly-labelled block so the GM treats it as canonical combat

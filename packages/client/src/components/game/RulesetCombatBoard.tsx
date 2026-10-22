@@ -95,6 +95,7 @@ export interface RulesetCombatBoardProps {
     heightens?: string,
   ) => void;
   onFlee: () => void;
+  onYield?: () => void;
   /** The per-member manual and automatic toggles, built by the caller so this file stays about the
    *  board. */
   controls?: ReactNode;
@@ -109,6 +110,7 @@ export function RulesetCombatBoard({
   busy,
   onChoose,
   onFlee,
+  onYield,
   controls,
 }: RulesetCombatBoardProps) {
   const { t } = useTranslation();
@@ -885,6 +887,7 @@ export function RulesetCombatBoard({
           busy={busy}
           onChoose={onChoose}
           onFlee={onFlee}
+          onYield={onYield}
           step={step}
           onStepChange={holdStep}
           menuRef={menuRoot}

@@ -96,7 +96,9 @@ export type DirectedCommand =
   | { type: "control"; unitId: string; controller: "manual" | "ai" }
   /** A companion's standing orders, or none to go back to its default. */
   | { type: "orders"; unitId: string; orders: CombatOrders | null }
-  | { type: "flee" };
+  | { type: "flee" }
+  /** The party gives itself up to opponents who are all honourable (combat AI T6): a ruleset fight's. */
+  | { type: "yield" };
 export interface CombatDecisionOption {
   id: string;
   kind: "attack" | "skill" | "move" | "defend" | "wait" | "pass";
@@ -236,6 +238,8 @@ export interface DirectedRulesetView {
   /** What the fight is resolved by, as the game pinned it. */
   ruleset: { id: string; version: number };
   round: number;
+  /** Every opponent still standing is honourable (combat AI T6): the party may yield to them. */
+  canYield?: true;
   order: string[];
   /** The board, when the fight is on one, with what this ruleset calls one cell's worth of
    *  distance. Absent from a fight that is theatre of the mind, which is every fight until a

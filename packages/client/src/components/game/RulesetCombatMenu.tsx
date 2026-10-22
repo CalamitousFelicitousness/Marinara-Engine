@@ -77,6 +77,9 @@ export interface RulesetCombatMenuProps {
   /** Walking away. The ruleset's menu never carries it, because leaving is not a thing the rules
    *  resolve: it is the director ending the session, exactly as the other two styles end it. */
   onFlee: () => void;
+  /** Giving the party up to opponents who are all honourable (combat AI T6), offered only when the
+   *  view says they may. */
+  onYield?: () => void;
   /** The half-made choice, when a board is holding it. Without both of these the menu keeps its
    *  own, which is what the fight with no board does. */
   step?: RulesetMenuStep | null;
@@ -110,6 +113,7 @@ export function RulesetCombatMenu({
   busy,
   onChoose,
   onFlee,
+  onYield,
   step: heldStep,
   onStepChange,
   menuRef,
@@ -156,6 +160,7 @@ export function RulesetCombatMenu({
   // must never be sent against it.
   // Leaving the fight asks twice: one stray click is not a lost battle.
   const [fleeing, setFleeing] = useState(false);
+  const [yielding, setYielding] = useState(false);
   // A phone is told to tap, not to press Enter or click.
   const touch = typeof window !== "undefined" && !!window.matchMedia?.("(pointer: coarse)").matches;
   // A spell held together that a new one would end: asked about before it is let go.
@@ -163,6 +168,7 @@ export function RulesetCombatMenu({
   useEffect(() => {
     setStep(null);
     setFleeing(false);
+    setYielding(false);
     setDropping(null);
   }, [view.actorId, view.round, view.window?.id, setStep]);
   // Focus follows a NEW stage or a new option, never every pick: choosing the second of three
@@ -1565,6 +1571,28 @@ export function RulesetCombatMenu({
                     ? "game.combat.ruleset.menu.fleeConfirmTouch"
                     : "game.combat.ruleset.menu.fleeConfirm"
                   : "game.combat.ruleset.menu.flee",
+              )}
+            </button>
+          )}
+          {/* Only before opponents who would take a surrender: every one standing is honourable. */}
+          {!view.window && view.canYield && onYield && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => (yielding ? onYield() : setYielding(true))}
+              className={cn(
+                buttonClass,
+                yielding
+                  ? "border-amber-400/50 bg-amber-500/15 text-amber-100 hover:bg-amber-500/25"
+                  : "border-white/10 bg-white/5 text-white/60 hover:bg-white/10 hover:text-white",
+              )}
+            >
+              {t(
+                yielding
+                  ? touch
+                    ? "game.combat.ruleset.menu.yieldConfirmTouch"
+                    : "game.combat.ruleset.menu.yieldConfirm"
+                  : "game.combat.ruleset.menu.yield",
               )}
             </button>
           )}

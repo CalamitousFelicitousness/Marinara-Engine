@@ -865,6 +865,8 @@ export interface CombatSummary {
     /** Out of the fight alive, its heart gone: run off, or given up to the party. */
     left?: "fled" | "surrendered";
   }>;
+  /** The party gave itself up to honourable opponents (combat AI T6), who take it alive. */
+  yielded?: true;
   /** Resolved tactical terrain retained after the live combat snapshot is cleared. */
   battlefieldSummary?: string;
   /** What the win dropped into the party's bags, and how many of each nobody could carry. */

@@ -476,6 +476,7 @@ interface GameCombatUIProps {
       busy: boolean;
       onChoose: (optionId: string, targetIds: string[], payWith?: string) => void;
       onFlee: () => void;
+      onYield?: () => void;
     };
   };
   chatId: string;
@@ -1700,6 +1701,7 @@ export function GameCombatUI({
       busy={rulesetFight.busy}
       onChoose={rulesetFight.onChoose}
       onFlee={rulesetFight.onFlee}
+      onYield={rulesetFight.onYield}
     />
   ) : null;
 

@@ -384,6 +384,8 @@ export const PROFESSOR_MARI_APP_DATA_ACTIONS = [
   "character.update",
   "character.onboarding.get",
   "character.onboarding.update",
+  "character.rulesetSheet.get",
+  "character.rulesetSheet.update",
   "character.folder.list",
   "character.moveToFolder",
   "persona.list",
@@ -391,6 +393,8 @@ export const PROFESSOR_MARI_APP_DATA_ACTIONS = [
   "persona.search",
   "persona.create",
   "persona.update",
+  "persona.rulesetSheet.get",
+  "persona.rulesetSheet.update",
   "lorebook.list",
   "lorebook.get",
   "lorebook.entries",
@@ -652,6 +656,7 @@ export const WORKSPACE_TOOL_DEFINITIONS: WorkspaceToolDefinition[] = [
         folderName: { type: "string" },
         parentFolderId: { type: "string" },
         personaId: { type: "string" },
+        rulesetId: { type: "string" },
         lorebookId: { type: "string" },
         entryId: { type: "string" },
         agentId: { type: "string" },
@@ -888,7 +893,7 @@ export function workspaceCommandKnowledgePrompt() {
 
 \`app_data\` quick reference:
 - Shipped skills are procedures you must read, never optional docs: before the first write or multi-step answer on a surface one covers (characters, onboarding, lorebooks, presets, themes, extensions, decisions, home widgets, reply repair), \`skill.get\` it in that same response. Explaining how one of those surfaces works counts too — read its skill before you explain it. Acting without it is guessing.
-- Reads: \`chat.list|get|messages|search|diagnose\`, \`character.list|get|search|folder.list|onboarding.get\`, \`persona.list|get|search\`, \`lorebook.list|get|entries|getEntry|search|testScan|folder.list|libraryFolder.list\`, \`theme.list|active|get\`, \`personal_extension.list|get|search\`, \`agent.list|get|search|runs\`, \`preset.list|get|search|sections|getSection|groups|getGroup|choiceBlocks|getChoiceBlock\`, \`home_widget.list|get\`, \`skill.list|get\`, \`instruction.list|get\`. Reads take the record id at the top level (\`id\` for \`skill.get\`, \`characterId\` for \`character.get\`); \`data\` carries entity fields a write sets, never a read's id.
+- Reads: \`chat.list|get|messages|search|diagnose\`, \`character.list|get|search|folder.list|onboarding.get|rulesetSheet.get\`, \`persona.list|get|search|rulesetSheet.get\`, \`lorebook.list|get|entries|getEntry|search|testScan|folder.list|libraryFolder.list\`, \`theme.list|active|get\`, \`personal_extension.list|get|search\`, \`agent.list|get|search|runs\`, \`preset.list|get|search|sections|getSection|groups|getGroup|choiceBlocks|getChoiceBlock\`, \`home_widget.list|get\`, \`skill.list|get\`, \`instruction.list|get\`. Reads take the record id at the top level (\`id\` for \`skill.get\`, \`characterId\` for \`character.get\`); \`data\` carries entity fields a write sets, never a read's id.
 - Chat reading: use \`chat.messages\` with \`chatId\`; preserve user-requested bounds with \`last\` or \`afterPost\`, and page only inside that range with \`limit\` and \`offset\`.
 - Oversized chat ranges elide \`messages\`; re-read one post with \`last: 1\` or \`afterPost\`, \`field: "messages[0].content"\`, and \`offset\`/\`limit\` content windows.
 - Themes: read skill \`builtin-themes\` with \`skill.get\` BEFORE you create, edit or activate a theme, explain what custom CSS can reach, or style one chat's card. \`apply\` is read from the top level only, and a theme is one document-wide \`<style>\`: keep it to paint on the documented classes, never to hide, move or fake a control.
@@ -900,6 +905,7 @@ export function workspaceCommandKnowledgePrompt() {
 - Reply diagnosis and repair: read skill \`builtin-repair\` with \`skill.get\` before you diagnose a bad reply (cut off, empty, a character who forgets or ignores their card) or fix one. Never present a hand-written "corrected" reply as text: \`chat.updateMessage\` is the only repair path and it adds a swipe. The skill has the diagnose-first order, the finding codes and the repair rules.
 - Deleting a lorebook entry: use \`lorebook.deleteEntry\` with the entry's \`entryId\` and \`apply:true\` — it removes that one entry and shows a change card. NEVER delete a lorebook entry with a raw \`mari db delete\`: its \`--where\` selector can match and permanently remove far more rows than you intend. If a raw \`mari db delete\` is ever unavoidable, dry-run it first (omit \`--apply\`) and confirm the exact affected-row count before applying.
 - Interactive onboarding (a card's persona template plus questions the player answers when a Roleplay chat starts) is a procedure with validation rules, not a plain field edit: call \`skill.get\` with top-level \`id: "builtin-onboarding"\` BEFORE you write or change one, and follow it. Read it with \`character.onboarding.get\` (\`characterId\`; also returns its problems and a sample persona), write it with \`character.onboarding.update\` (\`characterId\`, \`onboarding\`, \`reason\`, \`apply\`). User-facing reference: \`docs_read docs/characters/interactive-onboarding.md\`.
+- Game Mode ruleset sheets (a character's or persona's sheet for an installed ruleset, under Stats > Ruleset sheets): read with \`persona.rulesetSheet.get\` or \`character.rulesetSheet.get\` (\`personaId\`/\`characterId\`; without \`rulesetId\` it lists the stored sheets and installed rulesets, with it the sheet's \`build\`, worked-out \`values\` and the \`layout\` of ids and bounds). Write with \`persona.rulesetSheet.update\` or \`character.rulesetSheet.update\` (\`rulesetId\`, \`patch\`, \`reason\`, \`apply\`). \`patch\` merges into the build by the ruleset's own ids: \`abilities\` {id: score}, \`skills\`/\`saves\` {id: tier id}, \`bonuses\` {id: number}, \`fields\` {id: value}, with \`null\` clearing a value back to its default; \`lists\` {listId: {update: [{index, cells}], remove: [index], add: [row]}} or {set: [rows]} to replace a list. A missing sheet starts blank. Calculated values and live state (current hit points, spent slots) are not written here. The server refuses any id or value the ruleset does not allow and lists every problem: fix them and resend.
 - Prompt presets: read skill \`builtin-presets\` with \`skill.get\` BEFORE you create a preset, change a section, group, marker or choice block, or explain what a preset sends to the prompt. \`preset.update\` with \`data.sections\` replaces \`sectionOrder\` unless you send the complete order.
 - Custom image agents are supported by the live runtime. Use \`data.resultType: "image_prompt"\`, enable \`settings.customCapabilities.trigger_image_generation\`, and have the agent return \`shouldGenerate\` plus \`prompt\`. Marker-triggered agents should also set \`settings.activationKeywords\`. Do not claim that only Illustrator can generate image prompts.
 - Home widgets: read skill \`builtin-home-widgets\` with \`skill.get\` before you create, edit or delete a custom Home card. A create is a dry run unless you send top-level \`apply:true\`, and it goes in the SAME response with \`awaitingAuthorization: true\` where the runtime has that field — no preview round. Agent-owned widgets belong to their agent: never touch them, never imitate one.

@@ -4,16 +4,16 @@ import tailwindcss from "@tailwindcss/vite";
 import { VitePWA } from "vite-plugin-pwa";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { parseEnv } from "node:util";
 import path from "path";
 import { delegateDirectAndroidBuild } from "./scripts/build-heap.mjs";
-import { readLauncherEnvValue } from "../../scripts/read-launcher-env.mjs";
 
 const ENABLE_SOURCE_MAPS = process.env.VITE_ENABLE_SOURCEMAP === "true";
 const PWA_DISABLED = Boolean(process.env.SKIP_PWA);
 const DEV_SERVER_PORT = Number.parseInt(process.env.VITE_PORT ?? "5173", 10);
 const DEV_SERVER_HOST = process.env.VITE_HOST?.trim() || undefined;
 const DEV_SERVER_OPEN = process.env.VITE_OPEN_BROWSER !== "false" && process.env.AUTO_OPEN_BROWSER !== "false";
-const DEV_PROXY_DEFAULT_PORT = "7860";
+const DEV_PROXY_DEFAULT_PORT = 7860;
 
 /**
  * Resolves the API the dev proxy forwards to.
@@ -23,20 +23,22 @@ const DEV_PROXY_DEFAULT_PORT = "7860";
  * the client without inheriting it — silently proxied to the 7860 default. That
  * pointed the client at whatever unrelated instance owned that port, and the
  * build-skew banner then fired forever, because the other instance reports a
- * different commit. Reading the root `.env` closes that gap for the port the
- * server itself already reads from there; an explicit ambient value still wins
- * (`readLauncherEnvValue` skips the file whenever the ambient env sets `PORT`).
+ * different commit. This mirrors the server instead: an exported `PORT` wins
+ * (dotenv never overrides it), otherwise the root `.env` decides, and the value
+ * is parsed the way `getPort()` parses it. Read with `node:util` rather than a
+ * repo script, because the container images do not copy `scripts/`.
  */
 function resolveDevProxyPort() {
-  const ambient = process.env.PORT?.trim();
-  if (ambient) return ambient;
-
-  try {
-    const envContents = readFileSync(path.resolve(import.meta.dirname, "../../.env"), "utf8");
-    return readLauncherEnvValue(envContents, "PORT")?.trim() || DEV_PROXY_DEFAULT_PORT;
-  } catch {
-    return DEV_PROXY_DEFAULT_PORT;
+  let port = process.env.PORT;
+  if (port === undefined) {
+    try {
+      port = parseEnv(readFileSync(path.resolve(import.meta.dirname, "../../.env"), "utf8")).PORT;
+    } catch {
+      // No readable root .env: the server falls back to its default as well.
+    }
   }
+  const parsed = Number.parseInt(port ?? "", 10);
+  return Number.isFinite(parsed) ? parsed : DEV_PROXY_DEFAULT_PORT;
 }
 
 const DEV_PROXY_PORT = resolveDevProxyPort();

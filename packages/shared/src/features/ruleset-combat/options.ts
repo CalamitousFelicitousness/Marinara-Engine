@@ -5322,7 +5322,11 @@ export function rulesetUncompelledOptions(
       budget: summon.budget,
       targets: { side: "enemy", count: 1 },
     };
-    if (rulesetOptionTargets(definition, state, actor.id, option).length > 0) options.push(option);
+    const targets = rulesetOptionTargets(definition, state, actor.id, option);
+    if (targets.length === 0) continue;
+    // What its strike does, as the spell's own attack does: the same action, struck again.
+    const forecast = forecastFor(definition, combat, state, actor, action, rulesetCombatant(state, targets[0]!));
+    options.push(forecast && Object.keys(forecast).length > 0 ? { ...option, forecast } : option);
   }
   options.push(...pickUpOptions(actor));
   options.push(...avertOptions(definition, state, actor));

@@ -623,22 +623,27 @@ export function RulesetCombatBoard({
                       {art?.zones.map((slice, n) => (
                         <span key={n} className="pointer-events-none absolute inset-0" style={boardSliceStyle(slice)} />
                       ))}
-                      <span
-                        className={cn(
-                          "pointer-events-none absolute inset-0 ring-1 ring-inset",
-                          ZONE_TINT_CLASSES[cell.zoneTint ?? 0],
-                        )}
-                        title={cell.zones.join(", ")}
-                      />
+                      {/* Each area's own tint, side by side where two overlap. */}
+                      {(cell.zoneTints ?? [0]).map((tint, n, tints) => (
+                        <span
+                          key={`tint-${tint}`}
+                          className={cn(
+                            "pointer-events-none absolute inset-y-0 ring-1 ring-inset",
+                            ZONE_TINT_CLASSES[tint],
+                          )}
+                          style={{ left: `${(n * 100) / tints.length}%`, width: `${100 / tints.length}%` }}
+                          title={cell.zones?.join(", ")}
+                        />
+                      ))}
                     </>
                   )}
                   {/* What a spell called up strikes from here (a Spiritual Weapon). */}
                   {cell.summons && (
                     <span
-                      className="pointer-events-none absolute right-0 top-0 z-[1] rounded-bl bg-black/60 p-[1px] text-amber-200"
+                      className="pointer-events-none absolute right-0 top-0 z-[1] flex h-1/2 w-1/2 items-center justify-center rounded-bl bg-black/70 text-amber-200 ring-1 ring-amber-300/60"
                       title={cell.summons.join(", ")}
                     >
-                      <Sword size={10} aria-hidden="true" />
+                      <Sword className="h-[80%] w-[80%]" aria-hidden="true" />
                     </span>
                   )}
                   {/* A wall's section (1.200): how much it has left, and a ring while it may be struck. */}

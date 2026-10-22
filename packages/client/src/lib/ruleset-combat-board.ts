@@ -52,9 +52,10 @@ export interface RulesetBoardCell {
   laid?: true;
   /** The labels of the lasting areas covering it (1.172), first cast first. */
   zones?: string[];
-  /** Which of the board's area tints the first of them takes: each kind of area its own, so a Spirit
-   *  Guardians never reads as the same thing as a Web, nor as water. */
-  zoneTint?: number;
+  /** Which of the board's area tints each of them takes, once each, first cast first: each kind of area
+   *  its own, so a Spirit Guardians never reads as the same thing as a Web, nor as water, and where two
+   *  overlap both show. */
+  zoneTints?: number[];
   /** What a spell called up that strikes from here (a Spiritual Weapon), by label. */
   summons?: string[];
   /** Their looks in the board's pack (1.333), first cast first, for those that have one. */
@@ -396,7 +397,9 @@ export function rulesetBoardCells(view: DirectedRulesetView, step: RulesetMenuSt
         ...(occupant && targets.has(occupant.id) ? { targetable: true } : {}),
         ...(aim ? { aim } : {}),
         ...(laid.has(key) ? { laid: true as const } : {}),
-        ...(zoned.has(key) ? { zones: zoned.get(key)!, zoneTint: rulesetZoneTint(zoned.get(key)![0]!) } : {}),
+        ...(zoned.has(key)
+          ? { zones: zoned.get(key)!, zoneTints: [...new Set(zoned.get(key)!.map(rulesetZoneTint))] }
+          : {}),
         ...(summoned.has(key) ? { summons: summoned.get(key)! } : {}),
         ...(zoneArt.has(key) ? { zoneArt: zoneArt.get(key)! } : {}),
         ...(sections.has(key) ? { section: sections.get(key)! } : {}),

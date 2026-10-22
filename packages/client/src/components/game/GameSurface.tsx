@@ -795,6 +795,26 @@ function parseStoredNarrationProgress(raw: string | null): StoredNarrationProgre
   return null;
 }
 
+/** Where a closed setup wizard is remembered for its chat, so a reload keeps it closed. */
+const setupDismissedKey = (chatId: string) => `game-setup-dismissed:${chatId}`;
+
+function readSetupDismissed(chatId: string): boolean {
+  try {
+    return localStorage.getItem(setupDismissedKey(chatId)) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeSetupDismissed(chatId: string, dismissed: boolean) {
+  try {
+    if (dismissed) localStorage.setItem(setupDismissedKey(chatId), "1");
+    else localStorage.removeItem(setupDismissedKey(chatId));
+  } catch {
+    /* storage unavailable */
+  }
+}
+
 function readIntroPresentedFlag(storageKey: string): boolean {
   try {
     return localStorage.getItem(storageKey) === "1";
@@ -3121,7 +3141,8 @@ function GameSurfaceComponent({
     setPendingAssetGeneration(null);
     setAssetGenerationBlocksScene(false);
     setAssetGenerationFailed(false);
-    setDismissedSetupWizardChatId(null);
+    // A wizard closed on a game whose setup never finished stays closed after a reload.
+    setDismissedSetupWizardChatId(activeChatId && readSetupDismissed(activeChatId) ? activeChatId : null);
     {
       const resolve = imagePromptReviewResolveRef.current;
       imagePromptReviewResolveRef.current = null;
@@ -12008,6 +12029,10 @@ function GameSurfaceComponent({
     [chat.characterIds],
   );
   const setupWizardDismissed = dismissedSetupWizardChatId === activeChatId;
+  // Once its setup has finished, a game forgets that its wizard was ever closed.
+  useEffect(() => {
+    if (!needsCreation && sessionStatus !== "setup") writeSetupDismissed(activeChatId, false);
+  }, [activeChatId, needsCreation, sessionStatus]);
   // The chat read can lag behind Start Game: once a game was made here (a failed setup still made
   // it), the chat holds a campaign the server keeps, so closing setup keeps it too.
   const setupMadeGame = createGame.data?.sessionChat.id === activeChatId;
@@ -12089,6 +12114,7 @@ function GameSurfaceComponent({
         return;
       }
       setDismissedSetupWizardChatId(activeChatId);
+      writeSetupDismissed(activeChatId, true);
       if (needsCreation || sessionStatus === "setup") {
         toast.info(localizeUi("ui.game.gamesurfacecomponent.gameSetupDismissedTheCampaignWasKept"));
       }
@@ -12440,6 +12466,20 @@ function GameSurfaceComponent({
                       {initialTurnFailed ? (
                         <div className="max-w-sm text-sm text-[var(--muted-foreground)] dark:text-white/60">
                           {localizeUi("ui.game.gamesurfacecomponent.gameGenerationFailedChooseAnotherGmPartyModelOr")}
+                        </div>
+                      ) : setupWizardDismissed && sessionStatus === "setup" && !gameSetup.isPending && !isStreaming ? (
+                        // Setup was closed before it finished: nothing is loading, so say so and offer it again.
+                        <div className="flex max-w-sm flex-col items-center gap-3 text-sm text-[var(--muted-foreground)] dark:text-white/60">
+                          <span>{localizeUi("ui.game.gamesurfacecomponent.setupNotFinished")}</span>
+                          <button
+                            onClick={() => {
+                              writeSetupDismissed(activeChatId, false);
+                              setDismissedSetupWizardChatId(null);
+                            }}
+                            className={SURFACE_BTN}
+                          >
+                            {localizeUi("ui.game.gamesurfacecomponent.openSetup")}
+                          </button>
                         </div>
                       ) : (
                         <div className="flex items-center gap-3 text-sm text-[var(--muted-foreground)] dark:text-white/60">

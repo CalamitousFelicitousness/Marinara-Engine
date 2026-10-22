@@ -449,6 +449,8 @@ try {
     give(give(summoned, "charmed"), "stupor");
     const strike = rulesetCombatOptions(definition, summoned, "corwin").find((one) => one.id.startsWith("summon:"));
     assert.ok(strike);
+    // Its strike button says what it does, as the spell's own attack would.
+    assert.ok((strike.forecast?.averageDamage ?? 0) > 0, JSON.stringify(strike.forecast));
     const struck = act(JSON.parse(JSON.stringify(summoned)), {
       actorId: "corwin",
       optionId: strike.id,

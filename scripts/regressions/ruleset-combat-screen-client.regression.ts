@@ -2484,8 +2484,20 @@ function drawn(...rows: string[]): TacticalGrid {
   const calledCells = rulesetBoardCells(called, null);
   assert.deepEqual(at(calledCells, 3, 0).summons, ["Spiritual Weapon"]);
   assert.equal(messages["game.combat.ruleset.board.summons"], "{{names}} strikes from here.");
-  assert.equal(at(calledCells, 4, 0).zoneTint, rulesetZoneTint("Spirit Guardians"));
+  assert.deepEqual(at(calledCells, 4, 0).zoneTints, [rulesetZoneTint("Spirit Guardians")]);
   assert.ok(rulesetZoneTint("Web") >= 0 && rulesetZoneTint("Web") < RULESET_ZONE_TINTS);
+  // Two areas over one square both show, each in its own tint.
+  const other = ["Burning oil", "Web", "Grease", "Moonbeam"].find(
+    (label) => rulesetZoneTint(label) !== rulesetZoneTint("Spirit Guardians"),
+  )!;
+  const overlapping = rulesetBoardCells(
+    {
+      ...called,
+      zones: [...called.zones!, { casterId: "lurker", label: other, rounds: 10, cells: [{ x: 4, y: 0 }] }],
+    },
+    null,
+  );
+  assert.deepEqual(at(overlapping, 4, 0).zoneTints, [rulesetZoneTint("Spirit Guardians"), rulesetZoneTint(other)]);
   assert.equal(
     rulesetOptionLabel(
       {
@@ -2847,6 +2859,11 @@ function drawn(...rows: string[]): TacticalGrid {
   const surface = readSource("packages/client/src/components/game/GameSurface.tsx");
   assert.match(surface, /const setupMadeGame = createGame\.data\?\.sessionChat\.id === activeChatId;/u);
   assert.match(surface, /needsCreation && !setupMadeGame && !isMessagesLoading && messages\.length === 0/u);
+  // Closed, it stays closed across a reload, and the page says setup didn't finish rather than spin.
+  assert.match(surface, /writeSetupDismissed\(activeChatId, true\)/u);
+  assert.match(surface, /readSetupDismissed\(activeChatId\) \? activeChatId : null/u);
+  assert.match(surface, /setupWizardDismissed && sessionStatus === "setup" && !gameSetup\.isPending && !isStreaming/u);
+  assert.ok(messages["ui.game.gamesurfacecomponent.setupNotFinished"]);
 }
 
 console.log("ruleset-combat-screen-client regression passed");

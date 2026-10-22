@@ -1383,13 +1383,22 @@ function rulesetKeepsDefensive(
  *  is already spent, and something paid from it reaches a standing opponent from here or from where
  *  the movement left takes it. */
 function rulesetGiftStrikes(
+  definition: RulesetDefinition,
   encounter: RulesetEncounterState,
   actor: RulesetCombatant,
   gives: Array<{ budget: string }>,
 ): boolean {
   const here = rulesetPositionOf(actor);
-  const walks = actor.movementLeft ?? 0;
   const span = rulesetSpanOf(actor);
+  // Where it could still stand this turn, walked the way the board lets it: a foe across a pit is
+  // not in reach for being near in a straight line.
+  let stands: Array<{ x: number; y: number }> | undefined;
+  const reaches = (foe: RulesetCombatant, reach: number) => {
+    if (!here) return true;
+    if (rulesetGapFrom(here, span, foe) <= reach) return true;
+    stands ??= rulesetWalkableCells(definition, encounter, actor.id);
+    return stands.some((cell) => rulesetGapFrom(cell, span, foe) <= reach);
+  };
   return gives.some(
     (gift) =>
       (actor.budgets[gift.budget] ?? 0) <= 0 &&
@@ -1402,7 +1411,7 @@ function rulesetGiftStrikes(
               foe.side !== actor.side &&
               rulesetCombatStanding(foe) &&
               !foe.down &&
-              (!here || rulesetGapFrom(here, span, foe) <= rulesetActionReach(action) + walks),
+              reaches(foe, rulesetActionReach(action)),
           ),
       ),
   );
@@ -2129,7 +2138,7 @@ function rulesetCandidatesFrom(
       } else if (fallingAction?.gives?.length) {
         // A budget handed to itself for this turn (Action Surge) is worth only a blow it can buy:
         // once the turn's own is spent, with something that reaches an opponent from here.
-        if (!rulesetGiftStrikes(encounter, actor, fallingAction.gives)) continue;
+        if (!rulesetGiftStrikes(definition, encounter, actor, fallingAction.gives)) continue;
         self.support = 1;
       } else {
         // What it puts on itself, where that can be read; else the old modest guess.
@@ -2257,7 +2266,7 @@ function rulesetCandidatesFrom(
         // once the turn's own is spent, with something that reaches an opponent from where it can
         // still walk to. Never a Dash with it, and never a surge it then stands about with.
         if (fallingAction?.gives?.length) {
-          if (!rulesetGiftStrikes(encounter, actor, fallingAction.gives)) continue;
+          if (!rulesetGiftStrikes(definition, encounter, actor, fallingAction.gives)) continue;
           candidate.support = 1;
         } else {
           // What it does for them, read off what it puts on them: nothing, for what they already have.

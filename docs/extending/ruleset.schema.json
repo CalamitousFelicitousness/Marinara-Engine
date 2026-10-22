@@ -38878,6 +38878,13 @@
           "minLength": 1,
           "maxLength": 1500
         },
+        "opposition": {
+          "type": "string",
+          "enum": [
+            "engine",
+            "game-master"
+          ]
+        },
         "sheetSummary": {
           "type": "object",
           "properties": {

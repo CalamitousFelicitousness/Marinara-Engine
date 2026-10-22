@@ -2474,6 +2474,11 @@ const gmSchema = z
      *  suits the rules the party will play by (no gunpowder, magic is rare, the dead walk). It is
      *  read once, at setup, and never reaches a turn. */
     worldGuidance: promptSafeText(1500).optional(),
+    /** Who plays the other side of a fight (1.721): `game-master` gives every opponent's turn to the
+     *  Game Master, in a game that lets it play bosses, rather than to the Engine's own picker. For a
+     *  narrative system (Fate, Blades in the Dark, Trophy) whose opposition is played as fiction, not
+     *  as a damage sum. `engine`, or nothing, is the Engine's picker with bosses to the Game Master. */
+    opposition: z.enum(["engine", "game-master"]).optional(),
     /** What the compact per-character sheet block shows beyond what the Engine always renders
      *  (ability modifiers, trained skills and saves, live state). */
     sheetSummary: z

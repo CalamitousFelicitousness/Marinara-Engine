@@ -9391,6 +9391,9 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Who plays the other side of a fight, 1.721.
+  if (!declaresApi(721) && plainRecord(plainRecord(ruleset)?.gm)?.opposition !== undefined)
+    return "A ruleset that says who plays the other side of a fight (gm.opposition) requires schemaVersion 2 and capabilityApi 1.721 or newer";
   // A step that takes all it offers writing what it took to a field, 1.720.
   if (!declaresApi(720) && carriesTakesAllField720(ruleset))
     return "A ruleset with a builder step that takes all it offers and writes them to a field (takesAll with field) requires schemaVersion 2 and capabilityApi 1.720 or newer";

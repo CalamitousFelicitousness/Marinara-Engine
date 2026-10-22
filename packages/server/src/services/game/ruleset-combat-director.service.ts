@@ -697,7 +697,7 @@ export function rulesetController(
     return chosen === "ai" || (combatant.calledBy && chosen !== "manual") ? "ai" : "manual";
   }
   if (!state.gm) return "ai";
-  if (fight.bosses.includes(combatant.id)) return "gm";
+  if (fight.bosses.includes(combatant.id) || state.gmAll) return "gm";
   return state.gmNamed && fight.thinkers?.includes(combatant.id) ? "gm" : "ai";
 }
 

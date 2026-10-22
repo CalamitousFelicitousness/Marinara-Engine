@@ -858,6 +858,9 @@ export async function combatDirectorRoutes(
         // A ruleset's fight is on a board only when the game asks for one and the ruleset says what a cell
         // is worth; the ruleset is read once, here.
         const resolved = input.style === "ruleset" ? resolveGameRuleset(meta, await loadRulesetRegistry()) : null;
+        // Who plays the other side (1.721), read off the game's ruleset whatever style resolves the fight.
+        const rules = resolved ?? (meta.gameRuleset ? resolveGameRuleset(meta, await loadRulesetRegistry()) : null);
+        const opposition = rules?.status === "ok" ? rules.definition.gm.opposition : undefined;
         const here =
           input.style === "tactical" ||
           (input.positioned === true && resolved?.status === "ok" && resolved.definition.combat?.distance)
@@ -885,6 +888,8 @@ export async function combatDirectorRoutes(
           gm: setup.gmBossControl === true,
           // The named and the brilliant opponents too (combat AI P9), when the game asks for it.
           gmNamed: setup.gmBossControl === true && setup.gmNamedControl === true,
+          // Every opponent, where the game's ruleset gives the Game Master the opposition (1.721).
+          gmAll: setup.gmBossControl === true && opposition === "game-master",
           difficulty: normalizeGameDifficulty(setup.difficulty),
           weather: resolveCombatWeather(
             weatherSource,

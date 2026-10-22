@@ -157,6 +157,17 @@ await createGameRulesetsStorage(db).put({
   sourceKind: "local",
   definition: fixtureText,
 });
+// The same ruleset giving the Game Master the whole opposition (1.721).
+const OPPOSITION_ID = "local/5e-gm-opposition";
+const opposed = JSON.parse(fixtureText) as Record<string, any>;
+opposed.id = "5e-gm-opposition";
+opposed.gm.opposition = "game-master";
+await createGameRulesetsStorage(db).put({
+  rulesetId: OPPOSITION_ID,
+  version: 1,
+  sourceKind: "local",
+  definition: JSON.stringify(opposed),
+});
 // The same ruleset with no bestiary sheet that marks a spell, so the only thing that can make the
 // route load the spell catalog is a Game Master's invented sheet naming one.
 const PLAIN_BESTIARY_ID = "local/5e-plain-bestiary";
@@ -865,15 +876,22 @@ try {
     assert.ok(boss.outcome, `${answer}: the fight still finished, with ${boss.outcome}`);
   }
 
-  // ── A named opponent (combat AI P9): the Game Master plays it too, when the game asks for that ──
-  for (const named of [true, false]) {
-    const game = await newGame({ ruleset: true, gm: true, named });
+  // ── A named opponent (combat AI P9): the Game Master plays it too, when the game asks for that; and
+  //    every opponent, named or not, where the ruleset gives it the opposition (1.721) ──
+  for (const [named, rulesetId] of [
+    [true, undefined],
+    [false, undefined],
+    [false, OPPOSITION_ID],
+  ] as const) {
+    const game = await newGame({ ruleset: true, gm: true, named, ...(rulesetId ? { rulesetId } : {}) });
     const opened = await post("/combat/start", {
       chatId: game.chat.id,
       anchor: game.anchor.id,
       style: "ruleset",
       party: [unit("brenna", "Brenna", "player")],
-      enemies: [{ ...unit("sentinel", "Hollow Sentinel", "enemy"), aiHints: { named: true } }],
+      enemies: [
+        { ...unit("sentinel", "Hollow Sentinel", "enemy"), ...(rulesetId ? {} : { aiHints: { named: true } }) },
+      ],
     });
     assert.equal(opened.statusCode, 200, opened.body);
     let fight = opened.json().session as DirectedCombatView;
@@ -903,6 +921,10 @@ try {
       await send({ type: "continue" });
     }
     assert.ok(fight.outcome, `the fight finished: ${named}`);
+    if (rulesetId) {
+      assert.ok(windows > 0 && bossCalls > callsBefore, "the ruleset gives the Game Master every opponent");
+      continue;
+    }
     if (!named) {
       assert.equal(windows, 0, "with bosses only, a named opponent is the Engine's own");
       assert.equal(bossCalls, callsBefore);

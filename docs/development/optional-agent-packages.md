@@ -1751,6 +1751,21 @@ Rules worth knowing:
 
 `scenes` is refused on a manifest that declares a `capabilityApi` older than 1.66.
 
+### Capability API 1.376: Home browser fullscreen
+
+A `home-browser-tab` view receives `capabilityProps.browserFullscreen`:
+
+- `active`: whether this package currently fills the Home browser content area.
+- `setActive(boolean)`: enter or leave fullscreen for this active package.
+- `enterLabel` and `exitLabel`: localized accessible labels for the toggle.
+
+This is in-app fullscreen: Home's tabs, address bar and bookmarks are hidden, while the Engine
+topbar stays available. It does not call the browser Fullscreen API or require browser fullscreen
+support. The state is temporary and resets on navigation away from the package or Home. Keep an
+exit button available on every package screen and use `aria-pressed` to reflect `active`. Prop updates
+must update the button without replacing unfinished forms. Packages depending on this control
+declare capability API 1.376 or newer; older packages can keep their existing layouts.
+
 ### Capability API 1.50: Professor Mari actions
 
 A package holding the new `mari-actions` permission can offer named actions to Professor Mari. It

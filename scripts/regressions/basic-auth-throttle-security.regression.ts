@@ -4,9 +4,9 @@
 // address gets 429 with Retry-After, even for the right password, until the
 // window ends. A correct password clears the count, a browser resending one
 // saved wrong password counts once, and loopback, IP_ALLOWLIST and the local
-// proxy rules keep working as before. A browser that signed in keeps a session
-// cookie, keyed by a server-only secret and the password, so visitors sharing a
-// local proxy's address cannot lock the owner out.
+// proxy rules keep working as before. A browser that signed in on /login keeps a
+// random session token whose hash the server stores, so visitors sharing a local
+// proxy's address cannot lock the owner out.
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import Fastify from "../../packages/server/node_modules/fastify/fastify.js";

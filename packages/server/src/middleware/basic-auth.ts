@@ -203,15 +203,16 @@ function isHttpsRequest(request: FastifyRequest): boolean {
   return value?.split(",")[0]?.trim().toLowerCase() === "https";
 }
 
-function startBrowserSession(request: FastifyRequest, reply: FastifyReply, config: CachedConfig) {
+function startBrowserSession(request: FastifyRequest, reply: FastifyReply, config: CachedConfig): boolean {
   const key = sessionLoginKey(config);
-  if (!key) return;
+  if (!key) return false;
   const token = createSession(key, request.headers["user-agent"]);
   const secure = isHttpsRequest(request) ? "; Secure" : "";
   reply.header(
     "Set-Cookie",
     `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_MAX_AGE_SECONDS}${secure}`,
   );
+  return true;
 }
 
 /** Per-process key: verified headers are only kept in memory. */
@@ -773,7 +774,9 @@ export async function loginRoutes(app: FastifyInstance) {
       if (verdict === null) return sendLoginPage(reply, 429, next, "Too many sign-ins at once. Try again in a moment.");
       if (!verdict) return sendLoginPage(reply, 401, next, "Wrong username or password.");
 
-      startBrowserSession(request, reply, config);
+      if (!startBrowserSession(request, reply, config)) {
+        return sendLoginPage(reply, 500, next, "This browser cannot stay signed in. See the server log.");
+      }
       return reply.redirect(next, 303);
     },
   );

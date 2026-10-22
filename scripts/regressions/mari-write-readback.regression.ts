@@ -365,8 +365,11 @@ assert.ok(
   "the mari-CLI runtime must emit the read-back gate, then the dry-run gate, immediately before its Command header",
 );
 assert.ok(
-  workspaceAgentFlat.includes(`${emitterGate} \`Command: app_data \${action}\``),
-  "the app_data runtime must emit the sentinel gate immediately before its Command header",
+  // #7949: the app_data dry-run sentinel shares the slot; a read-back and a dry run never meet.
+  workspaceAgentFlat.includes(
+    `${emitterGate.replace(" : []),", " : dryRun ? [APP_DATA_DRY_RUN_SENTINEL] : []),")} \`Command: app_data \${action}\``,
+  ),
+  "the app_data runtime must emit the read-back or dry-run sentinel immediately before its Command header",
 );
 // Debt semantics: a self-verified mutation never pays off an earlier one.
 assert.ok(

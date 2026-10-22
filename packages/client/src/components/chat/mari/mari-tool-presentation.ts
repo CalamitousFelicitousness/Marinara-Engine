@@ -1,5 +1,6 @@
 // How one of Mari's tool calls reads in her timeline: its title, detail and tone, from the raw call.
 import {
+  APP_DATA_DRY_RUN_PREFIX,
   mergeMariActionResults,
   type MariWorkspaceActionResult,
   type MariWorkspaceTraceItem,
@@ -842,14 +843,16 @@ export function inferToolPresentation(tool: WorkspaceToolCall): ToolPresentation
     // A write reads as one ("Updating lorebook entry"), so its icon and its run phase say it changed something.
     const parts = appDataAction.split(".");
     const writeVerb = /^(create|update|add|delete|set|move)(.*)$/u.exec(parts.at(-1) ?? "");
+    // #7949: a dry run saved nothing, so it must not finish as "Updated character".
+    const dryRun = tool.output?.startsWith(APP_DATA_DRY_RUN_PREFIX) === true;
     const writeTitle = writeVerb
       ? [
-          APP_DATA_WRITE_VERBS[writeVerb[1]!],
+          dryRun ? "Previewing" : APP_DATA_WRITE_VERBS[writeVerb[1]!],
           ...parts.slice(0, -1),
           writeVerb[2]!.replace(/([a-z])([A-Z])/gu, "$1 $2").toLowerCase(),
         ]
           .filter(Boolean)
-          .join(" ")
+          .join(" ") + (dryRun ? " · not saved" : "")
       : null;
     return {
       eyebrow: "App data",

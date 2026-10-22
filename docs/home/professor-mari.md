@@ -131,6 +131,7 @@ A change that waits for you is different. A held change (in Manual mode, or a ch
 
 - A card belongs to the Professor Mari chat she made the change in. A new chat starts without the cards of other chats. Deleting a chat keeps its changes and removes its cards. A change made with the `mari` command in a terminal belongs to no chat, so its card shows in every Professor Mari chat.
 - An edit that would leave everything as it was is not saved and gets no card.
+- A step in her work list that reads **Previewed** and ends in **· not saved** was only a preview. Nothing changed and there is no card.
 - Professor Mari cannot edit or delete her own card. Marinara resets it to the built-in version on every start.
 - Characters and personas also keep their own version history inside their editors. You can restore an older version there as a second safety net.
 
@@ -171,6 +172,14 @@ Click the **Skills** button in her chat header to open the **Professor Mari skil
 - Select a Skill to edit its **Name**, **Description**, and **Instructions**, then click **Save**. Click **Delete** to remove it.
 
 When you have no Skills yet, the panel reads **No custom skills yet**.
+
+### Built-in skills
+
+Below your own Skills, under **Always on**, the panel lists the skills that ship with Marinara. Each is marked **Built-in**. They are her handbooks for characters and personas, lorebooks, onboarding, presets, themes, Personal Extensions, Home widgets, Decisions and repairing a reply. She reads one when a request needs it, so they do not take up room in every message.
+
+A built-in skill is read-only: you cannot edit, switch off or delete it, and an app update replaces it with the new version. To change how she handles something, copy its instructions into a new Skill of your own.
+
+By default, in each chat her first change to an area with a built-in skill is turned back until she has read that skill. This helps smaller and local models. Larger models usually manage without it, so you can turn it off to save them a step: open **Search and Professor Mari settings** and switch off **Read the handbook before the first write**, below **Runtime**. Only you can change this setting; Professor Mari cannot.
 
 ## Saved memories
 

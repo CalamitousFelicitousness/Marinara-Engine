@@ -47,6 +47,10 @@ try {
     draftVisibleText,
   } = await import("../../../packages/server/src/services/professor-mari/workspace-agent.service.js");
   const { assertClosedToolSet } = await import("../../../packages/server/src/services/professor-mari/pi-runtime.js");
+  // These frames test claims and rounds, not the handbook gate (dry-run-enforcement pins that).
+  const { setSkillGateEnabled } =
+    await import("../../../packages/server/src/services/professor-mari/workspace-commands.js");
+  setSkillGateEnabled(false);
   const { createChatsStorage } = await import("../../../packages/server/src/services/storage/chats.storage.js");
   const { createAppSettingsStorage } =
     await import("../../../packages/server/src/services/storage/app-settings.storage.js");

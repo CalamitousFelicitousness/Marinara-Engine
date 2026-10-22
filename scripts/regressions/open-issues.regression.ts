@@ -757,7 +757,7 @@ assert.match(
 );
 assert.match(
   professorMariWorkspaceSource,
-  /updates are patches[\s\S]{0,400}read the entity back[\s\S]{0,300}Claim completion only when every requested value matches/u,
+  /Updates are patches[\s\S]{0,400}Read the entity back[\s\S]{0,300}Claim completion only when every requested value matches/u,
   "Professor Mari must preserve unrelated fields and verify requested character edits before claiming completion",
 );
 const professorMariSeedSource = readFileSync(join(REPOSITORY_ROOT, "packages/server/src/db/seed-mari.ts"), "utf8");
@@ -3880,6 +3880,29 @@ try {
     apply: true,
   });
   assert.equal(ambiguousFolderMoveResult.ok, false, "Duplicate folder names must require an explicit folder ID");
+  assert.match(String(ambiguousFolderMoveResult.error), /send the folderId from character.folder.list/);
+
+  // #7949: a folder miss points to the list and never to a create action, which does not exist.
+  const unknownFolderNameResult = await mariDb.executeAction({
+    action: "character.moveToFolder",
+    characterId,
+    folderName: "Nowhere Folder",
+    apply: true,
+  });
+  assert.equal(unknownFolderNameResult.ok, false);
+  assert.match(
+    String(unknownFolderNameResult.error),
+    /No character folder is named "Nowhere Folder". List folders with character.folder.list; folders are created in the UI only/,
+  );
+  assert.doesNotMatch(String(unknownFolderNameResult.error), /folder.create/);
+  const unknownFolderIdResult = await mariDb.executeAction({
+    action: "character.moveToFolder",
+    characterId,
+    folderId: "character-folder-missing",
+    apply: true,
+  });
+  assert.equal(unknownFolderIdResult.ok, false);
+  assert.match(String(unknownFolderIdResult.error), /No character folder has the id "character-folder-missing"./);
   const duplicateFoldersAfterAmbiguousMove = (await db.select().from(characterGroups)).filter((folder) =>
     folder.id.startsWith("character-folder-duplicate-"),
   );

@@ -19,13 +19,8 @@ const { createConnectionsStorage } =
   await import("../../../packages/server/src/services/storage/connections.storage.js");
 const { getProfessorMariWorkspaceSkillsService } =
   await import("../../../packages/server/src/services/professor-mari/workspace-skills.service.js");
-const {
-  mariDecisionContext,
-  recordMariDecisionInteraction,
-  withMariDecisionContext,
-  introducesMariDecisionContent,
-  MARI_DECISION_AUTHORING_PROMPT,
-} = await import("../../../packages/server/src/services/professor-mari/decision-authoring.js");
+const { mariDecisionContext, recordMariDecisionInteraction, withMariDecisionContext, introducesMariDecisionContent } =
+  await import("../../../packages/server/src/services/professor-mari/decision-authoring.js");
 const { readDecisionAuthoringStatus } =
   await import("../../../packages/server/src/services/decision/decision-status.js");
 const { activationQuestionSettings } =
@@ -65,10 +60,21 @@ assert.equal(
   false,
   "threshold tuning does not add a dependency",
 );
+const { loadBuiltinSkills } = await import("../../../packages/server/src/services/professor-mari/builtin-skills.js");
+const decisionsSkill = (await loadBuiltinSkills()).skills.find((entry) => entry.id === "builtin-decisions");
+assert.ok(decisionsSkill, "the decisions handbook ships");
 assert.equal(
-  collectDecisionQuestions(MARI_DECISION_AUTHORING_PROMPT).filter((q) => q.kind === "choice").length,
-  2,
-  "documented choice example parses",
+  collectDecisionQuestions(decisionsSkill.content).filter((q) => q.kind === "choice").length,
+  5,
+  "all five documented choice examples parse",
+);
+assert.ok(
+  decisionsSkill.content.includes('decision_choice:"Scene mood" == "tense"'),
+  "the choice form with criteria is documented",
+);
+assert.ok(
+  decisionsSkill.content.includes('decision_choice:"Scene mood" == "calm"'),
+  "the else-if choice form is documented",
 );
 
 const db = await createFileNativeDB();

@@ -405,6 +405,22 @@ try {
     avatar: onePixelPng,
   });
   assertDecodedPersona(avatar, activeId);
+  assert.ok(avatar.avatarPath);
+  const beforeRemoval = await requestJson("PATCH", `/api/characters/personas/${activeId}`, {
+    avatarCrop: { srcX: 0.1, srcY: 0.2, srcWidth: 0.6, srcHeight: 0.6 },
+  });
+  const removed = await requestJson("DELETE", `/api/characters/personas/${activeId}/avatar`);
+  assertDecodedPersona(removed, activeId);
+  assert.equal(removed.avatarPath, null);
+  assert.equal(removed.avatarCrop, null);
+  assert.equal(removed.name, beforeRemoval.name);
+  assert.equal(removed.description, beforeRemoval.description);
+  const reloaded = await requestJson("GET", `/api/characters/personas/${activeId}`);
+  assert.equal(reloaded.avatarPath, null);
+  assert.equal(reloaded.avatarCrop, null);
+  assert.equal((await requestJson("DELETE", `/api/characters/personas/${activeId}/avatar`)).avatarPath, null);
+  const missingRemoval = await app.inject({ method: "DELETE", url: "/api/characters/personas/missing/avatar" });
+  assert.equal(missingRemoval.statusCode, 404);
 } finally {
   await app?.close();
   for (const [key, previous] of [

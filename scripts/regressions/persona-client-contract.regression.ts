@@ -202,7 +202,7 @@ assert.match(botScope, /tags: personaTags,/u);
 // Structural sentries where the browser/runtime owner is not importable here.
 const genericHook = balanced(hooks, "export function useUpdatePersona()", "generic update");
 const trackerHook = balanced(hooks, "export function useUpdatePersonaTrackerCard()", "tracker update");
-assert.equal(hooks.match(/await syncCachedPersona\(qc, /gu)?.length, 5, "every retained authoritative write must await cache ordering");
+assert.equal(hooks.match(/await syncCachedPersona\(qc, /gu)?.length, 6, "every retained authoritative write must await cache ordering");
 assert.match(genericHook, /api\.patch<Persona>\(\s*`\/characters\/personas\/\$\{id\}`/u);
 assert.match(genericHook, /syncCachedPersona\(qc, updatedPersona\)/u);
 assert.match(genericHook, /invalidatePersonaVersions/u);

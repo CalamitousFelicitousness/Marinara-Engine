@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 
 // #7221: a user-triggered action saves the web images in a character's greetings into the
@@ -17,6 +17,7 @@ const {
   characterDataSchema,
   findGreetingImageUrls,
   readBakedGreetingImages,
+  hasBakedGreetingImages,
   restoreBakedGreetingImages,
 } = await import("../../packages/shared/dist/index.js");
 const { resolveCardAssetImageSources, resolveSelfCardAssets } =
@@ -114,8 +115,18 @@ assert.equal(
 );
 assert.deepEqual(
   (restored.extensions as { bakedGreetingImages: unknown }).bakedGreetingImages,
-  [],
-  "an empty list, so a character save replaces the stored one",
+  readBakedGreetingImages(baked.extensions),
+  "reverting to links keeps the reusable gallery mapping",
+);
+
+assert.equal(hasBakedGreetingImages(baked), true);
+assert.equal(hasBakedGreetingImages(restored), false);
+const rebaked = applyBakedGreetingImages(restored, readBakedGreetingImages(restored.extensions));
+assert.equal(rebaked.first_mes, baked.first_mes);
+assert.deepEqual(readBakedGreetingImages(rebaked.extensions), readBakedGreetingImages(baked.extensions));
+assert.deepEqual(
+  readBakedGreetingImages(restoreBakedGreetingImages(rebaked).extensions),
+  readBakedGreetingImages(baked.extensions),
 );
 
 const compatible = buildCompatibleCharacterExport(baked);
@@ -233,6 +244,40 @@ try {
     assert.equal(gallery.length, 1);
     assert.equal(gallery[0]!.filePath, `characters/${character.id}/${saved[0]!.file}`);
     assert.equal(gallery[0]!.width, 320);
+
+    // The draft can supply the mapping even before its character card is saved.
+    requests.length = 0;
+    const reuse = await app.inject({
+      method: "POST",
+      url: `/api/characters/${character.id}/gallery/bake`,
+      payload: { urls: [saved[0]!.url], bakedImages: saved },
+    });
+    assert.equal(reuse.statusCode, 200, reuse.body);
+    assert.deepEqual(reuse.json().results, saved);
+    assert.equal(requests.length, 0, "a valid saved copy is reused without downloading");
+    assert.equal((await createCharacterGalleryStorage(db).listByCharacterId(character.id)).length, 1);
+
+    const other = await createCharactersStorage(db).create(characterDataSchema.parse({ name: "Other" }));
+    const wrongOwner = await app.inject({
+      method: "POST",
+      url: `/api/characters/${other!.id}/gallery/bake`,
+      payload: { urls: [saved[0]!.url], bakedImages: saved },
+    });
+    assert.equal(wrongOwner.statusCode, 200, wrongOwner.body);
+    assert.notEqual(wrongOwner.json().results[0].file, saved[0]!.file, "another character's file is never reused");
+    assert.ok(requests.length > 0);
+
+    unlinkSync(filePath);
+    requests.length = 0;
+    const deletedCopy = await app.inject({
+      method: "POST",
+      url: `/api/characters/${character.id}/gallery/bake`,
+      payload: { urls: [saved[0]!.url], bakedImages: saved },
+    });
+    assert.equal(deletedCopy.statusCode, 200, deletedCopy.body);
+    assert.ok(deletedCopy.json().results[0].file);
+    assert.notEqual(deletedCopy.json().results[0].file, saved[0]!.file);
+    assert.ok(requests.length > 0, "a deleted copy is downloaded again instead of restoring a broken link");
 
     const tooMany = await app.inject({
       method: "POST",

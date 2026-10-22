@@ -223,10 +223,8 @@ for (const kind of ["character", "persona"] as const) {
       await full.scrollIntoViewIfNeeded();
       await expect(full).toBeVisible();
       await expect(full.locator("svg")).toHaveCount(0);
-      if (kind === "character") {
-        await expect(remove.locator("svg")).toHaveCount(0);
-        await expectAccent(remove);
-      }
+      await expect(remove.locator("svg")).toHaveCount(0);
+      await expectAccent(remove);
       const geometry = await full.evaluate((element) => {
         const range = document.createRange();
         range.selectNodeContents(element);
@@ -281,6 +279,93 @@ for (const kind of ["character", "persona"] as const) {
     }
   });
 }
+
+test("persona avatar removal preserves unsaved fields and survives reload", async ({ page, request }, info) => {
+  const id = await create(request, "persona", { name: "Removable persona", description: "Saved description" });
+  try {
+    const uploaded = await request.post(`${paths.persona}/${id}/avatar`, {
+      data: {
+        avatar:
+          "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a2ioAAAAASUVORK5CYII=",
+      },
+    });
+    expect(uploaded.ok(), await uploaded.text()).toBeTruthy();
+    await prepare(page);
+    const editor = await open(page, "persona", id);
+    const name = editor.locator(".mari-editor-title-input");
+    await name.fill("Unsaved persona name");
+    const remove = editor.getByTitle("Remove avatar", { exact: true });
+    await remove.click();
+    const dialog = page.getByRole("dialog").filter({ hasText: "Remove the avatar from" });
+    await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(remove).toBeVisible();
+    await expect(name).toHaveValue("Unsaved persona name");
+    await remove.click();
+    await dialog.getByRole("button", { name: "Remove", exact: true }).click();
+    await expect(remove).toHaveCount(0);
+    await expect(name).toHaveValue("Unsaved persona name");
+    let persisted = await (await request.get(`${paths.persona}/${id}`)).json();
+    expect(persisted.avatarPath).toBeNull();
+    expect(persisted.avatarCrop).toBeNull();
+    expect(persisted.name).toBe("Removable persona");
+    await page.screenshot({ path: info.outputPath("persona-avatar-removed-dark.png"), animations: "disabled" });
+    await page.evaluate(async () => {
+      const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+      useUIStore.getState().setTheme("light");
+    });
+    await page.screenshot({ path: info.outputPath("persona-avatar-removed-light.png"), animations: "disabled" });
+    await editor.getByRole("button", { name: "Save", exact: true }).click();
+    await expect
+      .poll(async () => (await (await request.get(`${paths.persona}/${id}`)).json()).name)
+      .toBe("Unsaved persona name");
+    await page.reload();
+    const reloaded = await open(page, "persona", id);
+    await expect(reloaded.getByTitle("Remove avatar", { exact: true })).toHaveCount(0);
+    persisted = await (await request.get(`${paths.persona}/${id}`)).json();
+    expect(persisted.avatarPath).toBeNull();
+  } finally {
+    await request.delete(`${paths.persona}/${id}`).catch(() => undefined);
+  }
+});
+
+test("greeting image conversion reuses its saved mapping after reverting and saving", async ({ page, request }) => {
+  const url = "https://images.example/greeting.png";
+  const file = "saved-greeting.png";
+  const id = await create(request, "character", { data: { name: "Greeting toggle", first_mes: `![image](${url})` } });
+  const requests: Array<{ bakedImages: Array<{ url: string; file: string }> }> = [];
+  await page.route(`**/api/characters/${id}/gallery/bake`, async (route) => {
+    requests.push(route.request().postDataJSON());
+    await route.fulfill({ json: { results: [{ url, file }] } });
+  });
+  const readCard = async () => {
+    const row = await (await request.get(`${paths.character}/${id}`)).json();
+    return typeof row.data === "string" ? JSON.parse(row.data) : row.data;
+  };
+  try {
+    await prepare(page);
+    let editor = await open(page, "character", id);
+    await editor.getByRole("button", { name: "Dialogue", exact: true }).click();
+    await editor.getByRole("button", { name: "Save images locally", exact: true }).click();
+    await expect(editor.getByRole("button", { name: "Restore web links", exact: true })).toBeVisible();
+    await editor.getByRole("button", { name: "Save", exact: true }).click();
+    await expect.poll(async () => (await readCard()).first_mes).toContain("card://self/gallery/");
+    await editor.getByRole("button", { name: "Restore web links", exact: true }).click();
+    await editor.getByRole("button", { name: "Save", exact: true }).click();
+    await expect.poll(async () => (await readCard()).first_mes).toBe(`![image](${url})`);
+    await page.reload();
+    editor = await open(page, "character", id);
+    await editor.getByRole("button", { name: "Dialogue", exact: true }).click();
+    await expect(editor.getByRole("button", { name: "Restore web links", exact: true })).toHaveCount(0);
+    await editor.getByRole("button", { name: "Save images locally", exact: true }).click();
+    await expect.poll(() => requests.length).toBe(2);
+    expect(requests[0]?.bakedImages).toEqual([]);
+    expect(requests[1]?.bakedImages).toEqual([{ url, file }]);
+    await editor.getByRole("button", { name: "Save", exact: true }).click();
+    await expect.poll(async () => (await readCard()).extensions.bakedGreetingImages).toEqual([{ url, file }]);
+  } finally {
+    await request.delete(`${paths.character}/${id}`).catch(() => undefined);
+  }
+});
 
 test("stock preset copy action stays centered", async ({ page, request }, info) => {
   const response = await request.get("/api/prompts");

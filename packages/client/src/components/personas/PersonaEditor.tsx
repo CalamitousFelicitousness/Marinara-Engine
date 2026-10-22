@@ -11,6 +11,7 @@ import {
   useUpdatePersona,
   useUploadAvatar,
   useUploadPersonaAvatar,
+  useRemovePersonaAvatar,
   useDeletePersona,
   useDuplicatePersona,
   usePersonaVersions,
@@ -1319,6 +1320,7 @@ export function PersonaEditor() {
   const updatePersona = useUpdatePersona();
   const uploadCharacterAvatar = useUploadAvatar();
   const uploadAvatar = useUploadPersonaAvatar();
+  const removeAvatar = useRemovePersonaAvatar();
   const setGalleryImageAsAvatar = useSetPersonaGalleryImageAsAvatar(personaId ?? "");
   const deletePersona = useDeletePersona();
   const duplicatePersona = useDuplicatePersona();
@@ -1661,6 +1663,41 @@ export function PersonaEditor() {
     },
     [adoptAuthoritativePersona, commitFormData, isCurrentEditorSession, updateField, uploadAvatar],
   );
+
+  const handleAvatarRemove = useCallback(async () => {
+    if (!personaId || !avatarPreview) return;
+    const token = beginMutation("avatar");
+    if (!token) return;
+    const session = editorSessionRef.current;
+    try {
+      const confirmed = await showConfirmDialog({
+        title: localizeUi("ui.ui.avatarcropwidget.removeAvatar"),
+        message: localizeUi("persona.avatar.removeConfirm", { name: formDataRef.current?.name ?? "" }),
+        confirmLabel: localizeUi("settings.notifications.customSound.actions.remove"),
+        tone: "destructive",
+      });
+      if (!confirmed || !isCurrentEditorSession(session)) return;
+      const updated = await removeAvatar.mutateAsync(personaId);
+      if (!isCurrentEditorSession(session)) return;
+      adoptAuthoritativePersona(updated, { adoptAvatar: true });
+      toast.success(localizeUi("persona.avatar.removed"));
+    } catch (error) {
+      if (isCurrentEditorSession(session)) {
+        toast.error(error instanceof Error ? error.message : localizeUi("persona.avatar.removeFailed"));
+      }
+    } finally {
+      finishMutation(token);
+    }
+  }, [
+    adoptAuthoritativePersona,
+    avatarPreview,
+    beginMutation,
+    finishMutation,
+    isCurrentEditorSession,
+    localizeUi,
+    personaId,
+    removeAvatar,
+  ]);
 
   const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -2150,6 +2187,7 @@ export function PersonaEditor() {
                 onSelectAvatar={() => {
                   if (!mutationBusy) fileInputRef.current?.click();
                 }}
+                onRemoveAvatar={() => void handleAvatarRemove()}
                 onGenerateAvatar={() => {
                   if (!mutationBusy) setAvatarGeneratorOpen(true);
                 }}
@@ -3561,6 +3599,7 @@ function PersonaMetadataTab({
   avatarPreview,
   onSelectAvatar,
   onGenerateAvatar,
+  onRemoveAvatar,
   imageGenerationAvailable,
   avatarUploading,
   hasUnsavedChanges,
@@ -3575,6 +3614,7 @@ function PersonaMetadataTab({
   avatarPreview: string | null;
   onSelectAvatar: () => void;
   onGenerateAvatar: () => void;
+  onRemoveAvatar: () => void;
   imageGenerationAvailable: boolean;
   avatarUploading: boolean;
   hasUnsavedChanges: boolean;
@@ -3648,6 +3688,8 @@ function PersonaMetadataTab({
               src={avatarPreview}
               alt={formData.name}
               crop={formData.avatarCrop}
+              onRemove={onRemoveAvatar}
+              removing={avatarMutationBusy}
               onChange={(next) => {
                 if (avatarMutationBusy) return;
                 updateField("avatarCrop", next);

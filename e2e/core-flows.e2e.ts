@@ -12750,7 +12750,7 @@ test("installed Home destinations appear as browser tabs without returning to th
     route.fulfill({
       contentType: "image/png",
       body: Buffer.from(
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+X8M1WQAAAABJRU5ErkJggg==",
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNguMPwHwADmAHcNaSbGQAAAABJRU5ErkJggg==",
         "base64",
       ),
     }),
@@ -12768,6 +12768,15 @@ test("installed Home destinations appear as browser tabs without returning to th
   const noodleTab = page.getByRole("tab", { name: "Open Noodle and NoodleR" });
   await expect(noodleTab).toBeVisible();
   await expect(noodleTab.locator("img")).toHaveCount(2);
+  await expect
+    .poll(() =>
+      noodleTab
+        .locator("img")
+        .evaluateAll((icons) =>
+          icons.every((icon) => icon instanceof HTMLImageElement && icon.complete && icon.naturalWidth > 0),
+        ),
+    )
+    .toBe(true);
   await expect(noodleTab.locator("img").first()).toHaveAttribute("src", /noodle-klusek\.png/u);
   await expect(noodleTab.locator("img").last()).toHaveAttribute("src", /noodler-klusek\.png/u);
   const refreshBadge = noodleTab.locator('[data-component="HomeBrowserHub.NoodleRefreshBadge"]');
@@ -12852,12 +12861,12 @@ test("installed Home destinations appear as browser tabs without returning to th
       await page.locator(".mari-home-browser-tab-row").screenshot({
         path: testInfo.outputPath(`home-tabs-${theme}-${size.width}.png`),
       });
-      for (const name of ["Home", "Professor Mari", "Open Noodle and NoodleR"]) {
+      for (const name of ["Home", "Open Noodle and NoodleR"]) {
         const selected = tabList.getByRole("tab", { name, exact: true });
         await selected.click();
         await expect(selected).toHaveAttribute("aria-selected", "true");
         for (const tab of await tabList.getByRole("tab").all()) {
-          const label = tab.locator(":scope > span").first();
+          const label = tab.locator(":scope > span.truncate");
           if (!mobile || (await tab.getAttribute("aria-selected")) === "true") {
             await expect(label).toBeVisible();
           } else {
@@ -12872,6 +12881,58 @@ test("installed Home destinations appear as browser tabs without returning to th
         await selected.screenshot({ path: testInfo.outputPath(`selected-tab-${theme}-${size.width}-${name}.png`) });
       }
     }
+  }
+  expect(errors).toEqual([]);
+  // An uncapped package catalog must still let the user reach the final tab.
+  await page.route("**/api/capability-packages/destination-*/client?*", (route) => {
+    const id = new URL(route.request().url()).pathname.split("/")[3];
+    return route.fulfill({
+      contentType: "text/javascript",
+      body: `customElements.define('marinara-capability-${id}', class extends HTMLElement {});`,
+    });
+  });
+  await page.route("**/api/capability-packages/installed", (route) =>
+    route.fulfill({
+      json: Array.from({ length: 40 }, (_, index) => {
+        const id = `destination-${index}`;
+        return {
+          id,
+          version: "1.0.0",
+          status: "active",
+          readiness: "ready",
+          legacy: false,
+          manifest: {
+            ...manifest,
+            id,
+            contributions: {
+              slots: ["home-browser-tab"],
+              homeBrowserTab: { label: `Destination ${index}` },
+            },
+          },
+        };
+      }),
+    }),
+  );
+  await page.reload();
+  await expect(tabList.getByRole("tab")).toHaveCount(42);
+  for (const size of mobile
+    ? [
+        { width: 390, height: 844 },
+        { width: 874, height: 402 },
+      ]
+    : [page.viewportSize()!]) {
+    await page.setViewportSize(size);
+    expect(await tabList.evaluate((rail) => rail.scrollWidth > rail.clientWidth)).toBe(true);
+    await expect(tabList).toHaveCSS("overflow-x", "auto");
+    const lastTab = tabList.getByRole("tab", { name: "Destination 39", exact: true });
+    await lastTab.scrollIntoViewIfNeeded();
+    await lastTab.click();
+    await expect(lastTab).toHaveAttribute("aria-selected", "true");
+    await expect(lastTab.locator(":scope > span.truncate")).toBeVisible();
+    const rail = (await tabList.boundingBox())!;
+    const last = (await lastTab.boundingBox())!;
+    expect(last.x).toBeGreaterThanOrEqual(rail.x - 1);
+    expect(last.x + last.width).toBeLessThanOrEqual(rail.x + rail.width + 1);
   }
   expect(errors).toEqual([]);
 });

@@ -4442,7 +4442,7 @@
   "settings.accessStatus.dockerHint": "With Docker Desktop or OrbStack, this can include other devices on your network.",
   "settings.accessStatus.fix.allowlist": "Narrow IP_ALLOWLIST to stop trusting devices on your allowlist.",
   "settings.accessStatus.fix.docker": "Set BYPASS_AUTH_DOCKER=false to stop trusting Docker devices.",
-  "settings.accessStatus.fix.proxy": "Remove REQUIRE_AUTH_FOR_LOOPBACK_PROXY=false to stop trusting proxy visitors.",
+  "settings.accessStatus.fix.proxy": "Remove REQUIRE_AUTH_FOR_LOOPBACK_PROXY=false, or 127.0.0.1 from TRUSTED_AUTH_PROXY, to stop trusting proxy visitors.",
   "settings.accessStatus.fix.tailscale": "Set BYPASS_AUTH_TAILSCALE=false to stop trusting Tailscale devices.",
   "settings.accessStatus.guide": "Open the remote access guide",
   "settings.accessStatus.hostRefused": "Open Marinara at its usual address to see this.",

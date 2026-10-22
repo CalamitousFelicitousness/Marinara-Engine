@@ -108,6 +108,11 @@ try {
   assert.deepEqual(await loopbackPeers({ BYPASS_AUTH_TAILSCALE: "true", MARINARA_DOCKER: "true" }), []);
   assert.deepEqual(await loopbackPeers({ ALLOW_UNAUTHENTICATED_REMOTE: "true" }), ["proxy"]);
   assert.deepEqual(await loopbackPeers({ REQUIRE_AUTH_FOR_LOOPBACK_PROXY: "false" }), ["proxy"]);
+  assert.deepEqual(
+    await loopbackPeers({ TRUSTED_AUTH_PROXY: "127.0.0.1" }),
+    ["proxy"],
+    "a same-host login proxy is listed",
+  );
 
   // Bound to every interface: the list follows the enforced policy for a remote device of each kind.
   const networkPeers = (env: Env, interfaces: Record<string, NetworkInterfaceInfo[]> = NO_TAILNET) => {

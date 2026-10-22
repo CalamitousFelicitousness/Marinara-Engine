@@ -411,7 +411,7 @@ function getAllowlist() {
 
 let cachedAuthProxies: { raw: string | null; entries: CIDREntry[] } | null = null;
 
-/** TRUSTED_AUTH_PROXY entries. Broad ones are dropped: they would let whole ISPs skip the login. */
+/** TRUSTED_AUTH_PROXY entries. A range must stay inside private address space, so no ISP skips the login. */
 export function getTrustedAuthProxies(): CIDREntry[] {
   const raw = getTrustedAuthProxy();
   if (cachedAuthProxies?.raw === raw) return cachedAuthProxies.entries;
@@ -423,7 +423,7 @@ export function getTrustedAuthProxies(): CIDREntry[] {
     const cidr = parseCIDR(trimmed);
     if (!cidr) {
       logger.warn(`[trusted-auth-proxy] Ignoring invalid entry: "${trimmed}"`);
-    } else if (isBroadAllowlistEntry(cidr)) {
+    } else if (cidr.prefixLen < 128 && !isInsidePrivateRange(cidr)) {
       logger.error(
         `[trusted-auth-proxy] Ignoring "${trimmed}": it covers public address space. List only the proxy's address.`,
       );
@@ -431,6 +431,12 @@ export function getTrustedAuthProxies(): CIDREntry[] {
       if (cidr.prefixLen < 128) {
         logger.warn(
           `[trusted-auth-proxy] "${trimmed}" is a range: every device in it skips the login, not only the proxy.`,
+        );
+      }
+      // ponytail: warns only; the server cannot see whether the port is published beyond 127.0.0.1.
+      if (dockerDefaultGatewayIp && matchesIp(dockerDefaultGatewayIp, trimmed)) {
+        logger.warn(
+          `[trusted-auth-proxy] "${trimmed}" is the Docker gateway. Docker Desktop and OrbStack show LAN clients of a published port at this address too, so publish the port as 127.0.0.1:7860:7860.`,
         );
       }
       entries.push(cidr);
@@ -710,7 +716,11 @@ function isBroadAllowlistEntry(entry: CIDREntry): boolean {
     entry.bytes[10] === 0xff &&
     entry.bytes[11] === 0xff;
   if (entry.prefixLen >= (isV4 ? 96 + BROAD_ALLOWLIST_V4_PREFIX : BROAD_ALLOWLIST_V6_PREFIX)) return false;
-  return ![...DEFAULT_PRIVATE_NETWORK_CIDRS, ...LOOPBACK_CIDRS].some(
+  return !isInsidePrivateRange(entry);
+}
+
+function isInsidePrivateRange(entry: CIDREntry): boolean {
+  return [...DEFAULT_PRIVATE_NETWORK_CIDRS, ...LOOPBACK_CIDRS].some(
     (range) => range.prefixLen <= entry.prefixLen && matchesCIDR(entry.bytes, range),
   );
 }
@@ -764,7 +774,16 @@ export function getPasswordlessPeers(
     ["docker", { dockerIp: true, privateNetworkIp: true, dockerRuntimeMatch: isDockerRuntime() }, direct && dockerHere],
     // A remote device behind a local proxy names this server by its own address, so it looks relayed.
     // The proxy dials 127.0.0.1, which a bind to one LAN address does not listen on.
-    ["proxy", { loopbackIp: true, forwardingHeaders: true, relayedHost: true }, !direct || anyAddress],
+    [
+      "proxy",
+      {
+        loopbackIp: true,
+        forwardingHeaders: true,
+        relayedHost: true,
+        trustedAuthProxy: isTrustedAuthProxyIp("127.0.0.1"),
+      },
+      !direct || anyAddress,
+    ],
   ];
   return samples
     .filter(([, facts, reachable]) => {

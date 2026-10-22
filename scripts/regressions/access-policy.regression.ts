@@ -225,6 +225,14 @@ try {
   assert.equal(spoofed.trustedPeer, false, "a forwarded header never names the proxy");
   assert.equal(spoofed.ipAllowed, false);
   assert.equal(getAccessPolicy(request("198.51.100.1")).trustedPeer, false, "0.0.0.0/0 is refused");
+  assert.equal(getAccessPolicy(request("::ffff:192.168.1.5")).trustedPeer, true, "an IPv4-mapped peer matches");
+  for (const entry of ["::ffff:0:0/96", "::/0", "2001:4860::/32", "198.51.100.0/24"]) {
+    process.env.TRUSTED_AUTH_PROXY = entry;
+    assert.equal(getAccessPolicy(request("2001:4860::1")).trustedPeer, false, `${entry} is refused`);
+    assert.equal(getAccessPolicy(request("198.51.100.9")).trustedPeer, false, `${entry} is refused`);
+  }
+  process.env.TRUSTED_AUTH_PROXY = "2001:4860::1";
+  assert.equal(getAccessPolicy(request("2001:4860::1")).trustedPeer, true, "a single public address is allowed");
   reset();
 
   // A proxy on this computer: its visitors skip the login but never get local trust.

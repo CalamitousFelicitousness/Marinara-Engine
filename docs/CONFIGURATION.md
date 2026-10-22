@@ -141,7 +141,9 @@ When one of these changes, the log warns that a restart is required. Access-cont
 
 ## Access control
 
-Access control decides who is allowed to reach a running server. This section is a quick reference. For a step-by-step walkthrough with examples, read [Remote Access: Basic Auth and IP Allowlist](REMOTE_ACCESS.md).
+Access control decides who is allowed to reach a running server. This section is a quick reference. For a step-by-step walkthrough with examples, read [Remote Access: Login and IP Allowlist](REMOTE_ACCESS.md).
+
+The login can also be set without `.env`: in **Settings → Advanced → Access** in a browser that is already signed in, on any device, or with the one-time setup code from the server log. To change or remove the login, Marinara asks for the current password. The server prints that code in its log only while no login is set and the server listens beyond loopback (for example `HOST=0.0.0.0` or Docker). That login is saved in `DATA_DIR/.remote-login.json`; `pnpm reset-login` removes it and signs out every browser. A login in `.env` wins over it. Login proxies use `TRUSTED_AUTH_PROXY`; see [Login proxies (forward auth)](REMOTE_ACCESS.md#login-proxies-forward-auth).
 
 A few terms used below:
 
@@ -164,9 +166,10 @@ The main access-control settings are:
 | `ALLOW_UNAUTHENTICATED_REMOTE`          | `false`           | Allows passwordless access from any address, including the public internet. Not recommended.                                                                                                                                                                                  |
 | `TRUSTED_PRIVATE_NETWORKS`              | built-in defaults | Replaces the default private-network ranges. Include any defaults you still want.                                                                                                                                                                                             |
 | `BYPASS_AUTH_TAILSCALE`                 | automatic         | Empty lets a device skip the login only when it connects straight to this computer's Tailscale address. Connections through Tailscale Serve, Funnel or another proxy still need a login. Set `true` for the legacy whole-`100.64.0.0/10` bypass or `false` to require normal access control. |
-| `BYPASS_AUTH_DOCKER`                    | automatic         | Empty trusts only a detected container interface and its exact gateway, and only while no Basic Auth or `IP_ALLOWLIST` is set. Set `true` for legacy/custom-network compatibility or `false` to require normal access control.                                                |
+| `BYPASS_AUTH_DOCKER`                    | automatic         | Empty trusts only a detected container interface and its exact gateway, and only while no login (`.env` or app), `IP_ALLOWLIST` or valid `TRUSTED_AUTH_PROXY` is set. Set `true` for legacy/custom-network compatibility or `false` to require normal access control.                                                |
 | `REQUIRE_AUTH_FOR_DOCKER_PROXY`         | `true`            | Requires normal login/allowlist checks for Docker traffic that a proxy relays (forwarding headers, a Host that names another computer, or HTTP/1.0). Set to `false` only when the proxy itself requires a login from every visitor.                                                               |
 | `REQUIRE_AUTH_FOR_LOOPBACK_PROXY`       | `true`            | Treats requests that a reverse proxy or tunnel on the same machine forwards as remote visitors, including HTTP/1.0 requests such as nginx's default `proxy_pass`. Set to `false` only when the proxy itself requires a login from every visitor.                              |
+| `TRUSTED_AUTH_PROXY` | empty | IPs or CIDRs of a forward-auth proxy (tinyauth, Authelia, Authentik, oauth2-proxy) that logs every visitor in. Requests from these addresses skip the login and `IP_ALLOWLIST`; forwarding headers never count. The proxy must protect every path, and Marinara must not be reachable around it. See [Login proxies](REMOTE_ACCESS.md#login-proxies-forward-auth). |
 | `TRUSTED_HOSTS`                         | empty             | Extra public or reverse-proxy hostnames Marinara may answer. Direct IP, localhost, `.local`, `.home.arpa`, and single-label LAN names work automatically.                                                                                                                     |
 | `SSL_CERT`                              | empty             | Path to a TLS certificate file. Set with `SSL_KEY` to serve HTTPS directly.                                                                                                                                                                                                   |
 | `SSL_KEY`                               | empty             | Path to the TLS private key file.                                                                                                                                                                                                                                             |
@@ -439,7 +442,7 @@ Some networks reach the internet only through an HTTP proxy, for example v2rayN 
 ## Related guides
 
 - [Feature Switches](configuration/features.md)
-- [Remote Access: Basic Auth and IP Allowlist](REMOTE_ACCESS.md)
+- [Remote Access: Login and IP Allowlist](REMOTE_ACCESS.md)
 - [Where Your Data Is Stored](data/where-data-is-stored.md)
 - [Connecting to an AI Provider](connections/connecting-to-a-provider.md)
 - [Scene Video](media/scene-video.md)

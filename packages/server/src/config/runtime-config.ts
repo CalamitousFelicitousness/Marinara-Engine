@@ -440,6 +440,11 @@ export function getTrustedPrivateNetworksOverride() {
   return normalizeEnvValue(process.env.TRUSTED_PRIVATE_NETWORKS);
 }
 
+/** Comma-separated IPs / CIDRs of forward-auth proxies that already log every visitor in. */
+export function getTrustedAuthProxy() {
+  return normalizeEnvValue(process.env.TRUSTED_AUTH_PROXY);
+}
+
 /**
  * Choose how direct Tailscale traffic may skip the IP allowlist and Basic Auth.
  *

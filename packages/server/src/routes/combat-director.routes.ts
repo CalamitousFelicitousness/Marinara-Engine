@@ -894,6 +894,8 @@ export async function combatDirectorRoutes(
           gm: setup.gmBossControl === true,
           // The named and the brilliant opponents too (combat AI P9), when the game asks for it.
           gmNamed: setup.gmBossControl === true && setup.gmNamedControl === true,
+          // A cruel opponent may strike the fallen only where the game allows it (combat AI T3).
+          cruel: setup.cruelOpponents === true,
           // Every opponent, where the game's ruleset gives the Game Master the opposition (1.721).
           gmAll: setup.gmBossControl === true && opposition === "game-master",
           difficulty: normalizeGameDifficulty(setup.difficulty),

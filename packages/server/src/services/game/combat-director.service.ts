@@ -77,6 +77,8 @@ export interface CombatDirectorState extends DirectedCombatView {
   gmNamed?: boolean;
   /** The Game Master plays every opponent (1.721): the game's ruleset gives it the opposition. */
   gmAll?: boolean;
+  /** The game lets a cruel opponent strike those already down (combat AI T3). */
+  cruel?: boolean;
   difficulty: string;
   weather?: CombatWeather;
   /** The game's elements (worldgen W6c); the classic six when absent. */
@@ -257,6 +259,7 @@ export function createCombatDirector(input: {
   gm: boolean;
   gmNamed?: boolean;
   gmAll?: boolean;
+  cruel?: boolean;
   difficulty: string;
   weather?: CombatWeather;
   elements?: WorldElementSet;
@@ -296,6 +299,7 @@ export function createCombatDirector(input: {
     gm: input.gm,
     ...(input.gm && input.gmNamed ? { gmNamed: true } : {}),
     ...(input.gm && input.gmAll ? { gmAll: true } : {}),
+    ...(input.cruel ? { cruel: true } : {}),
     difficulty: normalizeGameDifficulty(input.difficulty),
     weather: input.weather,
     ...(input.elements ? { elements: input.elements } : {}),

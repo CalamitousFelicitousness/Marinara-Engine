@@ -66145,7 +66145,8 @@
                             "coordinated",
                             "fanatical",
                             "arrogant",
-                            "territorial"
+                            "territorial",
+                            "cruel"
                           ]
                         },
                         "role": {
@@ -66240,7 +66241,8 @@
                                   "coordinated",
                                   "fanatical",
                                   "arrogant",
-                                  "territorial"
+                                  "territorial",
+                                  "cruel"
                                 ]
                               },
                               "$comment": {}
@@ -253280,7 +253282,8 @@
                           "coordinated",
                           "fanatical",
                           "arrogant",
-                          "territorial"
+                          "territorial",
+                          "cruel"
                         ]
                       },
                       "role": {
@@ -253375,7 +253378,8 @@
                                 "coordinated",
                                 "fanatical",
                                 "arrogant",
-                                "territorial"
+                                "territorial",
+                                "cruel"
                               ]
                             },
                             "$comment": {}
@@ -254429,7 +254433,8 @@
                 "coordinated",
                 "fanatical",
                 "arrogant",
-                "territorial"
+                "territorial",
+                "cruel"
               ]
             },
             "role": {
@@ -254524,7 +254529,8 @@
                       "coordinated",
                       "fanatical",
                       "arrogant",
-                      "territorial"
+                      "territorial",
+                      "cruel"
                     ]
                   },
                   "$comment": {}

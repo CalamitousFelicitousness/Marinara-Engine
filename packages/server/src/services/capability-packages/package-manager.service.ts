@@ -2842,6 +2842,18 @@ function carriesBehavior710(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesBehavior710(one, depth + 1));
 }
 
+/** A cruel one (1.729): a behavior whose `temperament`, or one it turns to, is `cruel`. */
+function carriesCruel729(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesCruel729(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const behavior = plainRecord(record.behavior);
+  if (behavior?.temperament === "cruel") return true;
+  if (Array.isArray(behavior?.shifts) && behavior.shifts.some((one) => plainRecord(one)?.to === "cruel")) return true;
+  return featureValues(record).some((one) => carriesCruel729(one, depth + 1));
+}
+
 /** A territorial one (1.728): a behavior whose `temperament`, or one it turns to, is `territorial`,
  *  or with a `territory`. */
 function carriesTerritorial728(value: unknown, depth = 0): boolean {
@@ -9459,6 +9471,11 @@ export function getCapabilityPackageInstallIssue(
     }),
   );
   // A creature that fights a side alone, 1.723.
+  if (
+    !declaresApi(729) &&
+    (carriesCruel729(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesCruel729(document)))
+  )
+    return 'A ruleset with a cruel creature (a behavior whose temperament is "cruel") requires schemaVersion 2 and capabilityApi 1.729 or newer';
   if (
     !declaresApi(728) &&
     (carriesTerritorial728(ruleset) ||

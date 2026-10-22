@@ -37,11 +37,18 @@ export const COMBAT_TEMPERAMENTS = [
   "arrogant",
   // Never dealt by chance: it keeps to its ground (combat AI T4, 1.728).
   "territorial",
+  // Never dealt by chance, and strikes the fallen only where the game allows it (combat AI T3, 1.729).
+  "cruel",
 ] as const;
 export type CombatTemperament = (typeof COMBAT_TEMPERAMENTS)[number];
 /** The temperaments a combatant has only where its data or the story names them, never dealt by
  *  chance: a fanatic never breaks (combat AI T2). */
-export const COMBAT_NAMED_TEMPERAMENTS: readonly CombatTemperament[] = ["fanatical", "arrogant", "territorial"];
+export const COMBAT_NAMED_TEMPERAMENTS: readonly CombatTemperament[] = [
+  "fanatical",
+  "arrogant",
+  "territorial",
+  "cruel",
+];
 
 /** What turns a combatant's temperament into another, once (combat AI T7): hurt below half its
  *  health, one of its side down, its leader down, or cornered (below a quarter, an opponent beside it

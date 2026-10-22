@@ -255,6 +255,9 @@ export interface GameSetupConfig {
   /** With `gmBossControl`, the Game Master also plays every named opponent and every one with a
    *  genius's mind (combat AI P9). Absent is bosses only, as every game before it. */
   gmNamedControl?: boolean;
+  /** A cruel opponent (a `cruel` temperament, combat AI T3) may strike those already down. Absent is
+   *  never: off unless the game asks for it. */
+  cruelOpponents?: boolean;
   /** Optional tactical battlefield preferences used for newly-created encounters. */
   tacticalBattlefield?: TacticalBattlefieldSetup;
   /** Who acts when in a new tactical fight (combat C6c): one unit at a time in a rolled order, or the

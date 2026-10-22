@@ -631,6 +631,8 @@ export function GameSetupWizard({
   const [gmBossControl, setGmBossControl] = useState(true);
   // The named and the brilliant opponents too (combat AI P9).
   const [gmNamedControl, setGmNamedControl] = useState(true);
+  // A cruel opponent may strike the fallen (combat AI T3): off unless asked for.
+  const [cruelOpponents, setCruelOpponents] = useState(false);
   const [tacticalBattlefieldSize, setTacticalBattlefieldSize] = useState<"auto" | TacticalBattlefieldSize>("auto");
   const [gmMode, setGmMode] = useState<GameGmMode>("standalone");
   // The GM intro message (1.339): null follows the Experience's own.
@@ -1403,6 +1405,7 @@ export function GameSetupWizard({
     setCombatStyle(config.combatStyle === "tactical" ? "tactical" : "classic");
     setGmBossControl(config.gmBossControl ?? true);
     setGmNamedControl(config.gmNamedControl ?? false);
+    setCruelOpponents(config.cruelOpponents === true);
     setTacticalBattlefieldSize(config.tacticalBattlefield?.size ?? "auto");
     setRating(config.rating);
     setLanguage(config.language?.trim() || "English");
@@ -1581,6 +1584,7 @@ export function GameSetupWizard({
       ...(overworldChosen ? { tacticalTurnOrder: "initiative" as const } : {}),
       gmBossControl,
       ...(gmBossControl ? { gmNamedControl } : {}),
+      ...(cruelOpponents ? { cruelOpponents } : {}),
       ...(Object.keys(tacticalBattlefield).length > 0 ? { tacticalBattlefield } : {}),
       spatialMapInstructions:
         enableAgents && hierarchicalMapsInstalled && draftSpatialMap
@@ -2330,6 +2334,20 @@ export function GameSetupWizard({
                           </span>
                         </label>
                       )}
+                      <label className="mt-2 flex cursor-pointer items-start gap-3 rounded-lg border border-[var(--border)] p-3 text-sm text-[var(--foreground)]">
+                        <input
+                          type="checkbox"
+                          checked={cruelOpponents}
+                          onChange={(e) => setCruelOpponents(e.target.checked)}
+                          className="mt-1 size-4 accent-[var(--primary)]"
+                        />
+                        <span>
+                          {localizeUi("game.combat.director.cruelLabel")}
+                          <span className="mt-1 block text-xs text-[var(--muted-foreground)]">
+                            {localizeUi("game.combat.director.cruelHelp")}
+                          </span>
+                        </span>
+                      </label>
                       {combatStyle === "tactical" && (
                         <div className="mt-3 space-y-3 rounded-xl border border-[var(--primary)]/20 bg-[var(--primary)]/5 p-3">
                           <div>

@@ -793,7 +793,8 @@ export function syncRulesetCombatants(definition: RulesetDefinition, state: Comb
       unit.tactics.adjective = own;
     // The ground a territorial one keeps: where it stood when it first did (combat AI T4).
     const at = rulesetPositionOf(combatant);
-    if (unit.tactics?.adjective === "territorial" && !unit.tactics.home && at) unit.tactics.home = { x: at.x, y: at.y };
+    if (unit.tactics && rulesetTerritorial(definition, combatant, unit.tactics) && !unit.tactics.home && at)
+      unit.tactics.home = { x: at.x, y: at.y };
     // The temperament it is played with, for the rules' morale (combat AI T1, T2).
     const temperament =
       unit.tactics?.mind === "mindless"
@@ -803,7 +804,8 @@ export function syncRulesetCombatants(definition: RulesetDefinition, state: Comb
           : (unit.aiHints?.temperament ??
             rulesetCombatantBehavior(definition, combatant)?.temperament ??
             unit.tactics?.adjective);
-    if (temperament) combatant.temperament = temperament;
+    // Cruel only where the game allows it (combat AI T3): otherwise it plays as an opportunist.
+    if (temperament) combatant.temperament = temperament === "cruel" && !state.cruel ? "opportunistic" : temperament;
     else delete combatant.temperament;
     // Who plays a party member, as the fight has it: what the party panel shows.
     if (combatant.side === "party")
@@ -2427,8 +2429,8 @@ function rulesetCandidatesFrom(
         // Never its own side, and never somebody who is already down: the rules let a blow land on
         // them, and a table where every opponent finishes off the dying is not one anybody plays
         // at. A human may still choose it; nothing the Engine enumerates for itself or for a Game
-        // Master's boss includes it.
-        if (ally || target.down) continue;
+        // Master's boss includes it, but a cruel one's where the game allows it (combat AI T3).
+        if (ally || (target.down && (actor.temperament !== "cruel" || target.defeated))) continue;
         const others = spreads
           ? legal
               .filter((id) => id !== targetId)
@@ -3422,8 +3424,11 @@ function weighChoices(
     const hinted = unit.aiHints?.mind ?? (unit.aiHints?.temperament === "mindless" ? "mindless" : undefined);
     const wanted = combatMindWithHint(hinted, mind);
     if (!unit.tactics || (wanted !== undefined && unit.tactics.mind !== wanted)) {
+      // The ground it keeps stays where it was (combat AI T4).
+      const home = unit.tactics?.home;
       delete unit.tactics;
       unit.tactics = assignCombatTactics(unit, state.seed, mind);
+      if (home) unit.tactics.home = home;
     }
     rulesetReadRole(definition, unit, actor, encounter);
     // How its own data says it goes about a fight (1.710): its temperament, unless the Game Master
@@ -3691,6 +3696,13 @@ interface RulesetLeash {
   within: number;
 }
 
+/** Whether it keeps its ground (combat AI T4): territorial, or a mindless one whose data says so, as
+ *  a golem set to guard a place by its maker keeps to it with no temperament of its own. */
+function rulesetTerritorial(definition: RulesetDefinition, actor: RulesetCombatant, tactics: CombatTactics): boolean {
+  if (tactics.adjective === "territorial") return true;
+  return tactics.mind === "mindless" && rulesetCombatantBehavior(definition, actor)?.temperament === "territorial";
+}
+
 /**
  * The ground a territorial one keeps (combat AI T4): within its `behavior.territory` squares (6
  * unless it says) of where it began, as a leash on that spot. None once whoever last hurt it stands
@@ -3703,7 +3715,7 @@ function rulesetTerritoryLeash(
   unit: Combatant,
 ): RulesetLeash | undefined {
   const home = unit.tactics?.home;
-  if (!home || unit.tactics?.adjective !== "territorial" || unit.tactics.mind === "mindless") return undefined;
+  if (!home || !rulesetTerritorial(definition, actor, unit.tactics!)) return undefined;
   const within = rulesetCombatantBehavior(definition, actor)?.territory ?? 6;
   const charge = { ...actor, x: home.x, y: home.y } as RulesetCombatant;
   const harm = actor.harmedBy ? rulesetCombatant(encounter, actor.harmedBy) : undefined;

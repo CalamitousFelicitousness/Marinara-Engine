@@ -311,6 +311,8 @@ Proposed initial tuning: normalize policy utility to a fixed scale; let novices 
 
 **Territorial (combat AI T4, Capability API 1.728).** A named-only temperament. `syncRulesetCombatants` records `tactics.home` where it first stands; `rulesetTerritoryLeash` turns `behavior.territory` (default 6) around that spot into the same leash a guarding companion has (a stand-in combatant at home), used by `walkTowardsTrouble` and to drop candidates that walk it further off its ground. The leash lifts while `harmedBy` stands off its ground.
 
+**Cruel (combat AI T3, Capability API 1.729).** A named-only temperament: finish 3 (as opportunistic), setup 0.8. The game setup's `cruelOpponents` (off by default) becomes `CombatDirectorState.cruel`; `syncRulesetCombatants` mirrors `cruel` onto the ruleset combatant only then (otherwise `opportunistic`), and `rulesetCandidatesFrom` lets a combatant whose mirrored temperament is `cruel` weigh harmful blows on a foe that is down and not defeated. Classic and Tactical fights have no downed-but-alive state, so there it is only the weights. A mindless creature whose data says `territorial` keeps its ground (`rulesetTerritorial`), and `tactics.home` survives a tactics redraw.
+
 **Fliers keep altitude (combat AI A7).** When a ruleset flier's turn goes idle on the ground (`keepAloft`), and it can fly, has an available ranged damaging action, isn't a bruiser, reckless or mindless, and an opponent who cannot fly stands, it takes Fly up where the board has levels, then carries on its turn (a shot, its kite) from the air.
 
 ## 8. Boss turns controlled by the GM

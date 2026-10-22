@@ -520,11 +520,33 @@ try {
     assert.equal(brute.tactics?.adjective, "reckless", "its data's temperament no longer wins");
   }
 
+  // ── Cruel (combat AI T3): it strikes the fallen only where the game allows it ──
+  {
+    const prey = (temperament: string, allowed: boolean) => {
+      const { encounter, state } = fight({
+        ghoul: { side: "enemy", block: block([smash], { behavior: { temperament } }), at: { x: 5, y: 2 } },
+        fallen: { side: "party", block: block([smash]), at: { x: 6, y: 2 } },
+        other: { side: "party", block: block([smash]), at: { x: 8, y: 2 } },
+      });
+      const fallen = rulesetCombatant(encounter, "fallen")!;
+      fallen.down = true;
+      fallen.dying = true as never;
+      fallen.health = { ...fallen.health!, value: 0 };
+      if (allowed) state.cruel = true;
+      state.rulesetFight = { encounter, events: [], eventSeq: 0, controllers: {}, bosses: [] } as never;
+      syncRulesetCombatants(definition, state);
+      return pickRulesetChoice(definition, state, encounter, "ghoul")?.choice.targetIds[0];
+    };
+    assert.equal(prey("cruel", true), "fallen", "the game allows it: it finishes the fallen");
+    assert.equal(prey("cruel", false), "other", "the game does not: it leaves them be");
+    assert.equal(prey("opportunistic", true), "other", "only a cruel one");
+  }
+
   // ── Keeping its ground (combat AI T4): no further than its territory, unless shot at from afar ──
   {
-    const guard = (behavior: Record<string, unknown>, harmed?: boolean) => {
+    const guard = (behavior: Record<string, unknown>, harmed?: boolean, extra: Record<string, unknown> = {}) => {
       const { encounter, state } = fight({
-        golem: { side: "enemy", block: block([smash], { behavior }), at: { x: 3, y: 3 } },
+        golem: { side: "enemy", block: block([smash], { behavior, ...extra }), at: { x: 3, y: 3 } },
         hero: { side: "party", block: block([bolt]), at: { x: 12, y: 3 } },
       });
       if (harmed) rulesetCombatant(encounter, "golem")!.harmedBy = "hero";
@@ -537,6 +559,12 @@ try {
     assert.ok(guard({ temperament: "territorial", territory: 2 }) <= 5, "it stays on its ground");
     assert.ok(guard({ temperament: "patient" }) > 5, "one that is not walks on");
     assert.ok(guard({ temperament: "territorial", territory: 2 }, true) > 5, "shot at from afar, it gives chase");
+    // A standing order, so a mindless golem keeps it too.
+    assert.ok(
+      guard({ temperament: "territorial", territory: 2 }, false, { mind: "mindless" }) <= 5,
+      "a mindless one too",
+    );
+    assert.ok(guard({ pack: true }, false, { mind: "mindless" }) > 5, "and a mindless one without walks on");
   }
 
   // ── Its temperament and role, unless the Game Master gave one ──
@@ -821,6 +849,11 @@ try {
       fiveE((doc) => (lurkerEntry(doc).behavior = { territory: 0 })),
       /territory/,
     );
+    const vicious =
+      'A ruleset with a cruel creature (a behavior whose temperament is "cruel") requires schemaVersion 2 and capabilityApi 1.729 or newer';
+    const cruel = fiveE((doc) => (lurkerEntry(doc).behavior = { temperament: "cruel" }));
+    assert.equal(getCapabilityPackageInstallIssue(manifest(728) as never, cruel), vicious);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(729) as never, cruel), vicious);
     const grows = fiveE((doc) => (lurkerEntry(doc).behavior = { shifts: [{ on: "ally-down", to: "arrogant" }] }));
     assert.equal(getCapabilityPackageInstallIssue(manifest(726) as never, grows), proud);
     refused(
@@ -842,7 +875,7 @@ try {
   }
 
   console.log(
-    "Combat behavior: merged from the ruleset, the type and the creature; its temperament and role; casters, attackers and a pack's prey first; its opener once; an ambusher keeps still and springs; roles read off what it does; bodyguards stay by their charge; a leader rallies; a temperament turns once; a proud legend flies off; a territorial one keeps its ground; refused and gated at 1.710, 1.723, 1.724, 1.725, 1.726, 1.727 and 1.728.",
+    "Combat behavior: merged from the ruleset, the type and the creature; its temperament and role; casters, attackers and a pack's prey first; its opener once; an ambusher keeps still and springs; roles read off what it does; bodyguards stay by their charge; a leader rallies; a temperament turns once; a proud legend flies off; a territorial one keeps its ground; a cruel one strikes the fallen only where the game allows; refused and gated at 1.710, 1.723, 1.724, 1.725, 1.726, 1.727, 1.728 and 1.729.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

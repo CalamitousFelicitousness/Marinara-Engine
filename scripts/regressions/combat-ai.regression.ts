@@ -616,4 +616,5 @@ assert.equal(
   // Never dealt by chance.
   assert.ok(!dealt.has("arrogant"));
   assert.ok(!dealt.has("territorial"));
+  assert.ok(!dealt.has("cruel"));
 }

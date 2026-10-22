@@ -349,11 +349,12 @@ export function rankCombatCandidates<T>(
   const weights = {
     // A fanatic (T2) gives no thought to its own skin, as a reckless one does.
     damage: adjective === "reckless" || adjective === "fanatical" ? 2 : 1,
-    finish: adjective === "opportunistic" ? 3 : 0.5,
+    // A cruel one (T3) finishes whoever it can, and likes to see them held down or afraid.
+    finish: adjective === "opportunistic" || adjective === "cruel" ? 3 : 0.5,
     healing: adjective === "supportive" ? 4 : adjective === "reckless" ? 0.4 : 1.5,
     support: adjective === "supportive" ? 1.2 : 0.35,
     // An arrogant one (T5) sets nothing up and keeps its best for a foe worth it.
-    setup: adjective === "methodical" ? 1.6 : adjective === "arrogant" ? 0.05 : 0.2,
+    setup: adjective === "methodical" ? 1.6 : adjective === "cruel" ? 0.8 : adjective === "arrogant" ? 0.05 : 0.2,
     risk:
       adjective === "reckless" || adjective === "fanatical"
         ? 0.05

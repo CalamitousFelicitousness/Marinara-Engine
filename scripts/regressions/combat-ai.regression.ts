@@ -592,4 +592,27 @@ assert.equal(
   );
   assert.equal(proud.adjective, "methodical");
   assert.ok(combatTacticsSchema.safeParse(proud).success);
+  // An arrogant one (T5) gets serious once bloodied or once one of its own falls, unless told otherwise.
+  const lofty = { ...assignCombatTactics(actor("lofty"), 7, "tactical"), adjective: "arrogant" as const };
+  assert.equal(
+    shiftCombatTemperament(lofty, undefined, (on) => on === "ally-down"),
+    "methodical",
+  );
+  assert.equal(lofty.shiftedFrom, "arrogant");
+  assert.ok(combatTacticsSchema.safeParse(lofty).success);
+  const vain = { ...assignCombatTactics(actor("vain"), 7, "tactical"), adjective: "arrogant" as const };
+  assert.equal(
+    shiftCombatTemperament(vain, [{ on: "cornered", to: "reckless" }], (on) => on === "bloodied"),
+    undefined,
+    "its own shifts replace the default",
+  );
+  // It holds back its best: a cheap blow over a costly one an opportunist would spend.
+  const hoard = [
+    { action: "cheap", targetId: "a", damage: 0.4 },
+    { action: "dear", targetId: "a", damage: 0.6, cost: 0.3 },
+  ];
+  assert.equal(chooseCombatCandidate(as2("arrogant"), hoard, 1), "cheap");
+  assert.equal(chooseCombatCandidate(as2("opportunistic"), hoard, 1), "dear");
+  // Never dealt by chance.
+  assert.ok(!dealt.has("arrogant"));
 }

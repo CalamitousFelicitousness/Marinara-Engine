@@ -66143,7 +66143,8 @@
                             "patient",
                             "methodical",
                             "coordinated",
-                            "fanatical"
+                            "fanatical",
+                            "arrogant"
                           ]
                         },
                         "role": {
@@ -66236,7 +66237,8 @@
                                   "patient",
                                   "methodical",
                                   "coordinated",
-                                  "fanatical"
+                                  "fanatical",
+                                  "arrogant"
                                 ]
                               },
                               "$comment": {}
@@ -253269,7 +253271,8 @@
                           "patient",
                           "methodical",
                           "coordinated",
-                          "fanatical"
+                          "fanatical",
+                          "arrogant"
                         ]
                       },
                       "role": {
@@ -253362,7 +253365,8 @@
                                 "patient",
                                 "methodical",
                                 "coordinated",
-                                "fanatical"
+                                "fanatical",
+                                "arrogant"
                               ]
                             },
                             "$comment": {}
@@ -254409,7 +254413,8 @@
                 "patient",
                 "methodical",
                 "coordinated",
-                "fanatical"
+                "fanatical",
+                "arrogant"
               ]
             },
             "role": {
@@ -254502,7 +254507,8 @@
                       "patient",
                       "methodical",
                       "coordinated",
-                      "fanatical"
+                      "fanatical",
+                      "arrogant"
                     ]
                   },
                   "$comment": {}

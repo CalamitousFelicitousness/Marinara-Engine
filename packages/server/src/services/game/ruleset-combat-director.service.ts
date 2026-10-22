@@ -786,6 +786,11 @@ export function syncRulesetCombatants(definition: RulesetDefinition, state: Comb
     const unit = units.get(combatant.id);
     if (!unit) continue;
     rulesetReadRole(definition, unit, combatant, fight.encounter);
+    // Its data's temperament from the start, so what happens before its first choice (a shift, a
+    // proud one's flight) reads it too (combat AI T5).
+    const own = rulesetCombatantBehavior(definition, combatant)?.temperament;
+    if (unit.tactics && unit.tactics.mind !== "mindless" && own && !unit.aiHints?.temperament && !unit.tactics.shifted)
+      unit.tactics.adjective = own;
     // The temperament it is played with, for the rules' morale (combat AI T1, T2).
     const temperament =
       unit.tactics?.mind === "mindless"
@@ -3540,7 +3545,6 @@ function shiftRulesetTemperament(
   const unit = [...state.party, ...state.enemies].find((one) => one.id === actor.id);
   if (!combat || !unit?.tactics) return;
   const shifts = unit.aiHints?.shifts ?? rulesetCombatantBehavior(definition, actor)?.shifts;
-  if (!shifts) return;
   const health = rulesetCombatHealth(definition, combat, actor);
   const ours = encounter.combatants.filter(
     (one) => one.side === actor.side && one.id !== actor.id && one.calledBy === undefined && !one.object,
@@ -4360,6 +4364,8 @@ function playRulesetTurn(
       applyChoice(definition, state, fight, { actorId, optionId: RULESET_MOVE_OPTION, targetIds: [], to: away });
   }
   const stays = orders?.posture === "hold" || orders?.posture === "retreat";
+  // A proud legend near its end takes to the sky and fights from there (combat AI T5).
+  const aloof = !stays && retreatAloft(definition, state, fight, actorId);
   const leash = actor && orders ? rulesetLeashOf(state, fight.encounter, actor, orders) : undefined;
   // A caster or archer caught beside an opponent gets clear before it shoots (re-test 9).
   if (!stays) getClearToShoot(definition, state, fight, actorId);
@@ -4399,7 +4405,7 @@ function playRulesetTurn(
       if (!stays && keepAloft(definition, state, fight, actorId)) continue;
       if (shotFromAfar && !stays && keepRulesetRange(definition, state, fight, actorId, shotFromAfar === "kite")) break;
       if (struckClose && !shotFromAfar && !defended && !stays && hitAndRun(definition, state, fight, actorId)) break;
-      if (defended || stays || !walkTowardsTrouble(definition, state, fight, actorId, leash)) break;
+      if (defended || stays || aloof || !walkTowardsTrouble(definition, state, fight, actorId, leash)) break;
       continue;
     }
     if (picked.defensive) defended = true;
@@ -4685,6 +4691,35 @@ function hitAndRun(
  * levels, so those who cannot fly cannot walk up and strike it. Not a bruiser, which wants to be in
  * among them, nor a reckless one, nor a mindless one. Whether it went up.
  */
+/**
+ * An arrogant legend (combat AI T5) with a fly speed, below a quarter of its health: up into the sky
+ * if it is not there already. Whether it is aloft, so it does not come down to walk at anybody.
+ */
+function retreatAloft(
+  definition: RulesetDefinition,
+  state: CombatDirectorState,
+  fight: RulesetFightState,
+  actorId: string,
+): boolean {
+  const actor = rulesetCombatant(fight.encounter, actorId);
+  const tactics = [...state.party, ...state.enemies].find((one) => one.id === actorId)?.tactics;
+  const grid = fight.encounter.board?.grid;
+  const combat = definition.combat;
+  if (!actor || !tactics || !grid || !combat || !actor.speeds?.fly) return false;
+  if (tactics.adjective !== "arrogant" && tactics.shiftedFrom !== "arrogant") return false;
+  const legendary =
+    actor.signature !== undefined ||
+    (actor.block?.legendaryResistance ?? 0) > 0 ||
+    actor.actions.some((one) => one.signature !== undefined);
+  const health = rulesetCombatHealth(definition, combat, actor);
+  if (!legendary || health.value >= health.max / 4) return false;
+  if (rulesetAirborne(grid, actor)) return true;
+  const up = rulesetCombatOptions(definition, fight.encounter, actorId).find(
+    (option) => option.id === RULESET_FLY_UP_OPTION,
+  );
+  return !!up && !applyChoice(definition, state, fight, { actorId, optionId: up.id, targetIds: [] }).refused;
+}
+
 function keepAloft(
   definition: RulesetDefinition,
   state: CombatDirectorState,

@@ -1813,6 +1813,7 @@
   "game.characterSheet.regenerate.label": "Retry",
   "game.characterSheet.regenerate.loading": "Retrying...",
   "game.characterSheet.regenerate.ready": "{{name}}'s new sheet draft is ready. Review it, then save to apply.",
+  "game.combat.ai.adjective.arrogant": "Arrogant",
   "game.combat.ai.adjective.cautious": "Cautious",
   "game.combat.ai.adjective.coordinated": "Coordinated",
   "game.combat.ai.adjective.cowardly": "Cowardly",

@@ -307,6 +307,8 @@ Proposed initial tuning: normalize policy utility to a fixed scale; let novices 
 
 **Temperament shifts (combat AI T7, Capability API 1.726).** `aiHints.shifts` (the story) or a ruleset `behavior.shifts` names up to four `{on, to}`; `shiftCombatTemperament` applies the first whose trigger has happened, once (`tactics.shifted`), at the start of the unit's turn: `shiftTurn` in Classic/Tactical (cornered there is below a quarter with a party member adjacent, always in Classic) and `shiftRulesetTemperament` in ruleset fights (cornered also needs no retreat cell). A shifted unit keeps its new temperament over its data's, and the ruleset mirror follows it.
 
+**Arrogant (combat AI T5, Capability API 1.727).** A named-only temperament (`COMBAT_NAMED_TEMPERAMENTS`): risk 0.2, setup 0.05, cost 2 (a `solo` role keeps that cost instead of zeroing it), hold leaning offense. With no `shifts` of its own it uses `COMBAT_ARROGANT_SHIFTS` (bloodied or ally-down → methodical); `tactics.shiftedFrom` remembers it. In ruleset fights `retreatAloft` flies a legendary arrogant (or formerly arrogant) flier up below a quarter of its health and stops it walking at anybody.
+
 **Fliers keep altitude (combat AI A7).** When a ruleset flier's turn goes idle on the ground (`keepAloft`), and it can fly, has an available ranged damaging action, isn't a bruiser, reckless or mindless, and an opponent who cannot fly stands, it takes Fly up where the board has levels, then carries on its turn (a shot, its kite) from the air.
 
 ## 8. Boss turns controlled by the GM

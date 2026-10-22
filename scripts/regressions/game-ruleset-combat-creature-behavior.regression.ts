@@ -437,11 +437,18 @@ try {
         doc.combat.elevation = { levelHeight: 5 };
       }),
     );
-    const aloft = (behavior: Record<string, unknown>) => {
+    const aloft = (
+      behavior: Record<string, unknown>,
+      {
+        actions = [bolt],
+        extra = {},
+        health,
+      }: { actions?: unknown[]; extra?: Record<string, unknown>; health?: number } = {},
+    ) => {
       const blocks = {
         harpy: {
           side: "enemy" as const,
-          block: block([bolt], { speeds: { fly: 40 }, behavior }),
+          block: block(actions as never, { speeds: { fly: 40 }, behavior, ...extra }),
           at: { x: 2, y: 2 },
         },
         hero: { side: "party" as const, block: block([smash]), at: { x: 12, y: 2 } },
@@ -458,6 +465,11 @@ try {
       });
       encounter.order = ["harpy", "hero"];
       encounter.turn = 0;
+      if (health !== undefined)
+        rulesetCombatant(encounter, "harpy")!.health = {
+          ...rulesetCombatant(encounter, "harpy")!.health!,
+          value: health,
+        };
       const state = createCombatDirector({
         id: "fight",
         anchor: "anchor",
@@ -476,6 +488,12 @@ try {
     };
     assert.ok((aloft({ temperament: "disciplined", role: "marksman" }) ?? 0) > 0, "a shooter takes to the air");
     assert.equal(aloft({ temperament: "disciplined", role: "bruiser" }), undefined, "a bruiser stays down");
+    // A proud legend near its end takes to the sky (combat AI T5), even with nothing to shoot.
+    const legend = { actions: [smash], extra: { legendaryResistance: 3 } };
+    assert.ok((aloft({ temperament: "arrogant" }, { ...legend, health: 5 }) ?? 0) > 0, "a beaten legend flies off");
+    assert.equal(aloft({ temperament: "arrogant" }, legend), undefined, "unhurt, it stays to fight");
+    assert.equal(aloft({ temperament: "cautious" }, { ...legend, health: 5 }), undefined, "only a proud one");
+    assert.equal(aloft({ temperament: "arrogant" }, { actions: [smash], health: 5 }), undefined, "only a legend");
   }
 
   // ── Turned by what happens (combat AI T7): its data's shift, once, as its turn starts ──
@@ -770,6 +788,13 @@ try {
     const turns = fiveE((doc) => (lurkerEntry(doc).behavior = { shifts: [{ on: "bloodied", to: "reckless" }] }));
     assert.equal(getCapabilityPackageInstallIssue(manifest(725) as never, turns), turning);
     assert.notEqual(getCapabilityPackageInstallIssue(manifest(726) as never, turns), turning);
+    const proud =
+      'A ruleset with an arrogant creature (a behavior whose temperament is "arrogant") requires schemaVersion 2 and capabilityApi 1.727 or newer';
+    const lofty = fiveE((doc) => (lurkerEntry(doc).behavior = { temperament: "arrogant" }));
+    assert.equal(getCapabilityPackageInstallIssue(manifest(726) as never, lofty), proud);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(727) as never, lofty), proud);
+    const grows = fiveE((doc) => (lurkerEntry(doc).behavior = { shifts: [{ on: "ally-down", to: "arrogant" }] }));
+    assert.equal(getCapabilityPackageInstallIssue(manifest(726) as never, grows), proud);
     refused(
       fiveE(
         (doc) =>
@@ -789,7 +814,7 @@ try {
   }
 
   console.log(
-    "Combat behavior: merged from the ruleset, the type and the creature; its temperament and role; casters, attackers and a pack's prey first; its opener once; an ambusher keeps still and springs; roles read off what it does; bodyguards stay by their charge; a leader rallies; a temperament turns once; refused and gated at 1.710, 1.723, 1.724, 1.725 and 1.726.",
+    "Combat behavior: merged from the ruleset, the type and the creature; its temperament and role; casters, attackers and a pack's prey first; its opener once; an ambusher keeps still and springs; roles read off what it does; bodyguards stay by their charge; a leader rallies; a temperament turns once; a proud legend flies off; refused and gated at 1.710, 1.723, 1.724, 1.725, 1.726 and 1.727.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

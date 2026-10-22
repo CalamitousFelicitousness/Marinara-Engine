@@ -2842,6 +2842,19 @@ function carriesBehavior710(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesBehavior710(one, depth + 1));
 }
 
+/** An arrogant one (1.727): a behavior whose `temperament`, or one it turns to, is `arrogant`. */
+function carriesArrogant727(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesArrogant727(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const behavior = plainRecord(record.behavior);
+  if (behavior?.temperament === "arrogant") return true;
+  if (Array.isArray(behavior?.shifts) && behavior.shifts.some((one) => plainRecord(one)?.to === "arrogant"))
+    return true;
+  return featureValues(record).some((one) => carriesArrogant727(one, depth + 1));
+}
+
 /** A temperament that turns (1.726): a behavior with `shifts`. */
 function carriesShifts726(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -9432,6 +9445,12 @@ export function getCapabilityPackageInstallIssue(
     }),
   );
   // A creature that fights a side alone, 1.723.
+  if (
+    !declaresApi(727) &&
+    (carriesArrogant727(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesArrogant727(document)))
+  )
+    return 'A ruleset with an arrogant creature (a behavior whose temperament is "arrogant") requires schemaVersion 2 and capabilityApi 1.727 or newer';
   if (
     !declaresApi(726) &&
     (carriesShifts726(ruleset) ||

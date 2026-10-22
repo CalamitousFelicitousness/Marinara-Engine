@@ -78,6 +78,8 @@ export const combatTacticsSchema = z
     roleRead: z.literal(true).optional(),
     /** Its temperament has turned, as its `shifts` say (combat AI T7): it turns only once. */
     shifted: z.literal(true).optional(),
+    /** The temperament it had before it turned: a proud one stays proud enough to fly off. */
+    shiftedFrom: z.enum(COMBAT_ADJECTIVES).optional(),
     /** Turns in a row it spent dodging, getting away or hiding: two, and it fights again, so two
      *  careful sides never stare at each other all fight. */
     wary: z.number().int().min(0).max(99).optional(),
@@ -90,6 +92,12 @@ export const combatTacticsSchema = z
   });
 export type CombatTactics = z.infer<typeof combatTacticsSchema>;
 
+/** How an arrogant combatant turns when it names no `shifts` of its own (combat AI T5). */
+export const COMBAT_ARROGANT_SHIFTS: ReadonlyArray<{ on: CombatShiftTrigger; to: CombatTemperament }> = [
+  { on: "bloodied", to: "methodical" },
+  { on: "ally-down", to: "methodical" },
+];
+
 /**
  * Turns a combatant's temperament as its `shifts` say (combat AI T7): the first of them whose
  * trigger has happened, once a fight, and never a mindless one's. The temperament it turned to.
@@ -99,9 +107,12 @@ export function shiftCombatTemperament(
   shifts: ReadonlyArray<{ on: CombatShiftTrigger; to: CombatTemperament }> | undefined,
   happened: (trigger: CombatShiftTrigger) => boolean,
 ): CombatTemperament | undefined {
-  if (!tactics || tactics.shifted || tactics.adjective === "mindless" || !shifts?.length) return undefined;
-  const shift = shifts.find((one) => happened(one.on));
+  if (!tactics || tactics.shifted || tactics.adjective === "mindless") return undefined;
+  // An arrogant one gets serious once bloodied or once one of its own falls (combat AI T5).
+  const list = shifts?.length ? shifts : tactics.adjective === "arrogant" ? COMBAT_ARROGANT_SHIFTS : undefined;
+  const shift = list?.find((one) => happened(one.on));
   if (!shift) return undefined;
+  tactics.shiftedFrom = tactics.adjective;
   tactics.adjective = shift.to;
   tactics.shifted = true;
   return shift.to;
@@ -339,16 +350,19 @@ export function rankCombatCandidates<T>(
     finish: adjective === "opportunistic" ? 3 : 0.5,
     healing: adjective === "supportive" ? 4 : adjective === "reckless" ? 0.4 : 1.5,
     support: adjective === "supportive" ? 1.2 : 0.35,
-    setup: adjective === "methodical" ? 1.6 : 0.2,
+    // An arrogant one (T5) sets nothing up and keeps its best for a foe worth it.
+    setup: adjective === "methodical" ? 1.6 : adjective === "arrogant" ? 0.05 : 0.2,
     risk:
       adjective === "reckless" || adjective === "fanatical"
         ? 0.05
-        : adjective === "cautious"
-          ? 2
-          : adjective === "cowardly" && wounded
-            ? 5
-            : 0.6,
-    cost: adjective === "reckless" ? 0 : adjective === "cautious" ? 0.6 : 0.2,
+        : adjective === "arrogant"
+          ? 0.2
+          : adjective === "cautious"
+            ? 2
+            : adjective === "cowardly" && wounded
+              ? 5
+              : 0.6,
+    cost: adjective === "reckless" ? 0 : adjective === "arrogant" ? 2 : adjective === "cautious" ? 0.6 : 0.2,
     protection: adjective === "protective" ? 2 : adjective === "fanatical" ? 1 : 0,
     // A disciplined one keeps formation (T1): it goes where its side is going.
     coordination: adjective === "coordinated" ? 1.5 : adjective === "disciplined" ? 1 : 0,
@@ -387,7 +401,8 @@ export function rankCombatCandidates<T>(
     else if (profile.role === "controller") weights.setup = Math.max(weights.setup, 1.2);
     else if (profile.role === "supporter") weights.support = Math.max(weights.support, 0.8);
     else if (profile.role === "solo") {
-      weights.cost = 0;
+      // Save an arrogant one (T5), which holds its best back until the fight proves worth it.
+      if (adjective !== "arrogant") weights.cost = 0;
       weights.damage *= 1.2;
       weights.risk = Math.min(weights.risk, 0.4);
     }

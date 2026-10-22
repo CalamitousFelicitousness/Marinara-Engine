@@ -378,6 +378,7 @@ const LEANING: Record<CombatTactics["adjective"], Partial<Record<Nature, number>
   methodical: { control: 2.5, meta: 1.5 },
   coordinated: { support: 2, control: 2 },
   fanatical: { offense: 3, support: 1.5 },
+  arrogant: { offense: 2.5 },
 };
 
 const COMPETENCE = ["novice", "trained", "veteran", "master"] as const;

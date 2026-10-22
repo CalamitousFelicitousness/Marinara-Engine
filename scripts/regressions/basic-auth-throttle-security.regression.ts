@@ -8,7 +8,7 @@
 // random session token whose hash the server stores, so visitors sharing a local
 // proxy's address cannot lock the owner out.
 import assert from "node:assert/strict";
-import { createHmac } from "node:crypto";
+import { createHmac, randomBytes } from "node:crypto";
 import Fastify from "../../packages/server/node_modules/fastify/fastify.js";
 import type { FastifyRequest } from "fastify";
 import {
@@ -78,13 +78,13 @@ function get(url: string, remoteAddress: string, authorization?: string, headers
   });
 }
 
-function signIn(remoteAddress: string, headers: Record<string, string> = HOST) {
+function signIn(remoteAddress: string, headers: Record<string, string> = HOST, password = "secret") {
   return app.inject({
     method: "POST",
     url: "/login",
     remoteAddress,
     headers: { ...headers, "content-type": "application/x-www-form-urlencoded" },
-    payload: "user=mari&password=secret",
+    payload: `user=mari&password=${encodeURIComponent(password)}`,
   });
 }
 
@@ -282,6 +282,35 @@ try {
     assert.equal(response.statusCode, 200, "an allowlisted address skips the password and the count");
   }
   delete process.env.IP_ALLOWLIST;
+
+  // ── Behind a proxy, each browser that opened /login has its own count ──
+  Date.now = () => realNow() + 2 * (BASIC_AUTH_FAILURE_WINDOW_MS + 1_000);
+  const preAuth = async () => {
+    const page = await app.inject({ method: "GET", url: "/login", remoteAddress: "127.0.0.1", headers: proxied });
+    assert.equal(page.statusCode, 200);
+    const cookie = String(page.headers["set-cookie"] ?? "").split(";")[0] ?? "";
+    assert.match(cookie, /^marinara_login_client=[\w-]{22}$/, "the sign-in page gives each browser its own cookie");
+    return { ...proxied, cookie };
+  };
+  const strangerA = await preAuth();
+  const deviceB = await preAuth();
+  assert.notEqual(strangerA.cookie, deviceB.cookie);
+  for (let index = 0; index < BASIC_AUTH_FAILURE_LIMIT; index += 1) {
+    assert.equal((await signIn("127.0.0.1", strangerA, `stranger-${index}`)).statusCode, 401);
+  }
+  assert.equal((await signIn("127.0.0.1", strangerA)).statusCode, 429, "the stranger stays locked");
+  assert.equal(
+    (await signIn("127.0.0.1", deviceB)).statusCode,
+    303,
+    "another browser behind the same proxy can still sign in",
+  );
+  // New cookies cannot buy unlimited guesses: all browsers behind the address share a cap of five times the limit.
+  for (let index = 0; index < BASIC_AUTH_FAILURE_LIMIT * 4; index += 1) {
+    const fresh = { ...proxied, cookie: `marinara_login_client=${randomBytes(16).toString("base64url")}` };
+    assert.equal((await signIn("127.0.0.1", fresh, `dropped-${index}`)).statusCode, 401);
+  }
+  assert.equal((await signIn("127.0.0.1", await preAuth())).statusCode, 429, "the shared cap holds");
+  assert.equal((await get("/", "127.0.0.1", undefined, owner)).statusCode, 200, "a signed-in browser still gets in");
 
   console.info("Basic Auth wrong-password throttle regressions passed.");
 } finally {

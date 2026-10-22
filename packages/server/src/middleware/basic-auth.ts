@@ -161,12 +161,27 @@ const MAX_TRACKED_CLIENTS = 4096;
 type FailureRecord = { guesses: Set<string>; resetAt: number };
 const failures = new Map<string, FailureRecord>();
 
-// ponytail: a reverse proxy or tunnel on this computer relays every visitor from
-// loopback, so they share one count; the signed-in cookie keeps their owner from
-// being locked out. Key on the forwarded client once the server has a
-// trusted-proxy setting.
-function clientKey(request: FastifyRequest): string {
-  return clientAddressKey(request.ip);
+// A reverse proxy or tunnel on this computer relays every visitor from loopback,
+// so the address alone cannot tell them apart. There a browser that opened
+// /login is counted by its own random pre-auth cookie; visitors without one share
+// the address count. All visitors through that address also share a larger cap,
+// so new cookies cannot buy unlimited guesses.
+// ponytail: the shared cap can still lock new devices behind a busy proxy; a
+// trusted-proxy setting (PR 2 of #7912) will count by the forwarded client instead.
+const PRE_AUTH_COOKIE = "marinara_login_client";
+const SHARED_FAILURE_LIMIT = BASIC_AUTH_FAILURE_LIMIT * 5;
+
+type FailureBucket = { key: string; limit: number; shared: boolean };
+
+function failureBuckets(request: FastifyRequest): FailureBucket[] {
+  const address = clientAddressKey(request.ip);
+  if (!isForwardedLoopbackRequest(request)) return [{ key: address, limit: BASIC_AUTH_FAILURE_LIMIT, shared: false }];
+  const browser = cookieValue(request, PRE_AUTH_COOKIE);
+  const own = browser && /^[\w-]{22}$/.test(browser) ? `${address}|${browser}` : null;
+  return [
+    { key: own ?? address, limit: BASIC_AUTH_FAILURE_LIMIT, shared: !own },
+    { key: `${address}|all`, limit: SHARED_FAILURE_LIMIT, shared: true },
+  ];
 }
 
 // The session cookie of a browser that signed in on /login. The server keeps only
@@ -267,33 +282,42 @@ function activeRecord(key: string, now: number): FailureRecord | undefined {
 /** Seconds this client must wait before trying a password again; 0 when it may try now. */
 function lockoutSeconds(request: FastifyRequest): number {
   const now = Date.now();
-  const record = activeRecord(clientKey(request), now);
-  if (!record || record.guesses.size < BASIC_AUTH_FAILURE_LIMIT) return 0;
-  return Math.max(1, Math.ceil((record.resetAt - now) / 1000));
+  let seconds = 0;
+  for (const bucket of failureBuckets(request)) {
+    const record = activeRecord(bucket.key, now);
+    if (record && record.guesses.size >= bucket.limit) {
+      seconds = Math.max(seconds, Math.ceil((record.resetAt - now) / 1000), 1);
+    }
+  }
+  return seconds;
 }
 
 function rememberFailure(request: FastifyRequest, header: string) {
   const now = Date.now();
-  const key = clientKey(request);
-  let record = activeRecord(key, now);
-  if (!record) {
-    if (failures.size >= MAX_TRACKED_CLIENTS) {
-      for (const [entryKey, entry] of failures) if (entry.resetAt <= now) failures.delete(entryKey);
-      if (failures.size >= MAX_TRACKED_CLIENTS) failures.delete(failures.keys().next().value!);
-    }
-    record = { guesses: new Set(), resetAt: now + BASIC_AUTH_FAILURE_WINDOW_MS };
-    failures.set(key, record);
-    logger.warn("[basic-auth] Wrong password from %s", request.ip);
-  }
   // A browser that keeps resending one saved wrong password counts once; only new guesses add up.
-  record.guesses.add(createHash("sha256").update(header).digest("base64url").slice(0, 16));
-  if (record.guesses.size === BASIC_AUTH_FAILURE_LIMIT) {
-    logger.warn(
-      "[basic-auth] %d wrong passwords from %s; refusing its sign-ins for %d minutes",
-      record.guesses.size,
-      request.ip,
-      Math.ceil(BASIC_AUTH_FAILURE_WINDOW_MS / 60_000),
-    );
+  const guess = createHash("sha256").update(header).digest("base64url").slice(0, 16);
+  for (const [index, bucket] of failureBuckets(request).entries()) {
+    let record = activeRecord(bucket.key, now);
+    if (!record) {
+      if (failures.size >= MAX_TRACKED_CLIENTS) {
+        for (const [entryKey, entry] of failures) if (entry.resetAt <= now) failures.delete(entryKey);
+        if (failures.size >= MAX_TRACKED_CLIENTS) failures.delete(failures.keys().next().value!);
+      }
+      record = { guesses: new Set(), resetAt: now + BASIC_AUTH_FAILURE_WINDOW_MS };
+      failures.set(bucket.key, record);
+      if (index === 0) logger.warn("[basic-auth] Wrong password from %s", request.ip);
+    }
+    record.guesses.add(guess);
+    if (record.guesses.size === bucket.limit) {
+      logger.warn(
+        index === 0
+          ? "[basic-auth] %d wrong passwords from %s; refusing its sign-ins for %d minutes"
+          : "[basic-auth] %d wrong passwords through %s; refusing every new sign-in from there for %d minutes",
+        record.guesses.size,
+        request.ip,
+        Math.ceil(BASIC_AUTH_FAILURE_WINDOW_MS / 60_000),
+      );
+    }
   }
 }
 
@@ -306,8 +330,10 @@ async function checkCredentials(
   const verdict = await verifyHeader(header, config);
   if (verdict === null) return null;
   if (verdict) {
-    // Proxied visitors share one count, so one of them signing in must not clear the others' guesses.
-    if (!isForwardedLoopbackRequest(request) && lockoutSeconds(request) === 0) failures.delete(clientKey(request));
+    // Shared counts belong to other visitors too, so signing in clears only this browser's own count.
+    if (lockoutSeconds(request) === 0) {
+      for (const bucket of failureBuckets(request)) if (!bucket.shared) failures.delete(bucket.key);
+    }
     return true;
   }
   rememberFailure(request, header);
@@ -752,6 +778,13 @@ export async function loginRoutes(app: FastifyInstance) {
   app.get<{ Querystring: { next?: string } }>("/login", async (request, reply) => {
     const next = safeNextPath(request.query.next);
     if (!loadConfig() || isBasicAuthSatisfied(request)) return reply.redirect(next, 302);
+    if (!cookieValue(request, PRE_AUTH_COOKIE)) {
+      const secure = isHttpsRequest(request) ? "; Secure" : "";
+      reply.header(
+        "Set-Cookie",
+        `${PRE_AUTH_COOKIE}=${randomBytes(16).toString("base64url")}; Path=/login; HttpOnly; SameSite=Lax${secure}`,
+      );
+    }
     return sendLoginPage(reply, 200, next);
   });
 

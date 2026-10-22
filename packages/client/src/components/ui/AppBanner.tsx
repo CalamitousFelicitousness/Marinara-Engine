@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────
-// Shared app-wide banner (one at a time, see AppBannerHost)
+// Shared app-wide banner (one at a time with a count of the rest, see AppBannerHost)
 // ──────────────────────────────────────────────
 import type { ReactNode } from "react";
 import { ChevronDown, ShieldAlert, TriangleAlert, X } from "lucide-react";
@@ -25,17 +25,19 @@ export function AppBanner({
   body,
   details,
   actions,
+  more = 0,
   onDismiss,
-}: AppBannerCandidate & { onDismiss: () => void }) {
+}: AppBannerCandidate & { more?: number; onDismiss: () => void }) {
   const { t: localizeUi } = useUiTranslation();
   const critical = severity === "critical";
   const Icon = critical ? ShieldAlert : TriangleAlert;
 
   return (
-    <div className="fixed inset-x-0 top-0 z-[9999] max-h-[50dvh] overflow-y-auto bg-[var(--background)] text-[var(--foreground)] shadow-md">
+    // A card above the bottom edge, so it never covers the top bar or its Settings and More buttons.
+    <div className="fixed inset-x-2 bottom-[max(0.5rem,env(safe-area-inset-bottom))] z-[9999] max-h-[50dvh] overflow-y-auto rounded-xl bg-[var(--background)] text-[var(--foreground)] shadow-lg md:right-auto md:left-4 md:w-[28rem]">
       <div
         className={cn(
-          "flex items-start gap-3 border-b pt-[max(0.5rem,env(safe-area-inset-top))] pr-[max(0.5rem,env(safe-area-inset-right))] pb-2 pl-[max(1rem,env(safe-area-inset-left))] text-sm",
+          "flex items-start gap-3 rounded-xl border py-2 pr-2 pl-4 text-sm",
           tone === "accent"
             ? "border-[var(--marinara-chat-chrome-accent)]/40 bg-[var(--marinara-chat-chrome-accent)]/15"
             : critical
@@ -56,7 +58,14 @@ export function AppBanner({
         />
         <div className="min-w-0 flex-1 py-2">
           <div role={critical ? "alert" : "status"}>
-            <p className="font-semibold">{title}</p>
+            <p className="font-semibold">
+              {title}
+              {more > 0 && (
+                <span className="ml-2 inline-block rounded-full bg-[var(--foreground)]/10 px-2 align-middle text-[0.625rem] font-semibold text-[var(--muted-foreground)]">
+                  {localizeUi("ui.app.banner.more", { count: more })}
+                </span>
+              )}
+            </p>
             <div className="mt-1 leading-snug text-[var(--muted-foreground)]">{body}</div>
           </div>
           {(actions || details) && (

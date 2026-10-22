@@ -30,6 +30,7 @@ import { ChibiProfessorMariEasterEgg } from "./components/ui/ChibiProfessorMariE
 import { AppBannerHost } from "./components/layout/AppBannerHost";
 import { AgentUpdatePrompter } from "./components/agents/AgentUpdatePrompter";
 import { Toaster, toast } from "sonner";
+import { i18n } from "./localization/i18n";
 import {
   getDefaultAppAccentColor,
   getDefaultAppBackgroundColor,
@@ -548,6 +549,15 @@ export function App() {
   // [#3104 diagnostic] warn on long main-thread tasks (see lib/perf-diagnostics.ts)
   useEffect(() => {
     installLongTaskWarner();
+  }, []);
+
+  // The lockdown page's setup form lands here with ?loginSet=1 after the first login is set.
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has("loginSet")) return;
+    url.searchParams.delete("loginSet");
+    window.history.replaceState(window.history.state, "", url);
+    toast.success(i18n.t("ui.app.loginSet"));
   }, []);
 
   // While the omnibar is open the toast moves to bottom-right on desktop and to the top, under the

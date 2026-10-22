@@ -805,11 +805,15 @@ export function createPairingCode(): { code: string; expiresAt: number } | null 
   const loginKey = config && sessionLoginKey(config);
   if (!loginKey) return null;
   const now = Date.now();
-  const code = Array.from({ length: PAIRING_CODE_LENGTH }, () => PAIRING_ALPHABET[randomInt(PAIRING_ALPHABET.length)]).join(
-    "",
-  );
+  const code = Array.from(
+    { length: PAIRING_CODE_LENGTH },
+    () => PAIRING_ALPHABET[randomInt(PAIRING_ALPHABET.length)],
+  ).join("");
   const expiresAt = now + PAIRING_CODE_TTL_MS;
-  pairingCodes = [...pairingCodes.filter((entry) => entry.expiresAt > now), { hash: pairingHash(code), loginKey, expiresAt }];
+  pairingCodes = [
+    ...pairingCodes.filter((entry) => entry.expiresAt > now),
+    { hash: pairingHash(code), loginKey, expiresAt },
+  ];
   pairingCodes = pairingCodes.slice(-MAX_PAIRING_CODES);
   return { code: `${code.slice(0, 4)}-${code.slice(4)}`, expiresAt };
 }

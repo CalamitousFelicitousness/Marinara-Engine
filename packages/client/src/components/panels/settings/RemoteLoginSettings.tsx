@@ -222,8 +222,7 @@ export function AddDevice() {
     }
   };
   const status = create.error instanceof ApiError ? create.error.status : 0;
-  const failure =
-    status === 403 ? "notAllowed" : status === 409 ? "needsLogin" : status === 429 ? "tooMany" : "failed";
+  const failure = status === 403 ? "notAllowed" : status === 409 ? "needsLogin" : status === 429 ? "tooMany" : "failed";
 
   return (
     <div className={BLOCK_CLASS}>

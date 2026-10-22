@@ -218,6 +218,15 @@ try {
   );
   const piPrompt = piRuntimePrompt();
   assert.ok(piPrompt.includes("never wrap them in tags"), "the pi prompt forbids pseudo-XML tags in visible text");
+  // Only a small output limit asks for split writes; a strong model told to fragment wastes calls.
+  assert.match(
+    piRuntimePrompt(1024),
+    /output limit is small \(1024 tokens per reply\)/u,
+    "a small limit gets the split hint",
+  );
+  assert.match(piRuntimePrompt(4096), /output limit is small/u, "4096 is still small");
+  assert.ok(!piRuntimePrompt(8192).includes("output limit is small"), "a large limit gets no split hint");
+  assert.ok(!piPrompt.includes("output limit is small"), "an unknown limit gets no split hint");
   // A failed call points at the handbook for that surface: the one moment the model already knows
   // where it is, and the only reliable nudge a 12b follows.
   const { skillHintForFailedAction } =

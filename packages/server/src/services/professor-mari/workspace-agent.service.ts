@@ -929,8 +929,17 @@ export function workspaceCommandKnowledgePrompt() {
 `;
 }
 
+/** At or under this output limit a large write is cut mid-call, so the pi prompt asks for smaller calls up front. */
+export const SMALL_OUTPUT_LIMIT_TOKENS = 4096;
+
 /** The pi runtime's workspace rules: the shared knowledge block plus a note that maps the JSON-frame words to native calls. */
-export function piRuntimePrompt() {
+export function piRuntimePrompt(maxOutputTokens?: number) {
+  // Only for small limits: a strong model told to fragment makes needless extra calls.
+  const smallLimit =
+    maxOutputTokens !== undefined && maxOutputTokens <= SMALL_OUTPUT_LIMIT_TOKENS
+      ? `
+- This connection's output limit is small (${maxOutputTokens} tokens per reply). Split a large write into several calls, one per reply: create with the essentials, then add the rest with updates.`
+      : "";
   return `<workspace_tools>
 You work through native tool calls. Wherever the rules below say \`say\`, write ordinary assistant text; wherever they say \`commands\`, call the tools. There is no JSON frame, no \`stop\` and no \`awaitingAuthorization\` field.
 Write your words as plain assistant text: never wrap them in tags such as \`<say>\`, \`<commands>\`, \`<suggestions>\` or \`<plan>\`, and never write a tool call as a tag — a tool call is a call, not text.
@@ -943,7 +952,7 @@ Write your words as plain assistant text: never wrap them in tags such as \`<say
 - Use \`plan\` ONLY when a create/edit request is vague ("make me a character" with no details): return the WHOLE plan in one call, an ordered list of the natural fields, each with 3-5 example-answer chips. For a vague edit, read the item first, then offer 2-4 concrete directions as \`suggestions\`. A named subject ("a lorebook for my pirate world") is enough detail. Prefer one \`plan\` to asking turn by turn: the client walks the plan with no further calls from you, then sends you one summary of all the answers to act on. If the request already has enough detail, skip \`plan\` and do the work — after reading that surface's skill.
 - Do not mention tapping, clicking, chips, quick replies or buttons unless you call \`suggestions\` or \`plan\` in the same turn.
 - If you say you will do something, make the tool call in the same turn; a turn with no tool call ends the run.
-- Finish by answering in text with no tool call.
+- Finish by answering in text with no tool call.${smallLimit}
 
 ${workspaceCommandKnowledgePrompt()}
 </workspace_tools>`;
@@ -1368,6 +1377,14 @@ function normalizeCatalogProvider(provider: string): APIProvider | null {
 
 export function isLocalSidecarConnection(connection: WorkspaceConnection): boolean {
   return connection.isLocalSidecar === true || connection.id === LOCAL_SIDECAR_CONNECTION_ID;
+}
+
+/** The output limit Mari's requests send: the connection's Max Output Tokens, else the model's known limit. */
+export function mariMaxOutputTokens(connection: WorkspaceConnection) {
+  return (
+    normalizeMariMaxTokens(parseJsonObject(connection.defaultParameters)?.maxTokens) ??
+    resolveMariMaxOutputTokens(connection)
+  );
 }
 
 function resolveMariMaxOutputTokens(connection: WorkspaceConnection) {
@@ -4524,7 +4541,7 @@ export class ProfessorMariWorkspaceService {
       { role: "system", content: MARI_SYSTEM_PROMPT, contextKind: "prompt" },
       {
         role: "system",
-        content: runtime === "pi" ? piRuntimePrompt() : workspaceCommandProtocolPrompt(),
+        content: runtime === "pi" ? piRuntimePrompt(mariMaxOutputTokens(connection)) : workspaceCommandProtocolPrompt(),
         contextKind: "prompt",
       },
       { role: "system", content: workspaceInfo, contextKind: "prompt" },
@@ -4764,7 +4781,7 @@ export class ProfessorMariWorkspaceService {
     return {
       model: connection.model,
       temperature: typeof defaultParameters?.temperature === "number" ? defaultParameters.temperature : 0.2,
-      maxTokens: normalizeMariMaxTokens(defaultParameters?.maxTokens) ?? resolveMariMaxOutputTokens(connection),
+      maxTokens: mariMaxOutputTokens(connection),
       maxContext: connection.maxContext,
       enableCaching: bool(connection.enableCaching),
       anthropicExtendedCacheTtl: bool(connection.anthropicExtendedCacheTtl),

@@ -18,6 +18,7 @@ const ENV_KEYS = [
   "MARINARA_DOCKER",
   "REQUIRE_AUTH_FOR_DOCKER_PROXY",
   "REQUIRE_AUTH_FOR_LOOPBACK_PROXY",
+  "TRUSTED_PRIVATE_NETWORKS",
 ] as const;
 const originalEnv = Object.fromEntries(ENV_KEYS.map((key) => [key, process.env[key]]));
 
@@ -89,6 +90,11 @@ try {
   assert.equal(optIn.lockedDown, false);
   assert.equal(optIn.authRequired, false);
   assert.equal(optIn.reason, "private-network-optin");
+  // An ISP's CGNAT peer is not a private-network peer unless the operator lists the range.
+  assert.equal(getAccessPolicy(request("100.64.1.2")).lockedDown, true);
+  process.env.TRUSTED_PRIVATE_NETWORKS = "100.64.0.0/10";
+  assert.equal(getAccessPolicy(request("100.64.1.2")).reason, "private-network-optin");
+  delete process.env.TRUSTED_PRIVATE_NETWORKS;
   delete process.env.ALLOW_UNAUTHENTICATED_PRIVATE_NETWORK;
 
   process.env.ALLOW_UNAUTHENTICATED_REMOTE = "true";

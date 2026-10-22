@@ -44,11 +44,12 @@ When an iPhone is turned sideways, its camera (the notch or Dynamic Island) sits
 
 Marinara keeps out of that space the way the status-bar strip works in portrait:
 
-- `packages/client/src/styles/globals.css` reads the two insets once, into `--mari-safe-area-inset-left` and `--mari-safe-area-inset-right` on `:root`. Everything else reads these variables, never `env()` directly. `scripts/regressions/mobile-safe-area-inset.regression.ts` enforces this.
-- In the phone shell, `.mari-app` takes its `left` and `right` from the variables. The body's page backing shows in the two strips, the same colour as the status-bar strip in portrait.
-- Fixed elements inside the shell are positioned against the screen, not the shell, so they keep out on their own. The phone sheets and their backdrops in `AppShell.tsx` use `MOBILE_SHELL_PANEL_X_CLASS`. Dialogs, the omnibar and full-screen editors pad their sides with the variables. Decorations such as the shell's stars are `absolute`, so they stay inside the shell.
+- `packages/client/src/styles/globals.css` reads the two insets once, into `--mari-safe-area-inset-left` and `--mari-safe-area-inset-right` on `:root`. Everything else reads these variables, never `env()` directly. `scripts/regressions/mobile-safe-area-inset.regression.ts` enforces this. Dialogs, the omnibar, full-screen editors and TopBar controls retain this protection against the camera and rounded corners.
+- On iPhone, `AppShell.tsx` identifies the camera side from `window.orientation` (or `screen.orientation.angle` when unavailable). At 90° the camera is on the left; at −90°/270° it is on the right. A `data-mari-camera-side` attribute on `<html>` lets CSS zero only the opposite **shell** inset, `--mari-shell-inset-left` or `--mari-shell-inset-right`. Unknown rotations, iPad and Android keep the system's insets.
+- In the phone shell, `.mari-app` takes its `left` and `right` from the shell variables. The body's page backing shows over the camera, the same colour as the status-bar strip in portrait, without a mirrored gutter on the opposite edge.
+- Fixed elements inside the shell are positioned against the screen, not the shell, so they keep out on their own. The phone sheets and their backdrops in `AppShell.tsx` use `MOBILE_SHELL_PANEL_X_CLASS` with the shell variables. Decorations such as the shell's stars are `absolute`, so they stay inside the shell.
 
-To check it without a phone, open a 874×402 touch viewport and set both variables to `59px` on `<html>`. On Chromium you can instead emulate the real insets with the DevTools Protocol command `Emulation.setSafeAreaInsetsOverride`. The e2e test "a phone turned sideways keeps the app out from under its camera" does both.
+To check it without a phone, open a 874×402 touch viewport and set both variables to `59px` in a `:root` stylesheet rule (inline styles override the camera-side selector). On Chromium you can instead emulate the real insets with the DevTools Protocol command `Emulation.setSafeAreaInsetsOverride`. `e2e/phone-camera-side.e2e.ts` checks both rotation directions, the older and newer orientation APIs, unknown rotations, and other devices. The e2e test "a phone turned sideways keeps the app out from under its camera" checks the fallback that preserves both insets.
 
 ## How it was diagnosed
 

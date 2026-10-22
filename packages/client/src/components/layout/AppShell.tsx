@@ -135,7 +135,7 @@ const TOP_BAR_SELECTOR = '[data-component="TopBar"]';
 // Below the TopBar, whose height a sideways phone shortens (--mari-topbar-height in globals.css).
 const MOBILE_SHELL_PANEL_TOP_CLASS = "top-[calc(env(safe-area-inset-top)_+_var(--mari-topbar-height,3rem))]";
 // Phone sheets fill the width the shell has: a phone turned sideways keeps its camera insets clear.
-const MOBILE_SHELL_PANEL_X_CLASS = "left-(--mari-safe-area-inset-left) right-(--mari-safe-area-inset-right)";
+const MOBILE_SHELL_PANEL_X_CLASS = "left-(--mari-shell-inset-left) right-(--mari-shell-inset-right)";
 const MOBILE_SHELL_PANEL_BOTTOM_PADDING_CLASS =
   "pb-[min(max(var(--mari-safe-area-inset-bottom,env(safe-area-inset-bottom)),0.5rem),3rem)]";
 const CENTER_COMPACT_WIDTH = 768;
@@ -308,6 +308,18 @@ export function AppShell({
       if (frame) cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
         frame = 0;
+        // iPhone safe areas are symmetric in landscape, although the camera is on one edge.
+        // Prefer its legacy angle: older Safari inverted ScreenOrientation.angle.
+        const angle = window.orientation ?? window.screen.orientation?.angle;
+        const cameraSide = /iPhone|iPod/iu.test(navigator.userAgent)
+          ? angle === 90
+            ? "left"
+            : angle === -90 || angle === 270
+              ? "right"
+              : null
+          : null;
+        if (cameraSide) root.setAttribute("data-mari-camera-side", cameraSide);
+        else root.removeAttribute("data-mari-camera-side");
         const viewport = window.visualViewport;
         const scale = viewport && Number.isFinite(viewport.scale) && viewport.scale > 0 ? viewport.scale : 1;
         // Compare heights at the same zoom level so pinch zoom alone does not
@@ -377,6 +389,7 @@ export function AppShell({
     window.visualViewport?.addEventListener("scroll", updateVisualViewportGeometry);
     window.addEventListener("resize", updateVisualViewportGeometry);
     window.addEventListener("orientationchange", refreshAfterOrientationChange);
+    window.screen.orientation?.addEventListener("change", refreshAfterOrientationChange);
     document.addEventListener("focusin", refreshAfterFocusChange);
     document.addEventListener("focusout", refreshAfterFocusChange);
 
@@ -388,11 +401,13 @@ export function AppShell({
       window.visualViewport?.removeEventListener("scroll", updateVisualViewportGeometry);
       window.removeEventListener("resize", updateVisualViewportGeometry);
       window.removeEventListener("orientationchange", refreshAfterOrientationChange);
+      window.screen.orientation?.removeEventListener("change", refreshAfterOrientationChange);
       document.removeEventListener("focusin", refreshAfterFocusChange);
       document.removeEventListener("focusout", refreshAfterFocusChange);
       root.style.removeProperty("--mari-visual-viewport-height");
       root.style.removeProperty("--mari-visual-viewport-offset-top");
       root.removeAttribute("data-mari-ios-webkit");
+      root.removeAttribute("data-mari-camera-side");
       root.removeAttribute("data-mari-software-keyboard-open");
     };
   }, []);
@@ -1572,7 +1587,7 @@ export function AppShell({
               style={
                 {
                   "--mari-right-panel-width":
-                    "calc(100vw - var(--mari-safe-area-inset-left) - var(--mari-safe-area-inset-right))",
+                    "calc(100vw - var(--mari-shell-inset-left) - var(--mari-shell-inset-right))",
                 } as CSSProperties
               }
             >

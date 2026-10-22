@@ -66,13 +66,50 @@ if (mode === "--no-compilation") {
   ]) {
     assert.equal(isPatternSafe(source), true, `${source} must remain usable`);
   }
+} else if (mode === "--unicode-atoms") {
+  // In Unicode mode, these differently spelled alternatives consume the same
+  // code point. Check tiny matches only; never run the repeated unsafe source.
+  assert.ok(/^😀a$/u.test("😀a") && /^[😀😁]a$/u.test("😀a"));
+  assert.ok(/^\uD800\uDC00a$/u.test("\uD800\uDC00a") && /^[\uD800\uDC00]a$/u.test("\uD800\uDC00a"));
+  assert.ok(/^\u{D800}a$/u.test("\uD800a") && /^[\u{D800}]a$/u.test("\uD800a"));
+  for (const source of [
+    "(?:😀a|[😀😁]a)+$",
+    "(?:[😀😁]a|😀a)+$",
+    "(?:😀ab|[😀]ab)+$",
+    "(?:[😀]ab|😀ab)+$",
+    String.raw`(?:\uD800\uDC00a|[\uD800\uDC00]a)+$`,
+    String.raw`(?:[\uD800\uDC00]a|\uD800\uDC00a)+$`,
+    String.raw`(?:\uD800\uDC00ab|[\uD800\uDC00]ab)+$`,
+    String.raw`(?:[\uD800\uDC00]ab|\uD800\uDC00ab)+$`,
+    String.raw`(?:\u{D800}\u{DC00}a|[\u{D800}\u{DC00}]a)+$`,
+    String.raw`(?:\u{D800}a|[\u{D800}]a)+$`,
+    String.raw`(?:\u{000D800}ab|[\u{000D800}]ab)+$`,
+  ]) {
+    assert.equal(isPatternSafe(source), false, `${source} must not treat a Unicode atom as disjoint code units`);
+  }
+} else if (mode === "--unicode-delimiters") {
+  const highSurrogate = "\uD800";
+  const pair = `${highSurrogate}\uDC00`;
+  assert.equal(/^[^\uD800]$/u.test(pair), true, "a pair is not excluded by its lone high surrogate in Unicode mode");
+  for (const source of [
+    String.raw`[^\uD800]+\uD800\uDC00[^\uD800]+\uD800\uDC00[^\uD800]+$`,
+    `[^${highSurrogate}]+${pair}[^${highSurrogate}]+${pair}[^${highSurrogate}]+$`,
+  ]) {
+    assert.equal(isPatternSafe(source), false, "surrogate code units must not prove a disjoint field delimiter");
+  }
 } else if (mode === "--malformed") {
   assert.equal(isPatternSafe(malformedSource), false, "a leading ] closes the JavaScript character class");
 } else {
   // Keep both malformed-source analysis and checker regressions bounded even if
   // an earlier implementation compiles and executes an attacker substring.
   const failures: string[] = [];
-  for (const childMode of ["--no-compilation", "--semantics", "--malformed"]) {
+  for (const childMode of [
+    "--no-compilation",
+    "--semantics",
+    "--unicode-atoms",
+    "--unicode-delimiters",
+    "--malformed",
+  ]) {
     const child = spawnSync(process.execPath, [...process.execArgv, fileURLToPath(import.meta.url), childMode], {
       encoding: "utf8",
       timeout: 5_000,

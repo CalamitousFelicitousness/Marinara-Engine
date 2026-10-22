@@ -222,6 +222,9 @@ function findCharClassClose(source: string, openIdx: number): number {
 function hasUnsafeQuantifiedAlternation(body: string): boolean {
   const alternatives = splitTopLevelAlternatives(body);
   if (alternatives.length < 2) return false;
+  // ponytail: surrogate pairs change atom positions under u/v flags. Reject
+  // these repeated alternatives until the checker has a flag-aware parser.
+  if (/[\uD800-\uDFFF]|\\u(?:[dD][89a-fA-F][0-9a-fA-F]{2}|\{0*[dD][89a-fA-F][0-9a-fA-F]{2}\})/.test(body)) return true;
   const tokenized = alternatives.map(tokenizeAlternative);
   if (tokenized.some((tokens) => tokens.length === 0)) return true;
   const characters = new Map<string, TokenCharacterSet | null>();
@@ -492,12 +495,18 @@ function hasPolynomialBacktrackingRisk(source: string, maxRepetition: number): b
 }
 
 function readRequiredLiteral(atom: string): string | null {
-  if (atom.length === 1) return atom;
+  if (atom.length === 1) {
+    const code = atom.charCodeAt(0);
+    return code >= 0xd800 && code <= 0xdfff ? null : atom;
+  }
   if (/^\\[\\^$.*+?()[\]{}|/-]$/.test(atom)) return atom[1] ?? null;
   const escapedControls: Record<string, string> = { "\\n": "\n", "\\r": "\r", "\\t": "\t", "\\v": "\v", "\\f": "\f" };
   if (escapedControls[atom] !== undefined) return escapedControls[atom]!;
   if (/^\\x[0-9a-f]{2}$/i.test(atom) || /^\\u[0-9a-f]{4}$/i.test(atom)) {
-    return String.fromCharCode(Number.parseInt(atom.slice(2), 16));
+    const code = Number.parseInt(atom.slice(2), 16);
+    // A surrogate can pair with the next code unit in Unicode mode, so it
+    // cannot prove that a following delimiter is excluded by a class.
+    return code >= 0xd800 && code <= 0xdfff ? null : String.fromCharCode(code);
   }
   return null;
 }

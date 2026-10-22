@@ -17,6 +17,8 @@ import {
   applyRulesetCombatChoice,
   assignCombatTactics,
   chooseCombatCandidate,
+  rankCombatCandidates,
+  type CombatAiScoreParts,
   clampRulesetStatBlock,
   createRulesetEncounter,
   currentRulesetActor,
@@ -2339,7 +2341,9 @@ function rulesetCandidatesFrom(
         // What it puts on them as well (a stunning blow), and the spell it may break by hurting
         // whoever holds one up.
         const rider = rulesetEffectWorth(definition, combat, encounter, actor, fallingAction, target) ?? 0;
-        const breaks = target.concentrating ? 0.3 : 0;
+        // Worth as much as the save it forces is likely to fail (re-test 9): a dagger's scratch on a
+        // caster who shrugs off any concentration save is no reason to throw it past a Multiattack.
+        const breaks = target.concentrating ? 0.3 * rulesetConcentrationFails(combat, target, average) : 0;
         if (rider + breaks > 0) candidate.setup = (rider + breaks) * chance;
       } else if (ally) {
         // Giving back a pool that is already full, or one somebody without a sheet does not have,
@@ -3122,6 +3126,78 @@ function pickChoice(
   actorId: string,
   menu?: RulesetCombatOption[],
 ): RulesetCandidate | null {
+  const weighed = weighChoices(definition, state, encounter, actorId, menu);
+  if (!weighed || "only" in weighed) return weighed?.only ?? null;
+  const { unit, actor, candidates, orders, behavior, opening } = weighed;
+  const chosen = chooseCombatCandidate(
+    unit,
+    candidates,
+    encounter.round,
+    normalizeGameDifficulty(state.difficulty),
+    orders,
+  );
+  if (opening && behavior!.opens!.some((id) => rulesetOpensWith(actor, chosen, id))) unit.tactics!.opened = true;
+  // Counted only on its own turn's choice, not on a reaction's. Walking, dashing or waiting is not
+  // fighting, so only a blow or a spell lets it grow careful again, and then for one turn at most:
+  // otherwise a beast with nobody in reach hides, walks a step and hides again all fight.
+  if (!menu && chosen) {
+    if (rulesetDefensiveName(chosen.option)) unit.tactics!.wary = (unit.tactics!.wary ?? 0) + 1;
+    else if (chosen.option.kind !== "move" && chosen.option.kind !== "end-turn" && chosen.option.kind !== "standard")
+      unit.tactics!.wary = Math.min(unit.tactics!.wary ?? 0, 1);
+  }
+  return chosen;
+}
+
+/**
+ * What the Engine's own tactics would do with this unit's turn, best first (the Game Master's
+ * suggestions): its candidates weighed and scored exactly as its own pick weighs them, with what
+ * each part of the score came from. Nothing on the unit changes. Empty for one with nobody to play it.
+ */
+export function rankRulesetChoices(
+  definition: RulesetDefinition,
+  state: CombatDirectorState,
+  encounter: RulesetEncounterState,
+  actorId: string,
+  count: number,
+  menu?: RulesetCombatOption[],
+): Array<{ candidate: CombatAiCandidate<RulesetCandidate>; score: number; parts: CombatAiScoreParts }> {
+  return withRulesetPlanMemo(() => {
+    const weighed = weighChoices(definition, state, encounter, actorId, menu);
+    if (!weighed || "only" in weighed) return [];
+    const tactics = structuredClone(weighed.unit.tactics);
+    try {
+      return rankCombatCandidates(
+        weighed.unit,
+        weighed.candidates,
+        encounter.round,
+        normalizeGameDifficulty(state.difficulty),
+        weighed.orders,
+      ).slice(0, count);
+    } finally {
+      weighed.unit.tactics = tactics;
+    }
+  });
+}
+
+/** The candidates of a pick, weighed by everything the unit is and was told; `only` where there is
+ *  nothing to weigh. */
+function weighChoices(
+  definition: RulesetDefinition,
+  state: CombatDirectorState,
+  encounter: RulesetEncounterState,
+  actorId: string,
+  menu?: RulesetCombatOption[],
+):
+  | { only: RulesetCandidate }
+  | {
+      unit: CombatDirectorState["party"][number];
+      actor: RulesetCombatant;
+      candidates: Array<CombatAiCandidate<RulesetCandidate>>;
+      orders: CombatOrders | undefined;
+      behavior: ReturnType<typeof rulesetCombatantBehavior> | undefined;
+      opening: boolean;
+    }
+  | null {
   const unit = [...state.party, ...state.enemies].find((entry) => entry.id === actorId);
   const actor = rulesetCombatant(encounter, actorId);
   // Its mind as its own data says (1.708), unless the Game Master said otherwise for this fight: a
@@ -3154,7 +3230,7 @@ function pickChoice(
     ? rulesetCandidatesFrom(definition, encounter, actorId, null, brokenLairMenu(definition, encounter, actorId, menu))
     : rulesetCandidates(definition, encounter, actorId, false, unit?.tactics, orders);
   if (candidates.length === 0) return null;
-  if (!unit || !actor) return candidates[0]!.action;
+  if (!unit || !actor) return { only: candidates[0]!.action };
   if (unit.tactics!.mind === "mindless")
     candidates = mindlessCandidates(encounter, actor, unit.tactics!, candidates, !!menu);
   weighRulesetTeam(definition, state, encounter, actor, candidates, orders);
@@ -3170,23 +3246,7 @@ function pickChoice(
     weighRulesetMindFocus(definition, encounter, actor, unit.tactics!, candidates);
   if (!menu) weighRulesetReserve(definition, encounter, actor, unit.tactics!, candidates);
   if (!menu) weighRulesetPrepare(definition, encounter, actor, unit.tactics!, candidates);
-  const chosen = chooseCombatCandidate(
-    unit,
-    candidates,
-    encounter.round,
-    normalizeGameDifficulty(state.difficulty),
-    orders,
-  );
-  if (opening && behavior!.opens!.some((id) => rulesetOpensWith(actor, chosen, id))) unit.tactics!.opened = true;
-  // Counted only on its own turn's choice, not on a reaction's. Walking, dashing or waiting is not
-  // fighting, so only a blow or a spell lets it grow careful again, and then for one turn at most:
-  // otherwise a beast with nobody in reach hides, walks a step and hides again all fight.
-  if (!menu && chosen) {
-    if (rulesetDefensiveName(chosen.option)) unit.tactics!.wary = (unit.tactics!.wary ?? 0) + 1;
-    else if (chosen.option.kind !== "move" && chosen.option.kind !== "end-turn" && chosen.option.kind !== "standard")
-      unit.tactics!.wary = Math.min(unit.tactics!.wary ?? 0, 1);
-  }
-  return chosen;
+  return { unit, actor, candidates, orders, behavior, opening };
 }
 
 /**
@@ -3217,6 +3277,20 @@ function rulesetGoingBadly(definition: RulesetDefinition, encounter: RulesetEnco
   const down = (who: RulesetCombatant[]) =>
     who.filter((one) => !rulesetCombatStanding(one)).length / Math.max(1, who.length);
   return left < most * 0.5 || down(ours) > down(theirs);
+}
+
+/** The chance a concentration save forced by this much damage fails, on a d20 against the ruleset's
+ *  difficulty: one for a ruleset with no such save, where any harm breaks it. */
+function rulesetConcentrationFails(
+  combat: NonNullable<RulesetDefinition["combat"]>,
+  target: RulesetCombatant,
+  damage: number,
+): number {
+  const concentration = combat.concentration;
+  if (!concentration) return 1;
+  const difficulty = Math.max(concentration.floor, Math.floor(damage * concentration.fromDamage));
+  const modifier = target.saves[concentration.save] ?? 0;
+  return Math.min(1, Math.max(0, (difficulty - 1 - modifier) / 20));
 }
 
 /** How far a companion guarding or protecting somebody strays from them (P7), in squares. */
@@ -3953,14 +4027,24 @@ function playRulesetTurn(
         applyChoice(definition, state, fight, { actorId, optionId: RULESET_MOVE_OPTION, targetIds: [], to: away });
       continue;
     }
-    if (picked.to && !picked.defensive && !stepBefore(definition, state, fight, actorId, picked.to)) break;
+    if (
+      picked.to &&
+      !picked.defensive &&
+      !rulesetShootsFromHere(state, fight.encounter, actorId, picked.choice, picked.to) &&
+      !stepBefore(definition, state, fight, actorId, picked.to)
+    )
+      break;
     // Reckless first (1.553), as it is about to make a melee weapon attack.
     takeBeforeMelee(definition, state, fight, actorId, picked.choice);
     const afar = rulesetShotFromAfar(state, fight.encounter, actorId, picked.choice);
     // A refusal here would be an Engine bug rather than a player's mistake, so the turn ends
     // instead of asking again with the same state and looping.
     if (applyChoice(definition, state, fight, picked.choice).refused) break;
-    shotFromAfar = afar;
+    // Kept through what it does after the shot that is no blow of its own (a goblin's Hide), so
+    // the rest of its walk still keeps its distance (re-test 9); a blow up close ends it.
+    const blow = !!rulesetCombatant(fight.encounter, actorId)?.actions.find((one) => one.id === picked.choice.optionId)
+      ?.damage;
+    if (afar || blow) shotFromAfar = afar;
   }
   advanceTurn(definition, state, fight);
 }
@@ -3988,6 +4072,37 @@ function rulesetShotFromAfar(
   if (!blows.every((blow) => !!blow?.range && !blow.reach && !!blow.damage)) return false;
   if (!rulesetPositionOf(actor) || !rulesetPositionOf(target) || rulesetGap(actor, target) <= 1) return false;
   return mind === "tactical" || mind === "genius" ? "kite" : "stay";
+}
+
+/**
+ * Whether a shot from afar is better thrown from where it stands than after the walk it was picked
+ * with (playtest re-test 9): a thinking archer with its target already in normal range does not
+ * walk toward the other side first, only away from it.
+ */
+function rulesetShootsFromHere(
+  state: CombatDirectorState,
+  encounter: RulesetEncounterState,
+  actorId: string,
+  choice: RulesetCombatChoice,
+  to: { x: number; y: number },
+): boolean {
+  if (!rulesetShotFromAfar(state, encounter, actorId, choice)) return false;
+  const actor = rulesetCombatant(encounter, actorId)!;
+  const action = actor.actions.find((one) => one.id === choice.optionId)!;
+  const blows = action.sequence?.length
+    ? action.sequence.map((step) => actor.actions.find((one) => one.id === step.actionId)!)
+    : [action];
+  const normal = Math.min(...blows.map((blow) => blow.range!.normal));
+  const home = rulesetPositionOf(actor)!;
+  const span = rulesetSpanOf(actor);
+  const targets = choice.targetIds.map((id) => rulesetCombatant(encounter, id));
+  if (targets.some((target) => !target || !rulesetPositionOf(target) || rulesetGapFrom(home, span, target) > normal))
+    return false;
+  const foes = encounter.combatants.filter(
+    (one) => one.side !== actor.side && !one.object && rulesetCombatStanding(one) && rulesetPositionOf(one),
+  );
+  const nearest = (cell: { x: number; y: number }) => Math.min(...foes.map((foe) => rulesetGapFrom(cell, span, foe)));
+  return nearest(to) < nearest(home);
 }
 
 /**
@@ -4348,8 +4463,17 @@ function windowOptions(
     .filter((candidate) => candidate.action.option.kind !== "end-turn")
     .sort((a, b) => worth(b) - worth(a))
     .slice(0, Math.max(0, RULESET_WINDOW_CANDIDATE_LIMIT - ending.length));
-  return [...rest, ...ending].map((candidate, index) => ({
-    id: String(index),
+  return [...rest, ...ending].map((candidate, index) => decisionOptionOf(candidate, actorId, String(index)));
+}
+
+/** One candidate as a Game Master's decision offers it. */
+function decisionOptionOf(
+  candidate: CombatAiCandidate<RulesetCandidate>,
+  actorId: string,
+  id: string,
+): CombatDecisionOption {
+  return {
+    id,
     kind: windowKind(candidate.action.option.kind),
     actorId,
     ...(candidate.action.targetId ? { targetId: candidate.action.targetId } : {}),
@@ -4374,7 +4498,82 @@ function windowOptions(
       ? { zoneTo: { ...candidate.action.choice.to } }
       : {}),
     ...(candidate.action.choice.alters?.length ? { alters: [...candidate.action.choice.alters] } : {}),
-  }));
+  };
+}
+
+/**
+ * The Engine's own top picks for a Game Master's turn (re-test 9 follow-up): its tactics' best three,
+ * each marked on the decision's option with a short reason, and added to the options where the
+ * shortlist left it out. The Game Master still chooses; this is what this Engine would have done.
+ */
+function suggestRulesetOptions(
+  definition: RulesetDefinition,
+  state: CombatDirectorState,
+  encounter: RulesetEncounterState,
+  actorId: string,
+  options: CombatDecisionOption[],
+  /** A window's own menu, when the decision is an answer to one rather than a whole turn. */
+  menu?: RulesetCombatOption[],
+): CombatDecisionOption[] {
+  const ranked = rankRulesetChoices(definition, state, encounter, actorId, RULESET_SUGGESTION_COUNT, menu);
+  const same = (option: CombatDecisionOption, candidate: CombatAiCandidate<RulesetCandidate>) => {
+    const made = decisionOptionOf(candidate, actorId, option.id);
+    return (
+      JSON.stringify({ ...made, kind: undefined }) ===
+      JSON.stringify({ ...option, kind: undefined, suggested: undefined })
+    );
+  };
+  const out = options.map((option) => ({ ...option }));
+  ranked.forEach(({ candidate, parts }, rank) => {
+    let option = out.find((one) => same(one, candidate));
+    if (!option) {
+      option = decisionOptionOf(candidate, actorId, String(out.length));
+      out.push(option);
+    }
+    option.suggested = { rank: rank + 1, reason: rulesetSuggestionReason(encounter, candidate, parts) };
+  });
+  return out;
+}
+
+/** How many of the Engine's own picks a Game Master is shown. */
+const RULESET_SUGGESTION_COUNT = 3;
+
+/** Why the Engine would pick this, in a few words: the biggest parts of its score, largest first. */
+function rulesetSuggestionReason(
+  encounter: RulesetEncounterState,
+  candidate: CombatAiCandidate<RulesetCandidate>,
+  parts: CombatAiScoreParts,
+): string {
+  const nameOf = (id: string | undefined) => (id ? (rulesetCombatant(encounter, id)?.name ?? id) : "");
+  const target = nameOf(candidate.targetId);
+  const option = candidate.action.option;
+  const said: Record<keyof CombatAiScoreParts, () => string> = {
+    damage: () => {
+      const average = option.forecast?.averageDamage;
+      const chance = option.forecast?.hitChance;
+      return `${(candidate.damage ?? 0) >= 0.5 ? "heavy" : (candidate.damage ?? 0) >= 0.2 ? "solid" : "some"} damage${
+        target ? ` to ${target}` : ""
+      }${average !== undefined ? ` (about ${Math.round(average)} damage${chance !== undefined ? `, ${Math.round(chance * 100)}% to hit` : ""})` : ""}`;
+    },
+    finish: () => `likely takes ${target || "its target"} out of the fight`,
+    healing: () => `heals ${target || "a friend"}`,
+    support: () => `helps ${target || "its side"}`,
+    setup: () => `sets up what comes next (a condition, a broken concentration, a better position)`,
+    risk: () => "puts itself in danger",
+    cost: () =>
+      `spends ${option.cost?.length ? option.cost.map((one) => `${one.amount} ${one.label}`).join(", ") : "a limited use"}`,
+    protection: () => "stands up for a friend under attack",
+    coordination: () => `joins its side's attack${target ? ` on ${target}` : ""}`,
+    focus: () => `${target || "its target"} is the one it most wants down`,
+  };
+  const reasons = (Object.entries(parts) as Array<[keyof CombatAiScoreParts, number]>)
+    .filter(([, part]) => Math.abs(part) >= 0.05)
+    .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
+    .slice(0, 3)
+    .map(([key]) => said[key]());
+  if (candidate.action.to) reasons.push(`after walking to ${candidate.action.to.x},${candidate.action.to.y}`);
+  if (reasons.length) return reasons.join("; ");
+  return option.kind === "end-turn" ? "nothing offered is worth what it costs right now" : "the best of what is left";
 }
 
 /**
@@ -4396,8 +4595,9 @@ function openRulesetWindowDecision(
   const menu = rulesetWindowOptions(definition, fight.encounter, actorId);
   if (menu.length === 0) return false;
   // Letting the moment go by is one of the candidates, so it is one of the answers.
-  const options = windowOptions(definition, fight.encounter, actorId, menu);
-  if (options.length <= 1) return false;
+  const shortlist = windowOptions(definition, fight.encounter, actorId, menu);
+  if (shortlist.length <= 1) return false;
+  const options = suggestRulesetOptions(definition, state, fight.encounter, actorId, shortlist, menu);
   state.choices = options;
   state.window = {
     id: `${state.id}:${++state.serial}`,
@@ -4416,9 +4616,10 @@ function openRulesetWindow(
   fight: RulesetFightState,
   actorId: string,
 ): boolean {
-  const options = windowOptions(definition, fight.encounter, actorId);
+  const shortlist = windowOptions(definition, fight.encounter, actorId);
   // Nothing but the end of the turn left: there is no decision worth a model call.
-  if (options.length <= 1) return false;
+  if (shortlist.length <= 1) return false;
+  const options = suggestRulesetOptions(definition, state, fight.encounter, actorId, shortlist);
   state.choices = options;
   state.window = {
     id: `${state.id}:${++state.serial}`,

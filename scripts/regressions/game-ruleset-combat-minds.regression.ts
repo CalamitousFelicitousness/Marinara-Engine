@@ -711,6 +711,9 @@ try {
       `it shot: ${JSON.stringify(tactician.turn)}`,
     );
     assert.ok(tactician.gap > 7, `and stepped out of the knight's walk: ${tactician.gap}`);
+    // In normal range already, it shoots from where it stands rather than walking in first (re-test 9).
+    const first = tactician.turn.find((event) => "actorId" in event && event.actorId === "archer");
+    assert.notEqual(first?.type, "move", `no walk in before the shot: ${JSON.stringify(tactician.turn)}`);
     assert.ok(kites("cunning").gap <= 4, "a cunning one does not step back");
     assert.ok(kites("tactical", dagger).gap <= 4, "nor does one that threw a dagger");
     // Beside the knight, it gets clear by a Misty Step its bonus action pays for, then shoots (re-test 9).

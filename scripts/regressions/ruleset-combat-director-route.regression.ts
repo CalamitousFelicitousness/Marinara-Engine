@@ -942,6 +942,16 @@ try {
       ["brenna"],
     );
     assert.equal(typeof prompt.threats[0].threat, "number");
+    // And what the Engine's own tactics would do, best first, each on a line that names a real
+    // candidate and says why (re-test 9 follow-up).
+    assert.ok(Array.isArray(prompt.engineSuggestions) && prompt.engineSuggestions.length > 0, JSON.stringify(prompt));
+    const ids = new Set(prompt.candidates.map((one: { candidateId: string }) => one.candidateId));
+    for (const [index, line] of (prompt.engineSuggestions as string[]).entries()) {
+      const match = /^(\d+)\. CANDIDATE: (\S+) ACTION: .+ REASON: .+$/.exec(line);
+      assert.ok(match, line);
+      assert.equal(Number(match![1]), index + 1, line);
+      assert.ok(ids.has(match![2]), `a candidate it was offered: ${line}`);
+    }
   }
 
   // ── The blueprint prompt: today's words without a combat block, the ruleset's terms with one ──

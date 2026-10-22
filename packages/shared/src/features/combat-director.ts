@@ -123,6 +123,9 @@ export interface CombatDecisionOption {
   zoneTo?: { x: number; y: number };
   /** The altering actions a ruleset candidate is used with (1.253). */
   alters?: string[];
+  /** Where the Engine's own tactics rank it among its top picks for this turn, and why in a few
+   *  words, shown to a Game Master deciding for the same unit. */
+  suggested?: { rank: number; reason: string };
 }
 export interface CombatDecisionWindow {
   id: string;

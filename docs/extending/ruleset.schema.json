@@ -213378,6 +213378,10 @@
                   "maxLength": 40,
                   "pattern": "^[a-z][a-z0-9_]*$"
                 },
+                "exclusiveDefault": {
+                  "type": "boolean",
+                  "const": true
+                },
                 "offeredWhen": {
                   "type": "object",
                   "properties": {

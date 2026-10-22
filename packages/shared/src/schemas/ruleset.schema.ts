@@ -12130,6 +12130,9 @@ const catalogEntrySchema = z
      *  one pick of a group, so picking one drops the other ("a feat in place of an ability score
      *  improvement"). */
     exclusive: sheetId.optional(),
+    /** Taken of its `exclusive` group by a step that takes all it offers while the player has picked
+     *  none of it (Capability API 1.719): the ability score improvement a feat may replace. */
+    exclusiveDefault: z.literal(true).optional(),
     /** Read off the sheet as it stands: a builder step offers this entry only while it reads above 0
      *  (Capability API 1.99), as 5e offers a second class only when its prerequisites are met. A pick
      *  that later reads 0 counts for nothing and is kept. An entry of an `exclusive` group is read on
@@ -12165,6 +12168,13 @@ const catalogEntrySchema = z
         code: z.ZodIssueCode.custom,
         path: ["variants"],
         message: "A variant has no variants of its own",
+      });
+    }
+    if (entry.exclusiveDefault && entry.exclusive === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["exclusiveDefault"],
+        message: 'Only an entry of an "exclusive" group is its default',
       });
     }
     const kinds = [entry.rows, entry.creature, entry.item].filter((kind) => kind !== undefined).length;
@@ -24934,6 +24944,15 @@ export function rulesetCatalogEntryIssues(
     if (entry.variantOf !== undefined && !byId.get(entry.variantOf)?.variants?.includes(entry.id)) {
       add([index, "variantOf"], `"${entry.variantOf}" does not list "${entry.id}" among its variants`);
     }
+  });
+  // One default for each group (1.719).
+  const defaults = new Map<string, string>();
+  entries.forEach((entry, index) => {
+    if (!entry.exclusiveDefault || entry.exclusive === undefined) return;
+    const first = defaults.get(entry.exclusive);
+    if (first !== undefined)
+      add([index, "exclusiveDefault"], `"${first}" is already the default of group "${entry.exclusive}"`);
+    else defaults.set(entry.exclusive, entry.id);
   });
   return issues;
 }

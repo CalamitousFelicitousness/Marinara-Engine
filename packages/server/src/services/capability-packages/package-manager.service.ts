@@ -2745,6 +2745,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
 }
 
 /** Help against an opponent beside the helper (1.718): `combat.standardEffects.help`. */
+/** A catalog entry that is its exclusive group's default (1.719): the ability score improvement. */
+function carriesExclusiveDefault719(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesExclusiveDefault719(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (typeof record.id === "string" && record.exclusiveDefault !== undefined) return true;
+  return featureValues(record).some((one) => carriesExclusiveDefault719(one, depth + 1));
+}
+
 function carriesHelpBeside718(ruleset: unknown): boolean {
   const effects = plainRecord(plainRecord(plainRecord(ruleset)?.combat)?.standardEffects);
   return effects?.help !== undefined;
@@ -9371,6 +9381,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A catalog entry that is its group's default, 1.719.
+  if (
+    !declaresApi(719) &&
+    (carriesExclusiveDefault719(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesExclusiveDefault719(document)))
+  )
+    return "A ruleset with a catalog entry that is its exclusive group's default (exclusiveDefault) requires schemaVersion 2 and capabilityApi 1.719 or newer";
   // Help against an opponent beside the helper, 1.718.
   if (!declaresApi(718) && carriesHelpBeside718(ruleset))
     return "A ruleset whose help is against an opponent beside the helper (standardEffects.help) requires schemaVersion 2 and capabilityApi 1.718 or newer";

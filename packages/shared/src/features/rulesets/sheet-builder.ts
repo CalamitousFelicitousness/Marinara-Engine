@@ -731,11 +731,7 @@ export function rulesetBuilderPicks(
   const byId = new Map(offered.map((entry) => [entry.id, entry]));
   // Taken without asking (1.713): everything it offers, and of each `exclusive` group the latest pick.
   if (step.takesAll) {
-    const chosen = new Map<string, string>();
-    for (const id of state.picks?.[stepId] ?? []) {
-      const group = byId.get(id)?.exclusive;
-      if (group) chosen.set(group, id);
-    }
+    const chosen = groupsTaken(offered, state.picks?.[stepId] ?? []);
     return offered.filter((entry) => !entry.exclusive || chosen.get(entry.exclusive) === entry.id);
   }
   // One pick of an `exclusive` group counts (1.94): the latest, since picking replaces; earlier ones
@@ -796,6 +792,27 @@ export function rulesetBuilderMarked(
   return [...new Set(state.marks?.[stepId] ?? [])]
     .filter((ref) => offered.has(ref))
     .slice(0, rulesetBuilderMarkCount(definition, step, build));
+}
+
+/** What a step that takes all it offers takes of each `exclusive` group it offers: the latest pick
+ *  of it, or, with none, its default (1.719) or the only entry of it offered. A group missing here
+ *  waits on the player. */
+function groupsTaken(offered: readonly RulesetCatalogEntry[], stored: readonly string[]): Map<string, string> {
+  const chosen = new Map<string, string>();
+  const byId = new Map(offered.map((entry) => [entry.id, entry]));
+  for (const id of stored) {
+    const group = byId.get(id)?.exclusive;
+    if (group) chosen.set(group, id);
+  }
+  const groups = new Map<string, RulesetCatalogEntry[]>();
+  for (const entry of offered)
+    if (entry.exclusive) groups.set(entry.exclusive, [...(groups.get(entry.exclusive) ?? []), entry]);
+  for (const [group, entries] of groups) {
+    if (chosen.has(group)) continue;
+    const fallback = entries.find((entry) => entry.exclusiveDefault) ?? (entries.length === 1 ? entries[0] : undefined);
+    if (fallback) chosen.set(group, fallback.id);
+  }
+  return chosen;
 }
 
 /** The stored picks of a step with `id` added: one of an `exclusive` group (1.94) replaces the step's
@@ -2364,14 +2381,11 @@ export function rulesetBuilderRemaining(
     )
       continue;
     if (step.kind === "catalog" && step.takesAll) {
-      // Taken without asking (1.713): what waits is each offered group with nothing picked.
-      const picks = rulesetBuilderPicks(definition, step.id, state, catalogs, build);
-      const groups = new Set(
-        rulesetBuilderOptions(definition, step, state, catalogs, build).flatMap((entry) =>
-          entry.exclusive ? [entry.exclusive] : [],
-        ),
-      );
-      add(step.id, [...groups].filter((group) => !picks.some((entry) => entry.exclusive === group)).length);
+      // Taken without asking (1.713): what waits is each offered group with nothing taken of it.
+      const offered = rulesetBuilderOptions(definition, step, state, catalogs, build);
+      const taken = groupsTaken(offered, state.picks?.[step.id] ?? []);
+      const groups = new Set(offered.flatMap((entry) => (entry.exclusive ? [entry.exclusive] : [])));
+      add(step.id, [...groups].filter((group) => !taken.has(group)).length);
     } else if (step.kind === "catalog") {
       // Never more than the step can offer: a race with no subraces leaves nothing to choose.
       const offered = rulesetBuilderOptions(definition, step, state, catalogs, build).length;

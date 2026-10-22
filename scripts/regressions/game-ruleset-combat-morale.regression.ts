@@ -184,6 +184,12 @@ try {
     });
     rulesetCombatant(zealous, "gob")!.temperament = "fanatical";
     assert.equal(morale(endTurn(definition, zealous, 6).events).length, 0, "a fanatic");
+    // As its own data says, with nobody playing it to say so.
+    const written = fight(definition, {
+      gob: { block: block({ morale: 7, behavior: { temperament: "fanatical" } }), at: { x: 6, y: 4 } },
+      dead: { block: block(), at: { x: 9, y: 5 }, health: 0 },
+    });
+    assert.equal(morale(endTurn(definition, written, 6).events).length, 0, "a fanatic by its data");
     const steady = fight(definition, {
       gob: { block: block({ morale: 7 }), at: { x: 6, y: 4 } },
       dead: { block: block(), at: { x: 9, y: 5 }, health: 0 },
@@ -411,6 +417,15 @@ try {
     assert.deepEqual(
       morale(endTurn(definition, caught, 6).events).map((event) => [event.trigger, event.outcome]),
       [["surprised", "flee"]],
+    );
+    // Out of reach of its claws is not helpless: it can walk up to them (the a63 layout, a bandit
+    // starting far off the party, routed by a failed check before anybody moved).
+    assert.equal(
+      morale(
+        endTurn(definition, fight(definition, { gob: { block: block({ morale: 2 }), at: { x: 11, y: 7 } } }), 6).events,
+      ).length,
+      0,
+      "a walk away is not helpless",
     );
     // Its claws gone, nothing left to it but a grapple or a shove.
     assert.deepEqual(

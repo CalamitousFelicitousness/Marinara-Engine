@@ -8,7 +8,7 @@
 
 import { rulesetTierAddsProficiency, type RulesetSaveAgainst } from "../rulesets/check-effects.js";
 import { rulesetCatalogEntriesByRef } from "../rulesets/scaled-rows.js";
-import { rulesetCombatantMind } from "./mind.js";
+import { rulesetCombatantBehavior, rulesetCombatantMind } from "./mind.js";
 import {
   rulesetPoolMaxSuccesses,
   rulesetSheetBuildSchema,
@@ -18287,8 +18287,9 @@ function moraleTurn(ctx: RulesetCombatContext, actor: RulesetCombatant): boolean
   if (!morale) return false;
   const mind = rulesetCombatantMind(ctx.definition, actor) ?? "tactical";
   if (mind === "mindless") return false;
-  // A fanatic never loses heart (combat AI T2).
-  if (actor.temperament === "fanatical") return false;
+  // A fanatic never loses heart (combat AI T2): as the Engine plays it, else as its own data says.
+  const temperament = actor.temperament ?? rulesetCombatantBehavior(ctx.definition, actor)?.temperament;
+  if (temperament === "fanatical") return false;
   if (morale.unlessImmune && rulesetImmuneToCondition(actor, morale.unlessImmune, ctx.definition, ctx.state))
     return false;
   const side = ctx.state.combatants.filter(
@@ -18316,15 +18317,31 @@ function moraleTurn(ctx: RulesetCombatContext, actor: RulesetCombatant): boolean
     }
     // Caught unaware (1.722): a turn it starts surprised.
     if (trigger === "surprised") return !!actor.surprised;
-    // No way to harm the other side (1.722): nothing on its menu to aim at them but a grapple or a
-    // shove, its weapons and its magic gone.
-    if (trigger === "helpless")
-      return !rulesetCombatOptions(ctx.definition, ctx.state, actor.id).some(
-        (option) =>
-          option.kind !== "move" &&
-          option.kind !== "contest" &&
-          (option.targets.side === "enemy" || option.targets.side === "any"),
+    // No way to harm the other side at all (1.722), as the Dungeon Master's Guide means it: nothing
+    // it has could hurt or hold anybody of theirs, wherever they stand (its weapons and its magic
+    // gone, a grapple or a shove all it has left), or every one of them is up in the air out of
+    // reach of a creature that can neither fly nor shoot. Out of reach of a walk is not helpless.
+    if (trigger === "helpless") {
+      const harms = actor.actions.filter(
+        (action) =>
+          !action.whileHolds &&
+          (!!action.damage || !!action.applies?.length) &&
+          (action.targets.side === "enemy" || action.targets.side === "any") &&
+          rulesetActionAvailable(actor, action, ctx.state, ctx.definition),
       );
+      if (harms.length === 0) return true;
+      const grid = ctx.state.board?.grid;
+      const foes = ctx.state.combatants.filter(
+        (one) => one.side !== actor.side && !one.object && rulesetCombatStanding(one),
+      );
+      return (
+        !!grid &&
+        !actor.speeds?.fly &&
+        !harms.some((action) => !!action.range) &&
+        foes.length > 0 &&
+        foes.every((one) => rulesetAirborne(grid, one))
+      );
+    }
     if (trigger === "leader-down")
       return fallen.some((one) => one.id !== actor.id && (one.block?.leader || one.leader));
     const health = rulesetCombatHealth(ctx.definition, ctx.combat, actor);
@@ -18333,7 +18350,7 @@ function moraleTurn(ctx: RulesetCombatContext, actor: RulesetCombatant): boolean
   for (const trigger of morale.on) {
     if (actor.moraleChecked?.includes(trigger) || !happened(trigger)) continue;
     // A disciplined one is not shaken by the first of its side to fall (combat AI T1).
-    if (trigger === "first-fall" && actor.temperament === "disciplined") continue;
+    if (trigger === "first-fall" && temperament === "disciplined") continue;
     actor.moraleChecked = [...(actor.moraleChecked ?? []), trigger];
     const check = morale.check;
     let roll: number | undefined;

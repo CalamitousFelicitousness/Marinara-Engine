@@ -12831,6 +12831,48 @@ test("installed Home destinations appear as browser tabs without returning to th
   await page.getByRole("tab", { name: "Home", exact: true }).click();
   if (!mobile) await expect(page.locator('[data-component="HomeBrowserHub.Address"]')).toContainText("marinara/home");
   await expect(page.getByRole("heading", { name: "What shall we cook tonight?" })).toBeVisible();
+  // Rotation must keep the same selected-label behavior, including package-provided tabs.
+  const tabList = page.locator('[data-component="HomeBrowserHub.TabList"]');
+  for (const theme of ["dark", "light"] as const) {
+    await page.evaluate(async (value) => {
+      const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+      useUIStore.getState().setTheme(value);
+    }, theme);
+    for (const size of mobile
+      ? [
+          { width: 390, height: 844 },
+          { width: 874, height: 402 },
+          { width: 390, height: 844 },
+        ]
+      : [
+          { width: 874, height: 402 },
+          { width: 1440, height: 900 },
+        ]) {
+      await page.setViewportSize(size);
+      await page.locator(".mari-home-browser-tab-row").screenshot({
+        path: testInfo.outputPath(`home-tabs-${theme}-${size.width}.png`),
+      });
+      for (const name of ["Home", "Professor Mari", "Open Noodle and NoodleR"]) {
+        const selected = tabList.getByRole("tab", { name, exact: true });
+        await selected.click();
+        await expect(selected).toHaveAttribute("aria-selected", "true");
+        for (const tab of await tabList.getByRole("tab").all()) {
+          const label = tab.locator(":scope > span").first();
+          if (!mobile || (await tab.getAttribute("aria-selected")) === "true") {
+            await expect(label).toBeVisible();
+          } else {
+            await expect(label).toBeHidden();
+            expect((await tab.boundingBox())!.width).toBeLessThanOrEqual(40);
+          }
+          const rail = (await tabList.boundingBox())!;
+          const bounds = (await tab.boundingBox())!;
+          expect(bounds.x).toBeGreaterThanOrEqual(rail.x - 1);
+          expect(bounds.x + bounds.width).toBeLessThanOrEqual(rail.x + rail.width + 1);
+        }
+        await selected.screenshot({ path: testInfo.outputPath(`selected-tab-${theme}-${size.width}-${name}.png`) });
+      }
+    }
+  }
   expect(errors).toEqual([]);
 });
 

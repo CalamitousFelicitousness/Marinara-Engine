@@ -125,10 +125,11 @@ const SENT_SELFIE_DESCRIPTION_MAX_CHARS = 600;
 const LINE_START_LABEL_RE = /^([ \t]*)([A-Za-z][A-Za-z0-9]*(?:_[A-Za-z0-9]+)*)[ \t]*:(?!\/\/)/gmu;
 const FIELD_LABEL_WORDS = new Set(
   (
-    "action angle atmosphere audio background camera character characters cinematography color colors composition " +
-    "description dialogue duration effects environment format framing foreground lens lighting location mood motion " +
-    "movement music narration pacing palette prompt scene setting shot shots sound soundscape sfx style subject " +
-    "subjects timing tone transition visual visuals voiceover"
+    "action angle atmosphere audio background camera caption captions character characters cinematography color " +
+    "colors composition description dialogue director direction duration editing effects environment format framing " +
+    "foreground genre lens lighting location mood motion movement music narration notes pacing palette prompt scene " +
+    "setting shot shots sound soundscape sfx style subject subjects text timing title tone transition visual visuals " +
+    "voiceover"
   ).split(" "),
 );
 

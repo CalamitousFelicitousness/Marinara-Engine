@@ -1603,7 +1603,7 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
       className="mari-chrome-token-scope relative flex h-full min-h-0 w-full flex-col overflow-hidden bg-[var(--background)]"
       data-component="HomeBrowserHub"
     >
-      <div className="flex h-full min-h-0 w-full flex-col overflow-hidden border border-[var(--border)]/75 bg-[var(--card)]/65 shadow-2xl shadow-black/25 sm:rounded-xl">
+      <div className="flex h-full min-h-0 w-full flex-col overflow-hidden border border-[var(--border)]/75 bg-[var(--marinara-home-page-wash)] shadow-2xl shadow-black/25 sm:rounded-xl">
         <header className="mari-home-browser-chrome relative z-40 shrink-0 border-b border-[var(--marinara-topbar-border)] bg-[var(--marinara-topbar-surface)] shadow-[0_8px_28px_-26px_rgba(0,0,0,0.8)] backdrop-blur-sm">
           <div className="flex h-10 min-w-0 items-end gap-1 border-b border-[var(--border)]/45 px-2 sm:gap-2 sm:px-3">
             <div

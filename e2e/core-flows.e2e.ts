@@ -12521,36 +12521,41 @@ test(
           .map(Number) ?? [];
       return channels.reduce((total, channel) => total + channel * scale, 0);
     };
-    const darkAddressSurfaces = await page.evaluate(() => ({
-      chrome: getComputedStyle(document.querySelector<HTMLElement>(".mari-home-browser-chrome")!).backgroundColor,
-      addressRow: getComputedStyle(document.querySelector<HTMLElement>(".mari-home-browser-address-row")!)
-        .backgroundColor,
-    }));
-    for (const surface of Object.values(darkAddressSurfaces)) {
-      expect(surface).not.toMatch(/^(?:transparent|rgba\([^)]*,\s*0\))$/u);
-    }
-    expect(surfaceLightness(darkAddressSurfaces.addressRow)).toBeLessThan(surfaceLightness(darkAddressSurfaces.chrome));
+    // The URL bar is desktop chrome; the phone shell renders no address row to shade.
+    if (!testInfo.project.name.includes("mobile")) {
+      const darkAddressSurfaces = await page.evaluate(() => ({
+        chrome: getComputedStyle(document.querySelector<HTMLElement>(".mari-home-browser-chrome")!).backgroundColor,
+        addressRow: getComputedStyle(document.querySelector<HTMLElement>(".mari-home-browser-address-row")!)
+          .backgroundColor,
+      }));
+      for (const surface of Object.values(darkAddressSurfaces)) {
+        expect(surface).not.toMatch(/^(?:transparent|rgba\([^)]*,\s*0\))$/u);
+      }
+      expect(surfaceLightness(darkAddressSurfaces.addressRow)).toBeLessThan(
+        surfaceLightness(darkAddressSurfaces.chrome),
+      );
 
-    await page.evaluate(async () => {
-      const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
-      module.useUIStore.getState().setTheme("light");
-    });
-    await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
-    const lightAddressSurfaces = await page.evaluate(() => ({
-      chrome: getComputedStyle(document.querySelector<HTMLElement>(".mari-home-browser-chrome")!).backgroundColor,
-      addressRow: getComputedStyle(document.querySelector<HTMLElement>(".mari-home-browser-address-row")!)
-        .backgroundColor,
-    }));
-    for (const surface of Object.values(lightAddressSurfaces)) {
-      expect(surface).not.toMatch(/^(?:transparent|rgba\([^)]*,\s*0\))$/u);
+      await page.evaluate(async () => {
+        const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
+        module.useUIStore.getState().setTheme("light");
+      });
+      await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+      const lightAddressSurfaces = await page.evaluate(() => ({
+        chrome: getComputedStyle(document.querySelector<HTMLElement>(".mari-home-browser-chrome")!).backgroundColor,
+        addressRow: getComputedStyle(document.querySelector<HTMLElement>(".mari-home-browser-address-row")!)
+          .backgroundColor,
+      }));
+      for (const surface of Object.values(lightAddressSurfaces)) {
+        expect(surface).not.toMatch(/^(?:transparent|rgba\([^)]*,\s*0\))$/u);
+      }
+      expect(surfaceLightness(lightAddressSurfaces.addressRow)).toBeLessThan(
+        surfaceLightness(lightAddressSurfaces.chrome),
+      );
+      await page.evaluate(async () => {
+        const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
+        module.useUIStore.getState().setTheme("dark");
+      });
     }
-    expect(surfaceLightness(lightAddressSurfaces.addressRow)).toBeLessThan(
-      surfaceLightness(lightAddressSurfaces.chrome),
-    );
-    await page.evaluate(async () => {
-      const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
-      module.useUIStore.getState().setTheme("dark");
-    });
 
     const charactersButton = page.locator('[data-tour="panel-characters"]');
     await expect(charactersButton.locator("svg")).toHaveClass(/mari-topbar-accent-icon/);
@@ -19843,21 +19848,69 @@ test("a landscape phone keeps Home's compact chrome", async ({ page }, testInfo)
 });
 
 test("Professor Mari's window and page share Home's background", async ({ page }) => {
+  await seedUIState(page, { hasCompletedOnboarding: true, sidebarOpen: false, rightPanelOpen: false }, "merge");
+  await page.addInitScript(({ key, version }) => localStorage.setItem(key, version), {
+    key: WHATS_NEW_SEEN_VERSION_KEY,
+    version: APP_VERSION,
+  });
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "What shall we cook tonight?" })).toBeVisible({ timeout: 30_000 });
-  const homeBackground = await page
-    .locator('[data-component="HomeBrowserHub"]')
-    .evaluate((element) => getComputedStyle(element).backgroundColor);
+  // Only the page surface is under test: Home's stars and Mari's working glow are ornaments drawn over it.
+  await page.addStyleTag({
+    content: ".mari-home-browser-starfield, .mari-workspace-glow-band { display: none !important; }",
+  });
+  // What the user sees, not a computed layer: Home's page is a translucent wash over the app background.
+  const pixelAt = async (x: number, y: number) => {
+    const png = await page.screenshot({ clip: { x, y, width: 1, height: 1 }, scale: "css" });
+    return page.evaluate(
+      async (source) => {
+        const image = new Image();
+        image.src = source;
+        await image.decode();
+        const canvas = document.createElement("canvas");
+        canvas.width = 1;
+        canvas.height = 1;
+        const context = canvas.getContext("2d")!;
+        context.drawImage(image, 0, 0);
+        return Array.from(context.getImageData(0, 0, 1, 1).data.slice(0, 3));
+      },
+      `data:image/png;base64,${png.toString("base64")}`,
+    );
+  };
+  const maxChannelGap = (a: number[], b: number[]) =>
+    Math.max(...a.map((channel, index) => Math.abs(channel - (b[index] ?? Number.NaN))));
+  const homePage = page.locator('[data-component="HomeBrowserHub.HomePage"]');
+  const omnibar = page.locator('[data-component="GlobalOmnibar"]');
+  const mariPage = omnibar.locator('[data-component="GlobalOmnibar.Mari"]');
 
-  await page.getByRole("tab", { name: "Professor", exact: true }).click();
-  const mariPage = page.locator('[data-component="GlobalOmnibar.Mari"]');
-  await expect(mariPage).toBeVisible();
-  const backgrounds = await Promise.all(
-    [page.locator('[data-component="GlobalOmnibar.Panel"]'), mariPage].map((surface) =>
-      surface.evaluate((element) => getComputedStyle(element).backgroundColor),
-    ),
-  );
-  expect(backgrounds).toEqual([homeBackground, homeBackground]);
+  for (const theme of ["dark", "light"] as const) {
+    await page.evaluate(async (next) => {
+      const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
+      module.useUIStore.getState().setTheme(next);
+    }, theme);
+    await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+    const homeBounds = (await homePage.boundingBox())!;
+    // Read Home once the theme change has finished painting: two samples in a row agree.
+    let homeColor: number[] = [];
+    await expect
+      .poll(async () => {
+        const next = await pixelAt(homeBounds.x + 4, homeBounds.y + 4);
+        const settled = homeColor.length > 0 && maxChannelGap(homeColor, next) === 0;
+        homeColor = next;
+        return settled;
+      })
+      .toBe(true);
+
+    await page.getByRole("tab", { name: "Professor", exact: true }).click();
+    await expect(mariPage).toBeVisible();
+    const mariBounds = (await mariPage.boundingBox())!;
+    await expect
+      .poll(async () => maxChannelGap(homeColor, await pixelAt(mariBounds.x + 4, mariBounds.y + mariBounds.height / 2)))
+      // A composited wash and a painted gradient of it can round a few levels apart; the old tint was 9 away.
+      .toBeLessThanOrEqual(4);
+    await omnibar.getByRole("button", { name: "Close", exact: true }).click();
+    await expect(mariPage).toHaveCount(0);
+  }
 });
 
 test("enabling Recent Chats anchors its 2 by 2 footprint and repacks smaller widgets", async ({ page }, testInfo) => {

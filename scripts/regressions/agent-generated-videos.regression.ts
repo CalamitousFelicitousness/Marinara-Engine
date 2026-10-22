@@ -194,6 +194,31 @@ try {
   const unclosed = parseCharacterCommands("Look [video: no closing [Shot 1] bracket\nNext line stays.");
   assert.deepEqual(unclosed.commands, []);
   assert.equal(unclosed.cleanContent.replace(/\s+/gu, " ").trim(), "Look Next line stays.");
+  // An unclosed tag can hold a later tag on the next line that does close; that one still makes its clip.
+  assert.deepEqual(parseCharacterCommands("A [video: oops\n[video: waving] B").commands, [
+    { type: "video", context: "waving" },
+  ]);
+  // Malformed lines before a balanced multiline tag leave it whole.
+  const afterMalformed = parseCharacterCommands("[video:\n[video:\nLook [video: she waves\nand laughs.] Done.");
+  assert.deepEqual(afterMalformed.commands, [{ type: "video", context: "she waves\nand laughs." }]);
+  assert.equal(afterMalformed.cleanContent.replace(/\s+/gu, " ").trim(), "Look Done.");
+  // Many unclosed tags parse in linear time: 8× the text must not take anywhere near 64× as long.
+  const timeMalformed = (repeat: number) => {
+    const text = "[video:\n".repeat(repeat);
+    let best = Infinity;
+    for (let run = 0; run < 3; run++) {
+      const started = performance.now();
+      assert.deepEqual(parseCharacterCommands(text).commands, []);
+      best = Math.min(best, performance.now() - started);
+    }
+    return best;
+  };
+  const smallMalformed = Math.max(timeMalformed(4_096), 1);
+  const largeMalformed = timeMalformed(32_768);
+  assert.ok(
+    largeMalformed < smallMalformed * 24,
+    `malformed [video: tags scale linearly (${smallMalformed.toFixed(1)} ms → ${largeMalformed.toFixed(1)} ms)`,
+  );
 
   const parsed = parseCharacterCommands('On my way! [video: context="waving from the bus"]');
   assert.deepEqual(parsed.commands, [{ type: "video", context: "waving from the bus" }]);

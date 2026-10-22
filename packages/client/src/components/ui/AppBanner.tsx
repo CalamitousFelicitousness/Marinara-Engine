@@ -1,10 +1,13 @@
 // ──────────────────────────────────────────────
 // Shared app-wide banner (one at a time with a count of the rest, see AppBannerHost)
 // ──────────────────────────────────────────────
-import type { ReactNode } from "react";
+import { useLayoutEffect, useRef, type ReactNode } from "react";
 import { ChevronDown, ShieldAlert, TriangleAlert, X } from "lucide-react";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import { cn } from "../../lib/utils";
+
+/** The banner's bottom edge in px; the toaster keeps top toasts below it (App.tsx). */
+export const APP_BANNER_BOTTOM_VARIABLE = "--app-banner-bottom";
 
 export type AppBannerSeverity = "warning" | "critical";
 
@@ -31,10 +34,28 @@ export function AppBanner({
   const { t: localizeUi } = useUiTranslation();
   const critical = severity === "critical";
   const Icon = critical ? ShieldAlert : TriangleAlert;
+  const cardRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const card = cardRef.current;
+    if (!card) return;
+    const root = document.documentElement.style;
+    const place = () =>
+      root.setProperty(APP_BANNER_BOTTOM_VARIABLE, `${Math.round(card.getBoundingClientRect().bottom)}px`);
+    const observer = new ResizeObserver(place);
+    observer.observe(card);
+    place();
+    return () => {
+      observer.disconnect();
+      root.removeProperty(APP_BANNER_BOTTOM_VARIABLE);
+    };
+  }, []);
 
   return (
     // A card just below the 3rem top bar: it leaves the top bar's buttons and the chat composer free.
-    <div className="fixed inset-x-2 top-[calc(env(safe-area-inset-top)+3.5rem)] z-[9999] max-h-[50dvh] overflow-y-auto rounded-xl bg-[var(--background)] text-[var(--foreground)] shadow-lg md:right-auto md:left-4 md:w-[28rem]">
+    <div
+      ref={cardRef}
+      className="fixed inset-x-2 top-[calc(env(safe-area-inset-top)+3.5rem)] z-[9999] max-h-[50dvh] overflow-y-auto rounded-xl bg-[var(--background)] text-[var(--foreground)] shadow-lg md:right-auto md:left-4 md:w-[28rem]"
+    >
       <div
         className={cn(
           "flex items-start gap-3 rounded-xl border py-2 pr-2 pl-4 text-sm",

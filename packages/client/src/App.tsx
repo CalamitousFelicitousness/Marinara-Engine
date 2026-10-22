@@ -28,6 +28,7 @@ import { SeasonalGreetingModal } from "./components/modals/SeasonalGreetingModal
 import { AppDialogRenderer } from "./components/ui/AppDialogRenderer";
 import { ChibiProfessorMariEasterEgg } from "./components/ui/ChibiProfessorMariEasterEgg";
 import { AppBannerHost } from "./components/layout/AppBannerHost";
+import { APP_BANNER_BOTTOM_VARIABLE } from "./components/ui/AppBanner";
 import { AgentUpdatePrompter } from "./components/agents/AgentUpdatePrompter";
 import { Toaster, toast } from "sonner";
 import { i18n } from "./localization/i18n";
@@ -577,9 +578,11 @@ export function App() {
   // A phone toast sits below the header rows at the top, never over their controls (lib/phone-toast-top).
   const toasterHostRef = useRef<HTMLDivElement>(null);
   const phoneToastsAtTop = isMobileShell && (omnibarOpen || notificationPosition !== "bottom");
+  // Top toasts, such as the lasting update notice, stack under an app banner instead of over it.
+  const belowAppBanner = `calc(var(${APP_BANNER_BOTTOM_VARIABLE}, 0px) + 8px)`;
   const phoneToastOffsetTop = omnibarOpen
     ? "calc(env(safe-area-inset-top) + 5rem)"
-    : `max(calc(env(safe-area-inset-top) + 3.5rem), var(${PHONE_TOAST_TOP_VARIABLE}, 0px))`;
+    : `max(calc(env(safe-area-inset-top) + 3.5rem), var(${PHONE_TOAST_TOP_VARIABLE}, 0px), ${belowAppBanner})`;
   useLayoutEffect(() => {
     if (!phoneToastsAtTop || !toasterHostRef.current) return;
     return watchPhoneToastTop(toasterHostRef.current);
@@ -1332,7 +1335,7 @@ export function App() {
           // Sonner's mobileOffset applies only up to 600px; wider touch shells and phone landscape
           // need the same clearance without changing desktop placement or bottom notifications.
           offset={{
-            top: phoneToastsAtTop ? phoneToastOffsetTop : "4rem",
+            top: phoneToastsAtTop ? phoneToastOffsetTop : `max(4rem, ${belowAppBanner})`,
             bottom: "4rem",
             left: "4rem",
             right: "4rem",

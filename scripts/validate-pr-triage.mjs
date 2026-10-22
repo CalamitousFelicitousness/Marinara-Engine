@@ -178,7 +178,10 @@ export function validatePullRequestTriage() {
     nodeShards,
     new RegExp(`^\\s+run: pnpm regression --shard \\$\\{\\{ matrix\\.shard \\}\\}/${shardTotal}$`, "mu"),
   );
-  assert.match(extractJob(browserWorkflow, "node"), /SHARDS_RESULT: \$\{\{ needs\.node-shards\.result \}\}/u);
+  // The verdict only reports, so its name is all that ties it to the required check.
+  const verdict = extractJob(browserWorkflow, "node");
+  assert.match(verdict, /^\s+name: complete-node-regressions$/mu);
+  assert.match(verdict, /SHARDS_RESULT: \$\{\{ needs\.node-shards\.result \}\}/u);
 
   const prChecks = readFileSync(new URL("../.github/workflows/pull-request-checks.yml", import.meta.url), "utf8");
   const requiredSmoke = extractNamedStep(extractJob(prChecks, "pnpm-validate"), "Run required Chromium smoke suite");

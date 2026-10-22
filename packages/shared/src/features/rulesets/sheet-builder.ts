@@ -544,6 +544,9 @@ function filterHas(entry: RulesetCatalogEntry, filterId: string, value: string |
 /** Set while the builder works out a sheet without one exclusive group's picks (1.100), so the entries
  *  judged inside it are read off that sheet as it stands and the rule never nests. */
 let judgingWithoutGroups = false;
+/** The step and group that sheet is without: its default (1.719) is not taken in their place either, or
+ *  the improvement a feat replaces would still meet the feat's prerequisite. */
+let judgingWithout: { step: string; group: string } | null = null;
 
 /** Sheets already worked out without a group, per sheet and state (both are never changed in place), so
  *  the many reads of one builder pass rebuild each only once. */
@@ -656,8 +659,9 @@ export function rulesetBuilderStamp(
   return stamp;
 }
 
-/** The sheet as the builder would leave it without the step's picks of one `exclusive` group (1.100):
- *  what they wrote taken back, everything else as it was. The sheet itself when none are picked. */
+/** The sheet as the builder would leave it without the step's picks of one `exclusive` group (1.100),
+ *  or the default taken in their place (1.719): what they wrote taken back, everything else as it was.
+ *  The sheet itself when none are picked. */
 function rulesetBuilderBuildWithoutGroup(
   definition: RulesetDefinition,
   step: StepOf<"catalog">,
@@ -670,7 +674,8 @@ function rulesetBuilderBuildWithoutGroup(
   const inGroup = new Set(
     (catalogs[step.catalog] ?? []).filter((each) => each.exclusive === group).map((each) => each.id),
   );
-  if (!picks.some((id) => inGroup.has(id))) return build;
+  // A step that takes all it offers can hold a group's default (1.719) with nothing stored.
+  if (!step.takesAll && !picks.some((id) => inGroup.has(id))) return build;
   let byState = withoutGroupCache.get(build);
   if (!byState) withoutGroupCache.set(build, (byState = new WeakMap()));
   let byGroup = byState.get(state);
@@ -683,6 +688,7 @@ function rulesetBuilderBuildWithoutGroup(
     picks: { ...state.picks, [step.id]: picks.filter((id) => !inGroup.has(id)) },
   };
   judgingWithoutGroups = true;
+  judgingWithout = { step: step.id, group };
   try {
     let result = applyRulesetBuilderOnce(definition, build, without, catalogs);
     for (let pass = 0; pass < 3; pass++) {
@@ -694,6 +700,7 @@ function rulesetBuilderBuildWithoutGroup(
     return result.build;
   } finally {
     judgingWithoutGroups = false;
+    judgingWithout = null;
   }
 }
 
@@ -731,7 +738,7 @@ export function rulesetBuilderPicks(
   const byId = new Map(offered.map((entry) => [entry.id, entry]));
   // Taken without asking (1.713): everything it offers, and of each `exclusive` group the latest pick.
   if (step.takesAll) {
-    const chosen = groupsTaken(offered, state.picks?.[stepId] ?? []);
+    const chosen = groupsTaken(offered, state.picks?.[stepId] ?? [], stepId);
     return offered.filter((entry) => !entry.exclusive || chosen.get(entry.exclusive) === entry.id);
   }
   // One pick of an `exclusive` group counts (1.94): the latest, since picking replaces; earlier ones
@@ -797,7 +804,11 @@ export function rulesetBuilderMarked(
 /** What a step that takes all it offers takes of each `exclusive` group it offers: the latest pick
  *  of it, or, with none, its default (1.719) or the only entry of it offered. A group missing here
  *  waits on the player. */
-function groupsTaken(offered: readonly RulesetCatalogEntry[], stored: readonly string[]): Map<string, string> {
+function groupsTaken(
+  offered: readonly RulesetCatalogEntry[],
+  stored: readonly string[],
+  stepId: string,
+): Map<string, string> {
   const chosen = new Map<string, string>();
   const byId = new Map(offered.map((entry) => [entry.id, entry]));
   for (const id of stored) {
@@ -808,7 +819,7 @@ function groupsTaken(offered: readonly RulesetCatalogEntry[], stored: readonly s
   for (const entry of offered)
     if (entry.exclusive) groups.set(entry.exclusive, [...(groups.get(entry.exclusive) ?? []), entry]);
   for (const [group, entries] of groups) {
-    if (chosen.has(group)) continue;
+    if (chosen.has(group) || (judgingWithout?.step === stepId && judgingWithout.group === group)) continue;
     const fallback = entries.find((entry) => entry.exclusiveDefault) ?? (entries.length === 1 ? entries[0] : undefined);
     if (fallback) chosen.set(group, fallback.id);
   }
@@ -2383,7 +2394,7 @@ export function rulesetBuilderRemaining(
     if (step.kind === "catalog" && step.takesAll) {
       // Taken without asking (1.713): what waits is each offered group with nothing taken of it.
       const offered = rulesetBuilderOptions(definition, step, state, catalogs, build);
-      const taken = groupsTaken(offered, state.picks?.[step.id] ?? []);
+      const taken = groupsTaken(offered, state.picks?.[step.id] ?? [], step.id);
       const groups = new Set(offered.flatMap((entry) => (entry.exclusive ? [entry.exclusive] : [])));
       add(step.id, [...groups].filter((group) => !taken.has(group)).length);
     } else if (step.kind === "catalog") {

@@ -4,6 +4,8 @@
  *   - A step that takes all it offers takes, of a group nobody picked from, its default, or the one
  *     entry of it offered, so the step waits on nothing.
  *   - A pick of the group still replaces it.
+ *   - A feat in the default's place is judged without the default (1.100): the improvement it
+ *     replaces never meets its prerequisite.
  *   - Refusals and the install gate.
  */
 import assert from "node:assert/strict";
@@ -15,6 +17,7 @@ import {
   defaultRulesetSheetBuild,
   parseRulesetDefinition,
   rulesetBuilderPickAdded,
+  rulesetBuilderOptions,
   rulesetBuilderPicks,
   rulesetBuilderRemaining,
   type RulesetBuilderState,
@@ -134,6 +137,41 @@ try {
       applyRulesetBuilder(definition, build(definition), none, catalogsOf(definition)).build,
     );
     assert.ok(applied.includes("asi-4-strength"), "the default is written to the sheet");
+  }
+
+  // ── The default never meets a prerequisite of what replaces it ──
+  {
+    // The improvement gives Strength +1; the feat in its place asks for a Strength modifier above 0.
+    const doc = withDefault();
+    const entries = doc.catalogs.at(-1).entries;
+    entries.find((entry: any) => entry.id === "asi-4-strength").grants = { abilities: { add: { str: 1 } } };
+    entries.find((entry: any) => entry.id === "asi-4-feat").offeredWhen = { abilityMod: "str" };
+    doc.sheet.builder.steps.push({ id: "scores", label: "Scores", kind: "abilities", methods: { manual: true } });
+    const definition = parse(doc);
+    const catalogs = catalogsOf(definition);
+    const step = definition.sheet.builder!.steps[1]! as Parameters<typeof rulesetBuilderOptions>[1];
+    const made = (str: number, features: string[]) =>
+      applyRulesetBuilder(
+        definition,
+        build(definition),
+        { method: "manual", base: { str, dex: 10, con: 10, int: 10, wis: 10, cha: 10 }, picks: { features } },
+        catalogs,
+      );
+    const offeredFeat = (m: ReturnType<typeof made>) =>
+      rulesetBuilderOptions(definition, step, m.state, catalogs, m.build).some((entry) => entry.id === "asi-4-feat");
+    const improved = made(11, []);
+    assert.equal(improved.build.abilities.str, 12, "the default's +1");
+    assert.ok(!offeredFeat(improved), "Strength 12 only from the improvement the feat would drop: no feat");
+    const both = made(11, ["asi-4-strength", "asi-4-feat"]);
+    assert.deepEqual(
+      rulesetBuilderPicks(definition, "features", both.state, catalogs, both.build)
+        .map((entry) => entry.id)
+        .filter((id) => id.startsWith("asi-")),
+      ["asi-4-strength"],
+      "stored after the improvement, the feat counts for nothing and the improvement keeps its place",
+    );
+    assert.equal(both.build.abilities.str, 12, "and its +1 stays");
+    assert.ok(offeredFeat(made(12, [])), "Strength 12 of its own: the feat is offered");
   }
 
   // ── Refusals ──

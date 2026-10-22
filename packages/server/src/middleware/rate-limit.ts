@@ -115,6 +115,15 @@ export const ACCESS_LOGIN_RATE_LIMIT = {
   timeWindow: 60_000,
 } as const satisfies MarinaraRouteRateLimit;
 
+/**
+ * The sign-in pages (/login, /login/setup). Behind a proxy every browser shares one address, so this
+ * only caps volume; wrong passwords and codes have their own per-browser buckets in basic-auth.
+ */
+export const LOGIN_PAGE_RATE_LIMIT = {
+  max: 120,
+  timeWindow: 60_000,
+} as const satisfies MarinaraRouteRateLimit;
+
 /** Marinara notices; each tab asks once on load and then hourly. */
 export const MARINARA_NOTICES_RATE_LIMIT = {
   max: 10,
@@ -185,6 +194,10 @@ const ROUTE_RULES: Array<{ pattern: RegExp; rule: RateLimitRule }> = [
   {
     pattern: /^\/api\/access\/login(?:\?|$)/,
     rule: { key: "access-login", limit: ACCESS_LOGIN_RATE_LIMIT.max, windowMs: ACCESS_LOGIN_RATE_LIMIT.timeWindow },
+  },
+  {
+    pattern: /^\/login(?:\/setup)?(?:\?|$)/,
+    rule: { key: "login-page", limit: LOGIN_PAGE_RATE_LIMIT.max, windowMs: LOGIN_PAGE_RATE_LIMIT.timeWindow },
   },
   {
     pattern: /^\/api\/health(?:\?|$)/,
@@ -382,13 +395,14 @@ function sweepExpired(now: number) {
 }
 
 export function rateLimitHook(request: FastifyRequest, reply: FastifyReply, done: () => void) {
-  if (!isApiRequest(request)) return done();
   if (isE2ERateLimitDisabled) return done();
+  const rule = selectRule(request.url);
+  // Pages and assets are not throttled, except the sign-in pages that check passwords and codes.
+  if (!isApiRequest(request) && rule.key !== "login-page") return done();
 
   const now = Date.now();
   sweepExpired(now);
 
-  const rule = selectRule(request.url);
   const key = `${rule.key}:${request.ip}`;
   const bucket = buckets.get(key);
   const activeBucket = bucket && bucket.resetAt > now ? bucket : { count: 0, resetAt: now + rule.windowMs };

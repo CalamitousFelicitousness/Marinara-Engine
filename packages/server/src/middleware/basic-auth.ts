@@ -60,6 +60,7 @@
 //     .env pair wins. Browser page loads go to /login, which sets the session
 //     cookie; scripts and API clients keep sending Basic Authorization.
 
+import { LOGIN_PAGE_RATE_LIMIT } from "./rate-limit.js";
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import {
@@ -1027,22 +1028,26 @@ export async function loginRoutes(app: FastifyInstance) {
     done(null, Object.fromEntries(new URLSearchParams(body as string))),
   );
 
-  app.get<{ Querystring: { next?: string } }>("/login", async (request, reply) => {
-    const next = safeNextPath(request.query.next);
-    if (!loadConfig() || isBasicAuthSatisfied(request)) return reply.redirect(next, 302);
-    if (!cookieValue(request, PRE_AUTH_COOKIE)) {
-      const secure = isHttpsRequest(request) ? "; Secure" : "";
-      reply.header(
-        "Set-Cookie",
-        `${PRE_AUTH_COOKIE}=${randomBytes(16).toString("base64url")}; Path=/login; HttpOnly; SameSite=Lax${secure}`,
-      );
-    }
-    return sendLoginPage(reply, 200, next);
-  });
+  app.get<{ Querystring: { next?: string } }>(
+    "/login",
+    { config: { rateLimit: LOGIN_PAGE_RATE_LIMIT } },
+    async (request, reply) => {
+      const next = safeNextPath(request.query.next);
+      if (!loadConfig() || isBasicAuthSatisfied(request)) return reply.redirect(next, 302);
+      if (!cookieValue(request, PRE_AUTH_COOKIE)) {
+        const secure = isHttpsRequest(request) ? "; Secure" : "";
+        reply.header(
+          "Set-Cookie",
+          `${PRE_AUTH_COOKIE}=${randomBytes(16).toString("base64url")}; Path=/login; HttpOnly; SameSite=Lax${secure}`,
+        );
+      }
+      return sendLoginPage(reply, 200, next);
+    },
+  );
 
   app.post<{ Body: { user?: unknown; password?: unknown; code?: unknown; next?: unknown } | undefined }>(
     "/login",
-    { bodyLimit: FORM_BODY_LIMIT },
+    { bodyLimit: FORM_BODY_LIMIT, config: { rateLimit: LOGIN_PAGE_RATE_LIMIT } },
     async (request, reply) => {
       const body = request.body ?? {};
       const next = safeNextPath(body.next);
@@ -1101,7 +1106,7 @@ export async function loginRoutes(app: FastifyInstance) {
   // login from any device, for installs with no browser on the host (Docker, NAS).
   app.post<{ Body: { setupCode?: unknown; user?: unknown; password?: unknown } | undefined }>(
     "/login/setup",
-    { bodyLimit: FORM_BODY_LIMIT },
+    { bodyLimit: FORM_BODY_LIMIT, config: { rateLimit: LOGIN_PAGE_RATE_LIMIT } },
     async (request, reply) => {
       if (loadConfig()) return reply.redirect("/login", 303);
       const body = request.body ?? {};

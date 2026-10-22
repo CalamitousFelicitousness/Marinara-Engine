@@ -4,6 +4,7 @@ import {
   EXPERIENCE_FILE_IMPORT_RATE_LIMIT,
   GAME_TILE_PACKS_RATE_LIMIT,
   GAME_WORLDS_RATE_LIMIT,
+  LOGIN_PAGE_RATE_LIMIT,
   PACKAGE_UPDATE_DECLINE_RATE_LIMIT,
   PROFESSOR_MARI_QUICK_RATE_LIMIT,
   rateLimitHook,
@@ -23,6 +24,9 @@ app.post("/api/game-tile-packs/builtin/:family", async () => ({ ok: true }));
 app.post("/api/game-worlds", async () => ({ ok: true }));
 app.post("/api/game-worlds/import", async () => ({ ok: true }));
 app.post("/api/game-worlds/:id/story", async () => ({ ok: true }));
+// The sign-in pages sit outside /api but check passwords and codes, so they are throttled too.
+app.post("/login", async () => ({ ok: true }));
+app.post("/login/setup", async () => ({ ok: true }));
 
 async function hitsWallAt(urls: string[], max: number) {
   for (let request = 0; request < max; request += 1) {
@@ -47,7 +51,10 @@ try {
     ["/api/game-worlds", "/api/game-worlds/import", "/api/game-worlds/w1/story"],
     GAME_WORLDS_RATE_LIMIT.max,
   );
+  await hitsWallAt(["/login", "/login/setup?next=%2F"], LOGIN_PAGE_RATE_LIMIT.max);
 } finally {
   await app.close();
 }
-console.log("Quick answers, bulk update decline, tile packs and the world library hit their own rate limits.");
+console.log(
+  "Quick answers, bulk update decline, tile packs, the world library and the sign-in pages hit their own rate limits.",
+);

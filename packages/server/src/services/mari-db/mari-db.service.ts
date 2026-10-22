@@ -77,6 +77,7 @@ import {
   homeCustomWidgetSchema,
   normalizeLorebookCategory,
   normalizePersonalExtensionCapabilities,
+  PERSONAL_EXTENSION_FULL_PAGE_CAPABILITY,
   scopedRegexModeSchema,
   type MariDbCommandResult,
   type MariDbMutationReadBack,
@@ -5205,6 +5206,14 @@ export class MariDbService {
         serverJs: runtime === "server" && typeof row.serverJs === "string" ? row.serverJs : null,
       } as const;
     };
+    // The Settings/runtime path drops this capability for Mari's drafts while the startup trust check hashes the
+    // raw row, so a stored declaration would leave a draft whose approval is revoked on every restart.
+    const refuseFullPageAccess = (capabilities: readonly string[]) => {
+      if (capabilities.includes(PERSONAL_EXTENSION_FULL_PAGE_CAPABILITY))
+        throw new Error(
+          `Personal Extensions cannot request "${PERSONAL_EXTENSION_FULL_PAGE_CAPABILITY}"; only External Extensions can. Nothing was changed. Send "capabilities" without it and retry.`,
+        );
+    };
 
     switch (sub) {
       case "list": {
@@ -5243,6 +5252,7 @@ export class MariDbService {
           js: runtime === "client" ? (parsed.js ?? null) : null,
           serverJs: runtime === "server" ? (parsed.serverJs ?? null) : null,
         } as const;
+        refuseFullPageAccess(executable.capabilities);
         const timestamp = now();
         const id = firstString(args, ["id", "extensionId"]) ?? newId();
         const row: Row = {
@@ -5326,6 +5336,7 @@ export class MariDbService {
           js: runtime === "client" ? (parsed.js ?? null) : null,
           serverJs: runtime === "server" ? (parsed.serverJs ?? null) : null,
         } as const;
+        refuseFullPageAccess(executable.capabilities);
         const previousExecutable = executableFromRow(existing);
         const previousHash =
           typeof existing.contentHash === "string" && existing.contentHash

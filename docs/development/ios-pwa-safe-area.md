@@ -40,7 +40,7 @@ You cannot have both a glass status bar and a filled bottom. In `black` mode the
 
 ## Landscape: the camera's side insets
 
-When an iPhone is turned sideways, its camera (the notch or Dynamic Island) sits at the left or right edge. With `viewport-fit=cover` the page extends under it, and iOS reports the space as `env(safe-area-inset-left)` and `env(safe-area-inset-right)`. On Dynamic Island models that is about 59px on each side, whichever way the phone is turned. Android's app and Chrome keep pages clear of the cutout themselves, so both insets are 0 there.
+When an iPhone is turned sideways, its camera (the notch or Dynamic Island) sits at the left or right edge. With `viewport-fit=cover` the page extends under it, and iOS reports the space as `env(safe-area-inset-left)` and `env(safe-area-inset-right)`. On Dynamic Island models that is about 59px on each side, whichever way the phone is turned. Marinara's Android app (target SDK 34, not edge-to-edge) is laid out clear of the cutout, so both insets are 0 there. Other Android browsers can report non-zero insets, for example in fullscreen or edge-to-edge, and the same variables cover them.
 
 Marinara keeps out of that space the way the status-bar strip works in portrait:
 

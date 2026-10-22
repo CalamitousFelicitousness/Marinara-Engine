@@ -19942,16 +19942,20 @@ test("a phone turned sideways keeps the app out from under its camera", async ({
   });
   expect(strips.inShell).toEqual([false, false]);
   expect(strips.backing).toBe(strips.bar);
-  // Nothing of the app's own paints into them, such as its decorative stars.
-  const strayInStrips = await shell.evaluate(
-    (element) =>
-      Array.from(element.querySelectorAll<HTMLElement>("*")).filter((node) => {
+  // Nothing of the app's own paints into them, such as its decorative stars. The shell clips what flows inside
+  // it, so the elements that can reach a strip are the fixed ones, which escape that clip: none may touch either.
+  const strayInStrips = await shell.evaluate((element) =>
+    Array.from(element.querySelectorAll<HTMLElement>("*"))
+      .filter((node) => {
+        const style = getComputedStyle(node);
+        if (style.position !== "fixed" || style.visibility === "hidden" || style.opacity === "0") return false;
         const bounds = node.getBoundingClientRect();
-        // Visible boxes only: screen-reader text is a clipped 1px box.
-        return bounds.width > 1 && bounds.height > 1 && (bounds.right <= 59 || bounds.left >= 874 - 59);
-      }).length,
+        if (bounds.width <= 1 || bounds.height <= 1) return false;
+        return (bounds.left < 59 && bounds.right > 0) || (bounds.right > 874 - 59 && bounds.left < 874);
+      })
+      .map((node) => node.getAttribute("data-component") ?? node.className.toString().slice(0, 60)),
   );
-  expect(strayInStrips).toBe(0);
+  expect(strayInStrips).toEqual([]);
 
   await page.getByRole("button", { name: "Chats", exact: true }).click();
   const chatList = page.locator('[data-component="ChatSidebarPanel"]');
@@ -20009,15 +20013,19 @@ test("a phone turned sideways keeps the app out from under its camera", async ({
     await page.evaluate(() => {
       const extent = { left: Infinity, right: -Infinity };
       (window as unknown as { __detailExtent: typeof extent }).__detailExtent = extent;
-      const stopAt = performance.now() + 1200;
+      // Sample from the sheet's first frame until its entrance is long over, however long the editor takes to load.
+      const giveUpAt = performance.now() + 15_000;
+      let stopAt = Infinity;
       const sample = () => {
         const sheet = document.querySelector('[data-component="MobileDetailSheet"]');
         if (sheet) {
+          if (stopAt === Infinity) stopAt = performance.now() + 1200;
           const bounds = sheet.getBoundingClientRect();
           extent.left = Math.min(extent.left, bounds.left);
           extent.right = Math.max(extent.right, bounds.right);
         }
-        if (performance.now() < stopAt) requestAnimationFrame(sample);
+        const now = performance.now();
+        if (now < stopAt && now < giveUpAt) requestAnimationFrame(sample);
       };
       requestAnimationFrame(sample);
     });
@@ -20026,10 +20034,11 @@ test("a phone turned sideways keeps the app out from under its camera", async ({
       module.useUIStore.getState().openRegexDetail(id);
     }, regexScript.id);
     await expect(page.locator('[data-component="MobileDetailSheet"]')).toBeVisible();
-    await page.waitForTimeout(1300);
+    await page.waitForTimeout(1400);
     const detailExtent = await page.evaluate(
       () => (window as unknown as { __detailExtent: { left: number; right: number } }).__detailExtent,
     );
+    expect(Number.isFinite(detailExtent.left), "the sampler saw the sheet").toBe(true);
     expect(detailExtent.left).toBeGreaterThanOrEqual(59 - 0.5);
     expect(detailExtent.right).toBeLessThanOrEqual(874 - 59 + 0.5);
     await page.evaluate(async () => {

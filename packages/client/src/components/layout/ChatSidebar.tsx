@@ -1200,6 +1200,15 @@ export function ChatSidebar() {
             }
             await openChat(chat.id);
           }}
+          // Enter/Space go through the click handler, so multi-select and the touch-drag guard
+          // apply to the keyboard too. Keys on the badge or delete button stay theirs.
+          onKeyDown={(event) => {
+            if (event.target !== event.currentTarget) return;
+            if (event.altKey || event.ctrlKey || event.metaKey) return;
+            if (event.key !== "Enter" && event.key !== " ") return;
+            event.preventDefault();
+            event.currentTarget.click();
+          }}
           className={cn(
             "group relative isolate flex w-full touch-pan-y cursor-grab active:cursor-grabbing items-center gap-2.5 overflow-hidden rounded-lg px-3 py-2.5 text-left transition-all duration-150",
             multiSelectMode && isSelected

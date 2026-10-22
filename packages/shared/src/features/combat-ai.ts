@@ -6,6 +6,7 @@ import {
   COMBAT_MINDS,
   COMBAT_ROLES,
   COMBAT_TEMPERAMENTS,
+  COMBAT_NAMED_TEMPERAMENTS,
   combatMindWithHint,
   type CombatMind,
 } from "./combat-minds.js";
@@ -14,6 +15,7 @@ export {
   combatMindWithHint,
   COMBAT_ROLES,
   COMBAT_TEMPERAMENTS,
+  COMBAT_NAMED_TEMPERAMENTS,
   type CombatMind,
   type CombatRole,
   type CombatTemperament,
@@ -187,6 +189,7 @@ export function assignCombatTactics(
   const weighted = COMBAT_ADJECTIVES.filter(
     (a) =>
       a !== "mindless" &&
+      (!(COMBAT_NAMED_TEMPERAMENTS as readonly string[]).includes(a) || hints.temperament === a) &&
       (a !== "supportive" || support || role === "supporter") &&
       (minded !== "instinct" || INSTINCT_ADJECTIVES.includes(a)),
   ).map((adjective) => ({
@@ -299,16 +302,24 @@ export function rankCombatCandidates<T>(
   const adjective = profile.adjective;
   const wounded = unit.hp / Math.max(1, unit.maxHp) < 0.35;
   const weights = {
-    damage: adjective === "reckless" ? 2 : 1,
+    // A fanatic (T2) gives no thought to its own skin, as a reckless one does.
+    damage: adjective === "reckless" || adjective === "fanatical" ? 2 : 1,
     finish: adjective === "opportunistic" ? 3 : 0.5,
     healing: adjective === "supportive" ? 4 : adjective === "reckless" ? 0.4 : 1.5,
     support: adjective === "supportive" ? 1.2 : 0.35,
     setup: adjective === "methodical" ? 1.6 : 0.2,
     risk:
-      adjective === "reckless" ? 0.05 : adjective === "cautious" ? 2 : adjective === "cowardly" && wounded ? 5 : 0.6,
+      adjective === "reckless" || adjective === "fanatical"
+        ? 0.05
+        : adjective === "cautious"
+          ? 2
+          : adjective === "cowardly" && wounded
+            ? 5
+            : 0.6,
     cost: adjective === "reckless" ? 0 : adjective === "cautious" ? 0.6 : 0.2,
-    protection: adjective === "protective" ? 2 : 0,
-    coordination: adjective === "coordinated" ? 1.5 : 0,
+    protection: adjective === "protective" ? 2 : adjective === "fanatical" ? 1 : 0,
+    // A disciplined one keeps formation (T1): it goes where its side is going.
+    coordination: adjective === "coordinated" ? 1.5 : adjective === "disciplined" ? 1 : 0,
     focus: 1,
   };
   // What it is bends how it weighs things. A mindless creature knows only to hit; an animal drags down
@@ -355,6 +366,8 @@ export function rankCombatCandidates<T>(
   if (orders?.heal) {
     weights.healing *= 2.5;
     weights.support *= 2;
+    // Healing first comes before joining its side's attack.
+    weights.coordination = Math.min(weights.coordination, 0.35);
   }
   if (orders?.spare) weights.finish = 0;
   if (orders?.posture === "back") weights.risk = Math.max(weights.risk, 2.5);

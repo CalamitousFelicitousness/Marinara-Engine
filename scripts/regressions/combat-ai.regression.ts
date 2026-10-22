@@ -541,4 +541,32 @@ assert.equal(
   assert.ok(drawn.has("supportive"));
   assert.equal(assignCombatTactics(actor("priest"), 7, "tactical", "supporter").role, "supporter");
   assert.equal(assignCombatTactics({ ...actor("boss"), boss: { points: 3 } } as never, 7).role, "solo");
+  // A fanatic (T2) only where the story names one: never dealt by chance.
+  const dealt = new Set(
+    Array.from({ length: 200 }, (_, seed) => assignCombatTactics(actor("cultist"), seed).adjective),
+  );
+  assert.ok(!dealt.has("fanatical"));
+  const zealots = Array.from(
+    { length: 40 },
+    (_, seed) =>
+      assignCombatTactics({ ...actor("zealot"), aiHints: { temperament: "fanatical" } } as never, seed).adjective,
+  );
+  assert.ok(zealots.includes("fanatical"));
+  // A fanatic hits as hard as it can whatever it stands in; a disciplined one goes where its side does.
+  const risky = [
+    { action: "safe", targetId: "a", damage: 0.4 },
+    { action: "exposed", targetId: "a", damage: 0.6, risk: 0.5 },
+  ];
+  const as2 = (adjective: CombatTactics["adjective"]) => ({
+    ...actor(`t-${adjective}`),
+    tactics: { ...assignCombatTactics(actor(`t-${adjective}`), 7, "tactical"), role: "bruiser" as const, adjective },
+  });
+  assert.equal(chooseCombatCandidate(as2("cautious"), risky, 1), "safe");
+  assert.equal(chooseCombatCandidate(as2("fanatical"), risky, 1), "exposed");
+  const formation = [
+    { action: "alone", targetId: "a", damage: 0.5 },
+    { action: "together", targetId: "b", damage: 0.4, coordination: 0.3 },
+  ];
+  assert.equal(chooseCombatCandidate(as2("opportunistic"), formation, 1), "alone");
+  assert.equal(chooseCombatCandidate(as2("disciplined"), formation, 1), "together");
 }

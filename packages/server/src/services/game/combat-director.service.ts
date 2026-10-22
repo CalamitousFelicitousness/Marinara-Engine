@@ -348,7 +348,8 @@ export function createCombatDirector(input: {
  * more for a leader. None for a boss, whose story decides when it gives up, nor for the mindless.
  */
 function moraleScore(u: Combatant): number | undefined {
-  if (u.boss || u.tactics?.mind === "mindless") return undefined;
+  // Nor for a fanatic (combat AI T2), who never breaks.
+  if (u.boss || u.tactics?.mind === "mindless" || u.tactics?.adjective === "fanatical") return undefined;
   if (u.aiHints?.morale !== undefined) return u.aiHints.morale;
   const mind = u.tactics?.mind ?? "tactical";
   const base = mind === "instinct" || mind === "cunning" ? 7 : mind === "genius" ? 9 : 8;

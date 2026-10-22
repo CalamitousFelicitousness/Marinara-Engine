@@ -785,6 +785,15 @@ export function syncRulesetCombatants(definition: RulesetDefinition, state: Comb
     const unit = units.get(combatant.id);
     if (!unit) continue;
     rulesetReadRole(definition, unit, combatant, fight.encounter);
+    // The temperament it is played with, for the rules' morale (combat AI T1, T2).
+    const temperament =
+      unit.tactics?.mind === "mindless"
+        ? undefined
+        : (unit.aiHints?.temperament ??
+          rulesetCombatantBehavior(definition, combatant)?.temperament ??
+          unit.tactics?.adjective);
+    if (temperament) combatant.temperament = temperament;
+    else delete combatant.temperament;
     // Who plays a party member, as the fight has it: what the party panel shows.
     if (combatant.side === "party")
       unit.controller = rulesetController(state, fight, combatant) === "ai" ? "ai" : "manual";
@@ -3488,6 +3497,8 @@ function weighRulesetLeadership(
     return;
   }
   if (actor.side === "party") return;
+  const disciplined =
+    [...state.party, ...state.enemies].find((one) => one.id === actor.id)?.tactics?.adjective === "disciplined";
   const leader = encounter.combatants.find(
     (one) => one.side === actor.side && one.id !== actor.id && rulesetLeads(one) && rulesetCombatStanding(one),
   );
@@ -3506,7 +3517,8 @@ function weighRulesetLeadership(
   if (!marked) return;
   for (const candidate of candidates)
     if (candidate.targetId === marked && ((candidate.damage ?? 0) > 0 || (candidate.setup ?? 0) > 0))
-      candidate.focus = (candidate.focus ?? 0) + 0.3;
+      // A disciplined one carries out its leader's choice (combat AI T1).
+      candidate.focus = (candidate.focus ?? 0) + (disciplined ? 0.6 : 0.3);
 }
 
 /**

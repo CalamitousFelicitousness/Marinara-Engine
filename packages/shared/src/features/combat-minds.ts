@@ -31,8 +31,13 @@ export const COMBAT_TEMPERAMENTS = [
   "patient",
   "methodical",
   "coordinated",
+  // Never dealt by chance: only where its data or the story names it (combat AI T2, 1.725).
+  "fanatical",
 ] as const;
 export type CombatTemperament = (typeof COMBAT_TEMPERAMENTS)[number];
+/** The temperaments a combatant has only where its data or the story names them, never dealt by
+ *  chance: a fanatic never breaks (combat AI T2). */
+export const COMBAT_NAMED_TEMPERAMENTS: readonly CombatTemperament[] = ["fanatical"];
 
 /** What a combatant is for in a fight. */
 export const COMBAT_ROLES = [

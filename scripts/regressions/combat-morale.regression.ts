@@ -72,6 +72,13 @@ const keys = (s: CombatDirectorState) => s.log.flatMap((entry) => (entry.message
   assert.equal(s.morale?.zombie?.score, undefined, "the mindless never break");
   assert.equal(s.morale?.chief?.score, undefined, "a boss gives up when its story says so");
   assert.equal(s.morale?.chief?.leader, true, "a boss is followed");
+  const zealot = fight([unit("zealot", "enemy", { tactics: undefined, aiHints: { morale: 4 } })]);
+  zealot.enemies[0]!.tactics!.adjective = "fanatical";
+  assert.equal(
+    fight([{ ...unit("z", "enemy"), tactics: { ...zealot.enemies[0]!.tactics! } } as Combatant]).morale?.z?.score,
+    undefined,
+    "a fanatic never breaks",
+  );
   const wolf = s.morale?.wolf?.score;
   assert.ok(wolf !== undefined && wolf >= 4 && wolf <= 9, `an animal's nerve is its nature: ${wolf}`);
 }

@@ -18287,6 +18287,8 @@ function moraleTurn(ctx: RulesetCombatContext, actor: RulesetCombatant): boolean
   if (!morale) return false;
   const mind = rulesetCombatantMind(ctx.definition, actor) ?? "tactical";
   if (mind === "mindless") return false;
+  // A fanatic never loses heart (combat AI T2).
+  if (actor.temperament === "fanatical") return false;
   if (morale.unlessImmune && rulesetImmuneToCondition(actor, morale.unlessImmune, ctx.definition, ctx.state))
     return false;
   const side = ctx.state.combatants.filter(
@@ -18330,6 +18332,8 @@ function moraleTurn(ctx: RulesetCombatContext, actor: RulesetCombatant): boolean
   };
   for (const trigger of morale.on) {
     if (actor.moraleChecked?.includes(trigger) || !happened(trigger)) continue;
+    // A disciplined one is not shaken by the first of its side to fall (combat AI T1).
+    if (trigger === "first-fall" && actor.temperament === "disciplined") continue;
     actor.moraleChecked = [...(actor.moraleChecked ?? []), trigger];
     const check = morale.check;
     let roll: number | undefined;

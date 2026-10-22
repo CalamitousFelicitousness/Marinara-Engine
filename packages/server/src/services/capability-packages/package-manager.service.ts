@@ -2842,6 +2842,16 @@ function carriesBehavior710(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesBehavior710(one, depth + 1));
 }
 
+/** A fanatic (1.725): a behavior whose `temperament` is `fanatical`. */
+function carriesFanatical725(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesFanatical725(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.behavior)?.temperament === "fanatical") return true;
+  return featureValues(record).some((one) => carriesFanatical725(one, depth + 1));
+}
+
 /** A bodyguard (1.724): a behavior with `guards`. */
 function carriesGuards724(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -9412,6 +9422,12 @@ export function getCapabilityPackageInstallIssue(
     }),
   );
   // A creature that fights a side alone, 1.723.
+  if (
+    !declaresApi(725) &&
+    (carriesFanatical725(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesFanatical725(document)))
+  )
+    return 'A ruleset with a fanatic (a behavior whose temperament is "fanatical") requires schemaVersion 2 and capabilityApi 1.725 or newer';
   if (
     !declaresApi(724) &&
     (carriesGuards724(ruleset) ||

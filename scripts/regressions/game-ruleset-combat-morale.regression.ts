@@ -176,6 +176,25 @@ try {
     assert.equal(rulesetCombatant(state, "gob")!.routed, undefined);
     assert.equal(morale(endTurn(definition, first.state, 6).events).length, 0, "not asked again");
 
+    // A fanatic never checks (combat AI T2); a disciplined one shrugs off the first of its side to
+    // fall, but not half of it (T1).
+    const zealous = fight(definition, {
+      gob: { block: block({ morale: 7 }), at: { x: 6, y: 4 } },
+      dead: { block: block(), at: { x: 9, y: 5 }, health: 0 },
+    });
+    rulesetCombatant(zealous, "gob")!.temperament = "fanatical";
+    assert.equal(morale(endTurn(definition, zealous, 6).events).length, 0, "a fanatic");
+    const steady = fight(definition, {
+      gob: { block: block({ morale: 7 }), at: { x: 6, y: 4 } },
+      dead: { block: block(), at: { x: 9, y: 5 }, health: 0 },
+    });
+    rulesetCombatant(steady, "gob")!.temperament = "disciplined";
+    assert.deepEqual(
+      morale(endTurn(definition, steady, 6).events).map((event) => event.trigger),
+      ["half-down"],
+      "a disciplined one",
+    );
+
     // Nothing has happened yet: no check. No morale score and none in the ruleset: no check.
     assert.equal(
       morale(

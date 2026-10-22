@@ -322,7 +322,8 @@ try {
         near: { side: "party", block: block([smash]), at: { x: 8, y: 2 } },
         onMage: { side: "party", block: block([smash]), at: { x: 2, y: 7 } },
       });
-    const free = scene();
+    // Patient, so not drawn to whoever stands beside its friends as a disciplined one is (T1).
+    const free = scene({ temperament: "patient" });
     assert.equal(pickRulesetChoice(definition, free.state, free.encounter, "guard")?.choice.targetIds[0], "near");
     const kept = scene({ guards: ["casters"] });
     assert.equal(
@@ -339,7 +340,7 @@ try {
       "a mindless guard too",
     );
     // Nobody of the kind it keeps: it fights as it would.
-    const alone = scene({ guards: ["healers"] });
+    const alone = scene({ guards: ["healers"], temperament: "patient" });
     assert.equal(pickRulesetChoice(definition, alone.state, alone.encounter, "guard")?.choice.targetIds[0], "near");
   }
 
@@ -735,6 +736,11 @@ try {
     const guardish = fiveE((doc) => (lurkerEntry(doc).behavior = { guards: ["casters"] }));
     assert.equal(getCapabilityPackageInstallIssue(manifest(723) as never, guardish), guarding);
     assert.notEqual(getCapabilityPackageInstallIssue(manifest(724) as never, guardish), guarding);
+    const fanatic =
+      'A ruleset with a fanatic (a behavior whose temperament is "fanatical") requires schemaVersion 2 and capabilityApi 1.725 or newer';
+    const zealous = fiveE((doc) => (lurkerEntry(doc).behavior = { temperament: "fanatical" }));
+    assert.equal(getCapabilityPackageInstallIssue(manifest(724) as never, zealous), fanatic);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(725) as never, zealous), fanatic);
     refused(
       fiveE((doc) => (lurkerEntry(doc).behavior = { guards: ["casters", "casters"] })),
       /Name each once/,
@@ -742,7 +748,7 @@ try {
   }
 
   console.log(
-    "Combat behavior: merged from the ruleset, the type and the creature; its temperament and role; casters, attackers and a pack's prey first; its opener once; an ambusher keeps still and springs; roles read off what it does; bodyguards stay by their charge; a leader rallies; refused and gated at 1.710, 1.723 and 1.724.",
+    "Combat behavior: merged from the ruleset, the type and the creature; its temperament and role; casters, attackers and a pack's prey first; its opener once; an ambusher keeps still and springs; roles read off what it does; bodyguards stay by their charge; a leader rallies; refused and gated at 1.710, 1.723, 1.724 and 1.725.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

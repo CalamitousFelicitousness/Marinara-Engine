@@ -2455,6 +2455,10 @@ export interface RulesetCombatant {
   madeFor?: Record<string, Array<{ rounds: number; count: number }>>;
   /** What has set off a morale check of theirs already (1.709), each checked once. */
   moraleChecked?: RulesetMoraleTrigger[];
+  /** The temperament the Engine plays them with, kept here for the rules' own morale checks (combat
+   *  AI T1, T2): a fanatic never checks, a disciplined one is not shaken by the first of its side to
+   *  fall. Never read for anything else. */
+  temperament?: string;
   /** Broken and running (1.709): out of the fight as a turn of theirs starts at the board's edge. */
   routed?: true;
   /** The side they fight on of their own, while something that `controls` them has them on another

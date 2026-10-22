@@ -134,6 +134,7 @@ try {
     orders?: CombatOrders,
     events: unknown[] = [],
     before?: (e: RulesetEncounterState) => void,
+    adjective: "disciplined" | "patient" = "disciplined",
   ) => {
     const { encounter, state } = fight(blocks, events);
     const mira = state.party.find((one) => one.id === "mira")!;
@@ -144,7 +145,7 @@ try {
       proficiency: "master",
       // What its actions make it, so its pinned temperament is not drawn again for another role.
       role: rulesetCombatantRole(rulesetCombatant(encounter, "mira")!, definition, encounter),
-      adjective: "disciplined",
+      adjective,
     };
     if (orders) mira.orders = orders;
     before?.(encounter);
@@ -161,7 +162,13 @@ try {
 
   // ── Guarding the leader, its default ──
   assert.equal(pick(field())?.targetId, "orc", "by default the one on the leader");
-  assert.equal(pick(field(), { posture: "hold" })?.targetId, "goblin", "left to itself, the frail one");
+  assert.equal(
+    pick(field(), { posture: "hold" }, [], undefined, "patient")?.targetId,
+    "goblin",
+    "left to itself, the frail one",
+  );
+  // A disciplined one (combat AI T1) keeps formation: it joins the leader on the orc.
+  assert.equal(pick(field(), { posture: "hold" })?.targetId, "orc", "a disciplined one joins its side");
 
   // ── Follow and protect ──
   {

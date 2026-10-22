@@ -1286,9 +1286,10 @@ export async function sceneRoutes(app: FastifyInstance) {
 
     // With no preset picked for the scene, the opening follows the writing rules the scene chat will use: the prompt
     // preset of the starred Roleplay settings profile, which /scene/create applies.
-    const starredProfile = preset ? null : starredRoleplayProfile;
     const profilePresetId =
-      starredProfile && !starredProfile.isDefault ? (starredProfile.settings.promptPresetId ?? null) : null;
+      !preset && starredRoleplayProfile && !starredRoleplayProfile.isDefault
+        ? (starredRoleplayProfile.settings.promptPresetId ?? null)
+        : null;
     const writingPreset = preset ?? (profilePresetId ? await prompts.getById(profilePresetId) : null);
     if (writingPreset) {
       const writingChoiceBlocks = preset ? choiceBlocks : await prompts.listChoiceBlocksForPreset(writingPreset.id);

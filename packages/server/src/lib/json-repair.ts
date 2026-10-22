@@ -38,9 +38,9 @@ function closeOpenJsonContainers(raw: string): string | null {
 /**
  * Models often write dialogue in plain quotes inside a JSON string ("firstMessage": ""Hi," she says.",). When each
  * property sits on its own line, every quote between a string value's opening and closing quote belongs to the text,
- * so it is escaped. Only a `"key": "value"` line that isn't valid on its own is touched, so a valid line (even one
- * holding two properties) is never merged into one value, and a value that runs on into another property (`, "key":`)
- * is left for jsonrepair, which keeps both properties.
+ * so it is escaped. Only a `"key": "value"` line that isn't valid on its own is touched, so a valid line is never
+ * merged into one value; a broken line holding several properties is split at each `, "key":` and each value is
+ * escaped on its own.
  */
 function escapeQuotesInsideLineValues(raw: string): string {
   const validProperties = (line: string) => {
@@ -51,28 +51,38 @@ function escapeQuotesInsideLineValues(raw: string): string {
       return false;
     }
   };
-  // A value runs on into another property only where what follows a comma parses as properties of its own.
-  const runsIntoAnotherProperty = (valueWithClose: string) => {
-    const boundary = /,\s*(?="[^"\n]+"\s*:)/u.exec(valueWithClose);
-    return boundary !== null && validProperties(valueWithClose.slice(boundary.index + 1));
-  };
+  const escapeValue = (property: string) =>
+    property.replace(
+      /^(\s*"[^"\n]+"\s*:\s*")(.*)("\s*,?\s*)$/u,
+      (_: string, open: string, value: string, close: string) => `${open}${value.replace(/(?<!\\)"/gu, '\\"')}${close}`,
+    );
   return raw
     .split("\n")
     .map((line) =>
       validProperties(line)
         ? line
-        : line.replace(
-            /^(\s*"[^"\n]+"\s*:\s*")(.*)("\s*,?\s*)$/u,
-            (match: string, open: string, value: string, close: string) =>
-              runsIntoAnotherProperty(`${value}${close}`)
-                ? match
-                : `${open}${value.replace(/(?<!\\)"/gu, '\\"')}${close}`,
-          ),
+        : line
+            .split(/,(?=\s*"[^"\n]+"\s*:)/u)
+            .map(escapeValue)
+            .join(","),
     )
     .join("\n");
 }
 
-/** Whether every object key in `json` appears as a quoted key (`"key":`) in `text`, so none was made up from prose. */
+/** Every key written as a quoted key (`"key":`) in `text`, decoded as JSON reads it. */
+function quotedKeysIn(text: string): Set<string> {
+  const keys = new Set<string>();
+  for (const match of text.matchAll(/"((?:[^"\\\n]|\\.)*)"\s*:/gu)) {
+    try {
+      keys.add(JSON.parse(`"${match[1]}"`) as string);
+    } catch {
+      // Not a valid JSON string; it can't be a key jsonrepair kept either.
+    }
+  }
+  return keys;
+}
+
+/** Whether every object key in `json` was a quoted key in `text`, so none was made up from prose. */
 function keysAreFromText(json: string, text: string): boolean {
   const keys = (value: unknown): string[] =>
     Array.isArray(value)
@@ -81,9 +91,8 @@ function keysAreFromText(json: string, text: string): boolean {
         ? Object.entries(value).flatMap(([key, item]) => [key, ...keys(item)])
         : [];
   try {
-    return keys(JSON.parse(json)).every((key) =>
-      new RegExp(`${JSON.stringify(key).replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}\\s*:`, "u").test(text),
-    );
+    const written = quotedKeysIn(text);
+    return keys(JSON.parse(json)).every((key) => written.has(key));
   } catch {
     return false;
   }

@@ -123,6 +123,21 @@ try {
       name: "x",
     });
   }
+  // Two properties on one broken line, either one holding dialogue quotes: each keeps its own value.
+  assert.deepEqual(tryParseJsonRecord('{\n  "name": "Scene: Return", "firstMessage": ""Hi," she says."\n}'), {
+    name: "Scene: Return",
+    firstMessage: '"Hi," she says.',
+  });
+  assert.deepEqual(tryParseJsonRecord('{\n  "firstMessage": ""Hi," she says.", "name": "Scene: Return"\n}'), {
+    firstMessage: '"Hi," she says.',
+    name: "Scene: Return",
+  });
+  // A key written with an escape (first\u004dessage) counts as the key it reads as.
+  assert.deepEqual(tryParseJsonRecord('{\n  "first\\u004dessage": "Hello", "name": "x" "role": "assistant"\n}'), {
+    firstMessage: "Hello",
+    name: "x",
+    role: "assistant",
+  });
   // A missing comma between real properties is jsonrepair's to fix; nothing is merged into one value.
   assert.deepEqual(tryParseJsonRecord('{\n  "firstMessage": "Hello", "name": "x" "role": "assistant"\n}'), {
     firstMessage: "Hello",

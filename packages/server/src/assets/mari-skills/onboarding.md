@@ -77,6 +77,9 @@ false for those answers — say which.
    sentence. Checked the other way round, the update reports every such question as unused,
    because the card text it is checked against does not carry the `{{name}}` yet. With no
    character questions, skip the card patch.
+   When the output limit is small (your workspace rules say so, or a reply was cut at it), send the card patch and the block in separate replies, the patch first, and the block
+   only once the patch has applied (its `readBack`, or the user's Accept when it is held). The block
+   itself cannot go in parts, since each question list you send replaces the whole list: keep it short.
 6. **Write with `apply: true`** and a one-sentence `reason` that says what the player gets ("Players
    build their newcomer with a few questions when a chat starts"). The result is a change card the
    user reviews; the template itself is not applied to any existing chat. Report the shape in one or

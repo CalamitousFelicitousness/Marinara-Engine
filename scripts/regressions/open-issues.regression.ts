@@ -6993,7 +6993,9 @@ const markdownMessageStyles = [...globalStyles.matchAll(/^\.mari-message-content
 const markdownMessageContainerStyles =
   globalStyles.match(/\.mari-message-body,\s*\.mari-message-bubble \{[\s\S]*?\}/u)?.[0] ?? "";
 const markdownCodeBlockStyles =
-  globalStyles.match(/\.mari-message-content \.mari-md-codeblock \{[\s\S]*?\}/u)?.[0] ?? "";
+  globalStyles.match(/^\.mari-message-content \.mari-md-codeblock \{[^{}]*\}/mu)?.[0] ?? "";
+const markdownCodeChildStyles =
+  globalStyles.match(/^\.mari-message-content \.mari-md-codeblock code \{[^{}]*\}/mu)?.[0] ?? "";
 assert.match(markdownMessageStyles, /min-width:\s*0;/u);
 assert.match(markdownMessageStyles, /max-width:\s*100%;/u);
 assert.match(markdownMessageStyles, /overflow-wrap:\s*anywhere;/u);
@@ -7002,11 +7004,13 @@ assert.match(markdownMessageContainerStyles, /max-width:\s*100%;/u);
 assert.match(markdownCodeBlockStyles, /box-sizing:\s*border-box;/u);
 assert.match(markdownCodeBlockStyles, /width:\s*100%;/u);
 assert.match(markdownCodeBlockStyles, /max-width:\s*100%;/u);
-assert.match(markdownCodeBlockStyles, /overflow-x:\s*auto;/u);
-assert.match(
-  globalStyles,
-  /@media \(max-width: 767px\) \{[\s\S]*?\.mari-message-content \.mari-md-codeblock \{[\s\S]*?overflow-x:\s*hidden;[\s\S]*?white-space:\s*pre-wrap;/u,
-);
+assert.match(markdownCodeBlockStyles, /overflow-x:\s*hidden;/u);
+assert.match(markdownCodeBlockStyles, /overflow-wrap:\s*anywhere;/u);
+assert.match(markdownCodeBlockStyles, /white-space:\s*pre-wrap;/u);
+assert.match(markdownCodeChildStyles, /white-space:\s*inherit;/u);
+for (const media of globalStyles.matchAll(/^@media \(max-width: 767px\) \{[\s\S]*?^\}/gmu)) {
+  assert.doesNotMatch(media[0], /\.mari-message-content \.mari-md-codeblock\b/u);
+}
 assert.match(localNotificationsSource, /window\.isSecureContext === false/u);
 assert.match(localNotificationsSource, /NotificationPermission \| "insecure" \| "unsupported"/u);
 const browserNotificationHelpSource =

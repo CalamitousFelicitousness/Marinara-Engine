@@ -900,7 +900,7 @@ export function workspaceCommandKnowledgePrompt() {
 - Put write fields in \`data\` for creates and \`patch\` for updates. Use \`entryId\` for \`lorebook.updateEntry\`; use \`lorebookId\` only for a lorebook or for \`lorebook.addEntry\`.
 - Updates are patches: send only the changed fields and keep every other field as it was. Read the entity back. Claim completion only when every requested value matches.
 - New creates: use \`apply:true\` immediately for \`character.create\`, \`persona.create\`, \`lorebook.create\`, \`lorebook.addEntry\`, \`agent.create\`, \`preset.create\`, and \`theme.create\` when the user asked you to create it. The result's \`readBack\` confirms persistence; read back only when you need the created ids or content for the next step.
-- Lorebooks: read skill \`builtin-lorebook\` with \`skill.get\` BEFORE you create a book or entries, change an activation field, or explain why an entry fires too often or never. Only \`position\` \`0\` (or negative), \`1\`, \`2\` and \`7\` inject; any other number silently injects nothing — and a text edit leaves the stored vector describing the old text until the user re-vectorizes. Then save the entries with the book in one \`lorebook.create\`, read with \`lorebook.entries\` (follow \`nextOffset\`) and \`lorebook.getEntry\`, write updates with \`apply:true\`, and diagnose activation with \`lorebook.testScan\`.
+- Lorebooks: read skill \`builtin-lorebook\` with \`skill.get\` BEFORE you create a book or entries, change an activation field, or explain why an entry fires too often or never. Only \`position\` \`0\` (or negative), \`1\`, \`2\` and \`7\` inject; any other number silently injects nothing — and a text edit leaves the stored vector describing the old text until the user re-vectorizes. Then save the entries with the book in one \`lorebook.create\` (on a small output limit, the first entries, then one \`lorebook.addEntry\` per reply), read with \`lorebook.entries\` (follow \`nextOffset\`) and \`lorebook.getEntry\`, write updates with \`apply:true\`, and diagnose activation with \`lorebook.testScan\`.
 - Lorebook folders are two things: \`lorebook.folder.*\` (with \`lorebookId\`; \`parentFolderId\` only for a nested folder) organizes entries inside one book, while \`lorebook.libraryFolder.*\` is the main Lorebooks panel.
 - Reply diagnosis and repair: read skill \`builtin-repair\` with \`skill.get\` before you diagnose a bad reply (cut off, empty, a character who forgets or ignores their card) or fix one. Never present a hand-written "corrected" reply as text: \`chat.updateMessage\` is the only repair path and it adds a swipe. The skill has the diagnose-first order, the finding codes and the repair rules.
 - Deleting a lorebook entry: use \`lorebook.deleteEntry\` with the entry's \`entryId\` and \`apply:true\` — it removes that one entry and shows a change card. NEVER delete a lorebook entry with a raw \`mari db delete\`: its \`--where\` selector can match and permanently remove far more rows than you intend. If a raw \`mari db delete\` is ever unavoidable, dry-run it first (omit \`--apply\`) and confirm the exact affected-row count before applying.
@@ -929,8 +929,20 @@ export function workspaceCommandKnowledgePrompt() {
 `;
 }
 
+/** At or under this output limit a large write is cut mid-call, so both runtime prompts ask for smaller calls up front. */
+export const SMALL_OUTPUT_LIMIT_TOKENS = 4096;
+
+/** The rule line that states a small limit; the knowledge block's "on a small output limit" clauses lean on it. */
+function smallOutputLimitRule(maxOutputTokens?: number) {
+  // Only for small limits: a strong model told to fragment makes needless extra calls.
+  return maxOutputTokens !== undefined && maxOutputTokens <= SMALL_OUTPUT_LIMIT_TOKENS
+    ? `
+- This connection's output limit is small (${maxOutputTokens} tokens per reply). Split a large write into several calls, one per reply: create with the essentials, then add the rest with updates.`
+    : "";
+}
+
 /** The pi runtime's workspace rules: the shared knowledge block plus a note that maps the JSON-frame words to native calls. */
-export function piRuntimePrompt() {
+export function piRuntimePrompt(maxOutputTokens?: number) {
   return `<workspace_tools>
 You work through native tool calls. Wherever the rules below say \`say\`, write ordinary assistant text; wherever they say \`commands\`, call the tools. There is no JSON frame, no \`stop\` and no \`awaitingAuthorization\` field.
 Write your words as plain assistant text: never wrap them in tags such as \`<say>\`, \`<commands>\`, \`<suggestions>\` or \`<plan>\`, and never write a tool call as a tag — a tool call is a call, not text.
@@ -943,13 +955,13 @@ Write your words as plain assistant text: never wrap them in tags such as \`<say
 - Use \`plan\` ONLY when a create/edit request is vague ("make me a character" with no details): return the WHOLE plan in one call, an ordered list of the natural fields, each with 3-5 example-answer chips. For a vague edit, read the item first, then offer 2-4 concrete directions as \`suggestions\`. A named subject ("a lorebook for my pirate world") is enough detail. Prefer one \`plan\` to asking turn by turn: the client walks the plan with no further calls from you, then sends you one summary of all the answers to act on. If the request already has enough detail, skip \`plan\` and do the work — after reading that surface's skill.
 - Do not mention tapping, clicking, chips, quick replies or buttons unless you call \`suggestions\` or \`plan\` in the same turn.
 - If you say you will do something, make the tool call in the same turn; a turn with no tool call ends the run.
-- Finish by answering in text with no tool call.
+- Finish by answering in text with no tool call.${smallOutputLimitRule(maxOutputTokens)}
 
 ${workspaceCommandKnowledgePrompt()}
 </workspace_tools>`;
 }
 
-export function workspaceCommandProtocolPrompt() {
+export function workspaceCommandProtocolPrompt(maxOutputTokens?: number) {
   const toolDocs = WORKSPACE_TOOL_DEFINITIONS.map(
     (tool) => `- ${tool.name}: ${tool.description}\n  JSON arguments: ${JSON.stringify(tool.parameters)}`,
   ).join("\n");
@@ -988,7 +1000,7 @@ Field rules:
 - If you say you will do workspace/app-data work, include the command in the same JSON object.
 - Immediately after you successfully create or update something, offer 2-4 follow-up suggestions for a natural next step: refine a field, link it to something else, or open it for full editing. Lean toward refining or connecting what already exists rather than making new items — unless the user's task is itself about creating (for example, they asked you to help build a lorebook), in which case suggesting the next thing to create is welcome. Tag each with the relevant entity.
 - Do not mention tapping, clicking, choosing chips, quick replies, buttons, or examples unless \`suggestions\` or \`plan\` is present in the same JSON object. If you want the user to answer in plain chat, ask directly without referring to UI controls.
-- For vague create/edit requests, prefer one \`plan\` instead of interrogating the user turn by turn. Use \`suggestions\` only for simple quick replies or follow-up next steps, not as a hidden substitute for a guided plan.
+- For vague create/edit requests, prefer one \`plan\` instead of interrogating the user turn by turn. Use \`suggestions\` only for simple quick replies or follow-up next steps, not as a hidden substitute for a guided plan.${smallOutputLimitRule(maxOutputTokens)}
 
 ${workspaceCommandKnowledgePrompt()}
 Examples:
@@ -1368,6 +1380,16 @@ function normalizeCatalogProvider(provider: string): APIProvider | null {
 
 export function isLocalSidecarConnection(connection: WorkspaceConnection): boolean {
   return connection.isLocalSidecar === true || connection.id === LOCAL_SIDECAR_CONNECTION_ID;
+}
+
+/** The output limit Mari works under: the connection's Max Output Tokens while it is sent, else the model's known limit. */
+export function mariMaxOutputTokens(connection: WorkspaceConnection) {
+  const defaultParameters = parseJsonObject(connection.defaultParameters);
+  // A value the send map switches off never reaches the provider, so it is not the limit.
+  const sent = normalizeGenerationParameterSendMap(defaultParameters?.enabledParameters)?.maxTokens !== false;
+  return (
+    (sent ? normalizeMariMaxTokens(defaultParameters?.maxTokens) : undefined) ?? resolveMariMaxOutputTokens(connection)
+  );
 }
 
 function resolveMariMaxOutputTokens(connection: WorkspaceConnection) {
@@ -4524,7 +4546,10 @@ export class ProfessorMariWorkspaceService {
       { role: "system", content: MARI_SYSTEM_PROMPT, contextKind: "prompt" },
       {
         role: "system",
-        content: runtime === "pi" ? piRuntimePrompt() : workspaceCommandProtocolPrompt(),
+        content:
+          runtime === "pi"
+            ? piRuntimePrompt(mariMaxOutputTokens(connection))
+            : workspaceCommandProtocolPrompt(mariMaxOutputTokens(connection)),
         contextKind: "prompt",
       },
       { role: "system", content: workspaceInfo, contextKind: "prompt" },
@@ -4764,7 +4789,7 @@ export class ProfessorMariWorkspaceService {
     return {
       model: connection.model,
       temperature: typeof defaultParameters?.temperature === "number" ? defaultParameters.temperature : 0.2,
-      maxTokens: normalizeMariMaxTokens(defaultParameters?.maxTokens) ?? resolveMariMaxOutputTokens(connection),
+      maxTokens: mariMaxOutputTokens(connection),
       maxContext: connection.maxContext,
       enableCaching: bool(connection.enableCaching),
       anthropicExtendedCacheTtl: bool(connection.anthropicExtendedCacheTtl),

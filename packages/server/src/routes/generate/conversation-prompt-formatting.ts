@@ -119,10 +119,34 @@ export function conversationPromptHistoryContent(
 
 const SENT_SELFIE_DESCRIPTION_MAX_CHARS = 600;
 
-// Bracketed cues ("[Shot 1: close-up]", "[cut to window]") would nest inside the note's own brackets.
-const BRACKETED_CUE_RE = /\[[^\]\n]*\]/gu;
-// A field label starts a line ("overall_soundscape: …"); a word_word: inside a sentence is left alone.
-const FIELD_LABEL_RE = /^\s*[a-z]+(?:_[a-z]+)+\s*:/gimu;
+// A field label starts a line ("camera: …", "shot_1: …", "OVERALL_SOUNDSCAPE: …"); a word_word: inside a sentence, a
+// name ("Ana: …") and a link ("https://…") are left alone.
+const FIELD_LABEL_RE = /^[ \t]*(?:[a-z][a-z0-9]*(?:_[a-z0-9]+)*|[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+)[ \t]*:(?!\/\/)/gmu;
+
+/**
+ * Bracketed cues ("[Shot 1: close-up]", "[cut to window]") would nest inside the note's own brackets, so every
+ * bracketed span goes, nested ones too, and a cue that never closes runs to the end of its line. One pass, so a run of
+ * brackets can't make it slow.
+ */
+function stripBracketedCues(text: string): string {
+  let out = "";
+  let depth = 0;
+  for (const char of text) {
+    if (char === "\n") {
+      depth = 0;
+      out += char;
+    } else if (char === "[") {
+      if (depth === 0) out += " ";
+      depth += 1;
+    } else if (char === "]") {
+      if (depth === 0) out += " ";
+      else depth -= 1;
+    } else if (depth === 0) {
+      out += char;
+    }
+  }
+  return out;
+}
 
 /** The words of a video prompt in a technical format: no JSON, field labels or bracketed cues. */
 function videoPromptWords(prompt: string): string {
@@ -144,13 +168,7 @@ function videoPromptWords(prompt: string): string {
   } catch {
     // Not JSON: plain text, perhaps with field labels.
   }
-  return (
-    text
-      .replace(BRACKETED_CUE_RE, " ")
-      // A cue that never closes runs to the end of its line.
-      .replace(/\[[^\]\n]*$/gmu, " ")
-      .replace(FIELD_LABEL_RE, " ")
-  );
+  return stripBracketedCues(text).replace(FIELD_LABEL_RE, " ");
 }
 
 /**

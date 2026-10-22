@@ -510,6 +510,25 @@ try {
     "\n[Ana sent a video message: Ana waves. cinematic]",
     "an unclosed cue ends with its own field",
   );
+  // Single-word and numbered labels start their lines too; a name or a link at a line's start is not a label.
+  assert.equal(
+    formatSentVideoNotes([
+      {
+        type: "video",
+        characterName: "Ana",
+        prompt: "camera: slow dolly\nlighting: warm\nshot_1: wide\nAna: hi there\nhttps://example.com/clip",
+      },
+    ]),
+    "\n[Ana sent a video message: slow dolly warm wide Ana: hi there https://example.com/clip]",
+  );
+  // Nested cues go whole, and a long run of brackets is handled in one pass.
+  assert.equal(
+    formatSentVideoNotes([{ type: "video", characterName: "Ana", prompt: "Ana waves [wide [slow] pan] and smiles." }]),
+    "\n[Ana sent a video message: Ana waves and smiles.]",
+  );
+  const bracketRunStarted = performance.now();
+  formatSentVideoNotes([{ type: "video", characterName: "Ana", prompt: `Ana waves ${"[".repeat(100_000)}` }]);
+  assert.ok(performance.now() - bracketRunStarted < 1_000, "a run of brackets is quick");
   // A word_word: inside a sentence isn't a field label, so the prose stays as written.
   assert.equal(
     formatSentVideoNotes([

@@ -1,6 +1,6 @@
-# Remote Access: Basic Auth and IP Allowlist
+# Remote Access: Login and IP Allowlist
 
-This guide explains how to reach Marinara Engine from another device, such as your phone, a laptop, or a Docker container. It covers the main option, a login (Basic Auth). It also covers the IP allowlist, the private-network bypass, login proxies, HTTPS, Admin Access, and the "save blocked" CSRF message. Almost every setting here lives in the server `.env` file, not in the app.
+This guide explains how to reach Marinara Engine from another device, such as your phone, a laptop, or a Docker container. It covers the main option, a login. It also covers the IP allowlist, login proxies, HTTPS, Admin Access, and the "save blocked" CSRF message. Almost every setting here lives in the server `.env` file, not in the app.
 
 A quick word list used throughout this guide:
 
@@ -62,8 +62,8 @@ A login is the most flexible choice. It works from any IP, needs no per-device s
 
 A login is a username and password that every remote device needs. You can set it in three ways:
 
-- **In Settings, on the computer that runs Marinara.** Open Marinara at `http://localhost:7860`, go to **Settings → Advanced → Access**, and set a username and password under **Remote login**.
-- **With the setup code, from any device.** While no login is set and the server listens beyond loopback, it prints a one-time setup code in its log. Find it in the terminal that runs Marinara, or with `docker logs <container>` in Docker. Then open Marinara on any device. The page that blocks the device has a form for the setup code, a username, and a password. The device that sets the login is signed in at once. Each code works once; a restart or a reset prints a new one. Use this way for Docker and NAS installs with no browser on the host.
+- **In Settings.** In a browser that is already signed in, or on the computer that runs Marinara (open `http://localhost:7860`), go to **Settings → Advanced → Access**. Set a username and password under **Remote login**. While no login exists, a device that Marinara refuses, such as the browser on a Docker host, can type the setup code from the server log in the same place.
+- **With the setup code, from any device.** While no login is set and the server listens beyond loopback, it prints a one-time setup code in its log. The log line starts with `[login] One-time setup code:`. Find it in the terminal that runs Marinara. In Docker, run `docker logs <container> 2>&1 | grep "setup code"`. The refusal warning in the log repeats the code while no login exists. Then open Marinara on any device. The page that blocks the device has a form for the setup code, a username, and a password. The code looks like `XXXX-XXXX-XXXX-XXXX`. Capital letters, spaces, and dashes do not matter. Each code works once; a restart or a reset prints a new one. In Docker, the page also shows how to set the login in the `.env` file in the data folder (`/app/data/.env`) or in the `environment:` list of your compose file (then run `docker compose up -d`). Use this way for Docker and NAS installs with no browser on the host. Marinara shows a banner about the missing login to local visitors and signed-in sessions, as a card at the bottom of the screen.
 - **In `.env`.** Add two lines:
 
 ```env
@@ -85,11 +85,13 @@ Then follow these steps from the remote device.
 2. Sign in on the sign-in page with your username and password.
 3. You should see the app load. The browser stays signed in for up to a year, until you sign it out. Scripts and API clients send the username and password with every request (Basic Auth).
 
-To sign in another device without typing the password, use a pairing code. On a device that is signed in, open **Settings → Advanced → Access** and choose **Add a device**. Then type the code on the sign-in page of the new device. The code works once, for a few minutes.
+To sign in another device without typing the password, use a pairing code. On a device that is signed in, open **Settings → Advanced → Access** and choose **Add a device**. Then type the code on the sign-in page of the new device. The code works once, for a few minutes. An expired code gets its own message; make a new one. Under **Signed-in devices**, you see each device with its sign-in method and the date it first signed in. You can sign out any device, including the one you use. You can also change or remove the password. For that, Marinara asks for the current password, unless you work on the computer that runs Marinara or have set `ADMIN_SECRET`.
 
-If you forget the password, run `pnpm reset-login` on the computer that runs Marinara. It removes the login set in the app and signs out every browser. If the server listens beyond loopback, it then prints a new setup code. In Docker, delete `.remote-login.json` and `.remote-sessions.json` from the data folder instead. With the default `/app/data`, run `docker exec <container> rm -f /app/data/.remote-login.json /app/data/.remote-sessions.json`; if you changed `DATA_DIR`, use that folder. A login in `.env` you change in `.env`.
+If you forget the password, run `pnpm reset-login` on the computer that runs Marinara. In Docker, run `docker exec <container> pnpm reset-login`. It removes the login set in the app and signs out every browser. If the server listens beyond loopback, it then prints a new setup code. Only if that command does not work, delete `.remote-login.json` and `.remote-sessions.json` from the data folder instead. With the default `/app/data`, run `docker exec <container> rm -f /app/data/.remote-login.json /app/data/.remote-sessions.json`; if you changed `DATA_DIR`, use that folder. A login in `.env` you change in `.env`.
 
-After 10 different wrong passwords or codes within 15 minutes, Marinara refuses sign-ins from that address with **429 Too Many Requests** until the 15 minutes are up. A correct password before then clears the count. Visitors that a reverse proxy or tunnel on the host passes along share one count, and one of them signing in does not clear it. Restarting the server also clears it. A browser that has signed in before still gets in with the correct password, so other people's wrong passwords cannot lock you out of a device you already use.
+**Headless server with no browser?** A native install on a headless server listens on loopback only and prints no setup code. On your own computer, run `ssh -L 7860:127.0.0.1:7860 user@server`. Then open `http://localhost:7860` there and use **Settings**.
+
+After 10 different wrong passwords or codes within 15 minutes, Marinara refuses sign-ins from that address with **429 Too Many Requests** until the 15 minutes are up. A correct password before then clears the count. Visitors that a reverse proxy or tunnel on the host passes along share one count, and one of them signing in does not clear it. Restarting the server also clears it. A browser that has signed in before still gets in with the correct password, so other people's wrong passwords cannot lock you out of a device you already use. The sign-in page tells you how many minutes to wait. If you forget the password, the sign-in page has a **Forgot the password?** hint.
 
 By default, the browser prompt says **Marinara Engine**. You can change that text with `BASIC_AUTH_REALM`.
 
@@ -98,7 +100,7 @@ Some clients skip the password even when Basic Auth is on:
 - Loopback (`127.0.0.1`, `::1`), so you never need a password on the host machine itself. Visitors that a reverse proxy or tunnel on that machine passes along still need it.
 - Any address in `IP_ALLOWLIST`. Careful: setting an allowlist also blocks every unlisted address (see Option 2).
 - Direct Tailscale traffic (`100.64.0.0/10`), unless you turn its bypass off.
-- Docker bridge/gateway traffic, only when you set `BYPASS_AUTH_DOCKER=true`. With Basic Auth on, automatic Docker trust is off (see [Tailscale and Docker bypass](#tailscale-and-docker-bypass)).
+- Docker bridge/gateway traffic, only while no login, allowlist, or `TRUSTED_AUTH_PROXY` is set (see [Tailscale and Docker bypass](#tailscale-and-docker-bypass)).
 - The `/api/health` address, so uptime monitors keep working. Visitors who could not open the app get only `{"status": "ok"}`; version, system and model details stay with this machine, trusted networks and signed-in browsers.
 
 Important: Basic Auth only encodes the password. It does not encrypt it. Anyone watching an unencrypted connection can read it. If you expose Marinara to the public internet, pair Basic Auth with HTTPS (see below).
@@ -118,7 +120,7 @@ How the IP allowlist behaves:
 - Any address not in the list is rejected with **403 Forbidden**.
 - Loopback is always allowed, so you cannot lock yourself out of local access. Visitors that a reverse proxy or tunnel on the same machine passes along are not loopback, so the allowlist blocks them. Use Basic Auth behind a proxy.
 - On Docker Desktop, OrbStack, and rootless Docker, every device reaches the container from the same gateway address, so the allowlist cannot tell them apart. Use Basic Auth there.
-- Direct Tailscale traffic also skips the list, unless you turn its bypass off. Docker bridge/gateway traffic skips it only when you set `BYPASS_AUTH_DOCKER=true` (see [Tailscale and Docker bypass](#tailscale-and-docker-bypass)).
+- Direct Tailscale traffic also skips the list. Docker bridge/gateway traffic skips it only while no login or allowlist is set (see [Tailscale and Docker bypass](#tailscale-and-docker-bypass)).
 - Invalid entries are ignored and logged. They do not crash the server.
 - The allowlist stays strict even with Basic Auth on. Listed addresses skip the password prompt. Every other address is still blocked with **403 Forbidden** and never gets a login prompt.
 
@@ -130,60 +132,13 @@ You can turn enforcement off for a while without deleting your list. This is han
 IP_ALLOWLIST_ENABLED=false
 ```
 
-## Option 3: Private-network bypass (no password)
+## Private-network bypass (reference)
 
-Your whole network may be trusted, for example a home LAN (local network) with no port forwarding. In that case, you can drop the lockdown without setting a password:
-
-```env
-ALLOW_UNAUTHENTICATED_PRIVATE_NETWORK=true
-```
-
-This restores the older "open on the LAN, blocked from the public internet" behavior. It applies only to standard private-network ranges, for example `10.0.0.0/8`, `172.16.0.0/12`, and `192.168.0.0/16`. The CGNAT range `100.64.0.0/10` does not count, because some internet providers share it between unrelated customers; add it to `TRUSTED_PRIVATE_NETWORKS` only if you trust it. Public-internet addresses are still blocked with a 403.
-
-Some internet and mobile providers give their customers addresses in this range. If you add it, other customers of the same provider also count as private-network clients. `TRUSTED_PRIVATE_NETWORKS` replaces the default ranges, so keep the LAN ranges you still need in the list.
-
-Warning: anyone on the same network can then reach Marinara with no password. That is fine on a network you control. It is not fine on shared Wi-Fi at a coffee shop, airport, or dorm. When in doubt, use Basic Auth instead.
-
-There is also a broader flag, `ALLOW_UNAUTHENTICATED_REMOTE=true`, which allows passwordless access from ANY address, including the public internet. Do not turn this on. If you truly need public access, use Basic Auth plus HTTPS, or put a reverse proxy in front that handles the login.
+A few flags drop the lockdown for a trusted private network. They are for special setups. A login is the better choice. See [Access Control](CONFIGURATION.md#access-control) for the flags and their risks.
 
 ## Tailscale and Docker bypass
 
-Two flags let direct Tailscale and Docker traffic skip both the IP allowlist and Basic Auth, the same way loopback does. Leave them empty for automatic detection:
-
-```env
-BYPASS_AUTH_TAILSCALE=
-BYPASS_AUTH_DOCKER=
-```
-
-Automatic mode trusts a Tailscale device only when it connects straight to this computer's Tailscale address. On Linux, a Tailscale interface with a custom name (`tailscaled --tun=...`) is not trusted automatically; sign in or set `BYPASS_AUTH_TAILSCALE=true`. It trusts Docker traffic only when Marinara is running in a container and the source matches a detected container interface or its exact gateway. This keeps the usual private Tailscale and same-host Docker setup working without treating unrelated CGNAT, LAN, host-network, or proxy traffic as authenticated.
-
-Automatic Docker trust applies only while neither Basic Auth nor `IP_ALLOWLIST` is set. Docker Desktop, OrbStack, and rootless Docker pass every device that opens a published port through the container's gateway, so Marinara cannot tell your own browser from a phone or a stranger on the network. Once you set a password or an allowlist, every Docker client must pass it, including the browser on the host. Set `BYPASS_AUTH_DOCKER=true` only if you trust every device that can reach the published port.
-
-Set a flag to `false` if you want normal Basic Auth and IP allowlist checks for those clients. Set it to `true` to retain the older broad bypass when automatic detection is unavailable: Tailscale then trusts all of `100.64.0.0/10`, while Docker also trusts its detected interfaces/gateway and the legacy `172.16.0.0/12` range. Use that compatibility mode only when every matching peer is trusted.
-
-Tailscale Serve and Funnel visitors connect from loopback with forwarding headers, so they must log in. There is no flag to turn that off. A direct `100.x` connection stays passwordless.
-
-For example, if your Tailnet includes less-trusted peers, turn the Tailscale bypass off:
-
-```env
-BYPASS_AUTH_TAILSCALE=false
-```
-
-If you do not want detected Docker peers to bypass authentication, turn the Docker bypass off and add specific clients to `IP_ALLOWLIST` if needed:
-
-```env
-BYPASS_AUTH_DOCKER=false
-```
-
-Marinara may also sit behind a reverse proxy or tunnel container on the Docker bridge or detected gateway. Forwarding headers, such as `Forwarded`, `X-Forwarded-For`, `X-Real-IP`, `X-Forwarded-Host`, or `X-Forwarded-Proto`, indicate that the Docker peer represents another client. A Host that names another computer, such as `marinara:7860` or a public name, or an HTTP/1.0 request, does the same. Then Marinara applies its normal Basic Auth and IP allowlist checks by default. A request to `localhost` or `127.0.0.1` from the host's own browser stays passwordless while no login or allowlist is set:
-
-```env
-REQUIRE_AUTH_FOR_DOCKER_PROXY=true
-```
-
-To restore the legacy bypass, set this to `false`. Do that only when the proxy itself requires a login from every visitor, because forwarded clients will inherit Docker's passwordless status. If you put a proxy in front of Docker, keep the `127.0.0.1` port publish from `docker-compose.yml` and set a login first.
-
-The server logs an `[auth-bypass]` warning the first time one of these bypasses lets a request through. That warning confirms the bypass is active.
+By default, Marinara trusts a device that connects straight over your Tailscale network. It also trusts a Docker container's own host. A login, an IP allowlist, or `TRUSTED_AUTH_PROXY` stops the automatic Docker trust, so every device then needs its login or its place on the allowlist. For the flags that change this, see [Access Control](CONFIGURATION.md#access-control).
 
 ## Reverse proxies and tunnels on the same computer
 
@@ -203,13 +158,7 @@ proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
 
 Tools that forward raw connections, such as `socat` or `ssh -R`, add no headers, so their traffic looks local. Do not use them to publish Marinara.
 
-If your proxy already makes every visitor log in before it forwards anything, you can skip Marinara's own checks for its traffic. Do this only when the proxy itself requires a login from every visitor:
-
-```env
-REQUIRE_AUTH_FOR_LOOPBACK_PROXY=false
-```
-
-Visitors then get the same full access as the host machine, including privileged actions without the admin secret. If you only reach Marinara through a name you added to `/etc/hosts`, do not use this flag. Use a `*.localhost` name instead, for example `marinara.localhost`.
+If your proxy already makes every visitor log in before it forwards anything, see [Login proxies (forward auth)](#login-proxies-forward-auth).
 
 ## Login proxies (forward auth)
 
@@ -221,7 +170,7 @@ Put the address of the proxy in `.env`:
 TRUSTED_AUTH_PROXY=192.168.1.5
 ```
 
-Marinara then lets in every request whose connection comes from that address. Marinara checks the address of the connection itself. It ignores forwarding headers such as `X-Forwarded-For` for this decision. Requests from the proxy also pass `IP_ALLOWLIST`, because the proxy decides who gets in. They do not count as local, so privileged actions still need the admin secret. **Settings → Advanced → Access** shows **Trusted login proxy: Set** while the setting is active.
+Marinara then lets in every request whose connection comes from that address. Marinara does not ask for its own login for them, and it prints no setup code. Marinara checks the address of the connection itself. It ignores forwarding headers such as `X-Forwarded-For` for this decision. Requests from the proxy also pass `IP_ALLOWLIST`, because the proxy decides who gets in. They do not count as local, so privileged actions still need the admin secret. **Settings → Advanced → Access** shows **Trusted login proxy: Set** while the setting is active.
 
 Before you set it:
 
@@ -230,9 +179,9 @@ Before you set it:
 - **List only the proxy's own address.** A range must stay inside private address space; Marinara ignores other ranges. It logs a warning for every range, because every device in a range skips the login.
 - **Add the public name like for any other proxy.** Put the hostname in `TRUSTED_HOSTS` and the origin in `CSRF_TRUSTED_ORIGINS` (see [Why is my save blocked (CSRF)](#why-is-my-save-blocked-csrf)).
 
-When `TRUSTED_AUTH_PROXY` is set, Marinara also stops the automatic Docker trust. Direct visitors who are not the proxy need the Marinara login or the IP allowlist.
+When `TRUSTED_AUTH_PROXY` is set, Marinara also stops the automatic Docker trust. Direct visitors who are not the proxy need the Marinara login or the IP allowlist. Marinara then also shows no "no login yet" banner.
 
-If the proxy runs on the same computer as Marinara, use `TRUSTED_AUTH_PROXY=127.0.0.1` and point the proxy at `127.0.0.1:7860`, not `localhost:7860`. A proxy that dials `localhost` can connect from `::1`, which does not match `127.0.0.1`. Then every other proxy or tunnel on that computer is trusted too, so use it only when the login proxy is the only one. Unlike `REQUIRE_AUTH_FOR_LOOPBACK_PROXY=false`, this does not give proxied visitors the local machine's access.
+If the proxy runs on the same computer as Marinara, use `TRUSTED_AUTH_PROXY=127.0.0.1` and point the proxy at `127.0.0.1:7860`, not `localhost:7860`. A proxy that dials `localhost` can connect from `::1`, which does not match `127.0.0.1`. Then every other proxy or tunnel on that computer is trusted too, so use it only when the login proxy is the only one. This does not give proxied visitors the local machine's access.
 
 A Caddy example, with Marinara at `192.168.1.20:7860`:
 
@@ -352,7 +301,7 @@ Newer versions ask for a login when a visit comes through a reverse proxy, a tun
 
 To get back in:
 
-1. Open Marinara on the computer that runs it, at `http://localhost:7860` (or your own `PORT`). Local use needs no password. In Docker, this is true only while no login and no `IP_ALLOWLIST` are set; otherwise use your login.
+1. Open Marinara on the computer that runs it, at `http://localhost:7860` (or your own `PORT`). Local use needs no password. On a headless server, first run `ssh -L 7860:127.0.0.1:7860 user@server` on your own computer, then open `http://localhost:7860` there. In Docker, this works only while no login and no `IP_ALLOWLIST` are set. Otherwise type the setup code from the server log (`docker logs <container> 2>&1 | grep "setup code"`) on the page that blocks you or in **Settings → Advanced → Access**, or use a browser that is still signed in.
 2. Go to **Settings → Advanced → Access** and set a username and password under **Remote login**. Or open the `.env` file on that computer and set `BASIC_AUTH_USER` and `BASIC_AUTH_PASS`. If `IP_ALLOWLIST` is set, add your other device's address to it or remove it, because a device that is not on the list gets a **403** even with a login.
 3. Sign in from your other device with that username and password.
 

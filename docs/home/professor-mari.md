@@ -252,4 +252,4 @@ Professor Mari is a helper, not the full documentation. Keep these limits in min
 - [Connecting to an AI Provider](../connections/connecting-to-a-provider.md)
 - [Creating and Editing Characters](../characters/creating-and-editing-characters.md)
 - [Downloadable Agents Reference](../agents/built-in-agents.md)
-- [Remote Access: Basic Auth and IP Allowlist](../REMOTE_ACCESS.md)
+- [Remote Access: Login and IP Allowlist](../REMOTE_ACCESS.md)

@@ -9,6 +9,7 @@
 // own answer for that value changes.
 
 import { z } from "zod";
+import { withRulesetPlanMemo } from "./plan-memo.js";
 import {
   catalogRowRef,
   rulesetBuilderRatingKey,
@@ -63,6 +64,9 @@ export interface RulesetBuilderApplied {
   skills: Record<string, string>;
   saves: Record<string, string>;
   fields: Record<string, Scalar>;
+  /** Fields the builder answers for that the player typed over since (a class level raised in the
+   *  levels step): kept until the builder's answer changes, and cleared with it when it has none. */
+  typedFields?: string[];
   rows: string[];
   /** The marks a mark step ticked (1.714), as `<list>:<column>:<row's catalog ref>`, so unmarking clears
    *  only those. */
@@ -227,6 +231,7 @@ const stateShape = {
       saves: z.record(z.string().max(40)).default({}),
       fields: z.record(z.union([z.number().finite(), z.string().max(4000), z.boolean()])).default({}),
       rows: z.array(z.string().max(200)).max(1000).default([]),
+      typedFields: z.array(z.string().max(200)).max(500).optional().catch(undefined),
       marks: z.array(z.string().max(300)).max(1000).optional().catch(undefined),
       trainingBefore: z
         .object({ skills: z.record(z.string().max(40)), saves: z.record(z.string().max(40)) })
@@ -2151,11 +2156,16 @@ function applyRulesetBuilderLegacy(
   // picked) is never written over: only one still blank, or one the builder already answers for.
   const blankFields = defaultRulesetSheetBuild(definition).fields;
   const fields = { ...build.fields };
+  const typed = new Set(previous.typedFields ?? []);
   for (const [id, value] of Object.entries(previous.fields)) {
-    if (want.fields[id] === undefined && fields[id] === value) delete fields[id];
+    if (want.fields[id] === undefined && (fields[id] === value || typed.has(id))) delete fields[id];
   }
   for (const [id, value] of Object.entries(want.fields)) {
-    if (previous.fields[id] === value) next.fields[id] = value;
+    if (previous.fields[id] === value) {
+      next.fields[id] = value;
+      // Typed over and the answer unchanged: the player's value stands, and is still the builder's to take back.
+      if (typed.has(id) && fields[id] !== value) (next.typedFields ??= []).push(id);
+    }
     // Already the answer, and only because it is the sheet's blank: the builder's from now on.
     else if (fields[id] === value && value === blankFields[id]) next.fields[id] = value;
     else if (
@@ -2938,6 +2948,17 @@ function spendPlan(
 }
 
 export function applyRulesetBuilder(
+  definition: RulesetDefinition,
+  build: RulesetSheetBuild,
+  state: RulesetBuilderState,
+  catalogs: RulesetCatalogEntriesById,
+): { build: RulesetSheetBuild; state: RulesetBuilderState } {
+  // One planning pass for the whole of it: the same sheet is worked out again and again as the
+  // answer settles, and is read by which object holds it rather than by what it is made of.
+  return withRulesetPlanMemo(() => applyRulesetBuilderPass(definition, build, state, catalogs));
+}
+
+function applyRulesetBuilderPass(
   definition: RulesetDefinition,
   build: RulesetSheetBuild,
   state: RulesetBuilderState,

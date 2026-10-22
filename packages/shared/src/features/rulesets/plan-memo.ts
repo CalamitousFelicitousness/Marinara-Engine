@@ -32,6 +32,18 @@ export function withOwnRulesetPlanMemo<T>(plan: () => T): T {
   }
 }
 
+/** Runs `plan` in the pass `memo` holds, which its caller keeps and lets go of once what it reads
+ *  changes: a screen reading one unchanged sheet render after render (the character builder). */
+export function withRulesetPlanMemoIn<T>(memo: Map<unknown, unknown>, plan: () => T): T {
+  const outer = pass;
+  pass = memo;
+  try {
+    return plan();
+  } finally {
+    pass = outer;
+  }
+}
+
 /** `make()`, remembered under `keys` while a planning pass is open. */
 export function rulesetPlanMemo<T>(keys: readonly unknown[], make: () => T): T {
   if (!pass) return make();

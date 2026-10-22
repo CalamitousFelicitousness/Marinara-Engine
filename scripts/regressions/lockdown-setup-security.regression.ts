@@ -25,16 +25,16 @@ const ENV_KEYS = [
   "TRUSTED_PRIVATE_NETWORKS",
 ] as const;
 const originalEnv = Object.fromEntries(ENV_KEYS.map((key) => [key, process.env[key]]));
-const ownDataDir = process.env.DATA_DIR ? null : mkdtempSync(join(tmpdir(), "marinara-lockdown-setup-"));
-for (const key of ENV_KEYS) if (key !== "DATA_DIR") delete process.env[key];
-if (ownDataDir) process.env.DATA_DIR = ownDataDir;
+// Always a fresh DATA_DIR: this test saves a login and a session there.
+const ownDataDir = mkdtempSync(join(tmpdir(), "marinara-lockdown-setup-"));
+for (const key of ENV_KEYS) delete process.env[key];
+process.env.DATA_DIR = ownDataDir;
 process.env.TRUSTED_HOSTS = "chat.example.com";
 process.env.ENCRYPTION_KEY = "ab".repeat(32);
 
 const credential = await import("../../packages/server/src/config/login-credential.js");
-const { BASIC_AUTH_FAILURE_LIMIT, basicAuthHook, loginRoutes } = await import(
-  "../../packages/server/src/middleware/basic-auth.js"
-);
+const { BASIC_AUTH_FAILURE_LIMIT, basicAuthHook, loginRoutes } =
+  await import("../../packages/server/src/middleware/basic-auth.js");
 const { csrfProtectionHook } = await import("../../packages/server/src/middleware/csrf-protection.js");
 const { hostValidationHook } = await import("../../packages/server/src/middleware/host-validation.js");
 const { ipAllowlistHook } = await import("../../packages/server/src/middleware/ip-allowlist.js");
@@ -139,5 +139,5 @@ try {
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;
   }
-  if (ownDataDir) rmSync(ownDataDir, { recursive: true, force: true });
+  rmSync(ownDataDir, { recursive: true, force: true });
 }

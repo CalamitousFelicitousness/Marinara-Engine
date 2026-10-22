@@ -578,26 +578,26 @@ function renderLockdownPage(clientIp: string, proxied: boolean, error?: string):
     </form>`;
   return `<!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="robots" content="noindex" />
-    <title>Marinara Engine — Set up access</title>
-    <style>${PAGE_STYLE}
-    label { display: block; margin: 14px 0 6px; font-size: 14px; color: var(--muted); }
-    input { width: 100%; padding: 10px 12px; font: inherit; color: var(--text); background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; }
-    input:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-    button { margin-top: 20px; width: 100%; padding: 10px 12px; font: inherit; font-weight: 600; color: var(--bg); background: var(--accent); border: 0; border-radius: 8px; cursor: pointer; }
-    .error { margin: 0 0 4px; color: #f8a5a5; }
-    </style>
-  </head>
-  <body>
-    <main>
-      <header>
-        <span class="badge">Access blocked</span>
-        <h1>This Marinara Engine install needs a login before remote devices can connect.</h1>
-        <p class="lede">${lede}</p>
-      </header>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex" />
+<title>Marinara Engine — Set up access</title>
+<style>${PAGE_STYLE}
+  label { display: block; margin: 14px 0 6px; font-size: 14px; color: var(--muted); }
+  input { width: 100%; padding: 10px 12px; font: inherit; color: var(--text); background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; }
+  input:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button { margin-top: 20px; width: 100%; padding: 10px 12px; font: inherit; font-weight: 600; color: var(--bg); background: var(--accent); border: 0; border-radius: 8px; cursor: pointer; }
+  .error { margin: 0 0 4px; color: #f8a5a5; }
+</style>
+</head>
+<body>
+  <main>
+    <header>
+      <span class="badge">Access blocked</span>
+      <h1>This Marinara Engine install needs a login before remote devices can connect.</h1>
+      <p class="lede">${lede}</p>
+    </header>
 
     ${firstOption}
 
@@ -621,8 +621,8 @@ BASIC_AUTH_PASS=a-long-random-password</pre>
         <a href="https://github.com/Pasta-Devs/Marinara-Engine/blob/main/docs/TROUBLESHOOTING.md#app-not-loading-on-mobile--another-device" target="_blank" rel="noopener noreferrer">Troubleshooting</a>
       </div>
     </footer>
-    </main>
-  </body>
+  </main>
+</body>
 </html>`;
 }
 
@@ -997,7 +997,10 @@ export async function loginRoutes(app: FastifyInstance) {
       }
       if (!isLoginSetupCode(code)) {
         // Wrong codes count like wrong passwords, so guessing one locks the address out the same way.
-        countGuess(request, `setup:${createHmac("sha256", HEADER_MAC_KEY).update(code).digest("base64url").slice(0, 16)}`);
+        countGuess(
+          request,
+          `setup:${createHmac("sha256", HEADER_MAC_KEY).update(code).digest("base64url").slice(0, 16)}`,
+        );
         logWrongPassword(request);
         return fail(403, "This setup code does not work. Copy the newest one from the server log.");
       }

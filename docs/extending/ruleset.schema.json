@@ -221485,6 +221485,20 @@
               ],
               "additionalProperties": false
             },
+            "help": {
+              "type": "object",
+              "properties": {
+                "beside": {
+                  "type": "boolean",
+                  "const": true
+                },
+                "$comment": {}
+              },
+              "required": [
+                "beside"
+              ],
+              "additionalProperties": false
+            },
             "$comment": {}
           },
           "additionalProperties": false

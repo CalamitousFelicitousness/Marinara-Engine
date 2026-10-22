@@ -2249,6 +2249,9 @@ export interface RulesetCombatant {
     hidden?: boolean;
     ready?: boolean;
     helped?: boolean;
+    /** Whom the help is against (1.718): the opponents beside its helper as it was given. Without
+     *  it, any attack takes it. */
+    helpedAgainst?: string[];
     /** The off-hand weapon (its place in `sheet.items`) this turn's attack was made with, which
      *  another off-hand weapon may follow on the off-hand budget. */
     offHand?: number;

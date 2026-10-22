@@ -15837,6 +15837,13 @@ const combatObjectSchema = z
           .object({ saves: z.array(sheetId).min(1).max(12) })
           .strict()
           .optional(),
+        /** Help is aid against an opponent beside the helper (Capability API 1.718), as 5e's "a
+         *  creature within 5 feet of you": on a board it is offered only with one there, and the
+         *  helped ally's edge counts only on an attack at one of them. */
+        help: z
+          .object({ beside: z.literal(true) })
+          .strict()
+          .optional(),
       })
       .strict()
       .optional(),
@@ -19387,6 +19394,9 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       combat.standardEffects.dodge.saves.forEach((save, index) => {
         if (!saves.has(save)) issue(at("standardEffects", "dodge", "saves", index), `Unknown save "${save}"`);
       });
+    }
+    if (combat.standardEffects?.help && !standard.has("help")) {
+      issue(at("standardEffects", "help"), "This ruleset has no help for this to belong to");
     }
     combat.cover?.saves?.forEach((save, index) => {
       if (!saves.has(save)) issue(at("cover", "saves", index), `Unknown save "${save}"`);

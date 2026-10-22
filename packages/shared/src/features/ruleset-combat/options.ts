@@ -2543,6 +2543,15 @@ export function rulesetOptionTargets(
         // Read the NAME rather than the id: the same standard action is also offered bought with
         // another budget, as `standard:help@bonus`, and nobody helps themselves whichever they took.
         if (rulesetStandardName(option.id) === "help" && combatant.id === actor.id) return false;
+        // Help against an opponent beside the helper offers nobody with none there (1.718).
+        if (
+          rulesetStandardName(option.id) === "help" &&
+          definition.combat?.standardEffects?.help?.beside &&
+          positioned(state) &&
+          rulesetPositionOf(actor) &&
+          !foeAdjacent(state, actor)
+        )
+          return false;
         // "One creature other than you" (1.256).
         if (cure?.notSelf && combatant.id === actor.id) return false;
         // A repeat never at one that saved against the cast (1.310), or only at whom it was aimed at.
@@ -4446,7 +4455,7 @@ export function rulesetAttackMode(
   const advantage =
     own.has("own-attacks-advantage") ||
     theirs.has("attacks-against-advantage") ||
-    !!actor.flags.helped ||
+    rulesetHelpCounts(actor, target) ||
     !!distance?.advantage ||
     blindSide ||
     (combat.elevation?.highGround === "advantage" && !!where && rulesetAbove(where.state, actor, target));
@@ -4468,7 +4477,7 @@ export function rulesetAttackMode(
   if (why) {
     if (own.has("own-attacks-advantage")) why.up.push(...holding(actor, "own-attacks-advantage"));
     if (theirs.has("attacks-against-advantage")) why.up.push(...holding(target, "attacks-against-advantage"));
-    if (actor.flags.helped) why.up.push("@helped");
+    if (rulesetHelpCounts(actor, target)) why.up.push("@helped");
     if (distance) why.up.push(...distance.why.up);
     if (blindSide) why.up.push("@unseen");
     if (combat.elevation?.highGround === "advantage" && !!where && rulesetAbove(where.state, actor, target))
@@ -4598,6 +4607,13 @@ function underwaterTooFar(
   if (!reach?.shot) return false;
   const away = rulesetCombatantDistance(state, actor, target);
   return away > (reach.swing ?? 0) && away > reach.normal;
+}
+
+/** Whether help given to this attacker counts on an attack at this target: any, unless it was
+ *  given against those beside its helper (1.718). */
+export function rulesetHelpCounts(actor: RulesetCombatant, target: RulesetCombatant): boolean {
+  if (!actor.flags.helped) return false;
+  return !actor.flags.helpedAgainst || actor.flags.helpedAgainst.includes(target.id);
 }
 
 /** Whether the actor is next to somebody on the other side, which is what a ruleset that says

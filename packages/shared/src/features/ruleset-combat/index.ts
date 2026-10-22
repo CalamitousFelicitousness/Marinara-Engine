@@ -287,6 +287,7 @@ export {
   rulesetGrantedStandard,
   rulesetOptionReach,
   rulesetOptionTargets,
+  rulesetHelpCounts,
   rulesetUsedOn,
   rulesetUsedOnKey,
   rulesetSparedKey,

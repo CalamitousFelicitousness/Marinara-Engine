@@ -318,6 +318,7 @@ import {
   rulesetRaisableCorpse,
   rulesetSlotUsed,
   rulesetTeleportIntoBarred,
+  rulesetHelpCounts,
 } from "./options.js";
 import type {
   RulesetActionResume,
@@ -13562,13 +13563,34 @@ function resolveStandard(
     searchZones(ctx, actor);
     return;
   } else if (action === "ready") actor.flags.ready = true;
-  else if (action === "help" && target) target.flags.helped = true;
+  else if (action === "help" && target) {
+    target.flags.helped = true;
+    delete target.flags.helpedAgainst;
+    // Against whoever is beside its helper, where the ruleset says so (1.718).
+    if (ctx.combat.standardEffects?.help?.beside && rulesetPositionOf(actor)) {
+      target.flags.helpedAgainst = ctx.state.combatants
+        .filter(
+          (one) =>
+            one.side !== actor.side &&
+            rulesetCombatStanding(one) &&
+            rulesetCombatantDistance(ctx.state, actor, one) <= 1,
+        )
+        .map((one) => one.id);
+    }
+  }
   ctx.events.push({
     type: "standard",
     actorId: actor.id,
     action,
     ...(action === "help" && target ? { targetId: target.id } : {}),
   });
+}
+
+/** Help spent by an attack it counted for (1.718: only one at whom it was given). */
+function spendHelp(actor: RulesetCombatant, target: RulesetCombatant): void {
+  if (!rulesetHelpCounts(actor, target)) return;
+  actor.flags.helped = false;
+  delete actor.flags.helpedAgainst;
 }
 
 /**
@@ -16383,7 +16405,7 @@ function resolveActionBodyIn(
           pool: poolRecord(thrown),
           ...(style ? { style: style.id } : {}),
         });
-        actor.flags.helped = false;
+        spendHelp(actor, target);
         used = { mine: oneUseConditions(actor, "own-attack"), theirs: attackedConditions(target, actor) };
         landed = outcome === "hit";
         if (landed) noteHitBy(ctx, target, actor);
@@ -16520,7 +16542,7 @@ function resolveActionBodyIn(
           outcome,
         });
         // Help is spent by the attack it was given for, landed or not.
-        actor.flags.helped = false;
+        spendHelp(actor, target);
         used = { mine: oneUseConditions(actor, "own-attack"), theirs: attackedConditions(target, actor) };
         if (duplicate && outcome !== "miss") {
           loseDuplicate(ctx, actor, target, duplicate.condition, duplicate);
@@ -17933,7 +17955,9 @@ function beginNextTurn(
     if (actor.heads && actor.block?.heads?.opportunityReactions) actor.heads.spare = Math.max(0, actor.heads.count - 1);
     // A stance lasts until the actor's next turn, and that turn is now. Help was given to somebody
     // else and is spent by their own next attack, so it survives this.
-    actor.flags = actor.flags.helped ? { helped: true } : {};
+    actor.flags = actor.flags.helped
+      ? { helped: true, ...(actor.flags.helpedAgainst ? { helpedAgainst: actor.flags.helpedAgainst } : {}) }
+      : {};
     // A weapon's bonus lent to their defense comes back to it (1.684).
     if (actor.bonusShift) {
       shiftWeaponBonus(actor, actor.bonusShift.item, actor.bonusShift.amount);

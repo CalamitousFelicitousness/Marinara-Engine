@@ -2744,6 +2744,12 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** Help against an opponent beside the helper (1.718): `combat.standardEffects.help`. */
+function carriesHelpBeside718(ruleset: unknown): boolean {
+  const effects = plainRecord(plainRecord(plainRecord(ruleset)?.combat)?.standardEffects);
+  return effects?.help !== undefined;
+}
+
 /** Cover that drops the ground under the target (1.717): `combat.cover.groundUnderTarget`. */
 function carriesGroundUnderTarget717(ruleset: unknown): boolean {
   const cover = plainRecord(plainRecord(plainRecord(ruleset)?.combat)?.cover);
@@ -9365,6 +9371,9 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Help against an opponent beside the helper, 1.718.
+  if (!declaresApi(718) && carriesHelpBeside718(ruleset))
+    return "A ruleset whose help is against an opponent beside the helper (standardEffects.help) requires schemaVersion 2 and capabilityApi 1.718 or newer";
   // Cover without the ground under the target, 1.717.
   if (!declaresApi(717) && carriesGroundUnderTarget717(ruleset))
     return "A ruleset that says whether the ground under a target gives cover (cover.groundUnderTarget) requires schemaVersion 2 and capabilityApi 1.717 or newer";

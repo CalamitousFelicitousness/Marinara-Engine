@@ -1958,6 +1958,8 @@ Catalog variants (Capability API 1.716). A catalog entry may list `variants`, 1 
 
 Cover from what stands in the way only (Capability API 1.717). By default a target standing on ground that gives cover (a forest, ruins) has half cover against an attack from that ground alone. `combat.cover.groundUnderTarget: false` drops that, so cover is only what stands between the attacker and the target: creatures where `creatures` says so, and whatever else lies between them. 5e's cover is what is in the way, not underfoot. Leaving it out, or `true`, keeps the ground rule. A ruleset using the key needs Capability API 1.717.
 
+Help against an opponent beside the helper (Capability API 1.718). By default Help gives the next attack of the helped ally an edge against anybody, wherever the helper stands. `combat.standardEffects.help: { "beside": true }` makes it 5e's Help: it is offered only while the helper has an opponent within 5 feet, it counts only for an attack against an opponent who was beside the helper when they helped, and it is spent only by such an attack. Name it only when your `standard` list has `help`. A ruleset using the key needs Capability API 1.718.
+
 How the Engine weighs what a spell or an ability puts on somebody. It reads the ruleset's own `combat.conditions`: each effect is worth a share of a turn (`cannot-act` a whole one, disadvantage on attacks about a third), a `behavior` that makes its holder run, wander or waste a turn is worth more, a condition that ends on damage less, all scaled by how long it lasts, the chance the target fails the save on a d20, and how dangerous the target is. So a hold goes on the opponent that hits hardest, never on one already holding the condition or immune to it, and a blast that would also catch its maker's own side is weighed against them. Starting another held spell counts the one it would let go of, and hurting someone who holds one up is worth a little more. An answer that cancels (Counterspell) is worth what it stops: the harm and conditions it would put on its maker's side, or the healing it would give the other. Nothing here needs a newer Capability API.
 
 A sequence's reach (from Capability API 1.687's Engine on, no minor of its own). A sequence with no `reach` or `range` of its own, a creature's Multiattack, reaches as far as its farthest part, and each part is made only at a target it reaches itself: an adult dragon's Multiattack offered at a foe 10 feet off, its bite made there and its claws only at whom they reach.
@@ -3666,7 +3668,9 @@ same keys for a d20 system:
   `dodge` has one today: `{ "dodge": { "saves": ["dex_save"] } }` says which of your saves a dodger
   rolls twice, keeping the better, for as long as the dodge lasts. Name only saves your sheet
   declares, and only when your `standard` list has `dodge`. Leave it out and dodging is exactly what
-  it was: harder to hit, and nothing else.
+  it was: harder to hit, and nothing else. `{ "help": { "beside": true } }` (Capability API 1.718)
+  offers Help only beside an opponent, and the help counts only against an opponent who was beside the
+  helper; it needs `help` in your `standard` list.
 - `conditions`: optional. Maps YOUR condition ids onto what they do, so the sheet's conditions and
   the fight's are one record and a poisoned character is still poisoned afterwards. The effects are
   a closed list: `own-attacks-advantage`, `own-attacks-disadvantage`, `attacks-against-advantage`,

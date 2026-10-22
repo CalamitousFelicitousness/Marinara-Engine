@@ -82,6 +82,11 @@ const lastCode = () =>
 
 try {
   await app.ready();
+  // A server on loopback only, behind a proxy on this computer, prints no code: no form to offer.
+  const FORWARDED = { "x-forwarded-for": "198.51.100.7" };
+  const proxied = await page("127.0.0.1", FORWARDED);
+  assert.equal(proxied.statusCode, 403);
+  assert.ok(!proxied.body.includes("/login/setup"), "with no code, a proxied visitor gets no form");
   credential.enableLoginSetupCode();
   const code = lastCode();
   assert.match(code, /^[0-9a-f]{24}$/, "with no login, the setup code is in the server log");
@@ -96,10 +101,8 @@ try {
   );
   assert.ok(direct.body.includes("docker logs"), "the page says where the code is");
   assert.ok(!direct.body.includes(code), "the page never shows the code");
-  const FORWARDED = { "x-forwarded-for": "198.51.100.7" };
-  const proxied = await page("127.0.0.1", FORWARDED);
-  assert.equal(proxied.statusCode, 403);
-  assert.ok(!proxied.body.includes("/login/setup"), "a proxy on loopback may have no code, so no form");
+  const proxiedWithCode = await page("127.0.0.1", FORWARDED);
+  assert.ok(proxiedWithCode.body.includes('action="/login/setup"'), "with a code, a proxied visitor gets the form");
   const api = await app.inject({ method: "GET", url: "/api/chats", remoteAddress: "203.0.113.10", headers: HOST });
   assert.equal(api.statusCode, 403);
   const proxiedApi = await app.inject({
@@ -153,7 +156,7 @@ try {
   assert.ok(Number(locked.headers["retry-after"]) > 0);
   assert.equal(credential.getLoginConfig(), null);
 
-  for (const reply of [direct, proxied, api, proxiedApi, short, wrong, locked]) {
+  for (const reply of [direct, proxied, proxiedWithCode, api, proxiedApi, short, wrong, locked]) {
     assert.doesNotMatch(reply.body, BYPASS_NAMES, "the lockdown never names a flag that turns it off");
   }
 

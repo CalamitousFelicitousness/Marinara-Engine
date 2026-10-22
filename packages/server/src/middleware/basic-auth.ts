@@ -70,6 +70,7 @@ import {
   deleteSession,
   findSession,
   getLoginConfig,
+  hasLoginSetupCode,
   isLoginSetupCode,
   listSessions,
   MIN_LOGIN_PASSWORD_LENGTH,
@@ -568,13 +569,14 @@ function renderLockdownPage(clientIp: string, proxied: boolean, error?: string):
     ? `This request reached Marinara through a reverse proxy or tunnel on this computer, so it counts as remote. To protect your data, the server refuses proxied traffic until you set a login.`
     : `You're connecting from <span class="ip-pill">${safeIp}</span>, which isn't loopback. To protect your data, the server refuses non-local traffic until you set a login.`;
   // A direct remote visitor means the server listens beyond loopback, so it printed a setup code.
-  // Behind a proxy on this computer it may listen on loopback only and have no code.
-  const firstOption = proxied
-    ? `<section class="panel">
+  // Behind a proxy on this computer it may listen on loopback only and have no code to offer.
+  const firstOption =
+    proxied && !hasLoginSetupCode()
+      ? `<section class="panel">
       <h2>Option 1 — Set a login on this computer (recommended)</h2>
       <p class="hint">On the computer that runs Marinara, open it in a browser and set a login in Settings → Advanced → Access. Then refresh this page and sign in.</p>
     </section>`
-    : `<form class="panel" method="post" action="/login/setup">
+      : `<form class="panel" method="post" action="/login/setup">
       <h2>Option 1 — Set a login here (recommended)</h2>
       <p class="hint">While no login is set, the server prints a one-time setup code in its log. Find it in the terminal that runs Marinara, or with <code>docker logs</code> if it runs in Docker. On the computer that runs Marinara, you can also set the login in Settings → Advanced → Access.</p>
       ${error ? `<p class="error" role="alert">${escapeHtml(error)}</p>` : ""}

@@ -207,6 +207,12 @@ export function isLoginSetupCode(value: unknown): boolean {
   return setupCode !== null && typeof value === "string" && sameText(value, setupCode);
 }
 
+/** True while a setup code is printed and unused. */
+export function hasLoginSetupCode(): boolean {
+  getLoginConfig();
+  return setupCode !== null;
+}
+
 /** Call after isLoginSetupCode passed and before any await, so a code works once. */
 export function consumeLoginSetupCode(): void {
   setupCode = null;

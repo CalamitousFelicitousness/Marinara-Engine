@@ -1337,6 +1337,9 @@ export interface RulesetCombatAction {
     usesOf?: { cost: Array<{ pool: string; amount: number }> };
   };
   uses?: RulesetCombatUses;
+  /** Whose count its `uses` spend, when not its own id: each variant of a creature's spell (1.716)
+   *  casts from the one spell's uses. */
+  usesKey?: string;
   recharge?: RulesetCombatRecharge;
   /** How many strikes ONE spend of this action's budget buys, when its source said so. Taking it
    *  with none in hand spends the budget and puts the rest in hand; while any are in hand, every

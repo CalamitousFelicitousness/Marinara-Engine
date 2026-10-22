@@ -2760,9 +2760,13 @@ export function rulesetActionUses(
   state?: RulesetEncounterState,
 ): number {
   const coven = action.innate?.coven;
-  return coven
-    ? (state?.covenUses?.[`${coven.id}/${action.id}`] ?? action.uses?.count ?? 0)
-    : (actor.uses[action.id] ?? 0);
+  const key = rulesetUsesKey(action);
+  return coven ? (state?.covenUses?.[`${coven.id}/${key}`] ?? action.uses?.count ?? 0) : (actor.uses[key] ?? 0);
+}
+
+/** Where an action's uses are counted: its own id, or the action it shares them with. */
+export function rulesetUsesKey(action: RulesetCombatAction): string {
+  return action.usesKey ?? action.id;
 }
 
 /** Whether its holder's sheet, as it stands, allows the action (1.166). A holder without a sheet, or
@@ -3177,9 +3181,10 @@ function forecastFor(
       // Rolled for (1.590): what its dice come to on average.
       let strikes = step.dice ? rulesetStepAverageTimes(step) : rulesetStepTimes(actor, step);
       if (part.uses) {
-        const uses = usesLeft.get(part.id) ?? actor.uses[part.id] ?? 0;
+        const key = rulesetUsesKey(part);
+        const uses = usesLeft.get(key) ?? actor.uses[key] ?? 0;
         strikes = Math.min(strikes, uses);
-        usesLeft.set(part.id, uses - strikes);
+        usesLeft.set(key, uses - strikes);
       }
       if (part.recharge && strikes > 0) {
         strikes = 1;

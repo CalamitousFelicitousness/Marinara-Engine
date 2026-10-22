@@ -319,6 +319,7 @@ import {
   rulesetSlotUsed,
   rulesetTeleportIntoBarred,
   rulesetHelpCounts,
+  rulesetUsesKey,
 } from "./options.js";
 import type {
   RulesetActionResume,
@@ -6992,8 +6993,9 @@ function spendAvailability(ctx: RulesetCombatContext, actor: RulesetCombatant, a
   }
   if (action.uses) {
     const left = Math.max(0, rulesetActionUses(actor, action, ctx.state) - 1);
-    if (action.innate?.coven) (ctx.state.covenUses ??= {})[`${action.innate.coven.id}/${action.id}`] = left;
-    else actor.uses[action.id] = left;
+    const key = rulesetUsesKey(action);
+    if (action.innate?.coven) (ctx.state.covenUses ??= {})[`${action.innate.coven.id}/${key}`] = left;
+    else actor.uses[key] = left;
     ctx.events.push({
       type: "uses",
       actorId: actor.id,

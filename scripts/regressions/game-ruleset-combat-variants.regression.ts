@@ -6,6 +6,8 @@
  *   - A builder step offers only the parent; a variant is never picked on its own.
  *   - A sheet row of the parent is each variant in a fight, by the variant's label, and casting one
  *     does what that variant does. The fight keeps the variants of a row's entry.
+ *   - A creature's spell that has variants is each of them too, every one cast from the spell's
+ *     own uses.
  *   - Refused shapes; the install gate.
  */
 import assert from "node:assert/strict";
@@ -147,6 +149,70 @@ try {
     );
     assert.ok(damage.length > 0, JSON.stringify(step.events.slice(-4)));
     assert.equal(damage[0]!.damageType, "cold", "the cold one deals cold");
+  }
+
+  // ── A creature's spell is each of its variants, from one count of uses ──
+  {
+    const doc = document(entries());
+    doc.catalogs.push({
+      id: "foes",
+      label: "Foes",
+      holds: "creatures",
+      entries: [
+        {
+          id: "mage",
+          label: "Mage",
+          creature: {
+            tier: "cr_5",
+            health: 40,
+            defense: 12,
+            initiativeModifier: 20,
+            actions: [{ id: "staff", name: "Staff", budget: "action", damage: { flat: 1 } }],
+            spellcasting: { toHit: 6, spells: [{ entry: "spells/chromatic-orb", uses: { per: "day", count: 1 } }] },
+          },
+        },
+      ],
+    });
+    const parsed = parseRulesetDefinition(doc);
+    assert.ok(parsed.ok, parsed.ok ? "" : parsed.issues.join("; "));
+    const rules = parsed.definition;
+    const state = createRulesetEncounter({
+      definition: rules,
+      seed: 1,
+      roller: () => 10,
+      bestiary: Object.fromEntries(rules.catalogs!.map((catalog) => [catalog.id, catalog.entries ?? []])),
+      combatants: [
+        { id: "mage", name: "Mage", side: "enemy", creature: { catalogId: "foes", entryId: "mage" } },
+        {
+          id: "hero",
+          name: "Hero",
+          side: "party",
+          block: { health: 100, defense: 10, initiativeModifier: 0, speed: 30, actions: [] },
+        },
+      ],
+    } as never);
+    state.order = ["mage", "hero"];
+    state.turn = 0;
+    const orbs = () =>
+      rulesetCombatOptions(rules, state, "mage")
+        .map((option) => option.label)
+        .filter((label) => label.startsWith("Chromatic Orb"));
+    assert.deepEqual(orbs(), ["Chromatic Orb (fire)", "Chromatic Orb (cold)"], "each kind, by its label");
+    const fire = rulesetCombatOptions(rules, state, "mage").find((option) => option.label === "Chromatic Orb (fire)")!;
+    const cast = applyRulesetCombatChoice(
+      rules,
+      state,
+      { actorId: "mage", optionId: fire.id, targetIds: ["hero"] },
+      () => 10,
+    );
+    const damage = cast.events.find(
+      (event): event is Extract<RulesetCombatEvent, { type: "damage" }> => event.type === "damage",
+    );
+    assert.equal(damage?.damageType, "fire", JSON.stringify(cast.events.slice(-4)));
+    // Its one use a day is spent, whichever kind took it.
+    cast.state.combatants.find((one) => one.id === "mage")!.budgets.action = 1;
+    Object.assign(state, cast.state);
+    assert.deepEqual(orbs(), [], "the one use is gone for every kind");
   }
 
   // ── Refused shapes ──

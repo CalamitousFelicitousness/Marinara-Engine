@@ -1072,7 +1072,7 @@ export function rulesetBestWeapon(combatant: RulesetCombatant, kind: "melee" | "
     // The same bookkeeping the menu keeps: a strike that has run out of uses, or is waiting for its
     // dice, is not one to be made in passing either. (Written out rather than imported, because the
     // menu's own module reads this one.)
-    if (action.uses && (combatant.uses[action.id] ?? 0) < 1) continue;
+    if (action.uses && (combatant.uses[action.usesKey ?? action.id] ?? 0) < 1) continue;
     if (combatant.spent.includes(action.id)) continue;
     // Nor is a weapon with nothing loaded or nothing to shoot, nor a second blow in the off hand,
     // which follows the holder's own attack on their own turn.

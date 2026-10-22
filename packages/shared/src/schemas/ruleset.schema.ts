@@ -23959,18 +23959,23 @@ export function rulesetCatalogEntryIssues(
           add(path, `Unknown spell entry "${spell.entry}"`);
           return;
         }
-        const mechanics = target.mechanics;
-        if (!mechanics) {
+        // Its own, and each of its variants' (1.716): Chromatic Orb is cast as its kinds.
+        const ways = [target, ...(target.variants ?? []).flatMap((id) => available.filter((one) => one.id === id))]
+          .map((one) => one.mechanics)
+          .filter((one): one is NonNullable<typeof one> => !!one);
+        if (ways.length === 0) {
           add(path, `Spell entry "${spell.entry}" needs mechanics`);
           return;
         }
         if (creature.sheet) return;
-        if (mechanics.attackRoll && casting.toHit === undefined)
+        if (ways.some((mechanics) => mechanics.attackRoll) && casting.toHit === undefined)
           add(path, `Spell "${spell.entry}" needs spellcasting.toHit`);
-        const needsSave =
-          mechanics.save ||
-          mechanics.plus?.some((part) => part.save && part.save.difficulty === undefined) ||
-          mechanics.applies?.some((applies) => applies.saveEnds);
+        const needsSave = ways.some(
+          (mechanics) =>
+            mechanics.save ||
+            mechanics.plus?.some((part) => part.save && part.save.difficulty === undefined) ||
+            mechanics.applies?.some((applies) => applies.saveEnds),
+        );
         if (needsSave && casting.saveDifficulty === undefined)
           add(path, `Spell "${spell.entry}" needs spellcasting.saveDifficulty`);
       });

@@ -4657,56 +4657,69 @@ function innateActions(
   const evaluated = evaluateRulesetSheetLive(definition, build, {});
   const byRef = rulesetCatalogEntriesByRef(catalogs);
   return casting.spells.flatMap((spell) => {
-    const entry = byRef.get(spell.entry);
-    if (!entry?.mechanics) return [];
+    const parent = byRef.get(spell.entry);
+    if (!parent) return [];
     const catalogId = spell.entry.split("/")[0]!;
-    const header = definition.catalogs?.find((catalog) => catalog.id === catalogId);
-    const source = definition.combat?.abilities?.find((ability) =>
-      entry.rows?.some((row) => row.list === ability.list),
-    );
-    const resolve = (ref: RulesetValueRef) => resolveRulesetValueRef(definition, build, ref, evaluated);
-    // A spell's own numbers before its trait's (1.589).
-    const difficulty =
-      spell.saveDifficulty ??
-      casting.saveDifficulty ??
-      (source?.saveDifficulty ? resolve(source.saveDifficulty) : undefined);
-    const action = mechanicsAction(definition, entry.mechanics, {
-      id: spell.entry,
-      kind: "ability",
-      label: entry.label,
-      budget: entry.mechanics.budget ?? source?.budget ?? definition.combat!.economy.budgets[0]!.id,
-      toHit:
-        spell.toHit ??
-        casting.toHit ??
-        (source?.toHit ? resolve(source.toHit) : 0) + fightAdjust(definition, build, evaluated, source?.toHit),
-      ...(difficulty !== undefined ? { saveDifficulty: difficulty } : {}),
-      build,
-      evaluated,
-      perCell: perCell === undefined ? undefined : (header?.units?.distance?.perCell ?? perCell),
+    // The spell, then each of its variants (1.716): Chromatic Orb's kinds, each cast by its own
+    // label from the spell's own uses and slots.
+    const ways = [
+      { ref: spell.entry, entry: parent },
+      ...(parent.variants ?? []).flatMap((id) => {
+        const variant = byRef.get(`${catalogId}/${id}`);
+        return variant ? [{ ref: `${catalogId}/${id}`, entry: variant }] : [];
+      }),
+    ];
+    return ways.flatMap(({ ref, entry }) => {
+      if (!entry.mechanics) return [];
+      const header = definition.catalogs?.find((catalog) => catalog.id === catalogId);
+      const source = definition.combat?.abilities?.find((ability) =>
+        entry.rows?.some((row) => row.list === ability.list),
+      );
+      const resolve = (value: RulesetValueRef) => resolveRulesetValueRef(definition, build, value, evaluated);
+      // A spell's own numbers before its trait's (1.589).
+      const difficulty =
+        spell.saveDifficulty ??
+        casting.saveDifficulty ??
+        (source?.saveDifficulty ? resolve(source.saveDifficulty) : undefined);
+      const action = mechanicsAction(definition, entry.mechanics, {
+        id: ref,
+        kind: "ability",
+        label: entry.label,
+        budget: entry.mechanics.budget ?? source?.budget ?? definition.combat!.economy.budgets[0]!.id,
+        toHit:
+          spell.toHit ??
+          casting.toHit ??
+          (source?.toHit ? resolve(source.toHit) : 0) + fightAdjust(definition, build, evaluated, source?.toHit),
+        ...(difficulty !== undefined ? { saveDifficulty: difficulty } : {}),
+        build,
+        evaluated,
+        perCell: perCell === undefined ? undefined : (header?.units?.distance?.perCell ?? perCell),
+      });
+      if (!action) return [];
+      action.catalog = catalogId;
+      action.entry = ref;
+      if (ref !== spell.entry && spell.uses) action.usesKey = spell.entry;
+      // What its filters read, for a ward's `where` (1.592): from a catalog file too.
+      if (entry.filters) action.filters = structuredClone(entry.filters);
+      const baseLevel = rulesetPaidLevel(definition, { sheet: { build, live: {}, catalogs: {} } }, action);
+      action.innate = {
+        level: spell.level ?? baseLevel,
+        baseLevel,
+        ...(spell.coven && casting.coven
+          ? { coven: { ...casting.coven, within: casting.coven.within / (perCell ?? 1) } }
+          : {}),
+        // Paid with a slot (1.589).
+        ...(casting.slots && !spell.uses && (spell.level ?? baseLevel) >= 1
+          ? { slot: spell.level ?? baseLevel, slots: { ...casting.slots } }
+          : {}),
+      };
+      if (spell.uses) action.uses = { ...spell.uses };
+      // What casting it this way needs, said by the spell or its trait, in place of the entry's (1.181).
+      const components = spell.components ?? casting.components;
+      if (components?.length) action.components = [...components];
+      else if (components) delete action.components;
+      return [action];
     });
-    if (!action) return [];
-    action.catalog = catalogId;
-    action.entry = spell.entry;
-    // What its filters read, for a ward's `where` (1.592): from a catalog file too.
-    if (entry.filters) action.filters = structuredClone(entry.filters);
-    const baseLevel = rulesetPaidLevel(definition, { sheet: { build, live: {}, catalogs: {} } }, action);
-    action.innate = {
-      level: spell.level ?? baseLevel,
-      baseLevel,
-      ...(spell.coven && casting.coven
-        ? { coven: { ...casting.coven, within: casting.coven.within / (perCell ?? 1) } }
-        : {}),
-      // Paid with a slot (1.589).
-      ...(casting.slots && !spell.uses && (spell.level ?? baseLevel) >= 1
-        ? { slot: spell.level ?? baseLevel, slots: { ...casting.slots } }
-        : {}),
-    };
-    if (spell.uses) action.uses = { ...spell.uses };
-    // What casting it this way needs, said by the spell or its trait, in place of the entry's (1.181).
-    const components = spell.components ?? casting.components;
-    if (components?.length) action.components = [...components];
-    else if (components) delete action.components;
-    return [action];
   });
 }
 
@@ -6007,7 +6020,8 @@ function contestActions(
 /** What an action still has left of itself, before anything is spent on it. */
 function startingUses(actions: readonly RulesetCombatAction[]): Record<string, number> {
   const uses: Record<string, number> = {};
-  for (const action of actions) if (action.uses && !action.innate?.coven) uses[action.id] = action.uses.count;
+  for (const action of actions)
+    if (action.uses && !action.innate?.coven) uses[action.usesKey ?? action.id] ??= action.uses.count;
   // A trait's spell slots (1.589), each level once; a coven's are kept by the fight instead.
   for (const action of actions) {
     const innate = action.innate;

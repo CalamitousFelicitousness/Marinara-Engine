@@ -12135,9 +12135,38 @@ const catalogEntrySchema = z
      *  that later reads 0 counts for nothing and is kept. An entry of an `exclusive` group is read on
      *  the sheet without the step's picks of that group (1.100). */
     offeredWhen: (rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>).optional(),
+    /** Other entries of this catalog the same row may be used as (Capability API 1.716): Chromatic
+     *  Orb's acid, cold and fire, each with its own mechanics. A picker offers only this entry, and a
+     *  sheet row of it is each of them in a fight. Each one names this entry back in `variantOf`. */
+    variants: z
+      .array(
+        z.string().max(80).regex(RULESET_ID_PATTERN, "An entry id is lowercase letters, digits and single hyphens"),
+      )
+      .min(1)
+      .max(32)
+      .optional(),
+    /** The entry this one is a variant of (1.716): never offered by a picker on its own. */
+    variantOf: z
+      .string()
+      .max(80)
+      .regex(RULESET_ID_PATTERN, "An entry id is lowercase letters, digits and single hyphens")
+      .optional(),
   })
   .strict()
   .superRefine((entry, ctx) => {
+    if (entry.variants && new Set(entry.variants).size !== entry.variants.length) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["variants"], message: "A variant is listed once" });
+    }
+    if (entry.variants?.includes(entry.id) || entry.variantOf === entry.id) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["variants"], message: "An entry is no variant of itself" });
+    }
+    if (entry.variants && entry.variantOf !== undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["variants"],
+        message: "A variant has no variants of its own",
+      });
+    }
     const kinds = [entry.rows, entry.creature, entry.item].filter((kind) => kind !== undefined).length;
     if (kinds > 1 || (kinds === 0 && !entry.grants)) {
       ctx.addIssue({
@@ -15733,7 +15762,9 @@ const combatObjectSchema = z
      * C6a-2): `bonus` is half cover's, and `threeQuarters` the bigger one when the ruleset has it. A
      * target out of sight is total cover and cannot be aimed at, so it needs no number. `saves` names
      * the saves cover helps too, against an action's own save, from where the action comes; `creatures`
-     * makes anybody standing in the way half cover, friend or foe.
+     * makes anybody standing in the way half cover, friend or foe. `groundUnderTarget: false`
+     * (Capability API 1.717) drops the half cover a target has from the ground it stands on (a forest,
+     * ruins), leaving only what stands between: 5e's cover is what is in the way, not underfoot.
      */
     cover: z
       .object({
@@ -15741,6 +15772,7 @@ const combatObjectSchema = z
         threeQuarters: z.number().int().min(0).max(100).optional(),
         saves: z.array(sheetId).min(1).max(12).optional(),
         creatures: z.literal(true).optional(),
+        groundUnderTarget: z.boolean().optional(),
       })
       .strict()
       .optional(),
@@ -24879,6 +24911,19 @@ export function rulesetCatalogEntryIssues(
         }
       }
     });
+  });
+  // Variants (1.716): each one another entry of this catalog that names its parent back.
+  const byId = new Map(entries.map((entry) => [entry.id, entry]));
+  entries.forEach((entry, index) => {
+    entry.variants?.forEach((id, at) => {
+      const variant = byId.get(id);
+      if (!variant) add([index, "variants", at], `Unknown entry "${id}"`);
+      else if (variant.variantOf !== entry.id)
+        add([index, "variants", at], `"${id}" does not say variantOf "${entry.id}"`);
+    });
+    if (entry.variantOf !== undefined && !byId.get(entry.variantOf)?.variants?.includes(entry.id)) {
+      add([index, "variantOf"], `"${entry.variantOf}" does not list "${entry.id}" among its variants`);
+    }
   });
   return issues;
 }

@@ -213557,6 +213557,21 @@
                     ]
                   }
                 },
+                "variants": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "maxLength": 80,
+                    "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+                  },
+                  "minItems": 1,
+                  "maxItems": 32
+                },
+                "variantOf": {
+                  "type": "string",
+                  "maxLength": 80,
+                  "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+                },
                 "$comment": {}
               },
               "required": [
@@ -219795,6 +219810,9 @@
             "creatures": {
               "type": "boolean",
               "const": true
+            },
+            "groundUnderTarget": {
+              "type": "boolean"
             },
             "$comment": {}
           },

@@ -1382,7 +1382,9 @@ export function rulesetCoverBonus(
   // Ignored up to what the attack ignores (1.652), the ground's own half with it; never total.
   if (ignoresUpTo && tier !== "total" && order.indexOf(tier) <= order.indexOf(ignoresUpTo)) return 0;
   if (tier === "three-quarters" || tier === "total") return cover.threeQuarters ?? cover.bonus;
-  return tier === "half" || (against === "attack" && ground) ? cover.bonus : 0;
+  // The ground under the target is half cover against an attack, unless the ruleset says cover is
+  // only what stands in the way (1.717).
+  return tier === "half" || (against === "attack" && ground && cover.groundUnderTarget !== false) ? cover.bonus : 0;
 }
 
 /** The most cover a condition on `fromId` gives `target` against it (1.535): one whose applier is

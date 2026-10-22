@@ -4584,27 +4584,8 @@ function abilityActions(
       riders.push(rider);
       return;
     }
-    const action = abilityAction(
-      definition,
-      source,
-      row,
-      index,
-      rowIndex,
-      name,
-      entry,
-      build,
-      evaluated,
-      perCellOf(ref),
-    );
-    if (!action) return;
-    // Which catalog it came from, and which entry, which is what a reaction that answers only some
-    // entries reads.
-    action.catalog = ref.slice(0, ref.indexOf("/"));
-    action.entry = ref;
-    // What its filters read, for a ward's `where` (1.592): from a catalog file too.
-    if (entry.filters) action.filters = structuredClone(entry.filters);
-    // And the row it came from (1.384): Druid spells, not a wizard's. A cell the row lacks reads as
-    // its column's default (1.385), as a spell the builder added from a catalog carries no class.
+    // The row it came from (1.384): Druid spells, not a wizard's. A cell the row lacks reads as its
+    // column's default (1.385), as a spell the builder added from a catalog carries no class.
     const values: Record<string, string> = {};
     for (const column of listColumns) {
       if (typeof column.default === "string" && column.default.length <= 80) values[column.id] = column.default;
@@ -4612,9 +4593,52 @@ function abilityActions(
     for (const [key, value] of Object.entries(row)) {
       if (typeof value === "string" && value.length <= 80) values[key] = value;
     }
-    action.fromRow = { list: source.list, values };
+    // The entry, then each of its variants (1.716): one row of Chromatic Orb is each of its kinds,
+    // named by the variant's own label and paid for off the same row.
+    const catalogId = ref.slice(0, ref.indexOf("/"));
+    const ways = [
+      { ref, entry, name, id: `ability:${index}:${rowIndex}` },
+      ...(entry.variants ?? []).flatMap((variantId, at) => {
+        const variant = byRef.get(`${catalogId}/${variantId}`);
+        return variant
+          ? [
+              {
+                ref: `${catalogId}/${variantId}`,
+                entry: variant,
+                name: variant.label,
+                id: `ability:${index}:${rowIndex}:${at}`,
+              },
+            ]
+          : [];
+      }),
+    ];
+    for (const way of ways) {
+      const action = abilityAction(
+        definition,
+        source,
+        row,
+        index,
+        rowIndex,
+        name,
+        way.entry,
+        build,
+        evaluated,
+        perCellOf(way.ref),
+      );
+      if (!action) continue;
+      action.id = way.id;
+      action.label = way.name;
+      // Which catalog it came from, and which entry, which is what a reaction that answers only some
+      // entries reads.
+      action.catalog = catalogId;
+      action.entry = way.ref;
+      // What its filters read, for a ward's `where` (1.592): from a catalog file too.
+      if (way.entry.filters) action.filters = structuredClone(way.entry.filters);
+      action.fromRow = { list: source.list, values: { ...values } };
+      seen.add(way.ref);
+      actions.push(action);
+    }
     seen.add(ref);
-    actions.push(action);
   });
   return { actions, riders };
 }
@@ -4898,6 +4922,12 @@ function narrowCatalogs(build: RulesetSheetBuild, catalogs: RulesetCatalogEntrie
       ]) {
         if (typeof ref === "string") refs.add(ref);
       }
+    }
+  }
+  // And every variant of those (1.716), which a row of its parent is used as.
+  for (const [catalogId, entries] of Object.entries(catalogs)) {
+    for (const entry of entries) {
+      if (refs.has(`${catalogId}/${entry.id}`)) for (const id of entry.variants ?? []) refs.add(`${catalogId}/${id}`);
     }
   }
   const narrowed: Record<string, RulesetCatalogEntry[]> = {};

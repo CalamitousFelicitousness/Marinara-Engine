@@ -604,6 +604,8 @@ export function rulesetBuilderOptions(
     return without;
   };
   return entries.filter((entry) => {
+    // A variant is used through its parent's row, never picked on its own (1.716).
+    if (entry.variantOf !== undefined) return false;
     // A list matches any of its values (1.678).
     for (const [filterId, value] of Object.entries(step.filters ?? {})) {
       if (![value].flat().some((one) => filterHas(entry, filterId, one))) return false;

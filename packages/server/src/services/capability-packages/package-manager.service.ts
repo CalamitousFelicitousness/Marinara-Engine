@@ -2744,6 +2744,23 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** Cover that drops the ground under the target (1.717): `combat.cover.groundUnderTarget`. */
+function carriesGroundUnderTarget717(ruleset: unknown): boolean {
+  const cover = plainRecord(plainRecord(plainRecord(ruleset)?.combat)?.cover);
+  return cover?.groundUnderTarget !== undefined;
+}
+
+/** A catalog entry with variants, or one that is a variant (1.716): Chromatic Orb's kinds. */
+function carriesVariants716(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesVariants716(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (typeof record.id === "string" && (Array.isArray(record.variants) || typeof record.variantOf === "string"))
+    return true;
+  return featureValues(record).some((one) => carriesVariants716(one, depth + 1));
+}
+
 /** A builder step that marks rows already on a list (1.714): a wizard's prepared spells. */
 function carriesMarkStep714(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -9348,6 +9365,16 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Cover without the ground under the target, 1.717.
+  if (!declaresApi(717) && carriesGroundUnderTarget717(ruleset))
+    return "A ruleset that says whether the ground under a target gives cover (cover.groundUnderTarget) requires schemaVersion 2 and capabilityApi 1.717 or newer";
+  // A catalog entry with variants, or that is one, 1.716.
+  if (
+    !declaresApi(716) &&
+    (carriesVariants716(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesVariants716(document)))
+  )
+    return "A ruleset with a catalog entry that has variants (variants, variantOf) requires schemaVersion 2 and capabilityApi 1.716 or newer";
   // A builder step that marks rows already on a list, 1.714.
   if (!declaresApi(714) && carriesMarkStep714(ruleset))
     return "A ruleset with a builder step that marks rows (kind mark) requires schemaVersion 2 and capabilityApi 1.714 or newer";

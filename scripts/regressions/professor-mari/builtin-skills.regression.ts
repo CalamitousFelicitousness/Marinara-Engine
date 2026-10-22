@@ -236,6 +236,22 @@ try {
   assert.match(piRuntimePrompt(4096), /output limit is small/u, "4096 is still small");
   assert.ok(!piRuntimePrompt(8192).includes("output limit is small"), "a large limit gets no split hint");
   assert.ok(!piPrompt.includes("output limit is small"), "an unknown limit gets no split hint");
+  const { mariMaxOutputTokens } =
+    await import("../../../packages/server/src/services/professor-mari/workspace-agent.service.js");
+  const smallConnection = (enabledParameters?: Record<string, boolean>) =>
+    ({
+      id: "small",
+      name: "small",
+      provider: "custom",
+      model: "unknown-model",
+      defaultParameters: JSON.stringify({ maxTokens: 1024, enabledParameters }),
+    }) as unknown as Parameters<typeof mariMaxOutputTokens>[0];
+  assert.equal(mariMaxOutputTokens(smallConnection()), 1024, "the stored Max Output Tokens is the limit");
+  assert.equal(
+    mariMaxOutputTokens(smallConnection({ maxTokens: false })),
+    8192,
+    "a Max Output Tokens the send map switches off is not the limit",
+  );
   // A failed call points at the handbook for that surface: the one moment the model already knows
   // where it is, and the only reliable nudge a 12b follows.
   const { skillHintForFailedAction } =

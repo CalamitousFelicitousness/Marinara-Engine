@@ -1379,11 +1379,13 @@ export function isLocalSidecarConnection(connection: WorkspaceConnection): boole
   return connection.isLocalSidecar === true || connection.id === LOCAL_SIDECAR_CONNECTION_ID;
 }
 
-/** The output limit Mari's requests send: the connection's Max Output Tokens, else the model's known limit. */
+/** The output limit Mari works under: the connection's Max Output Tokens while it is sent, else the model's known limit. */
 export function mariMaxOutputTokens(connection: WorkspaceConnection) {
+  const defaultParameters = parseJsonObject(connection.defaultParameters);
+  // A value the send map switches off never reaches the provider, so it is not the limit.
+  const sent = normalizeGenerationParameterSendMap(defaultParameters?.enabledParameters)?.maxTokens !== false;
   return (
-    normalizeMariMaxTokens(parseJsonObject(connection.defaultParameters)?.maxTokens) ??
-    resolveMariMaxOutputTokens(connection)
+    (sent ? normalizeMariMaxTokens(defaultParameters?.maxTokens) : undefined) ?? resolveMariMaxOutputTokens(connection)
   );
 }
 

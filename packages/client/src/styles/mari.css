@@ -4179,7 +4179,7 @@ details[open] > .mari-disclosure .mari-disclosure__chevron {
    capsules. Neutral at rest; the primary colour is only the focus ring (and the semantic Plan mode/Fix chip).
    Send is neutral: grey while empty, solid foreground once there is something to send. */
 .mari-workspace-composer {
-  --mari-composer-fill: color-mix(in srgb, var(--foreground) 4%, var(--background));
+  --mari-composer-fill: linear-gradient(var(--marinara-home-page-wash), var(--marinara-home-page-wash)) var(--background);
   position: relative;
   display: flex;
   flex-wrap: wrap;
@@ -4196,7 +4196,6 @@ details[open] > .mari-disclosure .mari-disclosure__chevron {
 }
 
 [data-theme="light"] .mari-workspace-composer {
-  --mari-composer-fill: color-mix(in srgb, #fff 80%, var(--background));
   box-shadow:
     0 1px 2px rgb(0 0 0 / 0.05),
     0 0.75rem 1.5rem -1rem rgb(0 0 0 / 0.18);

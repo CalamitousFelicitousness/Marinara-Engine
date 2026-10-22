@@ -313,6 +313,8 @@ Proposed initial tuning: normalize policy utility to a fixed scale; let novices 
 
 **Cruel (combat AI T3, Capability API 1.729).** A named-only temperament: finish 3 (as opportunistic), setup 0.8. The game setup's `cruelOpponents` (off by default) becomes `CombatDirectorState.cruel`; `syncRulesetCombatants` mirrors `cruel` onto the ruleset combatant only then (otherwise `opportunistic`), and `rulesetCandidatesFrom` lets a combatant whose mirrored temperament is `cruel` weigh harmful blows on a foe that is down and not defeated. Classic and Tactical fights have no downed-but-alive state, so there it is only the weights. A mindless creature whose data says `territorial` keeps its ground (`rulesetTerritorial`), and `tactics.home` survives a tactics redraw.
 
+**Honourable (combat AI T6, Capability API 1.730).** A named-only temperament: finish 0.2. In ruleset fights its pick drops candidates aimed at a routed, down or surrendered foe (when anything else is left) and gives +0.6 focus to the foe that last hurt it and +0.3 to a foe beside it. Accepting the party's surrender needs a party yield command and fight outcome, not built.
+
 **Fliers keep altitude (combat AI A7).** When a ruleset flier's turn goes idle on the ground (`keepAloft`), and it can fly, has an available ranged damaging action, isn't a bruiser, reckless or mindless, and an opponent who cannot fly stands, it takes Fly up where the board has levels, then carries on its turn (a shot, its kite) from the air.
 
 ## 8. Boss turns controlled by the GM

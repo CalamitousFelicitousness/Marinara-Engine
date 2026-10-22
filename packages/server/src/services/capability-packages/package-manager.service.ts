@@ -2842,6 +2842,19 @@ function carriesBehavior710(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesBehavior710(one, depth + 1));
 }
 
+/** An honourable one (1.730): a behavior whose `temperament`, or one it turns to, is `honourable`. */
+function carriesHonourable730(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesHonourable730(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const behavior = plainRecord(record.behavior);
+  if (behavior?.temperament === "honourable") return true;
+  if (Array.isArray(behavior?.shifts) && behavior.shifts.some((one) => plainRecord(one)?.to === "honourable"))
+    return true;
+  return featureValues(record).some((one) => carriesHonourable730(one, depth + 1));
+}
+
 /** A cruel one (1.729): a behavior whose `temperament`, or one it turns to, is `cruel`. */
 function carriesCruel729(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -9471,6 +9484,12 @@ export function getCapabilityPackageInstallIssue(
     }),
   );
   // A creature that fights a side alone, 1.723.
+  if (
+    !declaresApi(730) &&
+    (carriesHonourable730(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesHonourable730(document)))
+  )
+    return 'A ruleset with an honourable creature (a behavior whose temperament is "honourable") requires schemaVersion 2 and capabilityApi 1.730 or newer';
   if (
     !declaresApi(729) &&
     (carriesCruel729(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesCruel729(document)))

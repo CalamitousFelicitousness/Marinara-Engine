@@ -3460,6 +3460,22 @@ function weighChoices(
     candidates = mindlessCandidates(encounter, actor, unit.tactics!, candidates, !!menu);
   weighRulesetTeam(definition, state, encounter, actor, candidates, orders);
   if (orders) weighRulesetOrders(state, encounter, actor, orders, candidates);
+  // An honourable one (combat AI T6) strikes nobody running from it, beaten or down, and fights
+  // whoever is fighting it, one on one.
+  if (unit.tactics!.adjective === "honourable") {
+    const fair = candidates.filter((candidate) => {
+      const target = candidate.targetId ? rulesetCombatant(encounter, candidate.targetId) : undefined;
+      return !target || target.side === actor.side || !(target.routed || target.down || target.away?.surrendered);
+    });
+    if (fair.length > 0) candidates.splice(0, candidates.length, ...fair);
+    for (const candidate of candidates) {
+      const target = candidate.targetId ? rulesetCombatant(encounter, candidate.targetId) : undefined;
+      if (!target || target.side === actor.side || (!candidate.damage && !candidate.setup)) continue;
+      // Most of all the one that last hurt it, and whoever stands up to it beside it.
+      const beside = !!rulesetPositionOf(target) && !!rulesetPositionOf(actor) && rulesetGap(actor, target) <= 1;
+      candidate.focus = (candidate.focus ?? 0) + (actor.harmedBy === target.id ? 0.6 : 0) + (beside ? 0.3 : 0);
+    }
+  }
   // A territorial one walks nowhere off its ground, but back onto it (combat AI T4).
   const territory = rulesetTerritoryLeash(definition, encounter, actor, unit);
   if (territory) {

@@ -617,4 +617,5 @@ assert.equal(
   assert.ok(!dealt.has("arrogant"));
   assert.ok(!dealt.has("territorial"));
   assert.ok(!dealt.has("cruel"));
+  assert.ok(!dealt.has("honourable"));
 }

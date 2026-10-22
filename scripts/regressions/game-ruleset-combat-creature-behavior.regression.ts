@@ -542,6 +542,33 @@ try {
     assert.equal(prey("opportunistic", true), "other", "only a cruel one");
   }
 
+  // ── Honourable (combat AI T6): whoever fights it first, and never one running from it ──
+  {
+    const duel = (temperament: string, set: (encounter: RulesetEncounterState) => void) => {
+      const { encounter, state } = fight({
+        knight: { side: "enemy", block: block([smash], { behavior: { temperament } }), at: { x: 5, y: 2 } },
+        a: { side: "party", block: block([smash]), at: { x: 6, y: 2 } },
+        b: { side: "party", block: block([smash]), at: { x: 4, y: 2 } },
+      });
+      set(encounter);
+      state.rulesetFight = { encounter, events: [], eventSeq: 0, controllers: {}, bosses: [] } as never;
+      syncRulesetCombatants(definition, state);
+      return pickRulesetChoice(definition, state, encounter, "knight")?.choice.targetIds[0];
+    };
+    const hurtBy = (id: string) => (encounter: RulesetEncounterState) =>
+      (rulesetCombatant(encounter, "knight")!.harmedBy = id);
+    assert.equal(duel("honourable", hurtBy("a")), "a", "the one that hurt it");
+    assert.equal(duel("honourable", hurtBy("b")), "b", "whichever that was");
+    assert.equal(
+      duel("honourable", (encounter) => {
+        hurtBy("a")(encounter);
+        rulesetCombatant(encounter, "a")!.routed = true;
+      }),
+      "b",
+      "never one running from it",
+    );
+  }
+
   // ── Keeping its ground (combat AI T4): no further than its territory, unless shot at from afar ──
   {
     const guard = (behavior: Record<string, unknown>, harmed?: boolean, extra: Record<string, unknown> = {}) => {
@@ -854,6 +881,11 @@ try {
     const cruel = fiveE((doc) => (lurkerEntry(doc).behavior = { temperament: "cruel" }));
     assert.equal(getCapabilityPackageInstallIssue(manifest(728) as never, cruel), vicious);
     assert.notEqual(getCapabilityPackageInstallIssue(manifest(729) as never, cruel), vicious);
+    const fair =
+      'A ruleset with an honourable creature (a behavior whose temperament is "honourable") requires schemaVersion 2 and capabilityApi 1.730 or newer';
+    const knightly = fiveE((doc) => (lurkerEntry(doc).behavior = { temperament: "honourable" }));
+    assert.equal(getCapabilityPackageInstallIssue(manifest(729) as never, knightly), fair);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(730) as never, knightly), fair);
     const grows = fiveE((doc) => (lurkerEntry(doc).behavior = { shifts: [{ on: "ally-down", to: "arrogant" }] }));
     assert.equal(getCapabilityPackageInstallIssue(manifest(726) as never, grows), proud);
     refused(
@@ -875,7 +907,7 @@ try {
   }
 
   console.log(
-    "Combat behavior: merged from the ruleset, the type and the creature; its temperament and role; casters, attackers and a pack's prey first; its opener once; an ambusher keeps still and springs; roles read off what it does; bodyguards stay by their charge; a leader rallies; a temperament turns once; a proud legend flies off; a territorial one keeps its ground; a cruel one strikes the fallen only where the game allows; refused and gated at 1.710, 1.723, 1.724, 1.725, 1.726, 1.727, 1.728 and 1.729.",
+    "Combat behavior: merged from the ruleset, the type and the creature; its temperament and role; casters, attackers and a pack's prey first; its opener once; an ambusher keeps still and springs; roles read off what it does; bodyguards stay by their charge; a leader rallies; a temperament turns once; a proud legend flies off; a territorial one keeps its ground; a cruel one strikes the fallen only where the game allows; an honourable one fights fair; refused and gated at 1.710, 1.723, 1.724, 1.725, 1.726, 1.727, 1.728, 1.729 and 1.730.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

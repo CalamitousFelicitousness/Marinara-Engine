@@ -166,8 +166,9 @@ const failures = new Map<string, FailureRecord>();
 // /login is counted by its own random pre-auth cookie; visitors without one share
 // the address count. All visitors through that address also share a larger cap,
 // so new cookies cannot buy unlimited guesses.
-// ponytail: the shared cap can still lock new devices behind a busy proxy; a
-// trusted-proxy setting (PR 2 of #7912) will count by the forwarded client instead.
+// ponytail: the shared cap can still lock new devices behind a busy proxy. A
+// TRUSTED_AUTH_PROXY skips this login, so only proxies without their own login
+// reach it; count by a forwarded client address if those need more.
 const PRE_AUTH_COOKIE = "marinara_login_client";
 const SHARED_FAILURE_LIMIT = BASIC_AUTH_FAILURE_LIMIT * 5;
 

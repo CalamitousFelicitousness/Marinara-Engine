@@ -1206,6 +1206,26 @@ try {
     assert.doesNotMatch(lastPrompt(1), /claimed/u);
     assert.equal((await lastAssistant(claim.chat.id))?.content, "Here is the shorter answer.");
 
+    // After a dry-run write, a claim draws the dry-run repair; the same claim cut at the limit is redone smaller instead.
+    const dryRunThenClaim = (finishReason: string) => [
+      reply("", [
+        {
+          id: "dry-1",
+          name: "app_data",
+          args: { action: "lorebook.create", data: { name: "Dry run book" }, apply: false, reason: "t" },
+        },
+      ]),
+      { ...reply("I've created the lorebook and it is saved."), finishReason },
+      reply("That was a dry run."),
+    ];
+    const dryClaim = await start("pi dry-run claim", dryRunThenClaim("stop"));
+    await dryClaim.done;
+    assert.match(lastPrompt(2), /was a dry run/u, "control: the uncut claim draws the dry-run repair");
+    const dryCut = await start("pi dry-run cut claim", dryRunThenClaim("length"));
+    await dryCut.done;
+    assert.match(lastPrompt(2), /^\[Engine note, not from the user\]/u);
+    assert.doesNotMatch(lastPrompt(2), /dry run/u, "a cut claim is not sent the dry-run repair");
+
     // A failed stream is not a limit cut: its words still face the claim audit, and it keeps the old stop.
     const failed = await start("pi failed stream claim", [
       { ...reply("I've added the onboarding to Elara, it is saved."), finishReason: "error" },

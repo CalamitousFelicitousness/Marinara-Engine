@@ -26,8 +26,12 @@ try {
     await import("../../../packages/server/src/services/professor-mari/mari-skills-prompt.js");
   const { ProfessorMariWorkspaceSkillsService } =
     await import("../../../packages/server/src/services/professor-mari/workspace-skills.service.js");
-  const { buildWorkspaceContinuitySnapshot, piRuntimePrompt, workspaceCommandKnowledgePrompt } =
-    await import("../../../packages/server/src/services/professor-mari/workspace-agent.service.js");
+  const {
+    buildWorkspaceContinuitySnapshot,
+    piRuntimePrompt,
+    workspaceCommandKnowledgePrompt,
+    workspaceCommandProtocolPrompt,
+  } = await import("../../../packages/server/src/services/professor-mari/workspace-agent.service.js");
 
   // ── The shipped assets load ────────────────────────────────────────────────
   const shipped = await loadBuiltinSkills();
@@ -51,6 +55,15 @@ try {
   const lorebook = shipped.skills.find((skill) => skill.id === "builtin-lorebook");
   assert.ok(lorebook, "the lorebook handbook ships with the app");
   assert.ok(lorebook!.content.startsWith("# Lorebook authoring"), "its body is frontmatter-free");
+  // A handbook whose writes outgrow one reply on a small output limit says how to split them (or, for a
+  // stylesheet, why it cannot be). Home widgets are left out: a whole create is under 600 characters.
+  for (const id of ["characters", "lorebook", "presets", "extensions", "themes", "onboarding"]) {
+    const handbook = shipped.skills.find((skill) => skill.id === `builtin-${id}`);
+    assert.ok(
+      handbook?.content.includes("When the output limit is small"),
+      `builtin-${id} covers a small output limit`,
+    );
+  }
 
   // ── Index: built-ins first, marked, never inlined ──────────────────────────
   const skillDetail = (over: Record<string, unknown>) => ({
@@ -211,6 +224,10 @@ try {
     "ordinary edits preserve the user's existing Decisions",
   );
   assert.ok(knowledge.includes("History placement costs prompt caching, Decisions or not"), "depth placement is gated");
+  assert.ok(
+    knowledge.includes("(on a small output limit, the first entries, then one `lorebook.addEntry` per reply)"),
+    "the permanent lorebook line carries the small-limit split, so it does not re-impose one create",
+  );
   assert.ok(knowledge.includes("(`cachePlacement`)"), "the placement record is named");
   assert.ok(
     knowledge.includes("SAME response with `awaitingAuthorization: true`"),
@@ -218,6 +235,34 @@ try {
   );
   const piPrompt = piRuntimePrompt();
   assert.ok(piPrompt.includes("never wrap them in tags"), "the pi prompt forbids pseudo-XML tags in visible text");
+  // Only a small output limit asks for split writes; a strong model told to fragment wastes calls.
+  assert.match(
+    piRuntimePrompt(1024),
+    /output limit is small \(1024 tokens per reply\)/u,
+    "a small limit gets the split hint",
+  );
+  assert.match(piRuntimePrompt(4096), /output limit is small/u, "4096 is still small");
+  assert.ok(!piRuntimePrompt(8192).includes("output limit is small"), "a large limit gets no split hint");
+  // The classic prompt carries the same knowledge clauses, so it must state the limit they depend on too.
+  assert.match(workspaceCommandProtocolPrompt(2048), /output limit is small \(2048 tokens per reply\)/u);
+  assert.ok(!workspaceCommandProtocolPrompt().includes("output limit is small"), "classic: no limit, no hint");
+  assert.ok(!piPrompt.includes("output limit is small"), "an unknown limit gets no split hint");
+  const { mariMaxOutputTokens } =
+    await import("../../../packages/server/src/services/professor-mari/workspace-agent.service.js");
+  const smallConnection = (enabledParameters?: Record<string, boolean>) =>
+    ({
+      id: "small",
+      name: "small",
+      provider: "custom",
+      model: "unknown-model",
+      defaultParameters: JSON.stringify({ maxTokens: 1024, enabledParameters }),
+    }) as unknown as Parameters<typeof mariMaxOutputTokens>[0];
+  assert.equal(mariMaxOutputTokens(smallConnection()), 1024, "the stored Max Output Tokens is the limit");
+  assert.equal(
+    mariMaxOutputTokens(smallConnection({ maxTokens: false })),
+    8192,
+    "a Max Output Tokens the send map switches off is not the limit",
+  );
   // A failed call points at the handbook for that surface: the one moment the model already knows
   // where it is, and the only reliable nudge a 12b follows.
   const { skillHintForFailedAction } =

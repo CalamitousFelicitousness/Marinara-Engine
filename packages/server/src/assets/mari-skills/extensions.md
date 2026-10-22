@@ -24,6 +24,7 @@ Actions: reads `personal_extension.list|get|search`; writes `create|update`. No 
 1. Pick the runtime: browser (`"client"`, `css` or `js`) or server (`"server"`, non-empty `serverJs`, no capabilities). A server extension needs a working OS sandbox: approval returns 503 on Windows, Android and default Docker, so check before planning one.
 2. Design the UI first: kind, id, label, panel elements. A button activates code; only a panel holds controls.
 3. Create the whole payload in one call, id in the envelope. `name` is not unique-checked; a duplicate quietly makes a second draft.
+   When the output limit is small (your workspace rules say so, or a reply was cut at it) and a browser extension has both `css` and `js`: create with one, then send the other in an update (it merges), one per reply. `serverJs` cannot be split.
 4. `get` it: `contentHash`, `approvedHash: null`, `enabled: "false"`, `source: "professor_mari"`, `revisions: []`; request an elided `js`/`css` before describing code.
 5. Quote the hash and capabilities; the draft runs only after "Review and run", then "Run Exact Code". Later edits: `apply: true`, `get`, and state whether the hash moved.
 

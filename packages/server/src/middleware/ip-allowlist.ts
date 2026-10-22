@@ -816,7 +816,7 @@ function announceBypass(policy: AccessPolicy, ip: string): void {
   const dockerMode = getDockerBypassMode();
   if (policy.dockerAutoWithheld && !bypassAnnounced.dockerAutoWithheld) {
     logger.warn(
-      "[auth-bypass] Docker peer %s must pass Basic Auth/IP_ALLOWLIST: automatic Docker trust is off while a login, IP_ALLOWLIST or TRUSTED_AUTH_PROXY is set, because Docker Desktop and OrbStack show LAN clients at the gateway address. Set BYPASS_AUTH_DOCKER=true only if every client of the published port is trusted.",
+      "[auth-bypass] Docker peer %s must pass Basic Auth/IP_ALLOWLIST: automatic Docker trust is off while a login, IP_ALLOWLIST or TRUSTED_AUTH_PROXY is set, because Docker Desktop and OrbStack show LAN clients at the gateway address.",
       ip,
     );
     bypassAnnounced.dockerAutoWithheld = true;

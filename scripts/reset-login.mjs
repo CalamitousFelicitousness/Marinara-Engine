@@ -1,8 +1,8 @@
 // Removes the remote login saved in the app (DATA_DIR/.remote-login.json) and
 // signs every browser out (DATA_DIR/.remote-sessions.json). A running server
 // notices within a few seconds. A login set with BASIC_AUTH_USER and
-// BASIC_AUTH_PASS in .env is not touched. In Docker, run instead:
-//   docker exec <container> rm -f /app/data/.remote-login.json /app/data/.remote-sessions.json
+// BASIC_AUTH_PASS in .env is not touched. In Docker the image ships this file:
+//   docker exec <container> pnpm reset-login
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";

@@ -1255,7 +1255,7 @@ def read_stream(stream, started, timing, limit=MODEL_STREAM_LIMIT):
 
 
 def openai_reply(ctx, settings, messages, tools, tool_choice, read_timeout, started, timing, cache_key, stream_limit=MODEL_STREAM_LIMIT):
-    import httpx
+    import httpx2
     import openai
 
     claude = "claude" in settings["model"]
@@ -1276,10 +1276,14 @@ def openai_reply(ctx, settings, messages, tools, tool_choice, read_timeout, star
     if cache_key:
         # One key per packet keeps the finder's and checker's requests, which share the bundle, on the same cache.
         request["extra_body"] = {"prompt_cache_key": cache_key}
+    stream = None
     try:
         with ctx.clients[settings["slot"]].chat.completions.create(**request) as stream:
             return read_stream(stream, started, timing, stream_limit)
-    except (httpx.TimeoutException, httpx.TransportError) as exc:
+    except (httpx2.TimeoutException, httpx2.TransportError, openai.APIConnectionError) as exc:
+        # OpenAI wraps transport errors during iteration too; only an opened stream uses the stalled-call retry.
+        if stream is None and isinstance(exc, openai.APIConnectionError):
+            raise
         raise StreamStalled(error_text(exc)) from exc
 
 
@@ -1313,7 +1317,7 @@ def responses_input(messages):
 
 def responses_reply(ctx, settings, messages, tools, tool_choice, read_timeout, started, timing, cache_key, stream_limit=MODEL_STREAM_LIMIT):
     """One streamed Responses call, returned in the Chat Completions shape the agents use."""
-    import httpx
+    import httpx2
     import openai
 
     instructions, items = responses_input(messages)
@@ -1339,6 +1343,7 @@ def responses_reply(ctx, settings, messages, tools, tool_choice, read_timeout, s
     if cache_key:
         request["extra_body"] = {"prompt_cache_key": cache_key}
     response, capped = None, False
+    stream = None
     try:
         with ctx.clients[settings["slot"]].responses.create(**request) as stream:
             for event in watched(stream, started, timing, stream_limit):
@@ -1349,7 +1354,9 @@ def responses_reply(ctx, settings, messages, tools, tool_choice, read_timeout, s
                 elif event.type in ("response.failed", "error"):
                     failure = getattr(getattr(event, "response", None), "error", None) or event
                     raise ResponseFailed(getattr(failure, "message", None) or "the provider gave no message", getattr(failure, "code", None))
-    except (httpx.TimeoutException, httpx.TransportError) as exc:
+    except (httpx2.TimeoutException, httpx2.TransportError, openai.APIConnectionError) as exc:
+        if stream is None and isinstance(exc, openai.APIConnectionError):
+            raise
         raise StreamStalled(error_text(exc)) from exc
     if response is None:
         raise StreamStalled("the reply stream ended before the response completed")

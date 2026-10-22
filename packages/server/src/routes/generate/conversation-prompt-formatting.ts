@@ -183,9 +183,8 @@ export function formatSentVideoNotes(attachments: PromptAttachment[] | undefined
     .map((attachment) => {
       // The video model's prompt may follow a technical format (JSON, "overall_soundscape: …", "[Shot 1] …"); the
       // note keeps only its words, so characters don't copy that format into their own [video] tags.
-      // Any bracket left over (an unclosed one) goes too, so the note holds exactly one pair.
+      // videoPromptWords leaves no bracket, so the note holds exactly one pair.
       const description = videoPromptWords(attachment.prompt ?? "")
-        .replace(/[[\]]/gu, " ")
         .replace(/\s+/g, " ")
         .trim()
         .slice(0, SENT_SELFIE_DESCRIPTION_MAX_CHARS);

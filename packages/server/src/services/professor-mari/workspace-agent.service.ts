@@ -3911,6 +3911,7 @@ export class ProfessorMariWorkspaceService {
             actionResults: workspaceActionResults,
             commandResults: commandResultsForContinuity,
             onEvent: args.onEvent,
+            maxOutputTokens: baseOptions.maxTokens,
             understood: {
               record: (text, mutating, held) => {
                 // Same superseded-run guard as the other shared writes.

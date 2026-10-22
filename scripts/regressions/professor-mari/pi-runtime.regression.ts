@@ -46,7 +46,8 @@ try {
     workspaceTextClaimsHeldChange,
     draftVisibleText,
   } = await import("../../../packages/server/src/services/professor-mari/workspace-agent.service.js");
-  const { assertClosedToolSet } = await import("../../../packages/server/src/services/professor-mari/pi-runtime.js");
+  const { assertClosedToolSet, describeCutReply, outputLimitRepairPrompt, MAX_OUTPUT_LIMIT_REPAIRS } =
+    await import("../../../packages/server/src/services/professor-mari/pi-runtime.js");
   // These frames test claims and rounds, not the handbook gate (dry-run-enforcement pins that).
   const { setSkillGateEnabled } =
     await import("../../../packages/server/src/services/professor-mari/workspace-commands.js");
@@ -1143,15 +1144,102 @@ try {
       JSON.stringify(names.events.filter((event) => event.type === "suggestions")).includes("Run the chat checkup"),
     );
 
-    const cut = await start("pi cut", [
-      {
-        ...reply("Partial", [{ id: "cut-1", name: "write", args: { path: "cut.txt", content: "x", reason: "t" } }]),
-        finishReason: "length",
-      },
-    ]);
+    // Output limit: a cut reply runs nothing, and is redone in smaller steps before the run gives up.
+    const lastPrompt = (index: number) => requests[index]!.messages.at(-1)?.content ?? "";
+    const cutWrite = {
+      ...reply("Partial", [{ id: "cut-1", name: "write", args: { path: "cut.txt", content: "x", reason: "t" } }]),
+      finishReason: "length",
+    };
+    const cutAppData = {
+      content: "Writing the onboarding now.",
+      toolCalls: [
+        {
+          id: "cut-2",
+          type: "function" as const,
+          function: {
+            name: "app_data",
+            arguments: '{"action":"character.onboarding.update","characterId":"elara","onb',
+          },
+        },
+      ],
+      finishReason: "length",
+    };
+    const cut = await start("pi cut", [cutAppData, cutWrite, reply("Done, in two smaller steps.")]);
     await cut.done;
+    assert.equal(requests.length, 3, "two recoveries, then the finished answer");
+    assert.equal(existsSync(join(workspaceDir, "cut.txt")), false, "a cut-off call never runs");
+    assert.match(lastPrompt(1), /^\[Engine note, not from the user\]/u);
+    assert.match(lastPrompt(1), /`app_data` with action `character\.onboarding\.update`/u);
+    assert.match(lastPrompt(1), /about 8192 tokens/u, "the connection's output limit is quoted");
+    assert.match(lastPrompt(2), /cut off again/u);
+    assert.equal(statusTexts(cut.events).filter((text) => /redoing it in smaller steps/u.test(text)).length, 2);
+    assert.ok(!statusTexts(cut.events).some((text) => /kept hitting/u.test(text)));
+    assert.ok(!JSON.stringify(cut.events).includes("Continue the task."), "a recovery offers no continue chip");
+    assert.equal((await lastAssistant(cut.chat.id))?.content, "Done, in two smaller steps.");
+
+    const cutAlways = await start("pi cut always", [cutWrite, cutWrite, cutWrite, reply("never")]);
+    await cutAlways.done;
+    assert.equal(requests.length, MAX_OUTPUT_LIMIT_REPAIRS + 1, "the recovery budget is spent, then the run stops");
+    assert.ok(statusTexts(cutAlways.events).some((text) => /kept hitting this model's output limit/u.test(text)));
+    assert.ok(
+      JSON.stringify(cutAlways.events).includes("Continue the task."),
+      "a cut-off change offers a continue chip",
+    );
     assert.equal(existsSync(join(workspaceDir, "cut.txt")), false);
-    assert.ok(JSON.stringify(cut.events).includes("Continue the task."), "a cut-off change offers a continue chip");
+
+    const thinking = await start("pi cut thinking", [
+      { content: "", toolCalls: [], finishReason: "length" },
+      reply("Short answer."),
+    ]);
+    await thinking.done;
+    assert.match(lastPrompt(1), /before you wrote anything/u);
+    assert.doesNotMatch(lastPrompt(1), /previous response was empty/u, "a cut is not an empty reply");
+    assert.equal((await lastAssistant(thinking.chat.id))?.content, "Short answer.");
+
+    // Half-written words that claim the work is done ran nothing: no claim repair is spent on them.
+    const claim = await start("pi cut claim", [
+      { ...reply("I've added the onboarding and it is all done and"), finishReason: "length" },
+      reply("Here is the shorter answer."),
+    ]);
+    await claim.done;
+    assert.match(lastPrompt(1), /Write it again, shorter: at most 12288 characters/u);
+    assert.doesNotMatch(lastPrompt(1), /claimed/u);
+    assert.equal((await lastAssistant(claim.chat.id))?.content, "Here is the shorter answer.");
+
+    // What is salvaged is names and a size only.
+    assert.deepEqual(describeCutReply(cutAppData, false), {
+      kind: "call",
+      tool: "app_data",
+      action: "character.onboarding.update",
+      chars: cutAppData.toolCalls[0]!.function.arguments.length,
+    });
+    const beforeAction = describeCutReply(
+      {
+        content: 'Sure.<tool_call>{"name":"app_data","arguments":{"charac',
+        toolCalls: [],
+      },
+      true,
+    );
+    assert.equal(beforeAction.tool, "app_data");
+    assert.equal(beforeAction.action, undefined);
+    assert.equal(
+      describeCutReply({ content: '<tool_call>{"name":"ls","arguments":{}}</tool_call> and then', toolCalls: [] }, true)
+        .kind,
+      "prose",
+      "a closed tag was not the cut",
+    );
+    assert.equal(describeCutReply({ content: null, toolCalls: [] }, false).kind, "thinking");
+    assert.doesNotMatch(
+      outputLimitRepairPrompt(beforeAction, 1),
+      /tokens\)|under about/u,
+      "no limit known, no limit numbers",
+    );
+    assert.match(outputLimitRepairPrompt(beforeAction, 1), /You were writing `app_data` \(about/u);
+    const noArgs = describeCutReply(
+      { content: null, toolCalls: [{ id: "c", type: "function", function: { name: "app_data", arguments: "{}" } }] },
+      false,
+    );
+    assert.match(outputLimitRepairPrompt(noArgs, 1), /You were writing `app_data` when it stopped/u, "no size for {}");
 
     const twice = await start("pi duplicate", [
       reply("", [

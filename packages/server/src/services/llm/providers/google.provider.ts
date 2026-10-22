@@ -8,6 +8,7 @@ import {
   llmFetch,
   llmHttpErrorFromResponse,
   sanitizeApiError,
+  toolCallFinishReason,
   type ChatCompletionResult,
   type ChatMessage,
   type ChatOptions,
@@ -785,7 +786,7 @@ export class GoogleProvider extends BaseLLMProvider {
       return {
         content: content || null,
         toolCalls,
-        finishReason: toolCalls.length > 0 ? "tool_calls" : normalizeGeminiFinishReason(candidate?.finishReason),
+        finishReason: toolCallFinishReason(toolCalls.length, normalizeGeminiFinishReason(candidate?.finishReason)),
         usage: geminiUsage(json.usageMetadata),
         ...(parts.length > 0 ? { providerMetadata: { geminiParts: parts } } : {}),
       };
@@ -925,9 +926,7 @@ export class GoogleProvider extends BaseLLMProvider {
       toolCalls,
       finishReason: options.signal?.aborted
         ? "abort"
-        : toolCalls.length > 0
-          ? "tool_calls"
-          : normalizeGeminiFinishReason(lastFinishReason),
+        : toolCallFinishReason(toolCalls.length, normalizeGeminiFinishReason(lastFinishReason)),
       usage: streamUsage,
       ...(responseParts.length > 0 ? { providerMetadata: { geminiParts: responseParts } } : {}),
     };

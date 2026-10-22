@@ -7,6 +7,7 @@ import {
   llmFetch,
   llmHttpErrorFromResponse,
   sanitizeApiError,
+  toolCallFinishReason,
   type ChatCompletionResult,
   type ChatMessage,
   type ChatOptions,
@@ -617,7 +618,7 @@ export class AnthropicProvider extends BaseLLMProvider {
         content: text || null,
         toolCalls,
         ...(thinkingBlocks.length > 0 ? { providerMetadata: { anthropicThinking: thinkingBlocks } } : {}),
-        finishReason: toolCalls.length > 0 ? "tool_calls" : normalizeAnthropicFinishReason(json.stop_reason),
+        finishReason: toolCallFinishReason(toolCalls.length, normalizeAnthropicFinishReason(json.stop_reason)),
         usage:
           typeof json.usage?.input_tokens === "number" && typeof json.usage.output_tokens === "number"
             ? {
@@ -798,7 +799,7 @@ export class AnthropicProvider extends BaseLLMProvider {
             },
           }
         : {}),
-      finishReason: options.signal?.aborted ? "abort" : toolCalls.length > 0 ? "tool_calls" : finishReason,
+      finishReason: options.signal?.aborted ? "abort" : toolCallFinishReason(toolCalls.length, finishReason),
       usage:
         inputTokens || outputTokens || cachedTokens || cacheWriteTokens
           ? {

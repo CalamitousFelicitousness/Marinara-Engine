@@ -20,7 +20,7 @@ jobs:
   analyze:
     name: Analyze ${{ matrix.language }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     permissions:
       contents: read
       security-events: write # Upload CodeQL SARIF results.
@@ -39,6 +39,10 @@ jobs:
         with:
           languages: ${{ matrix.language }}
           build-mode: none
+          # The Node regression harness is about 30% of the TypeScript lines and never ships.
+          config: |
+            paths-ignore:
+              - scripts/regressions
 
       - name: Analyze
         uses: github/codeql-action/analyze@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3

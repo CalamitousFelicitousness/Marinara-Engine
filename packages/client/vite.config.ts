@@ -3,6 +3,8 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { VitePWA } from "vite-plugin-pwa";
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { parseEnv } from "node:util";
 import path from "path";
 import { delegateDirectAndroidBuild } from "./scripts/build-heap.mjs";
 
@@ -11,6 +13,35 @@ const PWA_DISABLED = Boolean(process.env.SKIP_PWA);
 const DEV_SERVER_PORT = Number.parseInt(process.env.VITE_PORT ?? "5173", 10);
 const DEV_SERVER_HOST = process.env.VITE_HOST?.trim() || undefined;
 const DEV_SERVER_OPEN = process.env.VITE_OPEN_BROWSER !== "false" && process.env.AUTO_OPEN_BROWSER !== "false";
+const DEV_PROXY_DEFAULT_PORT = 7860;
+
+/**
+ * Resolves the API the dev proxy forwards to.
+ *
+ * `PORT` reaches Vite only when it is exported in the ambient environment, so a
+ * plain `pnpm --filter @marinara-engine/client dev` — or a launcher that starts
+ * the client without inheriting it — silently proxied to the 7860 default. That
+ * pointed the client at whatever unrelated instance owned that port, and the
+ * build-skew banner then fired forever, because the other instance reports a
+ * different commit. This mirrors the server instead: an exported `PORT` wins
+ * (dotenv never overrides it), otherwise the root `.env` decides, and the value
+ * is parsed the way `getPort()` parses it. Read with `node:util` rather than a
+ * repo script, because the container images do not copy `scripts/`.
+ */
+function resolveDevProxyPort() {
+  let port = process.env.PORT;
+  if (port === undefined) {
+    try {
+      port = parseEnv(readFileSync(path.resolve(import.meta.dirname, "../../.env"), "utf8")).PORT;
+    } catch {
+      // No readable root .env: the server falls back to its default as well.
+    }
+  }
+  const parsed = Number.parseInt(port ?? "", 10);
+  return Number.isFinite(parsed) ? parsed : DEV_PROXY_DEFAULT_PORT;
+}
+
+const DEV_PROXY_PORT = resolveDevProxyPort();
 const BUILD_COMMIT_LENGTH = 12;
 
 function normalizeBuildCommit(value: string | undefined) {
@@ -228,7 +259,7 @@ export default defineConfig({
     open: DEV_SERVER_OPEN,
     proxy: {
       "/api": {
-        target: `http://127.0.0.1:${process.env.PORT ?? 7860}`,
+        target: `http://127.0.0.1:${DEV_PROXY_PORT}`,
         changeOrigin: false,
         // LAN visitors choose their own Host, so mark them as proxied; local dev stays unmarked.
         configure: (proxy) => {

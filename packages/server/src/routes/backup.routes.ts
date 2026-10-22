@@ -123,6 +123,9 @@ const PROFILE_IMPORT_BODY_LIMIT_BYTES = 256 * 1024 * 1024;
 const PROFILE_IMPORT_ARCHIVE_LIMIT_BYTES = 2 * 1024 * 1024 * 1024;
 const PROFILE_ARCHIVE_ENTRY_LIMIT_BYTES = 256 * 1024 * 1024;
 const PROFILE_ARCHIVE_CENTRAL_DIRECTORY_LIMIT_BYTES = 8 * 1024 * 1024;
+// Full backups also contain the raw per-record storage tree. Keep their metadata bounded, with a
+// separate budget from ordinary profile imports; read directory records individually below.
+const STORED_BACKUP_CENTRAL_DIRECTORY_LIMIT_BYTES = 32 * 1024 * 1024;
 const PROFILE_ARCHIVE_TOTAL_UNCOMPRESSED_LIMIT_BYTES = 2 * 1024 * 1024 * 1024;
 const LARGE_STORED_IMAGE_EXTENSIONS = new Set([".avif", ".gif", ".jpeg", ".jpg", ".png", ".webp"]);
 const LARGE_STORED_VIDEO_EXTENSIONS = new Set([".mov", ".mp4", ".webm"]);
@@ -1963,6 +1966,7 @@ export async function writeStoredBackupArchiveForRegression(
     entryLimitBytes?: number;
     unlimitedArchiveSize?: boolean;
     forceZip64?: boolean;
+    fullBackup?: boolean;
   } = {},
 ) {
   return writeStoredZipArchive(
@@ -2301,6 +2305,7 @@ async function writeStoredZipArchive(
     onOmittedEntry?: (entryName: string) => void;
     unlimitedArchiveSize?: boolean;
     forceZip64?: boolean;
+    fullBackup?: boolean;
   } = {},
 ) {
   const output = await open(outputPath, "w", PRIVATE_FILE_MODE);
@@ -2313,6 +2318,9 @@ async function writeStoredZipArchive(
   let position = 0;
   let totalUncompressedBytes = 0;
   let centralDirectorySizeEstimate = 0;
+  const centralDirectoryLimitBytes = options.fullBackup
+    ? STORED_BACKUP_CENTRAL_DIRECTORY_LIMIT_BYTES
+    : PROFILE_ARCHIVE_CENTRAL_DIRECTORY_LIMIT_BYTES;
   const archiveLimitBytes = options.unlimitedArchiveSize ? Number.MAX_SAFE_INTEGER : PROFILE_IMPORT_ARCHIVE_LIMIT_BYTES;
   const totalLimitBytes = options.unlimitedArchiveSize
     ? Number.MAX_SAFE_INTEGER
@@ -2392,13 +2400,13 @@ async function writeStoredZipArchive(
           ),
         );
       }
-      if (nextCentralDirectorySize > PROFILE_ARCHIVE_CENTRAL_DIRECTORY_LIMIT_BYTES) {
+      if (nextCentralDirectorySize > centralDirectoryLimitBytes) {
         await output.truncate(entryStart);
         throw new ProfileArchiveTooLargeError(
           profileArchiveSizeError(
             "Profile archive central directory",
             nextCentralDirectorySize,
-            PROFILE_ARCHIVE_CENTRAL_DIRECTORY_LIMIT_BYTES,
+            centralDirectoryLimitBytes,
           ),
         );
       }
@@ -2416,13 +2424,9 @@ async function writeStoredZipArchive(
     }
     const centralDirectorySize = position - centralDirectoryOffset;
     assertZipSafeInteger(centralDirectorySize, "central directory size");
-    if (centralDirectorySize > PROFILE_ARCHIVE_CENTRAL_DIRECTORY_LIMIT_BYTES) {
+    if (centralDirectorySize > centralDirectoryLimitBytes) {
       throw new ProfileArchiveTooLargeError(
-        profileArchiveSizeError(
-          "Profile archive central directory",
-          centralDirectorySize,
-          PROFILE_ARCHIVE_CENTRAL_DIRECTORY_LIMIT_BYTES,
-        ),
+        profileArchiveSizeError("Profile archive central directory", centralDirectorySize, centralDirectoryLimitBytes),
       );
     }
     const end = buildEndOfCentralDirectory(
@@ -2653,12 +2657,12 @@ async function readProfileZipArchive(filePath: string): Promise<ProfileZipArchiv
       eocdSearch,
       eocdOffset,
     );
-    if (centralDirectorySize > PROFILE_ARCHIVE_CENTRAL_DIRECTORY_LIMIT_BYTES) {
+    if (centralDirectorySize > STORED_BACKUP_CENTRAL_DIRECTORY_LIMIT_BYTES) {
       throw new ProfileImportRequestError(
         profileArchiveSizeError(
           "Profile archive central directory",
           centralDirectorySize,
-          PROFILE_ARCHIVE_CENTRAL_DIRECTORY_LIMIT_BYTES,
+          STORED_BACKUP_CENTRAL_DIRECTORY_LIMIT_BYTES,
         ),
       );
     }
@@ -2666,42 +2670,42 @@ async function readProfileZipArchive(filePath: string): Promise<ProfileZipArchiv
       throw new ProfileImportRequestError("Profile archive central directory is outside the ZIP file.");
     }
 
-    const centralDirectory = Buffer.alloc(centralDirectorySize);
-    await readProfileZipBytes(handle, centralDirectory, centralDirectoryOffset, "central directory");
-
     const entries: ProfileZipEntry[] = [];
     const entriesByName = new Map<string, ProfileZipEntry>();
+    const centralHeader = Buffer.alloc(46);
     let offset = 0;
     for (let index = 0; index < totalEntries; index++) {
-      if (
-        offset + 46 > centralDirectory.length ||
-        centralDirectory.readUInt32LE(offset) !== ZIP_CENTRAL_DIRECTORY_SIGNATURE
-      ) {
+      if (offset + 46 > centralDirectorySize) {
+        throw new ProfileImportRequestError("Profile archive central directory is damaged.");
+      }
+      await readProfileZipBytes(handle, centralHeader, centralDirectoryOffset + offset, "central directory header");
+      if (centralHeader.readUInt32LE(0) !== ZIP_CENTRAL_DIRECTORY_SIGNATURE) {
         throw new ProfileImportRequestError("Profile archive central directory is damaged.");
       }
 
-      const flags = centralDirectory.readUInt16LE(offset + 8);
+      const flags = centralHeader.readUInt16LE(8);
       if ((flags & ZIP_ENCRYPTED_FLAG) !== 0) {
         throw new ProfileImportRequestError("Profile archive encrypted ZIP entries are not supported.");
       }
-      const method = centralDirectory.readUInt16LE(offset + 10);
-      const crc32 = centralDirectory.readUInt32LE(offset + 16);
-      const compressedSize32 = centralDirectory.readUInt32LE(offset + 20);
-      const size32 = centralDirectory.readUInt32LE(offset + 24);
-      const fileNameLength = centralDirectory.readUInt16LE(offset + 28);
-      const extraLength = centralDirectory.readUInt16LE(offset + 30);
-      const commentLength = centralDirectory.readUInt16LE(offset + 32);
-      const entryDisk = centralDirectory.readUInt16LE(offset + 34);
+      const method = centralHeader.readUInt16LE(10);
+      const crc32 = centralHeader.readUInt32LE(16);
+      const compressedSize32 = centralHeader.readUInt32LE(20);
+      const size32 = centralHeader.readUInt32LE(24);
+      const fileNameLength = centralHeader.readUInt16LE(28);
+      const extraLength = centralHeader.readUInt16LE(30);
+      const commentLength = centralHeader.readUInt16LE(32);
+      const entryDisk = centralHeader.readUInt16LE(34);
       if (entryDisk !== 0) throw new ProfileImportRequestError("Profile archive split ZIP files are not supported.");
-      const localHeaderOffset32 = centralDirectory.readUInt32LE(offset + 42);
+      const localHeaderOffset32 = centralHeader.readUInt32LE(42);
       const nextOffset = offset + 46 + fileNameLength + extraLength + commentLength;
-      if (nextOffset > centralDirectory.length) {
+      if (nextOffset > centralDirectorySize) {
         throw new ProfileImportRequestError("Profile archive central directory entry is damaged.");
       }
-      const entryName = centralDirectory.subarray(offset + 46, offset + 46 + fileNameLength).toString("utf8");
+      const entryMetadata = Buffer.alloc(fileNameLength + extraLength);
+      await readProfileZipBytes(handle, entryMetadata, centralDirectoryOffset + offset + 46, "central directory entry");
+      const entryName = entryMetadata.subarray(0, fileNameLength).toString("utf8");
       const normalizedName = normalizeProfileArchiveEntryPath(entryName);
-      const extraStart = offset + 46 + fileNameLength;
-      const zip64Values = readZip64ExtraValues(centralDirectory.subarray(extraStart, extraStart + extraLength), {
+      const zip64Values = readZip64ExtraValues(entryMetadata.subarray(fileNameLength), {
         size: size32 === ZIP32_MAX_VALUE,
         compressedSize: compressedSize32 === ZIP32_MAX_VALUE,
         localHeaderOffset: localHeaderOffset32 === ZIP32_MAX_VALUE,
@@ -2738,11 +2742,20 @@ async function readProfileZipArchive(filePath: string): Promise<ProfileZipArchiv
       offset = nextOffset;
     }
 
-    if (offset !== centralDirectory.length) {
+    if (offset !== centralDirectorySize) {
       throw new ProfileImportRequestError("Profile archive central directory has unexpected trailing data.");
     }
 
     const isFullBackup = isStoredFullBackupArchive(entries, archiveStat.size);
+    if (!isFullBackup && centralDirectorySize > PROFILE_ARCHIVE_CENTRAL_DIRECTORY_LIMIT_BYTES) {
+      throw new ProfileImportRequestError(
+        profileArchiveSizeError(
+          "Profile archive central directory",
+          centralDirectorySize,
+          PROFILE_ARCHIVE_CENTRAL_DIRECTORY_LIMIT_BYTES,
+        ),
+      );
+    }
     return { filePath, entries, entriesByName, isFullBackup };
   } finally {
     await handle.close();
@@ -3356,6 +3369,7 @@ async function writeFullBackupArchive(
     skipFailedFileEntries: true,
     entryLimitBytes: Number.MAX_SAFE_INTEGER,
     unlimitedArchiveSize: true,
+    fullBackup: true,
     onOmittedEntry: (entryName) => omittedEntries.add(entryName),
   });
   return { omittedEntries: [...omittedEntries] };

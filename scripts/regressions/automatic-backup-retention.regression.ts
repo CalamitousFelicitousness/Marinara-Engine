@@ -253,6 +253,82 @@ try {
     "profile archives must not fail at the former artificial 8,192-entry ceiling",
   );
 
+  const wideDirectoryArchive = join(zipFixtureRoot, "wide-directory.zip");
+  const wideDirectorySources = [
+    {
+      entryName: "marinara-automatic-backup/marinara-profile.json",
+      filePath: zip64ManifestPath,
+      size: zip64ManifestSize,
+    },
+    {
+      entryName: "marinara-automatic-backup/RESTORE.txt",
+      filePath: zip64RestorePath,
+      size: zip64RestoreSize,
+    },
+    {
+      entryName: "marinara-automatic-backup/backgrounds/large.gif",
+      filePath: sourcePath,
+      size: logicalSize,
+    },
+    ...Array.from({ length: 8_193 }, (_, index) => ({
+      entryName: `marinara-automatic-backup/storage/${String(index).padStart(4, "0")}/${"x".repeat(980)}.json`,
+      filePath: manyEntriesSource,
+      size: 0,
+    })),
+  ];
+  await assert.rejects(
+    writeStoredBackupArchiveForRegression(wideDirectoryArchive, wideDirectorySources),
+    /central directory is too large/u,
+    "ordinary profile exports must retain their central-directory resource limit",
+  );
+  await assert.rejects(
+    writeStoredBackupArchiveForRegression(wideDirectoryArchive, wideDirectorySources, { unlimitedArchiveSize: true }),
+    /central directory is too large/u,
+    "unlimited payload size alone must not make native profile exports exceed their reader's metadata limit",
+  );
+  await writeStoredBackupArchiveForRegression(wideDirectoryArchive, wideDirectorySources, {
+    unlimitedArchiveSize: true,
+    fullBackup: true,
+  });
+  const wideDirectoryEnd = Buffer.alloc(22);
+  const wideDirectoryFd = openSync(wideDirectoryArchive, "r");
+  try {
+    const archiveSize = (await stat(wideDirectoryArchive)).size;
+    assert.equal(readSync(wideDirectoryFd, wideDirectoryEnd, 0, 22, archiveSize - 22), 22);
+  } finally {
+    closeSync(wideDirectoryFd);
+  }
+  assert.ok(wideDirectoryEnd.readUInt32LE(12) > 8 * 1024 * 1024);
+  const wideDirectoryInspection = await inspectStoredBackupArchiveForRegression(wideDirectoryArchive);
+  assert.equal(wideDirectoryInspection.isFullBackup, true);
+  assert.equal(wideDirectoryInspection.entries.length, wideDirectorySources.length);
+  const wideDirectoryImport = await readStoredBackupImportForRegression(wideDirectoryArchive, "backgrounds/large.gif");
+  assert.equal(wideDirectoryImport.isFullBackup, true);
+  assert.ok(wideDirectoryImport.asset && !Buffer.isBuffer(wideDirectoryImport.asset));
+  const wideDirectoryRestore = await stageProfileImportAssets(join(zipFixtureRoot, "wide-directory-restored"), [
+    { path: "backgrounds/large.gif", expectedSize: logicalSize, read: () => wideDirectoryImport.asset },
+  ]);
+  try {
+    await promoteStagedProfileAssets(wideDirectoryRestore);
+    assert.equal(
+      (await stat(join(zipFixtureRoot, "wide-directory-restored", "backgrounds", "large.gif"))).size,
+      logicalSize,
+    );
+  } finally {
+    await cleanupStagedProfileAssets(wideDirectoryRestore);
+  }
+
+  await writeStoredBackupArchiveForRegression(
+    wideDirectoryArchive,
+    wideDirectorySources.filter((source) => !source.entryName.endsWith("/RESTORE.txt")),
+    { unlimitedArchiveSize: true, fullBackup: true },
+  );
+  await assert.rejects(
+    inspectStoredBackupArchiveForRegression(wideDirectoryArchive),
+    /central directory is too large/u,
+    "large directories must not bypass ordinary profile-import limits without a valid full-backup shape",
+  );
+
   const retainedSource = join(zipFixtureRoot, "retained.gif");
   const missingSource = join(zipFixtureRoot, "missing.gif");
   const partialArchive = join(zipFixtureRoot, "partial.zip");

@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
-import { buildChatBranchRows, type BranchTreeChat } from "../../packages/client/src/lib/chat-branch-tree.js";
+import {
+  buildChatBranchRows,
+  hasChatBranchLineage,
+  type BranchTreeChat,
+} from "../../packages/client/src/lib/chat-branch-tree.js";
 
 function chat(
   id: string,
@@ -40,6 +44,19 @@ for (const row of nestedRows) {
   if (parentId) assert.ok(position.get(parentId)! < position.get(row.chat.id)!);
 }
 
+// Connector data: which rows end their branch, and which ancestor trunks must be drawn through a
+// descendant, so the tree lines meet at corners instead of trailing off into nothing.
+assert.deepEqual(
+  nestedRows.map((row) => [row.chat.id, row.depth, row.isLastChild, row.continues]),
+  [
+    ["root", 0, false, []],
+    ["b1", 1, false, []],
+    ["b1-1", 2, true, [true]],
+    ["b1-1-1", 3, true, [true, false]],
+    ["b2", 1, true, []],
+  ],
+);
+
 // Siblings keep the caller's ordering (the chat list passes its recency comparator).
 const recentFirst = (left: BranchTreeChat, right: BranchTreeChat) =>
   new Date(right.createdAt as string).getTime() - new Date(left.createdAt as string).getTime();
@@ -78,3 +95,11 @@ assert.equal(cyclicRows[0]?.depth, 0);
 const messyRows = buildChatBranchRows([...nested, ...legacy, ...cyclic]);
 assert.equal(messyRows.length, nested.length + legacy.length + cyclic.length);
 assert.equal(new Set(messyRows.map((row) => row.chat.id)).size, messyRows.length);
+
+// Only a group whose lineage actually points inside itself gets a tree. Legacy branch sets and Game
+// sessions stay on the list's single-row behaviour rather than being given an invented hierarchy.
+assert.equal(hasChatBranchLineage(nested), true);
+assert.equal(hasChatBranchLineage(legacy), false);
+assert.equal(hasChatBranchLineage([chat("solo")]), false);
+assert.equal(hasChatBranchLineage([chat("a", "deleted"), chat("b")]), false);
+assert.equal(hasChatBranchLineage([chat("self", "self"), chat("other")]), false);

@@ -73,7 +73,8 @@ import {
 import { resolveLiveConversationStatus } from "../../lib/conversation-presence-status";
 import { Modal } from "../ui/Modal";
 import { Reorder } from "framer-motion";
-import { parseChatMetadata } from "../../lib/chat-display";
+import { parseChatMetadata, getChatDisplayName } from "../../lib/chat-display";
+import { buildChatBranchRows, hasChatBranchLineage, type BranchTreeRow } from "../../lib/chat-branch-tree";
 import {
   compareChatsByActivityDesc,
   compareChatsByCreatedAtAsc,
@@ -98,6 +99,15 @@ const CharacterScheduleManagerModal = lazy(async () => ({
 }));
 
 type ChatSortOption = "custom" | "recent" | "newest" | "oldest" | "name-asc" | "name-desc";
+
+/** One row of the list: the chat, plus its branches when the group has recorded lineage. */
+type ChatListEntry = {
+  chat: Chat;
+  branchCount: number;
+  branchRows?: BranchTreeRow<Chat>[];
+  /** Set on a row drawn inside a tree: its depth and the connector flags for the tree lines. */
+  treeRow?: BranchTreeRow<Chat>;
+};
 const CHAT_LIST_PAGE_SIZE = 100;
 
 const CONVERSATION_STATUS_PRIORITY: Record<ConversationPresenceStatus, number> = {
@@ -309,6 +319,11 @@ export function ChatSidebar() {
     branchCount: number;
   } | null>(null);
 
+  // Which branch groups are open. Component-local per the client state rules: a view toggle does not
+  // earn a store field or a server round trip. ponytail: it resets on remount; upgrade path is a
+  // ui.store field if someone asks for it to stick.
+  const [expandedBranchGroups, setExpandedBranchGroups] = useState<Set<string>>(new Set());
+
   const [draggedChatId, setDraggedChatId] = useState<string | null>(null);
   const [isRootDropTarget, setIsRootDropTarget] = useState(false);
   const chatImportInputRef = useRef<HTMLInputElement>(null);
@@ -419,12 +434,42 @@ export function ChatSidebar() {
         .filter(Boolean);
 
       return (
-        includesTextForMatch(toSearchText(chat.name), query) ||
+        includesTextForMatch(toSearchText(getChatDisplayName(chat)), query) ||
         tags.some((tag) => includesTextForMatch(tag, query)) ||
         characterNames.some((name) => includesTextForMatch(name, query))
       );
     });
   }, [modeChats, searchQuery, activeTag, charLookup]);
+
+  // ── Branch trees ──
+  // A group's branches already know their parents (metadata.branchParentChatId), so this only decides
+  // which groups get a tree. A group with no recorded lineage keeps today's single row and count:
+  // inventing a parent there would be a lie about the data.
+  const branchTreesByGroup = useMemo(() => {
+    const members = new Map<string, Chat[]>();
+    for (const chat of chats ?? []) {
+      if (!chat.groupId) continue;
+      const group = members.get(chat.groupId);
+      if (group) group.push(chat);
+      else members.set(chat.groupId, [chat]);
+    }
+    const trees = new Map<string, BranchTreeRow<Chat>[]>();
+    for (const [groupId, groupChats] of members) {
+      if (groupChats.length < 2 || !hasChatBranchLineage(groupChats)) continue;
+      // Siblings follow the list's own recency order, so a busy branch floats up inside its level.
+      trees.set(groupId, buildChatBranchRows(groupChats, compareChatsByActivityDesc));
+    }
+    return trees;
+  }, [chats]);
+
+  const toggleBranchGroup = useCallback((groupId: string) => {
+    setExpandedBranchGroups((previous) => {
+      const next = new Set(previous);
+      if (next.has(groupId)) next.delete(groupId);
+      else next.add(groupId);
+      return next;
+    });
+  }, []);
 
   // ── Collapse chats that share a groupId into one entry ──
   const displayChats = useMemo(() => {
@@ -457,15 +502,19 @@ export function ChatSidebar() {
     });
 
     const seenGroups = new Set<string>();
-    const result: { chat: (typeof sorted)[number]; branchCount: number }[] = [];
+    const result: ChatListEntry[] = [];
 
     for (const chat of sorted) {
       if (chat.groupId) {
         if (seenGroups.has(chat.groupId)) continue;
         seenGroups.add(chat.groupId);
+        // Root the row on the group's lineage root when there is one, so the tree does not re-root
+        // itself every time a different branch is the one most recently spoken to.
+        const branchRows = branchTreesByGroup.get(chat.groupId);
         result.push({
-          chat: getCurrentGameGroupRepresentative(chat, chats ?? filtered),
+          chat: branchRows?.[0]?.chat ?? getCurrentGameGroupRepresentative(chat, chats ?? filtered),
           branchCount: totalGroupSizes.get(chat.groupId) ?? 1,
+          branchRows,
         });
       } else {
         result.push({ chat, branchCount: 1 });
@@ -473,11 +522,21 @@ export function ChatSidebar() {
     }
 
     return orderLibraryItems(result, (entry) => entry.chat.groupId ?? entry.chat.id);
-  }, [chats, filtered, sort, orderLibraryItems]);
+  }, [chats, filtered, sort, orderLibraryItems, branchTreesByGroup]);
 
   // Detect if active chat belongs to a group so its group row highlights and stays mounted.
   const activeChat = chats?.find((c) => c.id === activeChatId);
   const activeGroupId = activeChat?.groupId ?? null;
+
+  // A branch that becomes active (branch switch, notification, reload) has to be visible: open its
+  // group, or the list highlights a row that is not rendered at all.
+  useEffect(() => {
+    const groupId = activeChat?.groupId;
+    if (!activeChatId || !groupId) return;
+    const branchRows = branchTreesByGroup.get(groupId);
+    if (!branchRows?.some((row) => row.chat.id === activeChatId && row.depth > 0)) return;
+    setExpandedBranchGroups((previous) => (previous.has(groupId) ? previous : new Set(previous).add(groupId)));
+  }, [activeChatId, activeChat?.groupId, branchTreesByGroup]);
   const activeDisplayChatIndex = useMemo(
     () =>
       displayChats.findIndex(
@@ -918,11 +977,48 @@ export function ChatSidebar() {
     }
   }, [selectedChatIds, bulkExportChats, exitMultiSelect, localizeUi]);
 
+  // ── Opening a chat — the row click and the nested branch rows share one path ──
+  const openChat = useCallback(
+    async (chatId: string) => {
+      if (hasAnyDetailOpen()) {
+        if (editorDirty && !hasEditorLeaveHandler(useUIStore.getState())) {
+          if (
+            !(await showConfirmDialog({
+              title: localizeUi("ui.layout.chatsidebar.unsavedChanges"),
+              message: localizeUi("ui.layout.chatsidebar.youHaveUnsavedChangesDiscardAndContinue"),
+              confirmLabel: localizeUi("ui.agents.agenteditor.discard"),
+              tone: "destructive",
+            }))
+          ) {
+            return;
+          }
+        }
+        closeAllDetails();
+      }
+      internalNavRef.current = true;
+      setActiveChatId(chatId);
+      if (isMobileShellViewport()) setSidebarOpen(false);
+    },
+    [hasAnyDetailOpen, editorDirty, closeAllDetails, setActiveChatId, setSidebarOpen, localizeUi],
+  );
+
   // ── Chat row renderer (shared between unfiled + folder sections) ──
-  const renderChatRow = ({ chat, branchCount }: (typeof displayChats)[number]) => {
+  const renderChatRow = (entry: ChatListEntry) => {
+    const { chat, branchCount, branchRows, treeRow } = entry;
+    const depth = treeRow?.depth ?? 0;
     const cfg = MODE_CONFIG[chat.mode] ?? MODE_CONFIG.conversation;
-    const displayName = chat.name;
-    const isActive = activeChatId === chat.id || (chat.groupId != null && chat.groupId === activeGroupId);
+    const isBranchRoot = depth === 0 && Boolean(branchRows && branchRows.length > 1);
+    // A branch is labelled by its own display name; the row for the chat keeps the stable thread name.
+    // The row truncates both, so the same string feeds the hover title.
+    const displayName = depth > 0 ? getChatDisplayName(chat) : chat.name;
+    // Searching matches branch display names too, so a hit can be a branch below the fold: open the
+    // group while a filter is active, the way folder rows force themselves open for a search hit.
+    const isExpanded =
+      isBranchRoot && (chatListFilterActive || (chat.groupId != null && expandedBranchGroups.has(chat.groupId)));
+    // Collapsed, the group row stands in for whichever branch is active. Expanded, exactly one row
+    // may look current — otherwise every sibling lights up at once.
+    const isGroupActive = depth === 0 && !isExpanded && chat.groupId != null && chat.groupId === activeGroupId;
+    const isActive = activeChatId === chat.id || isGroupActive;
     const isSelected = selectedChatIds.has(chat.id);
     const charIds = normalizeChatCharacterIds((chat as { characterIds?: unknown }).characterIds);
     const conversationStatusByCharacter = getConversationPresenceState(
@@ -984,206 +1080,203 @@ export function ChatSidebar() {
         ? null
         : chatBackgroundMetadataToUrl(chat.metadata?.background, BACKGROUND_THUMBNAIL_WIDTH);
 
+    // Branches render under the row itself: their own row, then the folder-style guide line with one
+    // indent level per hop.
+    const childRows = isExpanded && branchRows ? branchRows.slice(1) : [];
+
+    // Children key by chat id: every branch of a group shares the group id, and duplicate keys
+    // corrupt reconciliation once the tree is open.
     return (
-      <div
-        role="button"
-        tabIndex={0}
-        key={chat.groupId ?? chat.id}
-        data-chat-id={chat.id}
-        data-drag-id={chat.id}
-        aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
-        data-drag-kind="chat"
-        data-drag-order-id={chat.groupId ?? chat.id}
-        data-drag-folder={chat.folderId ?? ""}
-        onTouchStart={(event) => {
-          startTouchDrag(event, chat.id, {
-            sourceElement: event.currentTarget.closest<HTMLElement>("[data-chat-id]"),
-          });
-        }}
-        onMouseDown={(event) => startMouseDrag(event, chat.id)}
-        draggable
-        onDragStart={(event) => {
-          const chatIds = getDragChatIds(chat.id);
-          setDraggedChatId(chat.id);
-          event.dataTransfer.effectAllowed = "move";
-          event.dataTransfer.setData("application/x-marinara-chat-ids", JSON.stringify(chatIds));
-          event.dataTransfer.setData("application/x-marinara-chat-id", chat.id);
-          event.dataTransfer.setData("text/plain", chat.id);
-        }}
-        onDragEnd={() => {
-          setDraggedChatId(null);
-          setIsRootDropTarget(false);
-        }}
-        onClick={async () => {
-          if (suppressTouchDragClickRef.current) {
-            suppressTouchDragClickRef.current = false;
-            return;
-          }
-          if (multiSelectMode) {
-            toggleSelectChat(chat.id);
-            return;
-          }
-          if (hasAnyDetailOpen()) {
-            if (editorDirty && !hasEditorLeaveHandler(useUIStore.getState())) {
-              if (
-                !(await showConfirmDialog({
-                  title: localizeUi("ui.layout.chatsidebar.unsavedChanges"),
-                  message: localizeUi("ui.layout.chatsidebar.youHaveUnsavedChangesDiscardAndContinue"),
-                  confirmLabel: localizeUi("ui.agents.agenteditor.discard"),
-                  tone: "destructive",
-                }))
-              ) {
-                return;
-              }
+      <div key={depth === 0 ? (chat.groupId ?? chat.id) : chat.id} className="flex flex-col">
+        <div
+          role="button"
+          data-chat-id={chat.id}
+          title={displayName}
+          data-drag-id={chat.id}
+          aria-keyshortcuts={depth === 0 ? "Alt+ArrowUp Alt+ArrowDown" : undefined}
+          // Only the row for the chat drags: a branch moving on its own would reorder the group it
+          // belongs to, and a duplicate order id would confuse the drop targets.
+          data-drag-kind={depth === 0 ? "chat" : undefined}
+          data-drag-order-id={depth === 0 ? (chat.groupId ?? chat.id) : undefined}
+          data-drag-folder={depth === 0 ? (chat.folderId ?? "") : undefined}
+          onTouchStart={(event) => {
+            if (depth > 0) return;
+            startTouchDrag(event, chat.id, {
+              sourceElement: event.currentTarget.closest<HTMLElement>("[data-chat-id]"),
+            });
+          }}
+          onMouseDown={(event) => {
+            if (depth > 0) return;
+            startMouseDrag(event, chat.id);
+          }}
+          draggable={depth === 0}
+          onDragStart={(event) => {
+            if (depth > 0) return;
+            const chatIds = getDragChatIds(chat.id);
+            setDraggedChatId(chat.id);
+            event.dataTransfer.effectAllowed = "move";
+            event.dataTransfer.setData("application/x-marinara-chat-ids", JSON.stringify(chatIds));
+            event.dataTransfer.setData("application/x-marinara-chat-id", chat.id);
+            event.dataTransfer.setData("text/plain", chat.id);
+          }}
+          onDragEnd={() => {
+            setDraggedChatId(null);
+            setIsRootDropTarget(false);
+          }}
+          onClick={async () => {
+            if (suppressTouchDragClickRef.current) {
+              suppressTouchDragClickRef.current = false;
+              return;
             }
-            closeAllDetails();
-          }
-          internalNavRef.current = true;
-          setActiveChatId(chat.id);
-          if (isMobileShellViewport()) setSidebarOpen(false);
-        }}
-        className={cn(
-          "group relative isolate flex w-full touch-pan-y cursor-grab active:cursor-grabbing items-center gap-2.5 overflow-hidden rounded-lg px-3 py-2.5 text-left transition-all duration-150",
-          multiSelectMode && isSelected
-            ? "mari-chrome-accent-surface mari-accent-animated"
-            : isActive
-              ? "bg-[var(--marinara-chat-chrome-highlight-bg)] ring-1 ring-[var(--marinara-chat-chrome-button-border-active)] shadow-sm"
-              : "hover:bg-[var(--marinara-chat-chrome-highlight-bg)]",
-          draggedChatId === chat.id && "opacity-50",
-        )}
-      >
-        {/* Multi-select checkbox */}
-        {multiSelectMode && (
-          <div className="mari-chrome-accent-icon mari-accent-animated shrink-0">
-            {isSelected ? (
-              <CheckSquare size="0.875rem" />
-            ) : (
-              <SquareIcon size="0.875rem" className="text-[var(--muted-foreground)]" />
-            )}
-          </div>
-        )}
-
-        {/* Chat background banner — active/hovered only, behind everything */}
-        {bannerUrl && (
-          <span
-            aria-hidden
-            className={cn(
-              "pointer-events-none absolute inset-0 -z-10 opacity-0 transition-opacity duration-200",
-              // "hover" on a touch device means the active row only — no hover event ever fires.
-              chatListBackgrounds === "always" || isActive ? "opacity-100" : "group-hover:opacity-100",
-            )}
-          >
-            {/* Muted twice over: the image is faint, and a scrim still sits on top. Keeping
-                the scrim means text contrast does not depend on how light the image is. */}
-            {/* Full-size chat background squeezed into a 40px row: keep the decode off the
-                main thread and let offscreen rows skip it entirely. */}
-            <img
-              src={bannerUrl}
-              alt=""
-              loading="lazy"
-              decoding="async"
-              className="h-full w-full object-cover opacity-[0.14] saturate-50"
-            />
-            <span className="absolute inset-0 bg-gradient-to-r from-[var(--sidebar-background)]/80 to-[var(--sidebar-background)]/40" />
-          </span>
-        )}
-
-        {/* Active indicator — generation is shown by the subtitle spinner instead. */}
-        {isActive && (
-          <span
-            // left-0, not -left-0.5: the row now clips (overflow-hidden, for the banner).
-            className="mari-chrome-accent-progress mari-accent-animated absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-full"
-          />
-        )}
-
-        {/* Chat avatar(s) or mode icon fallback — with unread badge overlay */}
-        <div className="relative flex-shrink-0">
-          {(() => {
-            const avatars = charIds
-              .slice(0, 3)
-              .map((id) => {
-                const base = charLookup.get(id);
-                if (!base) return null;
-                const chatStatus = conversationStatusByCharacter.get(id);
-                return chatStatus ? { ...base, conversationStatus: chatStatus } : base;
-              })
-              .filter(Boolean) as {
-              name: string;
-              avatarUrl: string | null;
-              avatarCrop?: AvatarCrop | null;
-              conversationStatus?: string;
-            }[];
-
-            const isConvoMode = chat.mode === "conversation";
-            const statusDot = (status?: string) => {
-              if (!isConvoMode) return null;
-              return (
-                <span
-                  className={cn(
-                    "absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-[0.1875rem] ring-[1.5px] ring-[var(--sidebar-background)]",
-                    conversationStatusDotClass(status),
-                  )}
-                />
-              );
-            };
-            const multiAvatarStatus = avatars.reduce<ConversationPresenceStatus | undefined>((worstStatus, avatar) => {
-              const nextStatus = asConversationStatus(avatar.conversationStatus) ?? "online";
-              if (!worstStatus) return nextStatus;
-              return CONVERSATION_STATUS_PRIORITY[nextStatus] > CONVERSATION_STATUS_PRIORITY[worstStatus]
-                ? nextStatus
-                : worstStatus;
-            }, undefined);
-            if (avatars.length === 0) {
-              return (
-                <div
-                  className={cn(
-                    "flex h-7 w-7 items-center justify-center rounded-lg text-xs transition-transform group-active:scale-90",
-                    "mari-chat-mode-avatar",
-                    cfg.logoModeClass,
-                    isActive && "shadow-sm",
-                  )}
-                >
-                  {cfg.icon}
-                </div>
-              );
+            if (multiSelectMode) {
+              toggleSelectChat(chat.id);
+              return;
             }
-
-            if (avatars.length === 1) {
-              const a = avatars[0]!;
-              return a.avatarUrl ? (
-                <div className="relative h-7 w-7 flex-shrink-0 transition-transform group-active:scale-90">
-                  <span className="relative block h-7 w-7 overflow-hidden rounded-lg">
-                    <img
-                      src={a.avatarUrl}
-                      alt={a.name}
-                      className="h-full w-full object-cover"
-                      style={getAvatarCropStyle(a.avatarCrop)}
-                    />
-                  </span>
-                  {statusDot(a.conversationStatus)}
-                </div>
+            await openChat(chat.id);
+          }}
+          className={cn(
+            "group relative isolate flex w-full touch-pan-y items-center gap-2.5 overflow-hidden rounded-lg px-3 py-2.5 text-left transition-all duration-150",
+            depth === 0 ? "cursor-grab active:cursor-grabbing" : "cursor-pointer",
+            multiSelectMode && isSelected
+              ? "mari-chrome-accent-surface mari-accent-animated"
+              : isActive
+                ? "bg-[var(--marinara-chat-chrome-highlight-bg)] ring-1 ring-[var(--marinara-chat-chrome-button-border-active)] shadow-sm"
+                : "hover:bg-[var(--marinara-chat-chrome-highlight-bg)]",
+            draggedChatId === chat.id && "opacity-50",
+          )}
+        >
+          {/* Multi-select checkbox */}
+          {multiSelectMode && (
+            <div className="mari-chrome-accent-icon mari-accent-animated shrink-0">
+              {isSelected ? (
+                <CheckSquare size="0.875rem" />
               ) : (
-                <div className="relative h-7 w-7 flex-shrink-0 transition-transform group-active:scale-90">
-                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[var(--secondary)] text-[0.625rem] font-bold text-[var(--muted-foreground)]">
-                    {a.name[0]}
-                  </div>
-                  {statusDot(a.conversationStatus)}
-                </div>
-              );
-            }
+                <SquareIcon size="0.875rem" className="text-[var(--muted-foreground)]" />
+              )}
+            </div>
+          )}
 
-            // Multiple characters — stacked avatars
-            return (
-              <div className="relative h-7 w-7 flex-shrink-0 transition-transform group-active:scale-90">
-                {avatars.slice(0, 2).map((a, i) =>
-                  a.avatarUrl ? (
-                    <span
-                      key={i}
-                      className={cn(
-                        "absolute h-5 w-5 overflow-hidden rounded-md ring-2 ring-[var(--sidebar-background)]",
-                        i === 0 ? "top-0 left-0 z-10" : "bottom-0 right-0",
-                      )}
-                    >
+          {/* Chat background banner — active/hovered only, behind everything */}
+          {bannerUrl && (
+            <span
+              aria-hidden
+              className={cn(
+                "pointer-events-none absolute inset-0 -z-10 opacity-0 transition-opacity duration-200",
+                // "hover" on a touch device means the active row only — no hover event ever fires.
+                chatListBackgrounds === "always" || isActive ? "opacity-100" : "group-hover:opacity-100",
+              )}
+            >
+              {/* Muted twice over: the image is faint, and a scrim still sits on top. Keeping
+                the scrim means text contrast does not depend on how light the image is. */}
+              {/* Full-size chat background squeezed into a 40px row: keep the decode off the
+                main thread and let offscreen rows skip it entirely. */}
+              <img
+                src={bannerUrl}
+                alt=""
+                loading="lazy"
+                decoding="async"
+                className="h-full w-full object-cover opacity-[0.14] saturate-50"
+              />
+              <span className="absolute inset-0 bg-gradient-to-r from-[var(--sidebar-background)]/80 to-[var(--sidebar-background)]/40" />
+            </span>
+          )}
+
+          {/* Active indicator — generation is shown by the subtitle spinner instead. */}
+          {isActive && (
+            <span
+              // left-0, not -left-0.5: the row now clips (overflow-hidden, for the banner).
+              className="mari-chrome-accent-progress mari-accent-animated absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-full"
+            />
+          )}
+
+          {/* Branch tree toggle, in the left gutter so only rows with something to open shift right.
+            Same chevron idiom as the folder header (FolderRow). */}
+          {isBranchRoot ? (
+            <button
+              type="button"
+              aria-expanded={isExpanded}
+              aria-label={localizeUi(
+                isExpanded ? "ui.layout.chatsidebar.collapseBranches" : "ui.layout.chatsidebar.expandBranches",
+                { name: chat.name },
+              )}
+              onClick={(event) => {
+                event.stopPropagation();
+                if (chat.groupId) toggleBranchGroup(chat.groupId);
+              }}
+              className="flex h-6 w-5 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
+            >
+              <ChevronRight
+                size="0.75rem"
+                className={cn("transition-transform duration-200 ease-out", isExpanded && "rotate-90")}
+              />
+            </button>
+          ) : depth === 0 ? (
+            // Equal-width spacer, so names line up whether or not a row has branches.
+            <span aria-hidden className="w-5 shrink-0" />
+          ) : treeRow ? (
+            <BranchGuides row={treeRow} />
+          ) : null}
+
+          {/* Chat avatar(s) or mode icon fallback — with unread badge overlay */}
+          <div className="relative flex-shrink-0">
+            {(() => {
+              const avatars = charIds
+                .slice(0, 3)
+                .map((id) => {
+                  const base = charLookup.get(id);
+                  if (!base) return null;
+                  const chatStatus = conversationStatusByCharacter.get(id);
+                  return chatStatus ? { ...base, conversationStatus: chatStatus } : base;
+                })
+                .filter(Boolean) as {
+                name: string;
+                avatarUrl: string | null;
+                avatarCrop?: AvatarCrop | null;
+                conversationStatus?: string;
+              }[];
+
+              const isConvoMode = chat.mode === "conversation";
+              const statusDot = (status?: string) => {
+                if (!isConvoMode) return null;
+                return (
+                  <span
+                    className={cn(
+                      "absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-[0.1875rem] ring-[1.5px] ring-[var(--sidebar-background)]",
+                      conversationStatusDotClass(status),
+                    )}
+                  />
+                );
+              };
+              const multiAvatarStatus = avatars.reduce<ConversationPresenceStatus | undefined>(
+                (worstStatus, avatar) => {
+                  const nextStatus = asConversationStatus(avatar.conversationStatus) ?? "online";
+                  if (!worstStatus) return nextStatus;
+                  return CONVERSATION_STATUS_PRIORITY[nextStatus] > CONVERSATION_STATUS_PRIORITY[worstStatus]
+                    ? nextStatus
+                    : worstStatus;
+                },
+                undefined,
+              );
+              if (avatars.length === 0) {
+                return (
+                  <div
+                    className={cn(
+                      "flex h-7 w-7 items-center justify-center rounded-lg text-xs transition-transform group-active:scale-90",
+                      "mari-chat-mode-avatar",
+                      cfg.logoModeClass,
+                      isActive && "shadow-sm",
+                    )}
+                  >
+                    {cfg.icon}
+                  </div>
+                );
+              }
+
+              if (avatars.length === 1) {
+                const a = avatars[0]!;
+                return a.avatarUrl ? (
+                  <div className="relative h-7 w-7 flex-shrink-0 transition-transform group-active:scale-90">
+                    <span className="relative block h-7 w-7 overflow-hidden rounded-lg">
                       <img
                         src={a.avatarUrl}
                         alt={a.name}
@@ -1191,114 +1284,170 @@ export function ChatSidebar() {
                         style={getAvatarCropStyle(a.avatarCrop)}
                       />
                     </span>
-                  ) : (
-                    <div
-                      key={i}
-                      className={cn(
-                        "absolute flex h-5 w-5 items-center justify-center rounded-md bg-[var(--secondary)] text-[0.5rem] font-bold text-[var(--muted-foreground)] ring-2 ring-[var(--sidebar-background)]",
-                        i === 0 ? "top-0 left-0 z-10" : "bottom-0 right-0",
-                      )}
-                    >
+                    {statusDot(a.conversationStatus)}
+                  </div>
+                ) : (
+                  <div className="relative h-7 w-7 flex-shrink-0 transition-transform group-active:scale-90">
+                    <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[var(--secondary)] text-[0.625rem] font-bold text-[var(--muted-foreground)]">
                       {a.name[0]}
                     </div>
-                  ),
-                )}
-                {statusDot(multiAvatarStatus)}
-              </div>
-            );
-          })()}
-
-          {/* Unread count badge */}
-          {(() => {
-            const count = unreadCounts.get(chat.id) || 0;
-            if (count === 0 || isActive) return null;
-            return (
-              <span className="absolute -top-1 -right-1 z-20 flex h-4 min-w-4 items-center justify-center rounded-md bg-red-500 px-1 text-[0.5625rem] font-bold leading-none text-white shadow-sm ring-2 ring-[var(--sidebar-background)]">
-                {count > 99 ? "99+" : count}
-              </span>
-            );
-          })()}
-        </div>
-
-        {/* Name */}
-        <div className="min-w-0 flex-1">
-          <span
-            className={cn(
-              "block truncate text-sm",
-              isActive ? "mari-chrome-text-strong font-medium" : "mari-chrome-text",
-            )}
-          >
-            {displayName}
-          </span>
-          {chat.metadata?.multiplayer && (
-            <span className="mari-chrome-accent-text-muted block truncate text-[0.6875rem]">
-              {localizeUi(
-                (chat.metadata.multiplayer as { role?: string; status?: string }).role === "host"
-                  ? (chat.metadata.multiplayer as { status?: string }).status === "ended"
-                    ? "multiplayer.sidebar.stopped"
-                    : "multiplayer.sidebar.hosting"
-                  : (chat.metadata.multiplayer as { status?: string }).status === "joined"
-                    ? "multiplayer.sidebar.joined"
-                    : "multiplayer.sidebar.disconnected",
-              )}
-            </span>
-          )}
-          {subtitle && (
-            <span className="mari-chrome-accent-text-muted flex items-center gap-1 truncate text-[0.6875rem] leading-tight">
-              {SubtitleIcon && (
-                <SubtitleIcon
-                  className={cn("h-2.5 w-2.5 shrink-0", SubtitleIcon === Loader2 ? "animate-spin" : "animate-pulse")}
-                />
-              )}
-              <span className="truncate">{subtitle}</span>
-            </span>
-          )}
-        </div>
-
-        {/* Last-activity time — conversation chats only */}
-        {relativeTime && (
-          <span className="mari-chrome-accent-text-muted shrink-0 text-[0.625rem] tabular-nums">{relativeTime}</span>
-        )}
-
-        {/* Branch count badge */}
-        {branchCount > 1 && (
-          <span className="mari-chrome-muted-badge flex shrink-0 items-center gap-0.5 px-1.5 py-0.5 text-[0.625rem]">
-            <GitBranch size="0.625rem" />
-            {branchCount}
-          </span>
-        )}
-
-        {/* Delete button */}
-        {!multiSelectMode && (
-          <button
-            aria-label={localizeUi("chat.branches.deleteLabel", { name: displayName })}
-            onClick={async (e) => {
-              e.stopPropagation();
-              if (branchCount > 1 && chat.groupId) {
-                setDeleteTarget({
-                  chatId: chat.id,
-                  chatName: displayName,
-                  groupId: chat.groupId,
-                  branchCount,
-                });
-              } else {
-                if (
-                  await showConfirmDialog({
-                    title: localizeUi("ui.layout.chatsidebar.deleteChat"),
-                    message: localizeUi("dialog.delete.namedPermanent", { name: displayName }),
-                    confirmLabel: localizeUi("lorebook.editor.batch.delete"),
-                    tone: "destructive",
-                  })
-                ) {
-                  deleteChat.mutate({ id: chat.id, force: true });
-                  if (activeChatId === chat.id) setActiveChatId(null);
-                }
+                    {statusDot(a.conversationStatus)}
+                  </div>
+                );
               }
-            }}
-            className="shrink-0 rounded-md p-1 text-[var(--muted-foreground)] opacity-0 transition-all hover:bg-[var(--accent)] hover:text-[var(--foreground)] group-hover:opacity-100 max-md:opacity-100"
-          >
-            <Trash2 size="0.75rem" />
-          </button>
+
+              // Multiple characters — stacked avatars
+              return (
+                <div className="relative h-7 w-7 flex-shrink-0 transition-transform group-active:scale-90">
+                  {avatars.slice(0, 2).map((a, i) =>
+                    a.avatarUrl ? (
+                      <span
+                        key={i}
+                        className={cn(
+                          "absolute h-5 w-5 overflow-hidden rounded-md ring-2 ring-[var(--sidebar-background)]",
+                          i === 0 ? "top-0 left-0 z-10" : "bottom-0 right-0",
+                        )}
+                      >
+                        <img
+                          src={a.avatarUrl}
+                          alt={a.name}
+                          className="h-full w-full object-cover"
+                          style={getAvatarCropStyle(a.avatarCrop)}
+                        />
+                      </span>
+                    ) : (
+                      <div
+                        key={i}
+                        className={cn(
+                          "absolute flex h-5 w-5 items-center justify-center rounded-md bg-[var(--secondary)] text-[0.5rem] font-bold text-[var(--muted-foreground)] ring-2 ring-[var(--sidebar-background)]",
+                          i === 0 ? "top-0 left-0 z-10" : "bottom-0 right-0",
+                        )}
+                      >
+                        {a.name[0]}
+                      </div>
+                    ),
+                  )}
+                  {statusDot(multiAvatarStatus)}
+                </div>
+              );
+            })()}
+
+            {/* Unread count badge */}
+            {(() => {
+              const count = unreadCounts.get(chat.id) || 0;
+              if (count === 0 || isActive) return null;
+              return (
+                <span className="absolute -top-1 -right-1 z-20 flex h-4 min-w-4 items-center justify-center rounded-md bg-red-500 px-1 text-[0.5625rem] font-bold leading-none text-white shadow-sm ring-2 ring-[var(--sidebar-background)]">
+                  {count > 99 ? "99+" : count}
+                </span>
+              );
+            })()}
+          </div>
+
+          {/* Name */}
+          <div className="min-w-0 flex-1">
+            <span
+              className={cn(
+                "block truncate text-sm",
+                isActive ? "mari-chrome-text-strong font-medium" : "mari-chrome-text",
+              )}
+            >
+              {displayName}
+            </span>
+            {chat.metadata?.multiplayer && (
+              <span className="mari-chrome-accent-text-muted block truncate text-[0.6875rem]">
+                {localizeUi(
+                  (chat.metadata.multiplayer as { role?: string; status?: string }).role === "host"
+                    ? (chat.metadata.multiplayer as { status?: string }).status === "ended"
+                      ? "multiplayer.sidebar.stopped"
+                      : "multiplayer.sidebar.hosting"
+                    : (chat.metadata.multiplayer as { status?: string }).status === "joined"
+                      ? "multiplayer.sidebar.joined"
+                      : "multiplayer.sidebar.disconnected",
+                )}
+              </span>
+            )}
+            {subtitle && (
+              <span className="mari-chrome-accent-text-muted flex items-center gap-1 truncate text-[0.6875rem] leading-tight">
+                {SubtitleIcon && (
+                  <SubtitleIcon
+                    className={cn("h-2.5 w-2.5 shrink-0", SubtitleIcon === Loader2 ? "animate-spin" : "animate-pulse")}
+                  />
+                )}
+                <span className="truncate">{subtitle}</span>
+              </span>
+            )}
+          </div>
+
+          {/* Last-activity time — conversation chats only */}
+          {relativeTime && (
+            <span className="mari-chrome-accent-text-muted shrink-0 text-[0.625rem] tabular-nums">{relativeTime}</span>
+          )}
+
+          {/* Branch count badge */}
+          {branchCount > 1 && (
+            <span className="mari-chrome-muted-badge flex shrink-0 items-center gap-0.5 px-1.5 py-0.5 text-[0.625rem]">
+              <GitBranch size="0.625rem" />
+              {branchCount}
+            </span>
+          )}
+
+          {/* Delete button — branch rows get one too: a branch is one chat, so it deletes on its
+              own without the group dialog. */}
+          {!multiSelectMode && (
+            <button
+              aria-label={localizeUi("chat.branches.deleteLabel", { name: displayName })}
+              onClick={async (e) => {
+                e.stopPropagation();
+                if (branchCount > 1 && chat.groupId) {
+                  setDeleteTarget({
+                    chatId: chat.id,
+                    chatName: displayName,
+                    groupId: chat.groupId,
+                    branchCount,
+                  });
+                } else {
+                  if (
+                    await showConfirmDialog({
+                      title: localizeUi("ui.layout.chatsidebar.deleteChat"),
+                      message: localizeUi("dialog.delete.namedPermanent", { name: displayName }),
+                      confirmLabel: localizeUi("lorebook.editor.batch.delete"),
+                      tone: "destructive",
+                    })
+                  ) {
+                    deleteChat.mutate({ id: chat.id, force: true });
+                    if (activeChatId === chat.id) setActiveChatId(null);
+                  }
+                }
+              }}
+              className="shrink-0 rounded-md p-1 text-[var(--muted-foreground)] opacity-0 transition-all hover:bg-[var(--accent)] hover:text-[var(--foreground)] group-hover:opacity-100 max-md:opacity-100"
+            >
+              <Trash2 size="0.75rem" />
+            </button>
+          )}
+        </div>
+
+        {childRows.length > 0 && (
+          // No gap between rows: the per-row trunk lines have to meet to read as one tree.
+          <SmoothFolderContent open className="ml-1">
+            <div className="flex flex-col">
+              {childRows.map((row) =>
+                row.depth <= 1 ? (
+                  renderChatRow({ chat: row.chat, branchCount: 1, treeRow: row })
+                ) : (
+                  <BranchSubRow
+                    key={row.chat.id}
+                    row={row}
+                    isActive={activeChatId === row.chat.id}
+                    unread={unreadCounts.get(row.chat.id) ?? 0}
+                    isGenerating={abortControllers.has(row.chat.id)}
+                    isTyping={perChatTyping.has(row.chat.id)}
+                    onSelect={() => void openChat(row.chat.id)}
+                  />
+                ),
+              )}
+            </div>
+          </SmoothFolderContent>
         )}
       </div>
     );
@@ -1770,6 +1919,107 @@ export function ChatSidebar() {
         )}
       </Modal>
     </nav>
+  );
+}
+
+// A branch of a branch keeps only what changes: its name, activity and unread. Making every level a
+// full row would turn a deep tree into a wall of identical avatars.
+/**
+ * Tree lines for one nested row: a trunk for every ancestor level, then an elbow into the row. Drawn
+ * with borders in theme tokens instead of ├ └ glyphs, so it survives fonts, zoom and right-to-left
+ * text, and matches the guide line the folder rows already use.
+ */
+const TREE_GUIDE_X = 10; // Under the centre of the row's chevron.
+const TREE_GUIDE_STEP = 14;
+const TREE_GUIDE_BASE_WIDTH = 30; // One step right of the chat's avatar, so branches read as nested.
+/** Compact rows skip the avatar column their parent has, so they carry its width to stay right of it. */
+const TREE_GUIDE_COMPACT_EXTRA = 38;
+
+/**
+ * Connectors for one nested row: a trunk for every ancestor that still carries on below, then an
+ * elbow into the row — a last child stops at the elbow instead of trailing a line to nowhere.
+ */
+function BranchGuides({ row }: { row: BranchTreeRow<Chat> }) {
+  const ownX = TREE_GUIDE_X + (row.depth - 1) * TREE_GUIDE_STEP;
+  const width =
+    TREE_GUIDE_BASE_WIDTH + (row.depth - 1) * TREE_GUIDE_STEP + (row.depth > 1 ? TREE_GUIDE_COMPACT_EXTRA : 0);
+  return (
+    <span
+      aria-hidden
+      className="relative shrink-0 self-stretch"
+      // Depth-derived geometry: a few computed offsets read clearer than one class per depth level.
+      style={{ width }}
+    >
+      {row.continues.map((continues, index) =>
+        continues ? (
+          <span
+            key={index}
+            className="mari-chrome-accent-progress absolute top-0 bottom-0 w-px"
+            style={{ left: TREE_GUIDE_X + index * TREE_GUIDE_STEP }}
+          />
+        ) : null,
+      )}
+      <span
+        className={cn("mari-chrome-accent-progress absolute top-0 w-px", row.isLastChild ? "h-1/2" : "bottom-0")}
+        style={{ left: ownX }}
+      />
+      <span className="mari-chrome-accent-progress absolute top-1/2 h-px" style={{ left: ownX, right: 2 }} />
+    </span>
+  );
+}
+
+function BranchSubRow({
+  row,
+  isActive,
+  unread,
+  isGenerating,
+  isTyping,
+  onSelect,
+}: {
+  row: BranchTreeRow<Chat>;
+  isActive: boolean;
+  unread: number;
+  isGenerating: boolean;
+  isTyping: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      data-chat-id={row.chat.id}
+      title={getChatDisplayName(row.chat)}
+      onClick={onSelect}
+      onKeyDown={(event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        onSelect();
+      }}
+      className={cn(
+        "flex min-w-0 cursor-pointer items-center gap-1.5 rounded-md py-1 pl-3 pr-2 transition-colors",
+        isActive
+          ? "bg-[var(--marinara-chat-chrome-highlight-bg)]"
+          : "hover:bg-[var(--marinara-chat-chrome-highlight-bg)]",
+      )}
+    >
+      <BranchGuides row={row} />
+      <span
+        className={cn(
+          "truncate text-[0.6875rem]",
+          isActive ? "mari-chrome-text-strong font-medium" : "mari-chrome-text",
+        )}
+      >
+        {getChatDisplayName(row.chat)}
+      </span>
+      {(isGenerating || isTyping) && (
+        <Loader2 className="h-2.5 w-2.5 shrink-0 animate-spin text-[var(--muted-foreground)]" />
+      )}
+      {!isActive && unread > 0 && (
+        <span className="flex h-4 min-w-4 shrink-0 items-center justify-center rounded-md bg-red-500 px-1 text-[0.5625rem] font-bold leading-none text-white">
+          {unread > 99 ? "99+" : unread}
+        </span>
+      )}
+    </div>
   );
 }
 

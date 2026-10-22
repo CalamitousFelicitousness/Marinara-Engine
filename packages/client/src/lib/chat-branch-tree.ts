@@ -15,6 +15,17 @@ export type BranchTreeRow<T extends BranchTreeChat> = {
   chat: T;
   /** 0 = the chat itself, 1 = a branch, 2 = a branch of a branch, and so on. */
   depth: number;
+  /**
+   * Whether this row is the last of its parent's children. A last child ends its connector instead
+   * of carrying the trunk down to a sibling that does not exist.
+   */
+  isLastChild: boolean;
+  /**
+   * Per ancestor level above this row, outermost first: whether that ancestor still has a sibling
+   * below it. Only those trunks are drawn through this row, so descendants of a last child do not
+   * trail a line that leads nowhere.
+   */
+  continues: boolean[];
 };
 
 /**
@@ -36,7 +47,7 @@ export function buildChatBranchRows<T extends BranchTreeChat>(
   compareSiblings?: (left: T, right: T) => number,
 ): BranchTreeRow<T>[] {
   const chats = groupChats.filter((chat): chat is T => Boolean(chat?.id));
-  if (chats.length <= 1) return chats.map((chat) => ({ chat, depth: 0 }));
+  if (chats.length <= 1) return chats.map((chat) => ({ chat, depth: 0, isLastChild: false, continues: [] }));
 
   const byId = new Map(chats.map((chat) => [chat.id, chat]));
   const sortSiblings = (siblings: readonly T[]) => [...siblings].sort(compareSiblings ?? byCreationAsc);
@@ -63,16 +74,21 @@ export function buildChatBranchRows<T extends BranchTreeChat>(
   const visited = new Set<string>([root.id]);
   // Pre-order depth-first, with a stack rather than recursion: a long chain of branches stays one
   // flat array of work instead of a call per level.
-  const stack: BranchTreeRow<T>[] = [{ chat: root, depth: 0 }];
+  const stack: BranchTreeRow<T>[] = [{ chat: root, depth: 0, isLastChild: false, continues: [] }];
   while (stack.length > 0) {
     const row = stack.pop()!;
     rows.push(row);
-    const children = sortSiblings(childrenOf.get(row.chat.id) ?? []);
+    const children = sortSiblings(childrenOf.get(row.chat.id) ?? []).filter((child) => !visited.has(child.id));
     for (let index = children.length - 1; index >= 0; index -= 1) {
       const child = children[index]!;
-      if (visited.has(child.id)) continue;
       visited.add(child.id);
-      stack.push({ chat: child, depth: row.depth + 1 });
+      stack.push({
+        chat: child,
+        depth: row.depth + 1,
+        // The chat itself has no level above it, so its children start the continuation list.
+        continues: row.depth === 0 ? [] : [...row.continues, !row.isLastChild],
+        isLastChild: index === children.length - 1,
+      });
     }
   }
 
@@ -80,10 +96,26 @@ export function buildChatBranchRows<T extends BranchTreeChat>(
   // in legacy data — still renders, flattened under the chat, instead of disappearing from the list.
   for (const chat of sortSiblings(chats)) {
     if (visited.has(chat.id)) continue;
-    rows.push({ chat, depth: 1 });
+    rows.push({ chat, depth: 1, isLastChild: false, continues: [] });
   }
 
   return rows;
+}
+
+/**
+ * Whether this group has a parent pointer a tree can hang from. Groups without one — branch sets made
+ * before lineage was recorded, or Game sessions that are siblings rather than branches — keep the
+ * list's single-row behaviour, because drawing a hierarchy the data does not describe would be a lie
+ * about someone's chats.
+ */
+export function hasChatBranchLineage<T extends BranchTreeChat>(groupChats: readonly T[]): boolean {
+  const chats = groupChats.filter((chat): chat is T => Boolean(chat?.id));
+  if (chats.length < 2) return false;
+  const ids = new Set(chats.map((chat) => chat.id));
+  return chats.some((chat) => {
+    const parentId = readParentChatId(chat);
+    return Boolean(parentId) && parentId !== chat.id && ids.has(parentId!);
+  });
 }
 
 function readParentChatId(chat: BranchTreeChat): string | null {

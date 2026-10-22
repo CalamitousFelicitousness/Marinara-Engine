@@ -255,7 +255,7 @@ Each story feature needs a Capability API minor:
 - `heldGround` needs 1.366;
 - a `sheet` action needs 1.368;
 - a held ground `release` needs 1.369;
-- giving by a bare entry id or a list needs 1.370;
+- giving a list of alternatives needs 1.370 (a lone bare entry id, given from whichever catalog has it from 1.370, is a name to an older Engine);
 - fight creatures that `adjust` `calls` or `levels` need 1.371.
 
 A companion is a person of the pack's people file marked as one (see the map pack's people in

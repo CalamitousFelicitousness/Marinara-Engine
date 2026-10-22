@@ -360,6 +360,31 @@ assert.deepEqual(
     item: () => undefined,
   });
   assert.match(plainTurn.prepend, /item="fennicks-hymnal"/);
+  // A give by one plain word is the 1.343 give by name: it needs no more than it did, and a list of plain
+  // names gives the first of them.
+  const byName = checkStoryScript(game, {
+    ...input,
+    events: [{ id: "rope", when: { on: "start" }, do: [{ give: { item: "rope" } }] }],
+  });
+  assert.ok(byName.ok, JSON.stringify(byName));
+  assert.ok(storyCapabilityMinor(byName.story) < 370, "a lone word is a name");
+  const names = checkStoryScript(game, {
+    ...input,
+    events: [{ id: "kit", when: { on: "start" }, do: [{ give: { item: ["rope", "torch"] } }] }],
+  });
+  assert.ok(names.ok, JSON.stringify(names));
+  assert.equal(storyCapabilityMinor(names.story), 370);
+  const namesTurn = storyTurn(names.story, {
+    game,
+    replies: [],
+    repliesBefore: 0,
+    latest: null,
+    told: [],
+    day: 0,
+    fight: null,
+    item: () => undefined,
+  });
+  assert.match(namesTurn.prepend, /\[inventory: action="add" item="rope" count="1"\]/);
 }
 
 console.log("world-story-actions: ok");

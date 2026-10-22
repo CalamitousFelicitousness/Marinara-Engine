@@ -82,7 +82,11 @@ import {
   keepHeldGroundReleasedWhile,
 } from "../services/game/story-held-ground.service.js";
 import { gameNoncombatants, gamePartyLevel } from "../services/game/experience-companions.service.js";
-import { latestStoryFightAdjusts, latestStoryHeldGround } from "../services/game/story-fight.service.js";
+import {
+  latestStoryFightAdjusts,
+  latestStoryHeldGround,
+  storyFightAdjustsFor,
+} from "../services/game/story-fight.service.js";
 import { buildPartyNpcId } from "../services/generation/game-party-utils.js";
 import { logger } from "../lib/logger.js";
 import { resolveVisibleGameStateAnchor } from "./generate/generate-route-utils.js";
@@ -776,13 +780,15 @@ export async function combatDirectorRoutes(
         if (setup.combatDirector !== true)
           return reply.code(400).send({ error: "Directed combat is not enabled for this game." });
         // An Experience's companions who never fight (1.360) travel with the party but are not put in its fights.
-        // A unit is one of them by its own id, or by its name only when that names a member of the party.
+        // A unit is one of them by its own party id; only a unit that arrives without one is known by its
+        // name, and then only when that names a member of the party.
         const noncombatants = await gameNoncombatants(app.db, input.chatId, meta);
         if (noncombatants.size) {
           const partyIds = new Set(Array.isArray(meta.gamePartyCharacterIds) ? meta.gamePartyCharacterIds : []);
           const sitsOut = (member: { id: string; name: string }) => {
             const byName = buildPartyNpcId(member.name);
-            return noncombatants.has(member.id) || (partyIds.has(byName) && noncombatants.has(byName));
+            if (partyIds.has(member.id)) return noncombatants.has(member.id);
+            return partyIds.has(byName) && noncombatants.has(byName);
           };
           const fighting = input.party.filter((member) => !sitsOut(member));
           if (fighting.length) input.party = fighting;
@@ -916,6 +922,7 @@ export async function combatDirectorRoutes(
             { definition, packageId: resolved.packageId },
             await gamePartyLevel(app.db, input.chatId, meta, definition),
           );
+          const enemyAdjusts = storyFightAdjustsFor(input.enemies, adjusts);
           // Whether death is held where it is fought (1.366): the story's Held Ground (1.323).
           const heldGround = await latestStoryHeldGround(app.db, input.chatId, meta);
           const built = createRulesetFight({
@@ -927,16 +934,14 @@ export async function combatDirectorRoutes(
             ...(input.boardPack ? { pack: input.boardPack } : {}),
             ...(here ? { made: here } : battlefield.battlefield ? { battlefield: battlefield.battlefield } : {}),
             party: input.party.map((member) => ({ id: member.id, name: member.name })),
-            enemies: input.enemies.map((enemy) => ({
+            enemies: input.enemies.map((enemy, index) => ({
               id: enemy.id,
               name: enemy.name,
               ...(enemy.creature !== undefined ? { creature: enemy.creature } : {}),
               ...(enemy.tier !== undefined ? { tier: enemy.tier } : {}),
               ...(enemy.proposed !== undefined ? { proposed: enemy.proposed } : {}),
               ...(enemy.tactics ? { tactics: enemy.tactics } : {}),
-              ...(adjusts.get(enemy.name.trim().toLowerCase())
-                ? { adjust: adjusts.get(enemy.name.trim().toLowerCase())! }
-                : {}),
+              ...(enemyAdjusts[index] ? { adjust: enemyAdjusts[index] } : {}),
               boss: !!enemy.boss,
             })),
             cards,

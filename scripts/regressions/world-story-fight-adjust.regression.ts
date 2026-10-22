@@ -30,6 +30,7 @@ import {
   type StoryScriptInput,
 } from "../../packages/shared/src/index.js";
 import {
+  storyFightAdjustsFor,
   storyFightOpponents,
   storyFightPromptText,
 } from "../../packages/server/src/services/game/story-fight.service.js";
@@ -239,6 +240,13 @@ const { opponents: labelled } = await storyFightOpponents(unnamed, { definition,
 assert.deepEqual(
   labelled.map((each) => [each.name, each.adjust]),
   [[bestiaryCatalog.entries![0]!.label, { maxHp: 40 }]],
+);
+
+// Opponents named alike take their adjustments in roster order, and one the fight does not adjust takes none.
+const alike = new Map([["warden", [{ maxHp: 30 }, null, { maxHp: 50 }]]]);
+assert.deepEqual(
+  storyFightAdjustsFor([{ name: "Warden" }, { name: "Wolf" }, { name: "warden " }, { name: "Warden" }], alike),
+  [{ maxHp: 30 }, null, null, { maxHp: 50 }],
 );
 
 console.log(

@@ -1226,7 +1226,7 @@ export function storyCompanionsNamed(story: StoryScript): string[] {
   ];
 }
 
-/** The Capability API minor a script needs: 1.370 for gives by bare entry id or alternatives, 1.369 for held ground's release, 1.368 for sheet actions, 1.366 for held ground, 1.365 for exposures spared by a shade, 1.364 for exposure saves and stops, 1.363 for fight adjusts,
+/** The Capability API minor a script needs: 1.370 for gives of alternatives, 1.369 for held ground's release, 1.368 for sheet actions, 1.366 for held ground, 1.365 for exposures spared by a shade, 1.364 for exposure saves and stops, 1.363 for fight adjusts,
  *  1.362 for exposures, 1.361 for holds over everything inside, 1.360 for party size conditions and variants for parties above
  *  six, 1.358 for its reach, 1.356 for fight variants, 1.353 for more than 64 flags, 1.351 for held seasons, 1.349 for rest, travel and idle events, party conditions and more
  *  than 128 events, 1.348 for knowledge, 1.347 for companions, 1.345 for music cues, 1.343 for fights, endings and its give, move, fight and
@@ -1249,7 +1249,8 @@ export function storyCapabilityMinor(story: StoryScript): number {
   if (
     story.events.some((event) =>
       event.do.some(
-        (action) => "give" in action && (typeof action.give.item !== "string" || storyIsBareEntry(action.give.item)),
+        // A lone word is a name to an older Engine, as it always was, so only a list needs 1.370.
+        (action) => "give" in action && typeof action.give.item !== "string",
       ),
     )
   )
@@ -1756,7 +1757,8 @@ function storyGiveTag(give: Extract<StoryAction, { give: unknown }>["give"], lab
   // The first the ruleset offers (1.370): an id, or a bare entry id in whichever catalog has it; else the
   // first by name. A lone bare id the ruleset has not is a name, as it always was.
   const found = items.find((each) => (storyIsRef(each) || storyIsBareEntry(each)) && label?.(each));
-  const byName = items.find((each) => !storyIsRef(each) && (items.length === 1 || !storyIsBareEntry(each)));
+  const byName =
+    items.find((each) => !storyIsRef(each) && !storyIsBareEntry(each)) ?? items.find((each) => !storyIsRef(each));
   const named = found ? label!(found) : byName?.trim();
   if (!named) return { refused: items.join("|"), tag: undefined };
   const clean = (text: string) => text.replace(/["[\]]/g, "");

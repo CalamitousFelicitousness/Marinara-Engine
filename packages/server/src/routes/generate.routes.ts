@@ -2227,7 +2227,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                     regenerateMessageId: input.regenerateMessageId ?? null,
                   }));
                 const left = pendingRelease(chatMeta);
-                if (left && left.fight !== unfinished) {
+                if (left && unfinished !== "unknown" && left.fight !== unfinished) {
                   const { fight: _fight, ...owed } = left;
                   const rolled = owed.owing
                     ? rollStoryOwingWith(await owingSheets(), chatMeta, { ...turn, released: owed })
@@ -2249,6 +2249,16 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                       tells: [
                         ...turn.tells,
                         `${released.label ?? "Held Ground"} was let go in the fight, and what came due was rolled there.`,
+                      ],
+                    };
+                  } else if (unfinished === "unknown") {
+                    // The fight could not be read: nothing is rolled or parked on a guess, and the Game
+                    // Master settles it by the ruleset's own rules.
+                    turn = {
+                      ...turn,
+                      tells: [
+                        ...turn.tells,
+                        `${released.label ?? "Held Ground"} has let go, but the fight on it could not be read, so the Engine rolled nothing. Settle what comes due by the ruleset's own rules.`,
                       ],
                     };
                   } else if (unfinished) {

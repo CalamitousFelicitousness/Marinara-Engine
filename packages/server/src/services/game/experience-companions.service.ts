@@ -110,7 +110,11 @@ export async function gamePartyLevel(
   meta: Record<string, unknown>,
   definition: RulesetDefinition,
 ): Promise<number | null> {
-  const companions = await gameCompanions(db, chatId, meta);
+  // A failed read leaves the party's level unknown, as for an Experience with no companion sheet, and says so.
+  const companions = await gameCompanions(db, chatId, meta).catch((error: unknown) => {
+    logger.warn(error, "[game/experience] Chat %s's companions could not be read; its party level is unknown", chatId);
+    return null;
+  });
   if (!companions) return null;
   const sheet = experiencePeopleIn(companions.world, companions.people)
     .map(({ entry }) => (entry.companion ? experienceCompanionSheet(entry.companion, definition.id) : undefined))

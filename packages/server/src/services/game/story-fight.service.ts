@@ -68,28 +68,41 @@ export async function latestStoryHeldGround(
 
 /** How the story fight the latest reply started adjusts its opponents (1.363), by their names in the fight
  *  (case aside) as the bestiary names them, so they are the names the fight's enemies carry, as a party
- *  this high meets them (1.371): what a ruleset fight builds each of them with. Empty when there is none.
- *  Two opponents named alike keep the first one's, and the log says so. */
+ *  this high meets them (1.371): what a ruleset fight builds each of them with. Opponents named alike
+ *  keep their roster order, one entry each (none for one the fight does not adjust), for the fight's
+ *  enemies of that name to take in turn. Empty when there is none. */
 export async function latestStoryFightAdjusts(
   db: DB,
   chatId: string,
   meta: Record<string, unknown> | null | undefined,
   ruleset: { definition: RulesetDefinition; packageId: string | null } | null,
   partyLevel?: number | null,
-): Promise<Map<string, StoryFightAdjustAt>> {
+): Promise<Map<string, Array<StoryFightAdjustAt | null>>> {
   const fight = await latestStoryFight(db, chatId, meta);
-  const adjusts = new Map<string, StoryFightAdjustAt>();
+  const adjusts = new Map<string, Array<StoryFightAdjustAt | null>>();
   if (!fight) return adjusts;
-  for (const each of (await storyFightOpponents(fight, ruleset)).opponents) {
-    if (!each.adjust) continue;
+  const { opponents } = await storyFightOpponents(fight, ruleset);
+  if (!opponents.some((each) => each.adjust)) return adjusts;
+  for (const each of opponents) {
     const name = each.name.trim().toLowerCase();
-    if (adjusts.has(name)) {
-      logger.warn("Story fight %s names two opponents %s; the first one's adjustment is kept", fight.id, each.name);
-      continue;
-    }
-    adjusts.set(name, storyFightAdjustAt(each.adjust, partyLevel));
+    adjusts.set(name, [...(adjusts.get(name) ?? []), each.adjust ? storyFightAdjustAt(each.adjust, partyLevel) : null]);
   }
   return adjusts;
+}
+
+/** The adjustment for each of a fight's enemies, by name in roster order: the n-th enemy of a name takes
+ *  the n-th opponent of that name's (1.363). */
+export function storyFightAdjustsFor<T extends { name: string }>(
+  enemies: readonly T[],
+  adjusts: ReadonlyMap<string, ReadonlyArray<StoryFightAdjustAt | null>>,
+): Array<StoryFightAdjustAt | null> {
+  const taken = new Map<string, number>();
+  return enemies.map((enemy) => {
+    const name = enemy.name.trim().toLowerCase();
+    const at = taken.get(name) ?? 0;
+    taken.set(name, at + 1);
+    return adjusts.get(name)?.[at] ?? null;
+  });
 }
 
 /**

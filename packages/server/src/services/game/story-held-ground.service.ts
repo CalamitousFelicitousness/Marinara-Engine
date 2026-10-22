@@ -170,8 +170,9 @@ export function heldGroundReleasedInFight(
 }
 
 /** The game's latest ruleset fight, by its id, when it is unfinished and still on Held Ground: a release
- *  then waits for its next step, which lets it go in the fight. Null otherwise. */
-export async function heldGroundFightUnfinished(db: DB, chatId: string): Promise<string | null> {
+ *  then waits for its next step, which lets it go in the fight. Null when there is none; `unknown` when the
+ *  fight could not be read, so nothing is settled or parked on a guess. */
+export async function heldGroundFightUnfinished(db: DB, chatId: string): Promise<string | null | "unknown"> {
   try {
     const row = await createGameEngineStateStorage(db).getLatest(chatId, COMBAT_DIRECTOR_SCOPE);
     if (!row) return null;
@@ -181,7 +182,7 @@ export async function heldGroundFightUnfinished(db: DB, chatId: string): Promise
       : null;
   } catch (err) {
     logger.warn(err, "Held ground fight lookup failed for chat %s", chatId);
-    return null;
+    return "unknown";
   }
 }
 
@@ -200,7 +201,8 @@ export async function dropHeldGroundPending(db: DB, chatId: string): Promise<voi
   await createChatsStorage(db).patchMetadata(chatId, { gameHeldGroundPending: null });
 }
 
-const sheetValue = (value: string) => value.replace(/"/g, "'");
+// A tag's body ends at its first `]`, so brackets are taken out, as the story's own sheet tags do.
+const sheetValue = (value: string) => value.replace(/"/g, "'").replace(/[[\]]/g, "");
 
 /**
  * What comes due as held ground lets go out of a fight (1.369): each of the party with marks on the Owing

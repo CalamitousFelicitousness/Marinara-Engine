@@ -26,8 +26,12 @@ try {
     await import("../../../packages/server/src/services/professor-mari/mari-skills-prompt.js");
   const { ProfessorMariWorkspaceSkillsService } =
     await import("../../../packages/server/src/services/professor-mari/workspace-skills.service.js");
-  const { buildWorkspaceContinuitySnapshot, piRuntimePrompt, workspaceCommandKnowledgePrompt } =
-    await import("../../../packages/server/src/services/professor-mari/workspace-agent.service.js");
+  const {
+    buildWorkspaceContinuitySnapshot,
+    piRuntimePrompt,
+    workspaceCommandKnowledgePrompt,
+    workspaceCommandProtocolPrompt,
+  } = await import("../../../packages/server/src/services/professor-mari/workspace-agent.service.js");
 
   // ── The shipped assets load ────────────────────────────────────────────────
   const shipped = await loadBuiltinSkills();
@@ -239,6 +243,9 @@ try {
   );
   assert.match(piRuntimePrompt(4096), /output limit is small/u, "4096 is still small");
   assert.ok(!piRuntimePrompt(8192).includes("output limit is small"), "a large limit gets no split hint");
+  // The classic prompt carries the same knowledge clauses, so it must state the limit they depend on too.
+  assert.match(workspaceCommandProtocolPrompt(2048), /output limit is small \(2048 tokens per reply\)/u);
+  assert.ok(!workspaceCommandProtocolPrompt().includes("output limit is small"), "classic: no limit, no hint");
   assert.ok(!piPrompt.includes("output limit is small"), "an unknown limit gets no split hint");
   const { mariMaxOutputTokens } =
     await import("../../../packages/server/src/services/professor-mari/workspace-agent.service.js");

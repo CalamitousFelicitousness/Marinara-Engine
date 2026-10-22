@@ -5,6 +5,7 @@
 // player cannot set an intro that breaks the Experience; one left unlocked the player may change or clear.
 // ──────────────────────────────────────────────
 import { z } from "zod";
+import { BUILT_IN_GAME_COMBAT_STYLES } from "../../types/game.js";
 
 /** The longest intro text: a defined intro is a whole first message. */
 export const GAME_INTRO_TEXT_MAX = 8000;
@@ -92,7 +93,8 @@ export const experienceSetupDefaultsSchema = z
     difficulty: z.enum(["Casual", "Normal", "Hard", "Brutal"]).optional(),
     rating: z.enum(["sfw", "nsfw"]).optional(),
     language: setupText(100).optional(),
-    combatStyle: z.enum(["classic", "tactical"]).optional(),
+    // An Experience names a built-in style only: a registered one exists only in the client that registered it.
+    combatStyle: z.enum(BUILT_IN_GAME_COMBAT_STYLES).optional(),
     playerGoals: setupText(2000).optional(),
     preferences: setupText(2000).optional(),
     gameSpecialInstructions: setupText(2000).optional(),

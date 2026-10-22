@@ -21,6 +21,7 @@ import { RoleplayCommandsSettings } from "./RoleplayCommandsSettings";
 import { ChatBranchesPanel } from "./ChatBranchesPanel";
 import { ChatMessageSearch } from "./ChatMessageSearch";
 import { ChatWindowFavoriteButton } from "./ChatWindowFavoriteButton";
+import { resolveCombatStyle } from "../game/combat-styles";
 import { AgentActivitySection } from "../agents/AgentActivitySection";
 import { withAgentActivityStatus } from "../agents/AgentActivityIcon";
 import { useKeepFocusedFieldAboveKeyboard } from "../../hooks/use-keep-focused-field-above-keyboard";
@@ -2126,10 +2127,10 @@ export function ChatSettingsDrawer({
   const gameImageIncludeCharacterAppearance = metadata.gameImageIncludeCharacterAppearance !== false;
   const gameImageAutoGenerationEnabled = metadata.gameImageAutoGenerationEnabled !== false;
   const gameImageDynamicPromptEnabled = metadata.gameImageDynamicPromptEnabled === true;
-  const effectiveCombatStyle: GameCombatStyle =
+  const effectiveCombatStyle: GameCombatStyle = resolveCombatStyle(
     (metadata.gameCombatStyle as GameCombatStyle | undefined) ??
-    (metadata.gameSetupConfig?.combatStyle as GameCombatStyle | undefined) ??
-    "classic";
+      (metadata.gameSetupConfig?.combatStyle as GameCombatStyle | undefined),
+  );
   // A missing choice is by side: every game before turn order was a choice played that way (combat C6c).
   const effectiveTurnOrder: "side" | "initiative" =
     ((metadata.gameTacticalTurnOrder ?? metadata.gameSetupConfig?.tacticalTurnOrder) as string | undefined) ===

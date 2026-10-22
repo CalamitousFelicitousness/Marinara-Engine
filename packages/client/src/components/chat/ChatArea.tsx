@@ -1025,7 +1025,13 @@ const LocalChatArea = memo(function LocalChatArea({
       });
       setIllustratorPromptReviewSubmitting(false);
       if (success) setIllustratorPromptReview(null);
-      if (success && illustratorPromptReview.illustratorStillOnly) {
+      // The animate call works on the open chat, so a picture drawn after the user moved to another chat stays a
+      // picture.
+      if (
+        success &&
+        illustratorPromptReview.illustratorStillOnly &&
+        useChatStore.getState().activeChatId === illustratorPromptReview.chatId
+      ) {
         await animateDrawnPictureRef.current?.(drawnGalleryImageId);
       }
     },

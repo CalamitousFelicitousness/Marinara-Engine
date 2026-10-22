@@ -99,6 +99,13 @@ try {
   assert.equal(proxied.statusCode, 200);
   assert.deepEqual(proxied.json().passwordlessPeers, ["proxy"]);
   assert.equal(proxied.json().viaProxy, true);
+  // A LAN visitor names this server's own address; that Host alone is not a proxy.
+  const direct = await status("192.168.1.20", {
+    host: "192.168.1.10:7860",
+    "x-admin-secret": SECRETS.ADMIN_SECRET,
+  });
+  assert.equal(direct.statusCode, 200);
+  assert.equal(direct.json().viaProxy, false, "a direct LAN visitor is not shown as proxied");
 
   // A plain loopback-only native install lets nobody else in, and never lists LAN or internet kinds.
   const loopbackPeers = async (env: Env) => {

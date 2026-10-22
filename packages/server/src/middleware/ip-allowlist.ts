@@ -30,7 +30,7 @@ import {
   isUnauthenticatedRemoteAllowed,
 } from "../config/runtime-config.js";
 import { logger } from "../lib/logger.js";
-import { getLoginConfig } from "../config/login-credential.js";
+import { getLoginConfig, setProxyLogsVisitorsIn } from "../config/login-credential.js";
 import { evaluateAccessPolicy, isForwardedLoopbackPeer, type AccessFacts, type AccessPolicy } from "./access-policy.js";
 import { firstHeader, parseRequestHostname } from "./host-validation.js";
 import { recordRefusal } from "./refused-devices.js";
@@ -449,6 +449,7 @@ export function getTrustedAuthProxies(): CIDREntry[] {
   cachedAuthProxies = { raw, entries };
   return entries;
 }
+setProxyLogsVisitorsIn(() => getTrustedAuthProxies().length > 0);
 
 /** True when the socket peer is a configured forward-auth proxy. Forwarded headers never count. */
 export function isTrustedAuthProxyIp(ip: string): boolean {
@@ -583,7 +584,7 @@ function hasHeaderValue(value: string | string[] | undefined): boolean {
 }
 
 /** True when a request carries common reverse-proxy forwarding headers. */
-function hasProxyForwardingHeaders(request: Pick<FastifyRequest, "headers">): boolean {
+export function hasProxyForwardingHeaders(request: Pick<FastifyRequest, "headers">): boolean {
   return PROXY_FORWARDING_HEADERS.some((header) => hasHeaderValue(request.headers[header]));
 }
 

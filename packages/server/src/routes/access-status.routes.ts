@@ -30,7 +30,9 @@ import {
   getAccessPolicy,
   getPasswordlessPeers,
   getTrustedAuthProxies,
+  hasProxyForwardingHeaders,
   isLoopbackBind,
+  isLoopbackIp,
   isProxiedRequest,
 } from "../middleware/ip-allowlist.js";
 import { isOwnerWithoutLogin, requirePrivilegedAccess } from "../middleware/privileged-gate.js";
@@ -57,7 +59,9 @@ export async function accessStatusRoutes(app: FastifyInstance) {
       trustedAuthProxy: getTrustedAuthProxies().length > 0,
       passwordlessPeers: getPasswordlessPeers(host),
       loginKeepsOpen: getPasswordlessPeers(host, undefined, true),
-      viaProxy: isProxiedRequest(request),
+      // A relayed Host means a proxy only behind a loopback peer; a LAN or Docker-gateway visitor
+      // names this server's address itself, so only forwarding headers count there.
+      viaProxy: hasProxyForwardingHeaders(request) || (isLoopbackIp(request.ip) && isProxiedRequest(request)),
       // A signed-in browser elsewhere confirms changes with the current password.
       needsCurrentPassword: !isOwnerWithoutLogin(request),
     };

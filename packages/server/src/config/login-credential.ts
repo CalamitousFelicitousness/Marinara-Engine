@@ -13,7 +13,7 @@ import { mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSyn
 import { join } from "node:path";
 import { logger } from "../lib/logger.js";
 import { DATA_DIR } from "../utils/data-dir.js";
-import { getBasicAuthConfig, getTrustedAuthProxy } from "./runtime-config.js";
+import { getBasicAuthConfig } from "./runtime-config.js";
 
 export type StoredLogin = { user: string; salt: string; hash: string; N: number; r: number; p: number };
 export type LoginConfig = { source: "env"; user: string; pass: string } | ({ source: "app" } & StoredLogin);
@@ -216,9 +216,16 @@ export function readableCode(length: number): string {
 /** Ignores case and the spaces or dashes people type between the groups. */
 export const normalizeCode = (value: string) => value.toUpperCase().replace(/[\s-]/g, "");
 
+// ip-allowlist registers its parsed TRUSTED_AUTH_PROXY check here; importing it would be a cycle.
+let proxyLogsVisitorsIn = () => false;
+export function setProxyLogsVisitorsIn(check: () => boolean) {
+  proxyLogsVisitorsIn = check;
+}
+
 export function announceSetupCode() {
-  // A forward-auth proxy logs visitors in, so there is no first login to set.
-  if (getTrustedAuthProxy()) {
+  // A forward-auth proxy logs visitors in, so there is no first login to set. Only entries the
+  // policy accepts count: a list of typos or public ranges trusts no proxy and still needs a code.
+  if (proxyLogsVisitorsIn()) {
     setupCode = null;
     return;
   }

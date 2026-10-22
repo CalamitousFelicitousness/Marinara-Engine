@@ -524,6 +524,16 @@ try {
   assert.equal((await removeAsHost({ currentPassword: "session-password" })).statusCode, 204);
   assert.equal(credential.getLoginConfig(), null, "a signed-in browser removed the login");
 
+  // ── TRUSTED_AUTH_PROXY hides the setup code only when the policy trusts a proxy ──
+  process.env.TRUSTED_AUTH_PROXY = "8.8.0.0/16, not-a-range";
+  credential.announceSetupCode();
+  assert.ok(credential.hasLoginSetupCode(), "typos and public ranges trust no proxy, so a code still prints");
+  process.env.TRUSTED_AUTH_PROXY = "10.0.0.5";
+  credential.announceSetupCode();
+  assert.equal(credential.hasLoginSetupCode(), false, "a trusted forward-auth proxy logs visitors in instead");
+  delete process.env.TRUSTED_AUTH_PROXY;
+  credential.announceSetupCode();
+
   // ── No login: Settings on another device takes the setup code, with the lockdown form's rules ──
   process.env.ALLOW_UNAUTHENTICATED_REMOTE = "true"; // stands in for the passwordless Docker host
   const settingsCode = lastSetupCode();

@@ -802,6 +802,7 @@ import { createRoleplayClipTools, resolveIllustratorVideoOffer } from "../servic
 import {
   animateGalleryImage,
   generateRoleplayClip,
+  hasChatVideoConnection,
   roleplayVideoFirstFrame,
 } from "../services/video/chat-video-generation.js";
 import { attachVideoToMessage, buildChatVideoAttachment } from "../services/video/chat-video-messages.js";
@@ -4272,14 +4273,17 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             db: app.db,
             wrapFormat,
             resolvePromptMacros,
-            // Counted over the whole chat, as the check before making the clip is, not the trimmed context.
-            videoCommandAllowed: automaticVideoAllowed(
-              allChatMessages.filter((message) => message.id !== input.regenerateMessageId),
-              chatMeta,
-              await loadVideoRunInterval(agentsStore, chatMeta),
-              true,
-              input.regenerateMessageId,
-            ),
+            // Counted over the whole chat, as the check before making the clip is, not the trimmed context. Without a
+            // working video connection [video] isn't offered, as [selfie] isn't without an image connection.
+            videoCommandAllowed:
+              automaticVideoAllowed(
+                allChatMessages.filter((message) => message.id !== input.regenerateMessageId),
+                chatMeta,
+                await loadVideoRunInterval(agentsStore, chatMeta),
+                true,
+                input.regenerateMessageId,
+              ) &&
+              (chatMode !== "conversation" || (await hasChatVideoConnection(app.db, chatMeta))),
           });
 
           // ── Home Professor Mari: inject assistant knowledge & commands ──
@@ -15006,9 +15010,16 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                       },
                     });
                 if (videoMessage) {
+                  // The slot is held while the clip is made, and given back if it isn't, as Roleplay clips do.
                   videosLeft -= 1;
                   if (characterId) videoCharacterIds.add(characterId);
-                  pendingRoleplayMedia.push(videoMessage);
+                  pendingRoleplayMedia.push(
+                    videoMessage.then((made) => {
+                      if (made) return;
+                      videosLeft += 1;
+                      if (characterId) videoCharacterIds.delete(characterId);
+                    }),
+                  );
                 }
 
                 await handleConversationCallCommand({

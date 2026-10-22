@@ -38,6 +38,13 @@ export class ChatVideoError extends Error {
 export type ChatVideoSetup = Awaited<ReturnType<typeof resolveChatVideoSetup>>;
 
 /** The chat's video connection with its runtime, clip length and aspect ratio. */
+/** Whether the chat has a usable video connection, found the way resolveChatVideoSetup finds it. */
+export async function hasChatVideoConnection(db: DB, chatMeta: Record<string, unknown>): Promise<boolean> {
+  const connections = createConnectionsStorage(db);
+  const videoConnectionId = await resolveSceneVideoConnectionId(chatMeta, connections);
+  return Boolean(videoConnectionId && (await connections.getById(videoConnectionId))?.provider === "video_generation");
+}
+
 export async function resolveChatVideoSetup(db: DB, chatMeta: Record<string, unknown>) {
   const connections = createConnectionsStorage(db);
   const videoConnectionId = await resolveSceneVideoConnectionId(chatMeta, connections);

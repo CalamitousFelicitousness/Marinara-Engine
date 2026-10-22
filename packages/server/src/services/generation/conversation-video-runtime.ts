@@ -668,7 +668,7 @@ export function startConversationVideoCommand(args: {
   /** Stop: ends the clip while it waits its turn or renders. */
   signal?: AbortSignal;
   sendEvent: (payload: Record<string, unknown>) => void;
-}): Promise<void> | null {
+}): Promise<boolean> | null {
   if (args.command.type !== "video" || !args.characterId) return null;
   const characterId = args.characterId;
   args.sendEvent({ type: "video_started", data: { characterId, messageId: args.messageId } });
@@ -697,7 +697,7 @@ export function startConversationVideoCommand(args: {
       });
       if (!("video" in result)) {
         await videoRun?.settle(false);
-        return;
+        return false;
       }
       // The clip is saved by now, so it counts as made: failing to add it to the message only logs.
       await videoRun?.settle(true);
@@ -723,6 +723,7 @@ export function startConversationVideoCommand(args: {
           videoId: result.video.id,
         },
       });
+      return true;
     } catch (err) {
       await videoRun?.settle(false);
       logger.error(err, "[commands] Video message failed");
@@ -730,6 +731,7 @@ export function startConversationVideoCommand(args: {
         type: "video_error",
         data: { characterId, error: err instanceof Error ? err.message : "Video generation failed" },
       });
+      return false;
     }
   })();
 }

@@ -74,6 +74,8 @@ try {
     generateVideo: true,
     videoPrompt: "The lantern light flickers as Aster turns",
   };
+  // Every text request, newest last.
+  const textRequests: string[] = [];
   const videoWriterRequests: string[] = [];
   const shortenRequests: string[] = [];
   let shortenReply = "";
@@ -114,6 +116,7 @@ try {
     }
     if (url.endsWith("/images/generations")) return json({ data: [{ b64_json: png.toString("base64") }] });
     const messages = JSON.stringify(JSON.parse(body).messages ?? []);
+    textRequests.push(messages);
     let content = mainReply;
     if (messages.includes("<source_exchange>")) {
       // A Roleplay video director writing a clip's prompt.
@@ -477,8 +480,22 @@ try {
   await generate(convo.id, "Send me a video?");
   assert.equal((await videoAttachments(convo.id)).length, 0, "Generated Videos off: no clip");
 
+  // Without a working video connection [video] isn't offered: every clip would only fail.
+  const offersVideo = (text: string) =>
+    /you send a short video message/u.test(textRequests.findLast((request) => request.includes(text)) ?? "");
+  mainReply = "Not right now.";
+  await saveChatSettings(convo.id, {
+    ...convoMeta,
+    sceneVideoConnectionId: text.id,
+    conversationCommandToggles: { video: true },
+  });
+  await generate(convo.id, "Can you send videos?");
+  assert.equal(offersVideo("Can you send videos?"), false, "no video connection: [video] isn't offered");
+  mainReply = 'Look! [video: context="waving from the bus"]';
+
   await saveChatSettings(convo.id, { ...convoMeta, conversationCommandToggles: { video: true } });
   const body = await generate(convo.id, "Send me a video!");
+  assert.equal(offersVideo("Send me a video!"), true, "with one, it is");
   const convoVideos = await videoAttachments(convo.id);
   assert.equal(convoVideos.length, 1, body);
   assert.equal((convoVideos[0]?.attachment as { characterName?: string }).characterName, "Aster");

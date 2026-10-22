@@ -4,6 +4,7 @@
 import { useState } from "react";
 import { useAccessWarningBanner } from "../diagnostics/use-access-warning-banner";
 import { useCsrfOriginBanner } from "../diagnostics/use-csrf-origin-banner";
+import { useRefusedDeviceBanners } from "../diagnostics/use-refused-device-banners";
 import { AppBanner, type AppBannerCandidate } from "../ui/AppBanner";
 import { useMarinaraNoticeBanners } from "./use-marinara-notice-banners";
 
@@ -31,7 +32,12 @@ function pickAppBanner(candidates: (AppBannerCandidate | null)[], dismissed: (c:
 }
 
 export function AppBannerHost() {
-  const candidates = [useCsrfOriginBanner(), useAccessWarningBanner(), ...useMarinaraNoticeBanners()];
+  const candidates = [
+    useCsrfOriginBanner(),
+    useAccessWarningBanner(),
+    ...useRefusedDeviceBanners(),
+    ...useMarinaraNoticeBanners(),
+  ];
   const [dismissedIds, setDismissedIds] = useState<string[]>([]);
   const banner = pickAppBanner(candidates, (c) => dismissedIds.includes(c.id) || wasDismissed(c));
 

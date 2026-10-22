@@ -205,6 +205,14 @@ try {
     { origin: "https://chat.example.com" },
   );
   assert.equal(noFetchSite.statusCode, 403, "without Sec-Fetch-Site the usual Origin check applies");
+  const plainHttp = await signIn(
+    "203.0.113.20",
+    { user: "owner", password: "not-the-password" },
+    { origin: "http://chat.example.com" },
+  );
+  assert.equal(plainHttp.statusCode, 401, "plain HTTP sends no Sec-Fetch-Site; the server's own Origin passes");
+  const loginPage = await get("/login", "203.0.113.20", { accept: "text/html" });
+  assert.match(loginPage.body, /<meta name="referrer" content="same-origin" \/>/, "so the form posts a real Origin");
   const signedIn = await signIn(
     "203.0.113.20",
     { user: "owner", password: "first-password", next: "/chats" },
@@ -274,6 +282,84 @@ try {
   assert.equal((await get("/api/chats", "203.0.113.23", { cookie: laptop })).statusCode, 200);
   assert.equal((await local("DELETE", "/api/access/sessions")).statusCode, 204);
   assert.equal((await get("/api/chats", "203.0.113.23", { cookie: laptop })).statusCode, 401, "all signed out");
+  const keeper = cookieOf(await signIn("203.0.113.25", { ...first }));
+  const other = cookieOf(await signIn("203.0.113.26", { ...first }));
+  assert.equal((await local("DELETE", "/api/access/sessions", { cookie: keeper })).statusCode, 204);
+  assert.equal((await get("/api/chats", "203.0.113.25", { cookie: keeper })).statusCode, 200, "the caller stays");
+  assert.equal((await get("/api/chats", "203.0.113.26", { cookie: other })).statusCode, 401, "others end");
+
+  // ── Pairing codes: a signed-in browser or the host adds a device ──
+  const pair = (remoteAddress: string, headers: Record<string, string> = {}) =>
+    app.inject({
+      method: "POST",
+      url: "/api/access/pairing-codes",
+      remoteAddress,
+      headers: { ...(remoteAddress === "127.0.0.1" ? LOCAL : HOST), ...headers },
+    });
+  assert.equal((await pair("203.0.113.60")).statusCode, 401, "a stranger is asked to sign in first");
+  assert.equal(
+    (await pair("203.0.113.60", { authorization: right })).statusCode,
+    403,
+    "a script with Basic Authorization is not a signed-in browser",
+  );
+  const fromPhone = await pair("203.0.113.25", { cookie: keeper });
+  assert.equal(fromPhone.statusCode, 200, "a signed-in browser adds a device");
+  const { code: phoneCode, expiresAt } = fromPhone.json() as { code: string; expiresAt: number };
+  assert.match(phoneCode, /^[2-9A-HJKMNP-Z]{4}-[2-9A-HJKMNP-Z]{4}$/, "8 characters, without 0, O, 1, I or L");
+  assert.ok(Math.abs(expiresAt - (Date.now() + 5 * 60_000)) < 5_000, "valid for 5 minutes");
+  assert.equal(
+    (await get("/api/access/refusals", "203.0.113.25", { cookie: keeper })).statusCode,
+    403,
+    "the refused-device list is for this computer only",
+  );
+
+  const paired = await signIn("203.0.113.61", { code: ` ${phoneCode.toLowerCase().replace("-", " ")} `, next: "/chats" });
+  assert.equal(paired.statusCode, 303, "case, spaces and the dash do not matter");
+  assert.equal(paired.headers.location, "/chats");
+  const pairedSession = cookieOf(paired);
+  assert.equal((await get("/api/chats", "203.0.113.61", { cookie: pairedSession })).statusCode, 200);
+  assert.equal((await signIn("203.0.113.62", { code: phoneCode })).statusCode, 401, "a code works once");
+
+  const fromHost = (await pair("127.0.0.1")).json() as { code: string };
+  Date.now = () => realNow() + 5 * 60_000 + 1;
+  assert.equal((await signIn("203.0.113.62", { code: fromHost.code })).statusCode, 401, "a code expires");
+  Date.now = realNow;
+
+  const pairGuesser = "203.0.113.63";
+  for (let index = 0; index < BASIC_AUTH_FAILURE_LIMIT; index += 1) {
+    const response = await signIn(pairGuesser, { code: `ABCD-EF${String(index).padStart(2, "2")}` });
+    assert.equal(response.statusCode, 401, `wrong code ${index + 1} is still answered`);
+  }
+  const live = (await pair("127.0.0.1")).json() as { code: string };
+  assert.equal((await signIn(pairGuesser, { code: live.code })).statusCode, 429, "wrong codes lock out like passwords");
+  assert.equal((await signIn("203.0.113.64", { code: live.code })).statusCode, 303, "the lockout did not use it up");
+  // A good code clears this browser's wrong-guess count, like a good password does.
+  const typoGuesser = "203.0.113.69";
+  for (let index = 0; index < BASIC_AUTH_FAILURE_LIMIT - 1; index += 1) {
+    await signIn(typoGuesser, { code: `ABCD-EG${String(index).padStart(2, "2")}` });
+  }
+  const goodCode = (await pair("127.0.0.1")).json() as { code: string };
+  assert.equal((await signIn(typoGuesser, { code: goodCode.code })).statusCode, 303);
+  for (let index = 0; index < BASIC_AUTH_FAILURE_LIMIT - 1; index += 1) {
+    const response = await signIn(typoGuesser, { code: `ABCD-EH${String(index).padStart(2, "2")}` });
+    assert.equal(response.statusCode, 401, `typo ${index + 1} after a good code is still answered`);
+  }
+  // Signing out a device ends the codes it made, and signing out every other device ends all open codes,
+  // so a signed-out device cannot come back with a code it made before.
+  const leaving = cookieOf(await signIn("203.0.113.66", { ...first }));
+  const leavingCode = (await pair("203.0.113.66", { cookie: leaving })).json() as { code: string };
+  await app.inject({
+    method: "POST",
+    url: "/logout",
+    remoteAddress: "203.0.113.66",
+    headers: { ...HOST, cookie: leaving },
+  });
+  assert.equal((await signIn("203.0.113.67", { code: leavingCode.code })).statusCode, 401, "logout ends its codes");
+  const rogue = cookieOf(await signIn("203.0.113.68", { ...first }));
+  const rogueCode = (await pair("203.0.113.68", { cookie: rogue })).json() as { code: string };
+  assert.equal((await local("DELETE", "/api/access/sessions")).statusCode, 204);
+  assert.equal((await signIn("203.0.113.67", { code: rogueCode.code })).statusCode, 401, "sign-out-others ends codes");
+  const stale = (await pair("127.0.0.1")).json() as { code: string };
 
   // ── A new password ends every session and the old Basic header ──
   const before = cookieOf(await signIn("203.0.113.24", { ...first }));
@@ -281,6 +367,7 @@ try {
   assert.equal(change.statusCode, 200);
   assert.equal((await get("/api/chats", "203.0.113.24", { cookie: before })).statusCode, 401, "old sessions end");
   assert.equal((await get("/api/chats", REMOTE, { cookie: setupSession })).statusCode, 401, "all of them");
+  assert.equal((await signIn("203.0.113.65", { code: stale.code })).statusCode, 401, "and every open code");
   assert.equal(
     (await local("GET", "/api/access/sessions")).json().sessions.length,
     1,
@@ -370,6 +457,33 @@ try {
   Date.now = () => realNow() + 2_001;
   assert.equal(credential.getLoginConfig(), null, "deleting the file removes the login within 2 s");
   assert.equal((await get("/api/chats", "203.0.113.40")).statusCode, 403, "with no login, remote is locked down again");
+
+  // ── Refused devices: the host hears about them, without their address ──
+  await get("/api/chats", "203.0.113.40", { "user-agent": IPHONE });
+  process.env.IP_ALLOWLIST = "198.51.100.0/24";
+  assert.equal((await get("/api/chats", "203.0.113.41")).statusCode, 403);
+  const scannerId = ((await local("GET", "/api/access/refusals")).json().refusals as Array<{ id: string }>)[0]?.id;
+  // A new address with the same label merges, so one dismissal holds against an internet scan.
+  assert.equal((await get("/api/chats", "203.0.113.42")).statusCode, 403);
+  delete process.env.IP_ALLOWLIST;
+  const refusals = await local("GET", "/api/access/refusals");
+  assert.equal(refusals.statusCode, 200);
+  assert.ok(!refusals.body.includes("203.0.113"), "no addresses");
+  const refused = refusals.json().refusals as Array<{ id: string; label: string; reason: string }>;
+  assert.deepEqual(
+    refused.map(({ label, reason }) => [label, reason]),
+    [
+      ["Unknown device", "allowlist"],
+      ["Safari on iPhone", "noLogin"],
+      ["Unknown device", "noLogin"],
+    ],
+    "newest first, one entry per device and reason",
+  );
+  assert.equal(refused[0]?.id, scannerId, "allowlist refusals from new addresses keep one id");
+  await get("/api/chats", "203.0.113.40", { "user-agent": IPHONE });
+  const retried = (await local("GET", "/api/access/refusals")).json().refusals as typeof refused;
+  assert.equal(retried.length, 3, "a retry is no new entry");
+  assert.equal(retried[0]?.id, refused[1]?.id, "and keeps its id, so a dismissed banner stays dismissed");
   Date.now = realNow;
   const afterReset = lastSetupCode();
   assert.match(afterReset, /^[0-9a-f]{24}$/);
@@ -385,6 +499,13 @@ try {
   process.env.BASIC_AUTH_USER = "envuser";
   process.env.BASIC_AUTH_PASS = "env-password";
   assert.equal(credential.getLoginConfig()?.source, "env");
+  assert.deepEqual(
+    ((await local("GET", "/api/access/refusals")).json().refusals as Array<{ reason: string }>).map(
+      ({ reason }) => reason,
+    ),
+    ["allowlist"],
+    "a login hides the no-login refusals",
+  );
   assert.equal(await loginSource(), "env");
   assert.equal((await putLogin("127.0.0.1", { user: "owner", password: "fifth-password" })).statusCode, 409);
   assert.equal((await local("DELETE", "/api/access/login")).statusCode, 409);

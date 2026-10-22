@@ -258,7 +258,7 @@ function saveSessions(loginKey: string, sessions: RemoteSession[]) {
 }
 
 // ponytail: names a few common devices and browsers; use a User-Agent parser if owners need more detail.
-function deviceLabel(userAgent: unknown): string {
+export function deviceLabel(userAgent: unknown): string {
   const ua = typeof userAgent === "string" ? userAgent : "";
   const pick = (names: Record<string, string>) => Object.keys(names).find((key) => ua.includes(key));
   const browsers = {
@@ -333,6 +333,14 @@ export function deleteSession(loginKey: string, id: string): boolean {
   if (rest.length === sessions.length) return false;
   saveSessions(loginKey, rest);
   return true;
+}
+
+/** Ends every session of the login `loginKey` except `keepId`, the caller's own. */
+export function deleteOtherSessions(loginKey: string, keepId: string | undefined): void {
+  saveSessions(
+    loginKey,
+    liveSessions(loginKey, true).filter((session) => session.id === keepId),
+  );
 }
 
 export function deleteAllSessions(): void {

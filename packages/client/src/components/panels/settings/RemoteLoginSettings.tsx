@@ -4,7 +4,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { CSRF_HEADER, CSRF_HEADER_VALUE } from "@marinara-engine/shared";
 import {
   useCreatePairingCode,
   useEndOtherSessions,
@@ -235,12 +234,6 @@ function LoginForm({
   );
 }
 
-/** Ends this browser's own session; the server then shows the sign-in page. */
-async function signOutHere() {
-  await fetch("/logout", { method: "POST", headers: { [CSRF_HEADER]: CSRF_HEADER_VALUE } }).catch(() => undefined);
-  window.location.assign("/login");
-}
-
 function sessionDetails(session: RemoteSession, t: ReturnType<typeof useTranslation>["t"], language: string) {
   return [
     session.method && t(`settings.accessStatus.devices.method.${session.method}`),
@@ -296,8 +289,12 @@ function SignedInDevices() {
                   // On a fast server the list updates between the two clicks of a double click, so
                   // the second one would land on the next row's button and sign that device out too.
                   if (event.detail > 1) return;
-                  if (session.current) void signOutHere();
-                  else end.mutate(session.id);
+                  // Ending this browser's own session shows the sign-in page, but only once it ended.
+                  end.mutate(session.id, {
+                    onSuccess: () => {
+                      if (session.current) window.location.assign("/login");
+                    },
+                  });
                 }}
                 disabled={end.isPending}
                 aria-label={t("settings.accessStatus.devices.signOutNamed", { device: session.label })}

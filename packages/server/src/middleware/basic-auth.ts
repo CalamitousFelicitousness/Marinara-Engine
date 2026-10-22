@@ -319,7 +319,20 @@ export function trySetupCode(request: FastifyRequest, code: unknown): "ok" | "wr
   if (isLoginSetupCode(value)) return "ok";
   const guess = createHmac("sha256", HEADER_MAC_KEY).update(normalizeCode(value)).digest("base64url").slice(0, 16);
   countGuess(request, `setup:${guess}`, buckets);
-  logger.warn("[basic-auth] Wrong setup code from %s", request.ip);
+  // Like wrong passwords: the first wrong code and the one that locks, not every try. A forwarded
+  // client has no bucket and would only name the proxy; the route rate limit caps its volume.
+  for (const bucket of buckets) {
+    const size = failures.get(bucket.key)?.guesses.size ?? 0;
+    if (size === 1) logger.warn("[basic-auth] Wrong setup code from %s", request.ip);
+    if (size === bucket.limit) {
+      logger.warn(
+        "[basic-auth] %d wrong setup codes from %s; refusing more for %d minutes",
+        size,
+        request.ip,
+        Math.ceil(BASIC_AUTH_FAILURE_WINDOW_MS / 60_000),
+      );
+    }
+  }
   return "wrong";
 }
 
@@ -746,6 +759,8 @@ export function safeNextPath(value: unknown): string {
 function isLoginPath(request: FastifyRequest): boolean {
   const path = request.url.split("?", 1)[0];
   if (path === "/logout") return request.method === "POST";
+  // A lockdown tab left open after another device set the login: its handler sends it to /login.
+  if (path === "/login/setup") return request.method === "POST";
   return path === "/login" && ["GET", "HEAD", "POST"].includes(request.method);
 }
 
@@ -843,9 +858,9 @@ export async function basicAuthHook(request: FastifyRequest, reply: FastifyReply
 }
 
 /** Signs the current browser in, e.g. after it set the login, so it is not sent to /login next. */
-export function rememberLoginInBrowser(request: FastifyRequest, reply: FastifyReply, method: SignInMethod) {
+export function rememberLoginInBrowser(request: FastifyRequest, reply: FastifyReply, method: SignInMethod): boolean {
   const config = loadConfig();
-  if (config) startBrowserSession(request, reply, config, method);
+  return !!config && startBrowserSession(request, reply, config, method);
 }
 
 /** The owner's list of signed-in browsers; never the token or its hash. */
@@ -1142,9 +1157,8 @@ export async function loginRoutes(app: FastifyInstance) {
         return fail(500, "Marinara could not save the login. Use the new setup code from the server log.");
       }
       logger.info('[login] Remote login set for user "%s" with the setup code', user);
-      rememberLoginInBrowser(request, reply, "setup");
-      // The app reads `loginSet` once and confirms the new login.
-      return reply.redirect("/?loginSet=1", 303);
+      // The app reads `loginSet` once and confirms the new login; with no session, the sign-in page asks for it.
+      return reply.redirect(rememberLoginInBrowser(request, reply, "setup") ? "/?loginSet=1" : "/login", 303);
     },
   );
 

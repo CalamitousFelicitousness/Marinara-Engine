@@ -558,7 +558,13 @@ export function App() {
     if (!url.searchParams.has("loginSet")) return;
     url.searchParams.delete("loginSet");
     window.history.replaceState(window.history.state, "", url);
-    toast.success(i18n.t("ui.app.loginSet"));
+    // The URL alone proves nothing: announce only when the server says this browser is signed in.
+    void api
+      .get<{ sessions: { current: boolean }[] }>("/access/sessions")
+      .then(({ sessions }) => {
+        if (sessions.some((session) => session.current)) toast.success(i18n.t("ui.app.loginSet"));
+      })
+      .catch(() => undefined);
   }, []);
 
   // While the omnibar is open the toast moves to bottom-right on desktop and to the top, under the

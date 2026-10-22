@@ -171,6 +171,10 @@ try {
   for (let i = 0; i < BASIC_AUTH_FAILURE_LIMIT; i++) {
     await setup("203.0.113.66", { ...owner, setupCode: `${i}`.padStart(24, "f") });
   }
+  const wrongCodeLines = warnings.filter(
+    (args) => String(args[0]).includes("setup code") && args.includes("203.0.113.66"),
+  );
+  assert.equal(wrongCodeLines.length, 2, "the log names the first wrong code and the lockout, not every try");
   const locked = await setup("203.0.113.66", owner);
   assert.equal(locked.statusCode, 429, "too many wrong codes lock the address out");
   assert.match(locked.body, /Try again in \d+ minutes?\./, "the lockout says how long");
@@ -238,7 +242,9 @@ try {
     user: "intruder",
     password: "intruder-password",
   });
-  assert.notEqual(again.statusCode, 303);
+  assert.equal(again.statusCode, 303, "a stale setup form is sent to the sign-in page");
+  assert.equal(again.headers.location, "/login");
+  assert.equal(again.headers["www-authenticate"], undefined, "no Basic dialog for a stale setup form");
   assert.equal(credential.getLoginConfig()?.user, "owner", "a used code cannot replace the login");
 
   console.info("Lockdown setup regressions passed.");

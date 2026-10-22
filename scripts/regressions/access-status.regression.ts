@@ -129,7 +129,11 @@ try {
     return getPasswordlessPeers("0.0.0.0", interfaces, false, "linux");
   };
   assert.deepEqual(networkPeers({}), []);
-  assert.deepEqual(networkPeers({ TRUSTED_AUTH_PROXY: "192.168.1.5" }), [], "a single proxy address opens no network");
+  assert.deepEqual(
+    networkPeers({ TRUSTED_AUTH_PROXY: "192.168.1.5" }),
+    ["proxy"],
+    "a single proxy address opens no network, but its visitors are listed",
+  );
   assert.deepEqual(
     networkPeers({ TRUSTED_AUTH_PROXY: "192.168.1.0/24" }),
     ["privateNetwork"],

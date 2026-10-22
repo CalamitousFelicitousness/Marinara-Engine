@@ -4589,7 +4589,7 @@
   "settings.accessStatus.peer.docker": "devices that connect through Docker",
   "settings.accessStatus.peer.internet": "anyone who can reach this computer",
   "settings.accessStatus.peer.privateNetwork": "devices on your local network",
-  "settings.accessStatus.peer.proxy": "visitors who come through a proxy or tunnel on this computer",
+  "settings.accessStatus.peer.proxy": "visitors who come through a trusted proxy or a tunnel on this computer",
   "settings.accessStatus.peer.tailscale": "devices on your Tailscale network",
   "settings.accessStatus.peersIntro": "These can open Marinara without a password:",
   "settings.accessStatus.row.adminSecret": "Admin secret",

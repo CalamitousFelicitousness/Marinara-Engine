@@ -123,7 +123,11 @@ export async function accessStatusRoutes(app: FastifyInstance) {
         throw err;
       }
       logger.info('[login] Remote login %s for user "%s"', current ? "changed" : "set", user);
-      rememberLoginInBrowser(request, reply, setupCode ? "setup" : "password");
+      if (!rememberLoginInBrowser(request, reply, setupCode ? "setup" : "password")) {
+        return reply
+          .status(500)
+          .send({ error: "The login is saved, but this browser cannot stay signed in. See the server log." });
+      }
       return { loginSource: "app" };
     },
   );

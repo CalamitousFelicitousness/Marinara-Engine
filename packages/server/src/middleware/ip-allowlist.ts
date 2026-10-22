@@ -784,6 +784,15 @@ export function getPasswordlessPeers(
     ["tailscale", { tailscaleIp: true, privateNetworkIp: true, tailscaleLocalAddress: true }, direct && tailscaleHere],
     // No relayed Host: the client picks the Host header, and `localhost` passes host validation.
     ["docker", { dockerIp: true, privateNetworkIp: true, dockerRuntimeMatch: isDockerRuntime() }, direct && dockerHere],
+    // A single trusted proxy address on another machine or container lets its visitors skip the login too.
+    [
+      "proxy",
+      { privateNetworkIp: true, forwardingHeaders: true, trustedAuthProxy: true },
+      direct &&
+        getTrustedAuthProxies().some(
+          (entry) => entry.prefixLen === 128 && !LOOPBACK_CIDRS.some((range) => matchesCIDR(entry.bytes, range)),
+        ),
+    ],
     // A remote device behind a local proxy names this server by its own address, so it looks relayed.
     // The proxy dials 127.0.0.1, which a bind to one LAN address does not listen on.
     [

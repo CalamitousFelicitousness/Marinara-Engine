@@ -26,4 +26,13 @@ if (existsSync(loginFile)) {
 } else {
   console.log(`No app login found at ${loginFile}.`);
 }
-rmSync(join(dataDir, ".remote-sessions.json"), { force: true });
+const sessionsFile = join(dataDir, ".remote-sessions.json");
+try {
+  rmSync(sessionsFile, { force: true });
+  console.log(`Signed out every browser (${sessionsFile}).`);
+} catch (err) {
+  console.error(
+    `Could not remove ${sessionsFile} (${err.code ?? err.message}). Delete it by hand to sign out every browser.`,
+  );
+  process.exitCode = 1;
+}

@@ -3151,19 +3151,28 @@ details[open] > .mari-disclosure .mari-disclosure__chevron {
   position: relative;
   flex: 1;
   min-width: 0;
-  height: 1.4rem;
+  /* Two lines fit: a long step label wraps instead of ending in an ellipsis mid-word. */
+  min-height: 1.4rem;
   color: var(--foreground);
   font-size: 0.875rem;
 }
 
 .mari-work-timeline__line {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  white-space: nowrap;
+  position: static;
+  overflow: visible;
+  white-space: normal;
+  overflow-wrap: anywhere;
   mask-image: linear-gradient(100deg, #000 38%, #0006 50%, #000 62%);
   mask-size: 280% 100%;
   animation: mari-headline-sheen 2.2s linear infinite;
+}
+
+/* Side-by-side inline-blocks may break between them, so a word's letters move to the next line as one
+   box; a word wider than the line (a path, a slug) still wraps inside its box instead of overflowing. */
+.mari-work-timeline__word {
+  display: inline-flex;
+  flex-wrap: wrap;
+  max-width: 100%;
 }
 
 .mari-work-timeline__char {
@@ -3338,7 +3347,9 @@ details[open] > .mari-disclosure .mari-disclosure__chevron {
 }
 
 .mari-live-work__steps li[data-status="missed"] .mari-step__glyph,
-.mari-live-work__steps li[data-status="missed"] .mari-step__verb {
+.mari-live-work__steps li[data-status="missed"] .mari-step__verb,
+.mari-live-work__steps li[data-status="previewed"] .mari-step__glyph,
+.mari-live-work__steps li[data-status="previewed"] .mari-step__verb {
   color: var(--warning);
 }
 

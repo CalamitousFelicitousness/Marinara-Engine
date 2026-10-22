@@ -2450,10 +2450,11 @@ function replyOwnsUpToDryRun(text: string): boolean {
   const rest = normalized.replace(wouldPhrase, " ").replace(denial, " ");
   // A sentence saying the record now holds the value claims it, with "now" or "already" on either side of
   // the verb ("now reflects", "has 1745 already"). A bare "is now" claims it too, unless it hands the call
-  // back ("is now up to you", "is now yours to apply").
+  // back ("is now up to you") or names a waiting state ("is now ready", "is now pending your approval"):
+  // those describe the preview, not a saved value.
   const stateVerb = "(?:reflects|shows|says|reads|has|holds|includes|contains|matches|uses)";
   const stateClaim = new RegExp(
-    String.raw`\b(?:now|already)\s+(?:correctly\s+)?${stateVerb}\b|\b${stateVerb}\b[^.;!?\n]{0,40}?\b(?:now|already)\b|\b(?:is|are)\s+now\s+(?!up to\b|yours?\b)`,
+    String.raw`\b(?:now|already)\s+(?:correctly\s+)?${stateVerb}\b|\b${stateVerb}\b[^.;!?\n]{0,40}?\b(?:now|already)\b|\b(?:is|are)\s+now\s+(?!up to\b|yours?\b|ready\b|waiting\b|pending\b|awaiting\b)`,
     "iu",
   );
   return (

@@ -88,9 +88,15 @@ for (const claim of [
   "Nothing else was touched; the description is now 1745.",
   "Nothing was saved; the card has 1745 now.",
   "Nothing was saved; the card has 1745 already.",
-  "No entry was created; the card is now ready.",
 ]) {
   assert.equal(auditWorkspaceCompletionClaim(final(claim), scope).issue, "dry_run", claim);
+}
+// A waiting state describes the preview, not a saved value.
+for (const handBack of [
+  "Nothing was saved; the preview is now ready.",
+  "Nothing was saved; the change is now pending your approval.",
+]) {
+  assert.notEqual(auditWorkspaceCompletionClaim(final(handBack), scope).issue, "dry_run", handBack);
 }
 // An applied write, or a round that still has commands, is not this case.
 assert.notEqual(auditWorkspaceCompletionClaim(final(paraphrase), [...scope, applied]).issue, "dry_run");

@@ -1906,6 +1906,21 @@ function promptOptionRows(value: unknown): Array<{ id: string; label: string; va
     .filter((option): option is { id: string; label: string; value: string } => option !== null);
 }
 
+// A section id with quote characters inside it (`"\"YZuq…\""`) is a JSON-encoded id sent as text. It
+// never matches a real id, so it would write a section or an order entry nothing can find. Refuse it.
+function refuseQuotedSectionIds(action: string, payload: Row): void {
+  const sections = [payload.sections, payload.promptSections].flatMap((value) => (Array.isArray(value) ? value : []));
+  const ids = [
+    ...sections.map((section) => (isRecord(section) ? firstString(section, ["id", "sectionId"]) : undefined)),
+    ...parseJsonArrayValue(payload.sectionOrder ?? payload.section_order),
+  ];
+  const quoted = ids.find((id) => typeof id === "string" && /["']/.test(id));
+  if (quoted === undefined) return;
+  throw new Error(
+    `${action}: a section id contains quote characters (${describeReceived(quoted)}). Nothing was changed. Send each id exactly as preset.sections returns it, without the quotes.`,
+  );
+}
+
 function normalizePromptPresetChildInserts(payload: Row, presetId: string): Array<{ table: string; row: Row }> {
   const relatedInserts: Array<{ table: string; row: Row }> = [];
   const groupIdsByName = new Map<string, string>();
@@ -5585,6 +5600,7 @@ export class MariDbService {
         );
         const presetId = firstString(payload, ["id", "presetId", "promptPresetId"]) ?? newId();
         payload.id = presetId;
+        refuseQuotedSectionIds("preset.create", payload);
         const relatedInserts = normalizePromptPresetChildInserts(payload, presetId);
         const data = normalizePromptPresetActionData(stripPromptPresetChildPayload(payload));
         requiredString(data, ["name"], "prompt preset name");
@@ -5631,6 +5647,15 @@ export class MariDbService {
             "choices",
           ],
         );
+        // Sections sent here were rebuilt into a new sectionOrder holding only them, so a one-section
+        // update dropped every other section from the prompt. Sections have their own actions.
+        const sentSections = ["sections", "promptSections"].find((key) => payload[key] !== undefined);
+        if (sentSections) {
+          throw new Error(
+            `preset.update does not take "${sentSections}" (${describeReceived(payload[sentSections])}): it would replace the whole section order. Nothing was changed. Edit a section with {"action":"preset.updateSection","sectionId":"<id from preset.sections>","data":{"content":"…"},"apply":true}; add one with {"action":"preset.addSection","presetId":"${id}","data":{"name":"…","content":"…"}}. To reorder, send preset.update with the complete "sectionOrder".`,
+          );
+        }
+        refuseQuotedSectionIds("preset.update", payload);
         const relatedInserts = normalizePromptPresetChildInserts(payload, id);
         const data = normalizePromptPresetActionData(stripPromptPresetChildPayload(payload), existing);
         delete data.id;
@@ -9452,6 +9477,7 @@ export class MariDbService {
         });
       }
     }
+    await this.addLibraryFolderPrunes(changes);
     const cascaded = changes.filter((change) => change.cascadeOf);
     if (cascaded.length > 0 && !request.cascade) {
       issues.push({
@@ -9702,6 +9728,40 @@ export class MariDbService {
   private fillTimestamps(meta: TableMeta, row: Row, isCreate: boolean, stamp: string) {
     if (isCreate && meta.byKey.has("createdAt") && !row.createdAt) row.createdAt = stamp;
     if (meta.byKey.has("updatedAt") && !row.updatedAt) row.updatedAt = stamp;
+  }
+
+  // #7977: a deleted preset or lorebook left its id in a library folder's itemIds. The HTTP routes
+  // prune it with removeItemReferences; here the prune joins the plan, so Restore puts it back too.
+  private async addLibraryFolderPrunes(changes: PlanChange[]) {
+    const folderScopes: Record<string, string> = { prompt_presets: "presets", lorebooks: "lorebooks" };
+    const removing = new Map<string, Set<string>>();
+    for (const change of changes) {
+      const scope = folderScopes[change.table];
+      if (!scope || change.action !== "delete" || !change.apply) continue;
+      removing.set(scope, (removing.get(scope) ?? new Set()).add(change.id));
+    }
+    if (removing.size === 0) return;
+    const folderMeta = getMeta("library_folders");
+    const timestamp = now();
+    for (const folder of await this.rawRows(folderMeta.name)) {
+      const removedIds = removing.get(String(folder.scope));
+      if (!removedIds) continue;
+      const parsed = parseRow(folderMeta.name, folder);
+      const itemIds = parseJsonArrayValue(parsed.itemIds).map(String);
+      const nextIds = itemIds.filter((id) => !removedIds.has(id));
+      if (nextIds.length === itemIds.length) continue;
+      const afterRaw = serializeRow(folderMeta.name, { ...parsed, itemIds: nextIds, updatedAt: timestamp });
+      changes.push({
+        table: folderMeta.name,
+        id: rowId(folderMeta, folder),
+        action: "update",
+        before: parsed,
+        after: parseRow(folderMeta.name, afterRaw),
+        beforeRaw: folder,
+        afterRaw,
+        apply: true,
+      });
+    }
   }
 
   private async addCascadeDeletes(changes: PlanChange[], includeChildren: boolean) {

@@ -222,12 +222,15 @@ function findCharClassClose(source: string, openIdx: number): number {
 function hasUnsafeQuantifiedAlternation(body: string): boolean {
   const alternatives = splitTopLevelAlternatives(body);
   if (alternatives.length < 2) return false;
-  // ponytail: surrogate pairs change atom positions under u/v flags. Reject
-  // these repeated alternatives until the checker has a flag-aware parser.
-  if (/[\uD800-\uDFFF]|\\u(?:[dD][89a-fA-F][0-9a-fA-F]{2}|\{0*[dD][89a-fA-F][0-9a-fA-F]{2}\})/.test(body)) return true;
-  const tokenized = alternatives.map(tokenizeAlternative);
-  if (tokenized.some((tokens) => tokens.length === 0)) return true;
   const characters = new Map<string, TokenCharacterSet | null>();
+  const tokenized = alternatives.map((alternative) => {
+    const tokens = tokenizeAlternative(alternative);
+    // ponytail: unsupported atoms may change token positions or consume no
+    // character. Only preceding known atoms prove disjointness until parsing is flag-aware.
+    const uncertain = tokens.findIndex((token) => readTokenCharacterSet(token, characters) === null);
+    return uncertain === -1 ? tokens : tokens.slice(0, uncertain);
+  });
+  if (tokenized.some((tokens) => tokens.length === 0)) return true;
 
   for (let i = 0; i < tokenized.length; i += 1) {
     for (let j = i + 1; j < tokenized.length; j += 1) {
@@ -294,6 +297,8 @@ function tokenizeAlternative(alternative: string): string[] {
       continue;
     }
     if ("(){}*+?|^$.".includes(c)) {
+      // An optional atom cannot prove a required prefix.
+      if (c === "?") tokens.pop();
       return tokens;
     }
     tokens.push(c);

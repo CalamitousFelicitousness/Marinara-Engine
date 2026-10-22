@@ -20,6 +20,7 @@ import {
   parseRulesetDefinition,
   rulesetCombatant,
   rulesetEncounterSummary,
+  rulesetReachableCells,
   supportedCapabilityApi,
   type RulesetCombatEvent,
   type RulesetDefinition,
@@ -256,6 +257,12 @@ try {
     assert.equal(summary.enemies[0]!.surrendered, true);
     assert.equal(summary.enemies[0]!.left, undefined, "gave up, not got away");
     assert.equal(summary.outcome, "victory");
+    // The prisoner keeps its square (re-test 16): walked past, never stood on.
+    const prisonerState = structuredClone(yielded.state);
+    rulesetCombatant(prisonerState, "hero")!.movementLeft = 6;
+    const walks = rulesetReachableCells(definition, prisonerState, "hero");
+    assert.ok(walks.length > 0);
+    assert.ok(!walks.some((cell) => cell.x === 2 && cell.y === 1), "nobody stops on a prisoner's square");
     // Nobody beside it: it runs instead.
     const ran = endTurn(definition, fight(definition, { gob: { block: block(), at: { x: 6, y: 4 }, health: 6 } }), 1);
     assert.deepEqual(

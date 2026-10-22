@@ -1229,13 +1229,15 @@ export function rulesetReachableCells(
     return apart !== undefined && Math.abs(rank - ownRank) >= apart;
   };
   for (const combatant of state.combatants) {
-    if (combatant.id === actor.id || combatant.defeated) continue;
+    // A prisoner (1.709) is out of the fight but still stands where it gave up (re-test 16).
+    const prisoner = !!combatant.away?.surrendered && !!rulesetPositionOf(combatant);
+    if (combatant.id === actor.id || (combatant.defeated && !prisoner)) continue;
     // Inside somebody (1.350), they fill none of their own: whoever holds them fills it. Nor does a
     // rider (1.443): their mount does.
     if (combatant.insideOf || combatant.mountedOn || passes?.(combatant)) continue;
     // Down and still in the fight, they block nobody but their space is still theirs: walked over,
-    // never stopped on.
-    if (combatant.down) {
+    // never stopped on. So with a prisoner.
+    if (combatant.down || prisoner) {
       for (const at of rulesetFootprint(combatant)) {
         occupied.add(`${at.x},${at.y}`);
         if (combatant.side === actor.side) friendly.add(`${at.x},${at.y}`);

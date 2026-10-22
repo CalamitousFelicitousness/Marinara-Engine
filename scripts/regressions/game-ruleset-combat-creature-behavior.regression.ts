@@ -554,11 +554,13 @@ try {
 
   // ── Far better up close (re-test 15): it shoots while it cannot reach, then walks in ──
   {
-    const potShot = (actions: unknown[]) => {
+    const potShot = (actions: unknown[], dormant?: string) => {
       const { encounter, state } = fight({
         knight: { side: "enemy", block: block(actions), at: { x: 2, y: 4 } },
         brom: { side: "party", block: block([smash]), at: { x: 12, y: 4 } },
       });
+      const lent = rulesetCombatant(encounter, "knight")!.actions.find((one) => one.id === dormant);
+      if (lent) lent.whileHolds = "flame-blade" as never;
       state.rulesetFight = { encounter, events: [], eventSeq: 0, controllers: { brom: "manual" }, bosses: [] } as never;
       syncRulesetCombatants(definition, state);
       state.stage = rulesetDirectorStage(state);
@@ -578,6 +580,18 @@ try {
       2,
       "an archer keeps its spot",
     );
+    // A goblin archer carries a Flame Blade strike it has not called up (re-test 16): no blade yet.
+    const blade = { ...smash, id: "blade-strike", damage: { count: 3, sides: 6, flat: 0 } };
+    const goblin = potShot(
+      [
+        { ...smash, damage: { count: 1, sides: 6, flat: 2 } },
+        { ...bolt, damage: { count: 1, sides: 6, flat: 2 } },
+        blade,
+      ],
+      "blade-strike",
+    );
+    assert.ok(goblin.shot, "the goblin shoots");
+    assert.equal(goblin.x, 2, "and keeps its spot, whatever blade it might call up later");
   }
 
   // ── Honourable (combat AI T6): whoever fights it first, and never one running from it ──
@@ -643,10 +657,19 @@ try {
         };
       }),
     );
-    const feast = (temperament: string, how: { friendAt?: { x: number; y: number }; preyDown?: boolean } = {}) => {
+    const feast = (
+      temperament: string,
+      how: { friendAt?: { x: number; y: number }; preyDown?: boolean; preyHealth?: number } = {},
+    ) => {
+      // A crocodile's own Bite against somebody with a great deal of health (re-test 16).
+      const bite = how.preyHealth ? { ...smash, toHit: 4, damage: { count: 1, sides: 10, flat: 2 } } : smash;
       const blocks = {
-        croc: { side: "enemy" as const, block: block([smash], { behavior: { temperament } }), at: { x: 6, y: 4 } },
-        prey: { side: "party" as const, block: block([smash]), at: { x: 7, y: 4 } },
+        croc: { side: "enemy" as const, block: block([bite], { behavior: { temperament } }), at: { x: 6, y: 4 } },
+        prey: {
+          side: "party" as const,
+          block: block([smash], how.preyHealth ? { health: how.preyHealth } : {}),
+          at: { x: 7, y: 4 },
+        },
         friend: { side: "party" as const, block: block([smash]), at: how.friendAt ?? { x: 3, y: 4 } },
       };
       const encounter = createRulesetEncounter({
@@ -686,9 +709,14 @@ try {
       const after = state.rulesetFight!.encounter;
       // Its prey comes along, so the prey never gets a strike at it for leaving.
       assert.ok(!state.rulesetFight!.events.some((one) => one.event.type === "window"), "no strike from its prey");
+      const own = state.rulesetFight!.events.find(
+        (one) => "actorId" in one.event && one.event.actorId === "croc" && "optionId" in one.event,
+      )?.event as { optionId?: string } | undefined;
       return {
         croc: rulesetCombatant(after, "croc")!.x!,
         prey: rulesetCombatant(after, "prey")!.x!,
+        held: rulesetCombatant(after, "prey")!.tracked.some((one) => one.condition === "grappled"),
+        did: own?.optionId,
       };
     };
     const fed = feast("hungry");
@@ -699,6 +727,14 @@ try {
     // (re-test 15: a crocodile hauling a stable victim in circles for twenty-five rounds).
     assert.equal(feast("hungry", { friendAt: { x: 15, y: 9 } }).croc, 6, "far enough already");
     assert.ok(feast("hungry", { preyDown: true }).croc <= 6, "the fallen are not hauled off");
+    // Re-test 16: it lets go of the fallen for the one still standing, and bites what it holds
+    // rather than wrestling it, however much of them there is to bite through.
+    assert.equal(feast("hungry", { preyDown: true }).held, false, "it lets go of the fallen");
+    assert.equal(feast("patient", { preyDown: true }).held, false, "any holder does");
+    const tough = feast("hungry", { friendAt: { x: 15, y: 9 }, preyHealth: 900 });
+    assert.equal(tough.did, "smash", "it bites the one it holds");
+    assert.equal(tough.held, true, "and keeps hold of them");
+    assert.equal(feast("patient", { friendAt: { x: 15, y: 9 }, preyHealth: 900 }).did, "smash", "any holder bites");
   }
 
   // ── Keeping its ground (combat AI T4): no further than its territory, unless shot at from afar ──
@@ -1074,7 +1110,7 @@ try {
   }
 
   console.log(
-    "Combat behavior: merged from the ruleset, the type and the creature; its temperament and role; casters, attackers and a pack's prey first; its opener once; an ambusher keeps still and springs; roles read off what it does; bodyguards stay by their charge; a leader rallies; a temperament turns once; a proud legend flies off; a territorial one keeps its ground; a cruel one strikes the fallen only where the game allows; an honourable one fights fair; a hungry one drags its prey off, and stops; a strayed bodyguard walks back; a Multiattack turns from the one it dropped; refused and gated at 1.710, 1.723, 1.724, 1.725, 1.726, 1.727, 1.728, 1.729, 1.730 and 1.731.",
+    "Combat behavior: merged from the ruleset, the type and the creature; its temperament and role; casters, attackers and a pack's prey first; its opener once; an ambusher keeps still and springs; roles read off what it does; bodyguards stay by their charge; a leader rallies; a temperament turns once; a proud legend flies off; a territorial one keeps its ground; a cruel one strikes the fallen only where the game allows; an honourable one fights fair; a hungry one drags its prey off, and stops; a holder lets go of the fallen and bites the one it holds; a shooter far better up close walks in, a blade not yet called up aside; a strayed bodyguard walks back; a Multiattack turns from the one it dropped; refused and gated at 1.710, 1.723, 1.724, 1.725, 1.726, 1.727, 1.728, 1.729, 1.730 and 1.731.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

@@ -787,6 +787,8 @@ export function RulesetCombatBoard({
                     "relative flex aspect-square w-full items-center justify-center rounded-full border-2 shadow-lg drop-shadow-[0_2px_3px_rgba(0,0,0,0.6)]",
                     onTurn && "ring-2 ring-[var(--primary)] ring-offset-1 ring-offset-slate-900",
                     cell.targetable && "ring-2 ring-[var(--destructive)]",
+                    // A prisoner reads at a glance (re-test 16): a white ring as well as its flag.
+                    combatant.surrendered && !cell.targetable && "ring-2 ring-white/90",
                     caught.has(combatant.id) &&
                       (alliesCaught.has(combatant.id) ? "ring-4 ring-red-500" : "ring-2 ring-amber-200"),
                   )}
@@ -817,7 +819,9 @@ export function RulesetCombatBoard({
                     </span>
                   )}
                   {combatant.surrendered ? (
-                    <Flag className="absolute -top-1.5 left-1/2 h-3 w-3 -translate-x-1/2 text-white drop-shadow" />
+                    <span className="absolute -left-1 -top-1 z-20 flex h-[45%] w-[45%] items-center justify-center rounded-full bg-slate-900/90 ring-1 ring-white/80">
+                      <Flag className="h-[70%] w-[70%] text-white" aria-hidden="true" />
+                    </span>
                   ) : (
                     (combatant.defeated || combatant.down) && (
                       <Skull className="absolute -top-1.5 left-1/2 h-3 w-3 -translate-x-1/2 text-[var(--destructive)] drop-shadow" />

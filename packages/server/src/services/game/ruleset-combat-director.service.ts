@@ -32,6 +32,7 @@ import {
   holdRulesetCombatant,
   holdRulesetSheetHealth,
   settleRulesetFledFight,
+  rulesetLetGoOfHeld,
   rulesetReleaseHeldGround,
   type RulesetHeldGroundRelease,
   normalizeCharacterLookupName,
@@ -93,6 +94,7 @@ import {
   rulesetBehaviorAnchor,
   rulesetGapFrom,
   rulesetDragging,
+  rulesetPushPath,
   rulesetActionReach,
   rulesetGap,
   rulesetAtBoardEdge,
@@ -2288,7 +2290,12 @@ function rulesetCandidatesFrom(
         const treats =
           ally && (contest.ends ?? []).some((entry) => entry.on === "target" && theirs.has(entry.condition));
         const holds = !ally && (contest.applies ?? []).some((entry) => !theirs.has(entry.condition));
-        const shoves = !ally && contest.push !== undefined && !!encounter.board;
+        // A shove with nowhere to send them (cornered, or held in place) does nothing (re-test 16).
+        const shoves =
+          !ally &&
+          contest.push !== undefined &&
+          !!encounter.board &&
+          rulesetPushPath(encounter, actorId, targetId, Math.max(1, contest.push)).length > 0;
         // What it puts on them, read as any condition is and never more than a modest setup: a shove
         // down is worth little to a lone shover, whose target stands up before it could use it.
         const read = holds
@@ -2304,7 +2311,10 @@ function rulesetCandidatesFrom(
               target,
             )
           : undefined;
-        const worth = frees ? 1 : holds ? Math.min(0.3, read ?? 0.3) : shoves ? 0.15 : 0;
+        // Somebody it holds already is set up as much as wrestling them will: its blows are what is
+        // left (re-test 16, a crocodile shoving the cleric in its jaws a hundred times).
+        const mine = !ally && rulesetDragging(definition, encounter, actor).ids.includes(targetId);
+        const worth = frees ? 1 : mine ? 0 : holds ? Math.min(0.3, read ?? 0.3) : shoves ? 0.15 : 0;
         // A treatment is weighed as the heal it stands in for.
         const care = steadies ? 1 : treats ? 0.5 : 0;
         if (worth <= 0 && care <= 0) continue;
@@ -3512,11 +3522,17 @@ function weighChoices(
       candidate.focus = (candidate.focus ?? 0) + (actor.harmedBy === target.id ? 0.6 : 0) + (beside ? 0.3 : 0);
     }
   }
-  // A hungry one (combat AI T8) keeps at the one prey it has chosen.
-  if (unit.tactics!.adjective === "hungry" && unit.tactics!.targetId)
+  // A hungry one (combat AI T8) keeps at the one prey it has chosen: with it in hand, by biting it
+  // (re-test 16, a hundred shoves at a cornered Mira).
+  if (unit.tactics!.adjective === "hungry" && unit.tactics!.targetId) {
+    const held = rulesetDragging(definition, encounter, actor).ids.includes(unit.tactics!.targetId);
     for (const candidate of candidates)
-      if (candidate.targetId === unit.tactics!.targetId && ((candidate.damage ?? 0) > 0 || (candidate.setup ?? 0) > 0))
+      if (
+        candidate.targetId === unit.tactics!.targetId &&
+        ((candidate.damage ?? 0) > 0 || (!held && (candidate.setup ?? 0) > 0))
+      )
         candidate.focus = (candidate.focus ?? 0) + 0.6;
+  }
   // A territorial one walks nowhere off its ground, but back onto it (combat AI T4).
   const territory = rulesetTerritoryLeash(definition, encounter, actor, unit);
   if (territory) {
@@ -4493,6 +4509,7 @@ function playRulesetTurn(
   const stays = orders?.posture === "hold" || orders?.posture === "retreat";
   // A proud legend near its end takes to the sky and fights from there (combat AI T5).
   const aloof = !stays && retreatAloft(definition, state, fight, actorId);
+  letGoOfTheDown(definition, state, fight, actorId);
   // A hungry one with its prey in hand drags it off, away from the rest (combat AI T8).
   const feeding = !stays && dragOffPrey(definition, state, fight, actorId);
   const ordered = actor && orders ? rulesetLeashOf(state, fight.encounter, actor, orders) : undefined;
@@ -4582,7 +4599,7 @@ function playRulesetTurn(
     if (picked.to && !picked.defensive && !fromHere && !stepBefore(definition, state, fight, actorId, picked.to)) break;
     // Reckless first (1.553), as it is about to make a melee weapon attack.
     takeBeforeMelee(definition, state, fight, actorId, picked.choice);
-    const afar = rulesetShotFromAfar(state, fight.encounter, actorId, picked.choice);
+    const afar = rulesetShotFromAfar(definition, state, fight.encounter, actorId, picked.choice);
     // A refusal here would be an Engine bug rather than a player's mistake, so the turn ends
     // instead of asking again with the same state and looping.
     if (applyChoice(definition, state, fight, picked.choice).refused) {
@@ -4614,6 +4631,7 @@ function playRulesetTurn(
  *  at somebody not beside it. A tactician or a genius then steps back (`kite`); anybody else who thinks at all stays
  *  where it threw from (`stay`) rather than walk into the reach it just kept out of. */
 function rulesetShotFromAfar(
+  definition: RulesetDefinition,
   state: CombatDirectorState,
   encounter: RulesetEncounterState,
   actorId: string,
@@ -4644,7 +4662,9 @@ function rulesetShotFromAfar(
       : one.damage && (!one.range || one.reach)
         ? rulesetAverageDamage(one.damage)
         : 0;
-  const close = Math.max(0, ...actor.actions.filter((one) => !one.reaction && !one.lair).map(average));
+  // Only what it may take now: a Flame Blade it has not called up is no blade (re-test 16).
+  const usable = new Set(rulesetCombatOptions(definition, encounter, actorId).map((one) => one.id));
+  const close = Math.max(0, ...actor.actions.filter((one) => usable.has(one.id)).map(average));
   const shot = blows.reduce((sum, blow) => sum + rulesetAverageDamage(blow!.damage!), 0);
   if (close > shot * 1.5) return false;
   return mind === "tactical" || mind === "genius" ? "kite" : "stay";
@@ -4663,7 +4683,7 @@ function rulesetShootsFromHere(
   choice: RulesetCombatChoice,
   to: { x: number; y: number },
 ): boolean {
-  if (!rulesetShotFromAfar(state, encounter, actorId, choice)) return false;
+  if (!rulesetShotFromAfar(definition, state, encounter, actorId, choice)) return false;
   const actor = rulesetCombatant(encounter, actorId)!;
   const action = actor.actions.find((one) => one.id === choice.optionId)!;
   const blows = action.sequence?.length
@@ -4855,6 +4875,31 @@ function hitAndRun(
  * A hungry one (combat AI T8) holding its prey where it can drag them: off, away from everybody
  * else, prey and all. Whether it has its prey, so it stays with them rather than walking at anybody.
  */
+/**
+ * Letting go of those it holds who are down while an opponent still stands (playtest re-test 16): a
+ * crocodile with two downed in its jaws could bite nobody and readied all fight. A hold costs nothing
+ * to let go of. A cruel one the game allows to strike the fallen keeps hold of them.
+ */
+function letGoOfTheDown(
+  definition: RulesetDefinition,
+  state: CombatDirectorState,
+  fight: RulesetFightState,
+  actorId: string,
+): void {
+  const actor = rulesetCombatant(fight.encounter, actorId);
+  const tactics = [...state.party, ...state.enemies].find((one) => one.id === actorId)?.tactics;
+  if (!actor || !fight.encounter.board || (state.cruel && tactics?.adjective === "cruel")) return;
+  const foe = (one: RulesetCombatant) => one.side !== actor.side && !one.object;
+  const down = rulesetDragging(definition, fight.encounter, actor).ids.filter((id) => {
+    const one = rulesetCombatant(fight.encounter, id);
+    return !!one && foe(one) && (one.down || !rulesetCombatStanding(one));
+  });
+  if (down.length === 0) return;
+  if (!fight.encounter.combatants.some((one) => foe(one) && rulesetCombatStanding(one) && !!rulesetPositionOf(one)))
+    return;
+  absorb(definition, state, fight, rulesetLetGoOfHeld(definition, fight.encounter, rollerFor(fight), actorId, down));
+}
+
 function dragOffPrey(
   definition: RulesetDefinition,
   state: CombatDirectorState,

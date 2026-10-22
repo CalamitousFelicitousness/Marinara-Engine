@@ -357,6 +357,7 @@ export {
   rulesetSaveDifficultyShift,
   liftRulesetFightEffects,
   settleRulesetFledFight,
+  rulesetLetGoOfHeld,
   rulesetReleaseHeldGround,
   type RulesetHeldGroundRelease,
   rulesetEncounterOutcome,

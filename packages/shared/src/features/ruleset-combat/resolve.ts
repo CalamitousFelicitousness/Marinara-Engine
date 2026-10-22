@@ -10039,6 +10039,32 @@ export function rulesetReleaseHeldGround(
 }
 
 /**
+ * A hold let go of, by the one holding it, at no cost (playtest re-test 16): whatever it put on these
+ * targets that it drags them by (a grapple), ended as freed. A crocodile holding two who are down lets
+ * them go to bite the one still standing.
+ */
+export function rulesetLetGoOfHeld(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  roller: RulesetCombatRoller,
+  holderId: string,
+  targetIds: readonly string[],
+): RulesetCombatStep {
+  const combat = definition.combat;
+  if (!combat) return { state, events: [] };
+  const { ctx, finish } = begin(definition, combat, state, roller);
+  const dragged = new Set((combat.conditions ?? []).filter((entry) => !!entry.dragged).map((entry) => entry.condition));
+  for (const id of targetIds) {
+    const target = rulesetCombatant(ctx.state, id);
+    if (!target) continue;
+    for (const entry of [...target.tracked])
+      if (entry.source === holderId && dragged.has(entry.condition) && target.tracked.includes(entry))
+        removeCondition(ctx, target, entry.condition, "freed");
+  }
+  return finish();
+}
+
+/**
  * A fight the party walked away from (1.260): counted saves still to make are rolled out, as
  * `pushOutcome` does for every other ending, then what only meant something inside it comes off.
  * Returns the state it leaves, with its cursor past the dice it rolled.

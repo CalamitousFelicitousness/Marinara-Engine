@@ -75,7 +75,7 @@ import { loadRulesetRegistry, resolveGameRuleset } from "../services/game/rulese
 import { loadRulesetCatalogEntries } from "../services/game/ruleset-catalog.service.js";
 import { resolveTacticalStartPreferences } from "../services/game/tactical-battlefield.service.js";
 import { gameBattlefieldHere } from "../services/game/made-battlefield.service.js";
-import { checkStoryItemUse, keepStorySpend, storyUseOfOption } from "../services/game/story-item-uses.service.js";
+import { checkStoryItemUse, keepStorySpendWhile, storyUseOfOption } from "../services/game/story-item-uses.service.js";
 import { logger } from "../lib/logger.js";
 import { resolveVisibleGameStateAnchor } from "./generate/generate-route-utils.js";
 
@@ -1055,8 +1055,13 @@ export async function combatDirectorRoutes(
         const refused = step(input.command as DirectedCommand);
         // A refusal changed nothing, so nothing is saved and no request id is spent on it.
         if (refused) return { refusal: refused };
-        if (storySpend && "spend" in storySpend) await keepStorySpend(app.db, input.chatId, storySpend.spend);
         state.requests = [...state.requests, input.requestId].slice(-256);
+        // What it spends is kept only while the step is saved: a save that fails takes it back.
+        if (storySpend && "spend" in storySpend) {
+          return await keepStorySpendWhile(app.db, input.chatId, storySpend.spend, () =>
+            save(row.id, input.chatId, state, session),
+          );
+        }
         return await save(row.id, input.chatId, state, session);
       });
       if ("refusal" in result && result.refusal)

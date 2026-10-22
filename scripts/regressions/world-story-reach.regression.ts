@@ -214,6 +214,19 @@ assert.doesNotMatch(first.prepend, /Not for long\./, "Wren does not travel with 
 assert.match(first.prepend, /The fire burns low\./);
 // The fold reads the recorded value, never the script again.
 assert.equal(storyState(story, readStoryLedger([first.prepend])).flags.approval, 10);
+// A value recorded before the flag had these bounds (a script changed mid-game) reads within them.
+assert.equal(
+  storyState(story, readStoryLedger(['[story: event="warmth" set="approval=25" result="ok"]'])).flags.approval,
+  10,
+);
+assert.equal(
+  storyState(story, readStoryLedger(['[story: event="warmth" set="approval=-40" result="ok"]'])).flags.approval,
+  -10,
+);
+assert.equal(
+  storyState(story, readStoryLedger(['[story: event="warmth" set="approval=4" result="ok"]'])).flags.approval,
+  4,
+);
 const r1 = `${first.prepend}The night passes.`;
 
 // ── The Game Master's flag tag is kept within the bounds too ──

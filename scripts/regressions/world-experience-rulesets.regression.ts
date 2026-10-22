@@ -25,7 +25,10 @@ import {
   resolveGameRuleset,
   type RulesetRegistry,
 } from "../../packages/server/src/services/game/ruleset-registry.service.js";
-import { loadRulesetCatalogEntries } from "../../packages/server/src/services/game/ruleset-catalog.service.js";
+import {
+  loadRulesetCatalogEntries,
+  openRulesetCatalog,
+} from "../../packages/server/src/services/game/ruleset-catalog.service.js";
 
 const text = readFileSync(
   fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
@@ -87,6 +90,39 @@ refused({ catalogs: { spells_of_the_wheel: [] } }, /not a catalog of this rulese
 refused({ creatureTags: [{ id: "unreaped", label: "Unreaped" }] }, /creatureTags: the ruleset has none/);
 refused({ conditions: [{ condition: "owed_frost_held", effects: ["no-such-effect"] }] }, /./);
 
+// ── A catalog kept in a file ──
+// Its entries are only known once the file is read, so the server passes their ids in: an overlay
+// entry may not take one, and a story cost must name one.
+const { entries: _ownEntries, ...creaturesHeader } = base.catalogs!.find((each) => each.id === "creatures")!;
+const fileBacked = {
+  ...base,
+  catalogs: base.catalogs!.map((each) =>
+    each.id === "creatures" ? { ...creaturesHeader, asset: "catalogs/creatures.json" } : each,
+  ),
+} as RulesetDefinition;
+const fileIds = new Map([["creatures", new Set(["thorn-lurker", "barrow-cat"])]]);
+const onFile = (patch: Record<string, unknown>) =>
+  applyExperienceRulesetOverlay(fileBacked, { ...overlay, ...patch } as ExperienceRulesetOverlay, false, fileIds);
+assert.ok(onFile({}).ok, JSON.stringify(onFile({})));
+const takenOnFile = onFile({ creatures: [{ ...lurker, id: "barrow-cat" }] });
+assert.ok(
+  !takenOnFile.ok && /"barrow-cat" is taken already/.test(takenOnFile.issues.join()),
+  JSON.stringify(takenOnFile),
+);
+assert.ok(onFile({ storyUses: [{ item: "creatures/barrow-cat", flag: "debts", add: -1 }] }).ok, "one of the file's");
+assert.ok(onFile({ storyUses: [{ item: "creatures/straw-man", flag: "debts", add: -1 }] }).ok, "one it adds");
+const noSuchOnFile = onFile({ storyUses: [{ item: "creatures/no-such-cat", flag: "debts", add: -1 }] });
+assert.ok(
+  !noSuchOnFile.ok && /"creatures\/no-such-cat" is no entry of its catalog/.test(noSuchOnFile.issues.join()),
+  JSON.stringify(noSuchOnFile),
+);
+const noSuchInline = applyExperienceRulesetOverlay(
+  base,
+  { ...overlay, storyUses: [{ item: "creatures/no-such-cat", flag: "debts", add: -1 }] },
+  false,
+);
+assert.ok(!noSuchInline.ok, "an inline catalog is looked in as well");
+
 // ── A game of the Experience plays it merged ──
 const registry: RulesetRegistry = Object.assign(
   buildRulesetRegistry([{ packageId: "ruleset-5e", data: text }], () => {}),
@@ -108,6 +144,10 @@ assert.ok(
   entries.entries.some((entry) => entry.id === "thorn-lurker"),
   "beside the ruleset's own",
 );
+// The picker's route reads the ruleset's own catalog: what an Experience adds is the game's, read
+// on its turns, and the picker opens the ruleset as installed.
+const opened = await openRulesetCatalog(game.packageId, game.definition, catalog);
+assert.ok(opened.kind === "inline" && !opened.entries.some((entry) => entry.id === "straw-man"), "the ruleset's own");
 // The same pin again is merged once.
 const again = resolveGameRuleset({ gameRuleset: pin, gameMapPack: { packageId: "held-autumn" } }, registry);
 assert.equal(again.status === "ok" && again.definition, game.definition);
@@ -118,6 +158,31 @@ for (const meta of [{ gameRuleset: pin }, { gameRuleset: pin, gameMapPack: { pac
     plain.status === "ok" && !plain.definition.sheet.live.conditions.some((each) => each.id === "owed_frost_held"),
   );
 }
+
+// An overlay checked against catalog files merges again when they change.
+const withFiles: RulesetRegistry = Object.assign(
+  buildRulesetRegistry(
+    [{ packageId: "ruleset-5e", data: JSON.stringify({ ...JSON.parse(text), ...fileBacked }) }],
+    () => {},
+  ),
+  {
+    overlays: registry.overlays,
+    overlayFileIds: new Map([[`5e-2014\n${base.version}`, { ids: fileIds, key: "creatures:1" }]]),
+  },
+);
+const filed = resolveGameRuleset({ gameRuleset: pin, gameMapPack: { packageId: "held-autumn" } }, withFiles);
+assert.ok(filed.status === "ok" && filed.definition !== game.definition, "merged against the file's ids");
+const clash: RulesetRegistry = Object.assign(new Map(withFiles), {
+  overlays: withFiles.overlays,
+  overlayFileIds: new Map([
+    [`5e-2014\n${base.version}`, { ids: new Map([["creatures", new Set(["straw-man"])]]), key: "creatures:2" }],
+  ]),
+});
+const clashed = resolveGameRuleset({ gameRuleset: pin, gameMapPack: { packageId: "held-autumn" } }, clash);
+assert.ok(
+  clashed.status === "ok" && !clashed.definition.sheet.live.conditions.some((each) => each.id === "owed_frost_held"),
+  "an overlay that takes a file's entry is left out whole",
+);
 
 // ── The manifest names them ──
 const manifest = (rulesets: unknown, minor = 355) =>

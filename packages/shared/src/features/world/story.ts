@@ -862,6 +862,7 @@ export interface StoryState {
  *  skipped), the events tripped and the objectives shown. */
 export function storyState(story: StoryScript, ledger: readonly StoryLedgerEntry[]): StoryState {
   const kinds = new Map(story.flags.map((flag) => [flag.id, flag.kind]));
+  const declared = new Map(story.flags.map((flag) => [flag.id, flag]));
   const flags: StoryState["flags"] = Object.fromEntries(story.flags.map((flag) => [flag.id, flag.initial]));
   const fired: StoryState["fired"] = {};
   const shown = new Set<string>();
@@ -878,7 +879,10 @@ export function storyState(story: StoryScript, ledger: readonly StoryLedgerEntry
     if (entry.ending && !ended && story.endings.some((ending) => ending.id === entry.ending)) ended = entry.ending;
     for (const [flag, given] of entry.set) {
       const kind = kinds.get(flag);
-      if (kind && (kind === "bool" ? typeof given === "boolean" : typeof given === "number")) flags[flag] = given;
+      if (kind === "bool" && typeof given === "boolean") flags[flag] = given;
+      // A number recorded before its flag had bounds (or under looser ones) reads within today's.
+      else if (kind && kind !== "bool" && typeof given === "number")
+        flags[flag] = storyBounded(declared.get(flag), given);
     }
     for (const flag of entry.show) if (kinds.has(flag)) shown.add(flag);
   }

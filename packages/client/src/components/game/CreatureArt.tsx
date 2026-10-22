@@ -163,7 +163,7 @@ export function CreatureArtFigure({
   );
 }
 
-/** The flying frame to show, stepping through 0, 1, 2, 1 while `on` (still on the middle one for a
+/** The flying frame to show, stepping through 0, 1, 2, 1 while `on` (held on the first one for a
  *  viewer who asks for less motion); null when not flying. */
 function useFlyStep(on: boolean): 0 | 1 | 2 | null {
   const [tick, setTick] = useState(0);

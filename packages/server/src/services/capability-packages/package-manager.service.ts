@@ -7007,7 +7007,8 @@ export const capabilityPackageManager = {
     let packages: Awaited<ReturnType<typeof readRegistry>>["packages"];
     try {
       packages = (await readRegistry()).packages;
-    } catch {
+    } catch (error) {
+      logger.warn(error, "[capability/rulesets] The installed packages could not be read; their overlays are left out");
       return out;
     }
     for (const installed of packages) {
@@ -7017,7 +7018,14 @@ export const capabilityPackageManager = {
         const declaration = installed.manifest.files.find(
           (item) => tryNormalizeArchivePath(item.path) === tryNormalizeArchivePath(each.overlay),
         );
-        if (!declaration || declaration.bytes > WORLD_SHARE_FILE_MAX_BYTES) continue;
+        if (!declaration || declaration.bytes > WORLD_SHARE_FILE_MAX_BYTES) {
+          logger.warn(
+            "[capability/rulesets] %s's overlay %s is not a declared file within the size limit; it is left out",
+            installed.id,
+            each.overlay,
+          );
+          continue;
+        }
         try {
           const data = (await readVerifiedInstalledPackageFile(installed, each.overlay)).data;
           out.push({

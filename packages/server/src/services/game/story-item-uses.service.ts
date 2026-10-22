@@ -99,3 +99,22 @@ export async function keepStorySpend(db: DB, chatId: string, spend: StorySpend):
     gameStorySpends: [...gameStorySpends(current), spend].slice(-STORY_SPENDS_KEPT),
   }));
 }
+
+/** Keeps a spend while `save` takes the use that made it, and takes it back when `save` throws, so a
+ *  fight that never took the use charges nothing and its replay is judged afresh. */
+export async function keepStorySpendWhile<T>(
+  db: DB,
+  chatId: string,
+  spend: StorySpend,
+  save: () => Promise<T>,
+): Promise<T> {
+  await keepStorySpend(db, chatId, spend);
+  try {
+    return await save();
+  } catch (error) {
+    await createChatsStorage(db).patchMetadata(chatId, (current) => ({
+      gameStorySpends: gameStorySpends(current).filter((each) => each.id !== spend.id),
+    }));
+    throw error;
+  }
+}

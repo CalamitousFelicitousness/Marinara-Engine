@@ -122,6 +122,9 @@ export function applyExperienceRulesetOverlay(
   overlay: ExperienceRulesetOverlay,
   /** True when `definition` may have its layers applied: a game's, rather than the file as written. */
   narrowedByLayers = true,
+  /** The entry ids of its catalogs kept in a file rather than inline, by catalog id, as the server
+   *  read them: an overlay entry may not take one, and a story cost names one of them. */
+  fileEntryIds?: ReadonlyMap<string, ReadonlySet<string>>,
 ): { ok: true; definition: RulesetDefinition } | { ok: false; issues: string[] } {
   const merged = structuredClone(definition) as RulesetDefinition & Record<string, any>;
   const issues: string[] = [];
@@ -158,17 +161,32 @@ export function applyExperienceRulesetOverlay(
   for (const [catalog, entries] of lists) {
     const file = parseRulesetCatalogFile(done, catalog, { schemaVersion: 1, catalog, entries }, narrowedByLayers);
     if (!file.ok) return { ok: false, issues: file.issues.slice(0, 8).map((issue) => `${catalog}: ${issue}`) };
-    const own = done.catalogs?.find((each) => each.id === catalog)?.entries ?? [];
+    const header = done.catalogs?.find((each) => each.id === catalog);
+    const own = header?.entries ?? [...(fileEntryIds?.get(catalog) ?? [])].map((id) => ({ id }));
     const twice = sameIds([...own, ...(catalogs[catalog] ?? [])], file.entries, "id");
     if (twice.length) return { ok: false, issues: twice.map((id) => `${catalog}: "${id}" is taken already.`) };
     catalogs[catalog] = [...(catalogs[catalog] ?? []), ...file.entries];
   }
-  // A story cost is for an item of one of its catalogs, once each (1.359).
+  // A story cost is for an item of one of its catalogs, once each (1.359). The item itself is looked
+  // for wherever its entries are known: inline, added here, or a file whose ids were passed in.
   const uses = new Map<string, ExperienceStoryUse>();
   for (const use of overlay.storyUses ?? []) {
-    const catalog = use.item.slice(0, use.item.indexOf("/"));
-    if (!done.catalogs?.some((each) => each.id === catalog) && !catalogs[catalog]) {
+    const slash = use.item.indexOf("/");
+    const catalog = use.item.slice(0, slash);
+    const entry = use.item.slice(slash + 1);
+    const header = done.catalogs?.find((each) => each.id === catalog);
+    if (!header && !catalogs[catalog]) {
       return { ok: false, issues: [`storyUses: "${use.item}" is in no catalog of the ruleset.`] };
+    }
+    const fileIds = header && !header.entries ? fileEntryIds?.get(catalog) : undefined;
+    const known =
+      catalogs[catalog]?.some((each) => each.id === entry) ||
+      header?.entries?.some((each) => each.id === entry) ||
+      fileIds?.has(entry);
+    // A file whose ids were not read cannot be looked in; that use is taken on trust.
+    const unread = !!header && !header.entries && !fileIds;
+    if (!known && !unread) {
+      return { ok: false, issues: [`storyUses: "${use.item}" is no entry of its catalog.`] };
     }
     if (uses.has(use.item)) return { ok: false, issues: [`storyUses: "${use.item}" is named twice.`] };
     uses.set(use.item, use);

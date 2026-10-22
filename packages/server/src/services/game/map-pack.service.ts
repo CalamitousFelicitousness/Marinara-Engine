@@ -32,7 +32,8 @@ import {
 } from "@marinara-engine/shared";
 import { logger } from "../../lib/logger.js";
 import { capabilityPackageManager } from "../capability-packages/package-manager.service.js";
-import { loadRulesetRegistry } from "./ruleset-registry.service.js";
+import { rulesetFileCatalogIds } from "./ruleset-catalog.service.js";
+import { loadRulesetRegistry, overlayCatalogIds } from "./ruleset-registry.service.js";
 import { cleanImageTilePack } from "./tile-pack-images.service.js";
 
 // The Capability API minors a map pack and an image tile pack need (1.72, 1.80). The manifest schema
@@ -555,8 +556,22 @@ export async function checkMapPack(input: MapPackCheckInput): Promise<MapPackChe
       const registered = registry.get(each.ruleset);
       if (!registered) continue;
       const read = readExperienceRulesetOverlay(each.data!.toString("utf8"));
+      // Checked against the ruleset's catalog files too, whose ids only a read gives.
+      const files = read.ok
+        ? await rulesetFileCatalogIds(
+            registered.packageId,
+            registered.definition,
+            overlayCatalogIds(read.overlay as ExperienceRulesetOverlay),
+            registry,
+          )
+        : null;
       const merged = read.ok
-        ? applyExperienceRulesetOverlay(registered.definition, read.overlay as ExperienceRulesetOverlay, false)
+        ? applyExperienceRulesetOverlay(
+            registered.definition,
+            read.overlay as ExperienceRulesetOverlay,
+            false,
+            files?.ids,
+          )
         : read;
       if (!merged.ok) {
         for (const message of merged.issues) issues.push({ path: each.path, message });

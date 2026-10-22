@@ -45,10 +45,7 @@ export async function openRulesetCatalog(
   registry?: RulesetRegistry,
 ): Promise<OpenedRulesetCatalog> {
   if (catalog.from) return openBorrowedCatalog(definition, catalog, catalog.from, registry);
-  // What the game's Experience adds to it (1.355), after its own.
-  const added = experienceOverlayEntries(definition, catalog.id);
-  if (catalog.entries)
-    return { kind: "inline", entries: added.length ? [...catalog.entries, ...added] : catalog.entries };
+  if (catalog.entries) return { kind: "inline", entries: catalog.entries };
   if (!catalog.asset) return { kind: "unusable", issues: ["(root): this catalog holds no entries"] };
   // A package ships its catalog files; of the imported rulesets, only one from a package file has them,
   // and the package import always files it under `local/` (the JSON and repository imports refuse them).
@@ -59,7 +56,7 @@ export async function openRulesetCatalog(
   if ("issue" in source) return { kind: "unusable", issues: [source.issue] };
   return {
     kind: "asset",
-    sha256: added.length ? `${source.sha256}+${added.length}` : source.sha256,
+    sha256: source.sha256,
     read: async () => {
       const file = await source.read();
       if ("issue" in file) return { ok: false, issues: [file.issue] };
@@ -80,7 +77,7 @@ export async function openRulesetCatalog(
         );
         return { ok: false, issues: parsed.issues };
       }
-      return { ok: true, entries: added.length ? [...parsed.entries, ...added] : parsed.entries };
+      return { ok: true, entries: parsed.entries };
     },
   };
 }
@@ -190,7 +187,9 @@ async function storedCatalog(
   return stored ? { sha256: stored.sha256, read: async () => ({ data: Buffer.from(stored.text, "utf8") }) } : null;
 }
 
-/** One catalog's entries, for a caller with no cached copy to compare against. */
+/** One catalog's entries as a game reads them, for a caller with no cached copy to compare against:
+ *  the catalog's own, then what the game's Experience adds to it (1.355) when `definition` is the
+ *  game's merged one. The picker's route reads the ruleset's own through `openRulesetCatalog`. */
 export async function loadRulesetCatalogEntries(
   packageId: string | null,
   definition: RulesetDefinition,
@@ -198,10 +197,49 @@ export async function loadRulesetCatalogEntries(
   registry?: RulesetRegistry,
 ): Promise<RulesetCatalogEntriesResult> {
   const opened = await openRulesetCatalog(packageId, definition, catalog, registry);
-  if (opened.kind === "inline") return { ok: true, entries: opened.entries };
-  if (opened.kind === "asset") return opened.read();
+  const added = experienceOverlayEntries(definition, catalog.id);
+  const withAdded = (entries: RulesetCatalogEntry[]): RulesetCatalogEntriesResult => ({
+    ok: true,
+    entries: added.length ? [...entries, ...added] : entries,
+  });
+  if (opened.kind === "inline") return withAdded(opened.entries);
+  if (opened.kind === "asset") {
+    const read = await opened.read();
+    return read.ok ? withAdded(read.entries) : read;
+  }
   return {
     ok: false,
     issues: opened.kind === "missing" ? [`(root): the file for catalog "${catalog.id}" is gone`] : opened.issues,
   };
+}
+
+/** The entry ids of a ruleset's catalogs kept in a file, read once per file (by its hash), for an
+ *  Experience's overlay to be checked against (1.355). `key` names the files they came from. A file
+ *  that cannot be read is left out: its catalog then has no ids to check against. */
+const fileIdsRead = new Map<string, ReadonlySet<string>>();
+export async function rulesetFileCatalogIds(
+  packageId: string | null,
+  definition: RulesetDefinition,
+  catalogIds: Iterable<string>,
+  registry?: RulesetRegistry,
+): Promise<{ ids: Map<string, ReadonlySet<string>>; key: string }> {
+  const ids = new Map<string, ReadonlySet<string>>();
+  const hashes: string[] = [];
+  for (const catalogId of new Set(catalogIds)) {
+    const catalog = definition.catalogs?.find((each) => each.id === catalogId);
+    if (!catalog || catalog.entries) continue;
+    const opened = await openRulesetCatalog(packageId, definition, catalog, registry);
+    if (opened.kind !== "asset") continue;
+    let read = fileIdsRead.get(opened.sha256);
+    if (!read) {
+      const file = await opened.read();
+      if (!file.ok) continue;
+      read = new Set(file.entries.map((entry) => entry.id));
+      fileIdsRead.set(opened.sha256, read);
+      if (fileIdsRead.size > 32) fileIdsRead.delete(fileIdsRead.keys().next().value!);
+    }
+    ids.set(catalogId, read);
+    hashes.push(`${catalogId}:${opened.sha256}`);
+  }
+  return { ids, key: hashes.join(",") };
 }

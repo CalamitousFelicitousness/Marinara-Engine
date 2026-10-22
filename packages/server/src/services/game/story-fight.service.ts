@@ -67,18 +67,27 @@ export async function latestStoryHeldGround(
 }
 
 /** How the story fight the latest reply started adjusts its opponents (1.363), by their names in the fight
- *  (case aside), as a party this high meets them (1.371): what a ruleset fight builds each of them with.
- *  Empty when there is none. */
+ *  (case aside) as the bestiary names them, so they are the names the fight's enemies carry, as a party
+ *  this high meets them (1.371): what a ruleset fight builds each of them with. Empty when there is none.
+ *  Two opponents named alike keep the first one's, and the log says so. */
 export async function latestStoryFightAdjusts(
   db: DB,
   chatId: string,
   meta: Record<string, unknown> | null | undefined,
+  ruleset: { definition: RulesetDefinition; packageId: string | null } | null,
   partyLevel?: number | null,
 ): Promise<Map<string, StoryFightAdjustAt>> {
   const fight = await latestStoryFight(db, chatId, meta);
   const adjusts = new Map<string, StoryFightAdjustAt>();
-  for (const each of fight ? storyFightRoster(fight, (ref) => ref).opponents : []) {
-    if (each.adjust) adjusts.set(each.name.trim().toLowerCase(), storyFightAdjustAt(each.adjust, partyLevel));
+  if (!fight) return adjusts;
+  for (const each of (await storyFightOpponents(fight, ruleset)).opponents) {
+    if (!each.adjust) continue;
+    const name = each.name.trim().toLowerCase();
+    if (adjusts.has(name)) {
+      logger.warn("Story fight %s names two opponents %s; the first one's adjustment is kept", fight.id, each.name);
+      continue;
+    }
+    adjusts.set(name, storyFightAdjustAt(each.adjust, partyLevel));
   }
   return adjusts;
 }

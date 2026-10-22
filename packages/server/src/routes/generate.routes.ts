@@ -70,9 +70,11 @@ import {
   storyPartyCarriesShade,
 } from "../services/game/story-exposure-saves.service.js";
 import {
+  dropHeldGroundPending,
   heldGroundFightUnfinished,
   heldGroundReleasedInFight,
   keepHeldGroundPending,
+  pendingRelease,
   rollStoryOwingWith,
 } from "../services/game/story-held-ground.service.js";
 import { gameStorySpends } from "../services/game/story-item-uses.service.js";
@@ -2214,7 +2216,32 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 let turn = rollStoryExposureSavesWith(exposureSheets, chatMeta, storyTold);
                 // Held Ground let go (1.369): a fight that let it go has rolled what came due; one still
                 // unfinished on it lets it go on its next step; otherwise the party's Owing is rolled here.
+                // A release left for a fight that ended (or was left) before its next step is settled
+                // here too, out of the fight.
                 const released = turn.released;
+                const unfinished = await heldGroundFightUnfinished(app.db, input.chatId);
+                const owingSheets = async () =>
+                  exposureSheets ??
+                  (await loadStoryExposureSheets(app.db, input.chatId, {
+                    live: parseStoredRulesetLive((await turnStartRulesetSnapshot())?.rulesetLive),
+                    regenerateMessageId: input.regenerateMessageId ?? null,
+                  }));
+                const left = pendingRelease(chatMeta);
+                if (left && left.fight !== unfinished) {
+                  const { fight: _fight, ...owed } = left;
+                  const rolled = owed.owing
+                    ? rollStoryOwingWith(await owingSheets(), chatMeta, { ...turn, released: owed })
+                    : turn;
+                  turn = {
+                    ...rolled,
+                    released: turn.released,
+                    tells: [
+                      ...rolled.tells,
+                      `${owed.label ?? "Held Ground"} was let go as the fight on it ended, so what came due is settled now.`,
+                    ],
+                  };
+                  await dropHeldGroundPending(app.db, input.chatId);
+                }
                 if (released) {
                   if (heldGroundReleasedInFight(chatMeta, released, replies.all.length)) {
                     turn = {
@@ -2224,8 +2251,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                         `${released.label ?? "Held Ground"} was let go in the fight, and what came due was rolled there.`,
                       ],
                     };
-                  } else if (await heldGroundFightUnfinished(app.db, input.chatId)) {
-                    await keepHeldGroundPending(app.db, input.chatId, released);
+                  } else if (unfinished) {
+                    await keepHeldGroundPending(app.db, input.chatId, released, unfinished);
                     turn = {
                       ...turn,
                       tells: [
@@ -2234,13 +2261,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                       ],
                     };
                   } else if (released.owing) {
-                    const sheets =
-                      exposureSheets ??
-                      (await loadStoryExposureSheets(app.db, input.chatId, {
-                        live: parseStoredRulesetLive((await turnStartRulesetSnapshot())?.rulesetLive),
-                        regenerateMessageId: input.regenerateMessageId ?? null,
-                      }));
-                    turn = rollStoryOwingWith(sheets, chatMeta, turn);
+                    turn = rollStoryOwingWith(await owingSheets(), chatMeta, turn);
                   }
                 }
                 return { story, game, item, turn };

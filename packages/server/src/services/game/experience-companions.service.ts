@@ -43,7 +43,11 @@ export function gamePartySize(meta: Record<string, unknown>, noncombatants?: Rea
 /** The party ids of the game's Experience companions who never fight (1.360): they travel with the party
  *  but are not counted in its size or put in its fights. */
 export async function gameNoncombatants(db: DB, chatId: string, meta: Record<string, unknown>): Promise<Set<string>> {
-  const companions = await gameCompanions(db, chatId, meta).catch(() => null);
+  // A failed read keeps everyone in the fight, and says so.
+  const companions = await gameCompanions(db, chatId, meta).catch((error: unknown) => {
+    logger.warn(error, "[game/experience] Chat %s's companions could not be read; none sits out its fights", chatId);
+    return null;
+  });
   if (!companions) return new Set();
   return new Set(
     experiencePeopleIn(companions.world, companions.people)

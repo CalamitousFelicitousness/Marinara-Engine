@@ -46,10 +46,14 @@ function releasedRecord(meta: Record<string, unknown>): HeldGroundReleasedRecord
     : null;
 }
 
-function pendingRelease(meta: Record<string, unknown>): StoryHeldGroundRelease | null {
-  const kept = meta.gameHeldGroundPending as Partial<StoryHeldGroundRelease> | null | undefined;
+/** A release the story left with the game for an unfinished fight, and which fight (its id) it was left for. */
+export type PendingHeldGroundRelease = StoryHeldGroundRelease & { fight?: string };
+
+export function pendingRelease(meta: Record<string, unknown>): PendingHeldGroundRelease | null {
+  const kept = meta.gameHeldGroundPending as Partial<PendingHeldGroundRelease> | null | undefined;
   if (!kept || typeof kept.id !== "string") return null;
   return {
+    ...(typeof kept.fight === "string" ? { fight: kept.fight } : {}),
     id: kept.id,
     ...(typeof kept.label === "string" ? { label: kept.label } : {}),
     felled: kept.felled === "down" ? "down" : "die",
@@ -80,8 +84,14 @@ export async function heldGroundReleaseDueInFight(
   try {
     const chat = await createChatsStorage(db).getById(chatId);
     const meta = JSON.parse(chat?.metadata || "{}") as Record<string, unknown>;
+    // A release left for this fight is let go in it; one left for another fight is not this ground's to
+    // spend, and the story turn settles it out of the fight.
     const pending = pendingRelease(meta);
-    if (pending) return pending;
+    if (pending) {
+      if (pending.fight !== state.id) return null;
+      const { fight: _fight, ...release } = pending;
+      return release;
+    }
     const game = await loadGameWorld(db, chatId, meta);
     const story = gameStoryFromMetadata(meta, game);
     if (!game || !story?.heldGround.length) return null;
@@ -103,13 +113,49 @@ export async function heldGroundReleaseDueInFight(
   }
 }
 
-/** Keeps with the game that a fight let this ground go, and drops a release left waiting for it. */
-export async function keepHeldGroundReleased(db: DB, chatId: string, id: string): Promise<void> {
+/** Keeps with the game that a fight let this ground go, and drops a release left waiting for it, while
+ *  `save` keeps the step that let it go: a save that throws puts both back as they were, so the story
+ *  turn neither skips what came due nor rolls it twice. */
+export async function keepHeldGroundReleasedWhile<T>(
+  db: DB,
+  chatId: string,
+  id: string,
+  save: () => Promise<T>,
+): Promise<T> {
+  const chats = createChatsStorage(db);
   const replies = await gameRepliesBefore(db, chatId);
-  await createChatsStorage(db).patchMetadata(chatId, {
-    gameHeldGroundReleased: { id, replies: replies.all.length } satisfies HeldGroundReleasedRecord,
-    gameHeldGroundPending: null,
+  let before: { gameHeldGroundReleased: unknown; gameHeldGroundPending: unknown } | null = null;
+  await chats.patchMetadata(chatId, (current) => {
+    before = {
+      gameHeldGroundReleased: current.gameHeldGroundReleased ?? null,
+      gameHeldGroundPending: current.gameHeldGroundPending ?? null,
+    };
+    return {
+      gameHeldGroundReleased: { id, replies: replies.all.length } satisfies HeldGroundReleasedRecord,
+      gameHeldGroundPending: null,
+    };
   });
+  try {
+    return await save();
+  } catch (error) {
+    try {
+      const kept = before as { gameHeldGroundReleased: unknown; gameHeldGroundPending: unknown } | null;
+      if (kept) {
+        await chats.patchMetadata(chatId, {
+          gameHeldGroundReleased: kept.gameHeldGroundReleased,
+          gameHeldGroundPending: kept.gameHeldGroundPending,
+        });
+      }
+    } catch (restore) {
+      logger.warn(
+        restore,
+        "[game/story] Chat %s's record that its fight let %s go could not be taken back after the step failed",
+        chatId,
+        id,
+      );
+    }
+    throw error;
+  }
 }
 
 /** Whether a fight already let this turn's released ground go (and rolled what came due): the story turn
@@ -123,22 +169,35 @@ export function heldGroundReleasedInFight(
   return !!kept && kept.id === released.id && kept.replies >= repliesBefore;
 }
 
-/** Whether the game's latest ruleset fight is unfinished and still on Held Ground: the release then
- *  waits for its next step, which lets it go in the fight. */
-export async function heldGroundFightUnfinished(db: DB, chatId: string): Promise<boolean> {
+/** The game's latest ruleset fight, by its id, when it is unfinished and still on Held Ground: a release
+ *  then waits for its next step, which lets it go in the fight. Null otherwise. */
+export async function heldGroundFightUnfinished(db: DB, chatId: string): Promise<string | null> {
   try {
     const row = await createGameEngineStateStorage(db).getLatest(chatId, COMBAT_DIRECTOR_SCOPE);
-    if (!row) return false;
+    if (!row) return null;
     const state = JSON.parse(row.state) as Partial<CombatDirectorState>;
-    return state.style === "ruleset" && !state.outcome && !!state.rulesetFight?.encounter?.heldGround;
-  } catch {
-    return false;
+    return state.style === "ruleset" && !state.outcome && state.rulesetFight?.encounter?.heldGround
+      ? (state.id ?? null)
+      : null;
+  } catch (err) {
+    logger.warn(err, "Held ground fight lookup failed for chat %s", chatId);
+    return null;
   }
 }
 
-/** Leaves a release with the game for the unfinished fight on that ground, to let go on its next step. */
-export async function keepHeldGroundPending(db: DB, chatId: string, release: StoryHeldGroundRelease): Promise<void> {
-  await createChatsStorage(db).patchMetadata(chatId, { gameHeldGroundPending: { ...release } });
+/** Leaves a release with the game for the unfinished fight (by its id) on that ground, to let go on its next step. */
+export async function keepHeldGroundPending(
+  db: DB,
+  chatId: string,
+  release: StoryHeldGroundRelease,
+  fight: string,
+): Promise<void> {
+  await createChatsStorage(db).patchMetadata(chatId, { gameHeldGroundPending: { ...release, fight } });
+}
+
+/** Drops a release left for a fight once the story turn has settled it out of the fight. */
+export async function dropHeldGroundPending(db: DB, chatId: string): Promise<void> {
+  await createChatsStorage(db).patchMetadata(chatId, { gameHeldGroundPending: null });
 }
 
 const sheetValue = (value: string) => value.replace(/"/g, "'");
@@ -161,8 +220,17 @@ export function rollStoryOwingWith(
   const track = released?.owing?.track;
   const ruleset = context?.ruleset;
   const dying = ruleset?.definition.combat?.dying;
-  if (!released || !track || !ruleset) return turn;
+  if (!released || !track) return turn;
   const label = released.label ?? "Held Ground";
+  if (!ruleset) {
+    return {
+      ...turn,
+      tells: [
+        ...turn.tells,
+        `${label} has let go, but the party's sheets could not be read, so its debts of ${track} could not be rolled. Settle them by the ruleset's own rules.`,
+      ],
+    };
+  }
   if (!dying) {
     return {
       ...turn,

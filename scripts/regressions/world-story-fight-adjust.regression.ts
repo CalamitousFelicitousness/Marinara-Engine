@@ -29,7 +29,10 @@ import {
   type GameWorld,
   type StoryScriptInput,
 } from "../../packages/shared/src/index.js";
-import { storyFightPromptText } from "../../packages/server/src/services/game/story-fight.service.js";
+import {
+  storyFightOpponents,
+  storyFightPromptText,
+} from "../../packages/server/src/services/game/story-fight.service.js";
 
 const parsedKit = parseWorldKit(WORLD_STARTER_KITS.find((each) => each.id === "high_fantasy")!);
 assert.ok(parsedKit.ok);
@@ -223,6 +226,20 @@ assert.equal(bestiaryCatalog.entries![0]!.creature?.legendaryResistance, undefin
   assert.equal(fightWith([{ action: "shelves_lean", creature: wraith }])?.name, calledEntry!.label);
   assert.equal(fightWith([{ action: "other", creature: wraith }])?.creature.entryId, owedEntry!.id);
 }
+
+// ── Named as the fight names its enemies ──
+// An opponent named only by its bestiary id is the bestiary's label in the fight, and its adjustment is
+// found by that name (as `latestStoryFightAdjusts` reads it), never by the raw id.
+const unnamed = {
+  ...fight,
+  creatures: [{ creature: `${bestiaryCatalog.id}/${entryId}`, count: 1, adjust: { maxHp: 40 } }],
+  variants: [],
+};
+const { opponents: labelled } = await storyFightOpponents(unnamed, { definition, packageId: null });
+assert.deepEqual(
+  labelled.map((each) => [each.name, each.adjust]),
+  [[bestiaryCatalog.entries![0]!.label, { maxHp: 40 }]],
+);
 
 console.log(
   "Story fight adjust: a creature's Legendary Resistance, health and calls set for one fight, by party level.",

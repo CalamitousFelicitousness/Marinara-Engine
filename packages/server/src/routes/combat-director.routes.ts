@@ -77,7 +77,10 @@ import { loadRulesetCatalogEntries } from "../services/game/ruleset-catalog.serv
 import { resolveTacticalStartPreferences } from "../services/game/tactical-battlefield.service.js";
 import { gameBattlefieldHere } from "../services/game/made-battlefield.service.js";
 import { checkStoryItemUse, keepStorySpendWhile, storyUseOfOption } from "../services/game/story-item-uses.service.js";
-import { heldGroundReleaseDueInFight, keepHeldGroundReleased } from "../services/game/story-held-ground.service.js";
+import {
+  heldGroundReleaseDueInFight,
+  keepHeldGroundReleasedWhile,
+} from "../services/game/story-held-ground.service.js";
 import { gameNoncombatants, gamePartyLevel } from "../services/game/experience-companions.service.js";
 import { latestStoryFightAdjusts, latestStoryHeldGround } from "../services/game/story-fight.service.js";
 import { buildPartyNpcId } from "../services/generation/game-party-utils.js";
@@ -773,9 +776,15 @@ export async function combatDirectorRoutes(
         if (setup.combatDirector !== true)
           return reply.code(400).send({ error: "Directed combat is not enabled for this game." });
         // An Experience's companions who never fight (1.360) travel with the party but are not put in its fights.
+        // A unit is one of them by its own id, or by its name only when that names a member of the party.
         const noncombatants = await gameNoncombatants(app.db, input.chatId, meta);
         if (noncombatants.size) {
-          const fighting = input.party.filter((member) => !noncombatants.has(buildPartyNpcId(member.name)));
+          const partyIds = new Set(Array.isArray(meta.gamePartyCharacterIds) ? meta.gamePartyCharacterIds : []);
+          const sitsOut = (member: { id: string; name: string }) => {
+            const byName = buildPartyNpcId(member.name);
+            return noncombatants.has(member.id) || (partyIds.has(byName) && noncombatants.has(byName));
+          };
+          const fighting = input.party.filter((member) => !sitsOut(member));
           if (fighting.length) input.party = fighting;
         }
         const all = [...input.party, ...input.enemies];
@@ -904,6 +913,7 @@ export async function combatDirectorRoutes(
             app.db,
             input.chatId,
             meta,
+            { definition, packageId: resolved.packageId },
             await gamePartyLevel(app.db, input.chatId, meta, definition),
           );
           // Whether death is held where it is fought (1.366): the story's Held Ground (1.323).
@@ -998,7 +1008,8 @@ export async function combatDirectorRoutes(
     });
     return answered.ok ? release.id : null;
   };
-  /** Saves the step, then keeps that it let Held Ground go, so the story turn rolls nothing twice. */
+  /** Saves the step, keeping that it let Held Ground go only while the save does, so the story turn
+   *  rolls nothing twice and skips nothing. */
   const saveLettingGo = async (
     rowId: string,
     chatId: string,
@@ -1007,9 +1018,8 @@ export async function combatDirectorRoutes(
     ruleset: RulesetDefinition | null,
   ) => {
     const released = await letHeldGroundGo(chatId, s, ruleset);
-    const saved = await save(rowId, chatId, s, session);
-    if (released) await keepHeldGroundReleased(app.db, chatId, released);
-    return saved;
+    if (!released) return save(rowId, chatId, s, session);
+    return keepHeldGroundReleasedWhile(app.db, chatId, released, () => save(rowId, chatId, s, session));
   };
   app.post("/command", async (req, reply) => {
     const parsed = z

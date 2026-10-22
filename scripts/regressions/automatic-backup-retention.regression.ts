@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import AdmZip from "adm-zip";
 import { closeSync, mkdtempSync, openSync, readSync, writeSync } from "node:fs";
-import { mkdtemp, mkdir, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
+import { copyFile, mkdtemp, mkdir, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -299,6 +299,26 @@ try {
     closeSync(wideDirectoryFd);
   }
   assert.ok(wideDirectoryEnd.readUInt32LE(12) > 8 * 1024 * 1024);
+  const ordinaryWideDirectory = join(zipFixtureRoot, "ordinary-wide-directory.zip");
+  await copyFile(wideDirectoryArchive, ordinaryWideDirectory);
+  const ordinaryDirectoryFd = openSync(ordinaryWideDirectory, "r+");
+  try {
+    const centralOffset = wideDirectoryEnd.readUInt32LE(16);
+    const firstHeader = Buffer.alloc(46);
+    assert.equal(readSync(ordinaryDirectoryFd, firstHeader, 0, 46, centralOffset), 46);
+    // Break the full-backup root, then damage the next record: the ordinary limit
+    // must reject the first record without traversing or materializing the rest.
+    writeSync(ordinaryDirectoryFd, Buffer.from("x"), 0, 1, centralOffset + 46);
+    const nextRecord =
+      centralOffset + 46 + firstHeader.readUInt16LE(28) + firstHeader.readUInt16LE(30) + firstHeader.readUInt16LE(32);
+    writeSync(ordinaryDirectoryFd, Buffer.alloc(4), 0, 4, nextRecord);
+  } finally {
+    closeSync(ordinaryDirectoryFd);
+  }
+  await assert.rejects(
+    inspectStoredBackupArchiveForRegression(ordinaryWideDirectory),
+    /central directory is too large/u,
+  );
   const wideDirectoryInspection = await inspectStoredBackupArchiveForRegression(wideDirectoryArchive);
   assert.equal(wideDirectoryInspection.isFullBackup, true);
   assert.equal(wideDirectoryInspection.entries.length, wideDirectorySources.length);

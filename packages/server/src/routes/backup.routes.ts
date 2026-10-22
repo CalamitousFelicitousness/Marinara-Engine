@@ -2673,6 +2673,9 @@ async function readProfileZipArchive(filePath: string): Promise<ProfileZipArchiv
     const entries: ProfileZipEntry[] = [];
     const entriesByName = new Map<string, ProfileZipEntry>();
     const centralHeader = Buffer.alloc(46);
+    const largeDirectory = centralDirectorySize > PROFILE_ARCHIVE_CENTRAL_DIRECTORY_LIMIT_BYTES;
+    let backupRoot: string | undefined;
+    let backupManifestSeen = false;
     let offset = 0;
     for (let index = 0; index < totalEntries; index++) {
       if (offset + 46 > centralDirectorySize) {
@@ -2713,6 +2716,29 @@ async function readProfileZipArchive(filePath: string): Promise<ProfileZipArchiv
       const size = zip64Values.size ?? size32;
       const compressedSize = zip64Values.compressedSize ?? compressedSize32;
       const localHeaderOffset = zip64Values.localHeaderOffset ?? localHeaderOffset32;
+      if (largeDirectory) {
+        const root = normalizedName.split("/")[0] ?? "";
+        backupRoot ??= root;
+        backupManifestSeen ||= normalizedName === `${root}/marinara-profile.json`;
+        // Refuse ordinary archives before materializing their directory. A larger
+        // budget requires stored entries under one backup root and its manifest
+        // within the ordinary budget; final classification still checks every entry.
+        if (
+          !/^marinara-(?:automatic-backup|backup-[A-Za-z0-9_-]+)$/u.test(root) ||
+          root !== backupRoot ||
+          method !== 0 ||
+          compressedSize !== size ||
+          (nextOffset > PROFILE_ARCHIVE_CENTRAL_DIRECTORY_LIMIT_BYTES && !backupManifestSeen)
+        ) {
+          throw new ProfileImportRequestError(
+            profileArchiveSizeError(
+              "Profile archive central directory",
+              centralDirectorySize,
+              PROFILE_ARCHIVE_CENTRAL_DIRECTORY_LIMIT_BYTES,
+            ),
+          );
+        }
+      }
       if (checkedZipSum(localHeaderOffset, 30, "local file header") > archiveStat.size) {
         throw new ProfileImportRequestError("Profile archive entry points outside the ZIP file.");
       }

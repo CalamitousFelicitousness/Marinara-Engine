@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import os from "node:os";
 import type { FastifyRequest } from "fastify";
-import { getAccessPolicy } from "../../packages/server/src/middleware/ip-allowlist.js";
+import { getAccessPolicy, isNonRoutableNetworkIp } from "../../packages/server/src/middleware/ip-allowlist.js";
 
 const ENV_KEYS = [
   "ADMIN_SECRET",
@@ -18,6 +18,7 @@ const ENV_KEYS = [
   "MARINARA_DOCKER",
   "REQUIRE_AUTH_FOR_DOCKER_PROXY",
   "REQUIRE_AUTH_FOR_LOOPBACK_PROXY",
+  "TRUSTED_PRIVATE_NETWORKS",
 ] as const;
 const originalEnv = Object.fromEntries(ENV_KEYS.map((key) => [key, process.env[key]]));
 
@@ -89,6 +90,13 @@ try {
   assert.equal(optIn.lockedDown, false);
   assert.equal(optIn.authRequired, false);
   assert.equal(optIn.reason, "private-network-optin");
+  // An ISP's CGNAT peer is not a private-network peer unless the operator lists the range.
+  assert.equal(getAccessPolicy(request("100.64.1.2")).lockedDown, true);
+  // It still counts as non-routable, which CSRF literal-host trust and isReservedIp rely on.
+  assert.equal(isNonRoutableNetworkIp("100.64.1.2"), true);
+  process.env.TRUSTED_PRIVATE_NETWORKS = "100.64.0.0/10";
+  assert.equal(getAccessPolicy(request("100.64.1.2")).reason, "private-network-optin");
+  delete process.env.TRUSTED_PRIVATE_NETWORKS;
   delete process.env.ALLOW_UNAUTHENTICATED_PRIVATE_NETWORK;
 
   process.env.ALLOW_UNAUTHENTICATED_REMOTE = "true";
@@ -97,12 +105,40 @@ try {
   assert.equal(remoteOptIn.reason, "remote-optin");
   delete process.env.ALLOW_UNAUTHENTICATED_REMOTE;
 
-  const tailscale = getAccessPolicy({
-    ...request("100.64.0.42"),
-    raw: { socket: { localAddress: "100.100.10.20" } },
-  } as never);
+  const tailnetAddress = {
+    ...containerAddress,
+    address: "100.100.10.20",
+    netmask: "255.192.0.0",
+    cidr: "100.100.10.20/10",
+  };
+  const tailnet = { interfaces: { tailscale0: [tailnetAddress] }, platform: "linux" as const };
+  const tailscaleRequest = { ...request("100.64.0.42"), raw: { socket: { localAddress: "100.100.10.20" } } } as never;
+  const tailscale = getAccessPolicy(tailscaleRequest, tailnet);
   assert.equal(tailscale.trustedInterface, true, "auto mode trusts a Tailscale peer on a Tailscale local address");
   assert.equal(tailscale.reason, "tailscale");
+  // Mobile carriers hand out the same range, so the local address must sit on a Tailscale interface.
+  const carrier = getAccessPolicy(tailscaleRequest, { interfaces: { rmnet0: [tailnetAddress] }, platform: "android" });
+  assert.equal(carrier.trustedInterface, false, "a 100.64.0.0/10 address on mobile data is not a tailnet");
+  assert.equal(carrier.reason, "locked-down");
+  // macOS and Android give every VPN the same interface name, so Tailscale's IPv6 range has to be there too.
+  const tailnetV6 = {
+    ...containerAddress,
+    address: "fd7a:115c:a1e0::1",
+    netmask: "ffff:ffff:ffff::",
+    family: "IPv6" as const,
+    cidr: "fd7a:115c:a1e0::1/48",
+    scopeid: 0,
+  };
+  for (const [platform, name, addresses, trusted] of [
+    ["darwin", "utun4", [tailnetAddress, tailnetV6], true],
+    ["darwin", "utun4", [tailnetAddress], false],
+    ["darwin", "tailscale0", [tailnetAddress, tailnetV6], false],
+    ["android", "tun0", [tailnetAddress, tailnetV6], true],
+    ["android", "tun0", [tailnetAddress], false],
+  ] as const) {
+    const policy = getAccessPolicy(tailscaleRequest, { interfaces: { [name]: [...addresses] }, platform });
+    assert.equal(policy.trustedInterface, trusted, `${platform} ${name} with ${addresses.length} address(es)`);
+  }
 
   process.env.BASIC_AUTH_USER = "mari";
   process.env.BASIC_AUTH_PASS = "secret";
@@ -124,6 +160,11 @@ try {
   const unlisted = getAccessPolicy(request("198.51.100.1"));
   assert.equal(unlisted.ipAllowed, false);
   assert.equal(unlisted.trustedPeer, false);
+  reset();
+
+  // An IPv4 prefix above /32 is invalid, not an allow-everything entry.
+  process.env.IP_ALLOWLIST = "0.0.0.0/33";
+  assert.equal(getAccessPolicy(request("198.51.100.1")).ipAllowed, false);
   reset();
 
   process.env.MARINARA_DOCKER = "true";
@@ -152,7 +193,7 @@ try {
   process.env.BASIC_AUTH_PASS = "secret";
   const tsRaw = { socket: { localAddress: "100.100.10.20" } };
   const tsPeer = (headers: Record<string, string>) =>
-    getAccessPolicy({ ...request("100.64.0.42", headers), raw: tsRaw } as unknown as FastifyRequest);
+    getAccessPolicy({ ...request("100.64.0.42", headers), raw: tsRaw } as unknown as FastifyRequest, tailnet);
   assert.equal(tsPeer({}).trustedInterface, true, "a direct Tailscale peer stays passwordless");
   assert.equal(
     tsPeer({ "x-forwarded-for": "203.0.113.66" }).trustedInterface,

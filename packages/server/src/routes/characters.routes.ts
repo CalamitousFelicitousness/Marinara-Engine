@@ -6,6 +6,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import {
   canonicalizeLegacyPersonaInput,
+  unassignCardFieldAlternatives,
   createCharacterSchema,
   updateCharacterSchema,
   createGroupSchema,
@@ -98,6 +99,7 @@ import {
   resolveChatSummaryTemperatureOptions,
 } from "../services/chat-summary/connection-resolution.js";
 import { resolveBaseUrl } from "../services/generation/connection-base-url.js";
+import { cardFieldGenerationSchema, generateCardField } from "../services/generation/card-field-generation.js";
 import { importSTLorebook } from "../services/import/st-lorebook.importer.js";
 import { embeddedSpriteSizesAreWithinLimits, MAX_EMBEDDED_SPRITE_COUNT } from "../services/import/marinara.importer.js";
 import {
@@ -736,6 +738,16 @@ function streamNativeExport({ envelope, slot, parts }: NativeExport, space = 0) 
   return streamJsonWithSlot(envelope, slot, parts, space);
 }
 
+function cardFieldAlternativesForExport(value: unknown) {
+  try {
+    return unassignCardFieldAlternatives(value);
+  } catch (error) {
+    // Malformed stored shapes fail closed; foreign assignment conflicts are already cleared above.
+    if (error instanceof z.ZodError) return [];
+    throw error;
+  }
+}
+
 async function buildNativeCharacterExport(
   char: { id: string; createdAt: string; updatedAt: string; comment?: string | null; avatarPath?: string | null },
   data: any,
@@ -744,7 +756,10 @@ async function buildNativeCharacterExport(
   const extensions = parseCharacterDataRecord(data?.extensions);
   const characterSheetImageId =
     typeof extensions.characterSheetImageId === "string" ? extensions.characterSheetImageId : null;
-  const portableExtensions = { ...extensions };
+  const portableExtensions: Record<string, unknown> = {
+    ...extensions,
+    cardFieldAlternatives: cardFieldAlternativesForExport(extensions.cardFieldAlternatives),
+  };
   delete portableExtensions.characterSheetImageId;
   const portableData = { ...data, extensions: portableExtensions };
   const gallery = await galleryStorage.listByCharacterId(char.id);
@@ -786,6 +801,7 @@ export function buildCompatibleCharacterExport(
   // Compatible cards carry no gallery, so baked greeting images go back to their web links.
   data = data ? restoreBakedGreetingImages(data) : data;
   const extensions = { ...parseCharacterDataRecord(data?.extensions) };
+  extensions.cardFieldAlternatives = cardFieldAlternativesForExport(extensions.cardFieldAlternatives);
   delete extensions.bakedGreetingImages;
   const description = [typeof data?.description === "string" ? data.description : ""];
   for (const [key, label] of [
@@ -892,7 +908,10 @@ function canonicalizePersonaForExport(persona: Record<string, unknown>): {
     updatedAt: _updatedAt,
     ...projectedFields
   } = projected;
-  const validationFields: Record<string, unknown> = { ...projectedFields };
+  const validationFields: Record<string, unknown> = {
+    ...projectedFields,
+    cardFieldAlternatives: unassignCardFieldAlternatives(projectedFields.cardFieldAlternatives),
+  };
   const usesFallbackName = typeof validationFields.name !== "string" || !validationFields.name.trim();
 
   if (usesFallbackName) validationFields.name = "Unnamed Persona";
@@ -928,6 +947,7 @@ function canonicalizePersonaForExport(persona: Record<string, unknown>): {
   const row: Record<string, unknown> = { ...persona, ...extra, name, description };
   // Export the public boolean contract rather than the storage-only text flag
   // so compatible and native Persona payloads can be imported unchanged.
+  row.cardFieldAlternatives = parsed.data.cardFieldAlternatives ?? [];
   row.versioningEnabled = parsed.data.versioningEnabled ?? true;
   // Same text-column-to-boolean conversion for the image-appearance toggle
   // (#7053): `row` is spread from the raw row above, so without this the export
@@ -1141,6 +1161,57 @@ export async function charactersRoutes(app: FastifyInstance) {
     }
     return result;
   });
+
+  // Both editors use the summary connection policy, without saving the generated draft.
+  for (const kind of ["character", "persona"] as const) {
+    const path = kind === "persona" ? "/personas/:id/card-field/generate" : "/:id/card-field/generate";
+    app.post<{ Params: { id: string }; Body: unknown }>(path, async (req, reply) => {
+      const parsed = cardFieldGenerationSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ error: "Invalid card field generation request", issues: parsed.error.issues });
+      }
+      const controller = new AbortController();
+      const onClose = () => {
+        if (!reply.raw.writableFinished) controller.abort(new Error("Card field generation cancelled"));
+      };
+      reply.raw.once("close", onClose);
+      if (reply.raw.destroyed) onClose();
+      try {
+        controller.signal.throwIfAborted();
+        const entity =
+          kind === "persona" ? await storage.getPersona(req.params.id) : await storage.getById(req.params.id);
+        controller.signal.throwIfAborted();
+        if (!entity)
+          return reply.status(404).send({ error: kind === "persona" ? "Persona not found" : "Character not found" });
+        const defaultConnection = await connections.getDefault();
+        const connection = await resolveChatSummaryConnection({
+          chatMetadata: {},
+          defaultConnectionId: defaultConnection?.id,
+          connections,
+          resolveBaseUrl,
+        });
+        controller.signal.throwIfAborted();
+        if (!connection.ok) return reply.status(400).send({ error: connection.error });
+        const text = await generateCardField({
+          kind,
+          entityId: req.params.id,
+          ...parsed.data,
+          connection,
+          signal: controller.signal,
+        });
+        controller.signal.throwIfAborted();
+        return reply.send({ text });
+      } catch (error) {
+        if (controller.signal.aborted || reply.raw.destroyed) return;
+        logger.error(error, "Card field generation failed");
+        return reply.status(502).send({
+          error: error instanceof Error ? error.message : "Card field generation failed",
+        });
+      } finally {
+        reply.raw.off("close", onClose);
+      }
+    });
+  }
 
   app.post<{
     Params: { id: string };
@@ -1510,6 +1581,16 @@ export async function charactersRoutes(app: FastifyInstance) {
     const reset = await enqueueUpdate(characterUpdateQueues, req.params.id, () => storage.resetVersions(req.params.id));
     if (!reset) return reply.status(404).send({ error: "Character not found" });
     return reset;
+  });
+
+  app.get<{ Params: { id: string } }>("/:id/card-field-chats", async (req, reply) => {
+    if (!(await storage.getById(req.params.id))) return reply.status(404).send({ error: "Character not found" });
+    return storage.listCardFieldChats("character", req.params.id);
+  });
+
+  app.get<{ Params: { id: string } }>("/personas/:id/card-field-chats", async (req, reply) => {
+    if (!(await storage.getPersona(req.params.id))) return reply.status(404).send({ error: "Persona not found" });
+    return storage.listCardFieldChats("persona", req.params.id);
   });
 
   app.post("/", async (req) => {

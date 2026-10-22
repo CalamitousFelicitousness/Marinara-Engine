@@ -90,7 +90,7 @@ Some clients skip the password even when Basic Auth is on:
 - Any address in `IP_ALLOWLIST`. Careful: setting an allowlist also blocks every unlisted address (see Option 2).
 - Direct Tailscale traffic (`100.64.0.0/10`), unless you turn its bypass off.
 - Docker bridge/gateway traffic, only when you set `BYPASS_AUTH_DOCKER=true`. With Basic Auth on, automatic Docker trust is off (see [Tailscale and Docker bypass](#tailscale-and-docker-bypass)).
-- The `/api/health` address, so uptime monitors keep working. Without a password it reports only basic status, not your local models or graphics card.
+- The `/api/health` address, so uptime monitors keep working. Visitors who could not open the app get only `{"status": "ok"}`; version, system and model details stay with this machine, trusted networks and signed-in browsers.
 
 Important: Basic Auth only encodes the password. It does not encrypt it. Anyone watching an unencrypted connection can read it. If you expose Marinara to the public internet, pair Basic Auth with HTTPS (see below).
 
@@ -129,9 +129,9 @@ Your whole network may be trusted, for example a home LAN (local network) with n
 ALLOW_UNAUTHENTICATED_PRIVATE_NETWORK=true
 ```
 
-This restores the older "open on the LAN, blocked from the public internet" behavior. It applies only to standard private-network ranges, for example `10.0.0.0/8`, `172.16.0.0/12`, and `192.168.0.0/16`. The CGNAT range `100.64.0.0/10` also counts. CGNAT is a shared address system used by some internet providers, and Tailscale uses the same range. Public-internet addresses are still blocked with a 403.
+This restores the older "open on the LAN, blocked from the public internet" behavior. It applies only to standard private-network ranges, for example `10.0.0.0/8`, `172.16.0.0/12`, and `192.168.0.0/16`. The CGNAT range `100.64.0.0/10` does not count, because some internet providers share it between unrelated customers; add it to `TRUSTED_PRIVATE_NETWORKS` only if you trust it. Public-internet addresses are still blocked with a 403.
 
-Some internet and mobile providers give their customers addresses in this range. If this computer has such an address, other customers of the same provider count as private-network clients.
+Some internet and mobile providers give their customers addresses in this range. If you add it, other customers of the same provider also count as private-network clients. `TRUSTED_PRIVATE_NETWORKS` replaces the default ranges, so keep the LAN ranges you still need in the list.
 
 Warning: anyone on the same network can then reach Marinara with no password. That is fine on a network you control. It is not fine on shared Wi-Fi at a coffee shop, airport, or dorm. When in doubt, use Basic Auth instead.
 
@@ -146,7 +146,7 @@ BYPASS_AUTH_TAILSCALE=
 BYPASS_AUTH_DOCKER=
 ```
 
-Automatic mode trusts a Tailscale peer only when both ends of its direct socket use Tailnet addresses. It trusts Docker traffic only when Marinara is running in a container and the source matches a detected container interface or its exact gateway. This keeps the usual private Tailscale and same-host Docker setup working without treating unrelated CGNAT, LAN, host-network, or proxy traffic as authenticated.
+Automatic mode trusts a Tailscale device only when it connects straight to this computer's Tailscale address. On Linux, a Tailscale interface with a custom name (`tailscaled --tun=...`) is not trusted automatically; sign in or set `BYPASS_AUTH_TAILSCALE=true`. It trusts Docker traffic only when Marinara is running in a container and the source matches a detected container interface or its exact gateway. This keeps the usual private Tailscale and same-host Docker setup working without treating unrelated CGNAT, LAN, host-network, or proxy traffic as authenticated.
 
 Automatic Docker trust applies only while neither Basic Auth nor `IP_ALLOWLIST` is set. Docker Desktop, OrbStack, and rootless Docker pass every device that opens a published port through the container's gateway, so Marinara cannot tell your own browser from a phone or a stranger on the network. Once you set a password or an allowlist, every Docker client must pass it, including the browser on the host. Set `BYPASS_AUTH_DOCKER=true` only if you trust every device that can reach the published port.
 
@@ -284,6 +284,16 @@ To open Marinara from a phone or tablet on the same network:
 5. If you set Basic Auth, enter your username and password when prompted.
 
 If the page does not load at all, the server may not be reachable. Check `HOST=0.0.0.0` and the `PORT` value. If you get a 403 instead, your device is reachable but not yet allowed in. Recheck your chosen option above.
+
+## Locked out after updating
+
+Newer versions ask for a login when a visit comes through a reverse proxy, a tunnel, Tailscale Serve, or Tailscale Funnel. Older versions let these visits in without a password. If you now see a login page, a setup page, or a **403**, this is why.
+
+To get back in:
+
+1. Open Marinara on the computer that runs it, at `http://localhost:7860` (or your own `PORT`). Local use needs no password. In Docker, this is true only while no login and no `IP_ALLOWLIST` are set; otherwise use your login.
+2. Open the `.env` file on that computer and set `BASIC_AUTH_USER` and `BASIC_AUTH_PASS`. If `IP_ALLOWLIST` is set, add your other device's address to it or remove it, because a device that is not on the list gets a **403** even with a login.
+3. Save the file. Marinara picks up the change in a few seconds. If it does not, or if you use Docker, restart Marinara. Then sign in from your other device with that user name and password.
 
 ## Search engines
 

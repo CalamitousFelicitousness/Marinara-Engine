@@ -20,8 +20,8 @@ ${StrTrimNewLines}
 !define APP_URL "https://github.com/Pasta-Devs/Marinara-Engine"
 !define REPO_URL "https://github.com/Pasta-Devs/Marinara-Engine.git"
 !define DEFAULT_DIR "$LOCALAPPDATA\Marinara-Engine"
-!define PNPM_VERSION "10.34.5"
-!define PNPM_DESCRIPTOR "10.34.5+sha512.a4ee05f2f73658255bd6a89859c065a45c28a57daefae2c893a168ee2b73168c37b91e83e57ea67654ad03f03031746430e8bce38e362e042605fb8abc80192e"
+!define PNPM_VERSION "10.34.7"
+!define PNPM_DESCRIPTOR "10.34.7+sha512.ba98abc585539933375b5971f4bc6d6c73a1b4b7edc4a879e7d102fe5423d1e02309d67c60a11f04955093a96e521ad9c3b138cdd654ca5be563f378b3ae48bd"
 
 ; ── Prerequisite download URLs ──
 ; Pin to known-good versions so the installer is deterministic and doesn't

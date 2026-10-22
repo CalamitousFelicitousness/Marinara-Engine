@@ -7646,8 +7646,6 @@ assert.match(
 const projectionState = {
   ...useUIStore.getState(),
   showHomeBrowserAddressBar: false,
-  showHomeBrowserDesktopBookmarksOnOtherTabs: false,
-  showHomeBrowserMobileBookmarksOnOtherTabs: false,
   enterToSendGame: false,
   enterToSendProfessorMari: false,
   chatHelpSeenModes: ["game"] as ChatMode[],
@@ -7656,16 +7654,6 @@ assert.equal(
   pickSyncedSettings(projectionState).showHomeBrowserAddressBar,
   false,
   "Home URL bar visibility must be saved per installation",
-);
-assert.equal(
-  pickSyncedSettings(projectionState).showHomeBrowserDesktopBookmarksOnOtherTabs,
-  false,
-  "Home desktop bookmark visibility must be saved per installation",
-);
-assert.equal(
-  pickSyncedSettings(projectionState).showHomeBrowserMobileBookmarksOnOtherTabs,
-  false,
-  "Home mobile bookmark visibility must be saved per installation",
 );
 assert.equal(
   pickSyncedSettings(projectionState).enterToSendGame,
@@ -10821,5 +10809,11 @@ assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata m
     "Lorebook Keeper backfill results retain each target message and swipe anchor",
   );
 }
+
+// A closed story ending (Capability API 1.343) stays closed when the game surface mounts again: the close
+// is kept in this browser by game and ending, and read back before the ending is shown.
+assert.match(gameSurfaceSource, /localStorage\.setItem\(`story-ending-closed:\$\{storyEndingKey\}`, "1"\)/u);
+assert.match(gameSurfaceSource, /readIntroPresentedFlag\(`story-ending-closed:\$\{storyEndingKey\}`\)/u);
+assert.match(gameSurfaceSource, /storyEndingKey !== storyEndingClosed &&\s*!storyEndingClosedBefore &&/u);
 
 console.info("Open-issue regressions passed.");

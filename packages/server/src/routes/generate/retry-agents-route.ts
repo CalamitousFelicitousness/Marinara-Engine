@@ -324,7 +324,7 @@ type PersonaContext = {
   identitySource: "persona" | "character" | null;
   personaName: string;
   personaDescription: string;
-  personaFields: { personality?: string; scenario?: string; backstory?: string; appearance?: string };
+  personaFields: { example?: string; personality?: string; scenario?: string; backstory?: string; appearance?: string };
   /** Image-prompt appearance override (#7053); empty when the user has none. */
   imageAppearanceOverride: string;
   personaAvatarPath?: string | null;
@@ -720,6 +720,7 @@ async function executeManualIllustratorPromptRequest(args: {
 async function retryIllustratorClipCast(
   agentContext: AgentContext,
   chars: ReturnType<typeof createCharactersStorage>,
+  chatId: string,
 ): Promise<{ chatCharacters: IllustratorChatCharacterReference[]; persona: IllustratorPersonaReference | null }> {
   const identityId =
     typeof agentContext.memory._userIdentityId === "string" ? agentContext.memory._userIdentityId : null;
@@ -749,7 +750,7 @@ async function retryIllustratorClipCast(
       appearanceOverride: readIllustratorImageAppearanceOverride(agentContext.memory, identityId),
     });
   }
-  const personaRow = identitySource === "persona" && identityId ? await chars.getPersona(identityId) : null;
+  const personaRow = identitySource === "persona" && identityId ? await chars.getPersona(identityId, chatId) : null;
   const persona: IllustratorPersonaReference | null =
     identitySource === "persona" && identityId && agentContext.persona
       ? {
@@ -786,6 +787,7 @@ async function resolvePersonaContext(
 
   const chatMode = ((chat as { mode?: ChatMode }).mode ?? "conversation") as ChatMode;
   const persona = await resolveChatUserIdentity(chars, {
+    id: chat.id,
     personaId: chat.personaId,
     personaCharacterId: chat.personaCharacterId,
     mode: chatMode,
@@ -813,6 +815,7 @@ async function resolvePersonaContext(
   const personaAvatarPath = typeof persona.avatarPath === "string" ? persona.avatarPath : null;
   imageAppearanceOverride = persona.imageAppearanceOverride ?? "";
   personaFields = {
+    example: cardPromptText(persona.mesExample),
     personality: cardPromptText(persona.personality),
     scenario: cardPromptText(persona.scenario),
     backstory: cardPromptText(persona.backstory),
@@ -982,7 +985,7 @@ async function buildRetryAgentContext(args: {
     : [];
   const charInfo: AgentContext["characters"] = [];
   for (const cid of characterIds) {
-    const charRow = await chars.getById(cid);
+    const charRow = await chars.getById(cid, chatId);
     if (!charRow) continue;
     const charData = parseJsonIfString<Record<string, unknown>>(charRow.data as string);
     const extensions =
@@ -1040,7 +1043,7 @@ async function buildRetryAgentContext(args: {
       typeof chatMeta.authorNotes === "string" ? chatMeta.authorNotes : "",
     ],
   });
-  const historyMacroProfilesById = (await resolveCharacterMacroData(db, allCharacterIds)).profilesById;
+  const historyMacroProfilesById = (await resolveCharacterMacroData(db, allCharacterIds, chatId)).profilesById;
   const resolveHistoryMessageMacros = <T extends { content: string; characterId?: string | null }>(
     messages: T[],
   ): T[] => resolvePromptMessageMacros(messages, promptMacroContext, historyMacroProfilesById);
@@ -3734,7 +3737,7 @@ async function applyRetryResultEffects(args: {
           // A clip the writer chose without saying how it moves is skipped (Pictures and clips); Clips only always
           // makes one.
           const wantsVideo = clipsOnly || (!!videoOffer && illData.generateVideo === true && !!writtenMotion);
-          const clipCast = await retryIllustratorClipCast(agentContext, chars);
+          const clipCast = await retryIllustratorClipCast(agentContext, chars, chatId);
           const clipTools = videoOffer
             ? createRoleplayClipTools({
                 db: app.db,

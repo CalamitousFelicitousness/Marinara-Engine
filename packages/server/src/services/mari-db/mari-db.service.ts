@@ -46,6 +46,8 @@ import { newId, now } from "../../utils/id-generator.js";
 import { normalizeThemeCss } from "../../utils/theme-css.js";
 import { getMariImagesService } from "./mari-images.service.js";
 import { buildOnboardingUpdate, describeCharacterOnboarding } from "./character-onboarding.js";
+import { applyRulesetSheetPatch, describeRulesetSheet, withRulesetSheet } from "./ruleset-sheets.js";
+import { readRulesetRegistry } from "../game/ruleset-registry.service.js";
 import { executeWikiCli } from "../professor-mari/fandom-mediawiki/wiki-cli.js";
 import {
   LIMITS,
@@ -450,7 +452,15 @@ const JSON_COLUMNS: Record<string, readonly string[]> = {
   characters: ["data"],
   character_card_versions: ["data"],
   persona_card_versions: ["data"],
-  personas: ["avatarCrop", "trackerCardColors", "personaStats", "tags", "savedStatusOptions", "convoBehavior"],
+  personas: [
+    "avatarCrop",
+    "trackerCardColors",
+    "personaStats",
+    "tags",
+    "savedStatusOptions",
+    "convoBehavior",
+    "cardFieldAlternatives",
+  ],
   character_groups: ["characterIds"],
   persona_groups: ["personaIds"],
   chats: ["characterIds", "metadata"],
@@ -1424,11 +1434,14 @@ export function buildPersonaCreateRow(data: Row, id: string, timestamp: string):
         : "true",
     creatorNotes: firstString(data, ["creatorNotes", "creator_notes", "creator-notes"]) ?? "",
     phoneticName: firstString(data, ["phoneticName", "phonetic_name", "phonetic-name"]) ?? "",
+    summary: firstString(data, ["summary"]) ?? "",
+    mes_example: firstString(data, ["mes_example"]) ?? "",
     description: firstString(data, ["description"]) ?? "",
     personality: firstString(data, ["personality"]) ?? "",
     scenario: firstString(data, ["scenario"]) ?? "",
     backstory: firstString(data, ["backstory"]) ?? "",
     appearance: firstString(data, ["appearance"]) ?? "",
+    cardFieldAlternatives: [],
     imageAppearanceEnabled:
       data.imageAppearanceEnabled === true ||
       data.imageAppearanceEnabled === "true" ||
@@ -2701,7 +2714,7 @@ function buildMinimalCharacterData(
     const val = flagString(flags, flagName);
     if (val !== undefined) data[fieldName] = val;
   }
-  data.summary = typeof data.summary === "string" ? data.summary.trim().slice(0, 500) : "";
+  data.summary = typeof data.summary === "string" ? data.summary.trim() : "";
   // backstory and appearance are Marinara extensions stored under data.extensions.*
   const extensions = data.extensions as Record<string, unknown>;
   const extMap: Array<[string, string]> = [
@@ -3124,6 +3137,9 @@ export class MariDbService {
           );
         });
       }
+      case "rulesetsheet.get":
+      case "rulesetsheet.update":
+        return this.executeRulesetSheetAction("character", sub, args, context);
       default:
         return { ok: false, mode: "read", command: context.command, error: "Unsupported character app_data action." };
     }
@@ -3176,6 +3192,8 @@ export class MariDbService {
           ["data", "persona", "row"],
           [
             "name",
+            "summary",
+            "mes_example",
             "description",
             "personality",
             "scenario",
@@ -3225,6 +3243,8 @@ export class MariDbService {
           ["patch", "data", "persona"],
           [
             "name",
+            "summary",
+            "mes_example",
             "description",
             "personality",
             "scenario",
@@ -3251,6 +3271,8 @@ export class MariDbService {
         );
         const patch: Row = { updatedAt: now() };
         assignStringField(patch, data, ["name"], "name");
+        if (typeof data.summary === "string") patch.summary = data.summary.trim();
+        if (typeof data.mes_example === "string") patch.mes_example = data.mes_example.trim();
         assignStringField(patch, data, ["description"], "description");
         assignStringField(patch, data, ["personality"], "personality");
         assignStringField(patch, data, ["scenario"], "scenario");
@@ -3284,7 +3306,7 @@ export class MariDbService {
         assignListField(patch, data, ["tags"], "tags");
         if (Object.keys(patch).length <= 1) {
           throw new Error(
-            "persona.update needs a patch field such as name, description, personality, scenario, backstory, appearance, imageAppearance, imageAppearanceEnabled, tags, comment, creator, or creatorNotes",
+            "persona.update needs a patch field such as name, summary, mes_example, description, personality, scenario, backstory, appearance, imageAppearance, imageAppearanceEnabled, tags, comment, creator, or creatorNotes",
           );
         }
         return this.executeMutation(
@@ -3302,9 +3324,118 @@ export class MariDbService {
           context.sessionId,
         );
       }
+      case "rulesetsheet.get":
+      case "rulesetsheet.update":
+        return this.executeRulesetSheetAction("persona", sub, args, context);
       default:
         return { ok: false, mode: "read", command: context.command, error: "Unsupported persona app_data action." };
     }
+  }
+
+  /**
+   * `character.rulesetSheet.get|update` and `persona.rulesetSheet.get|update`: one ruleset's sheet on a
+   * card (`data.extensions.rulesetSheets`) or a persona (`personaStats.rulesetSheets`). The update only
+   * ever replaces that one ruleset's entry; everything else on the card or in personaStats is kept.
+   */
+  private async executeRulesetSheetAction(
+    owner: "character" | "persona",
+    sub: string,
+    args: Row,
+    context: { command: string; sessionId: string; cwd?: string },
+  ): Promise<MariDbCommandResult> {
+    const table = owner === "character" ? "characters" : "personas";
+    const id =
+      owner === "character"
+        ? requiredString(args, ["characterId", "id"], "character id")
+        : requiredString(args, ["personaId", "id"], "persona id");
+    const existing = await this.getRawById(getMeta(table), id);
+    if (!existing) throw new Error(`${owner === "character" ? "Character" : "Persona"} ${id} not found`);
+    const column = owner === "character" ? "data" : "personaStats";
+    const rawColumn = existing[column];
+    const parsedColumn = tryParseJsonColumn(existing, column);
+    if (parsedColumn === undefined && typeof rawColumn === "string" && rawColumn.trim() !== "") {
+      throw new Error(`The ${owner}'s ${column} cannot be read, so its ruleset sheets are left as they are.`);
+    }
+    const holder = isRecord(parsedColumn) ? parsedColumn : {};
+    const extensions = owner === "character" && isRecord(holder.extensions) ? holder.extensions : {};
+    const sheets = owner === "character" ? extensions.rulesetSheets : holder.rulesetSheets;
+    const storedSheets = isRecord(sheets) ? sheets : {};
+    const registry = await readRulesetRegistry(this.db);
+    const installed = [...registry.values()].map(({ definition }) => ({ id: definition.id, name: definition.name }));
+    const rulesetId = firstString(args, ["rulesetId", "ruleset"]);
+    const ownerKey = owner === "character" ? "characterId" : "personaId";
+
+    if (sub === "rulesetsheet.get" && !rulesetId) {
+      return {
+        ok: true,
+        mode: "read",
+        command: context.command,
+        output: {
+          [ownerKey]: id,
+          sheets: Object.keys(storedSheets).map((key) => ({ rulesetId: key, installed: registry.has(key) })),
+          installed,
+        },
+      };
+    }
+    if (!rulesetId) throw new Error(`${owner}.rulesetSheet.update needs a rulesetId`);
+    const registered = registry.get(rulesetId);
+    if (!registered) {
+      throw new Error(
+        `Ruleset ${rulesetId} is not installed. Installed rulesets: ${
+          installed.map((entry) => `${entry.id} (${entry.name})`).join(", ") || "none"
+        }`,
+      );
+    }
+    const stored = Object.hasOwn(storedSheets, rulesetId) ? storedSheets[rulesetId] : undefined;
+    if (sub === "rulesetsheet.get") {
+      return {
+        ok: true,
+        mode: "read",
+        command: context.command,
+        output: { [ownerKey]: id, ...describeRulesetSheet(registered.definition, stored) },
+      };
+    }
+
+    const patched = applyRulesetSheetPatch(registered.definition, stored, args.patch ?? args.data);
+    const next = patched.ok ? withRulesetSheet(storedSheets, rulesetId, patched.envelope) : patched;
+    if (!next.ok) {
+      return {
+        ok: false,
+        mode: "read",
+        command: context.command,
+        error: `The ${registered.definition.name} sheet was not changed. Fix these and resend:\n- ${next.issues.join("\n- ")}`,
+      };
+    }
+    const mutation = {
+      apply: firstBoolean(args, ["apply"]) === true,
+      cascade: false,
+      reason: firstString(args, ["reason"]) ?? null,
+      cwd: context.cwd,
+    };
+    if (owner === "persona") {
+      // A replace, not a patch: a patch deep-merges personaStats, so a cleared value would come back.
+      const row: Row = {
+        ...parseRow("personas", existing),
+        personaStats: { ...holder, rulesetSheets: next.sheets },
+        updatedAt: now(),
+      };
+      return this.executeMutation({ kind: "replace", table, id, row, ...mutation }, context.command, context.sessionId);
+    }
+    const name = typeof holder.name === "string" ? holder.name : "";
+    const row: Row = {
+      id,
+      data: buildMinimalCharacterData(
+        name,
+        { ...holder, extensions: { ...extensions, rulesetSheets: next.sheets } },
+        new Map(),
+      ),
+      comment: typeof existing.comment === "string" ? existing.comment : "",
+      avatarPath: existing.avatarPath ?? null,
+      spriteFolderPath: existing.spriteFolderPath ?? null,
+      createdAt: existing.createdAt,
+      updatedAt: now(),
+    };
+    return this.executeMutation({ kind: "replace", table, id, row, ...mutation }, context.command, context.sessionId);
   }
 
   private assignLorebookActionFields(target: Row, source: Row): boolean {

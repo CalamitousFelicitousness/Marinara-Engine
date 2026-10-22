@@ -9886,7 +9886,8 @@ export const RULESET_GUARDED_KINDS = ["leader", "casters", "healers"] as const;
  * (Capability API 1.724), keeping near the nearest friend of the kinds it names and going at whoever
  * is on them, as a companion told to protect them; and `shifts` (Capability API 1.726), the
  * temperament it turns to, once, when hurt below half (`bloodied`), when one of its side or its
- * leader is down, or when cornered. A Game Master's
+ * leader is down, or when cornered; and `territory` (Capability API 1.728), how far from where it
+ * began a `territorial` one goes. A Game Master's
  * temperament for one fight wins over it; a mindless creature has none of it.
  */
 const combatBehaviorSchema = z
@@ -9916,6 +9917,9 @@ const combatBehaviorSchema = z
         message: "Name each trigger once",
       })
       .optional(),
+    /** How many squares from where it began a `territorial` one goes (Capability API 1.728); 6
+     *  unless it says. */
+    territory: z.number().int().min(1).max(40).optional(),
   })
   .strict()
   .refine((behavior) => Object.keys(behavior).length > 0, { message: "Say something about how it fights" });

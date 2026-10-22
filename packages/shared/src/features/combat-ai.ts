@@ -80,6 +80,8 @@ export const combatTacticsSchema = z
     shifted: z.literal(true).optional(),
     /** The temperament it had before it turned: a proud one stays proud enough to fly off. */
     shiftedFrom: z.enum(COMBAT_ADJECTIVES).optional(),
+    /** Where a territorial one stood when the fight began: the ground it keeps (combat AI T4). */
+    home: z.object({ x: z.number().int(), y: z.number().int() }).strict().optional(),
     /** Turns in a row it spent dodging, getting away or hiding: two, and it fights again, so two
      *  careful sides never stare at each other all fight. */
     wary: z.number().int().min(0).max(99).optional(),

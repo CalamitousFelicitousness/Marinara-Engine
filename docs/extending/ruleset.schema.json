@@ -66144,7 +66144,8 @@
                             "methodical",
                             "coordinated",
                             "fanatical",
-                            "arrogant"
+                            "arrogant",
+                            "territorial"
                           ]
                         },
                         "role": {
@@ -66238,7 +66239,8 @@
                                   "methodical",
                                   "coordinated",
                                   "fanatical",
-                                  "arrogant"
+                                  "arrogant",
+                                  "territorial"
                                 ]
                               },
                               "$comment": {}
@@ -66251,6 +66253,11 @@
                           },
                           "minItems": 1,
                           "maxItems": 4
+                        },
+                        "territory": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 40
                         },
                         "$comment": {}
                       },
@@ -253272,7 +253279,8 @@
                           "methodical",
                           "coordinated",
                           "fanatical",
-                          "arrogant"
+                          "arrogant",
+                          "territorial"
                         ]
                       },
                       "role": {
@@ -253366,7 +253374,8 @@
                                 "methodical",
                                 "coordinated",
                                 "fanatical",
-                                "arrogant"
+                                "arrogant",
+                                "territorial"
                               ]
                             },
                             "$comment": {}
@@ -253379,6 +253388,11 @@
                         },
                         "minItems": 1,
                         "maxItems": 4
+                      },
+                      "territory": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 40
                       },
                       "$comment": {}
                     },
@@ -254414,7 +254428,8 @@
                 "methodical",
                 "coordinated",
                 "fanatical",
-                "arrogant"
+                "arrogant",
+                "territorial"
               ]
             },
             "role": {
@@ -254508,7 +254523,8 @@
                       "methodical",
                       "coordinated",
                       "fanatical",
-                      "arrogant"
+                      "arrogant",
+                      "territorial"
                     ]
                   },
                   "$comment": {}
@@ -254521,6 +254537,11 @@
               },
               "minItems": 1,
               "maxItems": 4
+            },
+            "territory": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 40
             },
             "$comment": {}
           },

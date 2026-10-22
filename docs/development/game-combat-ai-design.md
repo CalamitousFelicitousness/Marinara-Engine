@@ -309,6 +309,8 @@ Proposed initial tuning: normalize policy utility to a fixed scale; let novices 
 
 **Arrogant (combat AI T5, Capability API 1.727).** A named-only temperament (`COMBAT_NAMED_TEMPERAMENTS`): risk 0.2, setup 0.05, cost 2 (a `solo` role keeps that cost instead of zeroing it), hold leaning offense. With no `shifts` of its own it uses `COMBAT_ARROGANT_SHIFTS` (bloodied or ally-down → methodical); `tactics.shiftedFrom` remembers it. In ruleset fights `retreatAloft` flies a legendary arrogant (or formerly arrogant) flier up below a quarter of its health and stops it walking at anybody.
 
+**Territorial (combat AI T4, Capability API 1.728).** A named-only temperament. `syncRulesetCombatants` records `tactics.home` where it first stands; `rulesetTerritoryLeash` turns `behavior.territory` (default 6) around that spot into the same leash a guarding companion has (a stand-in combatant at home), used by `walkTowardsTrouble` and to drop candidates that walk it further off its ground. The leash lifts while `harmedBy` stands off its ground.
+
 **Fliers keep altitude (combat AI A7).** When a ruleset flier's turn goes idle on the ground (`keepAloft`), and it can fly, has an available ranged damaging action, isn't a bruiser, reckless or mindless, and an opponent who cannot fly stands, it takes Fly up where the board has levels, then carries on its turn (a shot, its kite) from the air.
 
 ## 8. Boss turns controlled by the GM

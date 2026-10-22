@@ -615,4 +615,5 @@ assert.equal(
   assert.equal(chooseCombatCandidate(as2("opportunistic"), hoard, 1), "dear");
   // Never dealt by chance.
   assert.ok(!dealt.has("arrogant"));
+  assert.ok(!dealt.has("territorial"));
 }

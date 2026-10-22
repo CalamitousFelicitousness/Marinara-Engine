@@ -791,6 +791,9 @@ export function syncRulesetCombatants(definition: RulesetDefinition, state: Comb
     const own = rulesetCombatantBehavior(definition, combatant)?.temperament;
     if (unit.tactics && unit.tactics.mind !== "mindless" && own && !unit.aiHints?.temperament && !unit.tactics.shifted)
       unit.tactics.adjective = own;
+    // The ground a territorial one keeps: where it stood when it first did (combat AI T4).
+    const at = rulesetPositionOf(combatant);
+    if (unit.tactics?.adjective === "territorial" && !unit.tactics.home && at) unit.tactics.home = { x: at.x, y: at.y };
     // The temperament it is played with, for the rules' morale (combat AI T1, T2).
     const temperament =
       unit.tactics?.mind === "mindless"
@@ -3452,6 +3455,18 @@ function weighChoices(
     candidates = mindlessCandidates(encounter, actor, unit.tactics!, candidates, !!menu);
   weighRulesetTeam(definition, state, encounter, actor, candidates, orders);
   if (orders) weighRulesetOrders(state, encounter, actor, orders, candidates);
+  // A territorial one walks nowhere off its ground, but back onto it (combat AI T4).
+  const territory = rulesetTerritoryLeash(definition, encounter, actor, unit);
+  if (territory) {
+    const gap = rulesetGap(actor, territory.charge);
+    const kept = candidates.filter((candidate) => {
+      const to = candidate.action.to;
+      if (!to) return true;
+      const after = rulesetGapFrom(to, rulesetSpanOf(actor), territory.charge);
+      return after <= territory.within || after < gap;
+    });
+    candidates.splice(0, candidates.length, ...kept);
+  }
   // Everything it had would take it off its leash: nothing to do but get back to its charge.
   if (candidates.length === 0) return null;
   const behavior = unit.tactics!.mind === "mindless" ? undefined : rulesetCombatantBehavior(definition, actor);
@@ -3674,6 +3689,33 @@ const RULESET_LEASH = 3;
 interface RulesetLeash {
   charge: RulesetCombatant;
   within: number;
+}
+
+/**
+ * The ground a territorial one keeps (combat AI T4): within its `behavior.territory` squares (6
+ * unless it says) of where it began, as a leash on that spot. None once whoever last hurt it stands
+ * off that ground, struck from afar: then it goes after them.
+ */
+function rulesetTerritoryLeash(
+  definition: RulesetDefinition,
+  encounter: RulesetEncounterState,
+  actor: RulesetCombatant,
+  unit: Combatant,
+): RulesetLeash | undefined {
+  const home = unit.tactics?.home;
+  if (!home || unit.tactics?.adjective !== "territorial" || unit.tactics.mind === "mindless") return undefined;
+  const within = rulesetCombatantBehavior(definition, actor)?.territory ?? 6;
+  const charge = { ...actor, x: home.x, y: home.y } as RulesetCombatant;
+  const harm = actor.harmedBy ? rulesetCombatant(encounter, actor.harmedBy) : undefined;
+  if (
+    harm &&
+    harm.side !== actor.side &&
+    rulesetCombatStanding(harm) &&
+    rulesetPositionOf(harm) &&
+    rulesetGap(harm, charge) > within
+  )
+    return undefined;
+  return { charge, within };
 }
 
 /** Whom a companion's orders keep it near (P7): the leader it guards or the friend it protects,
@@ -4366,7 +4408,9 @@ function playRulesetTurn(
   const stays = orders?.posture === "hold" || orders?.posture === "retreat";
   // A proud legend near its end takes to the sky and fights from there (combat AI T5).
   const aloof = !stays && retreatAloft(definition, state, fight, actorId);
-  const leash = actor && orders ? rulesetLeashOf(state, fight.encounter, actor, orders) : undefined;
+  const leash =
+    (actor && orders ? rulesetLeashOf(state, fight.encounter, actor, orders) : undefined) ??
+    (actor && unit ? rulesetTerritoryLeash(definition, fight.encounter, actor, unit) : undefined);
   // A caster or archer caught beside an opponent gets clear before it shoots (re-test 9).
   if (!stays) getClearToShoot(definition, state, fight, actorId);
   // Picked up where it was left when a window it opened was answered by a person.

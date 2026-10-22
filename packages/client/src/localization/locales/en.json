@@ -1826,6 +1826,7 @@
   "game.combat.ai.adjective.protective": "Protective",
   "game.combat.ai.adjective.reckless": "Reckless",
   "game.combat.ai.adjective.supportive": "Supportive",
+  "game.combat.ai.adjective.territorial": "Territorial",
   "game.combat.ai.automatic": "AI",
   "game.combat.ai.controllerFor": "Controller for {{name}}",
   "game.combat.ai.controls": "Party control and combat styles",

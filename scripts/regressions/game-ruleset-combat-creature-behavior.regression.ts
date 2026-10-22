@@ -520,6 +520,25 @@ try {
     assert.equal(brute.tactics?.adjective, "reckless", "its data's temperament no longer wins");
   }
 
+  // ── Keeping its ground (combat AI T4): no further than its territory, unless shot at from afar ──
+  {
+    const guard = (behavior: Record<string, unknown>, harmed?: boolean) => {
+      const { encounter, state } = fight({
+        golem: { side: "enemy", block: block([smash], { behavior }), at: { x: 3, y: 3 } },
+        hero: { side: "party", block: block([bolt]), at: { x: 12, y: 3 } },
+      });
+      if (harmed) rulesetCombatant(encounter, "golem")!.harmedBy = "hero";
+      state.rulesetFight = { encounter, events: [], eventSeq: 0, controllers: { hero: "manual" }, bosses: [] } as never;
+      syncRulesetCombatants(definition, state);
+      state.stage = rulesetDirectorStage(state);
+      assert.ok(commandRulesetCombatDirector(definition, state, { type: "continue" }).ok);
+      return rulesetCombatant(state.rulesetFight!.encounter, "golem")!.x!;
+    };
+    assert.ok(guard({ temperament: "territorial", territory: 2 }) <= 5, "it stays on its ground");
+    assert.ok(guard({ temperament: "patient" }) > 5, "one that is not walks on");
+    assert.ok(guard({ temperament: "territorial", territory: 2 }, true) > 5, "shot at from afar, it gives chase");
+  }
+
   // ── Its temperament and role, unless the Game Master gave one ──
   {
     const scene = () =>
@@ -793,6 +812,15 @@ try {
     const lofty = fiveE((doc) => (lurkerEntry(doc).behavior = { temperament: "arrogant" }));
     assert.equal(getCapabilityPackageInstallIssue(manifest(726) as never, lofty), proud);
     assert.notEqual(getCapabilityPackageInstallIssue(manifest(727) as never, lofty), proud);
+    const ground =
+      'A ruleset with a territorial creature (a behavior whose temperament is "territorial", or with a territory) requires schemaVersion 2 and capabilityApi 1.728 or newer';
+    const keeps = fiveE((doc) => (lurkerEntry(doc).behavior = { temperament: "territorial", territory: 3 }));
+    assert.equal(getCapabilityPackageInstallIssue(manifest(727) as never, keeps), ground);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(728) as never, keeps), ground);
+    refused(
+      fiveE((doc) => (lurkerEntry(doc).behavior = { territory: 0 })),
+      /territory/,
+    );
     const grows = fiveE((doc) => (lurkerEntry(doc).behavior = { shifts: [{ on: "ally-down", to: "arrogant" }] }));
     assert.equal(getCapabilityPackageInstallIssue(manifest(726) as never, grows), proud);
     refused(
@@ -814,7 +842,7 @@ try {
   }
 
   console.log(
-    "Combat behavior: merged from the ruleset, the type and the creature; its temperament and role; casters, attackers and a pack's prey first; its opener once; an ambusher keeps still and springs; roles read off what it does; bodyguards stay by their charge; a leader rallies; a temperament turns once; a proud legend flies off; refused and gated at 1.710, 1.723, 1.724, 1.725, 1.726 and 1.727.",
+    "Combat behavior: merged from the ruleset, the type and the creature; its temperament and role; casters, attackers and a pack's prey first; its opener once; an ambusher keeps still and springs; roles read off what it does; bodyguards stay by their charge; a leader rallies; a temperament turns once; a proud legend flies off; a territorial one keeps its ground; refused and gated at 1.710, 1.723, 1.724, 1.725, 1.726, 1.727 and 1.728.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

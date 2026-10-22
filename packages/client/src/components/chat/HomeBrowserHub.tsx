@@ -942,7 +942,7 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
   const achievementsEnabled = useUIStore((state) => state.achievementsEnabled);
   const showHomeBrowserAddressBar = useUIStore((state) => state.showHomeBrowserAddressBar);
   // The phone shell's own signal, not a width breakpoint: a landscape phone is wider than `sm`
-  // but still gets the compact chrome, so the URL bar and the bookmark strip stay desktop-only.
+  // but still gets compact tabs, with the URL bar and bookmark strip kept desktop-only.
   const mobileShell = useMatchMedia(MOBILE_SHELL_MEDIA_QUERY);
   const browserPackages = useMemo(() => selectHomeBrowserPackages(installed.data), [installed.data]);
   const agentWidgetGroups = useMemo(() => {
@@ -1646,7 +1646,10 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
               </button>
             ) : null}
             <div
-              className="flex min-w-0 flex-1 items-end gap-0.5 overflow-hidden sm:gap-1 sm:overflow-x-auto"
+              className={cn(
+                "flex min-w-0 flex-1 items-end gap-0.5 overflow-x-auto overflow-y-hidden",
+                !mobileShell && "sm:gap-1",
+              )}
               role="tablist"
               aria-label={t("home.browser.tabsLabel")}
               data-component="HomeBrowserHub.TabList"
@@ -1660,15 +1663,16 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
                 aria-selected={activeTab === "home"}
                 onClick={() => selectTab("home")}
                 className={cn(
-                  "flex min-h-9 min-w-0 items-center justify-center rounded-t-lg border border-b-0 text-[0.65rem] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[oklch(0.79_0.16_205)] sm:min-w-[6.5rem] sm:w-auto sm:flex-none sm:gap-1.5 sm:px-3 sm:text-xs",
-                  activeTab === "home" ? "flex-1 gap-1 px-2" : "w-9 flex-none gap-0 px-0",
+                  "flex min-h-9 min-w-0 items-center justify-center rounded-t-lg border border-b-0 text-[0.65rem] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[oklch(0.79_0.16_205)]",
+                  !mobileShell && "sm:min-w-[6.5rem] sm:w-auto sm:flex-none sm:gap-1.5 sm:px-3 sm:text-xs",
+                  activeTab === "home" ? "min-w-[6.5rem] flex-1 gap-1 px-2" : "w-9 flex-none gap-0 px-0",
                   activeTab === "home"
                     ? "border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]"
                     : "border-transparent text-[var(--muted-foreground)] hover:bg-[var(--accent)]",
                 )}
               >
                 <img src="/home/tab-icons/home.png" alt="" className="h-[1.125rem] w-[1.125rem] object-contain" />
-                <span className={cn("min-w-0 truncate", activeTab === "home" ? "block" : "hidden sm:block")}>
+                <span className={cn("min-w-0 truncate", activeTab === "home" || !mobileShell ? "block" : "hidden")}>
                   {t("home.browser.homeTab")}
                 </span>
               </button>
@@ -1681,8 +1685,9 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
                 aria-selected={activeTab === "professor"}
                 onClick={openProfessor}
                 className={cn(
-                  "flex min-h-9 min-w-0 items-center justify-center rounded-t-lg border border-b-0 text-[0.65rem] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--marinara-chat-chrome-focus-ring)] sm:min-w-[6.5rem] sm:w-auto sm:flex-none sm:gap-1.5 sm:px-3 sm:text-xs",
-                  activeTab === "professor" ? "flex-1 gap-1 px-2" : "w-9 flex-none gap-0 px-0",
+                  "flex min-h-9 min-w-0 items-center justify-center rounded-t-lg border border-b-0 text-[0.65rem] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--marinara-chat-chrome-focus-ring)]",
+                  !mobileShell && "sm:min-w-[6.5rem] sm:w-auto sm:flex-none sm:gap-1.5 sm:px-3 sm:text-xs",
+                  activeTab === "professor" ? "min-w-[6.5rem] flex-1 gap-1 px-2" : "w-9 flex-none gap-0 px-0",
                   activeTab === "professor"
                     ? "border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]"
                     : "border-transparent text-[var(--muted-foreground)] hover:bg-[var(--accent)]",
@@ -1696,7 +1701,9 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
                   alt=""
                   className="h-4 w-4 rounded-sm object-cover"
                 />
-                <span className={cn("min-w-0 truncate", activeTab === "professor" ? "block" : "hidden sm:block")}>
+                <span
+                  className={cn("min-w-0 truncate", activeTab === "professor" || !mobileShell ? "block" : "hidden")}
+                >
                   {t("home.browser.professorTab")}
                 </span>
               </button>
@@ -1717,15 +1724,16 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
                     aria-selected={tabActive}
                     onClick={() => selectTab(item.id)}
                     className={cn(
-                      "relative flex min-h-9 min-w-0 items-center justify-center rounded-t-lg border border-b-0 text-[0.65rem] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--marinara-chat-chrome-focus-ring)] sm:min-w-[6.5rem] sm:w-auto sm:flex-none sm:gap-1.5 sm:px-3 sm:text-xs",
-                      tabActive ? "flex-1 gap-1 px-2" : "w-9 flex-none gap-0 px-0",
+                      "relative flex min-h-9 min-w-0 items-center justify-center rounded-t-lg border border-b-0 text-[0.65rem] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--marinara-chat-chrome-focus-ring)]",
+                      !mobileShell && "sm:min-w-[6.5rem] sm:w-auto sm:flex-none sm:gap-1.5 sm:px-3 sm:text-xs",
+                      tabActive ? "min-w-[6.5rem] flex-1 gap-1 px-2" : "w-9 flex-none gap-0 px-0",
                       tabActive
                         ? "border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]"
                         : "border-transparent text-[var(--muted-foreground)] hover:bg-[var(--accent)]",
                     )}
                   >
                     <BrowserPackageTabIcon packageId={item.id} version={item.version} iconPaths={tab?.iconPaths} />
-                    <span className={cn("min-w-0 truncate", tabActive ? "block" : "hidden sm:block")}>
+                    <span className={cn("min-w-0 truncate", tabActive || !mobileShell ? "block" : "hidden")}>
                       {tab?.label ?? display.name}
                     </span>
                     {hasUnreadRefresh ? (

@@ -983,7 +983,10 @@ interface UIState {
   messagesPerPage: number;
   /** Bold quoted dialogue in chat messages; color highlighting can still remain when this is off */
   boldDialogue: boolean;
-  /** When true, character names and aliases are colored in chat prose using the character's nameColor. */
+  /**
+   * Retired global switch for inline name colors, now a per-chat setting (chat metadata `colorInlineNames`).
+   * Read-only: a chat that never set its own value falls back to this one.
+   */
   colorInlineNames: boolean;
   /** When true, inline name coloring uses the first solid color from gradients instead of rendering the gradient. */
   disableInlineNameGradients: boolean;
@@ -1403,7 +1406,6 @@ interface UIState {
   setIncludePrivateNotesInExports: (v: boolean) => void;
   setMessagesPerPage: (n: number) => void;
   setBoldDialogue: (v: boolean) => void;
-  setColorInlineNames: (v: boolean) => void;
   setDisableInlineNameGradients: (v: boolean) => void;
   setQuoteFormat: (v: QuoteFormat) => void;
   setConvertLatexSymbols: (v: boolean) => void;
@@ -3149,7 +3151,6 @@ export const useUIStore = create<UIState>()(
         setIncludePrivateNotesInExports: (v) => set({ includePrivateNotesInExports: v }),
         setMessagesPerPage: (n) => set({ messagesPerPage: n }),
         setBoldDialogue: (v) => set({ boldDialogue: v }),
-        setColorInlineNames: (v) => set({ colorInlineNames: v }),
         setDisableInlineNameGradients: (v) => set({ disableInlineNameGradients: v }),
         setQuoteFormat: (v) => set({ quoteFormat: normalizeQuoteFormat(v) }),
         setConvertLatexSymbols: (v) => set({ convertLatexSymbols: v }),

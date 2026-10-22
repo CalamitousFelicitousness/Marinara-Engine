@@ -42,12 +42,8 @@ import { toast } from "sonner";
 import { cn } from "../../lib/utils";
 import { scopeChatMessageCss } from "../../lib/chat-message-css";
 import { handleRemoteImageClick, useRemoteImagePolicy } from "../../lib/remote-image-policy";
-import {
-  containsChatHtml,
-  decodeEncodedChatHtmlTags,
-  extractChatStyleBlocks,
-  sanitizeChatHtml,
-} from "../../lib/chat-html";
+import { HTML_TAG_RE, decodeEncodedChatHtmlTags, extractChatStyleBlocks, sanitizeChatHtml } from "../../lib/chat-html";
+import { protectMarkdownCode } from "../../lib/markdown-code";
 import {
   countLorebookEntries,
   hasLorebookEntries,
@@ -3928,10 +3924,12 @@ function DefSection({ title, content, allowHtml = false }: { title: string; cont
   const htmlScopeClass = `mari-bot-notes-${sectionId.replace(/[^a-zA-Z0-9_-]/g, "") || "content"}`;
   const remoteImages = useRemoteImagePolicy();
   const renderedHtml = useMemo(() => {
-    if (!allowHtml || !containsChatHtml(content)) return null;
-    const decoded = decodeEncodedChatHtmlTags(content);
+    if (!allowHtml) return null;
+    const code = protectMarkdownCode(content);
+    const decoded = decodeEncodedChatHtmlTags(code.text);
+    if (!HTML_TAG_RE.test(decoded)) return null;
     const { html, css } = extractChatStyleBlocks(decoded);
-    const clean = sanitizeChatHtml(html, { allowStyle: true, allowLinks: false, remoteImages });
+    const clean = sanitizeChatHtml(code.restoreHtml(html), { allowStyle: true, allowLinks: false, remoteImages });
     const scopedCss = scopeChatMessageCss(css, `.${htmlScopeClass}`, { remoteUrls: remoteImages.loadAll });
     return scopedCss ? `<style>${scopedCss}</style>${clean}` : clean;
   }, [allowHtml, content, htmlScopeClass, remoteImages]);

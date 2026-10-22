@@ -14445,6 +14445,9 @@ test("Downloaded cards use Marinara destination and lorebook choices", async ({ 
           'Readable <strong>author note</strong> <a href="https://example.com" target="_blank">external link</a>',
           "<script>document.body.dataset.noteScript = 'executed'</script>",
           "</div>",
+          'Literal `<font color="red">` and `&lt;font color="blue"&gt;` stay code.',
+          '\n```html\n<font color="green">\n  literal line\n```\n',
+          '<span class="literal-code-tail">Following text</span>',
         ].join(""),
         character_book: {
           name: `${cardName} Lore`,
@@ -14484,6 +14487,15 @@ test("Downloaded cards use Marinara destination and lorebook choices", async ({ 
   const authorNotes = library.locator("[data-bot-browser-rich-text]");
   await expect(authorNotes.getByText(/Readable author note external link/u)).toBeVisible();
   await expect(authorNotes.locator("strong")).toHaveText("author note");
+  await expect(authorNotes.locator(".mari-md-inline-code")).toHaveText([
+    '<font color="red">',
+    '&lt;font color="blue"&gt;',
+  ]);
+  expect(await authorNotes.locator("pre code").textContent()).toBe('<font color="green">\n  literal line');
+  await expect(authorNotes.locator("font, code img, code style")).toHaveCount(0);
+  expect(await authorNotes.locator(".literal-code-tail").evaluate((element) => getComputedStyle(element).color)).toBe(
+    await authorNotes.evaluate((element) => getComputedStyle(element).color),
+  );
   await expect(authorNotes.locator("script")).toHaveCount(0);
   await expect(authorNotes.locator(".formatted-note")).not.toHaveAttribute("onclick");
   const inertExternalLink = authorNotes.locator("a", { hasText: "external link" });

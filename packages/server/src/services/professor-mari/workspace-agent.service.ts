@@ -2448,13 +2448,14 @@ function replyOwnsUpToDryRun(text: string): boolean {
     /\b(?:no|nothing)\s+(?:\w+\s+){0,3}?(?:was|were|is|has been|have been)\s+\w+|\bnothing\s+(?:saved|applied|changed)\b|\bnot (?:been |yet )?(?:saved|applied)\b|\b(?:was|were|is|has|have)\s+not\s+(?:been\s+)?\w+|\b\w+n't\s+(?:been\s+)?\w+/giu;
   if (!normalized.match(wouldPhrase) && !normalized.match(denial)) return false;
   const rest = normalized.replace(wouldPhrase, " ").replace(denial, " ");
-  // A sentence saying the record now holds the value claims it, with "now" or "already" on either side of
-  // the verb ("now reflects", "has 1745 already"). A bare "is now" claims it too, unless it hands the call
-  // back ("is now up to you") or names a waiting state ("is now ready", "is now pending your approval"):
-  // those describe the preview, not a saved value.
+  // A sentence saying the record now holds the value claims it. Once the denial is stripped, any "already"
+  // left claims a finished state, whatever its verb ("fires on 'guild' already"), and so does "now" before a
+  // present-tense verb ("now fires", "now reflects"). A trailing "now" counts only after a state verb, since
+  // "apply it now" offers the save rather than claiming it. A bare "is now" claims it too, unless it hands
+  // the call back ("is now up to you") or names a waiting state ("is now ready", "is now pending").
   const stateVerb = "(?:reflects|shows|says|reads|has|holds|includes|contains|matches|uses)";
   const stateClaim = new RegExp(
-    String.raw`\b(?:now|already)\s+(?:correctly\s+)?${stateVerb}\b|\b${stateVerb}\b[^.;!?\n]{0,40}?\b(?:now|already)\b|\b(?:is|are)\s+now\s+(?!up to\b|yours?\b|ready\b|waiting\b|pending\b|awaiting\b)`,
+    String.raw`\balready\b|\bnow\s+(?:correctly\s+)?(?!is\b|this\b|its\b|was\b|has\s+not\b)[a-z]+s\b|\b${stateVerb}\b[^.;!?\n]{0,40}?\bnow\b|\b(?:is|are)\s+now\s+(?!up to\b|yours?\b|ready\b|waiting\b|pending\b|awaiting\b)`,
     "iu",
   );
   return (

@@ -88,6 +88,9 @@ for (const claim of [
   "Nothing else was touched; the description is now 1745.",
   "Nothing was saved; the card has 1745 now.",
   "Nothing was saved; the card has 1745 already.",
+  // No verb list decides these: "already" claims a finished state, and "now" before any present tense.
+  "Nothing was saved; the entry fires on 'guild' already.",
+  "Nothing was saved; the entry now triggers on 'guild'.",
 ]) {
   assert.equal(auditWorkspaceCompletionClaim(final(claim), scope).issue, "dry_run", claim);
 }
@@ -95,6 +98,8 @@ for (const claim of [
 for (const handBack of [
   "Nothing was saved; the preview is now ready.",
   "Nothing was saved; the change is now pending your approval.",
+  // Offering the save now is not claiming it.
+  "Nothing was saved. I can apply it now if you'd like.",
 ]) {
   assert.notEqual(auditWorkspaceCompletionClaim(final(handBack), scope).issue, "dry_run", handBack);
 }

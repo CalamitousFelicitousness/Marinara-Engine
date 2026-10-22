@@ -118,6 +118,7 @@ import {
 import { useConnections } from "../../hooks/use-connections";
 import { useAgentConfigs } from "../../hooks/use-agents";
 import {
+  capabilityPackageKeys,
   rulesetCatalogQuery,
   selectGameExperiencePackages,
   useCapabilityClientModuleState,
@@ -1652,6 +1653,9 @@ import { chatAvatarParticipants } from "../../features/avatars/stage/avatar-stag
 import { useChatAvatarAgentIds } from "../../features/avatars/stage/use-chat-avatar-agents";
 
 /** Typewriter component for the intro screen — reveals text character-by-character. */
+/** Empty "New Game" chats about to be dropped because the player left them, by chat id. */
+const emptySetupChatDrops = new Map<string, ReturnType<typeof setTimeout>>();
+
 function IntroTypewriter({ text, onComplete }: { text: string; onComplete?: () => void }) {
   const [visible, setVisible] = useState(0);
   const endRef = useRef<HTMLSpanElement>(null);
@@ -8760,8 +8764,17 @@ function GameSurfaceComponent({
    *  then anybody who has left the party but still carries something. */
   const inventoryBags = useMemo(() => {
     const player = partyMembers.find((member) => member.id.startsWith("persona:"));
+    // A ruleset game with no persona plays its first character card as the player, as the server
+    // and the fight do, so the player's own bag is that character's and is named after them rather
+    // than standing beside their bag as a second one called "Player".
+    const firstCardName = (() => {
+      if (gameRuleset.status !== "ok" || player?.id !== "persona:default") return undefined;
+      const first = (Array.isArray(chatMeta.gameCharacterCards) ? chatMeta.gameCharacterCards : [])[0] as
+        { name?: unknown } | undefined;
+      return typeof first?.name === "string" && first.name.trim() ? first.name.trim() : undefined;
+    })();
     const bags: Array<{ holder?: string; name: string }> = [
-      { name: player?.name ?? localizeUi("ui.game.gameinventory.you") },
+      { name: firstCardName ?? player?.name ?? localizeUi("ui.game.gameinventory.you") },
     ];
     const seen = new Set<string>([""]);
     const addBag = (name: string) => {
@@ -8770,10 +8783,12 @@ function GameSurfaceComponent({
       seen.add(key);
       bags.push({ holder: name, name });
     };
-    for (const member of partyMembers) if (!member.id.startsWith("persona:")) addBag(member.name);
+    const playsAs = firstCardName ? gameInventoryBagKey(firstCardName) : "";
+    for (const member of partyMembers)
+      if (!member.id.startsWith("persona:") && gameInventoryBagKey(member.name) !== playsAs) addBag(member.name);
     for (const stack of inventoryItems) if (stack.holder) addBag(stack.holder);
     return bags;
-  }, [partyMembers, inventoryItems, localizeUi]);
+  }, [partyMembers, inventoryItems, localizeUi, gameRuleset.status, chatMeta.gameCharacterCards]);
 
   const combatAvatarCandidates = useMemo(() => {
     const candidatesByName = new Map<string, GamePartyMemberInfo>();
@@ -9282,6 +9297,17 @@ function GameSurfaceComponent({
   // presentation AND the ruleset says what one cell of one is worth. The server still decides: it
   // draws no board for a ruleset with no `distance`, and the screen follows the view it sends.
   const rulesetFightPositioned = !!rulesetFightDefinition?.combat?.distance && effectiveCombatStyle === "tactical";
+  // A directed fight in a game that pinned a ruleset waits for those rules: the server keeps the
+  // style a fight opened with, so opening it while the ruleset is still loading, or missing here,
+  // would quietly fight the whole battle by Marinara's own rules. A missing ruleset says so, and
+  // fighting without it is the player's choice, for this one fight.
+  const [plainFightChosen, setPlainFightChosen] = useState<string | null>(null);
+  const fightKey = activeChatId && combatStartMessageId ? `${activeChatId}:${combatStartMessageId}` : null;
+  const fightWaitsOnRules =
+    !!combatSetupConfig?.combatDirector &&
+    (gameRuleset.status === "loading" || (gameRuleset.status === "unavailable" && plainFightChosen !== fightKey))
+      ? gameRuleset.status
+      : null;
 
   // The catalogs a bridged battle reads are fetched as soon as the game is open, so that starting a
   // battle finds them in the cache and seeds the party in the same tick a game without a ruleset
@@ -11983,6 +12009,42 @@ function GameSurfaceComponent({
   );
   const setupWizardDismissed = dismissedSetupWizardChatId === activeChatId;
   const canAutoDeleteEmptySetupChat = needsCreation && !isMessagesLoading && messages.length === 0;
+  // A "New Game" chat the player walks away from before any game was made in it is dropped, as
+  // closing the wizard already drops it, so leaving setup for another chat or page leaves no empty
+  // chat behind. The decision is the one the last commit saw for that chat; the drop waits a tick
+  // so a remount of the same chat (React's double effects in development) takes it back.
+  const leaveDropsChat = useRef<string | null>(null);
+  // Why the last Start Game did not finish, kept on screen over the wizard until the next try:
+  // the game is already made by then, and a toast that fades leaves a player looking at a wizard
+  // that seems to have done nothing.
+  const [setupFailure, setSetupFailure] = useState<{ chatId: string; message: string } | null>(null);
+  useEffect(() => {
+    leaveDropsChat.current =
+      canAutoDeleteEmptySetupChat && !createGame.isPending && !gameSetup.isPending ? activeChatId : null;
+  });
+  useEffect(() => {
+    const chatId = activeChatId;
+    const waiting = emptySetupChatDrops.get(chatId);
+    if (waiting) {
+      clearTimeout(waiting);
+      emptySetupChatDrops.delete(chatId);
+    }
+    return () => {
+      if (leaveDropsChat.current !== chatId) return;
+      emptySetupChatDrops.set(
+        chatId,
+        setTimeout(() => {
+          emptySetupChatDrops.delete(chatId);
+          if (useChatStore.getState().activeChatId === chatId) return;
+          // Without force: the server refuses a chat that holds a game after all.
+          void api
+            .delete(`/chats/${chatId}`)
+            .then(() => queryClient.invalidateQueries({ queryKey: chatKeys.list() }))
+            .catch(() => undefined);
+        }, 0),
+      );
+    };
+  }, [activeChatId, queryClient]);
   const shouldShowSetupWizard =
     isSetupActive || (!setupWizardDismissed && (needsCreation || sessionStatus === "setup"));
 
@@ -12062,6 +12124,7 @@ function GameSurfaceComponent({
               };
               const runSetup = (chatId: string) => {
                 if (!queueSetupMapPlan(chatId)) return;
+                setSetupFailure(null);
                 gameSetup.mutate(
                   {
                     chatId,
@@ -12076,7 +12139,12 @@ function GameSurfaceComponent({
                     },
                     onError: (error) => {
                       if (activeChatIdRef.current !== chatId) return;
-                      if (!handleJsonRepairError(error)) clearPendingSetupMapPlan(chatId);
+                      if (handleJsonRepairError(error)) return;
+                      clearPendingSetupMapPlan(chatId);
+                      setSetupFailure({
+                        chatId,
+                        message: error instanceof Error && error.message.trim() ? error.message.trim() : "",
+                      });
                     },
                   },
                 );
@@ -12158,6 +12226,26 @@ function GameSurfaceComponent({
             characters={libraryCharacters}
             initialPartyCharacterIds={initialSetupPartyCharacterIds}
           />
+          {setupFailure?.chatId === activeChatId && !gameSetup.isPending && (
+            <div
+              role="alert"
+              className="fixed left-1/2 top-3 z-[10002] flex w-[min(36rem,calc(100vw-2rem))] -translate-x-1/2 items-start gap-3 rounded-lg border border-red-400/40 bg-red-950/90 px-4 py-3 text-sm text-red-100 shadow-xl backdrop-blur"
+            >
+              <p className="flex-1">
+                {localizeUi("ui.game.gamesurfacecomponent.setupDidNotFinish", {
+                  reason: setupFailure.message || localizeUi("ui.game.gamesurfacecomponent.setupNoReason"),
+                })}
+              </p>
+              <button
+                type="button"
+                onClick={() => setSetupFailure(null)}
+                aria-label={localizeUi("ui.game.gamesurfacecomponent.setupFailureDismiss")}
+                className="rounded p-0.5 text-red-200 hover:bg-red-500/20"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          )}
           {activePendingSharedWorldSetupApply ? (
             <CapabilityElement
               key={`${activePendingSharedWorldSetupApply.chatId}:${activePendingSharedWorldSetupApply.attempt}`}
@@ -13372,7 +13460,44 @@ function GameSurfaceComponent({
                             </div>
                           }
                         >
-                          {combatSetupConfig?.combatDirector && combatStartMessageId ? (
+                          {combatSetupConfig?.combatDirector && combatStartMessageId && fightWaitsOnRules ? (
+                            <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center text-sm text-white/80">
+                              {fightWaitsOnRules === "loading" ? (
+                                <p>{localizeUi("ui.game.gamesurfacecomponent.combatRulesLoading")}</p>
+                              ) : (
+                                <>
+                                  <p className="max-w-md">
+                                    {localizeUi("ui.game.gamesurfacecomponent.combatRulesUnavailable", {
+                                      name:
+                                        gameRuleset.status === "unavailable" && gameRuleset.ref
+                                          ? `${gameRuleset.ref.id} v${gameRuleset.ref.version}`
+                                          : localizeUi("ui.game.gamesurfacecomponent.combatRulesUnnamed"),
+                                    })}
+                                  </p>
+                                  <div className="flex flex-wrap justify-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        void queryClient.invalidateQueries({
+                                          queryKey: capabilityPackageKeys.rulesets(),
+                                        })
+                                      }
+                                      className="rounded-lg border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-semibold hover:bg-white/20"
+                                    >
+                                      {localizeUi("ui.game.gamesurfacecomponent.combatRulesRetry")}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setPlainFightChosen(fightKey)}
+                                      className="rounded-lg border border-amber-300/30 bg-amber-500/15 px-3 py-1.5 text-xs font-semibold text-amber-100 hover:bg-amber-500/25"
+                                    >
+                                      {localizeUi("ui.game.gamesurfacecomponent.combatRulesWithout")}
+                                    </button>
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          ) : combatSetupConfig?.combatDirector && combatStartMessageId ? (
                             <DirectedCombatUI
                               key={`${activeChatId}:${combatStartMessageId}`}
                               chatId={activeChatId}

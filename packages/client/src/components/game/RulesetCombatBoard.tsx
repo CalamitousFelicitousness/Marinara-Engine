@@ -605,23 +605,19 @@ export function RulesetCombatBoard({
                   {art?.ice && (
                     <span className="pointer-events-none absolute inset-0" style={boardSliceStyle(art.ice)} />
                   )}
-                  {/* A lasting area (1.172): tinted, with its name in the tooltip of the square. */}
-                  {cell.zones &&
-                    (art?.zones.length ? (
-                      art.zones.map((slice, n) => (
-                        <span
-                          key={n}
-                          className="pointer-events-none absolute inset-0"
-                          style={boardSliceStyle(slice)}
-                          title={cell.zones!.join(", ")}
-                        />
-                      ))
-                    ) : (
+                  {/* A lasting area (1.172): the pack's art for it, under a clear tint that is always drawn,
+                      because a pack's area art alone can read as no more than a shadow on the ground. */}
+                  {cell.zones && (
+                    <>
+                      {art?.zones.map((slice, n) => (
+                        <span key={n} className="pointer-events-none absolute inset-0" style={boardSliceStyle(slice)} />
+                      ))}
                       <span
-                        className="pointer-events-none absolute inset-0 bg-[var(--accent)]/20 ring-1 ring-inset ring-[var(--accent)]/40"
+                        className="pointer-events-none absolute inset-0 bg-sky-300/30 ring-1 ring-inset ring-sky-200/70"
                         title={cell.zones.join(", ")}
                       />
-                    ))}
+                    </>
+                  )}
                   {/* A wall's section (1.200): how much it has left, and a ring while it may be struck. */}
                   {cell.section && cell.section.health > 0 && (
                     <span className="pointer-events-none absolute bottom-0 left-0 bg-black/60 px-[2px] text-[0.5rem] font-bold leading-tight tabular-nums text-white">

@@ -126,8 +126,8 @@ assert.equal(resolveCombatStyle("duel"), "classic");
   unregister();
   assert.deepEqual(
     styleOwnedFightFromSnapshot({ party: [], combatStyle: "duel", startMessageId: "m1" }),
-    { style: "classic", startMessageId: "m1" },
-    "a style no longer registered plays as classic",
+    { style: null, startMessageId: "m1" },
+    "a style no longer registered leaves a stale save",
   );
 }
 
@@ -137,6 +137,14 @@ assert.match(surface, /combatStyleSurface\.render\(combatSurfaceContext\)/);
 assert.match(surface, /combatStyleSurface\.ownsTopChrome/);
 assert.match(surface, /offerCombatStart\(\s*combatStyleSurface,/);
 assert.match(surface, /styleOwnedFightFromSnapshot\(snapshot\)/);
+// The once-per-message latch is released wherever a fight ends or a start is abandoned.
+assert.equal(
+  surface.match(/combatStyleStartedMessageIdRef\.current = null;/g)?.length,
+  6,
+  "released by the five abandon paths and the end of a fight",
+);
+// The server enters a style-owned fight only once its snapshot is saved.
+assert.match(surface, /gameCombatState: snapshot \}\)\s*\.then\(\(\) => transitionGameState\.mutate/);
 assert.match(surface, /combatStyleSurface\.isActive\?\.\(/);
 assert.doesNotMatch(surface, /<TacticalCombatUI\b/, "the tactical UI is mounted by its style, not the surface");
 assert.doesNotMatch(surface, /<GameCombatUI\b/, "the classic UI is mounted by its style, not the surface");

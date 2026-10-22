@@ -211,14 +211,16 @@ export function offerCombatStart(
 
 /**
  * The pin and anchor of a fight a registered style took over, from a saved combat snapshot: such a
- * fight saves no party, only those two. Null for any other snapshot, which restores as before.
+ * fight saves no party, only those two. `style` is null when this client no longer has that style,
+ * so the save is stale. Null for any other snapshot, which restores as before.
  */
 export function styleOwnedFightFromSnapshot(
   snapshot:
     { party?: unknown[] | null; combatStyle?: string | null; startMessageId?: string | null } | null | undefined,
-): { style: GameCombatStyle; startMessageId: string | null } | null {
+): { style: GameCombatStyle | null; startMessageId: string | null } | null {
   if (!snapshot || snapshot.party?.length || !snapshot.combatStyle || isBuiltInCombatStyle(snapshot.combatStyle)) {
     return null;
   }
-  return { style: resolveCombatStyle(snapshot.combatStyle), startMessageId: snapshot.startMessageId ?? null };
+  const style = resolveCombatStyle(snapshot.combatStyle);
+  return { style: style === snapshot.combatStyle ? style : null, startMessageId: snapshot.startMessageId ?? null };
 }

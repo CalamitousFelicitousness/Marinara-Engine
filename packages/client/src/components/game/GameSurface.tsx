@@ -3507,6 +3507,7 @@ function GameSurfaceComponent({
     // combat, apply state, or set an error against the reset combat state.
     combatGenerationInFlightRef.current = false;
     combatGenerationRequestIdRef.current += 1;
+    combatStyleStartedMessageIdRef.current = null;
     setCombatGenerationPending(false);
     setCombatItemEffects([]);
     setCombatMechanics([]);
@@ -4805,6 +4806,7 @@ function GameSurfaceComponent({
     // combat, apply state, or set an error against the reset combat state.
     combatGenerationInFlightRef.current = false;
     combatGenerationRequestIdRef.current += 1;
+    combatStyleStartedMessageIdRef.current = null;
     setCombatGenerationPending(false);
     setCombatItemEffects([]);
     setCombatMechanics([]);
@@ -4827,7 +4829,8 @@ function GameSurfaceComponent({
     // the rest itself.
     const styleOwnedFight = styleOwnedFightFromSnapshot(snapshot);
     if (styleOwnedFight) {
-      if (chatMeta.gameActiveState !== "combat") {
+      // A style this client can no longer play leaves nothing to draw, so its save is stale.
+      if (styleOwnedFight.style === null || chatMeta.gameActiveState !== "combat") {
         clearCombatSnapshot(activeChatId);
         return;
       }
@@ -6994,6 +6997,7 @@ function GameSurfaceComponent({
     // combat, apply state, or set an error against the reset combat state.
     combatGenerationInFlightRef.current = false;
     combatGenerationRequestIdRef.current += 1;
+    combatStyleStartedMessageIdRef.current = null;
     setCombatGenerationPending(false);
     setCombatItemEffects([]);
     setCombatMechanics([]);
@@ -9059,6 +9063,7 @@ function GameSurfaceComponent({
   useEffect(() => {
     combatGenerationInFlightRef.current = false;
     combatGenerationRequestIdRef.current += 1;
+    combatStyleStartedMessageIdRef.current = null;
     setCombatGenerationError(null);
   }, [activeChatId]);
   const combatOwnsTopChrome = combatUiActive && !!combatStyleSurface.ownsTopChrome;
@@ -9604,15 +9609,18 @@ function GameSurfaceComponent({
           startMessageId: messageId,
           combatStyle: effectiveCombatStyle,
         };
+        // The server enters combat only once the snapshot is saved, so a save that fails cannot
+        // leave a game in combat with no fight to restore.
+        const requestChatId = activeChatId;
         api
-          .patch(`/chats/${activeChatId}/metadata`, { gameCombatState: snapshot })
+          .patch(`/chats/${requestChatId}/metadata`, { gameCombatState: snapshot })
+          .then(() => transitionGameState.mutate({ chatId: requestChatId, newState: "combat" }))
           .catch((err) => console.error("[game-surface] combat snapshot persist failed", err));
         setQueuedCombatGeneration(null);
         setPreparedCombatState(null);
         setCombatPinnedStyle(effectiveCombatStyle);
         setCombatStartMessageId(messageId);
         useGameModeStore.getState().setGameState("combat");
-        transitionGameState.mutate({ chatId: activeChatId, newState: "combat" });
         return;
       }
       const debugMode = useUIStore.getState().debugMode;
@@ -11447,6 +11455,7 @@ function GameSurfaceComponent({
     // combat, apply state, or set an error against the reset combat state.
     combatGenerationInFlightRef.current = false;
     combatGenerationRequestIdRef.current += 1;
+    combatStyleStartedMessageIdRef.current = null;
     setCombatGenerationPending(false);
     setCombatItemEffects([]);
     setCombatMechanics([]);
@@ -11486,6 +11495,8 @@ function GameSurfaceComponent({
     (outcome: "victory" | "defeat" | "flee", summary: CombatSummary) => {
       // The message that started the fight names it, so a win reported twice drops its loot once.
       const fightKey = combatStartMessageId;
+      // A fight a registered style took over has ended, so its message may start one again.
+      combatStyleStartedMessageIdRef.current = null;
       setCombatParty(null);
       setCombatEnemies(null);
       setCombatSceneMeta(null);

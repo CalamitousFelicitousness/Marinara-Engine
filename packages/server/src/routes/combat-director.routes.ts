@@ -65,6 +65,7 @@ import {
   commandRulesetCombatDirector,
   createRulesetFight,
   directedRulesetView,
+  releaseRulesetHeldGround,
   rulesetDirectorStage,
   rulesetFightLiveStates,
   syncRulesetCombatants,
@@ -76,6 +77,10 @@ import { loadRulesetCatalogEntries } from "../services/game/ruleset-catalog.serv
 import { resolveTacticalStartPreferences } from "../services/game/tactical-battlefield.service.js";
 import { gameBattlefieldHere } from "../services/game/made-battlefield.service.js";
 import { checkStoryItemUse, keepStorySpendWhile, storyUseOfOption } from "../services/game/story-item-uses.service.js";
+import { heldGroundReleaseDueInFight, keepHeldGroundReleased } from "../services/game/story-held-ground.service.js";
+import { gameNoncombatants, gamePartyLevel } from "../services/game/experience-companions.service.js";
+import { latestStoryFightAdjusts, latestStoryHeldGround } from "../services/game/story-fight.service.js";
+import { buildPartyNpcId } from "../services/generation/game-party-utils.js";
 import { logger } from "../lib/logger.js";
 import { resolveVisibleGameStateAnchor } from "./generate/generate-route-utils.js";
 
@@ -767,6 +772,12 @@ export async function combatDirectorRoutes(
           setup = meta.gameSetupConfig ?? {};
         if (setup.combatDirector !== true)
           return reply.code(400).send({ error: "Directed combat is not enabled for this game." });
+        // An Experience's companions who never fight (1.360) travel with the party but are not put in its fights.
+        const noncombatants = await gameNoncombatants(app.db, input.chatId, meta);
+        if (noncombatants.size) {
+          const fighting = input.party.filter((member) => !noncombatants.has(buildPartyNpcId(member.name)));
+          if (fighting.length) input.party = fighting;
+        }
         const all = [...input.party, ...input.enemies];
         if (
           new Set(all.map((u) => u.id)).size !== all.length ||
@@ -887,6 +898,16 @@ export async function combatDirectorRoutes(
           );
           // One read of the visible game state, for both its live sheets and its time of day.
           const liveRow = (await visibleLiveRow(input.chatId)).row;
+          // How the story fight the latest reply started has its opponents (1.363), by their names.
+          // A creature changed from a party level up (1.371) reads the party's level as the Experience counts it.
+          const adjusts = await latestStoryFightAdjusts(
+            app.db,
+            input.chatId,
+            meta,
+            await gamePartyLevel(app.db, input.chatId, meta, definition),
+          );
+          // Whether death is held where it is fought (1.366): the story's Held Ground (1.323).
+          const heldGround = await latestStoryHeldGround(app.db, input.chatId, meta);
           const built = createRulesetFight({
             definition,
             seed: battlefield.seed,
@@ -903,6 +924,9 @@ export async function combatDirectorRoutes(
               ...(enemy.tier !== undefined ? { tier: enemy.tier } : {}),
               ...(enemy.proposed !== undefined ? { proposed: enemy.proposed } : {}),
               ...(enemy.tactics ? { tactics: enemy.tactics } : {}),
+              ...(adjusts.get(enemy.name.trim().toLowerCase())
+                ? { adjust: adjusts.get(enemy.name.trim().toLowerCase())! }
+                : {}),
               boss: !!enemy.boss,
             })),
             cards,
@@ -916,6 +940,7 @@ export async function combatDirectorRoutes(
             surprised: [...input.party, ...input.enemies].flatMap((one) => (one.surprised ? [one.id] : [])),
             // Who fights in its own lair (1.315).
             inLair: input.enemies.flatMap((one) => (one.inLair ? [one.id] : [])),
+            ...(heldGround ? { heldGround } : {}),
             // The scene's time of day, for the light it is fought in (1.291).
             time: liveRow?.time ?? null,
           });
@@ -956,6 +981,36 @@ export async function combatDirectorRoutes(
       return reply.code(400).send({ error: err instanceof Error ? err.message : "Invalid combat save." });
     }
   });
+  /** Held Ground let go in the step a fight just took (1.369): the story's year turns there and then,
+   *  as the hymn's last verse is sung or the Year-Wheel breaks, and the felled and the Owing come due
+   *  in the same round. The ground let go, for the caller to keep once the step is saved. */
+  const letHeldGroundGo = async (
+    chatId: string,
+    s: CombatDirectorState,
+    ruleset: RulesetDefinition | null,
+  ): Promise<string | null> => {
+    if (!ruleset) return null;
+    const release = await heldGroundReleaseDueInFight(app.db, chatId, s);
+    if (!release) return null;
+    const answered = releaseRulesetHeldGround(ruleset, s, {
+      felled: release.felled,
+      ...(release.owing ? { owing: release.owing } : {}),
+    });
+    return answered.ok ? release.id : null;
+  };
+  /** Saves the step, then keeps that it let Held Ground go, so the story turn rolls nothing twice. */
+  const saveLettingGo = async (
+    rowId: string,
+    chatId: string,
+    s: CombatDirectorState,
+    session: RulesetSession | null,
+    ruleset: RulesetDefinition | null,
+  ) => {
+    const released = await letHeldGroundGo(chatId, s, ruleset);
+    const saved = await save(rowId, chatId, s, session);
+    if (released) await keepHeldGroundReleased(app.db, chatId, released);
+    return saved;
+  };
   app.post("/command", async (req, reply) => {
     const parsed = z
       .object({
@@ -999,7 +1054,7 @@ export async function combatDirectorRoutes(
           if (w.requestedAt || state.gmCalls >= 12) {
             step({ type: "fallback" }, "fallback");
             state.requests = [...state.requests, input.requestId].slice(-256);
-            return await save(row.id, input.chatId, state, session);
+            return await saveLettingGo(row.id, input.chatId, state, session, ruleset);
           }
           w.requestedAt = Date.now();
           state.gmCalls++;
@@ -1059,10 +1114,10 @@ export async function combatDirectorRoutes(
         // What it spends is kept only while the step is saved: a save that fails takes it back.
         if (storySpend && "spend" in storySpend) {
           return await keepStorySpendWhile(app.db, input.chatId, storySpend.spend, () =>
-            save(row.id, input.chatId, state, session),
+            saveLettingGo(row.id, input.chatId, state, session, ruleset),
           );
         }
-        return await save(row.id, input.chatId, state, session);
+        return await saveLettingGo(row.id, input.chatId, state, session, ruleset);
       });
       if ("refusal" in result && result.refusal)
         return reply.code(400).send({ error: result.refusal.error, code: result.refusal.code });
@@ -1115,7 +1170,7 @@ export async function combatDirectorRoutes(
           if (!answered.ok) commandRulesetCombatDirector(ruleset, current.state, { type: "fallback" }, "fallback");
         } else commandCombatDirector(current.state, answer, source);
         current.state.requests = [...current.state.requests, input.requestId].slice(-256);
-        return await save(current.row.id, input.chatId, current.state, session);
+        return await saveLettingGo(current.row.id, input.chatId, current.state, session, ruleset);
       });
     } catch (err) {
       logger.warn(err, "Directed combat command rejected");

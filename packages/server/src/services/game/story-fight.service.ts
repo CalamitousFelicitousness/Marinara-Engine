@@ -4,19 +4,27 @@
 // ──────────────────────────────────────────────
 import {
   gameStoryFromMetadata,
+  readStoryLedger,
+  storyHeldGroundNow,
+  storyState,
   storyFightForParty,
   storyFightIn,
   storyFightRoster,
   storyIsRef,
+  storyFightAdjustAt,
+  storyFightAdjustText,
+  type StoryFightAdjustAt,
   type RulesetDefinition,
+  type RulesetHeldGround,
   type StoryFight,
+  type StoryFightOpponent,
 } from "@marinara-engine/shared";
 import type { DB } from "../../db/connection.js";
 import { logger } from "../../lib/logger.js";
 import { gameRepliesBefore } from "./game-market.service.js";
 import { loadGameWorld } from "./game-world.service.js";
 import { loadRulesetCatalogEntries } from "./ruleset-catalog.service.js";
-import { gamePartySize } from "./experience-companions.service.js";
+import { gameNoncombatants, gamePartySize } from "./experience-companions.service.js";
 
 /** The fight the Game Master's latest reply started for the story, or null: in its variant for the
  *  party's size (1.356). */
@@ -31,11 +39,48 @@ export async function latestStoryFight(
     if (!story?.fights.length) return null;
     const replies = await gameRepliesBefore(db, chatId);
     const fight = storyFightIn(story, replies.all.filter((reply) => reply.trim()).at(-1));
-    return fight ? storyFightForParty(fight, gamePartySize(meta ?? {})) : null;
+    if (!fight) return null;
+    return storyFightForParty(fight, gamePartySize(meta ?? {}, await gameNoncombatants(db, chatId, meta ?? {})));
   } catch (err) {
     logger.warn(err, "Story fight lookup failed for chat %s", chatId);
     return null;
   }
+}
+
+/** Whether death is held where the party is (1.366), as the story last recorded it: the Held Ground
+ *  (1.323) a ruleset fight started now is fought on. Null when it is not, or the game has no story. */
+export async function latestStoryHeldGround(
+  db: DB,
+  chatId: string,
+  meta: Record<string, unknown> | null | undefined,
+): Promise<RulesetHeldGround | null> {
+  try {
+    const world = await loadGameWorld(db, chatId, meta);
+    const story = gameStoryFromMetadata(meta, world);
+    if (!story?.heldGround.length) return null;
+    const replies = await gameRepliesBefore(db, chatId);
+    return storyHeldGroundNow(story, storyState(story, readStoryLedger(replies.all)));
+  } catch (err) {
+    logger.warn(err, "Story held ground lookup failed for chat %s", chatId);
+    return null;
+  }
+}
+
+/** How the story fight the latest reply started adjusts its opponents (1.363), by their names in the fight
+ *  (case aside), as a party this high meets them (1.371): what a ruleset fight builds each of them with.
+ *  Empty when there is none. */
+export async function latestStoryFightAdjusts(
+  db: DB,
+  chatId: string,
+  meta: Record<string, unknown> | null | undefined,
+  partyLevel?: number | null,
+): Promise<Map<string, StoryFightAdjustAt>> {
+  const fight = await latestStoryFight(db, chatId, meta);
+  const adjusts = new Map<string, StoryFightAdjustAt>();
+  for (const each of fight ? storyFightRoster(fight, (ref) => ref).opponents : []) {
+    if (each.adjust) adjusts.set(each.name.trim().toLowerCase(), storyFightAdjustAt(each.adjust, partyLevel));
+  }
+  return adjusts;
 }
 
 /**
@@ -46,7 +91,7 @@ export async function latestStoryFight(
 export async function storyFightOpponents(
   fight: StoryFight,
   ruleset: { definition: RulesetDefinition; packageId: string | null } | null,
-): Promise<{ opponents: Array<{ name: string; creature: string }>; refused: string[] }> {
+): Promise<{ opponents: StoryFightOpponent[]; refused: string[] }> {
   const labels = new Map<string, string>();
   if (ruleset) {
     const refs = new Set(fight.creatures.map((each) => each.creature).filter(storyIsRef));
@@ -72,13 +117,16 @@ export async function storyFightOpponents(
 
 /** The prompt line that tells the blueprint writer who this fight is with; with no opponents (none named,
  *  or every one refused), the enemies are the writer's own to choose. */
-export function storyFightPromptText(fight: StoryFight, opponents: ReadonlyArray<{ name: string; creature: string }>) {
+export function storyFightPromptText(fight: StoryFight, opponents: ReadonlyArray<StoryFightOpponent>) {
   const header = `This fight is set by the story: "${fight.name}"${fight.forParty ? `, as set for a party of ${fight.forParty}` : ""}.${fight.note ? ` ${fight.note}` : ""}`;
   if (!opponents.length) return [header, "Choose its enemies yourself."].join("\n");
   return [
     header,
     `Its enemies are exactly these, in this order, with these names:`,
-    ...opponents.map((each) => `- ${each.name} (creature: ${each.creature})`),
+    ...opponents.map(
+      (each) =>
+        `- ${each.name} (creature: ${each.creature}${each.adjust ? `; in this fight: ${storyFightAdjustText(each.adjust)}` : ""})`,
+    ),
     "Write no other enemies.",
   ].join("\n");
 }

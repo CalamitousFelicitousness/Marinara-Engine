@@ -57,7 +57,7 @@ export type RegisteredRuleset = {
 export type RulesetRegistry = ReadonlyMap<string, RegisteredRuleset> & {
   /** The installed Experiences' ruleset overlays (1.355), by `<package id>\n<ruleset id>`. */
   overlays?: ReadonlyMap<string, { overlay: ExperienceRulesetOverlay; sha256: string }>;
-  /** The entry ids of the catalog files those overlays add to or name, by `<ruleset id>\n<version>`. */
+  /** The entry ids of the catalog files each overlay adds to or names, by `<package id>\n<ruleset id>\n<version>`. */
   overlayFileIds?: ReadonlyMap<string, { ids: ReadonlyMap<string, ReadonlySet<string>>; key: string }>;
 };
 
@@ -83,7 +83,7 @@ function withExperienceOverlay(
   if (typeof packId !== "string" || !registry.overlays?.size) return definition;
   const found = registry.overlays.get(`${packId}\n${ref.id}`);
   if (!found) return definition;
-  const files = registry.overlayFileIds?.get(`${ref.id}\n${definition.version}`);
+  const files = registry.overlayFileIds?.get(`${packId}\n${ref.id}\n${definition.version}`);
   const key = `${found.sha256}\n${ref.id}\n${definition.version}\n${JSON.stringify(ref.options)}\n${files?.key ?? ""}`;
   let merged = mergedOverlays.get(key);
   if (merged === undefined) {
@@ -369,7 +369,8 @@ export async function readRulesetRegistry(db?: DB): Promise<RulesetRegistry> {
     { overlays },
   );
   // An overlay's entries are checked against its ruleset's catalog files too, whose ids only a read
-  // of the file gives; each file is read once per hash.
+  // of the file gives; each file is read once per hash. Each overlay gets the catalogs it names, as
+  // two Experiences may overlay one ruleset.
   const overlayFileIds = new Map<string, { ids: ReadonlyMap<string, ReadonlySet<string>>; key: string }>();
   for (const [at, { overlay }] of overlays) {
     const rulesetId = at.slice(at.indexOf("\n") + 1);
@@ -378,7 +379,7 @@ export async function readRulesetRegistry(db?: DB): Promise<RulesetRegistry> {
     const named = overlayCatalogIds(overlay);
     if (!named.size) continue;
     for (const definition of [registered.definition, ...(registered.versions?.values() ?? [])]) {
-      const where = `${rulesetId}\n${definition.version}`;
+      const where = `${at}\n${definition.version}`;
       if (overlayFileIds.has(where)) continue;
       try {
         overlayFileIds.set(where, await rulesetFileCatalogIds(registered.packageId, definition, named, registry));

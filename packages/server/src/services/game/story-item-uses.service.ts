@@ -21,6 +21,7 @@ import {
   type StorySpend,
 } from "@marinara-engine/shared";
 import type { DB } from "../../db/connection.js";
+import { logger } from "../../lib/logger.js";
 import { createChatsStorage } from "../storage/chats.storage.js";
 import { gameRepliesBefore } from "./game-market.service.js";
 import { loadGameWorld } from "./game-world.service.js";
@@ -112,9 +113,20 @@ export async function keepStorySpendWhile<T>(
   try {
     return await save();
   } catch (error) {
-    await createChatsStorage(db).patchMetadata(chatId, (current) => ({
-      gameStorySpends: gameStorySpends(current).filter((each) => each.id !== spend.id),
-    }));
+    // The step's own error is the one the caller hears; a withdrawal that fails as well is said here.
+    try {
+      await createChatsStorage(db).patchMetadata(chatId, (current) => ({
+        gameStorySpends: gameStorySpends(current).filter((each) => each.id !== spend.id),
+      }));
+    } catch (withdrawal) {
+      logger.warn(
+        withdrawal,
+        "[game/story] Chat %s's spend %s (%s) could not be taken back after its step failed; it is left with the game",
+        chatId,
+        spend.id,
+        spend.label ?? spend.flag,
+      );
+    }
     throw error;
   }
 }

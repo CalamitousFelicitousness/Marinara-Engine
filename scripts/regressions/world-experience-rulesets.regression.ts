@@ -167,22 +167,27 @@ const withFiles: RulesetRegistry = Object.assign(
   ),
   {
     overlays: registry.overlays,
-    overlayFileIds: new Map([[`5e-2014\n${base.version}`, { ids: fileIds, key: "creatures:1" }]]),
+    overlayFileIds: new Map([[`held-autumn\n5e-2014\n${base.version}`, { ids: fileIds, key: "creatures:1" }]]),
   },
 );
 const filed = resolveGameRuleset({ gameRuleset: pin, gameMapPack: { packageId: "held-autumn" } }, withFiles);
 assert.ok(filed.status === "ok" && filed.definition !== game.definition, "merged against the file's ids");
+// Two Experiences overlay the same ruleset: each is judged against the ids of the catalogs it names,
+// kept by its own package, so the second's clash is not hidden behind the first's answer.
+const second = { ...overlay, creatures: [{ ...lurker, id: "barrow-cat" }] } as ExperienceRulesetOverlay;
 const clash: RulesetRegistry = Object.assign(new Map(withFiles), {
-  overlays: withFiles.overlays,
+  overlays: new Map([...registry.overlays!, ["far-shore\n5e-2014", { overlay: second, sha256: "b".repeat(64) }]]),
   overlayFileIds: new Map([
-    [`5e-2014\n${base.version}`, { ids: new Map([["creatures", new Set(["straw-man"])]]), key: "creatures:2" }],
+    [`held-autumn\n5e-2014\n${base.version}`, { ids: fileIds, key: "creatures:1" }],
+    [`far-shore\n5e-2014\n${base.version}`, { ids: fileIds, key: "creatures:1" }],
   ]),
 });
-const clashed = resolveGameRuleset({ gameRuleset: pin, gameMapPack: { packageId: "held-autumn" } }, clash);
-assert.ok(
-  clashed.status === "ok" && !clashed.definition.sheet.live.conditions.some((each) => each.id === "owed_frost_held"),
-  "an overlay that takes a file's entry is left out whole",
-);
+const heldOverlay = (packageId: string) => {
+  const each = resolveGameRuleset({ gameRuleset: pin, gameMapPack: { packageId } }, clash);
+  return each.status === "ok" && each.definition.sheet.live.conditions.some((one) => one.id === "owed_frost_held");
+};
+assert.ok(heldOverlay("held-autumn"), "the first fits");
+assert.ok(!heldOverlay("far-shore"), "the second takes a file's entry and is left out whole");
 
 // ── The manifest names them ──
 const manifest = (rulesets: unknown, minor = 355) =>

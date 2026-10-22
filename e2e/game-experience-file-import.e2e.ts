@@ -28,7 +28,7 @@ const manifest = {
   engine: { min: "2.3.0", maxExclusive: "4.0.0" },
   kind: ["experience"],
   entrypoints: {},
-  contributions: { slots: ["game-surface"], gameSurface: { setup: {} } },
+  contributions: { slots: ["game-surface"], gameSurface: { setup: { defaults: { name: "The Held Autumn" } } } },
   files: files.map((file) => ({ path: file.path, sha256: sha256(file.data), bytes: file.data.byteLength })),
   permissions: [],
   restartRequired: false,
@@ -168,6 +168,8 @@ test("an Experience file is reviewed before import: its size, what it is made of
     "aria-checked",
     "true",
   );
+  // Its setup values fill the wizard at once, though the list had not yet learned of it when it was picked.
+  await expect(wizard.getByPlaceholder("Name your adventure...")).toHaveValue("The Held Autumn");
 });
 
 test("a refused import says why in the review and keeps it open", async ({ page }, testInfo) => {

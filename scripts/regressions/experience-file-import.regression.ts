@@ -258,6 +258,26 @@ assert.throws(() => {
   reader.finish();
 }, /stops before its end/);
 
+// A path is as long in the file as the manifest lets it be: 240 characters, however many bytes each takes.
+{
+  const longest = `${"秋".repeat(235)}.json`;
+  assert.ok(capabilityPackageManifestSchema.safeParse(experience([{ path: longest, data }])).success);
+  const reader = new ExperienceFileReader();
+  const events = [
+    ...reader.push(encoder.encode(fileText(experience([{ path: longest, data }]), [{ path: longest, data }]))),
+    ...reader.finish(),
+  ];
+  assert.ok(events.some((event) => event.type === "file-end" && event.path === longest));
+  assert.throws(() => {
+    const tooLong = new ExperienceFileReader();
+    tooLong.push(
+      encoder.encode(
+        `{"format":"marinara-experience","version":1,"manifest":{},"files":{"${"秋".repeat(241)}":"QUJD"}}`,
+      ),
+    );
+  }, /too long/);
+}
+
 // ── The sanitizer, format by format: the hidden text goes, the picture or sound stays ──
 {
   const { sanitizeExperienceAsset } =

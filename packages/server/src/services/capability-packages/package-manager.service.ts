@@ -7350,10 +7350,6 @@ export const capabilityPackageManager = {
     return installed.manifest.contributions?.gameSurface?.mapPack?.music ?? null;
   },
 
-  /** An Experience's map pack files (worldgen W9e), verified: its kit, worlds and tile pack, by the
-   *  paths its manifest declares, each declared as an asset, hash-pinned in `files[]` and re-verified
-   *  against the install-time hash. Null when the package is not installed, not ready, or ships no map
-   *  pack; throws (with the reason) when one is declared but cannot be read as installed. */
   /** An Experience's GM setup values (1.372), as its manifest declares them; null when it sets none or is
    *  not ready. */
   async experienceSetupDefaults(packageId: string) {
@@ -7362,6 +7358,10 @@ export const capabilityPackageManager = {
     return installed.manifest.contributions?.gameSurface?.setup?.defaults ?? null;
   },
 
+  /** An Experience's map pack files (worldgen W9e), verified: its kit, worlds and tile pack, by the
+   *  paths its manifest declares, each declared as an asset, hash-pinned in `files[]` and re-verified
+   *  against the install-time hash. Null when the package is not installed, not ready, or ships no map
+   *  pack; throws (with the reason) when one is declared but cannot be read as installed. */
   async mapPackFiles(packageId: string): Promise<{
     version: string;
     name: string;

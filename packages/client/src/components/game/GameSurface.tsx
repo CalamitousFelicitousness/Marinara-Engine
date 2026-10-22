@@ -2382,9 +2382,11 @@ function GameSurfaceComponent({
    *  built-in HUD would flash before the surface replaces it. Once the query settles this follows the
    *  surface, so a game whose package was uninstalled gets the built-in chrome back instead of losing
    *  both. Mounting the capability element stays on `experienceSurfaceActive` — that one needs the
-   *  package to actually be there. */
+   *  package to actually be there. A data-only Experience (1.373) draws nothing, so once it is known it
+   *  owns nothing either, and Game Mode's own view and chrome play it. */
   const experienceOwnsGame =
-    experienceSurfaceActive || (gameExperienceId !== null && installedCapabilityPackagesPending);
+    (experienceSurfaceActive && experienceDrawsOwnView) ||
+    (gameExperienceId !== null && installedCapabilityPackagesPending);
   // A game made without a world may be given one from the journal (worldgen W12), written for its own
   // setting with its own connection; never one an Experience decides, nor one made as Classic Game Mode.
   const canMakeWorld =

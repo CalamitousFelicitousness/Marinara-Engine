@@ -27,8 +27,9 @@ export const EXPERIENCE_FILE_CONTENT_TYPE = "application/vnd.marinara.experience
 export const EXPERIENCE_FILE_MANIFEST_MAX_BYTES = 1024 * 1024;
 /** Everything before the manifest is a few fixed keys; this is the most the reader looks through for it. */
 export const EXPERIENCE_FILE_HEADER_MAX_BYTES = EXPERIENCE_FILE_MANIFEST_MAX_BYTES + 4096;
-/** The longest file path (the manifest's own limit). */
-const PATH_MAX_BYTES = 240;
+/** The longest file path in UTF-8: the manifest caps a path at 240 characters (UTF-16 units), and
+ *  none takes more than three bytes. */
+const PATH_MAX_BYTES = 240 * 3;
 
 /** What an Experience may carry, by extension: passive media and data, nothing that runs. */
 export const EXPERIENCE_FILE_TYPES = Object.freeze({

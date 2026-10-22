@@ -66,6 +66,7 @@ import {
   type Persona,
   type AvatarCrop,
   type MultiplayerPlayer,
+  type InstalledCapabilityPackage,
 } from "@marinara-engine/shared";
 import { MultiplayerPrepareButton } from "../../features/multiplayer/MultiplayerPrepareButton";
 import { getCharacterTitle } from "../../lib/character-display";
@@ -1735,9 +1736,11 @@ export function GameSetupWizard({
 
   // Picking an Experience fills in its GM setup values (1.372); the player may still change any of them
   // but a locked intro, which the intro field shows read-only. Turning it off leaves them as they are.
-  const selectExperience = (id: string | null) => {
+  // A just-imported Experience comes with its package, since the list has not refetched it yet.
+  const selectExperience = (id: string | null, picked?: InstalledCapabilityPackage) => {
     setExperienceId(id);
-    const defaults = experiences.find((item) => item.id === id)?.manifest.contributions?.gameSurface?.setup?.defaults;
+    const experience = picked?.id === id ? picked : experiences.find((item) => item.id === id);
+    const defaults = experience?.manifest.contributions?.gameSurface?.setup?.defaults;
     setExperienceArtStylePrompt(defaults?.artStylePrompt ?? null);
     if (!defaults) return;
     if (defaults.name) setGameName(defaults.name);

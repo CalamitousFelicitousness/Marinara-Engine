@@ -23,7 +23,7 @@ export function NewGameExperienceChooser({
 }: {
   experiences: InstalledCapabilityPackage[];
   activeId: string | null;
-  onSelect: (id: string | null) => void;
+  onSelect: (id: string | null, picked?: InstalledCapabilityPackage) => void;
   seed: string;
   onSeedChange: (seed: string) => void;
   onRandomize: () => void;
@@ -67,7 +67,7 @@ export function NewGameExperienceChooser({
         setPendingFile(null);
         setFileNotice(localizeUi("game.experienceFile.imported", { name: installed.manifest.name }));
         setOpen(true);
-        onSelect(installed.id);
+        onSelect(installed.id, installed);
       },
       onError: (error) =>
         setImportFailure(

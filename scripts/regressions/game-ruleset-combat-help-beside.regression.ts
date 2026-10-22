@@ -25,6 +25,7 @@ import {
   type RulesetEncounterState,
   type RulesetStatBlock,
 } from "../../packages/shared/src/index.js";
+import { rulesetUnaimableKey } from "../../packages/client/src/lib/ruleset-combat-menu.js";
 
 const dataDir = mkdtempSync(join(tmpdir(), "marinara-help-beside-"));
 process.env.DATA_DIR = dataDir;
@@ -118,6 +119,10 @@ try {
   const beside = parsed(fiveE());
   // ── Nobody beside the helper, no help ──
   assert.deepEqual(helpTargets(beside, fight(beside, true)), [], "no opponent beside the helper, no help");
+  // A greyed Help says why: no opponent beside (re-test 10), not that nobody is in sight.
+  const greyed = rulesetCombatOptions(beside, fight(beside, true), "pell").find((one) => one.id === "standard:help");
+  assert.equal(greyed?.besideOnly, true);
+  assert.equal(rulesetUnaimableKey({ ...greyed!, targetIds: [] } as never), "game.combat.ruleset.menu.noFoeBeside");
   // ── The helped ally can stand anywhere: only the opponent must be beside the helper ──
   assert.ok(helpTargets(beside, fight(beside, false, true)).includes("juno"), "help reaches an ally across the field");
   // ── Help counts only against the opponent beside the helper ──
@@ -139,6 +144,10 @@ try {
   {
     const anywhere = parsed(fiveE(() => {}));
     assert.ok(helpTargets(anywhere, fight(anywhere, true)).includes("juno"), "help offered with nobody beside");
+    const plain = rulesetCombatOptions(anywhere, fight(anywhere, true), "pell").find(
+      (one) => one.id === "standard:help",
+    );
+    assert.equal(plain?.besideOnly, undefined);
     const state = helped(anywhere);
     assert.equal(rulesetCombatant(state, "juno")!.flags.helpedAgainst, undefined);
     assert.equal(attackMode(choose(anywhere, state, "juno", slamOf(anywhere, state), ["rot"]).events), "advantage");

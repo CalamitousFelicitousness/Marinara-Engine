@@ -30,11 +30,13 @@ import {
   rulesetPicksStep,
   rulesetPayGainText,
   rulesetMenuGroups,
+  rulesetMenuVariantName,
   rulesetMenuVariants,
   rulesetOptionCostText,
   rulesetModeText,
   rulesetOptionForecastText,
   rulesetOptionUnaimable,
+  rulesetUnaimableKey,
   rulesetOptionLabel,
   rulesetOptionNeedsTargets,
   rulesetPickTarget,
@@ -461,7 +463,9 @@ export function RulesetCombatMenu({
     return (
       <div className="flex flex-col gap-2 p-3">
         <p className="text-xs text-white/60" id="ruleset-variant-prompt">
-          {t("game.combat.ruleset.variant.prompt", { label: rulesetOptionLabel(step.option, t) })}
+          {t("game.combat.ruleset.variant.prompt", {
+            label: rulesetMenuVariantName(view.options, step.option, t) ?? rulesetOptionLabel(step.option, t),
+          })}
         </p>
         <div className="flex flex-wrap gap-2" role="group" aria-labelledby="ruleset-variant-prompt">
           {ways.map((way, index) => {
@@ -472,7 +476,7 @@ export function RulesetCombatMenu({
                 key={way.id}
                 type="button"
                 disabled={busy || unaimable}
-                title={unaimable ? t("game.combat.ruleset.menu.nobodyToAim") : undefined}
+                title={unaimable ? t(rulesetUnaimableKey(way)) : undefined}
                 onClick={() => {
                   // Its own steps (a target, a slot) follow on from here, or it is sent as it is.
                   setStep(null);
@@ -1450,17 +1454,17 @@ export function RulesetCombatMenu({
               {group.options.map((option) => {
                 const cost = rulesetOptionCostText(option, budgetLabel, t, distance);
                 const forecast = rulesetOptionForecastText(option, t);
-                const unaimable = rulesetOptionUnaimable(option);
+                const ways = rulesetMenuVariants(view.options, option);
+                // One way of the spell that can be aimed is enough to open the pick.
+                const unaimable = ways.every((way) => rulesetOptionUnaimable(way));
                 return (
                   <button
                     key={option.id}
                     type="button"
                     disabled={busy || unaimable}
-                    title={unaimable ? t("game.combat.ruleset.menu.nobodyToAim") : undefined}
+                    title={unaimable ? t(rulesetUnaimableKey(option)) : undefined}
                     onClick={() =>
-                      rulesetMenuVariants(view.options, option).length > 1
-                        ? setStep({ stage: "variant", option, targets: [] })
-                        : take(option)
+                      ways.length > 1 ? setStep({ stage: "variant", option, targets: [] }) : take(option)
                     }
                     className={cn(
                       buttonClass,
@@ -1469,12 +1473,10 @@ export function RulesetCombatMenu({
                   >
                     <span className="flex items-center gap-1.5 font-semibold text-white/90">
                       <ArtIcon ids={option.icons ?? []} className="h-5 w-5" />
-                      {rulesetOptionLabel(option, t)}
+                      {rulesetMenuVariantName(view.options, option, t) ?? rulesetOptionLabel(option, t)}
                     </span>
                     {unaimable && (
-                      <span className="block text-[0.65rem] text-white/45">
-                        {t("game.combat.ruleset.menu.nobodyToAim")}
-                      </span>
+                      <span className="block text-[0.65rem] text-white/45">{t(rulesetUnaimableKey(option))}</span>
                     )}
                     {option.cancelSave && (
                       <span className="block text-[0.65rem] text-white/55">

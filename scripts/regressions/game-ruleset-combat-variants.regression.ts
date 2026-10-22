@@ -34,7 +34,10 @@ process.env.DATA_DIR = dataDir;
 process.env.FILE_STORAGE_DIR = join(dataDir, "storage");
 const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
-const { rulesetMenuGroups, rulesetMenuVariants } = await import("../../packages/client/src/lib/ruleset-combat-menu.js");
+const { rulesetMenuGroups, rulesetMenuVariantName, rulesetMenuVariants } =
+  await import("../../packages/client/src/lib/ruleset-combat-menu.js");
+const t = ((key: string, params: Record<string, unknown> = {}) =>
+  `${key}${Object.keys(params).length ? JSON.stringify(params) : ""}`) as never;
 
 try {
   assert.ok(supportedCapabilityApi.minor >= 716);
@@ -139,7 +142,7 @@ try {
     // The parent has nothing of its own to do, so it is not on the menu.
     assert.ok(!labels.includes("Chromatic Orb"), labels.join(", "));
     // Each names the parent's action, so a menu can fold them under it (re-test 9); with the parent
-    // not offered, each keeps its own button.
+    // not offered, under one button of their own named after it (re-test 10: Command).
     const kinds = menu.filter((option) => option.label.startsWith("Chromatic Orb ("));
     assert.ok(
       kinds.length === 2 && kinds.every((option) => !!option.variantOf),
@@ -147,7 +150,29 @@ try {
     );
     const shown = (options: unknown[]) =>
       rulesetMenuGroups(options as never).flatMap((group) => group.options.map((option) => option.label));
-    assert.ok(shown(menu).includes("Chromatic Orb (cold)"), "no parent on the menu: the kinds stand alone");
+    assert.ok(kinds.every((option) => option.variantName === "Chromatic Orb"));
+    const alone = shown(menu).filter((label) => label.startsWith("Chromatic Orb"));
+    assert.deepEqual(alone, ["Chromatic Orb (fire)"], "no parent on the menu: the first stands for both");
+    const fire = menu.find((option) => option.label === "Chromatic Orb (fire)")!;
+    assert.deepEqual(
+      rulesetMenuVariants(menu as never, fire as never).map((option) => option.label),
+      ["Chromatic Orb (fire)", "Chromatic Orb (cold)"],
+    );
+    assert.equal(rulesetMenuVariantName(menu as never, fire as never, t), "Chromatic Orb", "and is named after it");
+    // Readying it folds the same way: one Ready Command, not five.
+    const readies = ["Halt", "Flee"].map((way) => ({
+      id: `ready:command-${way}@comes`,
+      kind: "standard",
+      label: "ready",
+      budget: "action",
+      targets: { side: "self", count: 0 },
+      ready: { optionId: `command-${way}`, label: `Command (${way})`, on: "comes" },
+      variantOf: "ready:command@comes",
+      variantName: "Command",
+    }));
+    const readyButtons = rulesetMenuGroups(readies as never).flatMap((group) => group.options);
+    assert.equal(readyButtons.length, 1);
+    assert.match(rulesetMenuVariantName(readies as never, readyButtons[0]!, t)!, /readyComes\{"option":"Command"\}/);
     const parentOption = { ...kinds[0]!, id: kinds[0]!.variantOf!, label: "Chromatic Orb", variantOf: undefined };
     const folded = shown([...menu, parentOption]);
     assert.ok(

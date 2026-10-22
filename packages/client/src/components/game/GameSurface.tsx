@@ -12096,6 +12096,9 @@ function GameSurfaceComponent({
       }
       setDismissedSetupWizardChatId(activeChatId);
       writeSetupDismissed(activeChatId, true);
+      // A Start Game that failed made the game without this page reading it yet: read it now, so
+      // the closed setup shows as unfinished at once rather than only after a reload (re-test 10).
+      if (setupMadeGame) void queryClient.invalidateQueries({ queryKey: chatKeys.detail(activeChatId) });
       if (needsCreation || sessionStatus === "setup") {
         toast.info(localizeUi("ui.game.gamesurfacecomponent.gameSetupDismissedTheCampaignWasKept"));
       }

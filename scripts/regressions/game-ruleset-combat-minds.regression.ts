@@ -671,6 +671,33 @@ try {
       );
       return pickRulesetChoice(definition, state, encounter, "mage")?.choice;
     };
+    // A Sleep whose pool cannot cover anybody it catches is worth nothing (re-test 10).
+    {
+      const nap = {
+        id: "nap",
+        name: "Nap",
+        budget: "action",
+        range: { normal: 90 },
+        area: { shape: "burst", size: 20 },
+        applies: [{ condition: "unconscious", duration: { rounds: 10 } }],
+      };
+      const naps = (health: number) => {
+        const { encounter, state } = wide(
+          { mage: { x: 1, y: 3 }, a: { x: 8, y: 3 }, b: { x: 8, y: 4 } },
+          {
+            mage: { side: "enemy", block: block({ type: "humanoid", mind: "tactical", actions: [spark, nap] }) },
+            a: { side: "party", block: block({ health }) },
+            b: { side: "party", block: block({ health }) },
+          },
+          { mage: { ...master, temperament: "disciplined" } },
+        );
+        const held = rulesetCombatant(encounter, "mage")!.actions.find((one) => one.id === "nap")!;
+        held.healthPool = { count: 5, sides: 8, flat: 0 };
+        return pickRulesetChoice(definition, state, encounter, "mage")?.choice.optionId;
+      };
+      assert.equal(naps(80), "spark", "5d8 puts nobody with 80 health to sleep");
+      assert.equal(naps(10), "nap", "two with 10 each it does");
+    }
     const far = prepares("tactical", 20);
     assert.equal(far?.optionId, "veil", `with the knight far off, a tactician wards itself: ${JSON.stringify(far)}`);
     assert.deepEqual(far?.targetIds, ["mage"]);
@@ -714,6 +741,32 @@ try {
     // In normal range already, it shoots from where it stands rather than walking in first (re-test 9).
     const first = tactician.turn.find((event) => "actorId" in event && event.actorId === "archer");
     assert.notEqual(first?.type, "move", `no walk in before the shot: ${JSON.stringify(tactician.turn)}`);
+    // In range behind a hill, it walks to where it can see before it shoots, rather than standing
+    // idle all turn (re-test 10).
+    {
+      const { encounter, state } = wide(
+        { archer: { x: 10, y: 3 }, knight: { x: 2, y: 3 } },
+        {
+          archer: { side: "enemy", block: block({ type: "humanoid", mind: "tactical", actions: [bow] }) },
+          knight: { side: "party", block: block({ health: 80, actions: [claw] }) },
+        },
+        { archer: { ...master, temperament: "disciplined" } },
+      );
+      for (let y = 1; y <= 6; y++) encounter.board!.grid.tiles[y]![6] = "mountain";
+      state.rulesetFight = {
+        encounter,
+        events: [],
+        eventSeq: 0,
+        controllers: { knight: "manual" },
+        bosses: [],
+      } as never;
+      assert.ok(commandRulesetCombatDirector(definition, state, { type: "continue" }).ok);
+      const turn = state.rulesetFight!.events.map((entry) => entry.event);
+      assert.ok(
+        turn.some((event) => event.type === "attack" && "actorId" in event && event.actorId === "archer"),
+        `it found a clear line and shot: ${JSON.stringify(turn)}`,
+      );
+    }
     assert.ok(kites("cunning").gap <= 4, "a cunning one does not step back");
     assert.ok(kites("tactical", dagger).gap <= 4, "nor does one that threw a dagger");
     // Beside the knight, it gets clear by a Misty Step its bonus action pays for, then shoots (re-test 9).

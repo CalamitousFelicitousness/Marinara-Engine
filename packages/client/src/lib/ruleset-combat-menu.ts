@@ -126,11 +126,18 @@ export interface RulesetMenuGroup {
 export function rulesetMenuGroups(options: DirectedRulesetOption[] | undefined): RulesetMenuGroup[] {
   const groups: RulesetMenuGroup[] = [];
   const offered = new Set((options ?? []).map((option) => option.id));
+  // The first of a spell's variants stands for the rest when the spell itself is not offered.
+  const standsFor = new Set<string>();
   for (const kind of RULESET_MENU_KINDS) {
-    // A spell's variants (1.716) sit under its own button while it is offered: one Magic Circle, not twelve.
-    const found = (options ?? []).filter(
-      (option) => option.kind === kind && !(option.variantOf && offered.has(option.variantOf)),
-    );
+    // A spell's variants (1.716) sit under one button: its own while it is offered, else the first
+    // of them (Command, whose plain cast is one of its ways). One Magic Circle, not twelve.
+    const found = (options ?? []).filter((option) => {
+      if (option.kind !== kind) return false;
+      if (!option.variantOf) return true;
+      if (offered.has(option.variantOf) || standsFor.has(option.variantOf)) return false;
+      standsFor.add(option.variantOf);
+      return true;
+    });
     if (found.length === 0) continue;
     groups.push({
       kind,
@@ -141,12 +148,32 @@ export function rulesetMenuGroups(options: DirectedRulesetOption[] | undefined):
   return groups;
 }
 
-/** The variants offered with an option (1.716), itself first; just itself when it has none. */
+/** The variants offered with an option (1.716), itself first; just itself when it has none. For the
+ *  variant that stands for a spell that is not offered itself, every way of that spell. */
 export function rulesetMenuVariants(
   options: DirectedRulesetOption[] | undefined,
   option: DirectedRulesetOption,
 ): DirectedRulesetOption[] {
-  return [option, ...(options ?? []).filter((one) => one.variantOf === option.id)];
+  const all = options ?? [];
+  const base = option.variantOf;
+  if (base && !all.some((one) => one.id === base)) {
+    const ways = all.filter((one) => one.variantOf === base);
+    return ways.some((one) => one.id === option.id) ? ways : [option, ...ways];
+  }
+  return [option, ...all.filter((one) => one.variantOf === option.id)];
+}
+
+/** What the one button for a spell's ways is called when the spell itself is not offered: its own
+ *  name (Command, not Command (Approach)), or readying it. Undefined for any other option. */
+export function rulesetMenuVariantName(
+  options: DirectedRulesetOption[] | undefined,
+  option: DirectedRulesetOption,
+  t: TFunction,
+): string | undefined {
+  if (!option.variantOf || !option.variantName || rulesetMenuVariants(options, option).length < 2) return undefined;
+  return option.ready
+    ? rulesetOptionLabel({ ...option, ready: { ...option.ready, label: option.variantName } }, t)
+    : option.variantName;
 }
 
 /**
@@ -342,6 +369,11 @@ export function rulesetStyleForecastText(
 
 /** Whether this option must be pointed at somebody and has nobody it may be pointed at now (all of
  *  them out of sight or reach): offered greyed out, never opening a pay step that leads nowhere. */
+/** Why an option is greyed for want of somebody to aim it at, as a translation key. */
+export function rulesetUnaimableKey(option: DirectedRulesetOption): string {
+  return option.besideOnly ? "game.combat.ruleset.menu.noFoeBeside" : "game.combat.ruleset.menu.nobodyToAim";
+}
+
 export function rulesetOptionUnaimable(option: DirectedRulesetOption): boolean {
   // A standard action given to somebody (Help) with nobody it may be given to.
   if (option.kind === "standard" && option.targets.side !== "self")

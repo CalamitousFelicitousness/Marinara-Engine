@@ -254,6 +254,9 @@ export type CombatAiScoreParts = Partial<
   >
 >;
 
+/** What a turn must stand to gain for its wavering to be felt in full: about a third of a foe. */
+const COMBAT_AI_FULL_STAKES = 0.4;
+
 /**
  * Every candidate scored the way `chooseCombatCandidate` scores it, best first, with what each part
  * added: the Engine's own reading of the turn, which a Game Master playing the same unit is shown as
@@ -314,6 +317,17 @@ export function rankCombatCandidates<T>(
     weights.risk = Math.max(weights.risk, 5);
     weights.damage *= 0.25;
   }
+  // What is on the table: the most any candidate gains. Its wavering is a share of that, so against a
+  // party too sturdy for any one blow to dent, a trained captain still tells a full Multiattack from
+  // two daggers thrown at disadvantage (re-test 10), as it does against a frail one.
+  const gains = (candidate: CombatAiCandidate<T>) =>
+    (candidate.damage ?? 0) * weights.damage +
+    (candidate.finish ?? 0) * weights.finish +
+    (candidate.healing ?? 0) * weights.healing +
+    (candidate.support ?? 0) * weights.support +
+    (candidate.setup ?? 0) * weights.setup;
+  const most = Math.max(0, ...candidates.map(gains));
+  const stakes = Math.min(1, Math.max(0.1, most / COMBAT_AI_FULL_STAKES));
   return candidates
     .map((candidate, i) => {
       const parts: CombatAiScoreParts = {};
@@ -335,14 +349,16 @@ export function rankCombatCandidates<T>(
         score += part;
         if (part !== 0) parts[key] = part;
       }
+      // Sticking with its target is worth as much as the turn is, and less for a weaker blow at them:
+      // never two daggers at disadvantage past a Multiattack beside it (re-test 10).
       if (adjective === "methodical" && profile.targetId !== undefined && candidate.targetId === profile.targetId)
-        score += 0.35;
+        score += 0.35 * stakes * (most > 0 ? Math.min(1, gains(candidate) / most) : 1);
       if (candidate.hold && orders?.posture === "retreat") score += 0.8;
       if (candidate.hold && (profile.holds ?? 0) < 1 && profile.mind !== "mindless") {
         if (adjective === "patient") score += 0.65;
         if (adjective === "cowardly" && wounded) score += 0.8;
       }
-      score += combatAiScoreNoise(profile, unit.id, turn, i, difficulty);
+      score += stakes * combatAiScoreNoise(profile, unit.id, turn, i, difficulty);
       return { candidate, score, parts };
     })
     .sort((a, b) => b.score - a.score);

@@ -1343,6 +1343,9 @@ export interface RulesetCombatAction {
   /** The action this one is a variant of (1.716): Magic Circle (fiends) of Magic Circle. A menu
    *  offers them as one button and a pick of which. */
   variantOf?: string;
+  /** What that one button is called: the spell's own name, offered or not (Command, whose plain
+   *  cast is one of its labelled ways). */
+  variantName?: string;
   recharge?: RulesetCombatRecharge;
   /** How many strikes ONE spend of this action's budget buys, when its source said so. Taking it
    *  with none in hand spends the budget and puts the rest in hand; while any are in hand, every
@@ -2913,6 +2916,10 @@ export interface RulesetActionResume {
   designates?: string[];
   /** The kinds its zone strikes, as they were named (1.700): ids of its action's `kindsOf`. */
   kinds?: string[];
+  /** Where a teleport goes and whom it takes along, so it still goes once a window has closed. */
+  teleport?: { to?: RulesetCombatCell; carries: string[] };
+  /** Where a moved target is set down, so it still goes once a window has closed. */
+  carriesTo?: { x: number; y: number; rises: number };
 }
 
 /** Once the attack action has been taken this turn, with anything or with one of `names` (1.242). */
@@ -4347,11 +4354,15 @@ export interface RulesetCombatOption {
   /** Exactly one of `kindsOf` is named (1.705). */
   kindsOne?: true;
   /** The option this one is a variant of (1.716), as its action says: the menu folds it under that
-   *  one's button while that one is offered too. */
+   *  one's button, or under one button of its own named `variantName` when that one is not offered. */
   variantOf?: string;
+  variantName?: string;
   /** An area that does nothing to those it catches but ward them (Magic Circle): no damage, save,
    *  condition, shove or trigger. A screen does not warn that it catches the caster's own side. */
   harmless?: true;
+  /** Help that is given only against an opponent beside its helper (1.718), so a menu greyed for want
+   *  of a target says that rather than that nobody is in sight. */
+  besideOnly?: true;
   /** What it may be stored in instead of done (1.471): its user's own item (`item`, its place on
    *  their sheet) or one an ally beside them holds, or a creature that stores (no `item`), with the
    *  levels still free there. The choice names one as `storesIn`. */

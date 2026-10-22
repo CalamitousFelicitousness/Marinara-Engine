@@ -438,6 +438,32 @@ assert.equal(
   ),
   "focused",
 );
+// Against a party too sturdy for any blow to dent, a trained one still tells the harder blow from one
+// two thirds as good: its wavering is a share of what the turn stands to gain (re-test 10).
+{
+  const trained = {
+    ...actor("trained"),
+    tactics: {
+      ...assignCombatTactics(actor("trained"), 9),
+      adjective: "disciplined" as const,
+      proficiency: "trained" as const,
+    },
+  };
+  for (let turn = 1; turn <= 60; turn++) {
+    assert.equal(
+      chooseCombatCandidate(
+        trained,
+        [
+          { action: "daggers", targetId: "wizard", damage: 0.06 },
+          { action: "multiattack", targetId: "knight", damage: 0.09 },
+        ],
+        turn,
+      ),
+      "multiattack",
+      `turn ${turn}`,
+    );
+  }
+}
 // Legacy units must respect authored attack-skill range, too.
 const legacyRange = arena();
 legacyRange.units = legacyRange.units.slice(0, 2);

@@ -356,9 +356,17 @@ try {
     (dragon as unknown as { health: { value: number } }).health.value = 5;
     syncRulesetCombatants(withDragon, state);
     state.stage = rulesetDirectorStage(state);
-    assert.ok(commandRulesetCombatDirector(withDragon, state, { type: "control", unitId: "ada", controller: "ai" }).ok);
-    for (let guard = 0; guard < 6 && !state.outcome; guard++) {
-      assert.ok(commandRulesetCombatDirector(withDragon, state, { type: "continue" }).ok);
+    // Ada only stands there: on the AI she may grapple the dragon, and a grappled dragon flies nowhere.
+    for (let guard = 0; guard < 8 && !state.outcome; guard++) {
+      const now = state.rulesetFight!.encounter;
+      const waiting = now.window?.waiting[0];
+      const command =
+        waiting === "ada"
+          ? { type: "ruleset" as const, optionId: RULESET_PASS_OPTION, targetIds: [] }
+          : !now.window && now.order[now.turn] === "ada"
+            ? { type: "ruleset" as const, optionId: "end-turn", targetIds: [] }
+            : { type: "continue" as const };
+      assert.ok(commandRulesetCombatDirector(withDragon, state, command as never).ok);
     }
     const events = state.rulesetFight!.events.map((entry) => entry.event);
     const bought = events.findIndex(

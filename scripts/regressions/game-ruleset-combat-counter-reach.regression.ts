@@ -25,6 +25,7 @@ import {
   rulesetPaidLevel,
   rulesetSheetBuildSchema,
   rulesetWindowOptions,
+  RULESET_PASS_OPTION,
   type RulesetCatalogEntry,
   type RulesetCombatantInput,
   type RulesetCombatEvent,
@@ -215,6 +216,66 @@ try {
       },
       "the check read off his sheet as the fight began",
     );
+  }
+
+  // ── A teleport that a Counter is asked about still goes once nobody answers (re-test 10) ──
+  {
+    const blink = {
+      id: "blink",
+      label: "Blink",
+      rows: [{ list: "spells", values: { name: "Blink", level: 2, prepared: true } }],
+      mechanics: {
+        kind: "utility",
+        range: 0,
+        targets: "self",
+        teleport: { distance: 30 },
+        cost: [{ pool: "slots_2", amount: 1 }],
+        budget: "bonus",
+      },
+    } as unknown as RulesetCatalogEntry;
+    const entries = [...spells(), blink];
+    const state = fight(definition, entries);
+    state.board = {
+      grid: {
+        width: 12,
+        height: 6,
+        tiles: Array.from({ length: 6 }, () => Array(12).fill("plains")),
+      },
+      placements: {},
+    } as never;
+    const mage = rulesetCombatant(state, "mage")!;
+    const corwin = rulesetCombatant(state, "corwin")!;
+    Object.assign(mage, { x: 1, y: 1 });
+    Object.assign(corwin, { x: 2, y: 1 });
+    const option = rulesetCombatOptions(definition, state, "mage").find((entry) => entry.label === "Blink");
+    assert.ok(
+      option?.teleport?.cells.some((cell) => cell.x === 7 && cell.y === 1),
+      "it may go to 7,1",
+    );
+    const held = applyRulesetCombatChoice(
+      definition,
+      state,
+      { actorId: "mage", optionId: option!.id, targetIds: ["mage"], at: { x: 7, y: 1 } },
+      dice(),
+    );
+    assert.ok(held.state.window, `Corwin is asked first: ${JSON.stringify(held.events)}`);
+    const passed = letAnswerThrough(
+      definition,
+      applyRulesetCombatChoice(
+        definition,
+        held.state,
+        { actorId: "corwin", optionId: RULESET_PASS_OPTION, targetIds: [], window: held.state.window!.id },
+        dice(),
+      ),
+      dice(),
+    );
+    const moved = rulesetCombatant(passed.state, "mage")!;
+    assert.deepEqual(
+      { x: moved.x, y: moved.y },
+      { x: 7, y: 1 },
+      `the slot bought the step: ${JSON.stringify(passed.events)}`,
+    );
+    assert.equal(eventsOf(passed.events, "teleported").length, 1);
   }
 
   // ── Stopping what is low enough, outright ──

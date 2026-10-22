@@ -3874,6 +3874,7 @@ function optionFrom(
     if (ids.length > 0) option.designates = { count: spares.chosen, ids };
   }
   if (action.variantOf) option.variantOf = action.variantOf;
+  if (action.variantName) option.variantName = action.variantName;
   if (
     action.area &&
     !rulesetActionHarms(action) &&
@@ -5518,6 +5519,7 @@ export function rulesetUncompelledOptions(
         budget,
         // Help is the one that reaches somebody else; the rest are the actor's own stance.
         targets: action === "help" ? { side: "ally", count: 1 } : { side: "self", count: 0 },
+        ...(action === "help" && combat.standardEffects?.help?.beside ? { besideOnly: true as const } : {}),
       }),
     );
   }
@@ -5833,6 +5835,9 @@ function readyOptions(menu: RulesetCombatOption[], budget: string): RulesetComba
       ...(option.payWith ? { payWith: option.payWith } : {}),
       ...(option.upcastOnly ? { upcastOnly: true as const } : {}),
       ready: { optionId: option.id, label: option.label, on },
+      // Readying one of a spell's ways folds as the ways themselves do (1.716).
+      ...(option.variantOf ? { variantOf: `${RULESET_READY_OPTION_PREFIX}${option.variantOf}@${on}` } : {}),
+      ...(option.variantName ? { variantName: option.variantName } : {}),
     })),
   );
 }

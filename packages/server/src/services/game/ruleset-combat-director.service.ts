@@ -1287,6 +1287,9 @@ interface RulesetCandidate {
   to?: { x: number; y: number };
   /** What a closing walk costs of the movement left, so a sprint is taken only when it is short. */
   walked?: number;
+  /** The harm it is expected to do, before any of it is weighed against health: a blow's average
+   *  times its chance to land. */
+  expected?: number;
 }
 
 /** How many cells a turn is weighed from. The board is small and a turn is short, so this is a
@@ -2161,7 +2164,22 @@ function rulesetCandidatesFrom(
           ally && (contest.ends ?? []).some((entry) => entry.on === "target" && theirs.has(entry.condition));
         const holds = !ally && (contest.applies ?? []).some((entry) => !theirs.has(entry.condition));
         const shoves = !ally && contest.push !== undefined && !!encounter.board;
-        const worth = frees ? 1 : holds ? 0.3 : shoves ? 0.15 : 0;
+        // What it puts on them, read as any condition is and never more than a modest setup: a shove
+        // down is worth little to a lone shover, whose target stands up before it could use it.
+        const read = holds
+          ? rulesetEffectWorth(
+              definition,
+              combat,
+              encounter,
+              actor,
+              // What a won contest puts on lasts until it is ended (escaping a grapple, standing up).
+              {
+                applies: (contest.applies ?? []).map((entry) => ({ duration: "until-dispelled", ...entry })),
+              } as RulesetCombatAction,
+              target,
+            )
+          : undefined;
+        const worth = frees ? 1 : holds ? Math.min(0.3, read ?? 0.3) : shoves ? 0.15 : 0;
         // A treatment is weighed as the heal it stands in for.
         const care = steadies ? 1 : treats ? 0.5 : 0;
         if (worth <= 0 && care <= 0) continue;
@@ -2262,6 +2280,8 @@ function rulesetCandidatesFrom(
       // blast reach either side, and a fight where the Engine drops one on its own party is worse
       // than one where it never does.
       const ally = target.side === actor.side;
+      // Out of what its health pool or ceiling reaches (Sleep, Power Word Stun): nothing done to them.
+      if (rulesetPoolReaches(definition, combat, actor, fallingAction, [target], way.payWith).length === 0) continue;
       const health = rulesetCombatHealth(definition, combat, target);
       const pool = Math.max(1, health.value + health.temp);
       // As likely to land on this one as it is: a dagger thrown far, at disadvantage, against the
@@ -2337,6 +2357,7 @@ function rulesetCandidatesFrom(
         // than a dagger thrown far at disadvantage. Finishing one off is weighed by its own health.
         const weighed = Math.max(pool, 0.75 * rulesetSideHealthMean(definition, combat, encounter, target.side));
         candidate.damage = Math.min(2, (average / weighed) * (1 + others.length + again)) * chance;
+        candidate.action.expected = average * chance * (1 + others.length + again);
         if (average >= pool) candidate.finish = chance;
         // What it puts on them as well (a stunning blow), and the spell it may break by hurting
         // whoever holds one up.
@@ -2437,6 +2458,28 @@ const RULESET_EFFECT_WORTH: Partial<Record<string, { foe?: number; friend?: numb
   "own-checks-advantage": { friend: 0.05 },
 };
 
+/** How much of a turn's worth of blows the actor's side gets in at a target before the target's own
+ *  next turn: a half for each friend who acts first, at most one. The actor's own action is the one
+ *  being weighed. */
+function rulesetBlowsBeforeTurn(
+  encounter: RulesetEncounterState,
+  actor: RulesetCombatant,
+  target: RulesetCombatant,
+): number {
+  const order = encounter.order;
+  const at = order.indexOf(actor.id);
+  const until = order.indexOf(target.id);
+  if (at < 0 || until < 0) return 0.5;
+  let friends = 0;
+  for (let step = 1; step < order.length; step++) {
+    const id = order[(at + step) % order.length]!;
+    if (id === target.id) break;
+    const one = rulesetCombatant(encounter, id);
+    if (one && one.side === actor.side && rulesetCombatStanding(one)) friends++;
+  }
+  return Math.min(1, friends * 0.5);
+}
+
 /** An amount's average, nothing for one that has none or is written loosely. */
 function rulesetSafeAverage(amount: RulesetCombatAction["damage"]): number {
   const average = amount ? rulesetAverageAmount(amount) : 0;
@@ -2535,8 +2578,16 @@ export function rulesetEffectWorth(
     if (rulesetImmuneToCondition(target, applied.condition, definition, encounter, actor)) continue;
     const rule = combat.conditions?.find((one) => one.condition === applied.condition);
     let each = 0;
-    for (const effect of rule?.effects ?? [])
-      each += (foe ? RULESET_EFFECT_WORTH[effect]?.foe : RULESET_EFFECT_WORTH[effect]?.friend) ?? 0;
+    // One they get up from on their own turn (prone): gone before they act, so it is worth only the
+    // move it costs them and the blows their side takes before then (re-test 10: a lone sentinel
+    // shoving the fighter down every turn and never striking).
+    const standsUp = foe && !!rule?.effects?.includes("half-move-to-stand");
+    const before = standsUp ? rulesetBlowsBeforeTurn(encounter, actor, target) : 1;
+    for (const effect of rule?.effects ?? []) {
+      const one = (foe ? RULESET_EFFECT_WORTH[effect]?.foe : RULESET_EFFECT_WORTH[effect]?.friend) ?? 0;
+      each += standsUp ? (effect === "own-attacks-disadvantage" ? 0 : one * before) : one;
+    }
+    if (standsUp) each += 0.1;
     // What it makes them do (1.264, 1.490): run, wander, strike whoever is nearest, waste a turn.
     const behavior = rule?.behavior;
     if (foe && behavior) {
@@ -2706,6 +2757,40 @@ function areaCandidates(
   return candidates;
 }
 
+/**
+ * Who of those caught a health pool or a health ceiling reaches (re-test 10): Sleep's 5d8 shared out
+ * least health first while its average lasts, Power Word Stun only at or under its number. Everybody
+ * caught, for anything else. A Sleep that can put nobody down is worth nothing, so it never spends a
+ * slot held back for Shield.
+ */
+function rulesetPoolReaches(
+  definition: RulesetDefinition,
+  combat: NonNullable<RulesetDefinition["combat"]>,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction | undefined,
+  caught: RulesetCombatant[],
+  payWith: string | undefined,
+): RulesetCombatant[] {
+  if (!action || (!action.healthPool && action.healthAtMost === undefined)) return caught;
+  const healthOf = (target: RulesetCombatant) => rulesetCombatHealth(definition, combat, target).value;
+  const under =
+    action.healthAtMost !== undefined ? caught.filter((target) => healthOf(target) <= action.healthAtMost!) : caught;
+  if (!action.healthPool) return under;
+  const step = action.use?.perCostStep;
+  const steps = step && payWith ? rulesetCostSteps(definition, action, payWith, actor) : 0;
+  let left =
+    rulesetAverageAmount(action.healthPool) +
+    (step ? Math.floor(steps / (action.use?.stepsEvery ?? 1)) * rulesetAverageAmount(step) : 0);
+  const reached: RulesetCombatant[] = [];
+  for (const target of [...under].sort((a, b) => healthOf(a) - healthOf(b))) {
+    const health = healthOf(target);
+    if (health > left) continue;
+    left -= health;
+    reached.push(target);
+  }
+  return reached;
+}
+
 /** What a shape is worth by whom it catches (an aimed one, or one centred on its maker, 1.282): the
  *  harm to the other side less the harm to its own, healing for its own, or a setup or a support.
  *  False when it is worth nothing. */
@@ -2720,10 +2805,11 @@ function weighCaught(
 ): boolean {
   const average = option.forecast?.averageDamage ?? 0;
   const chance = option.forecast?.hitChance ?? 1;
-  const foes = caught.filter((target) => target.side !== actor.side && !target.down);
-  const friends = caught.filter((target) => target.side === actor.side);
   // What its conditions are worth on each it catches, read off the ruleset (see `rulesetEffectWorth`).
   const action = actor.actions.find((one) => one.id === option.id);
+  caught = rulesetPoolReaches(definition, combat, actor, action, caught, candidate.action.choice.payWith);
+  const foes = caught.filter((target) => target.side !== actor.side && !target.down);
+  const friends = caught.filter((target) => target.side === actor.side);
   const worthOn = (target: RulesetCombatant) =>
     rulesetEffectWorth(definition, combat, encounter, actor, action, target);
   const riders = (who: RulesetCombatant[]) => who.reduce((sum, target) => sum + (worthOn(target) ?? 0), 0);
@@ -3611,6 +3697,7 @@ function weighRulesetMindFocus(
         : [[dangerous(), tactics.mind === "genius" ? 0.25 : 0.2]];
   const worth = (candidate: CombatAiCandidate<RulesetCandidate>) => (candidate.damage ?? 0) + (candidate.setup ?? 0);
   const best = Math.max(0, ...candidates.map(worth));
+  const hardest = Math.max(0, ...candidates.map((candidate) => candidate.action.expected ?? 0));
   for (const candidate of candidates) {
     const target = candidate.targetId;
     // Only something done to an opponent: a heal or a help is aimed by need.
@@ -3620,6 +3707,11 @@ function weighRulesetMindFocus(
     // Shrunk by how far short of its best this falls: liking the look of a target never makes a token
     // blow (a long-range dagger at a healer) beat stepping in for a full Multiattack.
     if (best > 0) focus *= Math.min(1, worth(candidate) / best);
+    // Nor a blow that does much less harm than its hardest, whoever takes it: two daggers thrown at
+    // disadvantage at a wizard do some six tenths of a Multiattack on the knight beside it, and win
+    // nothing by its liking (re-test 10). Full from nine tenths, none below seven.
+    const expected = candidate.action.expected;
+    if (expected !== undefined && hardest > 0) focus *= Math.max(0, Math.min(1, (expected / hardest - 0.7) / 0.2));
     if (focus > 0) candidate.focus = (candidate.focus ?? 0) + focus;
   }
 }
@@ -4027,19 +4119,21 @@ function playRulesetTurn(
         applyChoice(definition, state, fight, { actorId, optionId: RULESET_MOVE_OPTION, targetIds: [], to: away });
       continue;
     }
-    if (
-      picked.to &&
+    const fromHere =
+      !!picked.to &&
       !picked.defensive &&
-      !rulesetShootsFromHere(state, fight.encounter, actorId, picked.choice, picked.to) &&
-      !stepBefore(definition, state, fight, actorId, picked.to)
-    )
-      break;
+      rulesetShootsFromHere(definition, state, fight.encounter, actorId, picked.choice, picked.to);
+    if (picked.to && !picked.defensive && !fromHere && !stepBefore(definition, state, fight, actorId, picked.to)) break;
     // Reckless first (1.553), as it is about to make a melee weapon attack.
     takeBeforeMelee(definition, state, fight, actorId, picked.choice);
     const afar = rulesetShotFromAfar(state, fight.encounter, actorId, picked.choice);
     // A refusal here would be an Engine bug rather than a player's mistake, so the turn ends
     // instead of asking again with the same state and looping.
-    if (applyChoice(definition, state, fight, picked.choice).refused) break;
+    if (applyChoice(definition, state, fight, picked.choice).refused) {
+      // Refused from where it stood after all: it takes the walk it was picked with, and shoots.
+      if (!fromHere || !stepBefore(definition, state, fight, actorId, picked.to!)) break;
+      if (applyChoice(definition, state, fight, picked.choice).refused) break;
+    }
     // Kept through what it does after the shot that is no blow of its own (a goblin's Hide), so
     // the rest of its walk still keeps its distance (re-test 9); a blow up close ends it.
     const blow = !!rulesetCombatant(fight.encounter, actorId)?.actions.find((one) => one.id === picked.choice.optionId)
@@ -4080,6 +4174,7 @@ function rulesetShotFromAfar(
  * walk toward the other side first, only away from it.
  */
 function rulesetShootsFromHere(
+  definition: RulesetDefinition,
   state: CombatDirectorState,
   encounter: RulesetEncounterState,
   actorId: string,
@@ -4102,7 +4197,12 @@ function rulesetShootsFromHere(
     (one) => one.side !== actor.side && !one.object && rulesetCombatStanding(one) && rulesetPositionOf(one),
   );
   const nearest = (cell: { x: number; y: number }) => Math.min(...foes.map((foe) => rulesetGapFrom(cell, span, foe)));
-  return nearest(to) < nearest(home);
+  if (nearest(to) >= nearest(home)) return false;
+  // In range is not in sight: a hill or a wood between them leaves the walk to a clear line
+  // (re-test 10), so the shot must be one it may take at them from here.
+  const option = rulesetCombatOptions(definition, encounter, actorId).find((one) => one.id === choice.optionId);
+  const legal = option ? new Set(rulesetOptionTargets(definition, encounter, actorId, option)) : new Set<string>();
+  return choice.targetIds.every((id) => legal.has(id));
 }
 
 /**
@@ -4202,8 +4302,11 @@ function keepRulesetRange(
   const nearest = (cell: { x: number; y: number }) => Math.min(...foes.map((foe) => rulesetGapFrom(cell, span, foe)));
   let best: { cell: { x: number; y: number }; danger: number; away: number } | null = null;
   const here = rulesetDangerAt(definition, fight.encounter, actor, home);
+  const gap = nearest(home);
   for (const cell of rulesetWalkableCells(definition, fight.encounter, actorId)) {
-    if (cell.provokes.length > 0 || !inRange(cell)) continue;
+    // Back or across, never in: a cell nearer the other side that reads as safer (woods between, a
+    // foe slowed by the ground) is still a walk into them after the shot (re-test 10).
+    if (cell.provokes.length > 0 || !inRange(cell) || nearest(cell) < gap) continue;
     const danger = rulesetDangerAt(definition, fight.encounter, actor, cell);
     // Any real step down counts: much of the danger may be spells that reach it anywhere.
     if (!best ? danger > here - 0.03 : danger > best.danger) continue;

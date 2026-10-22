@@ -8580,6 +8580,17 @@ function applyChoice(
     ...(alters?.length && picks.heightened ? { heightens: picks.heightened } : {}),
     ...(choice.designates?.length ? { designates: [...choice.designates] } : {}),
     ...(choice.kinds?.length ? { kinds: [...choice.kinds] } : {}),
+    // Kept on the resume as well as the context: a window this opens (a Counterspell asked about
+    // a Misty Step) closes in another call, which begins afresh.
+    ...(ctx.teleport
+      ? {
+          teleport: {
+            ...(ctx.teleport.to ? { to: { ...ctx.teleport.to } } : {}),
+            carries: [...ctx.teleport.carries],
+          },
+        }
+      : {}),
+    ...(ctx.carriesTo ? { carriesTo: { ...ctx.carriesTo } } : {}),
   };
   // A cast taking rounds (1.408): begun now, and landing as its last round is spent.
   if (action.castingRounds) {
@@ -12996,6 +13007,23 @@ function resumeActionFrom(ctx: RulesetCombatContext, resume: RulesetActionResume
     ? (resume.also ?? []).filter((cell) => onBoard(cell.x, grid.width) && onBoard(cell.y, grid.height))
     : [];
   if (ctx.aimedAt && also.length) ctx.aimedAlso = also.map((cell) => ({ x: cell.x, y: cell.y }));
+  // Where a teleport goes, or a moved target is set down, as it was chosen before the window. A
+  // cell off this board is no cell at all: never read as a teleport out of the fight.
+  const goes = resume.teleport?.to;
+  if (
+    resume.teleport &&
+    !ctx.teleport &&
+    (!goes || (grid && onBoard(goes.x, grid.width) && onBoard(goes.y, grid.height)))
+  ) {
+    ctx.teleport = {
+      ...(goes ? { to: { x: goes.x, y: goes.y } } : {}),
+      carries: [...(resume.teleport.carries ?? [])],
+    };
+  }
+  const carried = resume.carriesTo;
+  if (grid && carried && !ctx.carriesTo && onBoard(carried.x, grid.width) && onBoard(carried.y, grid.height)) {
+    ctx.carriesTo = { ...carried };
+  }
   // What resumes lands on the fight as it stands NOW rather than as it stood when it was aimed, so
   // anybody the fight is already over for is left out, the same way a sequence leaves them out. A
   // ruleset with a dying rule keeps a character on the board at zero, so this is about an opponent

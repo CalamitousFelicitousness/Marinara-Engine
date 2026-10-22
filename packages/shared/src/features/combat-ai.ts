@@ -239,6 +239,13 @@ export function chooseCombatCandidate<T>(
   return chosen.action;
 }
 
+/** One candidate as `rankCombatCandidates` scored it. */
+export interface RankedCombatCandidate<T> {
+  candidate: CombatAiCandidate<T>;
+  score: number;
+  parts: CombatAiScoreParts;
+}
+
 /** What each weighed part of a candidate added to its score, after the unit's weights. */
 export type CombatAiScoreParts = Partial<
   Record<
@@ -258,7 +265,7 @@ export function rankCombatCandidates<T>(
   turn: number,
   difficulty: GameDifficulty = "normal",
   orders: CombatOrders | undefined = unit.orders,
-): Array<{ candidate: CombatAiCandidate<T>; score: number; parts: CombatAiScoreParts }> {
+): Array<RankedCombatCandidate<T>> {
   const profile = unit.tactics!;
   const adjective = profile.adjective;
   const wounded = unit.hp / Math.max(1, unit.maxHp) < 0.35;

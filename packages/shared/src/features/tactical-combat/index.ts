@@ -27,6 +27,7 @@ export {
   tickRound as tickTacticalRound,
 } from "./engine.js";
 export { decideTacticalAction, runEnemyPhase, runInitiativeTurns, applyTacticalTurn } from "./ai.js";
+export { decideProfileAction } from "./profile-ai.js";
 
 export { summarizeTacticalBattlefield } from "./battlefield-summary.js";
 

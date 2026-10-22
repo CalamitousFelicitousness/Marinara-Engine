@@ -17,6 +17,8 @@ import {
   tickTacticalRound,
   summarizeTacticalBattlefield,
   decideTacticalAction,
+  decideProfileAction,
+  type CombatAiScoreParts,
   type Combatant,
   type CombatSkill,
   type CombatPlayerAction,
@@ -511,6 +513,7 @@ function open(
   const pass: Candidate = { id: "pass", kind: "pass", actorId: u.id, mpCost: 0, legendaryCost: 0 };
   s.choices = kind === "ordinary" ? choices : [...choices, pass];
   if (!s.choices.length) s.choices = [{ ...pass, kind: "wait", action: asAction(s, u, "wait") }];
+  if (kind === "ordinary" && !manual(s, u)) suggestChoices(s, u);
   s.window = {
     id,
     kind,
@@ -522,6 +525,79 @@ function open(
   };
   s.stage = "decision";
 }
+/**
+ * The Engine's own top picks for a Game Master's ordinary turn in Classic or Tactical (the same
+ * suggestions a ruleset fight's Game Master is shown): the unit's own tactics' best three, each
+ * marked on the matching choice with a short reason. The Game Master still chooses.
+ */
+function suggestChoices(s: CombatDirectorState, u: Unit): void {
+  if (!u.tactics || u.tactics.adjective === "mindless") return;
+  let ranking: Array<{ action: { type: string; targetId?: string; skillId?: string }; parts: CombatAiScoreParts }> = [];
+  try {
+    if (s.tactical) {
+      const t = structuredClone(s.tactical);
+      const unit = t.units.find((one) => one.id === u.id);
+      if (!unit?.tactics) return;
+      decideProfileAction(t, { ...unit, tactics: unit.tactics }, (ranked) => {
+        ranking = ranked.map(({ candidate, parts }) => ({ action: candidate.action, parts }));
+      });
+    } else {
+      const copy = structuredClone(u) as Combatant;
+      chooseClassicAction(
+        copy,
+        living(s).filter((x) => side(x) === side(u)) as Combatant[],
+        living(s).filter((x) => side(x) !== side(u)) as Combatant[],
+        s.round,
+        s.difficulty,
+        s.weather,
+        s.elements,
+        (ranked) => {
+          ranking = ranked.map(({ candidate, parts }) => ({ action: candidate.action, parts }));
+        },
+      );
+    }
+  } catch {
+    return;
+  }
+  const marked = new Set<Candidate>();
+  for (const { action, parts } of ranking) {
+    if (marked.size >= 3) break;
+    const match = s.choices.find(
+      (c) =>
+        !marked.has(c) &&
+        c.kind === action.type &&
+        (action.targetId === undefined || c.targetId === action.targetId) &&
+        (action.skillId === undefined || c.skillId === action.skillId),
+    );
+    if (!match) continue;
+    marked.add(match);
+    const target = action.targetId ? get(s, action.targetId)?.name : undefined;
+    match.suggested = { rank: marked.size, reason: combatSuggestionReason(parts, target, match.skillName) };
+  }
+}
+
+/** Why the Engine would pick this, in a few words: the biggest parts of its score, largest first. */
+function combatSuggestionReason(parts: CombatAiScoreParts, target?: string, skill?: string): string {
+  const said: Record<keyof CombatAiScoreParts, string> = {
+    damage: `damage${target ? ` to ${target}` : ""}`,
+    finish: `likely takes ${target ?? "its target"} out of the fight`,
+    healing: `heals ${target ?? "a friend"}`,
+    support: `helps ${target ?? "its side"}`,
+    setup: `weakens ${target ?? "the other side"} for what comes next`,
+    risk: "puts itself in danger",
+    cost: `spends ${skill ? `what ${skill} costs` : "a limited resource"}`,
+    protection: "stands up for a friend under attack",
+    coordination: `joins its side's attack${target ? ` on ${target}` : ""}`,
+    focus: `${target ?? "its target"} is the one it most wants down`,
+  };
+  const reasons = (Object.entries(parts) as Array<[keyof CombatAiScoreParts, number]>)
+    .filter(([, part]) => Math.abs(part) >= 0.05)
+    .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
+    .slice(0, 3)
+    .map(([key]) => said[key]);
+  return reasons.length ? reasons.join("; ") : "holds its ground for a better moment";
+}
+
 function legendaryTasks(s: CombatDirectorState, trigger: Unit, kind: "anticipation" | "legendary"): Task[] {
   return living(s)
     .filter(

@@ -103,6 +103,12 @@ export const RUNTIME_DIAGNOSTICS_RATE_LIMIT = {
   timeWindow: 60_000,
 } as const satisfies MarinaraRouteRateLimit;
 
+/** Setting the remote login; also bounds tries of the one-time setup code. */
+export const ACCESS_LOGIN_RATE_LIMIT = {
+  max: 10,
+  timeWindow: 60_000,
+} as const satisfies MarinaraRouteRateLimit;
+
 /** Marinara notices; each tab asks once on load and then hourly. */
 export const MARINARA_NOTICES_RATE_LIMIT = {
   max: 10,
@@ -170,6 +176,10 @@ export const HEALTH_RATE_LIMIT = {
 } as const satisfies MarinaraRouteRateLimit;
 
 const ROUTE_RULES: Array<{ pattern: RegExp; rule: RateLimitRule }> = [
+  {
+    pattern: /^\/api\/access\/login(?:\?|$)/,
+    rule: { key: "access-login", limit: ACCESS_LOGIN_RATE_LIMIT.max, windowMs: ACCESS_LOGIN_RATE_LIMIT.timeWindow },
+  },
   {
     pattern: /^\/api\/health(?:\?|$)/,
     rule: { key: "health", limit: HEALTH_RATE_LIMIT.max, windowMs: HEALTH_RATE_LIMIT.timeWindow },

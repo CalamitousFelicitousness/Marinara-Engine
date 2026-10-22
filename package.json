@@ -35,6 +35,7 @@
     "check:e2e-types": "tsc --noEmit -p tsconfig.json",
     "check:token-estimation-types": "tsc --noEmit -p scripts/regressions/tsconfig.token-estimation.json",
     "regression": "pnpm regression:node",
+    "reset-login": "node ./scripts/reset-login.mjs",
     "regression:node": "pnpm build:shared && node ./scripts/run-regressions.mjs",
     "regression:ui": "playwright test -c playwright.config.ts",
     "regression:prompt": "pnpm build:shared && node ./scripts/run-regressions.mjs --filter scripts/regressions/prompt.regression.ts && node ./scripts/run-regressions.mjs --filter scripts/regressions/prompt-attachments.regression.ts && node ./scripts/run-regressions.mjs --filter scripts/regressions/context-fit.regression.ts",

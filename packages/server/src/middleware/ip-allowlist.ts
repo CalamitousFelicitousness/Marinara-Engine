@@ -18,7 +18,6 @@ import { readFileSync } from "node:fs";
 import os, { networkInterfaces } from "node:os";
 import {
   getAdminSecret,
-  getBasicAuthConfig,
   getDockerBypassMode,
   getIpAllowlist,
   getTailscaleBypassMode,
@@ -30,6 +29,7 @@ import {
   isUnauthenticatedRemoteAllowed,
 } from "../config/runtime-config.js";
 import { logger } from "../lib/logger.js";
+import { getLoginConfig } from "../config/login-credential.js";
 import { evaluateAccessPolicy, isForwardedLoopbackPeer, type AccessFacts, type AccessPolicy } from "./access-policy.js";
 import { firstHeader, parseRequestHostname } from "./host-validation.js";
 
@@ -631,9 +631,8 @@ function computeAccessPolicy(request: AccessRequest, dockerNetwork: DockerNetwor
 }
 
 function getAccessConfig(): AccessFacts["config"] {
-  const basicAuth = getBasicAuthConfig();
   return {
-    basicAuthConfigured: Boolean(basicAuth.user && basicAuth.pass),
+    basicAuthConfigured: getLoginConfig() !== null,
     ipAllowlistConfigured: getIpAllowlist() !== null,
     adminSecretConfigured: Boolean(getAdminSecret()),
     loopbackProxyAuthRequired: isLoopbackProxyAuthRequired(),

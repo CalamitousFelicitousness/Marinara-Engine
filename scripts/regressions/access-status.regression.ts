@@ -67,6 +67,7 @@ try {
     loopbackOnly: true,
     host: "127.0.0.1",
     basicAuth: true,
+    loginSource: "env",
     adminSecret: true,
     allowlist: true,
     passwordlessPeers: [],

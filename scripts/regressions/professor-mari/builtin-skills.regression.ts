@@ -51,6 +51,15 @@ try {
   const lorebook = shipped.skills.find((skill) => skill.id === "builtin-lorebook");
   assert.ok(lorebook, "the lorebook handbook ships with the app");
   assert.ok(lorebook!.content.startsWith("# Lorebook authoring"), "its body is frontmatter-free");
+  // A handbook whose writes outgrow one reply on a small output limit says how to split them (or, for a
+  // stylesheet, why it cannot be). Home widgets are left out: a whole create is under 600 characters.
+  for (const id of ["characters", "presets", "extensions", "themes", "onboarding"]) {
+    const handbook = shipped.skills.find((skill) => skill.id === `builtin-${id}`);
+    assert.ok(
+      handbook?.content.includes("When the output limit is small"),
+      `builtin-${id} covers a small output limit`,
+    );
+  }
 
   // ── Index: built-ins first, marked, never inlined ──────────────────────────
   const skillDetail = (over: Record<string, unknown>) => ({

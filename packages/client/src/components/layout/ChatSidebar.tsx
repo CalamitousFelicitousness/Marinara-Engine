@@ -458,7 +458,11 @@ export function ChatSidebar() {
     }
     const trees = new Map<string, BranchTreeRow<Chat>[]>();
     for (const [groupId, groupChats] of members) {
-      if (groupChats.length < 2 || !hasChatBranchLineage(groupChats)) continue;
+      // Game groups are numbered sessions, not branches. Their row has to stay the session the mode
+      // resolver picks (getCurrentGameGroupRepresentative), which a lineage-rooted tree would demote
+      // to the group's eldest, so those groups keep today's single row and count.
+      if (groupChats.length < 2 || groupChats.some((member) => member.mode === "game")) continue;
+      if (!hasChatBranchLineage(groupChats)) continue;
       // Siblings follow the list's own recency order, so a busy branch floats up inside its level.
       trees.set(groupId, buildChatBranchRows(groupChats, compareChatsByActivityDesc));
     }
@@ -1096,10 +1100,6 @@ export function ChatSidebar() {
         ? null
         : chatBackgroundMetadataToUrl(chat.metadata?.background, BACKGROUND_THUMBNAIL_WIDTH);
 
-    // Branches render under the row itself: their own row, then the folder-style guide line with one
-    // indent level per hop.
-    const childRows = isExpanded && branchRows ? branchRows.slice(1) : [];
-
     // Children key by chat id: every branch of a group shares the group id, and duplicate keys
     // corrupt reconciliation once the tree is open.
     return (
@@ -1229,8 +1229,6 @@ export function ChatSidebar() {
           ) : depth === 0 ? (
             // Equal-width spacer, so names line up whether or not a row has branches.
             <span aria-hidden className="w-5 shrink-0 max-md:w-9 [@media(pointer:coarse)]:w-9" />
-          ) : treeRow ? (
-            <BranchGuides row={treeRow} />
           ) : null}
 
           {/* Chat avatar(s) or mode icon fallback — with unread badge overlay */}
@@ -1445,25 +1443,35 @@ export function ChatSidebar() {
           )}
         </div>
 
-        {childRows.length > 0 && (
-          // No gap between rows: the per-row trunk lines have to meet to read as one tree.
-          <SmoothFolderContent open className="ml-1">
-            <div className="flex flex-col">
-              {childRows.map((row) =>
-                row.depth <= 1 ? (
-                  renderChatRow({ chat: row.chat, branchCount: 1, treeRow: row })
-                ) : (
-                  <BranchSubRow
-                    key={row.chat.id}
-                    row={row}
-                    isActive={activeChatId === row.chat.id}
-                    unread={unreadCounts.get(row.chat.id) ?? 0}
-                    isGenerating={abortControllers.has(row.chat.id)}
-                    isTyping={perChatTyping.has(row.chat.id)}
-                    onSelect={() => void openChat(row.chat.id)}
-                  />
-                ),
-              )}
+        {branchRows && branchRows.length > 1 && (
+          // One guide line for the whole branch block, exactly like a folder's children. Per-row
+          // connector lines were tried and read as noise in a sidebar this narrow — the indentation
+          // and the guide are what makes the nesting legible.
+          <SmoothFolderContent
+            open={isExpanded}
+            className="ml-4 border-l border-[var(--marinara-chat-chrome-accent)]/30 pl-2"
+          >
+            <div className="flex flex-col gap-0.5">
+              {branchRows
+                .slice(1)
+                .map((row) =>
+                  row.depth <= 1 ? (
+                    renderChatRow({ chat: row.chat, branchCount: 1, treeRow: row })
+                  ) : (
+                    <BranchSubRow
+                      key={row.chat.id}
+                      row={row}
+                      isActive={activeChatId === row.chat.id}
+                      isSelected={selectedChatIds.has(row.chat.id)}
+                      multiSelectMode={multiSelectMode}
+                      onToggleSelect={() => toggleSelectChat(row.chat.id)}
+                      unread={unreadCounts.get(row.chat.id) ?? 0}
+                      isGenerating={abortControllers.has(row.chat.id)}
+                      isTyping={perChatTyping.has(row.chat.id)}
+                      onSelect={() => void openChat(row.chat.id)}
+                    />
+                  ),
+                )}
             </div>
           </SmoothFolderContent>
         )}
@@ -1942,53 +1950,15 @@ export function ChatSidebar() {
 
 // A branch of a branch keeps only what changes: its name, activity and unread. Making every level a
 // full row would turn a deep tree into a wall of identical avatars.
-/**
- * Tree lines for one nested row: a trunk for every ancestor level, then an elbow into the row. Drawn
- * with borders in theme tokens instead of ├ └ glyphs, so it survives fonts, zoom and right-to-left
- * text, and matches the guide line the folder rows already use.
- */
-const TREE_GUIDE_X = 10; // Under the centre of the row's chevron.
-const TREE_GUIDE_STEP = 14;
-const TREE_GUIDE_BASE_WIDTH = 30; // One step right of the chat's avatar, so branches read as nested.
-/** Compact rows skip the avatar column their parent has, so they carry its width to stay right of it. */
-const TREE_GUIDE_COMPACT_EXTRA = 38;
-
-/**
- * Connectors for one nested row: a trunk for every ancestor that still carries on below, then an
- * elbow into the row — a last child stops at the elbow instead of trailing a line to nowhere.
- */
-function BranchGuides({ row }: { row: BranchTreeRow<Chat> }) {
-  const ownX = TREE_GUIDE_X + (row.depth - 1) * TREE_GUIDE_STEP;
-  const width =
-    TREE_GUIDE_BASE_WIDTH + (row.depth - 1) * TREE_GUIDE_STEP + (row.depth > 1 ? TREE_GUIDE_COMPACT_EXTRA : 0);
-  return (
-    <span
-      aria-hidden
-      className="relative shrink-0 self-stretch"
-      // Depth-derived geometry: a few computed offsets read clearer than one class per depth level.
-      style={{ width }}
-    >
-      {row.continues.map((continues, index) =>
-        continues ? (
-          <span
-            key={index}
-            className="mari-chrome-accent-progress absolute top-0 bottom-0 w-px"
-            style={{ left: TREE_GUIDE_X + index * TREE_GUIDE_STEP }}
-          />
-        ) : null,
-      )}
-      <span
-        className={cn("mari-chrome-accent-progress absolute top-0 w-px", row.isLastChild ? "h-1/2" : "bottom-0")}
-        style={{ left: ownX }}
-      />
-      <span className="mari-chrome-accent-progress absolute top-1/2 h-px" style={{ left: ownX, right: 2 }} />
-    </span>
-  );
-}
+/** One indent step per level below the first branch, since compact rows have no avatar column. */
+const SUB_ROW_INDENT = ["pl-3", "pl-6", "pl-9", "pl-12"];
 
 function BranchSubRow({
   row,
   isActive,
+  isSelected,
+  multiSelectMode,
+  onToggleSelect,
   unread,
   isGenerating,
   isTyping,
@@ -1996,31 +1966,39 @@ function BranchSubRow({
 }: {
   row: BranchTreeRow<Chat>;
   isActive: boolean;
+  isSelected: boolean;
+  multiSelectMode: boolean;
+  onToggleSelect: () => void;
   unread: number;
   isGenerating: boolean;
   isTyping: boolean;
   onSelect: () => void;
 }) {
+  // Same click semantics as every other row: multi-select selects, otherwise it opens the chat.
+  const handleClick = multiSelectMode ? onToggleSelect : onSelect;
   return (
     <div
       role="button"
       tabIndex={0}
       data-chat-id={row.chat.id}
+      aria-pressed={multiSelectMode ? isSelected : undefined}
       title={getChatDisplayName(row.chat)}
-      onClick={onSelect}
+      onClick={handleClick}
       onKeyDown={(event) => {
         if (event.key !== "Enter" && event.key !== " ") return;
         event.preventDefault();
-        onSelect();
+        handleClick();
       }}
       className={cn(
-        "flex min-w-0 cursor-pointer items-center gap-1.5 rounded-md py-1 pl-3 pr-2 transition-colors",
-        isActive
-          ? "bg-[var(--marinara-chat-chrome-highlight-bg)]"
-          : "hover:bg-[var(--marinara-chat-chrome-highlight-bg)]",
+        "flex min-w-0 cursor-pointer items-center gap-1.5 rounded-md py-1 pr-2 transition-colors",
+        SUB_ROW_INDENT[Math.min(row.depth - 1, 3)] ?? "pl-3",
+        multiSelectMode && isSelected
+          ? "mari-chrome-accent-surface mari-accent-animated"
+          : isActive
+            ? "bg-[var(--marinara-chat-chrome-highlight-bg)]"
+            : "hover:bg-[var(--marinara-chat-chrome-highlight-bg)]",
       )}
     >
-      <BranchGuides row={row} />
       <span
         className={cn(
           "truncate text-[0.6875rem]",
@@ -2032,7 +2010,7 @@ function BranchSubRow({
       {(isGenerating || isTyping) && (
         <Loader2 className="h-2.5 w-2.5 shrink-0 animate-spin text-[var(--muted-foreground)]" />
       )}
-      {!isActive && unread > 0 && (
+      {!isActive && !multiSelectMode && unread > 0 && (
         <span className="flex h-4 min-w-4 shrink-0 items-center justify-center rounded-md bg-red-500 px-1 text-[0.5625rem] font-bold leading-none text-white">
           {unread > 99 ? "99+" : unread}
         </span>

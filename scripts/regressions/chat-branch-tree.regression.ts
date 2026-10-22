@@ -44,19 +44,6 @@ for (const row of nestedRows) {
   if (parentId) assert.ok(position.get(parentId)! < position.get(row.chat.id)!);
 }
 
-// Connector data: which rows end their branch, and which ancestor trunks must be drawn through a
-// descendant, so the tree lines meet at corners instead of trailing off into nothing.
-assert.deepEqual(
-  nestedRows.map((row) => [row.chat.id, row.depth, row.isLastChild, row.continues]),
-  [
-    ["root", 0, false, []],
-    ["b1", 1, false, []],
-    ["b1-1", 2, true, [true]],
-    ["b1-1-1", 3, true, [true, false]],
-    ["b2", 1, true, []],
-  ],
-);
-
 // Siblings keep the caller's ordering (the chat list passes its recency comparator).
 const recentFirst = (left: BranchTreeChat, right: BranchTreeChat) =>
   new Date(right.createdAt as string).getTime() - new Date(left.createdAt as string).getTime();
@@ -71,23 +58,18 @@ const legacy = [
 ];
 assert.deepEqual(shape(buildChatBranchRows(legacy)), ["old-root:0", "old-b:1", "old-c:1"]);
 
-// Legacy siblings hang off the root as ordinary children, so the last one closes its connector
-// instead of trailing a line below the group.
+// Legacy siblings hang off the root as ordinary children, so they sort with the real branches
+// instead of being appended after the whole subtree.
 assert.deepEqual(
-  buildChatBranchRows(legacy).map((row) => [row.chat.id, row.isLastChild]),
-  [
-    ["old-root", false],
-    ["old-b", false],
-    ["old-c", true],
-  ],
+  buildChatBranchRows(legacy).map((row) => row.chat.id),
+  ["old-root", "old-b", "old-c"],
 );
 
-// An imported sibling joins a lineage group the same way, and the last depth-1 row closes.
+// An imported sibling joins a lineage group the same way.
 const withImported = [...nested, chat("imported", null, "2026-10-06T00:00:00.000Z")];
 const importedRows = buildChatBranchRows(withImported);
 assert.equal(importedRows.length, 6);
 assert.equal(importedRows[importedRows.length - 1]?.chat.id, "imported");
-assert.equal(importedRows[importedRows.length - 1]?.isLastChild, true);
 
 // A parent that was deleted is not lineage: the orphan is just another child, never a crash.
 assert.deepEqual(

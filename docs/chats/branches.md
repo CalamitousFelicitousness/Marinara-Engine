@@ -10,7 +10,7 @@ All branches of the same chat are grouped together. In the chat list, the chat k
 
 Each branch can have its own display name, so you can label them like "friendly ending" and "dark ending". This display name is separate from the underlying chat name.
 
-Branch lineage records the immediate source chat and the message where the fork was made. The source message ID and its copied message ID are both retained; this lets integrations identify the fork boundary even though copied messages receive new IDs. Branching a branch records that branch as the immediate parent, not the original root. Older branches and imported siblings keep their display name but have no known lineage, so they stay in one flat list under the chat in the chat list.
+Branch lineage records the immediate source chat and the message where the fork was made. The source message ID and its copied message ID are both retained; this lets integrations identify the fork boundary even though copied messages receive new IDs. Branching a branch records that branch as the immediate parent, not the original root. Older branches and imported siblings keep their display name but have no known lineage: a group with no recorded lineage keeps its single row in the chat list, and its branches are still reached from the **Chat Branches** section.
 
 ## Branch from here
 

@@ -1206,6 +1206,48 @@ try {
     assert.doesNotMatch(lastPrompt(1), /claimed/u);
     assert.equal((await lastAssistant(claim.chat.id))?.content, "Here is the shorter answer.");
 
+    // A failed stream is not a limit cut: its words still face the claim audit, and it keeps the old stop.
+    const failed = await start("pi failed stream claim", [
+      { ...reply("I've added the onboarding to Elara, it is saved."), finishReason: "error" },
+      reply("I have not changed anything yet."),
+    ]);
+    await failed.done;
+    assert.equal(requests.length, 2, "the claim audit repairs the failed stream's words");
+    assert.doesNotMatch(lastPrompt(1), /output limit|Engine note/u);
+    assert.ok(!statusTexts(failed.events).some((text) => /redoing it in smaller steps|kept hitting/u.test(text)));
+    const failedPlain = await start("pi failed stream", [
+      {
+        ...reply("Partial", [{ id: "fs-1", name: "write", args: { path: "cut.txt", content: "x", reason: "t" } }]),
+        finishReason: "error",
+      },
+    ]);
+    await failedPlain.done;
+    assert.equal(requests.length, 1);
+    assert.ok(
+      statusTexts(failedPlain.events).some((text) => /hit the model output limit\. Ask her to continue/u.test(text)),
+    );
+    assert.ok(
+      JSON.stringify(failedPlain.events).includes("Continue the task."),
+      "a dropped change still offers the chip",
+    );
+    assert.equal(existsSync(join(workspaceDir, "cut.txt")), false);
+
+    // Textual: a closed call before cut prose was dropped with the round, so it is the call named.
+    provider = "claude_subscription";
+    const closedCut = await start("pi cut closed textual", [
+      {
+        ...reply(
+          '<tool_call>{"name":"write","arguments":{"path":"cut.txt","content":"x","reason":"t"}}</tool_call> And then I will',
+        ),
+        finishReason: "length",
+      },
+      reply("Here is the next small step."),
+    ]);
+    await closedCut.done;
+    provider = "custom";
+    assert.match(lastPrompt(1), /You were writing `write` \(about \d+ characters\)/u);
+    assert.equal(existsSync(join(workspaceDir, "cut.txt")), false);
+
     // What is salvaged is names and a size only.
     assert.deepEqual(describeCutReply(cutAppData, false), {
       kind: "call",
@@ -1226,7 +1268,7 @@ try {
       describeCutReply({ content: '<tool_call>{"name":"ls","arguments":{}}</tool_call> and then', toolCalls: [] }, true)
         .kind,
       "prose",
-      "a closed tag was not the cut",
+      "with no dropped call, a closed tag before cut prose is prose",
     );
     assert.equal(describeCutReply({ content: null, toolCalls: [] }, false).kind, "thinking");
     assert.doesNotMatch(

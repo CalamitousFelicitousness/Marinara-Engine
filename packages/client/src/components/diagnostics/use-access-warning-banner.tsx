@@ -18,6 +18,7 @@ export type AccessStatus = {
   basicAuth: boolean;
   /** Where the login comes from: .env wins over the one saved in the app. */
   loginSource: "env" | "app" | null;
+  loginUser: string | null;
   adminSecret: boolean;
   allowlist: boolean;
   /** TRUSTED_AUTH_PROXY names a proxy that logs visitors in instead. */

@@ -859,7 +859,7 @@ function renderLoginPage(next: string, error?: string): string {
       </form>
       <form class="panel" method="post" action="/login">
         <h2>Sign in with a code</h2>
-        <p class="hint">On a device that is signed in, or on the computer that runs Marinara, open Settings &rarr; Advanced &rarr; Remote login and choose Add a device.</p>
+        <p class="hint">On a device that is signed in, or on the computer that runs Marinara, open Settings &rarr; Advanced &rarr; Access and choose Add a device.</p>
         <input type="hidden" name="next" value="${escapeHtml(next)}" />
         <label for="code">Pairing code</label>
         <input id="code" name="code" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" maxlength="16" required />

@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { ApiError } from "../../../lib/api-client";
 import { useUIStore } from "../../../stores/ui.store";
 import { useAccessStatus, visiblePasswordlessPeers } from "../../diagnostics/use-access-warning-banner";
+import { AddDevice, RemoteLoginSettings } from "./RemoteLoginSettings";
 import { SettingsSection } from "./SettingControls";
 
 /** Matches the privileged gate's refusals, so each one names its own next step. */
@@ -23,7 +24,11 @@ export function AccessStatusSettings({ anchorId }: { anchorId: string }) {
   if (error && !data) {
     return (
       <SettingsSection title={t("settings.accessStatus.title")} icon={<Shield size="0.875rem" />} anchorId={anchorId}>
-        <p className="text-xs text-[var(--muted-foreground)]">{t(refusalKey(error))}</p>
+        <div className="flex flex-col gap-3 text-xs">
+          <p className="text-[var(--muted-foreground)]">{t(refusalKey(error))}</p>
+          {/* Not the owner, but maybe a signed-in device that may add another one. */}
+          {error instanceof ApiError && error.status === 403 && <AddDevice />}
+        </div>
       </SettingsSection>
     );
   }
@@ -99,6 +104,7 @@ export function AccessStatusSettings({ anchorId }: { anchorId: string }) {
         <p className="text-[0.625rem] leading-relaxed text-[var(--muted-foreground)]">
           {t("settings.accessStatus.unknown")}
         </p>
+        <RemoteLoginSettings status={data} />
       </div>
     </SettingsSection>
   );

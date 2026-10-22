@@ -273,6 +273,10 @@ try {
     "the session gets the details",
   );
   assert.equal((await get("/", healthOwner, RIGHT)).statusCode, 429, "the address itself stays locked");
+  // Wrong passwords sent with health checks count too.
+  await guessWrong("/api/health", "203.0.113.80", BASIC_AUTH_FAILURE_LIMIT, "health-guess");
+  assert.equal((await get("/", "203.0.113.80", RIGHT)).statusCode, 429, "health-check guesses count");
+
   Date.now = realNow;
   process.env.IP_ALLOWLIST = "192.168.1.20";
   for (let index = 0; index < BASIC_AUTH_FAILURE_LIMIT * 2; index += 1) {

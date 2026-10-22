@@ -30,7 +30,7 @@ import {
 } from "./config/runtime-config.js";
 import { logCsrfTrustSummary } from "./middleware/csrf-protection.js";
 import { getPasswordlessPeers, isLoopbackBind } from "./middleware/ip-allowlist.js";
-import { announceLoginSetupCode } from "./config/login-credential.js";
+import { enableLoginSetupCode } from "./config/login-credential.js";
 import { startEnvWatcher } from "./config/env-watcher.js";
 import { migrateTaskbarShortcuts } from "./services/setup/taskbar-shortcut-migration.js";
 import { sidecarProcessService } from "./services/sidecar/sidecar-process.service.js";
@@ -182,7 +182,7 @@ async function main() {
         passwordlessPeers.join(", "),
       );
     }
-    if (!isLoopbackBind(boundHost)) announceLoginSetupCode();
+    if (!isLoopbackBind(boundHost)) enableLoginSetupCode();
     scheduleTaskbarShortcutMigration();
   } catch (err) {
     if (isShuttingDown) {

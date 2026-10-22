@@ -15,6 +15,7 @@ import {
   BASIC_AUTH_FAILURE_LIMIT,
   BASIC_AUTH_FAILURE_WINDOW_MS,
   basicAuthHook,
+  loginRoutes,
   isBasicAuthSatisfied,
 } from "../../packages/server/src/middleware/basic-auth.js";
 import { hostValidationHook } from "../../packages/server/src/middleware/host-validation.js";
@@ -62,6 +63,7 @@ app.addHook("onRequest", rateLimitHook);
 app.addHook("onRequest", basicAuthHook);
 app.get("/", async () => "<!doctype html><title>Marinara</title>");
 app.get("/api/chats", async () => [{ id: "private-chat" }]);
+await app.register(loginRoutes);
 app.get("/api/health", async (request: FastifyRequest) => ({
   status: "ok",
   ...(isBasicAuthSatisfied(request) ? { sidecars: {} } : {}),
@@ -73,6 +75,16 @@ function get(url: string, remoteAddress: string, authorization?: string, headers
     url,
     remoteAddress,
     headers: authorization ? { ...headers, authorization } : headers,
+  });
+}
+
+function signIn(remoteAddress: string, headers: Record<string, string> = HOST) {
+  return app.inject({
+    method: "POST",
+    url: "/login",
+    remoteAddress,
+    headers: { ...headers, "content-type": "application/x-www-form-urlencoded" },
+    payload: "user=mari&password=secret",
   });
 }
 
@@ -175,25 +187,27 @@ try {
   );
 
   // ── A browser that signed in before is not locked out by other visitors' guesses ──
-  const firstSignIn = await get("/", "203.0.113.60", RIGHT);
-  assert.equal(firstSignIn.statusCode, 200);
+  const firstSignIn = await signIn("203.0.113.60");
+  assert.equal(firstSignIn.statusCode, 303);
   const setCookie = String(firstSignIn.headers["set-cookie"] ?? "");
-  const signedInCookie = setCookie.split(";")[0];
-  assert.match(signedInCookie, /^marinara_signed_in=[\w-]+$/, "a correct password sets the signed-in cookie");
+  const signedInCookie = setCookie.split(";")[0] ?? "";
+  assert.match(signedInCookie, /^marinara_session=[\w-]+$/, "signing in on /login sets the session cookie");
   assert.match(setCookie, /; HttpOnly/);
   assert.doesNotMatch(setCookie, /; Secure/, "a plain HTTP sign-in cannot keep a Secure cookie");
+  // A cookie from before server-side sessions signs nobody in.
   const purposeKey = createHmac("sha256", Buffer.from(SERVER_KEY, "hex"))
     .update("basic-auth signed-in browser")
     .digest();
+  const oldCookie = `marinara_signed_in=${createHmac("sha256", purposeKey).update(RIGHT).digest("base64url")}`;
   assert.equal(
-    signedInCookie,
-    `marinara_signed_in=${createHmac("sha256", purposeKey).update(RIGHT).digest("base64url")}`,
-    "the cookie is keyed by the server's own secret, not by the password alone",
+    (await get("/", "203.0.113.61", undefined, { ...HOST, cookie: oldCookie })).statusCode,
+    401,
+    "an old signed-in cookie is ignored",
   );
   assert.equal(
     (await get("/", "203.0.113.60", RIGHT, { ...HOST, cookie: signedInCookie })).headers["set-cookie"],
     undefined,
-    "a browser that has the cookie is not sent it again",
+    "a browser that has a session is not given another",
   );
   const owner = { ...proxied, cookie: signedInCookie };
   assert.equal((await get("/", "127.0.0.1", RIGHT, owner)).statusCode, 200, "the owner's browser still gets in");
@@ -220,8 +234,8 @@ try {
 
   // ── One proxied visitor signing in does not clear the others' count ──
   Date.now = () => realNow() + BASIC_AUTH_FAILURE_WINDOW_MS + 1_000;
-  const httpsSignIn = await get("/", "127.0.0.1", RIGHT, { ...proxied, "x-forwarded-proto": "https" });
-  assert.equal(httpsSignIn.statusCode, 200);
+  const httpsSignIn = await signIn("127.0.0.1", { ...proxied, "x-forwarded-proto": "https" });
+  assert.equal(httpsSignIn.statusCode, 303);
   assert.match(
     String(httpsSignIn.headers["set-cookie"]),
     /; Secure/,

@@ -1,11 +1,13 @@
 // Remote login (#7912): a login saved in the app protects remote access like the
-// .env pair, browsers sign in on /login instead of the Basic Auth dialog, scripts
-// keep sending Basic Authorization, and the first login can be set from the
-// Docker host with a one-time setup code from the server log.
+// .env pair, browsers sign in on /login instead of the Basic Auth dialog and get a
+// server-side session, scripts keep sending Basic Authorization, and the first
+// login can be set from the Docker host with a one-time setup code from the log.
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, unlinkSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import Fastify from "../../packages/server/node_modules/fastify/fastify.js";
 
 const ENV_KEYS = [
@@ -65,10 +67,15 @@ const REMOTE = "203.0.113.10";
 const HOST = { host: "chat.example.com" };
 const LOCAL = { host: "127.0.0.1:7860" };
 const LOGIN_FILE = join(DATA_DIR, ".remote-login.json");
+const SESSIONS_FILE = join(DATA_DIR, ".remote-sessions.json");
+const IPHONE =
+  "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1";
 
 const basic = (user: string, pass: string) => `Basic ${Buffer.from(`${user}:${pass}`, "utf8").toString("base64")}`;
 const get = (url: string, remoteAddress: string, headers: Record<string, string> = {}) =>
   app.inject({ method: "GET", url, remoteAddress, headers: { ...HOST, ...headers } });
+const local = (method: "GET" | "DELETE", url: string, headers: Record<string, string> = {}) =>
+  app.inject({ method, url, remoteAddress: "127.0.0.1", headers: { ...LOCAL, ...headers } });
 const putLogin = (remoteAddress: string, body: Record<string, string>, headers: Record<string, string> = {}) =>
   app.inject({
     method: "PUT",
@@ -77,8 +84,6 @@ const putLogin = (remoteAddress: string, body: Record<string, string>, headers: 
     headers: { ...(remoteAddress === "127.0.0.1" ? LOCAL : HOST), "content-type": "application/json", ...headers },
     payload: JSON.stringify(body),
   });
-const deleteLogin = () =>
-  app.inject({ method: "DELETE", url: "/api/access/login", remoteAddress: "127.0.0.1", headers: LOCAL });
 const signIn = (remoteAddress: string, fields: Record<string, string>, headers: Record<string, string> = {}) =>
   app.inject({
     method: "POST",
@@ -89,20 +94,35 @@ const signIn = (remoteAddress: string, fields: Record<string, string>, headers: 
   });
 const cookieOf = (response: { headers: Record<string, unknown> }) =>
   String(response.headers["set-cookie"] ?? "").split(";")[0] ?? "";
-const loginSource = async () =>
-  (await app.inject({ method: "GET", url: "/api/access/status", remoteAddress: "127.0.0.1", headers: LOCAL })).json()
-    .loginSource;
+const loginSource = async () => (await local("GET", "/api/access/status")).json().loginSource;
+const lastSetupCode = () =>
+  String(warnings.filter((args) => String(args[0]).includes("one-time setup code")).at(-1)?.[1] ?? "");
 
 try {
   await app.ready();
 
+  // ── Session store: per login, capped at 50, 365 days ──
+  const tokens = Array.from({ length: 51 }, () => credential.createSession("login-a", ""));
+  assert.equal(credential.findSession("login-a", tokens[0]!), null, "the oldest session drops out at 50");
+  assert.ok(credential.findSession("login-a", tokens[50]!));
+  assert.equal(credential.listSessions("login-a").length, 50);
+  assert.equal(credential.findSession("login-b", tokens[50]!), null, "a new login ends older sessions");
+  assert.ok(!readFileSync(SESSIONS_FILE, "utf8").includes(tokens[50]!), "only token hashes are saved");
+  if (process.platform !== "win32") assert.equal(statSync(SESSIONS_FILE).mode & 0o777, 0o600, "sessions are 0600");
+  Date.now = () => realNow() + credential.SESSION_MAX_AGE_SECONDS * 1000 + 1_000;
+  assert.equal(credential.findSession("login-a", tokens[50]!), null, "a session ends after 365 days");
+  Date.now = realNow;
+  writeFileSync(SESSIONS_FILE, "{ damaged");
+  Date.now = () => realNow() + 2_001;
+  assert.equal(credential.findSession("login-a", tokens[50]!), null, "a damaged file means no sessions");
+  Date.now = realNow;
+  credential.deleteAllSessions();
+
   // ── First login from the Docker host, with the one-time setup code ──
   assert.equal(credential.getLoginConfig(), null);
-  credential.announceLoginSetupCode();
-  const announced = warnings.find((args) => String(args[0]).includes("one-time setup code"));
-  assert.ok(announced, "with no login, the setup code is in the server log");
-  const code = String(announced[1]);
-  assert.match(code, /^[0-9a-f]{24}$/);
+  credential.enableLoginSetupCode();
+  const code = lastSetupCode();
+  assert.match(code, /^[0-9a-f]{24}$/, "with no login, the setup code is in the server log");
 
   // The host browser arrives as a remote peer that may open the app but has no ADMIN_SECRET.
   process.env.ALLOW_UNAUTHENTICATED_REMOTE = "true";
@@ -115,16 +135,14 @@ try {
   assert.equal(setFirst.statusCode, 200, "the setup code stands in for ADMIN_SECRET for the first login");
   assert.deepEqual(setFirst.json(), { loginSource: "app" });
   const setupSession = cookieOf(setFirst);
-  assert.match(setupSession, /^marinara_signed_in=[\w-]+$/, "the browser that set the login stays signed in");
+  assert.match(setupSession, /^marinara_session=[\w-]{43}$/, "the browser that set the login stays signed in");
   assert.equal((await get("/api/chats", REMOTE, { cookie: setupSession })).statusCode, 200);
 
   // ── The saved login: hashed, 0600, read back ──
-  const saved = readFileSync(LOGIN_FILE, "utf8");
-  assert.ok(!saved.includes("first-password"), "only a hash is saved");
+  assert.ok(!readFileSync(LOGIN_FILE, "utf8").includes("first-password"), "only a hash is saved");
   if (process.platform !== "win32") assert.equal(statSync(LOGIN_FILE).mode & 0o777, 0o600, "the file is owner-only");
   const stored = credential.getLoginConfig();
-  assert.equal(stored?.source, "app");
-  if (stored?.source !== "app") throw new Error("unreachable");
+  if (stored?.source !== "app") throw new Error("expected the app login");
   assert.equal(await credential.verifyStoredPassword(stored, "owner", "first-password"), true);
   assert.equal(await credential.verifyStoredPassword(stored, "owner", "wrong-password"), false);
   assert.equal(await credential.verifyStoredPassword(stored, "someone", "first-password"), false);
@@ -135,9 +153,7 @@ try {
   const again = await putLogin(
     REMOTE,
     { user: "intruder", password: "intruder-password", setupCode: code },
-    {
-      authorization: right,
-    },
+    { authorization: right },
   );
   assert.equal(again.statusCode, 403, "the code no longer works once a login exists");
   assert.equal((await get("/api/chats", "203.0.113.11")).statusCode, 401, "a login closes the open remote opt-in");
@@ -168,6 +184,12 @@ try {
     { origin: "https://evil.example", "sec-fetch-site": "cross-site" },
   );
   assert.equal(crossSite.statusCode, 403, "another site cannot post the form");
+  const noFetchSite = await signIn(
+    "203.0.113.20",
+    { user: "owner", password: "first-password" },
+    { origin: "https://chat.example.com" },
+  );
+  assert.equal(noFetchSite.statusCode, 403, "without Sec-Fetch-Site the usual Origin check applies");
   const signedIn = await signIn(
     "203.0.113.20",
     { user: "owner", password: "first-password", next: "/chats" },
@@ -179,19 +201,76 @@ try {
   assert.match(setCookie, /; Path=\/; HttpOnly; SameSite=Lax; Max-Age=31536000$/, "a long-lived HttpOnly session");
   const session = cookieOf(signedIn);
   assert.equal((await get("/api/chats", "203.0.113.21", { cookie: session })).statusCode, 200, "the cookie signs in");
-  assert.equal((await get("/api/chats", "203.0.113.21", { cookie: "marinara_signed_in=made-up" })).statusCode, 401);
+  const madeUp = `marinara_session=${"A".repeat(43)}`;
+  assert.equal((await get("/api/chats", "203.0.113.21", { cookie: madeUp })).statusCode, 401);
 
   // `next` never leaves this server.
-  for (const next of ["//evil.example/x", "https://evil.example/x", "/\\evil.example", "javascript:alert(1)"]) {
+  const offsite = [
+    "//evil.example/x",
+    "https://evil.example/x",
+    "/\\evil.example",
+    "javascript:alert(1)",
+    "/.//evil.example",
+    "/..//evil.example",
+    "/%2e//evil.example",
+    "/a/..//evil.example",
+  ];
+  for (const next of offsite) {
     const response = await signIn("203.0.113.20", { user: "owner", password: "first-password", next });
     assert.equal(response.headers.location, "/", `POST next=${next} stays here`);
     const redirect = await get(`/login?next=${encodeURIComponent(next)}`, "203.0.113.21", { cookie: session });
     assert.equal(redirect.headers.location, "/", `GET next=${next} stays here`);
   }
 
-  // ── A new password ends old sessions and the old Basic header ──
-  assert.equal((await putLogin("127.0.0.1", { user: "owner", password: "second-password" })).statusCode, 200);
-  assert.equal((await get("/api/chats", "203.0.113.21", { cookie: session })).statusCode, 401, "old sessions end");
+  // ── Signed-in browsers: list, sign out one, sign out all, log out ──
+  const phone = cookieOf(await signIn("203.0.113.22", { ...first }, { "user-agent": IPHONE }));
+  const listed = await local("GET", "/api/access/sessions", { cookie: phone });
+  assert.equal(listed.statusCode, 200);
+  const sessions = listed.json().sessions as Array<Record<string, unknown>>;
+  const mine = sessions.find((entry) => entry.current);
+  assert.equal(mine?.label, "Safari on iPhone");
+  assert.deepEqual(Object.keys(mine ?? {}).sort(), ["createdAt", "current", "id", "label", "lastSeenAt"]);
+  assert.equal(sessions.filter((entry) => entry.current).length, 1);
+  const hashes = (JSON.parse(readFileSync(SESSIONS_FILE, "utf8")).sessions as Array<{ hash: string }>).map(
+    (entry) => entry.hash,
+  );
+  assert.ok(!listed.body.includes(phone.split("=")[1]!), "no token in the list");
+  assert.ok(
+    hashes.every((hash) => !listed.body.includes(hash)),
+    "no token hash in the list",
+  );
+  const remoteList = await get("/api/access/sessions", REMOTE, { cookie: phone });
+  assert.equal(remoteList.statusCode, 403, "the list is for privileged callers only");
+  assert.equal((await local("DELETE", `/api/access/sessions/${String(mine?.id)}`)).statusCode, 204);
+  assert.equal((await get("/api/chats", "203.0.113.22", { cookie: phone })).statusCode, 401, "signed out remotely");
+  assert.equal((await local("DELETE", "/api/access/sessions/unknown")).statusCode, 404);
+
+  const logout = await app.inject({
+    method: "POST",
+    url: "/logout",
+    remoteAddress: "203.0.113.20",
+    headers: { ...HOST, cookie: session },
+  });
+  assert.equal(logout.statusCode, 303);
+  assert.match(String(logout.headers["set-cookie"]), /^marinara_session=; .*Max-Age=0/);
+  assert.equal((await get("/api/chats", "203.0.113.21", { cookie: session })).statusCode, 401, "logout ends it");
+
+  const laptop = cookieOf(await signIn("203.0.113.23", { ...first }));
+  assert.equal((await get("/api/chats", "203.0.113.23", { cookie: laptop })).statusCode, 200);
+  assert.equal((await local("DELETE", "/api/access/sessions")).statusCode, 204);
+  assert.equal((await get("/api/chats", "203.0.113.23", { cookie: laptop })).statusCode, 401, "all signed out");
+
+  // ── A new password ends every session and the old Basic header ──
+  const before = cookieOf(await signIn("203.0.113.24", { ...first }));
+  const change = await putLogin("127.0.0.1", { user: "owner", password: "second-password" });
+  assert.equal(change.statusCode, 200);
+  assert.equal((await get("/api/chats", "203.0.113.24", { cookie: before })).statusCode, 401, "old sessions end");
+  assert.equal((await get("/api/chats", REMOTE, { cookie: setupSession })).statusCode, 401, "all of them");
+  assert.equal(
+    (await local("GET", "/api/access/sessions")).json().sessions.length,
+    1,
+    "only the browser that changed it",
+  );
   assert.equal((await get("/api/chats", "203.0.113.11", { authorization: right })).statusCode, 401, "old password");
   const second = basic("owner", "second-password");
   assert.equal((await get("/api/chats", "203.0.113.11", { authorization: second })).statusCode, 200);
@@ -219,10 +298,15 @@ try {
   );
   assert.ok(burst.some((response) => response.statusCode === 401));
 
-  // ── Remove, and reset by deleting the file ──
-  assert.equal((await deleteLogin()).statusCode, 204);
+  // ── Remove; a reset brings a new setup code without a restart ──
+  assert.ok(existsSync(SESSIONS_FILE));
+  assert.equal((await local("DELETE", "/api/access/login")).statusCode, 204);
   assert.equal(existsSync(LOGIN_FILE), false);
+  assert.equal(existsSync(SESSIONS_FILE), false, "removing the login ends every session");
   assert.equal(await loginSource(), null);
+  const afterRemove = lastSetupCode();
+  assert.match(afterRemove, /^[0-9a-f]{24}$/);
+  assert.notEqual(afterRemove, code, "removing the login brings a new code");
   await credential.setStoredLogin("owner", "third-password");
   assert.equal(credential.getLoginConfig()?.source, "app");
   unlinkSync(LOGIN_FILE);
@@ -230,27 +314,53 @@ try {
   assert.equal(credential.getLoginConfig(), null, "deleting the file removes the login within 2 s");
   assert.equal((await get("/api/chats", "203.0.113.40")).statusCode, 403, "with no login, remote is locked down again");
   Date.now = realNow;
+  const afterReset = lastSetupCode();
+  assert.match(afterReset, /^[0-9a-f]{24}$/);
+  assert.notEqual(afterReset, afterRemove, "a reset brings a new code");
 
-  // A used code does not come back when the login is gone.
   process.env.ALLOW_UNAUTHENTICATED_REMOTE = "true";
-  assert.equal((await putLogin(REMOTE, { ...first, setupCode: code })).statusCode, 403, "the code works once");
+  assert.equal((await putLogin(REMOTE, { ...first, setupCode: code })).statusCode, 403, "an old code stays used up");
+  assert.equal((await putLogin(REMOTE, { ...first, setupCode: afterRemove })).statusCode, 403, "a replaced code fails");
+  assert.equal((await putLogin(REMOTE, { ...first, setupCode: afterReset })).statusCode, 200, "the new code works");
   delete process.env.ALLOW_UNAUTHENTICATED_REMOTE;
 
   // ── .env wins and the app login is read-only meanwhile ──
-  await credential.setStoredLogin("owner", "fourth-password");
   process.env.BASIC_AUTH_USER = "envuser";
   process.env.BASIC_AUTH_PASS = "env-password";
   assert.equal(credential.getLoginConfig()?.source, "env");
   assert.equal(await loginSource(), "env");
   assert.equal((await putLogin("127.0.0.1", { user: "owner", password: "fifth-password" })).statusCode, 409);
-  assert.equal((await deleteLogin()).statusCode, 409);
+  assert.equal((await local("DELETE", "/api/access/login")).statusCode, 409);
   assert.ok(existsSync(LOGIN_FILE), "a refused delete keeps the file");
-  assert.equal(
-    (await get("/api/chats", "203.0.113.50", { authorization: basic("envuser", "env-password") })).statusCode,
-    200,
-  );
-  const ignored = await get("/api/chats", "203.0.113.50", { authorization: basic("owner", "fourth-password") });
+  const envBasic = basic("envuser", "env-password");
+  assert.equal((await get("/api/chats", "203.0.113.50", { authorization: envBasic })).statusCode, 200);
+  const ignored = await get("/api/chats", "203.0.113.50", { authorization: basic("owner", "first-password") });
   assert.equal(ignored.statusCode, 401, "the app login is ignored while .env sets one");
+  const envSession = cookieOf(await signIn("203.0.113.51", { user: "envuser", password: "env-password" }));
+  assert.equal((await get("/api/chats", "203.0.113.51", { cookie: envSession })).statusCode, 200, ".env sessions");
+  process.env.BASIC_AUTH_PASS = "env-password-changed";
+  assert.equal(
+    (await get("/api/chats", "203.0.113.51", { cookie: envSession })).statusCode,
+    401,
+    "an .env change ends them",
+  );
+
+  // ── pnpm reset-login finds DATA_DIR through MARINARA_ENV_FILE ──
+  const resetDir = mkdtempSync(join(DATA_DIR, "reset-"));
+  const envFile = join(resetDir, "custom.env");
+  writeFileSync(envFile, `DATA_DIR=${resetDir}\n`);
+  writeFileSync(join(resetDir, ".remote-login.json"), "{}");
+  writeFileSync(join(resetDir, ".remote-sessions.json"), "{}");
+  const resetEnv: NodeJS.ProcessEnv = { ...process.env, MARINARA_ENV_FILE: envFile };
+  delete resetEnv.DATA_DIR;
+  const reset = spawnSync(process.execPath, [fileURLToPath(new URL("../reset-login.mjs", import.meta.url))], {
+    env: resetEnv,
+    encoding: "utf8",
+  });
+  assert.equal(reset.status, 0, reset.stderr);
+  assert.equal(existsSync(join(resetDir, ".remote-login.json")), false, "reset-login removes the login");
+  assert.equal(existsSync(join(resetDir, ".remote-sessions.json")), false, "and every session");
+  rmSync(resetDir, { recursive: true, force: true });
 
   console.info("Remote login regressions passed.");
 } finally {

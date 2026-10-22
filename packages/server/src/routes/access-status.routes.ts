@@ -9,6 +9,7 @@ import type { FastifyInstance } from "fastify";
 import {
   clearStoredLogin,
   consumeLoginSetupCode,
+  deleteAllSessions,
   getLoginConfig,
   isLoginSetupCode,
   MIN_LOGIN_PASSWORD_LENGTH,
@@ -16,7 +17,7 @@ import {
 } from "../config/login-credential.js";
 import { getHost, getIpAllowlist } from "../config/runtime-config.js";
 import { logger } from "../lib/logger.js";
-import { rememberLoginInBrowser } from "../middleware/basic-auth.js";
+import { describeSessions, endSession, rememberLoginInBrowser } from "../middleware/basic-auth.js";
 import { getAccessPolicy, getPasswordlessPeers, isLoopbackBind, isProxiedRequest } from "../middleware/ip-allowlist.js";
 import { requirePrivilegedAccess } from "../middleware/privileged-gate.js";
 import { ACCESS_LOGIN_RATE_LIMIT, RUNTIME_DIAGNOSTICS_RATE_LIMIT } from "../middleware/rate-limit.js";
@@ -82,6 +83,29 @@ export async function accessStatusRoutes(app: FastifyInstance) {
     if (getLoginConfig()?.source === "env") return reply.status(409).send(ENV_MANAGED);
     clearStoredLogin();
     logger.info("[login] Remote login removed");
+    return reply.status(204).send();
+  });
+
+  // Signed-in browsers, for the owner to review and sign out.
+  app.get("/sessions", { config: { rateLimit: RUNTIME_DIAGNOSTICS_RATE_LIMIT } }, async (request, reply) => {
+    if (!requirePrivilegedAccess(request, reply, { feature: "Signed-in browsers" })) return;
+    return { sessions: describeSessions(request) };
+  });
+
+  app.delete<{ Params: { id: string } }>(
+    "/sessions/:id",
+    { config: { rateLimit: ACCESS_LOGIN_RATE_LIMIT } },
+    async (request, reply) => {
+      if (!requirePrivilegedAccess(request, reply, { feature: "Signed-in browsers" })) return;
+      if (!endSession(request.params.id)) return reply.status(404).send({ error: "Session not found" });
+      return reply.status(204).send();
+    },
+  );
+
+  app.delete("/sessions", { config: { rateLimit: ACCESS_LOGIN_RATE_LIMIT } }, async (request, reply) => {
+    if (!requirePrivilegedAccess(request, reply, { feature: "Signed-in browsers" })) return;
+    deleteAllSessions();
+    logger.info("[login] Every browser was signed out");
     return reply.status(204).send();
   });
 }

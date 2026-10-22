@@ -62,7 +62,17 @@
 
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { getLoginConfig, verifyStoredPassword, type LoginConfig } from "../config/login-credential.js";
+import {
+  createSession,
+  deleteSession,
+  findSession,
+  getLoginConfig,
+  listSessions,
+  SESSION_MAX_AGE_SECONDS,
+  verifyStoredPassword,
+  type LoginConfig,
+  type RemoteSession,
+} from "../config/login-credential.js";
 import { getBasicAuthConfig } from "../config/runtime-config.js";
 import { logger } from "../lib/logger.js";
 import { deriveServerKey } from "../utils/crypto.js";
@@ -77,7 +87,7 @@ interface CachedConfig {
   /** Changes with the login, so a new password signs out every browser. */
   fingerprint: Buffer;
   /** Built on first use; null when the server key cannot be read. */
-  signedInToken?: Buffer | null;
+  sessionKey?: string | null;
   /** MAC of the last Basic header that passed the slow password check. */
   verifiedHeader?: Buffer;
   announced: boolean;
@@ -159,33 +169,29 @@ function clientKey(request: FastifyRequest): string {
   return clientAddressKey(request.ip);
 }
 
-// The session cookie of a signed-in browser (the /login page or a correct Basic
-// header). It ends when the login changes, and other visitors' wrong passwords
-// cannot lock it out.
-const SIGNED_IN_COOKIE = "marinara_signed_in";
-const SIGNED_IN_COOKIE_MAX_AGE_SECONDS = 365 * 24 * 60 * 60;
+// The session cookie of a browser that signed in on /login. The server keeps only
+// a hash of it (config/login-credential.ts), so logout and the owner can end one
+// session and a new login ends all. Other visitors' wrong passwords cannot lock it out.
+const SESSION_COOKIE = "marinara_session";
 
-/** Keyed by a server-only secret and the credentials, so it stops working when the password changes. */
-function signedInToken(config: CachedConfig): Buffer | null {
-  if (config.signedInToken === undefined) {
+/** Names the current login in the sessions file without revealing it; null when the server key cannot be read. */
+function sessionLoginKey(config: CachedConfig): string | null {
+  if (config.sessionKey === undefined) {
     try {
-      const key = deriveServerKey("basic-auth signed-in browser");
-      config.signedInToken = Buffer.from(
-        createHmac("sha256", key).update(config.fingerprint).digest("base64url"),
-        "utf8",
-      );
+      const key = deriveServerKey("remote login sessions");
+      config.sessionKey = createHmac("sha256", key).update(config.fingerprint).digest("base64url");
     } catch (err) {
-      config.signedInToken = null;
-      logger.warn(err, "[basic-auth] Could not read the server key; signed-in browsers are not remembered");
+      config.sessionKey = null;
+      logger.warn(err, "[basic-auth] Could not read the server key; browsers cannot stay signed in");
     }
   }
-  return config.signedInToken;
+  return config.sessionKey;
 }
 
-function hasSignedInCookie(request: FastifyRequest, config: CachedConfig): boolean {
-  const token = signedInToken(config);
-  const value = cookieValue(request, SIGNED_IN_COOKIE);
-  return token !== null && value !== null && safeEqual(Buffer.from(value, "utf8"), token);
+function requestSession(request: FastifyRequest, config: CachedConfig): RemoteSession | null {
+  const token = cookieValue(request, SESSION_COOKIE);
+  const key = sessionLoginKey(config);
+  return token && key ? findSession(key, token) : null;
 }
 
 /** Direct HTTPS, or HTTPS as reported by a local proxy. Only ever adds Secure, so a wrong report cannot widen access. */
@@ -197,13 +203,14 @@ function isHttpsRequest(request: FastifyRequest): boolean {
   return value?.split(",")[0]?.trim().toLowerCase() === "https";
 }
 
-function rememberSignedInBrowser(request: FastifyRequest, reply: FastifyReply, config: CachedConfig) {
-  const token = signedInToken(config);
-  if (!token || hasSignedInCookie(request, config)) return;
+function startBrowserSession(request: FastifyRequest, reply: FastifyReply, config: CachedConfig) {
+  const key = sessionLoginKey(config);
+  if (!key) return;
+  const token = createSession(key, request.headers["user-agent"]);
   const secure = isHttpsRequest(request) ? "; Secure" : "";
   reply.header(
     "Set-Cookie",
-    `${SIGNED_IN_COOKIE}=${token.toString("utf8")}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SIGNED_IN_COOKIE_MAX_AGE_SECONDS}${secure}`,
+    `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_MAX_AGE_SECONDS}${secure}`,
   );
 }
 
@@ -558,7 +565,7 @@ export function isBasicAuthSatisfied(request: FastifyRequest): boolean {
   const config = loadConfig();
   if (!config) return !policy.lockedDown;
 
-  if (hasSignedInCookie(request, config)) return true;
+  if (requestSession(request, config)) return true;
   if (lockoutSeconds(request) > 0) return false;
   return hasCorrectPassword(request, config);
 }
@@ -568,7 +575,9 @@ export function safeNextPath(value: unknown): string {
   if (typeof value !== "string" || !value.startsWith("/")) return "/";
   try {
     const url = new URL(value, "http://marinara.invalid");
-    return url.origin === "http://marinara.invalid" ? `${url.pathname}${url.search}${url.hash}` : "/";
+    const path = `${url.pathname}${url.search}${url.hash}`;
+    // After normalising, a path starting with // or /\ would name another host.
+    return url.origin === "http://marinara.invalid" && !/^\/[/\\]/.test(path) ? path : "/";
   } catch {
     return "/";
   }
@@ -597,7 +606,7 @@ export async function basicAuthHook(request: FastifyRequest, reply: FastifyReply
     const header = request.headers.authorization;
     if (typeof header === "string" && !isTrustedPeer(request)) {
       const config = loadConfig();
-      if (config && !hasSignedInCookie(request, config) && lockoutSeconds(request) === 0) {
+      if (config && !requestSession(request, config) && lockoutSeconds(request) === 0) {
         await checkCredentials(request, config, header);
       }
     }
@@ -637,7 +646,7 @@ export async function basicAuthHook(request: FastifyRequest, reply: FastifyReply
     return reply;
   }
 
-  if (isLoginPath(request) || hasSignedInCookie(request, config)) return;
+  if (isLoginPath(request) || requestSession(request, config)) return;
 
   const header = request.headers.authorization;
   if (typeof header !== "string" && wantsLoginPage(request)) {
@@ -661,14 +670,33 @@ export async function basicAuthHook(request: FastifyRequest, reply: FastifyReply
     else sendChallenge(reply, config.realm);
     return reply;
   }
-
-  rememberSignedInBrowser(request, reply, config);
 }
 
 /** Signs the current browser in, e.g. after it set the login, so it is not sent to /login next. */
 export function rememberLoginInBrowser(request: FastifyRequest, reply: FastifyReply) {
   const config = loadConfig();
-  if (config) rememberSignedInBrowser(request, reply, config);
+  if (config) startBrowserSession(request, reply, config);
+}
+
+/** The owner's list of signed-in browsers; never the token or its hash. */
+export function describeSessions(request: FastifyRequest) {
+  const config = loadConfig();
+  const key = config && sessionLoginKey(config);
+  if (!config || !key) return [];
+  const current = requestSession(request, config)?.id;
+  return listSessions(key).map(({ id, label, createdAt, lastSeenAt }) => ({
+    id,
+    label,
+    createdAt,
+    lastSeenAt,
+    current: id === current,
+  }));
+}
+
+export function endSession(id: string): boolean {
+  const config = loadConfig();
+  const key = config && sessionLoginKey(config);
+  return key ? deleteSession(key, id) : false;
 }
 
 // ── Login page ──
@@ -745,14 +773,17 @@ export async function loginRoutes(app: FastifyInstance) {
       if (verdict === null) return sendLoginPage(reply, 429, next, "Too many sign-ins at once. Try again in a moment.");
       if (!verdict) return sendLoginPage(reply, 401, next, "Wrong username or password.");
 
-      rememberSignedInBrowser(request, reply, config);
+      startBrowserSession(request, reply, config);
       return reply.redirect(next, 303);
     },
   );
 
   app.post("/logout", async (request, reply) => {
+    const config = loadConfig();
+    const session = config && requestSession(request, config);
+    if (session) endSession(session.id);
     const secure = isHttpsRequest(request) ? "; Secure" : "";
-    reply.header("Set-Cookie", `${SIGNED_IN_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure}`);
+    reply.header("Set-Cookie", `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure}`);
     return reply.redirect("/login", 303);
   });
 }

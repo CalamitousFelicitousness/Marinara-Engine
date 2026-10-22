@@ -1,11 +1,12 @@
 // ──────────────────────────────────────────────
-// Config: remote login
+// Config: remote login and browser sessions
 // ──────────────────────────────────────────────
 // One answer to "which login protects remote access", shared by the Basic Auth
 // gate, the access policy and the access status. BASIC_AUTH_USER and
 // BASIC_AUTH_PASS in .env win when both are set; otherwise the login saved in
-// the app at DATA_DIR/.remote-login.json applies. Deleting that file removes
-// the login within RECHECK_MS, like an .env edit.
+// the app at DATA_DIR/.remote-login.json applies. Signed-in browsers are kept in
+// DATA_DIR/.remote-sessions.json. Both files are read again within RECHECK_MS
+// when they change on disk, so deleting them works like an .env edit.
 
 import { createHash, randomBytes, scrypt, timingSafeEqual } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
@@ -16,36 +17,84 @@ import { getBasicAuthConfig } from "./runtime-config.js";
 
 export type StoredLogin = { user: string; salt: string; hash: string; N: number; r: number; p: number };
 export type LoginConfig = { source: "env"; user: string; pass: string } | ({ source: "app" } & StoredLogin);
+/** `hash` is the SHA-256 of the cookie token; the token itself is never stored. */
+export type RemoteSession = { id: string; hash: string; label: string; createdAt: number; lastSeenAt: number };
+type SessionsFile = { login: string; sessions: RemoteSession[] };
 
 export const MIN_LOGIN_PASSWORD_LENGTH = 10;
+export const SESSION_MAX_AGE_SECONDS = 365 * 24 * 60 * 60;
 const LOGIN_FILE = join(DATA_DIR, ".remote-login.json");
+const SESSIONS_FILE = join(DATA_DIR, ".remote-sessions.json");
 /** Matches the .env watcher, so a reset takes effect as fast as an .env edit. */
 const RECHECK_MS = 2_000;
 const SCRYPT_PARAMS = { N: 2 ** 14, r: 8, p: 1 };
 const HASH_BYTES = 32;
+const MAX_SESSIONS = 50;
+/** lastSeenAt is saved at most this often per session, not on every request. */
+const SESSION_TOUCH_MS = 60 * 60 * 1000;
+
+/** Reads `file` again when its stat changes, at most every RECHECK_MS. A missing file gives `missing`. */
+function watchedFile<T>(file: string, read: () => T, missing: T) {
+  let state: { checkedAt: number; stamp: string; value: T } | null = null;
+  return {
+    get(): T {
+      const now = Date.now();
+      // abs(): a clock that steps back must not freeze the cache.
+      if (state && Math.abs(now - state.checkedAt) < RECHECK_MS) return state.value;
+      let stamp = "";
+      try {
+        const stats = statSync(file);
+        stamp = `${stats.ino}:${stats.size}:${stats.mtimeMs}`;
+      } catch {
+        // Missing.
+      }
+      if (state?.stamp === stamp) state.checkedAt = now;
+      else state = { checkedAt: now, stamp, value: stamp ? read() : missing };
+      return state.value;
+    },
+    forget() {
+      state = null;
+    },
+  };
+}
+
+/** Owner-only (0600) and atomic: a crash leaves the old file or the new one, never half of it. */
+function writePrivateFile(file: string, value: unknown) {
+  mkdirSync(DATA_DIR, { recursive: true });
+  const temp = `${file}.${randomBytes(6).toString("hex")}.tmp`;
+  writeFileSync(temp, `${JSON.stringify(value)}\n`, { mode: 0o600, flag: "wx" });
+  renameSync(temp, file);
+}
+
+function removeFile(file: string) {
+  try {
+    unlinkSync(file);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+  }
+}
+
+// ── Login ──
 
 let envLogin: Extract<LoginConfig, { source: "env" }> | null = null;
-let fileState: { checkedAt: number; stamp: string; login: LoginConfig | null } | null = null;
+let lastLogin: LoginConfig | null = null;
+let setupCodeAllowed = false;
 let setupCode: string | null = null;
+const loginFile = watchedFile<LoginConfig | null>(LOGIN_FILE, readLoginFile, null);
 
 export function getLoginConfig(): LoginConfig | null {
   const { user, pass } = getBasicAuthConfig();
+  let login: LoginConfig | null;
   if (user && pass) {
     if (envLogin?.user !== user || envLogin.pass !== pass) envLogin = { source: "env", user, pass };
-    return envLogin;
+    login = envLogin;
+  } else {
+    login = loginFile.get();
   }
-  const now = Date.now();
-  if (fileState && now - fileState.checkedAt < RECHECK_MS) return fileState.login;
-  let stamp = "";
-  try {
-    const stats = statSync(LOGIN_FILE);
-    stamp = `${stats.ino}:${stats.size}:${stats.mtimeMs}`;
-  } catch {
-    // No file means no app login.
-  }
-  if (fileState?.stamp === stamp) fileState.checkedAt = now;
-  else fileState = { checkedAt: now, stamp, login: stamp ? readLoginFile() : null };
-  return fileState.login;
+  if (login) setupCode = null;
+  else if (lastLogin && setupCodeAllowed) announceSetupCode();
+  lastLogin = login;
+  return login;
 }
 
 function isStoredLogin(value: unknown): value is StoredLogin {
@@ -100,36 +149,39 @@ export async function verifyStoredPassword(login: StoredLogin, user: string, pas
   return timingSafeEqual(actual, expected) && sameText(user, login.user);
 }
 
-/** Saves the app login (mode 0600, atomic) and ends the setup code. */
+/** Saves the app login and ends the setup code. Sessions belong to one login, so the old ones stop working. */
 export async function setStoredLogin(user: string, password: string): Promise<void> {
   const salt = randomBytes(16);
   const hash = await deriveHash(password, salt, SCRYPT_PARAMS);
   const record: StoredLogin = { user, salt: salt.toString("base64"), hash: hash.toString("base64"), ...SCRYPT_PARAMS };
-  mkdirSync(DATA_DIR, { recursive: true });
-  const temp = `${LOGIN_FILE}.${randomBytes(6).toString("hex")}.tmp`;
-  writeFileSync(temp, `${JSON.stringify(record)}\n`, { mode: 0o600, flag: "wx" });
-  renameSync(temp, LOGIN_FILE);
-  fileState = null;
+  writePrivateFile(LOGIN_FILE, record);
+  loginFile.forget();
   setupCode = null;
 }
 
 export function clearStoredLogin(): void {
-  try {
-    unlinkSync(LOGIN_FILE);
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
-  }
-  fileState = null;
+  removeFile(LOGIN_FILE);
+  loginFile.forget();
+  deleteAllSessions();
 }
+
+// ── One-time setup code ──
 
 /**
  * A browser on the Docker host reaches the server through the Docker gateway, not
  * loopback, so it cannot set the first login without ADMIN_SECRET. This code, shown
- * only in the server log, stands in for ADMIN_SECRET for that first login. New on
- * every start, used once, and gone as soon as any login exists.
+ * only in the server log, stands in for ADMIN_SECRET for that first login. Called
+ * at startup when the server listens beyond loopback; a new code follows each
+ * reset, and any login ends it.
  */
-export function announceLoginSetupCode(): void {
-  if (getLoginConfig()) return;
+export function enableLoginSetupCode(): void {
+  setupCodeAllowed = true;
+  if (!getLoginConfig()) announceSetupCode();
+  // Notice a reset without waiting for the next request.
+  setInterval(getLoginConfig, RECHECK_MS).unref();
+}
+
+function announceSetupCode() {
   setupCode = randomBytes(12).toString("hex");
   logger.warn(
     "[login] No remote login is set. To set one from a device that is not this computer, use this one-time setup code: %s",
@@ -138,11 +190,134 @@ export function announceLoginSetupCode(): void {
 }
 
 export function isLoginSetupCode(value: unknown): boolean {
-  if (setupCode && getLoginConfig()) setupCode = null;
+  getLoginConfig();
   return setupCode !== null && typeof value === "string" && sameText(value, setupCode);
 }
 
 /** Call after isLoginSetupCode passed and before any await, so a code works once. */
 export function consumeLoginSetupCode(): void {
   setupCode = null;
+}
+
+// ── Browser sessions ──
+
+const sessionsFile = watchedFile<SessionsFile | null>(SESSIONS_FILE, readSessionsFile, null);
+
+function isSession(value: unknown): value is RemoteSession {
+  const v = value as Partial<RemoteSession> | null;
+  return (
+    typeof v?.id === "string" &&
+    typeof v.hash === "string" &&
+    /^[0-9a-f]{64}$/.test(v.hash) &&
+    typeof v.label === "string" &&
+    Number.isFinite(v.createdAt) &&
+    Number.isFinite(v.lastSeenAt)
+  );
+}
+
+function readSessionsFile(): SessionsFile | null {
+  try {
+    const { login, sessions } = JSON.parse(readFileSync(SESSIONS_FILE, "utf8")) as Partial<SessionsFile>;
+    if (typeof login === "string" && Array.isArray(sessions) && sessions.every(isSession)) return { login, sessions };
+  } catch {
+    // Reported below.
+  }
+  logger.warn("[login] %s is damaged, so every browser must sign in again.", SESSIONS_FILE);
+  return null;
+}
+
+const hashToken = (token: string) => createHash("sha256").update(token, "utf8").digest();
+
+/** Live sessions of the login `loginKey` names. A new login gets a new key, which ends all older sessions. */
+function liveSessions(loginKey: string): RemoteSession[] {
+  const stored = sessionsFile.get();
+  if (stored?.login !== loginKey) return [];
+  const oldest = Date.now() - SESSION_MAX_AGE_SECONDS * 1000;
+  return stored.sessions.filter((session) => session.createdAt > oldest);
+}
+
+function saveSessions(loginKey: string, sessions: RemoteSession[]) {
+  writePrivateFile(SESSIONS_FILE, { login: loginKey, sessions });
+  sessionsFile.forget();
+}
+
+// ponytail: names a few common devices and browsers; use a User-Agent parser if owners need more detail.
+function deviceLabel(userAgent: unknown): string {
+  const ua = typeof userAgent === "string" ? userAgent : "";
+  const pick = (names: Record<string, string>) => Object.keys(names).find((key) => ua.includes(key));
+  const browsers = {
+    "Edg/": "Edge",
+    "OPR/": "Opera",
+    "FxiOS/": "Firefox",
+    "CriOS/": "Chrome",
+    "Firefox/": "Firefox",
+    "Chrome/": "Chrome",
+    "Safari/": "Safari",
+  };
+  const devices = {
+    iPhone: "iPhone",
+    iPad: "iPad",
+    Android: "Android",
+    CrOS: "ChromeOS",
+    Windows: "Windows",
+    Macintosh: "Mac",
+    Linux: "Linux",
+  };
+  const browser = pick(browsers);
+  const device = pick(devices);
+  if (!browser && !device) return "Unknown device";
+  return [browser && browsers[browser as keyof typeof browsers], device && devices[device as keyof typeof devices]]
+    .filter(Boolean)
+    .join(" on ");
+}
+
+/** Starts a session for the login `loginKey` names and returns the cookie token. */
+export function createSession(loginKey: string, userAgent: unknown): string {
+  const token = randomBytes(32).toString("base64url");
+  const now = Date.now();
+  const session: RemoteSession = {
+    id: randomBytes(9).toString("base64url"),
+    hash: hashToken(token).toString("hex"),
+    label: deviceLabel(userAgent),
+    createdAt: now,
+    lastSeenAt: now,
+  };
+  // The oldest sessions drop out at the cap.
+  saveSessions(loginKey, [...liveSessions(loginKey), session].slice(-MAX_SESSIONS));
+  return token;
+}
+
+export function findSession(loginKey: string, token: string): RemoteSession | null {
+  const hash = hashToken(token);
+  const sessions = liveSessions(loginKey);
+  const session = sessions.find((entry) => timingSafeEqual(Buffer.from(entry.hash, "hex"), hash)) ?? null;
+  if (session && Date.now() - session.lastSeenAt >= SESSION_TOUCH_MS) {
+    try {
+      const now = Date.now();
+      saveSessions(
+        loginKey,
+        sessions.map((entry) => (entry === session ? { ...entry, lastSeenAt: now } : entry)),
+      );
+    } catch (err) {
+      logger.warn(err, "[login] Could not save when a browser was last seen");
+    }
+  }
+  return session;
+}
+
+export function listSessions(loginKey: string): RemoteSession[] {
+  return liveSessions(loginKey);
+}
+
+export function deleteSession(loginKey: string, id: string): boolean {
+  const sessions = liveSessions(loginKey);
+  const rest = sessions.filter((session) => session.id !== id);
+  if (rest.length === sessions.length) return false;
+  saveSessions(loginKey, rest);
+  return true;
+}
+
+export function deleteAllSessions(): void {
+  removeFile(SESSIONS_FILE);
+  sessionsFile.forget();
 }

@@ -86,6 +86,9 @@ for (const claim of [
   "The entry would fire on 'guild'; the card reads 1745 now.",
   "The entry would fire on 'guild', and the card already reflects the greeting.",
   "Nothing else was touched; the description is now 1745.",
+  "Nothing was saved; the card has 1745 now.",
+  "Nothing was saved; the card has 1745 already.",
+  "No entry was created; the card is now ready.",
 ]) {
   assert.equal(auditWorkspaceCompletionClaim(final(claim), scope).issue, "dry_run", claim);
 }

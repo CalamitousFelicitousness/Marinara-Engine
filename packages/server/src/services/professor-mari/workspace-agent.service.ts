@@ -2448,10 +2448,14 @@ function replyOwnsUpToDryRun(text: string): boolean {
     /\b(?:no|nothing)\s+(?:\w+\s+){0,3}?(?:was|were|is|has been|have been)\s+\w+|\bnothing\s+(?:saved|applied|changed)\b|\bnot (?:been |yet )?(?:saved|applied)\b|\b(?:was|were|is|has|have)\s+not\s+(?:been\s+)?\w+|\b\w+n't\s+(?:been\s+)?\w+/giu;
   if (!normalized.match(wouldPhrase) && !normalized.match(denial)) return false;
   const rest = normalized.replace(wouldPhrase, " ").replace(denial, " ");
-  // A sentence saying the record now holds the value claims it, wherever the adverb sits ("now reflects",
-  // "already shows", "it reads 1745 now"). A bare "is now" claims it too, unless it hands the call back.
-  const stateClaim =
-    /\b(?:now|already)\s+(?:correctly\s+)?(?:reflects|shows|says|reads|has|holds|includes|contains|matches|uses)\b|\b(?:reflects|shows|says|reads|holds|includes|contains|matches|uses)\b[^.;!?\n]{0,40}?\bnow\b|\b(?:is|are)\s+now\s+(?!up to\b|your\b|yours\b|ready\b|waiting\b|pending\b)/iu;
+  // A sentence saying the record now holds the value claims it, with "now" or "already" on either side of
+  // the verb ("now reflects", "has 1745 already"). A bare "is now" claims it too, unless it hands the call
+  // back ("is now up to you", "is now yours to apply").
+  const stateVerb = "(?:reflects|shows|says|reads|has|holds|includes|contains|matches|uses)";
+  const stateClaim = new RegExp(
+    String.raw`\b(?:now|already)\s+(?:correctly\s+)?${stateVerb}\b|\b${stateVerb}\b[^.;!?\n]{0,40}?\b(?:now|already)\b|\b(?:is|are)\s+now\s+(?!up to\b|yours?\b)`,
+    "iu",
+  );
   return (
     !/\b(?:done|all set|saved|applied|updated|created|added|linked|fixed|changed)\b/iu.test(rest) &&
     !stateClaim.test(rest) &&

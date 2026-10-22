@@ -113,6 +113,8 @@ import {
   type TacticalGrid,
   type CombatTactics,
   type RulesetSheetItem,
+  rulesetCombatantFlying,
+  withRulesetSheetEvaluationCache,
 } from "@marinara-engine/shared";
 import { logger } from "../../lib/logger.js";
 import { combatDirectorView, type CombatDirectorState } from "./combat-director.service.js";
@@ -192,6 +194,8 @@ export interface RulesetFightOpponent {
   /** How it fights: the same competence and temperament its choices in the fight are made with,
    *  which is also what fills an invented sheet's open choices. Assigned here when not given. */
   tactics?: Pick<CombatTactics, "proficiency" | "adjective">;
+  /** How a story fight has it (1.363): its Legendary Resistance and health, when it is a bestiary's. */
+  adjust?: { legendaryResistance?: number; maxHp?: number; calls?: Array<{ action: string; creature: string }> };
 }
 
 export interface RulesetFightSeed {
@@ -288,6 +292,17 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
         name: opponent.name,
         side: "enemy",
         creature: { catalogId: found.catalogId, entryId: found.entry.id },
+        ...(opponent.adjust
+          ? {
+              adjust: {
+                ...(opponent.adjust.legendaryResistance !== undefined
+                  ? { legendaryResistance: opponent.adjust.legendaryResistance }
+                  : {}),
+                ...(opponent.adjust.maxHp !== undefined ? { health: opponent.adjust.maxHp } : {}),
+                ...(opponent.adjust.calls?.length ? { calls: opponent.adjust.calls.map((call) => ({ ...call })) } : {}),
+              },
+            }
+          : {}),
       });
       if (found.entry.creature?.loot) lootTables[opponent.id] = found.entry.creature.loot;
       continue;
@@ -727,6 +742,8 @@ function projectCombatant(
       : {}),
     ...(combatant.altitude !== undefined ? { altitude: combatant.altitude } : {}),
     ...(combatant.span !== undefined ? { span: combatant.span } : {}),
+    // Drawn in its flying art (1.352): never read by the rules.
+    ...(rulesetCombatantFlying(state.board?.grid, combatant) ? { flying: true as const } : {}),
   };
 }
 
@@ -2395,6 +2412,17 @@ export function commandRulesetCombatDirector(
   state: CombatDirectorState,
   command: DirectedCommand,
   source: "gm" | "ai" | "manual" | "fallback" = "manual",
+): RulesetCommandResult {
+  // The option and picker loops read the same sheets thousands of times in one command, and no build
+  // is written to during it: the fight's creation and the creature-sheet hold run outside it.
+  return withRulesetSheetEvaluationCache(() => runRulesetCommand(definition, state, command, source));
+}
+
+function runRulesetCommand(
+  definition: RulesetDefinition,
+  state: CombatDirectorState,
+  command: DirectedCommand,
+  source: "gm" | "ai" | "manual" | "fallback",
 ): RulesetCommandResult {
   const fight = fightOf(state);
   if (!fight) return refuse("This battle is not resolved by a ruleset.", "ruleset_combat_not_a_ruleset_fight");

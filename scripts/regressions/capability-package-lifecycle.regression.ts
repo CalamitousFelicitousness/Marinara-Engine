@@ -104,7 +104,7 @@ try {
   const legacyManifest = capabilityPackageManifestSchema.parse(installedPackage("legacy", ["agent"]).manifest);
   assert.equal(legacyManifest.schemaVersion, 1, "Existing manifest v1 packages must remain readable");
   assert.equal(getCapabilityApiCompatibilityIssue(legacyManifest), null);
-  assert.deepEqual(supportedCapabilityApi, { major: 1, minor: 350 });
+  assert.deepEqual(supportedCapabilityApi, { major: 1, minor: 374 });
 
   const manifestV2 = capabilityPackageManifestSchema.parse({
     ...legacyManifest,
@@ -140,11 +140,11 @@ try {
   });
   assert.match(
     getCapabilityApiCompatibilityIssue(unsupportedMajorManifest) ?? "",
-    /requires capability API 2\.0; this Engine supports 1\.350/,
+    /requires capability API 2\.0; this Engine supports 1\.374/,
   );
   const currentMinorManifest = capabilityPackageManifestSchema.parse({
     ...manifestV2,
-    capabilityApi: { major: 1, minor: 350 },
+    capabilityApi: { major: 1, minor: 374 },
   });
   assert.equal(getCapabilityApiCompatibilityIssue(currentMinorManifest), null);
   assert.equal(
@@ -191,7 +191,8 @@ try {
     [340, "larger rulesets and catalog files"],
     [341, "runtime services"],
     [342, "story clocks"],
-    [349, "the newest minor before this one"],
+    [372, "Experience setup values"],
+    [373, "the newest minor before this one"],
   ];
   for (const [minor, label] of supportedMinors) {
     assert.equal(
@@ -204,11 +205,11 @@ try {
   }
   const unsupportedMinorManifest = capabilityPackageManifestSchema.parse({
     ...manifestV2,
-    capabilityApi: { major: 1, minor: 351 },
+    capabilityApi: { major: 1, minor: 375 },
   });
   assert.match(
     getCapabilityApiCompatibilityIssue(unsupportedMinorManifest) ?? "",
-    /requires capability API 1\.351; this Engine supports 1\.350/,
+    /requires capability API 1\.375; this Engine supports 1\.374/,
   );
   const startupManifest = {
     ...currentMinorManifest,
@@ -265,6 +266,40 @@ try {
         },
       }),
     /cannot override.*seed/,
+  );
+  // An Experience's GM setup values (1.372).
+  const defaultsManifest = {
+    ...inlineSetupManifest,
+    contributions: {
+      slots: ["game-surface"],
+      gameSurface: {
+        setup: {
+          defaults: {
+            name: "The Held Autumn",
+            genre: ["Fantasy"],
+            setting: "Sallowmarch, a valley where nothing has died for forty years.",
+            tone: ["Whimsical", "Dark"],
+            difficulty: "Normal",
+            combatStyle: "tactical",
+            intro: { mode: "defined", text: "The leaves have not fallen.", locked: true },
+          },
+        },
+      },
+    },
+  };
+  assert.equal(
+    capabilityPackageManifestSchema.parse(defaultsManifest).contributions?.gameSurface?.setup?.defaults?.intro?.locked,
+    true,
+  );
+  assert.throws(
+    () => capabilityPackageManifestSchema.parse({ ...defaultsManifest, capabilityApi: { major: 1, minor: 339 } }),
+    /defaults require capabilityApi 1\.372/,
+  );
+  assert.throws(() =>
+    capabilityPackageManifestSchema.parse({
+      ...defaultsManifest,
+      contributions: { slots: ["game-surface"], gameSurface: { setup: { defaults: { gameSystemPrompt: "x" } } } },
+    }),
   );
 
   const forwardCompatibleCatalog = capabilityCatalogSchema.parse({

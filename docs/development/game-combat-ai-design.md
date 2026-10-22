@@ -297,6 +297,8 @@ Proposed initial tuning: normalize policy utility to a fixed scale; let novices 
 
 **What each role does (combat AI A1-A3).** The role now bends the shared weighing in all three styles, unless the opponent is mindless: a bulwark weighs protection most and is credited for ending its walk beside a threatened friend; a skirmisher weighs finishing and coordination more and is credited for striking from across a target from a friend already on it; a marksman minds danger more; a spellcaster keeps its costly options for when they matter; a controller weighs setup most; a supporter weighs help more and is credited for ending beside a hurt friend; and a solo (a ruleset creature with signature moves or legendary resistance, or a Classic/Tactical boss) spends freely, hits harder and minds danger less. A ruleset creature's role is derived from what it can do (see the 1.710/1.723 paragraphs of writing-rulesets.md) and its temperament is drawn again with that role when it differs from the first guess, unless the story or data names one, or it is an opponent with a sheet (whose open choices were filled with its given temperament).
 
+**In and out again (combat AI A4).** A ruleset creature that struck up close this turn and is a skirmisher, or cautious or cowardly, uses its leftover walk to get clear: a Disengage it can still afford (Nimble Escape's bonus one) then its getaway cell, or without one only a cell that provokes nothing and is beside no opponent. Remembered across a window a person answers (`turnSoFar.struckClose`).
+
 ## 8. Boss turns controlled by the GM
 
 ### Identity and responsibility

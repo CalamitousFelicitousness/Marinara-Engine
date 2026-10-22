@@ -262,11 +262,55 @@ try {
     assert.equal(role("guardian"), "bulwark");
     assert.equal(role("knight"), "bulwark");
     assert.equal(role("goblin"), "skirmisher");
+    // 5e's own Parry puts a condition on it worth +2 AC for the one attack: still a bulwark. One that
+    // puts anything else on itself is not turning a blow aside.
+    const knight = rulesetCombatant(encounter, "knight")!;
+    const parry = knight.actions.find((action) => action.id === "parry")!;
+    parry.applies = [{ condition: "parrying", duration: { rounds: 1 } }] as never;
+    assert.equal(role("knight"), "bulwark", "a Parry written as a condition");
+    parry.applies = [{ condition: "blessed", duration: { rounds: 1 } }] as never;
+    assert.equal(role("knight"), "bruiser", "a reaction that blesses itself");
     // Feet much quicker than its side's, on blows no harder than theirs.
     const quick = rulesetCombatant(encounter, "plated")!;
     quick.speed = 60;
     assert.equal(role("plated"), "skirmisher");
     assert.equal(rulesetCombatantRole(quick), "bruiser", "with no fight to read its side from");
+  }
+
+  // ── In and out again (combat AI A4): a goblin strikes and slips away; a brute stands ──
+  {
+    const nimble = {
+      id: "nimble",
+      name: "Nimble Escape",
+      budget: "bonus",
+      standard: { actions: ["disengage", "hide"] },
+    };
+    const strikes = (actions: unknown[]) => {
+      const { encounter, state } = fight({
+        goblin: { side: "enemy", block: block(actions), at: { x: 8, y: 2 } },
+        hero: { side: "party", block: block([smash], { health: 200 }), at: { x: 9, y: 2 } },
+      });
+      state.rulesetFight = { encounter, events: [], eventSeq: 0, controllers: { hero: "manual" }, bosses: [] } as never;
+      syncRulesetCombatants(definition, state);
+      state.stage = rulesetDirectorStage(state);
+      assert.ok(commandRulesetCombatDirector(definition, state, { type: "continue" }).ok);
+      const after = state.rulesetFight!.encounter;
+      const goblin = rulesetCombatant(after, "goblin")!;
+      const hero = rulesetCombatant(after, "hero")!;
+      return {
+        struck: state.rulesetFight!.events.some(
+          (entry) => entry.event.type === "attack" && "actorId" in entry.event && entry.event.actorId === "goblin",
+        ),
+        gap: Math.max(Math.abs(goblin.x! - hero.x!), Math.abs(goblin.y! - hero.y!)),
+        hit: hero.health!.value < 200,
+      };
+    };
+    const goblin = strikes([smash, nimble]);
+    assert.ok(goblin.struck, "the goblin strikes");
+    assert.ok(goblin.gap > 1, `and is gone again: ${goblin.gap}`);
+    const brute = strikes([smash]);
+    assert.ok(brute.struck);
+    assert.equal(brute.gap, 1, "a brute stands and fights");
   }
 
   // ── Its temperament and role, unless the Game Master gave one ──

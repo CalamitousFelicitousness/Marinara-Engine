@@ -114,7 +114,20 @@ export function rulesetCombatantRole(
   if (actions.some((action) => action.reaction?.for === "ally" || action.reaction?.for === "any")) return "bulwark";
   if (actions.some((action) => action.standard?.actions.some((one) => one === "disengage" || one === "hide")))
     return "skirmisher";
-  if (actions.some((action) => action.reaction?.on === "hit" && !action.damage && !action.applies?.length))
+  // Turning a blow aside: a reaction to being hit that harms nobody and at most raises its own
+  // defence (5e's Parry, a condition worth +2 AC for that one attack).
+  const raisesDefense = (condition: string) =>
+    !!definition?.combat?.conditions
+      ?.find((rule) => rule.condition === condition)
+      ?.modifiers?.some((modifier) => modifier.to === "defense" && (modifier.flat ?? 0) > 0);
+  if (
+    actions.some(
+      (action) =>
+        action.reaction?.on === "hit" &&
+        !action.damage &&
+        (action.applies ?? []).every((one) => raisesDefense(one.condition)),
+    )
+  )
     return "bulwark";
   if (
     definition &&

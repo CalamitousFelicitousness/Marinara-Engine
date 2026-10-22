@@ -198,6 +198,8 @@ export interface RulesetFightState {
     turn: number;
     shotFromAfar: "stay" | "kite" | false;
     defended: boolean;
+    /** Whether it has struck up close this turn (combat AI A4), and may get out again after. */
+    struckClose?: boolean;
   };
 }
 
@@ -4159,6 +4161,8 @@ function playRulesetTurn(
   let defended = earlier?.defended ?? false;
   // Whether its last blow was thrown from afar (combat AI P8), and whether it keeps its distance after.
   let shotFromAfar: "stay" | "kite" | false = earlier?.shotFromAfar ?? false;
+  // Whether it has struck up close (combat AI A4): a skirmisher, or a careful one, gets out after.
+  let struckClose = earlier?.struckClose ?? false;
   const remember = () => {
     fight.turnSoFar = {
       actorId,
@@ -4166,6 +4170,7 @@ function playRulesetTurn(
       turn: fight.encounter.turn,
       shotFromAfar,
       defended,
+      ...(struckClose ? { struckClose } : {}),
     };
   };
   for (let action = 0; action < RULESET_TURN_ACTION_LIMIT; action++) {
@@ -4179,6 +4184,7 @@ function playRulesetTurn(
       // A shot thrown, it steps back where nobody can walk up and strike it, still in range for the
       // next; and with somebody still in its range it does not walk in to meet them.
       if (shotFromAfar && !stays && keepRulesetRange(definition, state, fight, actorId, shotFromAfar === "kite")) break;
+      if (struckClose && !shotFromAfar && !defended && !stays && hitAndRun(definition, state, fight, actorId)) break;
       if (defended || stays || !walkTowardsTrouble(definition, state, fight, actorId, leash)) break;
       continue;
     }
@@ -4233,6 +4239,7 @@ function playRulesetTurn(
     const blow = !!rulesetCombatant(fight.encounter, actorId)?.actions.find((one) => one.id === picked.choice.optionId)
       ?.damage;
     if (afar || blow) shotFromAfar = afar;
+    if (blow && !afar) struckClose = true;
   }
   delete fight.turnSoFar;
   advanceTurn(definition, state, fight);
@@ -4411,6 +4418,50 @@ function keepRulesetRange(
   }
   if (best)
     applyChoice(definition, state, fight, { actorId, optionId: RULESET_MOVE_OPTION, targetIds: [], to: best.cell });
+  return true;
+}
+
+/**
+ * In and out again (combat AI A4): a skirmisher, or a cautious or cowardly one, that has struck up
+ * close and has walk left gets away from whoever it struck rather than standing there for the
+ * answer. With a Disengage it can still take (a goblin's Nimble Escape) it goes to its getaway cell;
+ * without one, only to a cell it can reach without drawing a blow, beside nobody. Never a mindless
+ * one. Whether it got out.
+ */
+function hitAndRun(
+  definition: RulesetDefinition,
+  state: CombatDirectorState,
+  fight: RulesetFightState,
+  actorId: string,
+): boolean {
+  const actor = rulesetCombatant(fight.encounter, actorId);
+  const tactics = [...state.party, ...state.enemies].find((one) => one.id === actorId)?.tactics;
+  if (!actor || !tactics || tactics.mind === "mindless" || !fight.encounter.board?.grid) return false;
+  if (tactics.role !== "skirmisher" && tactics.adjective !== "cautious" && tactics.adjective !== "cowardly")
+    return false;
+  if (actor.movement !== undefined && (actor.movementLeft ?? 0) < 1) return false;
+  const foes = fight.encounter.combatants.filter(
+    (one) => one.side !== actor.side && rulesetCombatStanding(one) && rulesetPositionOf(one),
+  );
+  if (!foes.some((foe) => rulesetGap(actor, foe) <= 1)) return false;
+  const disengage = rulesetCombatOptions(definition, fight.encounter, actorId).find(
+    (option) => rulesetDefensiveName(option) === "disengage",
+  );
+  if (disengage && !applyChoice(definition, state, fight, { actorId, optionId: disengage.id, targetIds: [] }).refused) {
+    const away = rulesetRetreatCell(definition, fight.encounter, actorId);
+    if (away)
+      applyChoice(definition, state, fight, { actorId, optionId: RULESET_MOVE_OPTION, targetIds: [], to: away });
+    return true;
+  }
+  const span = rulesetSpanOf(actor);
+  let best: { cell: { x: number; y: number }; danger: number } | null = null;
+  for (const cell of rulesetWalkableCells(definition, fight.encounter, actorId)) {
+    if (cell.provokes.length > 0 || foes.some((foe) => rulesetGapFrom(cell, span, foe) <= 1)) continue;
+    const danger = rulesetDangerAt(definition, fight.encounter, actor, cell);
+    if (!best || danger < best.danger) best = { cell: { x: cell.x, y: cell.y }, danger };
+  }
+  if (!best) return false;
+  applyChoice(definition, state, fight, { actorId, optionId: RULESET_MOVE_OPTION, targetIds: [], to: best.cell });
   return true;
 }
 

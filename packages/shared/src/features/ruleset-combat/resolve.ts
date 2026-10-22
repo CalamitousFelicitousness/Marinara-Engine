@@ -18299,7 +18299,8 @@ function moraleTurn(ctx: RulesetCombatContext, actor: RulesetCombatant): boolean
   const happened = (trigger: RulesetMoraleTrigger): boolean => {
     if (trigger === "first-fall") return fallen.length > 0;
     if (trigger === "half-down") return side.length > 1 && fallen.length * 2 >= side.length;
-    if (trigger === "leader-down") return fallen.some((one) => one.id !== actor.id && one.block?.leader);
+    if (trigger === "leader-down")
+      return fallen.some((one) => one.id !== actor.id && (one.block?.leader || one.leader));
     const health = rulesetCombatHealth(ctx.definition, ctx.combat, actor);
     return health.value < health.max * (morale.hurtBelow ?? 0.5);
   };

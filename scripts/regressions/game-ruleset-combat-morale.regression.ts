@@ -267,6 +267,21 @@ try {
       morale(leaderless.events).map((event) => event.trigger),
       ["leader-down"],
     );
+    // One its side follows by the story (combat AI E2), a chief no bestiary marks, falls just the same.
+    const chiefless = fight(definition, {
+      gob: { block: block(), at: { x: 6, y: 4 } },
+      chief: { block: block(), at: { x: 9, y: 5 }, health: 0 },
+    });
+    assert.deepEqual(
+      morale(endTurn(definition, structuredClone(chiefless), 1).events).map((event) => event.trigger),
+      [],
+      "a plain one down is no leader",
+    );
+    rulesetCombatant(chiefless, "chief")!.leader = true;
+    assert.deepEqual(
+      morale(endTurn(definition, chiefless, 1).events).map((event) => event.trigger),
+      ["leader-down"],
+    );
     // Immune to being frightened, mindless: never asked.
     for (const extra of [{ conditionImmunities: ["frightened"] }, { mind: "mindless" }]) {
       assert.equal(

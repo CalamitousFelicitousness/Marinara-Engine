@@ -859,6 +859,8 @@ export interface CombatSummary {
     defeated: boolean;
     hp: number;
     maxHp: number;
+    /** Out of the fight alive, its heart gone: run off, or given up to the party. */
+    left?: "fled" | "surrendered";
   }>;
   /** Resolved tactical terrain retained after the live combat snapshot is cleared. */
   battlefieldSummary?: string;

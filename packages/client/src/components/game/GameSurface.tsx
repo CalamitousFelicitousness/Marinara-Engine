@@ -11494,7 +11494,10 @@ function GameSurfaceComponent({
       const tellCombatEnd = (loot: CombatSummary["loot"]) => {
         // Build a compact, model-friendly recap so the GM can narrate the aftermath.
         const defeatedEnemies = summary.enemies.filter((e) => e.defeated).map((e) => e.name);
-        const survivingEnemies = summary.enemies.filter((e) => !e.defeated);
+        const survivingEnemies = summary.enemies.filter((e) => !e.defeated && !e.left);
+        // Out of it alive, their heart gone: the story goes on with them.
+        const fledEnemies = summary.enemies.filter((e) => e.left === "fled");
+        const yieldedEnemies = summary.enemies.filter((e) => e.left === "surrendered");
         const partyStatus = summary.party.map((p) => {
           const hpPct = p.maxHp > 0 ? Math.round((p.hp / p.maxHp) * 100) : 0;
           const effects = p.statusEffects.length > 0 ? ` [${p.statusEffects.join(", ")}]` : "";
@@ -11531,6 +11534,12 @@ function GameSurfaceComponent({
         if (defeatedEnemies.length > 0) recapLines.push(`Defeated: ${defeatedEnemies.join(", ")}`);
         if (survivingEnemies.length > 0 && !fought) {
           recapLines.push(`Survived: ${survivingEnemies.map((e) => `${e.name} (${e.hp}/${e.maxHp} HP)`).join(", ")}`);
+        }
+        if (fledEnemies.length > 0 && !fought) {
+          recapLines.push(`Fled the fight: ${fledEnemies.map((e) => `${e.name} (${e.hp}/${e.maxHp} HP)`).join(", ")}`);
+        }
+        if (yieldedEnemies.length > 0 && !fought) {
+          recapLines.push(`Surrendered to the party, alive: ${yieldedEnemies.map((e) => e.name).join(", ")}`);
         }
         // The ruleset's own numbers in place of the percentage lines: the fight was not fought on a
         // share of a maximum, so the Game Master is never shown one.

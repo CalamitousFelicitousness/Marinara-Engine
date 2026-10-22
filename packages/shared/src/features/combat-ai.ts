@@ -37,6 +37,11 @@ export const combatAiHintsSchema = z.object({
   /** A named individual of the story rather than a nameless foe (combat AI P9): one the Game Master
    *  may play itself, as it plays a boss. */
   named: z.boolean().optional(),
+  /** How steady it is when a fight turns against it, on the old games' 2 to 12 morale scale: 2 breaks
+   *  at the first scare, 12 never does. Read off its mind and temperament when absent. */
+  morale: z.number().int().min(2).max(12).optional().catch(undefined),
+  /** Its side follows it (a bandit chief, a pack's alpha): its fall shakes the rest. */
+  leader: z.boolean().optional().catch(undefined),
 });
 export const combatTacticsSchema = z
   .object({

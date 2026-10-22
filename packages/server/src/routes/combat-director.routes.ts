@@ -106,7 +106,7 @@ const directedCombatantFields = z.object({
   id: key,
   name: z.string().min(1).max(200),
   side: z.enum(["player", "enemy"]),
-  /** Caught unaware as the fight begins (1.237): read by a ruleset fight only. */
+  /** Caught unaware as the fight begins: a ruleset fight reads it (1.237), and elsewhere an opponent caught so checks its morale first (combat AI E1). */
   surprised: z.boolean().optional(),
   /** Fights in its own lair (1.315): read by a ruleset fight only. */
   inLair: z.boolean().optional(),
@@ -650,7 +650,11 @@ export async function combatDirectorRoutes(
     const encounter = s.style === "ruleset" ? s.rulesetFight?.encounter : undefined;
     const fallen = encounter
       ? encounter.combatants.filter((combatant) => combatant.side === "enemy" && combatant.defeated)
-      : s.enemies.filter((enemy) => enemy.hp <= 0);
+      : [
+          ...s.enemies.filter((enemy) => enemy.hp <= 0),
+          // One that gave up hands over what it carried (combat AI E1); one that ran takes it along.
+          ...(s.gone ?? []).filter((enemy) => enemy.left === "surrendered"),
+        ];
     const loot = won
       ? await planGameVictoryLoot(
           app.db,
@@ -885,6 +889,8 @@ export async function combatDirectorRoutes(
           // What the fight is RESOLVED by is read below and never stored on the Engine's own units.
           enemies: input.enemies.map(({ creature: _c, tier: _t, proposed: _p, ...unit }) => unit) as Combatant[],
           id: randomUUID(),
+          // Who the scene caught unaware: an opponent among them checks its morale first (combat AI E1).
+          surprised: input.enemies.flatMap((one) => (one.surprised ? [one.id] : [])),
           gm: setup.gmBossControl === true,
           // The named and the brilliant opponents too (combat AI P9), when the game asks for it.
           gmNamed: setup.gmBossControl === true && setup.gmNamedControl === true,
@@ -959,6 +965,7 @@ export async function combatDirectorRoutes(
               boss: !!enemy.boss,
               ...(enemy.aiHints?.named ? { named: true } : {}),
               ...(enemy.aiHints?.mind ? { mind: enemy.aiHints.mind } : {}),
+              ...(enemy.aiHints?.leader ? { leader: true } : {}),
             })),
             cards,
             playerName: persona?.name ?? null,

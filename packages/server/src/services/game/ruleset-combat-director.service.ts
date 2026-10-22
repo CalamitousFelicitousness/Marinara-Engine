@@ -247,6 +247,8 @@ export interface RulesetFightOpponent {
   named?: boolean;
   /** Its mind where the story changes what its own data says (a dominated creature). */
   mind?: CombatMind;
+  /** Its side follows it, by the story (combat AI E2): a bandit chief nobody's bestiary marks. */
+  leader?: boolean;
   /** How it fights: the same competence and temperament its choices in the fight are made with,
    *  which is also what fills an invented sheet's open choices. Assigned here when not given. */
   tactics?: Pick<CombatTactics, "proficiency" | "adjective">;
@@ -482,6 +484,12 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
   }
   // A lair whose count comes before everybody's acts before the first turn (1.315).
   encounter = rulesetOpenLairWindow(definition, encounter);
+  // Whom its side follows by the story (combat AI E2): its fall shakes the rest as a stat block's
+  // leader's does.
+  for (const opponent of input.enemies) {
+    const one = opponent.leader ? encounter.combatants.find((combatant) => combatant.id === opponent.id) : undefined;
+    if (one) one.leader = true;
+  }
   const fight: RulesetFightState = {
     encounter,
     eventSeq: 0,

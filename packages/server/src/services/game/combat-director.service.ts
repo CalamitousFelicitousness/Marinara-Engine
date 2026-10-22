@@ -101,7 +101,22 @@ export interface CombatDirectorState extends DirectedCombatView {
   /** The `ruleset` style's whole fight. Present exactly when the style is `ruleset`; everything
    *  that reads or changes it lives in `ruleset-combat-director.service.ts`. */
   rulesetFight?: RulesetFightState;
+  /** How each opponent takes a fight turning against it (combat AI E1), read as the fight starts: its
+   *  morale score (none for a boss or the mindless, which never break), whether its side follows it,
+   *  whether it was caught unaware, what has shaken it already, and whether it is running. Absent on
+   *  fights saved before morale, which nobody breaks in. */
+  morale?: Record<
+    string,
+    { score?: number; leader?: true; surprised?: true; checked?: MoraleTrigger[]; routed?: true }
+  >;
+  /** Opponents out of the fight alive (combat AI E1): run off the board, or given up to the party. */
+  gone?: Array<{ id: string; name: string; hp: number; maxHp: number; left: "fled" | "surrendered" }>;
 }
+/** What shakes an opponent (combat AI E1), each checked once, in this order, as one of its turns
+ *  starts: being caught unaware, its leader falling, half its side down, the first of its side down,
+ *  and being hurt below half its health. */
+const MORALE_TRIGGERS = ["surprised", "leader-down", "half-down", "first-fall", "hurt"] as const;
+type MoraleTrigger = (typeof MORALE_TRIGGERS)[number];
 const side = (unit: Unit) => (unit.side === "enemy" ? "enemy" : "party");
 export const directorUnits = (s: CombatDirectorState): Unit[] => s.tactical?.units ?? [...s.party, ...s.enemies];
 const living = (s: CombatDirectorState) => directorUnits(s).filter((u) => u.hp > 0);
@@ -181,7 +196,11 @@ function sync(s: CombatDirectorState) {
         spellSlots: u.spellSlots,
         statusEffects: (u.statusEffects ?? []).map((e) => e.name),
       })),
-      enemies: s.enemies.map((u) => ({ name: u.name, hp: u.hp, maxHp: u.maxHp, defeated: u.hp <= 0 })),
+      enemies: [
+        ...s.enemies.map((u) => ({ name: u.name, hp: u.hp, maxHp: u.maxHp, defeated: u.hp <= 0 })),
+        // Out of it alive (combat AI E1): neither beaten nor still standing.
+        ...(s.gone ?? []).map((u) => ({ name: u.name, hp: u.hp, maxHp: u.maxHp, defeated: false, left: u.left })),
+      ],
       // Once a won fight has dropped its loot, even none, the summary says so: nothing drops it again.
       ...(s.loot ? { loot: s.loot.map((drop) => ({ ...drop })) } : {}),
     };
@@ -251,6 +270,8 @@ export function createCombatDirector(input: {
   itemEffects?: CombatItemEffect[];
   mechanics?: CombatMechanic[];
   inventory?: CombatDirectorState["inventory"];
+  /** Who the scene caught unaware: an opponent among them checks its morale on its first turn. */
+  surprised?: string[];
 }): CombatDirectorState {
   const party = structuredClone(input.party),
     enemies = structuredClone(input.enemies);
@@ -292,6 +313,17 @@ export function createCombatDirector(input: {
     requests: [],
     gmCalls: 0,
   };
+  if (s.style !== "ruleset") {
+    s.morale = {};
+    for (const u of enemies) {
+      const score = moraleScore(u);
+      s.morale[u.id] = {
+        ...(score !== undefined ? { score } : {}),
+        ...(u.aiHints?.leader || u.boss ? { leader: true as const } : {}),
+        ...(input.surprised?.includes(u.id) ? { surprised: true as const } : {}),
+      };
+    }
+  }
   if (s.style === "tactical")
     s.tactical = createTacticalCombat(party, enemies, {
       seed: s.seed,
@@ -309,6 +341,131 @@ export function createCombatDirector(input: {
   if (s.style === "classic") s.order = rollInitiative([...party, ...enemies]).map((e) => e.id);
   advanceCombatDirector(s);
   return s;
+}
+/**
+ * An opponent's morale score (combat AI E1), on the old games' 2 to 12 scale: the story's, else read
+ * off its mind (an animal's nerve is its nature, a planner's is steadier) and its temperament, one
+ * more for a leader. None for a boss, whose story decides when it gives up, nor for the mindless.
+ */
+function moraleScore(u: Combatant): number | undefined {
+  if (u.boss || u.tactics?.mind === "mindless") return undefined;
+  if (u.aiHints?.morale !== undefined) return u.aiHints.morale;
+  const mind = u.tactics?.mind ?? "tactical";
+  const base = mind === "instinct" || mind === "cunning" ? 7 : mind === "genius" ? 9 : 8;
+  const adjective = u.tactics?.adjective;
+  const by =
+    adjective === "cowardly"
+      ? -3
+      : adjective === "cautious"
+        ? -1
+        : adjective === "reckless" || adjective === "disciplined"
+          ? 2
+          : adjective === "protective"
+            ? 1
+            : 0;
+  return Math.max(2, Math.min(12, base + by + (u.aiHints?.leader ? 1 : 0)));
+}
+/** Whether a unit stands on the tactical board's edge, where one running gets away. */
+function atBoardEdge(s: CombatDirectorState, u: Unit): boolean {
+  if (!s.tactical) return true;
+  const t = u as TacticalUnit;
+  const { width, height } = s.tactical.grid;
+  return t.x <= 0 || t.y <= 0 || t.x >= width - 1 || t.y >= height - 1;
+}
+/** Out of the fight alive (combat AI E1): kept for the story, gone from the board and the turn order. */
+function leaveFight(s: CombatDirectorState, u: Unit, left: "fled" | "surrendered") {
+  (s.gone ??= []).push({ id: u.id, name: u.name, hp: u.hp, maxHp: u.maxHp, left });
+  if (s.tactical) s.tactical.units = s.tactical.units.filter((one) => one.id !== u.id);
+  else s.enemies = s.enemies.filter((one) => one.id !== u.id);
+  s.order = s.order.filter((id) => id !== u.id);
+  s.defending = s.defending.filter((id) => id !== u.id);
+  s.tasks = s.tasks.filter((task) => !("unitId" in task) || task.unitId !== u.id);
+  if (s.actorId === u.id) s.actorId = undefined;
+  const key = left === "fled" ? "game.combat.event.fled" : "game.combat.event.surrendered";
+  const text = left === "fled" ? `${u.name} gets away from the fight.` : `${u.name} throws down its arms and gives up.`;
+  log(s, text, "status", u.id, undefined, { key, params: { actor: u.name } });
+}
+/** One running walks for the board's edge, as far from the party as the way allows. */
+function runForTheEdge(s: CombatDirectorState, u: Unit) {
+  const t = u as TacticalUnit;
+  const grid = s.tactical!.grid;
+  const edge = (x: number, y: number) => Math.min(x, y, grid.width - 1 - x, grid.height - 1 - y);
+  const foes = living(s).filter((one) => side(one) === "party") as TacticalUnit[];
+  const room = (x: number, y: number) => Math.min(99, ...foes.map((one) => Math.abs(one.x - x) + Math.abs(one.y - y)));
+  const best = getMovementRange(s.tactical!, u.id)
+    .filter((cell) => edge(cell.x, cell.y) < edge(t.x, t.y))
+    .sort((a, b) => edge(a.x, a.y) - edge(b.x, b.y) || room(b.x, b.y) - room(a.x, a.y) || a.y - b.y || a.x - b.x)[0];
+  try {
+    declare(s, asAction(s, u, "wait", undefined, undefined, best ? { x: best.x, y: best.y } : undefined), "ai");
+  } catch {
+    declare(s, asAction(s, u, "wait"), "fallback");
+  }
+}
+/**
+ * Whether an opponent loses heart as its turn starts (combat AI E1), as the old games' morale rule
+ * has it: each trigger it has not yet been checked for and that has happened is checked now with two
+ * dice, and a roll over its score breaks it. One that thinks at all gives up where it cannot get away
+ * (an opponent beside it, or no board to run across); an animal, or one with room to run, runs, off
+ * the board once a turn of its starts at the edge. True when its turn went on that.
+ */
+function moraleTurn(s: CombatDirectorState, u: Unit): boolean {
+  const mine = s.morale?.[u.id];
+  if (!mine || mine.score === undefined || side(u) !== "enemy") return false;
+  if (mine.routed) {
+    if (atBoardEdge(s, u)) leaveFight(s, u, "fled");
+    else runForTheEdge(s, u);
+    return true;
+  }
+  const ours = directorUnits(s).filter((one) => side(one) === "enemy");
+  const fallen = [...ours.filter((one) => one.hp <= 0).map((one) => one.id), ...(s.gone ?? []).map((one) => one.id)];
+  const total = ours.length + (s.gone?.length ?? 0);
+  const happened = (trigger: MoraleTrigger) =>
+    trigger === "surprised"
+      ? !!mine.surprised
+      : trigger === "leader-down"
+        ? fallen.some((id) => id !== u.id && !!s.morale?.[id]?.leader)
+        : trigger === "half-down"
+          ? total > 1 && fallen.length * 2 >= total
+          : trigger === "first-fall"
+            ? fallen.length > 0
+            : u.hp < u.maxHp / 2;
+  for (const trigger of MORALE_TRIGGERS) {
+    if (mine.checked?.includes(trigger) || !happened(trigger)) continue;
+    mine.checked = [...(mine.checked ?? []), trigger];
+    const hash = combatAiHash(`morale:${s.seed}:${u.id}:${trigger}`);
+    const roll = (hash % 6) + 1 + ((hash >>> 8) % 6) + 1;
+    if (roll <= mine.score) {
+      log(s, `${u.name} holds its nerve.`, "status", u.id, undefined, {
+        key: "game.combat.event.moraleHeld",
+        params: { actor: u.name },
+      });
+      continue;
+    }
+    const at = u as TacticalUnit;
+    const pinned =
+      !s.tactical ||
+      living(s).some(
+        (one) =>
+          side(one) === "party" &&
+          Math.abs((one as TacticalUnit).x - at.x) + Math.abs((one as TacticalUnit).y - at.y) <= 1,
+      );
+    if ((u.tactics?.mind ?? "tactical") !== "instinct" && pinned) {
+      leaveFight(s, u, "surrendered");
+      return true;
+    }
+    log(s, `${u.name} loses heart and runs.`, "status", u.id, undefined, {
+      key: "game.combat.event.moraleBreaks",
+      params: { actor: u.name },
+    });
+    if (atBoardEdge(s, u)) {
+      leaveFight(s, u, "fled");
+      return true;
+    }
+    mine.routed = true;
+    runForTheEdge(s, u);
+    return true;
+  }
+  return false;
 }
 function asAction(
   s: CombatDirectorState,
@@ -1147,6 +1304,8 @@ export function advanceCombatDirector(s: CombatDirectorState) {
       s.actorId = undefined;
       s.tasks.unshift(...legendaryTasks(s, u, "legendary"));
     } else if (task.kind === "act") {
+      // Losing heart comes first (combat AI E1): a broken opponent runs or gives up instead of fighting.
+      if (moraleTurn(s, u)) continue;
       if (manual(s, u) && !s.skipParty) {
         s.stage = "action";
         return;

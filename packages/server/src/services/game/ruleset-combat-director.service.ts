@@ -1866,9 +1866,23 @@ export function rulesetWalkableCells(
   const span = rulesetSpanOf(actor);
   const away = (cell: { x: number; y: number }) =>
     foes.reduce((closest, foe) => Math.min(closest, rulesetGapFrom(cell, span, foe)), Infinity);
+  // Open ground before a gap it would squeeze into, as near (re-test 17).
+  const squeezes = new Map<string, number>();
+  const squeezed = (cell: { x: number; y: number }) => {
+    if (span <= 1 && !actor.squeezedFrom) return 0;
+    const key = `${cell.x},${cell.y}`;
+    if (!squeezes.has(key)) squeezes.set(key, rulesetSqueezeAt(definition, encounter, actor, cell) ? 1 : 0);
+    return squeezes.get(key)!;
+  };
   // A stable sort over an already deterministic list, so the same fight always picks the same cell.
-  return [...cells].sort((left, right) => away(left) - away(right) || left.cost - right.cost);
+  return [...cells].sort(
+    (left, right) => away(left) - away(right) || squeezed(left) - squeezed(right) || left.cost - right.cost,
+  );
 }
+
+/** What blows from a squeeze gap are worth against the same from open ground: about what a
+ *  disadvantage takes off a middling chance to hit. */
+const RULESET_SQUEEZED_BLOWS = 0.6;
 
 function rulesetCandidatesAfterMoving(
   definition: RulesetDefinition,
@@ -1880,6 +1894,7 @@ function rulesetCandidatesAfterMoving(
   const cells = rulesetWalkableCells(definition, encounter, actorId).slice(0, RULESET_MOVE_CANDIDATE_CELLS);
   if (cells.length === 0) return [];
   const home = { x: actor.x, y: actor.y, movementLeft: actor.movementLeft };
+  const span = rulesetSpanOf(actor);
   const candidates: Array<CombatAiCandidate<RulesetCandidate>> = [];
   const deadline = Date.now() + RULESET_MOVE_PLAN_MS;
   for (const cell of cells) {
@@ -1901,8 +1916,13 @@ function rulesetCandidatesAfterMoving(
       actor.movementLeft = home.movementLeft;
     }
     const penalty = cell.provokes.length * RULESET_PROVOKE_PENALTY;
+    // Blows from a gap it squeezes into are at a disadvantage the menu read here does not know of
+    // yet; blows from open ground, once squeezed, are out of the one it has (re-test 17: a
+    // crocodile biting from a gap for fifty rounds with open ground beside Brom).
+    const squeezes = (span > 1 || !!actor.squeezedFrom) && !!rulesetSqueezeAt(definition, encounter, actor, cell);
+    const scale = squeezes ? RULESET_SQUEEZED_BLOWS : actor.squeezedFrom ? 1 / RULESET_SQUEEZED_BLOWS : 1;
     for (const candidate of from) {
-      if (candidate.damage !== undefined) candidate.damage = Math.max(0, candidate.damage - penalty);
+      if (candidate.damage !== undefined) candidate.damage = Math.max(0, candidate.damage * scale - penalty);
       if (candidate.healing !== undefined) candidate.healing = Math.max(0, candidate.healing - penalty);
       candidates.push(candidate);
     }
@@ -4651,21 +4671,24 @@ function rulesetShotFromAfar(
   if (!rulesetPositionOf(actor) || !rulesetPositionOf(target) || rulesetGap(actor, target) <= 1) return false;
   // One far better up close (a knight's greatsword against its crossbow) shoots only while it cannot
   // reach, and walks in after it (playtest re-test 15): keeping its distance is for those it serves.
-  const average = (one: RulesetCombatAction): number =>
+  // Each blow as often as it is made: a scout's two Longbow shots against its two Shortswords
+  // (re-test 17).
+  const melee = (part: RulesetCombatAction | undefined) => !!part?.damage && (!part.range || !!part.reach);
+  const ranged = (part: RulesetCombatAction | undefined) => !!part?.damage && !!part.range && !part.reach;
+  const average = (one: RulesetCombatAction, kind: (part: RulesetCombatAction | undefined) => boolean): number =>
     one.sequence?.length
       ? one.sequence.reduce((sum, step) => {
           const part = actor.actions.find((each) => each.id === step.actionId);
-          return part?.damage && (!part.range || part.reach)
-            ? sum + rulesetAverageDamage(part.damage) * (step.times ?? 1)
-            : sum;
+          return kind(part) ? sum + rulesetAverageDamage(part!.damage!) * (step.times ?? 1) : sum;
         }, 0)
-      : one.damage && (!one.range || one.reach)
-        ? rulesetAverageDamage(one.damage)
+      : kind(one)
+        ? rulesetAverageDamage(one.damage!)
         : 0;
   // Only what it may take now: a Flame Blade it has not called up is no blade (re-test 16).
   const usable = new Set(rulesetCombatOptions(definition, encounter, actorId).map((one) => one.id));
-  const close = Math.max(0, ...actor.actions.filter((one) => usable.has(one.id)).map(average));
-  const shot = blows.reduce((sum, blow) => sum + rulesetAverageDamage(blow!.damage!), 0);
+  const now = actor.actions.filter((one) => usable.has(one.id));
+  const close = Math.max(0, ...now.map((one) => average(one, melee)));
+  const shot = Math.max(average(action, ranged), ...now.map((one) => average(one, ranged)));
   if (close > shot * 1.5) return false;
   return mind === "tactical" || mind === "genius" ? "kite" : "stay";
 }

@@ -284,6 +284,63 @@ try {
     assert.ok(away && !(away.y === 5 && away.x >= 8), `not into the corridor: ${JSON.stringify(away)}`);
   }
 
+  // ── Squeezed beside its foe with open ground there too: it steps out to strike (re-test 17) ──
+  {
+    const definition = parsed(fiveE());
+    let state = fight(definition);
+    state = walk(definition, state, { x: 12, y: 5 });
+    const claw = { id: "claw", name: "Claw", budget: "action", toHit: 4, reach: 1, damage: { count: 1, sides: 6 } };
+    const ogre = rulesetCombatant(state, "ogre")!;
+    ogre.actions.push(
+      structuredClone(
+        createRulesetEncounter({
+          definition,
+          seed: 1,
+          roller: () => 10,
+          combatants: [
+            {
+              id: "x",
+              name: "x",
+              side: "enemy",
+              block: { health: 1, defense: 1, initiativeModifier: 0, speed: 30, actions: [claw] } as never,
+            },
+          ],
+        }).combatants[0]!.actions.find((one) => one.id === "claw")!,
+      ),
+    );
+    ogre.movementLeft = 30;
+    const hero = rulesetCombatant(state, "hero")!;
+    hero.x = 13;
+    hero.y = 4;
+    assert.deepEqual(holds(state), ["squeezed"]);
+    const unit = (id: string, side: "player" | "enemy") => ({
+      id,
+      name: id,
+      side,
+      hp: 20,
+      maxHp: 20,
+      attack: 8,
+      defense: 6,
+      speed: 6,
+      level: 9,
+      skills: [],
+      aiHints: { proficiency: "master" as const },
+    });
+    const director = createCombatDirector({
+      id: "fight",
+      anchor: "anchor",
+      style: "ruleset",
+      party: [unit("hero", "player")],
+      enemies: [unit("ogre", "enemy")],
+      gm: false,
+      difficulty: "normal",
+      seed: 3,
+    } as never);
+    const best = rankRulesetChoices(definition, director, state, "ogre", 5)[0]?.candidate.action;
+    assert.equal(best?.choice.optionId, "claw", "it strikes");
+    assert.ok(best?.to && best.to.x >= 13, `from open ground: ${JSON.stringify(best?.to)}`);
+  }
+
   console.log(
     "Squeezing: double steps between walls as one size smaller, squeezed while there; Amorphous freely; a getaway never into a squeeze; gated at 1.628.",
   );

@@ -329,6 +329,8 @@ Proposed initial tuning: normalize policy utility to a fixed scale; let novices 
 
 **Playtest re-test 16 fixes (no new keys).** A holder lets go, for free (`rulesetLetGoOfHeld`), of foes it holds who are down while another foe still stands, unless it is cruel and the game allows striking the fallen. Shoving or grappling somebody it already holds is worth nothing, and so is a shove with nowhere to send them, so a crocodile bites the one in its jaws. A hungry creature's focus on its held prey counts only blows. A prisoner keeps its square: walked past, never stopped on, like a downed combatant's; its token has a white ring and a larger flag.
 
+**Playtest re-test 17 fixes (no new keys).** The shot-from-afar comparison counts each blow of a Multiattack as often as it is made, and sets the best usable melee against the best usable ranged attack, so a scout's two Longbow shots outweigh its two Shortswords. A creature larger than one cell picks open ground over a squeeze gap at the same distance; blows from a gap it would squeeze into are worth 0.6 of the same from open ground (`RULESET_SQUEEZED_BLOWS`), and once squeezed, blows from open ground are worth that much more, so it steps out to strike.
+
 ## 8. Boss turns controlled by the GM
 
 ### Identity and responsibility

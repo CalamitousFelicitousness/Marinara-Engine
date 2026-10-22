@@ -592,6 +592,17 @@ try {
     );
     assert.ok(goblin.shot, "the goblin shoots");
     assert.equal(goblin.x, 2, "and keeps its spot, whatever blade it might call up later");
+    // A scout's two Longbow shots against its two Shortswords (re-test 17): each counted twice.
+    const shortsword = { ...smash, id: "shortsword", damage: { count: 1, sides: 6, flat: 2 } };
+    const longbow = { ...bolt, damage: { count: 1, sides: 8, flat: 2 } };
+    const scout = potShot([
+      shortsword,
+      longbow,
+      { id: "multi-melee", name: "Multiattack", budget: "action", sequence: [{ action: "shortsword", times: 2 }] },
+      { id: "multi-ranged", name: "Multiattack", budget: "action", sequence: [{ action: "bolt", times: 2 }] },
+    ]);
+    assert.ok(scout.shot, "the scout shoots");
+    assert.equal(scout.x, 2, "and keeps its spot");
   }
 
   // ── Honourable (combat AI T6): whoever fights it first, and never one running from it ──

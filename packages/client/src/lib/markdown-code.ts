@@ -1,7 +1,7 @@
 // Match Markdown code before interpreting HTML. The HTML-tag alternative skips
 // backticks inside quoted attributes, while escaped backticks remain authored text.
 const CODE_OR_TAG_RE =
-  /^([\t ]*)```([^`\r\n]*)\r?\n([\s\S]*?)(?:^([\t ]*`{3,}[\t ]*\r?)(?=\n|$)|(?![\s\S]))|\\[\\`]|`([^`\r\n]+)`|<(?:[^<>"']|"[^"]*"|'[^']*')*>/gm;
+  /^([\t ]*)```([^`\r\n]*)\r?\n([\s\S]*?)(?:^([\t ]*`{3,}[\t ]*\r?)(?=\n|$)|(?![\s\S]))|\\[\\`]|`([^`\r\n]+)`|<\/?[A-Za-z][\w:-]*(?:\s+[^\s"'<>/=`]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?)*\s*\/?>/gm;
 
 const escapeCode = (text: string) => text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 

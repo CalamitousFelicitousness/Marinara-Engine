@@ -20,6 +20,15 @@ assert.equal(
   inline.restoreHtml(inline.text),
   'Before <code class="mari-md-inline-code">&lt;font color="#HEX"&gt;</code> after',
 );
+for (const source of ['x < y and `"red"` > z', 'x <y and `"red"` > z']) {
+  const protectedCode = protectMarkdownCode(source);
+  assert.doesNotMatch(protectedCode.text, /`/);
+  assert.equal(protectedCode.restoreSource(protectedCode.text), source);
+  assert.match(protectedCode.restoreHtml(protectedCode.text), /<code class="mari-md-inline-code">"red"<\/code>/);
+}
+const bracketedFence = protectMarkdownCode('<strong>HTML</strong>\nx < y\n```\n  first\n\nsecond\n```\n> z');
+assert.doesNotMatch(bracketedFence.text, /```/);
+assert.match(bracketedFence.restoreHtml(bracketedFence.text), /<code>  first\n\nsecond<\/code>/);
 const fenced = protectMarkdownCode(
   "<strong>Real HTML</strong>\n```html\n<style>body { color: black; }</style>\n  return 42;\n```\nAfter",
 );

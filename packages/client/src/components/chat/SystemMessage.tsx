@@ -1,4 +1,4 @@
-import type { MouseEventHandler, ReactNode, RefObject } from "react";
+import type { CSSProperties, MouseEventHandler, ReactNode, RefObject } from "react";
 import type { Message } from "@marinara-engine/shared";
 import { Check, Copy, Eye, EyeOff, GitBranch, Pencil, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -17,6 +17,7 @@ export function SystemMessage({
   multiSelectMode,
   isSelected,
   hiddenFromAI,
+  fontSize,
   onClick,
   onCopy,
   onEdit,
@@ -33,6 +34,7 @@ export function SystemMessage({
   multiSelectMode?: boolean;
   isSelected?: boolean;
   hiddenFromAI: boolean;
+  fontSize: CSSProperties["fontSize"];
   onClick: MouseEventHandler<HTMLDivElement>;
   onCopy: () => void;
   onEdit?: () => void;
@@ -53,7 +55,10 @@ export function SystemMessage({
       )}
       onClick={onClick}
     >
-      <div className="mari-system-message-content min-w-0 max-w-full rounded-xl border border-[var(--border)] bg-[var(--secondary)] px-4 py-3 text-[var(--foreground)]">
+      <div
+        className="mari-system-message-content min-w-0 max-w-full rounded-xl border border-[var(--border)] bg-[var(--secondary)] px-4 py-3 text-[var(--foreground)]"
+        style={{ fontSize }}
+      >
         <div className="mb-1 text-xs font-semibold text-[var(--muted-foreground)]">
           {t("ui.chat.messagemarks.system")}
         </div>

@@ -1125,6 +1125,7 @@ export const ConversationMessage = memo(function ConversationMessage({
           multiSelectMode={multiSelectMode}
           isSelected={isSelected}
           hiddenFromAI={isHiddenFromAI}
+          fontSize={chatFontSize}
           onClick={handleMobileTap}
           onCopy={handleCopy}
           onEdit={onEdit ? handleStartEdit : undefined}

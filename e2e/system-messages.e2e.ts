@@ -14,6 +14,7 @@ async function openChat(page: Page, id: string) {
     chatHelpSeenModes: ["conversation", "roleplay"],
     appAccentPulseMode: false,
     theme: "dark",
+    chatFontSize: 24,
   });
   await page.addInitScript(
     ({ id, version }) => {
@@ -60,6 +61,8 @@ for (const mode of ["conversation", "roleplay"] as const) {
       await openChat(page, chat.id);
       await expect(page.getByRole("heading", { name: "System note", exact: true })).toBeVisible();
       const row = page.locator(`[data-message-id="${message.id}"]`);
+      await expect(row.getByText("System", { exact: true })).toBeVisible();
+      await expect(row.locator(".mari-message-content")).toHaveCSS("font-size", "24px");
       await expect(row.locator("strong")).toHaveText(["Markdown emphasis", "Allowed HTML"]);
       await expect(row.locator(".mari-md-inline-code")).toHaveText('<font color="#HEX">');
       await expect(row.locator(".mari-message-content")).not.toContainText("{{user}}");
@@ -111,6 +114,7 @@ for (const mode of ["conversation", "roleplay"] as const) {
       await row.getByRole("button", { name: "Edit", exact: true }).click();
       const editor = row.locator("[data-chat-message-editor]");
       await expect(editor).toBeVisible();
+      await expect(editor).toHaveValue(/Context user: \{\{user\}\}/);
       const edited = "# Edited system note\n\n**Saved formatting**\nA second line.";
       await editor.fill(edited);
       await row.getByRole("button", { name: /^Save(?: edit)?$/i }).click();
@@ -172,6 +176,7 @@ test("Literal HTML inside backticks cannot change Roleplay formatting or load co
       '7. Dialogue uses `<font color="#HEX">` per NPC.\n\n## Following heading',
       '<strong>Real HTML</strong>\n7. Dialogue uses `<font color="#HEX">` per NPC.\n\n## Following heading\n<font color="#ff0000">Explicitly red</font>\n<span>Theme-colored tail</span>',
       `<strong>Real HTML</strong>\n\n\`\`\`html\n${code}\n\`\`\`\n\n## Following heading`,
+      '<strong>Real HTML</strong>\nx < y\n```text\n  first\n\nsecond\n```\n> z\n\n## Following heading',
     ];
     const messages: string[] = [];
     for (const content of contents) {
@@ -186,7 +191,7 @@ test("Literal HTML inside backticks cannot change Roleplay formatting or load co
         await expect(row.locator(".mari-md-inline-code")).toHaveText('<font color="#HEX">');
         await expect(row.locator(".mari-md-inline-code font")).toHaveCount(0);
       } else {
-        expect(await row.locator("pre code").textContent()).toBe(code);
+        expect(await row.locator("pre code").textContent()).toBe(index === 2 ? code : "  first\n\nsecond");
         await expect(row.locator("pre font, pre style, pre img, pre script")).toHaveCount(0);
       }
       const heading = row.getByRole("heading", { name: "Following heading", exact: true });

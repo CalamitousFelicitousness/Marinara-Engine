@@ -3763,6 +3763,7 @@ export const ChatMessage = memo(function ChatMessage({
         multiSelectMode={multiSelectMode}
         isSelected={isSelected}
         hiddenFromAI={isHiddenFromAI}
+        fontSize={chatFontSize}
         onClick={handleMobileTap}
         onCopy={handleCopy}
         onEdit={onEdit ? startEditing : undefined}

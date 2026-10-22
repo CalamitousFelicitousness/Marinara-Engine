@@ -15,6 +15,7 @@ Reads: `character.list|get|search|folder.list|onboarding.get`, `persona.list|get
 - `character.create` and `persona.create` write by default; `character.update`, `character.moveToFolder` and `persona.update` need `apply:true` (sent without `apply` they are refused; `apply:false` previews). `apply` is read from the top level only — `data.apply` and `patch.apply` are ignored.
 - A dry run has no `readBack`; a no-op write returns `No changes: every row already has these values, so nothing was written and no review card was made.` and makes no card.
 - `character.get` keeps the card's attached `lorebooks`; `mari characters get` drops them. Read-back is otherwise equivalent on both paths, so use the CLI only when you want it. Attaching or detaching one is `lorebook.linkCharacter` / `lorebook.unlinkCharacter` with `lorebookId` and `characterId`, never a `lorebooks` field on `character.update`; `builtin-lorebook` owns that workflow.
+- When you made a character for a lorebook — built from its lore, or the user named the book — offer to link them once the card is verified: ask in your reply, and link only on a yes. Skip the offer when `character.get` already lists the book.
 - `character.delete` is not an `app_data` action (it answers `Unknown character action "<name>".` with the valid list): `mari characters delete <id> --apply`. No folder create, rename or delete action exists either.
 
 ## What a patch replaces

@@ -3292,7 +3292,7 @@ export class MariDbService {
           bookIds((sentBooks as Row | undefined)?.lorebooks) === bookIds(await this.characterLorebooks(id));
         if (linkField && !echoedRead) {
           throw new Error(
-            `character.update does not attach lorebooks ("${linkField}" was sent and would be ignored). Send app_data {"action":"lorebook.linkCharacter","lorebookId":"<lorebook id>","characterId":"${id}","reason":"…"} instead; take the lorebook id from lorebook.search, never its name.`,
+            `character.update does not attach or detach lorebooks ("${linkField}" was sent and would be ignored). To attach one, send app_data {"action":"lorebook.linkCharacter","lorebookId":"<lorebook id>","characterId":"${id}","reason":"…"}; to detach one, send the same with "action":"lorebook.unlinkCharacter" and "apply":true. Take the lorebook id from lorebook.search, never its name.`,
           );
         }
         const existingDataRaw = tryParseJsonColumn(existing, "data");
@@ -4738,6 +4738,8 @@ export class MariDbService {
         // writing the link into character.update, or lost it to the CLI's flag and quoting.
         const link = sub === "linkcharacter";
         const verb = link ? "lorebook.linkCharacter" : "lorebook.unlinkCharacter";
+        // Before the early returns: the skill gate's probe reads the verb's default, not the row it finds.
+        const apply = link ? appDataCreateApply(args) : firstBoolean(args, ["apply"]) === true;
         const lorebookId = requiredString(args, ["lorebookId"], "lorebook id");
         const characterId = requiredString(args, ["characterId"], "character id");
         if (!(await this.getRawById(getMeta("lorebooks"), lorebookId)))
@@ -4766,7 +4768,7 @@ export class MariDbService {
               kind: "insert",
               id: String(linkRow.id),
               row: linkRow,
-              apply: appDataCreateApply(args),
+              apply,
               reason,
             },
             context.command,
@@ -4778,7 +4780,7 @@ export class MariDbService {
             ...common,
             kind: "delete",
             id: String(existingLink!.id),
-            apply: firstBoolean(args, ["apply"]) === true,
+            apply,
             reason,
           },
           context.command,

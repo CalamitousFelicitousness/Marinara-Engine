@@ -59,6 +59,14 @@ assert.notEqual(
   auditWorkspaceCompletionClaim(final("The entry would fire on Vlad and the castle."), scope).issue,
   "dry_run",
 );
+// A denial beside it is not a claim either.
+assert.notEqual(
+  auditWorkspaceCompletionClaim(
+    final("This is a preview — the entry would fire on 'guild'. No entry was created."),
+    scope,
+  ).issue,
+  "dry_run",
+);
 // An applied write, or a round that still has commands, is not this case.
 assert.notEqual(auditWorkspaceCompletionClaim(final(paraphrase), [...scope, applied]).issue, "dry_run");
 assert.notEqual(auditWorkspaceCompletionClaim(final(paraphrase, [{}]), scope).issue, "dry_run");

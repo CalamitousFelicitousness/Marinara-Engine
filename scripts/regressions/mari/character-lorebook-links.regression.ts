@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { createFileNativeDB } from "../../../packages/server/src/db/file-backed-store.js";
 import { characters } from "../../../packages/server/src/db/schema/characters.js";
 import { lorebookCharacterLinks, lorebooks } from "../../../packages/server/src/db/schema/lorebooks.js";
-import { MariDbService } from "../../../packages/server/src/services/mari-db/mari-db.service.js";
+import { MariDbService, probeAppDataCall } from "../../../packages/server/src/services/mari-db/mari-db.service.js";
 
 const previousFileStorageDir = process.env.FILE_STORAGE_DIR;
 const dir = mkdtempSync(join(tmpdir(), "marinara-mari-character-lorebooks-"));
@@ -101,6 +101,8 @@ try {
     assert.equal(wrongLink.ok, false, "character.update refuses a lorebook link instead of ignoring it");
     assert.match(String(wrongLink.error), /"action":"lorebook.linkCharacter".*"characterId":"char-a"/);
     assert.match(String(wrongLink.error), /lorebook.search, never its name/);
+    // An empty list detaches, so the refusal names the detaching action too.
+    assert.match(String(wrongLink.error), /"action":"lorebook.unlinkCharacter" and "apply":true/);
     // A live 12b wrapped it twice, with the book's name as its id; that was saved as a "patch" field.
     const nested = await mari.executeAction({
       action: "character.update",
@@ -186,6 +188,16 @@ try {
       characterId: "char-bare",
     });
     assert.match(String(again.output), /already linked to character char-bare; nothing changed/);
+    // The gate's probe still learns a link writes by default, though this pair had nothing to write.
+    const probe = await probeAppDataCall(() =>
+      mari.executeAction({
+        action: "lorebook.linkCharacter",
+        lorebookId: "book-linked",
+        characterId: "char-bare",
+        apply: false,
+      }),
+    );
+    assert.equal(probe.savesWithoutApply, true);
     // Unlinking previews like a delete until apply: true.
     const preview = await mari.executeAction({
       action: "lorebook.unlinkCharacter",

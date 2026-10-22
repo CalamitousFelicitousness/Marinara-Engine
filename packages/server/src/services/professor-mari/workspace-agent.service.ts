@@ -2441,7 +2441,13 @@ function replyOwnsUpToDryRun(text: string): boolean {
   const wouldPhrase =
     /\bwould (?:be|become|fire|look|read|show|change|add|set|make|create|update|replace|remove)\b(?: \w+)?/giu;
   if (!normalized.match(wouldPhrase)) return false;
-  const rest = normalized.replace(wouldPhrase, " ");
+  // A denial ("No entry was created", "it wasn't saved") is not a claim, so it leaves the scan too.
+  const rest = normalized
+    .replace(wouldPhrase, " ")
+    .replace(
+      /\b(?:no|nothing)\s+(?:\w+\s+){0,3}?(?:was|were|is|has been|have been)\s+\w+|\b(?:was|were|is|has|have)\s+not\s+(?:been\s+)?\w+|\b\w+n't\s+(?:been\s+)?\w+/giu,
+      " ",
+    );
   return (
     !/\b(?:done|all set|saved|applied|updated|created|added|linked|fixed|changed)\b/iu.test(rest) &&
     !workspaceTextClaimsMutationCompletion(rest)

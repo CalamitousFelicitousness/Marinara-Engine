@@ -71,6 +71,8 @@ A link is its own row, never a card field: `character.update` refuses a `loreboo
 
 `linkCharacter` writes by default; `unlinkCharacter` needs `apply: true`. Linking twice, or unlinking what is not linked, answers `nothing changed`. The proof is `character.get`: the book is listed under `lorebooks` with `attached: "linked"`. Report that, not the write's own result.
 
+When you made a book for a character — its lore is theirs, or the user asked for it for them — offer to link it once the book is verified: ask in your reply, and link only on a yes. Skip the offer when `character.get` already lists the book.
+
 ## Errors and fixes
 
 The wording below is exact. An unrecognised sub-action returns `Unknown lorebook action "<name>".` followed by the valid actions; `get`, `addEntry`, `testScan` and the folder actions return `No lorebook has the id "<id>". …` (naming the lookup to use) for a bad book id, while `getEntry` stays silent (`ok: false`, `output: null`).

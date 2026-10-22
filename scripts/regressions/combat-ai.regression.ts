@@ -3,6 +3,7 @@ import {
   assignCombatTactics,
   chooseCombatCandidate,
   combatTacticsSchema,
+  type CombatTactics,
 } from "../../packages/shared/src/features/combat-ai.js";
 import {
   applyTacticalTurn,
@@ -510,3 +511,34 @@ assert.equal(
   "skill",
   "A wounded ally becomes healable at the declared range",
 );
+
+// ── What a role does (combat AI A1): a bulwark stands up for a friend, a solo spends everything ──
+{
+  const as = (role: CombatTactics["role"]) => ({
+    ...actor(`as-${role}`),
+    tactics: { ...assignCombatTactics(actor(`as-${role}`), 7, "tactical"), role, adjective: "disciplined" as const },
+  });
+  const guard = [
+    { action: "strike", targetId: "a", damage: 0.5 },
+    { action: "cover", targetId: "b", damage: 0.4, protection: 0.3 },
+  ];
+  assert.equal(chooseCombatCandidate(as("bruiser"), guard, 1), "strike");
+  assert.equal(chooseCombatCandidate(as("bulwark"), guard, 1), "cover");
+  const spend = [
+    { action: "everything", targetId: "a", damage: 0.6, cost: 1 },
+    { action: "keep", targetId: "a", damage: 0.45 },
+  ];
+  assert.equal(chooseCombatCandidate(as("bruiser"), spend, 1), "keep");
+  assert.equal(chooseCombatCandidate(as("solo"), spend, 1), "everything");
+  // A temperament dealt with a ruleset's role in mind (A3): a supporter may be supportive with no
+  // Engine skill that heals.
+  const drawn = new Set(
+    Array.from(
+      { length: 60 },
+      (_, seed) => assignCombatTactics(actor("priest"), seed, "tactical", "supporter").adjective,
+    ),
+  );
+  assert.ok(drawn.has("supportive"));
+  assert.equal(assignCombatTactics(actor("priest"), 7, "tactical", "supporter").role, "supporter");
+  assert.equal(assignCombatTactics({ ...actor("boss"), boss: { points: 3 } } as never, 7).role, "solo");
+}

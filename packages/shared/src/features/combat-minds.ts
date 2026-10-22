@@ -43,5 +43,8 @@ export const COMBAT_ROLES = [
   "spellcaster",
   "supporter",
   "controller",
+  /** One that fights a whole side alone (1.723): a dragon, a lich, a kraken, with moves of its own
+   *  between turns. It spends what it has, area first, and never trades blow for blow. */
+  "solo",
 ] as const;
 export type CombatRole = (typeof COMBAT_ROLES)[number];

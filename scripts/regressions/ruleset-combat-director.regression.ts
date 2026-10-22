@@ -48,6 +48,7 @@ import {
   commandRulesetCombatDirector,
   createRulesetFight,
   directedRulesetView,
+  rankRulesetChoices,
   rulesetDirectorStage,
   rulesetFightLiveStates,
   rulesetWindowTargetOf,
@@ -717,13 +718,31 @@ for (const setup of [
     }
     // And the base way of paying is still there beside it: the bigger ways are candidates ADDED to
     // it, not candidates that replaced it. (What the extra rungs are worth against what they buy is
-    // the picker's own weighing, and is not pinned here: with the price taken out entirely this
-    // sweep still casts it as written somewhere, because a caster out of third-level slots has
-    // nothing else to spend.)
-    assert.ok(
-      spentPools.has("slots_2"),
-      `${setup.what}: the base way of paying vanished, it spent only ${[...spentPools].join(", ")}`,
-    );
+    // the picker's own weighing, and is not pinned here, so this reads the candidates themselves:
+    // which of them a sweep happens to cast turns on the temperaments its seeds deal.)
+    {
+      const state = started({
+        definition: setup.definition,
+        cards: setup.cards,
+        partyCatalogs: setup.catalogs,
+        party: setup.party,
+        enemies: [{ id: "a", name: setup.enemy }],
+        seed: 1,
+      });
+      for (const member of setup.party)
+        commandRulesetCombatDirector(setup.definition, state, { type: "control", unitId: member.id, controller: "ai" });
+      for (let guard = 0; guard < 6 && currentRulesetActor(state.rulesetFight!.encounter)?.id !== "corwin"; guard++)
+        commandRulesetCombatDirector(setup.definition, state, { type: "continue" });
+      const encounter = state.rulesetFight!.encounter;
+      assert.equal(currentRulesetActor(encounter)?.id, "corwin");
+      const lances = rankRulesetChoices(setup.definition, state, encounter, "corwin", 200)
+        .map((ranked) => ranked.candidate.action.option.label)
+        .filter((label) => label.startsWith("Ember Lance"));
+      assert.ok(
+        lances.includes("Ember Lance") && lances.some((label) => label.includes("3rd")),
+        `${setup.what}: the base way of paying vanished beside the bigger one: ${lances.join(", ")}`,
+      );
+    }
   }
 }
 

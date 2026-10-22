@@ -220,6 +220,55 @@ try {
     assert.equal(rulesetCombatantRole(brute), "spellcaster", "a spell cast with words");
   }
 
+  // ── Roles read off what it does (combat AI A2): no dragon a bulwark for its armour ──
+  {
+    const { encounter } = fight({
+      dragon: { side: "enemy", block: block([smash], { defense: 19, legendaryResistance: 3 }), at: { x: 2, y: 2 } },
+      plated: { side: "enemy", block: block([smash], { defense: 19 }), at: { x: 3, y: 2 } },
+      guardian: {
+        side: "enemy",
+        block: block([
+          smash,
+          {
+            id: "shield",
+            name: "Shield",
+            budget: "reaction",
+            reaction: { on: "hit", for: "ally", within: 5, at: "target" },
+          },
+        ]),
+        at: { x: 4, y: 2 },
+      },
+      knight: {
+        side: "enemy",
+        block: block([
+          smash,
+          { id: "parry", name: "Parry", budget: "reaction", reaction: { on: "hit", blow: "melee" } },
+        ]),
+        at: { x: 5, y: 2 },
+      },
+      goblin: {
+        side: "enemy",
+        block: block([
+          smash,
+          { id: "nimble", name: "Nimble Escape", budget: "bonus", standard: { actions: ["disengage", "hide"] } },
+        ]),
+        at: { x: 6, y: 2 },
+      },
+      hero: { side: "party", block: block([smash]), at: { x: 9, y: 2 } },
+    });
+    const role = (id: string) => rulesetCombatantRole(rulesetCombatant(encounter, id)!, definition, encounter);
+    assert.equal(role("dragon"), "solo");
+    assert.equal(role("plated"), "bruiser", "armour alone makes nobody a bulwark");
+    assert.equal(role("guardian"), "bulwark");
+    assert.equal(role("knight"), "bulwark");
+    assert.equal(role("goblin"), "skirmisher");
+    // Feet much quicker than its side's, on blows no harder than theirs.
+    const quick = rulesetCombatant(encounter, "plated")!;
+    quick.speed = 60;
+    assert.equal(role("plated"), "skirmisher");
+    assert.equal(rulesetCombatantRole(quick), "bruiser", "with no fight to read its side from");
+  }
+
   // ── Its temperament and role, unless the Game Master gave one ──
   {
     const scene = () =>
@@ -467,10 +516,16 @@ try {
       gate,
       "a condition's behavior is not one",
     );
+    const solo =
+      'A ruleset with a creature that fights a side alone (a behavior whose role is "solo") requires schemaVersion 2 and capabilityApi 1.723 or newer';
+    const dragonish = fiveE((doc) => (lurkerEntry(doc).behavior = { role: "solo" }));
+    assert.equal(getCapabilityPackageInstallIssue(manifest(722) as never, dragonish), solo);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(723) as never, dragonish), solo);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(722) as never, wolfish), solo);
   }
 
   console.log(
-    "Combat behavior: merged from the ruleset, the type and the creature; its temperament and role; casters, attackers and a pack's prey first; its opener once; an ambusher keeps still and springs; refused and gated at 1.710.",
+    "Combat behavior: merged from the ruleset, the type and the creature; its temperament and role; casters, attackers and a pack's prey first; its opener once; an ambusher keeps still and springs; roles read off what it does; refused and gated at 1.710 and 1.723.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

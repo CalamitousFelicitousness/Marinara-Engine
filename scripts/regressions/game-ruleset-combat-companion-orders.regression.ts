@@ -18,6 +18,7 @@ import {
   createRulesetEncounter,
   parseRulesetDefinition,
   rulesetCombatant,
+  rulesetCombatantRole,
   type CombatOrders,
   type RulesetDefinition,
   type RulesetEncounterState,
@@ -141,7 +142,8 @@ try {
       seed: 0,
       category: "unknown",
       proficiency: "master",
-      role: "marksman",
+      // What its actions make it, so its pinned temperament is not drawn again for another role.
+      role: rulesetCombatantRole(rulesetCombatant(encounter, "mira")!, definition, encounter),
       adjective: "disciplined",
     };
     if (orders) mira.orders = orders;

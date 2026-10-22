@@ -66154,7 +66154,8 @@
                             "marksman",
                             "spellcaster",
                             "supporter",
-                            "controller"
+                            "controller",
+                            "solo"
                           ]
                         },
                         "targets": {
@@ -253224,7 +253225,8 @@
                           "marksman",
                           "spellcaster",
                           "supporter",
-                          "controller"
+                          "controller",
+                          "solo"
                         ]
                       },
                       "targets": {
@@ -254308,7 +254310,8 @@
                 "marksman",
                 "spellcaster",
                 "supporter",
-                "controller"
+                "controller",
+                "solo"
               ]
             },
             "targets": {

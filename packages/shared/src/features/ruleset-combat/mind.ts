@@ -1,7 +1,7 @@
 import type { CombatMind, CombatRole } from "../combat-minds.js";
 import type { RulesetCombatBehavior, RulesetDefinition } from "../../schemas/ruleset.schema.js";
-import { rulesetAbilityScore, rulesetCreatureKind } from "./encounter.js";
-import type { RulesetCombatant } from "./types.js";
+import { rulesetAbilityScore, rulesetCombatConditions, rulesetCreatureKind } from "./encounter.js";
+import type { RulesetCombatant, RulesetEncounterState } from "./types.js";
 
 /**
  * How much thought a combatant puts into a fight (Capability API 1.708), as its own data says: its
@@ -74,25 +74,64 @@ export function rulesetActionIsSpell(action: RulesetCombatant["actions"][number]
 }
 
 /**
- * What a combatant is for in a fight, read off what it can do, for one whose data names no `role`:
- * one that heals others a `supporter`, one with spells that only put things on people a
- * `controller`, one with spells a `spellcaster`, one whose best blow is a shot a `marksman`, a hard
- * one to hit a `bulwark`, and anybody else a `bruiser`.
+ * What a combatant is for in a fight, read off what it can do, for one whose data names no `role`
+ * (combat AI A2): one with moves of its own between turns or legendary resistance a `solo`, one
+ * that heals others a `supporter`, one with spells that only put things on people a `controller`,
+ * one with spells a `spellcaster`, one whose best blow is a shot a `marksman`, one with a reaction
+ * that keeps a friend from harm or turns a blow aside (a Shield Guardian's Shield, a knight's
+ * Parry) a `bulwark`, one built to get in and out (a free Disengage or Hide, Flyby, or feet much
+ * quicker than its side's on blows no harder than theirs) a `skirmisher`, and anybody else a
+ * `bruiser`. Its fight, when given, is what its side's feet and blows are read from.
  */
-export function rulesetCombatantRole(combatant: RulesetCombatant): CombatRole {
+export function rulesetCombatantRole(
+  combatant: RulesetCombatant,
+  definition?: RulesetDefinition,
+  encounter?: RulesetEncounterState,
+): CombatRole {
+  if (combatant.signature || (combatant.block?.legendaryResistance ?? 0) > 0) return "solo";
   // Not what a condition would give it: those are on every list, offered only while held, and are no
   // part of what it is (5e's Potion of Animal Friendship would make everybody a controller).
   const actions = combatant.actions.filter((action) => !action.whileHolds);
   if (actions.some((action) => action.heal && action.targets.side !== "self")) return "supporter";
   const spells = actions.filter(rulesetActionIsSpell);
   if (spells.length > 0)
-    return spells.filter((action) => action.applies?.length && !action.damage).length * 2 >= spells.length
+    // Holding people down is putting something on the other side: a ward on itself or a friend is
+    // a caster's help, not control.
+    return spells.filter(
+      (action) =>
+        action.applies?.length && !action.damage && action.targets.side !== "ally" && action.targets.side !== "self",
+    ).length *
+      2 >=
+      spells.length
       ? "controller"
       : "spellcaster";
   const average = (action: (typeof actions)[number]) =>
     action.damage ? action.damage.count * ((action.damage.sides + 1) / 2) + action.damage.flat : 0;
   const best = [...actions].filter((action) => action.damage).sort((a, b) => average(b) - average(a))[0];
   if (best?.range && !best.reach) return "marksman";
-  if ((combatant.defense ?? 0) >= 17) return "bulwark";
+  // Keeping a friend from harm first, then getting in and out, then turning a blow aside: a rogue's
+  // Cunning Action makes it a skirmisher whatever its Uncanny Dodge does.
+  if (actions.some((action) => action.reaction?.for === "ally" || action.reaction?.for === "any")) return "bulwark";
+  if (actions.some((action) => action.standard?.actions.some((one) => one === "disengage" || one === "hide")))
+    return "skirmisher";
+  if (actions.some((action) => action.reaction?.on === "hit" && !action.damage && !action.applies?.length))
+    return "bulwark";
+  if (
+    definition &&
+    rulesetCombatConditions(definition, combatant).some(
+      (id) => definition.combat?.conditions?.find((rule) => rule.condition === id)?.flyby,
+    )
+  )
+    return "skirmisher";
+  if (encounter) {
+    const side = encounter.combatants.filter(
+      (one) => one.side === combatant.side && !one.object && one.calledBy === undefined,
+    );
+    const hardest = (one: RulesetCombatant) =>
+      Math.max(0, ...one.actions.filter((action) => !action.whileHolds && action.damage).map(average));
+    const feet = side.reduce((sum, one) => sum + one.speed, 0) / Math.max(1, side.length);
+    const blows = side.reduce((sum, one) => sum + hardest(one), 0) / Math.max(1, side.length);
+    if (side.length > 1 && combatant.speed >= feet * 1.3 && hardest(combatant) <= blows) return "skirmisher";
+  }
   return "bruiser";
 }

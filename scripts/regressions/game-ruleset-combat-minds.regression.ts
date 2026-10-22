@@ -656,7 +656,7 @@ try {
       id: "veil",
       name: "Ward",
       budget: "action",
-      targets: { side: "ally", count: 1 },
+      targets: "ally",
       range: { normal: 30 },
       concentration: true,
       applies: [{ condition: "parrying", duration: { rounds: 10 } }],

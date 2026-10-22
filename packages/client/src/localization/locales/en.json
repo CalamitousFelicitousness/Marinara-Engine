@@ -1845,6 +1845,7 @@
   "game.combat.ai.role.controller": "Controller",
   "game.combat.ai.role.marksman": "Marksman",
   "game.combat.ai.role.skirmisher": "Skirmisher",
+  "game.combat.ai.role.solo": "Solo",
   "game.combat.ai.role.spellcaster": "Spellcaster",
   "game.combat.ai.role.supporter": "Supporter",
   "game.combat.director.active": "Active: {{name}}",

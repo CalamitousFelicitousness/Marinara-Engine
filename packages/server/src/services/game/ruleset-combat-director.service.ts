@@ -780,7 +780,7 @@ export function syncRulesetCombatants(definition: RulesetDefinition, state: Comb
   for (const combatant of fight.encounter.combatants) {
     const unit = units.get(combatant.id);
     if (!unit) continue;
-    rulesetReadRole(definition, unit, combatant);
+    rulesetReadRole(definition, unit, combatant, fight.encounter);
     // Who plays a party member, as the fight has it: what the party panel shows.
     if (combatant.side === "party")
       unit.controller = rulesetController(state, fight, combatant) === "ai" ? "ai" : "manual";
@@ -800,9 +800,29 @@ export function syncRulesetCombatants(definition: RulesetDefinition, state: Comb
 /** What a fighter is for, read once off what its ruleset sheet or block can do (a priest supports, a
  *  mage casts), or as its own data says (1.710). The ruleset is what it fights with, so a game card's
  *  class or skills say nothing here. */
-function rulesetReadRole(definition: RulesetDefinition, unit: Combatant, combatant: RulesetCombatant): void {
+function rulesetReadRole(
+  definition: RulesetDefinition,
+  unit: Combatant,
+  combatant: RulesetCombatant,
+  encounter: RulesetEncounterState,
+): void {
   if (!unit.tactics || unit.tactics.roleRead) return;
-  unit.tactics.role = rulesetCombatantBehavior(definition, combatant)?.role ?? rulesetCombatantRole(combatant);
+  const role =
+    rulesetCombatantBehavior(definition, combatant)?.role ?? rulesetCombatantRole(combatant, definition, encounter);
+  // Its temperament drawn again with what it is for (combat AI A3): a priest leans supportive and a
+  // goblin opportunistic, which a guess from its Engine class never gave them. A temperament the
+  // story or its data names still wins. Not an opponent invented with a sheet: its open choices were
+  // filled by the temperament it was given, and it fights with that one.
+  if (
+    role !== unit.tactics.role &&
+    unit.tactics.mind !== "mindless" &&
+    !(combatant.sheet && combatant.side === "enemy")
+  ) {
+    const { seed, mind } = unit.tactics;
+    unit.tactics.adjective =
+      unit.aiHints?.temperament ?? assignCombatTactics({ ...unit, tactics: undefined }, seed, mind, role).adjective;
+  }
+  unit.tactics.role = role;
   unit.tactics.roleRead = true;
 }
 
@@ -1666,6 +1686,7 @@ function weighRulesetTeam(
   // Only one that means to keep itself whole takes these in place of closing in: anybody else's
   // standard action is what is left when nothing is in reach, and it walks instead.
   const keeps = rulesetKeepsDefensive(definition, encounter, actor, units.get(actor.id)?.tactics, orders);
+  const role = units.get(actor.id)?.tactics?.role;
   // Getting away from nobody gets it nothing: with no opponent beside it, Disengage is left out (a
   // goblin's Nimble Escape spent eight times out in the open), and so it is with no walk left to
   // get away on.
@@ -1692,16 +1713,43 @@ function weighRulesetTeam(
         candidate.risk = danger(cell) * (defensive === "dodge" ? 0.7 : defensive === "hide" && !seen ? 0.6 : 1);
       }
     }
+    // Where it ends up (combat AI A1): beside a friend an opponent is on, which a bulwark stands up
+    // for, and beside a hurt one, which a supporter keeps close to.
+    const lands = candidate.action.to;
+    const beside = (ally: RulesetCombatant) => {
+      const at = rulesetPositionOf(ally);
+      return !!lands && !!at && Math.max(Math.abs(at.x - lands.x), Math.abs(at.y - lands.y)) <= 1;
+    };
+    const covers = lands ? threatened.filter(beside).length : 0;
+    if (role === "supporter" && lands && allies.some((ally) => hurt(ally) && beside(ally)))
+      candidate.support = (candidate.support ?? 0) + 0.15;
     const target = candidate.targetId ? rulesetCombatant(encounter, candidate.targetId) : undefined;
-    if (!target || target.side === actor.side) continue;
+    if (!target || target.side === actor.side) {
+      if (covers > 0) candidate.protection = Math.min(1, 0.3 * covers);
+      continue;
+    }
     const guarding = threatened.filter((ally) => near(ally, target));
-    if (guarding.length > 0)
+    if (guarding.length > 0 || covers > 0)
       candidate.protection = Math.min(
         1,
-        guarding.reduce((sum, ally) => sum + 0.5 + (hurt(ally) ? 0.3 : 0), 0),
+        guarding.reduce((sum, ally) => sum + 0.5 + (hurt(ally) ? 0.3 : 0), 0) + 0.3 * covers,
       );
     const engaged = allies.filter((ally) => near(ally, target)).length;
-    const together = Math.min(1, 0.35 * engaged + (focus.has(target.id) ? 0.3 : 0));
+    // From across the target from a friend already on it (combat AI A1): a flank, a skirmisher's.
+    const there = rulesetPositionOf(target);
+    const flanks =
+      !!lands &&
+      !!there &&
+      allies.some((ally) => {
+        const at = rulesetPositionOf(ally);
+        return (
+          !!at &&
+          near(ally, target) &&
+          Math.sign(at.x - there.x) === -Math.sign(lands.x - there.x) &&
+          Math.sign(at.y - there.y) === -Math.sign(lands.y - there.y)
+        );
+      });
+    const together = Math.min(1, 0.35 * engaged + (focus.has(target.id) ? 0.3 : 0) + (flanks ? 0.3 : 0));
     if (together > 0) candidate.coordination = together;
   }
 }
@@ -3329,7 +3377,7 @@ function weighChoices(
       delete unit.tactics;
       unit.tactics = assignCombatTactics(unit, state.seed, mind);
     }
-    rulesetReadRole(definition, unit, actor);
+    rulesetReadRole(definition, unit, actor, encounter);
     // How its own data says it goes about a fight (1.710): its temperament, unless the Game Master
     // gave it one for this fight, and its role.
     const behavior = rulesetCombatantBehavior(definition, actor);

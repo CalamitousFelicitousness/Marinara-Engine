@@ -131,7 +131,14 @@ export function combatAiHash(value: string): number {
  * thought in it (`combatMindWithHint`), and with neither an animal (`category` beast) is `instinct`
  * and anything else plays as `tactical`.
  */
-export function assignCombatTactics(unit: AiCombatant, seed: number, mind?: CombatMind): CombatTactics {
+export function assignCombatTactics(
+  unit: AiCombatant,
+  seed: number,
+  mind?: CombatMind,
+  /** What it is for, where its own data says (a ruleset's creature, combat AI A3): its temperament is
+   *  drawn with it, not with a guess from its Engine class. */
+  roled?: CombatTactics["role"],
+): CombatTactics {
   const hints = combatAiHintsSchema.parse(unit.aiHints ?? {});
   if (unit.tactics) return combatTacticsSchema.parse(unit.tactics);
   const minded: CombatMind =
@@ -140,21 +147,26 @@ export function assignCombatTactics(unit: AiCombatant, seed: number, mind?: Comb
   const skills = unit.skills ?? [];
   const support = skills.some((s) => s.type === "heal" || s.type === "buff");
   const control = skills.some((s) => s.type === "debuff");
-  const role: CombatTactics["role"] = support
-    ? "supporter"
-    : control
-      ? "controller"
-      : unit.combatClass === "mage"
-        ? "spellcaster"
-        : unit.combatClass === "archer"
-          ? "marksman"
-          : unit.combatClass === "knight"
-            ? "bulwark"
-            : unit.combatClass === "rogue"
-              ? "skirmisher"
-              : skills.some((s) => s.element && s.type === "attack")
-                ? "spellcaster"
-                : "bruiser";
+  // A boss fights a side alone (combat AI A2).
+  const role: CombatTactics["role"] = roled
+    ? roled
+    : (unit as { boss?: unknown }).boss
+      ? "solo"
+      : support
+        ? "supporter"
+        : control
+          ? "controller"
+          : unit.combatClass === "mage"
+            ? "spellcaster"
+            : unit.combatClass === "archer"
+              ? "marksman"
+              : unit.combatClass === "knight"
+                ? "bulwark"
+                : unit.combatClass === "rogue"
+                  ? "skirmisher"
+                  : skills.some((s) => s.element && s.type === "attack")
+                    ? "spellcaster"
+                    : "bruiser";
   const trained =
     hints.proficiency ??
     (unit.level >= 15 ? "master" : unit.level >= 8 ? "veteran" : unit.level >= 3 ? "trained" : "novice");
@@ -170,10 +182,13 @@ export function assignCombatTactics(unit: AiCombatant, seed: number, mind?: Comb
     spellcaster: ["methodical", "cautious", "disciplined"],
     supporter: ["supportive", "protective", "coordinated"],
     controller: ["methodical", "coordinated", "disciplined"],
+    solo: ["methodical", "disciplined", "opportunistic"],
   };
   const weighted = COMBAT_ADJECTIVES.filter(
     (a) =>
-      a !== "mindless" && (a !== "supportive" || support) && (minded !== "instinct" || INSTINCT_ADJECTIVES.includes(a)),
+      a !== "mindless" &&
+      (a !== "supportive" || support || role === "supporter") &&
+      (minded !== "instinct" || INSTINCT_ADJECTIVES.includes(a)),
   ).map((adjective) => ({
     adjective,
     weight: 1 + (suited[role].includes(adjective) ? 2 + 4 * competence : 0) + (hints.temperament === adjective ? 8 : 0),
@@ -315,6 +330,25 @@ export function rankCombatCandidates<T>(
     weights.setup = Math.min(weights.setup, 0.1);
     if (wounded) weights.risk = Math.max(weights.risk, 3);
   } else if (profile.mind === "genius") weights.risk = Math.max(weights.risk, 0.8);
+  // What it is for bends it too (combat AI A1): a bulwark stands up for its friends, a skirmisher
+  // picks off and flanks, a marksman keeps out of harm, a caster keeps its best for when it matters
+  // and sets up, a controller holds people down, a supporter backs its friends, and one that fights a side alone
+  // spends everything it has and does not mind a blow.
+  if (profile.mind !== "mindless") {
+    if (profile.role === "bulwark") weights.protection = Math.max(weights.protection, 1.5);
+    else if (profile.role === "skirmisher") {
+      weights.coordination = Math.max(weights.coordination, 0.6);
+      weights.finish *= 1.3;
+    } else if (profile.role === "marksman") weights.risk = Math.max(weights.risk * 1.5, 0.9);
+    else if (profile.role === "spellcaster") weights.cost = Math.max(weights.cost, 0.4);
+    else if (profile.role === "controller") weights.setup = Math.max(weights.setup, 1.2);
+    else if (profile.role === "supporter") weights.support = Math.max(weights.support, 0.8);
+    else if (profile.role === "solo") {
+      weights.cost = 0;
+      weights.damage *= 1.2;
+      weights.risk = Math.min(weights.risk, 0.4);
+    }
+  }
   // What its player told it: keep the best for later, heal first, beat without killing, keep out of
   // harm's way, or get out of the fight.
   if (orders?.conserve) weights.cost = Math.max(weights.cost, 1.2);

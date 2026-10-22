@@ -2842,6 +2842,16 @@ function carriesBehavior710(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesBehavior710(one, depth + 1));
 }
 
+/** A creature that fights a side alone (1.723): a behavior whose `role` is `solo`. */
+function carriesSoloRole723(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesSoloRole723(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.behavior)?.role === "solo") return true;
+  return featureValues(record).some((one) => carriesSoloRole723(one, depth + 1));
+}
+
 /** Losing heart (1.709): `combat.morale`, or a stat block's `morale` score or `leader`. */
 function carriesMorale709(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -9391,6 +9401,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A creature that fights a side alone, 1.723.
+  if (
+    !declaresApi(723) &&
+    (carriesSoloRole723(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesSoloRole723(document)))
+  )
+    return 'A ruleset with a creature that fights a side alone (a behavior whose role is "solo") requires schemaVersion 2 and capabilityApi 1.723 or newer';
   // Losing heart when caught unaware or helpless, or half down with no losses on the other side, 1.722.
   const morale722 = plainRecord(plainRecord(plainRecord(ruleset)?.combat)?.morale);
   if (

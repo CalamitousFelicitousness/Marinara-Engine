@@ -433,8 +433,11 @@ export function ChatSidebar() {
         .map((characterId) => charLookup.get(characterId)?.name ?? "")
         .filter(Boolean);
 
+      // A branch is labelled by its own display name, but the thread name is still what someone may
+      // remember, so both match.
+      const names = [toSearchText(chat.name), toSearchText(getChatDisplayName(chat))];
       return (
-        includesTextForMatch(toSearchText(getChatDisplayName(chat)), query) ||
+        names.some((name) => includesTextForMatch(name, query)) ||
         tags.some((tag) => includesTextForMatch(tag, query)) ||
         characterNames.some((name) => includesTextForMatch(name, query))
       );
@@ -529,12 +532,18 @@ export function ChatSidebar() {
   const activeGroupId = activeChat?.groupId ?? null;
 
   // A branch that becomes active (branch switch, notification, reload) has to be visible: open its
-  // group, or the list highlights a row that is not rendered at all.
+  // group, or the list highlights a row that is not rendered at all. Once per activation only — a
+  // background refetch rebuilds branchTreesByGroup, and re-expanding then would reopen a group the
+  // user had just collapsed.
+  const autoExpandedBranchChatRef = useRef<string | null>(null);
   useEffect(() => {
     const groupId = activeChat?.groupId;
     if (!activeChatId || !groupId) return;
+    if (autoExpandedBranchChatRef.current === activeChatId) return;
     const branchRows = branchTreesByGroup.get(groupId);
     if (!branchRows?.some((row) => row.chat.id === activeChatId && row.depth > 0)) return;
+    // Mark only once the branch is known to be nested, so a list that is still loading gets retried.
+    autoExpandedBranchChatRef.current = activeChatId;
     setExpandedBranchGroups((previous) => (previous.has(groupId) ? previous : new Set(previous).add(groupId)));
   }, [activeChatId, activeChat?.groupId, branchTreesByGroup]);
   const activeDisplayChatIndex = useMemo(
@@ -1039,8 +1048,15 @@ export function ChatSidebar() {
         ? formatRelativeContact(chat.lastMessageAt, presenceNow.getTime())
         : null;
 
-    const isGenerating = abortControllers.has(chat.id);
-    const typingCharacter = perChatTyping.get(chat.id);
+    // Collapsed, the row speaks for its whole group: the lineage root is not necessarily the branch
+    // that is typing, generating or unread.
+    const signalRows = !isExpanded && branchRows && branchRows.length > 1 ? branchRows : null;
+    const isGenerating = signalRows
+      ? signalRows.some((row) => abortControllers.has(row.chat.id))
+      : abortControllers.has(chat.id);
+    const typingCharacter = signalRows
+      ? signalRows.map((row) => perChatTyping.get(row.chat.id)).find(Boolean)
+      : perChatTyping.get(chat.id);
     const hasDraft = !isActive && Boolean(inputDrafts.get(chat.id)?.trim());
     // Enrichment only: notifications auto-dismiss on a timer while the unread count badge
     // persists, so the badge stays the durable signal and this just names who/what.
@@ -1203,7 +1219,7 @@ export function ChatSidebar() {
                 event.stopPropagation();
                 if (chat.groupId) toggleBranchGroup(chat.groupId);
               }}
-              className="flex h-6 w-5 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)]"
+              className="flex h-6 w-5 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--foreground)] max-md:h-9 max-md:w-9 [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-9"
             >
               <ChevronRight
                 size="0.75rem"
@@ -1212,7 +1228,7 @@ export function ChatSidebar() {
             </button>
           ) : depth === 0 ? (
             // Equal-width spacer, so names line up whether or not a row has branches.
-            <span aria-hidden className="w-5 shrink-0" />
+            <span aria-hidden className="w-5 shrink-0 max-md:w-9 [@media(pointer:coarse)]:w-9" />
           ) : treeRow ? (
             <BranchGuides row={treeRow} />
           ) : null}
@@ -1334,7 +1350,9 @@ export function ChatSidebar() {
 
             {/* Unread count badge */}
             {(() => {
-              const count = unreadCounts.get(chat.id) || 0;
+              const count = signalRows
+                ? signalRows.reduce((sum, row) => sum + (unreadCounts.get(row.chat.id) ?? 0), 0)
+                : unreadCounts.get(chat.id) || 0;
               if (count === 0 || isActive) return null;
               return (
                 <span className="absolute -top-1 -right-1 z-20 flex h-4 min-w-4 items-center justify-center rounded-md bg-red-500 px-1 text-[0.5625rem] font-bold leading-none text-white shadow-sm ring-2 ring-[var(--sidebar-background)]">

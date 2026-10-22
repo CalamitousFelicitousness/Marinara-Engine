@@ -71,6 +71,24 @@ const legacy = [
 ];
 assert.deepEqual(shape(buildChatBranchRows(legacy)), ["old-root:0", "old-b:1", "old-c:1"]);
 
+// Legacy siblings hang off the root as ordinary children, so the last one closes its connector
+// instead of trailing a line below the group.
+assert.deepEqual(
+  buildChatBranchRows(legacy).map((row) => [row.chat.id, row.isLastChild]),
+  [
+    ["old-root", false],
+    ["old-b", false],
+    ["old-c", true],
+  ],
+);
+
+// An imported sibling joins a lineage group the same way, and the last depth-1 row closes.
+const withImported = [...nested, chat("imported", null, "2026-10-06T00:00:00.000Z")];
+const importedRows = buildChatBranchRows(withImported);
+assert.equal(importedRows.length, 6);
+assert.equal(importedRows[importedRows.length - 1]?.chat.id, "imported");
+assert.equal(importedRows[importedRows.length - 1]?.isLastChild, true);
+
 // A parent that was deleted is not lineage: the orphan is just another child, never a crash.
 assert.deepEqual(
   shape(

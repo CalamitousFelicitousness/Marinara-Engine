@@ -70,6 +70,15 @@ export function buildChatBranchRows<T extends BranchTreeChat>(
   }
 
   const root = pickRoot(chats, parentOf, byCreationAsc);
+  // Parentless chats that are not the chosen root (legacy branch sets, imported siblings) join the
+  // root's children, so the walk gives them honest connector flags rather than leaving a trailing
+  // line under the group.
+  for (const chat of chats) {
+    if (chat.id === root.id || parentOf.has(chat.id)) continue;
+    const children = childrenOf.get(root.id);
+    if (children) children.push(chat);
+    else childrenOf.set(root.id, [chat]);
+  }
   const rows: BranchTreeRow<T>[] = [];
   const visited = new Set<string>([root.id]);
   // Pre-order depth-first, with a stack rather than recursion: a long chain of branches stays one

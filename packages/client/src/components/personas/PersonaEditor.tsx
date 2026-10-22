@@ -289,7 +289,7 @@ function formatPersonaFieldValue<K extends keyof PersonaFormData>(
 
 /** Persona mutations the editor coordinates. Only one may run at a time,
  *  because each writes or removes the same Persona row. */
-type PersonaMutationKind = "save" | "avatar" | "gallery-avatar" | "delete";
+type PersonaMutationKind = "save" | "avatar" | "gallery-avatar" | "remove-avatar" | "delete";
 
 /** The decoded PATCH contract this editor writes: the shared update input plus
  *  the character-sheet fields the Persona route still handles separately. */
@@ -1396,7 +1396,7 @@ export function PersonaEditor() {
 
   const mutationBusy = mutationKind !== null;
   const saving = mutationKind === "save";
-  const avatarBusy = mutationKind === "avatar" || mutationKind === "gallery-avatar";
+  const avatarBusy = mutationKind === "avatar" || mutationKind === "gallery-avatar" || mutationKind === "remove-avatar";
 
   const beginMutation = useCallback((kind: PersonaMutationKind) => {
     if (mutationTokenRef.current) return null;
@@ -1501,7 +1501,10 @@ export function PersonaEditor() {
 
     // An avatar/gallery replacement owns the preview and crop until it settles;
     // an interim refetch must not flip the image back and forth underneath it.
-    const avatarOperationActive = mutationKindRef.current === "avatar" || mutationKindRef.current === "gallery-avatar";
+    const avatarOperationActive =
+      mutationKindRef.current === "avatar" ||
+      mutationKindRef.current === "gallery-avatar" ||
+      mutationKindRef.current === "remove-avatar";
     const baseline = baselineFormRef.current;
     const avatarUnchanged = authoritativeAvatarPathRef.current === rawPersona.avatarPath;
     if (
@@ -1666,7 +1669,7 @@ export function PersonaEditor() {
 
   const handleAvatarRemove = useCallback(async () => {
     if (!personaId || !avatarPreview) return;
-    const token = beginMutation("avatar");
+    const token = beginMutation("remove-avatar");
     if (!token) return;
     const session = editorSessionRef.current;
     try {
@@ -2193,7 +2196,9 @@ export function PersonaEditor() {
                 }}
                 imageGenerationAvailable={imageGenerationAvailable}
                 avatarUploading={avatarBusy}
-                avatarRemoving={removeAvatar.isPending}
+                avatarRemoving={
+                  mutationKind === "remove-avatar" && removeAvatar.isPending && removeAvatar.variables === personaId
+                }
                 hasUnsavedChanges={dirty}
                 avatarMutationBusy={mutationBusy}
               />

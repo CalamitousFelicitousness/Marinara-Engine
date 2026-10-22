@@ -290,10 +290,10 @@ assert.match(finishMutationScope, /mutationTokenRef\.current = null;\s*mutationK
 assert.match(hydrationScope, /mutationTokenRef\.current = null;\s*mutationKindRef\.current = null;\s*setMutationKind\(null\);/u);
 assert.match(
   hydrationScope,
-  /const avatarOperationActive = mutationKindRef\.current === "avatar" \|\| mutationKindRef\.current === "gallery-avatar";/u,
+  /const avatarOperationActive =\s*mutationKindRef\.current === "avatar" \|\|\s*mutationKindRef\.current === "gallery-avatar" \|\|\s*mutationKindRef\.current === "remove-avatar";/u,
 );
 assert.match(teardownScope, /mutationTokenRef\.current = null;\s*mutationKindRef\.current = null;/u);
-for (const kind of ["save", "avatar", "gallery-avatar", "delete"]) assert.ok(editor.includes(`beginMutation("${kind}")`));
+for (const kind of ["save", "avatar", "gallery-avatar", "remove-avatar", "delete"]) assert.ok(editor.includes(`beginMutation("${kind}")`));
 const deleteScope = balanced(editor, "const handleDelete = async () =>", "Delete");
 const deleteSuccessScope = between(deleteScope, "try {", "} finally {", "Delete success");
 const deleteFailureScope = between(deleteScope, "} catch (error) {", "} finally {", "Delete failure");

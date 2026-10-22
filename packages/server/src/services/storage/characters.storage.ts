@@ -29,7 +29,7 @@ import {
 } from "@marinara-engine/shared";
 import { normalizeTimestampOverrides, type TimestampOverrides } from "../import/import-timestamps.js";
 import { toPaginatedList } from "../../utils/list-pagination.js";
-import { withAvatarFileLifecycleLock } from "../image/avatar-file-lifecycle.js";
+import { mutateAvatarReferencesAndCleanup, withAvatarFileLifecycleLock } from "../image/avatar-file-lifecycle.js";
 import { logger } from "../../lib/logger.js";
 import { takeRateLimitedSlot } from "../../lib/log-rate-limit.js";
 
@@ -1175,9 +1175,15 @@ export function createCharactersStorage(db: DB) {
       },
     ): Promise<PersonaStorageRow | null> {
       if (updates.avatarPath !== undefined && !options?._avatarLifecycleLocked) {
-        return withAvatarFileLifecycleLock(() =>
-          this.updatePersona(id, updates, { ...options, _avatarLifecycleLocked: true }),
-        );
+        const { result } = await mutateAvatarReferencesAndCleanup({
+          db,
+          collectAvatarPaths: async () => {
+            const current = await this.getPersona(id);
+            return current?.avatarPath ? [current.avatarPath] : [];
+          },
+          mutateReferences: () => this.updatePersona(id, updates, { ...options, _avatarLifecycleLocked: true }),
+        });
+        return result;
       }
       const sets: Record<string, unknown> = { updatedAt: now() };
       if (updates.name !== undefined) sets.name = updates.name;

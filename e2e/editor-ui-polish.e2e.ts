@@ -347,6 +347,67 @@ test("persona avatar removal preserves unsaved fields and survives reload", asyn
   }
 });
 
+test("persona avatar removal progress belongs to the active editor session", async ({ page, request }) => {
+  const ids: string[] = [];
+  let releaseRemoval = () => {};
+  const pendingRemoval = new Promise<void>((resolve) => {
+    releaseRemoval = resolve;
+  });
+  try {
+    for (const name of ["Removal owner", "Next persona"]) {
+      const id = await create(request, "persona", { name });
+      ids.push(id);
+      const uploaded = await request.post(`${paths.persona}/${id}/avatar`, {
+        data: {
+          avatar:
+            "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a2ioAAAAASUVORK5CYII=",
+        },
+      });
+      expect(uploaded.ok(), await uploaded.text()).toBeTruthy();
+    }
+    const owner = ids[0]!;
+    const next = ids[1]!;
+    await prepare(page);
+    const editor = await open(page, "persona", owner);
+    await page.route(`**${paths.persona}/${owner}/avatar`, async (route) => {
+      if (route.request().method() === "DELETE") await pendingRemoval;
+      await route.continue();
+    });
+    const remove = editor.getByTitle("Remove avatar", { exact: true });
+    await remove.click();
+    await page
+      .getByRole("dialog")
+      .filter({ hasText: "Remove the avatar from" })
+      .getByRole("button", { name: "Remove", exact: true })
+      .click();
+    await expect(remove).toHaveText(/Removing/u);
+    await expect(remove).toBeDisabled();
+    // Normal navigation waits for the mutation. Force the parent selection to
+    // exercise the editor's separate forced-teardown/session-isolation contract.
+    await open(page, "persona", next);
+    await expect(editor.locator(".mari-editor-title-input")).toHaveValue("Removal owner");
+    await page.evaluate(async (id) => {
+      const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+      useUIStore.setState({ personaDetailId: id });
+    }, next);
+    const nextEditor = await open(page, "persona", next);
+    await expect(nextEditor.locator(".mari-editor-title-input")).toHaveValue("Next persona");
+    const nextRemove = nextEditor.getByTitle("Remove avatar", { exact: true });
+    await expect(nextRemove).toHaveText("Remove");
+    await expect(nextRemove).toBeEnabled();
+    releaseRemoval();
+    await expect
+      .poll(async () => (await (await request.get(`${paths.persona}/${owner}`)).json()).avatarPath)
+      .toBeNull();
+    await expect(nextRemove).toHaveText("Remove");
+    await expect(nextRemove).toBeEnabled();
+    expect((await (await request.get(`${paths.persona}/${next}`)).json()).avatarPath).toBeTruthy();
+  } finally {
+    releaseRemoval();
+    for (const id of ids) await request.delete(`${paths.persona}/${id}`).catch(() => undefined);
+  }
+});
+
 test("greeting image conversion reuses its saved mapping after reverting and saving", async ({ page, request }) => {
   const url = "https://images.example/greeting.png";
   const file = "saved-greeting.png";

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { eq } from "../../packages/server/src/db/file-query.js";
@@ -421,6 +421,62 @@ try {
   assert.equal((await requestJson("DELETE", `/api/characters/personas/${activeId}/avatar`)).avatarPath, null);
   const missingRemoval = await app.inject({ method: "DELETE", url: "/api/characters/personas/missing/avatar" });
   assert.equal(missingRemoval.statusCode, 404);
+  const avatarFile = (value: Record<string, unknown>) =>
+    join(dataDir, "avatars", String(value.avatarPath).split("/").at(-1)!);
+  assert.equal(existsSync(avatarFile(avatar)), true, "a version snapshot retains the removed avatar");
+
+  const unversioned = await charactersStorage.createPersona("No avatar history", "", undefined, {
+    versioningEnabled: "false",
+  });
+  assert.ok(unversioned);
+  assert.equal(unversioned.versioningEnabled, "false");
+  const firstUpload = await requestJson("POST", `/api/characters/personas/${unversioned.id}/avatar`, {
+    avatar: onePixelPng,
+  });
+  const replacement = await requestJson("POST", `/api/characters/personas/${unversioned.id}/avatar`, {
+    avatar: onePixelPng,
+  });
+  assert.equal(
+    existsSync(avatarFile(firstUpload)),
+    false,
+    "replacement releases an unreferenced avatar without version history",
+  );
+  assert.equal(existsSync(avatarFile(replacement)), true);
+  await requestJson("DELETE", `/api/characters/personas/${unversioned.id}/avatar`);
+  assert.equal(
+    existsSync(avatarFile(replacement)),
+    false,
+    "removal releases an unreferenced avatar without version history",
+  );
+
+  const sharedUpload = await requestJson("POST", `/api/characters/personas/${unversioned.id}/avatar`, {
+    avatar: onePixelPng,
+  });
+  const sharedOwner = await charactersStorage.createPersona(
+    "Shared avatar owner",
+    "",
+    String(sharedUpload.avatarPath),
+    { versioningEnabled: "false" },
+  );
+  assert.ok(sharedOwner);
+  await requestJson("DELETE", `/api/characters/personas/${unversioned.id}/avatar`);
+  assert.equal(existsSync(avatarFile(sharedUpload)), true, "another persona retains its shared avatar");
+  await requestJson("DELETE", `/api/characters/personas/${sharedOwner.id}/avatar`);
+  assert.equal(existsSync(avatarFile(sharedUpload)), false, "the final current reference releases the shared file");
+
+  const callerOwned = await requestJson("POST", `/api/characters/personas/${unversioned.id}/avatar`, {
+    avatar: onePixelPng,
+  });
+  const { withAvatarFileLifecycleLock } =
+    await import("../../packages/server/src/services/image/avatar-file-lifecycle.js");
+  await withAvatarFileLifecycleLock(() =>
+    charactersStorage.updatePersona(unversioned.id, { avatarPath: null }, { _avatarLifecycleLocked: true }),
+  );
+  assert.equal(
+    existsSync(avatarFile(callerOwned)),
+    true,
+    "an already-locked caller retains control of its explicit keep-file policy",
+  );
 } finally {
   await app?.close();
   for (const [key, previous] of [

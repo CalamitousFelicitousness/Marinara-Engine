@@ -294,13 +294,19 @@ export async function mutateAvatarReferencesAndCleanup<T>(input: {
     const shouldCleanup = input.cleanupFiles !== false;
     const avatarPaths = shouldCleanup ? await input.collectAvatarPaths() : [];
     const result = await input.mutateReferences();
-    const filesDeleted = shouldCleanup
-      ? await unlinkAvatarFilesIfUnreferencedUnlocked({
-          db: input.db,
-          avatarPaths,
-          avatarRoot: input.avatarRoot ?? join(DATA_DIR, "avatars"),
-        })
-      : 0;
+    const filesDeleted =
+      shouldCleanup && avatarPaths.length > 0
+        ? await unlinkAvatarFilesIfUnreferencedUnlocked({
+            db: input.db,
+            avatarPaths,
+            avatarRoot: input.avatarRoot ?? join(DATA_DIR, "avatars"),
+          }).catch((error) => {
+            // The reference mutation has committed. Preserve files when references
+            // cannot be verified, and do not turn its successful result into an error.
+            logger.warn(error, "Could not clean up avatar files after updating their references");
+            return 0;
+          })
+        : 0;
     return { result, filesDeleted };
   });
 }

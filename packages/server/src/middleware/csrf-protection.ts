@@ -286,12 +286,12 @@ export function csrfProtectionHook(request: FastifyRequest, reply: FastifyReply,
   // These two device-local routes authenticate the request itself with either
   // a one-time HMAC proof or the full 256-bit per-install secret.
   if (ANDROID_SELF_AUTHENTICATING_PATHS.has(requestPath)) return done();
-  // The sign-in form checks the password itself, and a plain HTML form cannot send
+  // The sign-in and setup forms check the password or setup code themselves, and a plain HTML form cannot send
   // the CSRF header. Only a post the browser marks as same-origin skips the origin
   // list; anything else gets the usual Origin/Referer check below. Plain HTTP gets no
   // Sec-Fetch-Site, so an Origin equal to this server's own origin counts too.
   if (
-    requestPath === "/login" &&
+    (requestPath === "/login" || requestPath === "/login/setup") &&
     (firstHeader(request.headers["sec-fetch-site"])?.toLowerCase() === "same-origin" ||
       sameServerOrigin(request, firstHeader(request.headers.origin)))
   ) {

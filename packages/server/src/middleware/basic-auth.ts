@@ -553,6 +553,15 @@ const PAGE_STYLE = `
   }
 `;
 
+/** Fields and button of the sign-in and setup forms. */
+const FORM_STYLE = `
+  label { display: block; margin: 14px 0 6px; font-size: 14px; color: var(--muted); }
+  input { width: 100%; padding: 10px 12px; font: inherit; color: var(--text); background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; }
+  input:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button { margin-top: 20px; width: 100%; padding: 10px 12px; font: inherit; font-weight: 600; color: var(--bg); background: var(--accent); border: 0; border-radius: 8px; cursor: pointer; }
+  .error { margin: 0 0 4px; color: #f8a5a5; }
+`;
+
 function renderLockdownPage(clientIp: string, proxied: boolean, error?: string): string {
   const safeIp = escapeHtml(clientIp);
   const lede = proxied
@@ -583,14 +592,10 @@ function renderLockdownPage(clientIp: string, proxied: boolean, error?: string):
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta name="robots" content="noindex" />
+<!-- Overrides no-referrer here, so the form posts its real Origin, not "null". -->
+<meta name="referrer" content="same-origin" />
 <title>Marinara Engine — Set up access</title>
-<style>${PAGE_STYLE}
-  label { display: block; margin: 14px 0 6px; font-size: 14px; color: var(--muted); }
-  input { width: 100%; padding: 10px 12px; font: inherit; color: var(--text); background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; }
-  input:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-  button { margin-top: 20px; width: 100%; padding: 10px 12px; font: inherit; font-weight: 600; color: var(--bg); background: var(--accent); border: 0; border-radius: 8px; cursor: pointer; }
-  .error { margin: 0 0 4px; color: #f8a5a5; }
-</style>
+<style>${PAGE_STYLE}${FORM_STYLE}</style>
 </head>
 <body>
   <main>
@@ -870,11 +875,7 @@ function renderLoginPage(next: string, error?: string): string {
     <title>Marinara Engine — Sign in</title>
     <style>${PAGE_STYLE}
       main { max-width: 400px; }
-      label { display: block; margin: 14px 0 6px; font-size: 14px; color: var(--muted); }
-      input { width: 100%; padding: 10px 12px; font: inherit; color: var(--text); background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; }
-      input:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-      button { margin-top: 20px; width: 100%; padding: 10px 12px; font: inherit; font-weight: 600; color: var(--bg); background: var(--accent); border: 0; border-radius: 8px; cursor: pointer; }
-      .error { margin: 0 0 4px; color: #f8a5a5; }
+      ${FORM_STYLE}
     </style>
   </head>
   <body>
@@ -909,6 +910,9 @@ function sendLoginPage(reply: FastifyReply, status: number, next: string, error?
   return reply.status(status).header("Content-Type", "text/html; charset=utf-8").send(renderLoginPage(next, error));
 }
 
+/** Anyone may post the public forms during lockdown, so their bodies stay small. */
+const FORM_BODY_LIMIT = 8 * 1024;
+
 export async function loginRoutes(app: FastifyInstance) {
   // The login form posts urlencoded fields; this parser stays inside these routes.
   app.addContentTypeParser("application/x-www-form-urlencoded", { parseAs: "string" }, (_request, body, done) =>
@@ -930,6 +934,7 @@ export async function loginRoutes(app: FastifyInstance) {
 
   app.post<{ Body: { user?: unknown; password?: unknown; code?: unknown; next?: unknown } | undefined }>(
     "/login",
+    { bodyLimit: FORM_BODY_LIMIT },
     async (request, reply) => {
       const body = request.body ?? {};
       const next = safeNextPath(body.next);
@@ -974,6 +979,7 @@ export async function loginRoutes(app: FastifyInstance) {
   // from any device, for installs with no browser on the host (Docker, NAS).
   app.post<{ Body: { setupCode?: unknown; user?: unknown; password?: unknown } | undefined }>(
     "/login/setup",
+    { bodyLimit: FORM_BODY_LIMIT },
     async (request, reply) => {
       if (loadConfig()) return reply.redirect("/login", 303);
       const fail = (status: number, error: string) =>

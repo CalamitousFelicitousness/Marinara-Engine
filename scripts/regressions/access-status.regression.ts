@@ -69,6 +69,7 @@ try {
     host: "127.0.0.1",
     basicAuth: true,
     loginSource: "env",
+    loginUser: "owner",
     adminSecret: true,
     allowlist: true,
     trustedAuthProxy: true,

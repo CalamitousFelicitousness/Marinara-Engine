@@ -83,8 +83,10 @@ export function resolveRoleplayVideoDirection(
 ): string {
   if (typeof value !== "string") return "";
   const unwrapped = unwrapJsonFence(value);
-  // With video prompting instructions, any JSON shape they ask for is the prompt itself, not a missing narrationBeat.
-  const otherJson = normalizeVideoPromptInstructionsText(videoPromptInstructions) ? unwrapped : "";
+  // A JSON shape the video prompting instructions ask for (they name JSON or show an object) is the prompt itself, not
+  // a missing narrationBeat. Any other object, such as an error payload, is no prompt.
+  const instructions = normalizeVideoPromptInstructionsText(videoPromptInstructions);
+  const otherJson = /\bjson\b|\{/iu.test(instructions) ? unwrapped : "";
   let narrationBeat: string;
   try {
     const parsed = JSON.parse(unwrapped) as unknown;

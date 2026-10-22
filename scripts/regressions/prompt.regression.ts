@@ -6177,6 +6177,11 @@ const cases: RegressionCase[] = [
         resolveRoleplayVideoDirection('[{"shot":"Mira bows"}]', 3_800, "Answer as a JSON list of shots."),
         '[{"shot":"Mira bows"}]',
       );
+      // Instructions that ask for no JSON make a stray object (an error payload) no prompt at all.
+      assert.equal(
+        resolveRoleplayVideoDirection('{"error":"rate limited"}', 3_800, "Write one cinematic paragraph."),
+        "",
+      );
 
       const galleryRouteSource = readFileSync(
         new URL("../../packages/server/src/routes/gallery.routes.ts", import.meta.url),

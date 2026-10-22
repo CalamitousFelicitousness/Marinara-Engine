@@ -59,8 +59,19 @@ for (const seed of [0, 7, 21, 33, 99]) {
 assert.equal(assignCombatTactics(wolf, 7, "cunning").mind, "cunning", "its own data over the Game Master's guess");
 assert.equal(
   assignCombatTactics({ ...wolf, aiHints: { category: "beast" as const, mind: "genius" as const } }, 7, "cunning").mind,
+  "cunning",
+  "a hint never puts more thought in it than its own data does",
+);
+assert.equal(
+  assignCombatTactics({ ...wolf, aiHints: { category: "beast" as const, mind: "instinct" as const } }, 7, "cunning")
+    .mind,
+  "instinct",
+  "a hint puts less thought in it than its data does: one dominated or maddened",
+);
+assert.equal(
+  assignCombatTactics({ ...wolf, aiHints: { category: "beast" as const, mind: "genius" as const } }, 7).mind,
   "genius",
-  "a mind the Game Master names for this fight over everything",
+  "a hint where its own data says nothing",
 );
 assert.equal(assignCombatTactics(actor("kraken"), 7, "genius").mind, "genius");
 assert.equal(

@@ -19,6 +19,7 @@ import {
   createRulesetEncounter,
   parseRulesetDefinition,
   rulesetCombatant,
+  RULESET_PASS_OPTION,
   rulesetCombatantMind,
   rulesetReachableCells,
   rulesetStatBlockFromCreature,
@@ -741,6 +742,51 @@ try {
     // In normal range already, it shoots from where it stands rather than walking in first (re-test 9).
     const first = tactician.turn.find((event) => "actorId" in event && event.actorId === "archer");
     assert.notEqual(first?.type, "move", `no walk in before the shot: ${JSON.stringify(tactician.turn)}`);
+    // A shot that opens a window on a person's own reaction (Shield) leaves the rest of the turn
+    // waiting, and it then keeps its distance as it would have: no walk in once the window is
+    // answered (re-test 11).
+    {
+      const brace = {
+        id: "brace",
+        name: "Brace",
+        budget: "reaction",
+        self: true,
+        reaction: { on: "hit" },
+        applies: [{ condition: "prone", duration: { rounds: 1 } }],
+      };
+      const { encounter, state } = wide(
+        { archer: { x: 9, y: 3 }, knight: { x: 2, y: 3 } },
+        {
+          archer: { side: "enemy", block: block({ type: "humanoid", mind: "cunning", actions: [bow] }) },
+          knight: { side: "party", block: block({ health: 80, actions: [claw, brace] }) },
+        },
+        { archer: { ...master, temperament: "disciplined" } },
+      );
+      state.rulesetFight = {
+        encounter,
+        events: [],
+        eventSeq: 0,
+        controllers: { knight: "manual" },
+        bosses: [],
+      } as never;
+      assert.ok(commandRulesetCombatDirector(definition, state, { type: "continue" }).ok);
+      assert.deepEqual(state.rulesetFight!.encounter.window?.waiting, ["knight"], "the knight is asked");
+      assert.ok(
+        commandRulesetCombatDirector(definition, state, {
+          type: "ruleset",
+          optionId: RULESET_PASS_OPTION,
+          targetIds: [],
+        } as never).ok,
+      );
+      for (
+        let guard = 0;
+        guard < 3 && state.rulesetFight!.encounter.order[state.rulesetFight!.encounter.turn] === "archer";
+        guard++
+      )
+        assert.ok(commandRulesetCombatDirector(definition, state, { type: "continue" }).ok);
+      const archer = rulesetCombatant(state.rulesetFight!.encounter, "archer")!;
+      assert.ok(archer.x! >= 9, `it stayed where it shot from: ${archer.x},${archer.y}`);
+    }
     // In range behind a hill, it walks to where it can see before it shoots, rather than standing
     // idle all turn (re-test 10).
     {

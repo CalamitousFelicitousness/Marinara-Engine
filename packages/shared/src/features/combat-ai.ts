@@ -2,9 +2,16 @@ import { ENEMY_AI_VARIATION, type GameDifficulty } from "./combat-conditions.js"
 import { z } from "zod";
 import type { CombatSkill, CombatStatusEffect } from "../types/game.js";
 
-import { COMBAT_MINDS, COMBAT_ROLES, COMBAT_TEMPERAMENTS, type CombatMind } from "./combat-minds.js";
+import {
+  COMBAT_MINDS,
+  COMBAT_ROLES,
+  COMBAT_TEMPERAMENTS,
+  combatMindWithHint,
+  type CombatMind,
+} from "./combat-minds.js";
 export {
   COMBAT_MINDS,
+  combatMindWithHint,
   COMBAT_ROLES,
   COMBAT_TEMPERAMENTS,
   type CombatMind,
@@ -115,16 +122,15 @@ export function combatAiHash(value: string): number {
 
 /**
  * A combatant's profile, made once and kept. `mind` is what its own data says it is (a ruleset's
- * creature, see `rulesetCombatantMind`); the Game Master's hint wins over it, and with neither an
- * animal (`category` beast) is `instinct` and anything else plays as `tactical`.
+ * creature, see `rulesetCombatantMind`); the Game Master's hint wins over it only where it puts less
+ * thought in it (`combatMindWithHint`), and with neither an animal (`category` beast) is `instinct`
+ * and anything else plays as `tactical`.
  */
 export function assignCombatTactics(unit: AiCombatant, seed: number, mind?: CombatMind): CombatTactics {
   const hints = combatAiHintsSchema.parse(unit.aiHints ?? {});
   if (unit.tactics) return combatTacticsSchema.parse(unit.tactics);
   const minded: CombatMind =
-    hints.mind ??
-    (hints.temperament === "mindless" ? "mindless" : undefined) ??
-    mind ??
+    combatMindWithHint(hints.mind ?? (hints.temperament === "mindless" ? "mindless" : undefined), mind) ??
     (hints.category === "beast" ? "instinct" : "tactical");
   const skills = unit.skills ?? [];
   const support = skills.some((s) => s.type === "heal" || s.type === "buff");

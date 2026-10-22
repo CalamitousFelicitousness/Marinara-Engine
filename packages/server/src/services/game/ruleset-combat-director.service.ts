@@ -16,6 +16,7 @@ import {
   advanceRulesetTurn,
   applyRulesetCombatChoice,
   assignCombatTactics,
+  combatMindWithHint,
   chooseCombatCandidate,
   rankCombatCandidates,
   type CombatAiScoreParts,
@@ -187,6 +188,16 @@ export interface RulesetFightState {
   adjustments: string[];
   /** The loot table each opponent built from the bestiary carries, by combatant id: what a win rolls. */
   lootTables?: Record<string, string>;
+  /** What the turn being played has done so far, kept while a window it opened waits on a person:
+   *  the rest of the turn picks up from here rather than from its start (re-test 11: an archer that
+   *  shot, waited on Elara's Shield, then walked in as though it never had). */
+  turnSoFar?: {
+    actorId: string;
+    round: number;
+    turn: number;
+    shotFromAfar: "stay" | "kite" | false;
+    defended: boolean;
+  };
 }
 
 export type RulesetCommandResult = { ok: true } | { ok: false; error: string; code: string };
@@ -501,7 +512,7 @@ export function rulesetGmBrief(definition: RulesetDefinition, state: CombatDirec
   const party = state.party ?? [];
   const unit = [...party, ...(state.enemies ?? [])].find((one) => one.id === actorId);
   const behavior = rulesetCombatantBehavior(definition, actor);
-  const mind = unit?.aiHints?.mind ?? rulesetCombatantMind(definition, actor);
+  const mind = combatMindWithHint(unit?.aiHints?.mind, rulesetCombatantMind(definition, actor));
   const temperament = unit?.aiHints?.temperament ?? behavior?.temperament ?? unit?.tactics?.adjective;
   const role = behavior?.role ?? unit?.tactics?.role;
   const threats = fight.encounter.combatants
@@ -538,7 +549,8 @@ function rulesetThinkersOf(
       if (opponent.boss) return false;
       if (opponent.named) return true;
       const combatant = rulesetCombatant(encounter, opponent.id);
-      return (opponent.mind ?? (combatant ? rulesetCombatantMind(definition, combatant) : undefined)) === "genius";
+      const own = combatant ? rulesetCombatantMind(definition, combatant) : undefined;
+      return combatMindWithHint(opponent.mind, own) === "genius";
     })
     .map((opponent) => opponent.id);
   return thinkers.length > 0 ? { thinkers } : {};
@@ -3297,7 +3309,7 @@ function weighChoices(
     }
     const mind = rulesetCombatantMind(definition, actor);
     const hinted = unit.aiHints?.mind ?? (unit.aiHints?.temperament === "mindless" ? "mindless" : undefined);
-    const wanted = hinted ?? mind;
+    const wanted = combatMindWithHint(hinted, mind);
     if (!unit.tactics || (wanted !== undefined && unit.tactics.mind !== wanted)) {
       delete unit.tactics;
       unit.tactics = assignCombatTactics(unit, state.seed, mind);
@@ -4073,12 +4085,31 @@ function playRulesetTurn(
   const leash = actor && orders ? rulesetLeashOf(state, fight.encounter, actor, orders) : undefined;
   // A caster or archer caught beside an opponent gets clear before it shoots (re-test 9).
   if (!stays) getClearToShoot(definition, state, fight, actorId);
+  // Picked up where it was left when a window it opened was answered by a person.
+  const earlier =
+    fight.turnSoFar?.actorId === actorId &&
+    fight.turnSoFar.round === fight.encounter.round &&
+    fight.turnSoFar.turn === fight.encounter.turn
+      ? fight.turnSoFar
+      : undefined;
   // Once it has dodged, got away or hidden (1.708), it does not walk back into the fight this turn.
-  let defended = false;
+  let defended = earlier?.defended ?? false;
   // Whether its last blow was thrown from afar (combat AI P8), and whether it keeps its distance after.
-  let shotFromAfar: "stay" | "kite" | false = false;
+  let shotFromAfar: "stay" | "kite" | false = earlier?.shotFromAfar ?? false;
+  const remember = () => {
+    fight.turnSoFar = {
+      actorId,
+      round: fight.encounter.round,
+      turn: fight.encounter.turn,
+      shotFromAfar,
+      defended,
+    };
+  };
   for (let action = 0; action < RULESET_TURN_ACTION_LIMIT; action++) {
     if (rulesetEncounterOutcome(fight.encounter) !== "ongoing") break;
+    remember();
+    // Waiting on a person's answer: the rest of the turn waits with it.
+    if (fight.encounter.window) return;
     const picked = pickRulesetChoice(definition, state, fight.encounter, actorId);
     const idle = !picked || picked.option.kind === "end-turn";
     if (idle) {
@@ -4140,6 +4171,7 @@ function playRulesetTurn(
       ?.damage;
     if (afar || blow) shotFromAfar = afar;
   }
+  delete fight.turnSoFar;
   advanceTurn(definition, state, fight);
 }
 

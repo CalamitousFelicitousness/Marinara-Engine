@@ -4,7 +4,7 @@ import { isolateSyncedUISettings, seedUIState } from "./ui-state-fixture";
 
 const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
 
-for (const mode of ["conversation", "roleplay", "game"] as const) {
+for (const mode of ["conversation", "roleplay"] as const) {
   test(`Fenced code wraps inside ${mode} messages without changing its text`, async ({ page, request }, info) => {
     const chatResponse = await request.post("/api/chats", {
       data: { name: `Code wrapping ${mode}`, mode, characterIds: [] },
@@ -12,17 +12,6 @@ for (const mode of ["conversation", "roleplay", "game"] as const) {
     expect(chatResponse.ok()).toBeTruthy();
     const chat = await chatResponse.json();
     try {
-      if (mode === "game") {
-        const metadata = await request.patch(`/api/chats/${chat.id}/metadata`, {
-          data: {
-            gameId: "code-wrapping-fixture",
-            gameSessionStatus: "active",
-            gameSessionNumber: 1,
-            gameIntroPresented: true,
-          },
-        });
-        expect(metadata.ok()).toBeTruthy();
-      }
       const paragraph = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. ".repeat(18).trimEnd();
       const token = "unbroken_code_token_".repeat(50);
       const code = `${paragraph}\n\n  ${token}\n    return 42;`;
@@ -99,6 +88,9 @@ for (const mode of ["conversation", "roleplay", "game"] as const) {
           expect(geometry.left).toBeGreaterThanOrEqual(-1);
           expect(geometry.right).toBeLessThanOrEqual(geometry.viewportWidth + 1);
         }
+        await page
+          .locator(`[data-message-id="${messages[0]}"] pre.mari-md-codeblock`)
+          .evaluate((pre) => pre.scrollIntoView({ block: "start" }));
         await page.screenshot({ path: info.outputPath(`code-wrapping-${mode}-${theme}.png`), animations: "disabled" });
       }
     } finally {

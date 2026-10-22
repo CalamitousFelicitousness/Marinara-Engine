@@ -4544,9 +4544,9 @@ strong {
   margin: 0.5em 0;
   min-width: 0;
   max-width: 100%;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  white-space: pre;
+  overflow-x: hidden;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
   color: #d4d4d4;
   /* Code is LTR even when the document around it is RTL. Lives in CSS, not
      only the renderer's dir attribute, because the chat HTML path strips
@@ -4556,6 +4556,7 @@ strong {
   unicode-bidi: isolate;
 }
 .mari-message-content .mari-md-codeblock code {
+  white-space: inherit;
   background: none;
   border: none;
   padding: 0;
@@ -4566,16 +4567,6 @@ strong {
 @media (max-width: 767px) {
   .mari-message-content .mari-md-inline-code {
     word-break: break-all;
-  }
-
-  .mari-message-content .mari-md-codeblock {
-    overflow-x: hidden;
-    overflow-wrap: anywhere;
-    white-space: pre-wrap;
-  }
-
-  .mari-message-content .mari-md-codeblock code {
-    white-space: inherit;
   }
 }
 

@@ -100,7 +100,7 @@ Some clients skip the password even when Basic Auth is on:
 - Loopback (`127.0.0.1`, `::1`), so you never need a password on the host machine itself. Visitors that a reverse proxy or tunnel on that machine passes along still need it.
 - Any address in `IP_ALLOWLIST`. Careful: setting an allowlist also blocks every unlisted address (see Option 2).
 - Direct Tailscale traffic (`100.64.0.0/10`), unless you turn its bypass off.
-- Docker bridge/gateway traffic, only when you set `BYPASS_AUTH_DOCKER=true`. With Basic Auth on, automatic Docker trust is off (see [Tailscale and Docker bypass](#tailscale-and-docker-bypass)).
+- Docker bridge/gateway traffic, only while no login, allowlist, or `TRUSTED_AUTH_PROXY` is set (see [Tailscale and Docker bypass](#tailscale-and-docker-bypass)).
 - The `/api/health` address, so uptime monitors keep working. Visitors who could not open the app get only `{"status": "ok"}`; version, system and model details stay with this machine, trusted networks and signed-in browsers.
 
 Important: Basic Auth only encodes the password. It does not encrypt it. Anyone watching an unencrypted connection can read it. If you expose Marinara to the public internet, pair Basic Auth with HTTPS (see below).
@@ -120,7 +120,7 @@ How the IP allowlist behaves:
 - Any address not in the list is rejected with **403 Forbidden**.
 - Loopback is always allowed, so you cannot lock yourself out of local access. Visitors that a reverse proxy or tunnel on the same machine passes along are not loopback, so the allowlist blocks them. Use Basic Auth behind a proxy.
 - On Docker Desktop, OrbStack, and rootless Docker, every device reaches the container from the same gateway address, so the allowlist cannot tell them apart. Use Basic Auth there.
-- Direct Tailscale traffic also skips the list, unless you turn its bypass off. Docker bridge/gateway traffic skips it only when you set `BYPASS_AUTH_DOCKER=true` (see [Tailscale and Docker bypass](#tailscale-and-docker-bypass)).
+- Direct Tailscale traffic also skips the list. Docker bridge/gateway traffic skips it only while no login or allowlist is set (see [Tailscale and Docker bypass](#tailscale-and-docker-bypass)).
 - Invalid entries are ignored and logged. They do not crash the server.
 - The allowlist stays strict even with Basic Auth on. Listed addresses skip the password prompt. Every other address is still blocked with **403 Forbidden** and never gets a login prompt.
 
@@ -138,42 +138,7 @@ A few flags drop the lockdown for a trusted private network. They are for specia
 
 ## Tailscale and Docker bypass
 
-Two flags let direct Tailscale and Docker traffic skip both the IP allowlist and Basic Auth, the same way loopback does. Leave them empty for automatic detection:
-
-```env
-BYPASS_AUTH_TAILSCALE=
-BYPASS_AUTH_DOCKER=
-```
-
-Automatic mode trusts a Tailscale device only when it connects straight to this computer's Tailscale address. On Linux, a Tailscale interface with a custom name (`tailscaled --tun=...`) is not trusted automatically; sign in or set `BYPASS_AUTH_TAILSCALE=true`. It trusts Docker traffic only when Marinara is running in a container and the source matches a detected container interface or its exact gateway. This keeps the usual private Tailscale and same-host Docker setup working without treating unrelated CGNAT, LAN, host-network, or proxy traffic as authenticated.
-
-Automatic Docker trust applies only while no login (an app login or Basic Auth), no `IP_ALLOWLIST`, and no `TRUSTED_AUTH_PROXY` is set. Docker Desktop, OrbStack, and rootless Docker pass every device that opens a published port through the container's gateway, so Marinara cannot tell your own browser from a phone or a stranger on the network. Once you set a login or an allowlist, every Docker client must pass it, including the browser on the host. Set `BYPASS_AUTH_DOCKER=true` only if you trust every device that can reach the published port.
-
-Set a flag to `false` if you want normal Basic Auth and IP allowlist checks for those clients. Set it to `true` to retain the older broad bypass when automatic detection is unavailable: Tailscale then trusts all of `100.64.0.0/10`, while Docker also trusts its detected interfaces/gateway and the legacy `172.16.0.0/12` range. Use that compatibility mode only when every matching peer is trusted.
-
-Tailscale Serve and Funnel visitors connect from loopback with forwarding headers, so they must log in. There is no flag to turn that off. A direct `100.x` connection stays passwordless.
-
-For example, if your Tailnet includes less-trusted peers, turn the Tailscale bypass off:
-
-```env
-BYPASS_AUTH_TAILSCALE=false
-```
-
-If you do not want detected Docker peers to bypass authentication, turn the Docker bypass off and add specific clients to `IP_ALLOWLIST` if needed:
-
-```env
-BYPASS_AUTH_DOCKER=false
-```
-
-Marinara may also sit behind a reverse proxy or tunnel container on the Docker bridge or detected gateway. Forwarding headers, such as `Forwarded`, `X-Forwarded-For`, `X-Real-IP`, `X-Forwarded-Host`, or `X-Forwarded-Proto`, indicate that the Docker peer represents another client. A Host that names another computer, such as `marinara:7860` or a public name, or an HTTP/1.0 request, does the same. Then Marinara applies its normal Basic Auth and IP allowlist checks by default. A request to `localhost` or `127.0.0.1` from the host's own browser stays passwordless while no login or allowlist is set:
-
-```env
-REQUIRE_AUTH_FOR_DOCKER_PROXY=true
-```
-
-To restore the legacy bypass, set this to `false`. Do that only when the proxy itself requires a login from every visitor, because forwarded clients will inherit Docker's passwordless status. If you put a proxy in front of Docker, keep the `127.0.0.1` port publish from `docker-compose.yml` and set a login first.
-
-The server logs an `[auth-bypass]` warning the first time one of these bypasses lets a request through. That warning confirms the bypass is active.
+By default, Marinara trusts a device that connects straight over your Tailscale network. It also trusts a Docker container's own host. A login, an IP allowlist, or `TRUSTED_AUTH_PROXY` stops the automatic Docker trust, so every device then needs its login or its place on the allowlist. For the flags that change this, see [Access Control](CONFIGURATION.md#access-control).
 
 ## Reverse proxies and tunnels on the same computer
 
@@ -193,13 +158,7 @@ proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
 
 Tools that forward raw connections, such as `socat` or `ssh -R`, add no headers, so their traffic looks local. Do not use them to publish Marinara.
 
-If your proxy already makes every visitor log in before it forwards anything, you can skip Marinara's own checks for its traffic. Do this only when the proxy itself requires a login from every visitor:
-
-```env
-REQUIRE_AUTH_FOR_LOOPBACK_PROXY=false
-```
-
-Visitors then get the same full access as the host machine, including privileged actions without the admin secret. If you only reach Marinara through a name you added to `/etc/hosts`, do not use this flag. Use a `*.localhost` name instead, for example `marinara.localhost`.
+If your proxy already makes every visitor log in before it forwards anything, see [Login proxies (forward auth)](#login-proxies-forward-auth).
 
 ## Login proxies (forward auth)
 
@@ -222,7 +181,7 @@ Before you set it:
 
 When `TRUSTED_AUTH_PROXY` is set, Marinara also stops the automatic Docker trust. Direct visitors who are not the proxy need the Marinara login or the IP allowlist.
 
-If the proxy runs on the same computer as Marinara, use `TRUSTED_AUTH_PROXY=127.0.0.1` and point the proxy at `127.0.0.1:7860`, not `localhost:7860`. A proxy that dials `localhost` can connect from `::1`, which does not match `127.0.0.1`. Then every other proxy or tunnel on that computer is trusted too, so use it only when the login proxy is the only one. Unlike `REQUIRE_AUTH_FOR_LOOPBACK_PROXY=false`, this does not give proxied visitors the local machine's access.
+If the proxy runs on the same computer as Marinara, use `TRUSTED_AUTH_PROXY=127.0.0.1` and point the proxy at `127.0.0.1:7860`, not `localhost:7860`. A proxy that dials `localhost` can connect from `::1`, which does not match `127.0.0.1`. Then every other proxy or tunnel on that computer is trusted too, so use it only when the login proxy is the only one. This does not give proxied visitors the local machine's access.
 
 A Caddy example, with Marinara at `192.168.1.20:7860`:
 

@@ -1255,7 +1255,7 @@ def read_stream(stream, started, timing, limit=MODEL_STREAM_LIMIT):
 
 
 def openai_reply(ctx, settings, messages, tools, tool_choice, read_timeout, started, timing, cache_key, stream_limit=MODEL_STREAM_LIMIT):
-    import httpx
+    import httpx2
     import openai
 
     claude = "claude" in settings["model"]
@@ -1276,10 +1276,14 @@ def openai_reply(ctx, settings, messages, tools, tool_choice, read_timeout, star
     if cache_key:
         # One key per packet keeps the finder's and checker's requests, which share the bundle, on the same cache.
         request["extra_body"] = {"prompt_cache_key": cache_key}
+    stream = None
     try:
         with ctx.clients[settings["slot"]].chat.completions.create(**request) as stream:
             return read_stream(stream, started, timing, stream_limit)
-    except (httpx.TimeoutException, httpx.TransportError) as exc:
+    except (httpx2.TimeoutException, httpx2.TransportError, openai.APIConnectionError) as exc:
+        # OpenAI wraps transport errors during iteration too; only an opened stream uses the stalled-call retry.
+        if stream is None and isinstance(exc, openai.APIConnectionError):
+            raise
         raise StreamStalled(error_text(exc)) from exc
 
 
@@ -1313,7 +1317,7 @@ def responses_input(messages):
 
 def responses_reply(ctx, settings, messages, tools, tool_choice, read_timeout, started, timing, cache_key, stream_limit=MODEL_STREAM_LIMIT):
     """One streamed Responses call, returned in the Chat Completions shape the agents use."""
-    import httpx
+    import httpx2
     import openai
 
     instructions, items = responses_input(messages)
@@ -1339,6 +1343,7 @@ def responses_reply(ctx, settings, messages, tools, tool_choice, read_timeout, s
     if cache_key:
         request["extra_body"] = {"prompt_cache_key": cache_key}
     response, capped = None, False
+    stream = None
     try:
         with ctx.clients[settings["slot"]].responses.create(**request) as stream:
             for event in watched(stream, started, timing, stream_limit):
@@ -1349,7 +1354,9 @@ def responses_reply(ctx, settings, messages, tools, tool_choice, read_timeout, s
                 elif event.type in ("response.failed", "error"):
                     failure = getattr(getattr(event, "response", None), "error", None) or event
                     raise ResponseFailed(getattr(failure, "message", None) or "the provider gave no message", getattr(failure, "code", None))
-    except (httpx.TimeoutException, httpx.TransportError) as exc:
+    except (httpx2.TimeoutException, httpx2.TransportError, openai.APIConnectionError) as exc:
+        if stream is None and isinstance(exc, openai.APIConnectionError):
+            raise
         raise StreamStalled(error_text(exc)) from exc
     if response is None:
         raise StreamStalled("the reply stream ended before the response completed")
@@ -4493,21 +4500,61 @@ def checks_not_passed(base, head):
     repo = os.environ["GITHUB_REPOSITORY"]
     rules = load_json_list(run_gh(["api", f"repos/{repo}/rules/branches/{base}"], check=True).stdout)
     required = {
-        check.get("context")
+        (check.get("context"), check.get("integration_id"))
         for rule in rules
         if rule.get("type") == "required_status_checks"
         for check in (rule.get("parameters") or {}).get("required_status_checks") or []
     }
-    passed = {}
-    # ponytail: the first 100 check runs on the head (the latest per name); page them when a PR carries more.
-    runs = json.loads(run_gh(["api", f"repos/{repo}/commits/{head}/check-runs?per_page=100"], check=True).stdout)
-    for check_run in runs.get("check_runs") or []:
-        done = check_run.get("status") == "completed" and check_run.get("conclusion") in ("success", "neutral", "skipped")
-        passed[check_run.get("name")] = done
-    combined = json.loads(run_gh(["api", f"repos/{repo}/commits/{head}/status"], check=True).stdout)
-    for status in combined.get("statuses") or []:
-        passed[status.get("context")] = status.get("state") == "success"
-    return sorted(name for name in (required or passed) if not passed.get(name))
+    runs = load_json_list(run_gh([
+        "api", f"repos/{repo}/commits/{head}/check-runs?per_page=100", "--paginate", "--jq", ".check_runs",
+    ], check=True).stdout)
+    statuses = load_json_list(run_gh([
+        "api", f"repos/{repo}/commits/{head}/statuses?per_page=100", "--paginate", "--jq", ".",
+    ], check=True).stdout)
+    # Reruns can leave several records for one name. Select the newest ID per source, independently of API order.
+    checks, apps, latest_statuses = {}, {}, {}
+    for run in sorted(runs, key=lambda item: item.get("id", 0), reverse=True):
+        app = run.get("app") or {}
+        if app.get("slug") and app.get("id"):
+            apps[app["slug"] + "[bot]"] = app["id"]
+        done = run.get("status") == "completed" and run.get("conclusion") in ("success", "neutral", "skipped")
+        checks.setdefault((run.get("name"), app.get("id")), done)
+    for status in sorted(statuses, key=lambda item: item.get("id", 0), reverse=True):
+        latest_statuses.setdefault((status.get("context"), (status.get("creator") or {}).get("login")), status)
+    def status_app_id(creator):
+        login = creator.get("login")
+        if creator.get("type") != "Bot":
+            return None
+        if login not in apps:
+            match = re.fullmatch(r"([A-Za-z0-9-]+)\[bot\]", login or "")
+            if not match:
+                raise RuntimeError(f"Could not verify GitHub App identity for status creator {login!r}")
+            result = run_gh(["api", f"apps/{match[1]}", "--jq", ".id"])
+            if result.returncode != 0:
+                # A 404 can also hide a private app. Only a verified identity can satisfy the binding.
+                raise RuntimeError(f"Could not verify GitHub App {match[1]}: {result.stderr.strip()}")
+            elif result.stdout.strip().isdigit():
+                apps[login] = int(result.stdout.strip())
+            else:
+                raise RuntimeError(f"Could not verify GitHub App {match[1]}: invalid app ID response")
+        return apps[login]
+
+    missing = set()
+    contexts = required or {(name, None) for name, _ in checks} | {(name, None) for name, _ in latest_statuses}
+    for name, integration_id in contexts:
+        bound = integration_id not in (None, -1)
+        results = [done for (context, app_id), done in checks.items()
+                   if context == name and (not bound or app_id == integration_id)]
+        for (context, _), status in latest_statuses.items():
+            if context != name or (bound and status_app_id(status.get("creator") or {}) != integration_id):
+                continue
+            # A same-named commit status and check must both pass; neither can erase the other's failure.
+            results.append(status.get("state") == "success")
+            break  # Statuses are newest-first; an unbound context accepts its latest publisher.
+        if not results or not all(results):
+            missing.add(name)
+    return sorted(missing)
+
 
 
 def approve(args):
@@ -4545,8 +4592,13 @@ def approve(args):
         missing.append("its examination of this head did not end Viable")
     if unresolved := len(open_dottore_threads(pr_num, answered=True)):
         missing.append(f"{unresolved} Dottore thread(s) are unresolved")
-    if failing := checks_not_passed(pr["baseRefName"], head):
-        missing.append("these checks have not passed: " + ", ".join(f"`{name}`" for name in failing))
+    try:
+        failing = checks_not_passed(pr["baseRefName"], head)
+    except (RuntimeError, ValueError, subprocess.TimeoutExpired) as exc:
+        missing.append(f"required check evidence could not be verified: {error_text(exc)}")
+    else:
+        if failing:
+            missing.append("these checks have not passed: " + ", ".join(f"`{name}`" for name in failing))
     if missing:
         print("Not approved: " + "; ".join(missing))
         if asked:

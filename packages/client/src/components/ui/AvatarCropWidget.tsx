@@ -375,7 +375,7 @@ export function AvatarCropWidget({ src, alt, crop, onChange, onRemove, removing 
           <img src={src} alt={alt} className="max-h-[85vh] max-w-[90vw] rounded-lg object-contain shadow-2xl" />
           <button
             onClick={() => setShowFullView(false)}
-            className="absolute right-3 top-3 rounded-lg bg-black/60 p-2 text-white transition-colors hover:bg-black/80"
+            className="absolute right-[max(0.75rem,var(--mari-safe-area-inset-right))] top-3 rounded-lg bg-black/60 p-2 text-white transition-colors hover:bg-black/80"
           >
             <X size="1rem" />
           </button>

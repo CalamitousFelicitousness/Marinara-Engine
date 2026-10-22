@@ -63,6 +63,15 @@ export function llmFetch(
   });
 }
 
+/**
+ * A reply with tool calls reports "tool_calls", except one cut at the output limit: its last call's
+ * arguments may be cut off mid-JSON, so callers must still see "length".
+ */
+export function toolCallFinishReason(toolCallCount: number, finishReason: string): string {
+  const cut = ["length", "max_tokens", "max_output_tokens"].includes(finishReason.toLowerCase());
+  return toolCallCount > 0 && !cut ? "tool_calls" : finishReason;
+}
+
 export function yieldToEventLoop(): Promise<void> {
   return new Promise((resolve) => setImmediate(resolve));
 }

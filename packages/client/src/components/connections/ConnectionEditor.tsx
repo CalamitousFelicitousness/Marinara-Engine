@@ -796,9 +796,9 @@ export function ConnectionEditor() {
   const catalogModelCapabilities = useModelParameterCapabilities(
     connectionDetailId ? { id: connectionDetailId, provider: localProvider, model: localModel } : null,
   );
-  const selectedModelCapabilities =
-    (selectedModelInfo && "capabilities" in selectedModelInfo ? (selectedModelInfo.capabilities ?? null) : null) ??
-    catalogModelCapabilities;
+  const embeddedModelCapabilities =
+    selectedModelInfo && "capabilities" in selectedModelInfo ? selectedModelInfo.capabilities : undefined;
+  const selectedModelCapabilities = embeddedModelCapabilities ?? catalogModelCapabilities;
 
   // Clear remote models when provider changes
   useEffect(() => {

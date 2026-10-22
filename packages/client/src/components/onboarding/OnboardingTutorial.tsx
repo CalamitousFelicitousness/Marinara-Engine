@@ -400,8 +400,8 @@ function computeTooltipStyle(rect: Rect, step: TourStep): React.CSSProperties {
 
   let maxHeight: number;
 
-  let top = 0;
-  let left = 0;
+  let top: number;
+  let left: number;
 
   if (placement === "right") {
     maxHeight = Math.min(Math.max(minScrollableHeight, availableViewportHeight), availableViewportHeight);

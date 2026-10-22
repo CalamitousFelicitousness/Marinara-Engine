@@ -757,7 +757,7 @@ assert.match(
 );
 assert.match(
   professorMariWorkspaceSource,
-  /updates are patches[\s\S]{0,400}read the entity back[\s\S]{0,300}Claim completion only when every requested value matches/u,
+  /Updates are patches[\s\S]{0,400}Read the entity back[\s\S]{0,300}Claim completion only when every requested value matches/u,
   "Professor Mari must preserve unrelated fields and verify requested character edits before claiming completion",
 );
 const professorMariSeedSource = readFileSync(join(REPOSITORY_ROOT, "packages/server/src/db/seed-mari.ts"), "utf8");
@@ -3880,6 +3880,29 @@ try {
     apply: true,
   });
   assert.equal(ambiguousFolderMoveResult.ok, false, "Duplicate folder names must require an explicit folder ID");
+  assert.match(String(ambiguousFolderMoveResult.error), /send the folderId from character.folder.list/);
+
+  // #7949: a folder miss points to the list and never to a create action, which does not exist.
+  const unknownFolderNameResult = await mariDb.executeAction({
+    action: "character.moveToFolder",
+    characterId,
+    folderName: "Nowhere Folder",
+    apply: true,
+  });
+  assert.equal(unknownFolderNameResult.ok, false);
+  assert.match(
+    String(unknownFolderNameResult.error),
+    /No character folder is named "Nowhere Folder". List folders with character.folder.list; folders are created in the UI only/,
+  );
+  assert.doesNotMatch(String(unknownFolderNameResult.error), /folder.create/);
+  const unknownFolderIdResult = await mariDb.executeAction({
+    action: "character.moveToFolder",
+    characterId,
+    folderId: "character-folder-missing",
+    apply: true,
+  });
+  assert.equal(unknownFolderIdResult.ok, false);
+  assert.match(String(unknownFolderIdResult.error), /No character folder has the id "character-folder-missing"./);
   const duplicateFoldersAfterAmbiguousMove = (await db.select().from(characterGroups)).filter((folder) =>
     folder.id.startsWith("character-folder-duplicate-"),
   );
@@ -6970,7 +6993,9 @@ const markdownMessageStyles = [...globalStyles.matchAll(/^\.mari-message-content
 const markdownMessageContainerStyles =
   globalStyles.match(/\.mari-message-body,\s*\.mari-message-bubble \{[\s\S]*?\}/u)?.[0] ?? "";
 const markdownCodeBlockStyles =
-  globalStyles.match(/\.mari-message-content \.mari-md-codeblock \{[\s\S]*?\}/u)?.[0] ?? "";
+  globalStyles.match(/^\.mari-message-content \.mari-md-codeblock \{[^{}]*\}/mu)?.[0] ?? "";
+const markdownCodeChildStyles =
+  globalStyles.match(/^\.mari-message-content \.mari-md-codeblock code \{[^{}]*\}/mu)?.[0] ?? "";
 assert.match(markdownMessageStyles, /min-width:\s*0;/u);
 assert.match(markdownMessageStyles, /max-width:\s*100%;/u);
 assert.match(markdownMessageStyles, /overflow-wrap:\s*anywhere;/u);
@@ -6979,11 +7004,13 @@ assert.match(markdownMessageContainerStyles, /max-width:\s*100%;/u);
 assert.match(markdownCodeBlockStyles, /box-sizing:\s*border-box;/u);
 assert.match(markdownCodeBlockStyles, /width:\s*100%;/u);
 assert.match(markdownCodeBlockStyles, /max-width:\s*100%;/u);
-assert.match(markdownCodeBlockStyles, /overflow-x:\s*auto;/u);
-assert.match(
-  globalStyles,
-  /@media \(max-width: 767px\) \{[\s\S]*?\.mari-message-content \.mari-md-codeblock \{[\s\S]*?overflow-x:\s*hidden;[\s\S]*?white-space:\s*pre-wrap;/u,
-);
+assert.match(markdownCodeBlockStyles, /overflow-x:\s*hidden;/u);
+assert.match(markdownCodeBlockStyles, /overflow-wrap:\s*anywhere;/u);
+assert.match(markdownCodeBlockStyles, /white-space:\s*pre-wrap;/u);
+assert.match(markdownCodeChildStyles, /white-space:\s*inherit;/u);
+for (const media of globalStyles.matchAll(/^@media \(max-width: 767px\) \{[\s\S]*?^\}/gmu)) {
+  assert.doesNotMatch(media[0], /\.mari-message-content \.mari-md-codeblock\b/u);
+}
 assert.match(localNotificationsSource, /window\.isSecureContext === false/u);
 assert.match(localNotificationsSource, /NotificationPermission \| "insecure" \| "unsupported"/u);
 const browserNotificationHelpSource =

@@ -54,7 +54,7 @@ export function AppBanner({
     // A card just below the 3rem top bar: it leaves the top bar's buttons and the chat composer free.
     <div
       ref={cardRef}
-      className="fixed inset-x-2 top-[calc(env(safe-area-inset-top)+3.5rem)] z-[9999] max-h-[50dvh] overflow-y-auto rounded-xl bg-[var(--background)] text-[var(--foreground)] shadow-lg md:right-auto md:left-4 md:w-[28rem]"
+      className="fixed left-[max(0.5rem,var(--mari-safe-area-inset-left))] right-[max(0.5rem,var(--mari-safe-area-inset-right))] top-[calc(env(safe-area-inset-top)+3.5rem)] z-[9999] max-h-[50dvh] overflow-y-auto rounded-xl bg-[var(--background)] text-[var(--foreground)] shadow-lg md:right-auto md:left-4 md:w-[28rem]"
     >
       <div
         className={cn(

@@ -143,13 +143,14 @@ export function validatePullRequestTriage() {
   const browserCheckouts = [...browserWorkflow.matchAll(/^\s+ref: (.+)$/gmu)];
   assert.ok(browserCheckouts.length > 0);
   for (const checkout of browserCheckouts) assert.equal(checkout[1], "${{ github.sha }}");
-  for (const jobId of ["node", "smoke", "desktop-chromium-shards", "mobile-chromium-shards", "mobile-webkit-shards"]) {
+  for (const jobId of ["node", "node-shards", "smoke", "desktop-chromium-shards", "mobile-chromium-shards", "mobile-webkit-shards"]) {
     const job = extractJob(browserWorkflow, jobId);
-    assert.match(job, /needs: revision/u);
+    // Either the revision job alone or a verdict's list that starts with it.
+    assert.match(job, /needs: \[?revision\b/u);
     assert.doesNotMatch(job, /^\s+[\w-]+: write\s*$/mu);
     if (jobId === "smoke") {
       assert.ok(job.includes("if: github.event_name == 'push' && needs.revision.outputs.full != 'true'"));
-    } else if (jobId !== "node") assert.ok(job.includes("if: needs.revision.outputs.full == 'true'"));
+    } else if (!jobId.startsWith("node")) assert.ok(job.includes("if: needs.revision.outputs.full == 'true'"));
   }
 
   const prChecks = readFileSync(new URL("../.github/workflows/pull-request-checks.yml", import.meta.url), "utf8");

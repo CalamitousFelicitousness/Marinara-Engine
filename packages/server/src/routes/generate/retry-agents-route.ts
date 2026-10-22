@@ -3727,10 +3727,7 @@ async function applyRetryResultEffects(args: {
           imgConnFull ??= await conns.getDefaultForImageGeneration();
           assertRetryActive();
           // Generated Videos: a re-run follows Illustrator makes and First frame, as a fresh reply does.
-          const clipChatMeta = (
-            typeof chat.metadata === "string" ? JSON.parse(chat.metadata) : (chat.metadata ?? {})
-          ) as Record<string, unknown>;
-          const videoOffer = retryMessageId ? await resolveIllustratorVideoOffer(chat.mode, clipChatMeta, conns) : null;
+          const videoOffer = retryMessageId ? await resolveIllustratorVideoOffer(chat.mode, chatMeta, conns) : null;
           assertRetryActive();
           const writtenMotion = typeof illData.videoPrompt === "string" ? illData.videoPrompt.trim() : "";
           const clipsOnly = videoOffer?.clipsOnly === true;
@@ -3742,7 +3739,7 @@ async function applyRetryResultEffects(args: {
             ? createRoleplayClipTools({
                 db: app.db,
                 chat,
-                chatMeta: clipChatMeta,
+                chatMeta: chatMeta,
                 chatId,
                 characterNames: agentContext.characters.map((character) => character.name),
                 cast: () => clipCast,
@@ -3753,7 +3750,7 @@ async function applyRetryResultEffects(args: {
                 signal,
               })
             : null;
-          const clipAppearance = clipChatMeta.illustratorVideoIncludeCharacterAppearance === true;
+          const clipAppearance = chatMeta.illustratorVideoIncludeCharacterAppearance === true;
           // A saved clip counts as made: failing to add it to the reply only logs, and it stays in the Gallery.
           const attachRetryClip = async (video: Parameters<typeof buildChatVideoAttachment>[0]) => {
             let attachedTo: string | null = null;
@@ -3782,7 +3779,7 @@ async function applyRetryResultEffects(args: {
             });
           };
           // Clips only, starting from the avatar or from no picture: no picture is drawn at all.
-          const clipOnlyFrame = clipsOnly ? roleplayVideoFirstFrame(clipChatMeta, Boolean(imgConnFull)) : "picture";
+          const clipOnlyFrame = clipsOnly ? roleplayVideoFirstFrame(chatMeta, Boolean(imgConnFull)) : "picture";
           if (clipTools && clipOnlyFrame !== "picture" && retryMessageId) {
             try {
               // No picture shows this moment, so the Clip Director writes the whole clip (scene and motion).
@@ -3795,7 +3792,7 @@ async function applyRetryResultEffects(args: {
               const cast = await clipTools.resolveClipCast(illCharacters, prompt, clipOnlyFrame !== "none");
               const video = await generateRoleplayClip(app.db, {
                 chatId,
-                chatMeta: clipChatMeta,
+                chatMeta: chatMeta,
                 prompt,
                 firstFrame: clipOnlyFrame,
                 avatar: cast.avatar,
@@ -4240,13 +4237,13 @@ async function applyRetryResultEffects(args: {
             // clips adds one when the writer asked for it. A failed clip leaves its pictures in the reply.
             if (clipTools && wantsVideo && retryMessageId && firstGalleryImageId) {
               try {
-                const videoFirstFrame = roleplayVideoFirstFrame(clipChatMeta, true, true);
+                const videoFirstFrame = roleplayVideoFirstFrame(chatMeta, true, true);
                 const appearanceBlock = clipAppearance ? referenceResolution.appearanceBlock : null;
                 const video =
                   videoFirstFrame === "picture"
                     ? await animateGalleryImage(app.db, {
                         chatId,
-                        chatMeta: clipChatMeta,
+                        chatMeta: chatMeta,
                         galleryImageId: firstGalleryImageId,
                         motionPrompt:
                           writtenMotion ||
@@ -4267,7 +4264,7 @@ async function applyRetryResultEffects(args: {
                       })
                     : await generateRoleplayClip(app.db, {
                         chatId,
-                        chatMeta: clipChatMeta,
+                        chatMeta: chatMeta,
                         prompt: await clipTools.writeClipPrompt({
                           messageId: retryMessageId,
                           request: [imagePrompt, writtenMotion].filter(Boolean).join("\n"),

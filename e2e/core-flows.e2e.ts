@@ -19960,12 +19960,13 @@ test("a phone turned sideways keeps the app out from under its camera", async ({
   await page.getByRole("button", { name: "Close chats" }).click();
   await expect(chatList).toBeHidden();
 
-  await openHomeBookmark(page, "Widgets");
-  const widgets = page.getByRole("dialog", { name: "Home Widgets" });
-  await expect(widgets).toBeVisible();
-  await expectInside(widgets.locator(".mari-modal-panel"), "a dialog");
+  // A wide dialog, whose panel only clears the camera through the overlay's own side padding.
+  await openHomeBookmark(page, "FAQ");
+  const faq = page.getByRole("dialog", { name: "Professor Mari's FAQ" });
+  await expect(faq).toBeVisible();
+  await expectInside(faq.locator(".mari-modal-panel"), "a dialog");
   await page.keyboard.press("Escape");
-  await expect(widgets).toBeHidden();
+  await expect(faq).toBeHidden();
 
   // No camera, no strips: the shell takes the whole width again.
   await setSideInsets(0);

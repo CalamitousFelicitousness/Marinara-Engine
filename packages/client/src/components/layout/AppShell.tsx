@@ -1517,9 +1517,10 @@ export function AppShell({
               ref={overlayTrackerPanelRef}
               tabIndex={-1}
               key="mobile-tracker"
-              initial={{ x: trackerPanelSide === "left" ? "-100%" : "100%" }}
-              animate={{ x: 0 }}
-              exit={{ x: trackerPanelSide === "left" ? "-100%" : "100%" }}
+              // A whole screen, not the sheet's width: an inset sheet would leave a slice in the camera strip.
+              initial={{ x: trackerPanelSide === "left" ? "-100vw" : "100vw" }}
+              animate={{ x: "0vw" }}
+              exit={{ x: trackerPanelSide === "left" ? "-100vw" : "100vw" }}
               transition={{ type: "spring", damping: 28, stiffness: 350 }}
               data-component="TrackerDataSidebarMobile"
               aria-label={localizeUi("ui.layout.appshell.trackerDataPanel")}
@@ -1545,9 +1546,9 @@ export function AppShell({
           {mobileNavigationPanel && (
             <motion.aside
               key="mobile-navigation"
-              initial={{ x: "100%" }}
-              animate={{ x: 0 }}
-              exit={{ x: "100%" }}
+              initial={{ x: "100vw" }}
+              animate={{ x: "0vw" }}
+              exit={{ x: "100vw" }}
               transition={{ type: "spring", damping: 28, stiffness: 350 }}
               data-tour={mobileNavigationPanel === "chats" ? "sidebar" : undefined}
               data-component={mobileNavigationPanel === "chats" ? "ChatSidebarPanel" : "RightPanelMobile"}

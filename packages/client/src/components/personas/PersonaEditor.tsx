@@ -1526,6 +1526,7 @@ export function PersonaEditor() {
       loadedPersonaIdRef.current = null;
       mutationTokenRef.current = null;
       mutationKindRef.current = null;
+      setMutationKind(null);
     };
   }, [personaId]);
 

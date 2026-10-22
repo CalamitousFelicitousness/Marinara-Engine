@@ -395,6 +395,14 @@ test("persona avatar removal progress belongs to the active editor session", asy
     const nextRemove = nextEditor.getByTitle("Remove avatar", { exact: true });
     await expect(nextRemove).toHaveText("Remove");
     await expect(nextRemove).toBeEnabled();
+    const nextAvatarFieldsets = nextEditor.locator('[data-editor-section="metadata"] fieldset');
+    await expect(nextAvatarFieldsets).toHaveCount(2);
+    await expect(nextAvatarFieldsets.nth(0)).toBeEnabled();
+    await expect(nextAvatarFieldsets.nth(1)).toBeEnabled();
+    await nextRemove.click();
+    const nextConfirmation = page.getByRole("dialog").filter({ hasText: "Remove the avatar from" });
+    await expect(nextConfirmation).toBeVisible();
+    await nextConfirmation.getByRole("button", { name: "Cancel", exact: true }).click();
     releaseRemoval();
     await expect
       .poll(async () => (await (await request.get(`${paths.persona}/${owner}`)).json()).avatarPath)

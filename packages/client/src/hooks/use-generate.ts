@@ -90,6 +90,8 @@ type RetryAgentsOptions = {
   illustratorRetryTargets?: IllustratorRetryTarget[];
   /** Draw the picture only, never a clip: the caller animates it. A run paused for prompt review returns false. */
   illustratorStillOnly?: boolean;
+  /** Told the Gallery id of each picture the Illustrator draws in this run. */
+  onIllustration?: (galleryImageId: string) => void;
   illustratorMessageRange?: [string, string];
   /** Force image generation for the retried custom image agents' results (snapshot button, #4682). */
   forceImageGeneration?: boolean;
@@ -4137,7 +4139,13 @@ export function useGenerate() {
             }
             case "illustration": {
               recordClientRuntimeEvent("image-arrived");
-              const illData = event.data as { messageId: string; imageUrl: string; reason?: string };
+              const illData = event.data as {
+                messageId: string;
+                imageUrl: string;
+                reason?: string;
+                galleryId?: unknown;
+              };
+              if (typeof illData.galleryId === "string") options?.onIllustration?.(illData.galleryId);
               toast(illData.reason ? `🎨 ${illData.reason}` : "🎨 Scene illustration generated");
               // Refresh messages so the illustration attachment appears
               if (isActiveChat()) {

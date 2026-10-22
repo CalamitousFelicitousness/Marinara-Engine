@@ -1004,6 +1004,7 @@ const LocalChatArea = memo(function LocalChatArea({
       const override = overrides.find((entry) => entry.id === illustratorPromptReview.item.id);
       if (!override?.prompt.trim()) return;
       setIllustratorPromptReviewSubmitting(true);
+      let drawnGalleryImageId: string | null = null;
       const success = await retryAgents(illustratorPromptReview.chatId, ["illustrator"], {
         illustratorMessageRange: illustratorPromptReview.illustratorMessageRange,
         illustratorPromptReviewOverride: {
@@ -1013,11 +1014,20 @@ const LocalChatArea = memo(function LocalChatArea({
           ...(override.negativePrompt ? { negativePrompt: override.negativePrompt } : {}),
         },
         illustratorRetryTargets: [illustratorPromptReview.item.kind === "background" ? "background" : "illustration"],
-        ...(illustratorPromptReview.illustratorStillOnly ? { illustratorStillOnly: true } : {}),
+        ...(illustratorPromptReview.illustratorStillOnly
+          ? {
+              illustratorStillOnly: true,
+              onIllustration: (galleryImageId: string) => {
+                drawnGalleryImageId ??= galleryImageId;
+              },
+            }
+          : {}),
       });
       setIllustratorPromptReviewSubmitting(false);
       if (success) setIllustratorPromptReview(null);
-      if (success && illustratorPromptReview.illustratorStillOnly) await animateLatestPictureRef.current?.();
+      if (success && illustratorPromptReview.illustratorStillOnly) {
+        await animateDrawnPictureRef.current?.(drawnGalleryImageId);
+      }
     },
     [illustratorPromptReview, illustratorPromptReviewSubmitting, retryAgents],
   );
@@ -1489,8 +1499,8 @@ const LocalChatArea = memo(function LocalChatArea({
   const roleplaySceneVideoGeneratingRef = useRef(false);
   const conversationVideoGeneratingRef = useRef(false);
   const roleplayVideoGeneratingRef = useRef(false);
-  // Roleplay /video animates its first frame after a reviewed picture is drawn; the handler is declared further down.
-  const animateLatestPictureRef = useRef<(() => Promise<void>) | null>(null);
+  // Roleplay /video animates the first frame it drew (after its review, too); the handler is declared further down.
+  const animateDrawnPictureRef = useRef<((galleryImageId: string | null) => Promise<void>) | null>(null);
   const roleplayVideoReviewResolveRef = useRef<((overrides: ImagePromptOverride[] | null) => void) | null>(null);
   const conversationSelfieReviewResolveRef = useRef<((overrides: ImagePromptOverride[] | null) => void) | null>(null);
 
@@ -1658,9 +1668,17 @@ const LocalChatArea = memo(function LocalChatArea({
     ],
   );
 
+  // The picture the retry drew, by its Gallery id: "the latest" could be another reply's picture.
+  const animateDrawnPicture = useCallback(
+    async (galleryImageId: string | null) => {
+      if (galleryImageId) await handleGenerateRoleplaySceneVideo({ galleryImageId });
+      else toast.error(localizeUi("ui.chat.chatarea.roleplayVideoNoFirstFrame"));
+    },
+    [handleGenerateRoleplaySceneVideo, localizeUi],
+  );
   useEffect(() => {
-    animateLatestPictureRef.current = () => handleGenerateRoleplaySceneVideo();
-  }, [handleGenerateRoleplaySceneVideo]);
+    animateDrawnPictureRef.current = animateDrawnPicture;
+  }, [animateDrawnPicture]);
 
   // Roleplay /video: the server makes a clip of the latest reply (or the description) from the avatar or no
   // picture. With a picture first frame, /illustrate draws it first and the Gallery animates the newest picture.
@@ -1723,9 +1741,13 @@ const LocalChatArea = memo(function LocalChatArea({
         if (needsPicture) {
           // Still only: the retry must not make a clip of its own (Clips only, or Pictures and clips choosing one),
           // or this one action would pay for two.
+          let drawnGalleryImageId: string | null = null;
           const drawn = await retryAgents(activeChatId, ["illustrator"], {
             illustratorRetryTargets: ["illustration"],
             illustratorStillOnly: true,
+            onIllustration: (galleryImageId) => {
+              drawnGalleryImageId ??= galleryImageId;
+            },
             ...(description
               ? {
                   illustratorPromptReviewOverride: {
@@ -1736,7 +1758,7 @@ const LocalChatArea = memo(function LocalChatArea({
                 }
               : {}),
           });
-          if (drawn) await handleGenerateRoleplaySceneVideo();
+          if (drawn) await animateDrawnPicture(drawnGalleryImageId);
           return;
         }
         void queryClient.invalidateQueries({ queryKey: chatKeys.messages(activeChatId) });
@@ -1750,7 +1772,7 @@ const LocalChatArea = memo(function LocalChatArea({
       activeChatId,
       chatMode,
       closeRoleplayVideoPromptReview,
-      handleGenerateRoleplaySceneVideo,
+      animateDrawnPicture,
       localizeUi,
       openRoleplayVideoPromptReview,
       queryClient,

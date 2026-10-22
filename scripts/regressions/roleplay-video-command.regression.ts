@@ -219,6 +219,12 @@ try {
       },
     });
     assert.equal(response.statusCode, 200, response.body);
+    // The client animates the picture this run drew, by the Gallery id its illustration event names.
+    return response.body
+      .split("\n")
+      .filter((line) => line.startsWith("data: "))
+      .map((line) => JSON.parse(line.slice(6)) as { type?: string; data?: { galleryId?: string } })
+      .find((event) => event.type === "illustration")?.data?.galleryId;
   };
   replies.planner = {
     prompt: "Bram by the bench",
@@ -231,13 +237,14 @@ try {
       const clipsBefore = requests.comfy.length;
       const picturesBefore = requests.images;
       assert.deepEqual((await roleplayVideo(pair.id, description)).json(), { needsPicture: true });
-      await drawFirstFrame(description, true);
+      const firstFrameId = await drawFirstFrame(description, true);
       assert.equal(requests.comfy.length, clipsBefore, `${mode}: the first frame makes no clip of its own`);
       assert.equal(requests.images, picturesBefore + 1, `${mode}: the first frame is drawn`);
+      assert.ok(firstFrameId, `${mode}: the retry names the picture it drew`);
       const animated = await h.app.inject({
         method: "POST",
         url: "/api/gallery/generate-scene-video",
-        payload: { chatId: pair.id },
+        payload: { chatId: pair.id, galleryImageId: firstFrameId },
       });
       assert.equal(animated.statusCode, 200, animated.body);
       assert.equal(requests.comfy.length, clipsBefore + 1, `${mode}: one /video action, one clip`);

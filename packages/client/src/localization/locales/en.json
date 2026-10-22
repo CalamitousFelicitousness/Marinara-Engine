@@ -7125,6 +7125,7 @@
   "ui.chat.chatarea.regenerateMessage": "Regenerate Message",
   "ui.chat.chatarea.regenerateThisMessageAsANewSwipe": "Regenerate this message as a new swipe?",
   "ui.chat.chatarea.roleplayVideo": "Roleplay video",
+  "ui.chat.chatarea.roleplayVideoNoFirstFrame": "No picture was drawn for the clip, so no clip was made.",
   "ui.chat.chatarea.sceneVideoGenerated": "Scene video generated.",
   "ui.chat.chatarea.selfiePromptPreviewTimedOutContinuingWithTheDefault": "Selfie prompt preview timed out. Continuing with the default prompt.",
   "ui.chat.chatarea.serverUnreachable": "Server unreachable",

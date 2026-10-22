@@ -27,9 +27,9 @@ ${StrTrimNewLines}
 ; Pin to known-good versions so the installer is deterministic and doesn't
 ; need PowerShell/GitHub API calls (a major AV false-positive trigger).
 !define GIT_DOWNLOAD_URL "https://github.com/git-for-windows/git/releases/download/v2.54.0.windows.1/Git-2.54.0-64-bit.exe"
-!define NODE_DOWNLOAD_URL "https://nodejs.org/dist/v24.21.0/node-v24.21.0-x64.msi"
+!define NODE_DOWNLOAD_URL "https://nodejs.org/dist/v24.22.1/node-v24.22.1-x64.msi"
 !define GIT_SHA256 "2b96e7854f0520f0f6b709c21041d9801b1be44d5e1a0d9fa621b2fbc40f1983"
-!define NODE_SHA256 "bb0eaee134f9357f22aea915ee793343e627aefc1e66488164bac6915bce2cac"
+!define NODE_SHA256 "3bda4baf1ee709b33cf920dd633106ddb23951e322bff9c03ec9f64ab8981b01"
 !define RELEASE_TAG "v2.5.1"
 !ifndef RELEASE_COMMIT
 !error "RELEASE_COMMIT must pin the exact release commit"

@@ -37,7 +37,14 @@ import {
 // ──────────────────────────────────────────────
 import { useExperienceMapPack } from "../../hooks/use-map-pack";
 import { ExperiencePeopleSpritesContext } from "../../hooks/use-overworld-view";
-import { getCombatStyle, isBuiltInCombatStyle, resolveCombatStyle, type CombatSurfaceContext } from "./combat-styles";
+import {
+  getCombatStyle,
+  isBuiltInCombatStyle,
+  offerCombatStart,
+  resolveCombatStyle,
+  styleOwnedFightFromSnapshot,
+  type CombatSurfaceContext,
+} from "./combat-styles";
 import {
   useCallback,
   useEffect,
@@ -3024,6 +3031,8 @@ function GameSurfaceComponent({
    *  requests all read the stale state, the ref does not. Declared early so the turn-retry handler,
    *  which must abandon an in-flight generation, can reach it. #5094. */
   const combatGenerationInFlightRef = useRef(false);
+  // The message whose fight a registered combat style took over (#8109), so it is started once.
+  const combatStyleStartedMessageIdRef = useRef<string | null>(null);
   /** Monotonic id for the CURRENT combat request; a stale completion whose id no longer matches bails.
    *  Bumped on every new request, on chat switch, and when a turn retry abandons a generation. #5094. */
   const combatGenerationRequestIdRef = useRef(0);
@@ -4814,6 +4823,19 @@ function GameSurfaceComponent({
     if (combatRestoredChatIdRef.current === activeChatId) return;
     const snapshot = chatMeta.gameCombatState as GameCombatStateSnapshot | null | undefined;
     combatRestoredChatIdRef.current = activeChatId;
+    // A fight a registered style took over (#8109) saves only its pin and anchor; the style keeps
+    // the rest itself.
+    const styleOwnedFight = styleOwnedFightFromSnapshot(snapshot);
+    if (styleOwnedFight) {
+      if (chatMeta.gameActiveState !== "combat") {
+        clearCombatSnapshot(activeChatId);
+        return;
+      }
+      setCombatPinnedStyle(styleOwnedFight.style);
+      setCombatStartMessageId(styleOwnedFight.startMessageId);
+      useGameModeStore.getState().setGameState("combat");
+      return;
+    }
     if (!snapshot || !snapshot.party?.length || !snapshot.enemies?.length) return;
     if (chatMeta.gameActiveState !== "combat") {
       // Stale snapshot — combat ended but the metadata write didn't land. Clear it.
@@ -4844,8 +4866,9 @@ function GameSurfaceComponent({
     // board before consulting the setting for the next encounter.
     const setup = chatMeta.gameSetupConfig as GameSetupConfig | undefined;
     const restoredCombatStyle: GameCombatStyle =
-      snapshot.combatStyle && resolveCombatStyle(snapshot.combatStyle) === snapshot.combatStyle
-        ? snapshot.combatStyle
+      // A pinned style this client no longer knows plays as classic, as it does live.
+      snapshot.combatStyle
+        ? resolveCombatStyle(snapshot.combatStyle)
         : chatMeta.gameTacticalCombatSnapshot
           ? "tactical"
           : resolveCombatStyle((chatMeta.gameCombatStyle as GameCombatStyle | undefined) ?? setup?.combatStyle);
@@ -9562,7 +9585,28 @@ function GameSurfaceComponent({
       if (combatGenerationPending || combatGenerationInFlightRef.current) return;
       // A combat style that sets up its own encounter takes the fight here (#8109): the
       // generation pass below is skipped, and the style's isActive keeps the fight on screen.
-      if (combatStyleSurface.start?.({ chatId: activeChatId, messageId })) {
+      // One start per message, guarded like the pass below (#5094); see offerCombatStart.
+      const styleStart = offerCombatStart(
+        combatStyleSurface,
+        { chatId: activeChatId, messageId },
+        { inFlight: combatGenerationInFlightRef, startedMessageId: combatStyleStartedMessageIdRef },
+      );
+      if (styleStart === "already-taken") return;
+      if (styleStart === "taken") {
+        // Such a fight has no generated party, so the live snapshot writer never runs for it:
+        // save its pin and anchor now, so a reload restores the fight and its end can name it.
+        const snapshot: GameCombatStateSnapshot = {
+          party: [],
+          enemies: [],
+          itemEffects: [],
+          mechanics: [],
+          dialogueCues: [],
+          startMessageId: messageId,
+          combatStyle: effectiveCombatStyle,
+        };
+        api
+          .patch(`/chats/${activeChatId}/metadata`, { gameCombatState: snapshot })
+          .catch((err) => console.error("[game-surface] combat snapshot persist failed", err));
         setQueuedCombatGeneration(null);
         setPreparedCombatState(null);
         setCombatPinnedStyle(effectiveCombatStyle);

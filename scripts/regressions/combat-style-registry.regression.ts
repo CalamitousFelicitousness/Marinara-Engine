@@ -4,7 +4,10 @@
 // What it pins: both built-in styles are known and cannot be replaced; an id this client has not
 // registered plays as classic; a registered style is listed, resolved and removed again by the
 // function its registration returned (and a later registration under the same id survives the
-// earlier one's removal); only Tactical takes the top chrome; and the game surface reaches the
+// earlier one's removal); only Tactical takes the top chrome; a style that takes a fight's start is
+// asked once per message, even by a same-tick double request or a request from inside its own
+// start(), and the in-flight flag is handed back either way; a style-owned fight comes back from its
+// saved pin and anchor while every other snapshot restores as before; and the game surface reaches the
 // battle UI, the top-chrome offset, the active check and the start of a fight through the seam
 // rather than by naming a style.
 import assert from "node:assert/strict";
@@ -15,8 +18,10 @@ import {
   getCombatStyle,
   isBuiltInCombatStyle,
   listCombatStyles,
+  offerCombatStart,
   registerCombatStyle,
   resolveCombatStyle,
+  styleOwnedFightFromSnapshot,
   type CombatStyleSurface,
 } from "../../packages/client/src/components/game/combat-styles.js";
 
@@ -64,11 +69,74 @@ assert.equal(getCombatStyle("duel"), second);
 unregisterSecond();
 assert.equal(resolveCombatStyle("duel"), "classic");
 
+// Starting a fight through a style.
+{
+  const inFlight = { current: false };
+  const startedMessageId = { current: null as string | null };
+  const refs = { inFlight, startedMessageId };
+  let calls = 0;
+  let sawInFlight = false;
+  const taking: CombatStyleSurface = {
+    render: () => null,
+    start: () => {
+      calls += 1;
+      sawInFlight = inFlight.current;
+      return true;
+    },
+  };
+  assert.equal(offerCombatStart(taking, { chatId: "c", messageId: "m1" }, refs), "taken");
+  assert.equal(offerCombatStart(taking, { chatId: "c", messageId: "m1" }, refs), "already-taken");
+  assert.equal(calls, 1, "a same-tick double request asks the style once");
+  assert.equal(sawInFlight, true, "the in-flight flag is held while the style is asked");
+  assert.equal(inFlight.current, false, "and handed back afterwards");
+  assert.equal(offerCombatStart(taking, { chatId: "c", messageId: "m2" }, refs), "taken", "a new fight starts again");
+  assert.equal(calls, 2);
+
+  let declines = 0;
+  const declining: CombatStyleSurface = { render: () => null, start: () => (declines++, false) };
+  const fresh = { inFlight: { current: false }, startedMessageId: { current: null as string | null } };
+  assert.equal(offerCombatStart(declining, { chatId: "c", messageId: "m1" }, fresh), "declined");
+  assert.equal(fresh.inFlight.current, false, "a declined start hands the flag back for the classic pass");
+  assert.equal(fresh.startedMessageId.current, null);
+  assert.equal(offerCombatStart(declining, { chatId: "c", messageId: "m1" }, fresh), "declined");
+  assert.equal(declines, 2);
+  assert.equal(offerCombatStart(getCombatStyle("classic"), { chatId: "c", messageId: "m1" }, fresh), "declined");
+
+  const throwing: CombatStyleSurface = {
+    render: () => null,
+    start: () => {
+      throw new Error("boom");
+    },
+  };
+  assert.throws(() => offerCombatStart(throwing, { chatId: "c", messageId: "m1" }, fresh), /boom/);
+  assert.equal(fresh.inFlight.current, false, "a throwing start still hands the flag back");
+}
+
+// Restoring a style-owned fight.
+{
+  const unregister = registerCombatStyle("duel", { render: () => null });
+  assert.deepEqual(styleOwnedFightFromSnapshot({ party: [], combatStyle: "duel", startMessageId: "m1" }), {
+    style: "duel",
+    startMessageId: "m1",
+  });
+  assert.equal(styleOwnedFightFromSnapshot({ party: [{}], combatStyle: "duel" }), null, "a fight with a party");
+  assert.equal(styleOwnedFightFromSnapshot({ party: [], combatStyle: "tactical" }), null, "a built-in style");
+  assert.equal(styleOwnedFightFromSnapshot({ party: [], combatStyle: null }), null);
+  assert.equal(styleOwnedFightFromSnapshot(null), null);
+  unregister();
+  assert.deepEqual(
+    styleOwnedFightFromSnapshot({ party: [], combatStyle: "duel", startMessageId: "m1" }),
+    { style: "classic", startMessageId: "m1" },
+    "a style no longer registered plays as classic",
+  );
+}
+
 // The game surface goes through the seam.
 const surface = readSource("packages/client/src/components/game/GameSurface.tsx");
 assert.match(surface, /combatStyleSurface\.render\(combatSurfaceContext\)/);
 assert.match(surface, /combatStyleSurface\.ownsTopChrome/);
-assert.match(surface, /combatStyleSurface\.start\?\.\(/);
+assert.match(surface, /offerCombatStart\(\s*combatStyleSurface,/);
+assert.match(surface, /styleOwnedFightFromSnapshot\(snapshot\)/);
 assert.match(surface, /combatStyleSurface\.isActive\?\.\(/);
 assert.doesNotMatch(surface, /<TacticalCombatUI\b/, "the tactical UI is mounted by its style, not the surface");
 assert.doesNotMatch(surface, /<GameCombatUI\b/, "the classic UI is mounted by its style, not the surface");

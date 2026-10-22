@@ -182,3 +182,43 @@ export function resolveCombatStyle(id: string | null | undefined): GameCombatSty
 export function getCombatStyle(id: string | null | undefined): CombatStyleSurface {
   return registeredStyles.get(resolveCombatStyle(id)) ?? classicStyle;
 }
+
+/**
+ * Offers the start of the fight on `messageId` to its style: "taken" when the style set it up, then
+ * the classic generation pass must not run; "declined" when it runs as usual; "already-taken" for a
+ * second request for a fight the style already took (a same-frame double request, #5094). The
+ * in-flight flag is held while the style is asked, so a request from inside start() is refused by
+ * the caller's own guard, and handed back afterwards.
+ */
+export function offerCombatStart(
+  surface: CombatStyleSurface,
+  ctx: CombatStyleStartContext,
+  refs: { inFlight: { current: boolean }; startedMessageId: { current: string | null } },
+): "taken" | "declined" | "already-taken" {
+  if (refs.startedMessageId.current === ctx.messageId) return "already-taken";
+  if (!surface.start) return "declined";
+  refs.inFlight.current = true;
+  let taken: boolean;
+  try {
+    taken = surface.start(ctx);
+  } finally {
+    refs.inFlight.current = false;
+  }
+  if (!taken) return "declined";
+  refs.startedMessageId.current = ctx.messageId;
+  return "taken";
+}
+
+/**
+ * The pin and anchor of a fight a registered style took over, from a saved combat snapshot: such a
+ * fight saves no party, only those two. Null for any other snapshot, which restores as before.
+ */
+export function styleOwnedFightFromSnapshot(
+  snapshot:
+    { party?: unknown[] | null; combatStyle?: string | null; startMessageId?: string | null } | null | undefined,
+): { style: GameCombatStyle; startMessageId: string | null } | null {
+  if (!snapshot || snapshot.party?.length || !snapshot.combatStyle || isBuiltInCombatStyle(snapshot.combatStyle)) {
+    return null;
+  }
+  return { style: resolveCombatStyle(snapshot.combatStyle), startMessageId: snapshot.startMessageId ?? null };
+}

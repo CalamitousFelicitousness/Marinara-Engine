@@ -9495,6 +9495,9 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Creature types that never give themselves up, 1.732.
+  if (!declaresApi(732) && plainRecord(plainRecord(plainRecord(ruleset)?.combat)?.morale)?.neverSurrender !== undefined)
+    return "A ruleset with creature types that never surrender (combat.morale.neverSurrender) requires schemaVersion 2 and capabilityApi 1.732 or newer";
   // A creature that fights a side alone, 1.723.
   if (
     !declaresApi(731) &&

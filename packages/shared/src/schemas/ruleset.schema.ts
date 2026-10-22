@@ -16084,6 +16084,8 @@ const combatObjectSchema = z
      * `helpless`, once a turn of its starts with no way to harm the other side (nothing on its menu
      * to aim at them but a contest, a grapple or a shove);
      * `halfDownUnanswered` counts `half-down` only while the other side has lost nobody.
+     * Since 1.732 `neverSurrender` names creature types of `creatureTypes` that never give themselves
+     * up: one of them that breaks always flees (5e: undead and fiends).
      */
     morale: z
       .object({
@@ -16105,6 +16107,12 @@ const combatObjectSchema = z
           .optional(),
         unlessImmune: sheetId.optional(),
         halfDownUnanswered: z.literal(true).optional(),
+        neverSurrender: z
+          .array(sheetId)
+          .min(1)
+          .max(20)
+          .refine((types) => new Set(types).size === types.length, { message: "Name each once" })
+          .optional(),
       })
       .strict()
       .refine((morale) => morale.hurtBelow === undefined || morale.on.includes("hurt"), {
@@ -19051,6 +19059,11 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         issue(at("morale", "check", "save"), `Unknown save "${morale.check.save}"`);
       if (morale.unlessImmune && !def.sheet.live.conditions.some((entry) => entry.id === morale.unlessImmune))
         issue(at("morale", "unlessImmune"), `Unknown condition "${morale.unlessImmune}"`);
+      // Creature types that never give themselves up (1.732): the fight's own types.
+      morale.neverSurrender?.forEach((type, index) => {
+        if (!combat.creatureTypes?.types.some((one) => one.id === type))
+          issue(at("morale", "neverSurrender", index), `Unknown creature type "${type}"`);
+      });
     }
     // A pool fight adds dice to a pool, so a condition's rolled number would be a number of dice
     // nobody could throw. Said per modifier, on conditions and on levels alike.

@@ -1109,7 +1109,18 @@ export function rulesetCombatEventLine(
     // What was made vanishing as its time runs out (1.707).
     case "itemsVanished":
       return key("itemsVanished", { actor: names.combatant(event.actorId), label: event.label, count: event.count });
-    // Losing heart (1.709), and getting away once broken.
+    // Losing heart (1.709), and getting away once broken: what set it off first (re-test 14).
+    case "moraleCheck":
+      return key(`moraleCheck.${event.trigger}`, { actor: names.combatant(event.actorId) });
+    // A temperament turning (combat AI T7), and a territorial one keeping its ground (T4).
+    case "temperamentShift":
+      return key("temperamentShift", {
+        actor: names.combatant(event.actorId),
+        to: t(`game.combat.ai.adjective.${event.to}`, { defaultValue: event.to }).toLowerCase(),
+        on: key(`temperamentShiftOn.${event.on}`),
+      });
+    case "holdsGround":
+      return key("holdsGround", { actor: names.combatant(event.actorId) });
     case "morale":
       return key(
         event.outcome === "held" ? "moraleHeld" : event.outcome === "flee" ? "moraleFlee" : "moraleSurrender",
@@ -1473,13 +1484,19 @@ export function rulesetCombatEventLine(
       if (event.path.length === 0) {
         return key("moveStood", { actor: names.combatant(event.actorId), cost: names.distance(event.cost) });
       }
-      return key(event.stopped ? "moveStopped" : event.jumped ? "jumped" : "move", {
-        actor: names.combatant(event.actorId),
-        x: event.to.x,
-        y: event.to.y,
-        cost: names.distance(event.cost),
-        left: names.distance(event.left),
-      });
+      return [
+        key(event.stopped ? "moveStopped" : event.jumped ? "jumped" : "move", {
+          actor: names.combatant(event.actorId),
+          x: event.to.x,
+          y: event.to.y,
+          cost: names.distance(event.cost),
+          left: names.distance(event.left),
+        }),
+        // Whoever came along (re-test 14): a crocodile's prey, so their token does not jump unsaid.
+        ...(event.dragged?.length
+          ? [key("moveDragged", { names: event.dragged.map((id) => names.combatant(id)).join(", ") })]
+          : []),
+      ].join(" ");
     case "flew":
       return key(event.to > event.from ? "flewUp" : "flewDown", {
         actor: names.combatant(event.actorId),
@@ -1665,7 +1682,13 @@ export function rulesetCombatEventLine(
     case "outcome":
       if (event.outcome === "ongoing") return null;
       return key(
-        event.outcome === "victory" ? "outcomeVictory" : event.outcome === "fled" ? "outcomeFled" : "outcomeDefeat",
+        event.yielded
+          ? "outcomeYielded"
+          : event.outcome === "victory"
+            ? "outcomeVictory"
+            : event.outcome === "fled"
+              ? "outcomeFled"
+              : "outcomeDefeat",
       );
     case "refused":
       return key("refused", {

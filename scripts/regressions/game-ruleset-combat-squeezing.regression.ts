@@ -35,6 +35,9 @@ process.env.DATA_DIR = dataDir;
 process.env.FILE_STORAGE_DIR = join(dataDir, "storage");
 const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
+const { createCombatDirector } = await import("../../packages/server/src/services/game/combat-director.service.js");
+const { rankRulesetChoices } =
+  await import("../../packages/server/src/services/game/ruleset-combat-director.service.js");
 
 try {
   assert.ok(supportedCapabilityApi.minor >= 628);
@@ -202,8 +205,87 @@ try {
     assert.notEqual(getCapabilityPackageInstallIssue(manifest(627) as never, JSON.parse(fiveEText)), gate);
   }
 
+  // ── Getting away never into a gap it has to squeeze into, where it can stand whole (re-test 14) ──
+  {
+    const definition = parsed(fiveE());
+    const hall = (): TacticalGrid => {
+      const made = grid();
+      for (let x = 0; x < 8; x++) for (let y = 0; y < 15; y++) if (y !== 4 && y !== 5) made.tiles[y]![x] = "wall";
+      return made;
+    };
+    const claw = { id: "claw", name: "Claw", budget: "action", toHit: 4, reach: 1, damage: { count: 1, sides: 6 } };
+    const state = createRulesetEncounter({
+      definition,
+      seed: 1,
+      roller: () => 10,
+      combatants: [
+        {
+          id: "ogre",
+          name: "Ogre",
+          side: "enemy",
+          block: {
+            health: 59,
+            defense: 11,
+            initiativeModifier: 0,
+            speed: 30,
+            size: "large",
+            actions: [claw],
+            behavior: { temperament: "cowardly" },
+          } as unknown as RulesetStatBlock,
+        },
+        {
+          id: "hero",
+          name: "Hero",
+          side: "party",
+          block: {
+            health: 20,
+            defense: 10,
+            initiativeModifier: 0,
+            speed: 30,
+            actions: [claw],
+          } as unknown as RulesetStatBlock,
+        },
+      ],
+      // A hall two cells high left of the wall, its corridor going on through it.
+      board: { grid: hall(), placements: { ogre: { x: 6, y: 4 }, hero: { x: 5, y: 4 } } },
+    });
+    state.order = ["ogre", "hero"];
+    state.turn = 0;
+    const ogre = rulesetCombatant(state, "ogre")!;
+    ogre.health = { ...ogre.health!, value: 10 };
+    const unit = (id: string, side: "player" | "enemy") => ({
+      id,
+      name: id,
+      side,
+      hp: 20,
+      maxHp: 20,
+      attack: 8,
+      defense: 6,
+      speed: 6,
+      level: 9,
+      skills: [],
+      aiHints: { proficiency: "master" as const, temperament: "cowardly" as const },
+    });
+    const director = createCombatDirector({
+      id: "fight",
+      anchor: "anchor",
+      style: "ruleset",
+      party: [unit("hero", "player")],
+      enemies: [unit("ogre", "enemy")],
+      gm: false,
+      difficulty: "normal",
+      seed: 3,
+    } as never);
+    director.enemies[0]!.tactics!.adjective = "cowardly";
+    // Where its getaway would take it, as the Game Master's suggestions see it.
+    const away = rankRulesetChoices(definition, director, state, "ogre", 50).find(
+      (one) => one.candidate.action.defensive === "disengage",
+    )?.candidate.action.to;
+    assert.ok(away && !(away.y === 5 && away.x >= 8), `not into the corridor: ${JSON.stringify(away)}`);
+  }
+
   console.log(
-    "Squeezing: double steps between walls as one size smaller, squeezed while there; Amorphous freely; gated at 1.628.",
+    "Squeezing: double steps between walls as one size smaller, squeezed while there; Amorphous freely; a getaway never into a squeeze; gated at 1.628.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

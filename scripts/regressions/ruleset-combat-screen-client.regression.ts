@@ -901,6 +901,9 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ["itemsVanished", say({ type: "itemsVanished", actorId: "brenna", label: "Iron Bar", count: 1 })],
     ["morale", say({ type: "morale", actorId: "lurker", trigger: "hurt", outcome: "flee", roll: 9, score: 7 })],
     ["fled", say({ type: "fled", actorId: "lurker" })],
+    ["moraleCheck", say({ type: "moraleCheck", actorId: "lurker", trigger: "leader-down" })],
+    ["temperamentShift", say({ type: "temperamentShift", actorId: "lurker", to: "methodical", on: "bloodied" })],
+    ["holdsGround", say({ type: "holdsGround", actorId: "lurker" })],
     [
       "reflected",
       say({
@@ -1548,6 +1551,30 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     "Thorn Lurker stands firm.",
   );
   assert.equal(printed.get("fled"), "Thorn Lurker escapes off the edge of the fight.");
+  assert.equal(printed.get("moraleCheck"), "Thorn Lurker sees its leader fall and must hold its nerve.");
+  assert.equal(printed.get("temperamentShift"), "Thorn Lurker is bloodied and turns methodical.");
+  assert.equal(printed.get("holdsGround"), "Thorn Lurker keeps to its ground.");
+  assert.equal(
+    say({ type: "outcome", outcome: "defeat", yielded: true }),
+    "The party lays down its arms and is taken alive.",
+  );
+  assert.equal(
+    say({
+      type: "move",
+      actorId: "lurker",
+      from: { x: 0, y: 0 },
+      to: { x: 0, y: 3 },
+      path: [
+        { x: 0, y: 1 },
+        { x: 0, y: 2 },
+        { x: 0, y: 3 },
+      ],
+      cost: 3,
+      left: 1,
+      dragged: ["brenna"],
+    }),
+    "Thorn Lurker moves to 0, 3 for 3 and has 1 left. Dragged along: Brenna.",
+  );
   assert.equal(printed.get("reflected"), "Thorn Lurker's Carapace (3): Ray has no effect on it.");
   assert.equal(
     say({

@@ -590,6 +590,15 @@ try {
       budget: "action",
       sequence: [{ action: "dagger", times: 2 }],
     };
+    // Two swings of a longsword: a fifth of the captain's health in a turn.
+    const longsword = {
+      id: "longsword",
+      name: "Longsword",
+      budget: "action",
+      toHit: 7,
+      reach: 1,
+      damage: { count: 2, sides: 8, flat: 4 },
+    };
     const target = (
       gap: number,
       armour: number,
@@ -599,6 +608,9 @@ try {
         proficiency?: CombatAiHints["proficiency"];
         locked?: boolean;
         speed?: number;
+        placements?: Record<"captain" | "brom" | "elara", { x: number; y: number }>;
+        round?: number;
+        knight?: boolean;
       } = {},
     ) => {
       const blocks = {
@@ -612,13 +624,36 @@ try {
             actions: [scimitar, dagger, melee, ranged],
           }),
         },
-        brom: { side: "party" as const, block: block({ health: 70, defense: armour }) },
+        brom: {
+          side: "party" as const,
+          block: block({ health: 70, defense: armour, ...(how.knight ? { actions: [longsword] } : {}) }),
+        },
         elara: {
           side: "party" as const,
-          block: block({ health: 40, defense: 12, actions: [{ ...claw, components: ["verbal"] }] }),
+          block: block({
+            health: 40,
+            defense: 12,
+            actions: [
+              how.knight
+                ? {
+                    id: "bolt",
+                    name: "Fire Bolt",
+                    budget: "action",
+                    toHit: 7,
+                    range: { normal: 120 },
+                    damage: { count: 3, sides: 10, flat: 0 },
+                    components: ["verbal"],
+                  }
+                : { ...claw, components: ["verbal"] },
+            ],
+          }),
         },
       };
-      const placements = { captain: { x: 4, y: 3 }, brom: { x: 6, y: 3 }, elara: { x: 4 + gap, y: 3 } };
+      const placements = how.placements ?? {
+        captain: { x: 4, y: 3 },
+        brom: { x: 6, y: 3 },
+        elara: { x: 4 + gap, y: 3 },
+      };
       const encounter: RulesetEncounterState = createRulesetEncounter({
         definition,
         seed: 1,
@@ -631,7 +666,7 @@ try {
       });
       encounter.order = ["captain", "brom", "elara"];
       encounter.turn = 0;
-      encounter.round = 2;
+      encounter.round = how.round ?? 2;
       const state = createCombatDirector({
         id: "fight",
         anchor: "anchor",
@@ -663,6 +698,42 @@ try {
               "brom",
               `${temperament} ${proficiency} seed ${seed} gap ${gap}: the harder blow`,
             );
+    // The opening of the far layout (re-test 14): the knight dashed to two squares off the captain,
+    // the wizard eleven squares off across the field. Walking six squares away from the knight to
+    // throw from one square past the daggers' normal range is two thirds of the Multiattack, and
+    // the knight walks up and strikes it there all the same.
+    for (let seed = 1; seed <= 12; seed++)
+      for (const temperament of ["disciplined", "patient", "protective", "cowardly", "reckless", "methodical"] as const)
+        for (const [captain, brom] of [
+          [
+            { x: 11, y: 4 },
+            { x: 9, y: 4 },
+          ],
+          [
+            { x: 13, y: 2 },
+            { x: 14, y: 0 },
+          ],
+          [
+            { x: 13, y: 4 },
+            { x: 15, y: 4 },
+          ],
+          [
+            { x: 13, y: 6 },
+            { x: 15, y: 7 },
+          ],
+        ] as const) {
+          assert.equal(
+            target(0, 18, temperament, {
+              seed,
+              proficiency: "novice",
+              placements: { captain, brom, elara: { x: 0, y: 4 } },
+              round: 1,
+              knight: true,
+            }),
+            "brom",
+            `${temperament} seed ${seed} captain at ${captain.x},${captain.y}, knight at ${brom.x},${brom.y}: in on the knight`,
+          );
+        }
   }
 
   // A tactician keeps the slot its Counterspell needs (P8): with one 3rd-level slot left it casts its

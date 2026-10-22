@@ -12553,6 +12553,8 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
   let halted = false;
   let at = walked.length > 0 ? walked[walked.length - 1]! : resume.from;
   const rest = [...resume.path];
+  // Whoever came along on the way, for the walk's own event (re-test 14): a crocodile's prey.
+  const broughtAlong: string[] = [];
   const legendary = resume.legendary;
   // An engulf's walk (1.350): whoever it has entered so far.
   const engulfAction = resume.engulf ? actor.actions.find((one) => one.id === resume.engulf!.actionId) : undefined;
@@ -12665,6 +12667,7 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
       if (!sealed && !draggingNow.ids.includes(carried.id) && !clinging.includes(carried.id)) continue;
       carried.x = at.x;
       carried.y = at.y;
+      if (!broughtAlong.includes(carried.id)) broughtAlong.push(carried.id);
     }
     at = cell;
     actor.x = cell.x;
@@ -12789,6 +12792,7 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
     left: actor.movementLeft ?? 0,
     ...(stopped ? { stopped: true } : {}),
     ...(resume.jump ? { jumped: true as const } : {}),
+    ...(broughtAlong.length ? { dragged: broughtAlong } : {}),
   });
   if (ashore) ctx.events.push({ type: "ashore", actorId: actor.id, to: { ...ashore } });
   // Landed on hard going (1.446): the check, or its condition. 5e's DC 10 Acrobatics, or prone.
@@ -13964,8 +13968,10 @@ function recheckHiding(ctx: RulesetCombatContext, hider: RulesetCombatant): void
  *
  * Targets are handed out in order when there are enough for every part, and otherwise every part
  * takes the ones at the front of the list, so a single id sends the whole sequence at one opponent.
- * A part whose target is already down by the time it comes round simply does not land: nothing here
- * picks a new one, because choosing is the caller's job.
+ * A part whose target is defeated by the time it comes round simply does not land. One whose target
+ * was standing when the sequence began and has gone down since turns on the nearest other opponent
+ * that part reaches, and does not happen with none (re-test 14: a knight's second swing at the
+ * fighter its first dropped); a cruel one (combat AI T3) keeps on at them.
  */
 function resolveSequence(
   ctx: RulesetCombatContext,
@@ -14031,6 +14037,29 @@ function resolveSequence(
   // The one target every attack of each step hit (1.590), false once one of it has not.
   const hits: Record<string, string | false> = { ...held?.stepHits };
   const tracked = () => (tracks ? { stepHits: { ...hits }, stepRolls: { ...rolls } } : {});
+  // Who was down already when it began: whoever chose them chose that.
+  const downAtStart = new Set(targets.filter((target) => target.down).map((target) => target.id));
+  const reaches = (part: RulesetCombatAction, target: RulesetCombatant) =>
+    target.id === actor.id || !rulesetTargetRefusal(ctx.state, actor.id, part.id, target.id, undefined, ctx.definition);
+  // Another standing opponent this part reaches, nearest first, for one whose target dropped.
+  const another = (part: RulesetCombatAction, fallen: RulesetCombatant, taken: readonly RulesetCombatant[]) => {
+    if (fallen.side === actor.side) return undefined;
+    return ctx.state.combatants
+      .filter(
+        (one) =>
+          one.side !== actor.side &&
+          !one.down &&
+          !one.object &&
+          rulesetCombatStanding(one) &&
+          !taken.some((other) => other.id === one.id) &&
+          reaches(part, one),
+      )
+      .sort(
+        (a, b) =>
+          (rulesetPositionOf(a) && rulesetPositionOf(actor) ? rulesetGap(actor, a) : 0) -
+          (rulesetPositionOf(b) && rulesetPositionOf(actor) ? rulesetGap(actor, b) : 0),
+      )[0];
+  };
   for (const [index, { part, step, live, after, rolled }] of parts.entries()) {
     const count = after === undefined ? part.targets.count : 0;
     // After an earlier step hit (1.590): at the one it hit, and only then.
@@ -14047,13 +14076,19 @@ function resolveSequence(
         : followed
           ? [rulesetCombatant(ctx.state, followed)].filter((one): one is RulesetCombatant => !!one)
           : [];
-    const chosen = offered.filter(
+    const aimed = offered.flatMap((target) => {
+      if (!target.down || downAtStart.has(target.id) || rulesetCanRevive(ctx.state, part, target) || !part.damage)
+        return [target];
+      if (actor.temperament === "cruel") return [target];
+      const next = another(part, target, offered);
+      return next ? [next] : [];
+    });
+    const chosen = aimed.filter(
       (target) =>
         (!target.defeated || rulesetCanRevive(ctx.state, part, target)) &&
         // Only at whom this part reaches itself: a Multiattack's claws at the foe beside it, its bite
         // farther.
-        (target.id === actor.id ||
-          !rulesetTargetRefusal(ctx.state, actor.id, part.id, target.id, undefined, ctx.definition)),
+        reaches(part, target),
     );
     cursor += count;
     // A sequence picked up after one of its parts was held starts at that part, which was paid for
@@ -18356,6 +18391,9 @@ function moraleTurn(ctx: RulesetCombatContext, actor: RulesetCombatant): boolean
     if (trigger === "first-fall" && temperament === "disciplined") continue;
     actor.moraleChecked = [...(actor.moraleChecked ?? []), trigger];
     const check = morale.check;
+    // Said before the roll, so the save that follows has a reason (re-test 14).
+    if ("save" in check || (actor.block.morale ?? check.score) !== undefined)
+      ctx.events.push({ type: "moraleCheck", actorId: actor.id, trigger });
     let roll: number | undefined;
     let score: number | undefined;
     let held: boolean;
@@ -18377,7 +18415,10 @@ function moraleTurn(ctx: RulesetCombatContext, actor: RulesetCombatant): boolean
           !!rulesetPositionOf(actor) &&
           rulesetGap(one, actor) <= 1,
       );
-    const outcome = held ? "held" : morale.surrenders?.includes(mind) && pinned ? "surrender" : "flee";
+    // Of a kind that never gives itself up (1.732): it flees whatever its mind.
+    const kind = rulesetCreatureKind(ctx.definition, actor).type;
+    const yields = morale.surrenders?.includes(mind) && !(kind !== undefined && morale.neverSurrender?.includes(kind));
+    const outcome = held ? "held" : yields && pinned ? "surrender" : "flee";
     ctx.events.push({
       type: "morale",
       actorId: actor.id,

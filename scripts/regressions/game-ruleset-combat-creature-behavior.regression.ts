@@ -343,6 +343,15 @@ try {
     // Nobody of the kind it keeps: it fights as it would.
     const alone = scene({ guards: ["healers"], temperament: "patient" });
     assert.equal(pickRulesetChoice(definition, alone.state, alone.encounter, "guard")?.choice.targetIds[0], "near");
+    // Strayed eight squares off its charge, it does not walk to six to strike a foe out there
+    // (re-test 14): closer than before is still off the leash.
+    const strayed = fight({
+      guard: { side: "enemy", block: block([smash], { behavior: { guards: ["casters"] } }), at: { x: 10, y: 2 } },
+      mage: { side: "enemy", block: block([{ ...bolt, components: ["verbal"] }]), at: { x: 2, y: 2 } },
+      rogue: { side: "party", block: block([smash]), at: { x: 8, y: 4 } },
+    });
+    const chosen = pickRulesetChoice(definition, strayed.state, strayed.encounter, "guard");
+    assert.notEqual(chosen?.choice.targetIds[0], "rogue", JSON.stringify(chosen?.choice));
   }
 
   // ── A leader (combat AI A6): it opens with what helps its side, and steadies those running ──
@@ -997,8 +1006,38 @@ try {
     );
   }
 
+  // A Multiattack's second swing at the one its first dropped turns on the one beside them (re-test 14),
+  // and one chosen while already down is struck as chosen.
+  {
+    const multi = {
+      id: "multi",
+      name: "Multiattack",
+      budget: "action",
+      sequence: [{ action: "smash", times: 2 }],
+    };
+    const swings = (downAlready = false) => {
+      const { encounter } = fight({
+        knight: { side: "enemy", block: block([smash, multi]), at: { x: 4, y: 4 } },
+        brom: { side: "party", block: block([smash], { health: 20 }), at: { x: 5, y: 4 } },
+        squire: { side: "party", block: block([smash]), at: { x: 4, y: 5 } },
+      });
+      if (downAlready) rulesetCombatant(encounter, "brom")!.down = true;
+      const step = applyRulesetCombatChoice(
+        definition,
+        encounter,
+        { actorId: "knight", optionId: "multi", targetIds: ["brom"] },
+        () => 10,
+      );
+      return step.events
+        .filter((event): event is Extract<RulesetCombatEvent, { type: "attack" }> => event.type === "attack")
+        .map((event) => event.targetId);
+    };
+    assert.deepEqual(swings(), ["brom", "squire"], "the second swing on the squire");
+    assert.deepEqual(swings(true), ["brom", "brom"], "as chosen");
+  }
+
   console.log(
-    "Combat behavior: merged from the ruleset, the type and the creature; its temperament and role; casters, attackers and a pack's prey first; its opener once; an ambusher keeps still and springs; roles read off what it does; bodyguards stay by their charge; a leader rallies; a temperament turns once; a proud legend flies off; a territorial one keeps its ground; a cruel one strikes the fallen only where the game allows; an honourable one fights fair; a hungry one drags its prey off; refused and gated at 1.710, 1.723, 1.724, 1.725, 1.726, 1.727, 1.728, 1.729, 1.730 and 1.731.",
+    "Combat behavior: merged from the ruleset, the type and the creature; its temperament and role; casters, attackers and a pack's prey first; its opener once; an ambusher keeps still and springs; roles read off what it does; bodyguards stay by their charge; a leader rallies; a temperament turns once; a proud legend flies off; a territorial one keeps its ground; a cruel one strikes the fallen only where the game allows; an honourable one fights fair; a hungry one drags its prey off; a strayed bodyguard walks back; a Multiattack turns from the one it dropped; refused and gated at 1.710, 1.723, 1.724, 1.725, 1.726, 1.727, 1.728, 1.729, 1.730 and 1.731.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

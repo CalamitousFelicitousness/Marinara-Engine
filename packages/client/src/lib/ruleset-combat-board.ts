@@ -308,13 +308,17 @@ export function rulesetBoardCells(view: DirectedRulesetView, step: RulesetMenuSt
   const standing = new Map<string, DirectedRulesetCombatant>();
   for (const combatant of view.combatants) {
     if (typeof combatant.x !== "number" || typeof combatant.y !== "number") continue;
-    // Sent away (1.236): not on the board at all.
-    if (combatant.away) continue;
+    // Sent away (1.236): not on the board at all. One that gave itself up stays where it did, a
+    // prisoner beside its captor (re-test 14).
+    if (combatant.away && !combatant.surrendered) continue;
     // Every cell they fill (1.194).
     const span = Math.max(1, combatant.span ?? 1);
     for (let dy = 0; dy < span; dy++) {
       for (let dx = 0; dx < span; dx++) {
-        standing.set(rulesetCellKey({ x: combatant.x + dx, y: combatant.y + dy }), combatant);
+        const key = rulesetCellKey({ x: combatant.x + dx, y: combatant.y + dy });
+        // A prisoner never hides whoever has since walked onto its square.
+        if (combatant.away && standing.has(key)) continue;
+        standing.set(key, combatant);
       }
     }
   }

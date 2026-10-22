@@ -3805,6 +3805,8 @@ export type RulesetCombatEvent =
       stopped?: boolean;
       /** A jump (1.446). */
       jumped?: true;
+      /** Whoever came along: dragged (1.444), clinging (1.623) or carried shut in a sphere (1.314). */
+      dragged?: string[];
     }
   /** What a summoned weapon did, from its appearance to its ending (1.122). */
   | { type: "summon"; actorId: string; label: string; outcome: "appeared" | "struck" | "ended" }
@@ -3956,6 +3958,12 @@ export type RulesetCombatEvent =
   | { type: "itemsMade"; actorId: string; label: string; count: number }
   /** What they made to last only so long, gone as its time ran out (1.707): Creation's. */
   | { type: "itemsVanished"; actorId: string; label: string; count: number }
+  /** What set off a morale check (1.709), said before its roll or save. */
+  | { type: "moraleCheck"; actorId: string; trigger: RulesetMoraleTrigger }
+  /** A creature the Engine plays turning to another temperament (combat AI T7): what set it off. */
+  | { type: "temperamentShift"; actorId: string; to: string; on: string }
+  /** A territorial creature keeping to its ground for the turn (combat AI T4). */
+  | { type: "holdsGround"; actorId: string }
   /** A morale check (1.709): what set it off, the roll or save, and whether it held, fled or gave up. */
   | {
       type: "morale";
@@ -4212,7 +4220,8 @@ export type RulesetCombatEvent =
   | { type: "track"; targetId: string; sourceId: string; track: string; label: string; from: number; to: number }
   /** What only a rest would give back, given back by somebody's action (1.201). */
   | { type: "unsealed"; targetId: string; sourceId: string; amount: number; maxHealth: number }
-  | { type: "outcome"; outcome: RulesetEncounterOutcome }
+  /** How the fight ended; `yielded` when the party gave itself up to honourable foes (combat AI T6). */
+  | { type: "outcome"; outcome: RulesetEncounterOutcome; yielded?: true }
   | { type: "refused"; actorId: string; optionId?: string; reason: RulesetCombatRefusal };
 
 /** `fled` (1.279): the party is out of the fight with somebody of it gone from it alive. */

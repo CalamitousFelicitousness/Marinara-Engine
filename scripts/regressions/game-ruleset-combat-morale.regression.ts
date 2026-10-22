@@ -499,10 +499,38 @@ try {
       assert.notEqual(getCapabilityPackageInstallIssue(manifest(722) as never, fiveE(newer)), gate722);
     }
     assert.notEqual(getCapabilityPackageInstallIssue(manifest(721) as never, fiveE(saved)), gate722);
+
+    // ── Kinds that never give themselves up (1.732) ──
+    const typed = (morale: unknown) => {
+      const doc = fiveE(morale);
+      doc.combat.creatureTypes = {
+        types: [
+          { id: "humanoid", label: "Humanoid" },
+          { id: "undead", label: "Undead" },
+        ],
+      };
+      return doc;
+    };
+    const stubborn = { ...saved, neverSurrender: ["undead"] };
+    const definition = parsed(typed(stubborn));
+    // A thinking ghoul hurt beside the hero fails its save and flees; a goblin beside it still yields.
+    const outcomeOf = (type: string) =>
+      morale(
+        endTurn(definition, fight(definition, { gob: { block: block({ type }), at: { x: 2, y: 1 }, health: 6 } }), 1)
+          .events,
+      ).map((event) => event.outcome);
+    assert.deepEqual(outcomeOf("undead"), ["flee"], "the undead never surrender");
+    assert.deepEqual(outcomeOf("humanoid"), ["surrender"], "a goblin still does");
+    refused(typed({ ...saved, neverSurrender: ["fiend"] }), /Unknown creature type "fiend"/);
+    refused(typed({ ...saved, neverSurrender: ["undead", "undead"] }), /Name each once/);
+    const gate732 =
+      "A ruleset with creature types that never surrender (combat.morale.neverSurrender) requires schemaVersion 2 and capabilityApi 1.732 or newer";
+    assert.equal(getCapabilityPackageInstallIssue(manifest(731) as never, typed(stubborn)), gate732);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(732) as never, typed(stubborn)), gate732);
   }
 
   console.log(
-    "Combat morale: a broken goblin runs and gets away off the edge, one that holds is not asked again, a hurt thinker beside the hero surrenders, the fearless and the mindless never check; the director runs it off the board; surprised, helpless and half down unanswered (1.722); gated at 1.709 and 1.722.",
+    "Combat morale: a broken goblin runs and gets away off the edge, one that holds is not asked again, a hurt thinker beside the hero surrenders, the fearless and the mindless never check; the director runs it off the board; surprised, helpless and half down unanswered (1.722); the undead never surrender (1.732); gated at 1.709, 1.722 and 1.732.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

@@ -177,6 +177,8 @@ export interface DirectedRulesetCombatant {
   defeated: boolean;
   /** Sent out of the fight, alive (1.236): off the board until it comes back, if it does. */
   away?: true;
+  /** Gave itself up (1.709): out of the fight, but still standing where it gave up, a prisoner. */
+  surrendered?: true;
   /** Gone of its own accord, by a teleport that leaves the fight (1.279). */
   left?: true;
   /** Caught unaware (1.237): their first turn is only ended, and they answer nothing until then. */

@@ -89,6 +89,7 @@ import {
   rulesetFootprint,
   rulesetFootprintAt,
   rulesetSpanOf,
+  rulesetSqueezeAt,
   rulesetBehaviorAnchor,
   rulesetGapFrom,
   rulesetDragging,
@@ -973,6 +974,7 @@ function projectCombatant(
     stable: combatant.stable,
     defeated: combatant.defeated,
     ...(combatant.away ? { away: true as const } : {}),
+    ...(combatant.away?.surrendered ? { surrendered: true as const } : {}),
     ...(combatant.away?.left ? { left: true as const } : {}),
     ...(combatant.surprised ? { surprised: true as const } : {}),
     ...(deathTrack ? { deathTrack } : {}),
@@ -1609,6 +1611,8 @@ function rulesetDangerAt(
   encounter: RulesetEncounterState,
   actor: RulesetCombatant,
   cell: { x: number; y: number },
+  /** Staying there to fight, not getting away: a walk away is no safer than beside it. */
+  fights = false,
 ): number {
   const combat = definition.combat;
   if (!combat) return 0;
@@ -1627,10 +1631,14 @@ function rulesetDangerAt(
       if (!action.damage || !rulesetActionAvailable(foe, action, encounter, definition)) continue;
       const reach = action.range ? (action.range.long ?? action.range.normal) : (action.reach ?? 1);
       // One a walk away comes on its own turn all the same, so standing a square off it is
-      // nearly as dangerous as standing beside it, and no reason to throw from afar instead; only
-      // the far end of its walk is much safer.
+      // nearly as dangerous as standing beside it; only the far end of its walk is much safer, to
+      // one getting away. To one staying to fight there, anywhere it can walk to and strike is as
+      // dangerous as beside it, and no reason to throw from afar instead: a captain walking six
+      // squares off a knight who walks six squares back makes nothing safer by it (re-test 14).
+      // Only a little less, so between two cells that do alike it takes the further.
+      const out = (gap - reach) / Math.max(1, walks);
       const at =
-        gap <= reach ? 1 : gap <= reach + walks ? Math.max(0, 1 - 1.1 * ((gap - reach) / Math.max(1, walks)) ** 3) : 0;
+        gap <= reach ? 1 : gap > reach + walks ? 0 : fights ? 1 - 0.1 * out ** 2 : Math.max(0, 1 - 1.1 * out ** 3);
       worst = Math.max(worst, rulesetSafeAverage(action.damage) * at);
     }
     harm += worst;
@@ -1680,14 +1688,21 @@ function rulesetRetreatCell(
   if (foes.length === 0) return null;
   const span = rulesetSpanOf(actor);
   const nearest = (cell: { x: number; y: number }) => Math.min(...foes.map((foe) => rulesetGapFrom(cell, span, foe)));
-  let best: { cell: { x: number; y: number }; away: number; danger: number } | null = null;
+  let best: { cell: { x: number; y: number }; away: number; danger: number; squeezed: boolean } | null = null;
   const here = nearest(from);
   for (const cell of rulesetWalkableCells(definition, encounter, actorId)) {
     const away = nearest(cell);
     if (away <= here) continue;
     const danger = rulesetDangerAt(definition, encounter, actor, cell);
-    if (!best || away > best.away || (away === best.away && danger < best.danger))
-      best = { cell: { x: cell.x, y: cell.y }, away, danger };
+    // Never into a gap it has to squeeze into where it can stand whole (re-test 14: a crocodile that
+    // dragged its prey into a corner gap and bit at a disadvantage for twelve rounds).
+    const squeezed = span > 1 && !!rulesetSqueezeAt(definition, encounter, actor, cell);
+    if (
+      !best ||
+      (best.squeezed && !squeezed) ||
+      (best.squeezed === squeezed && (away > best.away || (away === best.away && danger < best.danger)))
+    )
+      best = { cell: { x: cell.x, y: cell.y }, away, danger, squeezed };
   }
   return best?.cell ?? null;
 }
@@ -1710,9 +1725,9 @@ function weighRulesetTeam(
   if (!combat) return;
   const home = rulesetPositionOf(actor);
   const dangers = new Map<string, number>();
-  const danger = (cell: { x: number; y: number }) => {
-    const key = `${cell.x},${cell.y}`;
-    if (!dangers.has(key)) dangers.set(key, rulesetDangerAt(definition, encounter, actor, cell));
+  const danger = (cell: { x: number; y: number }, fights = true) => {
+    const key = `${cell.x},${cell.y},${fights}`;
+    if (!dangers.has(key)) dangers.set(key, rulesetDangerAt(definition, encounter, actor, cell, fights));
     return dangers.get(key)!;
   };
   const allies = encounter.combatants.filter(
@@ -1749,7 +1764,7 @@ function weighRulesetTeam(
     if (home) {
       if (defensive === "disengage") {
         const away = rulesetRetreatCell(definition, encounter, actor.id);
-        candidate.risk = away ? danger(away) : danger(home);
+        candidate.risk = away ? danger(away, false) : danger(home, false);
         if (away) candidate.action.to = away;
       } else {
         const cell = candidate.action.to ?? home;
@@ -3606,10 +3621,10 @@ function shiftRulesetTemperament(
   state: CombatDirectorState,
   encounter: RulesetEncounterState,
   actor: RulesetCombatant,
-): void {
+): { to: string; on: string } | undefined {
   const combat = definition.combat;
   const unit = [...state.party, ...state.enemies].find((one) => one.id === actor.id);
-  if (!combat || !unit?.tactics) return;
+  if (!combat || !unit?.tactics) return undefined;
   const shifts = unit.aiHints?.shifts ?? rulesetCombatantBehavior(definition, actor)?.shifts;
   const health = rulesetCombatHealth(definition, combat, actor);
   const ours = encounter.combatants.filter(
@@ -3618,7 +3633,7 @@ function shiftRulesetTemperament(
   const fallen = ours.filter(
     (one) => one.down || (one.defeated && (!one.away || !!one.away.left || !!one.away.surrendered)),
   );
-  const turned = shiftCombatTemperament(unit.tactics, shifts, (trigger) =>
+  const happened = (trigger: string): boolean =>
     trigger === "bloodied"
       ? health.value < health.max / 2
       : trigger === "ally-down"
@@ -3634,9 +3649,17 @@ function shiftRulesetTemperament(
                 !!rulesetPositionOf(actor) &&
                 rulesetGap(one, actor) <= 1,
             ) &&
-            !rulesetRetreatCell(definition, encounter, actor.id),
-  );
-  if (turned) actor.temperament = turned;
+            !rulesetRetreatCell(definition, encounter, actor.id);
+  // What turned it, for the log (re-test 14): the first of its shifts that has happened.
+  let on: string | undefined;
+  const turned = shiftCombatTemperament(unit.tactics, shifts, (trigger) => {
+    const now = happened(trigger);
+    if (now) on ??= trigger;
+    return now;
+  });
+  if (!turned) return undefined;
+  actor.temperament = turned;
+  return { to: turned, on: on! };
 }
 
 /**
@@ -3883,8 +3906,11 @@ function weighRulesetOrders(
     const kept = candidates.filter((candidate) => {
       const to = candidate.action.to;
       if (to) {
+        // A walk to strike ends on the leash: off it, closer than before is still running off after
+        // a foe (re-test 14, a cultist eight squares out walking to six to stab a rogue). It walks
+        // back instead.
         const after = rulesetGapFrom(to, rulesetSpanOf(actor), guarded);
-        return after <= RULESET_LEASH || after < gap;
+        return after <= RULESET_LEASH;
       }
       return (
         !strayed ||
@@ -4421,7 +4447,8 @@ function playRulesetTurn(
   // A leader steadies those of its side running near it (combat AI A6).
   if (actor && !actor.routed) rallyRulesetSide(definition, fight.encounter, actor);
   // Its temperament turned by what has happened (combat AI T7).
-  if (actor) shiftRulesetTemperament(definition, state, fight.encounter, actor);
+  const turned = actor ? shiftRulesetTemperament(definition, state, fight.encounter, actor) : undefined;
+  if (turned) record(fight, [{ type: "temperamentShift", actorId, ...turned }]);
   // Broken (1.709): its whole turn is getting away.
   if (actor?.routed) {
     runForTheEdge(definition, state, fight, actorId);
@@ -4472,9 +4499,12 @@ function playRulesetTurn(
   const aloof = !stays && retreatAloft(definition, state, fight, actorId);
   // A hungry one with its prey in hand drags it off, away from the rest (combat AI T8).
   const feeding = !stays && dragOffPrey(definition, state, fight, actorId);
-  const leash =
-    (actor && orders ? rulesetLeashOf(state, fight.encounter, actor, orders) : undefined) ??
-    (actor && unit ? rulesetTerritoryLeash(definition, fight.encounter, actor, unit) : undefined);
+  const ordered = actor && orders ? rulesetLeashOf(state, fight.encounter, actor, orders) : undefined;
+  const territory =
+    !ordered && actor && unit ? rulesetTerritoryLeash(definition, fight.encounter, actor, unit) : undefined;
+  const leash = ordered ?? territory;
+  // What it had done before this turn's choices, so a territorial one that does nothing says why.
+  const seqBefore = fight.eventSeq;
   // A caster or archer caught beside an opponent gets clear before it shoots (re-test 9).
   if (!stays) getClearToShoot(definition, state, fight, actorId);
   // Picked up where it was left when a window it opened was answered by a person.
@@ -4572,6 +4602,14 @@ function playRulesetTurn(
     if (blow && !afar) struckClose = true;
   }
   delete fight.turnSoFar;
+  // Keeping to its ground with nobody on it (combat AI T4): said, so it is no frozen token (re-test 14).
+  if (
+    territory &&
+    !earlier &&
+    !fight.encounter.window &&
+    !fight.events.some((one) => one.seq > seqBefore && "actorId" in one.event && one.event.actorId === actorId)
+  )
+    record(fight, [{ type: "holdsGround", actorId }]);
   advanceTurn(definition, state, fight);
 }
 
@@ -5377,6 +5415,8 @@ export function commandRulesetCombatDirector(
       return refuse("Only honourable opponents accept a surrender.", "ruleset_combat_no_yield");
     state.outcome = "defeat";
     state.yielded = true;
+    // Said in the fight's own log, so a surrender never reads as a wipe (re-test 14).
+    record(fight, [{ type: "outcome", outcome: "defeat", yielded: true }]);
     return settled(state);
   }
 

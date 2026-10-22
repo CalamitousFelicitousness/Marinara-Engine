@@ -122,8 +122,20 @@ assert.ok(
   "the server still warns about an unused persona question",
 );
 assert.ok(body.includes("isn't used in any of the five template fields"), "the handbook quotes that warning");
+// Taken from the server's own warning, so a reworded warning fails here instead of drifting.
+const cardWarning = (
+  buildOnboardingUpdate({ name: "Regression" }, { cardVariables: [{ variableName: "c", question: "Q" }] }) as {
+    warnings: string[];
+  }
+).warnings.find((warning) => warning.startsWith('Character question "c"'));
+assert.ok(cardWarning, "the server still warns about an unused character question");
+const cardWarningText = cardWarning.slice(
+  cardWarning.indexOf("isn't used"),
+  cardWarning.indexOf("so it is skipped") + 16,
+);
+// The handbook wraps long lines, so compare with whitespace collapsed.
 assert.ok(
-  body.includes("isn't used in the card's") && body.includes("so it is skipped"),
+  body.replace(/\s+/gu, " ").includes(cardWarningText),
   "the handbook quotes the unused character-question warning",
 );
 

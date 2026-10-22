@@ -101,7 +101,7 @@ try {
   assert.equal(weather.success, true, weather.output);
   assert.match(
     weather.output,
-    /^"Weather" was added as the last section, after "Chat History". "injectionOrder" does not move it. To place it elsewhere, send preset.update with the whole "sectionOrder"./,
+    /^Readback: store-verified\n"Weather" was added as the last section, after "Chat History"\. "injectionOrder" does not move it\. To place it elsewhere, send preset\.update with the whole "sectionOrder"\./,
   );
   const dryRun = await run("app_data", {
     action: "preset.addSection",

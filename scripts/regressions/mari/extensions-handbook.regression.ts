@@ -14,6 +14,7 @@ import { MariDbService } from "../../../packages/server/src/services/mari-db/mar
 const PINNED_HASH = "sha256:677e787ceec71951f8e9fd14182ad7b3bc877b55cf0485b84948073de6242533";
 
 const dir = mkdtempSync(join(tmpdir(), "marinara-mari-extensions-handbook-"));
+const previousStorageDir = process.env.FILE_STORAGE_DIR;
 process.env.FILE_STORAGE_DIR = dir;
 
 try {
@@ -58,6 +59,8 @@ try {
     await db._fileStore.close();
   }
 } finally {
+  if (previousStorageDir === undefined) delete process.env.FILE_STORAGE_DIR;
+  else process.env.FILE_STORAGE_DIR = previousStorageDir;
   rmSync(dir, { recursive: true, force: true });
 }
 

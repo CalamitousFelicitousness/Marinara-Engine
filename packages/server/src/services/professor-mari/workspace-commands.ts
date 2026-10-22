@@ -143,6 +143,19 @@ export function setSkillGateEnabled(enabled: boolean) {
   skillGateEnabled = enabled;
 }
 
+const DRY_RUN_FOOTER =
+  '\n\nNOT SAVED. Nothing changed and the user sees nothing. To save, send this same call again with top-level "apply": true.';
+// Guards read these on an output's first line only (see isDryRunResult and the read-back check).
+// Built per call: workspace-agent.service imports this module, so its constants are not set at load.
+function leadingSentinel(output: string): string | undefined {
+  return [
+    MARI_DRY_RUN_SENTINEL,
+    APP_DATA_DRY_RUN_SENTINEL,
+    READ_BACK_VERIFIED_SENTINEL,
+    READ_BACK_MISMATCH_SENTINEL,
+  ].find((line) => output.startsWith(`${line}\n`));
+}
+
 function missingApplyMessage(action: string, args: Record<string, unknown>): string {
   const nested = ["patch", "data"].find((key) => isRecord(args[key]) && "apply" in (args[key] as object));
   return `Nothing was saved: ${action} changes existing data, so it needs a top-level "apply". Send this same call again with "apply": true next to "action" to save it${nested ? ` (the "apply" inside "${nested}" is ignored)` : ""}. Send "apply": false only when the user asked for a preview.`;
@@ -278,9 +291,19 @@ export class WorkspaceCommands {
         isReadOnlyWorkspaceCommand(command) ? run() : this.serializeWorkspaceMutation(run),
       );
       const result = typeof execution === "string" ? execution : execution.output;
-      // #7999: first, so output compaction cannot cut the note off.
-      const output = argumentNotes.length ? `${argumentNotes.join("\n")}\n${result}` : result;
-      const compacted = compactOutput(output);
+      // #7999: near the top, so output compaction cannot cut the note off; under a leading sentinel,
+      // which the dry-run and read-back guards only trust on line 1.
+      const sentinel = leadingSentinel(result);
+      const notes = argumentNotes.join("\n");
+      const output = !argumentNotes.length
+        ? result
+        : sentinel
+          ? `${sentinel}\n${notes}${result.slice(sentinel.length)}`
+          : `${notes}\n${result}`;
+      // The NOT SAVED line is the last thing a model reads before it answers, so truncation keeps it.
+      const compacted = output.endsWith(DRY_RUN_FOOTER)
+        ? `${compactOutput(output.slice(0, -DRY_RUN_FOOTER.length))}${DRY_RUN_FOOTER}`
+        : compactOutput(output);
       const endedAt = Date.now();
       upsertTraceTool(trace, {
         id: command.id,
@@ -1154,9 +1177,7 @@ ${missingApplyMessage(action, args)}`
         ].join("\n"),
       ) +
       // Last, past any truncation: the line a model reads just before it answers.
-      (dryRun
-        ? '\n\nNOT SAVED. Nothing changed and the user sees nothing. To save, send this same call again with top-level "apply": true.'
-        : "");
+      (dryRun ? DRY_RUN_FOOTER : "");
     if (result.ok === false) {
       const hint = skillHintForFailedAction(action);
       const failure = new Error(hint ? `${output}\n\n${hint}` : output) as Error & {

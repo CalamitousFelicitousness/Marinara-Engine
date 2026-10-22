@@ -226,6 +226,11 @@ assert.match(
   /A create is a dry run unless you send top-level/u,
   "the permanent home-widgets router line keeps the inverted-apply rule",
 );
+assert.match(
+  workspaceAgent,
+  /and it goes in the SAME response with \\`awaitingAuthorization: true\\`/u,
+  "the permanent home-widgets router line keeps the no-preview-round rule",
+);
 
 // ── Client: the Accept affordance survives what the chips slot does not ─────
 // The chips store is a single app-wide ephemeral slot (a regular chat

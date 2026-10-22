@@ -293,8 +293,27 @@ test("persona avatar removal preserves unsaved fields and survives reload", asyn
     await prepare(page);
     const editor = await open(page, "persona", id);
     const name = editor.locator(".mari-editor-title-input");
-    await name.fill("Unsaved persona name");
     const remove = editor.getByTitle("Remove avatar", { exact: true });
+    let releaseSave = () => {};
+    const pendingSave = new Promise<void>((resolve) => {
+      releaseSave = resolve;
+    });
+    const saveUrl = `**${paths.persona}/${id}`;
+    await page.route(saveUrl, async (route) => {
+      if (route.request().method() === "PATCH") await pendingSave;
+      await route.continue();
+    });
+    try {
+      await name.fill("Saved persona name");
+      await editor.getByRole("button", { name: "Save", exact: true }).click();
+      await expect(remove).toBeDisabled();
+      await expect(remove).toHaveText("Remove");
+    } finally {
+      releaseSave();
+      await page.unroute(saveUrl);
+    }
+    await expect(remove).toBeEnabled();
+    await name.fill("Unsaved persona name");
     await remove.click();
     const dialog = page.getByRole("dialog").filter({ hasText: "Remove the avatar from" });
     await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
@@ -307,7 +326,7 @@ test("persona avatar removal preserves unsaved fields and survives reload", asyn
     let persisted = await (await request.get(`${paths.persona}/${id}`)).json();
     expect(persisted.avatarPath).toBeNull();
     expect(persisted.avatarCrop).toBeNull();
-    expect(persisted.name).toBe("Removable persona");
+    expect(persisted.name).toBe("Saved persona name");
     await page.screenshot({ path: info.outputPath("persona-avatar-removed-dark.png"), animations: "disabled" });
     await page.evaluate(async () => {
       const { useUIStore } = await import("/src/stores/ui.store.ts" as string);

@@ -2193,6 +2193,7 @@ export function PersonaEditor() {
                 }}
                 imageGenerationAvailable={imageGenerationAvailable}
                 avatarUploading={avatarBusy}
+                avatarRemoving={removeAvatar.isPending}
                 hasUnsavedChanges={dirty}
                 avatarMutationBusy={mutationBusy}
               />
@@ -3602,6 +3603,7 @@ function PersonaMetadataTab({
   onRemoveAvatar,
   imageGenerationAvailable,
   avatarUploading,
+  avatarRemoving,
   hasUnsavedChanges,
   // The editor's live save/avatar/gallery mutex. Replacing or reframing the avatar
   // while one of those is running would race the image the server is about to
@@ -3617,6 +3619,7 @@ function PersonaMetadataTab({
   onRemoveAvatar: () => void;
   imageGenerationAvailable: boolean;
   avatarUploading: boolean;
+  avatarRemoving: boolean;
   hasUnsavedChanges: boolean;
   avatarMutationBusy: boolean;
 }) {
@@ -3689,7 +3692,7 @@ function PersonaMetadataTab({
               alt={formData.name}
               crop={formData.avatarCrop}
               onRemove={onRemoveAvatar}
-              removing={avatarMutationBusy}
+              removing={avatarRemoving}
               onChange={(next) => {
                 if (avatarMutationBusy) return;
                 updateField("avatarCrop", next);

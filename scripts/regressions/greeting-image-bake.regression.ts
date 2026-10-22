@@ -128,6 +128,18 @@ assert.deepEqual(
   readBakedGreetingImages(restoreBakedGreetingImages(rebaked).extensions),
   readBakedGreetingImages(baked.extensions),
 );
+const editedAway = { ...baked, first_mes: "A greeting without its previous image", alternate_greetings: [] };
+assert.deepEqual(readBakedGreetingImages(restoreBakedGreetingImages(editedAway).extensions), []);
+const partlyEdited = {
+  ...baked,
+  first_mes: "A greeting without its previous image",
+  alternate_greetings: [baked.alternate_greetings[1]],
+};
+assert.deepEqual(
+  readBakedGreetingImages(restoreBakedGreetingImages(partlyEdited).extensions),
+  readBakedGreetingImages(baked.extensions).filter((entry) => entry.url === "https://img.example/d.jpg"),
+  "restoring drops orphaned mappings while retaining the image still used by a greeting",
+);
 
 const compatible = buildCompatibleCharacterExport(baked);
 assert.equal(compatible.data.first_mes, greetings.first_mes, "compatible cards carry no gallery");
@@ -304,6 +316,11 @@ try {
     const exportedBaked = exportedCards.find((card) => card.name === "Baked");
     assert.equal(exportedBaked.first_mes, greetings.first_mes, "compatible profile cards get the web links back");
     assert.equal(exportedBaked.alternate_greetings[1], restored.alternate_greetings[1]);
+    assert.equal(
+      "bakedGreetingImages" in exportedBaked.extensions,
+      false,
+      "compatible profile cards carry no gallery metadata",
+    );
   } finally {
     await app.close();
     await closeDB();

@@ -14,6 +14,7 @@ import {
   RULESET_CAREFUL_OPTION,
   RULESET_ZONE_CHECK_OPTION_PREFIX,
   RULESET_ZONE_OPTION_PREFIX,
+  RULESET_SUMMON_OPTION_PREFIX,
   RULESET_ZONE_TURN_OPTION_PREFIX,
   RULESET_STAND_OPTION,
   RULESET_CLIMB_OUT_OPTION,
@@ -153,6 +154,9 @@ export function rulesetOptionLabel(option: DirectedRulesetOption, t: TFunction):
       name: option.lifts.name,
     });
   if (option.kind === "end-turn") return t("game.combat.ruleset.menu.endTurn", { defaultValue: option.label });
+  // A strike with what a spell called up, told apart from casting the spell again (Spiritual Weapon).
+  if (option.id.startsWith(RULESET_SUMMON_OPTION_PREFIX))
+    return t("game.combat.ruleset.menu.summonStrike", { name: option.label });
   // Walking and getting back up are the board's own two moves, named by this Engine for the same
   // reason the standard actions are: the closed list is the Engine's vocabulary, not the file's.
   // Which is which comes off the two exported ids, never off the spelling of one: the ids belong to

@@ -52,6 +52,11 @@ export interface RulesetBoardCell {
   laid?: true;
   /** The labels of the lasting areas covering it (1.172), first cast first. */
   zones?: string[];
+  /** Which of the board's area tints the first of them takes: each kind of area its own, so a Spirit
+   *  Guardians never reads as the same thing as a Web, nor as water. */
+  zoneTint?: number;
+  /** What a spell called up that strikes from here (a Spiritual Weapon), by label. */
+  summons?: string[];
   /** Their looks in the board's pack (1.333), first cast first, for those that have one. */
   zoneArt?: string[];
   /** A wall's section standing here (1.200): whose wall, and what it has left of what; 0 is broken. */
@@ -94,6 +99,16 @@ export const rulesetCellKey = (cell: { x: number; y: number }): string => `${cel
 /** Whether taking this option on a board asks the player to aim it at a cell rather than at anybody.
  *  Every shape does, one with nowhere to land included: the server refuses a shape sent with no
  *  cell, so the step opens and says nobody would be caught instead of sending a choice that fails. */
+/** How many tints the board draws lasting areas in. */
+export const RULESET_ZONE_TINTS = 5;
+
+/** The tint an area takes, by its name: the same kind of area is always the same colour. */
+export function rulesetZoneTint(label: string): number {
+  let hash = 0;
+  for (const char of label) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  return hash % RULESET_ZONE_TINTS;
+}
+
 export function rulesetOptionNeedsAim(option: DirectedRulesetOption): boolean {
   // A teleport is aimed at where it goes (1.276).
   return !!option.area || (option.teleport?.cells.length ?? 0) > 0;
@@ -354,6 +369,11 @@ export function rulesetBoardCells(view: DirectedRulesetView, step: RulesetMenuSt
       zoned.set(key, [...(zoned.get(key) ?? []), zone.label]);
     }
   }
+  const summoned = new Map<string, string[]>();
+  for (const summon of view.summons ?? []) {
+    const key = rulesetCellKey(summon);
+    summoned.set(key, [...(summoned.get(key) ?? []), summon.label]);
+  }
   const cells: RulesetBoardCell[] = [];
   for (let y = 0; y < grid.height; y++) {
     for (let x = 0; x < grid.width; x++) {
@@ -376,7 +396,8 @@ export function rulesetBoardCells(view: DirectedRulesetView, step: RulesetMenuSt
         ...(occupant && targets.has(occupant.id) ? { targetable: true } : {}),
         ...(aim ? { aim } : {}),
         ...(laid.has(key) ? { laid: true as const } : {}),
-        ...(zoned.has(key) ? { zones: zoned.get(key)! } : {}),
+        ...(zoned.has(key) ? { zones: zoned.get(key)!, zoneTint: rulesetZoneTint(zoned.get(key)![0]!) } : {}),
+        ...(summoned.has(key) ? { summons: summoned.get(key)! } : {}),
         ...(zoneArt.has(key) ? { zoneArt: zoneArt.get(key)! } : {}),
         ...(sections.has(key) ? { section: sections.get(key)! } : {}),
         ...(props.has(key) ? { prop: props.get(key)! } : {}),
@@ -483,8 +504,9 @@ export function rulesetCellSentences(cell: RulesetBoardCell, view: DirectedRules
     );
     if (who.altitude !== undefined) said.push(t("game.combat.ruleset.board.flying", { height: who.altitude }));
     if (who.id === view.actorId) said.push(t("game.combat.ruleset.board.onTurn"));
-    if (who.defeated) said.push(t("game.combat.ruleset.status.defeated"));
-    else if (who.down) said.push(t("game.combat.ruleset.status.down"));
+    // Each its own sentence: "Down. Under: Unconscious." never runs on into what holds them.
+    if (who.defeated) said.push(t("game.combat.ruleset.board.defeated"));
+    else if (who.down) said.push(t("game.combat.ruleset.board.down"));
     // What they are doing, what holds them, and what they hold together: what a token's marks stand
     // for. A trait they carry all fight is the status list's to name, not the square's.
     for (const stance of who.stances ?? []) said.push(t(`game.combat.ruleset.stance.${stance}`));

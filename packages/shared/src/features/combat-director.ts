@@ -263,6 +263,9 @@ export interface DirectedRulesetView {
   /** Who plays the actor whose turn it is. */
   controller: "manual" | "ai" | "gm";
   combatants: DirectedRulesetCombatant[];
+  /** What spells called up that strike from a square of their own (Spiritual Weapon): whose, what,
+   *  and where it is. Only on a board. */
+  summons?: Array<{ casterId: string; label: string; x: number; y: number }>;
   /** The areas spells left standing (1.172): whose, what, how many of its caster's turns are left,
    *  and the cells it covers now (none off a board). */
   zones?: Array<{

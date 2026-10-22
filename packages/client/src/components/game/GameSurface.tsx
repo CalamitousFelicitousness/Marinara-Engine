@@ -12008,7 +12008,10 @@ function GameSurfaceComponent({
     [chat.characterIds],
   );
   const setupWizardDismissed = dismissedSetupWizardChatId === activeChatId;
-  const canAutoDeleteEmptySetupChat = needsCreation && !isMessagesLoading && messages.length === 0;
+  // The chat read can lag behind Start Game: once a game was made here (a failed setup still made
+  // it), the chat holds a campaign the server keeps, so closing setup keeps it too.
+  const setupMadeGame = createGame.data?.sessionChat.id === activeChatId;
+  const canAutoDeleteEmptySetupChat = needsCreation && !setupMadeGame && !isMessagesLoading && messages.length === 0;
   // A "New Game" chat the player walks away from before any game was made in it is dropped, as
   // closing the wizard already drops it, so leaving setup for another chat or page leaves no empty
   // chat behind. The decision is the one the last commit saw for that chat; the drop waits a tick
@@ -13467,12 +13470,22 @@ function GameSurfaceComponent({
                               ) : (
                                 <>
                                   <p className="max-w-md">
-                                    {localizeUi("ui.game.gamesurfacecomponent.combatRulesUnavailable", {
-                                      name:
-                                        gameRuleset.status === "unavailable" && gameRuleset.ref
-                                          ? `${gameRuleset.ref.id} v${gameRuleset.ref.version}`
-                                          : localizeUi("ui.game.gamesurfacecomponent.combatRulesUnnamed"),
-                                    })}
+                                    {/* Why, in words: a read that failed is not a ruleset that is missing,
+                                        and the ruleset is named by its own name where one is installed. */}
+                                    {localizeUi(
+                                      gameRuleset.status === "unavailable" && gameRuleset.reason === "unreadable"
+                                        ? "ui.game.gamesurfacecomponent.combatRulesUnreadable"
+                                        : gameRuleset.status === "unavailable" && gameRuleset.reason === "older"
+                                          ? "ui.game.gamesurfacecomponent.combatRulesOlder"
+                                          : gameRuleset.status === "unavailable" && gameRuleset.name
+                                            ? "ui.game.gamesurfacecomponent.combatRulesUnavailable"
+                                            : "ui.game.gamesurfacecomponent.combatRulesMissing",
+                                      {
+                                        name: gameRuleset.status === "unavailable" ? (gameRuleset.name ?? "") : "",
+                                        version:
+                                          gameRuleset.status === "unavailable" ? (gameRuleset.ref?.version ?? 1) : 1,
+                                      },
+                                    )}
                                   </p>
                                   <div className="flex flex-wrap justify-center gap-2">
                                     <button
@@ -13482,14 +13495,14 @@ function GameSurfaceComponent({
                                           queryKey: capabilityPackageKeys.rulesets(),
                                         })
                                       }
-                                      className="rounded-lg border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-semibold hover:bg-white/20"
+                                      className="rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-black hover:bg-amber-400"
                                     >
                                       {localizeUi("ui.game.gamesurfacecomponent.combatRulesRetry")}
                                     </button>
                                     <button
                                       type="button"
                                       onClick={() => setPlainFightChosen(fightKey)}
-                                      className="rounded-lg border border-amber-300/30 bg-amber-500/15 px-3 py-1.5 text-xs font-semibold text-amber-100 hover:bg-amber-500/25"
+                                      className="rounded-lg border border-white/20 bg-white/5 px-3 py-1.5 text-xs font-semibold text-white/70 hover:bg-white/15"
                                     >
                                       {localizeUi("ui.game.gamesurfacecomponent.combatRulesWithout")}
                                     </button>

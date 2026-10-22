@@ -199,7 +199,9 @@ export function DirectedCombatUI(props: Props) {
               onFlee={() => send({ type: "flee" })}
               controls={
                 <CombatAiControls
-                  party={s.party}
+                  // A ruleset fight takes a companion's controller at any time but a decision (the
+                  // server refuses that one), so having acted this round locks nothing here.
+                  party={s.party.map((member) => ({ ...member, hasActed: false }))}
                   enemies={s.enemies}
                   defaultController="ai"
                   locked={busy}

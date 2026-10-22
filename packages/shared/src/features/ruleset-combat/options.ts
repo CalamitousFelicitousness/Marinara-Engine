@@ -587,6 +587,8 @@ const RULESET_AIM_SCAN_CEILING = 64 * 64;
 export const RULESET_MOVE_OPTION = "move:walk";
 /** Moving a lasting area (1.173): this, then the id of the action that left it. */
 export const RULESET_ZONE_OPTION_PREFIX = "zone:";
+/** Striking with what a spell called up (Spiritual Weapon): this, then the id of the cast. */
+export const RULESET_SUMMON_OPTION_PREFIX = "summon:";
 /** Turning a line or cone its caster carries to face another way (1.182): this, then the action's id. */
 export const RULESET_ZONE_TURN_OPTION_PREFIX = "zone-turn:";
 /** Closing a zone its caster holds (1.584): an Eversmoking Bottle stoppered. */

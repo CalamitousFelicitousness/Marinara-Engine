@@ -12,6 +12,7 @@
 // party's live sheet state back, live in the route.
 
 import {
+  rulesetActionAvailable,
   advanceRulesetTurn,
   applyRulesetCombatChoice,
   assignCombatTactics,
@@ -1039,6 +1040,20 @@ function rulesetCounterOdds(
   });
 }
 
+/** What spells called up that strike from a square of their own, standing on the board. */
+function rulesetSummonsShown(
+  encounter: RulesetEncounterState,
+): Array<{ casterId: string; label: string; x: number; y: number }> {
+  return encounter.combatants.flatMap((caster) =>
+    rulesetCombatStanding(caster)
+      ? (caster.summons ?? []).flatMap((summon) =>
+          summon.at && summon.rounds > 0
+            ? [{ casterId: caster.id, label: summon.label, x: summon.at.x, y: summon.at.y }]
+            : [],
+        )
+      : [],
+  );
+}
 /** The fight as a screen reads it. A projection: no sheet build, no live blob and no catalogs.
  *  Nothing changes while it is drawn, so every fighter's sheet is worked out once for it, however
  *  many options, targets and forecasts read it. */
@@ -1124,6 +1139,8 @@ function rulesetViewOf(definition: RulesetDefinition, state: CombatDirectorState
     combatants: encounter.combatants.map((combatant) => projectCombatant(definition, combatant, encounter)),
     // The areas spells left standing (1.172), drawn on the board and listed beside it.
     ...(rulesetZonesShown(encounter).length > 0 ? { zones: rulesetZonesShown(encounter) } : {}),
+    // What spells called up, where it strikes from: a Spiritual Weapon's square.
+    ...(grid && rulesetSummonsShown(encounter).length > 0 ? { summons: rulesetSummonsShown(encounter) } : {}),
     // What stands on the board that may be broken (1.316), broken ones too.
     ...(grid && distance && encounter.board?.props?.length
       ? {
@@ -1420,11 +1437,14 @@ function rulesetDangerAt(
     const walks = perCell ? rulesetInCells(foe.speed, perCell) : 6;
     let worst = 0;
     for (const action of foe.actions) {
-      if (!action.damage) continue;
+      // Only what it could use: a Sunbeam's line while it holds the spell, not before.
+      if (!action.damage || !rulesetActionAvailable(foe, action, encounter, definition)) continue;
       const reach = action.range ? (action.range.long ?? action.range.normal) : (action.reach ?? 1);
       // One a walk away comes on its own turn all the same, so standing a square off it is
-      // nearly as dangerous as standing beside it, and no reason to throw from afar instead.
-      const at = gap <= reach ? 1 : gap <= reach + walks ? 0.65 : 0;
+      // nearly as dangerous as standing beside it, and no reason to throw from afar instead; only
+      // the far end of its walk is much safer.
+      const at =
+        gap <= reach ? 1 : gap <= reach + walks ? Math.max(0, 1 - 1.1 * ((gap - reach) / Math.max(1, walks)) ** 3) : 0;
       worst = Math.max(worst, rulesetSafeAverage(action.damage) * at);
     }
     harm += worst;
@@ -2100,6 +2120,11 @@ function rulesetCandidatesFrom(
         const worth = rulesetHealingWorth(option.forecast?.averageDamage ?? 0, health);
         if (worth <= 0) continue;
         self.healing = worth;
+      } else if (fallingAction?.gives?.length) {
+        // A budget handed to itself for this turn (Action Surge) is worth only a blow it can buy:
+        // once the turn's own is spent, with something that reaches an opponent from here.
+        if (!rulesetGiftStrikes(encounter, actor, fallingAction.gives)) continue;
+        self.support = 1;
       } else {
         // What it puts on itself, where that can be read; else the old modest guess.
         const own =
@@ -2254,6 +2279,12 @@ function rulesetCandidatesFrom(
         if (saved <= 0) continue;
         candidate.damage = saved;
         candidate.cost = 0;
+      } else if (option.forecast?.averageDamage !== undefined) {
+        // A blow that does no harm (an unarmed strike for 0) is worth only what it puts on them.
+        if (ally || target.down) continue;
+        const rider = rulesetEffectWorth(definition, combat, encounter, actor, fallingAction, target) ?? 0;
+        if (rider <= 0) continue;
+        candidate.setup = rider * chance;
       } else {
         // What it does to them, read off what it puts on them: nothing, for what they already have
         // or cannot take.

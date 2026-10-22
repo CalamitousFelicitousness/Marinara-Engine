@@ -9,7 +9,7 @@
 // shapes (`lib/tactical-board-look.ts`), because it IS the same battlefield: the same generator,
 // the same terrain and the same deployment. What it does with it is the ruleset's.
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import { Skull, Zap } from "lucide-react";
+import { Skull, Sword, Zap } from "lucide-react";
 import {
   creatureArtVariant,
   findCreatureArt,
@@ -60,6 +60,16 @@ import { boardCellArt, boardSliceStyle, useBoardArt } from "../../lib/board-art"
 import { CreatureArtFigure, useCreatureFacings, useCreaturePack } from "./CreatureArt";
 import { cn } from "../../lib/utils";
 import { GAME_SECTION_CLASS } from "../../lib/chat-widget-colors";
+
+/** The tints lasting areas are drawn in, one for each kind (`rulesetZoneTint`), none of them the blue
+ *  of water. */
+const ZONE_TINT_CLASSES = [
+  "bg-violet-400/30 ring-violet-200/70",
+  "bg-amber-300/30 ring-amber-200/70",
+  "bg-rose-400/30 ring-rose-200/70",
+  "bg-lime-300/30 ring-lime-200/70",
+  "bg-fuchsia-400/30 ring-fuchsia-200/70",
+] as const;
 
 export interface RulesetCombatBoardProps {
   /** A view that carries a grid. Without one the caller keeps the Classic stage. */
@@ -442,6 +452,7 @@ export function RulesetCombatBoard({
                     t("game.combat.ruleset.board.cell", { x: cell.x, y: cell.y }),
                     sentences.get(key) ?? "",
                     cell.zones ? t("game.combat.ruleset.board.zones", { zones: cell.zones.join(", ") }) : "",
+                    cell.summons ? t("game.combat.ruleset.board.summons", { names: cell.summons.join(", ") }) : "",
                   ].join(" ")}
                   onPointerDown={(event) => {
                     lastPointer.current = event.pointerType;
@@ -613,10 +624,22 @@ export function RulesetCombatBoard({
                         <span key={n} className="pointer-events-none absolute inset-0" style={boardSliceStyle(slice)} />
                       ))}
                       <span
-                        className="pointer-events-none absolute inset-0 bg-sky-300/30 ring-1 ring-inset ring-sky-200/70"
+                        className={cn(
+                          "pointer-events-none absolute inset-0 ring-1 ring-inset",
+                          ZONE_TINT_CLASSES[cell.zoneTint ?? 0],
+                        )}
                         title={cell.zones.join(", ")}
                       />
                     </>
+                  )}
+                  {/* What a spell called up strikes from here (a Spiritual Weapon). */}
+                  {cell.summons && (
+                    <span
+                      className="pointer-events-none absolute right-0 top-0 z-[1] rounded-bl bg-black/60 p-[1px] text-amber-200"
+                      title={cell.summons.join(", ")}
+                    >
+                      <Sword size={10} aria-hidden="true" />
+                    </span>
                   )}
                   {/* A wall's section (1.200): how much it has left, and a ring while it may be struck. */}
                   {cell.section && cell.section.health > 0 && (

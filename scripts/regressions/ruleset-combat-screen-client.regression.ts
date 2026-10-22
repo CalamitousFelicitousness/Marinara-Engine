@@ -69,6 +69,8 @@ import {
   rulesetOptionNeedsAim,
   rulesetOptionNeedsCell,
   rulesetPathTo,
+  rulesetZoneTint,
+  RULESET_ZONE_TINTS,
 } from "../../packages/client/src/lib/ruleset-combat-board.js";
 import {
   RULESET_MENU_KINDS,
@@ -2463,6 +2465,41 @@ function drawn(...rows: string[]): TacticalGrid {
   const onTurn = rulesetBoardCells(near, null).find((cell) => cell.occupant?.id === "brenna")!;
   assert.ok(rulesetCellSentences(onTurn, near, t).includes("On turn."));
 
+  // A downed one lies here, and "Down." is a sentence of its own.
+  const downed: DirectedRulesetView = {
+    ...view,
+    combatants: view.combatants.map((one) => (one.id === "lurker" ? { ...one, down: true } : one)),
+  };
+  assert.equal(
+    rulesetCellSentences(at(rulesetBoardCells(downed, null), 6, 1), downed, t).join(" "),
+    "Plains. Thorn Lurker lies here, health 30 of 30. Down.",
+  );
+  // What a spell called up is drawn where it strikes from, and striking with it is told apart from
+  // casting it again; each kind of lasting area takes its own tint, the same one every time.
+  const called: DirectedRulesetView = {
+    ...view,
+    summons: [{ casterId: "brenna", label: "Spiritual Weapon", x: 3, y: 0 }],
+    zones: [{ casterId: "brenna", label: "Spirit Guardians", rounds: 10, cells: [{ x: 4, y: 0 }] }],
+  };
+  const calledCells = rulesetBoardCells(called, null);
+  assert.deepEqual(at(calledCells, 3, 0).summons, ["Spiritual Weapon"]);
+  assert.equal(messages["game.combat.ruleset.board.summons"], "{{names}} strikes from here.");
+  assert.equal(at(calledCells, 4, 0).zoneTint, rulesetZoneTint("Spirit Guardians"));
+  assert.ok(rulesetZoneTint("Web") >= 0 && rulesetZoneTint("Web") < RULESET_ZONE_TINTS);
+  assert.equal(
+    rulesetOptionLabel(
+      {
+        id: "summon:spiritual-weapon",
+        kind: "attack",
+        label: "Spiritual Weapon",
+        budget: "bonus",
+        targets: { side: "enemy", count: 1 },
+      } as never,
+      t,
+    ),
+    "Spiritual Weapon: strike",
+  );
+
   // A wall's sections (1.200): what each has left, and the ones an attack may strike instead.
   const iced: DirectedRulesetView = {
     ...near,
@@ -2794,6 +2831,22 @@ function drawn(...rows: string[]): TacticalGrid {
     assert.ok(line && /^Tap /u.test(line) && !/Enter|Escape/u.test(line), `${key}: ${line}`);
   }
   assert.equal(messages["game.combat.ruleset.menu.fleeConfirmTouch"], "Leave the fight? Tap again");
+}
+
+// ── A companion is handed to the Engine whenever no decision is open ──
+{
+  // Having acted this round locked the select, so a companion whose turn came before any player's
+  // could never be handed over; the ruleset fight's server takes the change at any time.
+  const directed = readSource("packages/client/src/components/game/DirectedCombatUI.tsx");
+  assert.match(directed, /party=\{s\.party\.map\(\(member\) => \(\{ \.\.\.member, hasActed: false \}\)\)\}/u);
+}
+
+// ── Closing setup after a failed Start keeps the game the Start made ──
+{
+  // The chat read lags behind Start Game, so the close used to try a delete the server refuses.
+  const surface = readSource("packages/client/src/components/game/GameSurface.tsx");
+  assert.match(surface, /const setupMadeGame = createGame\.data\?\.sessionChat\.id === activeChatId;/u);
+  assert.match(surface, /needsCreation && !setupMadeGame && !isMessagesLoading && messages\.length === 0/u);
 }
 
 console.log("ruleset-combat-screen-client regression passed");

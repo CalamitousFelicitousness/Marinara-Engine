@@ -399,6 +399,76 @@ try {
     assert.equal(picked?.targetId, "bully", JSON.stringify(picked?.choice));
   }
 
+  // A blow that does no harm is never what it swings: a mage's 0-damage punch beside a knight, when
+  // its dagger lands far less often but hurts.
+  {
+    const punch = { id: "punch", name: "Punch", budget: "action", toHit: 12, damage: { flat: 0 }, reach: 1 };
+    const dagger = { ...claw, id: "dagger", name: "Dagger", toHit: -4 };
+    const { encounter, state } = fight(
+      { mage: { x: 4, y: 2 }, knight: { x: 5, y: 2 } },
+      {
+        mage: { side: "enemy", block: block({ type: "humanoid", actions: [punch, dagger] }), health: 5 },
+        knight: { side: "party", block: block({ health: 60 }) },
+      },
+      { mage: { ...master, temperament: "disciplined" } },
+    );
+    const picked = pickRulesetChoice(definition, state, encounter, "mage");
+    assert.notEqual(picked?.choice.optionId, "punch", JSON.stringify(picked?.choice));
+  }
+
+  // What an opponent cannot use is no danger: a caster's Sunbeam line before it holds the spell
+  // does not keep a brute from the one it can finish beside that caster.
+  {
+    const { encounter, state } = fight(
+      { it: { x: 4, y: 2 }, far: { x: 2, y: 2 }, weak: { x: 6, y: 2 }, caster: { x: 9, y: 2 } },
+      {
+        it: { side: "enemy", block: block({ type: "humanoid" }) },
+        far: { side: "party", block: block({ health: 40 }) },
+        weak: { side: "party", block: block(), health: 2 },
+        caster: { side: "party", block: block() },
+      },
+      { it: { ...master, temperament: "disciplined" } },
+    );
+    rulesetCombatant(encounter, "caster")!.actions.push({
+      id: "beam",
+      label: "Beam",
+      kind: "attack",
+      budget: "action",
+      targets: { side: "enemy", count: 1 },
+      toHit: 5,
+      damage: { flat: 60 },
+      reach: 1,
+      whileHolds: "glowing",
+    } as never);
+    const picked = pickRulesetChoice(definition, state, encounter, "it");
+    assert.equal(picked?.targetId, "weak", JSON.stringify(picked?.choice));
+  }
+
+  // Action Surge only once its own action is spent, and then for a blow.
+  for (const spent of [false, true]) {
+    const { encounter, state } = fight(
+      { it: { x: 4, y: 2 }, hero: { x: 5, y: 2 } },
+      {
+        it: { side: "enemy", block: block({ type: "humanoid" }) },
+        hero: { side: "party", block: block({ health: 40 }) },
+      },
+      { it: { ...master, temperament: "methodical" } },
+    );
+    const it = rulesetCombatant(encounter, "it")!;
+    it.actions.push({
+      id: "surge",
+      label: "Surge",
+      kind: "ability",
+      budget: "action",
+      free: true,
+      targets: { side: "self", count: 0 },
+      gives: [{ budget: "action", count: 1 }],
+    } as never);
+    if (spent) it.budgets.action = 0;
+    const picked = pickRulesetChoice(definition, state, encounter, "it");
+    assert.equal(picked?.choice.optionId === "surge", spent, `spent ${spent}: ${JSON.stringify(picked?.choice)}`);
+  }
+
   // ── Refused ──
   refused(
     fiveE({

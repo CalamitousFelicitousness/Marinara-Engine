@@ -64,6 +64,7 @@ import {
 import { cleanNpcAvatarDisplayName, normalizeNpcAvatarName } from "../../lib/game-npc-avatar";
 import { useChatStore } from "../../stores/chat.store";
 import { useUIStore } from "../../stores/ui.store";
+import { useCombatScreenStore } from "../../stores/combat-screen.store";
 import {
   CHAT_SETTINGS_WINDOW_ID,
   selectWindowRestored,
@@ -129,6 +130,7 @@ import { useConnections } from "../../hooks/use-connections";
 import { useAgentConfigs } from "../../hooks/use-agents";
 import {
   rulesetCatalogQuery,
+  capabilityPackageDrawsOwnSurface,
   selectGameExperiencePackages,
   useCapabilityClientModuleState,
   useInstalledCapabilityPackages,
@@ -2205,6 +2207,23 @@ function buildSegmentDeleteSet(chatMeta: Record<string, unknown>): Set<string> {
   return deleted;
 }
 
+function sameSegmentEditMap(a: Map<string, GameSegmentEdit>, b: Map<string, GameSegmentEdit>): boolean {
+  if (a.size !== b.size) return false;
+  for (const [key, edit] of a) {
+    const other = b.get(key);
+    if (!other) return false;
+    const fields = new Set([...Object.keys(edit), ...Object.keys(other)]) as Set<keyof GameSegmentEdit>;
+    for (const field of fields) if (edit[field] !== other[field]) return false;
+  }
+  return true;
+}
+
+function sameStringSet(a: Set<string>, b: Set<string>): boolean {
+  if (a.size !== b.size) return false;
+  for (const value of a) if (!b.has(value)) return false;
+  return true;
+}
+
 function slugifyGameMapId(value: string): string {
   return value
     .trim()
@@ -2372,15 +2391,20 @@ function GameSurfaceComponent({
    *  chrome that renders outside its element. Declared rather than pushed, so it applies on first paint. */
   const experienceSurfaceClass = experienceSurfacePackage?.manifest.contributions?.gameSurface?.surfaceClass ?? null;
   const experienceSurfaceActive = experienceSurfaceId !== null;
+  /** Whether the Experience draws a view of its own over Game Mode's; a data-only one (1.373) never does,
+   *  so nothing is mounted for it and Game Mode's own view plays it. */
+  const experienceDrawsOwnView = capabilityPackageDrawsOwnSurface(experienceSurfacePackage);
   /** Whether an experience owns this game, which is what every built-in-chrome gate tests. Broader than
    *  `experienceSurfaceActive`, but only while the installed-packages query is in flight: on a cold cache
    *  that is false for a moment even though the chat already says an experience owns the run, and the
    *  built-in HUD would flash before the surface replaces it. Once the query settles this follows the
    *  surface, so a game whose package was uninstalled gets the built-in chrome back instead of losing
    *  both. Mounting the capability element stays on `experienceSurfaceActive` — that one needs the
-   *  package to actually be there. */
+   *  package to actually be there. A data-only Experience (1.373) draws nothing, so once it is known it
+   *  owns nothing either, and Game Mode's own view and chrome play it. */
   const experienceOwnsGame =
-    experienceSurfaceActive || (gameExperienceId !== null && installedCapabilityPackagesPending);
+    (experienceSurfaceActive && experienceDrawsOwnView) ||
+    (gameExperienceId !== null && installedCapabilityPackagesPending);
   // A game made without a world may be given one from the journal (worldgen W12), written for its own
   // setting with its own connection; never one an Experience decides, nor one made as Classic Game Mode.
   const canMakeWorld =
@@ -2468,12 +2492,17 @@ function GameSurfaceComponent({
     () => getChatCharacterIds(chat.characterIds).filter((id) => id !== PROFESSOR_MARI_ID),
     [chat.characterIds],
   );
-  const gameCharacterIds = useMemo(() => {
+  // Joined so that a metadata write that leaves the cast alone keeps the same list downstream.
+  const gameCharacterIdsKey = useMemo(() => {
     const config = chatMeta.gameSetupConfig as Record<string, unknown> | undefined;
     const ids = new Set([...chatCharacterIds, ...getActivePartyIds(chatMeta)]);
     if (typeof config?.gmCharacterId === "string") ids.add(config.gmCharacterId);
-    return [...ids].filter((id) => characterMap.has(id));
+    return [...ids].filter((id) => characterMap.has(id)).join("\u0000");
   }, [characterMap, chatCharacterIds, chatMeta]);
+  const gameCharacterIds = useMemo(
+    () => (gameCharacterIdsKey ? gameCharacterIdsKey.split("\u0000") : []),
+    [gameCharacterIdsKey],
+  );
   // An unrelated library card with the same name is not a character in this game.
   const characters = useMemo(
     () => libraryCharacters.filter((character) => gameCharacterIds.includes(character.id)),
@@ -3255,9 +3284,13 @@ function GameSurfaceComponent({
   const [segmentEdits, setSegmentEdits] = useState(() => buildSegmentEditMap(chatMeta));
   const [segmentDeletes, setSegmentDeletes] = useState(() => buildSegmentDeleteSet(chatMeta));
   // Re-sync from chatMeta when it changes (e.g. page refresh loads new metadata)
+  // Most metadata writes leave the overlays as they were. Keeping the same Map and Set then spares
+  // the narration from parsing every message again on an unrelated settings toggle.
   useEffect(() => {
-    setSegmentEdits(buildSegmentEditMap(chatMeta));
-    setSegmentDeletes(buildSegmentDeleteSet(chatMeta));
+    const nextEdits = buildSegmentEditMap(chatMeta);
+    const nextDeletes = buildSegmentDeleteSet(chatMeta);
+    setSegmentEdits((current) => (sameSegmentEditMap(current, nextEdits) ? current : nextEdits));
+    setSegmentDeletes((current) => (sameStringSet(current, nextDeletes) ? current : nextDeletes));
   }, [chatMeta]);
 
   const appliedSegmentsRef = useRef<Set<number>>(new Set());
@@ -9299,6 +9332,14 @@ function GameSurfaceComponent({
   // presentation AND the ruleset says what one cell of one is worth. The server still decides: it
   // draws no board for a ruleset with no `distance`, and the screen follows the view it sends.
   const rulesetFightPositioned = !!rulesetFightDefinition?.combat?.distance && effectiveCombatStyle === "tactical";
+  // A fight on a board takes the whole chat area while its screen is up: the map, the party bar and the
+  // Game toolbar's bubbles step aside, and the chat list folds away, coming back as it was after.
+  const boardFightOnScreen = useCombatScreenStore((state) => state.round !== null);
+  useEffect(() => {
+    if (!boardFightOnScreen) return;
+    useUIStore.getState().hideSidebarForFight(true);
+    return () => useUIStore.getState().hideSidebarForFight(false);
+  }, [boardFightOnScreen]);
 
   // The catalogs a bridged battle reads are fetched as soon as the game is open, so that starting a
   // battle finds them in the cache and seeds the party in the same tick a game without a ruleset
@@ -12894,7 +12935,7 @@ function GameSurfaceComponent({
 
             {/* Underlay mount — the part of the surface that belongs BEHIND the narration, such as a
               standing sprite. The main layer is stacked above it, where a sprite would cover the box. */}
-            {experienceSurfaceActive ? (
+            {experienceSurfaceActive && experienceDrawsOwnView ? (
               <CapabilityElement
                 packageId={experienceSurfaceId}
                 view="surface"
@@ -12954,7 +12995,7 @@ function GameSurfaceComponent({
                     tacticalCombatActive
                       ? "top-[calc(var(--tactical-chrome-height,3rem)+0.5rem)]"
                       : topOverlayOffsetClass,
-                    replayActive && "hidden",
+                    (replayActive || boardFightOnScreen) && "hidden",
                   )}
                 >
                   {/* These controls are windows that minimize to bubbles (rendered below). */}
@@ -13018,7 +13059,7 @@ function GameSurfaceComponent({
                     })()}
                   {/* Main mount. pointer-events-none lets clicks fall through empty regions to the
                     narration underneath; the package sets pointer-events-auto on its own chrome. */}
-                  {experienceSurfaceActive ? (
+                  {experienceSurfaceActive && experienceDrawsOwnView ? (
                     <CapabilityElement
                       packageId={experienceSurfaceId}
                       view="surface"
@@ -14082,7 +14123,7 @@ function GameSurfaceComponent({
           onApplied={handleJsonRepairApplied}
         />
 
-        {!introCinematicActive && !replayActive && !experienceOwnsGame && (
+        {!introCinematicActive && !replayActive && !experienceOwnsGame && !boardFightOnScreen && (
           <MobileMapButton
             chatId={activeChatId}
             map={viewedMap}
@@ -14105,7 +14146,7 @@ function GameSurfaceComponent({
           />
         )}
 
-        {!introCinematicActive && !replayActive && !experienceOwnsGame && (
+        {!introCinematicActive && !replayActive && !experienceOwnsGame && !boardFightOnScreen && (
           <GamePartyBar
             key={activeChatId}
             partyMembers={partyMembers}
@@ -14117,7 +14158,7 @@ function GameSurfaceComponent({
 
         {/* The top controls are windows that minimize to bubbles in a row at the top right (below the tactical
           combat bar while it shows, as the old buttons moved down). */}
-        {!introCinematicActive && !replayActive && (
+        {!introCinematicActive && !replayActive && !boardFightOnScreen && (
           <>
             <ChatControlWindow
               id={CHAT_CONTROL_WINDOW_IDS.gameControls}

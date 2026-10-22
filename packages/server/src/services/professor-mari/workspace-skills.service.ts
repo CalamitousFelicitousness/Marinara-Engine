@@ -311,7 +311,6 @@ export class ProfessorMariWorkspaceSkillsService {
     ]);
   }
 
-  /** A shipped skill has no record to edit; the app's own copy is the only source of truth. */
   /** A shipped skill is read-only unless a user record owns the id (a legacy squat must be repairable). */
   async isReadOnly(id: string): Promise<boolean> {
     await this.ensureStorage();

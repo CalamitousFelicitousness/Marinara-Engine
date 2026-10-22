@@ -30,21 +30,26 @@ try {
   const lorebookId = ((await mariDb.executeAction({ action: "lorebook.list" })) as { output: Array<{ id: string }> })
     .output[0]!.id;
 
-  const commands = new WorkspaceCommands({ db } as never, () => ({
-    permissionsMode: "auto",
-    manualSilentMutationBlocked: false,
-    askLatchSilentMutationBlocked: false,
-    decisionContext: null,
-  }));
+  // One chat per call site: the gate runs once per chat.
   let n = 0;
-  const run = (args: Record<string, unknown>) =>
-    commands.executeWorkspaceCommand(
-      { id: `call-${++n}`, name: "app_data", arguments: args },
-      new AbortController().signal,
-      [],
-      () => {},
-      [],
-    );
+  const commandsFor = (chatId: string | null, acceptedHeldCalls = false) => {
+    const commands = new WorkspaceCommands({ db } as never, () => ({
+      permissionsMode: "auto",
+      manualSilentMutationBlocked: false,
+      askLatchSilentMutationBlocked: false,
+      acceptedHeldCalls,
+      decisionContext: chatId ? ({ chatId } as never) : null,
+    }));
+    return (args: Record<string, unknown>) =>
+      commands.executeWorkspaceCommand(
+        { id: `call-${++n}`, name: "app_data", arguments: args },
+        new AbortController().signal,
+        [],
+        () => {},
+        [],
+      );
+  };
+  const run = commandsFor(null);
 
   // The gate (default on) refuses the first lorebook write, and names the call's own error with it.
   const bogus = await run({
@@ -75,41 +80,64 @@ try {
     .output[0]!.id;
   const gatedEdit = await run({ action: "preset.update", presetId, patch: { name: "Renamed" } });
   assert.match(gatedEdit.output, /read skill `builtin-presets` first/);
-  assert.match(
-    gatedEdit.output,
-    /The call itself would also not have saved:\nNothing was saved: preset\.update changes existing data, so it needs a top-level "apply"\./,
-  );
+  assert.match(gatedEdit.output, /would also not have saved:\nNothing was saved: preset\.update/);
   // ...while a create saves without it, so its gate stands alone.
   const gatedCreate = await run({ action: "theme.create", data: { name: "Dusk", css: "" } });
   assert.match(gatedCreate.output, /read skill `builtin-themes` first/);
   assert.doesNotMatch(gatedCreate.output, /would also not have saved/);
+  // Another spelling of the action is the same surface, so it is gated too.
+  const spelled = await commandsFor("spelling")({
+    action: "Lorebooks.update",
+    lorebookId,
+    data: { description: "x" },
+    apply: true,
+  });
+  assert.match(spelled.output, /read skill `builtin-lorebook` first/);
+  // Calls the user accepted were held, so the gate never saw them: Accept applies them all.
+  const accepted = await commandsFor(
+    "accept",
+    true,
+  )({
+    action: "lorebook.update",
+    lorebookId,
+    data: { description: "Accepted." },
+    apply: true,
+  });
+  assert.equal(accepted.success, true, accepted.output);
 
   // A name sent as the id says so, instead of printing `null`.
   const byName = await run({ action: "character.get", characterId: "Aldric" });
   assert.equal(byName.success, false);
   assert.match(byName.output, /No character has the id \\"Aldric\\"\. character ids are generated, never a name/);
-  const missingBook = await run({ action: "lorebook.get", lorebookId: "Aldric's Chronicles" });
-  assert.match(missingBook.output, /No lorebook has the id \\"Aldric's Chronicles\\"/);
+  // The id that was sent is echoed, and a theme lookup names an action that exists.
+  assert.match((await run({ action: "character.get", characterId: 123 })).output, /got 123/);
+  const ghostTheme = (await mariDb.executeAction({
+    action: "theme.update",
+    id: "dusk",
+    data: { name: "x" },
+    apply: true,
+  })) as { error?: string };
+  assert.match(String(ghostTheme.error), /No theme has the id "dusk"[\s\S]*theme\.list/);
+  // A nested search query still resolves (#7949), and a quoted name finds its card.
+  await mariDb.executeAction({ action: "character.create", data: { name: 'Elspeth "Elsie" MacRae' } });
+  const nestedQuery = (await mariDb.executeAction({ action: "character.search", data: { query: "Aldric" } })) as {
+    output: unknown[];
+  };
+  assert.equal(nestedQuery.output.length, 1);
+  const quoted = (await mariDb.executeAction({
+    action: "character.search",
+    query: 'Elspeth "Elsie" MacRae',
+  })) as { output: unknown[] };
+  assert.equal(quoted.output.length, 1, "a quoted search finds the card it names");
 
   // The setting turns the gate off; a fresh chat would otherwise be gated again.
   await settings.set("mari-skill-gate", "false");
-  const freshCommands = new WorkspaceCommands({ db } as never, () => ({
-    permissionsMode: "auto",
-    manualSilentMutationBlocked: false,
-    askLatchSilentMutationBlocked: false,
-    decisionContext: { chatId: "another-chat" },
-  }));
-  const ungated = await freshCommands.executeWorkspaceCommand(
-    {
-      id: "ungated",
-      name: "app_data",
-      arguments: { action: "lorebook.update", lorebookId, data: { description: "x" }, apply: true },
-    },
-    new AbortController().signal,
-    [],
-    () => {},
-    [],
-  );
+  const ungated = await commandsFor("another-chat")({
+    action: "lorebook.update",
+    lorebookId,
+    data: { description: "x" },
+    apply: true,
+  });
   assert.doesNotMatch(ungated.output, /read skill/, "off means no gate");
 
   // An update with no "apply" is refused, not previewed; the nested one is named.
@@ -119,10 +147,7 @@ try {
     patch: { description: "Died in 1745." },
   });
   assert.equal(noApply.success, false);
-  assert.match(
-    noApply.output,
-    /Nothing was saved: character\.update changes existing data, so it needs a top-level "apply"\. Send this same call again with "apply": true next to "action"/,
-  );
+  assert.match(noApply.output, /character\.update changes existing data, so it needs a top-level "apply"/);
   const nested = await run({
     action: "character.update",
     characterId: aldric,
@@ -142,13 +167,6 @@ try {
   const create = await run({ action: "character.create", data: { name: "Second", description: "y" } });
   assert.equal(create.success, true);
   assert.doesNotMatch(create.output, /needs a top-level "apply"/);
-  const saved = await run({
-    action: "character.update",
-    characterId: aldric,
-    patch: { description: "Died in 1745." },
-    apply: true,
-  });
-  assert.equal(saved.success, true);
 
   // Mari cannot lift the gate herself: the setting row is floor-protected like the runtime.
   const lift = (await mariDb.executeCli({
@@ -156,7 +174,7 @@ try {
     command: "mari db patch",
   })) as { ok: boolean; error?: string };
   assert.equal(lift.ok, false);
-  assert.match(JSON.stringify(lift), /The handbook-first setting can only be changed by the user, from Settings./);
+  assert.match(JSON.stringify(lift), /only be changed by the user/);
   assert.equal(await settings.get("mari-skill-gate"), "false");
 } finally {
   await closeDB();

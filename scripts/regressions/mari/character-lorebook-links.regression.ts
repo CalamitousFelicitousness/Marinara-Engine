@@ -25,29 +25,31 @@ try {
       createdAt: stamp,
       updatedAt: stamp,
     });
-    await db.insert(lorebooks).values({
-      id: "book-linked",
-      name: "Simulator's Lorebook",
-      description: "Earth-Prime locations, power systems, magic, character tiers.",
-      createdAt: stamp,
-      updatedAt: stamp,
-    });
-    await db.insert(lorebooks).values({
-      id: "book-owned",
-      name: "Card Book",
-      description: "Ships inside the card.",
-      characterId: "char-a",
-      createdAt: stamp,
-      updatedAt: stamp,
-    });
-    await db.insert(lorebooks).values({
-      id: "book-other",
-      name: "Someone Else",
-      description: "Belongs to another card.",
-      characterId: "char-b",
-      createdAt: stamp,
-      updatedAt: stamp,
-    });
+    await db.insert(lorebooks).values([
+      {
+        id: "book-linked",
+        name: "Simulator's Lorebook",
+        description: "Earth-Prime locations, power systems, magic, character tiers.",
+        createdAt: stamp,
+        updatedAt: stamp,
+      },
+      {
+        id: "book-owned",
+        name: "Card Book",
+        description: "Ships inside the card.",
+        characterId: "char-a",
+        createdAt: stamp,
+        updatedAt: stamp,
+      },
+      {
+        id: "book-other",
+        name: "Someone Else",
+        description: "Belongs to another card.",
+        characterId: "char-b",
+        createdAt: stamp,
+        updatedAt: stamp,
+      },
+    ]);
     await db
       .insert(lorebookCharacterLinks)
       .values({ id: "link-1", lorebookId: "book-linked", characterId: "char-a", createdAt: stamp });
@@ -99,10 +101,7 @@ try {
     assert.equal(wrongLink.ok, false, "character.update refuses a lorebook link instead of ignoring it");
     assert.match(String(wrongLink.error), /mari lorebooks link-character <lorebook-id> --character char-a --apply/);
     // A live 12b read "run … in bash" as an instruction for the user and printed the command instead.
-    assert.match(
-      String(wrongLink.error),
-      /you run it yourself: send .* with your bash tool\. Sent alone, a mari command runs outside the sandbox\. Do not hand the command to the user/,
-    );
+    assert.match(String(wrongLink.error), /with your bash tool.*Do not hand the command to the user/);
 
     // The same shape every namespace now uses: kind, id, "ids are generated", and the finder.
     const missingBook = await mari.executeAction({
@@ -114,13 +113,23 @@ try {
     assert.match(String(missingBook.error), /No lorebook has the id "elsies-world"/);
     assert.match(String(missingBook.error), /lorebook\.list/);
 
+    // Sending back what character.get returned is a read-modify-write, not a link request.
+    const echoed = await mari.executeAction({
+      action: "character.update",
+      characterId: "char-a",
+      data: { description: "Echoed.", lorebooks: output.lorebooks },
+      apply: true,
+    });
+    assert.equal(echoed.ok, true, String(echoed.error));
+    // The refusal sends models to link-character; linking a linked pair again adds no second row.
+    const relink = await mari.executeCli({
+      argv: ["lorebooks", "link-character", "book-linked", "--character", "char-a", "--apply"],
+      command: "mari lorebooks link-character",
+    });
+    assert.match(JSON.stringify(relink), /already linked/);
+
     const bare = await mari.executeAction({ action: "character.get", characterId: "char-bare" });
     assert.deepEqual((bare.output as { lorebooks?: unknown[] }).lorebooks, []);
-
-    // #7949: an unknown id says so (a 12b sent a name and read a bare null as "no lorebooks").
-    const missing = await mari.executeAction({ action: "character.get", characterId: "nope" });
-    assert.equal(missing.ok, false);
-    assert.match(String((missing as { error?: unknown }).error), /No character has the id "nope"/);
   } finally {
     await db._fileStore.close();
   }

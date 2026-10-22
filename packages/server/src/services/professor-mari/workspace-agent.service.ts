@@ -900,7 +900,7 @@ export function workspaceCommandKnowledgePrompt() {
 - Prompt presets: read skill \`builtin-presets\` with \`skill.get\` BEFORE you create a preset, change a section, group, marker or choice block, or explain what a preset sends to the prompt. \`preset.update\` with \`data.sections\` replaces \`sectionOrder\` unless you send the complete order.
 - Custom image agents are supported by the live runtime. Use \`data.resultType: "image_prompt"\`, enable \`settings.customCapabilities.trigger_image_generation\`, and have the agent return \`shouldGenerate\` plus \`prompt\`. Marker-triggered agents should also set \`settings.activationKeywords\`. Do not claim that only Illustrator can generate image prompts.
 - Home widgets: read skill \`builtin-home-widgets\` with \`skill.get\` before you create, edit or delete a custom Home card. A create is a dry run unless you send top-level \`apply:true\`, and it goes in the SAME response with \`awaitingAuthorization: true\` where the runtime has that field — no preview round. Agent-owned widgets belong to their agent: never touch them, never imitate one.
-- Existing-data changes need top-level \`apply:true\`, and so does \`home_widget.create\`: sent without \`apply\` they are refused and save nothing; \`apply:false\` previews. Every other create writes by default. That covers every update and delete, \`*.moveToFolder\`, \`chat.updateMessage\` and \`theme.setActive\`; "requested" means the user told you to make that specific change, not a how-to question.
+- Existing-data changes (every update and delete, \`*.moveToFolder\`, \`chat.updateMessage\` and \`theme.setActive\`) need top-level \`apply:true\`, and so does \`home_widget.create\`: sent without \`apply\` they are refused and save nothing; \`apply:false\` previews. Every other create writes by default; "requested" means the user told you to make that specific change, not a how-to question.
 - Field separation on a card: \`description\` is identity, \`personality\` behaviour and voice, \`backstory\` the substantive history, \`appearance\` the look — keep them distinct, and every field you send replaces that whole field.
 - Characters and personas: read skill \`builtin-characters\` with \`skill.get\` BEFORE you create or edit a card or persona field, write an About Me, set an avatar or move a folder. A new character is one \`character.create\` with the full card in \`data\`, never a name-only placeholder.
 - Personal Extensions: read skill \`builtin-extensions\` with \`skill.get\` BEFORE you create, edit or review an extension — never edit one you did not create and never declare \`full_page_access\`; the reviewed hash covers exactly what you wrote.
@@ -2427,7 +2427,7 @@ function replyOwnsUpToDryRun(text: string): boolean {
   const normalized = text.trim().replace(/[’‘]/gu, "'");
   return (
     /\?\s*\W*$/u.test(normalized) ||
-    /\b(?:not (?:been |yet )?(?:saved|applied)|nothing (?:was |has been |is )?(?:saved|applied|changed)|dry[- ]run|preview only|haven't (?:saved|applied))\b/iu.test(
+    /\b(?:not (?:been |yet )?(?:saved|applied)|nothing (?:was |has been |is )?(?:saved|applied|changed)|dry[- ]run|preview only|here(?:'s| is) (?:the|a) preview|\w+n't (?:been |yet )?(?:saved|applied))\b/iu.test(
       normalized,
     )
   );
@@ -3109,6 +3109,7 @@ export class ProfessorMariWorkspaceService {
   // EARLIER round asked the user for apply-permission - a silent mutating
   // frame cannot be the user's answer, so it is refused with guidance.
   private activeRoundAskLatchSilentMutationBlocked = false;
+  private activeRoundAcceptedHeldCalls = false;
   // #5740: latest-round understood-request record. Diagnostic only; retention
   // is deliberately ONE record, overwritten per qualifying round (maintainer
   // call: no growing history), lost on restart.
@@ -3123,6 +3124,7 @@ export class ProfessorMariWorkspaceService {
       permissionsMode: this.activeRunPermissionsMode,
       manualSilentMutationBlocked: this.activeRoundManualSilentMutationBlocked,
       askLatchSilentMutationBlocked: this.activeRoundAskLatchSilentMutationBlocked,
+      acceptedHeldCalls: this.activeRoundAcceptedHeldCalls,
       decisionContext: this.activeDecisionContext,
     }));
   }
@@ -3811,13 +3813,17 @@ export class ProfessorMariWorkspaceService {
         controller.signal.throwIfAborted();
         this.activeRoundManualSilentMutationBlocked = false;
         this.activeRoundAskLatchSilentMutationBlocked = false;
+        // The gate never saw held calls; refusing one now would half-apply what the user accepted.
+        this.activeRoundAcceptedHeldCalls = true;
         const acceptedResults = await this.executeWorkspaceCommandBatch(
           acceptedCalls,
           controller.signal,
           workspaceTrace,
           args.onEvent,
           workspaceActionResults,
-        );
+        ).finally(() => {
+          this.activeRoundAcceptedHeldCalls = false;
+        });
         commandResultsForContinuity.push(...acceptedResults);
         if (controller.signal.aborted) throw new Error("aborted");
         const failed = acceptedResults.filter((result) => !result.success || appliedMutationReadBackMismatched(result));

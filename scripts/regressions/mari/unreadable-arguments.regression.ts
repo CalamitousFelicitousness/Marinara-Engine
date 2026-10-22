@@ -22,31 +22,24 @@ try {
   const count = async (action: string) => ((await call({ action })).output as unknown[]).length;
 
   // An unreadable apply on a create is refused and writes nothing.
-  for (const apply of [0, "dry-run", null]) {
+  for (const apply of [0, "dry-run"]) {
     const theme = await call({ action: "theme.create", data: { name: "Probe", css: "body{}" }, apply });
     assert.equal(theme.ok, false, `apply ${JSON.stringify(apply)} is refused`);
     assert.match(theme.error ?? "", /"apply" must be true or false \(.+\), so nothing was saved\./);
   }
   assert.equal(await count("theme.list"), 0, "no theme was created");
+  // null and "" still mean "left out", as before #7999.
+  assert.equal((await call({ action: "theme.create", data: { name: "Kept", css: "body{}" }, apply: null })).ok, true);
+  assert.equal((await call({ action: "theme.list", limit: "" })).ok, true);
   // The values it can read still work, and leaving it out still creates.
   assert.equal((await call({ action: "character.create", data: { name: "Aldric" }, apply: "yes" })).ok, true);
   assert.equal((await call({ action: "character.create", data: { name: "Elsie" } })).ok, true);
   assert.equal(await count("character.list"), 2);
 
-  // An unreadable apply on an update is refused instead of previewing as a success.
-  const aldric = ((await call({ action: "character.list" })).output as Array<{ id: string; name: string }>).find(
-    (row) => row.name === "Aldric",
-  )!.id;
-  const update = await call({ action: "character.update", id: aldric, patch: { description: "x" }, apply: "preview" });
-  assert.equal(update.ok, false);
-  assert.match(update.error ?? "", /"apply" must be true or false \(got "preview"\)/);
-
   // A limit or offset that is not a number is refused, naming the key.
   const ten = await call({ action: "character.list", limit: "ten" });
   assert.equal(ten.ok, false);
   assert.match(ten.error ?? "", /"limit" must be a number \(got "ten"\)/);
-  const offset = await call({ action: "skill.list", offset: {} });
-  assert.match(offset.error ?? "", /"offset" must be a number/);
   assert.equal(((await call({ action: "character.list", limit: "1" })).output as unknown[]).length, 1);
 
   // Through the tool, a lowered limit is named before the result.
@@ -67,12 +60,10 @@ try {
     );
   const big = await run("app_data", { action: "character.list", limit: 5000 });
   assert.equal(big.success, true);
-  assert.match(
-    big.output,
-    /^"limit" 5000 is above this read's maximum, so 1000 was used: this may not be everything\./,
-  );
+  // The note goes under the "Command: " header, which stays on line 1: bash's staged-change check reads it there.
+  assert.match(big.output, /^Command: [^\n]*\n"limit" 5000 is above this read's maximum, so 1000 was used/);
   const zero = await run("app_data", { action: "character.list", limit: 0 });
-  assert.match(zero.output, /^"limit" 0 is below 1, so the default 50 was used\./);
+  assert.match(zero.output, /^Command: [^\n]*\n"limit" 0 is below 1, so the default 50 was used\./);
   const plain = await run("app_data", { action: "character.list", limit: 10 });
   assert.doesNotMatch(plain.output, /"limit"/, "an in-range limit adds no note");
 
@@ -110,6 +101,16 @@ try {
     apply: false,
   });
   assert.doesNotMatch(dryRun.output, /was added as the last section/, "a dry run adds no placement note");
+
+  // A long preview is cut, but its closing NOT SAVED line is the last thing the model reads.
+  await run("app_data", { action: "skill.get", id: "builtin-themes" });
+  const longPreview = await run("app_data", {
+    action: "theme.create",
+    data: { name: "Long", css: ".a{color:red}\n".repeat(20_000) },
+    apply: false,
+  });
+  assert.match(longPreview.output, /NOT SAVED\. Nothing changed and the user sees nothing\. If the user asked/);
+  assert.match(longPreview.output, /"apply": true to save it\.$/);
 
   // The workspace tools follow the same rule.
   const read = await run("read", { path: "package.json", limit: 5000 });

@@ -1200,36 +1200,20 @@ const PRESET_ACTIONS = [
   "deleteChoiceBlock",
 ] as const;
 
-/** Table name -> the word a person would use, for "No <kind> has the id ..." refusals. */
-function recordKindFromTable(name: string): string {
-  const spaced = name
-    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
-    .replace(/[_-]+/g, " ")
-    .toLowerCase()
-    .trim();
-  return spaced
-    .split(" ")
-    .map((word) =>
-      word === "entries" ? "entry" : word === "ies" ? "y" : word.endsWith("s") ? word.slice(0, -1) : word,
-    )
-    .join(" ");
-}
-
-const RECORD_LOOKUPS: Record<string, string> = {
-  character: "character.search (or character.list)",
-  persona: "persona.search (or persona.list)",
-  lorebook: "lorebook.list (or lorebook.search)",
-  "lorebook entry": "lorebook.entries <lorebook-id>",
-  chat: "chat.list",
-  message: "chat.messages with the chat's chatId",
-  "prompt preset": "preset.list (or preset.search)",
-  "prompt section": "preset.sections <preset-id>",
-  "prompt group": "preset.groups <preset-id>",
-  "choice block": "preset.choiceBlocks <preset-id>",
-  theme: "theme.list",
-  agent: "agent.list (or agent.search)",
-  "home widget": "home_widget.list",
-  "personal extension": "personal_extension.list (or personal_extension.search)",
+/** Table -> the word a person would use and the action that lists real ids, for "No <kind> has the id ..." refusals. */
+const RECORD_LOOKUPS: Record<string, readonly [kind: string, lookup: string]> = {
+  characters: ["character", "character.search (or character.list)"],
+  personas: ["persona", "persona.search (or persona.list)"],
+  lorebooks: ["lorebook", "lorebook.list (or lorebook.search)"],
+  lorebook_entries: ["lorebook entry", "lorebook.entries <lorebook-id>"],
+  chats: ["chat", "chat.list"],
+  messages: ["message", "chat.messages with the chat's chatId"],
+  prompt_presets: ["prompt preset", "preset.list (or preset.search)"],
+  prompt_sections: ["prompt section", "preset.sections <preset-id>"],
+  prompt_groups: ["prompt group", "preset.groups <preset-id>"],
+  choice_blocks: ["choice block", "preset.choiceBlocks <preset-id>"],
+  custom_themes: ["theme", "theme.list"],
+  agent_configs: ["agent", "agent.list (or agent.search)"],
 };
 
 /** Token match for the search actions. `JSON.stringify` escapes quotes, so a card named
@@ -1264,8 +1248,9 @@ function requiredString(source: Row, keys: string[], label: string): string {
     const idLike = label.endsWith(" id");
     const hint = idLike ? " If you do not know it, use the matching list or search action first." : "";
     const where = idLike ? "top-level" : 'top-level, or inside "data"';
+    const sentKey = keys.find((key) => source[key] !== undefined || nested?.[key] !== undefined) ?? keys[0]!;
     throw new Error(
-      `${label} is required (${describeReceived(source[keys[0]!] ?? nested?.[keys[0]!])}): send a non-empty ${keys
+      `${label} is required (${describeReceived(source[sentKey] ?? nested?.[sentKey])}): send a non-empty ${keys
         .map((key) => `"${key}"`)
         .join(" or ")} ${where}.${hint}`,
     );
@@ -3042,13 +3027,13 @@ export class MariDbService {
       // #7999: a value the action cannot read is refused, never replaced. An unreadable
       // "apply" (0, "dry-run") used to write on every create and preview on every update.
       const sent = envelope as Row;
-      if (sent.apply !== undefined && firstBoolean(sent, ["apply"]) === undefined) {
+      if (sent.apply != null && firstBoolean(sent, ["apply"]) === undefined) {
         throw new Error(
           `"apply" must be true or false (${describeReceived(sent.apply)}), so nothing was saved. Send "apply": true to save, or "apply": false to preview.`,
         );
       }
       for (const key of ["limit", "offset"]) {
-        if (sent[key] !== undefined && sent[key] !== null && firstNumber(sent, [key]) === undefined) {
+        if (sent[key] != null && sent[key] !== "" && firstNumber(sent, [key]) === undefined) {
           throw new Error(`"${key}" must be a number (${describeReceived(sent[key])}). Leave it out for the default.`);
         }
       }
@@ -3246,7 +3231,18 @@ export class MariDbService {
           (key) =>
             key in args || (isRecord(args.data) && key in args.data) || (isRecord(args.patch) && key in args.patch),
         );
-        if (linkField) {
+        const sentBooks = [args, args.data, args.patch].find((source) => isRecord(source) && "lorebooks" in source);
+        const bookIds = (books: unknown) =>
+          Array.isArray(books)
+            ? books
+                .map((book) => String(isRecord(book) ? book.id : book))
+                .sort()
+                .join("\n")
+            : null;
+        const echoedRead =
+          linkField === "lorebooks" &&
+          bookIds((sentBooks as Row | undefined)?.lorebooks) === bookIds(await this.characterLorebooks(id));
+        if (linkField && !echoedRead) {
           throw new Error(
             `character.update does not attach lorebooks ("${linkField}" was sent and would be ignored). Linking is CLI-only, and you run it yourself: send \`mari lorebooks link-character <lorebook-id> --character ${id} --apply\` with your bash tool. Sent alone, a mari command runs outside the sandbox. Do not hand the command to the user; no app_data action does it.`,
           );
@@ -7448,6 +7444,17 @@ export class MariDbService {
         if (!lorebookExists) throw missingRecord("lorebook", lorebookId, "lorebook.list (or lorebook.search)");
         const characterExists = await this.getRawById(getMeta("characters"), characterId);
         if (!characterExists) throw missingRecord("character", characterId, "character.search (or character.list)");
+        const alreadyLinked = (await this.rawRows("lorebook_character_links")).some(
+          (row) => row.lorebookId === lorebookId && row.characterId === characterId,
+        );
+        if (alreadyLinked) {
+          return {
+            ok: true,
+            mode: "read",
+            command: context.command,
+            output: `Lorebook ${lorebookId} is already linked to character ${characterId}; nothing changed.`,
+          };
+        }
         const timestamp = now();
         const linkRow: Row = { id: newId(), lorebookId, characterId, createdAt: timestamp };
         const request: ParsedMutationRequest = {
@@ -10222,8 +10229,8 @@ export class MariDbService {
     if (!row) {
       // Every patch path lands here, so the refusal has to say what an id looks like and how
       // to find the real one, not just name the table (a 12b invented "shelley-the-snail").
-      const kind = recordKindFromTable(meta.name);
-      throw missingRecord(kind, id, RECORD_LOOKUPS[kind] ?? `the ${kind} list action`);
+      const [kind, lookup] = RECORD_LOOKUPS[meta.name] ?? [meta.name.replace(/_/g, " "), "its list action"];
+      throw missingRecord(kind, id, lookup);
     }
     return row;
   }

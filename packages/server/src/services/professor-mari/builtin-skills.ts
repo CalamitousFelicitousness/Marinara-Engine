@@ -35,15 +35,6 @@ export interface MariBuiltinSkill {
   filePath: string;
 }
 
-/** True only for an id the app itself ships — a legacy record with the prefix can still be removed. */
-export async function isShippedSkillId(id: string): Promise<boolean> {
-  return (await loadBuiltinSkills()).skills.some((skill) => skill.id === id);
-}
-
-export function isBuiltinSkillId(id: string): boolean {
-  return id.startsWith(BUILTIN_SKILL_ID_PREFIX);
-}
-
 export function builtinSkillTimestamp(): string {
   return BUILTIN_SKILL_TIMESTAMP;
 }

@@ -18,7 +18,7 @@ import {
 } from "./documentation-tools.js";
 import { type MariPermissionsMode } from "@marinara-engine/shared";
 import type { MariWorkspaceActionResult, MariDependencyTarget, MariWorkspaceTraceItem } from "@marinara-engine/shared";
-import { getMariDbService, probeAppDataCall } from "../mari-db/mari-db.service.js";
+import { getMariDbService, normalizeAppDataActionName, probeAppDataCall } from "../mari-db/mari-db.service.js";
 import { collectArgumentNotes } from "../mari-db/tool-error.js";
 import { mariWorkspaceSessionId } from "./mari-session.js";
 import {
@@ -101,6 +101,8 @@ export type WorkspaceRunScope = {
   permissionsMode: MariPermissionsMode;
   manualSilentMutationBlocked: boolean;
   askLatchSilentMutationBlocked: boolean;
+  /** The user accepted these exact held calls; the skill gate does not apply to them. */
+  acceptedHeldCalls?: boolean;
   decisionContext: { db: FastifyInstance["db"]; chatId: string; userMessageId: string } | null;
 };
 
@@ -112,6 +114,8 @@ export type WorkspaceRunScope = {
  * Action prefix -> shipped skill. A failed call is the one moment the model already knows which
  * surface it is on, so the error names the handbook instead of leaving it to inference (#7827).
  */
+// Prefixes are in normalizeAppDataActionName's form (lowercase, no "-" or "_"), the name mari-db
+// dispatches on, so "lorebooks.create" or "home-widget.create" cannot skip the gate.
 const SKILL_BY_ACTION_PREFIX: ReadonlyArray<readonly [string, string]> = [
   ["character.onboarding.", "builtin-onboarding"],
   ["character.", "builtin-characters"],
@@ -119,41 +123,47 @@ const SKILL_BY_ACTION_PREFIX: ReadonlyArray<readonly [string, string]> = [
   ["lorebook.", "builtin-lorebook"],
   ["preset.", "builtin-presets"],
   ["theme.", "builtin-themes"],
-  ["personal_extension.", "builtin-extensions"],
-  ["home_widget.", "builtin-home-widgets"],
-  ["decision.", "builtin-decisions"],
+  ["personalextension.", "builtin-extensions"],
+  ["homewidget.", "builtin-home-widgets"],
   ["chat.diagnose", "builtin-repair"],
-  ["chat.updateMessage", "builtin-repair"],
+  ["chat.updatemessage", "builtin-repair"],
 ];
 
+function skillForAction(action: string): string | undefined {
+  const key = normalizeAppDataActionName(action);
+  return SKILL_BY_ACTION_PREFIX.find(([prefix]) => key.startsWith(prefix))?.[1];
+}
+
 export function skillHintForFailedAction(action: string): string | null {
-  if (!action || action.startsWith("skill.") || action.startsWith("instruction.")) return null;
-  const match = SKILL_BY_ACTION_PREFIX.find(([prefix]) => action.startsWith(prefix));
-  if (!match) return null;
-  const skillId = match[1];
+  const skillId = action ? skillForAction(action) : undefined;
+  if (!skillId) return null;
   const label = skillId.slice("builtin-".length).replace(/-/gu, " ");
   return `Hint: this is the ${label} surface - read skill \`${skillId}\` with skill.get (id: "${skillId}") before retrying; it documents the arguments and this error.`;
 }
 
 // The user's switch is the "Read the handbook before the first write" setting, read per call. This
 // override is for regressions that script a model around other behaviour: they turn the gate off rather
-// than add a skill round to every write; dry-run-enforcement.regression.ts pins the gate itself.
+// than add a skill round to every write; app-data-envelope-errors.regression.ts pins the gate itself.
 let skillGateEnabled = true;
 export function setSkillGateEnabled(enabled: boolean) {
   skillGateEnabled = enabled;
 }
 
 const DRY_RUN_FOOTER =
-  '\n\nNOT SAVED. Nothing changed and the user sees nothing. To save, send this same call again with top-level "apply": true.';
-// Guards read these on an output's first line only (see isDryRunResult and the read-back check).
+  '\n\nNOT SAVED. Nothing changed and the user sees nothing. If the user asked for this change, send this same call again with top-level "apply": true to save it.';
+// Guards read these on an output's first line only (see isDryRunResult, the read-back check and the
+// bash "Command: " header in isStagedSensitiveMutation).
 // Built per call: workspace-agent.service imports this module, so its constants are not set at load.
 function leadingSentinel(output: string): string | undefined {
-  return [
+  const sentinel = [
     MARI_DRY_RUN_SENTINEL,
     APP_DATA_DRY_RUN_SENTINEL,
     READ_BACK_VERIFIED_SENTINEL,
     READ_BACK_MISMATCH_SENTINEL,
   ].find((line) => output.startsWith(`${line}\n`));
+  if (sentinel || !output.startsWith("Command: ")) return sentinel;
+  const end = output.indexOf("\n");
+  return end === -1 ? output : output.slice(0, end);
 }
 
 function missingApplyMessage(action: string, args: Record<string, unknown>): string {
@@ -176,7 +186,7 @@ export function skillGateRefusal(
   if (!skillGateEnabled || !enabled) return null;
   const command = { id: "skill-gate", name: "app_data" as const, arguments: args };
   if (!isMutatingWorkspaceCommand(command) && !isPreviewOnlyAppDataCommand(command)) return null;
-  const skillId = SKILL_BY_ACTION_PREFIX.find(([prefix]) => action.startsWith(prefix))?.[1];
+  const skillId = skillForAction(action);
   if (!skillId || seen.has(skillId)) return null;
   seen.add(skillId);
   return `Nothing was saved: read skill \`${skillId}\` first with app_data {"action":"skill.get","id":"${skillId}"}, then send this ${action} again. Its handbook names the fields and the silent traps on this surface; this check runs once per chat.`;
@@ -1098,7 +1108,9 @@ export class WorkspaceCommands {
   }
 
   private async commandAppData(args: Record<string, unknown>): Promise<WorkspaceCommandExecution> {
-    const action = typeof args.action === "string" ? args.action : "unknown";
+    // mari-db also takes "type" for the action; the gate must see the same name.
+    const action =
+      typeof args.action === "string" ? args.action : typeof args.type === "string" ? args.type : "unknown";
     if (action === "decision.get" || action === "decision.record") {
       return { output: stringifyOutput(await executeMariDecisionAction(action, args.data)) };
     }
@@ -1107,7 +1119,8 @@ export class WorkspaceCommands {
     if (!skillsSeen) this.skillsSeenBySession.set(sessionId, (skillsSeen = new Set()));
     const service = getMariDbService(this.app.db);
     const envelope = { ...args, cwd: this.workspaceRoot, sessionId: this.runSessionId() };
-    const gateOn = await readStoredMariSkillGate(createAppSettingsStorage(this.app.db));
+    const gateOn =
+      !this.getRun().acceptedHeldCalls && (await readStoredMariSkillGate(createAppSettingsStorage(this.app.db)));
     const gate = skillGateRefusal(action, args, skillsSeen, gateOn);
     if (gate) {
       // #7949 run 3: refusing before the call ran hid its own error (a bogus `linked_characters`
@@ -1143,7 +1156,8 @@ ${missingApplyMessage(action, args)}`
     if (result.ok !== false && (action === "personal_extension.create" || action === "personal_extension.update")) {
       await personalServerExtensionRuntime.reloadAll();
     }
-    const readSkillId = action === "skill.get" && result.ok !== false ? (args.id ?? args.skillId) : undefined;
+    const readSkillId =
+      normalizeAppDataActionName(action) === "skill.get" && result.ok !== false ? (args.id ?? args.skillId) : undefined;
     if (typeof readSkillId === "string") skillsSeen.add(readSkillId.trim());
     // A failed read can carry both an error and an output; the error is the part the model needs.
     const printable =

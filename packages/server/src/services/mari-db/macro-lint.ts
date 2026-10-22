@@ -40,8 +40,6 @@ const CARD_MACRO_FIELDS = [
   "first_mes",
   "firstMes",
   "mes_example",
-  "creator_notes",
-  "creatorNotes",
   "backstory",
   "appearance",
   "aboutMe",
@@ -62,23 +60,28 @@ function problemsIn(record: Record<string, unknown>, fields: string[]): MacroPro
   return problems;
 }
 
-function refuse(action: string, problems: MacroProblem[]): never {
+const BRACE_TAIL =
+  'A macro opens with "{{" and closes with "}}"; fix the brace and send the same value again (send it without the braces if you meant literal text).';
+const LITERAL_TAIL =
+  'Names, tags and keys are matched and shown as written; move the macro into a text field (description, personality, scenario, first mes) or send this one without "{{".';
+
+function refuse(action: string, problems: MacroProblem[], tail: string): never {
   const detail = problems.map((problem) => `${problem.field} ${problem.message}`).join("; ");
-  throw new Error(
-    `${action} refused by the macro linter: ${detail}. A macro opens with "{{" and closes with "}}"; fix the brace and send the same value again (send it without the braces if you meant literal text).`,
-  );
+  throw new Error(`${action} refused by the macro linter: ${detail}. ${tail}`);
 }
 
-/** Card text on `character.create` / `character.update` (top level or inside data/patch/card). */
-export function assertCardMacros(record: Record<string, unknown>, action: string): void {
+/** The record plus any of `keys` nested in it (a model may send fields top level or wrapped). */
+function candidateRecords(record: Record<string, unknown>, keys: string[]): Record<string, unknown>[] {
   const records: Record<string, unknown>[] = [record];
-  for (const key of ["data", "patch", "card", "character"]) {
+  for (const key of keys) {
     const nested = record[key];
     if (nested && typeof nested === "object" && !Array.isArray(nested)) records.push(nested as Record<string, unknown>);
   }
-  const problems = records.flatMap((candidate) => problemsIn(candidate, CARD_MACRO_FIELDS));
-  if (problems.length > 0) refuse(action, problems);
+  return records;
 }
+
+const CARD_WRAPPERS = ["data", "patch", "card", "character"];
+const ENTRY_WRAPPERS = ["data", "patch", "entry", "row"];
 
 /**
  * The other half of #7995: fields that never interpolate macros. A `{{...}}` in a name, tag or key
@@ -99,46 +102,36 @@ function literalProblems(record: Record<string, unknown>, fields: string[]): Mac
   return problems;
 }
 
-function refuseLiteral(action: string, problems: MacroProblem[]): never {
-  const detail = problems.map((problem) => `${problem.field} ${problem.message}`).join("; ");
-  throw new Error(
-    `${action} refused by the macro linter: ${detail}. Names, tags and keys are matched and shown as written; move the macro into a text field (description, personality, scenario, first mes) or send this one without "{{".`,
+/** Card text on `character.create` / `character.update` (top level or inside data/patch/card). */
+export function assertCardMacros(record: Record<string, unknown>, action: string): void {
+  const problems = candidateRecords(record, CARD_WRAPPERS).flatMap((candidate) =>
+    problemsIn(candidate, CARD_MACRO_FIELDS),
   );
+  if (problems.length > 0) refuse(action, problems, BRACE_TAIL);
 }
 
 export function assertLiteralCardFields(record: Record<string, unknown>, action: string): void {
-  const records: Record<string, unknown>[] = [record];
-  for (const key of ["data", "patch", "card", "character"]) {
-    const nested = record[key];
-    if (nested && typeof nested === "object" && !Array.isArray(nested)) records.push(nested as Record<string, unknown>);
-  }
-  const problems = records.flatMap((candidate) => literalProblems(candidate, ["name", "tags"]));
-  if (problems.length > 0) refuseLiteral(action, problems);
+  const problems = candidateRecords(record, CARD_WRAPPERS).flatMap((candidate) =>
+    literalProblems(candidate, ["name", "tags"]),
+  );
+  if (problems.length > 0) refuse(action, problems, LITERAL_TAIL);
 }
 
 export function assertLiteralEntryFields(record: Record<string, unknown>, action: string): void {
-  const records: Record<string, unknown>[] = [record];
-  for (const key of ["data", "patch", "entry", "row"]) {
-    const nested = record[key];
-    if (nested && typeof nested === "object" && !Array.isArray(nested)) records.push(nested as Record<string, unknown>);
-  }
-  const problems = records.flatMap((candidate) => literalProblems(candidate, ["name", "keys", "secondaryKeys"]));
-  if (problems.length > 0) refuseLiteral(action, problems);
+  const problems = candidateRecords(record, ENTRY_WRAPPERS).flatMap((candidate) =>
+    literalProblems(candidate, ["name", "keys", "secondaryKeys"]),
+  );
+  if (problems.length > 0) refuse(action, problems, LITERAL_TAIL);
 }
 
 /** Entry text on `lorebook.addEntry|createEntry|updateEntry` (top level or inside data/entry). */
 export function assertEntryMacros(record: Record<string, unknown>, action: string): void {
-  const records: Record<string, unknown>[] = [record];
-  for (const key of ["data", "patch", "entry", "row"]) {
-    const nested = record[key];
-    if (nested && typeof nested === "object" && !Array.isArray(nested)) records.push(nested as Record<string, unknown>);
-  }
-  const problems = records.flatMap((candidate) => problemsIn(candidate, ["content"]));
-  if (problems.length > 0) refuse(action, problems);
+  const problems = candidateRecords(record, ENTRY_WRAPPERS).flatMap((candidate) => problemsIn(candidate, ["content"]));
+  if (problems.length > 0) refuse(action, problems, BRACE_TAIL);
 }
 
 /** Onboarding text on `character.onboarding.update`. */
 export function assertOnboardingMacros(record: Record<string, unknown>): void {
   const problems = problemsIn(record, ONBOARDING_MACRO_FIELDS);
-  if (problems.length > 0) refuse("character.onboarding.update", problems);
+  if (problems.length > 0) refuse("character.onboarding.update", problems, BRACE_TAIL);
 }

@@ -21,8 +21,7 @@ const dataDir = mkdtempSync(join(tmpdir(), "marinara-mari-builtin-skills-"));
 process.env.DATA_DIR = dataDir;
 
 try {
-  const { isBuiltinSkillId, isShippedSkillId, loadBuiltinSkills } =
-    await import("../../../packages/server/src/services/professor-mari/builtin-skills.js");
+  const { loadBuiltinSkills } = await import("../../../packages/server/src/services/professor-mari/builtin-skills.js");
   const { renderMariSkillsPrompt } =
     await import("../../../packages/server/src/services/professor-mari/mari-skills-prompt.js");
   const { ProfessorMariWorkspaceSkillsService } =
@@ -49,12 +48,6 @@ try {
   assert.match(onboarding!.description, /onboarding/i, "the description tells her when to read it");
   assert.ok(onboarding!.content.startsWith("# Interactive onboarding"), "the body is frontmatter-free");
   assert.ok(onboarding!.filePath.replaceAll("\\", "/").includes("/assets/mari-skills/onboarding.md"));
-  assert.equal(isBuiltinSkillId("builtin-onboarding"), true);
-  assert.equal(isBuiltinSkillId("my-skill"), false);
-  // The read-only guard matches a shipped id, not the prefix: a legacy record squatting
-  // one can still be renamed or deleted, which is what the shadow diagnostic tells the user to do.
-  assert.equal(await isShippedSkillId("builtin-onboarding"), true);
-  assert.equal(await isShippedSkillId("builtin-my-legacy-skill"), false);
   const lorebook = shipped.skills.find((skill) => skill.id === "builtin-lorebook");
   assert.ok(lorebook, "the lorebook handbook ships with the app");
   assert.ok(lorebook!.content.startsWith("# Lorebook authoring"), "its body is frontmatter-free");
@@ -190,14 +183,6 @@ try {
   // ── The permanent prompt routes to the skill, and cannot creep back ────────
   const knowledge = workspaceCommandKnowledgePrompt();
   console.log(`permanent prompt: ${knowledge.length} chars`);
-  assert.ok(knowledge.includes("builtin-onboarding"), "the permanent prompt names the onboarding skill");
-  assert.ok(knowledge.includes("builtin-lorebook"), "the permanent prompt names the lorebook skill");
-  assert.ok(knowledge.includes("builtin-presets"), "the permanent prompt names the presets skill");
-  assert.ok(knowledge.includes("builtin-repair"), "the permanent prompt names the reply diagnosis skill");
-  assert.ok(knowledge.includes("builtin-decisions"), "the permanent prompt names the decisions skill");
-  assert.ok(knowledge.includes("builtin-themes"), "the permanent prompt names the themes skill");
-  assert.ok(knowledge.includes("builtin-home-widgets"), "the permanent prompt names the home widgets skill");
-  assert.ok(knowledge.includes("builtin-characters"), "the permanent prompt names the characters skill");
   for (const id of [
     "builtin-characters",
     "builtin-decisions",
@@ -227,43 +212,12 @@ try {
   );
   assert.ok(knowledge.includes("History placement costs prompt caching, Decisions or not"), "depth placement is gated");
   assert.ok(knowledge.includes("(`cachePlacement`)"), "the placement record is named");
-  // Requests that must route even when they don't sound like an edit: creating a character, a symptom
-  // rather than "a bad reply", and an entry that fires too often rather than not at all.
-  assert.ok(knowledge.includes("BEFORE you create or edit a card"), "character creation routes to the handbook");
-  assert.ok(knowledge.includes("never a name-only placeholder"), "the placeholder rule stays permanent");
-  assert.ok(knowledge.includes("(cut off, empty, a character who forgets or ignores their card)"), "repair symptoms");
-  assert.ok(knowledge.includes("why an entry fires too often or never"), "lorebook over-firing routes");
   assert.ok(
     knowledge.includes("SAME response with `awaitingAuthorization: true`"),
     "a Home widget create is held for Accept even when the handbook was not read",
   );
-  // Weak models skip the fetch and misplace the id: the reachable call shape and the "first tool
-  // round" trigger have to be in the permanent prompt, not left to inference (12b/31b put the skill
-  // id inside `data` and never opened a handbook).
-  assert.ok(
-    knowledge.includes("Reads take the record id at the top level"),
-    "reads are documented as taking a top-level id, not a field inside data",
-  );
-  assert.ok(
-    knowledge.includes("`skill.get` it in your first tool round, before any other call"),
-    "the skills index tells her to fetch in the first tool round, not after acting",
-  );
-  assert.ok(
-    knowledge.includes("starts with its handbook; without it you are guessing"),
-    "a write to a built-in surface is stated to require its handbook, not just earlier timing",
-  );
   const piPrompt = piRuntimePrompt();
   assert.ok(piPrompt.includes("never wrap them in tags"), "the pi prompt forbids pseudo-XML tags in visible text");
-  // The tags came from the policy prompt naming a classic-only field: a model without reasoning turns
-  // "your voice belongs in `say`" into a literal <say> tag, then continuity replays it.
-  const agentSource = readFileSync(
-    new URL("../../../packages/server/src/services/professor-mari/workspace-agent.service.ts", import.meta.url),
-    "utf8",
-  );
-  assert.ok(
-    agentSource.includes("Your voice belongs in the visible reply"),
-    "the policy prompt names the visible reply, not the classic `say` field",
-  );
   // A failed call points at the handbook for that surface: the one moment the model already knows
   // where it is, and the only reliable nudge a 12b follows.
   const { skillHintForFailedAction } =

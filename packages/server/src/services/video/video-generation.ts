@@ -87,8 +87,9 @@ export async function generateVideo(
 ): Promise<VideoGenerationResult> {
   // The request deadline begins when the queued task starts; queue wait time is
   // governed separately by the shared media-generation queue. The provider lane
-  // (#7662) comes first, so its waiters hold neither a connection turn nor a permit, and the
-  // shared GPU turn second, so a media request waiting on a busy shared GPU holds no permit.
+  // (#7662) comes first, so its waiters hold neither a connection turn nor a permit. The shared
+  // GPU turn comes after the connection's queue and before the permit, so a clip waiting on a
+  // busy shared GPU holds no permit, and one queued behind its connection holds no GPU turn.
   // Video lanes are their own keyspace: a minutes-long video must not hold up images.
   // Only the primary attempt holds the lane and permit: the fallback connection
   // queues after both are released, so a fallback never waits on another lane
@@ -98,19 +99,13 @@ export async function generateVideo(
       laneKey: mediaProviderLaneKey(`video:${resolveVideoService(source, serviceHint)}:${baseUrl.trim()}`, apiKey),
       signal: request.signal,
       task: () =>
-        runSharedGpuTurn(
-          "media",
-          baseUrl,
-          () =>
-            runMediaGenerationRequest({
-              connectionKey: request.connectionKey ?? `${serviceHint || source}:${baseUrl}`,
-              queue: request.queue === true,
-              signal: request.signal,
-              task: () =>
-                generatePrimaryVideo(source, baseUrl, apiKey, serviceHint, { ...request, fallback: undefined }),
-            }),
-          request.signal,
-        ),
+        runMediaGenerationRequest({
+          connectionKey: request.connectionKey ?? `${serviceHint || source}:${baseUrl}`,
+          queue: request.queue === true,
+          signal: request.signal,
+          aroundPermit: (work) => runSharedGpuTurn("media", baseUrl, work, request.signal),
+          task: () => generatePrimaryVideo(source, baseUrl, apiKey, serviceHint, { ...request, fallback: undefined }),
+        }),
     });
   } catch (error) {
     const fallback = request.fallback;

@@ -239,12 +239,11 @@ export async function runMediaGenerationRequest<T>(args: {
   /** Batch/automatic work should pass "background" so it can never occupy the
    *  last permit ahead of interactive requests. Defaults to foreground. */
   priority?: MediaGenerationPriority;
+  /** Wraps the permit and the task, after the per-connection FIFO: a wait placed here (the shared GPU turn) holds
+   *  neither a permit nor a place that blocks others while the request ahead on its connection still renders. */
+  aroundPermit?: <R>(work: () => Promise<R>) => Promise<R>;
 }): Promise<T> {
-  if (!args.queue) {
-    if (args.signal?.aborted) throw mediaGenerationAbortError(args.signal);
-    // Non-queued callers skip the per-connection FIFO but NOT the global
-    // ceiling — previously they had no limit at all (#5097). This is a
-    // deliberate behavior change for them.
+  const runWithPermit = async () => {
     const releasePermit = await acquireGlobalPermit(args.signal, args.priority);
     try {
       if (args.signal?.aborted) throw mediaGenerationAbortError(args.signal);
@@ -252,6 +251,14 @@ export async function runMediaGenerationRequest<T>(args: {
     } finally {
       releasePermit();
     }
+  };
+  const permitAndTask = () => (args.aroundPermit ? args.aroundPermit(runWithPermit) : runWithPermit());
+  if (!args.queue) {
+    if (args.signal?.aborted) throw mediaGenerationAbortError(args.signal);
+    // Non-queued callers skip the per-connection FIFO but NOT the global
+    // ceiling — previously they had no limit at all (#5097). This is a
+    // deliberate behavior change for them.
+    return permitAndTask();
   }
 
   const connectionKey = args.connectionKey.trim() || "default";
@@ -269,13 +276,7 @@ export async function runMediaGenerationRequest<T>(args: {
     // Invariant: the global permit is acquired AFTER the per-connection turn,
     // never before — otherwise a full permit pool could be held by tasks that
     // are themselves waiting on connection turns held behind the pool.
-    const releasePermit = await acquireGlobalPermit(args.signal, args.priority);
-    try {
-      if (args.signal?.aborted) throw mediaGenerationAbortError(args.signal);
-      return await heldMediaPermit.run(true, () => args.task());
-    } finally {
-      releasePermit();
-    }
+    return await permitAndTask();
   } finally {
     releaseCurrent();
     void queuedTail.finally(() => {

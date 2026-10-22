@@ -138,8 +138,11 @@ export async function runSharedGpuTurn<T>(
     );
   } catch (err) {
     if (deadline?.aborted && !signal?.aborted) {
+      // Name what held it: text, or other media work this request couldn't join because text was waiting next.
+      const holder =
+        hostStates.get(host)?.active === "media" ? "other media work held it" : "text requests kept it busy";
       throw new Error(
-        `Waited over ${Math.round(waitMs / 1000)} seconds for the shared GPU (MARINARA_SHARED_GPU_HOSTS) while text requests kept it busy`,
+        `Waited over ${Math.round(waitMs / 1000)} seconds for the shared GPU (MARINARA_SHARED_GPU_HOSTS) while ${holder}`,
       );
     }
     throw err;

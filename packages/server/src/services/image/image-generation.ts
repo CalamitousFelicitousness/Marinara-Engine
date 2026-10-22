@@ -438,19 +438,14 @@ export async function generateImage(
       gapMs: mediaProviderLaneGapMs(resolvedSource),
       signal: request.signal,
       task: () =>
-        runSharedGpuTurn(
-          "media",
-          normalizedBaseUrl,
-          () =>
-            runMediaGenerationRequest({
-              connectionKey: `image:${baseUrl || source}`,
-              queue: false,
-              signal: request.signal,
-              priority: request.admissionMode?.kind === "background" ? "background" : "foreground",
-              task: () => withConnectionAdmission(admissionKey, primaryMode, physicalRequest),
-            }),
-          request.signal,
-        ),
+        runMediaGenerationRequest({
+          connectionKey: `image:${baseUrl || source}`,
+          queue: false,
+          signal: request.signal,
+          priority: request.admissionMode?.kind === "background" ? "background" : "foreground",
+          aroundPermit: (work) => runSharedGpuTurn("media", normalizedBaseUrl, work, request.signal),
+          task: () => withConnectionAdmission(admissionKey, primaryMode, physicalRequest),
+        }),
     });
     outcome = "completed";
     return flattenedPrompt

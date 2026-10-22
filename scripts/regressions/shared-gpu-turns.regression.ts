@@ -293,6 +293,56 @@ async function main() {
     }
   }
 
+  // ── 10) A clip queued behind its connection holds no GPU turn while the clip ahead renders, so text waiting for the
+  // GPU goes before it; and a wait that times out behind media work says so ──
+  const { runMediaGenerationRequest } =
+    await import("../../packages/server/src/services/image/image-generation-queue.js");
+  delete process.env.MARINARA_MEDIA_GENERATION_CONCURRENCY;
+  const queuedOrder: string[] = [];
+  const firstClip = deferred();
+  const queuedClip = (name: string, gate?: Promise<void>) =>
+    runMediaGenerationRequest({
+      connectionKey: "comfy-video",
+      queue: true,
+      aroundPermit: (work) => runSharedGpuTurn("media", GPU, work),
+      task: async () => {
+        queuedOrder.push(`${name} start`);
+        await gate;
+        queuedOrder.push(`${name} end`);
+      },
+    });
+  const clipOne = queuedClip("clip1", firstClip.promise);
+  await tick();
+  const clipTwo = queuedClip("clip2");
+  await tick();
+  assert.equal(inspectSharedGpuTurnsForTests()["phoenix:8081"]?.running, 1, "the queued clip holds no turn");
+  const textAfterClip = runSharedGpuTurn("text", LLM, async () => {
+    queuedOrder.push("text");
+  });
+  await tick();
+  firstClip.resolve();
+  await Promise.all([clipOne, clipTwo, textAfterClip]);
+  assert.deepEqual(queuedOrder, ["clip1 start", "clip1 end", "text", "clip2 start", "clip2 end"]);
+  idle();
+
+  process.env.MARINARA_MEDIA_GENERATION_WAIT_TIMEOUT_MS = "300";
+  const runningMedia = deferred();
+  const mediaHolder = runSharedGpuTurn("media", GPU, () => runningMedia.promise);
+  await tick();
+  const textWaiting = runSharedGpuTurn("text", LLM, async () => undefined);
+  await tick();
+  const keepAliveMedia = setTimeout(() => undefined, 5_000);
+  await assert.rejects(
+    runSharedGpuTurn("media", GPU, async () => "never"),
+    /for the shared GPU \(MARINARA_SHARED_GPU_HOSTS\) while other media work held it/u,
+    "a wait behind media work doesn't blame text",
+  );
+  clearTimeout(keepAliveMedia);
+  runningMedia.resolve();
+  await Promise.all([mediaHolder, textWaiting]);
+  delete process.env.MARINARA_MEDIA_GENERATION_WAIT_TIMEOUT_MS;
+  idle();
+
   console.log("shared-gpu-turns regression passed");
 }
 

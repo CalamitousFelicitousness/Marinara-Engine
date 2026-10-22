@@ -43,6 +43,7 @@ export function AccessStatusSettings({ anchorId }: { anchorId: string }) {
     ["login", setOrNot(data.basicAuth)],
     ["adminSecret", setOrNot(data.adminSecret)],
     ["allowlist", setOrNot(data.allowlist)],
+    ["authProxy", setOrNot(data.trustedAuthProxy)],
     [
       "connection",
       t(data.viaProxy ? "settings.accessStatus.connection.proxy" : "settings.accessStatus.connection.direct"),

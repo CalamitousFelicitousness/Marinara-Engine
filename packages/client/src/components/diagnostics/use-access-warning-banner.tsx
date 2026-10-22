@@ -20,6 +20,8 @@ export type AccessStatus = {
   loginSource: "env" | "app" | null;
   adminSecret: boolean;
   allowlist: boolean;
+  /** TRUSTED_AUTH_PROXY names a proxy that logs visitors in instead. */
+  trustedAuthProxy: boolean;
   passwordlessPeers: PasswordlessPeer[];
   /** Peers a login password would not close. */
   loginKeepsOpen: PasswordlessPeer[];

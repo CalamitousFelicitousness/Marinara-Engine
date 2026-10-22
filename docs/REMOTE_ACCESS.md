@@ -56,6 +56,7 @@ Read these in order and stop at the first one that matches you.
 3. You are exposing Marinara to the public internet. Use Basic Auth plus HTTPS.
 4. Your client devices have fixed IP addresses and you would rather not type a password. Use the IP allowlist (Option 2 below).
 5. Your whole network is trusted and you never want a password. Use the private-network bypass (Option 3 below). Read the warning there first.
+6. A login proxy on your network, such as tinyauth, Authelia, or Authentik, already asks every visitor to log in. Read [Login proxies (forward auth)](#login-proxies-forward-auth).
 
 Basic Auth is the most flexible choice. It works from any IP, needs no per-device setup, and the browser remembers the login.
 
@@ -201,6 +202,56 @@ REQUIRE_AUTH_FOR_LOOPBACK_PROXY=false
 ```
 
 Visitors then get the same full access as the host machine, including privileged actions without the admin secret. If you only reach Marinara through a name you added to `/etc/hosts`, do not use this flag. Use a `*.localhost` name instead, for example `marinara.localhost`.
+
+## Login proxies (forward auth)
+
+A forward-auth proxy, such as [tinyauth](https://tinyauth.app), [Authelia](https://www.authelia.com), [Authentik](https://goauthentik.io), or oauth2-proxy, asks every visitor to log in before it forwards the request. If such a proxy is the only way to reach Marinara, you can skip the second Marinara login. Do not set this without such a proxy.
+
+Put the address of the proxy in `.env`:
+
+```env
+TRUSTED_AUTH_PROXY=192.168.1.5
+```
+
+Marinara then lets in every request whose connection comes from that address. Marinara checks the address of the connection itself. It ignores forwarding headers such as `X-Forwarded-For` for this decision. Requests from the proxy also pass `IP_ALLOWLIST`, because the proxy decides who gets in. They do not count as local, so privileged actions still need the admin secret. **Settings → Advanced → Access** shows **Trusted login proxy: Set** while the setting is active.
+
+Before you set it:
+
+- **The proxy must ask for a login on every path.** That includes `/api/`, WebSocket connections, and static files. A path that the proxy lets through without a login is open to everyone.
+- **Marinara must not be reachable around the proxy.** Bind Marinara to an address that only the proxy can reach, or block its port with a firewall. In Docker, put the proxy and Marinara on the same Docker network, give the proxy a fixed address on it, and do not publish Marinara's port. If the proxy runs on the Docker host instead, publish the port only on loopback (`127.0.0.1:7860:7860`): Docker Desktop and OrbStack show every LAN client of a published port at the Docker gateway address, the same address as the proxy. If another device can connect to Marinara directly, it skips the proxy's login.
+- **List only the proxy's own address.** A range must stay inside private address space; Marinara ignores other ranges. It logs a warning for every range, because every device in a range skips the login.
+- **Add the public name like for any other proxy.** Put the hostname in `TRUSTED_HOSTS` and the origin in `CSRF_TRUSTED_ORIGINS` (see [Why is my save blocked (CSRF)](#why-is-my-save-blocked-csrf)).
+
+When `TRUSTED_AUTH_PROXY` is set, Marinara also stops the automatic Docker trust. Direct visitors who are not the proxy need the Marinara login or the IP allowlist.
+
+If the proxy runs on the same computer as Marinara, use `TRUSTED_AUTH_PROXY=127.0.0.1` and point the proxy at `127.0.0.1:7860`, not `localhost:7860`. A proxy that dials `localhost` can connect from `::1`, which does not match `127.0.0.1`. Then every other proxy or tunnel on that computer is trusted too, so use it only when the login proxy is the only one. Unlike `REQUIRE_AUTH_FOR_LOOPBACK_PROXY=false`, this does not give proxied visitors the local machine's access.
+
+A Caddy example, with Marinara at `192.168.1.20:7860`:
+
+```caddy
+marinara.example.com {
+  forward_auth tinyauth:3000 {
+    uri /api/auth/caddy
+  }
+  reverse_proxy 192.168.1.20:7860
+}
+```
+
+For Authelia, use `forward_auth authelia:9091` with `uri /api/authz/forward-auth`. Authentik also serves its own sign-in pages through the proxy. Put its lines in a `route` block so that Caddy keeps their order and the outpost path does not go through forward auth itself:
+
+```caddy
+marinara.example.com {
+  route {
+    reverse_proxy /outpost.goauthentik.io/* authentik-server:9000
+    forward_auth authentik-server:9000 {
+      uri /outpost.goauthentik.io/auth/caddy
+    }
+    reverse_proxy 192.168.1.20:7860
+  }
+}
+```
+
+For Traefik and nginx, follow the forward-auth guide of your proxy. Marinara needs nothing more than the address of the proxy.
 
 ## Serving over HTTPS
 

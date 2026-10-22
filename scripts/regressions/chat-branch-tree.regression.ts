@@ -60,9 +60,11 @@ assert.deepEqual(shape(buildChatBranchRows(legacy)), ["old-root:0", "old-b:1", "
 
 // Legacy siblings hang off the root as ordinary children, so they sort with the real branches
 // instead of being appended after the whole subtree.
+const oldestFirst = (left: BranchTreeChat, right: BranchTreeChat) =>
+  new Date(left.createdAt as string).getTime() - new Date(right.createdAt as string).getTime();
 assert.deepEqual(
-  buildChatBranchRows(legacy).map((row) => row.chat.id),
-  ["old-root", "old-b", "old-c"],
+  shape(buildChatBranchRows([...nested, chat("imported-mid", null, "2026-10-04T12:00:00.000Z")], oldestFirst)),
+  ["root:0", "b1:1", "b1-1:2", "b1-1-1:3", "imported-mid:1", "b2:1"],
 );
 
 // An imported sibling joins a lineage group the same way.

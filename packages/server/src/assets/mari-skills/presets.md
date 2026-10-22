@@ -7,7 +7,7 @@ description: Read before creating, editing, reviewing or debugging a prompt pres
 
 Purpose: build or repair a preset — the ordered sections, markers and choice variables that decide what a roleplay chat sends to the model. Your own sections reach it only through `sectionOrder`.
 
-Actions: reads `preset.list|get|search|sections|getSection|groups|getGroup|choiceBlocks|getChoiceBlock`; writes `preset.create|update|addSection|updateSection|deleteSection|addGroup|updateGroup|deleteGroup|addChoiceBlock|updateChoiceBlock|deleteChoiceBlock`. There is no `preset.delete` — an unknown sub-action returns `Unknown prompt preset action "<name>".` and the valid list CLI `mari presets` needs `--apply` for writes.
+Actions: reads `preset.list|get|search|sections|getSection|groups|getGroup|choiceBlocks|getChoiceBlock`; writes `preset.create|update|addSection|updateSection|deleteSection|addGroup|updateGroup|deleteGroup|addChoiceBlock|updateChoiceBlock|deleteChoiceBlock`. There is no `preset.delete` — an unknown sub-action returns `Unknown prompt preset action "<name>".` and the valid list. CLI `mari presets` needs `--apply` for writes.
 
 - Creates (`preset.create`, `addSection`, `addGroup`, `addChoiceBlock`) write unless you send `apply: false`; `update` and the three deletes write only with `apply: true`, else return `mode: "dry-run"`.
 - An applied write returns `readBack` with a status and row counts. On success it carries no ids; on `mismatch` it does. A no-op write returns no `readBack` at all — read `preset.sections|groups|choiceBlocks` for what exists now.
@@ -57,12 +57,12 @@ Ignored silently: top-level `id` on `preset.create`; `groupId`/`parentGroupId` i
 
 Wording is exact. `No changes: every row already has these values, so nothing was written and no review card was made.` is a no-op, not a failure.
 
-| Message                                                                                                                                                | Fix                                                                               |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------- |
+| Message                                                                                                                                                                                 | Fix                                                                               |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
 | `prompt preset id is required (none was sent): send a non-empty "id" or "presetId" or "promptPresetId" top-level. If you do not know it, use the matching list or search action first.` | Resolve it with `preset.list` or `preset.search` first.                           |
 | `prompt section id is required (none was sent): send a non-empty "sectionId" or "id" top-level. If you do not know it, use the matching list or search action first.`                   | Take the id from `preset.sections`.                                               |
-| `preset.updateSection needs sectionId plus a field such as content, name, role, enabled, groupId, injectionOrder, or skipWrap`                         | No recognised field arrived — a misspelled one, or `identifier`, counts as empty. |
-| `Section <id> is a marker; its content is generated from markerConfig at assembly, so a content edit has no effect. Edit markerConfig instead.`        | Edit `markerConfig` or its source, not the marker's text.                         |
+| `preset.updateSection needs sectionId plus a field such as content, name, role, enabled, groupId, injectionOrder, or skipWrap`                                                          | No recognised field arrived — a misspelled one, or `identifier`, counts as empty. |
+| `Section <id> is a marker; its content is generated from markerConfig at assembly, so a content edit has no effect. Edit markerConfig instead.`                                         | Edit `markerConfig` or its source, not the marker's text.                         |
 
 ## Worked example
 

@@ -129,6 +129,9 @@ const SKILL_BY_ACTION_PREFIX: ReadonlyArray<readonly [string, string]> = [
   ["chat.updatemessage", "builtin-repair"],
 ];
 
+// `decision:"…"` / `decision_choice:"…"` in sent text (quotes JSON-escaped), or a Decision field by name.
+const DECISION_CONTENT = /\bdecision(?:_choice)?:\s*\\?"|"(?:decisionStatement|activationQuestion)"/u;
+
 function skillForAction(action: string): string | undefined {
   const key = normalizeAppDataActionName(action);
   return SKILL_BY_ACTION_PREFIX.find(([prefix]) => key.startsWith(prefix))?.[1];
@@ -186,8 +189,12 @@ export function skillGateRefusal(
   if (!skillGateEnabled || !enabled) return null;
   const command = { id: "skill-gate", name: "app_data" as const, arguments: args };
   if (!isMutatingWorkspaceCommand(command) && !isPreviewOnlyAppDataCommand(command)) return null;
-  const skillId = skillForAction(action);
-  if (!skillId || seen.has(skillId)) return null;
+  // Decision content rides on a lorebook or preset write, so the payload, not the action, routes it.
+  const skillId = [
+    DECISION_CONTENT.test(JSON.stringify(args)) ? "builtin-decisions" : undefined,
+    skillForAction(action),
+  ].find((id): id is string => id !== undefined && !seen.has(id));
+  if (!skillId) return null;
   seen.add(skillId);
   return `Nothing was saved: read skill \`${skillId}\` first with app_data {"action":"skill.get","id":"${skillId}"}, then send this ${action} again. Its handbook names the fields and the silent traps on this surface; this check runs once per chat.`;
 }

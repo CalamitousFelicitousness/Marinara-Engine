@@ -1389,6 +1389,15 @@ function stringListValue(value: unknown): string[] | undefined {
     return value.map((entry) => (typeof entry === "string" ? entry.trim() : String(entry).trim())).filter(Boolean);
   }
   if (typeof value === "string") {
+    // A small model sends a list as JSON text ('["mentor", "chef"]'); splitting that on commas kept the brackets.
+    if (value.trimStart().startsWith("[")) {
+      try {
+        const parsed: unknown = JSON.parse(value);
+        if (Array.isArray(parsed)) return stringListValue(parsed);
+      } catch {
+        // Not JSON after all: fall through to the comma split.
+      }
+    }
     return value
       .split(/[,|]/)
       .map((entry) => entry.trim())
@@ -1474,6 +1483,8 @@ export function normalizeCharacterActionData(input: Row): Row {
   delete out.about_me;
   delete out["about-me"];
   if (Object.keys(extensions).length > 0) out.extensions = extensions;
+  // A string here was saved as is, and every character screen crashed on tags.map.
+  if (out.tags !== undefined) out.tags = firstStringList(out, ["tags"]) ?? [];
   return out;
 }
 
@@ -3274,6 +3285,8 @@ export class MariDbService {
             ],
           ),
         );
+        // A tolerated echo is ignored, not stored: the link table owns it, and its labels were true only at read time.
+        delete patchData.lorebooks;
         const comment =
           firstString(patchData, ["comment"]) ?? (typeof existing.comment === "string" ? existing.comment : "");
         delete patchData.comment;
@@ -4442,6 +4455,8 @@ export class MariDbService {
             if (!isRecord(entry)) throw new Error(`lorebook entry ${index + 1} must be an object`);
             // Give embedded entries the same coverage as lorebook.addEntry: build the base row, then
             // apply every user-editable setting and validate folder placement against this lorebook.
+            assertEntryMacros(entry, "lorebook.create");
+            assertLiteralEntryFields(entry, "lorebook.create");
             const entryRow = buildLorebookEntryCreateRow(entry, id, newId(), timestamp, (index + 1) * 100);
             this.assignLorebookEntryActionFields(entryRow, entry);
             await this.assignEntryFolderId(entryRow, entry, id);
@@ -7264,6 +7279,15 @@ export class MariDbService {
         }
         const entryName = flagString(flags, "name")?.trim();
         if (!entryName) throw new Error("--name is required for add-entry");
+        // The same linter as lorebook.addEntry, which shares this command's row constructor.
+        const lintedFlags = {
+          name: entryName,
+          content: flagString(flags, "content"),
+          keys: flagString(flags, "keys"),
+          secondaryKeys: flagString(flags, "secondary-keys"),
+        };
+        assertEntryMacros(lintedFlags, "mari lorebooks add-entry");
+        assertLiteralEntryFields(lintedFlags, "mari lorebooks add-entry");
         const lorebookExists = await this.getRawById(getMeta("lorebooks"), lorebookId);
         if (!lorebookExists) throw missingRecord("lorebook", lorebookId, "lorebook.list (or lorebook.search)");
         const addFolderId = flagString(flags, "folder-id");

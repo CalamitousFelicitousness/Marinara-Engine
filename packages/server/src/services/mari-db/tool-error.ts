@@ -91,9 +91,11 @@ export function needArg(
 
 /** An action name did not match: echo it, suggest the nearest valid one, list them. */
 export function unknownActionMessage(scope: string, received: string, valid: readonly string[]): string {
-  const suggestion = nearest(received, valid);
+  // A model-written name has no length limit: compare and echo only its first MAX_ECHO characters.
+  const shown = received.length > MAX_ECHO ? `${received.slice(0, MAX_ECHO)}…` : received;
+  const suggestion = received.length > MAX_ECHO ? null : nearest(received, valid);
   const hint = suggestion ? ` Did you mean "${suggestion}"?` : "";
-  return `Unknown ${scope} action "${received}".${hint} Valid actions: ${valid.join(", ")}.`;
+  return `Unknown ${scope} action "${shown}".${hint} Valid actions: ${valid.join(", ")}.`;
 }
 
 export function unknownAction(scope: string, received: string, valid: readonly string[]): never {

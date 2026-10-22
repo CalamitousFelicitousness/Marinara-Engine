@@ -3166,6 +3166,11 @@ details[open] > .mari-disclosure .mari-disclosure__chevron {
   animation: mari-headline-sheen 2.2s linear infinite;
 }
 
+/* Side-by-side inline-blocks may break between them, so a word's letters share one unbreakable run. */
+.mari-work-timeline__word {
+  white-space: nowrap;
+}
+
 .mari-work-timeline__char {
   display: inline-block;
   white-space: pre;

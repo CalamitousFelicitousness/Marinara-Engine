@@ -55,6 +55,27 @@ try {
     apply: true,
   })) as Result;
   assert.equal(css.ok, true, `nested CSS in Creator Notes saves: ${String(css.error ?? "")}`);
+  // A card sent back as read nests backstory under extensions; alternate greetings are a list.
+  for (const [data, field] of [
+    [{ extensions: { backstory: "Raised by {{kin" } }, /backstory opens/u],
+    [{ alternate_greetings: ["Hello.", "Back so soon, {{user?"] }, /alternate_greetings\[1\] opens/u],
+  ] as const) {
+    const refused = (await mari.executeAction({
+      action: "character.update",
+      characterId,
+      data,
+      apply: true,
+    })) as Result;
+    assert.equal(refused.ok, false);
+    assert.match(String(refused.error), field);
+  }
+  // Entries embedded in lorebook.create go through the entry linter too.
+  const embedded = (await mari.executeAction({
+    action: "lorebook.create",
+    data: { name: "Embedded", entries: [{ name: "Gate", content: "Opens at {{dusk" }] },
+  })) as Result;
+  assert.equal(embedded.ok, false);
+  assert.match(String(embedded.error), /^lorebook\.create refused by the macro linter: content opens/u);
   const onboarding = (await mari.executeAction({
     action: "character.onboarding.update",
     characterId,

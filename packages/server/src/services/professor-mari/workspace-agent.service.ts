@@ -98,6 +98,7 @@ import type {
   ProfessorMariQuickEditApplyResponse,
   ProfessorMariQuickEditProposal,
 } from "@marinara-engine/shared";
+import { MARI_DRY_RUN_SENTINEL } from "@marinara-engine/shared";
 import { getMariDbService } from "../mari-db/mari-db.service.js";
 import { describeReceived, noteArgument } from "../mari-db/tool-error.js";
 import { isMariReviewVisibleInChat } from "./mari-session.js";
@@ -2399,7 +2400,7 @@ export const STAGED_SENSITIVE_CHANGE_PREFIX = "Staged sensitive file change for 
 // sandboxed script's output always begins with the engine-written
 // "Command:" header - so startsWith here cannot be forged by script stdout
 // or by marker-shaped text embedded in the command string or row content.
-export const MARI_DRY_RUN_SENTINEL = "Dry-run: the mari CLI ran without --apply, so no changes were saved.";
+export { MARI_DRY_RUN_SENTINEL };
 // The app_data twin, under the same position-zero contract. A live 12b read three app_data dry runs as
 // saves: their only warning sat inside the JSON, ahead of a whole card echoed twice.
 export const APP_DATA_DRY_RUN_SENTINEL = `${APP_DATA_DRY_RUN_PREFIX}: app_data ran without top-level "apply": true.`;
@@ -2427,7 +2428,7 @@ function replyOwnsUpToDryRun(text: string): boolean {
   const normalized = text.trim().replace(/[’‘]/gu, "'");
   return (
     /\?\s*\W*$/u.test(normalized) ||
-    /\b(?:not (?:been |yet )?(?:saved|applied)|nothing (?:was |has been |is )?(?:saved|applied|changed)|dry[- ]run|preview only|here(?:'s| is) (?:the|a) preview|\w+n't (?:been |yet )?(?:saved|applied))\b/iu.test(
+    /\b(?:not (?:been |yet )?(?:saved|applied)|nothing (?:was |has been |is )?(?:saved|applied|changed)|dry[- ]run|preview only|here(?:'s| is) (?:the|a) preview|\w+n't (?:been |yet )?(?:saved|applied)|would (?:be|become|fire|look|read|show|change|add|set|make|create|update|replace|remove))\b/iu.test(
       normalized,
     )
   );

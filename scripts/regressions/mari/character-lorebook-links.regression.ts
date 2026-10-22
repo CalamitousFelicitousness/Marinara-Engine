@@ -121,6 +121,11 @@ try {
       apply: true,
     });
     assert.equal(echoed.ok, true, String(echoed.error));
+    // Tolerated, not stored: the card's data keeps no stale copy of the links.
+    const afterEcho = (await mari.executeAction({ action: "character.get", characterId: "char-a" })).output as {
+      data: Record<string, unknown>;
+    };
+    assert.equal(afterEcho.data.lorebooks, undefined);
     // The refusal sends models to link-character; linking a linked pair again adds no second row.
     const relink = await mari.executeCli({
       argv: ["lorebooks", "link-character", "book-linked", "--character", "char-a", "--apply"],

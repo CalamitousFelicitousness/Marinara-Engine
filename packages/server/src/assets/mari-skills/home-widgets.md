@@ -56,16 +56,16 @@ The real path for the user: Home → the **Widgets** bookmark → the window tit
 
 ## Errors and fixes
 
-| Message                                                                                                                          | Fix                                                                                                   |
-| -------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `Home supports at most 24 custom widgets.`                                                                                       | Delete a card the user no longer wants before creating another.                                       |
-| `No home widget has the id "<id>". …`                                                                                            | The id is not in the catalog. Take it from `home_widget.list`; the message prints the id you sent.    |
+| Message                                                                                                                                                           | Fix                                                                                                   |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `Home supports at most 24 custom widgets.`                                                                                                                        | Delete a card the user no longer wants before creating another.                                       |
+| `No home widget has the id "<id>". …`                                                                                                                             | The id is not in the catalog. Take it from `home_widget.list`; the message prints the id you sent.    |
 | `Home widget id is required (none was sent): send a non-empty "id" or "widgetId" top-level. If you do not know it, use the matching list or search action first.` | Resolve the widget with `home_widget.list` first.                                                     |
-| `home_widget.update needs a non-empty patch.`                                                                                    | Send at least one of `title`, `description`, `accent`, `icon`.                                        |
-| `The stored Home custom widget catalog is invalid and must be repaired before editing it.`                                       | Every action, `list` included, throws this; there is no `app_data` repair path. Report it and stop.   |
-| `Home widget catalog changed; refresh it and try again.`                                                                         | A concurrent write won the revision check. Re-read with `list`, reapply, retry once — never force it. |
-| `Unrecognized key(s) in object: 'body'`                                                                                          | Inside `data`/`patch` only the four fields belong; a body, text or size key is rejected there.        |
-| `Unknown home widget action "<name>".`                                                                                       | No move, reorder, resize or colour action exists — only `list`, `get`, `create`, `update`, `delete`.  |
+| `home_widget.update needs a non-empty patch.`                                                                                                                     | Send at least one of `title`, `description`, `accent`, `icon`.                                        |
+| `The stored Home custom widget catalog is invalid and must be repaired before editing it.`                                                                        | Every action, `list` included, throws this; there is no `app_data` repair path. Report it and stop.   |
+| `Home widget catalog changed; refresh it and try again.`                                                                                                          | A concurrent write won the revision check. Re-read with `list`, reapply, retry once — never force it. |
+| `Unrecognized key(s) in object: 'body'`                                                                                                                           | Inside `data`/`patch` only the four fields belong; a body, text or size key is rejected there.        |
+| `Unknown home widget action "<name>".`                                                                                                                            | No move, reorder, resize or colour action exists — only `list`, `get`, `create`, `update`, `delete`.  |
 
 An enum value outside the set returns `Invalid enum value. Expected 'cyan' | 'orange' | 'pink' | 'violet', received 'blue'`. A top-level unknown key is dropped instead, so put the four fields in `data`/`patch` when you want a typo to fail loudly.
 
@@ -79,7 +79,7 @@ One `app_data` argument object per line, all in the response the user sees: read
 {"action":"home_widget.list"}
 ```
 
-The second `list` shows exactly one new `Field Formula` under an id the server generated (a slug plus random characters) — read it there, never predict it; `home_widget.get` with it shows the four fields. Report that in one line. The same create without `apply` is the trap: a dry run that saves nothing and shows the user nothing, so never send one as a preview round.
+The second `list` shows exactly one new `Field Formula` under an id the server generated (a slug plus random characters) — read it there, never predict it; `home_widget.get` with it shows the four fields. Report that in one line. That holds in Plan and Bypass; in the default mode step 4 applies — the create and the second `list` wait for Accept, so say the card is waiting for the user's approval and claim no id. The same create without `apply` is the trap: a dry run that saves nothing and shows the user nothing, so never send one as a preview round.
 
 ## Where the detail lives
 

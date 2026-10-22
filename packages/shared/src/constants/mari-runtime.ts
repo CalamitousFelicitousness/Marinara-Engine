@@ -16,6 +16,13 @@ export function isMariRuntime(value: unknown): value is MariRuntime {
 
 // The opening words of every app_data dry-run result. The work timeline marks a step "Previewed" by them.
 export const APP_DATA_DRY_RUN_PREFIX = "NOT SAVED - dry run";
+// A mari CLI run without --apply opens its bash result with this line instead.
+export const MARI_DRY_RUN_SENTINEL = "Dry-run: the mari CLI ran without --apply, so no changes were saved.";
+
+/** Either dry-run opening: the step finished but saved nothing. */
+export function isDryRunOutput(output: string | null | undefined): boolean {
+  return output?.startsWith(APP_DATA_DRY_RUN_PREFIX) === true || output?.startsWith(MARI_DRY_RUN_SENTINEL) === true;
+}
 
 // #7949: before her first write on a handbook surface in a chat, Professor Mari must read that
 // surface's built-in skill. On unless the user turns it off; "false" is the only stored off value.

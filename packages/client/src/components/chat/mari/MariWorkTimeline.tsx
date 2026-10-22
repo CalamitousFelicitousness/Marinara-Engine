@@ -6,7 +6,7 @@ import { MariHold } from "./MariHold";
 import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { AlertTriangle, ChevronRight, MinusCircle, Pencil, Search, Terminal, type LucideIcon } from "lucide-react";
-import { APP_DATA_DRY_RUN_PREFIX, type MariWorkspaceActionResult } from "@marinara-engine/shared";
+import { isDryRunOutput, type MariWorkspaceActionResult } from "@marinara-engine/shared";
 import { type CharacterPreviewModel } from "../../../lib/character-preview";
 import { resolveRunAnchorMs, resolveRunSeconds, type RunStepTiming } from "../../../lib/mari-work-card-timing";
 import { type LorebookPreviewModel } from "../../../lib/lorebook-preview";
@@ -125,16 +125,29 @@ function MariSprite({
  */
 function MariLiveHeadline({ text, subject }: { text: string; subject?: string | null }) {
   const reduceMotion = useReducedMotion();
-  const letters = (value: string, offset: number) =>
-    [...value].map((char, index) => (
-      <span
-        key={index}
-        className="mari-work-timeline__char"
-        style={{ "--i": Math.min(offset + index, 40) } as CSSProperties}
-      >
-        {char}
-      </span>
-    ));
+  const letters = (value: string, offset: number) => {
+    let index = offset;
+    return value
+      .split(/(\s+)/u)
+      .filter(Boolean)
+      .map((part, partIndex) => {
+        const glyphs = [...part].map((char) => {
+          const i = index++;
+          return (
+            <span key={i} className="mari-work-timeline__char" style={{ "--i": Math.min(i, 40) } as CSSProperties}>
+              {char}
+            </span>
+          );
+        });
+        return /^\s+$/u.test(part) ? (
+          glyphs
+        ) : (
+          <span key={`word-${partIndex}`} className="mari-work-timeline__word">
+            {glyphs}
+          </span>
+        );
+      });
+  };
   return (
     <span className="mari-work-timeline__phrase" role="status">
       <AnimatePresence initial={false} mode="popLayout">
@@ -303,7 +316,7 @@ function describeStep(
     notFound: missed && isMariNotFoundOutput(tool.output),
     failed: tool.status === "error" && !missed,
     // A dry run finished but saved nothing: amber and neutral, never the green check.
-    previewed: tool.status === "done" && tool.output?.startsWith(APP_DATA_DRY_RUN_PREFIX) === true,
+    previewed: tool.status === "done" && isDryRunOutput(tool.output),
   };
 }
 

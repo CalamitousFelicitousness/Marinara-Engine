@@ -93,6 +93,16 @@ try {
     apply: true,
   });
   assert.match(spelled.output, /read skill `builtin-lorebook` first/);
+  // Decision content rides on a lorebook write: the decisions handbook comes first, then the lorebook one.
+  const decide = commandsFor("decision");
+  const decisionWrite = {
+    action: "lorebook.update",
+    lorebookId,
+    data: { description: '{{#if decision:"spare the wolf"}}Kind.{{/if}}' },
+    apply: true,
+  };
+  assert.match((await decide(decisionWrite)).output, /read skill `builtin-decisions` first/);
+  assert.match((await decide(decisionWrite)).output, /read skill `builtin-lorebook` first/);
   // Calls the user accepted were held, so the gate never saw them: Accept applies them all.
   const accepted = await commandsFor(
     "accept",

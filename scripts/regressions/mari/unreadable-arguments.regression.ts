@@ -36,6 +36,25 @@ try {
   assert.equal((await call({ action: "character.create", data: { name: "Elsie" } })).ok, true);
   assert.equal(await count("character.list"), 2);
 
+  // A 12b sent tags as JSON text: the card stored the string and every character screen crashed on tags.map.
+  const tagged = await call({ action: "character.create", data: { name: "Elara", tags: '["chef", "mentor"]' } });
+  assert.equal(tagged.ok, true, tagged.error);
+  const elaraId = ((await call({ action: "character.list" })).output as { id: string; name: string }[]).find(
+    (row) => row.name === "Elara",
+  )?.id;
+  const tagsOf = async () =>
+    ((await call({ action: "character.get", characterId: elaraId })).output as { data: { tags: unknown } }).data.tags;
+  assert.deepEqual(await tagsOf(), ["chef", "mentor"]);
+  await call({ action: "character.update", characterId: elaraId, patch: { tags: "baker, rival" }, apply: true });
+  assert.deepEqual(await tagsOf(), ["baker", "rival"]);
+  // Split on commas, the same text kept its brackets: ["[culinary", "lore]"].
+  await call({ action: "lorebook.create", data: { name: "Tagged", tags: '["culinary", "lore"]' } });
+  const bookId = ((await call({ action: "lorebook.list" })).output as { id: string; name: string }[]).find(
+    (row) => row.name === "Tagged",
+  )?.id;
+  const book = (await call({ action: "lorebook.get", lorebookId: bookId })).output as { tags?: unknown };
+  assert.deepEqual(book.tags, ["culinary", "lore"]);
+
   // A limit or offset that is not a number is refused, naming the key.
   const ten = await call({ action: "character.list", limit: "ten" });
   assert.equal(ten.ok, false);

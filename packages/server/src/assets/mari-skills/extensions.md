@@ -7,7 +7,7 @@ description: Read before drafting, editing or reviewing a personal extension —
 
 Purpose: build or repair a personal extension — code Marinara runs in a sandboxed browser worker or server sandbox. Every draft stays disabled until the user alone approves its exact code hash in Settings → Addons → Personal Extensions.
 
-Actions: reads `personal_extension.list|get|search`; writes `create|update`. No approve, enable, disable, delete, rollback or export action exists — an unknown sub-action returns `Unknown personal extension action "<name>".` and the valid ones
+Actions: reads `personal_extension.list|get|search`; writes `create|update`. No approve, enable, disable, delete, rollback or export action exists — an unknown sub-action returns `Unknown personal extension action "<name>".` and the valid ones: `list`, `get`, `search`, `create`, `update`.
 
 ## Write contract
 
@@ -83,4 +83,4 @@ The create reads back `contentHash: "sha256:677e787ceec71951f8e9fd14182ad7b3bc87
 
 ## Where the detail lives
 
-`docs_read` takes one heading per call: `personal-extensions.md` — `Review and enable`, `Add a Marinara-rendered panel`, `Validation limits`; `writing-personal-extensions.md` — `Browser API reference`, `Context capabilities`; `development/personal-extensions.md` — `Security invariants`, `Legacy and full page extensions`.
+`docs_read` takes one heading per call: `docs/extending/personal-extensions.md` — `Review and enable`, `Add a Marinara-rendered panel`; `docs/extending/writing-personal-extensions.md` — `Browser API reference`, `Context capabilities`, `Validation limits`. The security invariants are in a developer page `docs_read` does not open.

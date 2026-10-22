@@ -45,6 +45,8 @@ const CARD_MACRO_FIELDS = [
   "aboutMe",
   "about_me",
   "about-me",
+  "alternate_greetings",
+  "alternateGreetings",
 ];
 
 const ONBOARDING_MACRO_FIELDS = ["description", "personality", "backstory", "appearance", "scenario"];
@@ -53,9 +55,13 @@ function problemsIn(record: Record<string, unknown>, fields: string[]): MacroPro
   const problems: MacroProblem[] = [];
   for (const field of fields) {
     const value = record[field];
-    if (typeof value !== "string") continue;
-    const message = macroBalanceProblem(value);
-    if (message) problems.push({ field, message });
+    // Alternate greetings are a list; each one renders on its own swipe.
+    const texts = Array.isArray(value) ? value : [value];
+    texts.forEach((text, index) => {
+      if (typeof text !== "string") return;
+      const message = macroBalanceProblem(text);
+      if (message) problems.push({ field: Array.isArray(value) ? `${field}[${index}]` : field, message });
+    });
   }
   return problems;
 }
@@ -104,9 +110,10 @@ function literalProblems(record: Record<string, unknown>, fields: string[]): Mac
 
 /** Card text on `character.create` / `character.update` (top level or inside data/patch/card). */
 export function assertCardMacros(record: Record<string, unknown>, action: string): void {
-  const problems = candidateRecords(record, CARD_WRAPPERS).flatMap((candidate) =>
-    problemsIn(candidate, CARD_MACRO_FIELDS),
-  );
+  // A card sent back as character.get returned it keeps backstory, appearance and aboutMe under extensions.
+  const problems = candidateRecords(record, CARD_WRAPPERS)
+    .flatMap((candidate) => candidateRecords(candidate, ["extensions"]))
+    .flatMap((candidate) => problemsIn(candidate, CARD_MACRO_FIELDS));
   if (problems.length > 0) refuse(action, problems, BRACE_TAIL);
 }
 

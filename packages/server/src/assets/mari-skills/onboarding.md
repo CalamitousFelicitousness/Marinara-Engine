@@ -2,6 +2,7 @@
 name: Interactive onboarding
 description: Writing, editing, reviewing or debugging a character's interactive onboarding: the persona template, persona questions, character questions, and conditions.
 ---
+
 # Interactive onboarding
 
 Purpose: build or change a character's **interactive onboarding** — the persona template and
@@ -51,6 +52,7 @@ false for those answers — say which.
    question. Use the books the card carries or the user named, not the rest of the library: a
    question about where the player is from can name the setting's real places and factions instead
    of a generic "where are you from?".
+
 2. **Decide the question set before writing anything.** Ask only what changes the experience:
    who the player is, where they stand with the character, one or two scene-level choices. As many
    as the card needs — usually three to six, and none on the persona side if the card only asks
@@ -80,7 +82,7 @@ false for those answers — say which.
    user reviews; the template itself is not applied to any existing chat. Report the shape in one or
    two sentences afterward — never explain the feature instead of writing it.
 7. **Verify by reading back.** `character.onboarding.get` must return no `errors`, no `warnings`,
-   and a `samplePersona` with no `{{…}}` left in it — a `[name]` from a free-text persona question
+   and a `samplePersona` with no question `{{…}}` left in it (`{{user}}`, `{{char}}` and the other built-in macros stay, as allowed above; never strip them to clean the sample) — a `[name]` from a free-text persona question
    is expected; any `{{tag}}` there is a tag the persona will carry. If the block writes persona
    fields, the sample must also read like a person. A block with only character questions has an
    empty sample, which is correct: check instead that each `{{name}}` sits in a card field. Fix and
@@ -96,8 +98,12 @@ block, edit that question, and send the complete list. To switch onboarding off,
 ## Question and option fields
 
 ```json
-{ "variableName": "origin", "question": "Where do you come from?",
-  "options": ["Northern", "Southern"], "allowCustom": true }
+{
+  "variableName": "origin",
+  "question": "Where do you come from?",
+  "options": ["Northern", "Southern"],
+  "allowCustom": true
+}
 ```
 
 - No `options` → free text. A free text **character** question with no answer leaves a raw
@@ -140,25 +146,25 @@ The update reports every problem in the first failing group — unknown keys fir
 shape, then the 100-question cap, then the name and condition rules. Fix that group and resend; the
 next send can reveal the next group.
 
-| Message says | Fix |
-| --- | --- |
-| `Onboarding not saved, the block doesn't match the shape:` | A value has the wrong JSON type: `enabled`, `allowCustom` and `multiSelect` are booleans; `variables`, `cardVariables` and `options` are arrays; the five fields are strings. |
-| `Unknown onboarding key(s): …` | You sent a key that is not `enabled`, `description`, `personality`, `backstory`, `appearance`, `scenario`, `variables`, `cardVariables`. Typos are rejected, not ignored. |
-| `… has unknown key(s): …` | A question or option key is misspelled (for example `allowcustom`). Question keys: `variableName` (`name`), `question`, `options`, `allowCustom`, `multiSelect`, `separator`, `displayMode`, `optionSort`. Option keys: `label`, `value`, `description`. |
-| `A question has no variableName` | Fill it in. |
-| `"X" is not a valid variableName` | Use letters, digits and `_`, starting with a letter or `_`. No spaces or hyphens. |
-| `"X" is a built-in macro name` | Pick another name; the built-in would never be answered. |
-| `More than one question is named "X"` | Names must be unique across both lists. |
-| `An option value uses {{X}}, but no question has that name` | Add the question, or drop the `{{X}}` from the option value. |
-| `The <field> field has {{if …}}` | Add the `#`: `{{#if name == value}}`. |
-| `The <field> field uses {{X}}, but no question has that name` | Names are case-sensitive. Fix the tag or add the question. |
-| `… has more than 100 questions` | Split the intent; 100 is the ceiling per list. |
-| `character.onboarding.update needs an onboarding object.` | Send the block as the `onboarding` argument. |
+| Message says                                                  | Fix                                                                                                                                                                                                                                                      |
+| ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Onboarding not saved, the block doesn't match the shape:`    | A value has the wrong JSON type: `enabled`, `allowCustom` and `multiSelect` are booleans; `variables`, `cardVariables` and `options` are arrays; the five fields are strings.                                                                            |
+| `Unknown onboarding key(s): …`                                | You sent a key that is not `enabled`, `description`, `personality`, `backstory`, `appearance`, `scenario`, `variables`, `cardVariables`. Typos are rejected, not ignored.                                                                                |
+| `… has unknown key(s): …`                                     | A question or option key is misspelled (for example `allowcustom`). Question keys: `variableName` (`name`), `question`, `options`, `allowCustom`, `multiSelect`, `separator`, `displayMode`, `optionSort`. Option keys: `label`, `value`, `description`. |
+| `A question has no variableName`                              | Fill it in.                                                                                                                                                                                                                                              |
+| `"X" is not a valid variableName`                             | Use letters, digits and `_`, starting with a letter or `_`. No spaces or hyphens.                                                                                                                                                                        |
+| `"X" is a built-in macro name`                                | Pick another name; the built-in would never be answered.                                                                                                                                                                                                 |
+| `More than one question is named "X"`                         | Names must be unique across both lists.                                                                                                                                                                                                                  |
+| `An option value uses {{X}}, but no question has that name`   | Add the question, or drop the `{{X}}` from the option value.                                                                                                                                                                                             |
+| `The <field> field has {{if …}}`                              | Add the `#`: `{{#if name == value}}`.                                                                                                                                                                                                                    |
+| `The <field> field uses {{X}}, but no question has that name` | Names are case-sensitive. Fix the tag or add the question.                                                                                                                                                                                               |
+| `… has more than 100 questions`                               | Split the intent; 100 is the ceiling per list.                                                                                                                                                                                                           |
+| `character.onboarding.update needs an onboarding object.`     | Send the block as the `onboarding` argument.                                                                                                                                                                                                             |
 
 Warnings do not block the save, but they mean a question does nothing:
 
 - `Question "X" isn't used in any of the five template fields, so players won't be asked it.` → put
   `{{X}}` in a template field.
 - `Character question "X" isn't used in the card's description, personality, backstory, appearance
-  or scenario, so it is skipped.` → `character.update` the card field to read `{{X}}`, then send the
+or scenario, so it is skipped.` → `character.update` the card field to read `{{X}}`, then send the
   block again.

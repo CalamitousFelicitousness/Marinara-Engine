@@ -35,6 +35,8 @@ assert.match(
   /Unknown lorebook action "gets"\. Did you mean "get"\?/,
 );
 assert.doesNotMatch(unknownActionMessage("lorebook", "delete", ["get"]), /Did you mean/u);
+// A huge name is cut before it is compared or echoed.
+assert.match(unknownActionMessage("lorebook", "x".repeat(300_000), ["get"]), /Unknown lorebook action "x{80}…"\./u);
 
 // An enum: names the field, the set, and what arrived.
 assert.match(

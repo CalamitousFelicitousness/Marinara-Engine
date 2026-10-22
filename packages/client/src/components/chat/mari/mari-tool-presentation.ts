@@ -1,6 +1,6 @@
 // How one of Mari's tool calls reads in her timeline: its title, detail and tone, from the raw call.
 import {
-  APP_DATA_DRY_RUN_PREFIX,
+  isDryRunOutput,
   mergeMariActionResults,
   type MariWorkspaceActionResult,
   type MariWorkspaceTraceItem,
@@ -844,7 +844,7 @@ export function inferToolPresentation(tool: WorkspaceToolCall): ToolPresentation
     const parts = appDataAction.split(".");
     const writeVerb = /^(create|update|add|delete|set|move)(.*)$/u.exec(parts.at(-1) ?? "");
     // #7949: a dry run saved nothing, so it must not finish as "Updated character".
-    const dryRun = tool.output?.startsWith(APP_DATA_DRY_RUN_PREFIX) === true;
+    const dryRun = isDryRunOutput(tool.output);
     const writeTitle = writeVerb
       ? [
           dryRun ? "Previewing" : APP_DATA_WRITE_VERBS[writeVerb[1]!],

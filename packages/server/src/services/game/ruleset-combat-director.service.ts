@@ -145,6 +145,7 @@ import {
   type TacticalBattlefieldBrief,
   type TacticalMadeBattlefield,
   type TacticalGrid,
+  type CombatMind,
   type CombatOrders,
   type CombatTactics,
   type RulesetSheetItem,
@@ -176,6 +177,9 @@ export interface RulesetFightState {
   controllers: Record<string, "manual" | "ai">;
   /** The opponents the client marked as bosses, which is what routes a turn to the Game Master. */
   bosses: string[];
+  /** The named and the brilliant opponents (combat AI P9), whose turns go to the Game Master too in a
+   *  game that asks it to play them. */
+  thinkers?: string[];
   /** Every clamp and every fallback the opponents were built with, in plain words. */
   adjustments: string[];
   /** The loot table each opponent built from the bestiary carries, by combatant id: what a win rolls. */
@@ -224,6 +228,11 @@ export interface RulesetFightOpponent {
   /** A stat block the Game Master proposed, in the shared creature form. Clamped onto the scale. */
   proposed?: unknown;
   boss?: boolean;
+  /** A named individual of the story rather than a nameless foe (combat AI P9), as the Game Master
+   *  wrote it: one the Game Master may play itself, as it plays a boss. */
+  named?: boolean;
+  /** Its mind where the story changes what its own data says (a dominated creature). */
+  mind?: CombatMind;
   /** How it fights: the same competence and temperament its choices in the fight are made with,
    *  which is also what fills an invented sheet's open choices. Assigned here when not given. */
   tactics?: Pick<CombatTactics, "proficiency" | "adjective">;
@@ -465,12 +474,71 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
     events: [],
     controllers: {},
     bosses: input.enemies.filter((opponent) => opponent.boss).map((opponent) => opponent.id),
+    ...rulesetThinkersOf(input.definition, encounter, input.enemies),
     adjustments: adjustments.slice(0, RULESET_ADJUSTMENT_LIMIT),
     ...(Object.keys(lootTables).length > 0 ? { lootTables } : {}),
   };
   record(fight, encounter.opening);
   for (const line of fight.adjustments) logger.info("[game/combat:ruleset] %s", line);
   return { ok: true, fight };
+}
+
+/**
+ * What the Game Master is told of an opponent it plays (combat AI P9): how it thinks and fights (its
+ * mind, temperament, role and its own data's `behavior`), the other side ranked by the danger each
+ * poses, and the standing orders the party gave its companions. Nothing a player could not read off
+ * the fight; no die that has not been thrown.
+ */
+export function rulesetGmBrief(definition: RulesetDefinition, state: CombatDirectorState, actorId: string) {
+  const fight = fightOf(state);
+  const combat = definition.combat;
+  const actor = fight ? rulesetCombatant(fight.encounter, actorId) : undefined;
+  if (!fight || !combat || !actor) return {};
+  // A state built for a single question may carry no units at all.
+  const party = state.party ?? [];
+  const unit = [...party, ...(state.enemies ?? [])].find((one) => one.id === actorId);
+  const behavior = rulesetCombatantBehavior(definition, actor);
+  const mind = unit?.aiHints?.mind ?? rulesetCombatantMind(definition, actor);
+  const temperament = unit?.aiHints?.temperament ?? behavior?.temperament ?? unit?.tactics?.adjective;
+  const role = behavior?.role ?? unit?.tactics?.role;
+  const threats = fight.encounter.combatants
+    .filter((one) => one.side !== actor.side && rulesetCombatStanding(one))
+    .map((one) => ({
+      id: one.id,
+      name: one.name,
+      threat: Math.round(rulesetThreat(definition, combat, fight.encounter, one) * 100) / 100,
+    }))
+    .sort((a, b) => b.threat - a.threat);
+  const companionOrders = Object.fromEntries(party.filter((one) => one.orders).map((one) => [one.id, one.orders!]));
+  return {
+    profile: {
+      ...(mind ? { mind } : {}),
+      ...(temperament ? { temperament } : {}),
+      ...(role ? { role } : {}),
+      ...(unit?.tactics?.proficiency ? { proficiency: unit.tactics.proficiency } : {}),
+      ...(behavior ? { behavior } : {}),
+    },
+    threats,
+    ...(Object.keys(companionOrders).length > 0 ? { companionOrders } : {}),
+  };
+}
+
+/** The opponents the Game Master may play beside its bosses (combat AI P9): every named one, and
+ *  every one whose mind is a genius's, by the story or else by its own data. */
+function rulesetThinkersOf(
+  definition: RulesetDefinition,
+  encounter: RulesetEncounterState,
+  enemies: readonly RulesetFightOpponent[],
+): { thinkers?: string[] } {
+  const thinkers = enemies
+    .filter((opponent) => {
+      if (opponent.boss) return false;
+      if (opponent.named) return true;
+      const combatant = rulesetCombatant(encounter, opponent.id);
+      return (opponent.mind ?? (combatant ? rulesetCombatantMind(definition, combatant) : undefined)) === "genius";
+    })
+    .map((opponent) => opponent.id);
+  return thinkers.length > 0 ? { thinkers } : {};
 }
 
 /**
@@ -628,7 +696,9 @@ export function rulesetController(
     if (combatant.calledOnOwn) return "ai";
     return chosen === "ai" || (combatant.calledBy && chosen !== "manual") ? "ai" : "manual";
   }
-  return state.gm && fight.bosses.includes(combatant.id) ? "gm" : "ai";
+  if (!state.gm) return "ai";
+  if (fight.bosses.includes(combatant.id)) return "gm";
+  return state.gmNamed && fight.thinkers?.includes(combatant.id) ? "gm" : "ai";
 }
 
 /** The dice this fight throws next: the session's own seed, from the cursor the last step left. */

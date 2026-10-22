@@ -70,6 +70,8 @@ export interface CombatDirectorState extends DirectedCombatView {
   loot?: Array<{ name: string; quantity: number; left?: number }>;
   anchor: string;
   gm: boolean;
+  /** The Game Master plays the named and the brilliant opponents as well as the bosses (combat AI P9). */
+  gmNamed?: boolean;
   difficulty: string;
   weather?: CombatWeather;
   /** The game's elements (worldgen W6c); the classic six when absent. */
@@ -113,6 +115,14 @@ const ready = (s: CombatDirectorState, u: Unit, k: CombatSkill) =>
   (u.skillCooldowns?.[cooldownKey(s, k)] ?? 0) <= 0 &&
   (k.slotLevel ? (u.spellSlots?.[String(k.slotLevel)] ?? 0) > 0 : (u.mp ?? 0) >= k.mpCost);
 const canAct = (u: Unit) => canCombatantAct(u);
+/** Whether the Game Master plays this opponent's turns: a boss, and in a game that asks for it a named
+ *  or a brilliant one (combat AI P9). */
+const gmPlays = (s: CombatDirectorState, u: Unit) =>
+  s.gm &&
+  (!!u.boss ||
+    (!!s.gmNamed &&
+      side(u) === "enemy" &&
+      (("aiHints" in u && u.aiHints?.named === true) || u.tactics?.mind === "genius")));
 const manual = (s: CombatDirectorState, u: Unit) =>
   side(u) === "party" &&
   (living(s).find((c) => side(c) === "party")?.id === u.id ||
@@ -220,6 +230,7 @@ export function createCombatDirector(input: {
   enemies: Combatant[];
   style: "classic" | "tactical" | "ruleset";
   gm: boolean;
+  gmNamed?: boolean;
   difficulty: string;
   weather?: CombatWeather;
   elements?: WorldElementSet;
@@ -255,6 +266,7 @@ export function createCombatDirector(input: {
     budgets: {},
     log: [],
     gm: input.gm,
+    ...(input.gm && input.gmNamed ? { gmNamed: true } : {}),
     difficulty: normalizeGameDifficulty(input.difficulty),
     weather: input.weather,
     ...(input.elements ? { elements: input.elements } : {}),
@@ -1062,7 +1074,7 @@ export function advanceCombatDirector(s: CombatDirectorState) {
         declare(s, asAction(s, u, "wait"), "ai");
         continue;
       }
-      if (u.boss && s.gm) {
+      if (gmPlays(s, u)) {
         open(s, "ordinary", u, options(s, u));
         if (s.choices.length === 1) {
           takeChoice(s, s.choices[0]!.id, "ai");
@@ -1101,7 +1113,7 @@ export function advanceCombatDirector(s: CombatDirectorState) {
       const choices = reactionOptions(s, u, p);
       if (!choices.length) continue;
       open(s, "reaction", u, choices, p.action.unitId, p.id);
-      if (manual(s, u) || (u.boss && s.gm)) return;
+      if (manual(s, u) || gmPlays(s, u)) return;
       takeChoice(s, chooseDirectorFallback(s), "ai");
     } else if ((task.kind === "anticipation" || task.kind === "legendary") && (s.budgets[u.id]?.legendary ?? 0) > 0) {
       const choices = options(s, u, true);

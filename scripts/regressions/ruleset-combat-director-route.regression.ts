@@ -49,6 +49,7 @@ const { combatDirectorRoutes, COMBAT_DIRECTOR_NAMESPACE } =
 const { buildInitPrompt, encounterBlueprintSchema, encounterRulesetBrief } =
   await import("../../packages/server/src/routes/encounter.routes.js");
 
+const { buildRulesetCombatBossPrompt } = await import("../../packages/server/src/services/game/combat-boss.service.js");
 const read = (path: string) => readFileSync(fileURLToPath(new URL(path, import.meta.url)), "utf8");
 // An imported ruleset keeps its own bare id in the file and is filed under a namespaced one, which
 // is what a game pins. That is the shortest way to give this lane a ruleset with no package.
@@ -138,10 +139,12 @@ const app = Fastify();
 app.decorate("db", db);
 let bossAnswer: string | null = null;
 let bossCalls = 0;
+let lastBossState: unknown = null;
 await app.register(combatDirectorRoutes, {
   prefix: "/combat",
-  chooseBoss: async () => {
+  chooseBoss: async (_db: unknown, _chat: string, asked: unknown) => {
     bossCalls++;
+    lastBossState = asked;
     if (bossAnswer === null) throw new Error("the Game Master answered with garbage");
     return bossAnswer;
   },
@@ -185,11 +188,16 @@ const unit = (id: string, name: string, side: "player" | "enemy") => ({
 });
 const post = (url: string, payload: unknown) => app.inject({ method: "POST", url, payload });
 
-async function newGame(options: { ruleset: boolean; gm?: boolean; rulesetId?: string }) {
+async function newGame(options: { ruleset: boolean; gm?: boolean; named?: boolean; rulesetId?: string }) {
   const chat = await chats.create({ name: "Ruleset fight", mode: "game", characterIds: [] });
   const anchor = await chats.createMessage({ chatId: chat.id, role: "assistant", content: "[state: combat]" });
   await chats.patchMetadata(chat.id, {
-    gameSetupConfig: { combatDirector: true, gmBossControl: options.gm === true, difficulty: "Normal" },
+    gameSetupConfig: {
+      combatDirector: true,
+      gmBossControl: options.gm === true,
+      ...(options.named ? { gmNamedControl: true } : {}),
+      difficulty: "Normal",
+    },
     ...(options.ruleset
       ? {
           gameRuleset: { id: options.rulesetId ?? RULESET_ID, version: 1, packageId: null, options: {} },
@@ -857,6 +865,63 @@ try {
     assert.ok(boss.outcome, `${answer}: the fight still finished, with ${boss.outcome}`);
   }
 
+  // ── A named opponent (combat AI P9): the Game Master plays it too, when the game asks for that ──
+  for (const named of [true, false]) {
+    const game = await newGame({ ruleset: true, gm: true, named });
+    const opened = await post("/combat/start", {
+      chatId: game.chat.id,
+      anchor: game.anchor.id,
+      style: "ruleset",
+      party: [unit("brenna", "Brenna", "player")],
+      enemies: [{ ...unit("sentinel", "Hollow Sentinel", "enemy"), aiHints: { named: true } }],
+    });
+    assert.equal(opened.statusCode, 200, opened.body);
+    let fight = opened.json().session as DirectedCombatView;
+    const send = async (command: DirectedCommand) => {
+      const response = await post("/combat/command", {
+        chatId: game.chat.id,
+        anchor: game.anchor.id,
+        id: fight.id,
+        instanceId: fight.instanceId,
+        revision: fight.revision,
+        requestId: crypto.randomUUID(),
+        command,
+      });
+      assert.equal(response.statusCode, 200, response.body);
+      fight = response.json().session;
+    };
+    await send({ type: "control", unitId: "brenna", controller: "ai" });
+    const callsBefore = bossCalls;
+    lastBossState = null;
+    let windows = 0;
+    for (let guard = 0; guard < 300 && !fight.outcome; guard++) {
+      if (fight.window?.controller === "gm") {
+        windows++;
+        assert.equal(fight.window.actorId, "sentinel");
+        bossAnswer = fight.window.options[0]!.id;
+      }
+      await send({ type: "continue" });
+    }
+    assert.ok(fight.outcome, `the fight finished: ${named}`);
+    if (!named) {
+      assert.equal(windows, 0, "with bosses only, a named opponent is the Engine's own");
+      assert.equal(bossCalls, callsBefore);
+      continue;
+    }
+    assert.ok(windows > 0 && bossCalls > callsBefore, "the named opponent's turns went to the Game Master");
+    // What it is told: how the opponent fights, the other side by danger, and the companions' orders.
+    const prompt = JSON.parse(buildRulesetCombatBossPrompt(definition, lastBossState as never)[1]!.content) as Record<
+      string,
+      any
+    >;
+    assert.ok(prompt.profile && typeof prompt.profile === "object", JSON.stringify(Object.keys(prompt)));
+    assert.deepEqual(
+      prompt.threats.map((one: { id: string }) => one.id),
+      ["brenna"],
+    );
+    assert.equal(typeof prompt.threats[0].threat, "number");
+  }
+
   // ── The blueprint prompt: today's words without a combat block, the ruleset's terms with one ──
   {
     const plain = buildInitPrompt("Ada", "persona", "cards", [], "", "", false, undefined, null);
@@ -993,7 +1058,7 @@ try {
   }
 
   console.log(
-    "Ruleset combat director route: start, idempotency, refusal codes, the live sheet write-back, the board, an unchanged classic fight, the boss window and the blueprint prompt passed.",
+    "Ruleset combat director route: start, idempotency, refusal codes, the live sheet write-back, the board, an unchanged classic fight, the boss window, a named opponent the Game Master plays and the blueprint prompt passed.",
   );
 } finally {
   await app.close();

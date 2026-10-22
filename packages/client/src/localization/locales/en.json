@@ -1858,6 +1858,8 @@
   "game.combat.director.finish": "Continue story",
   "game.combat.director.loading": "Preparing combat…",
   "game.combat.director.mpCost": "{{amount}} MP",
+  "game.combat.director.namedHelp": "Named characters of the story and genius-minded foes (a lich, an ancient dragon) get the boss's decisions too. More turns wait on your GM connection.",
+  "game.combat.director.namedLabel": "Game Master also plays named and brilliant opponents",
   "game.combat.director.option.attack": "Attack {{target}}",
   "game.combat.director.option.defend": "Defend",
   "game.combat.director.option.move": "Move to {{x}}, {{y}}",

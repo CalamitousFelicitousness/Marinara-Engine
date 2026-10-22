@@ -460,6 +460,7 @@ export async function combatDirectorRoutes(
             .max(RULESET_COMBAT_EVENT_LIMIT),
           controllers: z.record(key, z.enum(["manual", "ai"])),
           bosses: z.array(key).max(40),
+          thinkers: z.array(key).max(40).optional(),
           adjustments: z.array(z.string().max(1000)).max(200),
         })
         .optional(),
@@ -882,6 +883,8 @@ export async function combatDirectorRoutes(
           enemies: input.enemies.map(({ creature: _c, tier: _t, proposed: _p, ...unit }) => unit) as Combatant[],
           id: randomUUID(),
           gm: setup.gmBossControl === true,
+          // The named and the brilliant opponents too (combat AI P9), when the game asks for it.
+          gmNamed: setup.gmBossControl === true && setup.gmNamedControl === true,
           difficulty: normalizeGameDifficulty(setup.difficulty),
           weather: resolveCombatWeather(
             weatherSource,
@@ -949,6 +952,8 @@ export async function combatDirectorRoutes(
               ...(enemy.proposed !== undefined ? { proposed: enemy.proposed } : {}),
               ...(enemy.tactics ? { tactics: enemy.tactics } : {}),
               boss: !!enemy.boss,
+              ...(enemy.aiHints?.named ? { named: true } : {}),
+              ...(enemy.aiHints?.mind ? { mind: enemy.aiHints.mind } : {}),
             })),
             cards,
             playerName: persona?.name ?? null,

@@ -252,6 +252,9 @@ export interface GameSetupConfig {
   /** Versioned server-owned combat with interruption windows; absent preserves legacy battles. */
   combatDirector?: boolean;
   gmBossControl?: boolean;
+  /** With `gmBossControl`, the Game Master also plays every named opponent and every one with a
+   *  genius's mind (combat AI P9). Absent is bosses only, as every game before it. */
+  gmNamedControl?: boolean;
   /** Optional tactical battlefield preferences used for newly-created encounters. */
   tacticalBattlefield?: TacticalBattlefieldSetup;
   /** Who acts when in a new tactical fight (combat C6c): one unit at a time in a rolled order, or the

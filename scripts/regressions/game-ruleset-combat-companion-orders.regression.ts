@@ -29,7 +29,7 @@ process.env.DATA_DIR = dataDir;
 process.env.FILE_STORAGE_DIR = join(dataDir, "storage");
 const { commandCombatDirector, createCombatDirector } =
   await import("../../packages/server/src/services/game/combat-director.service.js");
-const { pickRulesetChoice } =
+const { commandRulesetCombatDirector, pickRulesetChoice } =
   await import("../../packages/server/src/services/game/ruleset-combat-director.service.js");
 
 try {
@@ -235,6 +235,27 @@ try {
     });
     const away = pick(close, { posture: "retreat" });
     assert.ok(away?.defensive, `retreating, it gets away or dodges: ${JSON.stringify(away?.choice)}`);
+  }
+
+  // ── Guarding, it never sprints to the end of its leash ──
+  {
+    // The orc is far off and Mira may not stray from Ada: the walk stops at the leash with movement
+    // to spare, so a sprint would only be her action thrown away.
+    const { encounter, state } = fight({
+      ada: { side: "party", block: block([smash]), at: { x: 2, y: 5 } },
+      mira: { side: "party", block: block([smash]), at: { x: 1, y: 5 } },
+      orc: { side: "enemy", block: block([smash]), at: { x: 15, y: 5 } },
+    });
+    const seen = state.rulesetFight!.eventSeq;
+    assert.ok(commandRulesetCombatDirector(definition, state, { type: "continue" }).ok);
+    const turn = state.rulesetFight!.events.filter((entry) => entry.seq > seen).map((entry) => entry.event);
+    const sprints = turn.filter((event) => event.type === "standard" && event.actorId === "mira");
+    assert.deepEqual(
+      sprints,
+      [],
+      `no sprint: ${JSON.stringify(turn.filter((event) => "actorId" in event && event.actorId === "mira"))}`,
+    );
+    assert.ok(rulesetCombatant(encounter, "mira")!.x <= 2 + 3, "and she stays by Ada");
   }
 
   // ── Conserve ──

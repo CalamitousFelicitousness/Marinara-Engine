@@ -1208,6 +1208,8 @@ interface RulesetCandidate {
   /** Where the actor walks to before doing it, on a board. The move is its own step, resolved
    *  through the same menu a player's would be. */
   to?: { x: number; y: number };
+  /** What a closing walk costs of the movement left, so a sprint is taken only when it is short. */
+  walked?: number;
 }
 
 /** How many cells a turn is weighed from. The board is small and a turn is short, so this is a
@@ -2980,6 +2982,7 @@ export function rulesetClosingMove(
     choice: { actorId, optionId: RULESET_MOVE_OPTION, targetIds: [], to: { x: best.cell.x, y: best.cell.y } },
     option: { id: RULESET_MOVE_OPTION, kind: "move", label: "Move", targets: { side: "self", count: 0 } },
     to: { x: best.cell.x, y: best.cell.y },
+    walked: best.cell.cost,
   };
 }
 
@@ -3887,7 +3890,12 @@ function walkTowardsTrouble(
   if (!actor || (actor.movementLeft ?? 0) < 1) return false;
   const closing = rulesetClosingMove(definition, fight.encounter, actorId, leash);
   if (!closing) return false;
-  const sprint = (definition.combat?.standard ?? []).includes("dash") && !actor.flags.dashed;
+  // A walk that stops with movement to spare (at the end of a guard's leash, or already beside the
+  // opponent) gains nothing from a sprint, which would only be the turn's action thrown away.
+  const sprint =
+    (definition.combat?.standard ?? []).includes("dash") &&
+    !actor.flags.dashed &&
+    (closing.walked === undefined || closing.walked >= (actor.movementLeft ?? 0));
   if (sprint) {
     const sprinted = applyChoice(definition, state, fight, {
       actorId,

@@ -11,7 +11,7 @@ The start scripts (`start.sh`, `start.bat`, and `start-termux.sh`) already bind 
 Follow these steps:
 
 1. Keep Marinara running on the host computer.
-2. Set a login (a username and password): in **Settings → Advanced → Access** on the host computer, or on the other device with the one-time setup code from the server log (in Docker: `docker logs <container>`). [Remote Access](REMOTE_ACCESS.md#option-1-login-recommended) walks through it.
+2. Set a login (a username and password): in **Settings → Advanced → Access** in a browser that is already signed in, or on the other device with the one-time setup code from the server log (in Docker: `docker logs <container> 2>&1 | grep "setup code"`). [Remote Access](REMOTE_ACCESS.md#option-1-login-recommended) walks through it.
 3. Find the host computer's local IP address. On Windows, run this command and read the **IPv4 Address**:
 
 ```

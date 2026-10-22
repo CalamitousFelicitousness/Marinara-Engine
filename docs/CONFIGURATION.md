@@ -141,7 +141,7 @@ When one of these changes, the log warns that a restart is required. Access-cont
 
 ## Access control
 
-Access control decides who is allowed to reach a running server. This section is a quick reference. For a step-by-step walkthrough with examples, read [Remote Access: Basic Auth and IP Allowlist](REMOTE_ACCESS.md).
+Access control decides who is allowed to reach a running server. This section is a quick reference. For a step-by-step walkthrough with examples, read [Remote Access: Login and IP Allowlist](REMOTE_ACCESS.md).
 
 The login can also be set without `.env`: in **Settings → Advanced → Access** on the computer that runs Marinara, or from any device with the one-time setup code. The server prints that code in its log only while no login is set and the server listens beyond loopback (for example `HOST=0.0.0.0` or Docker). That login is saved in `DATA_DIR/.remote-login.json`; `pnpm reset-login` removes it and signs out every browser. A login in `.env` wins over it. Login proxies use `TRUSTED_AUTH_PROXY`; see [Login proxies (forward auth)](REMOTE_ACCESS.md#login-proxies-forward-auth).
 
@@ -442,7 +442,7 @@ Some networks reach the internet only through an HTTP proxy, for example v2rayN 
 ## Related guides
 
 - [Feature Switches](configuration/features.md)
-- [Remote Access: Basic Auth and IP Allowlist](REMOTE_ACCESS.md)
+- [Remote Access: Login and IP Allowlist](REMOTE_ACCESS.md)
 - [Where Your Data Is Stored](data/where-data-is-stored.md)
 - [Connecting to an AI Provider](connections/connecting-to-a-provider.md)
 - [Scene Video](media/scene-video.md)

@@ -33,8 +33,8 @@ export function AppBanner({
   const Icon = critical ? ShieldAlert : TriangleAlert;
 
   return (
-    // A card above the bottom edge, so it never covers the top bar or its Settings and More buttons.
-    <div className="fixed inset-x-2 bottom-[max(0.5rem,env(safe-area-inset-bottom))] z-[9999] max-h-[50dvh] overflow-y-auto rounded-xl bg-[var(--background)] text-[var(--foreground)] shadow-lg md:right-auto md:left-4 md:w-[28rem]">
+    // A card just below the 3rem top bar: it leaves the top bar's buttons and the chat composer free.
+    <div className="fixed inset-x-2 top-[calc(env(safe-area-inset-top)+3.5rem)] z-[9999] max-h-[50dvh] overflow-y-auto rounded-xl bg-[var(--background)] text-[var(--foreground)] shadow-lg md:right-auto md:left-4 md:w-[28rem]">
       <div
         className={cn(
           "flex items-start gap-3 rounded-xl border py-2 pr-2 pl-4 text-sm",

@@ -1017,6 +1017,8 @@ interface ChatMessageProps {
   isGrouped?: boolean;
   personaInfo?: PersonaInfo;
   groupChatMode?: string;
+  /** This chat's Card Theming switch; undefined falls back to the retired global setting. */
+  colorInlineNames?: boolean;
   chatCharacterIds?: string[];
   /** Active character IDs used for merged Narrator avatar presentation. */
   mergedGroupCharacterIds?: string[];
@@ -1927,6 +1929,7 @@ export const ChatMessage = memo(function ChatMessage({
   isGrouped,
   personaInfo,
   groupChatMode,
+  colorInlineNames: chatColorInlineNames,
   chatCharacterIds,
   mergedGroupCharacterIds,
   expressionAvatarResolver,
@@ -1969,7 +1972,7 @@ export const ChatMessage = memo(function ChatMessage({
     showTokenUsage,
     showMessageNumbers,
     boldDialogue,
-    colorInlineNames,
+    legacyColorInlineNames,
     disableInlineNameGradients,
     editMessageOnDoubleClick,
     quoteFormat,
@@ -1994,7 +1997,7 @@ export const ChatMessage = memo(function ChatMessage({
       showTokenUsage: s.showTokenUsage,
       showMessageNumbers: s.showMessageNumbers,
       boldDialogue: s.boldDialogue ?? true,
-      colorInlineNames: s.colorInlineNames,
+      legacyColorInlineNames: s.colorInlineNames,
       disableInlineNameGradients: s.disableInlineNameGradients,
       editMessageOnDoubleClick: s.editMessageOnDoubleClick,
       quoteFormat: s.quoteFormat,
@@ -2002,6 +2005,7 @@ export const ChatMessage = memo(function ChatMessage({
       setTTSLineVolume: s.setTTSLineVolume,
     })),
   );
+  const colorInlineNames = chatColorInlineNames ?? legacyColorInlineNames;
   const remoteImages = useRemoteImagePolicy();
   // Build reusable text style objects (memoized to avoid unnecessary DOM updates)
   const textStrokeStyle = useMemo<React.CSSProperties>(

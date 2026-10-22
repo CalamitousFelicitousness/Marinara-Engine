@@ -63,7 +63,7 @@ The Theme Library activates on save and leaves activation alone when editing. A 
 
 A card styles its own chat with `<style>` blocks inside its **Creator Notes**, extracted at render as one `#marinara-card-css` element. There is no CSS action: write the note with `character.update` (or `persona.update`), splicing the block into the existing text, `apply:true`.
 
-- **You cannot turn it on.** The switch is **Chat Settings → Card Theming** (`cardCssMode`: `disabled`, `exclusive` or `chat`) and only that panel writes it; the section appears only when a card carries a `<style>` block. Send the user there, say which mode you wrote for, and ask them to reload before judging.
+- **You cannot turn it on.** The switch is **Chat Settings → Card Theming** (`cardCssMode`: `disabled`, `exclusive` or `chat`) and only that panel writes it. In Roleplay chats the section is always there (it also holds the inline name-color switch), but the mode buttons appear only when a card carries a `<style>` block. Send the user there, say which mode you wrote for, and ask them to reload before judging.
 - The browser sanitizes at render, silently: `position: fixed` becomes `absolute`, `:has()`/`!important` and theme-token declarations are dropped, and `display`, `visibility`, `opacity`, `transform` and `content:` survive. Write paint only — never a rule that covers, hides or imitates a control. There is no byte cap; keep it small, it is parsed on every render.
 - Reuse the class, variable and `data-card-css` names from `docs/appearance/card-css-theming.md`; do not invent selectors from the theme variables.
 

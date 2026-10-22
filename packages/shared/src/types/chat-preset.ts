@@ -217,6 +217,7 @@ export const CHAT_PROFILE_FOLLOWER_SYNC_KEYS: readonly string[] = [
   "forceToolCall", // Make the model call a tool
   "activeToolIds", // Tools the model may call
   "cardCssMode", // How character card styles apply
+  "colorInlineNames", // Colour character names in message text
   "scopedRegexMode", // Which scoped regex scripts run
   // Group chats
   "groupChatMode", // Merged or individual narration

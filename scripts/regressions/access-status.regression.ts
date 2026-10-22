@@ -76,6 +76,7 @@ try {
     passwordlessPeers: [],
     loginKeepsOpen: [],
     viaProxy: false,
+    needsCurrentPassword: false,
   });
   for (const secret of Object.values(SECRETS)) assert.ok(!owner.body.includes(secret), "status must not leak secrets");
 

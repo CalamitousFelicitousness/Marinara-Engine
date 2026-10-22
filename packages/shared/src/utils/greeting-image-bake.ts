@@ -83,7 +83,8 @@ export function hasBakedGreetingImages(data: GreetingFields): boolean {
   );
 }
 
-function referencedBakedGreetingImages(data: GreetingFields): BakedGreetingImage[] {
+/** Reusable mappings still named by a greeting URL or portable gallery reference. */
+export function referencedBakedGreetingImages(data: GreetingFields): BakedGreetingImage[] {
   const urls = new Set(findGreetingImageUrls(data));
   const texts = greetingTexts(data);
   return readBakedGreetingImages(data.extensions).filter(

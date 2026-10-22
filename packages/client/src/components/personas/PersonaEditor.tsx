@@ -1405,7 +1405,7 @@ export function PersonaEditor() {
 
   const mutationBusy = mutationKind !== null;
   const saving = mutationKind === "save";
-  const avatarBusy = mutationKind === "avatar" || mutationKind === "gallery-avatar" || mutationKind === "remove-avatar";
+  const avatarUploading = mutationKind === "avatar" || mutationKind === "gallery-avatar";
 
   const beginMutation = useCallback((kind: PersonaMutationKind) => {
     if (mutationTokenRef.current) return null;
@@ -2205,7 +2205,7 @@ export function PersonaEditor() {
                   if (!mutationBusy) setAvatarGeneratorOpen(true);
                 }}
                 imageGenerationAvailable={imageGenerationAvailable}
-                avatarUploading={avatarBusy}
+                avatarUploading={avatarUploading}
                 avatarRemoving={
                   mutationKind === "remove-avatar" && removeAvatar.isPending && removeAvatar.variables === personaId
                 }

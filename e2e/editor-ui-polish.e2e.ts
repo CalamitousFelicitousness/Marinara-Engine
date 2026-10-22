@@ -349,6 +349,10 @@ test("persona avatar removal preserves unsaved fields and survives reload", asyn
 
 test("persona avatar removal progress belongs to the active editor session", async ({ page, request }) => {
   const ids: string[] = [];
+  let releaseUpload = () => {};
+  const pendingUpload = new Promise<void>((resolve) => {
+    releaseUpload = resolve;
+  });
   let releaseRemoval = () => {};
   const pendingRemoval = new Promise<void>((resolve) => {
     releaseRemoval = resolve;
@@ -382,6 +386,10 @@ test("persona avatar removal progress belongs to the active editor session", asy
       .click();
     await expect(remove).toHaveText(/Removing/u);
     await expect(remove).toBeDisabled();
+    const replace = editor.locator('[data-editor-section="metadata"] fieldset').nth(1).locator("button").first();
+    await expect(replace).toHaveText("Upload avatar");
+    await expect(replace).toBeDisabled();
+    await expect(replace).toHaveAttribute("aria-busy", "false");
     // Normal navigation waits for the mutation. Force the parent selection to
     // exercise the editor's separate forced-teardown/session-isolation contract.
     await open(page, "persona", next);
@@ -421,7 +429,37 @@ test("persona avatar removal progress belongs to the active editor session", asy
     await expect(nextRemove).toHaveText("Remove");
     await expect(nextRemove).toBeEnabled();
     expect((await (await request.get(`${paths.persona}/${next}`)).json()).avatarPath).toBeTruthy();
+    await page.route(`**${paths.persona}/${next}/avatar`, async (route) => {
+      if (route.request().method() === "POST") await pendingUpload;
+      await route.continue();
+    });
+    await nextEditor
+      .locator('input[type="file"][accept="image/*"]')
+      .first()
+      .setInputFiles({
+        name: "replacement.png",
+        mimeType: "image/png",
+        buffer: Buffer.from(
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a2ioAAAAASUVORK5CYII=",
+          "base64",
+        ),
+      });
+    const nextReplace = nextEditor
+      .locator('[data-editor-section="metadata"] fieldset')
+      .nth(1)
+      .locator("button")
+      .first();
+    await expect(nextReplace).toHaveText("Uploading avatar…");
+    await expect(nextReplace).toBeDisabled();
+    await expect(nextReplace).toHaveAttribute("aria-busy", "true");
+    await expect(nextRemove).toHaveText("Remove");
+    await expect(nextRemove).toBeDisabled();
+    releaseUpload();
+    await expect(nextReplace).toHaveText("Upload avatar");
+    await expect(nextReplace).toBeEnabled();
+    await expect(nextRemove).toBeEnabled();
   } finally {
+    releaseUpload();
     releaseRemoval();
     for (const id of ids) await request.delete(`${paths.persona}/${id}`).catch(() => undefined);
   }

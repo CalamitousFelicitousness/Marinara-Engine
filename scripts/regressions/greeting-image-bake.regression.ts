@@ -269,6 +269,37 @@ try {
     assert.equal(requests.length, 0, "a valid saved copy is reused without downloading");
     assert.equal((await createCharacterGalleryStorage(db).listByCharacterId(character.id)).length, 1);
 
+    const mapping = saved.map(({ url, file }) => ({ url, file: file! }));
+    const saveCard = async (data: Record<string, unknown>) => {
+      const response = await app.inject({ method: "PATCH", url: `/api/characters/${character.id}`, payload: { data } });
+      assert.equal(response.statusCode, 200, response.body);
+      const row = await createCharactersStorage(db).getById(character.id);
+      assert.ok(row);
+      return JSON.parse(row.data);
+    };
+    await saveCard({
+      first_mes: `![saved](${bakedGreetingImageRef(mapping[0]!.file)})`,
+      extensions: { bakedGreetingImages: mapping },
+    });
+    assert.deepEqual(readBakedGreetingImages((await saveCard({ description: "Unrelated edit" })).extensions), mapping);
+    assert.deepEqual(
+      readBakedGreetingImages((await saveCard({ first_mes: `![web](${mapping[0]!.url})` })).extensions),
+      mapping,
+    );
+    await saveCard({
+      first_mes: "Edited first greeting",
+      alternate_greetings: [`![saved](${bakedGreetingImageRef(mapping[0]!.file)})`],
+    });
+    assert.deepEqual(
+      readBakedGreetingImages((await saveCard({ description: "Alternate still uses it" })).extensions),
+      mapping,
+    );
+    assert.deepEqual(
+      readBakedGreetingImages((await saveCard({ alternate_greetings: [] })).extensions),
+      [],
+      "ordinary saves drop mappings edited out of every greeting",
+    );
+
     const other = await createCharactersStorage(db).create(characterDataSchema.parse({ name: "Other" }));
     const wrongOwner = await app.inject({
       method: "POST",

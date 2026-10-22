@@ -463,14 +463,17 @@ const VIDEO_TAG_START_RE = /\[video(?=\s*[:\]])/giu;
  */
 function readVideoTags(content: string): Array<{ start: number; end: number; context: string | undefined | null }> {
   const tags: Array<{ start: number; end: number; context: string | undefined | null }> = [];
+  // Every "[" is paired with its closing "]" in one pass, so unclosed tags never rescan the rest of the reply.
+  const closeOf = new Map<number, number>();
+  const open: number[] = [];
+  for (let i = 0; i < content.length; i++) {
+    if (content[i] === "[") open.push(i);
+    else if (content[i] === "]" && open.length > 0) closeOf.set(open.pop()!, i);
+  }
   VIDEO_TAG_START_RE.lastIndex = 0;
   for (let match = VIDEO_TAG_START_RE.exec(content); match; match = VIDEO_TAG_START_RE.exec(content)) {
-    let depth = 0;
-    let end = -1;
-    for (let i = match.index; i < content.length && end < 0; i++) {
-      if (content[i] === "[") depth += 1;
-      else if (content[i] === "]" && --depth === 0) end = i + 1;
-    }
+    const close = closeOf.get(match.index);
+    let end = close === undefined ? -1 : close + 1;
     if (end < 0) {
       const lineEnd = content.indexOf("\n", match.index);
       end = lineEnd < 0 ? content.length : lineEnd;

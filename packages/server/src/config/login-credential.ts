@@ -49,8 +49,16 @@ function watchedFile<T>(file: string, read: () => T, missing: T) {
         // Missing.
       }
       if (state?.stamp === stamp) state.checkedAt = now;
-      else state = { checkedAt: now, stamp, value: stamp ? read() : missing };
-      return state.value;
+      else {
+        try {
+          state = { checkedAt: now, stamp, value: stamp ? read() : missing };
+        } catch (err) {
+          // Gone since the stat means missing; any other read error keeps the last value and tries again.
+          if ((err as NodeJS.ErrnoException).code === "ENOENT") state = { checkedAt: now, stamp: "", value: missing };
+          else logger.warn(err, "[login] Could not read %s; trying again", file);
+        }
+      }
+      return state ? state.value : missing;
     },
     forget() {
       state = null;
@@ -119,8 +127,9 @@ function isStoredLogin(value: unknown): value is StoredLogin {
 }
 
 function readLoginFile(): LoginConfig | null {
+  const text = readFileSync(LOGIN_FILE, "utf8");
   try {
-    const { user, salt, hash, N, r, p } = JSON.parse(readFileSync(LOGIN_FILE, "utf8")) as StoredLogin;
+    const { user, salt, hash, N, r, p } = JSON.parse(text) as StoredLogin;
     const login = { user, salt, hash, N, r, p };
     if (isStoredLogin(login)) return { source: "app", ...login };
   } catch {
@@ -216,8 +225,9 @@ function isSession(value: unknown): value is RemoteSession {
 }
 
 function readSessionsFile(): SessionsFile | null {
+  const text = readFileSync(SESSIONS_FILE, "utf8");
   try {
-    const { login, sessions } = JSON.parse(readFileSync(SESSIONS_FILE, "utf8")) as Partial<SessionsFile>;
+    const { login, sessions } = JSON.parse(text) as Partial<SessionsFile>;
     if (typeof login === "string" && Array.isArray(sessions) && sessions.every(isSession)) return { login, sessions };
   } catch {
     // Reported below.
@@ -229,7 +239,9 @@ function readSessionsFile(): SessionsFile | null {
 const hashToken = (token: string) => createHash("sha256").update(token, "utf8").digest();
 
 /** Live sessions of the login `loginKey` names. A new login gets a new key, which ends all older sessions. */
-function liveSessions(loginKey: string): RemoteSession[] {
+function liveSessions(loginKey: string, fresh = false): RemoteSession[] {
+  // Writers read the file as it is now, so they cannot bring back sessions deleted from outside.
+  if (fresh) sessionsFile.forget();
   const stored = sessionsFile.get();
   if (stored?.login !== loginKey) return [];
   const oldest = Date.now() - SESSION_MAX_AGE_SECONDS * 1000;
@@ -283,7 +295,7 @@ export function createSession(loginKey: string, userAgent: unknown): string {
     lastSeenAt: now,
   };
   // The oldest sessions drop out at the cap.
-  saveSessions(loginKey, [...liveSessions(loginKey), session].slice(-MAX_SESSIONS));
+  saveSessions(loginKey, [...liveSessions(loginKey, true), session].slice(-MAX_SESSIONS));
   return token;
 }
 
@@ -294,9 +306,11 @@ export function findSession(loginKey: string, token: string): RemoteSession | nu
   if (session && Date.now() - session.lastSeenAt >= SESSION_TOUCH_MS) {
     try {
       const now = Date.now();
+      const current = liveSessions(loginKey, true);
+      if (!current.some((entry) => entry.id === session.id)) return null;
       saveSessions(
         loginKey,
-        sessions.map((entry) => (entry === session ? { ...entry, lastSeenAt: now } : entry)),
+        current.map((entry) => (entry.id === session.id ? { ...entry, lastSeenAt: now } : entry)),
       );
     } catch (err) {
       logger.warn(err, "[login] Could not save when a browser was last seen");
@@ -310,7 +324,7 @@ export function listSessions(loginKey: string): RemoteSession[] {
 }
 
 export function deleteSession(loginKey: string, id: string): boolean {
-  const sessions = liveSessions(loginKey);
+  const sessions = liveSessions(loginKey, true);
   const rest = sessions.filter((session) => session.id !== id);
   if (rest.length === sessions.length) return false;
   saveSessions(loginKey, rest);

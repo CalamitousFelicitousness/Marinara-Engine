@@ -61,7 +61,7 @@
 //     cookie; scripts and API clients keep sending Basic Authorization.
 
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
-import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import {
   createSession,
   deleteSession,
@@ -292,11 +292,20 @@ function lockoutSeconds(request: FastifyRequest): number {
   return seconds;
 }
 
-function rememberFailure(request: FastifyRequest, header: string) {
+/** Names a guess for the current login only, so a password change does not keep refusing it. */
+function guessId(header: string, config: CachedConfig): string {
+  return createHmac("sha256", HEADER_MAC_KEY)
+    .update(config.fingerprint)
+    .update("\0")
+    .update(header)
+    .digest("base64url")
+    .slice(0, 16);
+}
+
+/** Counts a guess for this client before it is checked; a browser resending one saved password counts once. */
+function countGuess(request: FastifyRequest, guess: string) {
   const now = Date.now();
-  // A browser that keeps resending one saved wrong password counts once; only new guesses add up.
-  const guess = createHash("sha256").update(header).digest("base64url").slice(0, 16);
-  for (const [index, bucket] of failureBuckets(request).entries()) {
+  for (const bucket of failureBuckets(request)) {
     let record = activeRecord(bucket.key, now);
     if (!record) {
       if (failures.size >= MAX_TRACKED_CLIENTS) {
@@ -305,15 +314,21 @@ function rememberFailure(request: FastifyRequest, header: string) {
       }
       record = { guesses: new Set(), resetAt: now + BASIC_AUTH_FAILURE_WINDOW_MS };
       failures.set(bucket.key, record);
-      if (index === 0) logger.warn("[basic-auth] Wrong password from %s", request.ip);
     }
     record.guesses.add(guess);
-    if (record.guesses.size === bucket.limit) {
+  }
+}
+
+function logWrongPassword(request: FastifyRequest) {
+  for (const [index, bucket] of failureBuckets(request).entries()) {
+    const size = failures.get(bucket.key)?.guesses.size ?? 0;
+    if (index === 0 && size === 1) logger.warn("[basic-auth] Wrong password from %s", request.ip);
+    if (size === bucket.limit) {
       logger.warn(
         index === 0
           ? "[basic-auth] %d wrong passwords from %s; refusing its sign-ins for %d minutes"
           : "[basic-auth] %d wrong passwords through %s; refusing every new sign-in from there for %d minutes",
-        record.guesses.size,
+        size,
         request.ip,
         Math.ceil(BASIC_AUTH_FAILURE_WINDOW_MS / 60_000),
       );
@@ -321,23 +336,44 @@ function rememberFailure(request: FastifyRequest, header: string) {
   }
 }
 
-/** Checks a Basic Authorization header and updates this client's wrong-password count; null when too busy. */
+const checksInFlight = new Map<string, Promise<boolean | null>>();
+
+/** Checks a Basic Authorization header and updates this client's wrong-password count; null when it must wait. */
 async function checkCredentials(
   request: FastifyRequest,
   config: CachedConfig,
   header: string,
 ): Promise<boolean | null> {
-  const verdict = await verifyHeader(header, config);
-  if (verdict === null) return null;
-  if (verdict) {
-    // Shared counts belong to other visitors too, so signing in clears only this browser's own count.
-    if (lockoutSeconds(request) === 0) {
-      for (const bucket of failureBuckets(request)) if (!bucket.shared) failures.delete(bucket.key);
+  if (!headerMatches(header, config)) {
+    const guess = guessId(header, config);
+    const running = checksInFlight.get(guess);
+    if (running) return running;
+    const now = Date.now();
+    // A password this client already got wrong is wrong again, so it skips the slow check.
+    if (failureBuckets(request).some((bucket) => activeRecord(bucket.key, now)?.guesses.has(guess))) return false;
+    // Counted before the slow check, in the same step as the caller's lockout check, so parallel
+    // guesses see each other and cannot pass the limit.
+    countGuess(request, guess);
+    const check = verifyHeader(header, config);
+    checksInFlight.set(guess, check);
+    let verdict: boolean | null;
+    try {
+      verdict = await check;
+    } finally {
+      checksInFlight.delete(guess);
     }
-    return true;
+    if (verdict === false) {
+      logWrongPassword(request);
+      return false;
+    }
+    for (const bucket of failureBuckets(request)) failures.get(bucket.key)?.guesses.delete(guess);
+    if (verdict === null) return null;
   }
-  rememberFailure(request, header);
-  return false;
+  // Shared counts belong to other visitors too, so signing in clears only this browser's own count.
+  if (lockoutSeconds(request) === 0) {
+    for (const bucket of failureBuckets(request)) if (!bucket.shared) failures.delete(bucket.key);
+  }
+  return true;
 }
 
 function sendTooManyFailures(reply: FastifyReply, retryAfterSeconds: number) {
@@ -612,7 +648,8 @@ export function safeNextPath(value: unknown): string {
 
 function isLoginPath(request: FastifyRequest): boolean {
   const path = request.url.split("?", 1)[0];
-  return path === "/login" || path === "/logout";
+  if (path === "/logout") return request.method === "POST";
+  return path === "/login" && ["GET", "HEAD", "POST"].includes(request.method);
 }
 
 /** Browser page loads get the login page; scripts and API calls keep the Basic challenge. */

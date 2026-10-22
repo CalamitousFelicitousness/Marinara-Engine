@@ -4,7 +4,17 @@
 // login can be set from the Docker host with a one-time setup code from the log.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  unlinkSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -166,6 +176,11 @@ try {
   const api = await get("/api/chats", REMOTE, { accept: "text/html" });
   assert.equal(api.statusCode, 401, "API calls keep the 401 challenge");
   assert.match(String(api.headers["www-authenticate"]), /^Basic realm=/);
+  assert.equal(
+    (await get("/logout", REMOTE, { accept: "text/html" })).statusCode,
+    302,
+    "only POST /logout skips the login",
+  );
   const form = await get("/login?next=%2Fchats", REMOTE, { accept: "text/html" });
   assert.equal(form.statusCode, 200);
   assert.match(form.body, /<form[^>]+method="post" action="\/login"/);
@@ -297,6 +312,48 @@ try {
     "checks over the cap get 429",
   );
   assert.ok(burst.some((response) => response.statusCode === 401));
+
+  // ── A repeated wrong password skips the slow check, so it cannot fill the slots ──
+  const repeat = { authorization: basic("owner", "same-wrong-password") };
+  assert.equal((await get("/api/chats", "203.0.113.41", repeat)).statusCode, 401);
+  const busy = await Promise.all([
+    ...Array.from({ length: 4 }, (_, index) =>
+      get("/api/chats", `203.0.113.${130 + index}`, { authorization: basic("owner", `slow-${index}`) }),
+    ),
+    get("/api/chats", "203.0.113.41", repeat),
+  ]);
+  assert.deepEqual(
+    busy.map((response) => response.statusCode),
+    [401, 401, 401, 401, 401],
+    "a repeated wrong password does not wait for a slow check",
+  );
+
+  // ── Parallel guesses cannot pass the limit ──
+  const racer = "203.0.113.77";
+  for (let index = 0; index < BASIC_AUTH_FAILURE_LIMIT - 1; index += 1) {
+    assert.equal((await get("/api/chats", racer, { authorization: basic("owner", `race-${index}`) })).statusCode, 401);
+  }
+  const race = await Promise.all([
+    ...Array.from({ length: 3 }, (_, index) =>
+      get("/api/chats", racer, { authorization: basic("owner", `race-last-${index}`) }),
+    ),
+    get("/api/chats", racer, { authorization: second }),
+  ]);
+  assert.notEqual(race[3].statusCode, 200, "a guess past the limit is not checked");
+  assert.equal((await get("/api/chats", racer, { authorization: second })).statusCode, 429);
+
+  // ── A login file that cannot be read for a moment keeps the last login ──
+  if (process.platform !== "win32" && process.getuid?.() !== 0) {
+    chmodSync(LOGIN_FILE, 0);
+    const later = new Date(realNow() + 60_000);
+    utimesSync(LOGIN_FILE, later, later);
+    Date.now = () => realNow() - 60_000;
+    assert.equal(await loginSource(), "app", "a failed read keeps the last login");
+    chmodSync(LOGIN_FILE, 0o600);
+    Date.now = () => realNow() - 120_000;
+    assert.equal(await loginSource(), "app");
+    Date.now = realNow;
+  }
 
   // ── Remove; a reset brings a new setup code without a restart ──
   assert.ok(existsSync(SESSIONS_FILE));

@@ -47,6 +47,11 @@ const CARD_MACRO_FIELDS = [
   "about-me",
   "alternate_greetings",
   "alternateGreetings",
+  // Sent as prompt text with macros resolved. Creator notes stay out: card CSS there ends in "}}".
+  "system_prompt",
+  "systemPrompt",
+  "post_history_instructions",
+  "postHistoryInstructions",
 ];
 
 const ONBOARDING_MACRO_FIELDS = ["description", "personality", "backstory", "appearance", "scenario"];

@@ -1130,6 +1130,8 @@ export function normalizeAppDataActionName(action: string): string {
     "lorebook.entry.remove": "lorebook.deleteentry",
     "lorebook.entries.remove": "lorebook.deleteentry",
     "lorebook.removeentry": "lorebook.deleteentry",
+    "character.linklorebook": "lorebook.linkcharacter",
+    "character.unlinklorebook": "lorebook.unlinkcharacter",
     "theme.set": "theme.setactive",
     "theme.activate": "theme.setactive",
     "promptpreset.list": "preset.list",
@@ -1172,6 +1174,8 @@ const LOREBOOK_ACTIONS = [
   "createEntry",
   "updateEntry",
   "deleteEntry",
+  "linkCharacter",
+  "unlinkCharacter",
 ] as const;
 const HOME_WIDGET_ACTIONS = ["list", "get", "create", "update", "delete"] as const;
 const THEME_ACTIONS = ["list", "active", "get", "create", "update", "setActive"] as const;
@@ -1409,7 +1413,16 @@ function stringListValue(value: unknown): string[] | undefined {
 function firstStringList(source: Row, keys: string[]): string[] | undefined {
   for (const key of keys) {
     // #7949: a live 12b sent keys as [{"key":"guild","constant":"true"}]; String() saved "[object Object]".
-    const raw = source[key];
+    let raw = source[key];
+    // Parse JSON text first, so a list of objects sent as text meets the same guard.
+    if (typeof raw === "string" && raw.trimStart().startsWith("[")) {
+      try {
+        const parsed: unknown = JSON.parse(raw);
+        if (Array.isArray(parsed)) raw = parsed;
+      } catch {
+        // Not JSON: stringListValue splits it on commas.
+      }
+    }
     const nested = Array.isArray(raw) ? raw.find((entry) => entry !== null && typeof entry === "object") : undefined;
     if (nested !== undefined) {
       throw new Error(
@@ -1427,6 +1440,14 @@ function collectActionRecords(source: Row, keys: string[]): Row {
   for (const key of keys) {
     const value = source[key];
     if (isRecord(value)) Object.assign(out, clone(value));
+  }
+  // A wrapper sent twice ({data:{patch:{…}}}) meant its inner fields; kept as is, "patch" was saved
+  // as a card field and the write read back as applied.
+  for (const key of new Set([...keys, "patch", "data"])) {
+    const inner = out[key];
+    if (!isRecord(inner)) continue;
+    delete out[key];
+    Object.assign(out, inner);
   }
   return out;
 }
@@ -3238,11 +3259,11 @@ export class MariDbService {
         assertLiteralCardFields(args as Record<string, unknown>, "character.update");
         // `lorebooks` is read off a card but is not a card field; a model will try to write it back.
         // Attaching belongs to the lorebook CLI, so refuse with the command instead of dropping it.
+        const sentFields = collectActionRecords(args, ["patch", "data", "card", "character"]);
         const linkField = ["lorebooks", "lorebookIds", "lorebookId", "lorebook"].find(
-          (key) =>
-            key in args || (isRecord(args.data) && key in args.data) || (isRecord(args.patch) && key in args.patch),
+          (key) => key in args || key in sentFields,
         );
-        const sentBooks = [args, args.data, args.patch].find((source) => isRecord(source) && "lorebooks" in source);
+        const sentBooks = "lorebooks" in args ? args : sentFields;
         const bookIds = (books: unknown) =>
           Array.isArray(books)
             ? books
@@ -3255,7 +3276,7 @@ export class MariDbService {
           bookIds((sentBooks as Row | undefined)?.lorebooks) === bookIds(await this.characterLorebooks(id));
         if (linkField && !echoedRead) {
           throw new Error(
-            `character.update does not attach lorebooks ("${linkField}" was sent and would be ignored). Linking is CLI-only, and you run it yourself: send \`mari lorebooks link-character <lorebook-id> --character ${id} --apply\` with your bash tool. Sent alone, a mari command runs outside the sandbox. Do not hand the command to the user; no app_data action does it.`,
+            `character.update does not attach lorebooks ("${linkField}" was sent and would be ignored). Send app_data {"action":"lorebook.linkCharacter","lorebookId":"<lorebook id>","characterId":"${id}","reason":"…"} instead; take the lorebook id from lorebook.search, never its name.`,
           );
         }
         const existingDataRaw = tryParseJsonColumn(existing, "data");
@@ -4694,6 +4715,59 @@ export class MariDbService {
           ? selectiveKeysNotice({ ...entryExists, ...patch }, "lorebook.updateEntry")
           : null;
         return withNotices(updateResult, "lorebook_entries", entryId, updateNotice ? [updateNotice] : []);
+      }
+      case "linkcharacter":
+      case "unlinkcharacter": {
+        // The same rows as `mari lorebooks link-character`, as a structured call: a weak model kept
+        // writing the link into character.update, or lost it to the CLI's flag and quoting.
+        const link = sub === "linkcharacter";
+        const verb = link ? "lorebook.linkCharacter" : "lorebook.unlinkCharacter";
+        const lorebookId = requiredString(args, ["lorebookId"], "lorebook id");
+        const characterId = requiredString(args, ["characterId"], "character id");
+        if (!(await this.getRawById(getMeta("lorebooks"), lorebookId)))
+          throw missingRecord("lorebook", lorebookId, "lorebook.search");
+        if (!(await this.getRawById(getMeta("characters"), characterId)))
+          throw missingRecord("character", characterId, "character.search");
+        const existingLink = (await this.rawRows("lorebook_character_links")).find(
+          (row) => row.lorebookId === lorebookId && row.characterId === characterId,
+        );
+        if (link ? existingLink : !existingLink) {
+          return {
+            ok: true,
+            mode: "read",
+            command: context.command,
+            output: `${verb}: lorebook ${lorebookId} is ${link ? "already" : "not"} linked to character ${characterId}; nothing changed.`,
+          };
+        }
+        const common = { table: "lorebook_character_links", cascade: false, cwd: context.cwd };
+        const reason = firstString(args, ["reason"]) ?? null;
+        // Linking adds a row like a create, so it writes by default; unlinking previews like a delete.
+        if (link) {
+          const linkRow: Row = { id: newId(), lorebookId, characterId, createdAt: now() };
+          return this.executeMutation(
+            {
+              ...common,
+              kind: "insert",
+              id: String(linkRow.id),
+              row: linkRow,
+              apply: appDataCreateApply(args),
+              reason,
+            },
+            context.command,
+            context.sessionId,
+          );
+        }
+        return this.executeMutation(
+          {
+            ...common,
+            kind: "delete",
+            id: String(existingLink!.id),
+            apply: firstBoolean(args, ["apply"]) === true,
+            reason,
+          },
+          context.command,
+          context.sessionId,
+        );
       }
       case "deleteentry": {
         // A safe, scoped single-entry delete so Mari never reaches for a raw `mari db delete --where`

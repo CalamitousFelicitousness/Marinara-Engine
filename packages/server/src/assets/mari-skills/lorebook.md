@@ -7,11 +7,11 @@ description: Creating, editing, reviewing or debugging a lorebook or its entries
 
 Purpose: build or repair a lorebook — its entries, and the settings that decide when each reaches the prompt.
 
-Actions: reads `lorebook.list|get|entries|getEntry|search|testScan|folder.list|libraryFolder.list`; writes `lorebook.create|update|addEntry|updateEntry|deleteEntry|folder.create|libraryFolder.create`. CLI: `mari lorebooks`, the only route to `link-character`/`unlink-character`; a CLI write dry-runs without `--apply`. The usage is `mari lorebooks link-character <lorebook-id> --character <character-id> --apply` — the character is a **flag**, not a second positional argument (`unlink-character` takes the same).
+Actions: reads `lorebook.list|get|entries|getEntry|search|testScan|folder.list|libraryFolder.list`; writes `lorebook.create|update|addEntry|updateEntry|deleteEntry|linkCharacter|unlinkCharacter|folder.create|libraryFolder.create`. CLI: `mari lorebooks`; a CLI write dry-runs without `--apply`.
 
 ## Write contract
 
-- **Creates write by default; updates and deletes only preview.** `create`, `addEntry`, `folder.create` and `libraryFolder.create` apply unless you send `apply: false`; `update`, `updateEntry` and `deleteEntry` write only with `apply: true`, and without it return `mode: "dry-run"` and a `summary`.
+- **Creates write by default; updates and deletes only preview.** `create`, `addEntry`, `linkCharacter`, `folder.create` and `libraryFolder.create` apply unless you send `apply: false`; `update`, `updateEntry`, `deleteEntry` and `unlinkCharacter` write only with `apply: true`, and without it return `mode: "dry-run"` and a `summary`.
 - An applied write returns `readBack`: `status: "verified"` with `checkedRows`, `"mismatch"` when the rows came back different, or `"unavailable"`. Only `verified` means it landed; on `mismatch`, read the row back yourself.
 - Fields go in `data` (create) or `patch` (update); top-level names work too, and entries belong in `data.entries`.
 - `entryId` is the entry; `lorebookId` is the book, required by `addEntry`, `entries`, `testScan` and `folder.*`; `create` takes a chosen book id and `addEntry` a chosen entry id, but entries saved inside a `create` get generated ids — read them from `lorebook.entries`.
@@ -67,14 +67,9 @@ Entry (`addEntry`/`updateEntry`): `name`; `content`; `description`; `tag`; `keys
 
 ## Linking a character
 
-`app_data` has no action for this, and `character.update` refuses a `lorebooks`, `lorebookIds` or `lorebook` field rather than silently dropping it. It is the lorebook CLI's job, and the character is a **flag**, not a second positional:
+A link is its own row, never a card field: `character.update` refuses a `lorebooks`, `lorebookIds` or `lorebook` field, nested or not. Both ids are required and both are generated — a book's name is not its id, so resolve it with `lorebook.search` first. Then send `{"action":"lorebook.linkCharacter","lorebookId":"<id from search>","characterId":"<character id>","reason":"…"}`.
 
-```bash
-mari lorebooks link-character <lorebook-id> --character <character-id> --apply
-mari lorebooks unlink-character <lorebook-id> --character <character-id> --apply
-```
-
-Without `--apply` the CLI dry-runs and saves nothing. `character.get` then reports the book under `lorebooks`.
+`linkCharacter` writes by default; `unlinkCharacter` needs `apply: true`. Linking twice, or unlinking what is not linked, answers `nothing changed`. The proof is `character.get`: the book is listed under `lorebooks` with `attached: "linked"`. Report that, not the write's own result.
 
 ## Errors and fixes
 

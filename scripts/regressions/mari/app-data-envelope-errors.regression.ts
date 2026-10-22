@@ -103,6 +103,26 @@ try {
   };
   assert.match((await decide(decisionWrite)).output, /read skill `builtin-decisions` first/);
   assert.match((await decide(decisionWrite)).output, /read skill `builtin-lorebook` first/);
+  // Prose that quotes a decision is not decision work: only the lorebook handbook is asked for.
+  const prose = commandsFor("prose");
+  const proseWrite = {
+    action: "lorebook.update",
+    lorebookId,
+    data: { description: 'Her decision: "stay"' },
+    apply: true,
+  };
+  assert.match((await prose(proseWrite)).output, /read skill `builtin-lorebook` first/);
+  // A link is documented in both handbooks, so the characters one covers it (a preview keeps the data as is).
+  const link = commandsFor("link");
+  await link({ action: "skill.get", id: "builtin-characters" });
+  const linkPreview = await link({
+    action: "character.linkLorebook",
+    lorebookId,
+    characterId: aldric,
+    reason: "Shares his history",
+    apply: false,
+  });
+  assert.doesNotMatch(linkPreview.output, /read skill/);
   // Calls the user accepted were held, so the gate never saw them: Accept applies them all.
   const accepted = await commandsFor(
     "accept",

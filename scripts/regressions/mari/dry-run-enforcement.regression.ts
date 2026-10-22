@@ -49,6 +49,11 @@ assert.equal(auditWorkspaceCompletionClaim(final("Done! Updated the description.
 // older word check, which is its own matter.)
 assert.equal(auditWorkspaceCompletionClaim(final("Here is the change. Want me to save it?"), scope).issue, null);
 assert.notEqual(auditWorkspaceCompletionClaim(final("Preview only: nothing was saved yet."), scope).issue, "dry_run");
+// ...unless something beside the "would" claims it was done.
+assert.equal(
+  auditWorkspaceCompletionClaim(final("Done — the entry would fire on any of those words."), scope).issue,
+  "dry_run",
+);
 // A preview described as what it would do claims nothing was done.
 assert.notEqual(
   auditWorkspaceCompletionClaim(final("The entry would fire on Vlad and the castle."), scope).issue,

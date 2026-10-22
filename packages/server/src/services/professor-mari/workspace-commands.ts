@@ -129,12 +129,25 @@ const SKILL_BY_ACTION_PREFIX: ReadonlyArray<readonly [string, string]> = [
   ["chat.updatemessage", "builtin-repair"],
 ];
 
-// `decision:"…"` / `decision_choice:"…"` in sent text (quotes JSON-escaped), or a Decision field by name.
-const DECISION_CONTENT = /\bdecision(?:_choice)?:\s*\\?"|"(?:decisionStatement|activationQuestion)"/u;
+// A `decision:` / `decision_choice:` operand inside `{{#if …}}` or `{{else if …}}`, or a Decision field by
+// name. Prose such as `Her decision: "stay"` is not decision work.
+const DECISION_CONTENT =
+  /\{\{\s*(?:#if|else if)\b[^}]*\bdecision(?:_choice)?:|"(?:decisionStatement|activationQuestion)"/u;
 
 function skillForAction(action: string): string | undefined {
   const key = normalizeAppDataActionName(action);
   return SKILL_BY_ACTION_PREFIX.find(([prefix]) => key.startsWith(prefix))?.[1];
+}
+
+// A character-lorebook link is documented in both handbooks, so whichever one was read covers it.
+const LINK_ACTIONS = new Set(["lorebook.linkcharacter", "lorebook.unlinkcharacter"]);
+const LINK_SKILLS = ["builtin-lorebook", "builtin-characters"];
+
+function actionSkillNeeded(action: string, seen: Set<string>): string | undefined {
+  if (LINK_ACTIONS.has(normalizeAppDataActionName(action)) && LINK_SKILLS.some((id) => seen.has(id))) {
+    return undefined;
+  }
+  return skillForAction(action);
 }
 
 export function skillHintForFailedAction(action: string): string | null {
@@ -192,7 +205,7 @@ export function skillGateRefusal(
   // Decision content rides on a lorebook or preset write, so the payload, not the action, routes it.
   const skillId = [
     DECISION_CONTENT.test(JSON.stringify(args)) ? "builtin-decisions" : undefined,
-    skillForAction(action),
+    actionSkillNeeded(action, seen),
   ].find((id): id is string => id !== undefined && !seen.has(id));
   if (!skillId) return null;
   seen.add(skillId);

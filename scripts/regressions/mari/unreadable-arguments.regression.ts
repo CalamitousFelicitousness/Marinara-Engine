@@ -54,6 +54,14 @@ try {
   )?.id;
   const book = (await call({ action: "lorebook.get", lorebookId: bookId })).output as { tags?: unknown };
   assert.deepEqual(book.tags, ["culinary", "lore"]);
+  // A list of objects sent as JSON text meets the same guard as the list itself.
+  const objectText = await call({
+    action: "lorebook.addEntry",
+    lorebookId: bookId,
+    data: { name: "Guild", content: "x", keys: '[{"key":"guild","constant":"true"}]' },
+  });
+  assert.equal(objectText.ok, false);
+  assert.match(objectText.error ?? "", /"keys" must be a list of plain strings/);
 
   // A limit or offset that is not a number is refused, naming the key.
   const ten = await call({ action: "character.list", limit: "ten" });

@@ -91,7 +91,7 @@ try {
       createdAt: stamp,
       updatedAt: stamp,
     });
-    // A model that reads `lorebooks` off a card will try to write it back; refuse with the CLI route
+    // A model that reads `lorebooks` off a card will try to write it back; refuse with the link action
     // instead of dropping the field (a live 12b did exactly this three times, #7949).
     const wrongLink = await mari.executeAction({
       action: "character.update",
@@ -99,9 +99,29 @@ try {
       data: { lorebooks: [] },
     });
     assert.equal(wrongLink.ok, false, "character.update refuses a lorebook link instead of ignoring it");
-    assert.match(String(wrongLink.error), /mari lorebooks link-character <lorebook-id> --character char-a --apply/);
-    // A live 12b read "run … in bash" as an instruction for the user and printed the command instead.
-    assert.match(String(wrongLink.error), /with your bash tool.*Do not hand the command to the user/);
+    assert.match(String(wrongLink.error), /"action":"lorebook.linkCharacter".*"characterId":"char-a"/);
+    assert.match(String(wrongLink.error), /lorebook.search, never its name/);
+    // A live 12b wrapped it twice, with the book's name as its id; that was saved as a "patch" field.
+    const nested = await mari.executeAction({
+      action: "character.update",
+      characterId: "char-a",
+      data: { patch: { lorebooks: [{ id: "Simulator's Lorebook" }] } },
+      apply: true,
+    });
+    assert.equal(nested.ok, false, "a nested link field is refused too");
+    assert.match(String(nested.error), /lorebook.linkCharacter/);
+    const unwrapped = await mari.executeAction({
+      action: "character.update",
+      characterId: "char-a",
+      data: { patch: { description: "Unwrapped." } },
+      apply: true,
+    });
+    assert.equal(unwrapped.ok, true, String(unwrapped.error));
+    const afterUnwrap = (await mari.executeAction({ action: "character.get", characterId: "char-a" })).output as {
+      data: Record<string, unknown>;
+    };
+    assert.equal(afterUnwrap.data.description, "Unwrapped.");
+    assert.equal(afterUnwrap.data.patch, undefined, "a doubled wrapper is never stored as a field");
 
     // The same shape every namespace now uses: kind, id, "ids are generated", and the finder.
     const missingBook = await mari.executeAction({
@@ -135,6 +155,53 @@ try {
 
     const bare = await mari.executeAction({ action: "character.get", characterId: "char-bare" });
     assert.deepEqual((bare.output as { lorebooks?: unknown[] }).lorebooks, []);
+
+    // The structured link: ids only, a name is refused toward lorebook.search.
+    const byName = await mari.executeAction({
+      action: "lorebook.linkCharacter",
+      lorebookId: "Simulator's Lorebook",
+      characterId: "char-bare",
+    });
+    assert.equal(byName.ok, false);
+    assert.match(String(byName.error), /No lorebook has the id "Simulator's Lorebook".*lorebook.search/);
+    const linked = await mari.executeAction({
+      action: "lorebook.linkCharacter",
+      lorebookId: "book-linked",
+      characterId: "char-bare",
+      reason: "Shares the setting",
+    });
+    assert.equal(linked.ok, true, String(linked.error));
+    assert.equal(linked.mode, "apply", "a link writes by default, like a create");
+    const books = () =>
+      mari
+        .executeAction({ action: "character.get", characterId: "char-bare" })
+        .then((r) => (r.output as { lorebooks: Array<{ id: string; attached: string }> }).lorebooks ?? []);
+    assert.deepEqual(
+      (await books()).map((b) => [b.id, b.attached]),
+      [["book-linked", "linked"]],
+    );
+    const again = await mari.executeAction({
+      action: "character.linkLorebook",
+      lorebookId: "book-linked",
+      characterId: "char-bare",
+    });
+    assert.match(String(again.output), /already linked to character char-bare; nothing changed/);
+    // Unlinking previews like a delete until apply: true.
+    const preview = await mari.executeAction({
+      action: "lorebook.unlinkCharacter",
+      lorebookId: "book-linked",
+      characterId: "char-bare",
+    });
+    assert.equal(preview.mode, "dry-run");
+    assert.equal((await books()).length, 1);
+    const unlinked = await mari.executeAction({
+      action: "lorebook.unlinkCharacter",
+      lorebookId: "book-linked",
+      characterId: "char-bare",
+      apply: true,
+    });
+    assert.equal(unlinked.ok, true, String(unlinked.error));
+    assert.deepEqual(await books(), []);
   } finally {
     await db._fileStore.close();
   }

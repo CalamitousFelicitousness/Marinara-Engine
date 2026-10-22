@@ -59,6 +59,8 @@ try {
   for (const [data, field] of [
     [{ extensions: { backstory: "Raised by {{kin" } }, /backstory opens/u],
     [{ alternate_greetings: ["Hello.", "Back so soon, {{user?"] }, /alternate_greetings\[1\] opens/u],
+    [{ system_prompt: "Stay as {{char" }, /system_prompt opens/u],
+    [{ postHistoryInstructions: "Keep {{tone" }, /postHistoryInstructions opens/u],
   ] as const) {
     const refused = (await mari.executeAction({
       action: "character.update",

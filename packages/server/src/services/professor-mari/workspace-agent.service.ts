@@ -402,6 +402,8 @@ export const PROFESSOR_MARI_APP_DATA_ACTIONS = [
   "lorebook.addEntry",
   "lorebook.updateEntry",
   "lorebook.deleteEntry",
+  "lorebook.linkCharacter",
+  "lorebook.unlinkCharacter",
   "lorebook.folder.list",
   "lorebook.folder.create",
   "lorebook.libraryFolder.list",
@@ -2426,11 +2428,23 @@ function scopeEndsOnDryRunsOnly(results: readonly WorkspaceCommandResult[], audi
 
 function replyOwnsUpToDryRun(text: string): boolean {
   const normalized = text.trim().replace(/[’‘]/gu, "'");
-  return (
+  if (
     /\?\s*\W*$/u.test(normalized) ||
-    /\b(?:not (?:been |yet )?(?:saved|applied)|nothing (?:was |has been |is )?(?:saved|applied|changed)|dry[- ]run|preview only|here(?:'s| is) (?:the|a) preview|\w+n't (?:been |yet )?(?:saved|applied)|would (?:be|become|fire|look|read|show|change|add|set|make|create|update|replace|remove))\b/iu.test(
+    /\b(?:not (?:been |yet )?(?:saved|applied)|nothing (?:was |has been |is )?(?:saved|applied|changed)|dry[- ]run|preview only|here(?:'s| is) (?:the|a) preview|\w+n't (?:been |yet )?(?:saved|applied))\b/iu.test(
       normalized,
     )
+  ) {
+    return true;
+  }
+  // "would fire" describes a preview honestly only while nothing beside it claims the work is done:
+  // "Done — the entry would fire on those words" still states completion.
+  const wouldPhrase =
+    /\bwould (?:be|become|fire|look|read|show|change|add|set|make|create|update|replace|remove)\b(?: \w+)?/giu;
+  if (!normalized.match(wouldPhrase)) return false;
+  const rest = normalized.replace(wouldPhrase, " ");
+  return (
+    !/\b(?:done|all set|saved|applied|updated|created|added|linked|fixed|changed)\b/iu.test(rest) &&
+    !workspaceTextClaimsMutationCompletion(rest)
   );
 }
 

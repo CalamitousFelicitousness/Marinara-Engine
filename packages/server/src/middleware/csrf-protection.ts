@@ -136,6 +136,11 @@ function getRequestOrigin(request: FastifyRequest): string | null {
   }
 }
 
+function sameServerOrigin(request: FastifyRequest, origin: string | null): boolean {
+  const normalized = origin ? normalizeOrigin(origin) : null;
+  return normalized !== null && normalized === getRequestOrigin(request);
+}
+
 function canUseSameOriginCompatibility(
   request: FastifyRequest,
   origin: string | null,
@@ -283,8 +288,13 @@ export function csrfProtectionHook(request: FastifyRequest, reply: FastifyReply,
   if (ANDROID_SELF_AUTHENTICATING_PATHS.has(requestPath)) return done();
   // The sign-in form checks the password itself, and a plain HTML form cannot send
   // the CSRF header. Only a post the browser marks as same-origin skips the origin
-  // list; anything else gets the usual Origin/Referer check below.
-  if (requestPath === "/login" && firstHeader(request.headers["sec-fetch-site"])?.toLowerCase() === "same-origin") {
+  // list; anything else gets the usual Origin/Referer check below. Plain HTTP gets no
+  // Sec-Fetch-Site, so an Origin equal to this server's own origin counts too.
+  if (
+    requestPath === "/login" &&
+    (firstHeader(request.headers["sec-fetch-site"])?.toLowerCase() === "same-origin" ||
+      sameServerOrigin(request, firstHeader(request.headers.origin)))
+  ) {
     return done();
   }
 

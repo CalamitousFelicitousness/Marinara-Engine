@@ -832,6 +832,8 @@ function renderLoginPage(next: string, error?: string): string {
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex" />
+    <!-- Overrides no-referrer here, so the form posts its real Origin, not "null". -->
+    <meta name="referrer" content="same-origin" />
     <title>Marinara Engine — Sign in</title>
     <style>${PAGE_STYLE}
       main { max-width: 400px; }

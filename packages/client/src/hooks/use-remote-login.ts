@@ -18,7 +18,7 @@ export function useRemoteSessions(enabled: boolean) {
   });
 }
 
-/** A login change also changes who is signed in, so both views reload. */
+/** A login change also changes who is signed in and why devices were refused. */
 function useLoginMutation<T>(mutationFn: (input: T) => Promise<unknown>) {
   const qc = useQueryClient();
   return useMutation({
@@ -27,6 +27,7 @@ function useLoginMutation<T>(mutationFn: (input: T) => Promise<unknown>) {
       await Promise.all([
         qc.invalidateQueries({ queryKey: ["access-status"] }),
         qc.invalidateQueries({ queryKey: sessionsKey }),
+        qc.invalidateQueries({ queryKey: ["access-refusals"] }),
       ]);
     },
   });

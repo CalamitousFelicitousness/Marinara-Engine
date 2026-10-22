@@ -205,6 +205,14 @@ try {
     { origin: "https://chat.example.com" },
   );
   assert.equal(noFetchSite.statusCode, 403, "without Sec-Fetch-Site the usual Origin check applies");
+  const plainHttp = await signIn(
+    "203.0.113.20",
+    { user: "owner", password: "not-the-password" },
+    { origin: "http://chat.example.com" },
+  );
+  assert.equal(plainHttp.statusCode, 401, "plain HTTP sends no Sec-Fetch-Site; the server's own Origin passes");
+  const loginPage = await get("/login", "203.0.113.20", { accept: "text/html" });
+  assert.match(loginPage.body, /<meta name="referrer" content="same-origin" \/>/, "so the form posts a real Origin");
   const signedIn = await signIn(
     "203.0.113.20",
     { user: "owner", password: "first-password", next: "/chats" },
@@ -461,6 +469,13 @@ try {
   process.env.BASIC_AUTH_USER = "envuser";
   process.env.BASIC_AUTH_PASS = "env-password";
   assert.equal(credential.getLoginConfig()?.source, "env");
+  assert.deepEqual(
+    ((await local("GET", "/api/access/refusals")).json().refusals as Array<{ reason: string }>).map(
+      ({ reason }) => reason,
+    ),
+    ["allowlist"],
+    "a login hides the no-login refusals",
+  );
   assert.equal(await loginSource(), "env");
   assert.equal((await putLogin("127.0.0.1", { user: "owner", password: "fifth-password" })).statusCode, 409);
   assert.equal((await local("DELETE", "/api/access/login")).statusCode, 409);

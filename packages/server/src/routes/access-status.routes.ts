@@ -137,6 +137,8 @@ export async function accessStatusRoutes(app: FastifyInstance) {
   // Devices the access gates refused lately, for the banner on this computer.
   app.get("/refusals", { config: { rateLimit: RUNTIME_DIAGNOSTICS_RATE_LIMIT } }, async (request, reply) => {
     if (!requirePrivilegedAccess(request, reply, { loopbackOnly: true, feature: "Refused devices" })) return;
-    return { refusals: listRefusals() };
+    // Once a login exists, "no login yet" is old news.
+    const hasLogin = getLoginConfig() !== null;
+    return { refusals: listRefusals().filter((device) => !hasLogin || device.reason !== "noLogin") };
   });
 }

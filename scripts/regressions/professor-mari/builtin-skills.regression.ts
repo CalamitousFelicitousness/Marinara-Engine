@@ -241,10 +241,12 @@ try {
   // 12b (4 chats, 1 fetch): the gate now names the action it covers, at the top of the reference
   // (13,900 → 14,338). Raised once more (+150) when the patch/verify rule came back: CI's
   // open-issues test caught that moving card guidance into the characters handbook had dropped the
-  // permanent "updates are patches / read it back before claiming" rule (14,424 → 14,594).
+  // permanent "updates are patches / read it back before claiming" rule (14,424 → 14,594). Raised
+  // (+1,100) for staging's Game Mode ruleset-sheet bullet (#8063), which has no handbook yet
+  // (14,594 → 15,714); moving it into one is the next diet candidate.
   assert.ok(
-    knowledge.length < 14_750,
-    `the permanent prompt shrank (${knowledge.length} < 14750); lower this cap when another guide moves into a skill`,
+    knowledge.length < 15_850,
+    `the permanent prompt grew (${knowledge.length} >= 15850); move guidance into a skill, or lower this cap when one moves out`,
   );
 
   // A handbook is not carried into the next turn: it would be cut mid-sentence and crowd out the

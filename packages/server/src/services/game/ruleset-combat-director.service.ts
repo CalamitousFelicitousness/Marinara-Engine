@@ -3865,8 +3865,8 @@ function playRulesetTurn(
   const leash = actor && orders ? rulesetLeashOf(state, fight.encounter, actor, orders) : undefined;
   // Once it has dodged, got away or hidden (1.708), it does not walk back into the fight this turn.
   let defended = false;
-  // Whether its last blow was thrown from afar, by a mind that keeps its distance (combat AI P8).
-  let shotFromAfar = false;
+  // Whether its last blow was thrown from afar (combat AI P8), and whether it keeps its distance after.
+  let shotFromAfar: "stay" | "kite" | false = false;
   for (let action = 0; action < RULESET_TURN_ACTION_LIMIT; action++) {
     if (rulesetEncounterOutcome(fight.encounter) !== "ongoing") break;
     const picked = pickRulesetChoice(definition, state, fight.encounter, actorId);
@@ -3874,7 +3874,7 @@ function playRulesetTurn(
     if (idle) {
       // A shot thrown, it steps back where nobody can walk up and strike it, still in range for the
       // next; and with somebody still in its range it does not walk in to meet them.
-      if (shotFromAfar && !stays && keepRulesetRange(definition, state, fight, actorId)) break;
+      if (shotFromAfar && !stays && keepRulesetRange(definition, state, fight, actorId, shotFromAfar === "kite")) break;
       if (defended || stays || !walkTowardsTrouble(definition, state, fight, actorId, leash)) break;
       continue;
     }
@@ -3912,53 +3912,64 @@ function playRulesetTurn(
   advanceTurn(definition, state, fight);
 }
 
-/** Whether this choice is a blow thrown from afar by a tactician or a genius (combat AI P8): one with
- *  a range, at somebody not beside it. */
+/** Whether this choice is a blow thrown from afar (combat AI P8): one with a range and no reach of its
+ *  own (a bow or a spell; a thrown dagger is a melee weapon thrown, and its thrower walks in after it),
+ *  at somebody not beside it. A tactician or a genius then steps back (`kite`); anybody else who thinks at all stays
+ *  where it threw from (`stay`) rather than walk into the reach it just kept out of. */
 function rulesetShotFromAfar(
   state: CombatDirectorState,
   encounter: RulesetEncounterState,
   actorId: string,
   choice: RulesetCombatChoice,
-): boolean {
+): "stay" | "kite" | false {
   const mind = [...state.party, ...state.enemies].find((one) => one.id === actorId)?.tactics?.mind;
-  if (mind !== "tactical" && mind !== "genius") return false;
+  if (mind === undefined || mind === "mindless") return false;
   const actor = rulesetCombatant(encounter, actorId);
   const action = actor?.actions.find((one) => one.id === choice.optionId);
   const target = choice.targetIds[0] ? rulesetCombatant(encounter, choice.targetIds[0]) : undefined;
-  if (!actor || !action?.range || !action.damage || !target || target.side === actor.side) return false;
-  if (!rulesetPositionOf(actor) || !rulesetPositionOf(target)) return false;
-  return rulesetGap(actor, target) > 1;
+  if (!actor || !action || !target || target.side === actor.side) return false;
+  // A block (a scout's Multiattack) shoots only when every blow of it does.
+  const blows = action.sequence?.length
+    ? action.sequence.map((step) => actor.actions.find((one) => one.id === step.actionId))
+    : [action];
+  if (!blows.every((blow) => !!blow?.range && !blow.reach && !!blow.damage)) return false;
+  if (!rulesetPositionOf(actor) || !rulesetPositionOf(target) || rulesetGap(actor, target) <= 1) return false;
+  return mind === "tactical" || mind === "genius" ? "kite" : "stay";
 }
 
 /**
- * Keeping its distance (combat AI P8): the safest cell it may still walk to without being struck on
- * the way, from which an opponent stays in range of one of its blows from afar, taken when it is
- * clearly safer than where it stands. True when it has somebody in range, moved or not: then it
- * stays rather than walk in to meet them.
+ * Keeping its distance (combat AI P8): for one that kites, the safest cell it may still walk to
+ * without being struck on the way, from which an opponent stays in range of one of its blows from
+ * afar (in its normal range, where it has somebody there now), taken when it is safer than where it
+ * stands. True when it has somebody in range, moved or not: then it stays rather than walk
+ * in to meet them.
  */
 function keepRulesetRange(
   definition: RulesetDefinition,
   state: CombatDirectorState,
   fight: RulesetFightState,
   actorId: string,
+  kites: boolean,
 ): boolean {
   const actor = rulesetCombatant(fight.encounter, actorId);
   const home = rulesetPositionOf(actor);
   if (!actor || !home || !fight.encounter.board?.grid) return false;
-  const reach = Math.max(
-    0,
-    ...actor.actions
-      .filter((one) => one.range && one.damage && rulesetActionAvailable(actor, one, fight.encounter, definition))
-      .map((one) => one.range!.normal),
+  const ranged = actor.actions.filter(
+    (one) => one.range && !one.reach && one.damage && rulesetActionAvailable(actor, one, fight.encounter, definition),
   );
-  if (reach <= 1) return false;
+  const normal = Math.max(0, ...ranged.map((one) => one.range!.normal));
+  const long = Math.max(normal, ...ranged.map((one) => one.range!.long ?? one.range!.normal));
+  if (long <= 1) return false;
   const foes = fight.encounter.combatants.filter(
     (one) => one.side !== actor.side && rulesetCombatStanding(one) && rulesetPositionOf(one),
   );
   const span = rulesetSpanOf(actor);
-  const inRange = (cell: { x: number; y: number }) => foes.some((foe) => rulesetGapFrom(cell, span, foe) <= reach);
-  if (!inRange(home)) return false;
-  if (actor.movement !== undefined && (actor.movementLeft ?? 0) < 1) return true;
+  const within = (cell: { x: number; y: number }, reach: number) =>
+    foes.some((foe) => rulesetGapFrom(cell, span, foe) <= reach);
+  if (!within(home, long)) return false;
+  if (!kites || (actor.movement !== undefined && (actor.movementLeft ?? 0) < 1)) return true;
+  const reach = normal > 1 && within(home, normal) ? normal : long;
+  const inRange = (cell: { x: number; y: number }) => within(cell, reach);
   // The danger first, then the furthest from the nearest opponent: the edge of a walk reads as no
   // danger, and a step beyond it is safer still.
   const nearest = (cell: { x: number; y: number }) => Math.min(...foes.map((foe) => rulesetGapFrom(cell, span, foe)));
@@ -3967,7 +3978,8 @@ function keepRulesetRange(
   for (const cell of rulesetWalkableCells(definition, fight.encounter, actorId)) {
     if (cell.provokes.length > 0 || !inRange(cell)) continue;
     const danger = rulesetDangerAt(definition, fight.encounter, actor, cell);
-    if (!best ? danger > here - 0.1 : danger > best.danger) continue;
+    // Any real step down counts: much of the danger may be spells that reach it anywhere.
+    if (!best ? danger > here - 0.03 : danger > best.danger) continue;
     const away = nearest(cell);
     if (best && danger === best.danger && away <= best.away) continue;
     best = { cell: { x: cell.x, y: cell.y }, danger, away };

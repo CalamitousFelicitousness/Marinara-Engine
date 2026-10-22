@@ -664,11 +664,13 @@ try {
     // Keeping its distance: a tactician shoots and steps back out of the knight's walk; a cunning one
     // walks in after its shot.
     const bow = { ...spark, id: "bow", name: "Shortbow", range: { normal: 80, long: 320 } };
-    const kites = (mind: string) => {
+    // A thrown dagger is a melee weapon thrown: its thrower walks in after it.
+    const dagger = { ...spark, id: "dagger", name: "Dagger", reach: 5, range: { normal: 20, long: 60 } };
+    const kites = (mind: string, weapon: Record<string, unknown> = bow) => {
       const { encounter, state } = wide(
         { archer: { x: 6, y: 3 }, knight: { x: 2, y: 3 } },
         {
-          archer: { side: "enemy", block: block({ type: "humanoid", mind, actions: [bow] }) },
+          archer: { side: "enemy", block: block({ type: "humanoid", mind, actions: [weapon] }) },
           knight: { side: "party", block: block({ health: 80, actions: [claw] }) },
         },
         { archer: { ...master, temperament: "disciplined" } },
@@ -692,7 +694,8 @@ try {
       `it shot: ${JSON.stringify(tactician.turn)}`,
     );
     assert.ok(tactician.gap > 7, `and stepped out of the knight's walk: ${tactician.gap}`);
-    assert.ok(kites("cunning").gap <= 4, "a cunning one does not keep its distance");
+    assert.ok(kites("cunning").gap <= 4, "a cunning one does not step back");
+    assert.ok(kites("tactical", dagger).gap <= 4, "nor does one that threw a dagger");
   }
 
   // ── Refused ──

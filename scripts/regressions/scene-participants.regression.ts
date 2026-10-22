@@ -150,6 +150,27 @@ try {
     mood: "warm",
     name: "x",
   });
+  // Quoted and bare keys mixed, as models write them: every property is kept, none swallowed into the one before.
+  assert.deepEqual(tryParseJsonRecord('{\n  "name": "Scene: X", firstMessage: "Hi there"\n}'), {
+    name: "Scene: X",
+    firstMessage: "Hi there",
+  });
+  assert.deepEqual(tryParseJsonRecord('{\n  "name": "Scene: X, again", \'firstMessage\': "Hi there"\n}'), {
+    name: "Scene: X, again",
+    firstMessage: "Hi there",
+  });
+  assert.deepEqual(
+    tryParseJsonRecord('{\n  "name": "Scene: X", firstMessage: "Hi", "scenario": "Find: a book", rating: "sfw"\n}'),
+    { name: "Scene: X", firstMessage: "Hi", scenario: "Find: a book", rating: "sfw" },
+  );
+  assert.deepEqual(tryParseJsonRecord('{\n  name: "Scene: X",\n  "firstMessage": "Hi there"\n}'), {
+    name: "Scene: X",
+    firstMessage: "Hi there",
+  });
+  assert.deepEqual(tryParseJsonRecord('{\n  "name": "Scene: X", "firstMessage": "Hi there"\n}'), {
+    name: "Scene: X",
+    firstMessage: "Hi there",
+  });
   assert.deepEqual(tryParseJsonRecord('{\n  "a": "x", "b": "y",\n  "c": "He said "hi" twice",\n}'), {
     a: "x",
     b: "y",
@@ -183,7 +204,25 @@ try {
     .join("\n");
   assert.match(openerPrompt, /<opening_character>Bob<\/opening_character>/u, "the planner knows who opens");
   assert.match(openerPrompt, /"firstMessage" is posted by Bob\. Write it only as Bob/u);
+  assert.match(openerPrompt, /\("I" is Bob\)/u, 'first person: the opener is "I"');
   assert.match(openerPrompt, /says aloud in double quotes/u, "spoken words are quoted");
+  // Third person: the opener is not made "I" against the selected POV.
+  await api("POST", "/api/scene/plan", {
+    chatId: origin.id,
+    connectionId: conn.id,
+    prompt: "Visit the library",
+    promptPreferences: { pov: "third_person", tense: "past", ...selected },
+    initiatorCharId: ids[1],
+  });
+  const thirdPersonPrompt = requests
+    .at(-1)!
+    .messages.map((m) => m.content)
+    .join("\n");
+  assert.match(
+    thirdPersonPrompt,
+    /Write it only as Bob: Bob's own actions, dialogue and thoughts, in the selected POV/u,
+  );
+  assert.doesNotMatch(thirdPersonPrompt, /"I" is Bob/u);
   // In merged group mode one narrating voice tells the scene, so the opening is written that way.
   const mergedProfile = await api("POST", "/api/chat-presets", {
     name: "Merged scenes",
@@ -214,6 +253,22 @@ try {
     initiatorCharId: ids[1],
   });
   assert.deepEqual(castPlan.plan.characterIds, [ids[1], ids[0]], "the opening character stays in the scene");
+  // Without an initiator the first participant opens; a model that reorders the cast doesn't hand the opening to
+  // someone else, since /scene/create credits the first listed participant.
+  providerContent = JSON.stringify({ ...plan, characterIds: [ids[1], ids[0]] });
+  const noInitiatorPlan = await api("POST", "/api/scene/plan", {
+    chatId: origin.id,
+    connectionId: conn.id,
+    prompt: "Visit the library",
+  });
+  assert.match(
+    requests
+      .at(-1)!
+      .messages.map((m) => m.content)
+      .join("\n"),
+    /<opening_character>Alice<\/opening_character>/u,
+  );
+  assert.deepEqual(noInitiatorPlan.plan.characterIds, [ids[0], ids[1]], "the opening character is listed first");
   providerContent = JSON.stringify(plan);
   // The starred Roleplay settings profile, as a new Roleplay chat would get it, with its own prompt preset.
   const writingPreset = await api("POST", "/api/prompts", { name: "House style" });

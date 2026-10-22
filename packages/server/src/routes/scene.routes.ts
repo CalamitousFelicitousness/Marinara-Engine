@@ -1267,7 +1267,14 @@ export async function sceneRoutes(app: FastifyInstance) {
           `- "description" is narration shown before the opening message, posted separately; do not repeat it in "firstMessage".`,
           ...(openerName
             ? [
-                `- "firstMessage" is posted by ${openerName}. Write it only as ${openerName}: ${openerName}'s own actions, dialogue and thoughts (in first person, "I" is ${openerName}). Other characters appear only as ${openerName} sees and hears them; never narrate as another character.`,
+                // The pronoun follows the chosen POV: "I" only when it is first person.
+                `- "firstMessage" is posted by ${openerName}. Write it only as ${openerName}: ${openerName}'s own actions, dialogue and thoughts${
+                  promptPreferences?.pov === "first_person"
+                    ? ` ("I" is ${openerName})`
+                    : promptPreferences
+                      ? `, in the selected POV`
+                      : ` (if the POV is first person, "I" is ${openerName})`
+                }. Other characters appear only as ${openerName} sees and hears them; never narrate as another character.`,
               ]
             : []),
           req.body.promptPreferences?.participantCharacterIds !== undefined
@@ -1372,12 +1379,18 @@ export async function sceneRoutes(app: FastifyInstance) {
     // Only accept the background if it actually exists on disk
     const validBg = chosenBg && availableBackgrounds.includes(chosenBg) ? chosenBg : null;
 
-    // The opening character is always in the scene, so the opening message stays theirs.
+    // The opening character is always in the scene and listed first, so /scene/create credits the opening to them
+    // even without an initiator (it falls back to the first participant) and whatever order the model returned.
     const plannedParticipants = [
       ...new Set(parseCharacterIds(parsed.characterIds).filter((id) => characterIds.includes(id))),
     ];
-    if (openerId && plannedParticipants.length && !plannedParticipants.includes(openerId)) {
-      plannedParticipants.unshift(openerId);
+    if (openerId && plannedParticipants.length) {
+      plannedParticipants.splice(
+        0,
+        plannedParticipants.length,
+        openerId,
+        ...plannedParticipants.filter((id) => id !== openerId),
+      );
     }
 
     const fullPlan: SceneFullPlan = {

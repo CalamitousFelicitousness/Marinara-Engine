@@ -69,8 +69,11 @@ function escapeQuotesInsideLineValues(raw: string): string {
     .join("\n");
 }
 
-/** Every key written as a quoted key (`"key":`) in `text`, decoded as JSON reads it. */
-function quotedKeysIn(text: string): Set<string> {
+/**
+ * Every key the model wrote in `text`: quoted (`"key":`, decoded as JSON reads it), single-quoted (`'key':`) or bare
+ * (`key:` at the start of a line or after `{` or `,`), as models often mix them.
+ */
+function writtenKeysIn(text: string): Set<string> {
   const keys = new Set<string>();
   for (const match of text.matchAll(/"((?:[^"\\\n]|\\.)*)"\s*:/gu)) {
     try {
@@ -79,10 +82,12 @@ function quotedKeysIn(text: string): Set<string> {
       // Not a valid JSON string; it can't be a key jsonrepair kept either.
     }
   }
+  for (const match of text.matchAll(/'((?:[^'\\\n]|\\.)*)'\s*:/gu)) keys.add(match[1]!.replace(/\\(.)/gu, "$1"));
+  for (const match of text.matchAll(/(?:^|[{,])\s*([A-Za-z_$][\w$]*)\s*:/gmu)) keys.add(match[1]!);
   return keys;
 }
 
-/** Whether every object key in `json` was a quoted key in `text`, so none was made up from prose. */
+/** Whether every object key in `json` was written as a key in `text`, so none was made up from prose. */
 function keysAreFromText(json: string, text: string): boolean {
   const keys = (value: unknown): string[] =>
     Array.isArray(value)
@@ -91,7 +96,7 @@ function keysAreFromText(json: string, text: string): boolean {
         ? Object.entries(value).flatMap(([key, item]) => [key, ...keys(item)])
         : [];
   try {
-    const written = quotedKeysIn(text);
+    const written = writtenKeysIn(text);
     return keys(JSON.parse(json)).every((key) => written.has(key));
   } catch {
     return false;
@@ -108,9 +113,9 @@ export function repairJsonText(raw: string): string | null {
   }
 
   // jsonrepair "repairs" dialogue quotes inside a value by cutting the text off at the first one and turning the rest
-  // into a key of its own ("The librarian smiles."). Its reading is trusted only when every key in it was a quoted key
-  // in the model's text; otherwise the dialogue escape below goes first. Dialogue that itself holds `, "key": "value"`
-  // reads exactly like another property, so there jsonrepair's reading stands.
+  // into a key of its own ("The librarian smiles."). Its reading is trusted only when every key in it was written as a
+  // key in the model's text (quoted or not); otherwise the dialogue escape below goes first. Dialogue that itself holds `, "key": "value"`
+  // (or `, key: "value"`) reads exactly like another property, so there jsonrepair's reading stands.
   const trustedRepair = repaired && keysAreFromText(repaired, raw) ? repaired : null;
   // Only lines that aren't valid on their own change, so valid JSON is never touched.
   const lineEscaped = (() => {

@@ -2842,6 +2842,16 @@ function carriesBehavior710(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesBehavior710(one, depth + 1));
 }
 
+/** A bodyguard (1.724): a behavior with `guards`. */
+function carriesGuards724(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesGuards724(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.behavior)?.guards !== undefined) return true;
+  return featureValues(record).some((one) => carriesGuards724(one, depth + 1));
+}
+
 /** A creature that fights a side alone (1.723): a behavior whose `role` is `solo`. */
 function carriesSoloRole723(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -9402,6 +9412,12 @@ export function getCapabilityPackageInstallIssue(
     }),
   );
   // A creature that fights a side alone, 1.723.
+  if (
+    !declaresApi(724) &&
+    (carriesGuards724(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesGuards724(document)))
+  )
+    return "A ruleset with a bodyguard (a behavior's guards) requires schemaVersion 2 and capabilityApi 1.724 or newer";
   if (
     !declaresApi(723) &&
     (carriesSoloRole723(ruleset) ||

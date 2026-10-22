@@ -313,6 +313,28 @@ try {
     assert.equal(brute.gap, 1, "a brute stands and fights");
   }
 
+  // ── A bodyguard (combat AI A5): it goes at whoever is on the caster it keeps, not the one beside it ──
+  {
+    const scene = (behavior?: Record<string, unknown>) =>
+      fight({
+        guard: { side: "enemy", block: block([smash], behavior ? { behavior } : {}), at: { x: 5, y: 2 } },
+        mage: { side: "enemy", block: block([{ ...bolt, components: ["verbal"] }]), at: { x: 2, y: 6 } },
+        near: { side: "party", block: block([smash]), at: { x: 8, y: 2 } },
+        onMage: { side: "party", block: block([smash]), at: { x: 2, y: 7 } },
+      });
+    const free = scene();
+    assert.equal(pickRulesetChoice(definition, free.state, free.encounter, "guard")?.choice.targetIds[0], "near");
+    const kept = scene({ guards: ["casters"] });
+    assert.equal(
+      pickRulesetChoice(definition, kept.state, kept.encounter, "guard")?.choice.targetIds[0],
+      "onMage",
+      "the one on its charge",
+    );
+    // Nobody of the kind it keeps: it fights as it would.
+    const alone = scene({ guards: ["healers"] });
+    assert.equal(pickRulesetChoice(definition, alone.state, alone.encounter, "guard")?.choice.targetIds[0], "near");
+  }
+
   // ── Its temperament and role, unless the Game Master gave one ──
   {
     const scene = () =>
@@ -566,10 +588,19 @@ try {
     assert.equal(getCapabilityPackageInstallIssue(manifest(722) as never, dragonish), solo);
     assert.notEqual(getCapabilityPackageInstallIssue(manifest(723) as never, dragonish), solo);
     assert.notEqual(getCapabilityPackageInstallIssue(manifest(722) as never, wolfish), solo);
+    const guarding =
+      "A ruleset with a bodyguard (a behavior's guards) requires schemaVersion 2 and capabilityApi 1.724 or newer";
+    const guardish = fiveE((doc) => (lurkerEntry(doc).behavior = { guards: ["casters"] }));
+    assert.equal(getCapabilityPackageInstallIssue(manifest(723) as never, guardish), guarding);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(724) as never, guardish), guarding);
+    refused(
+      fiveE((doc) => (lurkerEntry(doc).behavior = { guards: ["casters", "casters"] })),
+      /Name each once/,
+    );
   }
 
   console.log(
-    "Combat behavior: merged from the ruleset, the type and the creature; its temperament and role; casters, attackers and a pack's prey first; its opener once; an ambusher keeps still and springs; roles read off what it does; refused and gated at 1.710 and 1.723.",
+    "Combat behavior: merged from the ruleset, the type and the creature; its temperament and role; casters, attackers and a pack's prey first; its opener once; an ambusher keeps still and springs; roles read off what it does; bodyguards stay by their charge; refused and gated at 1.710, 1.723 and 1.724.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

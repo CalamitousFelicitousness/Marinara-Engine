@@ -3423,9 +3423,44 @@ function rulesetOrdersFor(
   actor: RulesetCombatant,
   unit: { orders?: CombatOrders },
 ): CombatOrders | undefined {
-  if (actor.side !== "party") return undefined;
+  if (actor.side !== "party") return rulesetBodyguardOrders(definition, encounter, actor);
   if (unit.orders) return unit.orders;
   return { posture: "guard", ...(rulesetGoingBadly(definition, encounter, "party") ? {} : { conserve: true }) };
+}
+
+/**
+ * Whom a bodyguard (a `behavior.guards`, combat AI A5, 1.724) stands up for: the nearest friend still
+ * standing of the kinds it names (its side's leader, a caster, one who heals others), as a companion
+ * told to protect them. None for a mindless one, or once nobody of those kinds is left.
+ */
+function rulesetBodyguardOrders(
+  definition: RulesetDefinition,
+  encounter: RulesetEncounterState,
+  actor: RulesetCombatant,
+): CombatOrders | undefined {
+  const guards = rulesetCombatantBehavior(definition, actor)?.guards;
+  if (!guards || !rulesetPositionOf(actor) || rulesetCombatantMind(definition, actor) === "mindless") return undefined;
+  const actions = (one: RulesetCombatant) => one.actions.filter((action) => !action.whileHolds);
+  const kept = (one: RulesetCombatant) =>
+    guards.some((kind) =>
+      kind === "leader"
+        ? !!(one.leader || one.block?.leader)
+        : kind === "casters"
+          ? actions(one).some(rulesetActionIsSpell)
+          : actions(one).some((action) => action.heal && action.targets.side !== "self"),
+    );
+  const charges = encounter.combatants.filter(
+    (one) =>
+      one.side === actor.side &&
+      one.id !== actor.id &&
+      !one.object &&
+      rulesetCombatStanding(one) &&
+      !!rulesetPositionOf(one) &&
+      kept(one),
+  );
+  if (charges.length === 0) return undefined;
+  const charge = charges.reduce((best, one) => (rulesetGap(actor, one) < rulesetGap(actor, best) ? one : best));
+  return { posture: "protect", protectId: charge.id };
 }
 
 /** Whether a fight is going badly for a side: less than half its health left between those still in
@@ -3840,7 +3875,7 @@ function weighRulesetBehavior(
       case "concentrating":
         return new Set(foes.filter((one) => one.concentrating).map((one) => one.id));
       case "leader":
-        return new Set(foes.filter((one) => one.block?.leader).map((one) => one.id));
+        return new Set(foes.filter((one) => one.leader || one.block?.leader).map((one) => one.id));
     }
   };
   const ranked = (behavior.targets ?? []).map(preferred);
@@ -4127,7 +4162,7 @@ function playRulesetTurn(
   if (looking) applyChoice(definition, state, fight, { actorId, optionId: looking.id, targetIds: [] });
   // A companion's orders (P7): pulling its blows when told to spare, falling back when told to
   // retreat, and never walking into the fight when told to hold or to retreat.
-  const unit = state.party.find((one) => one.id === actorId);
+  const unit = [...state.party, ...state.enemies].find((one) => one.id === actorId);
   const orders = actor && unit ? rulesetOrdersFor(definition, fight.encounter, actor, unit) : undefined;
   if (orders?.spare && actor && !actor.knocksOut) {
     const pull = rulesetCombatOptions(definition, fight.encounter, actorId).find((option) => {

@@ -9874,12 +9874,17 @@ export const RULESET_TARGET_PREFERENCES = [
 ] as const;
 export type RulesetTargetPreference = (typeof RULESET_TARGET_PREFERENCES)[number];
 
+/** Whom a bodyguard stands up for (Capability API 1.724), in its `behavior.guards`. */
+export const RULESET_GUARDED_KINDS = ["leader", "casters", "healers"] as const;
+
 /**
  * How a combatant the Engine plays goes about a fight (Capability API 1.710), beside its `mind`: its
  * `temperament` and `role` in place of the ones it would be dealt; whom it goes for first
  * (`targets`, in order); the actions or spells it opens with (`opens`, the first of them it can use
  * on its first turns); `pack`, going for whoever a friend of its stands beside; and `ambush`, lying
- * in wait, hidden where it can, until an opponent comes within reach or it is hurt. A Game Master's
+ * in wait, hidden where it can, until an opponent comes within reach or it is hurt; and `guards`
+ * (Capability API 1.724), keeping near the nearest friend of the kinds it names and going at whoever
+ * is on them, as a companion told to protect them. A Game Master's
  * temperament for one fight wins over it; a mindless creature has none of it.
  */
 const combatBehaviorSchema = z
@@ -9895,6 +9900,12 @@ const combatBehaviorSchema = z
     opens: z.array(sheetId).min(1).max(4).optional(),
     pack: z.literal(true).optional(),
     ambush: z.literal(true).optional(),
+    guards: z
+      .array(z.enum(RULESET_GUARDED_KINDS))
+      .min(1)
+      .max(3)
+      .refine((kinds) => new Set(kinds).size === kinds.length, { message: "Name each once" })
+      .optional(),
   })
   .strict()
   .refine((behavior) => Object.keys(behavior).length > 0, { message: "Say something about how it fights" });

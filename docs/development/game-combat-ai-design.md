@@ -299,6 +299,8 @@ Proposed initial tuning: normalize policy utility to a fixed scale; let novices 
 
 **In and out again (combat AI A4).** A ruleset creature that struck up close this turn and is a skirmisher, or cautious or cowardly, uses its leftover walk to get clear: a Disengage it can still afford (Nimble Escape's bonus one) then its getaway cell, or without one only a cell that provokes nothing and is beside no opponent. Remembered across a window a person answers (`turnSoFar.struckClose`).
 
+**Bodyguards (combat AI A5, Capability API 1.724).** An opponent whose `behavior.guards` names `leader`, `casters` or `healers` is given the companion `protect` order for the nearest standing friend of those kinds (`rulesetBodyguardOrders`): the same leash of three squares, focus on whoever is on its charge, and its idle walk back to them. A target preference `leader` now also counts a combatant the story marks leader (E2).
+
 ## 8. Boss turns controlled by the GM
 
 ### Identity and responsibility

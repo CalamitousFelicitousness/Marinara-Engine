@@ -66195,6 +66195,19 @@
                           "type": "boolean",
                           "const": true
                         },
+                        "guards": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "enum": [
+                              "leader",
+                              "casters",
+                              "healers"
+                            ]
+                          },
+                          "minItems": 1,
+                          "maxItems": 3
+                        },
                         "$comment": {}
                       },
                       "additionalProperties": false
@@ -253266,6 +253279,19 @@
                         "type": "boolean",
                         "const": true
                       },
+                      "guards": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "leader",
+                            "casters",
+                            "healers"
+                          ]
+                        },
+                        "minItems": 1,
+                        "maxItems": 3
+                      },
                       "$comment": {}
                     },
                     "additionalProperties": false
@@ -254350,6 +254376,19 @@
             "ambush": {
               "type": "boolean",
               "const": true
+            },
+            "guards": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "leader",
+                  "casters",
+                  "healers"
+                ]
+              },
+              "minItems": 1,
+              "maxItems": 3
             },
             "$comment": {}
           },

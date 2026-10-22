@@ -19984,6 +19984,12 @@ test("a landscape phone keeps Home's compact chrome", async ({ page }, testInfo)
 
 test("a phone turned sideways keeps the app out from under its camera", async ({ page, request }, testInfo) => {
   test.skip(!testInfo.project.name.includes("mobile"), "Touch-device proof.");
+  // This covers the conservative fallback when neither rotation API identifies the camera edge.
+  // phone-camera-side.e2e.ts separately proves the one-sided iPhone layout in both directions.
+  await page.addInitScript(() => {
+    Object.defineProperty(window, "orientation", { configurable: true, value: undefined });
+    Object.defineProperty(screen, "orientation", { configurable: true, value: undefined });
+  });
   await seedUIState(page, { hasCompletedOnboarding: true, sidebarOpen: false, rightPanelOpen: false }, "merge");
   await page.addInitScript(({ key, version }) => localStorage.setItem(key, version), {
     key: WHATS_NEW_SEEN_VERSION_KEY,
@@ -20750,9 +20756,15 @@ test("home browser hub scales cleanly and opens FAQ as a bookmark window", async
   await expect(page.getByRole("heading", { name: `What's new in v${APP_VERSION}` })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Something new for your engine" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Character of the Day", exact: true })).toBeVisible();
+  const shortcutModifier = await page.evaluate(() => {
+    const platform =
+      (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform ??
+      navigator.platform;
+    return /mac|iphone|ipad|ipod/i.test(platform) ? "⌘" : "Ctrl";
+  });
   await expect(
     page.getByText(
-      "Feeling a little lost? It's not a skill issue yet, I am here to help! Ask me about the app, your setup, or what to do next. I can also create characters, lorebooks, agents, and extensions for you! Looking for a page? Press Ctrl+K and type it.",
+      `Feeling a little lost? It's not a skill issue yet, I am here to help! Ask me about the app, your setup, or what to do next. I can also create characters, lorebooks, agents, and extensions for you! Looking for a page? Press ${shortcutModifier}+K and type it.`,
       { exact: true },
     ),
   ).toBeVisible();

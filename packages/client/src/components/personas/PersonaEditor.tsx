@@ -3,7 +3,16 @@
 // Replaces the chat area when editing a persona.
 // Sections: Metadata, Card, Convo, Lorebook, Sprites, Gallery, Colors, Stats
 // ──────────────────────────────────────────────
-import { useState, useEffect, useRef, useCallback, useMemo, type ChangeEvent, type ReactNode } from "react";
+import {
+  useState,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useCallback,
+  useMemo,
+  type ChangeEvent,
+  type ReactNode,
+} from "react";
 import { toast } from "sonner";
 import {
   useCreateCharacter,
@@ -11,6 +20,7 @@ import {
   useUpdatePersona,
   useUploadAvatar,
   useUploadPersonaAvatar,
+  useRemovePersonaAvatar,
   useDeletePersona,
   useDuplicatePersona,
   usePersonaVersions,
@@ -288,7 +298,7 @@ function formatPersonaFieldValue<K extends keyof PersonaFormData>(
 
 /** Persona mutations the editor coordinates. Only one may run at a time,
  *  because each writes or removes the same Persona row. */
-type PersonaMutationKind = "save" | "avatar" | "gallery-avatar" | "delete";
+type PersonaMutationKind = "save" | "avatar" | "gallery-avatar" | "remove-avatar" | "delete";
 
 /** The decoded PATCH contract this editor writes: the shared update input plus
  *  the character-sheet fields the Persona route still handles separately. */
@@ -1319,6 +1329,7 @@ export function PersonaEditor() {
   const updatePersona = useUpdatePersona();
   const uploadCharacterAvatar = useUploadAvatar();
   const uploadAvatar = useUploadPersonaAvatar();
+  const removeAvatar = useRemovePersonaAvatar();
   const setGalleryImageAsAvatar = useSetPersonaGalleryImageAsAvatar(personaId ?? "");
   const deletePersona = useDeletePersona();
   const duplicatePersona = useDuplicatePersona();
@@ -1394,7 +1405,7 @@ export function PersonaEditor() {
 
   const mutationBusy = mutationKind !== null;
   const saving = mutationKind === "save";
-  const avatarBusy = mutationKind === "avatar" || mutationKind === "gallery-avatar";
+  const avatarUploading = mutationKind === "avatar" || mutationKind === "gallery-avatar";
 
   const beginMutation = useCallback((kind: PersonaMutationKind) => {
     if (mutationTokenRef.current) return null;
@@ -1499,7 +1510,10 @@ export function PersonaEditor() {
 
     // An avatar/gallery replacement owns the preview and crop until it settles;
     // an interim refetch must not flip the image back and forth underneath it.
-    const avatarOperationActive = mutationKindRef.current === "avatar" || mutationKindRef.current === "gallery-avatar";
+    const avatarOperationActive =
+      mutationKindRef.current === "avatar" ||
+      mutationKindRef.current === "gallery-avatar" ||
+      mutationKindRef.current === "remove-avatar";
     const baseline = baselineFormRef.current;
     const avatarUnchanged = authoritativeAvatarPathRef.current === rawPersona.avatarPath;
     if (
@@ -1515,12 +1529,13 @@ export function PersonaEditor() {
   // Forced teardown (unmount, or a Persona switch that never re-hydrates) drops the
   // local identity so an in-flight completion can still update shared caches through
   // the hooks but can no longer write this editor's state.
-  useEffect(() => {
+  useLayoutEffect(() => {
     return () => {
       editorSessionRef.current = generateClientId();
       loadedPersonaIdRef.current = null;
       mutationTokenRef.current = null;
       mutationKindRef.current = null;
+      setMutationKind(null);
     };
   }, [personaId]);
 
@@ -1661,6 +1676,41 @@ export function PersonaEditor() {
     },
     [adoptAuthoritativePersona, commitFormData, isCurrentEditorSession, updateField, uploadAvatar],
   );
+
+  const handleAvatarRemove = useCallback(async () => {
+    if (!personaId || !avatarPreview) return;
+    const token = beginMutation("remove-avatar");
+    if (!token) return;
+    const session = editorSessionRef.current;
+    try {
+      const confirmed = await showConfirmDialog({
+        title: localizeUi("ui.ui.avatarcropwidget.removeAvatar"),
+        message: localizeUi("persona.avatar.removeConfirm", { name: formDataRef.current?.name ?? "" }),
+        confirmLabel: localizeUi("settings.notifications.customSound.actions.remove"),
+        tone: "destructive",
+      });
+      if (!confirmed || !isCurrentEditorSession(session)) return;
+      const updated = await removeAvatar.mutateAsync(personaId);
+      if (!isCurrentEditorSession(session)) return;
+      adoptAuthoritativePersona(updated, { adoptAvatar: true });
+      toast.success(localizeUi("persona.avatar.removed"));
+    } catch (error) {
+      if (isCurrentEditorSession(session)) {
+        toast.error(error instanceof Error ? error.message : localizeUi("persona.avatar.removeFailed"));
+      }
+    } finally {
+      finishMutation(token);
+    }
+  }, [
+    adoptAuthoritativePersona,
+    avatarPreview,
+    beginMutation,
+    finishMutation,
+    isCurrentEditorSession,
+    localizeUi,
+    personaId,
+    removeAvatar,
+  ]);
 
   const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -2150,11 +2200,15 @@ export function PersonaEditor() {
                 onSelectAvatar={() => {
                   if (!mutationBusy) fileInputRef.current?.click();
                 }}
+                onRemoveAvatar={() => void handleAvatarRemove()}
                 onGenerateAvatar={() => {
                   if (!mutationBusy) setAvatarGeneratorOpen(true);
                 }}
                 imageGenerationAvailable={imageGenerationAvailable}
-                avatarUploading={avatarBusy}
+                avatarUploading={avatarUploading}
+                avatarRemoving={
+                  mutationKind === "remove-avatar" && removeAvatar.isPending && removeAvatar.variables === personaId
+                }
                 hasUnsavedChanges={dirty}
                 avatarMutationBusy={mutationBusy}
               />
@@ -3561,8 +3615,10 @@ function PersonaMetadataTab({
   avatarPreview,
   onSelectAvatar,
   onGenerateAvatar,
+  onRemoveAvatar,
   imageGenerationAvailable,
   avatarUploading,
+  avatarRemoving,
   hasUnsavedChanges,
   // The editor's live save/avatar/gallery mutex. Replacing or reframing the avatar
   // while one of those is running would race the image the server is about to
@@ -3575,8 +3631,10 @@ function PersonaMetadataTab({
   avatarPreview: string | null;
   onSelectAvatar: () => void;
   onGenerateAvatar: () => void;
+  onRemoveAvatar: () => void;
   imageGenerationAvailable: boolean;
   avatarUploading: boolean;
+  avatarRemoving: boolean;
   hasUnsavedChanges: boolean;
   avatarMutationBusy: boolean;
 }) {
@@ -3648,6 +3706,8 @@ function PersonaMetadataTab({
               src={avatarPreview}
               alt={formData.name}
               crop={formData.avatarCrop}
+              onRemove={onRemoveAvatar}
+              removing={avatarRemoving}
               onChange={(next) => {
                 if (avatarMutationBusy) return;
                 updateField("avatarCrop", next);

@@ -405,6 +405,70 @@ try {
     avatar: onePixelPng,
   });
   assertDecodedPersona(avatar, activeId);
+  assert.ok(avatar.avatarPath);
+  const beforeRemoval = await requestJson("PATCH", `/api/characters/personas/${activeId}`, {
+    avatarCrop: { srcX: 0.1, srcY: 0.2, srcWidth: 0.6, srcHeight: 0.6 },
+  });
+  const removed = await requestJson("DELETE", `/api/characters/personas/${activeId}/avatar`);
+  assertDecodedPersona(removed, activeId);
+  assert.equal(removed.avatarPath, null);
+  assert.equal(removed.avatarCrop, null);
+  assert.equal(removed.name, beforeRemoval.name);
+  assert.equal(removed.description, beforeRemoval.description);
+  const reloaded = await requestJson("GET", `/api/characters/personas/${activeId}`);
+  assert.equal(reloaded.avatarPath, null);
+  assert.equal(reloaded.avatarCrop, null);
+  assert.equal((await requestJson("DELETE", `/api/characters/personas/${activeId}/avatar`)).avatarPath, null);
+  const missingRemoval = await app.inject({ method: "DELETE", url: "/api/characters/personas/missing/avatar" });
+  assert.equal(missingRemoval.statusCode, 404);
+  const frozenPersona = await charactersStorage.createPersona("Frozen identity", "", undefined, {
+    versioningEnabled: "false",
+  });
+  assert.ok(frozenPersona);
+  assert.equal(frozenPersona.versioningEnabled, "false");
+  const frozenAvatar = await requestJson("POST", `/api/characters/personas/${frozenPersona.id}/avatar`, {
+    avatar: onePixelPng,
+  });
+  const frozenChat = await requestJson("POST", "/api/chats", {
+    name: "Frozen persona avatar",
+    mode: "conversation",
+    characterIds: [],
+  });
+  const frozenMessage = await requestJson("POST", `/api/chats/${frozenChat.id}/messages`, {
+    role: "user",
+    content: "Keep my original identity",
+    extra: {
+      personaSnapshot: { personaId: frozenPersona.id, name: frozenPersona.name, avatarUrl: frozenAvatar.avatarPath },
+    },
+  });
+  const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
+  const snapshotStorage = createChatsStorage(db);
+  const savedSnapshot = await snapshotStorage.updateMessageExtra(String(frozenMessage.id), {
+    personaSnapshot: {
+      personaId: frozenPersona.id,
+      name: frozenPersona.name,
+      avatarUrl: String(frozenAvatar.avatarPath),
+    },
+  });
+  assert.ok(savedSnapshot);
+  const snapshotExtra = typeof savedSnapshot.extra === "string" ? JSON.parse(savedSnapshot.extra) : savedSnapshot.extra;
+  assert.equal(snapshotExtra.personaSnapshot.avatarUrl, frozenAvatar.avatarPath);
+  await requestJson("POST", `/api/characters/personas/${frozenPersona.id}/avatar`, {
+    avatar:
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a2ioAAAAASUVORK5CYII=",
+  });
+  assert.equal(
+    (await app.inject({ method: "GET", url: String(frozenAvatar.avatarPath) })).statusCode,
+    200,
+    "replacing an unversioned persona avatar must preserve a frozen chat identity's file",
+  );
+  const frozenRemoval = await requestJson("DELETE", `/api/characters/personas/${frozenPersona.id}/avatar`);
+  assert.equal(frozenRemoval.avatarPath, null);
+  assert.equal(
+    (await app.inject({ method: "GET", url: String(frozenAvatar.avatarPath) })).statusCode,
+    200,
+    "removing the current avatar must preserve a frozen chat identity's file",
+  );
 } finally {
   await app?.close();
   for (const [key, previous] of [

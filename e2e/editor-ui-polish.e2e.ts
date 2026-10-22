@@ -223,10 +223,8 @@ for (const kind of ["character", "persona"] as const) {
       await full.scrollIntoViewIfNeeded();
       await expect(full).toBeVisible();
       await expect(full.locator("svg")).toHaveCount(0);
-      if (kind === "character") {
-        await expect(remove.locator("svg")).toHaveCount(0);
-        await expectAccent(remove);
-      }
+      await expect(remove.locator("svg")).toHaveCount(0);
+      await expectAccent(remove);
       const geometry = await full.evaluate((element) => {
         const range = document.createRange();
         range.selectNodeContents(element);
@@ -281,6 +279,230 @@ for (const kind of ["character", "persona"] as const) {
     }
   });
 }
+
+test("persona avatar removal preserves unsaved fields and survives reload", async ({ page, request }, info) => {
+  const id = await create(request, "persona", { name: "Removable persona", description: "Saved description" });
+  try {
+    const uploaded = await request.post(`${paths.persona}/${id}/avatar`, {
+      data: {
+        avatar:
+          "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a2ioAAAAASUVORK5CYII=",
+      },
+    });
+    expect(uploaded.ok(), await uploaded.text()).toBeTruthy();
+    await prepare(page);
+    const editor = await open(page, "persona", id);
+    const name = editor.locator(".mari-editor-title-input");
+    const remove = editor.getByTitle("Remove avatar", { exact: true });
+    let releaseSave = () => {};
+    const pendingSave = new Promise<void>((resolve) => {
+      releaseSave = resolve;
+    });
+    const saveUrl = `**${paths.persona}/${id}`;
+    await page.route(saveUrl, async (route) => {
+      if (route.request().method() === "PATCH") await pendingSave;
+      await route.continue();
+    });
+    try {
+      await name.fill("Saved persona name");
+      await editor.getByRole("button", { name: "Save", exact: true }).click();
+      await expect(remove).toBeDisabled();
+      await expect(remove).toHaveText("Remove");
+    } finally {
+      releaseSave();
+      await page.unroute(saveUrl);
+    }
+    await expect(remove).toBeEnabled();
+    await name.fill("Unsaved persona name");
+    await remove.click();
+    const dialog = page.getByRole("dialog").filter({ hasText: "Remove the avatar from" });
+    await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(remove).toBeVisible();
+    await expect(name).toHaveValue("Unsaved persona name");
+    await remove.click();
+    await dialog.getByRole("button", { name: "Remove", exact: true }).click();
+    await expect(remove).toHaveCount(0);
+    await expect(name).toHaveValue("Unsaved persona name");
+    let persisted = await (await request.get(`${paths.persona}/${id}`)).json();
+    expect(persisted.avatarPath).toBeNull();
+    expect(persisted.avatarCrop).toBeNull();
+    expect(persisted.name).toBe("Saved persona name");
+    await page.screenshot({ path: info.outputPath("persona-avatar-removed-dark.png"), animations: "disabled" });
+    await page.evaluate(async () => {
+      const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+      useUIStore.getState().setTheme("light");
+    });
+    await page.screenshot({ path: info.outputPath("persona-avatar-removed-light.png"), animations: "disabled" });
+    await editor.getByRole("button", { name: "Save", exact: true }).click();
+    await expect
+      .poll(async () => (await (await request.get(`${paths.persona}/${id}`)).json()).name)
+      .toBe("Unsaved persona name");
+    await page.reload();
+    const reloaded = await open(page, "persona", id);
+    await expect(reloaded.getByTitle("Remove avatar", { exact: true })).toHaveCount(0);
+    persisted = await (await request.get(`${paths.persona}/${id}`)).json();
+    expect(persisted.avatarPath).toBeNull();
+  } finally {
+    await request.delete(`${paths.persona}/${id}`).catch(() => undefined);
+  }
+});
+
+test("persona avatar removal progress belongs to the active editor session", async ({ page, request }) => {
+  const ids: string[] = [];
+  let releaseUpload = () => {};
+  const pendingUpload = new Promise<void>((resolve) => {
+    releaseUpload = resolve;
+  });
+  let releaseRemoval = () => {};
+  const pendingRemoval = new Promise<void>((resolve) => {
+    releaseRemoval = resolve;
+  });
+  try {
+    for (const name of ["Removal owner", "Next persona"]) {
+      const id = await create(request, "persona", { name });
+      ids.push(id);
+      const uploaded = await request.post(`${paths.persona}/${id}/avatar`, {
+        data: {
+          avatar:
+            "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a2ioAAAAASUVORK5CYII=",
+        },
+      });
+      expect(uploaded.ok(), await uploaded.text()).toBeTruthy();
+    }
+    const owner = ids[0]!;
+    const next = ids[1]!;
+    await prepare(page);
+    const editor = await open(page, "persona", owner);
+    await page.route(`**${paths.persona}/${owner}/avatar`, async (route) => {
+      if (route.request().method() === "DELETE") await pendingRemoval;
+      await route.continue();
+    });
+    const remove = editor.getByTitle("Remove avatar", { exact: true });
+    await remove.click();
+    await page
+      .getByRole("dialog")
+      .filter({ hasText: "Remove the avatar from" })
+      .getByRole("button", { name: "Remove", exact: true })
+      .click();
+    await expect(remove).toHaveText(/Removing/u);
+    await expect(remove).toBeDisabled();
+    const replace = editor.locator('[data-editor-section="metadata"] fieldset').nth(1).locator("button").first();
+    await expect(replace).toHaveText("Upload avatar");
+    await expect(replace).toBeDisabled();
+    await expect(replace).toHaveAttribute("aria-busy", "false");
+    // Normal navigation waits for the mutation. Force the parent selection to
+    // exercise the editor's separate forced-teardown/session-isolation contract.
+    await open(page, "persona", next);
+    await expect(editor.locator(".mari-editor-title-input")).toHaveValue("Removal owner");
+    const firstFrame = await page.evaluate(async (id) => {
+      const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+      useUIStore.setState({ personaDetailId: id });
+      return new Promise<{ disabled: boolean[]; removeLabel: string | null | undefined }>((resolve) => {
+        requestAnimationFrame(() => {
+          const fields = document.querySelectorAll<HTMLFieldSetElement>('[data-editor-section="metadata"] fieldset');
+          resolve({
+            disabled: [...fields].map((field) => field.disabled),
+            removeLabel: document.querySelector('[title="Remove avatar"]')?.textContent,
+          });
+        });
+      });
+    }, next);
+    expect(firstFrame.disabled).toEqual([false, false]);
+    expect(firstFrame.removeLabel).toBe("Remove");
+    const nextEditor = await open(page, "persona", next);
+    await expect(nextEditor.locator(".mari-editor-title-input")).toHaveValue("Next persona");
+    const nextRemove = nextEditor.getByTitle("Remove avatar", { exact: true });
+    await expect(nextRemove).toHaveText("Remove");
+    await expect(nextRemove).toBeEnabled();
+    const nextAvatarFieldsets = nextEditor.locator('[data-editor-section="metadata"] fieldset');
+    await expect(nextAvatarFieldsets).toHaveCount(2);
+    await expect(nextAvatarFieldsets.nth(0)).toBeEnabled();
+    await expect(nextAvatarFieldsets.nth(1)).toBeEnabled();
+    await nextRemove.click();
+    const nextConfirmation = page.getByRole("dialog").filter({ hasText: "Remove the avatar from" });
+    await expect(nextConfirmation).toBeVisible();
+    await nextConfirmation.getByRole("button", { name: "Cancel", exact: true }).click();
+    releaseRemoval();
+    await expect
+      .poll(async () => (await (await request.get(`${paths.persona}/${owner}`)).json()).avatarPath)
+      .toBeNull();
+    await expect(nextRemove).toHaveText("Remove");
+    await expect(nextRemove).toBeEnabled();
+    expect((await (await request.get(`${paths.persona}/${next}`)).json()).avatarPath).toBeTruthy();
+    await page.route(`**${paths.persona}/${next}/avatar`, async (route) => {
+      if (route.request().method() === "POST") await pendingUpload;
+      await route.continue();
+    });
+    await nextEditor
+      .locator('input[type="file"][accept="image/*"]')
+      .first()
+      .setInputFiles({
+        name: "replacement.png",
+        mimeType: "image/png",
+        buffer: Buffer.from(
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a2ioAAAAASUVORK5CYII=",
+          "base64",
+        ),
+      });
+    const nextReplace = nextEditor
+      .locator('[data-editor-section="metadata"] fieldset')
+      .nth(1)
+      .locator("button")
+      .first();
+    await expect(nextReplace).toHaveText("Uploading avatar…");
+    await expect(nextReplace).toBeDisabled();
+    await expect(nextReplace).toHaveAttribute("aria-busy", "true");
+    await expect(nextRemove).toHaveText("Remove");
+    await expect(nextRemove).toBeDisabled();
+    releaseUpload();
+    await expect(nextReplace).toHaveText("Upload avatar");
+    await expect(nextReplace).toBeEnabled();
+    await expect(nextRemove).toBeEnabled();
+  } finally {
+    releaseUpload();
+    releaseRemoval();
+    for (const id of ids) await request.delete(`${paths.persona}/${id}`).catch(() => undefined);
+  }
+});
+
+test("greeting image conversion reuses its saved mapping after reverting and saving", async ({ page, request }) => {
+  const url = "https://images.example/greeting.png";
+  const file = "saved-greeting.png";
+  const id = await create(request, "character", { data: { name: "Greeting toggle", first_mes: `![image](${url})` } });
+  const requests: Array<{ bakedImages: Array<{ url: string; file: string }> }> = [];
+  await page.route(`**/api/characters/${id}/gallery/bake`, async (route) => {
+    requests.push(route.request().postDataJSON());
+    await route.fulfill({ json: { results: [{ url, file }] } });
+  });
+  const readCard = async () => {
+    const row = await (await request.get(`${paths.character}/${id}`)).json();
+    return typeof row.data === "string" ? JSON.parse(row.data) : row.data;
+  };
+  try {
+    await prepare(page);
+    let editor = await open(page, "character", id);
+    await editor.getByRole("button", { name: "Dialogue", exact: true }).click();
+    await editor.getByRole("button", { name: "Save images locally", exact: true }).click();
+    await expect(editor.getByRole("button", { name: "Restore web links", exact: true })).toBeVisible();
+    await editor.getByRole("button", { name: "Save", exact: true }).click();
+    await expect.poll(async () => (await readCard()).first_mes).toContain("card://self/gallery/");
+    await editor.getByRole("button", { name: "Restore web links", exact: true }).click();
+    await editor.getByRole("button", { name: "Save", exact: true }).click();
+    await expect.poll(async () => (await readCard()).first_mes).toBe(`![image](${url})`);
+    await page.reload();
+    editor = await open(page, "character", id);
+    await editor.getByRole("button", { name: "Dialogue", exact: true }).click();
+    await expect(editor.getByRole("button", { name: "Restore web links", exact: true })).toHaveCount(0);
+    await editor.getByRole("button", { name: "Save images locally", exact: true }).click();
+    await expect.poll(() => requests.length).toBe(2);
+    expect(requests[0]?.bakedImages).toEqual([]);
+    expect(requests[1]?.bakedImages).toEqual([{ url, file }]);
+    await editor.getByRole("button", { name: "Save", exact: true }).click();
+    await expect.poll(async () => (await readCard()).extensions.bakedGreetingImages).toEqual([{ url, file }]);
+  } finally {
+    await request.delete(`${paths.character}/${id}`).catch(() => undefined);
+  }
+});
 
 test("stock preset copy action stays centered", async ({ page, request }, info) => {
   const response = await request.get("/api/prompts");

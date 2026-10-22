@@ -21,6 +21,7 @@ import {
   applyPersonaCardFieldAlternatives,
   cardEntityBelongsToChat,
   unassignCardFieldAlternatives,
+  referencedBakedGreetingImages,
   characterBookSchema,
   characterExtensionsSchema,
   type CharacterData,
@@ -101,6 +102,12 @@ function characterVersioningEnabled(data: CharacterData): boolean {
 }
 
 function normalizeCharacterData(data: CharacterData): CharacterData {
+  if (Array.isArray(data.extensions?.bakedGreetingImages)) {
+    data = {
+      ...data,
+      extensions: { ...data.extensions, bakedGreetingImages: referencedBakedGreetingImages(data) },
+    };
+  }
   const name = data.name.trim();
   return name === data.name ? data : { ...data, name };
 }
@@ -646,8 +653,9 @@ export function createCharactersStorage(db: DB) {
       });
       const nextComment = options?.comment !== undefined ? (options.comment ?? "") : (existing.comment ?? "");
       const nextAvatarPath = avatarPath !== undefined ? avatarPath : existing.avatarPath;
+      // Storage normalization alone is not an authored card revision.
       const versionedContentChanged =
-        characterVersionedContentChanged(currentData, merged) ||
+        characterVersionedContentChanged(normalizeCharacterData(currentData), merged) ||
         nextComment !== (existing.comment ?? "") ||
         nextAvatarPath !== existing.avatarPath;
       const requestedVersionChanged =

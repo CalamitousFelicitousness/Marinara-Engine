@@ -551,6 +551,7 @@ async function buildCompatibleProfileZip(app: FastifyInstance) {
     );
     // Compatible cards carry no gallery, so baked greeting images go back to their web links (#7221).
     const charData = embedded ? restoreBakedGreetingImages(embedded) : embedded;
+    if (charData?.extensions && typeof charData.extensions === "object") delete charData.extensions.bakedGreetingImages;
     zip.addFile(
       uniqueExportName(
         usedNames,

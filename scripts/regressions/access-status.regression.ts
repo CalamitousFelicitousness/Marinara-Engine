@@ -109,7 +109,7 @@ try {
   // Bound to every interface: the list follows the enforced policy for a remote device of each kind.
   const networkPeers = (env: Env, interfaces: Record<string, NetworkInterfaceInfo[]> = NO_TAILNET) => {
     setEnv(env);
-    return getPasswordlessPeers("0.0.0.0", interfaces);
+    return getPasswordlessPeers("0.0.0.0", interfaces, false, "linux");
   };
   assert.deepEqual(networkPeers({}), []);
   assert.deepEqual(networkPeers({ ALLOW_UNAUTHENTICATED_PRIVATE_NETWORK: "true" }), ["privateNetwork"]);
@@ -149,7 +149,7 @@ try {
   // The remedy split: a login closes opt-in and auto-Docker peers, never allowlisted or trusted ones.
   const peersAfterLogin = (env: Env, interfaces: Record<string, NetworkInterfaceInfo[]> = NO_TAILNET) => {
     setEnv(env);
-    return getPasswordlessPeers("0.0.0.0", interfaces, true);
+    return getPasswordlessPeers("0.0.0.0", interfaces, true, "linux");
   };
   assert.deepEqual(peersAfterLogin({ ALLOW_UNAUTHENTICATED_REMOTE: "true", MARINARA_DOCKER: "true" }), []);
   assert.deepEqual(peersAfterLogin({ ALLOW_UNAUTHENTICATED_REMOTE: "true", IP_ALLOWLIST: "192.168.1.0/24" }), [

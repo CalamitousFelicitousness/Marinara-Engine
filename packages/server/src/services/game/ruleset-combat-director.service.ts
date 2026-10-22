@@ -36,6 +36,8 @@ import {
   normalizeTacticalFormation,
   placeSpawns,
   readRulesetLive,
+  rulesetAimedCells,
+  rulesetAreaGrowth,
   rulesetAimCells,
   rulesetAnswerDeflects,
   rulesetCombatant,
@@ -113,6 +115,8 @@ import {
   type TacticalGrid,
   type CombatTactics,
   type RulesetSheetItem,
+  rulesetCombatantFlying,
+  withRulesetSheetEvaluationCache,
 } from "@marinara-engine/shared";
 import { logger } from "../../lib/logger.js";
 import { combatDirectorView, type CombatDirectorState } from "./combat-director.service.js";
@@ -192,6 +196,8 @@ export interface RulesetFightOpponent {
   /** How it fights: the same competence and temperament its choices in the fight are made with,
    *  which is also what fills an invented sheet's open choices. Assigned here when not given. */
   tactics?: Pick<CombatTactics, "proficiency" | "adjective">;
+  /** How a story fight has it (1.363): its Legendary Resistance and health, when it is a bestiary's. */
+  adjust?: { legendaryResistance?: number; maxHp?: number; calls?: Array<{ action: string; creature: string }> };
 }
 
 export interface RulesetFightSeed {
@@ -288,6 +294,17 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
         name: opponent.name,
         side: "enemy",
         creature: { catalogId: found.catalogId, entryId: found.entry.id },
+        ...(opponent.adjust
+          ? {
+              adjust: {
+                ...(opponent.adjust.legendaryResistance !== undefined
+                  ? { legendaryResistance: opponent.adjust.legendaryResistance }
+                  : {}),
+                ...(opponent.adjust.maxHp !== undefined ? { health: opponent.adjust.maxHp } : {}),
+                ...(opponent.adjust.calls?.length ? { calls: opponent.adjust.calls.map((call) => ({ ...call })) } : {}),
+              },
+            }
+          : {}),
       });
       if (found.entry.creature?.loot) lootTables[opponent.id] = found.entry.creature.loot;
       continue;
@@ -666,6 +683,60 @@ function deathTrackOf(definition: RulesetDefinition, combatant: RulesetCombatant
   };
 }
 
+/** What a party member has left of the pools their actions spend (spell slots, ki, sorcery points),
+ *  for the fight's own HUD: a player should not have to open the sheet mid-fight to count slots. */
+function spentPoolsOf(definition: RulesetDefinition, combatant: RulesetCombatant) {
+  if (combatant.side !== "party" || !combatant.sheet) return undefined;
+  // The ruleset may name them itself, in its own order (1.375).
+  const named = definition.combat?.display?.pools;
+  if (named) {
+    const live = readRulesetLive(definition, combatant.sheet.build, combatant.sheet.live);
+    const pools = named.flatMap((id) =>
+      live.pools
+        .filter((pool) => pool.key === id && !pool.listId && pool.max > 0)
+        .map((pool) => ({ id: pool.key, label: pool.label, value: pool.value, max: pool.max })),
+    );
+    return pools.length ? pools : undefined;
+  }
+  const spent = new Set<string>();
+  const groups = new Set<string>();
+  for (const action of combatant.actions) {
+    if (action.use?.pool) spent.add(action.use.pool);
+    if (action.use?.group) groups.add(action.use.group);
+  }
+  for (const pool of definition.sheet.live.pools) {
+    if ((pool.group && groups.has(pool.group)) || pool.pays?.some((group) => groups.has(group))) spent.add(pool.id);
+  }
+  if (spent.size === 0) return undefined;
+  const live = readRulesetLive(definition, combatant.sheet.build, combatant.sheet.live);
+  const pools = live.pools
+    .filter((pool) => !pool.listId && pool.max > 0 && spent.has(pool.key))
+    .map((pool) => ({ id: pool.key, label: pool.label, value: pool.value, max: pool.max }));
+  return pools.length ? pools : undefined;
+}
+
+/** The cells an area held in a window covers, laid as it was aimed: what a board tints while the ones
+ *  it would catch decide whether to answer. */
+function heldAreaCells(
+  definition: RulesetDefinition,
+  encounter: RulesetEncounterState,
+  window: NonNullable<RulesetEncounterState["window"]>,
+) {
+  const resume = window.resume;
+  if (resume?.kind !== "action" || !resume.at) return undefined;
+  if (window.trigger.kind !== "aimed" && window.trigger.kind !== "used") return undefined;
+  const actor = encounter.combatants.find((combatant) => combatant.id === resume.actorId);
+  // Grown for the higher cost it was paid with (1.267), as it will land.
+  const grow = actor ? rulesetAreaGrowth(definition, actor, resume.optionId, resume.payWith) : 0;
+  const cells = rulesetAimedCells(encounter, resume.actorId, resume.optionId, resume.at, {
+    ...(grow ? { grow } : {}),
+    ...(resume.toward ? { toward: resume.toward } : {}),
+    ...(resume.ring ? { ring: true } : {}),
+    ...(resume.also ? { also: resume.also } : {}),
+  });
+  return cells.length ? cells.map((cell) => ({ x: cell.x, y: cell.y })) : undefined;
+}
+
 function projectCombatant(
   definition: RulesetDefinition,
   combatant: RulesetCombatant,
@@ -719,6 +790,7 @@ function projectCombatant(
       return { kind: { ...(type ? { type } : {}), ...(tags.length ? { tags } : {}) } };
     })(),
     ...(combatant.concentrating ? { concentrating: combatant.concentrating.label } : {}),
+    ...((pools) => (pools ? { pools } : {}))(spentPoolsOf(definition, combatant)),
     ...(combatant.block?.tier ? { tier: combatant.block.tier } : {}),
     ...(combatant.block?.traits?.length ? { traits: combatant.block.traits.map((trait) => ({ ...trait })) } : {}),
     ...(typeof combatant.x === "number" && typeof combatant.y === "number" ? { x: combatant.x, y: combatant.y } : {}),
@@ -727,6 +799,8 @@ function projectCombatant(
       : {}),
     ...(combatant.altitude !== undefined ? { altitude: combatant.altitude } : {}),
     ...(combatant.span !== undefined ? { span: combatant.span } : {}),
+    // Drawn in its flying art (1.352): never read by the rules.
+    ...(rulesetCombatantFlying(state.board?.grid, combatant) ? { flying: true as const } : {}),
   };
 }
 
@@ -878,6 +952,9 @@ export function directedRulesetView(
               ? { total: held.window.trigger.total, defense: held.window.trigger.defense }
               : {}),
             controller: held.controller,
+            ...((cells) => (cells ? { cells } : {}))(
+              grid ? heldAreaCells(definition, encounter, held.window) : undefined,
+            ),
           },
           ...(held.controller === "manual" && !state.window
             ? { options: rulesetMenu(definition, encounter, held.actorId, true) }
@@ -2395,6 +2472,17 @@ export function commandRulesetCombatDirector(
   state: CombatDirectorState,
   command: DirectedCommand,
   source: "gm" | "ai" | "manual" | "fallback" = "manual",
+): RulesetCommandResult {
+  // The option and picker loops read the same sheets thousands of times in one command, and no build
+  // is written to during it: the fight's creation and the creature-sheet hold run outside it.
+  return withRulesetSheetEvaluationCache(() => runRulesetCommand(definition, state, command, source));
+}
+
+function runRulesetCommand(
+  definition: RulesetDefinition,
+  state: CombatDirectorState,
+  command: DirectedCommand,
+  source: "gm" | "ai" | "manual" | "fallback",
 ): RulesetCommandResult {
   const fight = fightOf(state);
   if (!fight) return refuse("This battle is not resolved by a ruleset.", "ruleset_combat_not_a_ruleset_fight");

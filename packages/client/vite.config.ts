@@ -28,7 +28,7 @@ function resolveBuildCommit() {
   try {
     return normalizeBuildCommit(
       execFileSync("git", ["rev-parse", `--short=${BUILD_COMMIT_LENGTH}`, "HEAD"], {
-        cwd: path.resolve(__dirname, "../.."),
+        cwd: path.resolve(import.meta.dirname, "../.."),
         encoding: "utf8",
         stdio: ["ignore", "pipe", "ignore"],
       }),
@@ -50,10 +50,14 @@ function manualChunks(id: string) {
   // rather than weight on GameSurface's budget.
   if (id.endsWith("/components/game/GameInventory.tsx") || id.endsWith("/components/game/RulesetItemPicker.tsx"))
     return "game-inventory";
+  // So does the character sheet, with every stat and resource a ruleset can show.
+  if (id.endsWith("/components/game/GameCharacterSheet.tsx")) return "game-character-sheet";
   // So is the book the inventory reads a ruleset's items through, and the items the Game Master
   // invents, rather than weight on the game tag parser's chunk, which takes the rest of the shared code.
   if (/\/shared\/(?:dist|src)\/features\/rulesets\/(?:item-book|invented-items)\.(?:js|ts)$/u.test(id))
     return "ruleset-items";
+  // The Experience file reader is its own chunk too, rather than weight on the game world's chunk.
+  if (/\/shared\/(?:dist|src)\/features\/world\/experience-file\.(?:js|ts)$/u.test(id)) return "experience-file";
   // So is the world a game is set in (its kit, places, people, history and story), which grows with
   // every part of worldgen, rather than weight on the game tag parser's chunk.
   if (/\/shared\/(?:dist|src)\/features\/world\//u.test(id)) return "game-world";
@@ -67,6 +71,10 @@ function manualChunks(id: string) {
   if (id.endsWith("/components/game/GameRulesetSheet.tsx")) return "game-ruleset-sheet";
   if (/\/lib\/(?:board-art|board-art-cells|art-pack)\.ts$/u.test(id) || id.endsWith("/components/game/ArtIcon.tsx"))
     return "game-art";
+  // Rolldown otherwise coalesces the shared package's unassigned exports into
+  // one chunk. Keep its top-level modules within the same per-chunk budget.
+  const sharedModule = id.match(/\/shared\/(?:dist|src)\/([^/]+)\//u);
+  if (sharedModule) return `shared-${sharedModule[1]}`;
   if (!id.includes("/node_modules/")) return undefined;
   // Ignore checkout names, but keep pnpm peer suffixes so React and its consumers stay together.
   // Removing those suffixes splits eager React imports across chunks and creates startup cycles.
@@ -81,7 +89,7 @@ function manualChunks(id: string) {
 
   // Keep dynamically selected Lucide glyphs in small alphabetical chunks
   // instead of pulling the complete icon catalog into one eager vendor file.
-  const lucideIcon = id.match(/lucide-react\/dist\/esm\/icons\/([^/]+)\.js$/u);
+  const lucideIcon = id.match(/lucide-react\/dist\/esm\/icons\/([^/]+)\.m?js$/u);
   if (lucideIcon) return `vendor-icons-${lucideIcon[1]?.[0] ?? "misc"}`;
   if (id.includes("lucide-react")) return "vendor-icons";
   if (id.includes("react") || id.includes("scheduler")) return "vendor-react";
@@ -98,7 +106,7 @@ function bundleBudget(): Plugin {
     name: "bundle-budget",
     generateBundle(_options, bundle) {
       const chunks = Object.values(bundle)
-        .filter((item): item is import("rollup").OutputChunk => item.type === "chunk")
+        .filter((item) => item.type === "chunk")
         .map((chunk) => ({
           fileName: chunk.fileName,
           sizeKb: Buffer.byteLength(chunk.code, "utf8") / 1024,
@@ -163,13 +171,7 @@ export default defineConfig({
   },
   plugins: [
     androidBuildHeap(),
-    react({
-      babel: {
-        // Keep Babel from auto-compacting large components and printing a noisy
-        // 500 kB deoptimisation warning during local development and UI tests.
-        generatorOpts: process.env.NODE_ENV === "production" ? undefined : { compact: false },
-      },
-    }),
+    react(),
     tailwindcss(),
     bundleBudget(),
     !PWA_DISABLED
@@ -217,7 +219,7 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "./src"),
+      "@": path.resolve(import.meta.dirname, "./src"),
     },
   },
   server: {
@@ -246,14 +248,21 @@ export default defineConfig({
     // Vite reports decimal kB; 512 kB matches the bundle plugin's enforced 500 KiB ceiling.
     chunkSizeWarningLimit: 512,
     sourcemap: ENABLE_SOURCE_MAPS,
-    rollupOptions: {
+    rolldownOptions: {
+      preserveEntrySignatures: false,
+      treeshake: {
+        // Strip debug console.log in production; keep warn/error and argument side effects.
+        manualPureFunctions: process.env.NODE_ENV === "production" ? ["console.log"] : [],
+      },
       output: {
-        manualChunks,
+        strictExecutionOrder: true,
+        codeSplitting: {
+          // Group only the selected modules, keeping each feature's dependencies
+          // in their existing vendor/lazy boundaries instead of pulling them in.
+          includeDependenciesRecursively: false,
+          groups: [{ name: manualChunks, debugName: "Marinara chunk boundaries" }],
+        },
       },
     },
-  },
-  esbuild: {
-    // Strip debug console.log in production; keep warn/error
-    pure: process.env.NODE_ENV === "production" ? ["console.log"] : [],
   },
 });

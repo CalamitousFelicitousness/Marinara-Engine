@@ -23,7 +23,7 @@ const packageManifest = JSON.parse(readFileSync(join(repositoryRoot, "package.js
 const pinnedPnpmDescriptor = packageManifest.packageManager?.split("@")[1];
 const pinnedPnpmVersion = pinnedPnpmDescriptor?.split("+")[0];
 
-assert.equal(pinnedPnpmVersion, "10.34.5", "The workspace must pin the patched pnpm release");
+assert.equal(pinnedPnpmVersion, "10.34.7", "The workspace must pin the patched pnpm release");
 assert.equal(
   packageManifest.engines?.pnpm,
   "10.33.2 || >=10.34.5",
@@ -31,8 +31,8 @@ assert.equal(
 );
 assert.equal(
   pinnedPnpmDescriptor,
-  "10.34.5+sha512.a4ee05f2f73658255bd6a89859c065a45c28a57daefae2c893a168ee2b73168c37b91e83e57ea67654ad03f03031746430e8bce38e362e042605fb8abc80192e",
-  "Corepack must verify the exact pnpm 10.34.5 release tarball",
+  "10.34.7+sha512.ba98abc585539933375b5971f4bc6d6c73a1b4b7edc4a879e7d102fe5423d1e02309d67c60a11f04955093a96e521ad9c3b138cdd654ca5be563f378b3ae48bd",
+  "Corepack must verify the exact pnpm 10.34.7 release tarball",
 );
 
 const workspaceSource = readFileSync(join(repositoryRoot, "pnpm-workspace.yaml"), "utf8");
@@ -194,10 +194,10 @@ assert.match(
 );
 
 const troubleshootingSource = readFileSync(join(repositoryRoot, "docs/TROUBLESHOOTING.md"), "utf8");
-assert.match(troubleshootingSource, /npm install -g pnpm@10\.34\.5/u);
+assert.match(troubleshootingSource, /npm install -g pnpm@10\.34\.7/u);
 assert.match(
   troubleshootingSource,
-  /10\.33\.2 launcher can finish that one-time handoff in the same run/u,
+  /10\.33\.2 or 10\.34\.5 launcher can finish the handoff in the same run/u,
   "Troubleshooting must explain the no-restart launcher handoff",
 );
 

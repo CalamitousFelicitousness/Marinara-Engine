@@ -2448,9 +2448,10 @@ function replyOwnsUpToDryRun(text: string): boolean {
     /\b(?:no|nothing)\s+(?:\w+\s+){0,3}?(?:was|were|is|has been|have been)\s+\w+|\bnothing\s+(?:saved|applied|changed)\b|\bnot (?:been |yet )?(?:saved|applied)\b|\b(?:was|were|is|has|have)\s+not\s+(?:been\s+)?\w+|\b\w+n't\s+(?:been\s+)?\w+/giu;
   if (!normalized.match(wouldPhrase) && !normalized.match(denial)) return false;
   const rest = normalized.replace(wouldPhrase, " ").replace(denial, " ");
-  // A sentence saying the record now holds the value claims it, whichever verb it borrows.
+  // A sentence saying the record now holds the value claims it, wherever the adverb sits ("now reflects",
+  // "already shows", "it reads 1745 now"). A bare "is now" claims it too, unless it hands the call back.
   const stateClaim =
-    /\bnow\s+(?:correctly\s+)?(?:reflects|shows|says|reads|has|holds|includes|contains|matches|uses)\b|\b(?:is|are)\s+now\b/iu;
+    /\b(?:now|already)\s+(?:correctly\s+)?(?:reflects|shows|says|reads|has|holds|includes|contains|matches|uses)\b|\b(?:reflects|shows|says|reads|holds|includes|contains|matches|uses)\b[^.;!?\n]{0,40}?\bnow\b|\b(?:is|are)\s+now\s+(?!up to\b|your\b|yours\b|ready\b|waiting\b|pending\b)/iu;
   return (
     !/\b(?:done|all set|saved|applied|updated|created|added|linked|fixed|changed)\b/iu.test(rest) &&
     !stateClaim.test(rest) &&

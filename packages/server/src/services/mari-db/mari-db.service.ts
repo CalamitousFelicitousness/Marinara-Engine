@@ -2923,6 +2923,35 @@ function addCharacterDataShapeIssues(tableName: string, row: Row, id: unknown, i
   }
 }
 
+/** The app_data card linters, run on what a `mari characters` command would write: its JSON and its flags. */
+function assertCliCardInput(
+  json: Record<string, unknown>,
+  flags: Map<string, string | boolean>,
+  command: string,
+): void {
+  const fromFlags: Record<string, unknown> = {};
+  for (const [flagName, fieldName] of [
+    ["name", "name"],
+    ["summary", "summary"],
+    ["description", "description"],
+    ["personality", "personality"],
+    ["scenario", "scenario"],
+    ["first-mes", "first_mes"],
+    ["greeting", "greeting"],
+    ["backstory", "backstory"],
+    ["appearance", "appearance"],
+    ["about-me", "aboutMe"],
+    ["tags", "tags"],
+  ] as const) {
+    const val = flagString(flags, flagName);
+    if (val !== undefined) fromFlags[fieldName] = val;
+  }
+  for (const record of [json, fromFlags]) {
+    assertCardMacros(record, command);
+    assertLiteralCardFields(record, command);
+  }
+}
+
 function buildMinimalCharacterData(
   name: string,
   base: Record<string, unknown>,
@@ -7075,6 +7104,7 @@ export class MariDbService {
           );
         }
         const baseData = rawJson ? parseCharacterDataJsonInput(rawJson, "Character create JSON") : {};
+        assertCliCardInput(baseData, flags, "mari characters create");
         const charName = name ?? (typeof baseData.name === "string" ? baseData.name.trim() : "");
         if (!charName) throw new Error("Character name is required (--name or name field in --json)");
         const charData = buildMinimalCharacterData(charName, baseData, flags);
@@ -7111,6 +7141,7 @@ export class MariDbService {
         const existingData = isRecord(existingDataRaw) ? existingDataRaw : {};
         const rawJson = await resolveJsonInput(flags, context.cwd);
         const patchData = rawJson ? parseCharacterDataJsonInput(rawJson, "Character update JSON") : {};
+        assertCliCardInput(patchData, flags, "mari characters update");
         const updatedData = buildMinimalCharacterData(
           flagString(flags, "name")?.trim() ?? (typeof existingData.name === "string" ? existingData.name : ""),
           deepMerge(existingData, patchData) as Row,

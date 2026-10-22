@@ -77,6 +77,18 @@ assert.equal(
   ).issue,
   "dry_run",
 );
+// "is now" that hands the decision back is not a claim; the adverb on either side of a state verb is.
+assert.notEqual(
+  auditWorkspaceCompletionClaim(final("It is now up to you whether to apply; nothing was saved."), scope).issue,
+  "dry_run",
+);
+for (const claim of [
+  "The entry would fire on 'guild'; the card reads 1745 now.",
+  "The entry would fire on 'guild', and the card already reflects the greeting.",
+  "Nothing else was touched; the description is now 1745.",
+]) {
+  assert.equal(auditWorkspaceCompletionClaim(final(claim), scope).issue, "dry_run", claim);
+}
 // An applied write, or a round that still has commands, is not this case.
 assert.notEqual(auditWorkspaceCompletionClaim(final(paraphrase), [...scope, applied]).issue, "dry_run");
 assert.notEqual(auditWorkspaceCompletionClaim(final(paraphrase, [{}]), scope).issue, "dry_run");

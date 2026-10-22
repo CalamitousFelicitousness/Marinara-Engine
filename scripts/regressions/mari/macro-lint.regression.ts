@@ -134,6 +134,17 @@ try {
     command: "mari lorebooks update-entry",
   });
   assert.match(JSON.stringify(cliUpdate), /update-entry refused by the macro linter: content opens/u);
+  // The card commands share the linter: JSON and flags alike, on create and update.
+  const cliCreate = await mari.executeCli({
+    argv: ["characters", "create", "--json", '{"name":"Ada","greeting":"Hello {{user"}', "--apply"],
+    command: "mari characters create",
+  });
+  assert.match(JSON.stringify(cliCreate), /characters create refused by the macro linter: greeting opens/u);
+  const cliCard = await mari.executeCli({
+    argv: ["characters", "update", characterId, "--description", "Waits for {{user", "--apply"],
+    command: "mari characters update",
+  });
+  assert.match(JSON.stringify(cliCard), /characters update refused by the macro linter: description opens/u);
 
   console.log("macro lint passed");
 } finally {

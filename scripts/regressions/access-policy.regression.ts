@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import os from "node:os";
 import type { FastifyRequest } from "fastify";
-import { getAccessPolicy } from "../../packages/server/src/middleware/ip-allowlist.js";
+import { getAccessPolicy, isNonRoutableNetworkIp } from "../../packages/server/src/middleware/ip-allowlist.js";
 
 const ENV_KEYS = [
   "ADMIN_SECRET",
@@ -92,6 +92,8 @@ try {
   assert.equal(optIn.reason, "private-network-optin");
   // An ISP's CGNAT peer is not a private-network peer unless the operator lists the range.
   assert.equal(getAccessPolicy(request("100.64.1.2")).lockedDown, true);
+  // It still counts as non-routable, which CSRF literal-host trust and isReservedIp rely on.
+  assert.equal(isNonRoutableNetworkIp("100.64.1.2"), true);
   process.env.TRUSTED_PRIVATE_NETWORKS = "100.64.0.0/10";
   assert.equal(getAccessPolicy(request("100.64.1.2")).reason, "private-network-optin");
   delete process.env.TRUSTED_PRIVATE_NETWORKS;

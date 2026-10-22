@@ -2032,6 +2032,7 @@ function BranchRow({
       onClick={handleClick}
       onKeyDown={(event) => {
         if (event.target !== event.currentTarget) return;
+        if (event.altKey || event.ctrlKey || event.metaKey) return;
         if (event.key !== "Enter" && event.key !== " ") return;
         event.preventDefault();
         if (event.repeat) return;

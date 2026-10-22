@@ -138,6 +138,10 @@ const block = (actions: unknown[]): RulesetStatBlock =>
   assert.equal(rulesetAimLegal(encounter, "mage", "guardians", { x: 2, y: 3 }), true, "only where they stand");
   const guardians = rulesetCombatOptions(definition, encounter, "mage").find((one) => one.id === "guardians");
   assert.ok(guardians?.area, "it is a shape on the board");
+  // A zone with nothing that happens to those inside it is a ward; a fireball is not.
+  assert.equal(guardians?.harmless, true, "a ward harms nobody it catches");
+  const ball = rulesetCombatOptions(definition, encounter, "mage").find((one) => one.id === "ball");
+  assert.equal(ball?.harmless, undefined, "a fireball is no ward");
 }
 
 // ── The board's template, its allies, and the self-centred aim ──
@@ -170,6 +174,8 @@ const ball = {
   assert.deepEqual(rulesetAimTemplate(view, null, { x: 7, y: 2 }), [], "nothing aimed, nothing drawn");
   assert.deepEqual(rulesetAimCatchesAllies(view, ["ada", "orc"]), ["ada"], "Ada is the caster's own");
   assert.deepEqual(rulesetAimCatchesAllies(view, ["orc"]), []);
+  // A ward that does nothing to those it catches (Magic Circle) warns about nobody (re-test 9).
+  assert.deepEqual(rulesetAimCatchesAllies(view, ["ada", "orc"], { harmless: true } as never), []);
   assert.equal(rulesetSelfAim(view, ball), null, "a choice of where");
   const guardians = {
     ...ball,

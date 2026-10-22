@@ -17,6 +17,7 @@ import {
 } from "../stores/game-mode.store";
 export { patchChatMetadata } from "../lib/chat-metadata-patch";
 import { patchChatMetadata } from "../lib/chat-metadata-patch";
+import { readSetupDismissed } from "../lib/game-setup-dismissed";
 import { useGameAssetStore } from "../stores/game-asset.store";
 import { useGameStateStore } from "../stores/game-state.store";
 import { useChatStore } from "../stores/chat.store";
@@ -833,7 +834,8 @@ export function useSyncGameState(activeChatId: string, chatMeta: Record<string, 
     if (chatMeta.gameSessionNumber) {
       useGameModeStore.getState().setSessionNumber(chatMeta.gameSessionNumber as number);
     }
-    if (chatMeta.gameSessionStatus === "setup") {
+    // A wizard the player closed on this unfinished setup stays closed until they open it again.
+    if (chatMeta.gameSessionStatus === "setup" && !readSetupDismissed(activeChatId)) {
       useGameModeStore.getState().setSetupActive(true);
     }
 

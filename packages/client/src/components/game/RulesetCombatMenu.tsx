@@ -30,6 +30,7 @@ import {
   rulesetPicksStep,
   rulesetPayGainText,
   rulesetMenuGroups,
+  rulesetMenuVariants,
   rulesetOptionCostText,
   rulesetModeText,
   rulesetOptionForecastText,
@@ -180,6 +181,7 @@ export function RulesetCombatMenu({
     // A step the BOARD draws has its keyboard on the board, so the menu must not take it back the
     // moment the stage opens.
     if (
+      stepStage === "variant" ||
       stepStage === "style" ||
       stepStage === "mode" ||
       stepStage === "alter" ||
@@ -444,6 +446,41 @@ export function RulesetCombatMenu({
                 )}
               >
                 {t("game.combat.ruleset.store.into", { place: place.label, room: place.room })}
+              </button>
+            );
+          })}
+        </div>
+        <BackButton onClick={closeStep} label={t("game.combat.ruleset.target.back")} />
+      </div>
+    );
+  }
+
+  // ── Which of a spell's variants (1.716): Magic Circle against fiends, or against undead ──
+  if (step?.stage === "variant") {
+    const ways = rulesetMenuVariants(view.options, step.option);
+    return (
+      <div className="flex flex-col gap-2 p-3">
+        <p className="text-xs text-white/60" id="ruleset-variant-prompt">
+          {t("game.combat.ruleset.variant.prompt", { label: rulesetOptionLabel(step.option, t) })}
+        </p>
+        <div className="flex flex-wrap gap-2" role="group" aria-labelledby="ruleset-variant-prompt">
+          {ways.map((way, index) => {
+            const unaimable = rulesetOptionUnaimable(way);
+            return (
+              <button
+                ref={index === 0 ? first : undefined}
+                key={way.id}
+                type="button"
+                disabled={busy || unaimable}
+                title={unaimable ? t("game.combat.ruleset.menu.nobodyToAim") : undefined}
+                onClick={() => {
+                  // Its own steps (a target, a slot) follow on from here, or it is sent as it is.
+                  setStep(null);
+                  take(way);
+                }}
+                className={cn(buttonClass, "border-white/15 bg-white/5 text-white/85 hover:bg-white/10")}
+              >
+                {rulesetOptionLabel(way, t)}
               </button>
             );
           })}
@@ -1420,7 +1457,11 @@ export function RulesetCombatMenu({
                     type="button"
                     disabled={busy || unaimable}
                     title={unaimable ? t("game.combat.ruleset.menu.nobodyToAim") : undefined}
-                    onClick={() => take(option)}
+                    onClick={() =>
+                      rulesetMenuVariants(view.options, option).length > 1
+                        ? setStep({ stage: "variant", option, targets: [] })
+                        : take(option)
+                    }
                     className={cn(
                       buttonClass,
                       "border-white/10 bg-white/5 text-white/80 hover:border-white/25 hover:bg-white/10 hover:text-white",

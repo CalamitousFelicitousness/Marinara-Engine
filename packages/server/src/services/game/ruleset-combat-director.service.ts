@@ -55,6 +55,7 @@ import {
   rulesetCombatOptions,
   rulesetCostSteps,
   rulesetAverageAmount,
+  rulesetAverageDamage,
   rulesetImmuneToCondition,
   rulesetAreaTargets,
   rulesetAimedCells,
@@ -1469,22 +1470,34 @@ function rulesetGiftStrikes(
     stands ??= rulesetWalkableCells(definition, encounter, actor.id);
     return stands.some((cell) => rulesetGapFrom(cell, span, foe) <= reach);
   };
-  return gives.some(
-    (gift) =>
-      (actor.budgets[gift.budget] ?? 0) <= 0 &&
-      actor.actions.some(
-        (action) =>
-          action.budget === gift.budget &&
-          !!(action.damage || action.sequence) &&
-          encounter.combatants.some(
-            (foe) =>
-              foe.side !== actor.side &&
-              rulesetCombatStanding(foe) &&
-              !foe.down &&
-              reaches(foe, rulesetActionReach(action)),
-          ),
-      ),
-  );
+  // Only what its menu would offer with the budget in hand: a handaxe in its pack is not a blow.
+  const offered = (budget: string) => {
+    const before = actor.budgets[budget];
+    actor.budgets[budget] = 1;
+    try {
+      return new Set(rulesetCombatOptions(definition, encounter, actor.id).map((option) => option.id));
+    } finally {
+      if (before === undefined) delete actor.budgets[budget];
+      else actor.budgets[budget] = before;
+    }
+  };
+  return gives.some((gift) => {
+    if ((actor.budgets[gift.budget] ?? 0) > 0) return false;
+    const menu = offered(gift.budget);
+    return actor.actions.some(
+      (action) =>
+        menu.has(action.id) &&
+        action.budget === gift.budget &&
+        !!(action.damage || action.sequence) &&
+        encounter.combatants.some(
+          (foe) =>
+            foe.side !== actor.side &&
+            rulesetCombatStanding(foe) &&
+            !foe.down &&
+            reaches(foe, rulesetActionReach(action)),
+        ),
+    );
+  });
 }
 
 /** The health a side stands up with, on average across its standing members. */
@@ -3225,11 +3238,40 @@ function rulesetLeashOf(
     orders.posture === "protect"
       ? rulesetCombatant(encounter, orders.protectId!)
       : orders.posture === "guard"
-        ? rulesetPartyLeader(state, encounter)
+        ? rulesetGuardCharge(state, encounter, actor)
         : undefined;
   return charge && charge.id !== actor.id && rulesetCombatStanding(charge) && rulesetPositionOf(charge)
     ? { charge, within: RULESET_LEASH }
     : undefined;
+}
+
+/**
+ * Whom a guarding companion stays near (playtest re-test 9): the leader while nobody is fighting or
+ * the leader is, else the nearest friend with an opponent beside them, so a guard whose leader hangs
+ * back goes to the friend fighting alone instead of standing idle at the leader's side.
+ */
+function rulesetGuardCharge(
+  state: CombatDirectorState,
+  encounter: RulesetEncounterState,
+  actor: RulesetCombatant,
+): RulesetCombatant | undefined {
+  const leader = rulesetPartyLeader(state, encounter);
+  const engaged = (one: RulesetCombatant) =>
+    !!rulesetPositionOf(one) &&
+    encounter.combatants.some(
+      (foe) =>
+        foe.side !== one.side &&
+        !foe.object &&
+        rulesetCombatStanding(foe) &&
+        !!rulesetPositionOf(foe) &&
+        rulesetGap(one, foe) <= 1,
+    );
+  if (!leader || leader.id === actor.id || engaged(leader) || !rulesetPositionOf(actor)) return leader;
+  const fighting = encounter.combatants.filter(
+    (one) => one.side === actor.side && one.id !== actor.id && rulesetCombatStanding(one) && engaged(one),
+  );
+  if (!fighting.length) return leader;
+  return fighting.reduce((best, one) => (rulesetGap(actor, one) < rulesetGap(actor, best) ? one : best));
 }
 
 /** The party's leader: the first of it its player plays and still standing, else the first standing. */
@@ -3260,7 +3302,7 @@ function weighRulesetOrders(
     orders.posture === "protect"
       ? rulesetCombatant(encounter, orders.protectId!)
       : orders.posture === "guard"
-        ? leader
+        ? rulesetGuardCharge(state, encounter, actor)
         : undefined;
   const guarded = charge && charge.id !== actor.id && rulesetCombatStanding(charge) ? charge : undefined;
   const strength = orders.posture === "protect" ? 0.6 : 0.3;
@@ -3863,6 +3905,8 @@ function playRulesetTurn(
   }
   const stays = orders?.posture === "hold" || orders?.posture === "retreat";
   const leash = actor && orders ? rulesetLeashOf(state, fight.encounter, actor, orders) : undefined;
+  // A caster or archer caught beside an opponent gets clear before it shoots (re-test 9).
+  if (!stays) getClearToShoot(definition, state, fight, actorId);
   // Once it has dodged, got away or hidden (1.708), it does not walk back into the fight this turn.
   let defended = false;
   // Whether its last blow was thrown from afar (combat AI P8), and whether it keeps its distance after.
@@ -3892,6 +3936,15 @@ function playRulesetTurn(
       continue;
     // A sprint with nowhere to go is a turn spent on the spot.
     if (picked.option.kind === "standard" && rulesetStandardName(picked.option.id) === "dash") break;
+    // Held at the end of its leash, a companion does not search for nobody or ready itself against
+    // opponents far off (playtest re-test 9): it waits beside the one it guards.
+    if (
+      leash &&
+      picked.option.kind === "standard" &&
+      !picked.defensive &&
+      (picked.option.ready || rulesetStandardName(picked.option.id) === "search")
+    )
+      break;
     // A getaway is taken where it stands, and then it runs (1.708).
     if (picked.defensive === "disengage") {
       if (applyChoice(definition, state, fight, picked.choice).refused) break;
@@ -3935,6 +3988,65 @@ function rulesetShotFromAfar(
   if (!blows.every((blow) => !!blow?.range && !blow.reach && !!blow.damage)) return false;
   if (!rulesetPositionOf(actor) || !rulesetPositionOf(target) || rulesetGap(actor, target) <= 1) return false;
   return mind === "tactical" || mind === "genius" ? "kite" : "stay";
+}
+
+/**
+ * Getting clear before it shoots (playtest re-test 9): one that thinks, standing beside an opponent
+ * while its blows from afar do more than its blows up close (a mage's Fire Bolt against its
+ * quarterstaff), first teleports where nobody is beside it and an opponent is in the normal range of
+ * one of them, by a teleport another budget pays for (Misty Step). Walking off would be struck on the
+ * way, and shooting from there is at a disadvantage in most rulesets. True when it moved.
+ */
+function getClearToShoot(
+  definition: RulesetDefinition,
+  state: CombatDirectorState,
+  fight: RulesetFightState,
+  actorId: string,
+): boolean {
+  const encounter = fight.encounter;
+  const mind = [...state.party, ...state.enemies].find((one) => one.id === actorId)?.tactics?.mind;
+  if (mind === undefined || mind === "mindless") return false;
+  const actor = rulesetCombatant(encounter, actorId);
+  const home = rulesetPositionOf(actor);
+  if (!actor || !home || !encounter.board?.grid) return false;
+  const foes = encounter.combatants.filter(
+    (one) => one.side !== actor.side && !one.object && rulesetCombatStanding(one) && rulesetPositionOf(one),
+  );
+  const span = rulesetSpanOf(actor);
+  if (foes.every((foe) => rulesetGapFrom(home, span, foe) > 1)) return false;
+  const options = rulesetCombatOptions(definition, encounter, actorId);
+  const blows = options.flatMap((option) => {
+    const action = actor.actions.find((one) => one.id === option.id);
+    return action?.damage &&
+      option.targets.side !== "ally" &&
+      rulesetOptionTargets(definition, encounter, actorId, option).length > 0
+      ? [{ option, action, average: rulesetAverageDamage(action.damage) }]
+      : [];
+  });
+  const ranged = blows.filter((blow) => !!blow.action.range && !blow.action.reach);
+  const close = Math.max(0, ...blows.filter((blow) => !ranged.includes(blow)).map((blow) => blow.average));
+  const shots = ranged.filter((blow) => blow.average > close);
+  if (shots.length === 0) return false;
+  const clear = (cell: { x: number; y: number }) =>
+    foes.every((foe) => rulesetGapFrom(cell, span, foe) > 1) &&
+    shots.some((shot) => foes.some((foe) => rulesetGapFrom(cell, span, foe) <= shot.action.range!.normal));
+  for (const option of options) {
+    if (!option.teleport?.cells.length || option.targets.side === "enemy") continue;
+    // Paid out of what a shot is not, so the shot is still there after it.
+    if (option.budget && shots.every((shot) => shot.option.budget === option.budget)) continue;
+    let best: { cell: { x: number; y: number }; danger: number } | null = null;
+    for (const cell of option.teleport.cells) {
+      if (!clear(cell)) continue;
+      const danger = rulesetDangerAt(definition, encounter, actor, cell);
+      if (!best || danger < best.danger) best = { cell: { x: cell.x, y: cell.y }, danger };
+    }
+    if (
+      best &&
+      !applyChoice(definition, state, fight, { actorId, optionId: option.id, targetIds: [], at: best.cell }).refused
+    )
+      return true;
+  }
+  return false;
 }
 
 /**

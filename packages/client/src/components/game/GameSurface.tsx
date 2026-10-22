@@ -273,6 +273,7 @@ import {
   type GameImagePromptReviewItem,
 } from "./GameImagePromptReviewModal";
 import { CHAT_HELP_CLOSE_EVENT, CHAT_HELP_OPEN_REQUEST_EVENT, readChatHelpEventMode } from "../../lib/chat-help-events";
+import { readSetupDismissed, writeSetupDismissed } from "../../lib/game-setup-dismissed";
 import { GameStoryboardBackgroundVisual, GameStoryboardInlineViewer } from "./GameStoryboardViewer";
 import { GameVolumeMixer } from "./GameVolumeMixer";
 import {
@@ -793,26 +794,6 @@ function parseStoredNarrationProgress(raw: string | null): StoredNarrationProgre
   }
 
   return null;
-}
-
-/** Where a closed setup wizard is remembered for its chat, so a reload keeps it closed. */
-const setupDismissedKey = (chatId: string) => `game-setup-dismissed:${chatId}`;
-
-function readSetupDismissed(chatId: string): boolean {
-  try {
-    return localStorage.getItem(setupDismissedKey(chatId)) === "1";
-  } catch {
-    return false;
-  }
-}
-
-function writeSetupDismissed(chatId: string, dismissed: boolean) {
-  try {
-    if (dismissed) localStorage.setItem(setupDismissedKey(chatId), "1");
-    else localStorage.removeItem(setupDismissedKey(chatId));
-  } catch {
-    /* storage unavailable */
-  }
 }
 
 function readIntroPresentedFlag(storageKey: string): boolean {
@@ -12133,6 +12114,7 @@ function GameSurfaceComponent({
             activeChatId={activeChatId}
             isNewGame={needsCreation}
             chatMetadata={chatMeta}
+            savedGameName={chat.name}
             onSetupError={handleJsonRepairError}
             onComplete={(config, preferences, conns, wizardGameName, mapPlan) => {
               const queueSetupMapPlan = (chatId: string) => {
@@ -12339,6 +12321,32 @@ function GameSurfaceComponent({
     );
   }
 
+  // Setup was closed before it finished: nothing is loading or playable yet, so say so and offer it again.
+  if (setupWizardDismissed && sessionStatus === "setup" && !gameSetup.isPending && !isStreaming) {
+    return (
+      <>
+        <div
+          data-component="GameSurface.SetupNotFinished"
+          className="flex h-full items-center justify-center bg-[var(--background)] p-6 dark:bg-black/80"
+        >
+          <div className="flex max-w-sm flex-col items-center gap-3 text-center text-sm text-[var(--muted-foreground)] dark:text-white/60">
+            <span>{localizeUi("ui.game.gamesurfacecomponent.setupNotFinished")}</span>
+            <button
+              onClick={() => {
+                writeSetupDismissed(activeChatId, false);
+                setDismissedSetupWizardChatId(null);
+              }}
+              className="flex items-center gap-2 rounded-lg bg-[var(--muted)]/30 px-4 py-2 text-xs text-[var(--foreground)]/70 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--foreground)] dark:bg-white/10 dark:text-white/70 dark:hover:bg-white/20 dark:hover:text-white"
+            >
+              {localizeUi("ui.game.gamesurfacecomponent.openSetup")}
+            </button>
+          </div>
+        </div>
+        {imagePromptReviewModal}
+      </>
+    );
+  }
+
   // World is built but the game hasn't started yet -- show "Start Game" screen.
   // Keep it visible until: (1) assistant content exists, (2) streaming is done,
   // (3) scene preparation (sidecar / connection scene model) has finished,
@@ -12466,20 +12474,6 @@ function GameSurfaceComponent({
                       {initialTurnFailed ? (
                         <div className="max-w-sm text-sm text-[var(--muted-foreground)] dark:text-white/60">
                           {localizeUi("ui.game.gamesurfacecomponent.gameGenerationFailedChooseAnotherGmPartyModelOr")}
-                        </div>
-                      ) : setupWizardDismissed && sessionStatus === "setup" && !gameSetup.isPending && !isStreaming ? (
-                        // Setup was closed before it finished: nothing is loading, so say so and offer it again.
-                        <div className="flex max-w-sm flex-col items-center gap-3 text-sm text-[var(--muted-foreground)] dark:text-white/60">
-                          <span>{localizeUi("ui.game.gamesurfacecomponent.setupNotFinished")}</span>
-                          <button
-                            onClick={() => {
-                              writeSetupDismissed(activeChatId, false);
-                              setDismissedSetupWizardChatId(null);
-                            }}
-                            className={SURFACE_BTN}
-                          >
-                            {localizeUi("ui.game.gamesurfacecomponent.openSetup")}
-                          </button>
                         </div>
                       ) : (
                         <div className="flex items-center gap-3 text-sm text-[var(--muted-foreground)] dark:text-white/60">

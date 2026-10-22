@@ -730,6 +730,9 @@ export function rulesetTargetRefusal(
   /** What the ruleset says of fighting under water (1.445). */
   definition?: RulesetDefinition,
 ): "out-of-reach" | "no-line-of-sight" | null {
+  // Help against an opponent beside the helper (1.718) aids a friend wherever they stand: it is the
+  // opponent who has to be near, and the option is offered only while one is.
+  if (definition?.combat?.standardEffects?.help?.beside && rulesetStandardName(optionId) === "help") return null;
   const summon = optionId.startsWith("summon:")
     ? rulesetCombatant(state, actorId)?.summons?.find((entry) => `summon:${entry.actionId}` === optionId)
     : undefined;
@@ -3870,6 +3873,18 @@ function optionFrom(
     const ids = state.combatants.filter((one) => !one.defeated && one.id !== actor.id).map((one) => one.id);
     if (ids.length > 0) option.designates = { count: spares.chosen, ids };
   }
+  if (action.variantOf) option.variantOf = action.variantOf;
+  if (
+    action.area &&
+    !rulesetActionHarms(action) &&
+    !action.damage &&
+    !action.save &&
+    !action.applies?.length &&
+    !action.push &&
+    !action.pull &&
+    !action.zone?.triggers?.length
+  )
+    option.harmless = true;
   // The kinds its zone may strike, one or more named as it is cast (1.700): Forbiddance.
   if (action.kindsOf?.length) option.kindsOf = action.kindsOf.map((kind) => ({ ...kind }));
   // Or the one entry or creature action in the fight it wards off (1.705): Wish.

@@ -445,14 +445,16 @@ try {
   }
 
   // Action Surge only once its own action is spent, and then for a blow it can reach: never with the
-  // only foe left across water it cannot walk round.
-  for (const [spent, river, surges] of [
-    [false, false, false],
-    [true, false, true],
-    [true, true, false],
+  // only foe left across water it cannot walk round, nor with its walk spent and the only blow that
+  // reaches one it has no use of now (a handaxe in its pack).
+  for (const [spent, river, surges, pack] of [
+    [false, false, false, false],
+    [true, false, true, false],
+    [true, true, false, false],
+    [true, false, false, true],
   ] as const) {
     const { encounter, state } = fight(
-      { it: { x: 1, y: 2 }, hero: river ? { x: 4, y: 2 } : { x: 2, y: 2 } },
+      { it: { x: 1, y: 2 }, hero: river ? { x: 4, y: 2 } : pack ? { x: 7, y: 2 } : { x: 2, y: 2 } },
       {
         it: { side: "enemy", block: block({ type: "humanoid" }) },
         hero: { side: "party", block: block({ health: 40 }) },
@@ -470,12 +472,27 @@ try {
       gives: [{ budget: "action", count: 1 }],
     } as never);
     if (spent) it.budgets.action = 0;
+    if (pack) {
+      it.actions.push({
+        id: "handaxe",
+        label: "Handaxe",
+        kind: "attack",
+        budget: "action",
+        targets: { side: "enemy", count: 1 },
+        toHit: 4,
+        damage: { count: 1, sides: 6, flat: 2 },
+        reach: 1,
+        range: { normal: 4, long: 12 },
+        whileHolds: "glowing",
+      } as never);
+      it.movementLeft = 0;
+    }
     if (river) for (const row of encounter.board!.grid.tiles) row.splice(2, 2, "water", "water");
     const picked = pickRulesetChoice(definition, state, encounter, "it");
     assert.equal(
       picked?.choice.optionId === "surge",
       surges,
-      `spent ${spent}, river ${river}: ${JSON.stringify(picked?.choice)}`,
+      `spent ${spent}, river ${river}, pack ${pack}: ${JSON.stringify(picked?.choice)}`,
     );
   }
 
@@ -696,6 +713,36 @@ try {
     assert.ok(tactician.gap > 7, `and stepped out of the knight's walk: ${tactician.gap}`);
     assert.ok(kites("cunning").gap <= 4, "a cunning one does not step back");
     assert.ok(kites("tactical", dagger).gap <= 4, "nor does one that threw a dagger");
+    // Beside the knight, it gets clear by a Misty Step its bonus action pays for, then shoots (re-test 9).
+    {
+      const misty = { id: "misty", name: "Misty Step", budget: "bonus", teleport: { distance: 30 } };
+      const { encounter, state } = wide(
+        { archer: { x: 3, y: 3 }, knight: { x: 2, y: 3 } },
+        {
+          archer: { side: "enemy", block: block({ type: "humanoid", mind: "cunning", actions: [bow, misty] }) },
+          knight: { side: "party", block: block({ health: 80, actions: [claw] }) },
+        },
+        { archer: { ...master, temperament: "disciplined" } },
+      );
+      state.rulesetFight = {
+        encounter,
+        events: [],
+        eventSeq: 0,
+        controllers: { knight: "manual" },
+        bosses: [],
+      } as never;
+      assert.ok(commandRulesetCombatDirector(definition, state, { type: "continue" }).ok);
+      const turn = state.rulesetFight!.events.map((entry) => entry.event);
+      const shot = turn.find((event) => event.type === "attack" && "actorId" in event && event.actorId === "archer") as
+        { mode?: string } | undefined;
+      const archer = rulesetCombatant(state.rulesetFight!.encounter, "archer")!;
+      const gap = Math.max(Math.abs(archer.x! - 2), Math.abs(archer.y! - 3));
+      assert.ok(
+        gap > 1 && shot && turn.some((event) => event.type === "teleported"),
+        `stepped clear, then shot: ${JSON.stringify(turn)}`,
+      );
+      assert.notEqual(shot?.mode, "disadvantage", "and not at disadvantage");
+    }
   }
 
   // ── Refused ──

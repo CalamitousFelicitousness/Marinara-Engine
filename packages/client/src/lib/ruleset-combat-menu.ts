@@ -64,6 +64,7 @@ const MOVE_OPTION_WORDS: Record<string, "walk" | "walkCarefully" | "stand" | "cl
 
 export interface RulesetMenuStep {
   stage:
+    | "variant"
     | "store"
     | "kinds"
     | "style"
@@ -124,8 +125,12 @@ export interface RulesetMenuGroup {
  *  one this Engine knows is dropped rather than shown without a heading. */
 export function rulesetMenuGroups(options: DirectedRulesetOption[] | undefined): RulesetMenuGroup[] {
   const groups: RulesetMenuGroup[] = [];
+  const offered = new Set((options ?? []).map((option) => option.id));
   for (const kind of RULESET_MENU_KINDS) {
-    const found = (options ?? []).filter((option) => option.kind === kind);
+    // A spell's variants (1.716) sit under its own button while it is offered: one Magic Circle, not twelve.
+    const found = (options ?? []).filter(
+      (option) => option.kind === kind && !(option.variantOf && offered.has(option.variantOf)),
+    );
     if (found.length === 0) continue;
     groups.push({
       kind,
@@ -134,6 +139,14 @@ export function rulesetMenuGroups(options: DirectedRulesetOption[] | undefined):
     });
   }
   return groups;
+}
+
+/** The variants offered with an option (1.716), itself first; just itself when it has none. */
+export function rulesetMenuVariants(
+  options: DirectedRulesetOption[] | undefined,
+  option: DirectedRulesetOption,
+): DirectedRulesetOption[] {
+  return [option, ...(options ?? []).filter((one) => one.variantOf === option.id)];
 }
 
 /**
@@ -330,6 +343,9 @@ export function rulesetStyleForecastText(
 /** Whether this option must be pointed at somebody and has nobody it may be pointed at now (all of
  *  them out of sight or reach): offered greyed out, never opening a pay step that leads nowhere. */
 export function rulesetOptionUnaimable(option: DirectedRulesetOption): boolean {
+  // A standard action given to somebody (Help) with nobody it may be given to.
+  if (option.kind === "standard" && option.targets.side !== "self")
+    return option.targets.count > 0 && option.targetIds.length === 0;
   return (
     (option.kind === "attack" ||
       option.kind === "ability" ||

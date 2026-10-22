@@ -277,9 +277,14 @@ export function rulesetUsefulAlters(
 
 /** Who an aim at this cell would catch of the actor's own side, the actor included: what the
  *  board warns about before the cast. */
-export function rulesetAimCatchesAllies(view: DirectedRulesetView, targetIds: readonly string[]): string[] {
+export function rulesetAimCatchesAllies(
+  view: DirectedRulesetView,
+  targetIds: readonly string[],
+  option?: DirectedRulesetOption,
+): string[] {
   const actor = view.combatants.find((combatant) => combatant.id === view.actorId);
-  if (!actor) return [];
+  // A ward does nothing to those it catches (Magic Circle): no warning about the caster's own side.
+  if (!actor || option?.harmless) return [];
   return targetIds.filter((id) => view.combatants.find((combatant) => combatant.id === id)?.side === actor.side);
 }
 

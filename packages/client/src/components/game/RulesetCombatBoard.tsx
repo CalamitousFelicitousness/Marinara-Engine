@@ -135,7 +135,11 @@ export function RulesetCombatBoard({
     const own = rulesetAimTemplate(view, step, aimedAt);
     return new Set((own.length ? own : (view.window?.held?.cells ?? [])).map(rulesetCellKey));
   }, [view, step, aimedAt]);
-  const alliesCaught = useMemo(() => new Set(rulesetAimCatchesAllies(view, aimed?.targetIds ?? [])), [view, aimed]);
+  const aimedOption = step?.stage === "aim" ? step.option : undefined;
+  const alliesCaught = useMemo(
+    () => new Set(rulesetAimCatchesAllies(view, aimed?.targetIds ?? [], aimedOption)),
+    [view, aimed, aimedOption],
+  );
   // A cast that catches allies, or any aim tapped on a touch screen, is armed by the first pick of
   // its square and cast by the second: the first only shows what it would do.
   const [armed, setArmed] = useState<string | null>(null);
@@ -207,7 +211,7 @@ export function RulesetCombatBoard({
     // A wall set down waits for the way it runs, and any square turns it (1.177).
     if (step.stage === "aim" && (cell.aim || rulesetAimTurning(step.option, step.lay))) {
       const key = rulesetCellKey(cell);
-      const friendly = !sparing && rulesetAimCatchesAllies(view, cell.aim?.targetIds ?? []).length > 0;
+      const friendly = !sparing && rulesetAimCatchesAllies(view, cell.aim?.targetIds ?? [], step.option).length > 0;
       if ((friendly || lastPointer.current === "touch") && armed !== key) {
         setArmed(key);
         setReading({ x: cell.x, y: cell.y });

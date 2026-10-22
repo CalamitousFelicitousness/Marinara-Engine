@@ -62,8 +62,8 @@ try {
     let at = 0;
     return () => faces[at++ % faces.length]!;
   };
-  /** Pell helps Juno; Snag stands beside both, Rot beside Juno only. Snag starts away when `alone`. */
-  const fight = (definition: RulesetDefinition, alone = false): RulesetEncounterState =>
+  /** Pell helps Juno; Snag stands beside both, Rot beside Juno only. Snag starts away when `alone`; Juno when `far`. */
+  const fight = (definition: RulesetDefinition, alone = false, far = false): RulesetEncounterState =>
     createRulesetEncounter({
       definition,
       seed: 1,
@@ -83,7 +83,7 @@ try {
         placements: {
           pell: { x: 1, y: 1 },
           snag: alone ? { x: 7, y: 0 } : { x: 1, y: 0 },
-          juno: { x: 2, y: 1 },
+          juno: far ? { x: 6, y: 2 } : { x: 2, y: 1 },
           rot: { x: 3, y: 1 },
         },
       },
@@ -118,6 +118,8 @@ try {
   const beside = parsed(fiveE());
   // ── Nobody beside the helper, no help ──
   assert.deepEqual(helpTargets(beside, fight(beside, true)), [], "no opponent beside the helper, no help");
+  // ── The helped ally can stand anywhere: only the opponent must be beside the helper ──
+  assert.ok(helpTargets(beside, fight(beside, false, true)).includes("juno"), "help reaches an ally across the field");
   // ── Help counts only against the opponent beside the helper ──
   {
     let state = helped(beside);

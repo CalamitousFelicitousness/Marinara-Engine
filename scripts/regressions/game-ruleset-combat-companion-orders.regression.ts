@@ -241,7 +241,7 @@ try {
   {
     // The orc is far off and Mira may not stray from Ada: the walk stops at the leash with movement
     // to spare, so a sprint would only be her action thrown away.
-    const { encounter, state } = fight({
+    const { state } = fight({
       ada: { side: "party", block: block([smash]), at: { x: 2, y: 5 } },
       mira: { side: "party", block: block([smash]), at: { x: 1, y: 5 } },
       orc: { side: "enemy", block: block([smash]), at: { x: 15, y: 5 } },
@@ -255,7 +255,20 @@ try {
       [],
       `no sprint: ${JSON.stringify(turn.filter((event) => "actorId" in event && event.actorId === "mira"))}`,
     );
-    assert.ok(rulesetCombatant(encounter, "mira")!.x <= 2 + 3, "and she stays by Ada");
+    assert.ok(rulesetCombatant(state.rulesetFight!.encounter, "mira")!.x <= 2 + 3, "and she stays by Ada");
+  }
+
+  // ── Guarding a leader who hangs back, it goes to the friend fighting alone (re-test 9) ──
+  {
+    const { state } = fight({
+      ada: { side: "party", block: block([smash]), at: { x: 1, y: 5 } },
+      mira: { side: "party", block: block([smash]), at: { x: 2, y: 5 } },
+      bram: { side: "party", block: block([smash]), at: { x: 8, y: 5 } },
+      orc: { side: "enemy", block: block([smash]), at: { x: 9, y: 5 } },
+    });
+    assert.ok(commandRulesetCombatDirector(definition, state, { type: "continue" }).ok);
+    const mira = rulesetCombatant(state.rulesetFight!.encounter, "mira")!;
+    assert.ok(mira.x >= 5, `Mira heads for Bram and the orc: ${mira.x},${mira.y}`);
   }
 
   // ── Conserve ──

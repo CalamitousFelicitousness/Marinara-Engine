@@ -4628,6 +4628,7 @@ function abilityActions(
       if (!action) continue;
       action.id = way.id;
       action.label = way.name;
+      if (way !== ways[0]) action.variantOf = ways[0]!.id;
       // Which catalog it came from, and which entry, which is what a reaction that answers only some
       // entries reads.
       action.catalog = catalogId;
@@ -4666,10 +4667,10 @@ function innateActions(
       { ref: spell.entry, entry: parent },
       ...(parent.variants ?? []).flatMap((id) => {
         const variant = byRef.get(`${catalogId}/${id}`);
-        return variant ? [{ ref: `${catalogId}/${id}`, entry: variant }] : [];
+        return variant ? [{ ref: `${catalogId}/${id}`, entry: variant, variantOf: spell.entry }] : [];
       }),
     ];
-    return ways.flatMap(({ ref, entry }) => {
+    return ways.flatMap(({ ref, entry, ...way }) => {
       if (!entry.mechanics) return [];
       const header = definition.catalogs?.find((catalog) => catalog.id === catalogId);
       const source = definition.combat?.abilities?.find((ability) =>
@@ -4699,6 +4700,7 @@ function innateActions(
       action.catalog = catalogId;
       action.entry = ref;
       if (ref !== spell.entry && spell.uses) action.usesKey = spell.entry;
+      if ("variantOf" in way) action.variantOf = way.variantOf;
       // What its filters read, for a ward's `where` (1.592): from a catalog file too.
       if (entry.filters) action.filters = structuredClone(entry.filters);
       const baseLevel = rulesetPaidLevel(definition, { sheet: { build, live: {}, catalogs: {} } }, action);

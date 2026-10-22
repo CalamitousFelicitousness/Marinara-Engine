@@ -1340,6 +1340,9 @@ export interface RulesetCombatAction {
   /** Whose count its `uses` spend, when not its own id: each variant of a creature's spell (1.716)
    *  casts from the one spell's uses. */
   usesKey?: string;
+  /** The action this one is a variant of (1.716): Magic Circle (fiends) of Magic Circle. A menu
+   *  offers them as one button and a pick of which. */
+  variantOf?: string;
   recharge?: RulesetCombatRecharge;
   /** How many strikes ONE spend of this action's budget buys, when its source said so. Taking it
    *  with none in hand spends the budget and puts the rest in hand; while any are in hand, every
@@ -4343,6 +4346,12 @@ export interface RulesetCombatOption {
   kindsOf?: Array<{ id: string; label: string }>;
   /** Exactly one of `kindsOf` is named (1.705). */
   kindsOne?: true;
+  /** The option this one is a variant of (1.716), as its action says: the menu folds it under that
+   *  one's button while that one is offered too. */
+  variantOf?: string;
+  /** An area that does nothing to those it catches but ward them (Magic Circle): no damage, save,
+   *  condition, shove or trigger. A screen does not warn that it catches the caster's own side. */
+  harmless?: true;
   /** What it may be stored in instead of done (1.471): its user's own item (`item`, its place on
    *  their sheet) or one an ally beside them holds, or a creature that stores (no `item`), with the
    *  levels still free there. The choice names one as `storesIn`. */

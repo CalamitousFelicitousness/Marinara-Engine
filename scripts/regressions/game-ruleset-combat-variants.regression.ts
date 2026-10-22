@@ -34,6 +34,7 @@ process.env.DATA_DIR = dataDir;
 process.env.FILE_STORAGE_DIR = join(dataDir, "storage");
 const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
+const { rulesetMenuGroups, rulesetMenuVariants } = await import("../../packages/client/src/lib/ruleset-combat-menu.js");
 
 try {
   assert.ok(supportedCapabilityApi.minor >= 716);
@@ -137,6 +138,26 @@ try {
     assert.ok(labels.includes("Chromatic Orb (cold)"), labels.join(", "));
     // The parent has nothing of its own to do, so it is not on the menu.
     assert.ok(!labels.includes("Chromatic Orb"), labels.join(", "));
+    // Each names the parent's action, so a menu can fold them under it (re-test 9); with the parent
+    // not offered, each keeps its own button.
+    const kinds = menu.filter((option) => option.label.startsWith("Chromatic Orb ("));
+    assert.ok(
+      kinds.length === 2 && kinds.every((option) => !!option.variantOf),
+      JSON.stringify(kinds.map((o) => o.variantOf)),
+    );
+    const shown = (options: unknown[]) =>
+      rulesetMenuGroups(options as never).flatMap((group) => group.options.map((option) => option.label));
+    assert.ok(shown(menu).includes("Chromatic Orb (cold)"), "no parent on the menu: the kinds stand alone");
+    const parentOption = { ...kinds[0]!, id: kinds[0]!.variantOf!, label: "Chromatic Orb", variantOf: undefined };
+    const folded = shown([...menu, parentOption]);
+    assert.ok(
+      folded.includes("Chromatic Orb") && !folded.some((label) => label.startsWith("Chromatic Orb (")),
+      folded.join(", "),
+    );
+    assert.deepEqual(
+      rulesetMenuVariants([...menu, parentOption] as never, parentOption as never).map((option) => option.label),
+      ["Chromatic Orb", "Chromatic Orb (fire)", "Chromatic Orb (cold)"],
+    );
     const cold = menu.find((option) => option.label === "Chromatic Orb (cold)")!;
     const step = applyRulesetCombatChoice(
       definition,

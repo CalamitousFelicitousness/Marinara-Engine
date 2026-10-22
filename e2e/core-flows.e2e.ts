@@ -12521,41 +12521,38 @@ test(
           .map(Number) ?? [];
       return channels.reduce((total, channel) => total + channel * scale, 0);
     };
-    // The URL bar is desktop chrome; the phone shell renders no address row to shade.
-    if (!testInfo.project.name.includes("mobile")) {
-      const darkAddressSurfaces = await page.evaluate(() => ({
-        chrome: getComputedStyle(document.querySelector<HTMLElement>(".mari-home-browser-chrome")!).backgroundColor,
-        addressRow: getComputedStyle(document.querySelector<HTMLElement>(".mari-home-browser-address-row")!)
-          .backgroundColor,
-      }));
-      for (const surface of Object.values(darkAddressSurfaces)) {
-        expect(surface).not.toMatch(/^(?:transparent|rgba\([^)]*,\s*0\))$/u);
-      }
-      expect(surfaceLightness(darkAddressSurfaces.addressRow)).toBeLessThan(
-        surfaceLightness(darkAddressSurfaces.chrome),
+    // The URL bar is desktop chrome; the phone shell renders no address row to shade, but its chrome stays opaque.
+    const addressRowRendered = !testInfo.project.name.includes("mobile");
+    const readAddressSurfaces = () =>
+      page.evaluate(
+        (withAddressRow) => ({
+          chrome: getComputedStyle(document.querySelector<HTMLElement>(".mari-home-browser-chrome")!).backgroundColor,
+          addressRow: withAddressRow
+            ? getComputedStyle(document.querySelector<HTMLElement>(".mari-home-browser-address-row")!).backgroundColor
+            : null,
+        }),
+        addressRowRendered,
       );
+    const expectShadedAddressSurfaces = (surfaces: { chrome: string; addressRow: string | null }) => {
+      for (const surface of [surfaces.chrome, surfaces.addressRow]) {
+        if (surface !== null) expect(surface).not.toMatch(/^(?:transparent|rgba\([^)]*,\s*0\))$/u);
+      }
+      if (surfaces.addressRow !== null) {
+        expect(surfaceLightness(surfaces.addressRow)).toBeLessThan(surfaceLightness(surfaces.chrome));
+      }
+    };
+    expectShadedAddressSurfaces(await readAddressSurfaces());
 
-      await page.evaluate(async () => {
-        const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
-        module.useUIStore.getState().setTheme("light");
-      });
-      await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
-      const lightAddressSurfaces = await page.evaluate(() => ({
-        chrome: getComputedStyle(document.querySelector<HTMLElement>(".mari-home-browser-chrome")!).backgroundColor,
-        addressRow: getComputedStyle(document.querySelector<HTMLElement>(".mari-home-browser-address-row")!)
-          .backgroundColor,
-      }));
-      for (const surface of Object.values(lightAddressSurfaces)) {
-        expect(surface).not.toMatch(/^(?:transparent|rgba\([^)]*,\s*0\))$/u);
-      }
-      expect(surfaceLightness(lightAddressSurfaces.addressRow)).toBeLessThan(
-        surfaceLightness(lightAddressSurfaces.chrome),
-      );
-      await page.evaluate(async () => {
-        const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
-        module.useUIStore.getState().setTheme("dark");
-      });
-    }
+    await page.evaluate(async () => {
+      const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
+      module.useUIStore.getState().setTheme("light");
+    });
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+    expectShadedAddressSurfaces(await readAddressSurfaces());
+    await page.evaluate(async () => {
+      const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
+      module.useUIStore.getState().setTheme("dark");
+    });
 
     const charactersButton = page.locator('[data-tour="panel-characters"]');
     await expect(charactersButton.locator("svg")).toHaveClass(/mari-topbar-accent-icon/);

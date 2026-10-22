@@ -7,6 +7,7 @@
 
 import type { FastifyInstance } from "fastify";
 import {
+  announceSetupCode,
   clearStoredLogin,
   consumeLoginSetupCode,
   getLoginConfig,
@@ -110,7 +111,13 @@ export async function accessStatusRoutes(app: FastifyInstance) {
       if (current && !owner && !(await requireCurrentPassword(request, reply, body.currentPassword))) return;
       // No await since trySetupCode, so a code works once.
       if (setupCode) consumeLoginSetupCode();
-      await setStoredLogin(user, password);
+      try {
+        await setStoredLogin(user, password);
+      } catch (err) {
+        // The used code is gone, so print a new one, like the lockdown form does.
+        if (setupCode) announceSetupCode();
+        throw err;
+      }
       logger.info('[login] Remote login %s for user "%s"', current ? "changed" : "set", user);
       rememberLoginInBrowser(request, reply, setupCode ? "setup" : "password");
       return { loginSource: "app" };

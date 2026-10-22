@@ -23,6 +23,8 @@ const {
 const { resolveCardAssetImageSources, resolveSelfCardAssets } =
   await import("../../packages/client/src/lib/card-asset-links.js");
 const { getDB, closeDB } = await import("../../packages/server/src/db/connection.js");
+const { characters } = await import("../../packages/server/src/db/schema/index.js");
+const { eq } = await import("../../packages/server/src/db/file-query.js");
 const { errorHandler } = await import("../../packages/server/src/middleware/error-handler.js");
 const { buildCompatibleCharacterExport, charactersRoutes } =
   await import("../../packages/server/src/routes/characters.routes.js");
@@ -299,6 +301,35 @@ try {
       [],
       "ordinary saves drop mappings edited out of every greeting",
     );
+
+    // Simulate an older stored card that still carries an orphaned cache record.
+    const storage = createCharactersStorage(db);
+    const before = (await storage.getById(character.id))!;
+    const stale = JSON.parse(before.data);
+    stale.extensions.bakedGreetingImages = mapping;
+    await db
+      .update(characters)
+      .set({ data: JSON.stringify(stale) })
+      .where(eq(characters.id, character.id));
+    const snapshotCount = async () =>
+      (await storage.listVersions(character.id)).filter((version) => !version.isCurrent).length;
+    const previousCount = await snapshotCount();
+    const unchanged = await saveCard({ description: stale.description });
+    assert.deepEqual(readBakedGreetingImages(unchanged.extensions), []);
+    assert.equal(unchanged.character_version, stale.character_version, "cache pruning is not an authored revision");
+    assert.equal(await snapshotCount(), previousCount, "cache pruning alone creates no snapshot");
+    const authored = await saveCard({ description: "A real authored edit after cleanup" });
+    assert.notEqual(authored.character_version, unchanged.character_version);
+    assert.equal(await snapshotCount(), previousCount + 1, "real content edits still create a snapshot");
+    const commentSave = await app.inject({
+      method: "PATCH",
+      url: `/api/characters/${character.id}`,
+      payload: { data: {}, comment: "A real card comment" },
+    });
+    assert.equal(commentSave.statusCode, 200, commentSave.body);
+    assert.equal(await snapshotCount(), previousCount + 2, "real comment edits still create a snapshot");
+    assert.equal((await saveCard({ character_version: "99.7" })).character_version, "99.7");
+    assert.equal(await snapshotCount(), previousCount + 3, "explicit version changes still create a snapshot");
 
     const other = await createCharactersStorage(db).create(characterDataSchema.parse({ name: "Other" }));
     const wrongOwner = await app.inject({

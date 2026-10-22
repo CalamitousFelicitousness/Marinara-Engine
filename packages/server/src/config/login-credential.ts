@@ -55,7 +55,11 @@ function watchedFile<T>(file: string, read: () => T, missing: T) {
         } catch (err) {
           // Gone since the stat means missing; any other read error keeps the last value and tries again.
           if ((err as NodeJS.ErrnoException).code === "ENOENT") state = { checkedAt: now, stamp: "", value: missing };
-          else logger.warn(err, "[login] Could not read %s; trying again", file);
+          else {
+            logger.warn(err, "[login] Could not read %s; trying again", file);
+            // The old stamp stays, so the next check after RECHECK_MS reads the file again.
+            state = { checkedAt: now, stamp: state?.stamp ?? "", value: state ? state.value : missing };
+          }
         }
       }
       return state ? state.value : missing;

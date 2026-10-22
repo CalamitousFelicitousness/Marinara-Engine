@@ -780,16 +780,11 @@ export async function combatDirectorRoutes(
         if (setup.combatDirector !== true)
           return reply.code(400).send({ error: "Directed combat is not enabled for this game." });
         // An Experience's companions who never fight (1.360) travel with the party but are not put in its fights.
-        // A unit is one of them by its own party id; only a unit that arrives without one is known by its
-        // name, and then only when that names a member of the party.
+        // A unit is one of them by its own id alone; only a unit that arrives without one is known by its name.
         const noncombatants = await gameNoncombatants(app.db, input.chatId, meta);
         if (noncombatants.size) {
-          const partyIds = new Set(Array.isArray(meta.gamePartyCharacterIds) ? meta.gamePartyCharacterIds : []);
-          const sitsOut = (member: { id: string; name: string }) => {
-            const byName = buildPartyNpcId(member.name);
-            if (partyIds.has(member.id)) return noncombatants.has(member.id);
-            return partyIds.has(byName) && noncombatants.has(byName);
-          };
+          const sitsOut = (member: { id: string; name: string }) =>
+            noncombatants.has(member.id) || (!member.id.trim() && noncombatants.has(buildPartyNpcId(member.name)));
           const fighting = input.party.filter((member) => !sitsOut(member));
           if (fighting.length) input.party = fighting;
         }

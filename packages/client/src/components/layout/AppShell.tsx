@@ -1454,9 +1454,10 @@ export function AppShell({
             {detailView && (
               <motion.aside
                 key="detail-editor"
-                initial={shellOverlayMode ? { opacity: 0, x: 24 } : false}
-                animate={{ opacity: 1, x: 0 }}
-                exit={shellOverlayMode ? { opacity: 0, x: 24 } : undefined}
+                // A fade, not a slide: the sheet sits between the camera strips, and any sideways travel crosses one.
+                initial={shellOverlayMode ? { opacity: 0 } : false}
+                animate={{ opacity: 1 }}
+                exit={shellOverlayMode ? { opacity: 0 } : undefined}
                 transition={{ type: "spring", damping: 30, stiffness: 360 }}
                 data-component={shellOverlayMode ? "MobileDetailSheet" : "DetailEditor"}
                 aria-label={localizeUi("ui.layout.appshell.detailEditor")}
@@ -1519,7 +1520,7 @@ export function AppShell({
               key="mobile-tracker"
               // A whole screen, not the sheet's width: an inset sheet would leave a slice in the camera strip.
               initial={{ x: trackerPanelSide === "left" ? "-100vw" : "100vw" }}
-              animate={{ x: "0vw" }}
+              animate={{ x: 0 }}
               exit={{ x: trackerPanelSide === "left" ? "-100vw" : "100vw" }}
               transition={{ type: "spring", damping: 28, stiffness: 350 }}
               data-component="TrackerDataSidebarMobile"
@@ -1547,7 +1548,7 @@ export function AppShell({
             <motion.aside
               key="mobile-navigation"
               initial={{ x: "100vw" }}
-              animate={{ x: "0vw" }}
+              animate={{ x: 0 }}
               exit={{ x: "100vw" }}
               transition={{ type: "spring", damping: 28, stiffness: 350 }}
               data-tour={mobileNavigationPanel === "chats" ? "sidebar" : undefined}
@@ -1558,7 +1559,9 @@ export function AppShell({
                   : "ui.layout.appshell.settingsAndToolsPanel",
               )}
               className={cn(
-                "!fixed bottom-0 z-50 overflow-hidden shadow-2xl backdrop-blur-xl",
+                // contain: layout makes the sheet the frame for its fixed selection bar on every engine; its blur
+                // already does that except on iOS, where the blur is switched off for this sheet.
+                "!fixed bottom-0 z-50 overflow-hidden shadow-2xl backdrop-blur-xl [contain:layout]",
                 MOBILE_SHELL_PANEL_TOP_CLASS,
                 MOBILE_SHELL_PANEL_X_CLASS,
                 MOBILE_SHELL_PANEL_BOTTOM_PADDING_CLASS,

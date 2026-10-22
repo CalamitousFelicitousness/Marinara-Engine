@@ -19867,7 +19867,7 @@ test("a landscape phone keeps Home's compact chrome", async ({ page }, testInfo)
   await expect(menu).toHaveCount(0);
 });
 
-test("a phone turned sideways keeps the app out from under its camera", async ({ page }, testInfo) => {
+test("a phone turned sideways keeps the app out from under its camera", async ({ page, request }, testInfo) => {
   test.skip(!testInfo.project.name.includes("mobile"), "Touch-device proof.");
   await seedUIState(page, { hasCompletedOnboarding: true, sidebarOpen: false, rightPanelOpen: false }, "merge");
   await page.addInitScript(({ key, version }) => localStorage.setItem(key, version), {
@@ -19967,6 +19967,78 @@ test("a phone turned sideways keeps the app out from under its camera", async ({
   await expectInside(faq.locator(".mari-modal-panel"), "a dialog");
   await page.keyboard.press("Escape");
   await expect(faq).toBeHidden();
+
+  // A sheet's own fixed selection bar lines up with the sheet, not the screen, on every engine.
+  // The mobile projects share one server, so the fixture is named for this run.
+  const regexName = `Camera strip ${testInfo.project.name} ${testInfo.retry} ${Date.now()}`;
+  const regexResponse = await request.post("/api/regex-scripts", {
+    data: {
+      name: regexName,
+      findRegex: "fixture",
+      replaceString: "replacement",
+      placement: ["ai_output"],
+    },
+  });
+  expect(regexResponse.ok()).toBeTruthy();
+  const regexScript = (await regexResponse.json()) as { id: string };
+  try {
+    await page.evaluate(async () => {
+      const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
+      module.useUIStore.getState().openRightPanel("presets");
+    });
+    const panelSheet = page.locator('[data-component="RightPanelMobile"]');
+    await expectInside(panelSheet, "the panel sheet");
+    await page.getByRole("button", { name: "Select regex scripts", exact: true }).click();
+    await page.getByRole("checkbox", { name: `Select ${regexName}`, exact: true }).check();
+    const actionBar = page.locator(".mari-selection-action-bar");
+    await expect(actionBar).toBeVisible();
+    await expect
+      .poll(async () => {
+        const [bar, sheet] = await Promise.all([actionBar.boundingBox(), panelSheet.boundingBox()]);
+        return bar && sheet
+          ? [Math.abs(bar.x - sheet.x) <= 1, Math.abs(bar.x + bar.width - (sheet.x + sheet.width)) <= 1]
+          : null;
+      })
+      .toEqual([true, true]);
+    await page.evaluate(async () => {
+      const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
+      module.useUIStore.getState().closeRightPanel();
+    });
+
+    // The detail sheet opens without crossing a strip: every frame of its entrance is sampled, not just the end.
+    await page.evaluate(() => {
+      const extent = { left: Infinity, right: -Infinity };
+      (window as unknown as { __detailExtent: typeof extent }).__detailExtent = extent;
+      const stopAt = performance.now() + 1200;
+      const sample = () => {
+        const sheet = document.querySelector('[data-component="MobileDetailSheet"]');
+        if (sheet) {
+          const bounds = sheet.getBoundingClientRect();
+          extent.left = Math.min(extent.left, bounds.left);
+          extent.right = Math.max(extent.right, bounds.right);
+        }
+        if (performance.now() < stopAt) requestAnimationFrame(sample);
+      };
+      requestAnimationFrame(sample);
+    });
+    await page.evaluate(async (id) => {
+      const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
+      module.useUIStore.getState().openRegexDetail(id);
+    }, regexScript.id);
+    await expect(page.locator('[data-component="MobileDetailSheet"]')).toBeVisible();
+    await page.waitForTimeout(1300);
+    const detailExtent = await page.evaluate(
+      () => (window as unknown as { __detailExtent: { left: number; right: number } }).__detailExtent,
+    );
+    expect(detailExtent.left).toBeGreaterThanOrEqual(59 - 0.5);
+    expect(detailExtent.right).toBeLessThanOrEqual(874 - 59 + 0.5);
+    await page.evaluate(async () => {
+      const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
+      module.useUIStore.getState().closeAllDetails();
+    });
+  } finally {
+    await request.delete(`/api/regex-scripts/${regexScript.id}`);
+  }
 
   // No camera, no strips: the shell takes the whole width again.
   await setSideInsets(0);

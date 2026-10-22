@@ -19829,6 +19829,29 @@ test("a landscape phone keeps Home's compact chrome", async ({ page }, testInfo)
   await expect(page.locator('[data-shell-overlay-mode="true"]')).toHaveCount(1);
   await expect(page.locator('[data-component="HomeBrowserHub.AddressRow"]')).toHaveCount(0);
   await expect(page.getByRole("navigation", { name: "Home bookmarks" })).toHaveCount(0);
+  // Both bars are shorter than on a portrait phone, so a package tab keeps more of the ~400px.
+  const topBar = page.locator('[data-component="TopBar"]');
+  const topBarBounds = (await topBar.boundingBox())!;
+  const tabRowBounds = (await page.locator(".mari-home-browser-tab-row").boundingBox())!;
+  expect(topBarBounds.height).toBeLessThanOrEqual(40);
+  expect(tabRowBounds.height).toBeLessThanOrEqual(36);
+  for (const button of await topBar.locator(".mari-topbar-action:visible").all()) {
+    const buttonBounds = (await button.boundingBox())!;
+    expect(buttonBounds.y).toBeGreaterThanOrEqual(topBarBounds.y - 0.5);
+    expect(buttonBounds.y + buttonBounds.height).toBeLessThanOrEqual(topBarBounds.y + topBarBounds.height + 0.5);
+  }
+  // Panels that open under the bar follow its height.
+  await page.getByRole("button", { name: "Chats", exact: true }).click();
+  const chatList = page.locator('[data-component="ChatSidebarPanel"]');
+  await expect(chatList).toBeVisible();
+  expect(Math.abs((await chatList.boundingBox())!.y - (topBarBounds.y + topBarBounds.height))).toBeLessThanOrEqual(1);
+  await page.getByRole("button", { name: "Close chats" }).click();
+  await expect(chatList).toBeHidden();
+  // Under 640px wide (an upright Android phone whose keyboard shrank the page) the full bar stays.
+  await page.setViewportSize({ width: 600, height: 360 });
+  await expect.poll(async () => (await topBar.boundingBox())!.height).toBeGreaterThan(44);
+  await page.setViewportSize({ width: 874, height: 402 });
+  await expect.poll(async () => (await topBar.boundingBox())!.height).toBeLessThanOrEqual(40);
 
   const trigger = page.getByRole("button", { name: "Open bookmarks", exact: true });
   const menu = page.locator('[data-component="HomeBrowserHub.MobileBookmarksMenu"]');
@@ -19842,6 +19865,97 @@ test("a landscape phone keeps Home's compact chrome", async ({ page }, testInfo)
   await menu.getByText("Widgets", { exact: true }).click();
   await expect(page.getByRole("dialog", { name: "Home Widgets" })).toBeVisible();
   await expect(menu).toHaveCount(0);
+});
+
+test("a sideways phone gives a package tab the screen while you type", async ({ page }, testInfo) => {
+  test.skip(!testInfo.project.name.includes("mobile"), "Touch-device proof.");
+  const manifest = {
+    schemaVersion: 1,
+    id: "shadowpad",
+    name: "Shadowpad",
+    version: "1.0.0",
+    description: "Package tab whose field lives in a shadow root, like Gacha Forge.",
+    engine: { min: "2.4.2", maxExclusive: "4.0.0" },
+    kind: ["agent"],
+    entrypoints: { client: "client.js" },
+    contributions: { slots: ["home-browser-tab"], homeBrowserTab: { label: "Shadowpad" } },
+    files: [{ path: "client.js", sha256: "0".repeat(64), bytes: 1 }],
+    permissions: ["ui"],
+    restartRequired: true,
+  };
+  await page.route("**/api/capability-packages/installed", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify([
+        {
+          id: "shadowpad",
+          version: "1.0.0",
+          manifest,
+          installedAt: new Date().toISOString(),
+          status: "active",
+          error: null,
+          readiness: "ready",
+          readinessError: null,
+          legacy: false,
+        },
+      ]),
+    }),
+  );
+  await page.route("**/api/capability-packages/shadowpad/client?*", (route) =>
+    route.fulfill({
+      contentType: "text/javascript",
+      body: `class Shadowpad extends HTMLElement { connectedCallback() { if (this.shadowRoot) return; this.attachShadow({ mode: "open" }).innerHTML = '<label>World <input aria-label="Shadowpad world" style="font-size: 12px"></label>'; } } customElements.define('marinara-capability-shadowpad', Shadowpad);`,
+    }),
+  );
+  await seedUIState(page, { hasCompletedOnboarding: true, sidebarOpen: false, rightPanelOpen: false }, "merge");
+  await page.addInitScript(({ key, version }) => localStorage.setItem(key, version), {
+    key: WHATS_NEW_SEEN_VERSION_KEY,
+    version: APP_VERSION,
+  });
+  await page.setViewportSize({ width: 874, height: 402 });
+  await page.goto("/");
+  // The chat list is a synced setting another test may have left open; close it once sync has landed.
+  await page.evaluate(async () => {
+    const module = (await import("/src/stores/ui.store.ts" as string)) as PageUiStoreModule;
+    await new Promise<void>((resolve) => {
+      if (module.useUIStore.getState().settingsSyncReady) return resolve();
+      const stop = module.useUIStore.subscribe((state) => {
+        if (!state.settingsSyncReady) return;
+        stop();
+        resolve();
+      });
+    });
+    module.useUIStore.getState().setSidebarOpen(false);
+  });
+  await page.getByRole("tab", { name: "Shadowpad", exact: true }).click();
+  const field = page.getByLabel("Shadowpad world");
+  const topBar = page.locator('[data-component="TopBar"]');
+  const homeChrome = page.locator(".mari-home-browser-chrome");
+  await expect(field).toBeVisible();
+  await expect(topBar).toBeVisible();
+  await expect(homeChrome).toBeVisible();
+
+  // The keyboard takes most of the height: the bars step aside while a package field has the focus.
+  await field.focus();
+  await page.setViewportSize({ width: 874, height: 220 });
+  await expect(page.locator("html")).toHaveAttribute("data-mari-software-keyboard-open", "");
+  await expect(topBar).toBeHidden();
+  await expect(homeChrome).toBeHidden();
+  await expect(field).toBeFocused();
+  await expect(field).toBeInViewport();
+
+  // Focus outside the package brings them back even before the keyboard has gone.
+  await page.locator('[data-component="HomeBrowserHub.Content"]').focus();
+  await expect(topBar).toBeVisible();
+  await expect(homeChrome).toBeVisible();
+
+  // And so does the keyboard closing while the field keeps focus.
+  await field.focus();
+  await expect(topBar).toBeHidden();
+  await page.setViewportSize({ width: 874, height: 402 });
+  await expect(page.locator("html")).not.toHaveAttribute("data-mari-software-keyboard-open", "");
+  await expect(topBar).toBeVisible();
+  await expect(homeChrome).toBeVisible();
 });
 
 test("Professor Mari's window and page share Home's background", async ({ page }) => {

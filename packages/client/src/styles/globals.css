@@ -7321,7 +7321,7 @@ strong {
   input,
   select,
   textarea {
-    font-size: 1rem; /* prevents iOS zoom on focus */
+    font-size: max(1rem, 16px); /* prevents iOS zoom on focus, even at a smaller Font Size setting */
   }
 }
 
@@ -8573,6 +8573,58 @@ html[data-marinara-reduced-effects="true"] .mari-window {
 }
 
 @import "./omnibar-settings.css";
+
+/* A phone turned sideways has about 400px of height. The TopBar and Home's tab strip get shorter so a
+   package tab keeps that height, and while you type in one they step aside for the keyboard. Touch only
+   (the MOBILE_SHELL_MEDIA_QUERY condition): a short desktop window keeps the full bars. At least 640px wide:
+   every sideways phone is, while an upright Android phone whose keyboard shrinks the page is not. */
+@media (orientation: landscape) and (max-height: 500px) and (min-width: 640px) and (hover: none) and (any-pointer: coarse) {
+  :root {
+    --mari-topbar-height: 2.25rem;
+  }
+
+  .mari-topbar {
+    height: var(--mari-topbar-height);
+  }
+
+  .mari-topbar-action {
+    width: var(--mari-topbar-height);
+    height: var(--mari-topbar-height);
+  }
+
+  .mari-topbar-panel-nav {
+    padding: 0;
+  }
+
+  .mari-topbar-left > * {
+    max-height: var(--mari-topbar-height);
+  }
+
+  .mari-home-browser-tab-row {
+    height: 2rem;
+  }
+
+  .mari-home-browser-tab-row [role="tab"],
+  [data-component="HomeBrowserHub.MobileBookmarksTrigger"] {
+    min-height: 1.875rem;
+    height: 1.875rem;
+  }
+
+  [data-component="HomeBrowserHub.AnimatedLogo"] {
+    width: 1.5rem;
+    height: 1.5rem;
+  }
+
+  /* As on a portrait phone, the logo stands alone so the tabs keep the width. */
+  [data-component="HomeBrowserHub.Brand"] > div {
+    display: none;
+  }
+
+  html[data-mari-software-keyboard-open]:has([data-home-package-view] :focus-within)
+    :is(.mari-topbar, .mari-home-browser-chrome) {
+    display: none;
+  }
+}
 
 /* Short landscape screens need the chat list to share the sidebar's scroll. */
 @media (max-height: 500px) and (orientation: landscape) {

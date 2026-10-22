@@ -470,10 +470,6 @@ export function TopBar({ mobileTopbarNavigation }: { mobileTopbarNavigation: boo
           className="mari-topbar-edge-glow"
         />
       ) : null}
-      {/* The line above is decorative - this is the only signal screen readers get for her state. */}
-      <span aria-live="polite" className="sr-only">
-        {mariEdgeGlow ? localize(MARI_EDGE_GLOW_LABEL[mariEdgeGlow]) : ""}
-      </span>
 
       {/* Left section: window controls + chat info */}
       <div className="mari-topbar-left flex min-w-0 flex-1 items-center gap-2">
@@ -603,6 +599,11 @@ export function TopBar({ mobileTopbarNavigation }: { mobileTopbarNavigation: boo
         )}
       />
       {header}
+      {/* The edge glow is decorative - this is the only signal screen readers get for her state. It sits outside
+          the bar, which a sideways phone hides while you type in a package tab. */}
+      <span aria-live="polite" className="sr-only">
+        {mariEdgeGlow ? localize(MARI_EDGE_GLOW_LABEL[mariEdgeGlow]) : ""}
+      </span>
       {/* Phones pull with a finger, desktop drags with the mouse from empty bar space (M18). */}
       <OmnibarPullDrop visuals={pull.visuals} edgeGlow={mariEdgeGlow} />
     </>

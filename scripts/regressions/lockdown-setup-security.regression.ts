@@ -147,7 +147,7 @@ try {
   assert.equal(wrong.statusCode, 403, "a wrong code fails");
   assert.ok(wrong.body.includes('role="alert"'), "the form says why");
 
-  // Wrong codes use the wrong-password lockout; even the right code waits it out.
+  // Wrong codes lock a direct address out, apart from its password count; even the right code waits.
   for (let i = 0; i < BASIC_AUTH_FAILURE_LIMIT; i++) {
     await setup("203.0.113.66", { ...owner, setupCode: `${i}`.padStart(24, "f") });
   }
@@ -156,9 +156,7 @@ try {
   assert.ok(Number(locked.headers["retry-after"]) > 0);
   assert.equal(credential.getLoginConfig(), null);
 
-  for (const reply of [direct, proxied, proxiedWithCode, api, proxiedApi, short, wrong, locked]) {
-    assert.doesNotMatch(reply.body, BYPASS_NAMES, "the lockdown never names a flag that turns it off");
-  }
+  const replies = [direct, proxied, proxiedWithCode, api, proxiedApi, plainHttp, short, wrong, locked];
 
   // ── A failed save prints a new code instead of losing the only one ──
   let current = code;
@@ -169,13 +167,22 @@ try {
     assert.equal(failed.statusCode, 500, failed.body);
     assert.equal(credential.getLoginConfig(), null);
     current = lastCode();
+    assert.ok(!failed.body.includes(current), "the page never shows the new code");
+    replies.push(failed);
     assert.match(current, /^[0-9a-f]{24}$/);
     assert.notEqual(current, code, "the server log has a new code");
     assert.equal((await setup("203.0.113.10", owner)).statusCode, 403, "the used code stays used");
   }
 
+  // ── Behind a proxy, wrong codes cannot keep the owner out ──
+  const viaProxy = { ...SAME_ORIGIN, ...FORWARDED };
+  for (let i = 0; i < 12; i++) {
+    const guess = await setup("127.0.0.1", { ...owner, setupCode: `${i}`.padStart(24, "e") }, viaProxy);
+    assert.equal(guess.statusCode, 403, "a proxied wrong code is refused, never locked out");
+  }
+
   // ── The right code sets the login and signs this browser in ──
-  const done = await setup("203.0.113.10", { ...owner, setupCode: current });
+  const done = await setup("127.0.0.1", { ...owner, setupCode: current }, viaProxy);
   assert.equal(done.statusCode, 303, done.body);
   assert.equal(done.headers.location, "/");
   const cookie = String(done.headers["set-cookie"] ?? "").split(";")[0] ?? "";
@@ -193,6 +200,14 @@ try {
 
   const bigSignIn = await setup("203.0.113.30", big, SAME_ORIGIN, "/login");
   assert.equal(bigSignIn.statusCode, 413, "sign-in refuses a large body too");
+  replies.push(done);
+  for (const reply of replies) {
+    assert.doesNotMatch(reply.body, BYPASS_NAMES, "the lockdown never names a flag that turns it off");
+  }
+
+  // Wrong setup codes do not count as wrong passwords: the locked-out address can still sign in.
+  const signIn = await setup("203.0.113.66", { user: "owner", password: "first-password" }, SAME_ORIGIN, "/login");
+  assert.equal(signIn.statusCode, 303, signIn.body);
 
   // ── The code works once ──
   const again = await setup("203.0.113.20", {

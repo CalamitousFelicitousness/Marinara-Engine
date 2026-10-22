@@ -288,11 +288,20 @@ function activeRecord(key: string, now: number): FailureRecord | undefined {
   return record;
 }
 
+/** Wrong setup codes count apart from wrong passwords, and only per direct address. */
+function setupCodeBuckets(request: FastifyRequest): FailureBucket[] {
+  // ponytail: visitors behind a proxy on this computer share one address, so a count there would let a
+  // stranger keep the owner out. The code is 96 random bits and works once, so they skip it; count per
+  // forwarded client if that ever matters.
+  if (isForwardedLoopbackRequest(request)) return [];
+  return [{ key: `setup|${clientAddressKey(request.ip)}`, limit: BASIC_AUTH_FAILURE_LIMIT, shared: false }];
+}
+
 /** Seconds this client must wait before trying a password again; 0 when it may try now. */
-function lockoutSeconds(request: FastifyRequest): number {
+function lockoutSeconds(request: FastifyRequest, buckets = failureBuckets(request)): number {
   const now = Date.now();
   let seconds = 0;
-  for (const bucket of failureBuckets(request)) {
+  for (const bucket of buckets) {
     const record = activeRecord(bucket.key, now);
     if (record && record.guesses.size >= bucket.limit) {
       seconds = Math.max(seconds, Math.ceil((record.resetAt - now) / 1000), 1);
@@ -312,9 +321,9 @@ function guessId(header: string, config: CachedConfig): string {
 }
 
 /** Counts a guess for this client before it is checked; a browser resending one saved password counts once. */
-function countGuess(request: FastifyRequest, guess: string) {
+function countGuess(request: FastifyRequest, guess: string, buckets = failureBuckets(request)) {
   const now = Date.now();
-  for (const bucket of failureBuckets(request)) {
+  for (const bucket of buckets) {
     let record = activeRecord(bucket.key, now);
     if (!record) {
       if (failures.size >= MAX_TRACKED_CLIENTS) {
@@ -989,7 +998,8 @@ export async function loginRoutes(app: FastifyInstance) {
           .status(status)
           .header("Content-Type", "text/html; charset=utf-8")
           .send(renderLockdownPage(request.ip, isForwardedLoopbackRequest(request), error));
-      const retryAfter = lockoutSeconds(request);
+      const setupBuckets = setupCodeBuckets(request);
+      const retryAfter = lockoutSeconds(request, setupBuckets);
       if (retryAfter > 0) {
         reply.header("Retry-After", String(retryAfter));
         return fail(429, "Too many wrong codes. Try again later.");
@@ -1005,12 +1015,12 @@ export async function loginRoutes(app: FastifyInstance) {
         return fail(400, `Enter a password of at least ${MIN_LOGIN_PASSWORD_LENGTH} characters.`);
       }
       if (!isLoginSetupCode(code)) {
-        // Wrong codes count like wrong passwords, so guessing one locks the address out the same way.
         countGuess(
           request,
           `setup:${createHmac("sha256", HEADER_MAC_KEY).update(code).digest("base64url").slice(0, 16)}`,
+          setupBuckets,
         );
-        logWrongPassword(request);
+        logger.warn("[basic-auth] Wrong setup code from %s", request.ip);
         return fail(403, "This setup code does not work. Copy the newest one from the server log.");
       }
       consumeLoginSetupCode();

@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────
-// Single mount point for app-wide banners: shows only the most severe one
+// Single mount point for app-wide banners: the most severe one, with a count of the rest
 // ──────────────────────────────────────────────
 import { useState } from "react";
 import { useAccessWarningBanner } from "../diagnostics/use-access-warning-banner";
@@ -22,12 +22,12 @@ function wasDismissed(candidate: AppBannerCandidate) {
   }
 }
 
-function pickAppBanner(candidates: (AppBannerCandidate | null)[], dismissed: (c: AppBannerCandidate) => boolean) {
+function sortAppBanners(candidates: (AppBannerCandidate | null)[], dismissed: (c: AppBannerCandidate) => boolean) {
   return (
     candidates
       .filter((c): c is AppBannerCandidate => c !== null && !dismissed(c))
       // Array.prototype.sort is stable, so equal severities keep their candidate order.
-      .sort((a, b) => Number(b.severity === "critical") - Number(a.severity === "critical"))[0] ?? null
+      .sort((a, b) => Number(b.severity === "critical") - Number(a.severity === "critical"))
   );
 }
 
@@ -39,7 +39,7 @@ export function AppBannerHost() {
     ...useMarinaraNoticeBanners(),
   ];
   const [dismissedIds, setDismissedIds] = useState<string[]>([]);
-  const banner = pickAppBanner(candidates, (c) => dismissedIds.includes(c.id) || wasDismissed(c));
+  const [banner, ...rest] = sortAppBanners(candidates, (c) => dismissedIds.includes(c.id) || wasDismissed(c));
 
   const dismiss = (candidate: AppBannerCandidate) => {
     setDismissedIds((ids) => [...ids, candidate.id]);
@@ -50,5 +50,5 @@ export function AppBannerHost() {
     }
   };
 
-  return banner ? <AppBanner key={banner.id} {...banner} onDismiss={() => dismiss(banner)} /> : null;
+  return banner ? <AppBanner key={banner.id} {...banner} more={rest.length} onDismiss={() => dismiss(banner)} /> : null;
 }

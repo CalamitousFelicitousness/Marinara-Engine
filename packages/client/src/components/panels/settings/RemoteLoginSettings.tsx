@@ -4,6 +4,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import { CSRF_HEADER, CSRF_HEADER_VALUE } from "@marinara-engine/shared";
 import {
   useCreatePairingCode,
   useEndOtherSessions,
@@ -11,6 +12,7 @@ import {
   useRemoteSessions,
   useRemoveRemoteLogin,
   useSetRemoteLogin,
+  type RemoteSession,
 } from "../../../hooks/use-remote-login";
 import { ApiError } from "../../../lib/api-client";
 import { formatRelativeContact } from "../../../lib/relative-time";
@@ -21,6 +23,12 @@ import { SETTINGS_BUTTON_CLASS, SETTINGS_PRIMARY_BUTTON_CLASS } from "./SettingC
 const MIN_PASSWORD_LENGTH = 10;
 /** Same as PAIRING_CODE_TTL_MS on the server. */
 const PAIRING_CODE_TTL_MS = 5 * 60_000;
+/** "Set it below" focuses this field. */
+// The placeholder stays in the copy: a literal "<container>" would read as markup in the catalog.
+const CONTAINER = { container: "<container>" };
+// The shape of the setup code, not words to translate.
+const CODE_SHAPE = "XXXX-XXXX-XXXX-XXXX";
+export const LOGIN_USER_INPUT_ID = "remote-login-user";
 
 const BLOCK_CLASS = "flex flex-col gap-2 border-t border-[var(--border)] pt-3";
 const HEADING_CLASS = "font-semibold text-[var(--foreground)]";
@@ -35,22 +43,54 @@ export function RemoteLoginSettings({ status }: { status: AccessStatus }) {
   const hasLogin = status.loginSource !== null;
   return (
     <>
-      <LoginForm status={status} />
+      <LoginForm
+        loginSource={status.loginSource}
+        loginUser={status.loginUser}
+        needsCurrentPassword={hasLogin && status.needsCurrentPassword}
+      />
       {hasLogin && <SignedInDevices />}
       {hasLogin && <AddDevice />}
     </>
   );
 }
 
-function LoginForm({ status }: { status: AccessStatus }) {
+/** A device that is not this computer, while no login is set: the setup code stands in for the owner. */
+export function SetupCodeLoginForm({ docker }: { docker: boolean }) {
+  return <LoginForm loginSource={null} loginUser={null} needsCurrentPassword={false} setupCode={{ docker }} />;
+}
+
+/** The server's reason, so a wrong current password or setup code says so. */
+function loginErrorText(error: Error | null, t: ReturnType<typeof useTranslation>["t"]) {
+  const payload = error instanceof ApiError ? (error.payload as { reason?: string; retryAfter?: number }) : null;
+  if (payload?.retryAfter) {
+    return t("settings.accessStatus.login.error.tooMany", { count: Math.ceil(payload.retryAfter / 60) });
+  }
+  if (payload?.reason === "currentPassword") return t("settings.accessStatus.login.error.currentPassword");
+  if (payload?.reason === "setupCode") return t("settings.accessStatus.login.error.setupCode");
+  return t("settings.accessStatus.login.failed");
+}
+
+function LoginForm({
+  loginSource,
+  loginUser,
+  needsCurrentPassword,
+  setupCode,
+}: {
+  loginSource: AccessStatus["loginSource"];
+  loginUser: string | null;
+  needsCurrentPassword: boolean;
+  setupCode?: { docker: boolean };
+}) {
   const { t } = useTranslation();
-  const [user, setUser] = useState(status.loginUser ?? "");
+  const [user, setUser] = useState(loginUser ?? "");
   const [password, setPassword] = useState("");
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [code, setCode] = useState("");
   const save = useSetRemoteLogin();
   const remove = useRemoveRemoteLogin();
-  const hasLogin = status.loginSource !== null;
+  const hasLogin = loginSource !== null;
 
-  if (status.loginSource === "env") {
+  if (loginSource === "env") {
     return (
       <div className={BLOCK_CLASS}>
         <p className={HEADING_CLASS}>{t("settings.accessStatus.login.title")}</p>
@@ -59,31 +99,91 @@ function LoginForm({ status }: { status: AccessStatus }) {
     );
   }
 
-  const valid = user.trim() !== "" && !user.includes(":") && password.length >= MIN_PASSWORD_LENGTH;
+  const valid =
+    user.trim() !== "" &&
+    !user.includes(":") &&
+    password.length >= MIN_PASSWORD_LENGTH &&
+    (!needsCurrentPassword || currentPassword !== "") &&
+    (!setupCode || code.trim() !== "");
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (!valid) return;
     try {
-      await save.mutateAsync({ user: user.trim(), password });
+      await save.mutateAsync({
+        user: user.trim(),
+        password,
+        ...(setupCode ? { setupCode: code } : {}),
+        ...(needsCurrentPassword ? { currentPassword } : {}),
+      });
       setPassword("");
+      setCurrentPassword("");
       toast.success(t(hasLogin ? "settings.accessStatus.login.changed" : "settings.accessStatus.login.saved"));
     } catch {
       /* shown below the form */
     }
   };
   const removeLogin = () => {
-    if (window.confirm(t("settings.accessStatus.login.removeConfirm"))) remove.mutate();
+    if (window.confirm(t("settings.accessStatus.login.removeConfirm"))) {
+      remove.mutate(needsCurrentPassword ? currentPassword : undefined);
+    }
   };
+  const error = save.error ?? remove.error;
 
   return (
     <form onSubmit={submit} className={BLOCK_CLASS}>
       <p className={HEADING_CLASS}>{t("settings.accessStatus.login.title")}</p>
       <p className={HINT_CLASS}>
-        {t(hasLogin ? "settings.accessStatus.login.changeHint" : "settings.accessStatus.login.setHint")}
+        {t(
+          setupCode
+            ? "settings.accessStatus.login.setupCodeHint"
+            : hasLogin
+              ? "settings.accessStatus.login.changeHint"
+              : "settings.accessStatus.login.setHint",
+        )}
       </p>
+      {setupCode && (
+        <>
+          {setupCode.docker && (
+            <p className={`${HINT_CLASS} break-words`}>{t("settings.accessStatus.login.setupCodeDocker", CONTAINER)}</p>
+          )}
+          <label className={LABEL_CLASS}>
+            {t("settings.accessStatus.login.setupCode")}
+            <input
+              value={code}
+              onChange={(event) => setCode(event.target.value)}
+              autoComplete="one-time-code"
+              autoCapitalize="characters"
+              spellCheck={false}
+              placeholder={CODE_SHAPE}
+              required
+              className={`${INPUT_CLASS} font-mono`}
+            />
+          </label>
+        </>
+      )}
+      {needsCurrentPassword && (
+        <>
+          <label className={LABEL_CLASS}>
+            {t("settings.accessStatus.login.currentPassword")}
+            <input
+              type="password"
+              value={currentPassword}
+              onChange={(event) => setCurrentPassword(event.target.value)}
+              autoComplete="current-password"
+              required
+              aria-describedby="remote-login-current-hint"
+              className={INPUT_CLASS}
+            />
+          </label>
+          <p id="remote-login-current-hint" className={HINT_CLASS}>
+            {t("settings.accessStatus.login.currentPasswordHint")} {t("settings.accessStatus.login.forgot", CONTAINER)}
+          </p>
+        </>
+      )}
       <label className={LABEL_CLASS}>
         {t("settings.accessStatus.login.user")}
         <input
+          id={LOGIN_USER_INPUT_ID}
           value={user}
           onChange={(event) => setUser(event.target.value)}
           autoComplete="username"
@@ -111,9 +211,9 @@ function LoginForm({ status }: { status: AccessStatus }) {
       <p id="remote-login-password-hint" className={HINT_CLASS}>
         {t("settings.accessStatus.login.passwordHint", { count: MIN_PASSWORD_LENGTH })}
       </p>
-      {(save.isError || remove.isError) && (
+      {error && (
         <p role="alert" className={ERROR_CLASS}>
-          {t("settings.accessStatus.login.failed")}
+          {loginErrorText(error, t)}
         </p>
       )}
       <div className="flex flex-wrap gap-2">
@@ -121,7 +221,12 @@ function LoginForm({ status }: { status: AccessStatus }) {
           {t(hasLogin ? "settings.accessStatus.login.change" : "settings.accessStatus.login.set")}
         </button>
         {hasLogin && (
-          <button type="button" onClick={removeLogin} disabled={remove.isPending} className={SETTINGS_BUTTON_CLASS}>
+          <button
+            type="button"
+            onClick={removeLogin}
+            disabled={remove.isPending || (needsCurrentPassword && currentPassword === "")}
+            className={SETTINGS_BUTTON_CLASS}
+          >
             {t("settings.accessStatus.login.remove")}
           </button>
         )}
@@ -130,8 +235,28 @@ function LoginForm({ status }: { status: AccessStatus }) {
   );
 }
 
+/** Ends this browser's own session; the server then shows the sign-in page. */
+async function signOutHere() {
+  await fetch("/logout", { method: "POST", headers: { [CSRF_HEADER]: CSRF_HEADER_VALUE } }).catch(() => undefined);
+  window.location.assign("/login");
+}
+
+function sessionDetails(session: RemoteSession, t: ReturnType<typeof useTranslation>["t"], language: string) {
+  return [
+    session.method && t(`settings.accessStatus.devices.method.${session.method}`),
+    t("settings.accessStatus.devices.firstSeen", {
+      date: new Date(session.createdAt).toLocaleDateString(language, { dateStyle: "medium" }),
+    }),
+    t("settings.accessStatus.devices.lastActive", {
+      time: formatRelativeContact(new Date(session.lastSeenAt).toISOString()) ?? "",
+    }),
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
 function SignedInDevices() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { data: sessions, isError } = useRemoteSessions(true);
   const end = useEndSession();
   const endOthers = useEndOtherSessions();
@@ -163,23 +288,23 @@ function SignedInDevices() {
                     </span>
                   )}
                 </p>
-                <p className={HINT_CLASS}>
-                  {t("settings.accessStatus.devices.lastActive", {
-                    time: formatRelativeContact(new Date(session.lastSeenAt).toISOString()) ?? "",
-                  })}
-                </p>
+                <p className={HINT_CLASS}>{sessionDetails(session, t, i18n.language)}</p>
               </div>
-              {!session.current && (
-                <button
-                  type="button"
-                  onClick={() => end.mutate(session.id)}
-                  disabled={end.isPending}
-                  aria-label={t("settings.accessStatus.devices.signOutNamed", { device: session.label })}
-                  className={SETTINGS_BUTTON_CLASS}
-                >
-                  {t("settings.accessStatus.devices.signOut")}
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={(event) => {
+                  // On a fast server the list updates between the two clicks of a double click, so
+                  // the second one would land on the next row's button and sign that device out too.
+                  if (event.detail > 1) return;
+                  if (session.current) void signOutHere();
+                  else end.mutate(session.id);
+                }}
+                disabled={end.isPending}
+                aria-label={t("settings.accessStatus.devices.signOutNamed", { device: session.label })}
+                className={SETTINGS_BUTTON_CLASS}
+              >
+                {t("settings.accessStatus.devices.signOut")}
+              </button>
             </li>
           ))}
         </ul>
@@ -203,8 +328,8 @@ function SignedInDevices() {
   );
 }
 
-/** Also shown to a signed-in device that is not the owner's computer. */
-export function AddDevice() {
+/** Shown to the owner: this computer or a signed-in device. */
+function AddDevice() {
   const { t } = useTranslation();
   const create = useCreatePairingCode();
   const [code, setCode] = useState<string | null>(null);

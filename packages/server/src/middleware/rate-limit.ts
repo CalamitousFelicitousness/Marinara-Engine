@@ -401,8 +401,10 @@ export function rateLimitHook(request: FastifyRequest, reply: FastifyReply, done
   reply.header("RateLimit-Reset", String(Math.ceil(activeBucket.resetAt / 1000)));
 
   if (activeBucket.count > rule.limit) {
-    reply.header("Retry-After", String(Math.ceil((activeBucket.resetAt - now) / 1000)));
-    reply.status(429).send({ error: "Too many requests" });
+    const retryAfter = Math.ceil((activeBucket.resetAt - now) / 1000);
+    reply.header("Retry-After", String(retryAfter));
+    // The body repeats the wait so forms can say "Try again in N minutes".
+    reply.status(429).send({ error: "Too many requests", retryAfter });
     return;
   }
 

@@ -46,7 +46,7 @@ process.env.ENCRYPTION_KEY = "ab".repeat(32);
 
 // Imported after the env is set: DATA_DIR is read once at import.
 const credential = await import("../../packages/server/src/config/login-credential.js");
-const { BASIC_AUTH_FAILURE_LIMIT, basicAuthHook, loginRoutes } =
+const { BASIC_AUTH_FAILURE_LIMIT, PAIRING_CODE_TTL_MS, basicAuthHook, loginRoutes } =
   await import("../../packages/server/src/middleware/basic-auth.js");
 const { csrfProtectionHook } = await import("../../packages/server/src/middleware/csrf-protection.js");
 const { hostValidationHook } = await import("../../packages/server/src/middleware/host-validation.js");
@@ -106,7 +106,7 @@ const cookieOf = (response: { headers: Record<string, unknown> }) =>
   String(response.headers["set-cookie"] ?? "").split(";")[0] ?? "";
 const loginSource = async () => (await local("GET", "/api/access/status")).json().loginSource;
 const lastSetupCode = () =>
-  String(warnings.filter((args) => String(args[0]).includes("one-time setup code")).at(-1)?.[1] ?? "");
+  String(warnings.filter((args) => String(args[0]).includes("setup code:")).at(-1)?.[1] ?? "");
 
 try {
   await app.ready();
@@ -132,7 +132,11 @@ try {
   assert.equal(credential.getLoginConfig(), null);
   credential.enableLoginSetupCode();
   const code = lastSetupCode();
-  assert.match(code, /^[0-9a-f]{24}$/, "with no login, the setup code is in the server log");
+  assert.match(
+    code,
+    /^[2-9A-HJKMNP-Z]{4}(-[2-9A-HJKMNP-Z]{4}){3}$/,
+    "with no login, the setup code is in the server log",
+  );
 
   // The host browser arrives as a remote peer that may open the app but has no ADMIN_SECRET.
   process.env.ALLOW_UNAUTHENTICATED_REMOTE = "true";
@@ -252,7 +256,7 @@ try {
   const sessions = listed.json().sessions as Array<Record<string, unknown>>;
   const mine = sessions.find((entry) => entry.current);
   assert.equal(mine?.label, "Safari on iPhone");
-  assert.deepEqual(Object.keys(mine ?? {}).sort(), ["createdAt", "current", "id", "label", "lastSeenAt"]);
+  assert.deepEqual(Object.keys(mine ?? {}).sort(), ["createdAt", "current", "id", "label", "lastSeenAt", "method"]);
   assert.equal(sessions.filter((entry) => entry.current).length, 1);
   const hashes = (JSON.parse(readFileSync(SESSIONS_FILE, "utf8")).sessions as Array<{ hash: string }>).map(
     (entry) => entry.hash,
@@ -263,7 +267,12 @@ try {
     "no token hash in the list",
   );
   const remoteList = await get("/api/access/sessions", REMOTE, { cookie: phone });
-  assert.equal(remoteList.statusCode, 403, "the list is for privileged callers only");
+  assert.equal(remoteList.statusCode, 200, "a signed-in browser lists the devices on any device");
+  assert.equal(
+    (await get("/api/access/sessions", REMOTE, { authorization: basic("owner", "first-password") })).statusCode,
+    403,
+    "a bare Basic header from a script is not a signed-in browser",
+  );
   assert.equal((await local("DELETE", `/api/access/sessions/${String(mine?.id)}`)).statusCode, 204);
   assert.equal((await get("/api/chats", "203.0.113.22", { cookie: phone })).statusCode, 401, "signed out remotely");
   assert.equal((await local("DELETE", "/api/access/sessions/unknown")).statusCode, 404);
@@ -309,11 +318,14 @@ try {
   assert.ok(Math.abs(expiresAt - (Date.now() + 5 * 60_000)) < 5_000, "valid for 5 minutes");
   assert.equal(
     (await get("/api/access/refusals", "203.0.113.25", { cookie: keeper })).statusCode,
-    403,
-    "the refused-device list is for this computer only",
+    200,
+    "a signed-in browser sees the refused-device banners too",
   );
 
-  const paired = await signIn("203.0.113.61", { code: ` ${phoneCode.toLowerCase().replace("-", " ")} `, next: "/chats" });
+  const paired = await signIn("203.0.113.61", {
+    code: ` ${phoneCode.toLowerCase().replace("-", " ")} `,
+    next: "/chats",
+  });
   assert.equal(paired.statusCode, 303, "case, spaces and the dash do not matter");
   assert.equal(paired.headers.location, "/chats");
   const pairedSession = cookieOf(paired);
@@ -442,6 +454,112 @@ try {
     Date.now = realNow;
   }
 
+  // ── A signed-in browser manages the login and devices (#7912 friction walk) ──
+  // The Docker host arrives from the shared Docker gateway, not loopback. Its cookie session proves
+  // the login; changing or removing the login also needs the current password in the same request.
+  const BROWSER = { origin: "http://chat.example.com", "sec-fetch-site": "same-origin" };
+  const host = "203.0.113.70";
+  const asHost = { cookie: cookieOf(await signIn(host, { user: "owner", password: "second-password" }, BROWSER)) };
+  const hostStatus = await get("/api/access/status", host, asHost);
+  assert.equal(hostStatus.statusCode, 200, "a signed-in browser sees the access status");
+  assert.equal(hostStatus.json().needsCurrentPassword, true, "away from this computer the current password is needed");
+  assert.equal((await get("/api/access/refusals", host, asHost)).statusCode, 200, "and the refused-device banners");
+  assert.equal(
+    (await get("/api/access/status", host, { authorization: second })).statusCode,
+    403,
+    "a Basic header alone is not the owner",
+  );
+  assert.equal((await local("GET", "/api/access/status")).json().needsCurrentPassword, false, "this computer is");
+
+  // An expired pairing code says so, under the code field, which gets the focus.
+  const hostPairing = await pair(host, asHost);
+  assert.equal(hostPairing.statusCode, 200, "a signed-in browser adds a device");
+  const { code: pairingCode } = hostPairing.json() as { code: string };
+  assert.match(pairingCode, /^[2-9A-HJKMNP-Z]{4}-[2-9A-HJKMNP-Z]{4}$/);
+  Date.now = () => realNow() + PAIRING_CODE_TTL_MS + 1_000;
+  const expired = await signIn(
+    "203.0.113.72",
+    { code: pairingCode.toLowerCase().replace("-", " "), next: "/" },
+    BROWSER,
+  );
+  Date.now = realNow;
+  assert.equal(expired.statusCode, 401);
+  assert.match(expired.body, /This code has expired/, "an expired code is not called wrong");
+  assert.match(expired.body, /id="code"[^>]*autofocus aria-describedby="code-error"/, "the code field gets the focus");
+  const wrongPairing = await signIn("203.0.113.72", { code: "ZZZZ-ZZZZ", next: "/" }, BROWSER);
+  assert.match(wrongPairing.body, /This code does not work/);
+  assert.match(
+    wrongPairing.body,
+    /Forgot the password\? On the computer that runs Marinara, run <code>pnpm reset-login<\/code>/,
+  );
+
+  const asHostPut = (body: Record<string, string>) => putLogin(host, body, asHost);
+  assert.equal(
+    (await asHostPut({ user: "owner", password: "session-password" })).statusCode,
+    403,
+    "no current password, no change",
+  );
+  const wrongCurrent = await asHostPut({
+    user: "owner",
+    password: "session-password",
+    currentPassword: "not-the-password",
+  });
+  assert.equal(wrongCurrent.statusCode, 403);
+  assert.equal(wrongCurrent.json().reason, "currentPassword", "the client can say the current password is wrong");
+  const changedByHost = await asHostPut({
+    user: "owner",
+    password: "session-password",
+    currentPassword: "second-password",
+  });
+  assert.equal(changedByHost.statusCode, 200, "the current password confirms the change");
+  const removeAsHost = (body: Record<string, string>) =>
+    app.inject({
+      method: "DELETE",
+      url: "/api/access/login",
+      remoteAddress: host,
+      headers: { ...HOST, cookie: cookieOf(changedByHost), "content-type": "application/json" },
+      payload: JSON.stringify(body),
+    });
+  assert.equal((await removeAsHost({})).statusCode, 403, "no current password, no removal");
+  assert.equal((await removeAsHost({ currentPassword: "session-password" })).statusCode, 204);
+  assert.equal(credential.getLoginConfig(), null, "a signed-in browser removed the login");
+
+  // ── TRUSTED_AUTH_PROXY hides the setup code only when the policy trusts a proxy ──
+  process.env.TRUSTED_AUTH_PROXY = "8.8.0.0/16, not-a-range";
+  credential.announceSetupCode();
+  assert.ok(credential.hasLoginSetupCode(), "typos and public ranges trust no proxy, so a code still prints");
+  process.env.TRUSTED_AUTH_PROXY = "10.0.0.5";
+  credential.announceSetupCode();
+  assert.equal(credential.hasLoginSetupCode(), false, "a trusted forward-auth proxy logs visitors in instead");
+  delete process.env.TRUSTED_AUTH_PROXY;
+  credential.announceSetupCode();
+
+  // ── No login: Settings on another device takes the setup code, with the lockdown form's rules ──
+  process.env.ALLOW_UNAUTHENTICATED_REMOTE = "true"; // stands in for the passwordless Docker host
+  const settingsCode = lastSetupCode();
+  assert.deepEqual((await get("/api/access/setup-code", host)).json(), { waiting: true, docker: false });
+  const ownerAgain = { user: "owner", password: "second-password" };
+  for (let index = 0; index < BASIC_AUTH_FAILURE_LIMIT; index += 1) {
+    const wrongCode = await putLogin("203.0.113.71", { ...ownerAgain, setupCode: `WRONG-${index}` });
+    assert.equal(wrongCode.json().reason, "setupCode");
+  }
+  const lockedCode = await putLogin("203.0.113.71", { ...ownerAgain, setupCode: settingsCode });
+  assert.equal(lockedCode.statusCode, 429, "wrong codes in Settings are capped like the lockdown form");
+  assert.ok(lockedCode.json().retryAfter > 0, "the client can say how long to wait");
+  const bySettings = await putLogin(host, {
+    ...ownerAgain,
+    setupCode: ` ${settingsCode.toLowerCase().replaceAll("-", " ")} `,
+  });
+  assert.equal(bySettings.statusCode, 200, "the setup code sets the login from Settings, in any case and spacing");
+  assert.match(cookieOf(bySettings), /^marinara_session=/, "and signs that browser in");
+  assert.equal((await get("/api/access/setup-code", host, { cookie: cookieOf(bySettings) })).json().waiting, false);
+  assert.notEqual(
+    (await putLogin("203.0.113.73", { ...ownerAgain, setupCode: settingsCode })).statusCode,
+    200,
+    "the code works once",
+  );
+  delete process.env.ALLOW_UNAUTHENTICATED_REMOTE;
+
   // ── Remove; a reset brings a new setup code without a restart ──
   assert.ok(existsSync(SESSIONS_FILE));
   assert.equal((await local("DELETE", "/api/access/login")).statusCode, 204);
@@ -449,7 +567,7 @@ try {
   assert.equal(existsSync(SESSIONS_FILE), false, "removing the login ends every session");
   assert.equal(await loginSource(), null);
   const afterRemove = lastSetupCode();
-  assert.match(afterRemove, /^[0-9a-f]{24}$/);
+  assert.match(afterRemove, /^[2-9A-HJKMNP-Z]{4}(-[2-9A-HJKMNP-Z]{4}){3}$/);
   assert.notEqual(afterRemove, code, "removing the login brings a new code");
   await credential.setStoredLogin("owner", "third-password");
   assert.equal(credential.getLoginConfig()?.source, "app");
@@ -486,7 +604,7 @@ try {
   assert.equal(retried[0]?.id, refused[1]?.id, "and keeps its id, so a dismissed banner stays dismissed");
   Date.now = realNow;
   const afterReset = lastSetupCode();
-  assert.match(afterReset, /^[0-9a-f]{24}$/);
+  assert.match(afterReset, /^[2-9A-HJKMNP-Z]{4}(-[2-9A-HJKMNP-Z]{4}){3}$/);
   assert.notEqual(afterReset, afterRemove, "a reset brings a new code");
 
   process.env.ALLOW_UNAUTHENTICATED_REMOTE = "true";

@@ -78,7 +78,7 @@ const setup = (
     payload: new URLSearchParams(fields).toString(),
   });
 const lastCode = () =>
-  String(warnings.filter((args) => String(args[0]).includes("one-time setup code")).at(-1)?.[1] ?? "");
+  String(warnings.filter((args) => String(args[0]).includes("setup code:")).at(-1)?.[1] ?? "");
 
 try {
   await app.ready();
@@ -89,7 +89,7 @@ try {
   assert.ok(!proxied.body.includes("/login/setup"), "with no code, a proxied visitor gets no form");
   credential.enableLoginSetupCode();
   const code = lastCode();
-  assert.match(code, /^[0-9a-f]{24}$/, "with no login, the setup code is in the server log");
+  assert.match(code, /^[2-9A-HJKMNP-Z]{4}(-[2-9A-HJKMNP-Z]{4}){3}$/, "with no login, the setup code is in the server log");
 
   // ── The page a refused device sees ──
   const direct = await page("203.0.113.10");
@@ -99,8 +99,28 @@ try {
     direct.body.includes('<meta name="referrer" content="same-origin" />'),
     "the form posts its real Origin, not null",
   );
-  assert.ok(direct.body.includes("docker logs"), "the page says where the code is");
+  assert.ok(direct.body.includes("Find it in the terminal"), "the page says where the code is");
   assert.ok(!direct.body.includes(code), "the page never shows the code");
+  assert.ok(direct.body.includes('class="ip-pill">203.0.113.10<'), "a native install names the visitor's address");
+  assert.ok(!/loopback/i.test(direct.body), "no loopback jargon");
+  // In Docker the socket address is often the shared Docker gateway, and the config lives in the data volume.
+  process.env.MARINARA_DOCKER = "true";
+  const docker = await page("192.168.1.20");
+  delete process.env.MARINARA_DOCKER;
+  assert.equal(docker.statusCode, 403);
+  assert.ok(
+    docker.body.includes('docker logs &lt;container&gt; 2&gt;&amp;1 | grep "setup code"'),
+    "Docker: the page says how to find the code",
+  );
+  assert.ok(docker.body.includes("/app/data/.env"), "Docker: the login goes in the data volume");
+  assert.ok(!docker.body.includes("192.168.1.20"), "Docker: no address is presented as the visitor's");
+  assert.ok(!docker.body.includes("Marinara Engine folder"), "Docker: no native .env steps");
+  assert.ok(!/loopback/i.test(docker.body), "Docker: no loopback jargon");
+  // A wrong code keeps the username, never the password.
+  const kept = await setup("203.0.113.95", { setupCode: "WRONG-CODE", user: "owner", password: "first-password" });
+  assert.equal(kept.statusCode, 403);
+  assert.match(kept.body, /name="user" value="owner"/, "a wrong code keeps the username");
+  assert.ok(!kept.body.includes("first-password"), "a wrong code never echoes the password");
   const proxiedWithCode = await page("127.0.0.1", FORWARDED);
   assert.ok(proxiedWithCode.body.includes('action="/login/setup"'), "with a code, a proxied visitor gets the form");
   const api = await app.inject({ method: "GET", url: "/api/chats", remoteAddress: "203.0.113.10", headers: HOST });
@@ -153,6 +173,7 @@ try {
   }
   const locked = await setup("203.0.113.66", owner);
   assert.equal(locked.statusCode, 429, "too many wrong codes lock the address out");
+  assert.match(locked.body, /Try again in \d+ minutes?\./, "the lockout says how long");
   assert.ok(Number(locked.headers["retry-after"]) > 0);
   assert.equal(credential.getLoginConfig(), null);
 
@@ -169,7 +190,7 @@ try {
     current = lastCode();
     assert.ok(!failed.body.includes(current), "the page never shows the new code");
     replies.push(failed);
-    assert.match(current, /^[0-9a-f]{24}$/);
+    assert.match(current, /^[2-9A-HJKMNP-Z]{4}(-[2-9A-HJKMNP-Z]{4}){3}$/);
     assert.notEqual(current, code, "the server log has a new code");
     assert.equal((await setup("203.0.113.10", owner)).statusCode, 403, "the used code stays used");
   }
@@ -182,9 +203,10 @@ try {
   }
 
   // ── The right code sets the login and signs this browser in ──
-  const done = await setup("127.0.0.1", { ...owner, setupCode: current }, viaProxy);
+  // Case, spaces and dashes do not matter, as on the pairing code.
+  const done = await setup("127.0.0.1", { ...owner, setupCode: current.toLowerCase().replaceAll("-", " ") }, viaProxy);
   assert.equal(done.statusCode, 303, done.body);
-  assert.equal(done.headers.location, "/");
+  assert.equal(done.headers.location, "/?loginSet=1", "the app confirms the new login");
   const cookie = String(done.headers["set-cookie"] ?? "").split(";")[0] ?? "";
   assert.match(cookie, /^marinara_session=[\w-]{43}$/, "the device that set the login stays signed in");
   const chats = await app.inject({

@@ -30,7 +30,7 @@ import {
   isUnauthenticatedRemoteAllowed,
 } from "../config/runtime-config.js";
 import { logger } from "../lib/logger.js";
-import { getLoginConfig } from "../config/login-credential.js";
+import { getLoginConfig, setProxyLogsVisitorsIn } from "../config/login-credential.js";
 import { evaluateAccessPolicy, isForwardedLoopbackPeer, type AccessFacts, type AccessPolicy } from "./access-policy.js";
 import { firstHeader, parseRequestHostname } from "./host-validation.js";
 import { recordRefusal } from "./refused-devices.js";
@@ -449,6 +449,7 @@ export function getTrustedAuthProxies(): CIDREntry[] {
   cachedAuthProxies = { raw, entries };
   return entries;
 }
+setProxyLogsVisitorsIn(() => getTrustedAuthProxies().length > 0);
 
 /** True when the socket peer is a configured forward-auth proxy. Forwarded headers never count. */
 export function isTrustedAuthProxyIp(ip: string): boolean {
@@ -583,7 +584,7 @@ function hasHeaderValue(value: string | string[] | undefined): boolean {
 }
 
 /** True when a request carries common reverse-proxy forwarding headers. */
-function hasProxyForwardingHeaders(request: Pick<FastifyRequest, "headers">): boolean {
+export function hasProxyForwardingHeaders(request: Pick<FastifyRequest, "headers">): boolean {
   return PROXY_FORWARDING_HEADERS.some((header) => hasHeaderValue(request.headers[header]));
 }
 
@@ -816,7 +817,7 @@ function announceBypass(policy: AccessPolicy, ip: string): void {
   const dockerMode = getDockerBypassMode();
   if (policy.dockerAutoWithheld && !bypassAnnounced.dockerAutoWithheld) {
     logger.warn(
-      "[auth-bypass] Docker peer %s must pass Basic Auth/IP_ALLOWLIST: automatic Docker trust is off while a login, IP_ALLOWLIST or TRUSTED_AUTH_PROXY is set, because Docker Desktop and OrbStack show LAN clients at the gateway address. Set BYPASS_AUTH_DOCKER=true only if every client of the published port is trusted.",
+      "[auth-bypass] Docker peer %s must pass Basic Auth/IP_ALLOWLIST: automatic Docker trust is off while a login, IP_ALLOWLIST or TRUSTED_AUTH_PROXY is set, because Docker Desktop and OrbStack show LAN clients at the gateway address.",
       ip,
     );
     bypassAnnounced.dockerAutoWithheld = true;

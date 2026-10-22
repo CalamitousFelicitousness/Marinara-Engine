@@ -61,10 +61,11 @@
 //     cookie; scripts and API clients keep sending Basic Authorization.
 
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
-import { createHmac, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import {
   announceSetupCode,
   consumeLoginSetupCode,
+  currentSetupCode,
   createSession,
   deleteOtherSessions,
   deleteSession,
@@ -74,13 +75,16 @@ import {
   isLoginSetupCode,
   listSessions,
   MIN_LOGIN_PASSWORD_LENGTH,
+  normalizeCode,
+  readableCode,
   SESSION_MAX_AGE_SECONDS,
   setStoredLogin,
   verifyStoredPassword,
   type LoginConfig,
   type RemoteSession,
+  type SignInMethod,
 } from "../config/login-credential.js";
-import { getBasicAuthConfig } from "../config/runtime-config.js";
+import { getBasicAuthConfig, isDockerRuntime } from "../config/runtime-config.js";
 import { logger } from "../lib/logger.js";
 import { deriveServerKey } from "../utils/crypto.js";
 import { cookieValue } from "./android-local-auth.js";
@@ -227,10 +231,15 @@ function isHttpsRequest(request: FastifyRequest): boolean {
   return value?.split(",")[0]?.trim().toLowerCase() === "https";
 }
 
-function startBrowserSession(request: FastifyRequest, reply: FastifyReply, config: CachedConfig): boolean {
+function startBrowserSession(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  config: CachedConfig,
+  method: SignInMethod,
+): boolean {
   const key = sessionLoginKey(config);
   if (!key) return false;
-  const token = createSession(key, request.headers["user-agent"]);
+  const token = createSession(key, request.headers["user-agent"], method);
   const secure = isHttpsRequest(request) ? "; Secure" : "";
   reply.header(
     "Set-Cookie",
@@ -291,10 +300,26 @@ function activeRecord(key: string, now: number): FailureRecord | undefined {
 /** Wrong setup codes count apart from wrong passwords, and only per direct address. */
 function setupCodeBuckets(request: FastifyRequest): FailureBucket[] {
   // ponytail: visitors behind a proxy on this computer share one address, so a count there would let a
-  // stranger keep the owner out. The code is 96 random bits and works once, so they skip it; count per
+  // stranger keep the owner out. The code is about 79 random bits and works once, so they skip it; count per
   // forwarded client if that ever matters.
   if (isForwardedLoopbackRequest(request)) return [];
   return [{ key: `setup|${clientAddressKey(request.ip)}`, limit: BASIC_AUTH_FAILURE_LIMIT, shared: false }];
+}
+
+/**
+ * Checks a setup code from the lockdown page or Settings. A wrong one counts in the setup
+ * buckets; a number is the seconds this client must wait. Constant time, never echoed.
+ */
+export function trySetupCode(request: FastifyRequest, code: unknown): "ok" | "wrong" | number {
+  const buckets = setupCodeBuckets(request);
+  const retryAfter = lockoutSeconds(request, buckets);
+  if (retryAfter > 0) return retryAfter;
+  const value = typeof code === "string" ? code : "";
+  if (isLoginSetupCode(value)) return "ok";
+  const guess = createHmac("sha256", HEADER_MAC_KEY).update(normalizeCode(value)).digest("base64url").slice(0, 16);
+  countGuess(request, `setup:${guess}`, buckets);
+  logger.warn("[basic-auth] Wrong setup code from %s", request.ip);
+  return "wrong";
 }
 
 /** Seconds this client must wait before trying a password again; 0 when it may try now. */
@@ -402,9 +427,17 @@ function clearOwnFailures(request: FastifyRequest) {
   }
 }
 
+/** "Try again in N minutes." for a Retry-After in seconds. */
+function tryAgainIn(seconds: number): string {
+  const minutes = Math.ceil(seconds / 60);
+  return minutes === 1 ? "Try again in 1 minute." : `Try again in ${minutes} minutes.`;
+}
+
 function sendTooManyFailures(reply: FastifyReply, retryAfterSeconds: number) {
   reply.header("Retry-After", String(retryAfterSeconds));
-  reply.status(429).send({ error: "Too many wrong passwords. Try again later." });
+  reply
+    .status(429)
+    .send({ error: `Too many wrong passwords. ${tryAgainIn(retryAfterSeconds)}`, retryAfter: retryAfterSeconds });
 }
 
 function sendBusy(reply: FastifyReply) {
@@ -420,12 +453,13 @@ function sendChallenge(reply: FastifyReply, realm: string) {
   reply.status(401).send({ error: "Authentication required" });
 }
 
-let lockdownAnnounced = false;
+/** The setup code the last lockdown log line named ("" for none), or null before the first. */
+let lockdownAnnounced: string | null = null;
 
 const REMOTE_ACCESS_DOCS_URL = "https://github.com/Pasta-Devs/Marinara-Engine/blob/main/docs/REMOTE_ACCESS.md";
 
 const LOCKDOWN_JSON_MESSAGE =
-  "Non-loopback access requires a login, and none is set. " +
+  "Remote access requires a login, and none is set. " +
   "Open this address in a browser and set one with the setup code from the server log, " +
   "or set BASIC_AUTH_USER and BASIC_AUTH_PASS. " +
   `Help: ${REMOTE_ACCESS_DOCS_URL}`;
@@ -465,12 +499,13 @@ const PAGE_STYLE = `
     --code-bg: #0a0f1c;
   }
   * { box-sizing: border-box; }
+  html { background: var(--bg); }
   html, body { margin: 0; padding: 0; }
   body {
-    background: radial-gradient(1200px 800px at 80% -10%, #1a223a 0%, var(--bg) 60%) fixed;
+    background: radial-gradient(1200px 800px at 80% -10%, #1a223a 0%, var(--bg) 60%) no-repeat;
     color: var(--text);
     font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    min-height: 100vh;
+    min-height: 100dvh;
     display: flex;
     align-items: flex-start;
     justify-content: center;
@@ -530,7 +565,8 @@ const PAGE_STYLE = `
     border: 1px solid var(--border);
     border-radius: 8px;
     padding: 12px 14px;
-    overflow-x: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
     margin: 8px 0 0;
   }
   .ip-pill {
@@ -555,7 +591,6 @@ const PAGE_STYLE = `
   a { color: var(--accent); text-decoration: none; border-bottom: 1px dotted rgba(244,163,93,0.4); }
   a:hover { border-bottom-color: var(--accent); }
   .links {
-    margin-top: 18px;
     display: flex;
     flex-wrap: wrap;
     gap: 14px;
@@ -569,56 +604,53 @@ const FORM_STYLE = `
   input { width: 100%; padding: 10px 12px; font: inherit; color: var(--text); background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; }
   input:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   button { margin-top: 20px; width: 100%; padding: 10px 12px; font: inherit; font-weight: 600; color: var(--bg); background: var(--accent); border: 0; border-radius: 8px; cursor: pointer; }
-  .error { margin: 0 0 4px; color: #f8a5a5; }
+  .error { margin: 8px 0 0; color: #f8a5a5; }
+  .panel .hint.after { margin: 14px 0 0; }
 `;
 
-function renderLockdownPage(clientIp: string, proxied: boolean, error?: string): string {
-  const safeIp = escapeHtml(clientIp);
+function renderLockdownPage(clientIp: string, proxied: boolean, error?: string, user = ""): string {
+  const docker = isDockerRuntime();
+  // In Docker the socket address is often the Docker gateway, not this device, so it is not shown.
   const lede = proxied
-    ? `This request reached Marinara through a reverse proxy or tunnel on this computer, so it counts as remote. To protect your data, the server refuses proxied traffic until you set a login.`
-    : `You're connecting from <span class="ip-pill">${safeIp}</span>, which isn't loopback. To protect your data, the server refuses non-local traffic until you set a login.`;
-  // A direct remote visitor means the server listens beyond loopback, so it printed a setup code.
-  // Behind a proxy on this computer it may listen on loopback only and have no code to offer.
-  const firstOption =
-    proxied && !hasLoginSetupCode()
-      ? `<section class="panel">
+    ? "This request reached Marinara through a reverse proxy or tunnel on this computer, so it counts as remote. To protect your data, the server refuses it until you set a login."
+    : docker
+      ? "This device counts as remote. To protect your data, the server refuses remote devices until you set a login."
+      : `You're connecting from <span class="ip-pill">${escapeHtml(clientIp)}</span>, not from the computer that runs Marinara. To protect your data, the server refuses other devices until you set a login.`;
+  const findCode = docker
+    ? `On the computer that runs Docker, show it with <code>docker logs &lt;container&gt; 2&gt;&amp;1 | grep "setup code"</code>.`
+    : "Find it in the terminal or log of the computer that runs Marinara.";
+  // Without a setup code (loopback bind behind a proxy, or TRUSTED_AUTH_PROXY) only this computer can set it.
+  const firstOption = !hasLoginSetupCode()
+    ? `<section class="panel">
       <h2>Option 1 — Set a login on this computer (recommended)</h2>
-      <p class="hint">On the computer that runs Marinara, open it in a browser and set a login in Settings → Advanced → Access. Then refresh this page and sign in.</p>
+      <p class="hint">On the computer that runs Marinara, open it in a browser and set a login in Settings &rarr; Advanced &rarr; Access. Then refresh this page and sign in.</p>
     </section>`
-      : `<form class="panel" method="post" action="/login/setup">
+    : `<form class="panel" method="post" action="/login/setup">
       <h2>Option 1 — Set a login here (recommended)</h2>
-      <p class="hint">While no login is set, the server prints a one-time setup code in its log. Find it in the terminal that runs Marinara, or with <code>docker logs</code> if it runs in Docker. On the computer that runs Marinara, you can also set the login in Settings → Advanced → Access.</p>
+      <p class="hint">While no login is set, the server prints a one-time setup code in its log. ${findCode} On a device that already opens Marinara, you can also set the login in Settings &rarr; Advanced &rarr; Access.</p>
       ${error ? `<p class="error" role="alert">${escapeHtml(error)}</p>` : ""}
       <label for="setup-code">Setup code</label>
-      <input id="setup-code" name="setupCode" autocomplete="one-time-code" autocapitalize="none" spellcheck="false" required autofocus />
+      <input id="setup-code" name="setupCode" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX-XXXX-XXXX" required autofocus />
       <label for="user">Username</label>
-      <input id="user" name="user" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="128" required />
+      <input id="user" name="user" value="${escapeHtml(user)}" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="128" required />
       <label for="password">Password (at least ${MIN_LOGIN_PASSWORD_LENGTH} characters)</label>
       <input id="password" name="password" type="password" autocomplete="new-password" minlength="${MIN_LOGIN_PASSWORD_LENGTH}" required />
       <button type="submit">Set login and sign in</button>
     </form>`;
-  return `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="robots" content="noindex" />
-<!-- Overrides no-referrer here, so the form posts its real Origin, not "null". -->
-<meta name="referrer" content="same-origin" />
-<title>Marinara Engine — Set up access</title>
-<style>${PAGE_STYLE}${FORM_STYLE}</style>
-</head>
-<body>
-  <main>
-    <header>
-      <span class="badge">Access blocked</span>
-      <h1>This Marinara Engine install needs a login before remote devices can connect.</h1>
-      <p class="lede">${lede}</p>
-    </header>
-
-    ${firstOption}
-
-    <section class="panel">
+  const secondOption = docker
+    ? `<section class="panel">
+      <h2>Option 2 — Login in the Docker settings</h2>
+      <p class="hint">Use this when you manage Marinara through its Docker configuration.</p>
+      <ol>
+        <li>Add these two lines to <code>/app/data/.env</code> in the Marinara data volume, picking your own values:
+          <pre>BASIC_AUTH_USER=yourname
+BASIC_AUTH_PASS=a-long-random-password</pre>
+        </li>
+        <li>Wait a couple of seconds, then refresh this page and sign in.</li>
+      </ol>
+      <p class="hint after">You can also set the same two variables in the <code>environment</code> section of your Docker Compose file. Then run <code>docker compose up -d</code>.</p>
+    </section>`
+    : `<section class="panel">
       <h2>Option 2 — Login in <code>.env</code></h2>
       <p class="hint">Use this when you manage Marinara through its config file.</p>
       <ol>
@@ -629,17 +661,39 @@ BASIC_AUTH_PASS=a-long-random-password</pre>
         </li>
         <li>Save <code>.env</code>, wait a couple of seconds, then refresh this page and sign in.</li>
       </ol>
-    </section>
+    </section>`;
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <!-- Overrides no-referrer here, so the form posts its real Origin, not "null". -->
+    <meta name="referrer" content="same-origin" />
+    <title>Marinara Engine — Set up access</title>
+    <style>${PAGE_STYLE}${FORM_STYLE}</style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <span class="badge">Access blocked</span>
+        <h1>This Marinara Engine install needs a login before remote devices can connect.</h1>
+        <p class="lede">${lede}</p>
+      </header>
 
-    <footer>
-      <div class="links">
-        <a href="${REMOTE_ACCESS_DOCS_URL}" target="_blank" rel="noopener noreferrer">Remote access guide</a>
-        <a href="https://github.com/Pasta-Devs/Marinara-Engine/blob/main/docs/FAQ.md#how-do-i-access-marinara-engine-from-my-phone-or-another-device" target="_blank" rel="noopener noreferrer">FAQ: Access from another device</a>
-        <a href="https://github.com/Pasta-Devs/Marinara-Engine/blob/main/docs/TROUBLESHOOTING.md#app-not-loading-on-mobile--another-device" target="_blank" rel="noopener noreferrer">Troubleshooting</a>
-      </div>
-    </footer>
-  </main>
-</body>
+      ${firstOption}
+
+      ${secondOption}
+
+      <footer>
+        <div class="links">
+          <a href="${REMOTE_ACCESS_DOCS_URL}" target="_blank" rel="noopener noreferrer">Remote access guide</a>
+          <a href="https://github.com/Pasta-Devs/Marinara-Engine/blob/main/docs/FAQ.md#how-do-i-access-marinara-engine-from-my-phone-or-another-device" target="_blank" rel="noopener noreferrer">FAQ: Access from another device</a>
+          <a href="https://github.com/Pasta-Devs/Marinara-Engine/blob/main/docs/TROUBLESHOOTING.md#app-not-loading-on-mobile--another-device" target="_blank" rel="noopener noreferrer">Troubleshooting</a>
+        </div>
+      </footer>
+    </main>
+  </body>
 </html>`;
 }
 
@@ -735,20 +789,27 @@ export async function basicAuthHook(request: FastifyRequest, reply: FastifyReply
     // The lockdown page's setup form posts here; the route checks the setup code.
     if (request.method === "POST" && request.url.split("?")[0] === "/login/setup") return;
     const proxied = policy.forwardedLoopback;
-    if (!lockdownAnnounced) {
+    const code = currentSetupCode();
+    // Again whenever the setup code changes, so the newest code sits next to the newest refusal.
+    if (lockdownAnnounced !== (code ?? "")) {
+      const setIt = code
+        ? `type the one-time setup code ${code} on that device, set one in Settings`
+        : "set one in Settings on this computer";
       if (proxied) {
         logger.warn(
-          "[basic-auth] Refused a connection forwarded by a reverse proxy or tunnel on this computer. No login is set; set one in Settings on this computer, or BASIC_AUTH_USER/BASIC_AUTH_PASS in .env. Other options: %s",
+          "[basic-auth] Refused a connection forwarded by a reverse proxy or tunnel on this computer. No login is set; %s, or set BASIC_AUTH_USER/BASIC_AUTH_PASS in .env. Other options: %s",
+          setIt,
           REMOTE_ACCESS_DOCS_URL,
         );
       } else {
         logger.warn(
-          "[basic-auth] Refused non-loopback connection from %s. No login is set; type the setup code from this log on that device, set one in Settings on this computer, or set BASIC_AUTH_USER/BASIC_AUTH_PASS in .env. You can also add the IP to IP_ALLOWLIST. Other options: %s",
+          "[basic-auth] Refused a remote connection from %s. No login is set; %s, or set BASIC_AUTH_USER/BASIC_AUTH_PASS in .env. You can also add the IP to IP_ALLOWLIST. Other options: %s",
           ip,
+          setIt,
           REMOTE_ACCESS_DOCS_URL,
         );
       }
-      lockdownAnnounced = true;
+      lockdownAnnounced = code ?? "";
     }
     sendLockdown(request, reply, proxied);
     return reply;
@@ -781,9 +842,9 @@ export async function basicAuthHook(request: FastifyRequest, reply: FastifyReply
 }
 
 /** Signs the current browser in, e.g. after it set the login, so it is not sent to /login next. */
-export function rememberLoginInBrowser(request: FastifyRequest, reply: FastifyReply) {
+export function rememberLoginInBrowser(request: FastifyRequest, reply: FastifyReply, method: SignInMethod) {
   const config = loadConfig();
-  if (config) startBrowserSession(request, reply, config);
+  if (config) startBrowserSession(request, reply, config, method);
 }
 
 /** The owner's list of signed-in browsers; never the token or its hash. */
@@ -792,11 +853,12 @@ export function describeSessions(request: FastifyRequest) {
   const key = config && sessionLoginKey(config);
   if (!config || !key) return [];
   const current = requestSession(request, config)?.id;
-  return listSessions(key).map(({ id, label, createdAt, lastSeenAt }) => ({
+  return listSessions(key).map(({ id, label, createdAt, lastSeenAt, method }) => ({
     id,
     label,
     createdAt,
     lastSeenAt,
+    method: method ?? null,
     current: id === current,
   }));
 }
@@ -817,6 +879,31 @@ export function endOtherSessions(request: FastifyRequest): void {
   if (key) deleteOtherSessions(key, requestSession(request, config)?.id);
 }
 
+/**
+ * A signed-in browser must also know the current password to change or remove the login.
+ * Wrong tries count toward this client's lockout like any other wrong password.
+ */
+export async function requireCurrentPassword(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  password: unknown,
+): Promise<boolean> {
+  const config = loadConfig();
+  if (!config) return true;
+  const retryAfter = lockoutSeconds(request);
+  if (retryAfter > 0) {
+    sendTooManyFailures(reply, retryAfter);
+    return false;
+  }
+  const verdict =
+    typeof password === "string" && password
+      ? await checkCredentials(request, config, buildExpectedHeader(config.login.user, password))
+      : false;
+  if (verdict === null) sendBusy(reply);
+  else if (!verdict) reply.status(403).send({ error: "The current password is wrong.", reason: "currentPassword" });
+  return verdict === true;
+}
+
 /** True when the caller is a browser that signed in on /login. */
 export function hasBrowserSession(request: FastifyRequest): boolean {
   const config = loadConfig();
@@ -825,8 +912,6 @@ export function hasBrowserSession(request: FastifyRequest): boolean {
 
 // ── Pairing codes ──
 
-/** No 0/O or 1/I/L: the code is read off one screen and typed on another. */
-const PAIRING_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
 const PAIRING_CODE_LENGTH = 8;
 export const PAIRING_CODE_TTL_MS = 5 * 60_000;
 const MAX_PAIRING_CODES = 10;
@@ -834,12 +919,8 @@ const MAX_PAIRING_CODES = 10;
 /** Keyed hashes in memory only, so a restart ends every code. */
 let pairingCodes: { hash: Buffer; loginKey: string; expiresAt: number; sessionId?: string }[] = [];
 
-/** Ignores case and the spaces or dash people type between the halves. */
 function pairingHash(value: string): Buffer {
-  return createHmac("sha256", HEADER_MAC_KEY)
-    .update("pairing\0")
-    .update(value.toUpperCase().replace(/[\s-]/g, ""))
-    .digest();
+  return createHmac("sha256", HEADER_MAC_KEY).update("pairing\0").update(normalizeCode(value)).digest();
 }
 
 /** A code that signs one more browser in to the current login, once, for a few minutes. */
@@ -850,31 +931,46 @@ export function createPairingCode(request: FastifyRequest): { code: string; expi
   // Codes made on the host have no session; signing out the maker's session ends its codes.
   const sessionId = requestSession(request, config)?.id;
   const now = Date.now();
-  const code = Array.from(
-    { length: PAIRING_CODE_LENGTH },
-    () => PAIRING_ALPHABET[randomInt(PAIRING_ALPHABET.length)],
-  ).join("");
+  const code = readableCode(PAIRING_CODE_LENGTH);
   const expiresAt = now + PAIRING_CODE_TTL_MS;
   pairingCodes = [
-    ...pairingCodes.filter((entry) => entry.expiresAt > now),
+    // Expired codes stay one more TTL, so a late try hears "expired", not "wrong".
+    ...pairingCodes.filter((entry) => entry.expiresAt + PAIRING_CODE_TTL_MS > now),
     { hash: pairingHash(code), loginKey, expiresAt, sessionId },
-  ];
-  pairingCodes = pairingCodes.slice(-MAX_PAIRING_CODES);
-  return { code: `${code.slice(0, 4)}-${code.slice(4)}`, expiresAt };
+  ].slice(-MAX_PAIRING_CODES);
+  return { code, expiresAt };
 }
 
-/** Uses up a live code of the login `loginKey`; every stored hash is compared in constant time. */
-function redeemPairingCode(hash: Buffer, loginKey: string): boolean {
-  const now = Date.now();
+/** Uses up a code of the login `loginKey`; every stored hash is compared in constant time. */
+function redeemPairingCode(hash: Buffer, loginKey: string): "ok" | "expired" | "wrong" {
   const match = pairingCodes.filter((entry) => safeEqual(entry.hash, hash)).at(0);
-  if (!match || match.expiresAt <= now || match.loginKey !== loginKey) return false;
+  if (!match || match.loginKey !== loginKey) return "wrong";
   pairingCodes = pairingCodes.filter((entry) => entry !== match);
-  return true;
+  return match.expiresAt <= Date.now() ? "expired" : "ok";
 }
 
 // ── Login page ──
 
-function renderLoginPage(next: string, error?: string): string {
+type PageError = { field: "password" | "code"; text: string };
+
+/** How to recover a forgotten password, for the login this server uses. */
+function forgotPasswordHint(): string {
+  const docker = isDockerRuntime();
+  if (loadConfig()?.login.source === "env") {
+    return docker
+      ? "Forgot the password? It is <code>BASIC_AUTH_PASS</code> in the container's environment or in <code>/app/data/.env</code>."
+      : "Forgot the password? It is <code>BASIC_AUTH_PASS</code> in the <code>.env</code> file of the computer that runs Marinara.";
+  }
+  return docker
+    ? "Forgot the password? On the computer that runs Docker, run <code>docker exec &lt;container&gt; pnpm reset-login</code>, then set a new login."
+    : "Forgot the password? On the computer that runs Marinara, run <code>pnpm reset-login</code> in the Marinara Engine folder, then set a new login.";
+}
+
+function renderLoginPage(next: string, error?: PageError): string {
+  // The error sits under the field it is about, and that field gets the focus.
+  const errorFor = (field: PageError["field"]) =>
+    error?.field === field ? `<p class="error" id="${field}-error" role="alert">${escapeHtml(error.text)}</p>` : "";
+  const codeError = error?.field === "code";
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -886,8 +982,7 @@ function renderLoginPage(next: string, error?: string): string {
     <title>Marinara Engine — Sign in</title>
     <style>${PAGE_STYLE}
       main { max-width: 400px; }
-      ${FORM_STYLE}
-    </style>
+      ${FORM_STYLE}</style>
   </head>
   <body>
     <main>
@@ -895,21 +990,23 @@ function renderLoginPage(next: string, error?: string): string {
         <span class="badge">Sign in</span>
         <h1>Marinara Engine</h1>
       </header>
-      ${error ? `<p class="error" role="alert">${escapeHtml(error)}</p>` : ""}
       <form class="panel" method="post" action="/login">
         <input type="hidden" name="next" value="${escapeHtml(next)}" />
         <label for="user">Username</label>
-        <input id="user" name="user" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus />
+        <input id="user" name="user" autocomplete="username" autocapitalize="none" spellcheck="false" required${codeError ? "" : " autofocus"} />
         <label for="password">Password</label>
-        <input id="password" name="password" type="password" autocomplete="current-password" required />
+        <input id="password" name="password" type="password" autocomplete="current-password" required${error?.field === "password" ? ' aria-describedby="password-error"' : ""} />
+        ${errorFor("password")}
         <button type="submit">Sign in</button>
+        <p class="hint after">${forgotPasswordHint()}</p>
       </form>
       <form class="panel" method="post" action="/login">
         <h2>Sign in with a code</h2>
         <p class="hint">On a device that is signed in, or on the computer that runs Marinara, open Settings &rarr; Advanced &rarr; Access and choose Add a device.</p>
         <input type="hidden" name="next" value="${escapeHtml(next)}" />
         <label for="code">Pairing code</label>
-        <input id="code" name="code" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" maxlength="16" required />
+        <input id="code" name="code" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" maxlength="16" required${codeError ? ' autofocus aria-describedby="code-error"' : ""} />
+        ${errorFor("code")}
         <button type="submit">Sign in with code</button>
       </form>
     </main>
@@ -917,7 +1014,7 @@ function renderLoginPage(next: string, error?: string): string {
 </html>`;
 }
 
-function sendLoginPage(reply: FastifyReply, status: number, next: string, error?: string) {
+function sendLoginPage(reply: FastifyReply, status: number, next: string, error?: PageError) {
   return reply.status(status).header("Content-Type", "text/html; charset=utf-8").send(renderLoginPage(next, error));
 }
 
@@ -951,24 +1048,34 @@ export async function loginRoutes(app: FastifyInstance) {
       const next = safeNextPath(body.next);
       const config = loadConfig();
       if (!config) return reply.redirect(next, 303);
-
+      const field = typeof body.code === "string" ? "code" : "password";
       const retryAfter = lockoutSeconds(request);
       if (retryAfter > 0) {
         reply.header("Retry-After", String(retryAfter));
-        return sendLoginPage(reply, 429, next, "Too many wrong passwords. Try again later.");
+        return sendLoginPage(reply, 429, next, { field, text: `Too many wrong tries. ${tryAgainIn(retryAfter)}` });
       }
       if (typeof body.code === "string") {
         const hash = pairingHash(body.code);
         const key = sessionLoginKey(config);
-        if (!key || !redeemPairingCode(hash, key)) {
+        const redeemed = key ? redeemPairingCode(hash, key) : "wrong";
+        if (redeemed === "expired") {
+          return sendLoginPage(reply, 401, next, { field, text: "This code has expired. Ask for a new one." });
+        }
+        if (redeemed === "wrong") {
           // Wrong codes count like wrong passwords, so guessing one locks the address out the same way.
           countGuess(request, `code:${hash.toString("base64url").slice(0, 16)}`);
           logWrongPassword(request, true);
-          return sendLoginPage(reply, 401, next, "This code does not work. Ask for a new one.");
+          return sendLoginPage(reply, 401, next, {
+            field,
+            text: "This code does not work. Check it or ask for a new one.",
+          });
         }
         clearOwnFailures(request);
-        if (!startBrowserSession(request, reply, config)) {
-          return sendLoginPage(reply, 500, next, "This browser cannot stay signed in. See the server log.");
+        if (!startBrowserSession(request, reply, config, "pairing")) {
+          return sendLoginPage(reply, 500, next, {
+            field,
+            text: "This browser cannot stay signed in. See the server log.",
+          });
         }
         logger.info("[login] A device signed in with a pairing code");
         return reply.redirect(next, 303);
@@ -976,53 +1083,50 @@ export async function loginRoutes(app: FastifyInstance) {
       const user = typeof body.user === "string" ? body.user : "";
       const password = typeof body.password === "string" ? body.password : "";
       const verdict = await checkCredentials(request, config, buildExpectedHeader(user, password));
-      if (verdict === null) return sendLoginPage(reply, 429, next, "Too many sign-ins at once. Try again in a moment.");
-      if (!verdict) return sendLoginPage(reply, 401, next, "Wrong username or password.");
-
-      if (!startBrowserSession(request, reply, config)) {
-        return sendLoginPage(reply, 500, next, "This browser cannot stay signed in. See the server log.");
+      if (verdict === null) {
+        return sendLoginPage(reply, 429, next, { field, text: "Too many sign-ins at once. Try again in a moment." });
+      }
+      if (!verdict) return sendLoginPage(reply, 401, next, { field, text: "Wrong username or password." });
+      if (!startBrowserSession(request, reply, config, "password")) {
+        return sendLoginPage(reply, 500, next, {
+          field,
+          text: "This browser cannot stay signed in. See the server log.",
+        });
       }
       return reply.redirect(next, 303);
     },
   );
 
-  // The lockdown page's form: the one-time setup code from the server log sets the first login
-  // from any device, for installs with no browser on the host (Docker, NAS).
+  // The lockdown page's form: the one-time setup code from the server log sets the first
+  // login from any device, for installs with no browser on the host (Docker, NAS).
   app.post<{ Body: { setupCode?: unknown; user?: unknown; password?: unknown } | undefined }>(
     "/login/setup",
     { bodyLimit: FORM_BODY_LIMIT },
     async (request, reply) => {
       if (loadConfig()) return reply.redirect("/login", 303);
+      const body = request.body ?? {};
+      const code = body.setupCode;
+      const user = typeof body.user === "string" ? body.user.trim() : "";
+      const password = typeof body.password === "string" ? body.password : "";
+      // The username stays filled in after a mistake; the code and the password do not.
       const fail = (status: number, error: string) =>
         reply
           .status(status)
           .header("Content-Type", "text/html; charset=utf-8")
-          .send(renderLockdownPage(request.ip, isForwardedLoopbackRequest(request), error));
-      const setupBuckets = setupCodeBuckets(request);
-      const retryAfter = lockoutSeconds(request, setupBuckets);
-      if (retryAfter > 0) {
-        reply.header("Retry-After", String(retryAfter));
-        return fail(429, "Too many wrong codes. Try again later.");
-      }
-      const body = request.body ?? {};
-      const code = typeof body.setupCode === "string" ? body.setupCode.trim() : "";
-      const user = typeof body.user === "string" ? body.user.trim() : "";
-      const password = typeof body.password === "string" ? body.password : "";
+          .send(renderLockdownPage(request.ip, isForwardedLoopbackRequest(request), error, user));
       if (!user || user.length > 128 || user.includes(":")) {
         return fail(400, "Enter a username of up to 128 characters, without a colon.");
       }
       if (password.length < MIN_LOGIN_PASSWORD_LENGTH || password.length > 1024) {
         return fail(400, `Enter a password of at least ${MIN_LOGIN_PASSWORD_LENGTH} characters.`);
       }
-      if (!isLoginSetupCode(code)) {
-        countGuess(
-          request,
-          `setup:${createHmac("sha256", HEADER_MAC_KEY).update(code).digest("base64url").slice(0, 16)}`,
-          setupBuckets,
-        );
-        logger.warn("[basic-auth] Wrong setup code from %s", request.ip);
-        return fail(403, "This setup code does not work. Copy the newest one from the server log.");
+      const checked = trySetupCode(request, code);
+      if (typeof checked === "number") {
+        reply.header("Retry-After", String(checked));
+        return fail(429, `Too many wrong codes. ${tryAgainIn(checked)}`);
       }
+      if (checked === "wrong")
+        return fail(403, "This setup code does not work. Copy the newest one from the server log.");
       consumeLoginSetupCode();
       try {
         await setStoredLogin(user, password);
@@ -1033,8 +1137,9 @@ export async function loginRoutes(app: FastifyInstance) {
         return fail(500, "Marinara could not save the login. Use the new setup code from the server log.");
       }
       logger.info('[login] Remote login set for user "%s" with the setup code', user);
-      rememberLoginInBrowser(request, reply);
-      return reply.redirect("/", 303);
+      rememberLoginInBrowser(request, reply, "setup");
+      // The app reads `loginSet` once and confirms the new login.
+      return reply.redirect("/?loginSet=1", 303);
     },
   );
 

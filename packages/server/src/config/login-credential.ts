@@ -8,7 +8,7 @@
 // DATA_DIR/.remote-sessions.json. Both files are read again within RECHECK_MS
 // when they change on disk, so deleting them works like an .env edit.
 
-import { createHash, randomBytes, scrypt, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, randomInt, scrypt, timingSafeEqual } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { logger } from "../lib/logger.js";
@@ -18,7 +18,16 @@ import { getBasicAuthConfig } from "./runtime-config.js";
 export type StoredLogin = { user: string; salt: string; hash: string; N: number; r: number; p: number };
 export type LoginConfig = { source: "env"; user: string; pass: string } | ({ source: "app" } & StoredLogin);
 /** `hash` is the SHA-256 of the cookie token; the token itself is never stored. */
-export type RemoteSession = { id: string; hash: string; label: string; createdAt: number; lastSeenAt: number };
+export type SignInMethod = "password" | "pairing" | "setup";
+/** `method` is missing on sessions saved before it was recorded. */
+export type RemoteSession = {
+  id: string;
+  hash: string;
+  label: string;
+  createdAt: number;
+  lastSeenAt: number;
+  method?: SignInMethod;
+};
 type SessionsFile = { login: string; sessions: RemoteSession[] };
 
 export const MIN_LOGIN_PASSWORD_LENGTH = 10;
@@ -194,24 +203,49 @@ export function enableLoginSetupCode(): void {
   setInterval(getLoginConfig, RECHECK_MS).unref();
 }
 
+/** No 0/O or 1/I/L: a code is read off one screen and typed on another. */
+const CODE_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
+const SETUP_CODE_LENGTH = 16; // 16 symbols of 31 ≈ 79 bits
+
+/** `length` random symbols in groups of four, like ABCD-EFGH. */
+export function readableCode(length: number): string {
+  const code = Array.from({ length }, () => CODE_ALPHABET[randomInt(CODE_ALPHABET.length)]).join("");
+  return code.replace(/(.{4})(?=.)/g, "$1-");
+}
+
+/** Ignores case and the spaces or dashes people type between the groups. */
+export const normalizeCode = (value: string) => value.toUpperCase().replace(/[\s-]/g, "");
+
+// ip-allowlist registers its parsed TRUSTED_AUTH_PROXY check here; importing it would be a cycle.
+let proxyLogsVisitorsIn = () => false;
+export function setProxyLogsVisitorsIn(check: () => boolean) {
+  proxyLogsVisitorsIn = check;
+}
+
 export function announceSetupCode() {
-  setupCode = randomBytes(12).toString("hex");
-  logger.warn(
-    "[login] No remote login is set. To set one from a device that is not this computer, use this one-time setup code: %s",
-    setupCode,
-  );
+  // A forward-auth proxy logs visitors in, so there is no first login to set. Only entries the
+  // policy accepts count: a list of typos or public ranges trusts no proxy and still needs a code.
+  if (proxyLogsVisitorsIn()) {
+    setupCode = null;
+    return;
+  }
+  setupCode = readableCode(SETUP_CODE_LENGTH);
+  logger.warn("[login] No remote login is set. To set one from another device, use the setup code below once.");
+  logger.warn("[login] One-time setup code: %s", setupCode);
 }
 
 export function isLoginSetupCode(value: unknown): boolean {
-  getLoginConfig();
-  return setupCode !== null && typeof value === "string" && sameText(value, setupCode);
+  const code = currentSetupCode();
+  return code !== null && typeof value === "string" && sameText(normalizeCode(value), normalizeCode(code));
 }
 
-/** True while a setup code is printed and unused. */
-export function hasLoginSetupCode(): boolean {
+/** The printed, unused setup code, or null. */
+export function currentSetupCode(): string | null {
   getLoginConfig();
-  return setupCode !== null;
+  return setupCode;
 }
+
+export const hasLoginSetupCode = () => currentSetupCode() !== null;
 
 /** Call after isLoginSetupCode passed and before any await, so a code works once. */
 export function consumeLoginSetupCode(): void {
@@ -230,7 +264,8 @@ function isSession(value: unknown): value is RemoteSession {
     /^[0-9a-f]{64}$/.test(v.hash) &&
     typeof v.label === "string" &&
     Number.isFinite(v.createdAt) &&
-    Number.isFinite(v.lastSeenAt)
+    Number.isFinite(v.lastSeenAt) &&
+    (v.method === undefined || ["password", "pairing", "setup"].includes(v.method))
   );
 }
 
@@ -294,7 +329,7 @@ export function deviceLabel(userAgent: unknown): string {
 }
 
 /** Starts a session for the login `loginKey` names and returns the cookie token. */
-export function createSession(loginKey: string, userAgent: unknown): string {
+export function createSession(loginKey: string, userAgent: unknown, method: SignInMethod): string {
   const token = randomBytes(32).toString("base64url");
   const now = Date.now();
   const session: RemoteSession = {
@@ -303,6 +338,7 @@ export function createSession(loginKey: string, userAgent: unknown): string {
     label: deviceLabel(userAgent),
     createdAt: now,
     lastSeenAt: now,
+    method,
   };
   // The oldest sessions drop out at the cap.
   saveSessions(loginKey, [...liveSessions(loginKey, true), session].slice(-MAX_SESSIONS));

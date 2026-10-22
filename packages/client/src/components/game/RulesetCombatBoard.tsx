@@ -459,10 +459,16 @@ export function RulesetCombatBoard({
                   onBlur={() =>
                     setReading((current) => (current?.x === cell.x && current.y === cell.y ? null : current))
                   }
-                  onMouseEnter={() => setReading({ x: cell.x, y: cell.y })}
-                  onMouseLeave={() =>
-                    setReading((current) => (current?.x === cell.x && current.y === cell.y ? null : current))
-                  }
+                  // Hover reads a square for a mouse or a pen only. A phone fires the mouse's enter as
+                  // part of a tap, and a page that changes under that enter has its tap taken for a
+                  // hover (Safari drops the click), which is how the first tap on a square did nothing.
+                  onPointerEnter={(event) => {
+                    if (event.pointerType !== "touch") setReading({ x: cell.x, y: cell.y });
+                  }}
+                  onPointerLeave={(event) => {
+                    if (event.pointerType === "touch") return;
+                    setReading((current) => (current?.x === cell.x && current.y === cell.y ? null : current));
+                  }}
                   className={cn(
                     "group relative overflow-hidden rounded-[3px] transition-all duration-150 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-white",
                     cell.solid && "cursor-not-allowed",

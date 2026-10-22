@@ -2781,4 +2781,19 @@ function drawn(...rows: string[]): TacticalGrid {
   assert.equal(rulesetCombatEventLine(walked, flat, t), "Brenna moves to 3, 0 for 3 and has 3 left.");
 }
 
+// ── A phone's tap is never taken for a hover ──
+{
+  // A board square that changes the page under a tap's mouse enter has the tap read as a hover, so
+  // the first tap on a square did nothing. Hover reads a square for a mouse or a pen only, and a
+  // phone is told to tap rather than press Enter.
+  const boardText = readSource("packages/client/src/components/game/RulesetCombatBoard.tsx");
+  assert.ok(!boardText.includes("onMouseEnter="), "the board reads a square on the mouse's enter again");
+  assert.match(boardText, /onPointerEnter=\{\(event\) => \{\s*if \(event\.pointerType !== "touch"\)/u);
+  for (const key of ["aimPromptTouch", "movePromptTouch", "teleportPromptTouch"]) {
+    const line = messages[`game.combat.ruleset.board.${key}`];
+    assert.ok(line && /^Tap /u.test(line) && !/Enter|Escape/u.test(line), `${key}: ${line}`);
+  }
+  assert.equal(messages["game.combat.ruleset.menu.fleeConfirmTouch"], "Leave the fight? Tap again");
+}
+
 console.log("ruleset-combat-screen-client regression passed");

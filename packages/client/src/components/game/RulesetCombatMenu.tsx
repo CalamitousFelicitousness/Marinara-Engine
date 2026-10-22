@@ -153,6 +153,8 @@ export function RulesetCombatMenu({
   // must never be sent against it.
   // Leaving the fight asks twice: one stray click is not a lost battle.
   const [fleeing, setFleeing] = useState(false);
+  // A phone is told to tap, not to press Enter or click.
+  const touch = typeof window !== "undefined" && !!window.matchMedia?.("(pointer: coarse)").matches;
   // A spell held together that a new one would end: asked about before it is let go.
   const [dropping, setDropping] = useState<DirectedRulesetOption | null>(null);
   useEffect(() => {
@@ -939,11 +941,15 @@ export function RulesetCombatMenu({
     const carries = step.stage === "aim" ? (option.teleport?.carries ?? option.designates) : undefined;
     const prompt =
       step.stage === "move"
-        ? "game.combat.ruleset.board.movePrompt"
+        ? touch
+          ? "game.combat.ruleset.board.movePromptTouch"
+          : "game.combat.ruleset.board.movePrompt"
         : option.teleport
           ? option.teleport.cells.length === 0
             ? "game.combat.ruleset.board.teleportLeavePrompt"
-            : "game.combat.ruleset.board.teleportPrompt"
+            : touch
+              ? "game.combat.ruleset.board.teleportPromptTouch"
+              : "game.combat.ruleset.board.teleportPrompt"
           : turning
             ? "game.combat.ruleset.board.aimTurnPrompt"
             : wall && !lay?.ring
@@ -951,7 +957,9 @@ export function RulesetCombatMenu({
               : copies > 1
                 ? "game.combat.ruleset.board.aimCopiesPrompt"
                 : rulesetOptionHasAim(option)
-                  ? "game.combat.ruleset.board.aimPrompt"
+                  ? touch
+                    ? "game.combat.ruleset.board.aimPromptTouch"
+                    : "game.combat.ruleset.board.aimPrompt"
                   : "game.combat.ruleset.board.aimNobody";
     return (
       <div className="flex flex-col gap-2 p-3">
@@ -1508,7 +1516,13 @@ export function RulesetCombatMenu({
                   : "border-white/10 bg-white/5 text-white/60 hover:bg-white/10 hover:text-white",
               )}
             >
-              {t(fleeing ? "game.combat.ruleset.menu.fleeConfirm" : "game.combat.ruleset.menu.flee")}
+              {t(
+                fleeing
+                  ? touch
+                    ? "game.combat.ruleset.menu.fleeConfirmTouch"
+                    : "game.combat.ruleset.menu.fleeConfirm"
+                  : "game.combat.ruleset.menu.flee",
+              )}
             </button>
           )}
         </div>

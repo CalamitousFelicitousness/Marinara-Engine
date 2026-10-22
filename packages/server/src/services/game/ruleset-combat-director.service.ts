@@ -101,6 +101,7 @@ import {
   rulesetCombatantMind,
   rulesetAirborne,
   RULESET_FLY_UP_OPTION,
+  shiftCombatTemperament,
   withRulesetPlanMemo,
   rulesetSheetBuildsByName,
   rulesetCardCreaturesByName,
@@ -789,9 +790,11 @@ export function syncRulesetCombatants(definition: RulesetDefinition, state: Comb
     const temperament =
       unit.tactics?.mind === "mindless"
         ? undefined
-        : (unit.aiHints?.temperament ??
-          rulesetCombatantBehavior(definition, combatant)?.temperament ??
-          unit.tactics?.adjective);
+        : unit.tactics?.shifted
+          ? unit.tactics.adjective
+          : (unit.aiHints?.temperament ??
+            rulesetCombatantBehavior(definition, combatant)?.temperament ??
+            unit.tactics?.adjective);
     if (temperament) combatant.temperament = temperament;
     else delete combatant.temperament;
     // Who plays a party member, as the fight has it: what the party panel shows.
@@ -3419,7 +3422,8 @@ function weighChoices(
     // gave it one for this fight, and its role.
     const behavior = rulesetCombatantBehavior(definition, actor);
     if (behavior && unit.tactics.mind !== "mindless") {
-      if (behavior.temperament && !unit.aiHints?.temperament) unit.tactics.adjective = behavior.temperament;
+      if (behavior.temperament && !unit.aiHints?.temperament && !unit.tactics.shifted)
+        unit.tactics.adjective = behavior.temperament;
       if (behavior.role) unit.tactics.role = behavior.role;
     }
   }
@@ -3519,6 +3523,50 @@ function weighRulesetLeadership(
     if (candidate.targetId === marked && ((candidate.damage ?? 0) > 0 || (candidate.setup ?? 0) > 0))
       // A disciplined one carries out its leader's choice (combat AI T1).
       candidate.focus = (candidate.focus ?? 0) + (disciplined ? 0.6 : 0.3);
+}
+
+/**
+ * Turns the temperament of a creature the Engine plays as its `shifts` say (combat AI T7): the
+ * story's, else its own data's. Bloodied below half its health, one of its side or its leader down,
+ * or cornered: below a quarter, an opponent beside it and no cell to run to.
+ */
+function shiftRulesetTemperament(
+  definition: RulesetDefinition,
+  state: CombatDirectorState,
+  encounter: RulesetEncounterState,
+  actor: RulesetCombatant,
+): void {
+  const combat = definition.combat;
+  const unit = [...state.party, ...state.enemies].find((one) => one.id === actor.id);
+  if (!combat || !unit?.tactics) return;
+  const shifts = unit.aiHints?.shifts ?? rulesetCombatantBehavior(definition, actor)?.shifts;
+  if (!shifts) return;
+  const health = rulesetCombatHealth(definition, combat, actor);
+  const ours = encounter.combatants.filter(
+    (one) => one.side === actor.side && one.id !== actor.id && one.calledBy === undefined && !one.object,
+  );
+  const fallen = ours.filter(
+    (one) => one.down || (one.defeated && (!one.away || !!one.away.left || !!one.away.surrendered)),
+  );
+  const turned = shiftCombatTemperament(unit.tactics, shifts, (trigger) =>
+    trigger === "bloodied"
+      ? health.value < health.max / 2
+      : trigger === "ally-down"
+        ? fallen.length > 0
+        : trigger === "leader-down"
+          ? fallen.some(rulesetLeads)
+          : health.value < health.max / 4 &&
+            encounter.combatants.some(
+              (one) =>
+                one.side !== actor.side &&
+                rulesetCombatStanding(one) &&
+                !!rulesetPositionOf(one) &&
+                !!rulesetPositionOf(actor) &&
+                rulesetGap(one, actor) <= 1,
+            ) &&
+            !rulesetRetreatCell(definition, encounter, actor.id),
+  );
+  if (turned) actor.temperament = turned;
 }
 
 /**
@@ -4264,6 +4312,8 @@ function playRulesetTurn(
     walkTowardsTrouble(definition, state, fight, actorId);
   // A leader steadies those of its side running near it (combat AI A6).
   if (actor && !actor.routed) rallyRulesetSide(definition, fight.encounter, actor);
+  // Its temperament turned by what has happened (combat AI T7).
+  if (actor) shiftRulesetTemperament(definition, state, fight.encounter, actor);
   // Broken (1.709): its whole turn is getting away.
   if (actor?.routed) {
     runForTheEdge(definition, state, fight, actorId);

@@ -2842,6 +2842,16 @@ function carriesBehavior710(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesBehavior710(one, depth + 1));
 }
 
+/** A temperament that turns (1.726): a behavior with `shifts`. */
+function carriesShifts726(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesShifts726(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.behavior)?.shifts !== undefined) return true;
+  return featureValues(record).some((one) => carriesShifts726(one, depth + 1));
+}
+
 /** A fanatic (1.725): a behavior whose `temperament` is `fanatical`. */
 function carriesFanatical725(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -9422,6 +9432,12 @@ export function getCapabilityPackageInstallIssue(
     }),
   );
   // A creature that fights a side alone, 1.723.
+  if (
+    !declaresApi(726) &&
+    (carriesShifts726(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesShifts726(document)))
+  )
+    return "A ruleset with a creature whose temperament turns (a behavior's shifts) requires schemaVersion 2 and capabilityApi 1.726 or newer";
   if (
     !declaresApi(725) &&
     (carriesFanatical725(ruleset) ||

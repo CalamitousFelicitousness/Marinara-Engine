@@ -7,7 +7,10 @@ import {
   COMBAT_ROLES,
   COMBAT_TEMPERAMENTS,
   COMBAT_NAMED_TEMPERAMENTS,
+  COMBAT_SHIFT_TRIGGERS,
   combatMindWithHint,
+  type CombatShiftTrigger,
+  type CombatTemperament,
   type CombatMind,
 } from "./combat-minds.js";
 export {
@@ -16,6 +19,8 @@ export {
   COMBAT_ROLES,
   COMBAT_TEMPERAMENTS,
   COMBAT_NAMED_TEMPERAMENTS,
+  COMBAT_SHIFT_TRIGGERS,
+  type CombatShiftTrigger,
   type CombatMind,
   type CombatRole,
   type CombatTemperament,
@@ -44,6 +49,14 @@ export const combatAiHintsSchema = z.object({
   morale: z.number().int().min(2).max(12).optional().catch(undefined),
   /** Its side follows it (a bandit chief, a pack's alpha): its fall shakes the rest. */
   leader: z.boolean().optional().catch(undefined),
+  /** What turns its temperament into another, once (combat AI T7): a proud one methodical once
+   *  bloodied, a desperate one reckless once cornered. The first that happens wins. */
+  shifts: z
+    .array(z.object({ on: z.enum(COMBAT_SHIFT_TRIGGERS), to: z.enum(COMBAT_TEMPERAMENTS) }).strict())
+    .min(1)
+    .max(4)
+    .optional()
+    .catch(undefined),
 });
 export const combatTacticsSchema = z
   .object({
@@ -63,6 +76,8 @@ export const combatTacticsSchema = z
     sprung: z.literal(true).optional(),
     /** Its role was read off what its ruleset sheet or block can do (1.710). */
     roleRead: z.literal(true).optional(),
+    /** Its temperament has turned, as its `shifts` say (combat AI T7): it turns only once. */
+    shifted: z.literal(true).optional(),
     /** Turns in a row it spent dodging, getting away or hiding: two, and it fights again, so two
      *  careful sides never stare at each other all fight. */
     wary: z.number().int().min(0).max(99).optional(),
@@ -74,6 +89,23 @@ export const combatTacticsSchema = z
     }
   });
 export type CombatTactics = z.infer<typeof combatTacticsSchema>;
+
+/**
+ * Turns a combatant's temperament as its `shifts` say (combat AI T7): the first of them whose
+ * trigger has happened, once a fight, and never a mindless one's. The temperament it turned to.
+ */
+export function shiftCombatTemperament(
+  tactics: CombatTactics | undefined,
+  shifts: ReadonlyArray<{ on: CombatShiftTrigger; to: CombatTemperament }> | undefined,
+  happened: (trigger: CombatShiftTrigger) => boolean,
+): CombatTemperament | undefined {
+  if (!tactics || tactics.shifted || tactics.adjective === "mindless" || !shifts?.length) return undefined;
+  const shift = shifts.find((one) => happened(one.on));
+  if (!shift) return undefined;
+  tactics.adjective = shift.to;
+  tactics.shifted = true;
+  return shift.to;
+}
 /**
  * Where a companion the Engine plays stands in a fight, as its player orders: `guard` the leader (a
  * companion's default), `follow` the leader onto whoever they are attacking, `protect` one friend

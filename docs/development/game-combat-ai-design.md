@@ -305,6 +305,8 @@ Proposed initial tuning: normalize policy utility to a fixed scale; let novices 
 
 **Disciplined and fanatical (combat AI T1, T2).** `disciplined` now carries coordination weight 1 (formation), +0.6 rather than +0.3 focus on its leader's last target, and skips the ruleset `first-fall` morale trigger. `fanatical` (in `COMBAT_NAMED_TEMPERAMENTS`, never drawn without a hint or data naming it) weighs damage 2, risk 0.05 and protection 1, has no Classic/Tactical morale score and never runs a ruleset morale check. The director mirrors the temperament it plays onto `RulesetCombatant.temperament` for those rule checks.
 
+**Temperament shifts (combat AI T7, Capability API 1.726).** `aiHints.shifts` (the story) or a ruleset `behavior.shifts` names up to four `{on, to}`; `shiftCombatTemperament` applies the first whose trigger has happened, once (`tactics.shifted`), at the start of the unit's turn: `shiftTurn` in Classic/Tactical (cornered there is below a quarter with a party member adjacent, always in Classic) and `shiftRulesetTemperament` in ruleset fights (cornered also needs no retreat cell). A shifted unit keeps its new temperament over its data's, and the ruleset mirror follows it.
+
 **Fliers keep altitude (combat AI A7).** When a ruleset flier's turn goes idle on the ground (`keepAloft`), and it can fly, has an available ranged damaging action, isn't a bruiser, reckless or mindless, and an opponent who cannot fly stands, it takes Fly up where the board has levels, then carries on its turn (a shot, its kite) from the air.
 
 ## 8. Boss turns controlled by the GM

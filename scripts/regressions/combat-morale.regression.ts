@@ -163,6 +163,27 @@ const keys = (s: CombatDirectorState) => s.log.flatMap((entry) => (entry.message
   assert.ok(keys(s).includes("game.combat.event.fled"));
 }
 
+// ── Turned by what happens (combat AI T7): bloodied, a proud one fights methodically ──
+{
+  const s = play(
+    fight([
+      unit("duelist", "enemy", {
+        hp: 40,
+        aiHints: {
+          mind: "tactical",
+          morale: 12,
+          temperament: "opportunistic",
+          shifts: [{ on: "bloodied", to: "methodical" }],
+        },
+      }),
+    ]),
+    6,
+  );
+  const duelist = s.enemies.find((one) => one.id === "duelist")!;
+  assert.equal(duelist.tactics?.adjective, "methodical");
+  assert.equal(duelist.tactics?.shifted, true);
+}
+
 // ── A fight saved before morale: nobody breaks ──
 {
   const s = fight([unit("goblin", "enemy", { aiHints: { mind: "cunning", morale: 2 } })]);

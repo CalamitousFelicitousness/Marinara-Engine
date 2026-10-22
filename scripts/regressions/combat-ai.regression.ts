@@ -3,6 +3,7 @@ import {
   assignCombatTactics,
   chooseCombatCandidate,
   combatTacticsSchema,
+  shiftCombatTemperament,
   type CombatTactics,
 } from "../../packages/shared/src/features/combat-ai.js";
 import {
@@ -569,4 +570,26 @@ assert.equal(
   ];
   assert.equal(chooseCombatCandidate(as2("opportunistic"), formation, 1), "alone");
   assert.equal(chooseCombatCandidate(as2("disciplined"), formation, 1), "together");
+  // Turned once by what happens (T7): the first shift whose trigger has happened.
+  const proud = { ...assignCombatTactics(actor("proud"), 7, "tactical"), adjective: "opportunistic" as const };
+  const shifts = [
+    { on: "cornered" as const, to: "reckless" as const },
+    { on: "bloodied" as const, to: "methodical" as const },
+  ];
+  assert.equal(
+    shiftCombatTemperament(proud, shifts, () => false),
+    undefined,
+  );
+  assert.equal(
+    shiftCombatTemperament(proud, shifts, (on) => on === "bloodied"),
+    "methodical",
+  );
+  assert.equal(proud.adjective, "methodical");
+  assert.equal(
+    shiftCombatTemperament(proud, shifts, () => true),
+    undefined,
+    "only once",
+  );
+  assert.equal(proud.adjective, "methodical");
+  assert.ok(combatTacticsSchema.safeParse(proud).success);
 }

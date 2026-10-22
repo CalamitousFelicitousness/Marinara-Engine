@@ -39,6 +39,12 @@ export type CombatTemperament = (typeof COMBAT_TEMPERAMENTS)[number];
  *  chance: a fanatic never breaks (combat AI T2). */
 export const COMBAT_NAMED_TEMPERAMENTS: readonly CombatTemperament[] = ["fanatical"];
 
+/** What turns a combatant's temperament into another, once (combat AI T7): hurt below half its
+ *  health, one of its side down, its leader down, or cornered (below a quarter, an opponent beside it
+ *  and nowhere to run). */
+export const COMBAT_SHIFT_TRIGGERS = ["bloodied", "ally-down", "leader-down", "cornered"] as const;
+export type CombatShiftTrigger = (typeof COMBAT_SHIFT_TRIGGERS)[number];
+
 /** What a combatant is for in a fight. */
 export const COMBAT_ROLES = [
   "bruiser",

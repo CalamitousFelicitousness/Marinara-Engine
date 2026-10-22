@@ -478,6 +478,30 @@ try {
     assert.equal(aloft({ temperament: "disciplined", role: "bruiser" }), undefined, "a bruiser stays down");
   }
 
+  // ── Turned by what happens (combat AI T7): its data's shift, once, as its turn starts ──
+  {
+    const { encounter, state } = fight({
+      brute: {
+        side: "enemy",
+        block: block([smash], { behavior: { temperament: "patient", shifts: [{ on: "bloodied", to: "reckless" }] } }),
+        at: { x: 3, y: 3 },
+      },
+      hero: { side: "party", block: block([smash]), at: { x: 12, y: 3 } },
+    });
+    rulesetCombatant(encounter, "brute")!.health = { ...rulesetCombatant(encounter, "brute")!.health!, value: 20 };
+    state.rulesetFight = { encounter, events: [], eventSeq: 0, controllers: { hero: "manual" }, bosses: [] } as never;
+    syncRulesetCombatants(definition, state);
+    state.stage = rulesetDirectorStage(state);
+    assert.ok(commandRulesetCombatDirector(definition, state, { type: "continue" }).ok);
+    const brute = state.enemies.find((one) => one.id === "brute")!;
+    assert.equal(brute.tactics?.adjective, "reckless", "bloodied, it turns reckless");
+    assert.equal(brute.tactics?.shifted, true);
+    syncRulesetCombatants(definition, state);
+    assert.equal(rulesetCombatant(state.rulesetFight!.encounter, "brute")!.temperament, "reckless", "and stays so");
+    assert.equal(pickRulesetChoice(definition, state, state.rulesetFight!.encounter, "brute") !== undefined, true);
+    assert.equal(brute.tactics?.adjective, "reckless", "its data's temperament no longer wins");
+  }
+
   // ── Its temperament and role, unless the Game Master gave one ──
   {
     const scene = () =>
@@ -741,6 +765,23 @@ try {
     const zealous = fiveE((doc) => (lurkerEntry(doc).behavior = { temperament: "fanatical" }));
     assert.equal(getCapabilityPackageInstallIssue(manifest(724) as never, zealous), fanatic);
     assert.notEqual(getCapabilityPackageInstallIssue(manifest(725) as never, zealous), fanatic);
+    const turning =
+      "A ruleset with a creature whose temperament turns (a behavior's shifts) requires schemaVersion 2 and capabilityApi 1.726 or newer";
+    const turns = fiveE((doc) => (lurkerEntry(doc).behavior = { shifts: [{ on: "bloodied", to: "reckless" }] }));
+    assert.equal(getCapabilityPackageInstallIssue(manifest(725) as never, turns), turning);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(726) as never, turns), turning);
+    refused(
+      fiveE(
+        (doc) =>
+          (lurkerEntry(doc).behavior = {
+            shifts: [
+              { on: "bloodied", to: "reckless" },
+              { on: "bloodied", to: "cautious" },
+            ],
+          }),
+      ),
+      /Name each trigger once/,
+    );
     refused(
       fiveE((doc) => (lurkerEntry(doc).behavior = { guards: ["casters", "casters"] })),
       /Name each once/,
@@ -748,7 +789,7 @@ try {
   }
 
   console.log(
-    "Combat behavior: merged from the ruleset, the type and the creature; its temperament and role; casters, attackers and a pack's prey first; its opener once; an ambusher keeps still and springs; roles read off what it does; bodyguards stay by their charge; a leader rallies; refused and gated at 1.710, 1.723, 1.724 and 1.725.",
+    "Combat behavior: merged from the ruleset, the type and the creature; its temperament and role; casters, attackers and a pack's prey first; its opener once; an ambusher keeps still and springs; roles read off what it does; bodyguards stay by their charge; a leader rallies; a temperament turns once; refused and gated at 1.710, 1.723, 1.724, 1.725 and 1.726.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

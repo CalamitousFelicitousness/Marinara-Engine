@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { GAME_INVENTORY_MAX_NEW_STACKS, GAME_INVENTORY_MAX_QUANTITY } from "../utils/game-inventory-stacks.js";
-import { COMBAT_MINDS, COMBAT_ROLES, COMBAT_TEMPERAMENTS } from "../features/combat-minds.js";
+import { COMBAT_MINDS, COMBAT_ROLES, COMBAT_SHIFT_TRIGGERS, COMBAT_TEMPERAMENTS } from "../features/combat-minds.js";
 
 // Game Mode rulesets. A ruleset is validated DATA: it parameterises one of a closed set of
 // Engine-owned resolution kinds and declares a character sheet from a closed set of primitives.
@@ -9884,7 +9884,9 @@ export const RULESET_GUARDED_KINDS = ["leader", "casters", "healers"] as const;
  * on its first turns); `pack`, going for whoever a friend of its stands beside; and `ambush`, lying
  * in wait, hidden where it can, until an opponent comes within reach or it is hurt; and `guards`
  * (Capability API 1.724), keeping near the nearest friend of the kinds it names and going at whoever
- * is on them, as a companion told to protect them. A Game Master's
+ * is on them, as a companion told to protect them; and `shifts` (Capability API 1.726), the
+ * temperament it turns to, once, when hurt below half (`bloodied`), when one of its side or its
+ * leader is down, or when cornered. A Game Master's
  * temperament for one fight wins over it; a mindless creature has none of it.
  */
 const combatBehaviorSchema = z
@@ -9905,6 +9907,14 @@ const combatBehaviorSchema = z
       .min(1)
       .max(3)
       .refine((kinds) => new Set(kinds).size === kinds.length, { message: "Name each once" })
+      .optional(),
+    shifts: z
+      .array(z.object({ on: z.enum(COMBAT_SHIFT_TRIGGERS), to: z.enum(COMBAT_TEMPERAMENTS) }).strict())
+      .min(1)
+      .max(4)
+      .refine((shifts) => new Set(shifts.map((one) => one.on)).size === shifts.length, {
+        message: "Name each trigger once",
+      })
       .optional(),
   })
   .strict()

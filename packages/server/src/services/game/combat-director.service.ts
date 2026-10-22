@@ -9,6 +9,7 @@ import {
 import {
   assignCombatTactics,
   combatAiHash,
+  shiftCombatTemperament,
   createTacticalCombat,
   currentTacticalActor,
   getMovementRange,
@@ -409,6 +410,31 @@ function runForTheEdge(s: CombatDirectorState, u: Unit) {
  * (an opponent beside it, or no board to run across); an animal, or one with room to run, runs, off
  * the board once a turn of its starts at the edge. True when its turn went on that.
  */
+/** Turns its temperament as the story's `shifts` say (combat AI T7), as a turn of its starts. */
+function shiftTurn(s: CombatDirectorState, u: Unit): void {
+  // A board's units carry no story hints: those stay on the party and the opponents as given.
+  const hintsOf = (one: Unit) => [...s.party, ...s.enemies].find((given) => given.id === one.id)?.aiHints;
+  const ours = directorUnits(s).filter((one) => side(one) === side(u) && one.id !== u.id);
+  // Only opponents leave a fight alive.
+  const gone = side(u) === "enemy" ? (s.gone ?? []) : [];
+  const at = u as TacticalUnit;
+  const beside =
+    !s.tactical ||
+    living(s).some(
+      (one) =>
+        side(one) !== side(u) &&
+        Math.abs((one as TacticalUnit).x - at.x) + Math.abs((one as TacticalUnit).y - at.y) <= 1,
+    );
+  shiftCombatTemperament(u.tactics, hintsOf(u)?.shifts, (trigger) =>
+    trigger === "bloodied"
+      ? u.hp < u.maxHp / 2
+      : trigger === "ally-down"
+        ? ours.some((one) => one.hp <= 0) || gone.length > 0
+        : trigger === "leader-down"
+          ? ours.some((one) => one.hp <= 0 && (!!hintsOf(one)?.leader || !!s.morale?.[one.id]?.leader))
+          : u.hp < u.maxHp / 4 && beside,
+  );
+}
 function moraleTurn(s: CombatDirectorState, u: Unit): boolean {
   const mine = s.morale?.[u.id];
   if (!mine || mine.score === undefined || side(u) !== "enemy") return false;
@@ -1305,6 +1331,8 @@ export function advanceCombatDirector(s: CombatDirectorState) {
       s.actorId = undefined;
       s.tasks.unshift(...legendaryTasks(s, u, "legendary"));
     } else if (task.kind === "act") {
+      // Its temperament turned by what has happened (combat AI T7), before it decides anything.
+      shiftTurn(s, u);
       // Losing heart comes first (combat AI E1): a broken opponent runs or gives up instead of fighting.
       if (moraleTurn(s, u)) continue;
       if (manual(s, u) && !s.skipParty) {

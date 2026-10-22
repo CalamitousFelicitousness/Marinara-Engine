@@ -330,6 +330,14 @@ try {
       "onMage",
       "the one on its charge",
     );
+    // A standing order, so a mindless one keeps it too (a Shield Guardian, a zombie).
+    const golem = scene({ guards: ["casters"] });
+    rulesetCombatant(golem.encounter, "guard")!.block!.mind = "mindless" as never;
+    assert.equal(
+      pickRulesetChoice(definition, golem.state, golem.encounter, "guard")?.choice.targetIds[0],
+      "onMage",
+      "a mindless guard too",
+    );
     // Nobody of the kind it keeps: it fights as it would.
     const alone = scene({ guards: ["healers"] });
     assert.equal(pickRulesetChoice(definition, alone.state, alone.encounter, "guard")?.choice.targetIds[0], "near");

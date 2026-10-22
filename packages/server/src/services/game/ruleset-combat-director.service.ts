@@ -3394,6 +3394,16 @@ function weighChoices(
     : rulesetCandidates(definition, encounter, actorId, false, unit?.tactics, orders);
   if (candidates.length === 0) return null;
   if (!unit || !actor) return { only: candidates[0]!.action };
+  // A mindless bodyguard weighs nothing but the blow, so its order narrows what it does instead: it
+  // strikes whoever is on its charge when it can, before going at the nearest.
+  if (unit.tactics!.mind === "mindless" && orders?.protectId && actor.side !== "party") {
+    const charge = rulesetCombatant(encounter, orders.protectId);
+    const onCharge = candidates.filter((candidate) => {
+      const target = candidate.targetId ? rulesetCombatant(encounter, candidate.targetId) : undefined;
+      return !!charge && !!target && target.side !== actor.side && rulesetGap(target, charge) <= 1;
+    });
+    if (onCharge.length > 0) candidates = onCharge;
+  }
   if (unit.tactics!.mind === "mindless")
     candidates = mindlessCandidates(encounter, actor, unit.tactics!, candidates, !!menu);
   weighRulesetTeam(definition, state, encounter, actor, candidates, orders);
@@ -3495,7 +3505,8 @@ function rulesetOrdersFor(
 /**
  * Whom a bodyguard (a `behavior.guards`, combat AI A5, 1.724) stands up for: the nearest friend still
  * standing of the kinds it names (its side's leader, a caster, one who heals others), as a companion
- * told to protect them. None for a mindless one, or once nobody of those kinds is left.
+ * told to protect them: a standing order, so a mindless one (a Shield Guardian, a zombie) keeps it
+ * too. None once nobody of those kinds is left.
  */
 function rulesetBodyguardOrders(
   definition: RulesetDefinition,
@@ -3503,7 +3514,7 @@ function rulesetBodyguardOrders(
   actor: RulesetCombatant,
 ): CombatOrders | undefined {
   const guards = rulesetCombatantBehavior(definition, actor)?.guards;
-  if (!guards || !rulesetPositionOf(actor) || rulesetCombatantMind(definition, actor) === "mindless") return undefined;
+  if (!guards || !rulesetPositionOf(actor)) return undefined;
   const actions = (one: RulesetCombatant) => one.actions.filter((action) => !action.whileHolds);
   const kept = (one: RulesetCombatant) =>
     guards.some((kind) =>

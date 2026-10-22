@@ -767,7 +767,12 @@ export function getPasswordlessPeers(
     ["internet", {}, direct],
     // An allowlist that admits public ranges is the open internet in practice.
     ["internet", { allowlisted: true }, direct && (getAllowlist()?.some(isBroadAllowlistEntry) ?? false)],
-    ["privateNetwork", { privateNetworkIp: true }, direct],
+    // A TRUSTED_AUTH_PROXY range lets every device in it skip the login; ranges are always private.
+    [
+      "privateNetwork",
+      { privateNetworkIp: true, trustedAuthProxy: getTrustedAuthProxies().some((entry) => entry.prefixLen < 128) },
+      direct,
+    ],
     ["allowlist", { allowlisted: true }, direct && config.ipAllowlistConfigured],
     ["tailscale", { tailscaleIp: true, privateNetworkIp: true, tailscaleLocalAddress: true }, direct && tailscaleHere],
     // No relayed Host: the client picks the Host header, and `localhost` passes host validation.

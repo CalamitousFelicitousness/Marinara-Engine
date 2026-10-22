@@ -1,6 +1,6 @@
 # Remote Access: Basic Auth and IP Allowlist
 
-This guide explains how to reach Marinara Engine from another device, such as your phone, a laptop, or a Docker container. It covers the two main options: Basic Auth and the IP allowlist. It also covers the private-network bypass, HTTPS, Admin Access, and the "save blocked" CSRF message. Almost every setting here lives in the server `.env` file, not in the app.
+This guide explains how to reach Marinara Engine from another device, such as your phone, a laptop, or a Docker container. It covers the main option, a login (Basic Auth). It also covers the IP allowlist, the private-network bypass, login proxies, HTTPS, Admin Access, and the "save blocked" CSRF message. Almost every setting here lives in the server `.env` file, not in the app.
 
 A quick word list used throughout this guide:
 
@@ -16,7 +16,7 @@ To protect your data, a fresh Marinara install refuses connections from other de
 2. Tailscale devices in your tailnet. Tailscale is a private network tool, and its addresses use the `100.64.0.0/10` range.
 3. Docker clients on the same host. Marinara recognizes the usual `172.16.0.0/12` bridge range and the container's exact default gateway, which also covers Docker Desktop and custom address pools.
 
-Everything else, such as your phone on the same Wi-Fi or a public-internet client, is blocked until you pick an option below. A blocked device that opens Marinara in a browser sees a dark setup page. Its title reads **This Marinara Engine install needs access control before remote devices can connect.** The page shows your device's own IP and two copy-paste `.env` snippets.
+Everything else, such as your phone on the same Wi-Fi or a public-internet client, is blocked until you set a login. A blocked device that opens Marinara in a browser sees a dark setup page. Its title reads **This Marinara Engine install needs a login before remote devices can connect.** The page has a form for the one-time setup code from the server log, so you can set the login from that device.
 
 If you do nothing and never set a password, Marinara stays locked to those three trusted sources. That is the safe default.
 
@@ -52,36 +52,44 @@ Default bind address by how you start Marinara:
 Read these in order and stop at the first one that matches you.
 
 1. You only connect over Tailscale, or only from Docker containers on the same host. You do not need to do anything. It already works.
-2. You want to reach Marinara from a phone, tablet, or laptop on your home Wi-Fi. Use Basic Auth (Option 1 below).
-3. You are exposing Marinara to the public internet. Use Basic Auth plus HTTPS.
-4. Your client devices have fixed IP addresses and you would rather not type a password. Use the IP allowlist (Option 2 below).
-5. Your whole network is trusted and you never want a password. Use the private-network bypass (Option 3 below). Read the warning there first.
-6. A login proxy on your network, such as tinyauth, Authelia, or Authentik, already asks every visitor to log in. Read [Login proxies (forward auth)](#login-proxies-forward-auth).
+2. You want to reach Marinara from a phone, tablet, or laptop on your home Wi-Fi. Set a login (Option 1 below).
+3. You are exposing Marinara to the public internet. Set a login and use HTTPS.
+4. A login proxy on your network, such as tinyauth, Authelia, or Authentik, already asks every visitor to log in. Read [Login proxies (forward auth)](#login-proxies-forward-auth).
 
-Basic Auth is the most flexible choice. It works from any IP, needs no per-device setup, and the browser remembers the login.
+A login is the most flexible choice. It works from any IP, needs no per-device setup, and each browser stays signed in.
 
-## Option 1: Basic Auth (recommended)
+## Option 1: Login (recommended)
 
-Basic Auth means the browser asks for a username and password before it lets you in. To turn it on, add two lines to `.env`:
+A login is a username and password that every remote device needs. You can set it in three ways:
+
+- **In Settings, on the computer that runs Marinara.** Open Marinara at `http://localhost:7860`, go to **Settings → Advanced → Access**, and set a username and password under **Remote login**.
+- **With the setup code, from any device.** While no login is set and the server listens beyond loopback, it prints a one-time setup code in its log. Find it in the terminal that runs Marinara, or with `docker logs <container>` in Docker. Then open Marinara on any device. The page that blocks the device has a form for the setup code, a username, and a password. The device that sets the login is signed in at once. Each code works once; a restart or a reset prints a new one. Use this way for Docker and NAS installs with no browser on the host.
+- **In `.env`.** Add two lines:
 
 ```env
 BASIC_AUTH_USER=alice
 BASIC_AUTH_PASS=correct-horse-battery-staple
 ```
 
-Pick a strong, unique password. Basic Auth sends your login with every request, so treat it like any other account password. You can generate a random one:
+A login in `.env` wins over a login set in the app, and you change it only in `.env`. Save `.env`; the change applies within a couple of seconds, with no restart.
+
+Pick a strong, unique password. The app asks for at least 10 characters. You can generate a random one:
 
 ```bash
 openssl rand -base64 24
 ```
 
-Save `.env`. The change applies within a couple of seconds, with no restart. Then follow these steps from the remote device.
+Then follow these steps from the remote device.
 
 1. Open Marinara in your browser using the server's address, for example `http://192.168.1.50:7860`.
-2. Enter the username and password you set when the browser prompts you.
-3. You should see the app load. The browser remembers the login for the rest of the session.
+2. Sign in on the sign-in page with your username and password.
+3. You should see the app load. The browser stays signed in for up to a year, until you sign it out. Scripts and API clients send the username and password with every request (Basic Auth).
 
-After 10 different wrong passwords within 15 minutes, Marinara refuses sign-ins from that address with **429 Too Many Requests** until the 15 minutes are up. A correct password before then clears the count. Visitors that a reverse proxy or tunnel on the host passes along share one count, and one of them signing in does not clear it. Restarting the server also clears it. A browser that has signed in before still gets in with the correct password, so other people's wrong passwords cannot lock you out of a device you already use.
+To sign in another device without typing the password, use a pairing code. On a device that is signed in, open **Settings → Advanced → Access** and choose **Add a device**. Then type the code on the sign-in page of the new device. The code works once, for a few minutes.
+
+If you forget the password, run `pnpm reset-login` on the computer that runs Marinara. It removes the login set in the app and signs out every browser, and the server prints a new setup code. In Docker, run `docker exec <container> rm -f /app/data/.remote-login.json /app/data/.remote-sessions.json` instead. A login in `.env` you change in `.env`.
+
+After 10 different wrong passwords or codes within 15 minutes, Marinara refuses sign-ins from that address with **429 Too Many Requests** until the 15 minutes are up. A correct password before then clears the count. Visitors that a reverse proxy or tunnel on the host passes along share one count, and one of them signing in does not clear it. Restarting the server also clears it. A browser that has signed in before still gets in with the correct password, so other people's wrong passwords cannot lock you out of a device you already use.
 
 By default, the browser prompt says **Marinara Engine**. You can change that text with `BASIC_AUTH_REALM`.
 
@@ -181,7 +189,7 @@ The server logs an `[auth-bypass]` warning the first time one of these bypasses 
 
 A reverse proxy or tunnel on the machine running Marinara, such as nginx, Caddy, Traefik, Cloudflare Tunnel, Tailscale Serve or Funnel, or ngrok, connects to Marinara from loopback. Marinara recognizes this from the forwarding headers the proxy adds: `Forwarded`, `X-Forwarded-For`, `X-Real-IP`, `X-Forwarded-Host`, `X-Forwarded-Proto`, `CF-Connecting-IP`, `True-Client-IP`, the Tailscale identity headers, or `Via`. Marinara also recognizes a request that arrives over HTTP/1.0, because browsers never use it but a default nginx `proxy_pass` does. Marinara also recognizes a request whose Host names another computer, such as a domain or a LAN address, even when the proxy adds no headers. It then treats each request as the remote visitor it is:
 
-- Basic Auth applies, so set `BASIC_AUTH_USER` and `BASIC_AUTH_PASS`. Without them, visitors see the setup page.
+- The login applies (see [Option 1](#option-1-login-recommended)). Without one, visitors see the setup page. Set the login in **Settings** on this computer or in `.env`.
 - `IP_ALLOWLIST` blocks the forwarded visitors, because the proxy hides their real addresses.
 - Privileged actions need the admin secret, and loopback-only features stay unavailable.
 
@@ -329,10 +337,10 @@ Say you connect Marinara to a local AI provider, for example one running on your
 To open Marinara from a phone or tablet on the same network:
 
 1. Make sure the server listens on all interfaces with `HOST=0.0.0.0` in `.env`.
-2. Pick an access option above. Basic Auth is the simplest for a phone on your home Wi-Fi.
-3. Find the server machine's local IP address (for example `192.168.1.50`).
+2. Set a login (Option 1 above). From the phone, you can do it on the page that blocks you, with the setup code from the server log.
+3. Find the server machine's local IP (for example `192.168.1.50`).
 4. On the phone, open `http://192.168.1.50:7860` in a browser. The default port is `7860`.
-5. If you set Basic Auth, enter your username and password when prompted.
+5. Sign in with your username and password.
 
 If the page does not load at all, the server may not be reachable. Check `HOST=0.0.0.0` and the `PORT` value. If you get a 403 instead, your device is reachable but not yet allowed in. Recheck your chosen option above.
 
@@ -340,11 +348,13 @@ If the page does not load at all, the server may not be reachable. Check `HOST=0
 
 Newer versions ask for a login when a visit comes through a reverse proxy, a tunnel, Tailscale Serve, or Tailscale Funnel. Older versions let these visits in without a password. If you now see a login page, a setup page, or a **403**, this is why.
 
+**Upgrade note:** if you use Tailscale Serve, or another proxy on the same computer, and never set a password, your other devices are locked out after the update. A proxy on the same computer usually talks to a server that listens on loopback only, so the server prints no setup code. Set the login on the computer that runs Marinara instead.
+
 To get back in:
 
 1. Open Marinara on the computer that runs it, at `http://localhost:7860` (or your own `PORT`). Local use needs no password. In Docker, this is true only while no login and no `IP_ALLOWLIST` are set; otherwise use your login.
-2. Open the `.env` file on that computer and set `BASIC_AUTH_USER` and `BASIC_AUTH_PASS`. If `IP_ALLOWLIST` is set, add your other device's address to it or remove it, because a device that is not on the list gets a **403** even with a login.
-3. Save the file. Marinara picks up the change in a few seconds. If it does not, or if you use Docker, restart Marinara. Then sign in from your other device with that user name and password.
+2. Go to **Settings → Advanced → Access** and set a username and password under **Remote login**. Or open the `.env` file on that computer and set `BASIC_AUTH_USER` and `BASIC_AUTH_PASS`. If `IP_ALLOWLIST` is set, add your other device's address to it or remove it, because a device that is not on the list gets a **403** even with a login.
+3. Sign in from your other device with that username and password.
 
 ## Search engines
 

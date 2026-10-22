@@ -143,6 +143,8 @@ When one of these changes, the log warns that a restart is required. Access-cont
 
 Access control decides who is allowed to reach a running server. This section is a quick reference. For a step-by-step walkthrough with examples, read [Remote Access: Basic Auth and IP Allowlist](REMOTE_ACCESS.md).
 
+The login can also be set without `.env`: in **Settings → Advanced → Access** on the computer that runs Marinara, or from any device with the one-time setup code that the server prints in its log while no login is set. That login is saved in `DATA_DIR/.remote-login.json`; `pnpm reset-login` removes it and signs out every browser. A login in `.env` wins over it. Login proxies use `TRUSTED_AUTH_PROXY`; see [Login proxies (forward auth)](REMOTE_ACCESS.md#login-proxies-forward-auth).
+
 A few terms used below:
 
 - Loopback means the same computer the server runs on. You reach it at `127.0.0.1` or `localhost`.

@@ -39,8 +39,8 @@ function closeOpenJsonContainers(raw: string): string | null {
  * Models often write dialogue in plain quotes inside a JSON string ("firstMessage": ""Hi," she says.",). When each
  * property sits on its own line, every quote between a string value's opening and closing quote belongs to the text,
  * so it is escaped. Only a `"key": "value"` line that isn't valid on its own is touched, so a valid line is never
- * merged into one value; a broken line holding several properties is split at each `, "key":` and each value is
- * escaped on its own.
+ * merged into one value; a broken line holding several properties is split at each `, "key": "` (the key quoted,
+ * single-quoted or bare, as models mix them) and each value is escaped on its own.
  */
 function escapeQuotesInsideLineValues(raw: string): string {
   const validProperties = (line: string) => {
@@ -53,7 +53,7 @@ function escapeQuotesInsideLineValues(raw: string): string {
   };
   const escapeValue = (property: string) =>
     property.replace(
-      /^(\s*"[^"\n]+"\s*:\s*")(.*)("\s*,?\s*)$/u,
+      /^(\s*(?:"[^"\n]+"|'[^'\n]+'|[A-Za-z_$][\w$]*)\s*:\s*")(.*)("\s*,?\s*)$/u,
       (_: string, open: string, value: string, close: string) => `${open}${value.replace(/(?<!\\)"/gu, '\\"')}${close}`,
     );
   return raw
@@ -62,7 +62,7 @@ function escapeQuotesInsideLineValues(raw: string): string {
       validProperties(line)
         ? line
         : line
-            .split(/,(?=\s*"[^"\n]+"\s*:)/u)
+            .split(/,(?=\s*(?:"[^"\n]+"\s*:|(?:'[^'\n]+'|[A-Za-z_$][\w$]*)\s*:\s*["']))/u)
             .map(escapeValue)
             .join(","),
     )

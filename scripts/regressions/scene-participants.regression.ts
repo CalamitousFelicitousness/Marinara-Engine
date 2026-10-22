@@ -167,6 +167,15 @@ try {
     name: "Scene: X",
     firstMessage: "Hi there",
   });
+  // Prose that jsonrepair would turn into a key sends the line to the dialogue escape, which splits at a bare key too.
+  assert.deepEqual(
+    tryParseJsonRecord('{\n  "name": "Scene: Rain", firstMessage: "You\'re late.", She turns. "Again."\n}'),
+    { name: "Scene: Rain", firstMessage: 'You\'re late.", She turns. "Again.' },
+  );
+  assert.deepEqual(
+    tryParseJsonRecord('{\n  "name": "Scene: Rain", \'firstMessage\': "You\'re late.", She turns. "Again."\n}'),
+    { name: "Scene: Rain", firstMessage: 'You\'re late.", She turns. "Again.' },
+  );
   assert.deepEqual(tryParseJsonRecord('{\n  "name": "Scene: X", "firstMessage": "Hi there"\n}'), {
     name: "Scene: X",
     firstMessage: "Hi there",

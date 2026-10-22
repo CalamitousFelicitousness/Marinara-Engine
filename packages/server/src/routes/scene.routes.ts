@@ -227,11 +227,15 @@ async function getRecentMessages(
 }
 
 /** Resolve a character's display name from its ID. */
-async function getCharacterName(chars: ReturnType<typeof createCharactersStorage>, charId: string): Promise<string> {
-  const row = await chars.getById(charId);
-  if (!row) return "Character";
+async function getCharacterName(
+  chars: ReturnType<typeof createCharactersStorage>,
+  charId: string,
+  { chatId, fallback = "Character" }: { chatId?: string; fallback?: string } = {},
+): Promise<string> {
+  const row = await chars.getById(charId, chatId);
+  if (!row) return fallback;
   const data = typeof row.data === "string" ? JSON.parse(row.data) : row.data;
-  return data.name ?? "Character";
+  return data.name ?? fallback;
 }
 
 /** List available background filenames. */
@@ -1175,7 +1179,11 @@ export async function sceneRoutes(app: FastifyInstance) {
           ? starredRoleplayProfile.settings.metadata?.groupChatMode
           : undefined,
       ) === "merged";
-    const openerName = openerId && !mergedGroupScene ? await getCharacterName(chars, openerId) : "";
+    // Read as the cast is (through the conversation's card), and a missing card gives no name rather than a stand-in.
+    const openerName =
+      openerId && !mergedGroupScene
+        ? await getCharacterName(chars, openerId, { chatId: origin.chat?.id, fallback: "" })
+        : "";
     const characterCtx = await buildCharacterContext(chars, characterIds, origin.chat?.id);
     const { personaName, personaCtx } = await buildPersonaContext(
       chars,

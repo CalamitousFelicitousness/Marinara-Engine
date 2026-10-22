@@ -301,6 +301,8 @@ Proposed initial tuning: normalize policy utility to a fixed scale; let novices 
 
 **Bodyguards (combat AI A5, Capability API 1.724).** An opponent whose `behavior.guards` names `leader`, `casters` or `healers` is given the companion `protect` order for the nearest standing friend of those kinds (`rulesetBodyguardOrders`): the same leash of three squares, focus on whoever is on its charge, and its idle walk back to them. A target preference `leader` now also counts a combatant the story marks leader (E2).
 
+**Leaders (combat AI A6).** In ruleset fights a leader (`block.leader` or the E2 `leader`) weighs side-wide help (ally options with two or more targets or an area) +0.6 focus in rounds 1-2 (`weighRulesetLeadership`); the rest of its side (opponents only; companions have the follow order) get +0.3 focus on its last target; and as the leader starts its turn, routed allies within six squares drop `routed` and the trigger that broke them comes off `moraleChecked`, so they check again on their next turn (`rallyRulesetSide`). Classic and Tactical morale have no rally yet.
+
 ## 8. Boss turns controlled by the GM
 
 ### Identity and responsibility

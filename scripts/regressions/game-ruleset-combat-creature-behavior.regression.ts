@@ -335,6 +335,63 @@ try {
     assert.equal(pickRulesetChoice(definition, alone.state, alone.encounter, "guard")?.choice.targetIds[0], "near");
   }
 
+  // ── A leader (combat AI A6): it opens with what helps its side, and steadies those running ──
+  {
+    const cry = {
+      id: "cry",
+      name: "Battle Cry",
+      budget: "action",
+      targets: "ally",
+      targetCount: 3,
+      range: { normal: 30 },
+      applies: [{ condition: "parrying", duration: { rounds: 10 } }],
+    };
+    const scene = (leader: boolean) =>
+      fight({
+        chief: {
+          side: "enemy",
+          block: block([smash, cry], leader ? { leader: true } : {}),
+          at: { x: 3, y: 3 },
+        },
+        left: { side: "enemy", block: block([smash]), at: { x: 3, y: 4 } },
+        right: { side: "enemy", block: block([smash]), at: { x: 4, y: 3 } },
+        hero: { side: "party", block: block([smash]), at: { x: 9, y: 3 } },
+      });
+    const led = scene(true);
+    assert.equal(
+      pickRulesetChoice(definition, led.state, led.encounter, "chief")?.option.id,
+      "cry",
+      "it rallies first",
+    );
+    const plain = scene(false);
+    assert.notEqual(pickRulesetChoice(definition, plain.state, plain.encounter, "chief")?.option.id, "cry");
+
+    const morale = parsed(
+      fiveE((doc) => {
+        doc.combat.morale = { check: { roll: "2d6" }, on: ["hurt"] };
+      }),
+    );
+    const { encounter, state } = fight({
+      chief: { side: "enemy", block: block([smash], { leader: true }), at: { x: 3, y: 3 } },
+      near: { side: "enemy", block: block([smash]), at: { x: 5, y: 5 } },
+      far: { side: "enemy", block: block([smash]), at: { x: 14, y: 9 } },
+      hero: { side: "party", block: block([smash]), at: { x: 14, y: 0 } },
+    });
+    for (const id of ["near", "far"]) {
+      const one = rulesetCombatant(encounter, id)!;
+      one.routed = true;
+      one.moraleChecked = ["hurt"];
+    }
+    state.rulesetFight = { encounter, events: [], eventSeq: 0, controllers: { hero: "manual" }, bosses: [] } as never;
+    syncRulesetCombatants(morale, state);
+    state.stage = rulesetDirectorStage(state);
+    assert.ok(commandRulesetCombatDirector(morale, state, { type: "continue" }).ok);
+    const after = state.rulesetFight!.encounter;
+    assert.equal(rulesetCombatant(after, "near")!.routed, undefined, "the one near it stops running");
+    assert.deepEqual(rulesetCombatant(after, "near")!.moraleChecked, [], "and checks again");
+    assert.equal(rulesetCombatant(after, "far")!.routed, true, "one too far off runs on");
+  }
+
   // ── Its temperament and role, unless the Game Master gave one ──
   {
     const scene = () =>
@@ -600,7 +657,7 @@ try {
   }
 
   console.log(
-    "Combat behavior: merged from the ruleset, the type and the creature; its temperament and role; casters, attackers and a pack's prey first; its opener once; an ambusher keeps still and springs; roles read off what it does; bodyguards stay by their charge; refused and gated at 1.710, 1.723 and 1.724.",
+    "Combat behavior: merged from the ruleset, the type and the creature; its temperament and role; casters, attackers and a pack's prey first; its opener once; an ambusher keeps still and springs; roles read off what it does; bodyguards stay by their charge; a leader rallies; refused and gated at 1.710, 1.723 and 1.724.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

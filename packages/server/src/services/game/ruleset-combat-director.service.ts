@@ -3409,7 +3409,71 @@ function weighChoices(
     weighRulesetMindFocus(definition, encounter, actor, unit.tactics!, candidates);
   if (!menu) weighRulesetReserve(definition, encounter, actor, unit.tactics!, candidates);
   if (!menu) weighRulesetPrepare(definition, encounter, actor, unit.tactics!, candidates);
+  if (!menu && unit.tactics!.mind !== "mindless") weighRulesetLeadership(state, encounter, actor, candidates);
   return { unit, actor, candidates, orders, behavior, opening };
+}
+
+/** Whether a combatant leads its side: its stat block's `leader`, or the story's (E2). */
+function rulesetLeads(one: RulesetCombatant): boolean {
+  return !!(one.leader || one.block?.leader);
+}
+
+/**
+ * A leader and its side (combat AI A6): on its first turns a leader opens with what helps several of
+ * its side at once (a Leadership, a Bless, a battle cry), and an opponent goes at whoever its own
+ * side's leader last went at, as companions told to follow do.
+ */
+function weighRulesetLeadership(
+  state: CombatDirectorState,
+  encounter: RulesetEncounterState,
+  actor: RulesetCombatant,
+  candidates: Array<CombatAiCandidate<RulesetCandidate>>,
+): void {
+  // For several of its side at once: more than one target, or a shape, on friends.
+  const sideWide = (option: RulesetCombatOption) =>
+    (option.targets.side === "ally" || option.targets.side === "any") && (option.targets.count >= 2 || !!option.area);
+  if (rulesetLeads(actor) && encounter.round <= 2) {
+    for (const candidate of candidates)
+      if ((candidate.support ?? 0) > 0 && sideWide(candidate.action.option))
+        candidate.focus = (candidate.focus ?? 0) + 0.6;
+    return;
+  }
+  if (actor.side === "party") return;
+  const leader = encounter.combatants.find(
+    (one) => one.side === actor.side && one.id !== actor.id && rulesetLeads(one) && rulesetCombatStanding(one),
+  );
+  if (!leader) return;
+  let marked: string | undefined;
+  for (const { event } of [...(fightOf(state)?.events ?? [])].reverse()) {
+    const by = "sourceId" in event ? event.sourceId : "actorId" in event ? event.actorId : undefined;
+    const at = "targetId" in event ? event.targetId : undefined;
+    if (by !== leader.id || typeof at !== "string") continue;
+    const target = rulesetCombatant(encounter, at);
+    if (target && target.side !== actor.side && rulesetCombatStanding(target)) {
+      marked = target.id;
+      break;
+    }
+  }
+  if (!marked) return;
+  for (const candidate of candidates)
+    if (candidate.targetId === marked && ((candidate.damage ?? 0) > 0 || (candidate.setup ?? 0) > 0))
+      candidate.focus = (candidate.focus ?? 0) + 0.3;
+}
+
+/**
+ * Its side rallied (combat AI A6): as a leader the Engine plays starts its turn, each of its side
+ * running from the fight within six squares of it (thirty feet in 5e) stops, and checks its nerve
+ * again as its own next turn starts, on what broke it. Only in a ruleset with `combat.morale`.
+ */
+function rallyRulesetSide(definition: RulesetDefinition, encounter: RulesetEncounterState, leader: RulesetCombatant) {
+  if (!definition.combat?.morale || !rulesetLeads(leader) || !rulesetCombatStanding(leader)) return;
+  if (!rulesetPositionOf(leader)) return;
+  for (const one of encounter.combatants) {
+    if (one.side !== leader.side || one.id === leader.id || !one.routed || !rulesetCombatStanding(one)) continue;
+    if (!rulesetPositionOf(one) || rulesetGap(leader, one) > 6) continue;
+    delete one.routed;
+    one.moraleChecked = (one.moraleChecked ?? []).slice(0, -1);
+  }
 }
 
 /**
@@ -4136,6 +4200,8 @@ function playRulesetTurn(
   const actor = rulesetCombatant(fight.encounter, actorId);
   if (actor && rulesetDrivenFrom(definition, fight.encounter, actor))
     walkTowardsTrouble(definition, state, fight, actorId);
+  // A leader steadies those of its side running near it (combat AI A6).
+  if (actor && !actor.routed) rallyRulesetSide(definition, fight.encounter, actor);
   // Broken (1.709): its whole turn is getting away.
   if (actor?.routed) {
     runForTheEdge(definition, state, fight, actorId);

@@ -2,11 +2,11 @@
 // Diagnostic: "a device tried to connect" banners
 // ──────────────────────────────────────────────
 // Reads /api/access/refusals, which answers only on this computer and in browsers
-// signed in with the login. Every other device gets 403 once and stops asking. One banner per refused device: the
+// signed in with the login. Every other device gets 403 once and stops asking; other errors retry. One banner per refused device: the
 // server keeps the same id while that device keeps trying, so a dismissal holds.
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { api } from "../../lib/api-client";
+import { api, ApiError } from "../../lib/api-client";
 import { executeStateNavigation } from "../../lib/state-navigation";
 import type { AppBannerCandidate } from "../ui/AppBanner";
 
@@ -18,7 +18,9 @@ export function useRefusedDeviceBanners(): AppBannerCandidate[] {
     queryKey: ["access-refusals"],
     queryFn: () => api.get<{ refusals: RefusedDevice[] }>("/access/refusals").then((body) => body.refusals),
     retry: false,
-    refetchInterval: (query) => (query.state.status === "error" ? false : 30_000),
+    // Only a 403 means "not for this browser"; a network or server error is retried on the next tick.
+    refetchInterval: (query) =>
+      query.state.error instanceof ApiError && query.state.error.status === 403 ? false : 30_000,
   });
 
   return (data ?? []).map((device) => ({

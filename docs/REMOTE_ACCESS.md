@@ -87,7 +87,7 @@ Then follow these steps from the remote device.
 
 To sign in another device without typing the password, use a pairing code. On a device that is signed in, open **Settings → Advanced → Access** and choose **Add a device**. Then type the code on the sign-in page of the new device. The code works once, for a few minutes. An expired code gets its own message; make a new one. Under **Signed-in devices**, you see each device with its sign-in method and the date it first signed in. You can sign out any device, including the one you use. You can also change or remove the password. For that, Marinara asks for the current password, unless you work on the computer that runs Marinara or have set `ADMIN_SECRET`.
 
-If you forget the password, run `pnpm reset-login` on the computer that runs Marinara. In Docker, run `docker exec <container> pnpm reset-login`. It removes the login set in the app and signs out every browser. If the server listens beyond loopback, it then prints a new setup code. Only if that command does not work, delete `.remote-login.json` and `.remote-sessions.json` from the data folder instead. With the default `/app/data`, run `docker exec <container> rm -f /app/data/.remote-login.json /app/data/.remote-sessions.json`; if you changed `DATA_DIR`, use that folder. A login in `.env` you change in `.env`.
+If you forget the password, run `pnpm reset-login` on the computer that runs Marinara. In Docker, run `docker exec <container> node scripts/reset-login.mjs`. It removes the login set in the app and signs out every browser. If the server listens beyond loopback, it then prints a new setup code. Only if that command does not work, delete `.remote-login.json` and `.remote-sessions.json` from the data folder instead. With the default `/app/data`, run `docker exec <container> rm -f /app/data/.remote-login.json /app/data/.remote-sessions.json`; if you changed `DATA_DIR`, use that folder. A login in `.env` you change in `.env`.
 
 **Headless server with no browser?** A native install on a headless server listens on loopback only and prints no setup code. On your own computer, run `ssh -L 7860:127.0.0.1:7860 user@server`. Then open `http://localhost:7860` there and use **Settings**.
 
@@ -120,7 +120,7 @@ How the IP allowlist behaves:
 - Any address not in the list is rejected with **403 Forbidden**.
 - Loopback is always allowed, so you cannot lock yourself out of local access. Visitors that a reverse proxy or tunnel on the same machine passes along are not loopback, so the allowlist blocks them. Use Basic Auth behind a proxy.
 - On Docker Desktop, OrbStack, and rootless Docker, every device reaches the container from the same gateway address, so the allowlist cannot tell them apart. Use Basic Auth there.
-- Direct Tailscale traffic also skips the list. Docker bridge/gateway traffic skips it only while no login or allowlist is set (see [Tailscale and Docker bypass](#tailscale-and-docker-bypass)).
+- Direct Tailscale traffic also skips the list. Docker bridge/gateway traffic skips it only while no login, allowlist or valid `TRUSTED_AUTH_PROXY` is set (see [Tailscale and Docker bypass](#tailscale-and-docker-bypass)).
 - Invalid entries are ignored and logged. They do not crash the server.
 - The allowlist stays strict even with Basic Auth on. Listed addresses skip the password prompt. Every other address is still blocked with **403 Forbidden** and never gets a login prompt.
 

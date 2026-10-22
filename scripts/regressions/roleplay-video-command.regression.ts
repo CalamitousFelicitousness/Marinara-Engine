@@ -195,6 +195,65 @@ try {
   // A new Illustrator picture is drawn by /illustrate first; the route says so instead of drawing it.
   await h.saveChatSettings(pair.id, { sceneVideoFirstFrame: "picture" });
   assert.deepEqual((await roleplayVideo(pair.id)).json(), { needsPicture: true });
+  // The client's picture-first sequence (/video, then a still-only Illustrator retry, then the Gallery's animate) pays
+  // for exactly one clip whatever Illustrator makes. Gallery Video runs the same sequence without a description.
+  const drawFirstFrame = async (description: string | undefined, stillOnly: boolean) => {
+    const response = await h.app.inject({
+      method: "POST",
+      url: "/api/generate/retry-agents",
+      payload: {
+        chatId: pair.id,
+        agentTypes: ["illustrator"],
+        streaming: false,
+        illustratorRetryTargets: ["illustration"],
+        ...(stillOnly ? { illustratorStillOnly: true } : {}),
+        ...(description
+          ? {
+              illustratorPromptReviewOverride: {
+                prompt: description,
+                subjectOnly: true,
+                resultData: { prompt: description, characters: [] },
+              },
+            }
+          : {}),
+      },
+    });
+    assert.equal(response.statusCode, 200, response.body);
+  };
+  replies.planner = {
+    prompt: "Bram by the bench",
+    generateVideo: true,
+    videoPrompt: "Bram ducks behind the bench",
+  };
+  for (const mode of ["pictures", "pictures_and_clips", "clips_only"]) {
+    await h.saveChatSettings(pair.id, { illustratorVideoMode: mode });
+    for (const description of ["Bram ducks", undefined]) {
+      const clipsBefore = requests.comfy.length;
+      const picturesBefore = requests.images;
+      assert.deepEqual((await roleplayVideo(pair.id, description)).json(), { needsPicture: true });
+      await drawFirstFrame(description, true);
+      assert.equal(requests.comfy.length, clipsBefore, `${mode}: the first frame makes no clip of its own`);
+      assert.equal(requests.images, picturesBefore + 1, `${mode}: the first frame is drawn`);
+      const animated = await h.app.inject({
+        method: "POST",
+        url: "/api/gallery/generate-scene-video",
+        payload: { chatId: pair.id },
+      });
+      assert.equal(animated.statusCode, 200, animated.body);
+      assert.equal(requests.comfy.length, clipsBefore + 1, `${mode}: one /video action, one clip`);
+    }
+  }
+  // Control: the same retry without still-only, as an ordinary Illustrate under Clips only, does make a clip.
+  const clipsBeforeControl = requests.comfy.length;
+  await drawFirstFrame("Bram ducks", false);
+  assert.equal(requests.comfy.length, clipsBeforeControl + 1, "an ordinary Clips only re-run animates its picture");
+  const badStillOnly = await h.app.inject({
+    method: "POST",
+    url: "/api/generate/retry-agents",
+    payload: { chatId: pair.id, agentTypes: ["illustrator"], streaming: false, illustratorStillOnly: "yes" },
+  });
+  assert.equal(badStillOnly.statusCode, 400, "illustratorStillOnly must be a boolean");
+  replies.planner = { prompt: "Aster by the rainy window" };
   // Not a Roleplay chat: refused.
   const convo = await h.chats.create({
     name: "Convo",

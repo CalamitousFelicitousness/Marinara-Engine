@@ -88,6 +88,8 @@ type RetryAgentsOptions = {
     negativePrompt?: string;
   };
   illustratorRetryTargets?: IllustratorRetryTarget[];
+  /** Draw the picture only, never a clip: the caller animates it. A run paused for prompt review returns false. */
+  illustratorStillOnly?: boolean;
   illustratorMessageRange?: [string, string];
   /** Force image generation for the retried custom image agents' results (snapshot button, #4682). */
   forceImageGeneration?: boolean;
@@ -3848,6 +3850,7 @@ export function useGenerate() {
               ? { illustratorPromptReviewOverride: options.illustratorPromptReviewOverride }
               : {}),
             ...(options?.illustratorRetryTargets ? { illustratorRetryTargets: options.illustratorRetryTargets } : {}),
+            ...(options?.illustratorStillOnly ? { illustratorStillOnly: true } : {}),
             ...(options?.illustratorMessageRange ? { illustratorMessageRange: options.illustratorMessageRange } : {}),
             ...(options?.forceImageGeneration ? { forceImageGeneration: true } : {}),
             musicPlayerEnabled: useUIStore.getState().musicPlayerEnabled,
@@ -4177,6 +4180,7 @@ export function useGenerate() {
                   detail: {
                     ...(event.data as Record<string, unknown>),
                     illustratorMessageRange: options?.illustratorMessageRange,
+                    ...(options?.illustratorStillOnly ? { illustratorStillOnly: true } : {}),
                   },
                 }),
               );
@@ -4265,7 +4269,8 @@ export function useGenerate() {
           void refreshVisibleGameStateAfterGeneration(chatId);
         }
       }
-      return !hasError;
+      // A still-only picture waiting for prompt review isn't drawn yet; the review's Continue animates it.
+      return !hasError && !(options?.illustratorStillOnly && imagePromptReviewRequested);
     },
     [
       addResult,

@@ -370,6 +370,8 @@ type IllustratorPromptReviewRequest = {
   chatId: string;
   illustratorMessageRange?: [string, string];
   subjectOnly?: boolean;
+  /** Roleplay /video's first frame: drawn without a clip, then animated once. */
+  illustratorStillOnly?: boolean;
   item: ImagePromptReviewItem;
   resultData: Record<string, unknown>;
 };
@@ -1011,9 +1013,11 @@ const LocalChatArea = memo(function LocalChatArea({
           ...(override.negativePrompt ? { negativePrompt: override.negativePrompt } : {}),
         },
         illustratorRetryTargets: [illustratorPromptReview.item.kind === "background" ? "background" : "illustration"],
+        ...(illustratorPromptReview.illustratorStillOnly ? { illustratorStillOnly: true } : {}),
       });
       setIllustratorPromptReviewSubmitting(false);
       if (success) setIllustratorPromptReview(null);
+      if (success && illustratorPromptReview.illustratorStillOnly) await animateLatestPictureRef.current?.();
     },
     [illustratorPromptReview, illustratorPromptReviewSubmitting, retryAgents],
   );
@@ -1485,6 +1489,8 @@ const LocalChatArea = memo(function LocalChatArea({
   const roleplaySceneVideoGeneratingRef = useRef(false);
   const conversationVideoGeneratingRef = useRef(false);
   const roleplayVideoGeneratingRef = useRef(false);
+  // Roleplay /video animates its first frame after a reviewed picture is drawn; the handler is declared further down.
+  const animateLatestPictureRef = useRef<(() => Promise<void>) | null>(null);
   const roleplayVideoReviewResolveRef = useRef<((overrides: ImagePromptOverride[] | null) => void) | null>(null);
   const conversationSelfieReviewResolveRef = useRef<((overrides: ImagePromptOverride[] | null) => void) | null>(null);
 
@@ -1652,6 +1658,10 @@ const LocalChatArea = memo(function LocalChatArea({
     ],
   );
 
+  useEffect(() => {
+    animateLatestPictureRef.current = () => handleGenerateRoleplaySceneVideo();
+  }, [handleGenerateRoleplaySceneVideo]);
+
   // Roleplay /video: the server makes a clip of the latest reply (or the description) from the avatar or no
   // picture. With a picture first frame, /illustrate draws it first and the Gallery animates the newest picture.
   const handleRoleplayVideo = useCallback(
@@ -1711,8 +1721,11 @@ const LocalChatArea = memo(function LocalChatArea({
           needsPicture = result?.needsPicture === true;
         }
         if (needsPicture) {
+          // Still only: the retry must not make a clip of its own (Clips only, or Pictures and clips choosing one),
+          // or this one action would pay for two.
           const drawn = await retryAgents(activeChatId, ["illustrator"], {
             illustratorRetryTargets: ["illustration"],
+            illustratorStillOnly: true,
             ...(description
               ? {
                   illustratorPromptReviewOverride: {

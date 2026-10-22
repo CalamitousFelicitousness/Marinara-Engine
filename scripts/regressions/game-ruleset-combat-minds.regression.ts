@@ -554,6 +554,87 @@ try {
     );
   }
 
+  // The fighter two steps off and the wizard far behind him (re-test 12): the captain steps in on the
+  // fighter for its whole Multiattack, never two daggers at the wizard from long range, whatever its
+  // temperament.
+  {
+    const scimitar = {
+      id: "scimitar",
+      name: "Scimitar",
+      budget: "action",
+      toHit: 5,
+      reach: 1,
+      damage: { count: 1, sides: 6, flat: 3 },
+    };
+    const dagger = {
+      id: "dagger",
+      name: "Dagger",
+      budget: "action",
+      toHit: 5,
+      reach: 1,
+      range: { normal: 20, long: 60 },
+      damage: { count: 1, sides: 4, flat: 3 },
+    };
+    const melee = {
+      id: "melee",
+      name: "Multiattack (melee)",
+      budget: "action",
+      sequence: [
+        { action: "scimitar", times: 2 },
+        { action: "dagger", times: 1 },
+      ],
+    };
+    const ranged = {
+      id: "ranged",
+      name: "Multiattack (ranged)",
+      budget: "action",
+      sequence: [{ action: "dagger", times: 2 }],
+    };
+    const target = (gap: number, armour: number, temperament: CombatAiHints["temperament"]) => {
+      const blocks = {
+        captain: {
+          side: "enemy" as const,
+          block: block({ type: "humanoid", mind: "tactical", health: 65, actions: [scimitar, dagger, melee, ranged] }),
+        },
+        brom: { side: "party" as const, block: block({ health: 70, defense: armour }) },
+        elara: {
+          side: "party" as const,
+          block: block({ health: 40, defense: 12, actions: [{ ...claw, components: ["verbal"] }] }),
+        },
+      };
+      const placements = { captain: { x: 4, y: 3 }, brom: { x: 6, y: 3 }, elara: { x: 4 + gap, y: 3 } };
+      const encounter: RulesetEncounterState = createRulesetEncounter({
+        definition,
+        seed: 1,
+        roller: () => 10,
+        combatants: Object.entries(blocks).map(([id, one]) => ({ id, name: id, side: one.side, block: one.block })),
+        board: {
+          grid: { width: 20, height: 8, tiles: Array.from({ length: 8 }, () => Array(20).fill("plains")) },
+          placements,
+        } as never,
+      });
+      encounter.order = ["captain", "brom", "elara"];
+      encounter.turn = 0;
+      encounter.round = 2;
+      const state = createCombatDirector({
+        id: "fight",
+        anchor: "anchor",
+        style: "ruleset",
+        party: [unit("brom", "player"), unit("elara", "player")],
+        enemies: [unit("captain", "enemy", { ...master, temperament })],
+        gm: false,
+        difficulty: "normal",
+        seed: 3,
+      } as never);
+      state.enemies[0]!.tactics!.adjective = temperament!;
+      return pickRulesetChoice(definition, state, encounter, "captain")?.targetId;
+    };
+    for (const temperament of ["disciplined", "opportunistic", "cautious", "reckless"] as const) {
+      assert.equal(target(10, 18, temperament), "brom", `${temperament}: no throw at long range`);
+      assert.equal(target(11, 18, temperament), "brom", `${temperament}: nor further`);
+    }
+  }
+
   // A tactician keeps the slot its Counterspell needs (P8): with one 3rd-level slot left it casts its
   // cantrip, and spends the slot freely with another left or as a creature that thinks less.
   {

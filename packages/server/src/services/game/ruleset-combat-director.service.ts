@@ -2453,8 +2453,10 @@ function rulesetCandidatesFrom(
           ];
         // Weighed against what its side stands up with as well as what the target has: a scratch on
         // the frail one is still a scratch, and a full Multiattack on the one beside it is worth more
-        // than a dagger thrown far at disadvantage. Finishing one off is weighed by its own health.
-        const weighed = Math.max(pool, 0.75 * rulesetSideHealthMean(definition, combat, encounter, target.side));
+        // than a dagger thrown far at disadvantage. Nobody counts as frailer than its side's mean, so
+        // two daggers thrown at long range at the wizard do not beat the Multiattack on the fighter
+        // two steps away (re-test 12). Finishing one off is weighed by its own health.
+        const weighed = Math.max(pool, rulesetSideHealthMean(definition, combat, encounter, target.side));
         candidate.damage = Math.min(2, (average / weighed) * (1 + others.length + again)) * chance;
         candidate.action.expected = average * chance * (1 + others.length + again);
         if (average >= pool) candidate.finish = chance;
@@ -4078,9 +4080,11 @@ function weighRulesetMindFocus(
     if (best > 0) focus *= Math.min(1, worth(candidate) / best);
     // Nor a blow that does much less harm than its hardest, whoever takes it: two daggers thrown at
     // disadvantage at a wizard do some six tenths of a Multiattack on the knight beside it, and win
-    // nothing by its liking (re-test 10). Full from nine tenths, none below seven.
+    // nothing by its liking (re-test 10). Full only for its hardest, none below 85 hundredths: two
+    // daggers worth nine tenths of a Multiattack on the fighter two steps off no longer walk it away
+    // from him (re-test 12).
     const expected = candidate.action.expected;
-    if (expected !== undefined && hardest > 0) focus *= Math.max(0, Math.min(1, (expected / hardest - 0.7) / 0.2));
+    if (expected !== undefined && hardest > 0) focus *= Math.max(0, Math.min(1, (expected / hardest - 0.85) / 0.15));
     if (focus > 0) candidate.focus = (candidate.focus ?? 0) + focus;
   }
 }
@@ -4496,10 +4500,12 @@ function playRulesetTurn(
     // anywhere it can get to. On a board that means it is out of reach, and the action is worth
     // more as a sprint towards the fight than as a dodge nobody is swinging at; the standard is
     // what is left once there is nowhere better to stand.
+    // Never once it has shot from afar this turn (re-test 12): it keeps the range it shot from.
     if (
       picked.option.kind === "standard" &&
       !picked.defensive &&
       !stays &&
+      !shotFromAfar &&
       walkTowardsTrouble(definition, state, fight, actorId, leash)
     )
       continue;

@@ -220,6 +220,10 @@ try {
     "ordinary edits preserve the user's existing Decisions",
   );
   assert.ok(knowledge.includes("History placement costs prompt caching, Decisions or not"), "depth placement is gated");
+  assert.ok(
+    knowledge.includes("(on a small output limit, the first entries, then one `lorebook.addEntry` per reply)"),
+    "the permanent lorebook line carries the small-limit split, so it does not re-impose one create",
+  );
   assert.ok(knowledge.includes("(`cachePlacement`)"), "the placement record is named");
   assert.ok(
     knowledge.includes("SAME response with `awaitingAuthorization: true`"),

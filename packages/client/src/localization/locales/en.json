@@ -3435,6 +3435,8 @@
   "home.browser.bookmarksCompact": "Open bookmarks",
   "home.browser.bookmarksLabel": "Home bookmarks",
   "home.browser.chromeSettings": "Browser chrome",
+  "home.browser.enterFullscreen": "Enter fullscreen",
+  "home.browser.exitFullscreen": "Exit fullscreen",
   "home.browser.faqTab": "FAQ",
   "home.browser.faqWindowTitle": "Professor Mari's FAQ",
   "home.browser.forward": "Forward",

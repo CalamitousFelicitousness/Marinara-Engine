@@ -757,7 +757,7 @@ function TopbarMoreMenu({
         backgroundColor: "var(--background)",
         backgroundImage: "linear-gradient(var(--card), var(--card))",
       }}
-      className="mari-chrome-token-scope fixed right-[max(0.5rem,env(safe-area-inset-right))] z-[9000] w-[min(16.5rem,calc(100vw-1rem))] overflow-y-auto overscroll-contain rounded-xl border border-[var(--marinara-chat-chrome-panel-border)] p-1.5 text-[var(--foreground)] shadow-2xl"
+      className="mari-chrome-token-scope fixed right-[max(0.5rem,var(--mari-safe-area-inset-right))] z-[9000] w-[min(16.5rem,calc(100vw-1rem))] overflow-y-auto overscroll-contain rounded-xl border border-[var(--marinara-chat-chrome-panel-border)] p-1.5 text-[var(--foreground)] shadow-2xl"
     >
       {items.map((item) => (
         <button

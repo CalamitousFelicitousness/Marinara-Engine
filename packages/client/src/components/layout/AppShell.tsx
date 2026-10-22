@@ -134,6 +134,8 @@ const ROLEPLAY_CHAT_COLUMN_SELECTOR = '[data-roleplay-chat-column="true"]';
 const TOP_BAR_SELECTOR = '[data-component="TopBar"]';
 // Below the TopBar, whose height a sideways phone shortens (--mari-topbar-height in globals.css).
 const MOBILE_SHELL_PANEL_TOP_CLASS = "top-[calc(env(safe-area-inset-top)_+_var(--mari-topbar-height,3rem))]";
+// Phone sheets fill the width the shell has: a phone turned sideways keeps its camera insets clear.
+const MOBILE_SHELL_PANEL_X_CLASS = "left-(--mari-safe-area-inset-left) right-(--mari-safe-area-inset-right)";
 const MOBILE_SHELL_PANEL_BOTTOM_PADDING_CLASS =
   "pb-[min(max(var(--mari-safe-area-inset-bottom,env(safe-area-inset-bottom)),0.5rem),3rem)]";
 const CENTER_COMPACT_WIDTH = 768;
@@ -1335,7 +1337,11 @@ export function AppShell({
       {/* Mobile navigation backdrop */}
       {mobileNavigationPanel && (
         <div
-          className={cn("fixed inset-x-0 bottom-0 z-[45] bg-black/50 backdrop-blur-sm", MOBILE_SHELL_PANEL_TOP_CLASS)}
+          className={cn(
+            "fixed bottom-0 z-[45] bg-black/50 backdrop-blur-sm",
+            MOBILE_SHELL_PANEL_TOP_CLASS,
+            MOBILE_SHELL_PANEL_X_CLASS,
+          )}
           onClick={() => {
             setSidebarOpen(false);
             closeRightPanel();
@@ -1459,8 +1465,9 @@ export function AppShell({
                   "mari-app-background-paint flex min-h-0 flex-1 flex-col overflow-hidden",
                   shellOverlayMode &&
                     cn(
-                      "mari-mobile-detail-sheet !fixed bottom-0 right-0 z-50 !w-full bg-[var(--background)]/95 shadow-2xl backdrop-blur-xl",
+                      "mari-mobile-detail-sheet !fixed bottom-0 z-50 bg-[var(--background)]/95 shadow-2xl backdrop-blur-xl",
                       MOBILE_SHELL_PANEL_TOP_CLASS,
+                      MOBILE_SHELL_PANEL_X_CLASS,
                       MOBILE_SHELL_PANEL_BOTTOM_PADDING_CLASS,
                     ),
                 )}
@@ -1493,7 +1500,11 @@ export function AppShell({
       {/* Overlay tracker panel backdrop */}
       {trackerPanelVisible && shellOverlayMode && (
         <div
-          className={cn("fixed inset-x-0 bottom-0 z-[45] bg-black/50 backdrop-blur-sm", MOBILE_SHELL_PANEL_TOP_CLASS)}
+          className={cn(
+            "fixed bottom-0 z-[45] bg-black/50 backdrop-blur-sm",
+            MOBILE_SHELL_PANEL_TOP_CLASS,
+            MOBILE_SHELL_PANEL_X_CLASS,
+          )}
           onClick={closeTrackerPanel}
         />
       )}
@@ -1513,10 +1524,10 @@ export function AppShell({
               data-component="TrackerDataSidebarMobile"
               aria-label={localizeUi("ui.layout.appshell.trackerDataPanel")}
               className={cn(
-                "mari-tracker-panel !fixed bottom-0 z-50 w-screen max-w-none overflow-hidden bg-zinc-950/95 shadow-2xl outline-none ring-1 ring-[var(--marinara-app-accent-solid)] backdrop-blur-xl",
+                "mari-tracker-panel !fixed bottom-0 z-50 max-w-none overflow-hidden bg-zinc-950/95 shadow-2xl outline-none ring-1 ring-[var(--marinara-app-accent-solid)] backdrop-blur-xl",
                 MOBILE_SHELL_PANEL_TOP_CLASS,
                 MOBILE_SHELL_PANEL_BOTTOM_PADDING_CLASS,
-                trackerPanelSide === "left" ? "left-0" : "right-0",
+                MOBILE_SHELL_PANEL_X_CLASS,
               )}
               style={trackerPanelBackgroundStyle}
             >
@@ -1546,14 +1557,20 @@ export function AppShell({
                   : "ui.layout.appshell.settingsAndToolsPanel",
               )}
               className={cn(
-                "!fixed right-0 bottom-0 z-50 !w-full overflow-hidden shadow-2xl backdrop-blur-xl",
+                "!fixed bottom-0 z-50 overflow-hidden shadow-2xl backdrop-blur-xl",
                 MOBILE_SHELL_PANEL_TOP_CLASS,
+                MOBILE_SHELL_PANEL_X_CLASS,
                 MOBILE_SHELL_PANEL_BOTTOM_PADDING_CLASS,
                 mobileNavigationPanel === "chats"
                   ? "mari-sidebar bg-[var(--background)]/95"
                   : "mari-right-panel bg-[var(--background)]/80",
               )}
-              style={{ "--mari-right-panel-width": "100vw" } as CSSProperties}
+              style={
+                {
+                  "--mari-right-panel-width":
+                    "calc(100vw - var(--mari-safe-area-inset-left) - var(--mari-safe-area-inset-right))",
+                } as CSSProperties
+              }
             >
               {mobileNavigationPanel === "chats" ? (
                 <ChatSidebar />

@@ -63,6 +63,7 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { createHmac, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 import {
+  announceSetupCode,
   consumeLoginSetupCode,
   createSession,
   deleteOtherSessions,
@@ -721,12 +722,12 @@ export async function basicAuthHook(request: FastifyRequest, reply: FastifyReply
     if (!lockdownAnnounced) {
       if (proxied) {
         logger.warn(
-          "[basic-auth] Refused a connection forwarded by a reverse proxy or tunnel on this computer. No auth configured; set BASIC_AUTH_USER/BASIC_AUTH_PASS. Other options: %s",
+          "[basic-auth] Refused a connection forwarded by a reverse proxy or tunnel on this computer. No login is set; set one in Settings on this computer, or BASIC_AUTH_USER/BASIC_AUTH_PASS in .env. Other options: %s",
           REMOTE_ACCESS_DOCS_URL,
         );
       } else {
         logger.warn(
-          "[basic-auth] Refused non-loopback connection from %s. No auth configured; set BASIC_AUTH_USER/BASIC_AUTH_PASS or add the IP to IP_ALLOWLIST. Other options: %s",
+          "[basic-auth] Refused non-loopback connection from %s. No login is set; type the setup code from this log on that device, set one in Settings on this computer, or set BASIC_AUTH_USER/BASIC_AUTH_PASS in .env. You can also add the IP to IP_ALLOWLIST. Other options: %s",
           ip,
           REMOTE_ACCESS_DOCS_URL,
         );
@@ -1005,7 +1006,14 @@ export async function loginRoutes(app: FastifyInstance) {
         return fail(403, "This setup code does not work. Copy the newest one from the server log.");
       }
       consumeLoginSetupCode();
-      await setStoredLogin(user, password);
+      try {
+        await setStoredLogin(user, password);
+      } catch (err) {
+        // The used code is gone, so print a new one; otherwise only a restart could bring one back.
+        logger.error(err, "[login] Could not save the login from the setup code");
+        announceSetupCode();
+        return fail(500, "Marinara could not save the login. Use the new setup code from the server log.");
+      }
       logger.info('[login] Remote login set for user "%s" with the setup code', user);
       rememberLoginInBrowser(request, reply);
       return reply.redirect("/", 303);

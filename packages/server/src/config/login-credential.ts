@@ -194,7 +194,7 @@ export function enableLoginSetupCode(): void {
   setInterval(getLoginConfig, RECHECK_MS).unref();
 }
 
-function announceSetupCode() {
+export function announceSetupCode() {
   setupCode = randomBytes(12).toString("hex");
   logger.warn(
     "[login] No remote login is set. To set one from a device that is not this computer, use this one-time setup code: %s",

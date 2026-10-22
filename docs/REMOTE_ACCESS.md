@@ -87,7 +87,7 @@ Then follow these steps from the remote device.
 
 To sign in another device without typing the password, use a pairing code. On a device that is signed in, open **Settings → Advanced → Access** and choose **Add a device**. Then type the code on the sign-in page of the new device. The code works once, for a few minutes.
 
-If you forget the password, run `pnpm reset-login` on the computer that runs Marinara. It removes the login set in the app and signs out every browser, and the server prints a new setup code. In Docker, run `docker exec <container> rm -f /app/data/.remote-login.json /app/data/.remote-sessions.json` instead. A login in `.env` you change in `.env`.
+If you forget the password, run `pnpm reset-login` on the computer that runs Marinara. It removes the login set in the app and signs out every browser. If the server listens beyond loopback, it then prints a new setup code. In Docker, run `docker exec <container> rm -f /app/data/.remote-login.json /app/data/.remote-sessions.json` instead. A login in `.env` you change in `.env`.
 
 After 10 different wrong passwords or codes within 15 minutes, Marinara refuses sign-ins from that address with **429 Too Many Requests** until the 15 minutes are up. A correct password before then clears the count. Visitors that a reverse proxy or tunnel on the host passes along share one count, and one of them signing in does not clear it. Restarting the server also clears it. A browser that has signed in before still gets in with the correct password, so other people's wrong passwords cannot lock you out of a device you already use.
 

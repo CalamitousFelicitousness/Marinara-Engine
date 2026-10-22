@@ -428,25 +428,29 @@ export async function generateImage(
     // ponytail: image work keys on the endpoint URL while text work keys on the connection
     // id, so the two do not hold each other off on a connection used for both. Unify the
     // key if that overlap ever shows up in practice.
-    // The provider lane comes first and the global permit second, so requests waiting
-    // their turn at one account never hold permits other providers could use.
+    // The provider lane comes first, then the shared GPU turn, then the global permit and the
+    // connection admission, so requests waiting their turn at one account or on a busy shared
+    // GPU never hold permits or admission other providers could use. The turn sits outside the
+    // request deadline, so waiting for it costs no render time.
     const admissionKey = imageAdmissionKey(normalizedBaseUrl, resolvedSource, request.imageEndpointId);
     const primaryResult = await runInMediaProviderLane({
       laneKey: mediaProviderLaneKey(admissionKey, apiKey),
       gapMs: mediaProviderLaneGapMs(resolvedSource),
       signal: request.signal,
       task: () =>
-        runMediaGenerationRequest({
-          connectionKey: `image:${baseUrl || source}`,
-          queue: false,
-          signal: request.signal,
-          priority: request.admissionMode?.kind === "background" ? "background" : "foreground",
-          // The shared GPU turn sits outside the request deadline, so waiting for it costs no render time.
-          task: () =>
-            withConnectionAdmission(admissionKey, primaryMode, () =>
-              runSharedGpuTurn("media", normalizedBaseUrl, physicalRequest, request.signal),
-            ),
-        }),
+        runSharedGpuTurn(
+          "media",
+          normalizedBaseUrl,
+          () =>
+            runMediaGenerationRequest({
+              connectionKey: `image:${baseUrl || source}`,
+              queue: false,
+              signal: request.signal,
+              priority: request.admissionMode?.kind === "background" ? "background" : "foreground",
+              task: () => withConnectionAdmission(admissionKey, primaryMode, physicalRequest),
+            }),
+          request.signal,
+        ),
     });
     outcome = "completed";
     return flattenedPrompt

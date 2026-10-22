@@ -8,6 +8,7 @@
 // queue move on, nested calls run straight through, a stream holds its turn until it closes,
 // throws release the turn, and unlisted hosts are untouched.
 import assert from "node:assert/strict";
+import { createServer } from "node:http";
 
 process.env.MARINARA_SHARED_GPU_HOSTS = "Phoenix:8081, localhost:9000";
 const { runSharedGpuTurn, sharedGpuHostFor, withSharedGpuTurnProvider, inspectSharedGpuTurnsForTests } =
@@ -185,6 +186,112 @@ async function main() {
   await stalledText;
   delete process.env.MARINARA_MEDIA_GENERATION_WAIT_TIMEOUT_MS;
   idle();
+
+  // ── 9) Through the real image and video entry points: a media request waiting for its turn holds no media permit
+  // and no connection admission, so an unrelated backend still renders, a timeout names the shared GPU, and a
+  // cancelled wait leaves nothing behind ──
+  const { generateImage, imageAdmissionKey } =
+    await import("../../packages/server/src/services/image/image-generation.js");
+  const { generateVideo } = await import("../../packages/server/src/services/video/video-generation.js");
+  const { inspectMediaGenerationConcurrencyForTests } =
+    await import("../../packages/server/src/services/image/image-generation-queue.js");
+  const { tryBackgroundConnection } =
+    await import("../../packages/server/src/services/generation/connection-admission.js");
+  const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+  const physicalCalls = { gpu: 0, other: 0 };
+  const startImageServer = async (name: keyof typeof physicalCalls) => {
+    const server = createServer((request, response) => {
+      request.resume();
+      physicalCalls[name] += 1;
+      response.setHeader("content-type", "application/json");
+      response.end(JSON.stringify({ data: [{ b64_json: png }] }));
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    assert.ok(address && typeof address === "object");
+    return { server, base: `http://127.0.0.1:${address.port}/v1` };
+  };
+  const gpuServer = await startImageServer("gpu");
+  const otherServer = await startImageServer("other");
+  const previousHosts = process.env.MARINARA_SHARED_GPU_HOSTS;
+  process.env.MARINARA_SHARED_GPU_HOSTS = `${previousHosts}, ${new URL(gpuServer.base).host}`;
+  process.env.MARINARA_MEDIA_GENERATION_CONCURRENCY = "1";
+  process.env.MARINARA_MEDIA_GENERATION_WAIT_TIMEOUT_MS = "600";
+  const draw = (base: string, signal?: AbortSignal) =>
+    generateImage("openai", base, "fixture-key", "openai", {
+      prompt: "a moonlit laboratory",
+      model: "local-flux",
+      allowLocalUrls: true,
+      signal,
+    });
+  const noPermitsHeld = (why: string) =>
+    assert.deepEqual(
+      inspectMediaGenerationConcurrencyForTests(),
+      { activeGlobalPermits: 0, queuedWaiters: 0, foregroundWaiters: 0, backgroundWaiters: 0 },
+      why,
+    );
+  const keepAliveGpu = setTimeout(() => undefined, 10_000);
+  try {
+    const stalledGpuText = deferred();
+    const gpuText = runSharedGpuTurn("text", gpuServer.base, () => stalledGpuText.promise);
+    await tick();
+    // Checked from the start, so its rejection is never unobserved.
+    const waitingDraw = assert.rejects(
+      draw(gpuServer.base),
+      /seconds for the shared GPU \(MARINARA_SHARED_GPU_HOSTS\)/u,
+      "the wait that timed out names the shared GPU",
+    );
+    await tick();
+    assert.equal(inspectSharedGpuTurnsForTests()[new URL(gpuServer.base).host]?.waiting, 1, "the picture waits");
+    noPermitsHeld("waiting for the shared GPU holds no media permit");
+    const probe = tryBackgroundConnection(imageAdmissionKey(gpuServer.base, "openai"), new Date());
+    assert.equal(probe.acquired, true, "waiting for the shared GPU holds no connection admission");
+    if (probe.acquired) probe.release();
+    // With one permit, an unlisted backend renders at once instead of reporting a saturated media queue.
+    assert.equal((await draw(otherServer.base)).base64, png, "an unrelated backend still renders");
+    assert.equal(physicalCalls.other, 1);
+    await waitingDraw;
+    assert.equal(physicalCalls.gpu, 0, "nothing reached the shared GPU while text held it");
+    noPermitsHeld("a timed-out wait leaves no permit behind");
+
+    // A cancelled wait, for a picture or a clip, leaves no turn, permit or admission behind.
+    const cancelDraw = new AbortController();
+    const cancelledDraw = assert.rejects(draw(gpuServer.base, cancelDraw.signal));
+    const cancelClip = new AbortController();
+    const cancelledClip = assert.rejects(
+      generateVideo("comfyui", gpuServer.base.replace(/\/v1$/u, ""), "", "comfyui", {
+        prompt: "Aster waves",
+        durationSeconds: 4,
+        aspectRatio: "16:9",
+        signal: cancelClip.signal,
+      }),
+    );
+    await tick();
+    assert.equal(inspectSharedGpuTurnsForTests()[new URL(gpuServer.base).host]?.waiting, 2, "picture and clip wait");
+    noPermitsHeld("a clip waiting for the shared GPU holds no media permit either");
+    cancelDraw.abort();
+    cancelClip.abort();
+    await Promise.all([cancelledDraw, cancelledClip]);
+    noPermitsHeld("cancelled waits leave no permit");
+    assert.equal(inspectSharedGpuTurnsForTests()[new URL(gpuServer.base).host]?.waiting ?? 0, 0, "no waiter left");
+
+    // Once text lets go, the picture takes its turn, then its permit, and renders.
+    stalledGpuText.resolve();
+    await gpuText;
+    assert.equal((await draw(gpuServer.base)).base64, png);
+    assert.equal(physicalCalls.gpu, 1);
+    noPermitsHeld("a finished picture returns its permit");
+    idle();
+  } finally {
+    clearTimeout(keepAliveGpu);
+    process.env.MARINARA_SHARED_GPU_HOSTS = previousHosts;
+    delete process.env.MARINARA_MEDIA_GENERATION_CONCURRENCY;
+    delete process.env.MARINARA_MEDIA_GENERATION_WAIT_TIMEOUT_MS;
+    for (const { server } of [gpuServer, otherServer]) {
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  }
 
   console.log("shared-gpu-turns regression passed");
 }

@@ -174,6 +174,7 @@ function SignedInDevices() {
                   type="button"
                   onClick={() => end.mutate(session.id)}
                   disabled={end.isPending}
+                  aria-label={t("settings.accessStatus.devices.signOutNamed", { device: session.label })}
                   className={SETTINGS_BUTTON_CLASS}
                 >
                   {t("settings.accessStatus.devices.signOut")}

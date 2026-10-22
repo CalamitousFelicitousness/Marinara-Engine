@@ -333,6 +333,32 @@ try {
   const live = (await pair("127.0.0.1")).json() as { code: string };
   assert.equal((await signIn(pairGuesser, { code: live.code })).statusCode, 429, "wrong codes lock out like passwords");
   assert.equal((await signIn("203.0.113.64", { code: live.code })).statusCode, 303, "the lockout did not use it up");
+  // A good code clears this browser's wrong-guess count, like a good password does.
+  const typoGuesser = "203.0.113.69";
+  for (let index = 0; index < BASIC_AUTH_FAILURE_LIMIT - 1; index += 1) {
+    await signIn(typoGuesser, { code: `ABCD-EG${String(index).padStart(2, "2")}` });
+  }
+  const goodCode = (await pair("127.0.0.1")).json() as { code: string };
+  assert.equal((await signIn(typoGuesser, { code: goodCode.code })).statusCode, 303);
+  for (let index = 0; index < BASIC_AUTH_FAILURE_LIMIT - 1; index += 1) {
+    const response = await signIn(typoGuesser, { code: `ABCD-EH${String(index).padStart(2, "2")}` });
+    assert.equal(response.statusCode, 401, `typo ${index + 1} after a good code is still answered`);
+  }
+  // Signing out a device ends the codes it made, and signing out every other device ends all open codes,
+  // so a signed-out device cannot come back with a code it made before.
+  const leaving = cookieOf(await signIn("203.0.113.66", { ...first }));
+  const leavingCode = (await pair("203.0.113.66", { cookie: leaving })).json() as { code: string };
+  await app.inject({
+    method: "POST",
+    url: "/logout",
+    remoteAddress: "203.0.113.66",
+    headers: { ...HOST, cookie: leaving },
+  });
+  assert.equal((await signIn("203.0.113.67", { code: leavingCode.code })).statusCode, 401, "logout ends its codes");
+  const rogue = cookieOf(await signIn("203.0.113.68", { ...first }));
+  const rogueCode = (await pair("203.0.113.68", { cookie: rogue })).json() as { code: string };
+  assert.equal((await local("DELETE", "/api/access/sessions")).statusCode, 204);
+  assert.equal((await signIn("203.0.113.67", { code: rogueCode.code })).statusCode, 401, "sign-out-others ends codes");
   const stale = (await pair("127.0.0.1")).json() as { code: string };
 
   // ── A new password ends every session and the old Basic header ──
@@ -436,6 +462,9 @@ try {
   await get("/api/chats", "203.0.113.40", { "user-agent": IPHONE });
   process.env.IP_ALLOWLIST = "198.51.100.0/24";
   assert.equal((await get("/api/chats", "203.0.113.41")).statusCode, 403);
+  const scannerId = ((await local("GET", "/api/access/refusals")).json().refusals as Array<{ id: string }>)[0]?.id;
+  // A new address with the same label merges, so one dismissal holds against an internet scan.
+  assert.equal((await get("/api/chats", "203.0.113.42")).statusCode, 403);
   delete process.env.IP_ALLOWLIST;
   const refusals = await local("GET", "/api/access/refusals");
   assert.equal(refusals.statusCode, 200);
@@ -450,6 +479,7 @@ try {
     ],
     "newest first, one entry per device and reason",
   );
+  assert.equal(refused[0]?.id, scannerId, "allowlist refusals from new addresses keep one id");
   await get("/api/chats", "203.0.113.40", { "user-agent": IPHONE });
   const retried = (await local("GET", "/api/access/refusals")).json().refusals as typeof refused;
   assert.equal(retried.length, 3, "a retry is no new entry");

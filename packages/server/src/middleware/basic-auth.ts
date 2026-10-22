@@ -322,10 +322,14 @@ function countGuess(request: FastifyRequest, guess: string) {
   }
 }
 
-function logWrongPassword(request: FastifyRequest) {
+function logWrongPassword(request: FastifyRequest, pairingCode = false) {
   for (const [index, bucket] of failureBuckets(request).entries()) {
     const size = failures.get(bucket.key)?.guesses.size ?? 0;
-    if (index === 0 && size === 1) logger.warn("[basic-auth] Wrong password from %s", request.ip);
+    if (index === 0 && size === 1)
+      logger.warn(
+        pairingCode ? "[basic-auth] Wrong pairing code from %s" : "[basic-auth] Wrong password from %s",
+        request.ip,
+      );
     if (size === bucket.limit) {
       logger.warn(
         index === 0
@@ -372,11 +376,15 @@ async function checkCredentials(
     for (const bucket of failureBuckets(request)) failures.get(bucket.key)?.guesses.delete(guess);
     if (verdict === null) return null;
   }
-  // Shared counts belong to other visitors too, so signing in clears only this browser's own count.
+  clearOwnFailures(request);
+  return true;
+}
+
+/** Shared counts belong to other visitors too, so signing in clears only this browser's own count. */
+function clearOwnFailures(request: FastifyRequest) {
   if (lockoutSeconds(request) === 0) {
     for (const bucket of failureBuckets(request)) if (!bucket.shared) failures.delete(bucket.key);
   }
-  return true;
 }
 
 function sendTooManyFailures(reply: FastifyReply, retryAfterSeconds: number) {
@@ -764,6 +772,7 @@ export function describeSessions(request: FastifyRequest) {
 export function endSession(id: string): boolean {
   const config = loadConfig();
   const key = config && sessionLoginKey(config);
+  pairingCodes = pairingCodes.filter((entry) => entry.sessionId !== id);
   return key ? deleteSession(key, id) : false;
 }
 
@@ -771,6 +780,8 @@ export function endSession(id: string): boolean {
 export function endOtherSessions(request: FastifyRequest): void {
   const config = loadConfig();
   const key = config && sessionLoginKey(config);
+  // A code from a signed-out device would let that device straight back in.
+  pairingCodes = [];
   if (key) deleteOtherSessions(key, requestSession(request, config)?.id);
 }
 
@@ -789,7 +800,7 @@ export const PAIRING_CODE_TTL_MS = 5 * 60_000;
 const MAX_PAIRING_CODES = 10;
 
 /** Keyed hashes in memory only, so a restart ends every code. */
-let pairingCodes: { hash: Buffer; loginKey: string; expiresAt: number }[] = [];
+let pairingCodes: { hash: Buffer; loginKey: string; expiresAt: number; sessionId?: string }[] = [];
 
 /** Ignores case and the spaces or dash people type between the halves. */
 function pairingHash(value: string): Buffer {
@@ -800,10 +811,12 @@ function pairingHash(value: string): Buffer {
 }
 
 /** A code that signs one more browser in to the current login, once, for a few minutes. */
-export function createPairingCode(): { code: string; expiresAt: number } | null {
+export function createPairingCode(request: FastifyRequest): { code: string; expiresAt: number } | null {
   const config = loadConfig();
   const loginKey = config && sessionLoginKey(config);
   if (!loginKey) return null;
+  // Codes made on the host have no session; signing out the maker's session ends its codes.
+  const sessionId = requestSession(request, config)?.id;
   const now = Date.now();
   const code = Array.from(
     { length: PAIRING_CODE_LENGTH },
@@ -812,7 +825,7 @@ export function createPairingCode(): { code: string; expiresAt: number } | null 
   const expiresAt = now + PAIRING_CODE_TTL_MS;
   pairingCodes = [
     ...pairingCodes.filter((entry) => entry.expiresAt > now),
-    { hash: pairingHash(code), loginKey, expiresAt },
+    { hash: pairingHash(code), loginKey, expiresAt, sessionId },
   ];
   pairingCodes = pairingCodes.slice(-MAX_PAIRING_CODES);
   return { code: `${code.slice(0, 4)}-${code.slice(4)}`, expiresAt };
@@ -918,9 +931,10 @@ export async function loginRoutes(app: FastifyInstance) {
         if (!key || !redeemPairingCode(hash, key)) {
           // Wrong codes count like wrong passwords, so guessing one locks the address out the same way.
           countGuess(request, `code:${hash.toString("base64url").slice(0, 16)}`);
-          logWrongPassword(request);
+          logWrongPassword(request, true);
           return sendLoginPage(reply, 401, next, "This code does not work. Ask for a new one.");
         }
+        clearOwnFailures(request);
         if (!startBrowserSession(request, reply, config)) {
           return sendLoginPage(reply, 500, next, "This browser cannot stay signed in. See the server log.");
         }

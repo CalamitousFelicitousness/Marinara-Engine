@@ -4444,6 +4444,7 @@
   "settings.accessStatus.devices.loadFailed": "Marinara could not load the signed-in devices.",
   "settings.accessStatus.devices.signOut": "Sign out",
   "settings.accessStatus.devices.signOutFailed": "Marinara could not sign out the device.",
+  "settings.accessStatus.devices.signOutNamed": "Sign out {{device}}",
   "settings.accessStatus.devices.signOutOthers": "Sign out all other devices",
   "settings.accessStatus.devices.signOutOthersConfirm": "Sign out every other device?",
   "settings.accessStatus.devices.thisDevice": "This device",

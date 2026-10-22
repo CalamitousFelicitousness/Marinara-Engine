@@ -28,7 +28,9 @@ export function recordRefusal(request: FastifyRequest, reason: RefusalReason): v
   forgetOld(now);
   const label = deviceLabel(request.headers["user-agent"]);
   // Visitors behind one local proxy share an address, so the label tells them apart.
-  const key = `${clientAddressKey(request.ip)}|${label}|${reason}`;
+  // An allowlist can face the internet, where every scanner has a new address: one entry per label there.
+  const address = reason === "allowlist" ? "" : clientAddressKey(request.ip);
+  const key = `${address}|${label}|${reason}`;
   const known = refusals.get(key);
   refusals.delete(key);
   refusals.set(key, { id: known?.id ?? randomBytes(9).toString("base64url"), label, reason, at: now });

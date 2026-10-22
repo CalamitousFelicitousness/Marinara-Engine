@@ -128,7 +128,7 @@ export async function accessStatusRoutes(app: FastifyInstance) {
   // "Add a device": a one-time code a new browser types on /login instead of the password.
   app.post("/pairing-codes", { config: { rateLimit: ACCESS_LOGIN_RATE_LIMIT } }, async (request, reply) => {
     if (!hasBrowserSession(request) && !requirePrivilegedAccess(request, reply, { feature: "Add a device" })) return;
-    const pairing = createPairingCode();
+    const pairing = createPairingCode(request);
     if (!pairing) return reply.status(409).send({ error: "Set a remote login first." });
     logger.info("[login] A pairing code was created for a new device");
     return pairing;

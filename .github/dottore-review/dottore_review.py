@@ -4509,7 +4509,7 @@ def checks_not_passed(base, head):
         "api", f"repos/{repo}/commits/{head}/check-runs?per_page=100", "--paginate", "--jq", ".check_runs",
     ], check=True).stdout)
     statuses = load_json_list(run_gh([
-        "api", f"repos/{repo}/commits/{head}/statuses?per_page=100", "--paginate",
+        "api", f"repos/{repo}/commits/{head}/statuses?per_page=100", "--paginate", "--jq", ".",
     ], check=True).stdout)
     # Reruns can leave several records for one name. Select the newest ID per source, independently of API order.
     checks, apps, latest_statuses = {}, {}, {}
@@ -4527,8 +4527,17 @@ def checks_not_passed(base, head):
             return None
         if login not in apps:
             match = re.fullmatch(r"([A-Za-z0-9-]+)\[bot\]", login or "")
-            result = run_gh(["api", f"apps/{match[1]}", "--jq", ".id"]) if match else None
-            apps[login] = int(result.stdout.strip()) if result and result.returncode == 0 and result.stdout.strip().isdigit() else None
+            if not match:
+                raise RuntimeError(f"Could not verify GitHub App identity for status creator {login!r}")
+            result = run_gh(["api", f"apps/{match[1]}", "--jq", ".id"])
+            if result.returncode != 0:
+                if "HTTP 404" not in result.stderr:
+                    raise RuntimeError(f"Could not verify GitHub App {match[1]}: {result.stderr.strip()}")
+                apps[login] = None  # A genuinely absent app cannot satisfy a bound requirement.
+            elif result.stdout.strip().isdigit():
+                apps[login] = int(result.stdout.strip())
+            else:
+                raise RuntimeError(f"Could not verify GitHub App {match[1]}: invalid app ID response")
         return apps[login]
 
     missing = set()

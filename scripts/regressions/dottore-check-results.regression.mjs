@@ -28,7 +28,7 @@ def commit_status(identifier, state="success", creator="github-actions[bot]"):
             "creator": {"login": creator, "type": "Bot"}}
 
 class CheckResults(unittest.TestCase):
-    def missing(self, runs, statuses=(), required=True, bound=True, paginated=False):
+    def missing(self, runs, statuses=(), required=True, bound=True, paginated=False, app_error=None):
         rules = [{"type": "required_status_checks", "parameters": {"required_status_checks": [
             {"context": "Catalog job", "integration_id": 15368 if bound else None}
         ]}}] if required else []
@@ -36,7 +36,8 @@ class CheckResults(unittest.TestCase):
             url = args[1]
             if url.startswith("apps/"):
                 app_id = {"apps/github-actions": 15368, "apps/other-app": 999}.get(url)
-                return NS(stdout=str(app_id) if app_id else "", returncode=0 if app_id else 1)
+                if app_error: return NS(stdout="", stderr=app_error, returncode=1)
+                return NS(stdout=str(app_id) if app_id else "", stderr="" if app_id else "HTTP 404", returncode=0 if app_id else 1)
             if "/rules/branches/" in url:
                 result = rules
             elif "/check-runs?" in url:
@@ -47,6 +48,10 @@ class CheckResults(unittest.TestCase):
                     return NS(stdout=json.dumps(runs[:100]) + "\n" + json.dumps(runs[100:]))
                 result = runs if "--jq" in args else {"check_runs": runs}
             elif "/statuses?" in url:
+                if paginated:
+                    self.assertIn("--paginate", args)
+                    compact = "--jq" in args
+                    return NS(stdout=json.dumps(statuses[:100], indent=None if compact else 2) + "\n" + json.dumps(statuses[100:], indent=None if compact else 2))
                 result = statuses
             elif url.endswith("/status"):
                 result = {"statuses": statuses}
@@ -65,6 +70,15 @@ class CheckResults(unittest.TestCase):
     def test_required_context_on_a_later_page_is_not_missing(self):
         runs = [check(i, name="Other job " + str(i)) for i in range(100)] + [check(200)]
         self.assertEqual(self.missing(runs, paginated=True), [])
+
+    def test_commit_status_pages_use_complete_json_documents(self):
+        statuses = [{**commit_status(i), "context": "Other " + str(i)} for i in range(100)] + [commit_status(200)]
+        self.assertEqual(self.missing([], statuses, paginated=True), [])
+
+    def test_failed_app_lookup_reports_an_evidence_error(self):
+        for error in ("HTTP 403: Forbidden", "HTTP 503: Service Unavailable"):
+            with self.assertRaisesRegex(RuntimeError, "Could not verify GitHub App"):
+                self.missing([], [commit_status(20)], app_error=error)
 
     def test_new_pending_failure_or_cancellation_still_blocks(self):
         for newest in (check(20, None, status="in_progress"), check(20, "failure"), check(20, "cancelled")):

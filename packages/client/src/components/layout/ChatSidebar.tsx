@@ -1201,15 +1201,10 @@ export function ChatSidebar() {
             await openChat(chat.id);
           }}
           // Enter/Space go through the click handler, so multi-select and the touch-drag guard
-          // apply to the keyboard too. Keys on the badge or delete button stay theirs.
+          // apply to the keyboard too.
           onKeyDown={(event) => {
-            if (event.target !== event.currentTarget) return;
-            if (event.altKey || event.ctrlKey || event.metaKey) return;
-            if (event.key !== "Enter" && event.key !== " ") return;
-            event.preventDefault();
-            // A held key repeats; one press is one activation.
-            if (event.repeat) return;
-            event.currentTarget.click();
+            const row = event.currentTarget;
+            activateRowFromKey(event, () => row.click());
           }}
           className={cn(
             "group relative isolate flex w-full touch-pan-y cursor-grab active:cursor-grabbing items-center gap-2.5 overflow-hidden rounded-lg px-3 py-2.5 text-left transition-all duration-150",
@@ -1985,6 +1980,20 @@ export function ChatSidebar() {
   );
 }
 
+/**
+ * Enter/Space activation for a `role="button"` row. Keys aimed at a button inside the row stay
+ * that button's, modified keys stay free for shortcuts, and a held key activates once (its
+ * repeats are still prevented, so a held Space does not scroll the list).
+ */
+function activateRowFromKey(event: React.KeyboardEvent<HTMLElement>, activate: () => void) {
+  if (event.target !== event.currentTarget) return;
+  if (event.altKey || event.ctrlKey || event.metaKey) return;
+  if (event.key !== "Enter" && event.key !== " ") return;
+  event.preventDefault();
+  if (event.repeat) return;
+  activate();
+}
+
 /** Past this depth a branch still renders, but without another step of indent. */
 const MAX_BRANCH_NESTING = 4;
 /** A nested level: its line sits under the parent branch's name (the row's px-2). */
@@ -2030,14 +2039,7 @@ function BranchRow({
       aria-pressed={multiSelectMode ? isSelected : undefined}
       title={name}
       onClick={handleClick}
-      onKeyDown={(event) => {
-        if (event.target !== event.currentTarget) return;
-        if (event.altKey || event.ctrlKey || event.metaKey) return;
-        if (event.key !== "Enter" && event.key !== " ") return;
-        event.preventDefault();
-        if (event.repeat) return;
-        handleClick();
-      }}
+      onKeyDown={(event) => activateRowFromKey(event, handleClick)}
       className={cn(
         "group flex min-w-0 cursor-pointer items-center gap-2 rounded-md py-1.5 pr-3 pl-2 transition-colors max-md:min-h-11 [@media(pointer:coarse)]:min-h-11",
         multiSelectMode && isSelected

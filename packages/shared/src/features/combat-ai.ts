@@ -351,11 +351,28 @@ export function rankCombatCandidates<T>(
     damage: adjective === "reckless" || adjective === "fanatical" ? 2 : 1,
     // A cruel one (T3) finishes whoever it can, and likes to see them held down or afraid.
     // An honourable one (T6) takes no joy in the kill.
-    finish: adjective === "opportunistic" || adjective === "cruel" ? 3 : adjective === "honourable" ? 0.2 : 0.5,
+    finish:
+      adjective === "opportunistic" || adjective === "cruel"
+        ? 3
+        : adjective === "hungry"
+          ? 2
+          : adjective === "honourable"
+            ? 0.2
+            : 0.5,
     healing: adjective === "supportive" ? 4 : adjective === "reckless" ? 0.4 : 1.5,
     support: adjective === "supportive" ? 1.2 : 0.35,
     // An arrogant one (T5) sets nothing up and keeps its best for a foe worth it.
-    setup: adjective === "methodical" ? 1.6 : adjective === "cruel" ? 0.8 : adjective === "arrogant" ? 0.05 : 0.2,
+    // A hungry one (T8) takes hold of its prey.
+    setup:
+      adjective === "methodical"
+        ? 1.6
+        : adjective === "hungry"
+          ? 1
+          : adjective === "cruel"
+            ? 0.8
+            : adjective === "arrogant"
+              ? 0.05
+              : 0.2,
     risk:
       adjective === "reckless" || adjective === "fanatical"
         ? 0.05

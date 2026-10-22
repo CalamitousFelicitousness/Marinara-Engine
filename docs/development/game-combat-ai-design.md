@@ -315,6 +315,8 @@ Proposed initial tuning: normalize policy utility to a fixed scale; let novices 
 
 **Honourable (combat AI T6, Capability API 1.730).** A named-only temperament: finish 0.2. In ruleset fights its pick drops candidates aimed at a routed, down or surrendered foe (when anything else is left) and gives +0.6 focus to the foe that last hurt it and +0.3 to a foe beside it. Accepting the party's surrender needs a party yield command and fight outcome, not built.
 
+**Hungry (combat AI T8, Capability API 1.731).** A named-only temperament: finish 2, setup 1. Its pick gives +0.6 focus to `tactics.targetId`. At the start of its ruleset turn `dragOffPrey` finds the foes it drags (`rulesetDragging`), makes the first its target, and walks to `rulesetRetreatCell` ignoring them, so the drag takes them along; it then does not walk toward anybody that turn.
+
 **Fliers keep altitude (combat AI A7).** When a ruleset flier's turn goes idle on the ground (`keepAloft`), and it can fly, has an available ranged damaging action, isn't a bruiser, reckless or mindless, and an opponent who cannot fly stands, it takes Fly up where the board has levels, then carries on its turn (a shot, its kite) from the air.
 
 ## 8. Boss turns controlled by the GM

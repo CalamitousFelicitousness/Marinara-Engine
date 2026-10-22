@@ -618,4 +618,5 @@ assert.equal(
   assert.ok(!dealt.has("territorial"));
   assert.ok(!dealt.has("cruel"));
   assert.ok(!dealt.has("honourable"));
+  assert.ok(!dealt.has("hungry"));
 }

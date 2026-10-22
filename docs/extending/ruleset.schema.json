@@ -66147,7 +66147,8 @@
                             "arrogant",
                             "territorial",
                             "cruel",
-                            "honourable"
+                            "honourable",
+                            "hungry"
                           ]
                         },
                         "role": {
@@ -66244,7 +66245,8 @@
                                   "arrogant",
                                   "territorial",
                                   "cruel",
-                                  "honourable"
+                                  "honourable",
+                                  "hungry"
                                 ]
                               },
                               "$comment": {}
@@ -253286,7 +253288,8 @@
                           "arrogant",
                           "territorial",
                           "cruel",
-                          "honourable"
+                          "honourable",
+                          "hungry"
                         ]
                       },
                       "role": {
@@ -253383,7 +253386,8 @@
                                 "arrogant",
                                 "territorial",
                                 "cruel",
-                                "honourable"
+                                "honourable",
+                                "hungry"
                               ]
                             },
                             "$comment": {}
@@ -254439,7 +254443,8 @@
                 "arrogant",
                 "territorial",
                 "cruel",
-                "honourable"
+                "honourable",
+                "hungry"
               ]
             },
             "role": {
@@ -254536,7 +254541,8 @@
                       "arrogant",
                       "territorial",
                       "cruel",
-                      "honourable"
+                      "honourable",
+                      "hungry"
                     ]
                   },
                   "$comment": {}

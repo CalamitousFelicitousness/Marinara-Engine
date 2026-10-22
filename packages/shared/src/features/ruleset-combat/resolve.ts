@@ -12583,7 +12583,10 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
       !legendary?.untouchable &&
       rulesetEncounterOutcome(ctx.state) === "ongoing"
     ) {
-      const threats = threatsLeaving(ctx, actor, at, cell).filter((enemy) => !asked.has(enemy.id));
+      // Nobody it drags or who clings to it: they come along, so it never leaves their reach.
+      const threats = threatsLeaving(ctx, actor, at, cell).filter(
+        (enemy) => !asked.has(enemy.id) && !draggingNow.ids.includes(enemy.id) && !clinging.includes(enemy.id),
+      );
       if (threats.length > 0) {
         for (const enemy of threats) asked.add(enemy.id);
         // A legendary move holds the window it was bought in behind the strike (1.283), its maker

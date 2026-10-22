@@ -41,6 +41,8 @@ export const COMBAT_TEMPERAMENTS = [
   "cruel",
   // Never dealt by chance: it fights fair, one on one, and spares the beaten (combat AI T6, 1.730).
   "honourable",
+  // Never dealt by chance: a predator that takes one victim and drags it off (combat AI T8, 1.731).
+  "hungry",
 ] as const;
 export type CombatTemperament = (typeof COMBAT_TEMPERAMENTS)[number];
 /** The temperaments a combatant has only where its data or the story names them, never dealt by
@@ -51,6 +53,7 @@ export const COMBAT_NAMED_TEMPERAMENTS: readonly CombatTemperament[] = [
   "territorial",
   "cruel",
   "honourable",
+  "hungry",
 ];
 
 /** What turns a combatant's temperament into another, once (combat AI T7): hurt below half its

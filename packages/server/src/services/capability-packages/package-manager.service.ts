@@ -2842,6 +2842,18 @@ function carriesBehavior710(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesBehavior710(one, depth + 1));
 }
 
+/** A hungry one (1.731): a behavior whose `temperament`, or one it turns to, is `hungry`. */
+function carriesHungry731(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesHungry731(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const behavior = plainRecord(record.behavior);
+  if (behavior?.temperament === "hungry") return true;
+  if (Array.isArray(behavior?.shifts) && behavior.shifts.some((one) => plainRecord(one)?.to === "hungry")) return true;
+  return featureValues(record).some((one) => carriesHungry731(one, depth + 1));
+}
+
 /** An honourable one (1.730): a behavior whose `temperament`, or one it turns to, is `honourable`. */
 function carriesHonourable730(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -9484,6 +9496,12 @@ export function getCapabilityPackageInstallIssue(
     }),
   );
   // A creature that fights a side alone, 1.723.
+  if (
+    !declaresApi(731) &&
+    (carriesHungry731(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesHungry731(document)))
+  )
+    return 'A ruleset with a hungry creature (a behavior whose temperament is "hungry") requires schemaVersion 2 and capabilityApi 1.731 or newer';
   if (
     !declaresApi(730) &&
     (carriesHonourable730(ruleset) ||

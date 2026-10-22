@@ -569,6 +569,64 @@ try {
     );
   }
 
+  // ── Hungry (combat AI T8): its prey in hand, it drags them off away from the rest ──
+  {
+    const dragging = parsed(
+      fiveE((doc) => {
+        doc.combat.conditions.find((one: { condition: string }) => one.condition === "grappled").dragged = {
+          unlessSmaller: 2,
+        };
+      }),
+    );
+    const feast = (temperament: string) => {
+      const blocks = {
+        croc: { side: "enemy" as const, block: block([smash], { behavior: { temperament } }), at: { x: 6, y: 4 } },
+        prey: { side: "party" as const, block: block([smash]), at: { x: 7, y: 4 } },
+        friend: { side: "party" as const, block: block([smash]), at: { x: 3, y: 4 } },
+      };
+      const encounter = createRulesetEncounter({
+        definition: dragging,
+        seed: 1,
+        roller: () => 10,
+        combatants: Object.entries(blocks).map(([id, one]) => ({ id, name: id, side: one.side, block: one.block })),
+        board: {
+          grid: { width: 16, height: 10, tiles: Array.from({ length: 10 }, () => Array(16).fill("plains")) },
+          placements: Object.fromEntries(Object.entries(blocks).map(([id, one]) => [id, one.at])),
+        } as never,
+      });
+      encounter.order = ["croc", "prey", "friend"];
+      encounter.turn = 0;
+      rulesetCombatant(encounter, "prey")!.tracked.push({ condition: "grappled", rounds: null, source: "croc" });
+      const state = createCombatDirector({
+        id: "fight",
+        anchor: "anchor",
+        style: "ruleset",
+        party: [unit("prey", "player"), unit("friend", "player")],
+        enemies: [unit("croc", "enemy")],
+        gm: false,
+        difficulty: "normal",
+        seed: 3,
+      } as never);
+      state.rulesetFight = { encounter, events: [], eventSeq: 0, controllers: {}, bosses: [] } as never;
+      syncRulesetCombatants(dragging, state);
+      state.stage = rulesetDirectorStage(state);
+      // Only the croc's own turn.
+      state.rulesetFight!.controllers = { prey: "manual", friend: "manual" } as never;
+      assert.ok(commandRulesetCombatDirector(dragging, state, { type: "continue" }).ok);
+      const after = state.rulesetFight!.encounter;
+      // Its prey comes along, so the prey never gets a strike at it for leaving.
+      assert.ok(!state.rulesetFight!.events.some((one) => one.event.type === "window"), "no strike from its prey");
+      return {
+        croc: rulesetCombatant(after, "croc")!.x!,
+        prey: rulesetCombatant(after, "prey")!.x!,
+      };
+    };
+    const fed = feast("hungry");
+    assert.ok(fed.croc > 6, "it drags its prey off, away from the friend");
+    assert.ok(fed.prey > 7, "and the prey with it");
+    assert.equal(feast("patient").croc, 6, "one that is not stays to fight");
+  }
+
   // ── Keeping its ground (combat AI T4): no further than its territory, unless shot at from afar ──
   {
     const guard = (behavior: Record<string, unknown>, harmed?: boolean, extra: Record<string, unknown> = {}) => {
@@ -886,6 +944,11 @@ try {
     const knightly = fiveE((doc) => (lurkerEntry(doc).behavior = { temperament: "honourable" }));
     assert.equal(getCapabilityPackageInstallIssue(manifest(729) as never, knightly), fair);
     assert.notEqual(getCapabilityPackageInstallIssue(manifest(730) as never, knightly), fair);
+    const ravenous =
+      'A ruleset with a hungry creature (a behavior whose temperament is "hungry") requires schemaVersion 2 and capabilityApi 1.731 or newer';
+    const hungry = fiveE((doc) => (lurkerEntry(doc).behavior = { temperament: "hungry" }));
+    assert.equal(getCapabilityPackageInstallIssue(manifest(730) as never, hungry), ravenous);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(731) as never, hungry), ravenous);
     const grows = fiveE((doc) => (lurkerEntry(doc).behavior = { shifts: [{ on: "ally-down", to: "arrogant" }] }));
     assert.equal(getCapabilityPackageInstallIssue(manifest(726) as never, grows), proud);
     refused(
@@ -907,7 +970,7 @@ try {
   }
 
   console.log(
-    "Combat behavior: merged from the ruleset, the type and the creature; its temperament and role; casters, attackers and a pack's prey first; its opener once; an ambusher keeps still and springs; roles read off what it does; bodyguards stay by their charge; a leader rallies; a temperament turns once; a proud legend flies off; a territorial one keeps its ground; a cruel one strikes the fallen only where the game allows; an honourable one fights fair; refused and gated at 1.710, 1.723, 1.724, 1.725, 1.726, 1.727, 1.728, 1.729 and 1.730.",
+    "Combat behavior: merged from the ruleset, the type and the creature; its temperament and role; casters, attackers and a pack's prey first; its opener once; an ambusher keeps still and springs; roles read off what it does; bodyguards stay by their charge; a leader rallies; a temperament turns once; a proud legend flies off; a territorial one keeps its ground; a cruel one strikes the fallen only where the game allows; an honourable one fights fair; a hungry one drags its prey off; refused and gated at 1.710, 1.723, 1.724, 1.725, 1.726, 1.727, 1.728, 1.729, 1.730 and 1.731.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

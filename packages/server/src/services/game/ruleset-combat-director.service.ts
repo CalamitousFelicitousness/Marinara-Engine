@@ -91,6 +91,7 @@ import {
   rulesetSpanOf,
   rulesetBehaviorAnchor,
   rulesetGapFrom,
+  rulesetDragging,
   rulesetActionReach,
   rulesetGap,
   rulesetAtBoardEdge,
@@ -1651,12 +1652,15 @@ function rulesetRetreatCell(
   definition: RulesetDefinition,
   encounter: RulesetEncounterState,
   actorId: string,
+  /** Opponents it takes along (a hungry one's prey, dragged): no reason to get away from them. */
+  bringing: readonly string[] = [],
 ): { x: number; y: number } | null {
   const actor = rulesetCombatant(encounter, actorId);
   const from = rulesetPositionOf(actor);
   if (!actor || !from || !encounter.board?.grid) return null;
   const foes = encounter.combatants.filter(
-    (one) => one.side !== actor.side && rulesetCombatStanding(one) && rulesetPositionOf(one),
+    (one) =>
+      one.side !== actor.side && rulesetCombatStanding(one) && rulesetPositionOf(one) && !bringing.includes(one.id),
   );
   if (foes.length === 0) return null;
   const span = rulesetSpanOf(actor);
@@ -3476,6 +3480,11 @@ function weighChoices(
       candidate.focus = (candidate.focus ?? 0) + (actor.harmedBy === target.id ? 0.6 : 0) + (beside ? 0.3 : 0);
     }
   }
+  // A hungry one (combat AI T8) keeps at the one prey it has chosen.
+  if (unit.tactics!.adjective === "hungry" && unit.tactics!.targetId)
+    for (const candidate of candidates)
+      if (candidate.targetId === unit.tactics!.targetId && ((candidate.damage ?? 0) > 0 || (candidate.setup ?? 0) > 0))
+        candidate.focus = (candidate.focus ?? 0) + 0.6;
   // A territorial one walks nowhere off its ground, but back onto it (combat AI T4).
   const territory = rulesetTerritoryLeash(definition, encounter, actor, unit);
   if (territory) {
@@ -4436,6 +4445,8 @@ function playRulesetTurn(
   const stays = orders?.posture === "hold" || orders?.posture === "retreat";
   // A proud legend near its end takes to the sky and fights from there (combat AI T5).
   const aloof = !stays && retreatAloft(definition, state, fight, actorId);
+  // A hungry one with its prey in hand drags it off, away from the rest (combat AI T8).
+  const feeding = !stays && dragOffPrey(definition, state, fight, actorId);
   const leash =
     (actor && orders ? rulesetLeashOf(state, fight.encounter, actor, orders) : undefined) ??
     (actor && unit ? rulesetTerritoryLeash(definition, fight.encounter, actor, unit) : undefined);
@@ -4477,7 +4488,7 @@ function playRulesetTurn(
       if (!stays && keepAloft(definition, state, fight, actorId)) continue;
       if (shotFromAfar && !stays && keepRulesetRange(definition, state, fight, actorId, shotFromAfar === "kite")) break;
       if (struckClose && !shotFromAfar && !defended && !stays && hitAndRun(definition, state, fight, actorId)) break;
-      if (defended || stays || aloof || !walkTowardsTrouble(definition, state, fight, actorId, leash)) break;
+      if (defended || stays || aloof || feeding || !walkTowardsTrouble(definition, state, fight, actorId, leash)) break;
       continue;
     }
     if (picked.defensive) defended = true;
@@ -4763,6 +4774,30 @@ function hitAndRun(
  * levels, so those who cannot fly cannot walk up and strike it. Not a bruiser, which wants to be in
  * among them, nor a reckless one, nor a mindless one. Whether it went up.
  */
+/**
+ * A hungry one (combat AI T8) holding its prey where it can drag them: off, away from everybody
+ * else, prey and all. Whether it has its prey, so it stays with them rather than walking at anybody.
+ */
+function dragOffPrey(
+  definition: RulesetDefinition,
+  state: CombatDirectorState,
+  fight: RulesetFightState,
+  actorId: string,
+): boolean {
+  const actor = rulesetCombatant(fight.encounter, actorId);
+  const tactics = [...state.party, ...state.enemies].find((one) => one.id === actorId)?.tactics;
+  if (!actor || tactics?.adjective !== "hungry" || !fight.encounter.board?.grid) return false;
+  const prey = rulesetDragging(definition, fight.encounter, actor).ids.filter((id) => {
+    const one = rulesetCombatant(fight.encounter, id);
+    return !!one && one.side !== actor.side;
+  });
+  if (prey.length === 0) return false;
+  tactics.targetId = prey[0];
+  const away = rulesetRetreatCell(definition, fight.encounter, actorId, prey);
+  if (away) applyChoice(definition, state, fight, { actorId, optionId: RULESET_MOVE_OPTION, targetIds: [], to: away });
+  return true;
+}
+
 /**
  * An arrogant legend (combat AI T5) with a fly speed, below a quarter of its health: up into the sky
  * if it is not there already. Whether it is aloft, so it does not come down to walk at anybody.

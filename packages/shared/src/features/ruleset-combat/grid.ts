@@ -1057,8 +1057,17 @@ export function rulesetBestWeapon(combatant: RulesetCombatant, kind: "melee" | "
   for (const action of combatant.actions) {
     if (kind === "melee" ? action.reach === undefined && action.range : !action.range || action.toHit === undefined)
       continue;
-    // Nor a strike again (1.375); and a shot is a weapon's, not a spell's.
-    if (action.strikeAgain || (kind === "ranged" && (action.catalog || action.casts))) continue;
+    // Nor a strike again (1.375); and a blow or a shot is a weapon's, not a spell's: a cult fanatic's
+    // Inflict Wounds is no opportunity attack (playtest).
+    if (
+      action.strikeAgain ||
+      action.catalog ||
+      action.casts ||
+      action.components?.length ||
+      action.innate ||
+      action.castLevel !== undefined
+    )
+      continue;
     if (action.area || action.signature || action.sequence || !action.damage) continue;
     // The same bookkeeping the menu keeps: a strike that has run out of uses, or is waiting for its
     // dice, is not one to be made in passing either. (Written out rather than imported, because the
@@ -1220,10 +1229,19 @@ export function rulesetReachableCells(
     return apart !== undefined && Math.abs(rank - ownRank) >= apart;
   };
   for (const combatant of state.combatants) {
-    if (combatant.id === actor.id || !rulesetCombatStanding(combatant)) continue;
+    if (combatant.id === actor.id || combatant.defeated) continue;
     // Inside somebody (1.350), they fill none of their own: whoever holds them fills it. Nor does a
     // rider (1.443): their mount does.
     if (combatant.insideOf || combatant.mountedOn || passes?.(combatant)) continue;
+    // Down and still in the fight, they block nobody but their space is still theirs: walked over,
+    // never stopped on.
+    if (combatant.down) {
+      for (const at of rulesetFootprint(combatant)) {
+        occupied.add(`${at.x},${at.y}`);
+        if (combatant.side === actor.side) friendly.add(`${at.x},${at.y}`);
+      }
+      continue;
+    }
     // A swarm's space is anybody's to walk into and stop in (1.627).
     if (shares(combatant)) continue;
     // Moved through only by a foe strong enough, as hard going (1.547): the Arcane Hand.
@@ -1314,6 +1332,10 @@ export function rulesetReachableCells(
   const slowed = rulesetSlowedCells(state, actor, careful);
   const slick = rulesetSlickCells(state, actor);
   const best = new Map<string, number>([[`${from.x},${from.y}`, 0]]);
+  // Of two ways to a cell that cost the same, the one through fewer cells that hurt on the way in
+  // (burning oil, a friend's Spirit Guardians): what anybody walking round it would pick.
+  const harmful = rulesetHarmfulCells(state, actor);
+  const burns = new Map<string, number>([[`${from.x},${from.y}`, 0]]);
   const cameFrom = new Map<string, string>();
   const cells = new Map<string, RulesetReachableCell>();
   // A small board and a small allowance: the cheapest open cell is found by a scan rather than by a
@@ -1385,8 +1407,11 @@ export function rulesetReachableCells(
       const throughStep = hardGoing.has(next) ? Math.max(crowdedStep, plain * 2) : crowdedStep;
       const step = (dragging.halves ? throughStep * 2 : throughStep) * (squeeze?.costs ?? 1);
       const cost = cheapest + step;
-      if (cost > budget || cost >= (best.get(next) ?? Infinity)) continue;
+      const burnt = (burns.get(key) ?? 0) + (harmful.has(next) ? 1 : 0);
+      const known = best.get(next) ?? Infinity;
+      if (cost > budget || cost > known || (cost === known && burnt >= (burns.get(next) ?? 0))) continue;
       best.set(next, cost);
+      burns.set(next, burnt);
       cameFrom.set(next, key);
       open.set(next, { x, y });
       // A friend can be walked past and not stood on, so their cell is searched through and never
@@ -1813,6 +1838,21 @@ export function rulesetZoneMiddles(
   if (holder && rulesetPositionOf(holder)) return rulesetFootprint(holder);
   if (zone.anchor === "point") return zone.at ? [zone.at, ...(zone.also ?? [])] : [];
   return rulesetFootprint(caster);
+}
+
+/** The cells where a zone harms this combatant as they come in (an `enter` trigger with damage),
+ *  by "x,y": what a walk would rather go round. */
+function rulesetHarmfulCells(state: RulesetEncounterState, combatant: RulesetCombatant): Set<string> {
+  const cells = new Set<string>();
+  for (const caster of state.combatants) {
+    for (const zone of caster.zones ?? []) {
+      const action = caster.actions.find((entry) => entry.id === zone.actionId);
+      if (!action?.damage || !zone.triggers.includes("enter")) continue;
+      if (!rulesetZoneCatches(caster, zone, action, combatant)) continue;
+      for (const cell of rulesetZoneCells(state, caster, zone)) cells.add(`${cell.x},${cell.y}`);
+    }
+  }
+  return cells;
 }
 
 /** Whether a zone's area may catch this combatant at all, as the cast's own area would have: its

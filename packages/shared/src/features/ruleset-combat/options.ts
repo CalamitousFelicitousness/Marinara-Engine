@@ -140,6 +140,7 @@ import {
   rulesetFootprint,
   rulesetFootprintsSee,
   rulesetGap,
+  rulesetActionReach,
   rulesetUnderwater,
   rulesetUnderwaterSpares,
   rulesetJumpCells,
@@ -3142,6 +3143,9 @@ function forecastFor(
   state: RulesetEncounterState,
   actor: RulesetCombatant,
   action: RulesetCombatAction,
+  /** Whom it is read against, where the moment already says (a strike at one walking away); else
+   *  the first it may be pointed at. */
+  against?: RulesetCombatant,
 ): RulesetCombatOption["forecast"] | undefined {
   const forecast: NonNullable<RulesetCombatOption["forecast"]> = {};
   // As the conditions its maker holds make it now (1.448).
@@ -3156,6 +3160,9 @@ function forecastFor(
     const total = action.sequence.reduce((sum, step) => {
       const part = byId.get(step.actionId);
       if (step.skipped || !rulesetSequencePartAvailable(actor, part) || spent.has(part.id)) return sum;
+      // Read against one target, a part that cannot reach them lands nothing on them: a captain's
+      // scimitars at somebody across the field.
+      if (against && rulesetPositionOf(against) && rulesetGap(actor, against) > rulesetActionReach(part)) return sum;
       // Rolled for (1.590): what its dice come to on average.
       let strikes = step.dice ? rulesetStepAverageTimes(step) : rulesetStepTimes(actor, step);
       if (part.uses) {
@@ -3167,10 +3174,14 @@ function forecastFor(
         strikes = 1;
         spent.add(part.id);
       }
+      // Against one target, each part as likely to land on them as it is: a dagger thrown far, at
+      // disadvantage, counts for less than the same dagger beside them.
+      const lands = against ? (hitChanceAgainst(definition, combat, state, actor, part, against) ?? 1) : 1;
       return (
         sum +
         (part.damage
-          ? strikes *
+          ? lands *
+            strikes *
             modifiedAverage(
               averageHarm(
                 definition,
@@ -3184,7 +3195,7 @@ function forecastFor(
                 state,
                 actor,
                 part,
-                firstTarget(definition, state, actor, part) ?? undefined,
+                against ?? firstTarget(definition, state, actor, part) ?? undefined,
               ),
               part.damage,
             )
@@ -3194,7 +3205,7 @@ function forecastFor(
     if (total > 0) forecast.averageDamage = Math.round(total * 100) / 100;
     return forecast.averageDamage === undefined ? undefined : forecast;
   }
-  const target = firstTarget(definition, state, actor, action) ?? firstAreaTarget(state, actor, action);
+  const target = against ?? firstTarget(definition, state, actor, action) ?? firstAreaTarget(state, actor, action);
   // A contest's chance is the share it would WIN against the first one it may be taken against.
   if (action.contest) {
     const chance = target ? rulesetContestChance(definition, combat, actor, target, action.contest, state) : null;
@@ -3743,6 +3754,7 @@ function optionFrom(
                     "knockOut" in action.switches
                     ? !!actor.knocksOut
                     : !actor.doused,
+            ...("knockOut" in action.switches ? { knocksOut: true as const } : {}),
           }
         : {}),
     ...(action.restore ? { restores: action.restore.pool } : {}),
@@ -4290,6 +4302,23 @@ export function rulesetHitChances(
   return chances;
 }
 
+/** What an action of a sequence (a Multiattack) is expected to do to this one target: only the
+ *  parts that reach them count. Undefined for anything else, whose forecast is the option's own. */
+export function rulesetSequenceForecastAgainst(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  actorId: string,
+  optionId: string,
+  targetId: string,
+): RulesetCombatOption["forecast"] | undefined {
+  const combat = definition.combat;
+  const actor = rulesetCombatant(state, actorId);
+  const action = actor?.actions.find((one) => one.id === optionId);
+  const target = rulesetCombatant(state, targetId);
+  if (!combat || !actor || !action?.sequence || !target) return undefined;
+  return forecastFor(definition, combat, state, actor, action, target) ?? {};
+}
+
 /** A save option's chance each target fails its save, for a player picking one (playtest): the save
  *  as it will be thrown, its own modifier and what its conditions add against the difficulty, rolled
  *  twice where they say so. Nought for one that saves outright or has a Legendary Resistance left,
@@ -4669,7 +4698,8 @@ export function rulesetMountLoad(
 
 /** Whom this combatant may mount (1.443): a creature of their side beside them, standing, ridden by
  *  nobody and riding nothing, at least `combat.mounts.larger` sizes bigger; or (1.588) one that
- *  carries by weight, any size, while it bears them too. */
+ *  carries by weight, any size, while it bears them too. Never another party member in their own
+ *  shape: a friend is no saddle, though one turned into a horse is. */
 export function rulesetMountsFor(
   definition: RulesetDefinition,
   combat: RulesetCombat,
@@ -4682,6 +4712,7 @@ export function rulesetMountsFor(
   return state.combatants.filter((one) => {
     if (one.id === actor.id || one.side !== actor.side || one.defeated || one.down) return false;
     if (!rulesetCombatStanding(one) || one.mountedOn || one.insideOf) return false;
+    if (one.sheet && !one.shape) return false;
     if (!rulesetPositionOf(one) || rulesetGap(actor, one) > 1) return false;
     const carries = one.block?.mountCarries;
     if (carries) {
@@ -6023,6 +6054,9 @@ function windowOptions(
     if (!mover || !rulesetCombatStanding(mover)) return [];
     const strike = rulesetOpportunityAttack(actor);
     if (!strike) return [];
+    // What it would do to the one walking away, so a screen can say so and the Engine's own picker
+    // weighs the blow as a blow rather than as nothing.
+    const forecast = forecastFor(definition, combat, state, actor, strike, mover);
     return [
       {
         id: strike.id,
@@ -6032,6 +6066,7 @@ function windowOptions(
         // be offering a choice the fight then ignores.
         targets: { side: "self", count: 0 },
         budget: opportunity.budget,
+        ...(forecast ? { forecast } : {}),
       },
     ];
   }

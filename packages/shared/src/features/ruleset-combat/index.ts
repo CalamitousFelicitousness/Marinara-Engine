@@ -258,6 +258,7 @@ export {
   rulesetAttackMode,
   rulesetHitChances,
   rulesetSaveFailChances,
+  rulesetSequenceForecastAgainst,
   type RulesetAttackModeWhy,
   rulesetAttachedHolds,
   rulesetAttachedOffLimits,

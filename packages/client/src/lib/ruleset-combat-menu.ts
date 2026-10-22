@@ -182,6 +182,9 @@ export function rulesetOptionLabel(option: DirectedRulesetOption, t: TFunction):
   // A concentration entry made again (1.310): Vampiric Touch's later touches.
   if (option.again) return t("game.combat.ruleset.menu.again", { label: option.label });
   if (option.sustain) return t("game.combat.ruleset.menu.sustain", { label: option.label });
+  // Pulling one's blows (1.667) says what the next blow does, not which way a switch is flipped.
+  if (option.knocksOut)
+    return t(option.on ? "game.combat.ruleset.menu.strikeToKill" : "game.combat.ruleset.menu.knockOut");
   // A switch says which way it turns the item, which is the Engine's own word too.
   if (option.kind === "switch")
     return t(option.on ? "game.combat.ruleset.menu.switchOff" : "game.combat.ruleset.menu.switchOn", {

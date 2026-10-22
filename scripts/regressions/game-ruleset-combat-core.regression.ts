@@ -1290,6 +1290,19 @@ const labels = (definition: RulesetDefinition, state: RulesetEncounterState, id:
   assert.equal(who(shaken.state, "corwin").concentrating, null, "nobody left held");
   assert.equal(firstOf(shaken.events, "concentration").state, "ended");
 
+  // Killed while held, it holds nobody either (playtest): the caster lets go, the fight going on.
+  {
+    let two = fight(fiveE, [wizard({ pools: { slots_3: { value: 0 } } }), fighter(), snag(), mote()], 20, 15, 5, 1);
+    two = act(fiveE, two, { actorId: "corwin", optionId: hold.id, targetIds: ["snag"] }, 5).state;
+    assert.ok(who(two, "corwin").concentrating, "holding");
+    two = endTurn(fiveE, two, "corwin").state;
+    const blow = rulesetCombatOptions(fiveE, two, "brenna").find((option) => option.kind === "attack")!;
+    who(two, "snag").health!.value = 1;
+    const killed = act(fiveE, two, { actorId: "brenna", optionId: blow.id, targetIds: ["snag"] }, 15, 6, 6, 6, 6);
+    assert.ok(who(killed.state, "snag").defeated, JSON.stringify(killed.events.slice(0, 5)));
+    assert.equal(who(killed.state, "corwin").concentrating, null, "a hold on the fallen holds nobody");
+  }
+
   // The end of its own turn is when it gets to try again, and this one fails.
   const ticked = endTurn(fiveE, state, "snag", 3);
   const repeated = firstOf(ticked.events, "save");

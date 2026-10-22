@@ -4368,6 +4368,9 @@ export interface RulesetCombatOption {
   offHand?: true;
   /** Whether the item a switch turns is on now (1.170). */
   on?: boolean;
+  /** The switch pulls its user's blows (1.667): a menu says "knock out" and "strike to kill" rather
+   *  than turning the rule's label on and off. */
+  knocksOut?: true;
   /** Putting away a weapon put in hand (1.308), named by `label`. */
   dismiss?: true;
   /** A concentration entry's effect made again (1.310), named by `label`. */

@@ -279,6 +279,33 @@ try {
     const big = worth("blast", { at: { x: 10, y: 4 } });
     assert.ok(big > 0.8, `a blast over the party is worth stopping: ${big}`);
     assert.ok(small < 0.1, `a flick is not: ${small}`);
+
+    // A creature's Counterspell, written as one it casts on itself and aimed back at the cast, is
+    // taken against the blast and let go against the flick, by a reckless caster as by any other.
+    const own = {
+      ...counter,
+      targets: { side: "self", count: 0 },
+      reaction: { on: "aimed", at: "source", cancels: true },
+    };
+    const answer = (optionId: string, choice: Record<string, unknown>) => {
+      const { encounter, state } = fight({
+        caster: { side: "enemy", block: block([blast, flick]), at: { x: 2, y: 4 } },
+        mage: { side: "party", block: block([own, flick]), at: { x: 10, y: 3 } },
+        fighter: { side: "party", block: block([smash]), at: { x: 10, y: 5 } },
+      });
+      state.party.find((one) => one.id === "mage")!.aiHints = { proficiency: "master", temperament: "reckless" };
+      encounter.order = ["caster", "mage", "fighter"];
+      const step = applyRulesetCombatChoice(
+        definition,
+        encounter,
+        { actorId: "caster", optionId, targetIds: [], ...choice },
+        () => 10,
+      );
+      const menu = rulesetWindowOptions(definition, step.state, "mage");
+      return pickRulesetChoice(definition, state, step.state, "mage", menu)?.choice.optionId;
+    };
+    assert.equal(answer("blast", { at: { x: 10, y: 4 } }), "counter", "the blast is stopped");
+    assert.notEqual(answer("flick", { targetIds: ["mage"] }), "counter", "the flick is let through");
   }
 
   console.log(

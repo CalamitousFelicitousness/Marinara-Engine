@@ -318,6 +318,9 @@ export interface DirectedRulesetView {
     waiting: number;
     /** Whose walk opened it, for a window opened by somebody breaking away. */
     moverId?: string;
+    /** What a readied action waited for, for a window it opened (1.288): `sourceId` coming in reach,
+     *  or acting. */
+    readied?: "comes" | "acts";
     /** Who answers it: the same three the fight has everywhere else. */
     controller: "manual" | "ai" | "gm";
   };

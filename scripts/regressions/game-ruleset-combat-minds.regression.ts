@@ -20,6 +20,7 @@ import {
   parseRulesetDefinition,
   rulesetCombatant,
   rulesetCombatantMind,
+  rulesetReachableCells,
   rulesetStatBlockFromCreature,
   supportedCapabilityApi,
   type CombatAiHints,
@@ -312,6 +313,47 @@ try {
     assert.ok(
       picked?.to && (picked.to.x !== 4 || picked.to.y !== 2),
       `it steps out of the fire: ${JSON.stringify(picked?.to)}`,
+    );
+  }
+
+  // Of two walks that cost the same, the one round a friend's burning oil rather than through it.
+  {
+    const { encounter } = fight(
+      { wolf: { x: 1, y: 2 }, hero: { x: 8, y: 4 }, ally: { x: 0, y: 5 } },
+      {
+        wolf: { side: "enemy", block: block({ type: "beast", mind: "instinct" }) },
+        hero: { side: "party", block: block({ health: 40 }) },
+        ally: { side: "enemy", block: block({}) },
+      },
+    );
+    const ally = rulesetCombatant(encounter, "ally")!;
+    const rule = { rounds: 10, anchor: "point", triggers: ["enter"], atCast: false };
+    ally.actions.push({
+      ...ally.actions[0]!,
+      id: "oil",
+      label: "Burning oil",
+      damage: { count: 3, sides: 6, flat: 0 },
+      zone: rule,
+    } as never);
+    const route = () =>
+      rulesetReachableCells(definition, encounter, "wolf").find((cell) => cell.x === 3 && cell.y === 1)?.path;
+    assert.ok(route()?.length, "it can get there");
+    ally.zones = [
+      { actionId: "oil", label: "Burning oil", ...rule, at: { x: 2, y: 1 }, cells: [{ x: 2, y: 1 }] } as never,
+    ];
+    const path = route();
+    assert.ok(
+      path && !path.some((cell) => cell.x === 2 && cell.y === 1),
+      `it goes round the fire: ${JSON.stringify(path)}`,
+    );
+    // A friend down on the ground is walked over, never stood on.
+    ally.zones = [];
+    Object.assign(ally, { x: 2, y: 2, down: true });
+    const cells = rulesetReachableCells(definition, encounter, "wolf");
+    assert.ok(!cells.some((cell) => cell.x === 2 && cell.y === 2), "nobody stops on a fallen friend");
+    assert.ok(
+      cells.some((cell) => cell.path.some((step) => step.x === 2 && step.y === 2)),
+      "but may walk across them",
     );
   }
 

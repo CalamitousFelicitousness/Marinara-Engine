@@ -2392,6 +2392,7 @@ function dropToZero(
   endConditionsFromSource(ctx, target);
   if (rulesetDiesAtZero(target)) {
     ctx.events.push({ type: "defeated", actorId: target.id });
+    letGoOfTheFallen(ctx, target);
     dies(ctx, target);
     return;
   }
@@ -14376,10 +14377,25 @@ function letGoOfNothing(ctx: RulesetCombatContext, actor: RulesetCombatant, acti
   if (!action.applies?.length || action.zone || action.sustains || action.repeats || action.again || action.calls)
     return;
   if (action.targets.side === "self") return;
-  const holds = ctx.state.combatants.some((one) =>
-    one.tracked.some((entry) => entry.concentration && entry.source === actor.id),
+  // Whoever is out of the fight holds nobody: a held bandit killed where it stood. One sent away by
+  // the spell itself (Banishment) is still held by it.
+  const holds = ctx.state.combatants.some(
+    (one) =>
+      (!one.defeated || one.away) && one.tracked.some((entry) => entry.concentration && entry.source === actor.id),
   );
   if (!holds) endConcentration(ctx, actor, "spent");
+}
+
+/** A combatant taken out of the fight while held: whoever holds it lets go of a spell that now holds
+ *  nobody (Hold Person on two, one shaken off and the other killed). */
+function letGoOfTheFallen(ctx: RulesetCombatContext, fallen: RulesetCombatant): void {
+  for (const holder of ctx.state.combatants) {
+    const held = holder.concentrating;
+    if (!held || holder.id === fallen.id) continue;
+    if (!fallen.tracked.some((entry) => entry.concentration && entry.source === holder.id)) continue;
+    const action = holder.actions.find((one) => one.id === held.actionId);
+    if (action) letGoOfNothing(ctx, holder, action);
+  }
 }
 
 /**

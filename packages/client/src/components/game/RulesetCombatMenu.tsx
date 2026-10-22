@@ -1341,7 +1341,10 @@ export function RulesetCombatMenu({
       {view.window ? (
         <p className="text-[0.65rem] uppercase tracking-wide text-[var(--primary)]">
           {t(
-            `game.combat.ruleset.menu.window${view.window.targetIds?.some((id) => id !== view.window!.actorId) && (view.window.moment === "aimed" || view.window.moment === "hit") ? "Bystander" : WINDOW_PROMPTS[view.window.moment ?? view.window.kind]}`,
+            // What somebody readied, set off (1.288), says what set it off rather than a walk away.
+            view.window.readied
+              ? `game.combat.ruleset.menu.windowReadied${view.window.readied === "comes" ? "Comes" : "Acts"}`
+              : `game.combat.ruleset.menu.window${view.window.targetIds?.some((id) => id !== view.window!.actorId) && (view.window.moment === "aimed" || view.window.moment === "hit") ? "Bystander" : WINDOW_PROMPTS[view.window.moment ?? view.window.kind]}`,
             {
               name: askedName,
               target: view.window.targetIds?.map(nameOf).join(", ") ?? askedName,

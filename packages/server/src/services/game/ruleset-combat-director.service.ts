@@ -38,6 +38,7 @@ import {
   readRulesetLive,
   rulesetHitChances,
   rulesetSaveFailChances,
+  rulesetSequenceForecastAgainst,
   rulesetAimCells,
   rulesetAnswerDeflects,
   rulesetItemSlotPayment,
@@ -73,6 +74,7 @@ import {
   rulesetReactionTarget,
   rulesetFallTargets,
   rulesetPositionOf,
+  rulesetLightAt,
   rulesetWalkingDistances,
   rulesetFootprint,
   rulesetFootprintAt,
@@ -921,10 +923,13 @@ export function rulesetMenu(
     };
   });
   // Treating somebody with nobody to treat is no choice: pulling a friend out of a cube nobody is
-  // in, or first aid with nobody dying, is left off rather than offered all fight.
+  // in, or first aid with nobody dying, is left off rather than offered all fight. Readying one of
+  // them is left off with it: there is nobody to wait to treat either.
   return offered.filter((option) => {
-    const contest = asked?.actions.find((one) => one.id === option.id)?.contest;
-    return !(contest?.pulls || contest?.targetHolds || contest?.targetDying) || option.targetIds.length > 0;
+    const id = option.ready?.optionId ?? option.id;
+    const contest = asked?.actions.find((one) => one.id === id)?.contest;
+    if (!(contest?.pulls || contest?.targetHolds || contest?.targetDying)) return true;
+    return (option.ready ? offered.find((one) => one.id === id) : option)?.targetIds.length ? true : false;
   });
 }
 
@@ -1141,6 +1146,7 @@ function rulesetViewOf(definition: RulesetDefinition, state: CombatDirectorState
             actorId: held.actorId,
             waiting: Math.max(0, held.window.waiting.length - 1),
             ...(held.window.trigger.kind === "leaves-reach" ? { moverId: held.window.trigger.moverId } : {}),
+            ...(held.window.trigger.kind === "readied" ? { readied: held.window.trigger.on } : {}),
             ...("sourceId" in held.window.trigger ? { sourceId: held.window.trigger.sourceId } : {}),
             ...("targetIds" in held.window.trigger ? { targetIds: held.window.trigger.targetIds } : {}),
             ...(rulesetWindowMoment(held.window.trigger) ? { moment: rulesetWindowMoment(held.window.trigger)! } : {}),
@@ -1268,6 +1274,25 @@ function rulesetCandidates(
     }
     return true;
   });
+  // Helping is aiding a friend against an opponent beside its helper: with none beside it, nothing
+  // comes of it (a wolf helping from across the field, a companion helping a friend nobody is near).
+  const beside = (cell: { x: number; y: number } | null | undefined) =>
+    !!actor &&
+    !!cell &&
+    encounter.combatants.some(
+      (one) =>
+        one.side !== actor.side &&
+        rulesetCombatStanding(one) &&
+        !!rulesetPositionOf(one) &&
+        rulesetGapFrom(cell, rulesetSpanOf(actor), one) <= 1,
+    );
+  for (let index = own.length - 1; index >= 0; index--) {
+    const candidate = own[index]!;
+    if (candidate.action.option.kind !== "standard" || rulesetStandardName(candidate.action.option.id) !== "help")
+      continue;
+    if (actor && rulesetPositionOf(actor) && !beside(candidate.action.to ?? rulesetPositionOf(actor)))
+      own.splice(index, 1);
+  }
   const keeps = !!actor && rulesetKeepsDefensive(definition, encounter, actor, tactics, orders);
   // Nothing to hurt or help from anywhere it can get to this turn: a dodge, a getaway or a hide only
   // for one that keeps to them (and not past two turns of it). Anybody else goes looking for the
@@ -1289,9 +1314,10 @@ function rulesetDefensiveName(option: RulesetCombatOption): RulesetCandidate["de
 }
 
 /** Whether a creature weighs dodging, getting away or hiding against its attacks (1.708): a careful,
- *  cowardly or patient one once it is hurt or stands where a turn of blows would take a good share of
- *  what it has left, and an animal once it is hurt. Never a mindless one, and never one in no real danger: a sturdy
- *  creature trading small blows fights on rather than dodging all fight. */
+ *  cowardly or patient one once it has lost a quarter and stands where a turn of blows would take a
+ *  good share of what it has left, any of them and an animal once it is down to half, and one told to
+ *  keep back wherever it is in danger. Never a mindless one, and never a whole one: a creature at full
+ *  health fights on rather than dodging all fight. */
 function rulesetKeepsDefensive(
   definition: RulesetDefinition,
   encounter: RulesetEncounterState,
@@ -1315,8 +1341,13 @@ function rulesetKeepsDefensive(
   // An animal minds itself once it is hurt, not before: a wolf beside its prey bites rather than
   // dodging because the prey could hit back.
   if (!careful) return false;
+  // Kept out of harm's way by its player: wherever a turn of blows would take a good share of it.
   const home = rulesetPositionOf(actor);
-  return !!home && rulesetDangerAt(definition, encounter, actor, home) >= 0.3;
+  const endangered = !!home && rulesetDangerAt(definition, encounter, actor, home) >= 0.3;
+  if (orders?.posture === "back") return endangered;
+  // A careful creature is careful sooner, once it has lost a quarter, but a whole one fights: an orc
+  // at full health beside a hurt rogue swings rather than dodging half the fight (playtest).
+  return health.value < health.max * 0.75 && endangered;
 }
 
 /**
@@ -1366,8 +1397,7 @@ function rulesetZoneHarmAt(
   for (const caster of encounter.combatants) {
     for (const zone of caster.zones ?? []) {
       const action = caster.actions.find((entry) => entry.id === zone.actionId);
-      if (!action?.damage || !action.zone?.triggers.some((when) => when === "turn-start" || when === "turn-end"))
-        continue;
+      if (!action?.damage || !zone.triggers.some((when) => when === "turn-start" || when === "turn-end")) continue;
       const cells = rulesetZoneCells(encounter, caster, zone);
       if (!filled.some((one) => cells.some((at) => at.x === one.x && at.y === one.y))) continue;
       if (!rulesetZoneCatches(caster, zone, action, actor)) continue;
@@ -1445,8 +1475,9 @@ function weighRulesetTeam(
   // standard action is what is left when nothing is in reach, and it walks instead.
   const keeps = rulesetKeepsDefensive(definition, encounter, actor, units.get(actor.id)?.tactics, orders);
   // Getting away from nobody gets it nothing: with no opponent beside it, Disengage is left out (a
-  // goblin's Nimble Escape spent eight times out in the open).
-  if (!foes.some((foe) => near(actor, foe))) {
+  // goblin's Nimble Escape spent eight times out in the open), and so it is with no walk left to
+  // get away on.
+  if (!foes.some((foe) => near(actor, foe)) || (actor.movement !== undefined && (actor.movementLeft ?? 0) < 1)) {
     const kept = candidates.filter((candidate) => rulesetDefensiveName(candidate.action.option) !== "disengage");
     if (kept.length > 0) candidates.splice(0, candidates.length, ...kept);
   }
@@ -1795,7 +1826,12 @@ export function rulesetWindowTargetOf(
       ...("entry" in trigger ? { entry: trigger.entry } : {}),
       ...(trigger.kind === "hit" ? { blow: trigger.blow } : {}),
     });
-  return action && rulesetReactionPointsAtSource(action) ? trigger.sourceId : undefined;
+  // A Counterspell lands on the cast, whatever its own targets say: a creature's is written as one
+  // it casts on itself, and weighed as that it was a slot spent for nothing.
+  return action &&
+    (rulesetReactionPointsAtSource(action) || (action.reaction?.cancels && action.reaction.at === "source"))
+    ? trigger.sourceId
+    : undefined;
 }
 
 function rulesetCandidatesFrom(
@@ -1828,6 +1864,12 @@ function rulesetCandidatesFrom(
     const { option, price } = way;
     // Nothing can come of it from here: a Hide in the open.
     if (option.futile) continue;
+    // Waiting to treat somebody (pulling a friend out of a cube, first aid) is the Game Master's to
+    // ready, never the picker's: it would stand there all fight for a turn nobody needs.
+    if (option.ready) {
+      const contest = actor.actions.find((one) => one.id === option.ready?.optionId)?.contest;
+      if (contest?.pulls || contest?.targetHolds || contest?.targetDying) continue;
+    }
     // Cast again while what it left still stands, it only puts back what is there and spends another
     // slot on it: a Spiritual Weapon strikes again instead, and a standing zone stays where it is.
     if (
@@ -1877,10 +1919,15 @@ function rulesetCandidatesFrom(
     if (option.dismiss) continue;
     // So is turning something off, or a light, pulling blows or an item's form: flicked every turn
     // for a guessed worth, it only filled the log. Orders that want blows pulled pull them (P7). An
-    // item turned on (a flame tongue lit) is still weighed, once.
+    // item turned on (a flame tongue lit) is still weighed, once. A lantern only where it is dark
+    // enough to want one: lit in daylight it is a turn spent on nothing.
     if (option.on !== undefined) {
       const switches = actor.actions.find((entry) => entry.id === option.id)?.switches;
       if (option.on || !switches || !("item" in switches)) continue;
+      const item = actor.sheet?.items?.[switches.item]?.item;
+      const at = rulesetPositionOf(actor);
+      const light = at ? rulesetLightAt(definition, encounter, at) : "bright";
+      if ((item?.carried?.light || item?.toggle?.offLight) && (light === "bright" || light === "sunlight")) continue;
     }
     // From another cell, only what the actor would do THERE is worth enumerating: everything it
     // could do without moving is already on the list.
@@ -2033,7 +2080,8 @@ function rulesetCandidatesFrom(
     // An action made of other actions sends all of them at one opponent. Anything else that may
     // take several targets takes as many as it is allowed: a breath that could catch three people
     // and is pointed at one is an opponent played badly, not an opponent played kindly.
-    const spreads = option.targets.count > 1 && !actor.actions.find((entry) => entry.id === option.id)?.sequence;
+    const sequenced = !!actor.actions.find((entry) => entry.id === option.id)?.sequence;
+    const spreads = option.targets.count > 1 && !sequenced;
     for (const targetId of legal) {
       const target = rulesetCombatant(encounter, targetId);
       if (!target) continue;
@@ -2043,8 +2091,22 @@ function rulesetCandidatesFrom(
       const ally = target.side === actor.side;
       const health = rulesetCombatHealth(definition, combat, target);
       const pool = Math.max(1, health.value + health.temp);
-      const chance = option.forecast?.hitChance ?? 1;
-      const average = option.forecast?.averageDamage ?? 0;
+      // As likely to land on this one as it is: a dagger thrown far, at disadvantage, against the
+      // one beside it. A Multiattack counts each part's own chance in what it is worth, below. A
+      // mode or a style has its own forecast, which is kept.
+      const chance = sequenced
+        ? 1
+        : option.forecast?.hitChance !== undefined && way.mode === undefined && way.style === undefined
+          ? (rulesetHitChances(definition, encounter, actorId, option.id, [targetId])[targetId] ??
+            option.forecast.hitChance)
+          : 1;
+      // A Multiattack is worth only the parts that reach this one: a captain's scimitars do nothing
+      // to somebody it could only throw a dagger at.
+      const average =
+        (sequenced
+          ? rulesetSequenceForecastAgainst(definition, encounter, actorId, option.id, targetId)
+          : option.forecast
+        )?.averageDamage ?? 0;
       const candidate: CombatAiCandidate<RulesetCandidate> = {
         action: {
           choice: { actorId, optionId: option.id, targetIds: lands ? [] : [targetId], ...paying(way) },
@@ -2119,10 +2181,15 @@ function rulesetCandidatesFrom(
       ) {
         // Stopping what is coming (Counterspell) is worth what it would have done, weighed as the harm
         // it saves rather than by temperament: a cantrip is let through, a Fireball at the party is
-        // stopped by anybody who can. The first quarter is what a reaction and its slot are worth.
-        const saved = Math.max(0, rulesetStoppedWorth(definition, combat, encounter, actor) - 0.25) * chance;
+        // stopped by anybody who can. The first quarter is what a reaction is worth, and a tenth
+        // more for each level of the slot it spends, however little the spender minds the price: a
+        // 3rd-level slot is never thrown at a Fire Bolt. That is its whole price, so none is added.
+        const level = rulesetPaidLevel(definition, actor, fallingAction, way.payWith);
+        const saved =
+          Math.max(0, rulesetStoppedWorth(definition, combat, encounter, actor) - 0.25 - 0.1 * level) * chance;
         if (saved <= 0) continue;
         candidate.damage = saved;
+        candidate.cost = 0;
       } else {
         // What it does to them, read off what it puts on them: nothing, for what they already have
         // or cannot take.
@@ -2872,9 +2939,11 @@ function pickChoice(
   if (candidates.length === 0) return null;
   const behavior = unit.tactics!.mind === "mindless" ? undefined : rulesetCombatantBehavior(definition, actor);
   const opening = !menu && !!behavior?.opens && !unit.tactics!.opened && encounter.round <= 2;
-  if (behavior) weighRulesetBehavior(definition, encounter, actor, behavior, candidates, opening);
-  // Whom it goes for by what it is, where its own data names nobody.
-  if (!behavior?.targets?.length) weighRulesetMindFocus(definition, encounter, actor, unit.tactics!, candidates);
+  // Whom it goes for, by its own data or else by what it is. Only on its turn: an answer goes where
+  // the moment points, and a Counterspell is not taken for liking the look of its caster.
+  if (behavior && !menu) weighRulesetBehavior(definition, encounter, actor, behavior, candidates, opening);
+  if (!menu && !behavior?.targets?.length)
+    weighRulesetMindFocus(definition, encounter, actor, unit.tactics!, candidates);
   const chosen = chooseCombatCandidate(
     unit,
     candidates,

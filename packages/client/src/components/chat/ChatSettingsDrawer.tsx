@@ -2963,7 +2963,7 @@ export function ChatSettingsDrawer({
     const confirmation = firstMesConfirm;
     const selectedGreeting = confirmation.greetings[confirmation.selectedIndex];
     if (!selectedGreeting) return;
-    let messageId: string | null = null;
+    let messageId: string | null;
     try {
       const msg = await createMessage.mutateAsync({
         role: "assistant",
@@ -3543,7 +3543,7 @@ export function ChatSettingsDrawer({
     ) : null;
 
   const renderStandaloneRoleplayAgentSettingsCard = (agent: (typeof availableAgents)[number]) => {
-    let settings: React.ReactNode = null;
+    let settings: React.ReactNode;
 
     if (agent.id === "hierarchical-maps" && mapsPackage) {
       settings = (

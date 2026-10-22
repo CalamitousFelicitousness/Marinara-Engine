@@ -985,7 +985,7 @@ interface UIState {
   boldDialogue: boolean;
   /**
    * Retired global switch for inline name colors, now a per-chat setting (chat metadata `colorInlineNames`).
-   * Read-only: a chat that never set its own value falls back to this one.
+   * Nothing writes it any more; it stays persisted so a chat that never set its own value falls back to it.
    */
   colorInlineNames: boolean;
   /** When true, inline name coloring uses the first solid color from gradients instead of rendering the gradient. */

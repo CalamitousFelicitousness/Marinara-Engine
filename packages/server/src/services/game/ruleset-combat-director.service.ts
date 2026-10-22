@@ -1688,21 +1688,17 @@ function rulesetRetreatCell(
   if (foes.length === 0) return null;
   const span = rulesetSpanOf(actor);
   const nearest = (cell: { x: number; y: number }) => Math.min(...foes.map((foe) => rulesetGapFrom(cell, span, foe)));
-  let best: { cell: { x: number; y: number }; away: number; danger: number; squeezed: boolean } | null = null;
+  let best: { cell: { x: number; y: number }; away: number; danger: number } | null = null;
   const here = nearest(from);
   for (const cell of rulesetWalkableCells(definition, encounter, actorId)) {
     const away = nearest(cell);
     if (away <= here) continue;
     const danger = rulesetDangerAt(definition, encounter, actor, cell);
-    // Never into a gap it has to squeeze into where it can stand whole (re-test 14: a crocodile that
-    // dragged its prey into a corner gap and bit at a disadvantage for twelve rounds).
-    const squeezed = span > 1 && !!rulesetSqueezeAt(definition, encounter, actor, cell);
-    if (
-      !best ||
-      (best.squeezed && !squeezed) ||
-      (best.squeezed === squeezed && (away > best.away || (away === best.away && danger < best.danger)))
-    )
-      best = { cell: { x: cell.x, y: cell.y }, away, danger, squeezed };
+    // Never into a gap it has to squeeze into (re-test 14 and 15: a crocodile that dragged its prey
+    // into a corner gap, or a gap between rocks, and bit at a disadvantage for twelve rounds).
+    if (span > 1 && rulesetSqueezeAt(definition, encounter, actor, cell)) continue;
+    if (!best || away > best.away || (away === best.away && danger < best.danger))
+      best = { cell: { x: cell.x, y: cell.y }, away, danger };
   }
   return best?.cell ?? null;
 }
@@ -4635,6 +4631,22 @@ function rulesetShotFromAfar(
     : [action];
   if (!blows.every((blow) => !!blow?.range && !blow.reach && !!blow.damage)) return false;
   if (!rulesetPositionOf(actor) || !rulesetPositionOf(target) || rulesetGap(actor, target) <= 1) return false;
+  // One far better up close (a knight's greatsword against its crossbow) shoots only while it cannot
+  // reach, and walks in after it (playtest re-test 15): keeping its distance is for those it serves.
+  const average = (one: RulesetCombatAction): number =>
+    one.sequence?.length
+      ? one.sequence.reduce((sum, step) => {
+          const part = actor.actions.find((each) => each.id === step.actionId);
+          return part?.damage && (!part.range || part.reach)
+            ? sum + rulesetAverageDamage(part.damage) * (step.times ?? 1)
+            : sum;
+        }, 0)
+      : one.damage && (!one.range || one.reach)
+        ? rulesetAverageDamage(one.damage)
+        : 0;
+  const close = Math.max(0, ...actor.actions.filter((one) => !one.reaction && !one.lair).map(average));
+  const shot = blows.reduce((sum, blow) => sum + rulesetAverageDamage(blow!.damage!), 0);
+  if (close > shot * 1.5) return false;
   return mind === "tactical" || mind === "genius" ? "kite" : "stay";
 }
 
@@ -4852,12 +4864,23 @@ function dragOffPrey(
   const actor = rulesetCombatant(fight.encounter, actorId);
   const tactics = [...state.party, ...state.enemies].find((one) => one.id === actorId)?.tactics;
   if (!actor || tactics?.adjective !== "hungry" || !fight.encounter.board?.grid) return false;
+  // Only prey still fighting it: one lying down is no longer worth hauling off, and dragging it on
+  // round after round kept a fight going for twenty-five rounds (re-test 15).
   const prey = rulesetDragging(definition, fight.encounter, actor).ids.filter((id) => {
     const one = rulesetCombatant(fight.encounter, id);
-    return !!one && one.side !== actor.side;
+    return !!one && one.side !== actor.side && !one.down && rulesetCombatStanding(one);
   });
   if (prey.length === 0) return false;
   tactics.targetId = prey[0];
+  // Already where none of the rest can walk up to it this turn: it stays and feeds there, rather
+  // than going round in circles as they shift about.
+  const perCell = definition.combat?.distance?.perCell;
+  const rest = fight.encounter.combatants.filter(
+    (one) =>
+      one.side !== actor.side && !prey.includes(one.id) && rulesetCombatStanding(one) && !!rulesetPositionOf(one),
+  );
+  const safe = rest.every((one) => rulesetGap(actor, one) > (perCell ? rulesetInCells(one.speed, perCell) : 6) + 1);
+  if (safe) return true;
   const away = rulesetRetreatCell(definition, fight.encounter, actorId, prey);
   if (away) applyChoice(definition, state, fight, { actorId, optionId: RULESET_MOVE_OPTION, targetIds: [], to: away });
   return true;

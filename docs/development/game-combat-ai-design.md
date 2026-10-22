@@ -325,6 +325,8 @@ Proposed initial tuning: normalize policy utility to a fixed scale; let novices 
 
 **Fliers keep altitude (combat AI A7).** When a ruleset flier's turn goes idle on the ground (`keepAloft`), and it can fly, has an available ranged damaging action, isn't a bruiser, reckless or mindless, and an opponent who cannot fly stands, it takes Fly up where the board has levels, then carries on its turn (a shot, its kite) from the air.
 
+**Playtest re-test 15 fixes (no new keys).** A saved position on a water cell loads (the save check no longer counts water as blocked). A getaway (`rulesetRetreatCell`) never ends in a squeeze gap for a creature larger than one cell. A hungry creature drags only standing prey, and once every other standing foe is beyond its walk plus one cell it stays put instead of dragging further. A surrendered combatant shows a white flag on its token and "Surrendered" on its card, not a defeated skull. A thinking creature whose best close-up blow averages more than one and a half times its shot (`rulesetShotFromAfar`) shoots only while it cannot reach, then walks in, instead of keeping its spot.
+
 ## 8. Boss turns controlled by the GM
 
 ### Identity and responsibility

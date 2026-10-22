@@ -616,6 +616,11 @@ try {
       });
       assert.equal(walled.statusCode, 400, walled.body);
       assert.match(walled.json().error, /Invalid saved position/);
+      // Water is no wall: a crocodile's prey dragged into it is where the resolver put it (re-test 15).
+      const wet = await tamper((combatants, tiles) => {
+        tiles[combatants[0]!.y as number]![combatants[0]!.x as number] = "water";
+      });
+      assert.equal(wet.statusCode, 200, wet.body);
       // A fight with NO board carrying any coordinate at all is refused, whatever the value is.
       for (const stray of [{ y: 2 }, { x: null }, { x: "2" }] as Array<Record<string, unknown>>) {
         const doc = JSON.parse(honest);

@@ -498,9 +498,14 @@ export async function combatDirectorRoutes(
       // The resolver never puts anybody inside something solid, so a save that says otherwise was
       // not written by it and every distance read off it would be wrong. Two on one cell is NOT
       // refused: a walk may end on a fallen body, and healing that body stands two people on one
-      // square, which is the resolver's own doing.
+      // square, which is the resolver's own doing. Water is not solid to everybody: a swimmer or a
+      // flier stands in it, and so does whoever it drags there (re-test 15: a crocodile's prey).
       for (const combatant of placed) {
-        if (rulesetCellBlocked(grid, combatant.x!, combatant.y!)) throw new Error("Invalid saved position.");
+        if (
+          rulesetCellBlocked(grid, combatant.x!, combatant.y!) &&
+          grid.tiles[combatant.y!]?.[combatant.x!] !== "water"
+        )
+          throw new Error("Invalid saved position.");
       }
     } else if (
       // A fight with no board has no cells to stand in, so a saved combatant carrying EITHER

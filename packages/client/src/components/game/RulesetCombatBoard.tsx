@@ -9,7 +9,7 @@
 // shapes (`lib/tactical-board-look.ts`), because it IS the same battlefield: the same generator,
 // the same terrain and the same deployment. What it does with it is the ruleset's.
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import { Skull, Sword, Zap } from "lucide-react";
+import { Flag, Skull, Sword, Zap } from "lucide-react";
 import {
   creatureArtVariant,
   findCreatureArt,
@@ -771,7 +771,9 @@ export function RulesetCombatBoard({
                 aria-hidden="true"
                 className={cn(
                   "pointer-events-none absolute z-10 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center transition-all duration-200",
-                  combatant.defeated && "opacity-40 grayscale",
+                  // A prisoner (re-test 15) is no corpse: dimmed, in its colours, under a white flag.
+                  combatant.defeated && !combatant.surrendered && "opacity-40 grayscale",
+                  combatant.surrendered && "opacity-60",
                   !combatant.defeated && combatant.down && "opacity-70 grayscale",
                 )}
                 style={{
@@ -814,8 +816,12 @@ export function RulesetCombatBoard({
                       {initialsOf(combatant.name)}
                     </span>
                   )}
-                  {(combatant.defeated || combatant.down) && (
-                    <Skull className="absolute -top-1.5 left-1/2 h-3 w-3 -translate-x-1/2 text-[var(--destructive)] drop-shadow" />
+                  {combatant.surrendered ? (
+                    <Flag className="absolute -top-1.5 left-1/2 h-3 w-3 -translate-x-1/2 text-white drop-shadow" />
+                  ) : (
+                    (combatant.defeated || combatant.down) && (
+                      <Skull className="absolute -top-1.5 left-1/2 h-3 w-3 -translate-x-1/2 text-[var(--destructive)] drop-shadow" />
+                    )
                   )}
                   {/* Caught unaware (1.237): marked until their first turn is over. */}
                   {combatant.surprised && !combatant.defeated && !combatant.down && (

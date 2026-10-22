@@ -2655,6 +2655,7 @@
   "game.combat.ruleset.status.round": "Round {{round}}",
   "game.combat.ruleset.status.stable": "Stable",
   "game.combat.ruleset.status.surprised": "Surprised",
+  "game.combat.ruleset.status.surrendered": "Surrendered",
   "game.combat.ruleset.status.temp": "+{{amount}} temporary",
   "game.combat.ruleset.status.tier": "Threat: {{label}}",
   "game.combat.ruleset.status.traits": "Traits: {{list}}",

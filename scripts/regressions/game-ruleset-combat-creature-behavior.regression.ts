@@ -552,6 +552,34 @@ try {
     assert.equal(prey("opportunistic", true), "other", "only a cruel one");
   }
 
+  // ── Far better up close (re-test 15): it shoots while it cannot reach, then walks in ──
+  {
+    const potShot = (actions: unknown[]) => {
+      const { encounter, state } = fight({
+        knight: { side: "enemy", block: block(actions), at: { x: 2, y: 4 } },
+        brom: { side: "party", block: block([smash]), at: { x: 12, y: 4 } },
+      });
+      state.rulesetFight = { encounter, events: [], eventSeq: 0, controllers: { brom: "manual" }, bosses: [] } as never;
+      syncRulesetCombatants(definition, state);
+      state.stage = rulesetDirectorStage(state);
+      assert.ok(commandRulesetCombatDirector(definition, state, { type: "continue" }).ok);
+      const fought = state.rulesetFight!;
+      const shot = fought.events.some(
+        (one) =>
+          "actorId" in one.event && one.event.actorId === "knight" && JSON.stringify(one.event).includes('"bolt"'),
+      );
+      return { shot, x: rulesetCombatant(fought.encounter, "knight")!.x! };
+    };
+    const knight = potShot([smash, bolt]);
+    assert.ok(knight.shot, "out of reach, it shoots");
+    assert.ok(knight.x > 2, `and then walks in (stood at ${knight.x})`);
+    assert.equal(
+      potShot([{ ...smash, damage: { count: 1, sides: 4, flat: 0 } }, bolt]).x,
+      2,
+      "an archer keeps its spot",
+    );
+  }
+
   // ── Honourable (combat AI T6): whoever fights it first, and never one running from it ──
   {
     const duel = (temperament: string, set: (encounter: RulesetEncounterState) => void) => {
@@ -615,11 +643,11 @@ try {
         };
       }),
     );
-    const feast = (temperament: string) => {
+    const feast = (temperament: string, how: { friendAt?: { x: number; y: number }; preyDown?: boolean } = {}) => {
       const blocks = {
         croc: { side: "enemy" as const, block: block([smash], { behavior: { temperament } }), at: { x: 6, y: 4 } },
         prey: { side: "party" as const, block: block([smash]), at: { x: 7, y: 4 } },
-        friend: { side: "party" as const, block: block([smash]), at: { x: 3, y: 4 } },
+        friend: { side: "party" as const, block: block([smash]), at: how.friendAt ?? { x: 3, y: 4 } },
       };
       const encounter = createRulesetEncounter({
         definition: dragging,
@@ -634,6 +662,11 @@ try {
       encounter.order = ["croc", "prey", "friend"];
       encounter.turn = 0;
       rulesetCombatant(encounter, "prey")!.tracked.push({ condition: "grappled", rounds: null, source: "croc" });
+      if (how.preyDown) {
+        const prey = rulesetCombatant(encounter, "prey")!;
+        prey.down = true;
+        prey.health = { ...prey.health!, value: 0 };
+      }
       const state = createCombatDirector({
         id: "fight",
         anchor: "anchor",
@@ -662,6 +695,10 @@ try {
     assert.ok(fed.croc > 6, "it drags its prey off, away from the friend");
     assert.ok(fed.prey > 7, "and the prey with it");
     assert.equal(feast("patient").croc, 6, "one that is not stays to fight");
+    // Out of the rest's walk already, it stays and feeds; with its prey down, it drags it no more
+    // (re-test 15: a crocodile hauling a stable victim in circles for twenty-five rounds).
+    assert.equal(feast("hungry", { friendAt: { x: 15, y: 9 } }).croc, 6, "far enough already");
+    assert.ok(feast("hungry", { preyDown: true }).croc <= 6, "the fallen are not hauled off");
   }
 
   // ── Keeping its ground (combat AI T4): no further than its territory, unless shot at from afar ──
@@ -1037,7 +1074,7 @@ try {
   }
 
   console.log(
-    "Combat behavior: merged from the ruleset, the type and the creature; its temperament and role; casters, attackers and a pack's prey first; its opener once; an ambusher keeps still and springs; roles read off what it does; bodyguards stay by their charge; a leader rallies; a temperament turns once; a proud legend flies off; a territorial one keeps its ground; a cruel one strikes the fallen only where the game allows; an honourable one fights fair; a hungry one drags its prey off; a strayed bodyguard walks back; a Multiattack turns from the one it dropped; refused and gated at 1.710, 1.723, 1.724, 1.725, 1.726, 1.727, 1.728, 1.729, 1.730 and 1.731.",
+    "Combat behavior: merged from the ruleset, the type and the creature; its temperament and role; casters, attackers and a pack's prey first; its opener once; an ambusher keeps still and springs; roles read off what it does; bodyguards stay by their charge; a leader rallies; a temperament turns once; a proud legend flies off; a territorial one keeps its ground; a cruel one strikes the fallen only where the game allows; an honourable one fights fair; a hungry one drags its prey off, and stops; a strayed bodyguard walks back; a Multiattack turns from the one it dropped; refused and gated at 1.710, 1.723, 1.724, 1.725, 1.726, 1.727, 1.728, 1.729, 1.730 and 1.731.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

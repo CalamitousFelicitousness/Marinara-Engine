@@ -856,7 +856,12 @@ export function inferToolPresentation(tool: WorkspaceToolCall): ToolPresentation
       : null;
     return {
       eyebrow: "App data",
-      title: actionTitles[appDataAction] ?? writeTitle ?? `Reading ${appDataAction.replaceAll(".", " ")}`,
+      // A preview outranks the friendly name: "Fixing a reply" would finish as "Fixed a reply".
+      title:
+        (dryRun ? writeTitle : null) ??
+        actionTitles[appDataAction] ??
+        writeTitle ??
+        `Reading ${appDataAction.replaceAll(".", " ")}`,
       detail: appDataSubject(tool, input),
       tone: "db",
     };

@@ -1218,7 +1218,7 @@ export function compactMutationResult(result: MariDbCommandResult): MariDbComman
     status: result.mode === "dry-run" ? "dry_run_only" : saved ? "applied" : result.ok === false ? "failed" : "ok",
     message:
       result.mode === "dry-run"
-        ? 'Preview only: nothing was saved, and the user cannot see this preview - apply:false renders no card or diff in the UI. An update, delete or move saves only with top-level "apply": true: if the user asked for this change, send the same call again with "apply": true; if instead you asked them whether to apply, wait for their answer - never answer your own question.'
+        ? 'Preview only: nothing was saved, and the user cannot see this preview - apply:false renders no card or diff in the UI. An update, delete or move saves only with top-level "apply": true (on a `mari` command, add --apply): if the user asked for this change, send the same call again with it; if instead you asked them whether to apply, wait for their answer - never answer your own question.'
         : saved
           ? readBackStatus === "verified"
             ? `Applied and saved.${noticeSentence} ${cardSentence}The store read-back confirms the persisted rows match the intended change - no separate verification read is needed; report the outcome matter-of-factly.`
@@ -2436,26 +2436,24 @@ function replyOwnsUpToDryRun(text: string): boolean {
   const normalized = text.trim().replace(/[’‘]/gu, "'");
   if (
     /\?\s*\W*$/u.test(normalized) ||
-    /\b(?:not (?:been |yet )?(?:saved|applied)|nothing (?:was |has been |is )?(?:saved|applied|changed)|dry[- ]run|preview only|here(?:'s| is) (?:the|a) preview|\w+n't (?:been |yet )?(?:saved|applied))\b/iu.test(
-      normalized,
-    )
+    /\b(?:dry[- ]run|preview only|here(?:'s| is) (?:the|a) preview)\b/iu.test(normalized)
   ) {
     return true;
   }
-  // "would fire" describes a preview honestly only while nothing beside it claims the work is done:
-  // "Done — the entry would fire on those words" still states completion.
+  // "would fire" describes a preview, and "No changes were made" denies a save; either is honest only
+  // while nothing beside it claims the work is done ("Done — the entry would fire on those words").
   const wouldPhrase =
     /\bwould (?:be|become|fire|look|read|show|change|add|set|make|create|update|replace|remove)\b(?: \w+)?/giu;
-  if (!normalized.match(wouldPhrase)) return false;
-  // A denial ("No entry was created", "it wasn't saved") is not a claim, so it leaves the scan too.
-  const rest = normalized
-    .replace(wouldPhrase, " ")
-    .replace(
-      /\b(?:no|nothing)\s+(?:\w+\s+){0,3}?(?:was|were|is|has been|have been)\s+\w+|\b(?:was|were|is|has|have)\s+not\s+(?:been\s+)?\w+|\b\w+n't\s+(?:been\s+)?\w+/giu,
-      " ",
-    );
+  const denial =
+    /\b(?:no|nothing)\s+(?:\w+\s+){0,3}?(?:was|were|is|has been|have been)\s+\w+|\bnothing\s+(?:saved|applied|changed)\b|\bnot (?:been |yet )?(?:saved|applied)\b|\b(?:was|were|is|has|have)\s+not\s+(?:been\s+)?\w+|\b\w+n't\s+(?:been\s+)?\w+/giu;
+  if (!normalized.match(wouldPhrase) && !normalized.match(denial)) return false;
+  const rest = normalized.replace(wouldPhrase, " ").replace(denial, " ");
+  // A sentence saying the record now holds the value claims it, whichever verb it borrows.
+  const stateClaim =
+    /\bnow\s+(?:correctly\s+)?(?:reflects|shows|says|reads|has|holds|includes|contains|matches|uses)\b|\b(?:is|are)\s+now\b/iu;
   return (
     !/\b(?:done|all set|saved|applied|updated|created|added|linked|fixed|changed)\b/iu.test(rest) &&
+    !stateClaim.test(rest) &&
     !workspaceTextClaimsMutationCompletion(rest)
   );
 }

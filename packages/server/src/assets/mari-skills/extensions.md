@@ -11,7 +11,7 @@ Actions: reads `personal_extension.list|get|search`; writes `create|update`. No 
 
 ## Write contract
 
-- **Never edit an extension you did not create.** A record whose `source` is not `professor_mari` is external: `update` rewrites `source` and keeps `enabled`/`approvedHash` when the executable is unchanged, so a rename adopts it past both External gates — the enable confirmation and the run confirmation — while it keeps running. A full-page external row is the exception: the same edit disables it, because the filtered hash no longer matches. External rows live under Settings → Addons → **External** Extensions; point the user there.
+- **Only extensions you drafted can be edited.** `update` refuses a record whose `source` is not `professor_mari` with `personal_extension.update edits only extensions Professor Mari drafted; "<id>" is an External Extension. Nothing was changed. …`: do not retry it. External rows live under Settings → Addons → **External** Extensions; point the user there.
 - Creates apply unless `apply: false`; **updates need `apply: true`**: without `apply` they are refused, and `apply: false` is a preview that renders nothing to the user. Always send `apply: true`.
 - An update merges the fields you send (`textOrFallback`); it does not need the whole payload. Never send an elision marker back as code: after an elided `get`, request the real field first (`field: "js"`) and edit that. `description: null` is a Zod failure, not a clear.
 - `readBack` gives `status` (`"verified"`/`"mismatch"`/`"unavailable"`) and `checkedRows` — it proves the write, not the hash. On `mismatch` it carries the intended and persisted values.

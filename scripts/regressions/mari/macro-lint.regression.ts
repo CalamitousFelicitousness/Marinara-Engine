@@ -61,6 +61,11 @@ try {
     [{ alternate_greetings: ["Hello.", "Back so soon, {{user?"] }, /alternate_greetings\[1\] opens/u],
     [{ system_prompt: "Stay as {{char" }, /system_prompt opens/u],
     [{ postHistoryInstructions: "Keep {{tone" }, /postHistoryInstructions opens/u],
+    // Aliases the writer folds into first_mes / mes_example, and a wrapper inside a wrapper it flattens.
+    [{ greeting: "Hello {{user" }, /greeting opens/u],
+    [{ mesExample: "<START> {{char" }, /mesExample opens/u],
+    [{ patch: { description: "Raised by {{kin" } }, /description opens/u],
+    [{ patch: { extensions: { appearance: "Eyes like {{sky" } } }, /appearance opens/u],
   ] as const) {
     const refused = (await mari.executeAction({
       action: "character.update",
@@ -114,6 +119,21 @@ try {
   })) as Result;
   assert.equal(literalKey.ok, false);
   assert.match(String(literalKey.error), /keys contains "\{\{"/u);
+
+  // The CLI entry update is linted like its siblings.
+  const goodEntry = (await mari.executeAction({
+    action: "lorebook.addEntry",
+    lorebookId: bookId,
+    data: { name: "Gate", keys: ["gate"], content: "Opens at dusk." },
+  })) as Result;
+  assert.equal(goodEntry.ok, true, `lorebook.addEntry failed: ${String(goodEntry.error ?? "")}`);
+  const entries = (await mari.executeAction({ action: "lorebook.entries", lorebookId: bookId })) as Result;
+  const entryId = String((entries.output as { items: Array<{ id: string }> }).items[0]?.id);
+  const cliUpdate = await mari.executeCli({
+    argv: ["lorebooks", "update-entry", entryId, "--content", "Opens at {{dusk", "--apply"],
+    command: "mari lorebooks update-entry",
+  });
+  assert.match(JSON.stringify(cliUpdate), /update-entry refused by the macro linter: content opens/u);
 
   console.log("macro lint passed");
 } finally {

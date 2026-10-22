@@ -67,6 +67,16 @@ assert.notEqual(
   ).issue,
   "dry_run",
 );
+// A plain denial needs no "would" to be honest...
+assert.notEqual(auditWorkspaceCompletionClaim(final("No changes were made."), scope).issue, "dry_run");
+// ...and a state claim beside a "would" is still a claim.
+assert.equal(
+  auditWorkspaceCompletionClaim(
+    final("The card now reflects the new greeting; the entry would fire on 'guild'."),
+    scope,
+  ).issue,
+  "dry_run",
+);
 // An applied write, or a round that still has commands, is not this case.
 assert.notEqual(auditWorkspaceCompletionClaim(final(paraphrase), [...scope, applied]).issue, "dry_run");
 assert.notEqual(auditWorkspaceCompletionClaim(final(paraphrase, [{}]), scope).issue, "dry_run");
@@ -81,7 +91,7 @@ const decision = reviewRoundClaim(newRoundReviewState(), {
 assert.equal(decision.kind, "repair");
 assert.match(
   decision.kind === "repair" ? decision.prompt : "",
-  /Every write in this run was a dry run, so nothing was saved.*send the same call again with top-level "apply": true/,
+  /Every write since your last checked reply was a dry run, so those changes were not saved.*anything applied earlier still stands.*send the same call again with top-level "apply": true/,
 );
 
 // The preview keeps only what changed, two levels deep; an insert stays whole.

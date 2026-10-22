@@ -5239,6 +5239,12 @@ export class MariDbService {
         if (!existingRaw)
           throw missingRecord("personal extension", id, "personal_extension.list (or personal_extension.search)");
         const existing = parseRow(table, existingRaw);
+        // An update rewrites `source` and keeps an unchanged hash's approval, so editing an external row
+        // would move it past the External gates while it keeps running.
+        if (existing.source !== "professor_mari")
+          throw new Error(
+            `personal_extension.update edits only extensions Professor Mari drafted; "${id}" is an External Extension. Nothing was changed. Point the user to Settings → Addons → External Extensions to change it there.`,
+          );
         const data = actionDataWithTopLevel(
           args,
           ["patch", "data", "extension"],
@@ -7567,6 +7573,15 @@ export class MariDbService {
         }
         const entryExists = await this.getRawById(getMeta("lorebook_entries"), entryId);
         if (!entryExists) throw missingRecord("lorebook entry", entryId, "lorebook.entries <lorebook-id>");
+        // The same linter as add-entry and lorebook.updateEntry.
+        const lintedFlags = {
+          name: flagString(flags, "name"),
+          content: flagString(flags, "content"),
+          keys: flagString(flags, "keys"),
+          secondaryKeys: flagString(flags, "secondary-keys"),
+        };
+        assertEntryMacros(lintedFlags, "mari lorebooks update-entry");
+        assertLiteralEntryFields(lintedFlags, "mari lorebooks update-entry");
         const entryPatch: Row = { updatedAt: now() };
         const entryFieldMap: Array<[string, string]> = [
           ["name", "name"],

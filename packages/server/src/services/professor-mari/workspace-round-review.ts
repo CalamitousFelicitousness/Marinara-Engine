@@ -115,7 +115,7 @@ export function reviewRoundClaim(
       kind: "repair",
       prompt:
         verificationIssue === "dry_run"
-          ? 'Every write in this run was a dry run, so nothing was saved and the user sees no change. Do not say it is done. If the user asked for this change, send the same call again with top-level "apply": true and answer from that result. If they asked only for a preview, or you asked whether to apply, say plainly that nothing was saved yet.'
+          ? 'Every write since your last checked reply was a dry run, so those changes were not saved and the user sees no change from them (anything applied earlier still stands). Do not say they are done. If the user asked for this change, send the same call again with top-level "apply": true and answer from that result. If they asked only for a preview, or you asked whether to apply, say plainly that nothing was saved yet.'
           : verificationIssue === "none" && !terminalClaim
             ? "You claimed a step was completed, but no command output since your last verified claim backs it up. Do not repeat the claim. First run a read that shows the state you claimed; if the work is genuinely missing, perform it and verify it with another read before moving on. Never redo work a read shows already exists."
             : verificationIssue === "none"

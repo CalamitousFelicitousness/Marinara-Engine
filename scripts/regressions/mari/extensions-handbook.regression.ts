@@ -4,11 +4,13 @@
 // the document claims: the create produces the documented hash, a description edit does not move it,
 // and a css edit does.
 import assert from "node:assert/strict";
+import { eq } from "../../../packages/server/src/db/file-query.js";
+import { installedExtensions } from "../../../packages/server/src/db/schema/extensions.js";
 import { withHandbook } from "./_handbook.js";
 
 const PINNED_HASH = "sha256:677e787ceec71951f8e9fd14182ad7b3bc877b55cf0485b84948073de6242533";
 
-await withHandbook("builtin-extensions", async ({ skill, commands, run }) => {
+await withHandbook("builtin-extensions", async ({ skill, commands, db, mari, run }) => {
   assert.equal(commands.length, 6, "the example is create, read, rename, read, restyle, read");
   assert.ok(skill.content.includes(PINNED_HASH), "the handbook quotes the pinned hash");
 
@@ -33,6 +35,14 @@ await withHandbook("builtin-extensions", async ({ skill, commands, run }) => {
 
   const restyled = await run(5);
   assert.notEqual(restyled.output?.contentHash, PINNED_HASH, "changing css moves the hash and needs a new review");
+
+  // An External Extension is refused, not adopted: an update would rewrite its source and keep its approval.
+  const id = String(restyled.output?.id);
+  await db.update(installedExtensions).set({ source: "external" }).where(eq(installedExtensions.id, id));
+  const adopted = await mari.executeAction({ action: "personal_extension.update", id, name: "Renamed", apply: true });
+  assert.equal(adopted.ok, false, "an external row cannot be edited through personal_extension.update");
+  assert.match(String(adopted.error), /is an External Extension\. Nothing was changed/);
+  assert.ok(skill.content.includes("is an External Extension. Nothing was changed."), "the handbook quotes the refusal");
 });
 
 console.log("Professor Mari extensions handbook regression passed.");

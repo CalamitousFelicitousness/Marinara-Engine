@@ -117,7 +117,9 @@ export function badEnum(field: string, allowed: readonly string[], received: unk
 
 /** A lookup missed: name the kind and the id, say ids are generated, and point at the finder. */
 export function missingRecord(kind: string, id: string, lookup: string): Error {
+  // Model-written, like an action name: quote it and cap it so the finder hint stays on one short line.
+  const shown = JSON.stringify(id.length > MAX_ECHO ? `${id.slice(0, MAX_ECHO)}…` : id);
   return new Error(
-    `No ${kind} has the id "${id}". ${kind} ids are generated, never a name or slug; find the record with ${lookup} and send the "id" it returns.`,
+    `No ${kind} has the id ${shown}. ${kind} ids are generated, never a name or slug; find the record with ${lookup} and send the "id" it returns.`,
   );
 }

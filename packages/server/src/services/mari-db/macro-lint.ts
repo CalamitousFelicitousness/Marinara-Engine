@@ -39,7 +39,10 @@ const CARD_MACRO_FIELDS = [
   "summary",
   "first_mes",
   "firstMes",
+  "firstMessage",
+  "greeting",
   "mes_example",
+  "mesExample",
   "backstory",
   "appearance",
   "aboutMe",
@@ -81,12 +84,17 @@ function refuse(action: string, problems: MacroProblem[], tail: string): never {
   throw new Error(`${action} refused by the macro linter: ${detail}. ${tail}`);
 }
 
-/** The record plus any of `keys` nested in it (a model may send fields top level or wrapped). */
-function candidateRecords(record: Record<string, unknown>, keys: string[]): Record<string, unknown>[] {
+/**
+ * The record plus any of `keys` nested in it (a model may send fields top level or wrapped). A wrapper
+ * inside a wrapper ({patch:{data:{…}}}) is walked too, because the writer flattens it.
+ */
+function candidateRecords(record: Record<string, unknown>, keys: string[], depth = 3): Record<string, unknown>[] {
   const records: Record<string, unknown>[] = [record];
+  if (depth === 0) return records;
   for (const key of keys) {
     const nested = record[key];
-    if (nested && typeof nested === "object" && !Array.isArray(nested)) records.push(nested as Record<string, unknown>);
+    if (nested && typeof nested === "object" && !Array.isArray(nested))
+      records.push(...candidateRecords(nested as Record<string, unknown>, keys, depth - 1));
   }
   return records;
 }

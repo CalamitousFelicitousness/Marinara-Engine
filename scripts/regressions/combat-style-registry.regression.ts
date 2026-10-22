@@ -114,7 +114,14 @@ assert.equal(resolveCombatStyle("duel"), "classic");
 
 // Restoring a style-owned fight.
 {
-  const unregister = registerCombatStyle("duel", { render: () => null });
+  const unregisterPlain = registerCombatStyle("duel", { render: () => null });
+  assert.deepEqual(
+    styleOwnedFightFromSnapshot({ party: [], combatStyle: "duel", startMessageId: "m1" }),
+    { style: null, startMessageId: "m1" },
+    "a style with no isActive() cannot draw a party-less fight, so its save is stale",
+  );
+  unregisterPlain();
+  const unregister = registerCombatStyle("duel", { render: () => null, isActive: () => true });
   assert.deepEqual(styleOwnedFightFromSnapshot({ party: [], combatStyle: "duel", startMessageId: "m1" }), {
     style: "duel",
     startMessageId: "m1",

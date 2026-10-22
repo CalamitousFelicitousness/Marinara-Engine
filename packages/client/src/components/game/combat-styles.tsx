@@ -88,7 +88,10 @@ export interface CombatStyleSurface {
   render(ctx: CombatSurfaceContext): ReactNode;
   /** The style draws its own top bar, so the HUD and controls move below --tactical-chrome-height. */
   ownsTopChrome?: boolean;
-  /** For a style that keeps its own state outside the generated party and enemies. */
+  /**
+   * For a style that keeps its own state outside the generated party and enemies. Such a style must
+   * keep that state over a reload: after one, the fight shows only while this answers true.
+   */
   isActive?(chatId: string): boolean;
   /** Tells the surface that isActive may have changed. Returns the unsubscribe. */
   subscribe?(onChange: () => void): () => void;
@@ -212,7 +215,7 @@ export function offerCombatStart(
 /**
  * The pin and anchor of a fight a registered style took over, from a saved combat snapshot: such a
  * fight saves no party, only those two. `style` is null when this client no longer has that style,
- * so the save is stale. Null for any other snapshot, which restores as before.
+ * or has it without an isActive() to report the fight, so the save is stale. Null for any other snapshot, which restores as before.
  */
 export function styleOwnedFightFromSnapshot(
   snapshot:
@@ -221,6 +224,8 @@ export function styleOwnedFightFromSnapshot(
   if (!snapshot || snapshot.party?.length || !snapshot.combatStyle || isBuiltInCombatStyle(snapshot.combatStyle)) {
     return null;
   }
-  const style = resolveCombatStyle(snapshot.combatStyle);
-  return { style: style === snapshot.combatStyle ? style : null, startMessageId: snapshot.startMessageId ?? null };
+  // Only a style that reports its own fight (isActive) can draw one without a party: any other,
+  // or a style no longer registered, would leave a combat nothing draws.
+  const surface = registeredStyles.get(snapshot.combatStyle);
+  return { style: surface?.isActive ? snapshot.combatStyle : null, startMessageId: snapshot.startMessageId ?? null };
 }

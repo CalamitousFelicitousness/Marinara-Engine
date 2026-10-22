@@ -179,12 +179,12 @@ export const MLX_RUNTIME_MANIFEST = {
     },
   },
   uv: {
-    version: "0.12.0",
+    version: "0.13.5",
     archive: {
       name: "uv-aarch64-apple-darwin.tar.gz",
-      browser_download_url: "https://github.com/astral-sh/uv/releases/download/0.12.0/uv-aarch64-apple-darwin.tar.gz",
-      size: 17_387_877,
-      sha256: "2b9e582af54f84fa50c115427451a6c13e80f43b52f8282b8af5791077317bbf",
+      browser_download_url: "https://github.com/astral-sh/uv/releases/download/0.13.5/uv-aarch64-apple-darwin.tar.gz",
+      size: 14_365_303,
+      sha256: "743f85035a1996ecb350659e01cd9faea9709829be09b1b4b03c73eaf3c9cd73",
     },
   },
 } as const;
@@ -210,13 +210,13 @@ export const DECISION_RUNTIME_MANIFEST = {
     },
   },
   uv: {
-    version: "0.12.0",
+    version: "0.13.5",
     archive: {
       name: "uv-x86_64-unknown-linux-gnu.tar.gz",
       browser_download_url:
-        "https://github.com/astral-sh/uv/releases/download/0.12.0/uv-x86_64-unknown-linux-gnu.tar.gz",
-      size: 21_373_358,
-      sha256: "eaf842262aa1c418d8ecc5605f02ee1ebfd369124fa48548e85f9481a47831a9",
+        "https://github.com/astral-sh/uv/releases/download/0.13.5/uv-x86_64-unknown-linux-gnu.tar.gz",
+      size: 16_682_639,
+      sha256: "f68d291c75783122dad58ab77def0e13f3233f358731db5d6d7e8715603b928f",
     },
   },
 } as const;

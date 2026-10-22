@@ -14522,6 +14522,10 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                                       withoutPicture: false,
                                       referenceImagePrompt: imagePrompt,
                                     })),
+                                  // Filed under the people the picture shows (and the persona), as the picture is.
+                                  characterIds: referenceResolution.personaId
+                                    ? [...referenceResolution.characterIds, referenceResolution.personaId]
+                                    : referenceResolution.characterIds,
                                   appearanceBlock,
                                   queue: true,
                                   signal: agentSignal,

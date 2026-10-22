@@ -38,11 +38,20 @@ import {
 import { useExperienceMapPack } from "../../hooks/use-map-pack";
 import { ExperiencePeopleSpritesContext } from "../../hooks/use-overworld-view";
 import {
+  getCombatStyle,
+  isBuiltInCombatStyle,
+  offerCombatStart,
+  resolveCombatStyle,
+  styleOwnedFightFromSnapshot,
+  type CombatSurfaceContext,
+} from "./combat-styles";
+import {
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   lazy,
   memo,
   Suspense,
@@ -1631,15 +1640,8 @@ const GameAssetsBrowserView = lazy(async () => {
 
 const DirectedCombatUI = lazy(() => import("./DirectedCombatUI").then((m) => ({ default: m.DirectedCombatUI })));
 
-const GameCombatUI = lazy(async () => {
-  const module = await import("./GameCombatUI");
-  return { default: module.GameCombatUI };
-});
-
-const TacticalCombatUI = lazy(async () => {
-  const module = await import("./TacticalCombatUI");
-  return { default: module.TacticalCombatUI };
-});
+/** For a combat style without its own state: nothing to listen to. */
+const subscribeNever = () => () => {};
 
 const StoryboardBackgroundControls = lazy(async () => {
   const module = await import("./StoryboardBackgroundControls");
@@ -3029,6 +3031,8 @@ function GameSurfaceComponent({
    *  requests all read the stale state, the ref does not. Declared early so the turn-retry handler,
    *  which must abandon an in-flight generation, can reach it. #5094. */
   const combatGenerationInFlightRef = useRef(false);
+  // The message whose fight a registered combat style took over (#8109), so it is started once.
+  const combatStyleStartedMessageIdRef = useRef<string | null>(null);
   /** Monotonic id for the CURRENT combat request; a stale completion whose id no longer matches bails.
    *  Bumped on every new request, on chat switch, and when a turn retry abandons a generation. #5094. */
   const combatGenerationRequestIdRef = useRef(0);
@@ -3503,6 +3507,7 @@ function GameSurfaceComponent({
     // combat, apply state, or set an error against the reset combat state.
     combatGenerationInFlightRef.current = false;
     combatGenerationRequestIdRef.current += 1;
+    combatStyleStartedMessageIdRef.current = null;
     setCombatGenerationPending(false);
     setCombatItemEffects([]);
     setCombatMechanics([]);
@@ -4801,6 +4806,7 @@ function GameSurfaceComponent({
     // combat, apply state, or set an error against the reset combat state.
     combatGenerationInFlightRef.current = false;
     combatGenerationRequestIdRef.current += 1;
+    combatStyleStartedMessageIdRef.current = null;
     setCombatGenerationPending(false);
     setCombatItemEffects([]);
     setCombatMechanics([]);
@@ -4819,6 +4825,20 @@ function GameSurfaceComponent({
     if (combatRestoredChatIdRef.current === activeChatId) return;
     const snapshot = chatMeta.gameCombatState as GameCombatStateSnapshot | null | undefined;
     combatRestoredChatIdRef.current = activeChatId;
+    // A fight a registered style took over (#8109) saves only its pin and anchor; the style keeps
+    // the rest itself.
+    const styleOwnedFight = styleOwnedFightFromSnapshot(snapshot, activeChatId);
+    if (styleOwnedFight) {
+      // A style this client can no longer play leaves nothing to draw, so its save is stale.
+      if (styleOwnedFight.style === null || chatMeta.gameActiveState !== "combat") {
+        clearCombatSnapshot(activeChatId);
+        return;
+      }
+      setCombatPinnedStyle(styleOwnedFight.style);
+      setCombatStartMessageId(styleOwnedFight.startMessageId);
+      useGameModeStore.getState().setGameState("combat");
+      return;
+    }
     if (!snapshot || !snapshot.party?.length || !snapshot.enemies?.length) return;
     if (chatMeta.gameActiveState !== "combat") {
       // Stale snapshot — combat ended but the metadata write didn't land. Clear it.
@@ -4849,13 +4869,12 @@ function GameSurfaceComponent({
     // board before consulting the setting for the next encounter.
     const setup = chatMeta.gameSetupConfig as GameSetupConfig | undefined;
     const restoredCombatStyle: GameCombatStyle =
-      snapshot.combatStyle === "tactical" || snapshot.combatStyle === "classic"
-        ? snapshot.combatStyle
+      // A pinned style this client no longer knows plays as classic, as it does live.
+      snapshot.combatStyle
+        ? resolveCombatStyle(snapshot.combatStyle)
         : chatMeta.gameTacticalCombatSnapshot
           ? "tactical"
-          : (chatMeta.gameCombatStyle ?? setup?.combatStyle) === "tactical"
-            ? "tactical"
-            : "classic";
+          : resolveCombatStyle((chatMeta.gameCombatStyle as GameCombatStyle | undefined) ?? setup?.combatStyle);
     setCombatPinnedStyle(restoredCombatStyle);
     const restoredEnvironmentType =
       snapshot.sceneEnvironmentType ?? snapshot.styleNotes?.environmentType?.trim() ?? null;
@@ -6978,6 +6997,7 @@ function GameSurfaceComponent({
     // combat, apply state, or set an error against the reset combat state.
     combatGenerationInFlightRef.current = false;
     combatGenerationRequestIdRef.current += 1;
+    combatStyleStartedMessageIdRef.current = null;
     setCombatGenerationPending(false);
     setCombatItemEffects([]);
     setCombatMechanics([]);
@@ -8946,7 +8966,22 @@ function GameSurfaceComponent({
     [activeChatId, removePartyMember, localizeUi],
   );
 
-  const combatUiActive = gameState === "combat" && !!combatParty && !!combatEnemies;
+  // Effective combat style: active encounter pin ?? runtime metadata override
+  // (settings drawer) ?? wizard setup choice ?? legacy default "classic". An id
+  // this client has not registered plays as classic (#8109).
+  const combatSetupConfig = chatMeta.gameSetupConfig as Record<string, unknown> | undefined;
+  const effectiveCombatStyle: GameCombatStyle = resolveCombatStyle(
+    combatPinnedStyle ??
+      (chatMeta.gameCombatStyle as GameCombatStyle | undefined) ??
+      (combatSetupConfig?.combatStyle as GameCombatStyle | undefined),
+  );
+  const combatStyleSurface = getCombatStyle(effectiveCombatStyle);
+  // A style that keeps its own state (#8109) counts as an active fight while it says so.
+  const combatStyleActive = useSyncExternalStore(
+    combatStyleSurface.subscribe ?? subscribeNever,
+    () => !!activeChatId && (combatStyleSurface.isActive?.(activeChatId) ?? false),
+  );
+  const combatUiActive = gameState === "combat" && ((!!combatParty && !!combatEnemies) || combatStyleActive);
   // The Experience's own music (Capability API 1.345): its fight track in a fight, else the track the
   // Engine picked for here (the story's cue, the place's, the pack's default), over the Engine's own
   // music. The player's own music source wins, and their volumes and mute apply as to any music.
@@ -9009,14 +9044,6 @@ function GameSurfaceComponent({
     );
     closeChatControlSheet(CHAT_CONTROL_WINDOW_IDS.gameControls);
   }, [activeChatId, overworldShown, setWorldView]);
-  // Effective combat style: active encounter pin ?? runtime metadata override
-  // (settings drawer) ?? wizard setup choice ?? legacy default "classic".
-  const combatSetupConfig = chatMeta.gameSetupConfig as Record<string, unknown> | undefined;
-  const effectiveCombatStyle: GameCombatStyle =
-    combatPinnedStyle ??
-    (chatMeta.gameCombatStyle as GameCombatStyle | undefined) ??
-    (combatSetupConfig?.combatStyle as GameCombatStyle | undefined) ??
-    "classic";
   // Live snapshot for the identity-stable combat seam (#5094): a package may
   // cache requestCombat at mount, so the callback must read CURRENT values, not
   // its creation render's closure. messageId rides latestAssistantMsgRef.
@@ -9036,9 +9063,10 @@ function GameSurfaceComponent({
   useEffect(() => {
     combatGenerationInFlightRef.current = false;
     combatGenerationRequestIdRef.current += 1;
+    combatStyleStartedMessageIdRef.current = null;
     setCombatGenerationError(null);
   }, [activeChatId]);
-  const tacticalCombatActive = combatUiActive && effectiveCombatStyle === "tactical";
+  const combatOwnsTopChrome = combatUiActive && !!combatStyleSurface.ownsTopChrome;
   const topOverlayOffsetClass = "top-3";
   const queuedCombatMatchesLatest =
     !!queuedCombatGeneration?.messageId &&
@@ -9560,6 +9588,41 @@ function GameSurfaceComponent({
       // frame — same-frame double calls (a package spamming requestCombat, #5094)
       // all read false. The ref flips synchronously and clears with the request.
       if (combatGenerationPending || combatGenerationInFlightRef.current) return;
+      // A combat style that sets up its own encounter takes the fight here (#8109): the
+      // generation pass below is skipped, and the style's isActive keeps the fight on screen.
+      // One start per message, guarded like the pass below (#5094); see offerCombatStart.
+      const styleStart = offerCombatStart(
+        combatStyleSurface,
+        { chatId: activeChatId, messageId },
+        { inFlight: combatGenerationInFlightRef, startedMessageId: combatStyleStartedMessageIdRef },
+      );
+      if (styleStart === "already-taken") return;
+      if (styleStart === "taken") {
+        // Such a fight has no generated party, so the live snapshot writer never runs for it:
+        // save its pin and anchor now, so a reload restores the fight and its end can name it.
+        const snapshot: GameCombatStateSnapshot = {
+          party: [],
+          enemies: [],
+          itemEffects: [],
+          mechanics: [],
+          dialogueCues: [],
+          startMessageId: messageId,
+          combatStyle: effectiveCombatStyle,
+        };
+        // The server enters combat only once the snapshot is saved, so a save that fails cannot
+        // leave a game in combat with no fight to restore.
+        const requestChatId = activeChatId;
+        api
+          .patch(`/chats/${requestChatId}/metadata`, { gameCombatState: snapshot })
+          .then(() => transitionGameState.mutate({ chatId: requestChatId, newState: "combat" }))
+          .catch((err) => console.error("[game-surface] combat snapshot persist failed", err));
+        setQueuedCombatGeneration(null);
+        setPreparedCombatState(null);
+        setCombatPinnedStyle(effectiveCombatStyle);
+        setCombatStartMessageId(messageId);
+        useGameModeStore.getState().setGameState("combat");
+        return;
+      }
       const debugMode = useUIStore.getState().debugMode;
       if (debugMode) {
         console.warn("[game-combat] Starting combat state generation", { chatId: activeChatId, messageId });
@@ -9764,6 +9827,9 @@ function GameSurfaceComponent({
       playContextCombatMusic,
       chatMeta.gameSetupConfig,
       localizeUi,
+      combatStyleSurface,
+      effectiveCombatStyle,
+      transitionGameState,
     ],
   );
 
@@ -11389,6 +11455,7 @@ function GameSurfaceComponent({
     // combat, apply state, or set an error against the reset combat state.
     combatGenerationInFlightRef.current = false;
     combatGenerationRequestIdRef.current += 1;
+    combatStyleStartedMessageIdRef.current = null;
     setCombatGenerationPending(false);
     setCombatItemEffects([]);
     setCombatMechanics([]);
@@ -11428,6 +11495,8 @@ function GameSurfaceComponent({
     (outcome: "victory" | "defeat" | "flee", summary: CombatSummary) => {
       // The message that started the fight names it, so a win reported twice drops its loot once.
       const fightKey = combatStartMessageId;
+      // A fight a registered style took over has ended, so its message may start one again.
+      combatStyleStartedMessageIdRef.current = null;
       setCombatParty(null);
       setCombatEnemies(null);
       setCombatSceneMeta(null);
@@ -12992,7 +13061,7 @@ function GameSurfaceComponent({
                   data-tracker-panel-anchor="roleplay-hud"
                   className={cn(
                     "pointer-events-none absolute right-3 z-50",
-                    tacticalCombatActive
+                    combatOwnsTopChrome
                       ? "top-[calc(var(--tactical-chrome-height,3rem)+0.5rem)]"
                       : topOverlayOffsetClass,
                     (replayActive || boardFightOnScreen) && "hidden",
@@ -13078,7 +13147,7 @@ function GameSurfaceComponent({
                         gameRuleset.definition.clocks &&
                         Boolean(gameSnapshot?.rulesetClocks?.length) &&
                         "flex-wrap md:flex-nowrap",
-                      tacticalCombatActive
+                      combatOwnsTopChrome
                         ? "top-[calc(var(--tactical-chrome-height,3rem)+0.5rem)]"
                         : topOverlayOffsetClass,
                       replayActive && "hidden",
@@ -13426,6 +13495,46 @@ function GameSurfaceComponent({
                         </>
                       );
 
+                      const directedCombatStyle = rulesetFightDefinition
+                        ? ("ruleset" as const)
+                        : isBuiltInCombatStyle(effectiveCombatStyle)
+                          ? effectiveCombatStyle
+                          : null;
+                      const combatSurfaceContext: CombatSurfaceContext = {
+                        chatId: activeChatId,
+                        anchorMessageId: combatStartMessageId,
+                        party: combatParty,
+                        enemies: combatEnemies,
+                        setupConfig: combatSetupConfig,
+                        chatMeta,
+                        scene: {
+                          environment: combatSceneMeta?.environmentType ?? null,
+                          formation: combatSceneMeta?.formation ?? null,
+                          battlefield: combatSceneMeta?.battlefield ?? null,
+                          battlefieldError: combatSceneMeta?.battlefieldError ?? null,
+                          tileWords: gameKit?.tiles,
+                        },
+                        elements: gameKit ? gameElements : undefined,
+                        inventoryItems: fightInventoryLines,
+                        itemEffects: fightItemEffects,
+                        mechanics: combatMechanics,
+                        dialogue: {
+                          lines: combatDialogueLines,
+                          cues: combatDialogueCues,
+                          voicedSpeakerNames: voicedCombatSpeakerNames,
+                          voiceVolume: effectiveGameVoiceVolume,
+                        },
+                        isStreaming,
+                        controlsSlot: combatControlsSlot,
+                        onCombatEnd: handleCombatEnd,
+                        onInventoryItemUsed: handleUseCombatInventoryItem,
+                        onCombatantsChange: handleCombatantsChange,
+                        onOpenInventory: () => setInventoryOpen(true),
+                        onCustomInstruction: handleCombatCustomInstruction,
+                        onSpriteSuggestionChange: setCombatSpriteSuggestion,
+                        onBattlefieldReady: handleTacticalBattlefieldReady,
+                      };
+
                       return (
                         <div className="relative h-full min-h-0">
                           <Suspense
@@ -13435,12 +13544,18 @@ function GameSurfaceComponent({
                               </div>
                             }
                           >
-                            {combatSetupConfig?.combatDirector && combatStartMessageId ? (
+                            {/* The director runs the built-in styles and a ruleset's own fights; a registered
+                                style draws its battle itself. */}
+                            {combatSetupConfig?.combatDirector &&
+                            combatStartMessageId &&
+                            combatParty &&
+                            combatEnemies &&
+                            directedCombatStyle ? (
                               <DirectedCombatUI
                                 key={`${activeChatId}:${combatStartMessageId}`}
                                 chatId={activeChatId}
                                 anchor={combatStartMessageId}
-                                style={rulesetFightDefinition ? "ruleset" : effectiveCombatStyle}
+                                style={directedCombatStyle}
                                 rulesetDefinition={rulesetFightDefinition ?? undefined}
                                 positioned={rulesetFightPositioned}
                                 battlefield={combatSceneMeta?.battlefield ?? undefined}
@@ -13461,50 +13576,8 @@ function GameSurfaceComponent({
                                 onInventoryItemUsed={handleUseCombatInventoryItem}
                                 onCombatantsChange={handleCombatantsChange}
                               />
-                            ) : effectiveCombatStyle === "tactical" ? (
-                              <TacticalCombatUI
-                                tileWords={gameKit?.tiles}
-                                key={activeChatId}
-                                chatId={activeChatId}
-                                party={combatParty}
-                                enemies={combatEnemies}
-                                difficulty={(combatSetupConfig?.difficulty as string | undefined) ?? "normal"}
-                                initialState={
-                                  (chatMeta.gameTacticalCombatSnapshot as TacticalCombatState | null | undefined) ??
-                                  null
-                                }
-                                environment={combatSceneMeta?.environmentType ?? null}
-                                formation={combatSceneMeta?.formation ?? null}
-                                battlefield={combatSceneMeta?.battlefield ?? null}
-                                battlefieldError={combatSceneMeta?.battlefieldError ?? null}
-                                onBattlefieldReady={handleTacticalBattlefieldReady}
-                                playerCombatantId={combatParty[0]?.id ?? null}
-                                onCombatEnd={handleCombatEnd}
-                                onCustomInstruction={handleCombatCustomInstruction}
-                              />
                             ) : (
-                              <GameCombatUI
-                                elements={gameKit ? gameElements : undefined}
-                                chatId={activeChatId}
-                                party={combatParty}
-                                enemies={combatEnemies}
-                                inventoryItems={fightInventoryLines}
-                                onCombatEnd={handleCombatEnd}
-                                onInventoryItemUsed={handleUseCombatInventoryItem}
-                                onCombatantsChange={handleCombatantsChange}
-                                onOpenInventory={() => setInventoryOpen(true)}
-                                onCustomInstruction={handleCombatCustomInstruction}
-                                onSpriteSuggestionChange={setCombatSpriteSuggestion}
-                                isStreaming={isStreaming}
-                                narration="Battle starts."
-                                combatDialogue={combatDialogueLines}
-                                combatDialogueCues={combatDialogueCues}
-                                combatItemEffects={fightItemEffects}
-                                combatMechanics={combatMechanics}
-                                voicedCombatSpeakerNames={voicedCombatSpeakerNames}
-                                gameVoiceVolume={effectiveGameVoiceVolume}
-                                combatControlsSlot={combatControlsSlot}
-                              />
+                              combatStyleSurface.render(combatSurfaceContext)
                             )}
                           </Suspense>
                         </div>

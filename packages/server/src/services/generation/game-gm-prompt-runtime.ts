@@ -317,7 +317,8 @@ export async function injectGameGmPromptRuntime(args: {
       : null;
   const snapshotCombatStyle = combatSnapshot?.combatStyle;
   const pinnedCombatStyle =
-    gameActiveState === "combat" && (snapshotCombatStyle === "classic" || snapshotCombatStyle === "tactical")
+    // Any pinned style, a client-registered one included (#8109); only "tactical" changes the prompt.
+    gameActiveState === "combat" && typeof snapshotCombatStyle === "string" && snapshotCombatStyle
       ? snapshotCombatStyle
       : null;
   const legacyTacticalCombatStyle =

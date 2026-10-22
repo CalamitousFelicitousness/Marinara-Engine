@@ -336,6 +336,8 @@ export {
   rulesetMountsFor,
   rulesetInnateSlot,
   rulesetInnateSlotsLeft,
+  rulesetActionUses,
+  rulesetUsesKey,
   RULESET_FLY_DOWN_OPTION,
   RULESET_FLY_UP_OPTION,
   RULESET_RELIGHT_OPTION_PREFIX,

@@ -469,6 +469,56 @@ try {
     assert.equal(picked?.choice.optionId === "surge", spent, `spent ${spent}: ${JSON.stringify(picked?.choice)}`);
   }
 
+  // A tactician keeps the slot its Counterspell needs (P8): with one 3rd-level slot left it casts its
+  // cantrip, and spends the slot freely with another left or as a creature that thinks less.
+  {
+    const caster = [
+      {
+        id: "counter",
+        name: "Counter",
+        budget: "reaction",
+        range: { normal: 60 },
+        reaction: { on: "aimed", cancels: true },
+      },
+      {
+        id: "bolt",
+        name: "Bolt",
+        budget: "action",
+        toHit: 20,
+        range: { normal: 120 },
+        damage: { count: 4, sides: 6, flat: 0 },
+      },
+      {
+        id: "spark",
+        name: "Spark",
+        budget: "action",
+        toHit: 20,
+        range: { normal: 120 },
+        damage: { count: 3, sides: 6, flat: 0 },
+      },
+    ];
+    const cast = (mind: string, slots: Record<string, number>) => {
+      const { encounter, state } = fight(
+        { mage: { x: 1, y: 2 }, knight: { x: 8, y: 2 } },
+        {
+          mage: { side: "enemy", block: block({ type: "humanoid", mind, actions: caster }) },
+          knight: { side: "party", block: block({ health: 60 }) },
+        },
+        { mage: { ...master, temperament: "disciplined" } },
+      );
+      // Both of its trait's spells cast from 3rd-level slots (1.589), as a bestiary mage's are.
+      const mage = rulesetCombatant(encounter, "mage")!;
+      for (const action of mage.actions)
+        if (action.id === "counter" || action.id === "bolt") action.innate = { level: 3, baseLevel: 3, slot: 3, slots };
+      for (const [level, count] of Object.entries(slots)) mage.uses[`slot:${level}`] = count;
+      return pickRulesetChoice(definition, state, encounter, "mage")?.choice.optionId;
+    };
+    assert.equal(cast("tactical", { "3": 1 }), "spark", "the last slot is kept for the answer");
+    assert.equal(cast("genius", { "3": 1 }), "spark");
+    assert.equal(cast("tactical", { "3": 2 }), "bolt", "with another left it is spent");
+    assert.equal(cast("cunning", { "3": 1 }), "bolt", "a cunning creature does not plan for it");
+  }
+
   // ── Refused ──
   refused(
     fiveE({

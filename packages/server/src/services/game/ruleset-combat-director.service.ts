@@ -61,6 +61,10 @@ import {
   rulesetCombatIsPool,
   rulesetDamageAverage,
   planRulesetCombatCost,
+  rulesetActionUses,
+  rulesetInnateSlot,
+  rulesetInnateSlotsLeft,
+  rulesetUsesKey,
   rulesetCombatRoller,
   rulesetCombatStanding,
   rulesetHiddenFrom,
@@ -3069,6 +3073,7 @@ function pickChoice(
   if (behavior && !menu) weighRulesetBehavior(definition, encounter, actor, behavior, candidates, opening);
   if (!menu && !behavior?.targets?.length)
     weighRulesetMindFocus(definition, encounter, actor, unit.tactics!, candidates);
+  if (!menu) weighRulesetReserve(definition, encounter, actor, unit.tactics!, candidates);
   const chosen = chooseCombatCandidate(
     unit,
     candidates,
@@ -3249,6 +3254,62 @@ function rulesetOpensWith(actor: RulesetCombatant, candidate: RulesetCandidate, 
   if (candidate.option.id === id) return true;
   const entry = actor.actions.find((action) => action.id === candidate.option.id)?.entry;
   return entry !== undefined && (entry === id || entry.endsWith(`/${id}`));
+}
+
+/** What a tactician keeps back for an answer (combat AI P8): the price of a turn that would spend
+ *  what its last Counterspell or Shield needs. */
+const RULESET_RESERVE_PRICE = 0.3;
+
+/**
+ * A tactician or a genius keeps what its answers need (combat AI P8): a turn that would spend the last
+ * slot, use or pool a reaction it holds could still be paid from costs that much more, so a mage casts
+ * its cantrip and keeps the 3rd-level slot for the Counterspell unless the spell is worth giving it
+ * up. Nothing to keep when no answer can be paid now.
+ */
+function weighRulesetReserve(
+  definition: RulesetDefinition,
+  encounter: RulesetEncounterState,
+  actor: RulesetCombatant,
+  tactics: CombatTactics,
+  candidates: Array<CombatAiCandidate<RulesetCandidate>>,
+): void {
+  if (tactics.mind !== "tactical" && tactics.mind !== "genius") return;
+  const answers = actor.actions.filter((action) => action.reaction && !action.innate?.coven);
+  if (answers.length === 0) return;
+  const pools = actor.sheet
+    ? readRulesetLive(definition, actor.sheet.build, actor.sheet.live).pools.map((pool) => pool.key)
+    : [];
+  // Whether one of its answers can be paid by this holder, as its slots, uses and sheet stand.
+  const answerable = (holder: RulesetCombatant) =>
+    answers.some((answer) => {
+      if (answer.innate?.slot) return rulesetInnateSlot(holder, answer, encounter) !== undefined;
+      if (answer.uses && rulesetActionUses(holder, answer, encounter) < 1) return false;
+      if (!answer.use || !holder.sheet) return !!answer.uses;
+      return [undefined, ...pools].some((pool) => planRulesetCombatCost(definition, holder, answer, pool) !== null);
+    });
+  if (!answerable(actor)) return;
+  const spent = new Map<string, boolean>();
+  for (const candidate of candidates) {
+    const action = actor.actions.find((one) => one.id === candidate.action.option.id);
+    if (!action || action.reaction) continue;
+    const payWith = candidate.action.choice.payWith;
+    const key = `${action.id}\u0000${payWith ?? ""}`;
+    let drains = spent.get(key);
+    if (drains === undefined) {
+      // The holder as this would leave it: a slot, a use or the pool it is paid from spent.
+      const after: RulesetCombatant = { ...actor, uses: { ...actor.uses } };
+      const slot = action.innate?.slot ? rulesetInnateSlot(actor, action, encounter) : undefined;
+      if (slot !== undefined) after.uses[`slot:${slot}`] = rulesetInnateSlotsLeft(actor, action, slot, encounter) - 1;
+      if (action.uses) after.uses[rulesetUsesKey(action)] = rulesetActionUses(actor, action, encounter) - 1;
+      if (action.use && actor.sheet) {
+        const paid = planRulesetCombatCost(definition, actor, action, payWith);
+        if (paid?.live) after.sheet = { ...actor.sheet, live: paid.live };
+      }
+      drains = !answerable(after);
+      spent.set(key, drains);
+    }
+    if (drains) candidate.cost = (candidate.cost ?? 0) + RULESET_RESERVE_PRICE;
+  }
 }
 
 /**

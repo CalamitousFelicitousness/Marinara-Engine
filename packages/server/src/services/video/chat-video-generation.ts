@@ -42,7 +42,9 @@ export type ChatVideoSetup = Awaited<ReturnType<typeof resolveChatVideoSetup>>;
 export async function hasChatVideoConnection(db: DB, chatMeta: Record<string, unknown>): Promise<boolean> {
   const connections = createConnectionsStorage(db);
   const videoConnectionId = await resolveSceneVideoConnectionId(chatMeta, connections);
-  return Boolean(videoConnectionId && (await connections.getById(videoConnectionId))?.provider === "video_generation");
+  return Boolean(
+    videoConnectionId && (await connections.getWithKey(videoConnectionId))?.provider === "video_generation",
+  );
 }
 
 export async function resolveChatVideoSetup(db: DB, chatMeta: Record<string, unknown>) {

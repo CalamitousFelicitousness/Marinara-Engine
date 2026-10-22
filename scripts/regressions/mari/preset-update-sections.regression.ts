@@ -84,6 +84,14 @@ try {
     assert.equal(quotedOrder.ok, false, "a quoted id in sectionOrder is refused");
     assert.match(String(quotedOrder.error), /preset\.update: a section id contains quote characters/);
     assert.deepEqual(await order(), fullOrder);
+    const quotedAlias = await mari.executeAction({
+      action: "preset.update",
+      presetId,
+      data: { section_order: ['"s-history"', "s-intro", "s-style"] },
+      apply: true,
+    });
+    assert.equal(quotedAlias.ok, false, "the section_order alias is checked too");
+    assert.deepEqual(await order(), fullOrder);
 
     const quotedCreate = await mari.executeAction({
       action: "preset.create",

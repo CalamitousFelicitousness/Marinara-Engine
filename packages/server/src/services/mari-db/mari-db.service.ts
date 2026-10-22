@@ -1912,7 +1912,7 @@ function refuseQuotedSectionIds(action: string, payload: Row): void {
   const sections = [payload.sections, payload.promptSections].flatMap((value) => (Array.isArray(value) ? value : []));
   const ids = [
     ...sections.map((section) => (isRecord(section) ? firstString(section, ["id", "sectionId"]) : undefined)),
-    ...parseJsonArrayValue(payload.sectionOrder),
+    ...parseJsonArrayValue(payload.sectionOrder ?? payload.section_order),
   ];
   const quoted = ids.find((id) => typeof id === "string" && /["']/.test(id));
   if (quoted === undefined) return;

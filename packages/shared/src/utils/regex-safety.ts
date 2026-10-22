@@ -227,16 +227,14 @@ function hasUnsafeQuantifiedAlternation(body: string): boolean {
     const tokens = tokenizeAlternative(alternative);
     // ponytail: unsupported atoms may change token positions or consume no
     // character. Only preceding known atoms prove disjointness until parsing is flag-aware.
-    const uncertain = tokens.findIndex((token) => readTokenCharacterSet(token, characters) === null);
+    const uncertain = tokens.findIndex((token) => readTokenCharacterSet(token.source, characters) === null);
     return uncertain === -1 ? tokens : tokens.slice(0, uncertain);
   });
   if (tokenized.some((tokens) => tokens.length === 0)) return true;
 
   for (let i = 0; i < tokenized.length; i += 1) {
     for (let j = i + 1; j < tokenized.length; j += 1) {
-      const a = tokenized[i]!;
-      const b = tokenized[j]!;
-      if (isTokenPrefix(a, b, characters) || isTokenPrefix(b, a, characters)) return true;
+      if (haveOverlappingPrefixes(tokenized[i]!, tokenized[j]!, characters)) return true;
     }
   }
   return false;
@@ -278,30 +276,39 @@ function splitTopLevelAlternatives(body: string): string[] {
   return alternatives;
 }
 
-function tokenizeAlternative(alternative: string): string[] {
-  const tokens: string[] = [];
+interface AlternativeToken {
+  source: string;
+  optional: boolean;
+}
+
+function tokenizeAlternative(alternative: string): AlternativeToken[] {
+  const tokens: AlternativeToken[] = [];
   for (let i = 0; i < alternative.length; i += 1) {
     const c = alternative[i]!;
     if (c === "\\") {
       const end = consumeEscapedAtom(alternative, i);
       if (end === null) return tokens;
-      tokens.push(alternative.slice(i, end));
+      tokens.push({ source: alternative.slice(i, end), optional: false });
       i = end - 1;
       continue;
     }
     if (c === "[") {
       const close = findCharClassClose(alternative, i);
       if (close === -1) return tokens;
-      tokens.push(alternative.slice(i, close + 1));
+      tokens.push({ source: alternative.slice(i, close + 1), optional: false });
       i = close;
       continue;
     }
-    if ("(){}*+?|^$.".includes(c)) {
-      // An optional atom cannot prove a required prefix.
-      if (c === "?") tokens.pop();
+    if (c === "?") {
+      const previous = tokens.at(-1);
+      if (previous) previous.optional = true;
+      if (alternative[i + 1] === "?") i += 1;
+      continue;
+    }
+    if ("(){}*+|^$.".includes(c)) {
       return tokens;
     }
-    tokens.push(c);
+    tokens.push({ source: c, optional: false });
   }
   return tokens;
 }
@@ -312,31 +319,49 @@ interface TokenCharacterSet {
   negated: boolean;
 }
 
-function isTokenPrefix(
-  prefix: string[],
-  candidate: string[],
+function haveOverlappingPrefixes(
+  left: AlternativeToken[],
+  right: AlternativeToken[],
   characters: Map<string, TokenCharacterSet | null>,
 ): boolean {
-  if (prefix.length > candidate.length) return false;
-  return prefix.every((token, index) => {
-    const other = candidate[index]!;
-    if (token === other) return true;
-    const left = readTokenCharacterSet(token, characters);
-    const right = readTokenCharacterSet(other, characters);
-    // Unsupported atoms may overlap. The guard must prove disjointness before
-    // allowing repeated alternatives, rather than trusting different spelling.
-    if (left === null || right === null) return true;
-    if (left.negated && right.negated) return true;
-    if (left.negated || right.negated) {
-      const included = left.negated ? right.exact : left.exact;
-      const excluded = left.negated ? left.exact : right.exact;
-      // A subset stays excluded with or without case-insensitive matching.
-      for (const c of included) if (!excluded.has(c)) return true;
-      return false;
-    }
-    for (const c of left.folded) if (right.folded.has(c)) return true;
+  const width = right.length + 1;
+  const pending = [0];
+  const visited = new Set<number>();
+  // Optional atoms can be consumed or skipped. Visit each pair of positions
+  // once instead of expanding every combination of optional branches.
+  while (pending.length > 0) {
+    const state = pending.pop()!;
+    if (visited.has(state)) continue;
+    visited.add(state);
+    const i = Math.floor(state / width);
+    const j = state % width;
+    if (i === left.length || j === right.length) return true;
+    const a = left[i]!;
+    const b = right[j]!;
+    if (a.optional) pending.push((i + 1) * width + j);
+    if (b.optional) pending.push(i * width + j + 1);
+    if (tokensMayOverlap(a.source, b.source, characters)) pending.push((i + 1) * width + j + 1);
+  }
+  return false;
+}
+
+function tokensMayOverlap(token: string, other: string, characters: Map<string, TokenCharacterSet | null>): boolean {
+  if (token === other) return true;
+  const left = readTokenCharacterSet(token, characters);
+  const right = readTokenCharacterSet(other, characters);
+  // Unsupported atoms may overlap. The guard must prove disjointness before
+  // allowing repeated alternatives, rather than trusting different spelling.
+  if (left === null || right === null) return true;
+  if (left.negated && right.negated) return true;
+  if (left.negated || right.negated) {
+    const included = left.negated ? right.exact : left.exact;
+    const excluded = left.negated ? left.exact : right.exact;
+    // A subset stays excluded with or without case-insensitive matching.
+    for (const c of included) if (!excluded.has(c)) return true;
     return false;
-  });
+  }
+  for (const c of left.folded) if (right.folded.has(c)) return true;
+  return false;
 }
 
 function readTokenCharacterSet(token: string, cache: Map<string, TokenCharacterSet | null>): TokenCharacterSet | null {

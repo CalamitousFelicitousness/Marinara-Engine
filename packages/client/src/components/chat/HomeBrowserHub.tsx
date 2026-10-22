@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useInsertionEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -1021,6 +1022,29 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
     [browserPackages],
   );
   const [activeTab, setActiveTab] = useState("home");
+  const [fullscreenPackageId, setFullscreenPackageId] = useState<string | null>(null);
+  const activeBrowserPackageId = pageActive && browserPackages.some((item) => item.id === activeTab) ? activeTab : null;
+  const activeBrowserPackageIdRef = useRef(activeBrowserPackageId);
+  const browserFullscreen = activeBrowserPackageId !== null && fullscreenPackageId === activeBrowserPackageId;
+  // CapabilityElement delivers props in a child layout effect. Publish the committed identity
+  // before that delivery, while leaving abandoned renders unable to change the request guard.
+  useInsertionEffect(() => {
+    activeBrowserPackageIdRef.current = activeBrowserPackageId;
+    return () => {
+      activeBrowserPackageIdRef.current = null;
+    };
+  }, [activeBrowserPackageId]);
+  useLayoutEffect(() => {
+    setFullscreenPackageId((current) => (current === activeBrowserPackageId ? current : null));
+  }, [activeBrowserPackageId]);
+  const setBrowserFullscreen = useCallback(
+    (active: boolean) => {
+      // A retained callback cannot change the presentation of a different active package.
+      if (typeof active !== "boolean" || activeBrowserPackageIdRef.current !== activeTab) return;
+      setFullscreenPackageId(active ? activeTab : null);
+    },
+    [activeTab],
+  );
   const [seenNoodleRefreshMarker, setSeenNoodleRefreshMarker] = useState(readSeenNoodleRefreshMarker);
   const [faqOpen, setFaqOpen] = useState(false);
   const [achievementsOpen, setAchievementsOpen] = useState(false);
@@ -1603,8 +1627,17 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
       className="mari-chrome-token-scope relative flex h-full min-h-0 w-full flex-col overflow-hidden bg-[var(--background)]"
       data-component="HomeBrowserHub"
     >
-      <div className="flex h-full min-h-0 w-full flex-col overflow-hidden border border-[var(--border)]/75 bg-[var(--marinara-home-page-wash)] shadow-2xl shadow-black/25 sm:rounded-xl">
-        <header className="mari-home-browser-chrome relative z-40 shrink-0 border-b border-[var(--marinara-topbar-border)] bg-[var(--marinara-topbar-surface)] shadow-[0_8px_28px_-26px_rgba(0,0,0,0.8)] backdrop-blur-sm">
+      <div
+        className={cn(
+          "flex h-full min-h-0 w-full flex-col overflow-hidden bg-[var(--marinara-home-page-wash)]",
+          !browserFullscreen && "border border-[var(--border)]/75 shadow-2xl shadow-black/25 sm:rounded-xl",
+        )}
+        data-browser-fullscreen={browserFullscreen ? "" : undefined}
+      >
+        <header
+          hidden={browserFullscreen}
+          className="mari-home-browser-chrome relative z-40 shrink-0 border-b border-[var(--marinara-topbar-border)] bg-[var(--marinara-topbar-surface)] shadow-[0_8px_28px_-26px_rgba(0,0,0,0.8)] backdrop-blur-sm"
+        >
           <div className="mari-home-browser-tab-row flex h-10 min-w-0 items-end gap-1 border-b border-[var(--border)]/45 px-2 sm:gap-2 sm:px-3">
             <div
               className="relative z-10 flex shrink-0 self-center items-center gap-2 pr-1 sm:pr-3"
@@ -2008,8 +2041,15 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
               packageId={activeTab}
               view="browser"
               className="block h-full min-h-0 w-full"
+              onHostError={() => setFullscreenPackageId(null)}
               capabilityProps={{
                 style: { display: "block", width: "100%", height: "100%" },
+                browserFullscreen: {
+                  active: browserFullscreen,
+                  setActive: setBrowserFullscreen,
+                  enterLabel: t("home.browser.enterFullscreen"),
+                  exitLabel: t("home.browser.exitFullscreen"),
+                },
                 conversationTimeZone,
                 debugMode,
                 onClose: () => selectTab("home"),

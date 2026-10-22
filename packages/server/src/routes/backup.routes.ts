@@ -2634,7 +2634,7 @@ function isStoredFullBackupArchive(entries: ProfileZipEntry[], archiveSize: numb
   return true;
 }
 
-async function readProfileZipArchive(filePath: string): Promise<ProfileZipArchive> {
+async function readProfileZipArchive(filePath: string, onEntryMaterialized?: () => void): Promise<ProfileZipArchive> {
   const archiveStat = await stat(filePath);
   if (archiveStat.size < ZIP_EOCD_MIN_SIZE) {
     throw new ProfileImportRequestError("Profile archive is not a valid ZIP file.");
@@ -2669,128 +2669,174 @@ async function readProfileZipArchive(filePath: string): Promise<ProfileZipArchiv
     if (checkedZipSum(centralDirectoryOffset, centralDirectorySize, "central directory") > archiveStat.size) {
       throw new ProfileImportRequestError("Profile archive central directory is outside the ZIP file.");
     }
+    if (totalEntries > Math.floor(centralDirectorySize / 46)) {
+      throw new ProfileImportRequestError("Profile archive central directory entry count is damaged.");
+    }
 
-    const entries: ProfileZipEntry[] = [];
-    const entriesByName = new Map<string, ProfileZipEntry>();
-    const centralHeader = Buffer.alloc(46);
     const largeDirectory = centralDirectorySize > PROFILE_ARCHIVE_CENTRAL_DIRECTORY_LIMIT_BYTES;
-    let backupRoot: string | undefined;
-    let backupManifestSeen = false;
-    let offset = 0;
-    for (let index = 0; index < totalEntries; index++) {
-      if (offset + 46 > centralDirectorySize) {
-        throw new ProfileImportRequestError("Profile archive central directory is damaged.");
-      }
-      await readProfileZipBytes(handle, centralHeader, centralDirectoryOffset + offset, "central directory header");
-      if (centralHeader.readUInt32LE(0) !== ZIP_CENTRAL_DIRECTORY_SIGNATURE) {
-        throw new ProfileImportRequestError("Profile archive central directory is damaged.");
-      }
-
-      const flags = centralHeader.readUInt16LE(8);
-      if ((flags & ZIP_ENCRYPTED_FLAG) !== 0) {
-        throw new ProfileImportRequestError("Profile archive encrypted ZIP entries are not supported.");
-      }
-      const method = centralHeader.readUInt16LE(10);
-      const crc32 = centralHeader.readUInt32LE(16);
-      const compressedSize32 = centralHeader.readUInt32LE(20);
-      const size32 = centralHeader.readUInt32LE(24);
-      const fileNameLength = centralHeader.readUInt16LE(28);
-      const extraLength = centralHeader.readUInt16LE(30);
-      const commentLength = centralHeader.readUInt16LE(32);
-      const entryDisk = centralHeader.readUInt16LE(34);
-      if (entryDisk !== 0) throw new ProfileImportRequestError("Profile archive split ZIP files are not supported.");
-      const localHeaderOffset32 = centralHeader.readUInt32LE(42);
-      const nextOffset = offset + 46 + fileNameLength + extraLength + commentLength;
-      if (nextOffset > centralDirectorySize) {
-        throw new ProfileImportRequestError("Profile archive central directory entry is damaged.");
-      }
-      const entryMetadata = Buffer.alloc(fileNameLength + extraLength);
-      await readProfileZipBytes(handle, entryMetadata, centralDirectoryOffset + offset + 46, "central directory entry");
-      const entryName = entryMetadata.subarray(0, fileNameLength).toString("utf8");
-      const normalizedName = normalizeProfileArchiveEntryPath(entryName);
-      const zip64Values = readZip64ExtraValues(entryMetadata.subarray(fileNameLength), {
-        size: size32 === ZIP32_MAX_VALUE,
-        compressedSize: compressedSize32 === ZIP32_MAX_VALUE,
-        localHeaderOffset: localHeaderOffset32 === ZIP32_MAX_VALUE,
-      });
-      const size = zip64Values.size ?? size32;
-      const compressedSize = zip64Values.compressedSize ?? compressedSize32;
-      const localHeaderOffset = zip64Values.localHeaderOffset ?? localHeaderOffset32;
-      if (largeDirectory) {
-        const root = normalizedName.split("/")[0] ?? "";
-        backupRoot ??= root;
-        backupManifestSeen ||= normalizedName === `${root}/marinara-profile.json`;
-        // Refuse ordinary archives before materializing their directory. A larger
-        // budget requires stored entries under one backup root and its manifest
-        // within the ordinary budget; final classification still checks every entry.
-        if (
-          !/^marinara-(?:automatic-backup|backup-[A-Za-z0-9_-]+)$/u.test(root) ||
-          root !== backupRoot ||
-          method !== 0 ||
-          compressedSize !== size ||
-          (nextOffset > PROFILE_ARCHIVE_CENTRAL_DIRECTORY_LIMIT_BYTES && !backupManifestSeen)
-        ) {
-          throw new ProfileImportRequestError(
-            profileArchiveSizeError(
-              "Profile archive central directory",
-              centralDirectorySize,
-              PROFILE_ARCHIVE_CENTRAL_DIRECTORY_LIMIT_BYTES,
-            ),
+    const readDirectory = async (materialize: boolean): Promise<ProfileZipArchive> => {
+      const entries: ProfileZipEntry[] = [];
+      const entriesByName = new Map<string, ProfileZipEntry>();
+      let windowStart = 0;
+      let centralWindow = Buffer.alloc(0);
+      const readCentral = async (relativeOffset: number, length: number) => {
+        if (relativeOffset < windowStart || relativeOffset + length > windowStart + centralWindow.length) {
+          windowStart = relativeOffset;
+          centralWindow = Buffer.alloc(Math.min(Math.max(64 * 1024, length), centralDirectorySize - relativeOffset));
+          await readProfileZipBytes(
+            handle,
+            centralWindow,
+            centralDirectoryOffset + relativeOffset,
+            "central directory",
           );
         }
-      }
-      if (checkedZipSum(localHeaderOffset, 30, "local file header") > archiveStat.size) {
-        throw new ProfileImportRequestError("Profile archive entry points outside the ZIP file.");
-      }
-      const localHeader = Buffer.alloc(30);
-      await readProfileZipBytes(handle, localHeader, localHeaderOffset, "local file header");
-      if (localHeader.readUInt32LE(0) !== ZIP_LOCAL_FILE_HEADER_SIGNATURE) {
-        throw new ProfileImportRequestError("Profile archive local file header is damaged.");
-      }
-      const localFileNameLength = localHeader.readUInt16LE(26);
-      const localExtraLength = localHeader.readUInt16LE(28);
-      const dataOffset = localHeaderOffset + 30 + localFileNameLength + localExtraLength;
-      if (
-        !Number.isSafeInteger(dataOffset) ||
-        dataOffset < 0 ||
-        checkedZipSum(dataOffset, compressedSize, normalizedName || "entry data") > centralDirectoryOffset
-      ) {
-        throw new ProfileImportRequestError("Profile archive entry data is outside the ZIP file.");
-      }
-
-      const entry: ProfileZipEntry = {
-        entryName: normalizedName,
-        isDirectory: normalizedName.endsWith("/"),
-        header: { method, crc32, compressedSize, size, dataOffset },
+        return centralWindow.subarray(relativeOffset - windowStart, relativeOffset - windowStart + length);
       };
-      entries.push(entry);
-      if (normalizedName && !entriesByName.has(normalizedName)) entriesByName.set(normalizedName, entry);
-      offset = nextOffset;
-    }
+      let backupRoot: string | undefined;
+      let backupManifestSeen = false;
+      let backupRestoreSeen = false;
+      let previousBackupDataEnd = 0;
+      let backupStoredBytes = 0;
+      let offset = 0;
+      for (let index = 0; index < totalEntries; index++) {
+        if (offset + 46 > centralDirectorySize) {
+          throw new ProfileImportRequestError("Profile archive central directory is damaged.");
+        }
+        const centralHeader = await readCentral(offset, 46);
+        if (centralHeader.readUInt32LE(0) !== ZIP_CENTRAL_DIRECTORY_SIGNATURE) {
+          throw new ProfileImportRequestError("Profile archive central directory is damaged.");
+        }
 
-    if (offset !== centralDirectorySize) {
-      throw new ProfileImportRequestError("Profile archive central directory has unexpected trailing data.");
-    }
+        const flags = centralHeader.readUInt16LE(8);
+        if ((flags & ZIP_ENCRYPTED_FLAG) !== 0) {
+          throw new ProfileImportRequestError("Profile archive encrypted ZIP entries are not supported.");
+        }
+        const method = centralHeader.readUInt16LE(10);
+        const crc32 = centralHeader.readUInt32LE(16);
+        const compressedSize32 = centralHeader.readUInt32LE(20);
+        const size32 = centralHeader.readUInt32LE(24);
+        const fileNameLength = centralHeader.readUInt16LE(28);
+        const extraLength = centralHeader.readUInt16LE(30);
+        const commentLength = centralHeader.readUInt16LE(32);
+        const entryDisk = centralHeader.readUInt16LE(34);
+        if (entryDisk !== 0) throw new ProfileImportRequestError("Profile archive split ZIP files are not supported.");
+        const localHeaderOffset32 = centralHeader.readUInt32LE(42);
+        const nextOffset = offset + 46 + fileNameLength + extraLength + commentLength;
+        if (nextOffset > centralDirectorySize) {
+          throw new ProfileImportRequestError("Profile archive central directory entry is damaged.");
+        }
+        const entryMetadata = await readCentral(offset + 46, fileNameLength + extraLength);
+        const entryName = entryMetadata.subarray(0, fileNameLength).toString("utf8");
+        const normalizedName = normalizeProfileArchiveEntryPath(entryName);
+        const zip64Values = readZip64ExtraValues(entryMetadata.subarray(fileNameLength), {
+          size: size32 === ZIP32_MAX_VALUE,
+          compressedSize: compressedSize32 === ZIP32_MAX_VALUE,
+          localHeaderOffset: localHeaderOffset32 === ZIP32_MAX_VALUE,
+        });
+        const size = zip64Values.size ?? size32;
+        const compressedSize = zip64Values.compressedSize ?? compressedSize32;
+        const localHeaderOffset = zip64Values.localHeaderOffset ?? localHeaderOffset32;
+        if (largeDirectory) {
+          const root = normalizedName.split("/")[0] ?? "";
+          backupRoot ??= root;
+          const manifestEntry = normalizedName === `${root}/marinara-profile.json`;
+          // Refuse ordinary archives before materializing their directory. A larger
+          // budget requires stored entries under one backup root and its manifest
+          // within the ordinary budget. The validation pass also requires RESTORE.txt,
+          // which the writer defers until last so its notes include every omission.
+          if (
+            !/^marinara-(?:automatic-backup|backup-[A-Za-z0-9_-]+)$/u.test(root) ||
+            root !== backupRoot ||
+            method !== 0 ||
+            compressedSize !== size ||
+            (normalizedName.endsWith("/marinara-profile.json") && (!manifestEntry || backupManifestSeen)) ||
+            (nextOffset > PROFILE_ARCHIVE_CENTRAL_DIRECTORY_LIMIT_BYTES && !backupManifestSeen)
+          ) {
+            throw new ProfileImportRequestError(
+              profileArchiveSizeError(
+                "Profile archive central directory",
+                centralDirectorySize,
+                PROFILE_ARCHIVE_CENTRAL_DIRECTORY_LIMIT_BYTES,
+              ),
+            );
+          }
+          backupManifestSeen ||= manifestEntry;
+          backupRestoreSeen ||= normalizedName === `${root}/RESTORE.txt`;
+        }
+        if (checkedZipSum(localHeaderOffset, 30, "local file header") > archiveStat.size) {
+          throw new ProfileImportRequestError("Profile archive entry points outside the ZIP file.");
+        }
+        const localHeader = Buffer.alloc(30);
+        await readProfileZipBytes(handle, localHeader, localHeaderOffset, "local file header");
+        if (localHeader.readUInt32LE(0) !== ZIP_LOCAL_FILE_HEADER_SIGNATURE) {
+          throw new ProfileImportRequestError("Profile archive local file header is damaged.");
+        }
+        const localFileNameLength = localHeader.readUInt16LE(26);
+        const localExtraLength = localHeader.readUInt16LE(28);
+        const dataOffset = localHeaderOffset + 30 + localFileNameLength + localExtraLength;
+        if (
+          !Number.isSafeInteger(dataOffset) ||
+          dataOffset < 0 ||
+          checkedZipSum(dataOffset, compressedSize, normalizedName || "entry data") > centralDirectoryOffset
+        ) {
+          throw new ProfileImportRequestError("Profile archive entry data is outside the ZIP file.");
+        }
+        if (largeDirectory) {
+          backupStoredBytes = checkedZipSum(backupStoredBytes, size, "stored backup contents");
+          // ponytail: oversized backups retain the writer's physical entry order;
+          // reordered directories would need a bounded interval index instead.
+          if (localHeaderOffset < previousBackupDataEnd || backupStoredBytes > archiveStat.size) {
+            throw new ProfileImportRequestError(
+              "Stored backup entries overlap, exceed the archive, or are out of archive order.",
+            );
+          }
+          previousBackupDataEnd = checkedZipSum(dataOffset, size, normalizedName || "entry data");
+        }
 
-    const isFullBackup = isStoredFullBackupArchive(entries, archiveStat.size);
-    if (!isFullBackup && centralDirectorySize > PROFILE_ARCHIVE_CENTRAL_DIRECTORY_LIMIT_BYTES) {
-      throw new ProfileImportRequestError(
-        profileArchiveSizeError(
-          "Profile archive central directory",
-          centralDirectorySize,
-          PROFILE_ARCHIVE_CENTRAL_DIRECTORY_LIMIT_BYTES,
-        ),
-      );
-    }
-    return { filePath, entries, entriesByName, isFullBackup };
+        if (materialize) {
+          const entry: ProfileZipEntry = {
+            entryName: normalizedName,
+            isDirectory: normalizedName.endsWith("/"),
+            header: { method, crc32, compressedSize, size, dataOffset },
+          };
+          entries.push(entry);
+          if (normalizedName && !entriesByName.has(normalizedName)) entriesByName.set(normalizedName, entry);
+          onEntryMaterialized?.();
+        }
+        offset = nextOffset;
+      }
+
+      if (offset !== centralDirectorySize) {
+        throw new ProfileImportRequestError("Profile archive central directory has unexpected trailing data.");
+      }
+
+      const isFullBackup = materialize
+        ? isStoredFullBackupArchive(entries, archiveStat.size)
+        : backupManifestSeen && backupRestoreSeen;
+      if (!isFullBackup && centralDirectorySize > PROFILE_ARCHIVE_CENTRAL_DIRECTORY_LIMIT_BYTES) {
+        throw new ProfileImportRequestError(
+          profileArchiveSizeError(
+            "Profile archive central directory",
+            centralDirectorySize,
+            PROFILE_ARCHIVE_CENTRAL_DIRECTORY_LIMIT_BYTES,
+          ),
+        );
+      }
+      return { filePath, entries, entriesByName, isFullBackup };
+    };
+    // Validate oversized directories without retaining entry objects first. In
+    // particular, a missing last-written RESTORE.txt cannot consume the larger
+    // materialization budget. Both passes use the same open file handle.
+    if (largeDirectory) await readDirectory(false);
+    return await readDirectory(true);
   } finally {
     await handle.close();
   }
 }
 
 /** Test seam for ZIP64/full-backup classification without exposing archive internals to routes. */
-export async function inspectStoredBackupArchiveForRegression(filePath: string) {
-  const zip = await readProfileZipArchive(filePath);
+export async function inspectStoredBackupArchiveForRegression(filePath: string, onEntryMaterialized?: () => void) {
+  const zip = await readProfileZipArchive(filePath, onEntryMaterialized);
   return {
     isFullBackup: zip.isFullBackup,
     entries: zip.entries.map((entry) => ({

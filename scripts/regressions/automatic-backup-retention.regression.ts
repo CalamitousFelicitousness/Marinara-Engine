@@ -261,11 +261,6 @@ try {
       size: zip64ManifestSize,
     },
     {
-      entryName: "marinara-automatic-backup/RESTORE.txt",
-      filePath: zip64RestorePath,
-      size: zip64RestoreSize,
-    },
-    {
       entryName: "marinara-automatic-backup/backgrounds/large.gif",
       filePath: sourcePath,
       size: logicalSize,
@@ -275,6 +270,12 @@ try {
       filePath: manyEntriesSource,
       size: 0,
     })),
+    // Production defers restore notes until all file omissions are known.
+    {
+      entryName: "marinara-automatic-backup/RESTORE.txt",
+      filePath: zip64RestorePath,
+      size: zip64RestoreSize,
+    },
   ];
   await assert.rejects(
     writeStoredBackupArchiveForRegression(wideDirectoryArchive, wideDirectorySources),
@@ -319,9 +320,64 @@ try {
     inspectStoredBackupArchiveForRegression(ordinaryWideDirectory),
     /central directory is too large/u,
   );
-  const wideDirectoryInspection = await inspectStoredBackupArchiveForRegression(wideDirectoryArchive);
+  const wideCentralDirectory = Buffer.alloc(wideDirectoryEnd.readUInt32LE(12));
+  const wideCentralOffset = wideDirectoryEnd.readUInt32LE(16);
+  const wideCentralFd = openSync(wideDirectoryArchive, "r");
+  try {
+    assert.equal(
+      readSync(wideCentralFd, wideCentralDirectory, 0, wideCentralDirectory.length, wideCentralOffset),
+      wideCentralDirectory.length,
+    );
+  } finally {
+    closeSync(wideCentralFd);
+  }
+  const recordOffsets: number[] = [];
+  for (let offset = 0; offset < wideCentralDirectory.length;) {
+    recordOffsets.push(offset);
+    offset +=
+      46 +
+      wideCentralDirectory.readUInt16LE(offset + 28) +
+      wideCentralDirectory.readUInt16LE(offset + 30) +
+      wideCentralDirectory.readUInt16LE(offset + 32);
+  }
+  const restoreOffset = recordOffsets.at(-1)!;
+  const lateStorageOffset = recordOffsets.at(-2)!;
+  assert.ok(lateStorageOffset > 8 * 1024 * 1024);
+  for (const failure of ["missing-restore", "overlap"] as const) {
+    const corruptDirectory = Buffer.from(wideCentralDirectory);
+    if (failure === "missing-restore") {
+      corruptDirectory.write("X", restoreOffset + 46 + Buffer.byteLength("marinara-automatic-backup/"));
+    } else {
+      // The overlap must fail before even reading the late damaged record.
+      corruptDirectory.writeUInt32LE(corruptDirectory.readUInt32LE(42), recordOffsets[1]! + 42);
+      corruptDirectory.writeUInt32LE(0, lateStorageOffset);
+    }
+    const corruptArchive = join(zipFixtureRoot, `${failure}-wide-directory.zip`);
+    await copyFile(wideDirectoryArchive, corruptArchive);
+    const fd = openSync(corruptArchive, "r+");
+    try {
+      writeSync(fd, corruptDirectory, 0, corruptDirectory.length, wideCentralOffset);
+    } finally {
+      closeSync(fd);
+    }
+    let materializedEntries = 0;
+    await assert.rejects(
+      inspectStoredBackupArchiveForRegression(corruptArchive, () => {
+        materializedEntries++;
+      }),
+      failure === "missing-restore" ? /central directory is too large/u : /overlap|archive order/u,
+      "an inconsistent backup must be refused before materializing the larger directory",
+    );
+    assert.equal(materializedEntries, 0);
+    await rm(corruptArchive);
+  }
+  let materializedEntries = 0;
+  const wideDirectoryInspection = await inspectStoredBackupArchiveForRegression(wideDirectoryArchive, () => {
+    materializedEntries++;
+  });
   assert.equal(wideDirectoryInspection.isFullBackup, true);
   assert.equal(wideDirectoryInspection.entries.length, wideDirectorySources.length);
+  assert.equal(materializedEntries, wideDirectorySources.length, "the validation pass retains no entry objects");
   const wideDirectoryImport = await readStoredBackupImportForRegression(wideDirectoryArchive, "backgrounds/large.gif");
   assert.equal(wideDirectoryImport.isFullBackup, true);
   assert.ok(wideDirectoryImport.asset && !Buffer.isBuffer(wideDirectoryImport.asset));

@@ -6,7 +6,7 @@ This guide explains chat branches in Marinara Engine: what a branch is and how t
 
 A branch is a copy of a chat that shares history up to a chosen point. You use branches to explore a different direction while keeping the original chat safe.
 
-All branches of the same chat are grouped together. In the chat list, the chat keeps its row, and clicking its branch count opens the branches underneath it (Game sessions and branches without recorded lineage keep a plain count; see below). Each branch shows its display name and when it was last active. A branch made from a branch nests under that one, so branches of branches read as a tree instead of a flat pile. You can switch straight to a branch from the list, or use the **Chat Branches** section of **Chat Settings** (see below) to rename, delete, export or import them.
+All branches of the same chat are grouped together. In the chat list, the chat keeps its row, and clicking its branch count opens the branches underneath it (a group of Game sessions, or one where no branch records its parent, keeps a plain count; see below). Each branch shows its display name and when it was last active. A branch made from a branch nests under that one, so branches of branches read as a tree instead of a flat pile. You can switch straight to a branch from the list, or use the **Chat Branches** section of **Chat Settings** (see below) to rename, delete, export or import them.
 
 Each branch can have its own display name, so you can label them like "friendly ending" and "dark ending". This display name is separate from the underlying chat name.
 

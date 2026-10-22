@@ -1207,6 +1207,8 @@ export function ChatSidebar() {
             if (event.altKey || event.ctrlKey || event.metaKey) return;
             if (event.key !== "Enter" && event.key !== " ") return;
             event.preventDefault();
+            // A held key repeats; one press is one activation.
+            if (event.repeat) return;
             event.currentTarget.click();
           }}
           className={cn(
@@ -2032,6 +2034,7 @@ function BranchRow({
         if (event.target !== event.currentTarget) return;
         if (event.key !== "Enter" && event.key !== " ") return;
         event.preventDefault();
+        if (event.repeat) return;
         handleClick();
       }}
       className={cn(

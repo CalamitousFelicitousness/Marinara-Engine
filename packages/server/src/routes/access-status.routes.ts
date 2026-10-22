@@ -9,7 +9,6 @@ import type { FastifyInstance } from "fastify";
 import {
   clearStoredLogin,
   consumeLoginSetupCode,
-  deleteAllSessions,
   getLoginConfig,
   isLoginSetupCode,
   MIN_LOGIN_PASSWORD_LENGTH,
@@ -17,7 +16,14 @@ import {
 } from "../config/login-credential.js";
 import { getHost, getIpAllowlist } from "../config/runtime-config.js";
 import { logger } from "../lib/logger.js";
-import { describeSessions, endSession, rememberLoginInBrowser } from "../middleware/basic-auth.js";
+import {
+  createPairingCode,
+  describeSessions,
+  endOtherSessions,
+  endSession,
+  hasBrowserSession,
+  rememberLoginInBrowser,
+} from "../middleware/basic-auth.js";
 import {
   getAccessPolicy,
   getPasswordlessPeers,
@@ -27,6 +33,7 @@ import {
 } from "../middleware/ip-allowlist.js";
 import { requirePrivilegedAccess } from "../middleware/privileged-gate.js";
 import { ACCESS_LOGIN_RATE_LIMIT, RUNTIME_DIAGNOSTICS_RATE_LIMIT } from "../middleware/rate-limit.js";
+import { listRefusals } from "../middleware/refused-devices.js";
 
 const ENV_MANAGED = { error: "The login is set in .env (BASIC_AUTH_USER and BASIC_AUTH_PASS). Change it there." };
 
@@ -42,6 +49,7 @@ export async function accessStatusRoutes(app: FastifyInstance) {
       host,
       basicAuth: policy.basicAuthConfigured,
       loginSource: getLoginConfig()?.source ?? null,
+      loginUser: getLoginConfig()?.user ?? null,
       adminSecret: policy.adminSecretConfigured,
       allowlist: getIpAllowlist() !== null,
       trustedAuthProxy: getTrustedAuthProxies().length > 0,
@@ -109,10 +117,26 @@ export async function accessStatusRoutes(app: FastifyInstance) {
     },
   );
 
+  // Signs out every other browser; the caller's own session stays.
   app.delete("/sessions", { config: { rateLimit: ACCESS_LOGIN_RATE_LIMIT } }, async (request, reply) => {
     if (!requirePrivilegedAccess(request, reply, { feature: "Signed-in browsers" })) return;
-    deleteAllSessions();
-    logger.info("[login] Every browser was signed out");
+    endOtherSessions(request);
+    logger.info("[login] Every other browser was signed out");
     return reply.status(204).send();
+  });
+
+  // "Add a device": a one-time code a new browser types on /login instead of the password.
+  app.post("/pairing-codes", { config: { rateLimit: ACCESS_LOGIN_RATE_LIMIT } }, async (request, reply) => {
+    if (!hasBrowserSession(request) && !requirePrivilegedAccess(request, reply, { feature: "Add a device" })) return;
+    const pairing = createPairingCode();
+    if (!pairing) return reply.status(409).send({ error: "Set a remote login first." });
+    logger.info("[login] A pairing code was created for a new device");
+    return pairing;
+  });
+
+  // Devices the access gates refused lately, for the banner on this computer.
+  app.get("/refusals", { config: { rateLimit: RUNTIME_DIAGNOSTICS_RATE_LIMIT } }, async (request, reply) => {
+    if (!requirePrivilegedAccess(request, reply, { loopbackOnly: true, feature: "Refused devices" })) return;
+    return { refusals: listRefusals() };
   });
 }

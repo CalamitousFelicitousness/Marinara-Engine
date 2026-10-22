@@ -61,9 +61,10 @@
 //     cookie; scripts and API clients keep sending Basic Authorization.
 
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
-import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHmac, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 import {
   createSession,
+  deleteOtherSessions,
   deleteSession,
   findSession,
   getLoginConfig,
@@ -78,6 +79,7 @@ import { logger } from "../lib/logger.js";
 import { deriveServerKey } from "../utils/crypto.js";
 import { cookieValue } from "./android-local-auth.js";
 import { getRequestAccess, isForwardedLoopbackRequest } from "./ip-allowlist.js";
+import { recordRefusal } from "./refused-devices.js";
 // Same grouping as the multiplayer peer server: an IPv4 address, or an IPv6 /64.
 import { multiplayerPeerSocketKey as clientAddressKey } from "../services/multiplayer/peer-server.js";
 
@@ -604,6 +606,7 @@ BASIC_AUTH_PASS=a-long-random-password</pre>
 }
 
 function sendLockdown(request: FastifyRequest, reply: FastifyReply, proxied: boolean) {
+  recordRefusal(request, "noLogin");
   if (wantsHtml(request)) {
     reply.status(403).header("Content-Type", "text/html; charset=utf-8").send(renderLockdownPage(request.ip, proxied));
     return;
@@ -764,6 +767,62 @@ export function endSession(id: string): boolean {
   return key ? deleteSession(key, id) : false;
 }
 
+/** Signs out every browser except the caller's own. */
+export function endOtherSessions(request: FastifyRequest): void {
+  const config = loadConfig();
+  const key = config && sessionLoginKey(config);
+  if (key) deleteOtherSessions(key, requestSession(request, config)?.id);
+}
+
+/** True when the caller is a browser that signed in on /login. */
+export function hasBrowserSession(request: FastifyRequest): boolean {
+  const config = loadConfig();
+  return config !== null && requestSession(request, config) !== null;
+}
+
+// ── Pairing codes ──
+
+/** No 0/O or 1/I/L: the code is read off one screen and typed on another. */
+const PAIRING_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
+const PAIRING_CODE_LENGTH = 8;
+export const PAIRING_CODE_TTL_MS = 5 * 60_000;
+const MAX_PAIRING_CODES = 10;
+
+/** Keyed hashes in memory only, so a restart ends every code. */
+let pairingCodes: { hash: Buffer; loginKey: string; expiresAt: number }[] = [];
+
+/** Ignores case and the spaces or dash people type between the halves. */
+function pairingHash(value: string): Buffer {
+  return createHmac("sha256", HEADER_MAC_KEY)
+    .update("pairing\0")
+    .update(value.toUpperCase().replace(/[\s-]/g, ""))
+    .digest();
+}
+
+/** A code that signs one more browser in to the current login, once, for a few minutes. */
+export function createPairingCode(): { code: string; expiresAt: number } | null {
+  const config = loadConfig();
+  const loginKey = config && sessionLoginKey(config);
+  if (!loginKey) return null;
+  const now = Date.now();
+  const code = Array.from({ length: PAIRING_CODE_LENGTH }, () => PAIRING_ALPHABET[randomInt(PAIRING_ALPHABET.length)]).join(
+    "",
+  );
+  const expiresAt = now + PAIRING_CODE_TTL_MS;
+  pairingCodes = [...pairingCodes.filter((entry) => entry.expiresAt > now), { hash: pairingHash(code), loginKey, expiresAt }];
+  pairingCodes = pairingCodes.slice(-MAX_PAIRING_CODES);
+  return { code: `${code.slice(0, 4)}-${code.slice(4)}`, expiresAt };
+}
+
+/** Uses up a live code of the login `loginKey`; every stored hash is compared in constant time. */
+function redeemPairingCode(hash: Buffer, loginKey: string): boolean {
+  const now = Date.now();
+  const match = pairingCodes.filter((entry) => safeEqual(entry.hash, hash)).at(0);
+  if (!match || match.expiresAt <= now || match.loginKey !== loginKey) return false;
+  pairingCodes = pairingCodes.filter((entry) => entry !== match);
+  return true;
+}
+
 // ── Login page ──
 
 function renderLoginPage(next: string, error?: string): string {
@@ -789,14 +848,22 @@ function renderLoginPage(next: string, error?: string): string {
         <span class="badge">Sign in</span>
         <h1>Marinara Engine</h1>
       </header>
+      ${error ? `<p class="error" role="alert">${escapeHtml(error)}</p>` : ""}
       <form class="panel" method="post" action="/login">
-        ${error ? `<p class="error" role="alert">${escapeHtml(error)}</p>` : ""}
         <input type="hidden" name="next" value="${escapeHtml(next)}" />
         <label for="user">Username</label>
         <input id="user" name="user" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus />
         <label for="password">Password</label>
         <input id="password" name="password" type="password" autocomplete="current-password" required />
         <button type="submit">Sign in</button>
+      </form>
+      <form class="panel" method="post" action="/login">
+        <h2>Sign in with a code</h2>
+        <p class="hint">On a device that is signed in, or on the computer that runs Marinara, open Settings &rarr; Advanced &rarr; Remote login and choose Add a device.</p>
+        <input type="hidden" name="next" value="${escapeHtml(next)}" />
+        <label for="code">Pairing code</label>
+        <input id="code" name="code" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" maxlength="16" required />
+        <button type="submit">Sign in with code</button>
       </form>
     </main>
   </body>
@@ -826,7 +893,7 @@ export async function loginRoutes(app: FastifyInstance) {
     return sendLoginPage(reply, 200, next);
   });
 
-  app.post<{ Body: { user?: unknown; password?: unknown; next?: unknown } | undefined }>(
+  app.post<{ Body: { user?: unknown; password?: unknown; code?: unknown; next?: unknown } | undefined }>(
     "/login",
     async (request, reply) => {
       const body = request.body ?? {};
@@ -838,6 +905,21 @@ export async function loginRoutes(app: FastifyInstance) {
       if (retryAfter > 0) {
         reply.header("Retry-After", String(retryAfter));
         return sendLoginPage(reply, 429, next, "Too many wrong passwords. Try again later.");
+      }
+      if (typeof body.code === "string") {
+        const hash = pairingHash(body.code);
+        const key = sessionLoginKey(config);
+        if (!key || !redeemPairingCode(hash, key)) {
+          // Wrong codes count like wrong passwords, so guessing one locks the address out the same way.
+          countGuess(request, `code:${hash.toString("base64url").slice(0, 16)}`);
+          logWrongPassword(request);
+          return sendLoginPage(reply, 401, next, "This code does not work. Ask for a new one.");
+        }
+        if (!startBrowserSession(request, reply, config)) {
+          return sendLoginPage(reply, 500, next, "This browser cannot stay signed in. See the server log.");
+        }
+        logger.info("[login] A device signed in with a pairing code");
+        return reply.redirect(next, 303);
       }
       const user = typeof body.user === "string" ? body.user : "";
       const password = typeof body.password === "string" ? body.password : "";

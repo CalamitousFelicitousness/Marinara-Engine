@@ -33,6 +33,7 @@ import { logger } from "../lib/logger.js";
 import { getLoginConfig } from "../config/login-credential.js";
 import { evaluateAccessPolicy, isForwardedLoopbackPeer, type AccessFacts, type AccessPolicy } from "./access-policy.js";
 import { firstHeader, parseRequestHostname } from "./host-validation.js";
+import { recordRefusal } from "./refused-devices.js";
 
 // ── CIDR helpers ──
 
@@ -888,5 +889,6 @@ export function ipAllowlistHook(request: FastifyRequest, reply: FastifyReply, do
   // Tailscale / Docker peers are treated like loopback and skip the allowlist.
   const policy = getRequestAccess(request);
   if (policy.ipAllowed) return done();
+  recordRefusal(request, "allowlist");
   reply.status(403).send({ error: "Forbidden" });
 }

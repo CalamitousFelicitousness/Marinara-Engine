@@ -276,7 +276,8 @@ try {
   delete process.env.ALLOW_UNAUTHENTICATED_PRIVATE_NETWORK;
   const lanPage = await inject("GET", "/", { host: "192.168.1.20:7860", accept: "text/html" }, "192.168.1.77");
   assert.equal(lanPage.statusCode, 403);
-  assert.match(lanPage.body, /IP_ALLOWLIST=192\.168\.1\.77/u, "a LAN device still gets its allowlist snippet");
+  assert.match(lanPage.body, /action="\/login\/setup"/u, "a LAN device gets the setup-code form");
+  assert.doesNotMatch(lanPage.body, /IP_ALLOWLIST/u, "a LAN device gets no allowlist advice");
   const lanJson = await inject("GET", "/api/chats", { host: "192.168.1.20:7860" }, "192.168.1.77");
   assert.equal(lanJson.statusCode, 403);
   assertSafeLockdownHint(lanPage.body, "the LAN lockdown page");

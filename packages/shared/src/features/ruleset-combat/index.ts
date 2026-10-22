@@ -227,6 +227,7 @@ export {
   rulesetBehaviorAnchor,
   rulesetGap,
   rulesetGapFrom,
+  rulesetActionReach,
   rulesetNearestCell,
   rulesetSpanOf,
   rulesetStepLeavesReach,

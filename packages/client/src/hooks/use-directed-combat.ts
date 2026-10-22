@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -116,7 +116,30 @@ export function useDirectedCombat(input: {
     },
   });
   const send = mutate.mutate;
+  // A `continue` the screen sends by itself (a turn played, a Game Master's window driven) is not
+  // the player being busy: a choice made while one is in flight waits for it and then goes, rather
+  // than landing on a button that was disabled for the moment the poll took ("Let it go by" that
+  // needed a second click).
+  const polling = mutate.isPending && mutate.variables?.type === "continue";
+  const queued = useRef<Parameters<typeof send>[0] | null>(null);
+  const choose = useCallback(
+    (command: Parameters<typeof send>[0]) => {
+      if (polling && command.type !== "continue") {
+        queued.current = command;
+        return;
+      }
+      send(command);
+    },
+    [polling, send],
+  );
   useEffect(() => {
+    if (mutate.isPending || !queued.current) return;
+    const command = queued.current;
+    queued.current = null;
+    send(command);
+  }, [mutate.isPending, send]);
+  useEffect(() => {
+    if (queued.current) return;
     if (!query.data?.window || query.data.window.controller !== "gm" || mutate.isPending || mutate.isError) return;
     const timer = setTimeout(() => send({ type: "continue" }), query.data.window.requestedAt ? 1200 : 0);
     return () => clearTimeout(timer);
@@ -128,7 +151,7 @@ export function useDirectedCombat(input: {
   const ruleset = query.data?.style === "ruleset" ? query.data.ruleset : undefined;
   const autoplay = !!ruleset && !query.data?.window && !query.data?.outcome && ruleset.controller !== "manual";
   useEffect(() => {
-    if (!autoplay || mutate.isPending || mutate.isError) return;
+    if (queued.current || !autoplay || mutate.isPending || mutate.isError) return;
     if (refusedRevision.current !== null && refusedRevision.current === query.data?.revision) return;
     refusedRevision.current = null;
     const timer = setTimeout(() => send({ type: "continue" }), RULESET_TURN_PAUSE_MS);
@@ -138,8 +161,8 @@ export function useDirectedCombat(input: {
     session: query.data,
     error: query.error ?? mutate.error,
     loading: query.isPending,
-    busy: mutate.isPending,
-    send,
+    busy: mutate.isPending && !polling,
+    send: choose,
     refresh: () => {
       mutate.reset();
       return query.refetch();

@@ -306,6 +306,87 @@ try {
     };
     assert.equal(answer("blast", { at: { x: 10, y: 4 } }), "counter", "the blast is stopped");
     assert.notEqual(answer("flick", { targetIds: ["mage"] }), "counter", "the flick is let through");
+
+    // Priced by the level of what it stops: a 3rd-level answer is thrown at a cantrip only to keep
+    // its thrower alive, and at a 3rd-level blast whenever the blast is worth it.
+    const zap = {
+      id: "zap",
+      name: "Zap",
+      budget: "action",
+      toHit: 20,
+      range: { normal: 90 },
+      damage: { count: 3, sides: 10, flat: 10 },
+    };
+    const priced = (optionId: string, choice: Record<string, unknown>, health: number) => {
+      const { encounter, state } = fight({
+        caster: { side: "enemy", block: block([blast, zap]), at: { x: 2, y: 4 } },
+        mage: { side: "party", block: block([own, flick]), at: { x: 10, y: 3 } },
+        fighter: { side: "party", block: block([smash]), at: { x: 10, y: 5 } },
+      });
+      state.party.find((one) => one.id === "mage")!.aiHints = { proficiency: "master", temperament: "disciplined" };
+      const mage = rulesetCombatant(encounter, "mage")!;
+      mage.health = { ...mage.health!, value: health };
+      mage.actions.find((action) => action.id === "counter")!.castLevel = 3;
+      rulesetCombatant(encounter, "caster")!.actions.find((action) => action.id === "blast")!.castLevel = 3;
+      encounter.order = ["caster", "mage", "fighter"];
+      const step = applyRulesetCombatChoice(
+        definition,
+        encounter,
+        { actorId: "caster", optionId, targetIds: [], ...choice },
+        () => 10,
+      );
+      const menu = rulesetWindowOptions(definition, step.state, "mage");
+      return pickRulesetChoice(definition, state, step.state, "mage", menu)?.choice.optionId;
+    };
+    assert.notEqual(priced("zap", { targetIds: ["mage"] }, 40), "counter", "a cantrip it lives through is let by");
+    assert.equal(priced("zap", { targetIds: ["mage"] }, 20), "counter", "a cantrip that would kill it is stopped");
+    assert.equal(priced("blast", { at: { x: 10, y: 4 } }, 60), "counter", "the 3rd-level blast is stopped");
+    // Held down itself weighs half again what holding a friend does.
+    const holding = (target: string) => {
+      const { encounter } = fight({
+        caster: { side: "enemy", block: block([hold]), at: { x: 2, y: 4 } },
+        mage: { side: "party", block: block([counter, flick]), at: { x: 10, y: 3 } },
+        fighter: { side: "party", block: block([smash]), at: { x: 10, y: 5 } },
+      });
+      encounter.order = ["caster", "mage", "fighter"];
+      const step = applyRulesetCombatChoice(
+        definition,
+        encounter,
+        { actorId: "caster", optionId: "hold", targetIds: [target] },
+        () => 10,
+      );
+      return rulesetStoppedWorth(definition, combat, step.state, rulesetCombatant(step.state, "mage")!);
+    };
+    const self = holding("mage");
+    const friend = holding("fighter");
+    assert.ok(self > friend * 1.2, `held itself ${self}, a friend held ${friend}`);
+  }
+
+  // ── A blast over its own side is never worth one nearly dead foe ──
+  {
+    const fireball = {
+      id: "fireball",
+      name: "Fireball",
+      budget: "action",
+      range: { normal: 150 },
+      area: { shape: "burst", size: 20 },
+      save: { save: "dex_save", difficulty: 15, onSuccess: "half" },
+      damage: { count: 8, sides: 6, flat: 0 },
+    };
+    const { encounter, state } = fight({
+      mage: { side: "enemy", block: block([fireball, flick]), at: { x: 2, y: 4 } },
+      other: { side: "enemy", block: block([flick]), at: { x: 9, y: 4 } },
+      cleric: { side: "party", block: block([poke]), at: { x: 10, y: 4 } },
+      fighter: { side: "party", block: block([smash]), at: { x: 13, y: 0 } },
+    });
+    const cleric = rulesetCombatant(encounter, "cleric")!;
+    cleric.health = { ...cleric.health!, value: 3 };
+    const picked = pickRulesetChoice(definition, state, encounter, "mage");
+    const at = picked?.choice.at;
+    assert.ok(
+      picked?.option.id !== "fireball" || !at || Math.max(Math.abs(at.x - 9), Math.abs(at.y - 4)) > 4,
+      `no Fireball over its friend to finish one at 3 health: ${JSON.stringify(picked?.choice)}`,
+    );
   }
 
   console.log(

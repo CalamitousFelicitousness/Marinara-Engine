@@ -473,7 +473,14 @@ export function rulesetCellSentences(cell: RulesetBoardCell, view: DirectedRules
     );
   const who = cell.occupant;
   if (who) {
-    said.push(t("game.combat.ruleset.board.who", { name: who.name, value: who.health.value, max: who.health.max }));
+    // One who is down lies there rather than standing.
+    said.push(
+      t(who.down || who.defeated ? "game.combat.ruleset.board.whoLying" : "game.combat.ruleset.board.who", {
+        name: who.name,
+        value: who.health.value,
+        max: who.health.max,
+      }),
+    );
     if (who.altitude !== undefined) said.push(t("game.combat.ruleset.board.flying", { height: who.altitude }));
     if (who.id === view.actorId) said.push(t("game.combat.ruleset.board.onTurn"));
     if (who.defeated) said.push(t("game.combat.ruleset.status.defeated"));

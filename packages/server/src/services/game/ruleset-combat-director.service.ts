@@ -81,6 +81,7 @@ import {
   rulesetSpanOf,
   rulesetBehaviorAnchor,
   rulesetGapFrom,
+  rulesetActionReach,
   rulesetGap,
   rulesetAtBoardEdge,
   rulesetInCells,
@@ -1355,6 +1356,51 @@ function rulesetKeepsDefensive(
  * opponent still standing, the worst of its blows that could reach it there next turn, in full from
  * where it is and at half from a walk away. What the cautious weigh against standing there.
  */
+/** Whether budgets handed over for this turn (Action Surge) buy a blow now: the turn's own of each
+ *  is already spent, and something paid from it reaches a standing opponent from here or from where
+ *  the movement left takes it. */
+function rulesetGiftStrikes(
+  encounter: RulesetEncounterState,
+  actor: RulesetCombatant,
+  gives: Array<{ budget: string }>,
+): boolean {
+  const here = rulesetPositionOf(actor);
+  const walks = actor.movementLeft ?? 0;
+  const span = rulesetSpanOf(actor);
+  return gives.some(
+    (gift) =>
+      (actor.budgets[gift.budget] ?? 0) <= 0 &&
+      actor.actions.some(
+        (action) =>
+          action.budget === gift.budget &&
+          !!(action.damage || action.sequence) &&
+          encounter.combatants.some(
+            (foe) =>
+              foe.side !== actor.side &&
+              rulesetCombatStanding(foe) &&
+              !foe.down &&
+              (!here || rulesetGapFrom(here, span, foe) <= rulesetActionReach(action) + walks),
+          ),
+      ),
+  );
+}
+
+/** The health a side stands up with, on average across its standing members. */
+function rulesetSideHealthMean(
+  definition: RulesetDefinition,
+  combat: NonNullable<RulesetDefinition["combat"]>,
+  encounter: RulesetEncounterState,
+  side: string,
+): number {
+  const pools = encounter.combatants
+    .filter((one) => one.side === side && rulesetCombatStanding(one))
+    .map((one) => {
+      const health = rulesetCombatHealth(definition, combat, one);
+      return Math.max(1, health.value + health.temp);
+    });
+  return pools.length ? pools.reduce((sum, pool) => sum + pool, 0) / pools.length : 1;
+}
+
 function rulesetDangerAt(
   definition: RulesetDefinition,
   encounter: RulesetEncounterState,
@@ -1376,7 +1422,9 @@ function rulesetDangerAt(
     for (const action of foe.actions) {
       if (!action.damage) continue;
       const reach = action.range ? (action.range.long ?? action.range.normal) : (action.reach ?? 1);
-      const at = gap <= reach ? 1 : gap <= reach + walks ? 0.5 : 0;
+      // One a walk away comes on its own turn all the same, so standing a square off it is
+      // nearly as dangerous as standing beside it, and no reason to throw from afar instead.
+      const at = gap <= reach ? 1 : gap <= reach + walks ? 0.65 : 0;
       worst = Math.max(worst, rulesetSafeAverage(action.damage) * at);
     }
     harm += worst;
@@ -2159,7 +2207,11 @@ function rulesetCandidatesFrom(
             ...others.map((other) => other.id),
             ...Array.from({ length: again }, () => targetId),
           ];
-        candidate.damage = Math.min(2, (average / pool) * (1 + others.length + again)) * chance;
+        // Weighed against what its side stands up with as well as what the target has: a scratch on
+        // the frail one is still a scratch, and a full Multiattack on the one beside it is worth more
+        // than a dagger thrown far at disadvantage. Finishing one off is weighed by its own health.
+        const weighed = Math.max(pool, 0.75 * rulesetSideHealthMean(definition, combat, encounter, target.side));
+        candidate.damage = Math.min(2, (average / weighed) * (1 + others.length + again)) * chance;
         if (average >= pool) candidate.finish = chance;
         // What it puts on them as well (a stunning blow), and the spell it may break by hurting
         // whoever holds one up.
@@ -2170,10 +2222,18 @@ function rulesetCandidatesFrom(
         // Giving back a pool that is already full, or one somebody without a sheet does not have,
         // gives nothing.
         if (option.restores && !rulesetPoolHasRoom(definition, target, option.restores)) continue;
-        // What it does for them, read off what it puts on them: nothing, for what they already have.
-        const helps = rulesetEffectWorth(definition, combat, encounter, actor, fallingAction, target);
-        if (helps === 0) continue;
-        candidate.support = helps ?? 0.4;
+        // A budget handed over for this turn (Action Surge) is worth only a blow it can buy: taken
+        // once the turn's own is spent, with something that reaches an opponent from where it can
+        // still walk to. Never a Dash with it, and never a surge it then stands about with.
+        if (fallingAction?.gives?.length) {
+          if (!rulesetGiftStrikes(encounter, actor, fallingAction.gives)) continue;
+          candidate.support = 1;
+        } else {
+          // What it does for them, read off what it puts on them: nothing, for what they already have.
+          const helps = rulesetEffectWorth(definition, combat, encounter, actor, fallingAction, target);
+          if (helps === 0) continue;
+          candidate.support = helps ?? 0.4;
+        }
       } else if (
         menu &&
         fallingAction?.reaction?.cancels &&
@@ -2181,12 +2241,16 @@ function rulesetCandidatesFrom(
       ) {
         // Stopping what is coming (Counterspell) is worth what it would have done, weighed as the harm
         // it saves rather than by temperament: a cantrip is let through, a Fireball at the party is
-        // stopped by anybody who can. The first quarter is what a reaction is worth, and a tenth
-        // more for each level of the slot it spends, however little the spender minds the price: a
-        // 3rd-level slot is never thrown at a Fire Bolt. That is its whole price, so none is added.
+        // stopped by anybody who can. The first quarter is what a reaction is worth, a tenth more
+        // for each level of the slot it spends, however little the spender minds the price, and
+        // more again for each level that slot stands above the cast it stops: a 3rd-level slot is
+        // thrown at a Fire Bolt only to keep its spender alive. That is its whole price, so none is
+        // added.
         const level = rulesetPaidLevel(definition, actor, fallingAction, way.payWith);
+        const above = Math.max(0, level - rulesetStoppedLevel(definition, encounter));
         const saved =
-          Math.max(0, rulesetStoppedWorth(definition, combat, encounter, actor) - 0.25 - 0.1 * level) * chance;
+          Math.max(0, rulesetStoppedWorth(definition, combat, encounter, actor) - 0.25 - 0.1 * level - 0.15 * above) *
+          chance;
         if (saved <= 0) continue;
         candidate.damage = saved;
         candidate.cost = 0;
@@ -2403,8 +2467,12 @@ export function rulesetStoppedWorth(
   const average = rulesetSafeAverage(action.damage);
   for (const one of mine) {
     const health = rulesetCombatHealth(definition, combat, one);
-    if (average > 0) worth += Math.min(1, average / Math.max(1, health.value + health.temp));
-    worth += rulesetEffectWorth(definition, combat, encounter, source, action, one) ?? 0;
+    // Its own life, or itself held down (Hold Person on the one who could stop it), is the rest of
+    // its fight lost, and weighs half again as much.
+    const self = one.id === actor.id ? 1.5 : 1;
+    const pool = Math.max(1, health.value + health.temp);
+    if (average > 0) worth += Math.min(1, average / pool) * (average >= pool ? self : 1);
+    worth += (rulesetEffectWorth(definition, combat, encounter, source, action, one) ?? 0) * self;
   }
   // Healing or helping their own side is worth stopping too.
   for (const one of aimedAt.filter((other) => other.side === source.side)) {
@@ -2416,6 +2484,22 @@ export function rulesetStoppedWorth(
   // Something it could read and found small is worth that little; only what says nothing gets a guess.
   const read = average > 0 || !!action.heal || !!action.applies?.length || !!action.summons || !!action.calls;
   return Math.min(2, read ? worth : 0.4);
+}
+
+/** The level of the cast an answer would stop (Counterspell's target): what its caster paid for it,
+ *  0 for a cantrip. An answer at our own cast is that answer's level. */
+function rulesetStoppedLevel(definition: RulesetDefinition, encounter: RulesetEncounterState): number {
+  const trigger = encounter.window?.trigger;
+  if (!trigger || (trigger.kind !== "aimed" && trigger.kind !== "used")) return 0;
+  const source = rulesetCombatant(encounter, trigger.sourceId);
+  const action = source?.actions.find((one) => one.id === trigger.optionId);
+  if (!source || !action) return 0;
+  const resume = encounter.window?.resume;
+  const payWith =
+    (resume?.kind === "action" || resume?.kind === "answer") && resume.actorId === source.id
+      ? resume.payWith
+      : undefined;
+  return rulesetPaidLevel(definition, source, action, payWith);
 }
 
 /** What healing is worth to one: only what they are missing counts, and less the less they miss, so
@@ -2533,9 +2617,16 @@ function weighCaught(
       const own = rulesetCombatHealth(definition, combat, actor);
       if (average >= own.value + own.temp) return false;
     }
+    // Each foe counts for at most what dropping it is worth, weighed against what its side stands up
+    // with as a blow is: a cleric at 3 health is not worth a Fireball over its own two mages.
     const share = foes.reduce((total, target) => {
       const health = rulesetCombatHealth(definition, combat, target);
-      return total + average / Math.max(1, health.value + health.temp);
+      const pool = Math.max(
+        1,
+        health.value + health.temp,
+        0.75 * rulesetSideHealthMean(definition, combat, encounter, target.side),
+      );
+      return total + Math.min(1, average / pool);
     }, 0);
     // Never one that would likely drop somebody of its own side either: a mage's Fireball over the
     // other mage. A friend it only grazes counts against it three times over, and its own hide four times.

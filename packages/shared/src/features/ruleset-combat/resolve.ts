@@ -444,6 +444,8 @@ interface RulesetCombatContext {
   walkHalted?: string;
   /** A summons striking by itself as its summoner's turn starts (1.486): never held for an answer. */
   summonStriking?: true;
+  /** Where a summons being cast appears, worked out before its maker strikes from there. */
+  summonAppears?: RulesetCombatCell;
   /** Whose turn's own start or end is being counted down right now, so a condition left behind in
    *  the middle of a turn can be told from one left behind as the turn begins or ends. */
   ticking?: string;
@@ -4482,7 +4484,10 @@ function removeCondition(
   // What an aura put on, ended, keeps that aura off them where it says so (1.269).
   if (removed?.auraSafeOnEnd) keepOff(target, removed.auraSafeOnEnd);
   if (target.sheet) writeRulesetSheet(ctx.definition, target, { op: "condition", condition, active: false });
-  ctx.events.push({ type: "condition", targetId: target.id, condition, active: false, reason });
+  // A spell let go of says nothing of the dead it still held: "Paralyzed ends on Bandit 2" after
+  // Bandit 2 was killed reads as if it had got up.
+  if (!(target.defeated && reason === "concentration"))
+    ctx.events.push({ type: "condition", targetId: target.id, condition, active: false, reason });
   // What is left of the temporary points it gave is lost with it (1.274): Heroism's. Points the
   // holder has more of than it gave came from something else, and stay.
   const temporary = ctx.combat.conditions?.find((one) => one.condition === condition)?.temporary;
@@ -6683,7 +6688,7 @@ function finishSummon(
   }
   if (action.concentration && actor.concentrating?.actionId !== action.id) return;
   endSummons(ctx, actor, action.id);
-  const at = summonCell(ctx.state, rulesetCombatant(ctx.state, resume.targetIds[0] ?? ""));
+  const at = ctx.summonAppears ?? summonCell(ctx.state, rulesetCombatant(ctx.state, resume.targetIds[0] ?? ""));
   (actor.summons ??= []).push({
     actionId: action.id,
     label: action.label,
@@ -12903,6 +12908,44 @@ function openAimed(
 }
 
 function resumeAction(ctx: RulesetCombatContext, resume: RulesetActionResume): void {
+  // A summons strikes from where it is (Spiritual Weapon): its blow is a swing at its own reach,
+  // rolled from its own square, so who stands beside it and what covers the target are read from
+  // there, and the cast's range is no shot fired past a foe beside its maker. The cast's own blow
+  // is struck from where it appears, beside its target.
+  const maker = !resume.resolved && !resume.cancelled ? rulesetCombatant(ctx.state, resume.actorId) : undefined;
+  const index = maker ? maker.actions.findIndex((entry) => entry.id === resume.optionId) : -1;
+  const cast = index >= 0 ? maker!.actions[index]! : undefined;
+  const summon = resume.summon ? maker?.summons?.find((one) => one.actionId === resume.optionId) : undefined;
+  const appears =
+    !resume.summon && cast?.summons && !cast.summons.strikesAtTurnStart && rulesetIsAttack(cast)
+      ? summonCell(ctx.state, rulesetCombatant(ctx.state, resume.targetIds[0] ?? ""))
+      : undefined;
+  const at = summon?.at ?? appears;
+  if (!maker || !cast || !at || typeof maker.x !== "number" || typeof maker.y !== "number") {
+    resumeActionFrom(ctx, resume);
+    return;
+  }
+  const home = { x: maker.x, y: maker.y };
+  const { range: _range, ...swing } = cast;
+  const struck: RulesetCombatAction = { ...swing, reach: summon?.reach ?? cast.summons?.reach ?? 1 };
+  maker.x = at.x;
+  maker.y = at.y;
+  maker.actions[index] = struck;
+  if (appears) ctx.summonAppears = appears;
+  try {
+    resumeActionFrom(ctx, resume);
+  } finally {
+    delete ctx.summonAppears;
+    // Only put back what nothing changed while it struck.
+    if (maker.actions[index] === struck) maker.actions[index] = cast;
+    if (maker.x === at.x && maker.y === at.y) {
+      maker.x = home.x;
+      maker.y = home.y;
+    }
+  }
+}
+
+function resumeActionFrom(ctx: RulesetCombatContext, resume: RulesetActionResume): void {
   const actor = rulesetCombatant(ctx.state, resume.actorId);
   const found = actor?.actions.find((entry) => entry.id === resume.optionId);
   // A fake does what it truly does (1.79), and a weapon suppressed is a plain one (1.468): made from

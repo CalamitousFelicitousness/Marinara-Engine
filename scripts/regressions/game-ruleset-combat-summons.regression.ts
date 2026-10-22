@@ -545,8 +545,27 @@ try {
   };
   visit(schema);
   assert.ok(found > 0, "the editor includes summons");
+
+  // The weapon strikes from its own square, as a swing: a foe beside its caster is no reason for
+  // disadvantage, at the cast or later, and it is struck from beside the target wherever the caster
+  // stands.
+  {
+    const near = fight();
+    rulesetCombatant(near, "snag")!.x = 1;
+    const made = cast(near);
+    const first = eventsOf(made.events, "attack")[0]!;
+    assert.notEqual(first.mode, "disadvantage", JSON.stringify(first));
+    assert.ok(!(first.why?.down ?? []).includes("@crowded"), JSON.stringify(first));
+    assert.deepEqual(caster(made.state).summons![0]!.at, { x: 2, y: 0 }, "it appears beside the target");
+    assert.equal(caster(made.state).x, 0, "its caster has not moved");
+    const later = strike(nextTurn(JSON.parse(JSON.stringify(made.state))));
+    const second = eventsOf(later.events, "attack")[0]!;
+    assert.notEqual(second.mode, "disadvantage", JSON.stringify(second));
+    assert.equal(caster(later.state).x, 0);
+    assert.equal(caster(later.state).actions[0]!.range?.normal !== undefined, true, "the cast keeps its range");
+  }
   console.log(
-    "Summons: later budget-only strikes, movement, duration, reactions, defeat, concentration, upcasts and import, gated at 1.122.",
+    "Summons: later budget-only strikes, movement, duration, reactions, defeat, concentration, upcasts and import, struck from the summons' own square, gated at 1.122.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

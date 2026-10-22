@@ -63,6 +63,7 @@ import {
   rulesetAreaTargets,
   rulesetAimedCells,
   rulesetCombatIsPool,
+  rulesetPoolChance,
   rulesetDamageAverage,
   planRulesetCombatCost,
   rulesetActionUses,
@@ -2517,14 +2518,20 @@ function rulesetDurationWorth(duration: RulesetCombatApplies["duration"]): numbe
 }
 
 /** The chance a target fails a save, read the way the save will be thrown: its own modifier against
- *  the difficulty on a d20; an even chance on dice pools, whose odds the picker does not work out. */
+ *  the difficulty on a d20, or on dice pools its save's pool short of the successes the difficulty
+ *  asks for (combat AI E4), by the pool's own odds. */
 function rulesetFailChance(
+  definition: RulesetDefinition,
   combat: NonNullable<RulesetDefinition["combat"]>,
   target: RulesetCombatant,
   save: { save: string; difficulty: number },
 ): number {
-  if (rulesetCombatIsPool(combat)) return 0.5;
   const own = target.saves[save.save] ?? 0;
+  if (rulesetCombatIsPool(combat))
+    return Math.max(
+      0.05,
+      Math.min(0.95, 1 - rulesetPoolChance(definition, Math.max(0, own), Math.max(1, save.difficulty))),
+    );
   return Math.max(0.05, Math.min(0.95, (save.difficulty - 1 - own) / 20));
 }
 
@@ -2630,7 +2637,7 @@ export function rulesetEffectWorth(
     worth += Math.min(1.2, each) * rulesetDurationWorth(applied.duration);
   }
   if (worth === undefined) return undefined;
-  const lands = action.save && foe ? rulesetFailChance(combat, target, action.save) : 1;
+  const lands = action.save && foe ? rulesetFailChance(definition, combat, target, action.save) : 1;
   return worth * lands * (foe ? rulesetThreat(definition, combat, encounter, target) : 1);
 }
 

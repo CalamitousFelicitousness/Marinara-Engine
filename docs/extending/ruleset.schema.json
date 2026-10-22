@@ -254455,11 +254455,13 @@
                   "first-fall",
                   "half-down",
                   "leader-down",
-                  "hurt"
+                  "hurt",
+                  "surprised",
+                  "helpless"
                 ]
               },
               "minItems": 1,
-              "maxItems": 4
+              "maxItems": 6
             },
             "hurtBelow": {
               "type": "number",
@@ -254485,6 +254487,10 @@
               "type": "string",
               "maxLength": 40,
               "pattern": "^[a-z][a-z0-9_]*$"
+            },
+            "halfDownUnanswered": {
+              "type": "boolean",
+              "const": true
             },
             "$comment": {}
           },

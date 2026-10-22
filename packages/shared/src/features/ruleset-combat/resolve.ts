@@ -18298,7 +18298,31 @@ function moraleTurn(ctx: RulesetCombatContext, actor: RulesetCombatant): boolean
   );
   const happened = (trigger: RulesetMoraleTrigger): boolean => {
     if (trigger === "first-fall") return fallen.length > 0;
-    if (trigger === "half-down") return side.length > 1 && fallen.length * 2 >= side.length;
+    if (trigger === "half-down") {
+      if (side.length <= 1 || fallen.length * 2 < side.length) return false;
+      // With no losses on the other side (1.722), as the Dungeon Master's Guide has it.
+      return (
+        !morale.halfDownUnanswered ||
+        !ctx.state.combatants.some(
+          (one) =>
+            one.side !== actor.side &&
+            one.calledBy === undefined &&
+            !one.object &&
+            (one.down || (one.defeated && (!one.away || !!one.away.left || !!one.away.surrendered))),
+        )
+      );
+    }
+    // Caught unaware (1.722): a turn it starts surprised.
+    if (trigger === "surprised") return !!actor.surprised;
+    // No way to harm the other side (1.722): nothing on its menu to aim at them but a grapple or a
+    // shove, its weapons and its magic gone.
+    if (trigger === "helpless")
+      return !rulesetCombatOptions(ctx.definition, ctx.state, actor.id).some(
+        (option) =>
+          option.kind !== "move" &&
+          option.kind !== "contest" &&
+          (option.targets.side === "enemy" || option.targets.side === "any"),
+      );
     if (trigger === "leader-down")
       return fallen.some((one) => one.id !== actor.id && (one.block?.leader || one.leader));
     const health = rulesetCombatHealth(ctx.definition, ctx.combat, actor);

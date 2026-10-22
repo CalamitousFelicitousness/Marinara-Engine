@@ -13367,8 +13367,15 @@ export interface RulesetBehaviorDrops {
   pickUp?: string;
 }
 /** What a turn may hold besides walking: breaking free, and the standard actions. */
-/** What sets off a `combat.morale` check (Capability API 1.709). */
-export const RULESET_MORALE_TRIGGERS = ["first-fall", "half-down", "leader-down", "hurt"] as const;
+/** What sets off a `combat.morale` check (Capability API 1.709; `surprised` and `helpless` 1.722). */
+export const RULESET_MORALE_TRIGGERS = [
+  "first-fall",
+  "half-down",
+  "leader-down",
+  "hurt",
+  "surprised",
+  "helpless",
+] as const;
 export type RulesetMoraleTrigger = (typeof RULESET_MORALE_TRIGGERS)[number];
 
 export const RULESET_BEHAVIOR_ONLY = ["move", "escape", ...RULESET_COMBAT_STANDARD_ACTIONS] as const;
@@ -16048,6 +16055,10 @@ const combatObjectSchema = z
      * among `surrenders` and has an opponent beside it surrenders instead, out of the fight alive.
      * Old-School Essentials: 2d6 against morale, on the first death and half down. 5e (the Dungeon
      * Master's Guide's variant): a DC 10 Wisdom save, unless immune to frightened.
+     * Since 1.722 `on` may also name `surprised`, checked on a turn it starts surprised, and
+     * `helpless`, once a turn of its starts with no way to harm the other side (nothing on its menu
+     * to aim at them but a contest, a grapple or a shove);
+     * `halfDownUnanswered` counts `half-down` only while the other side has lost nobody.
      */
     morale: z
       .object({
@@ -16068,11 +16079,16 @@ const combatObjectSchema = z
           .refine((minds) => new Set(minds).size === minds.length, { message: "Name each once" })
           .optional(),
         unlessImmune: sheetId.optional(),
+        halfDownUnanswered: z.literal(true).optional(),
       })
       .strict()
       .refine((morale) => morale.hurtBelow === undefined || morale.on.includes("hurt"), {
         message: '"hurtBelow" goes with "on" naming "hurt"',
         path: ["hurtBelow"],
+      })
+      .refine((morale) => morale.halfDownUnanswered === undefined || morale.on.includes("half-down"), {
+        message: '"halfDownUnanswered" goes with "on" naming "half-down"',
+        path: ["halfDownUnanswered"],
       })
       .optional(),
     /** How much of a live pool one combatant may spend in a fight per turn or per round. A cost past

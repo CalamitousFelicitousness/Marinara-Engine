@@ -383,7 +383,44 @@ try {
     );
   }
 
+  // ── Caught unaware, helpless, half down unanswered (1.722) ──
+  {
+    const definition = parsed(fiveE({ check: { roll: "2d6" }, on: ["surprised", "helpless"] }));
+    const caught = fight(definition, { gob: { block: block({ morale: 7 }), at: { x: 6, y: 4 } } });
+    assert.equal(morale(endTurn(definition, structuredClone(caught), 6).events).length, 0, "nothing has happened");
+    rulesetCombatant(caught, "gob")!.surprised = true;
+    assert.deepEqual(
+      morale(endTurn(definition, caught, 6).events).map((event) => [event.trigger, event.outcome]),
+      [["surprised", "flee"]],
+    );
+    // Its claws gone, nothing left to it but a grapple or a shove.
+    assert.deepEqual(
+      morale(
+        endTurn(
+          definition,
+          fight(definition, { gob: { block: block({ morale: 7, actions: [] }), at: { x: 2, y: 1 } } }),
+          6,
+        ).events,
+      ).map((event) => event.trigger),
+      ["helpless"],
+    );
+    const unanswered = parsed(fiveE({ check: { roll: "2d6" }, on: ["half-down"], halfDownUnanswered: true }));
+    const half = {
+      gob: { block: block({ morale: 7 }), at: { x: 6, y: 4 } },
+      dead: { block: block(), at: { x: 9, y: 5 }, health: 0 },
+    };
+    assert.deepEqual(
+      morale(endTurn(unanswered, fight(unanswered, half), 6).events).map((event) => event.trigger),
+      ["half-down"],
+    );
+    // The party has lost somebody too: half down is answered, and no check.
+    const answered = fight(unanswered, half);
+    answered.combatants.push({ ...structuredClone(rulesetCombatant(answered, "hero")!), id: "ally", down: true });
+    assert.equal(morale(endTurn(unanswered, answered, 6).events).length, 0);
+  }
+
   // ── Refused ──
+  refused(fiveE({ ...saved, halfDownUnanswered: true }), /"halfDownUnanswered" goes with "on" naming "half-down"/);
   refused(fiveE({ ...saved, check: { save: "courage", difficulty: 10 } }), /Unknown save "courage"/);
   refused(fiveE({ ...saved, unlessImmune: "fearless" }), /Unknown condition "fearless"/);
   refused(fiveE({ ...rolled, hurtBelow: 0.3 }), /"hurtBelow" goes with "on" naming "hurt"/);
@@ -413,10 +450,25 @@ try {
     assert.equal(getCapabilityPackageInstallIssue(manifest(708) as never, scored), gate, "a morale score alone");
     assert.notEqual(getCapabilityPackageInstallIssue(manifest(709) as never, fiveE(saved)), gate);
     assert.notEqual(getCapabilityPackageInstallIssue(manifest(708) as never, fiveE()), gate);
+    const gate722 =
+      "A ruleset whose fighters lose heart when surprised or helpless (combat.morale.on), or only when half down unanswered (combat.morale.halfDownUnanswered), requires schemaVersion 2 and capabilityApi 1.722 or newer";
+    for (const newer of [
+      { ...saved, on: ["hurt", "surprised"] },
+      { ...saved, on: ["helpless"] },
+      { ...rolled, halfDownUnanswered: true },
+    ]) {
+      assert.equal(
+        getCapabilityPackageInstallIssue(manifest(721) as never, fiveE(newer)),
+        gate722,
+        JSON.stringify(newer),
+      );
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(722) as never, fiveE(newer)), gate722);
+    }
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(721) as never, fiveE(saved)), gate722);
   }
 
   console.log(
-    "Combat morale: a broken goblin runs and gets away off the edge, one that holds is not asked again, a hurt thinker beside the hero surrenders, the fearless and the mindless never check; the director runs it off the board; gated at 1.709.",
+    "Combat morale: a broken goblin runs and gets away off the edge, one that holds is not asked again, a hurt thinker beside the hero surrenders, the fearless and the mindless never check; the director runs it off the board; surprised, helpless and half down unanswered (1.722); gated at 1.709 and 1.722.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

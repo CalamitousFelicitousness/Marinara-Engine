@@ -9391,6 +9391,15 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Losing heart when caught unaware or helpless, or half down with no losses on the other side, 1.722.
+  const morale722 = plainRecord(plainRecord(plainRecord(ruleset)?.combat)?.morale);
+  if (
+    !declaresApi(722) &&
+    morale722 &&
+    ((Array.isArray(morale722.on) && morale722.on.some((one) => one === "surprised" || one === "helpless")) ||
+      morale722.halfDownUnanswered !== undefined)
+  )
+    return "A ruleset whose fighters lose heart when surprised or helpless (combat.morale.on), or only when half down unanswered (combat.morale.halfDownUnanswered), requires schemaVersion 2 and capabilityApi 1.722 or newer";
   // Who plays the other side of a fight, 1.721.
   if (!declaresApi(721) && plainRecord(plainRecord(ruleset)?.gm)?.opposition !== undefined)
     return "A ruleset that says who plays the other side of a fight (gm.opposition) requires schemaVersion 2 and capabilityApi 1.721 or newer";

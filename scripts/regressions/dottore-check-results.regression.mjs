@@ -10,7 +10,7 @@ assert.ok(python, "Dottore check regressions require Python 3.9 or newer");
 const reviewer = fileURLToPath(new URL("../../.github/dottore-review/dottore_review.py", import.meta.url));
 const proof = String.raw`
 from __future__ import annotations
-import json, pathlib, sys, types, unittest
+import contextlib, io, json, pathlib, sys, types, unittest
 from types import SimpleNamespace as NS
 from unittest.mock import patch
 
@@ -76,9 +76,34 @@ class CheckResults(unittest.TestCase):
         self.assertEqual(self.missing([], statuses, paginated=True), [])
 
     def test_failed_app_lookup_reports_an_evidence_error(self):
-        for error in ("HTTP 403: Forbidden", "HTTP 503: Service Unavailable"):
+        for error in ("HTTP 403: Forbidden", "HTTP 404: Not Found", "HTTP 503: Service Unavailable"):
             with self.assertRaisesRegex(RuntimeError, "Could not verify GitHub App"):
                 self.missing([], [commit_status(20)], app_error=error)
+
+    def test_approval_reports_unverifiable_evidence_without_approving(self):
+        head = "a" * 40
+        failures = (RuntimeError("Could not verify GitHub App: HTTP 403"), ValueError("Malformed response " + "x" * 1000), reviewer.subprocess.TimeoutExpired(["gh", "api"], 120))
+        for trigger, failure in ((trigger, failure) for trigger in ("auto", "asked") for failure in failures):
+            comments, output = [], io.StringIO()
+            def gh(args, **kwargs):
+                if args[:2] == ["pr", "view"]:
+                    return NS(stdout=json.dumps({"state": "OPEN", "isDraft": False, "headRefOid": head, "baseRefName": "staging"}))
+                if args[0] == "api" and "/reviews?" in args[1]:
+                    return NS(stdout="[]")
+                if args[:2] == ["pr", "comment"]:
+                    comments.append(args[args.index("--body") + 1])
+                    return NS(returncode=0)
+                self.fail("Unexpected API request, including any approval: " + str(args))
+            walkthrough = f"<!-- dottore:last-reviewed-sha={head} -->\n{reviewer.DISCHARGE_MARKER}"
+            with patch.dict(reviewer.os.environ, {"GITHUB_REPOSITORY": "Pasta-Devs/Marinara-Engine", "PR_NUM": "42"}), patch.object(reviewer, "run_gh", gh), patch.object(reviewer, "latest_walkthrough_comment", return_value={"body": walkthrough}), patch.object(reviewer, "open_dottore_threads", return_value=[]), patch.object(reviewer, "checks_not_passed", side_effect=failure), contextlib.redirect_stdout(output):
+                reviewer.approve(NS(trigger=trigger))
+            self.assertIn("required check evidence could not be verified", output.getvalue())
+            self.assertIn(type(failure).__name__, output.getvalue())
+            self.assertLess(len(output.getvalue()), 700, "API errors must not produce an unbounded PR comment")
+            self.assertNotIn("these checks have not passed", output.getvalue())
+            self.assertEqual(len(comments), 1 if trigger == "asked" else 0)
+            if comments:
+                self.assertIn("required check evidence could not be verified", comments[0])
 
     def test_new_pending_failure_or_cancellation_still_blocks(self):
         for newest in (check(20, None, status="in_progress"), check(20, "failure"), check(20, "cancelled")):
@@ -97,7 +122,8 @@ class CheckResults(unittest.TestCase):
         self.assertEqual(self.missing([], [commit_status(20, creator="other-app[bot]")]), ["Catalog job"])
         self.assertEqual(self.missing([], [commit_status(20)]), [])
         self.assertEqual(self.missing([], [commit_status(30, "failure", "other-app[bot]"), commit_status(20)]), [])
-        self.assertEqual(self.missing([], [commit_status(20, creator="unknown[bot]")]), ["Catalog job"])
+        with self.assertRaisesRegex(RuntimeError, "Could not verify GitHub App unknown"):
+            self.missing([], [commit_status(20, creator="unknown[bot]")])
 
     def test_status_cannot_erase_a_failed_check_or_vice_versa(self):
         self.assertEqual(self.missing([check(20, "failure")], [commit_status(30)]), ["Catalog job"])

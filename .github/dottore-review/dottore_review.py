@@ -4531,9 +4531,8 @@ def checks_not_passed(base, head):
                 raise RuntimeError(f"Could not verify GitHub App identity for status creator {login!r}")
             result = run_gh(["api", f"apps/{match[1]}", "--jq", ".id"])
             if result.returncode != 0:
-                if "HTTP 404" not in result.stderr:
-                    raise RuntimeError(f"Could not verify GitHub App {match[1]}: {result.stderr.strip()}")
-                apps[login] = None  # A genuinely absent app cannot satisfy a bound requirement.
+                # A 404 can also hide a private app. Only a verified identity can satisfy the binding.
+                raise RuntimeError(f"Could not verify GitHub App {match[1]}: {result.stderr.strip()}")
             elif result.stdout.strip().isdigit():
                 apps[login] = int(result.stdout.strip())
             else:
@@ -4593,8 +4592,13 @@ def approve(args):
         missing.append("its examination of this head did not end Viable")
     if unresolved := len(open_dottore_threads(pr_num, answered=True)):
         missing.append(f"{unresolved} Dottore thread(s) are unresolved")
-    if failing := checks_not_passed(pr["baseRefName"], head):
-        missing.append("these checks have not passed: " + ", ".join(f"`{name}`" for name in failing))
+    try:
+        failing = checks_not_passed(pr["baseRefName"], head)
+    except (RuntimeError, ValueError, subprocess.TimeoutExpired) as exc:
+        missing.append(f"required check evidence could not be verified: {error_text(exc)}")
+    else:
+        if failing:
+            missing.append("these checks have not passed: " + ", ".join(f"`{name}`" for name in failing))
     if missing:
         print("Not approved: " + "; ".join(missing))
         if asked:

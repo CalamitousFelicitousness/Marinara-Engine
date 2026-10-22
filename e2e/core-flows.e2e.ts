@@ -12450,8 +12450,16 @@ test(
     await expect(page.locator('[data-component="TopBar"]')).toBeVisible();
     await expect(page.getByRole("heading", { name: "What shall we cook tonight?" })).toBeVisible({ timeout: 30_000 });
     await expect(page.getByRole("tab", { name: "Home", exact: true })).toHaveAttribute("aria-selected", "true");
-    await expect(page.locator('[data-component="HomeBrowserHub.Address"]')).toContainText("marinara/home");
-    await expect(page.locator('[data-component="HomeBrowserHub.Address"] img')).toHaveAttribute("src", "/favicon.png");
+    // The fake URL bar is desktop chrome; the phone shell never renders it.
+    if (testInfo.project.name.includes("mobile")) {
+      await expect(page.locator('[data-component="HomeBrowserHub.AddressRow"]')).toHaveCount(0);
+    } else {
+      await expect(page.locator('[data-component="HomeBrowserHub.Address"]')).toContainText("marinara/home");
+      await expect(page.locator('[data-component="HomeBrowserHub.Address"] img')).toHaveAttribute(
+        "src",
+        "/favicon.png",
+      );
+    }
     await expect(page.locator('.mari-home-browser-chrome img[src="/logo-splash.gif"]')).toBeVisible();
     await expect(page.locator('.mari-home-hero img[src="/logo-splash.gif"]')).toHaveCount(0);
     await expect(page.locator('[data-tour="noodle-tab"]')).toHaveCount(0);
@@ -12809,10 +12817,17 @@ test("installed Home destinations appear as browser tabs without returning to th
     .toBe(refreshMarker);
   await expect(page.getByRole("region", { name: "Noodle package surface" })).toHaveText("Familiar Noodle interface");
   await expect(noodleTab).toHaveAttribute("aria-selected", "true");
-  await expect(page.locator('[data-component="HomeBrowserHub.Address"]')).toContainText("marinara/noodle");
-  await expect(page.locator('[data-component="HomeBrowserHub.Address"] img')).toHaveAttribute("src", "/favicon.png");
+  // Bookmarks belong to Home alone, in either shell.
+  await expect(page.getByRole("navigation", { name: "Home bookmarks" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Open bookmarks", exact: true })).toHaveCount(0);
+  if (mobile) {
+    await expect(page.locator('[data-component="HomeBrowserHub.AddressRow"]')).toHaveCount(0);
+  } else {
+    await expect(page.locator('[data-component="HomeBrowserHub.Address"]')).toContainText("marinara/noodle");
+    await expect(page.locator('[data-component="HomeBrowserHub.Address"] img')).toHaveAttribute("src", "/favicon.png");
+  }
   await page.getByRole("tab", { name: "Home", exact: true }).click();
-  await expect(page.locator('[data-component="HomeBrowserHub.Address"]')).toContainText("marinara/home");
+  if (!mobile) await expect(page.locator('[data-component="HomeBrowserHub.Address"]')).toContainText("marinara/home");
   await expect(page.getByRole("heading", { name: "What shall we cook tonight?" })).toBeVisible();
   expect(errors).toEqual([]);
 });
@@ -19756,9 +19771,8 @@ test("mobile Home collects its bookmarks into a Marinara-colored menu", async ({
   const trigger = page.getByRole("button", { name: "Open bookmarks", exact: true });
   const menu = page.locator('[data-component="HomeBrowserHub.MobileBookmarksMenu"]');
   const addressRow = page.locator('[data-component="HomeBrowserHub.AddressRow"]');
-  await expect(addressRow).toBeHidden();
-  expect(await addressRow.boundingBox()).toBeNull();
-  await expect(bookmarksBar).toBeHidden();
+  await expect(addressRow).toHaveCount(0);
+  await expect(bookmarksBar).toHaveCount(0);
   await expect(trigger).toBeVisible();
   await expect(trigger).toHaveAttribute("aria-expanded", "false");
   await expect(menu).toHaveCount(0);
@@ -19801,6 +19815,49 @@ test("mobile Home collects its bookmarks into a Marinara-colored menu", async ({
   expect(menuStayedMountedForExit).toBe(true);
   await expect(page.getByRole("dialog", { name: "Professor Mari's FAQ" })).toBeVisible();
   await expect(menu).toHaveCount(0);
+});
+
+test("a landscape phone keeps Home's compact chrome", async ({ page }, testInfo) => {
+  test.skip(!testInfo.project.name.includes("mobile"), "Touch-device proof.");
+  // A phone turned sideways is wider than `sm` but still gets the phone shell, so Home must not fall back to the
+  // desktop URL bar and bookmarks strip.
+  await page.setViewportSize({ width: 874, height: 402 });
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "What shall we cook tonight?" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator('[data-shell-overlay-mode="true"]')).toHaveCount(1);
+  await expect(page.locator('[data-component="HomeBrowserHub.AddressRow"]')).toHaveCount(0);
+  await expect(page.getByRole("navigation", { name: "Home bookmarks" })).toHaveCount(0);
+
+  const trigger = page.getByRole("button", { name: "Open bookmarks", exact: true });
+  const menu = page.locator('[data-component="HomeBrowserHub.MobileBookmarksMenu"]');
+  await expect(trigger).toBeVisible();
+  await trigger.click();
+  await expect(menu).toBeVisible();
+  await expect(menu.locator(":scope > a, :scope > button")).toHaveCount(8);
+  const menuBounds = await menu.boundingBox();
+  expect(menuBounds).not.toBeNull();
+  expect(menuBounds!.width).toBeLessThan(874 / 2);
+  await menu.getByText("Widgets", { exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Home Widgets" })).toBeVisible();
+  await expect(menu).toHaveCount(0);
+});
+
+test("Professor Mari's window and page share Home's background", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "What shall we cook tonight?" })).toBeVisible({ timeout: 30_000 });
+  const homeBackground = await page
+    .locator('[data-component="HomeBrowserHub"]')
+    .evaluate((element) => getComputedStyle(element).backgroundColor);
+
+  await page.getByRole("tab", { name: "Professor", exact: true }).click();
+  const mariPage = page.locator('[data-component="GlobalOmnibar.Mari"]');
+  await expect(mariPage).toBeVisible();
+  const backgrounds = await Promise.all(
+    [page.locator('[data-component="GlobalOmnibar.Panel"]'), mariPage].map((surface) =>
+      surface.evaluate((element) => getComputedStyle(element).backgroundColor),
+    ),
+  );
+  expect(backgrounds).toEqual([homeBackground, homeBackground]);
 });
 
 test("enabling Recent Chats anchors its 2 by 2 footprint and repacks smaller widgets", async ({ page }, testInfo) => {
@@ -20027,7 +20084,13 @@ test("Home achievements preview the latest unlock and nearest measurable goal", 
   await expect(achievementsDialog).toBeVisible();
   await page.keyboard.press("Escape");
 
-  const bookmarks = page.getByRole("navigation", { name: "Home bookmarks" });
+  // Touch projects are in the phone shell at this width too, so their bookmarks live behind the compact trigger.
+  const mobile = testInfo.project.name.includes("mobile");
+  const bookmarksTrigger = page.getByRole("button", { name: "Open bookmarks", exact: true });
+  const bookmarks = mobile
+    ? page.locator('[data-component="HomeBrowserHub.MobileBookmarksMenu"]')
+    : page.getByRole("navigation", { name: "Home bookmarks" });
+  if (mobile) await bookmarksTrigger.click();
   const bookmarkLabels = (await bookmarks.locator("a, button").allTextContents()).map((label) => label.trim());
   const faqIndex = bookmarkLabels.indexOf("FAQ");
   const achievementsIndex = bookmarkLabels.indexOf("Achievements");
@@ -20052,9 +20115,11 @@ test("Home achievements preview the latest unlock and nearest measurable goal", 
   expect(achievementsToggleId).toBeTruthy();
   await page.locator(`label[for="${achievementsToggleId}"]`).last().click();
   await expect(achievementsToggle).not.toBeChecked();
-  await expect(bookmarks.getByRole("button", { name: "Achievements", exact: true })).toHaveCount(0);
   await expect(achievementsWidget).toHaveCount(0);
   await clickTopbarPanel(page, "settings");
+  if (mobile) await bookmarksTrigger.click();
+  await expect(bookmarks.getByRole("button", { name: "Widgets", exact: true })).toBeVisible();
+  await expect(bookmarks.getByRole("button", { name: "Achievements", exact: true })).toHaveCount(0);
   await bookmarks.getByRole("button", { name: "Widgets", exact: true }).click();
   const widgetManager = page.getByRole("dialog", { name: "Home Widgets" });
   await expect(widgetManager.getByText("Achievements", { exact: true })).toHaveCount(0);

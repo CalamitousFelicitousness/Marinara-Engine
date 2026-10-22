@@ -194,6 +194,10 @@ const fileText = (manifest: unknown, parts = files) => experienceFileParts(manif
     /client\.js is not a picture, music or data file/,
   );
   refuse({ contributions: { slots: ["game-surface", "home-widget"] } }, /"game-surface" slot and nothing else/);
+  // A file name the file would have to escape cannot be carried in one.
+  for (const path of ['art/a"b.png', "art/a\\b.png", "art/a\u0001b.png", "art/a\ud800b.png"]) {
+    refuse({ files: [{ path, sha256: "0".repeat(64), bytes: 1 }] }, /a character a file name cannot carry/);
+  }
   // Any other game surface still needs a client to draw it.
   const drawn = capabilityPackageManifestSchema.safeParse(experience(files, { kind: ["agent"] }));
   assert.equal(drawn.success, false);

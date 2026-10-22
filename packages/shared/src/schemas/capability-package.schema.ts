@@ -1749,6 +1749,11 @@ export const capabilityPackageManifestSchema = z
         if (!DATA_ONLY_EXPERIENCE_FILE.test(file.path)) {
           issue(["files", index, "path"], `${file.path} is not a picture, music or data file`);
         }
+        // An Experience file writes each path as a key without escapes, so a path that would need one
+        // (a quote, a backslash, a control character or a lone surrogate) cannot travel in it.
+        if (JSON.stringify(file.path) !== `"${file.path}"`) {
+          issue(["files", index, "path"], `${JSON.stringify(file.path)} has a character a file name cannot carry`);
+        }
       });
     }
     // A game-surface package draws the whole mode from its client bundle: without a client entrypoint the

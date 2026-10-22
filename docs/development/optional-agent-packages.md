@@ -1541,7 +1541,7 @@ The file is JSON with its keys in this order:
 - `manifest` is the package manifest as above, at most 1 MB, and comes before any file.
 - `files` maps each path in the manifest's `files` to its bytes in standard base64 (padding only at its end,
   no whitespace or line breaks inside it). Every listed file appears exactly once, and nothing else does.
-- Paths are written without escapes.
+- Paths are written without escapes, so a path with a quote, a backslash, a control character or a lone surrogate is refused.
 
 Before anything is sent, the wizard reads only the start of the file, up to the end of its manifest, and
 shows a review: the name, version and description, the import size, how much of it is pictures, music and

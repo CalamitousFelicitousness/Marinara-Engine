@@ -194,7 +194,7 @@ export function enableLoginSetupCode(): void {
   setInterval(getLoginConfig, RECHECK_MS).unref();
 }
 
-function announceSetupCode() {
+export function announceSetupCode() {
   setupCode = randomBytes(12).toString("hex");
   logger.warn(
     "[login] No remote login is set. To set one from a device that is not this computer, use this one-time setup code: %s",
@@ -205,6 +205,12 @@ function announceSetupCode() {
 export function isLoginSetupCode(value: unknown): boolean {
   getLoginConfig();
   return setupCode !== null && typeof value === "string" && sameText(value, setupCode);
+}
+
+/** True while a setup code is printed and unused. */
+export function hasLoginSetupCode(): boolean {
+  getLoginConfig();
+  return setupCode !== null;
 }
 
 /** Call after isLoginSetupCode passed and before any await, so a code works once. */

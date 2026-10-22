@@ -63,13 +63,19 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { createHmac, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 import {
+  announceSetupCode,
+  consumeLoginSetupCode,
   createSession,
   deleteOtherSessions,
   deleteSession,
   findSession,
   getLoginConfig,
+  hasLoginSetupCode,
+  isLoginSetupCode,
   listSessions,
+  MIN_LOGIN_PASSWORD_LENGTH,
   SESSION_MAX_AGE_SECONDS,
+  setStoredLogin,
   verifyStoredPassword,
   type LoginConfig,
   type RemoteSession,
@@ -282,11 +288,20 @@ function activeRecord(key: string, now: number): FailureRecord | undefined {
   return record;
 }
 
+/** Wrong setup codes count apart from wrong passwords, and only per direct address. */
+function setupCodeBuckets(request: FastifyRequest): FailureBucket[] {
+  // ponytail: visitors behind a proxy on this computer share one address, so a count there would let a
+  // stranger keep the owner out. The code is 96 random bits and works once, so they skip it; count per
+  // forwarded client if that ever matters.
+  if (isForwardedLoopbackRequest(request)) return [];
+  return [{ key: `setup|${clientAddressKey(request.ip)}`, limit: BASIC_AUTH_FAILURE_LIMIT, shared: false }];
+}
+
 /** Seconds this client must wait before trying a password again; 0 when it may try now. */
-function lockoutSeconds(request: FastifyRequest): number {
+function lockoutSeconds(request: FastifyRequest, buckets = failureBuckets(request)): number {
   const now = Date.now();
   let seconds = 0;
-  for (const bucket of failureBuckets(request)) {
+  for (const bucket of buckets) {
     const record = activeRecord(bucket.key, now);
     if (record && record.guesses.size >= bucket.limit) {
       seconds = Math.max(seconds, Math.ceil((record.resetAt - now) / 1000), 1);
@@ -306,9 +321,9 @@ function guessId(header: string, config: CachedConfig): string {
 }
 
 /** Counts a guess for this client before it is checked; a browser resending one saved password counts once. */
-function countGuess(request: FastifyRequest, guess: string) {
+function countGuess(request: FastifyRequest, guess: string, buckets = failureBuckets(request)) {
   const now = Date.now();
-  for (const bucket of failureBuckets(request)) {
+  for (const bucket of buckets) {
     let record = activeRecord(bucket.key, now);
     if (!record) {
       if (failures.size >= MAX_TRACKED_CLIENTS) {
@@ -410,14 +425,15 @@ let lockdownAnnounced = false;
 const REMOTE_ACCESS_DOCS_URL = "https://github.com/Pasta-Devs/Marinara-Engine/blob/main/docs/REMOTE_ACCESS.md";
 
 const LOCKDOWN_JSON_MESSAGE =
-  "Non-loopback access requires authentication because no Basic Auth credentials are configured. " +
-  "Set BASIC_AUTH_USER and BASIC_AUTH_PASS, or add this IP to IP_ALLOWLIST. " +
-  `Other options: ${REMOTE_ACCESS_DOCS_URL}`;
+  "Non-loopback access requires a login, and none is set. " +
+  "Open this address in a browser and set one with the setup code from the server log, " +
+  "or set BASIC_AUTH_USER and BASIC_AUTH_PASS. " +
+  `Help: ${REMOTE_ACCESS_DOCS_URL}`;
 
 const PROXIED_LOCKDOWN_JSON_MESSAGE =
   "This request came through a reverse proxy or tunnel on this computer, so it counts as remote. " +
-  "Set BASIC_AUTH_USER and BASIC_AUTH_PASS. " +
-  `Other options: ${REMOTE_ACCESS_DOCS_URL}`;
+  "Set a login in Settings on the computer that runs Marinara, or set BASIC_AUTH_USER and BASIC_AUTH_PASS. " +
+  `Help: ${REMOTE_ACCESS_DOCS_URL}`;
 
 function escapeHtml(value: string): string {
   return value
@@ -547,63 +563,77 @@ const PAGE_STYLE = `
   }
 `;
 
-function renderLockdownPage(clientIp: string, proxied: boolean): string {
+/** Fields and button of the sign-in and setup forms. */
+const FORM_STYLE = `
+  label { display: block; margin: 14px 0 6px; font-size: 14px; color: var(--muted); }
+  input { width: 100%; padding: 10px 12px; font: inherit; color: var(--text); background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; }
+  input:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button { margin-top: 20px; width: 100%; padding: 10px 12px; font: inherit; font-weight: 600; color: var(--bg); background: var(--accent); border: 0; border-radius: 8px; cursor: pointer; }
+  .error { margin: 0 0 4px; color: #f8a5a5; }
+`;
+
+function renderLockdownPage(clientIp: string, proxied: boolean, error?: string): string {
   const safeIp = escapeHtml(clientIp);
   const lede = proxied
-    ? `This request reached Marinara through a reverse proxy or tunnel on this computer, so it counts as remote. To protect your data, the server refuses proxied traffic until you set a login. Follow the steps below, save <code>.env</code>, wait a couple of seconds, then refresh this page.`
-    : `You're connecting from <span class="ip-pill">${safeIp}</span>, which isn't loopback. To protect your data, the server refuses non-local traffic until you choose how this device should authenticate. Pick one of the options below, save <code>.env</code>, wait a couple of seconds, then refresh this page.`;
-  // The IP allowlist only helps direct devices. A proxied visitor shows the proxy's address.
-  const secondOption = proxied
-    ? ""
-    : `<section class="panel">
-      <h2>Option 2 — IP allowlist</h2>
-      <p class="hint">Best when you only need a few known devices to connect — e.g. your phone on a home network, or specific Tailscale peers.</p>
-      <ol>
-        <li>Open your <code>.env</code> file in the Marinara Engine folder.</li>
-        <li>Add this line. Your current IP is already filled in — add more entries (comma-separated, CIDR allowed) for other devices:
-          <pre>IP_ALLOWLIST=${safeIp}</pre>
-        </li>
-        <li>Save <code>.env</code>, wait a couple of seconds, then refresh this page.</li>
-      </ol>
-      <a class="detail" href="https://github.com/Pasta-Devs/Marinara-Engine/blob/main/docs/REMOTE_ACCESS.md#option-2-ip-allowlist" target="_blank" rel="noopener noreferrer">Detailed walkthrough →</a>
-    </section>`;
+    ? `This request reached Marinara through a reverse proxy or tunnel on this computer, so it counts as remote. To protect your data, the server refuses proxied traffic until you set a login.`
+    : `You're connecting from <span class="ip-pill">${safeIp}</span>, which isn't loopback. To protect your data, the server refuses non-local traffic until you set a login.`;
+  // A direct remote visitor means the server listens beyond loopback, so it printed a setup code.
+  // Behind a proxy on this computer it may listen on loopback only and have no code to offer.
+  const firstOption =
+    proxied && !hasLoginSetupCode()
+      ? `<section class="panel">
+      <h2>Option 1 — Set a login on this computer (recommended)</h2>
+      <p class="hint">On the computer that runs Marinara, open it in a browser and set a login in Settings → Advanced → Access. Then refresh this page and sign in.</p>
+    </section>`
+      : `<form class="panel" method="post" action="/login/setup">
+      <h2>Option 1 — Set a login here (recommended)</h2>
+      <p class="hint">While no login is set, the server prints a one-time setup code in its log. Find it in the terminal that runs Marinara, or with <code>docker logs</code> if it runs in Docker. On the computer that runs Marinara, you can also set the login in Settings → Advanced → Access.</p>
+      ${error ? `<p class="error" role="alert">${escapeHtml(error)}</p>` : ""}
+      <label for="setup-code">Setup code</label>
+      <input id="setup-code" name="setupCode" autocomplete="one-time-code" autocapitalize="none" spellcheck="false" required autofocus />
+      <label for="user">Username</label>
+      <input id="user" name="user" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="128" required />
+      <label for="password">Password (at least ${MIN_LOGIN_PASSWORD_LENGTH} characters)</label>
+      <input id="password" name="password" type="password" autocomplete="new-password" minlength="${MIN_LOGIN_PASSWORD_LENGTH}" required />
+      <button type="submit">Set login and sign in</button>
+    </form>`;
   return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta name="robots" content="noindex" />
+<!-- Overrides no-referrer here, so the form posts its real Origin, not "null". -->
+<meta name="referrer" content="same-origin" />
 <title>Marinara Engine — Set up access</title>
-    <style>${PAGE_STYLE}</style>
+<style>${PAGE_STYLE}${FORM_STYLE}</style>
 </head>
 <body>
   <main>
     <header>
       <span class="badge">Access blocked</span>
-      <h1>This Marinara Engine install needs access control before remote devices can connect.</h1>
+      <h1>This Marinara Engine install needs a login before remote devices can connect.</h1>
       <p class="lede">${lede}</p>
     </header>
 
+    ${firstOption}
+
     <section class="panel">
-      <h2>Option 1 — Basic Auth (recommended)</h2>
-      <p class="hint">Best for shared networks, Tailscale, or any device you don't fully control. The browser will prompt for the username and password once, then remember it.</p>
+      <h2>Option 2 — Login in <code>.env</code></h2>
+      <p class="hint">Use this when you manage Marinara through its config file.</p>
       <ol>
         <li>Open your <code>.env</code> file in the Marinara Engine folder.</li>
         <li>Add (or edit) these two lines, picking your own values:
           <pre>BASIC_AUTH_USER=yourname
 BASIC_AUTH_PASS=a-long-random-password</pre>
         </li>
-        <li>Save <code>.env</code>, wait a couple of seconds, then refresh this page and enter the credentials.</li>
+        <li>Save <code>.env</code>, wait a couple of seconds, then refresh this page and sign in.</li>
       </ol>
-      <a class="detail" href="https://github.com/Pasta-Devs/Marinara-Engine/blob/main/docs/REMOTE_ACCESS.md#option-1-basic-auth-recommended" target="_blank" rel="noopener noreferrer">Detailed walkthrough →</a>
     </section>
-
-    ${secondOption}
 
     <footer>
       <div class="links">
-        <a href="${REMOTE_ACCESS_DOCS_URL}" target="_blank" rel="noopener noreferrer">Other options</a>
-        <a href="https://github.com/Pasta-Devs/Marinara-Engine/blob/main/docs/REMOTE_ACCESS.md" target="_blank" rel="noopener noreferrer">Full Remote Access walkthrough</a>
+        <a href="${REMOTE_ACCESS_DOCS_URL}" target="_blank" rel="noopener noreferrer">Remote access guide</a>
         <a href="https://github.com/Pasta-Devs/Marinara-Engine/blob/main/docs/FAQ.md#how-do-i-access-marinara-engine-from-my-phone-or-another-device" target="_blank" rel="noopener noreferrer">FAQ: Access from another device</a>
         <a href="https://github.com/Pasta-Devs/Marinara-Engine/blob/main/docs/TROUBLESHOOTING.md#app-not-loading-on-mobile--another-device" target="_blank" rel="noopener noreferrer">Troubleshooting</a>
       </div>
@@ -702,16 +732,18 @@ export async function basicAuthHook(request: FastifyRequest, reply: FastifyReply
   // the operator has explicitly opted back into private/public unauthenticated access.
   if (!config) {
     if (!policy.lockedDown) return;
+    // The lockdown page's setup form posts here; the route checks the setup code.
+    if (request.method === "POST" && request.url.split("?")[0] === "/login/setup") return;
     const proxied = policy.forwardedLoopback;
     if (!lockdownAnnounced) {
       if (proxied) {
         logger.warn(
-          "[basic-auth] Refused a connection forwarded by a reverse proxy or tunnel on this computer. No auth configured; set BASIC_AUTH_USER/BASIC_AUTH_PASS. Other options: %s",
+          "[basic-auth] Refused a connection forwarded by a reverse proxy or tunnel on this computer. No login is set; set one in Settings on this computer, or BASIC_AUTH_USER/BASIC_AUTH_PASS in .env. Other options: %s",
           REMOTE_ACCESS_DOCS_URL,
         );
       } else {
         logger.warn(
-          "[basic-auth] Refused non-loopback connection from %s. No auth configured; set BASIC_AUTH_USER/BASIC_AUTH_PASS or add the IP to IP_ALLOWLIST. Other options: %s",
+          "[basic-auth] Refused non-loopback connection from %s. No login is set; type the setup code from this log on that device, set one in Settings on this computer, or set BASIC_AUTH_USER/BASIC_AUTH_PASS in .env. You can also add the IP to IP_ALLOWLIST. Other options: %s",
           ip,
           REMOTE_ACCESS_DOCS_URL,
         );
@@ -854,11 +886,7 @@ function renderLoginPage(next: string, error?: string): string {
     <title>Marinara Engine — Sign in</title>
     <style>${PAGE_STYLE}
       main { max-width: 400px; }
-      label { display: block; margin: 14px 0 6px; font-size: 14px; color: var(--muted); }
-      input { width: 100%; padding: 10px 12px; font: inherit; color: var(--text); background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; }
-      input:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-      button { margin-top: 20px; width: 100%; padding: 10px 12px; font: inherit; font-weight: 600; color: var(--bg); background: var(--accent); border: 0; border-radius: 8px; cursor: pointer; }
-      .error { margin: 0 0 4px; color: #f8a5a5; }
+      ${FORM_STYLE}
     </style>
   </head>
   <body>
@@ -893,6 +921,9 @@ function sendLoginPage(reply: FastifyReply, status: number, next: string, error?
   return reply.status(status).header("Content-Type", "text/html; charset=utf-8").send(renderLoginPage(next, error));
 }
 
+/** Anyone may post the public forms during lockdown, so their bodies stay small. */
+const FORM_BODY_LIMIT = 8 * 1024;
+
 export async function loginRoutes(app: FastifyInstance) {
   // The login form posts urlencoded fields; this parser stays inside these routes.
   app.addContentTypeParser("application/x-www-form-urlencoded", { parseAs: "string" }, (_request, body, done) =>
@@ -914,6 +945,7 @@ export async function loginRoutes(app: FastifyInstance) {
 
   app.post<{ Body: { user?: unknown; password?: unknown; code?: unknown; next?: unknown } | undefined }>(
     "/login",
+    { bodyLimit: FORM_BODY_LIMIT },
     async (request, reply) => {
       const body = request.body ?? {};
       const next = safeNextPath(body.next);
@@ -951,6 +983,58 @@ export async function loginRoutes(app: FastifyInstance) {
         return sendLoginPage(reply, 500, next, "This browser cannot stay signed in. See the server log.");
       }
       return reply.redirect(next, 303);
+    },
+  );
+
+  // The lockdown page's form: the one-time setup code from the server log sets the first login
+  // from any device, for installs with no browser on the host (Docker, NAS).
+  app.post<{ Body: { setupCode?: unknown; user?: unknown; password?: unknown } | undefined }>(
+    "/login/setup",
+    { bodyLimit: FORM_BODY_LIMIT },
+    async (request, reply) => {
+      if (loadConfig()) return reply.redirect("/login", 303);
+      const fail = (status: number, error: string) =>
+        reply
+          .status(status)
+          .header("Content-Type", "text/html; charset=utf-8")
+          .send(renderLockdownPage(request.ip, isForwardedLoopbackRequest(request), error));
+      const setupBuckets = setupCodeBuckets(request);
+      const retryAfter = lockoutSeconds(request, setupBuckets);
+      if (retryAfter > 0) {
+        reply.header("Retry-After", String(retryAfter));
+        return fail(429, "Too many wrong codes. Try again later.");
+      }
+      const body = request.body ?? {};
+      const code = typeof body.setupCode === "string" ? body.setupCode.trim() : "";
+      const user = typeof body.user === "string" ? body.user.trim() : "";
+      const password = typeof body.password === "string" ? body.password : "";
+      if (!user || user.length > 128 || user.includes(":")) {
+        return fail(400, "Enter a username of up to 128 characters, without a colon.");
+      }
+      if (password.length < MIN_LOGIN_PASSWORD_LENGTH || password.length > 1024) {
+        return fail(400, `Enter a password of at least ${MIN_LOGIN_PASSWORD_LENGTH} characters.`);
+      }
+      if (!isLoginSetupCode(code)) {
+        countGuess(
+          request,
+          `setup:${createHmac("sha256", HEADER_MAC_KEY).update(code).digest("base64url").slice(0, 16)}`,
+          setupBuckets,
+        );
+        logger.warn("[basic-auth] Wrong setup code from %s", request.ip);
+        return fail(403, "This setup code does not work. Copy the newest one from the server log.");
+      }
+      consumeLoginSetupCode();
+      try {
+        await setStoredLogin(user, password);
+      } catch (err) {
+        // The used code is gone, so print a new one; otherwise only a restart could bring one back.
+        logger.error(err, "[login] Could not save the login from the setup code");
+        announceSetupCode();
+        return fail(500, "Marinara could not save the login. Use the new setup code from the server log.");
+      }
+      logger.info('[login] Remote login set for user "%s" with the setup code', user);
+      rememberLoginInBrowser(request, reply);
+      return reply.redirect("/", 303);
     },
   );
 

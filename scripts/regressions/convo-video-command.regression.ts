@@ -521,6 +521,31 @@ try {
     ]),
     "\n[Ana sent a video message: slow dolly warm wide Ana: hi there https://example.com/clip]",
   );
+  // Labels go in any case; a capitalised name, prose and a link stay.
+  assert.equal(
+    formatSentVideoNotes([
+      {
+        type: "video",
+        characterName: "Ana",
+        prompt:
+          "Camera: slow dolly\nCAMERA: static\nShot_1: close-up\nAction: Ana waves\nShot2: wide\nAna: I am home.\n" +
+          "She smiles: it is late.\nhttps://example.com/clip",
+      },
+    ]),
+    "\n[Ana sent a video message: slow dolly static close-up Ana waves wide Ana: I am home. She smiles: it is late. " +
+      "https://example.com/clip]",
+  );
+  assert.equal(
+    formatSentVideoNotes([
+      {
+        type: "video",
+        characterName: "Ana",
+        prompt: JSON.stringify({ description: "Camera: slow dolly\nAction: Ana waves", note: "Ana: I am home." }),
+      },
+    ]),
+    "\n[Ana sent a video message: slow dolly Ana waves Ana: I am home.]",
+    "labels inside JSON string values go too",
+  );
   // Nested cues go whole, and a long run of brackets is handled in one pass.
   assert.equal(
     formatSentVideoNotes([{ type: "video", characterName: "Ana", prompt: "Ana waves [wide [slow] pan] and smiles." }]),

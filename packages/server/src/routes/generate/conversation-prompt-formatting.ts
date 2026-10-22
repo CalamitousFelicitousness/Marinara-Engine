@@ -119,9 +119,26 @@ export function conversationPromptHistoryContent(
 
 const SENT_SELFIE_DESCRIPTION_MAX_CHARS = 600;
 
-// A field label starts a line ("camera: …", "shot_1: …", "OVERALL_SOUNDSCAPE: …"); a word_word: inside a sentence, a
-// name ("Ana: …") and a link ("https://…") are left alone.
-const FIELD_LABEL_RE = /^[ \t]*(?:[a-z][a-z0-9]*(?:_[a-z0-9]+)*|[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+)[ \t]*:(?!\/\/)/gmu;
+// A field label starts a line: a lowercase word ("camera: …", "shot_1: …"), or in any case a word_word
+// ("OVERALL_SOUNDSCAPE: …", "Shot_1: …") or a known field word ("Camera: …", "ACTION: …", "Shot2: …"). A word_word:
+// inside a sentence, a name ("Ana: …") and a link ("https://…") are left alone.
+const LINE_START_LABEL_RE = /^([ \t]*)([A-Za-z][A-Za-z0-9]*(?:_[A-Za-z0-9]+)*)[ \t]*:(?!\/\/)/gmu;
+const FIELD_LABEL_WORDS = new Set(
+  (
+    "action angle atmosphere audio background camera character characters cinematography color colors composition " +
+    "description dialogue duration effects environment format framing foreground lens lighting location mood motion " +
+    "movement music narration pacing palette prompt scene setting shot shots sound soundscape sfx style subject " +
+    "subjects timing tone transition visual visuals voiceover"
+  ).split(" "),
+);
+
+function stripFieldLabels(text: string): string {
+  return text.replace(LINE_START_LABEL_RE, (label, indent: string, word: string) => {
+    const folded = word.toLowerCase();
+    const isLabel = word === folded || folded.includes("_") || FIELD_LABEL_WORDS.has(folded.replace(/\d+$/u, ""));
+    return isLabel ? `${indent} ` : label;
+  });
+}
 
 /**
  * Bracketed cues ("[Shot 1: close-up]", "[cut to window]") would nest inside the note's own brackets, so every
@@ -157,7 +174,7 @@ function videoPromptWords(prompt: string): string {
     // prompt lists what the clip must not show, so it is left out.
     const strings = (value: unknown): string[] =>
       typeof value === "string"
-        ? [/^\s*[[{]/u.test(value) ? videoPromptWords(value) : value.replace(FIELD_LABEL_RE, " ")]
+        ? [/^\s*[[{]/u.test(value) ? videoPromptWords(value) : stripFieldLabels(value)]
         : value && typeof value === "object"
           ? Object.entries(value)
               .filter(([key]) => !/negative/iu.test(key))
@@ -168,7 +185,7 @@ function videoPromptWords(prompt: string): string {
   } catch {
     // Not JSON: plain text, perhaps with field labels.
   }
-  return stripBracketedCues(text).replace(FIELD_LABEL_RE, " ");
+  return stripFieldLabels(stripBracketedCues(text));
 }
 
 /**

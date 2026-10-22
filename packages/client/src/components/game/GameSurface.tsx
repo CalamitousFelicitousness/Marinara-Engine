@@ -12982,6 +12982,7 @@ function GameSurfaceComponent({
                         canWalk={!isStreaming && narrationDone && sessionInteractive}
                         onLeft={() => undefined}
                         hour={typeof gameTimeMeta?.hour === "number" ? normalizeGameHour(gameTimeMeta.hour) : undefined}
+                        dungeonLooks={mapPackQuery.data?.dungeons}
                       />
                     </Suspense>
                   )}

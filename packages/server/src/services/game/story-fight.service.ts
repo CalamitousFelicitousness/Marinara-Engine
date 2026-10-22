@@ -4,6 +4,7 @@
 // ──────────────────────────────────────────────
 import {
   gameStoryFromMetadata,
+  storyFightForParty,
   storyFightIn,
   storyFightRoster,
   storyIsRef,
@@ -15,8 +16,10 @@ import { logger } from "../../lib/logger.js";
 import { gameRepliesBefore } from "./game-market.service.js";
 import { loadGameWorld } from "./game-world.service.js";
 import { loadRulesetCatalogEntries } from "./ruleset-catalog.service.js";
+import { gamePartySize } from "./experience-companions.service.js";
 
-/** The fight the Game Master's latest reply started for the story, or null. */
+/** The fight the Game Master's latest reply started for the story, or null: in its variant for the
+ *  party's size (1.356). */
 export async function latestStoryFight(
   db: DB,
   chatId: string,
@@ -27,7 +30,8 @@ export async function latestStoryFight(
     const story = gameStoryFromMetadata(meta, world);
     if (!story?.fights.length) return null;
     const replies = await gameRepliesBefore(db, chatId);
-    return storyFightIn(story, replies.all.filter((reply) => reply.trim()).at(-1));
+    const fight = storyFightIn(story, replies.all.filter((reply) => reply.trim()).at(-1));
+    return fight ? storyFightForParty(fight, gamePartySize(meta ?? {})) : null;
   } catch (err) {
     logger.warn(err, "Story fight lookup failed for chat %s", chatId);
     return null;
@@ -69,7 +73,7 @@ export async function storyFightOpponents(
 /** The prompt line that tells the blueprint writer who this fight is with; with no opponents (none named,
  *  or every one refused), the enemies are the writer's own to choose. */
 export function storyFightPromptText(fight: StoryFight, opponents: ReadonlyArray<{ name: string; creature: string }>) {
-  const header = `This fight is set by the story: "${fight.name}".${fight.note ? ` ${fight.note}` : ""}`;
+  const header = `This fight is set by the story: "${fight.name}"${fight.forParty ? `, as set for a party of ${fight.forParty}` : ""}.${fight.note ? ` ${fight.note}` : ""}`;
   if (!opponents.length) return [header, "Choose its enemies yourself."].join("\n");
   return [
     header,

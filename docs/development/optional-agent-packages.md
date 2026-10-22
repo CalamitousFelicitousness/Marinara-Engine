@@ -1370,6 +1370,87 @@ Capability API minor (1.`minor`) the pack needs, and `issues` names each problem
 (`mapPack.music.default`) or the file it is in. The manifest's own rules (declared assets, track ids,
 audio sizes) are all reported; the files' checks stop at the first problem, as an install does.
 
+#### Capability API 1.351: held seasons
+
+A world's story may hold places at a season whatever the date (`seasons`, and the `season` action: see
+[writing story scripts](../extending/writing-story-scripts.md#seasons)), and a world's battlefields may be
+painted with seasons (`seasons` rows and `seasonKeys`). A map pack with either needs 1.351. The overworld
+reads held places as `seasons` (place id to season, `*` for the whole world) from
+`GET /api/game/:chatId/overworld`; a made battlefield carries its tiles' starting seasons as `seasons`,
+keyed `"x,y"`.
+
+#### Capability API 1.355: ruleset overlays
+
+An Experience's map pack may add to the rulesets its games play, while the Experience is on: its own
+creatures, conditions and items, which are not the ruleset package's to ship.
+
+```json
+"mapPack": { "kit": "...", "rulesets": [{ "ruleset": "5e-2014", "overlay": "rules/5e.overlay.json" },
+                                        { "ruleset": "dnd5e", "overlay": "rules/dnd5e.overlay.json" }] }
+```
+
+Each `.overlay.json` (declared as an asset like the pack's other files) is for one ruleset, by its id:
+
+```json
+{ "overlayVersion": 1,
+  "creatureTags": [{ "id": "unreaped", "label": "Unreaped" }],
+  "conditions": [{ "condition": "owed_frost_held", "effects": ["own-attacks-disadvantage"] }],
+  "sheetConditions": [{ "id": "owed_frost_held", "label": "Held by the Frost" }],
+  "creatures": [{ "id": "the-owed", "label": "The Owed", "creature": { ... } }],
+  "catalogs": { "magic_items": [{ "id": "lantern-of-dusk", ... }] } }
+```
+
+`creatureTags` join the ruleset's `combat.creatureTypes.tags`, `conditions` its `combat.conditions`,
+`sheetConditions` its `sheet.live.conditions`, `creatures` its `creatures` catalog, and each list of
+`catalogs` the catalog of that id. A game of that ruleset with the Experience on plays the ruleset with
+all of it merged in (story fights, `give`, the Game Master's own uses), and the ruleset is read again
+whole: an overlay whose entries do not fit it, or that reuses an id the ruleset has, is left out
+whole and the game plays the ruleset as it was. `POST /api/game/experience/check` merges each overlay
+into its ruleset as installed and reports what does not fit.
+
+#### Capability API 1.357: dungeon looks and a hand map's own words
+
+An Experience's maps made by hand can be drawn in its own looks, not only the library's cave, crypt,
+temple and station sets, and told to the Game Master in its own words.
+
+```json
+"mapPack": { "kit": "...", "dungeons": ["looks/corn-maze.tilepack.json", "looks/snowfield.tilepack.json"] }
+```
+
+Each is an image tile pack (`tilePackVersion` 2) laid out as a dungeon set: `dn_floor`, `dn_wall`,
+`dn_liquid`, `dn_prop0` to `dn_prop7` (`dn_liquid` may have edge pieces, as a library set's). It must draw
+at least `dn_floor` and `dn_wall`; the rest fall back to plain colours. A hand map (`edits.maps`) whose
+`pack` is one of their ids is drawn with it, before any library pack of that id. No two may share an id.
+
+A hand map may also carry its own words for the Game Master:
+
+```json
+"words": { "floor": "stubbled earth", "wall": "walls of standing corn", "liquid": "a ditch of rainwater",
+           "props": ["a scarecrow", null, "a corn-dolly shrine"] }
+```
+
+`props` is one entry per prop slot, 0 to 7 (`null` for a slot left unsaid). The Game Master is then told
+the map as "A place made by hand (stubbled earth, walls of standing corn), with a ditch of rainwater in it;
+in it: a scarecrow (2), a corn-dolly shrine", in place of saying only that it was made by hand. Both need
+an Experience that declares 1.357.
+
+#### Capability API 1.359: items that cost a story number
+
+An overlay may name items whose use spends (or adds to) one of the Experience's story number flags:
+
+```json
+{ "overlayVersion": 1,
+  "storyUses": [{ "item": "magic_items/jar-of-someone-elses-death", "flag": "debts_settled",
+                  "add": -2, "atLeast": 2 }] }
+```
+
+`item` is `catalog/entry` of the merged ruleset (the overlay's own items count), named once. In a fight,
+using that item (the acting fighter's sheet item) is refused while the flag, with any spends not yet
+recorded, is below `atLeast`: "Jar of Someone Else's Death needs 2 Debts Settled; the party has 1." A use
+the fight takes is kept with the game, and the next story turn records it once (`spend="<id>"`, by the
+Engine), within the flag's `min` and `max`, and tells the Game Master what it cost. Each flag must be a
+number flag of one of the pack's stories. A map pack with `storyUses` needs 1.359.
+
 ### Capability API 1.18: keep Experience setup in the Game wizard
 
 A `game-surface` package can declare `contributions.gameSurface.setup` with schema

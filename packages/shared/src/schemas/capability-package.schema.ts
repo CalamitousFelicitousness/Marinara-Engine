@@ -194,6 +194,20 @@ const capabilityPackageManifestBaseSchema = z
                   .min(1)
                   .max(8)
                   .optional(),
+                /** Image packs of the Experience's own for its maps made by hand (Capability API 1.357): tile
+                 *  packs laid out as the library's dungeon sets (floor, wall, liquid and eight props), each
+                 *  named by its id from a hand map's `pack`, before the library's. */
+                dungeons: z
+                  .array(
+                    z
+                      .string()
+                      .min(1)
+                      .max(240)
+                      .regex(/\.tilepack\.json$/u, "A map pack's dungeon looks are a .tilepack.json file"),
+                  )
+                  .min(1)
+                  .max(16)
+                  .optional(),
                 /** The Experience's own music (Capability API 1.345): its tracks, the one for each place
                  *  (a place's own, else the nearest place it is inside that has one), the one played
                  *  anywhere else, and the one for fights. A story may cue a track over them. */
@@ -205,6 +219,31 @@ const capabilityPackageManifestBaseSchema = z
                   .min(1)
                   .max(240)
                   .regex(/\.people\.json$/u, "A map pack's people are a .people.json file")
+                  .optional(),
+                /** What the Experience adds to rulesets while it is on (Capability API 1.355): for each
+                 *  ruleset (by id), a `.overlay.json` file of bestiary creatures, conditions, creature tags
+                 *  and catalog entries merged into a game's ruleset of that id. */
+                rulesets: z
+                  .array(
+                    z
+                      .object({
+                        ruleset: z
+                          .string()
+                          .max(140)
+                          .regex(
+                            /^(?:[A-Za-z0-9][A-Za-z0-9._-]{0,63}\/)?[a-z0-9]+(?:-[a-z0-9]+)*$/u,
+                            "A ruleset is named by its id",
+                          ),
+                        overlay: z
+                          .string()
+                          .min(1)
+                          .max(240)
+                          .regex(/\.overlay\.json$/u, "A ruleset overlay is a .overlay.json file"),
+                      })
+                      .strict(),
+                  )
+                  .min(1)
+                  .max(8)
                   .optional(),
               })
               .strict()
@@ -1335,7 +1374,38 @@ const capabilityPackageManifestBaseSchema = z
 // 1.350: `POST /api/game/experience/check` checks a whole map pack before it is exported, as an installed
 //        one is read: send `{ mapPack, files: { <path>: <parsed JSON> }, assets: [{ path, bytes }] }`, get
 //        `{ ok, minor, issues: [{ path, message }] }` (`minor`: the Capability API minor the pack needs).
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 350 } as const);
+// 1.351: a story may hold places at a season whatever the date (`seasons`: a place, and every place inside
+//        it, or the whole world; the `season` action changes or lets one go during play). The overworld,
+//        towns and the weather follow it. A world's battlefield may be painted with seasons (`seasons`
+//        rows, a letter or `.` per tile, named by `seasonKeys`), what a fight's tiles start in.
+// 1.352: a creature pack (creaturePackVersion 2) may give a creature flying art (`fly`: a block laid out as
+//        a walking one, one per look or one for all), played 0, 1, 2, 1 while it is shown flying: it flies
+//        and has no walk, it hovers, it is up in the air, or it flew this turn. Ruleset fights' views say so
+//        as `flying` on the fighter.
+// 1.353: a story may have 256 flags (64 before).
+// 1.354: a ruleset fighter may be in the air (`airborne`): a flier with no walk, or that hovers, starts
+//        so; a step only its flight takes, flying up, or the free `move:take-off` move puts it there, and
+//        `move:land` or anything that grounds it brings it down. A fighter in the air is shown in its
+//        flying art.
+// 1.355: an Experience's map pack may ship ruleset overlays (`mapPack.rulesets`: a ruleset id and a
+//        .overlay.json file each): bestiary creatures, combat conditions, sheet conditions, creature tags
+//        and entries for the ruleset's catalogs, merged into a game's ruleset of that id while the
+//        Experience is on. An overlay that does not fit the ruleset is left out whole.
+// 1.356: a story's fight may have variants by party size (`variants`: a party size or `{ min, max }` and
+//        the creatures, board and note for a party that size); a party is the player's character and the
+//        companions travelling with it. The GM is told the variant and the fight's tell names it.
+// 1.357: an Experience's map pack may ship image packs for its maps made by hand (`mapPack.dungeons`:
+//        .tilepack.json files laid out as a dungeon set, `dn_floor`, `dn_wall`, `dn_liquid`, `dn_prop0`-
+//        `dn_prop7`), named by id from a hand map's `pack` before the library's; and a hand map may carry
+//        its own `words` for the Game Master (floor, wall, liquid and each prop slot).
+// 1.358: a story script reaches further: `any` condition groups (one of them holds), a `fight` event that
+//        names the script's fight it waits on, a `leave` event, a number flag's `min` and `max` (every set
+//        and add kept within), and an `if` on each cutscene page and each action (done only when it holds
+//        as the event reaches it; recorded as `acts` on the trip's tag).
+// 1.359: an Experience's ruleset overlay may give items a story cost (`storyUses`: the item by
+//        `catalog/entry`, the story's number flag, what a use adds to it, and `atLeast`): a fight refuses
+//        the use while the flag is below it, and the next story turn records what it spent.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 359 } as const);
 
 const capabilityApiVersionSchema = z
   .object({
@@ -1398,6 +1468,11 @@ export const capabilityPackageManifestSchema = z
           ["creatures", index],
         ]),
         ...(mapPack.people ? [[mapPack.people, ["people"]] as [string, Array<string | number>]] : []),
+        ...(mapPack.dungeons ?? []).map((path, index): [string, Array<string | number>] => [path, ["dungeons", index]]),
+        ...(mapPack.rulesets ?? []).map((each, index): [string, Array<string | number>] => [
+          each.overlay,
+          ["rulesets", index, "overlay"],
+        ]),
       ];
       if (mapPack.music) {
         const tracks = new Set(mapPack.music.tracks.map((track) => track.id));
@@ -1437,6 +1512,27 @@ export const capabilityPackageManifestSchema = z
           code: z.ZodIssueCode.custom,
           path: ["contributions", "gameSurface", "mapPack", "music"],
           message: "A map pack's music requires capabilityApi 1.345 or newer",
+        });
+      }
+      if (mapPack.dungeons && (!api || api.major !== 1 || api.minor < 357)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["contributions", "gameSurface", "mapPack", "dungeons"],
+          message: "A map pack's dungeon looks require capabilityApi 1.357 or newer",
+        });
+      }
+      if (mapPack.rulesets && (!api || api.major !== 1 || api.minor < 355)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["contributions", "gameSurface", "mapPack", "rulesets"],
+          message: "A map pack's ruleset overlays require capabilityApi 1.355 or newer",
+        });
+      }
+      if (new Set((mapPack.rulesets ?? []).map((each) => each.ruleset)).size !== (mapPack.rulesets ?? []).length) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["contributions", "gameSurface", "mapPack", "rulesets"],
+          message: "Two overlays are for the same ruleset",
         });
       }
       if (mapPack.people && (!api || api.major !== 1 || api.minor < 346)) {

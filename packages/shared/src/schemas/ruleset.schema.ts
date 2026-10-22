@@ -18281,9 +18281,10 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
               issue([...path, "upTo", "per", "prefix"], `No field or derived value starts with "${per.prefix}"`);
           }
         }
-        // Taken without asking (1.713): nothing to count, price or hold to a quota.
+        // Taken without asking (1.713): nothing to count, price or hold to a quota. What it took may
+        // still be written to a field (1.720): 5e's subclass.
         if (step.takesAll)
-          for (const key of ["countFrom", "pool", "cost", "quotas", "distinctBy", "quotaBelow", "field"] as const)
+          for (const key of ["countFrom", "pool", "cost", "quotas", "distinctBy", "quotaBelow"] as const)
             if (step[key] !== undefined) issue([...path, key], `A step that takes all it offers has no "${key}"`);
         if (step.countFrom) checkRef(step.countFrom, [...path, "countFrom"], derivedIds, false);
         if (step.within) {

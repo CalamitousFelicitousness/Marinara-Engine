@@ -2744,6 +2744,16 @@ function carriesCorpseCalls501(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCorpseCalls501(one, depth + 1));
 }
 
+/** A step that takes all it offers and writes what it took to a field (1.720): 5e's subclass. */
+function carriesTakesAllField720(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesTakesAllField720(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.kind === "catalog" && record.takesAll !== undefined && record.field !== undefined) return true;
+  return featureValues(record).some((one) => carriesTakesAllField720(one, depth + 1));
+}
+
 /** Help against an opponent beside the helper (1.718): `combat.standardEffects.help`. */
 /** A catalog entry that is its exclusive group's default (1.719): the ability score improvement. */
 function carriesExclusiveDefault719(value: unknown, depth = 0): boolean {
@@ -9381,6 +9391,9 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A step that takes all it offers writing what it took to a field, 1.720.
+  if (!declaresApi(720) && carriesTakesAllField720(ruleset))
+    return "A ruleset with a builder step that takes all it offers and writes them to a field (takesAll with field) requires schemaVersion 2 and capabilityApi 1.720 or newer";
   // A catalog entry that is its group's default, 1.719.
   if (
     !declaresApi(719) &&

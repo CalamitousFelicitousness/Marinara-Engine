@@ -3086,6 +3086,7 @@ function pickChoice(
   if (!menu && !behavior?.targets?.length)
     weighRulesetMindFocus(definition, encounter, actor, unit.tactics!, candidates);
   if (!menu) weighRulesetReserve(definition, encounter, actor, unit.tactics!, candidates);
+  if (!menu) weighRulesetPrepare(definition, encounter, actor, unit.tactics!, candidates);
   const chosen = chooseCombatCandidate(
     unit,
     candidates,
@@ -3321,6 +3322,58 @@ function weighRulesetReserve(
       spent.set(key, drains);
     }
     if (drains) candidate.cost = (candidate.cost ?? 0) + RULESET_RESERVE_PRICE;
+  }
+}
+
+/** What a tactician gives a lasting help to its own side while the fight is still coming (combat AI P8). */
+const RULESET_PREPARE_FOCUS = 0.35;
+
+/**
+ * A tactician or a genius readies itself while the fight is still far (combat AI P8): with no
+ * opponent able to walk up and strike it before its next turn, a help that lasts (Shield of Faith,
+ * Mage Armor, Greater Invisibility) on itself or a friend is worth more than a chip shot from afar.
+ * Never one that would end what it already holds, and never once an opponent is close.
+ */
+function weighRulesetPrepare(
+  definition: RulesetDefinition,
+  encounter: RulesetEncounterState,
+  actor: RulesetCombatant,
+  tactics: CombatTactics,
+  candidates: Array<CombatAiCandidate<RulesetCandidate>>,
+): void {
+  if (tactics.mind !== "tactical" && tactics.mind !== "genius") return;
+  if (!encounter.board?.grid || !rulesetPositionOf(actor)) return;
+  const perCell = definition.combat?.distance?.perCell;
+  const foes = encounter.combatants.filter((one) => one.side !== actor.side && rulesetCombatStanding(one));
+  if (foes.length === 0) return;
+  // Close when any opponent could walk up and strike it, or any friend of it already stands beside one.
+  const close = foes.some((foe) => {
+    if (!rulesetPositionOf(foe)) return true;
+    const walks = perCell ? rulesetInCells(foe.speed, perCell) : 6;
+    const reach = Math.max(1, ...foe.actions.filter((one) => one.damage && !one.range).map((one) => one.reach ?? 1));
+    if (rulesetGap(actor, foe) <= walks + reach) return true;
+    return encounter.combatants.some(
+      (friend) =>
+        friend.side === actor.side &&
+        rulesetCombatStanding(friend) &&
+        rulesetPositionOf(friend) &&
+        rulesetGap(friend, foe) <= 1,
+    );
+  });
+  if (close) return;
+  for (const candidate of candidates) {
+    const helps = (candidate.setup ?? 0) + (candidate.support ?? 0);
+    if (helps <= 0 || (candidate.healing ?? 0) > 0 || (candidate.damage ?? 0) > 0) continue;
+    const option = candidate.action.option;
+    if (option.kind === "standard" || option.kind === "move") continue;
+    const target = candidate.targetId ? rulesetCombatant(encounter, candidate.targetId) : actor;
+    if (!target || target.side !== actor.side) continue;
+    const action = actor.actions.find((one) => one.id === option.id);
+    if (!action?.applies?.length) continue;
+    if (action.concentration && actor.concentrating) continue;
+    // Only what lasts into the fight: a moment's help is spent before anybody arrives.
+    if (!action.applies.some((applied) => rulesetDurationWorth(applied.duration) >= 0.85)) continue;
+    candidate.focus = (candidate.focus ?? 0) + RULESET_PREPARE_FOCUS;
   }
 }
 
@@ -3742,11 +3795,16 @@ function playRulesetTurn(
   const leash = actor && orders ? rulesetLeashOf(state, fight.encounter, actor, orders) : undefined;
   // Once it has dodged, got away or hidden (1.708), it does not walk back into the fight this turn.
   let defended = false;
+  // Whether its last blow was thrown from afar, by a mind that keeps its distance (combat AI P8).
+  let shotFromAfar = false;
   for (let action = 0; action < RULESET_TURN_ACTION_LIMIT; action++) {
     if (rulesetEncounterOutcome(fight.encounter) !== "ongoing") break;
     const picked = pickRulesetChoice(definition, state, fight.encounter, actorId);
     const idle = !picked || picked.option.kind === "end-turn";
     if (idle) {
+      // A shot thrown, it steps back where nobody can walk up and strike it, still in range for the
+      // next; and with somebody still in its range it does not walk in to meet them.
+      if (shotFromAfar && !stays && keepRulesetRange(definition, state, fight, actorId)) break;
       if (defended || stays || !walkTowardsTrouble(definition, state, fight, actorId, leash)) break;
       continue;
     }
@@ -3775,11 +3833,78 @@ function playRulesetTurn(
     if (picked.to && !picked.defensive && !stepBefore(definition, state, fight, actorId, picked.to)) break;
     // Reckless first (1.553), as it is about to make a melee weapon attack.
     takeBeforeMelee(definition, state, fight, actorId, picked.choice);
+    const afar = rulesetShotFromAfar(state, fight.encounter, actorId, picked.choice);
     // A refusal here would be an Engine bug rather than a player's mistake, so the turn ends
     // instead of asking again with the same state and looping.
     if (applyChoice(definition, state, fight, picked.choice).refused) break;
+    shotFromAfar = afar;
   }
   advanceTurn(definition, state, fight);
+}
+
+/** Whether this choice is a blow thrown from afar by a tactician or a genius (combat AI P8): one with
+ *  a range, at somebody not beside it. */
+function rulesetShotFromAfar(
+  state: CombatDirectorState,
+  encounter: RulesetEncounterState,
+  actorId: string,
+  choice: RulesetCombatChoice,
+): boolean {
+  const mind = [...state.party, ...state.enemies].find((one) => one.id === actorId)?.tactics?.mind;
+  if (mind !== "tactical" && mind !== "genius") return false;
+  const actor = rulesetCombatant(encounter, actorId);
+  const action = actor?.actions.find((one) => one.id === choice.optionId);
+  const target = choice.targetIds[0] ? rulesetCombatant(encounter, choice.targetIds[0]) : undefined;
+  if (!actor || !action?.range || !action.damage || !target || target.side === actor.side) return false;
+  if (!rulesetPositionOf(actor) || !rulesetPositionOf(target)) return false;
+  return rulesetGap(actor, target) > 1;
+}
+
+/**
+ * Keeping its distance (combat AI P8): the safest cell it may still walk to without being struck on
+ * the way, from which an opponent stays in range of one of its blows from afar, taken when it is
+ * clearly safer than where it stands. True when it has somebody in range, moved or not: then it
+ * stays rather than walk in to meet them.
+ */
+function keepRulesetRange(
+  definition: RulesetDefinition,
+  state: CombatDirectorState,
+  fight: RulesetFightState,
+  actorId: string,
+): boolean {
+  const actor = rulesetCombatant(fight.encounter, actorId);
+  const home = rulesetPositionOf(actor);
+  if (!actor || !home || !fight.encounter.board?.grid) return false;
+  const reach = Math.max(
+    0,
+    ...actor.actions
+      .filter((one) => one.range && one.damage && rulesetActionAvailable(actor, one, fight.encounter, definition))
+      .map((one) => one.range!.normal),
+  );
+  if (reach <= 1) return false;
+  const foes = fight.encounter.combatants.filter(
+    (one) => one.side !== actor.side && rulesetCombatStanding(one) && rulesetPositionOf(one),
+  );
+  const span = rulesetSpanOf(actor);
+  const inRange = (cell: { x: number; y: number }) => foes.some((foe) => rulesetGapFrom(cell, span, foe) <= reach);
+  if (!inRange(home)) return false;
+  if (actor.movement !== undefined && (actor.movementLeft ?? 0) < 1) return true;
+  // The danger first, then the furthest from the nearest opponent: the edge of a walk reads as no
+  // danger, and a step beyond it is safer still.
+  const nearest = (cell: { x: number; y: number }) => Math.min(...foes.map((foe) => rulesetGapFrom(cell, span, foe)));
+  let best: { cell: { x: number; y: number }; danger: number; away: number } | null = null;
+  const here = rulesetDangerAt(definition, fight.encounter, actor, home);
+  for (const cell of rulesetWalkableCells(definition, fight.encounter, actorId)) {
+    if (cell.provokes.length > 0 || !inRange(cell)) continue;
+    const danger = rulesetDangerAt(definition, fight.encounter, actor, cell);
+    if (!best ? danger > here - 0.1 : danger > best.danger) continue;
+    const away = nearest(cell);
+    if (best && danger === best.danger && away <= best.away) continue;
+    best = { cell: { x: cell.x, y: cell.y }, danger, away };
+  }
+  if (best)
+    applyChoice(definition, state, fight, { actorId, optionId: RULESET_MOVE_OPTION, targetIds: [], to: best.cell });
+  return true;
 }
 
 /**

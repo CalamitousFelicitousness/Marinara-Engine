@@ -35,7 +35,7 @@ process.env.FILE_STORAGE_DIR = join(dataDir, "storage");
 const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 const { createCombatDirector } = await import("../../packages/server/src/services/game/combat-director.service.js");
-const { pickRulesetChoice } =
+const { commandRulesetCombatDirector, pickRulesetChoice } =
   await import("../../packages/server/src/services/game/ruleset-combat-director.service.js");
 
 try {
@@ -586,6 +586,115 @@ try {
     assert.equal(cast("cunning", { "3": 1 }), "bolt", "a cunning creature does not plan for it");
   }
 
+  // ── Planning ahead (P8): a help put up while the fight is far, and keeping its distance ──
+  {
+    const wide = (
+      placements: Record<string, { x: number; y: number }>,
+      blocks: Record<string, { side: "party" | "enemy"; block: RulesetStatBlock }>,
+      hints: Record<string, CombatAiHints>,
+    ) => {
+      const encounter: RulesetEncounterState = createRulesetEncounter({
+        definition,
+        seed: 1,
+        roller: () => 10,
+        combatants: Object.entries(blocks).map(([id, one]) => ({ id, name: id, side: one.side, block: one.block })),
+        board: {
+          grid: { width: 24, height: 8, tiles: Array.from({ length: 8 }, () => Array(24).fill("plains")) },
+          placements,
+        } as never,
+      });
+      encounter.order = Object.keys(blocks);
+      encounter.turn = 0;
+      const state = createCombatDirector({
+        id: "fight",
+        anchor: "anchor",
+        style: "ruleset",
+        party: Object.entries(blocks)
+          .filter(([, one]) => one.side === "party")
+          .map(([id]) => unit(id, "player", hints[id])),
+        enemies: Object.entries(blocks)
+          .filter(([, one]) => one.side === "enemy")
+          .map(([id]) => unit(id, "enemy", hints[id])),
+        gm: false,
+        difficulty: "normal",
+        seed: 3,
+      } as never);
+      for (const one of [...state.party, ...state.enemies]) {
+        const temperament = hints[one.id]?.temperament;
+        if (temperament && one.tactics) one.tactics.adjective = temperament;
+      }
+      return { encounter, state };
+    };
+    const spark = {
+      id: "spark",
+      name: "Spark",
+      budget: "action",
+      toHit: 6,
+      range: { normal: 120 },
+      damage: { count: 1, sides: 6, flat: 0 },
+    };
+    // A modest help that lasts a minute, held by concentration: Shield of Faith.
+    const veil = {
+      id: "veil",
+      name: "Ward",
+      budget: "action",
+      targets: { side: "ally", count: 1 },
+      range: { normal: 30 },
+      concentration: true,
+      applies: [{ condition: "parrying", duration: { rounds: 10 } }],
+    };
+    const prepares = (mind: string, knightAt: number) => {
+      const { encounter, state } = wide(
+        { mage: { x: 1, y: 3 }, knight: { x: knightAt, y: 3 } },
+        {
+          mage: { side: "enemy", block: block({ type: "humanoid", mind, actions: [spark, veil] }) },
+          knight: { side: "party", block: block({ health: 40 }) },
+        },
+        { mage: { ...master, temperament: "disciplined" } },
+      );
+      return pickRulesetChoice(definition, state, encounter, "mage")?.choice;
+    };
+    const far = prepares("tactical", 20);
+    assert.equal(far?.optionId, "veil", `with the knight far off, a tactician wards itself: ${JSON.stringify(far)}`);
+    assert.deepEqual(far?.targetIds, ["mage"]);
+    assert.equal(prepares("genius", 20)?.optionId, "veil");
+    assert.equal(prepares("cunning", 20)?.optionId, "spark", "a cunning one just shoots");
+    assert.equal(prepares("tactical", 6)?.optionId, "spark", "with the knight a walk away, it shoots");
+
+    // Keeping its distance: a tactician shoots and steps back out of the knight's walk; a cunning one
+    // walks in after its shot.
+    const bow = { ...spark, id: "bow", name: "Shortbow", range: { normal: 80, long: 320 } };
+    const kites = (mind: string) => {
+      const { encounter, state } = wide(
+        { archer: { x: 6, y: 3 }, knight: { x: 2, y: 3 } },
+        {
+          archer: { side: "enemy", block: block({ type: "humanoid", mind, actions: [bow] }) },
+          knight: { side: "party", block: block({ health: 80, actions: [claw] }) },
+        },
+        { archer: { ...master, temperament: "disciplined" } },
+      );
+      state.rulesetFight = {
+        encounter,
+        events: [],
+        eventSeq: 0,
+        controllers: { knight: "manual" },
+        bosses: [],
+      } as never;
+      const seen = state.rulesetFight!.eventSeq;
+      assert.ok(commandRulesetCombatDirector(definition, state, { type: "continue" }).ok);
+      const turn = state.rulesetFight!.events.filter((entry) => entry.seq > seen).map((entry) => entry.event);
+      const archer = rulesetCombatant(state.rulesetFight!.encounter, "archer")!;
+      return { gap: archer.x! - 2, turn };
+    };
+    const tactician = kites("tactical");
+    assert.ok(
+      tactician.turn.some((event) => "actorId" in event && event.actorId === "archer" && event.type !== "move"),
+      `it shot: ${JSON.stringify(tactician.turn)}`,
+    );
+    assert.ok(tactician.gap > 7, `and stepped out of the knight's walk: ${tactician.gap}`);
+    assert.ok(kites("cunning").gap <= 4, "a cunning one does not keep its distance");
+  }
+
   // ── Refused ──
   refused(
     fiveE({
@@ -629,7 +738,7 @@ try {
   }
 
   console.log(
-    "Combat minds: a kraken a genius, an ape by instinct, a golem and a zombie mindless; the mindless go at the nearest, a hurt coward gets away, a guard goes at whoever is on its friend, a genius at whoever does its side most harm, an animal at the weaker; gated at 1.708.",
+    "Combat minds: a kraken a genius, an ape by instinct, a golem and a zombie mindless; the mindless go at the nearest, a hurt coward gets away, a guard goes at whoever is on its friend, a genius at whoever does its side most harm, an animal at the weaker; a tactician keeps its last slot for its answer, wards itself while the fight is far and steps back after a shot; gated at 1.708.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

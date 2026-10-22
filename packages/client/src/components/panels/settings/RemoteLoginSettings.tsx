@@ -25,7 +25,7 @@ const PAIRING_CODE_TTL_MS = 5 * 60_000;
 const BLOCK_CLASS = "flex flex-col gap-2 border-t border-[var(--border)] pt-3";
 const HEADING_CLASS = "font-semibold text-[var(--foreground)]";
 const HINT_CLASS = "text-[0.625rem] leading-relaxed text-[var(--muted-foreground)]";
-const ERROR_CLASS = "text-[0.625rem] leading-relaxed text-[var(--destructive)]";
+const ERROR_CLASS = "text-[0.625rem] leading-relaxed text-[var(--marinara-chat-chrome-accent)]";
 const LABEL_CLASS = "flex flex-col gap-1 text-[0.625rem] font-semibold text-[var(--muted-foreground)]";
 const INPUT_CLASS =
   "w-full min-w-0 rounded-lg bg-[var(--background)] px-3 py-2 text-xs font-normal text-[var(--foreground)] outline-none ring-1 ring-[var(--border)] focus:ring-[var(--primary)]";

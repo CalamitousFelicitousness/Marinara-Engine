@@ -80,7 +80,7 @@ assert.deepEqual(
 // a strip, as the status-bar strip does in portrait. env() is read once, so a test can stand in a notch.
 assert.match(
   globalsCss,
-  /:root \{\s*--mari-safe-area-inset-left: env\(safe-area-inset-left, 0px\);\s*--mari-safe-area-inset-right: env\(safe-area-inset-right, 0px\);\s*\}/u,
+  /:root \{\s*--mari-safe-area-inset-left: env\(safe-area-inset-left, 0px\);\s*--mari-safe-area-inset-right: env\(safe-area-inset-right, 0px\);\s*--mari-shell-inset-left: var\(--mari-safe-area-inset-left\);\s*--mari-shell-inset-right: var\(--mari-safe-area-inset-right\);\s*\}/u,
   "globals.css must publish the side safe-area insets once, as --mari-safe-area-inset-left/right",
 );
 const mobileShellStart = globalsCss.indexOf(
@@ -89,13 +89,13 @@ const mobileShellStart = globalsCss.indexOf(
 assert.notEqual(mobileShellStart, -1, "globals.css must keep the mobile-shell media block");
 assert.match(
   globalsCss.slice(mobileShellStart, mobileShellStart + 6000),
-  /\.mari-app \{\s*left: var\(--mari-safe-area-inset-left\);\s*right: var\(--mari-safe-area-inset-right\);\s*\}/u,
-  "The phone shell must keep out of the side safe-area insets",
+  /\.mari-app \{\s*left: var\(--mari-shell-inset-left\);\s*right: var\(--mari-shell-inset-right\);\s*\}/u,
+  "The phone shell must use its camera-side insets",
 );
 assert.match(
   appShellSource,
-  /const MOBILE_SHELL_PANEL_X_CLASS = "left-\(--mari-safe-area-inset-left\) right-\(--mari-safe-area-inset-right\)";/u,
-  "Phone sheets must take their sides from the safe-area insets",
+  /const MOBILE_SHELL_PANEL_X_CLASS = "left-\(--mari-shell-inset-left\) right-\(--mari-shell-inset-right\)";/u,
+  "Phone sheets must take their sides from the shell insets",
 );
 assert.equal(
   appShellSource.match(/MOBILE_SHELL_PANEL_X_CLASS,/gu)?.length,

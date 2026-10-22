@@ -6882,6 +6882,26 @@ strong {
 :root {
   --mari-safe-area-inset-left: env(safe-area-inset-left, 0px);
   --mari-safe-area-inset-right: env(safe-area-inset-right, 0px);
+  --mari-shell-inset-left: var(--mari-safe-area-inset-left);
+  --mari-shell-inset-right: var(--mari-safe-area-inset-right);
+}
+
+/* iPhone reports symmetric landscape insets. Reserve only the camera edge when its rotation is known. */
+:root[data-mari-camera-side="left"] {
+  --mari-shell-inset-right: 0px;
+}
+
+:root[data-mari-camera-side="right"] {
+  --mari-shell-inset-left: 0px;
+}
+
+/* The background fills the opposite edge, but TopBar controls still clear its rounded corners. */
+:root[data-mari-camera-side="left"] .mari-topbar {
+  padding-right: max(0.75rem, var(--mari-safe-area-inset-right));
+}
+
+:root[data-mari-camera-side="right"] .mari-topbar {
+  padding-left: max(0.75rem, var(--mari-safe-area-inset-left));
 }
 
 /* Touch tablets get the phone shell (MOBILE_SHELL_MEDIA_QUERY in ui.store.ts),
@@ -6921,15 +6941,14 @@ strong {
     overflow: hidden;
     overscroll-behavior: none;
     /* Top and bottom insets are AppShell's; the sides cover anything here that is not fixed. */
-    padding-left: var(--mari-safe-area-inset-left);
-    padding-right: var(--mari-safe-area-inset-right);
+    padding-left: var(--mari-shell-inset-left);
+    padding-right: var(--mari-shell-inset-right);
   }
 
-  /* A phone turned sideways puts its camera in the left or right inset. The fixed shell stops short of
-     both, so the body's page backing shows there as a strip, as the status-bar strip does in portrait. */
+  /* The fixed shell stops at the effective side insets, leaving the page backing over the camera. */
   .mari-app {
-    left: var(--mari-safe-area-inset-left);
-    right: var(--mari-safe-area-inset-right);
+    left: var(--mari-shell-inset-left);
+    right: var(--mari-shell-inset-right);
   }
 
   /* A fixed ancestor lets iOS WebKit pan the whole app when any descendant

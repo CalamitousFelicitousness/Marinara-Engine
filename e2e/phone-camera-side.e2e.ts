@@ -9,7 +9,7 @@ test.beforeEach(async ({ page }) => {
   await page.route("**/api/app-settings/ui", (route) =>
     route.fulfill({ json: { success: true, data: route.request().method() === "GET" ? null : undefined } }),
   );
-  await seedUIState(page, { hasCompletedOnboarding: true, sidebarOpen: false, rightPanelOpen: false });
+  await seedUIState(page, { hasCompletedOnboarding: true, sidebarOpen: false, rightPanelOpen: false, theme: "dark" });
   await page.addInitScript((version) => {
     localStorage.removeItem("marinara-active-chat-id");
     localStorage.setItem("marinara:whats-new:seen-version", version);
@@ -23,11 +23,13 @@ test("iPhone camera gutter follows rotation without mirroring", async ({ page },
     Object.defineProperty(navigator, "userAgent", { get: () => userAgent });
     // Prefer the iPhone's longstanding angle: older Safari inverted the newer API's angle.
     (window as any).cameraAngles = { legacy: 90, modern: 270 };
+    // Keep WebKit's DOM wrapper alive so its mocked angle survives garbage collection.
+    (window as any).cameraOrientation = screen.orientation;
     Object.defineProperty(window, "orientation", {
       configurable: true,
       get: () => (window as any).cameraAngles.legacy,
     });
-    Object.defineProperty(screen.orientation, "angle", {
+    Object.defineProperty((window as any).cameraOrientation, "angle", {
       configurable: true,
       get: () => (window as any).cameraAngles.modern,
     });
@@ -48,6 +50,18 @@ test("iPhone camera gutter follows rotation without mirroring", async ({ page },
       expect(bounds.x).toBeGreaterThanOrEqual(left - 1);
       expect(bounds.x + bounds.width).toBeLessThanOrEqual(874 - right + 1);
     }
+    const safe = await page.evaluate(() => {
+      const style = getComputedStyle(document.documentElement);
+      return ["left", "right"].map((side) => parseFloat(style.getPropertyValue(`--mari-safe-area-inset-${side}`)));
+    });
+    await expect(page.locator('[data-component="TopBar"] .mari-topbar-action:visible').first()).toBeVisible();
+    for (const button of await page.locator('[data-component="TopBar"] .mari-topbar-action:visible').all()) {
+      const bounds = (await button.boundingBox())!;
+      expect(bounds.x, "TopBar buttons still clear the rounded left corner").toBeGreaterThanOrEqual(safe[0]! - 1);
+      expect(bounds.x + bounds.width, "TopBar buttons still clear the rounded right corner").toBeLessThanOrEqual(
+        874 - safe[1]! + 1,
+      );
+    }
     expect(
       await page.evaluate(() => [20, 854].map((x) => Boolean(document.elementFromPoint(x, 200)?.closest(".mari-app")))),
     ).toEqual([left === 0, right === 0]);
@@ -56,14 +70,17 @@ test("iPhone camera gutter follows rotation without mirroring", async ({ page },
     await page.evaluate(
       ({ legacy, modern }) => {
         (window as any).cameraAngles = { legacy, modern };
-        window.dispatchEvent(new Event("orientationchange"));
+        if (legacy !== undefined) window.dispatchEvent(new Event("orientationchange"));
         screen.orientation.dispatchEvent(new Event("change"));
       },
       { legacy, modern },
     );
   };
   await expectGutter(59, 0);
-  await testInfo.attach("camera-left.png", { body: await page.screenshot(), contentType: "image/png" });
+  await testInfo.attach("camera-left.png", {
+    body: await page.screenshot({ path: testInfo.outputPath("camera-left.png"), animations: "disabled" }),
+    contentType: "image/png",
+  });
   await rotate(-90, 90);
   await expectGutter(0, 59);
   await page.evaluate(async () => {
@@ -75,7 +92,13 @@ test("iPhone camera gutter follows rotation without mirroring", async ({ page },
   await expect(sidebar).toBeVisible();
   await expect.poll(async () => (await sidebar.boundingBox())!.x).toBeCloseTo(0, 0);
   await expect.poll(async () => (await sidebar.boundingBox())!.width).toBeCloseTo(815, 0);
-  await testInfo.attach("camera-right-light-sidebar.png", { body: await page.screenshot(), contentType: "image/png" });
+  await testInfo.attach("camera-right-light-sidebar.png", {
+    body: await page.screenshot({
+      path: testInfo.outputPath("camera-right-light-sidebar.png"),
+      animations: "disabled",
+    }),
+    contentType: "image/png",
+  });
   await page.evaluate(async () => {
     const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
     useUIStore.getState().setSidebarOpen(false);
@@ -92,7 +115,7 @@ test("iPhone camera gutter follows rotation without mirroring", async ({ page },
   await expectGutter(59, 59);
   await rotate(0, 0);
   await expectGutter(59, 59);
-  await insets.evaluate((element) => element.remove());
+  await insets.evaluate((element) => element.parentNode?.removeChild(element));
   await page.setViewportSize({ width: 402, height: 874 });
   await expect.poll(async () => (await shell.boundingBox())!.width).toBe(402);
   await page.setViewportSize({ width: 874, height: 402 });

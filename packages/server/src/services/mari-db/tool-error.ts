@@ -20,6 +20,14 @@ export function collectArgumentNotes<T>(notes: string[], run: () => Promise<T>):
   return argumentNotes.run(notes, run);
 }
 
+/** A call nobody collects for (the `mari db` route, a direct service call) carries its own notes. */
+export async function withArgumentNotes<T extends { notes?: string[] }>(run: () => Promise<T>): Promise<T> {
+  if (argumentNotes.getStore()) return run();
+  const notes: string[] = [];
+  const result = await argumentNotes.run(notes, run);
+  return notes.length ? { ...result, notes } : result;
+}
+
 export function noteArgument(message: string): void {
   const notes = argumentNotes.getStore();
   if (notes && !notes.includes(message)) notes.push(message);

@@ -93,6 +93,18 @@ try {
   assert.match(zero.output, /^Command: [^\n]*\n"limit" 0 is below 1, so the default 50 was used\./);
   const plain = await run("app_data", { action: "character.list", limit: 10 });
   assert.doesNotMatch(plain.output, /"limit"/, "an in-range limit adds no note");
+  assert.equal(big.output.match(/is above this read's maximum/g)?.length, 1, "app_data prints the note once");
+  // A direct service call has no app_data wrapper to print the note, so the result carries it.
+  const direct = (await mariDb.executeAction({ action: "character.list", limit: 5000 } as never)) as {
+    notes?: string[];
+  };
+  assert.deepEqual(direct.notes, [
+    `"limit" 5000 is above this read's maximum, so 1000 was used: this may not be everything.`,
+  ]);
+  assert.equal(
+    ((await mariDb.executeAction({ action: "character.list", limit: 10 } as never)) as { notes?: string[] }).notes,
+    undefined,
+  );
 
   // addSection says where the section landed: injectionOrder never places it (T10, round 2).
   await run("app_data", { action: "skill.get", id: "builtin-presets" });

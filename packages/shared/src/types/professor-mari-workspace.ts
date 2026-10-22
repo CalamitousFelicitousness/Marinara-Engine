@@ -834,6 +834,8 @@ export interface MariDbCommandResult {
   };
   journalPath?: string | null;
   error?: string;
+  /** #7999: arguments used differently than sent (a lowered limit), when no app_data call collected them. */
+  notes?: string[];
 }
 
 export interface MariDbPendingApproval {

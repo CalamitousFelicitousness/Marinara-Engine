@@ -16,7 +16,15 @@ import {
   assertLiteralCardFields,
   assertLiteralEntryFields,
 } from "./macro-lint.js";
-import { badEnum, describeReceived, missingRecord, needArg, noteArgument, unknownActionMessage } from "./tool-error.js";
+import {
+  badEnum,
+  describeReceived,
+  missingRecord,
+  needArg,
+  noteArgument,
+  unknownActionMessage,
+  withArgumentNotes,
+} from "./tool-error.js";
 import {
   CASCADE_DANGLING_EXEMPT_PREFIXES,
   CASCADES,
@@ -2991,7 +2999,15 @@ export class MariDbService {
 
   constructor(private readonly db: DB) {}
 
-  async executeCli(envelope: MariCliEnvelope): Promise<MariDbCommandResult> {
+  executeCli(envelope: MariCliEnvelope): Promise<MariDbCommandResult> {
+    return withArgumentNotes(() => this.runCli(envelope));
+  }
+
+  executeAction(envelope: MariAppDataActionEnvelope): Promise<MariDbCommandResult> {
+    return withArgumentNotes(() => this.runAction(envelope));
+  }
+
+  private async runCli(envelope: MariCliEnvelope): Promise<MariDbCommandResult> {
     const argv = envelope.argv ?? [];
     const command = formatCommand(argv, envelope.command);
     const sessionId = envelope.sessionId || "mari-cli";
@@ -3046,7 +3062,7 @@ export class MariDbService {
     }
   }
 
-  async executeAction(envelope: MariAppDataActionEnvelope): Promise<MariDbCommandResult> {
+  private async runAction(envelope: MariAppDataActionEnvelope): Promise<MariDbCommandResult> {
     let command = "app_data";
     try {
       const action = firstString(envelope, ["action", "type"]);

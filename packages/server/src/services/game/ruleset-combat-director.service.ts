@@ -99,6 +99,8 @@ import {
   rulesetCombatantRole,
   rulesetActionIsSpell,
   rulesetCombatantMind,
+  rulesetAirborne,
+  RULESET_FLY_UP_OPTION,
   withRulesetPlanMemo,
   rulesetSheetBuildsByName,
   rulesetCardCreaturesByName,
@@ -2683,6 +2685,30 @@ export function rulesetEffectWorth(
         rulesetSideDeals(encounter, target.side, modifier.damageType),
     );
     each += Math.min(0.3, counted.length * 0.1);
+    // An aura it gives off to its own side (5e's Leadership): what it puts on each friend in reach.
+    if (!foe) {
+      const perCell = combat.distance?.perCell;
+      for (const aura of rule?.auras ?? []) {
+        if (aura.side === "enemies") continue;
+        const reach = perCell ? rulesetInCells(aura.distance, perCell) : Infinity;
+        const friends = encounter.combatants.filter(
+          (one) =>
+            one.side === target.side &&
+            !one.object &&
+            rulesetCombatStanding(one) &&
+            (aura.self || one.id !== target.id) &&
+            (!rulesetPositionOf(one) || !rulesetPositionOf(target) || rulesetGap(one, target) <= reach),
+        ).length;
+        for (const id of aura.conditions ?? []) {
+          const given = combat.conditions?.find((one) => one.condition === id);
+          const effects = (given?.effects ?? []).reduce(
+            (sum, effect) => sum + (RULESET_EFFECT_WORTH[effect]?.friend ?? 0),
+            0,
+          );
+          each += (Math.min(0.3, (given?.modifiers?.length ?? 0) * 0.1) + effects) * friends;
+        }
+      }
+    }
     if (rule?.effects?.includes("ends-on-damage")) each *= 0.6;
     worth += Math.min(1.2, each) * rulesetDurationWorth(applied.duration);
   }
@@ -3419,7 +3445,8 @@ function weighChoices(
     weighRulesetMindFocus(definition, encounter, actor, unit.tactics!, candidates);
   if (!menu) weighRulesetReserve(definition, encounter, actor, unit.tactics!, candidates);
   if (!menu) weighRulesetPrepare(definition, encounter, actor, unit.tactics!, candidates);
-  if (!menu && unit.tactics!.mind !== "mindless") weighRulesetLeadership(state, encounter, actor, candidates);
+  if (!menu && unit.tactics!.mind !== "mindless")
+    weighRulesetLeadership(definition, state, encounter, actor, candidates);
   return { unit, actor, candidates, orders, behavior, opening };
 }
 
@@ -3434,18 +3461,30 @@ function rulesetLeads(one: RulesetCombatant): boolean {
  * side's leader last went at, as companions told to follow do.
  */
 function weighRulesetLeadership(
+  definition: RulesetDefinition,
   state: CombatDirectorState,
   encounter: RulesetEncounterState,
   actor: RulesetCombatant,
   candidates: Array<CombatAiCandidate<RulesetCandidate>>,
 ): void {
-  // For several of its side at once: more than one target, or a shape, on friends.
+  // For several of its side at once: more than one target, or a shape, on friends; or a condition
+  // on itself whose aura reaches its friends (5e's Leadership, following the knight for a minute).
   const sideWide = (option: RulesetCombatOption) =>
     (option.targets.side === "ally" || option.targets.side === "any") && (option.targets.count >= 2 || !!option.area);
+  const leadsFriends = (option: RulesetCombatOption) =>
+    !!actor.actions
+      .find((action) => action.id === option.id)
+      ?.applies?.some((applied) =>
+        definition.combat?.conditions
+          ?.find((rule) => rule.condition === applied.condition)
+          ?.auras?.some((aura) => aura.side === "allies" || aura.side === "all"),
+      );
   if (rulesetLeads(actor) && encounter.round <= 2) {
-    for (const candidate of candidates)
-      if ((candidate.support ?? 0) > 0 && sideWide(candidate.action.option))
-        candidate.focus = (candidate.focus ?? 0) + 0.6;
+    for (const candidate of candidates) {
+      const option = candidate.action.option;
+      if (((candidate.support ?? 0) > 0 && sideWide(option)) || leadsFriends(option))
+        candidate.focus = (candidate.focus ?? 0) + 1;
+    }
     return;
   }
   if (actor.side === "party") return;
@@ -4295,6 +4334,7 @@ function playRulesetTurn(
     if (idle) {
       // A shot thrown, it steps back where nobody can walk up and strike it, still in range for the
       // next; and with somebody still in its range it does not walk in to meet them.
+      if (!stays && keepAloft(definition, state, fight, actorId)) continue;
       if (shotFromAfar && !stays && keepRulesetRange(definition, state, fight, actorId, shotFromAfar === "kite")) break;
       if (struckClose && !shotFromAfar && !defended && !stays && hitAndRun(definition, state, fight, actorId)) break;
       if (defended || stays || !walkTowardsTrouble(definition, state, fight, actorId, leash)) break;
@@ -4575,6 +4615,38 @@ function hitAndRun(
   if (!best) return false;
   applyChoice(definition, state, fight, { actorId, optionId: RULESET_MOVE_OPTION, targetIds: [], to: best.cell });
   return true;
+}
+
+/**
+ * Up out of reach (combat AI A7): a flier with something to shoot with, on the ground at the end of
+ * what it does and with an opponent about who cannot fly, takes to the air where the board has
+ * levels, so those who cannot fly cannot walk up and strike it. Not a bruiser, which wants to be in
+ * among them, nor a reckless one, nor a mindless one. Whether it went up.
+ */
+function keepAloft(
+  definition: RulesetDefinition,
+  state: CombatDirectorState,
+  fight: RulesetFightState,
+  actorId: string,
+): boolean {
+  const actor = rulesetCombatant(fight.encounter, actorId);
+  const tactics = [...state.party, ...state.enemies].find((one) => one.id === actorId)?.tactics;
+  const grid = fight.encounter.board?.grid;
+  if (!actor || !tactics || !grid || !actor.speeds?.fly || rulesetAirborne(grid, actor)) return false;
+  if (tactics.mind === "mindless" || tactics.role === "bruiser" || tactics.adjective === "reckless") return false;
+  const shoots = actor.actions.some(
+    (one) => one.range && !one.reach && one.damage && rulesetActionAvailable(actor, one, fight.encounter, definition),
+  );
+  if (!shoots) return false;
+  const grounded = fight.encounter.combatants.some(
+    (one) => one.side !== actor.side && rulesetCombatStanding(one) && !!rulesetPositionOf(one) && !one.speeds?.fly,
+  );
+  if (!grounded) return false;
+  const up = rulesetCombatOptions(definition, fight.encounter, actorId).find(
+    (option) => option.id === RULESET_FLY_UP_OPTION,
+  );
+  if (!up) return false;
+  return !applyChoice(definition, state, fight, { actorId, optionId: up.id, targetIds: [] }).refused;
 }
 
 /**

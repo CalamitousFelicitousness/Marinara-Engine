@@ -373,6 +373,35 @@ try {
     );
     const plain = scene(false);
     assert.notEqual(pickRulesetChoice(definition, plain.state, plain.encounter, "chief")?.option.id, "cry");
+    // 5e's Leadership: a condition on the knight itself whose aura reaches its friends for a minute.
+    const aura = parsed(
+      fiveE((doc) => {
+        doc.sheet.live.conditions.push({ id: "led", label: "Led" }, { id: "leading", label: "Leading" });
+        doc.combat.conditions.push(
+          { condition: "led", modifiers: [{ to: "attacks", flat: 2 }] },
+          { condition: "leading", auras: [{ distance: 30, side: "allies", conditions: ["led"] }] },
+        );
+      }),
+    );
+    const leadership = {
+      id: "leadership",
+      name: "Leadership",
+      budget: "action",
+      self: true,
+      applies: [{ condition: "leading", duration: { rounds: 10 } }],
+    };
+    {
+      const { encounter, state } = fight({
+        chief: { side: "enemy", block: block([smash, leadership], { leader: true }), at: { x: 3, y: 3 } },
+        left: { side: "enemy", block: block([smash]), at: { x: 3, y: 4 } },
+        hero: { side: "party", block: block([smash]), at: { x: 9, y: 3 } },
+      });
+      assert.equal(
+        pickRulesetChoice(aura, state, encounter, "chief")?.option.id,
+        "leadership",
+        "a leader opens with an aura for its side",
+      );
+    }
 
     const morale = parsed(
       fiveE((doc) => {
@@ -398,6 +427,54 @@ try {
     assert.equal(rulesetCombatant(after, "near")!.routed, undefined, "the one near it stops running");
     assert.deepEqual(rulesetCombatant(after, "near")!.moraleChecked, [], "and checks again");
     assert.equal(rulesetCombatant(after, "far")!.routed, true, "one too far off runs on");
+  }
+
+  // ── Fliers keep out of reach (combat AI A7): one that shoots goes up; a bruiser stays down ──
+  {
+    const high = parsed(
+      fiveE((doc) => {
+        doc.combat.elevation = { levelHeight: 5 };
+      }),
+    );
+    const aloft = (behavior: Record<string, unknown>) => {
+      const blocks = {
+        harpy: {
+          side: "enemy" as const,
+          block: block([bolt], { speeds: { fly: 40 }, behavior }),
+          at: { x: 2, y: 2 },
+        },
+        hero: { side: "party" as const, block: block([smash]), at: { x: 12, y: 2 } },
+      };
+      const encounter = createRulesetEncounter({
+        definition: high,
+        seed: 1,
+        roller: () => 10,
+        combatants: Object.entries(blocks).map(([id, one]) => ({ id, name: id, side: one.side, block: one.block })),
+        board: {
+          grid: { width: 16, height: 10, tiles: Array.from({ length: 10 }, () => Array(16).fill("plains")) },
+          placements: Object.fromEntries(Object.entries(blocks).map(([id, one]) => [id, one.at])),
+        } as never,
+      });
+      encounter.order = ["harpy", "hero"];
+      encounter.turn = 0;
+      const state = createCombatDirector({
+        id: "fight",
+        anchor: "anchor",
+        style: "ruleset",
+        party: [unit("hero", "player")],
+        enemies: [unit("harpy", "enemy")],
+        gm: false,
+        difficulty: "normal",
+        seed: 3,
+      } as never);
+      state.rulesetFight = { encounter, events: [], eventSeq: 0, controllers: { hero: "manual" }, bosses: [] } as never;
+      syncRulesetCombatants(high, state);
+      state.stage = rulesetDirectorStage(state);
+      assert.ok(commandRulesetCombatDirector(high, state, { type: "continue" }).ok);
+      return rulesetCombatant(state.rulesetFight!.encounter, "harpy")!.altitude;
+    };
+    assert.ok((aloft({ temperament: "disciplined", role: "marksman" }) ?? 0) > 0, "a shooter takes to the air");
+    assert.equal(aloft({ temperament: "disciplined", role: "bruiser" }), undefined, "a bruiser stays down");
   }
 
   // ── Its temperament and role, unless the Game Master gave one ──

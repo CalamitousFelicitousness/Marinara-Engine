@@ -101,6 +101,14 @@ export type ConversationCommandKey = (typeof CONVERSATION_COMMAND_KEYS)[number];
 
 export type ConversationCommandToggles = Partial<Record<ConversationCommandKey, boolean>>;
 
+/** Whether a Conversation command is on. Videos is opt-in, unlike the other commands: each video message is a video request. */
+export function isConversationCommandToggleOn(
+  toggles: ConversationCommandToggles,
+  command: ConversationCommandKey,
+): boolean {
+  return command === "video" ? toggles.video === true : toggles[command] !== false;
+}
+
 /** Downloadable agent package that owns each optional Conversation command. */
 export const CONVERSATION_COMMAND_AGENT_IDS: Partial<Record<ConversationCommandKey, string>> = {
   selfie: "illustrator",

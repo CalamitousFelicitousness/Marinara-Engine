@@ -170,7 +170,7 @@ export const MLX_RUNTIME_MANIFEST = {
   mlxLm: {
     revision: "e5baded8c1d286754edb479ffbde4655a68e2758",
     packageSpec: "mlx-lm @ https://github.com/ml-explore/mlx-lm/archive/e5baded8c1d286754edb479ffbde4655a68e2758.zip",
-    requirementsLockSha256: "e77db61b3f9fac368bd654b1625789c7ee59acee5ea1508fb3b61f52014caecc",
+    requirementsLockSha256: "cba3d1727bb039d848fc2b25dd393ce402e63857bb9dea2e229818ea2b49f04d",
     archive: {
       name: "mlx-lm-e5baded8c1d286754edb479ffbde4655a68e2758.zip",
       browser_download_url: "https://github.com/ml-explore/mlx-lm/archive/e5baded8c1d286754edb479ffbde4655a68e2758.zip",

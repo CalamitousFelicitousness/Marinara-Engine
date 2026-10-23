@@ -50,13 +50,23 @@ try {
   assert.deepEqual(tactical.combat?.styles, ["tactical"]);
   assert.match(issuesOf(fixture(["tactical", "tactical"])), /Duplicate combat style "tactical"/);
   assert.notEqual(issuesOf(fixture([])), "", "an empty list says nothing and is refused");
-  assert.notEqual(issuesOf(fixture(["Tactical"])), "", "a style id is lower case");
+  assert.equal(
+    issuesOf(fixture(["classic", "Tactical"])),
+    "combat.styles.1: Invalid",
+    "only the lower-case ID check fails",
+  );
   assert.match(
     issuesOf(fixture(["hex-board"])),
     /List classic or tactical too/,
     "a list of registered styles only could leave a client with nothing it may draw",
   );
-  assert.notEqual(issuesOf(fixture(new Array(9).fill(0).map((_, index) => `style-${index}`))), "", "at most 8");
+  const eightStyles = ["classic", ...Array.from({ length: 7 }, (_, index) => `style-${index}`)];
+  assert.deepEqual(parse(fixture(eightStyles)).combat?.styles, eightStyles, "exactly eight styles are accepted");
+  assert.equal(
+    issuesOf(fixture([...eightStyles, "style-7"])),
+    "combat.styles: Array must contain at most 8 element(s)",
+    "only the nine-item length check fails",
+  );
 
   // The published JSON Schema says what the refinement does: each style once, one of them built in.
   const findCombatStyles = (node: unknown): Record<string, unknown> | undefined => {
@@ -152,7 +162,10 @@ try {
   );
   assert.match(gameRoutes, /code: "combat_style_not_allowed"/);
   const chatRoutes = readSource("packages/server/src/routes/chats.routes.ts");
-  assert.match(chatRoutes, /!rulesetAllowsCombatStyle\(resolved\.definition, incoming\.gameCombatStyle\)/);
+  assert.match(
+    chatRoutes,
+    /!rulesetAllowsCombatStyle\(resolved\.definition, next\.gameCombatStyle as string \| null \| undefined\)/,
+  );
   assert.equal(chatRoutes.match(/code: "combat_style_not_allowed"/g)?.length, 1, "the settings refusal names its code");
   const encounterRoutes = readSource("packages/server/src/routes/encounter.routes.ts");
   assert.match(encounterRoutes, /const combatStyle = rulesetCombatStyle\(/);

@@ -5995,25 +5995,36 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   message.role === "user" && (!advancedAgentSourceIds || advancedAgentSourceIds.has(message.id)),
               )?.content ?? "")
           : undefined;
-        const customAgentsWithLorebookTriggers = resolvedAgents.filter(
-          (agent) => !builtInAgentTypes.has(agent.type) && agent.settings.triggerLorebooksForAgentCalls === true,
+        const agentsWithLorebookTriggers = resolvedAgents.filter(
+          (agent) =>
+            agent.settings.chatLorebookAttachmentEnabled === true ||
+            (!builtInAgentTypes.has(agent.type) && agent.settings.triggerLorebooksForAgentCalls === true),
         );
         const resolveTriggeredLorebookEntriesByAgentId = createAgentLorebookTriggerResolver({
-          agents: customAgentsWithLorebookTriggers.map((agent) => {
-            const { sourceLorebookIds, source } = resolveKnowledgeSourceLorebookIds({
-              settings: agent.settings,
-              chatActiveLorebookIds,
-            });
+          agents: agentsWithLorebookTriggers.map((agent) => {
+            const { sourceLorebookIds, source } =
+              !builtInAgentTypes.has(agent.type) && agent.settings.triggerLorebooksForAgentCalls === true
+                ? resolveKnowledgeSourceLorebookIds({ settings: agent.settings, chatActiveLorebookIds })
+                : { sourceLorebookIds: [], source: "none" as const };
             return {
               id: agent.id,
               contextSize: normalizeAgentContextSize(agent.settings.contextSize),
               sourceLorebookIds,
               source,
+              additionalManualLorebookIds:
+                agent.settings.chatLorebookAttachmentEnabled === true &&
+                typeof agent.settings.chatAttachedLorebookId === "string"
+                  ? [agent.settings.chatAttachedLorebookId]
+                  : [],
             };
           }),
           activeCharacterIds: promptCharacterIds,
           activeCharacterTags: Array.from(
-            new Set(charInfo.flatMap((character) => (Array.isArray(character.tags) ? character.tags : []))),
+            new Set(
+              charInfo
+                .filter((character) => promptCharacterIds.includes(character.id))
+                .flatMap((character) => (Array.isArray(character.tags) ? character.tags : [])),
+            ),
           ),
           embeddingSource: memoryRecallEmbeddingSource,
           entryStateOverrides:
@@ -11230,6 +11241,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               }
             }
             extraUpdate.generationReplay = buildGenerationReplay(input);
+            // Every group reply retains this request's intent, even after other replies or system notes follow it.
+            extraUpdate.lorebookGenerationTriggers = [...lorebookGenerationTriggers];
             extraUpdate.startsNewAssistantBubble = startsNewAssistantBubble;
             if (chatMode === "game") {
               const previousExtra = input.continueMessageId ? parseExtra(savedMsg.extra) : {};
@@ -11304,7 +11317,12 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               ];
               const pick = (keys: string[]) =>
                 Object.fromEntries(keys.filter((key) => key in extraUpdate).map((key) => [key, extraUpdate[key]]));
-              const everyPart = pick(["contextInjections", "generationReplay", "referencedCharacterIds"]);
+              const everyPart = pick([
+                "contextInjections",
+                "generationReplay",
+                "lorebookGenerationTriggers",
+                "referencedCharacterIds",
+              ]);
               // Every fallback-written part keeps its identity, without duplicating the turn's usage.
               if (generationProviderOrigin.fallback) everyPart.generationInfo = generationProviderOrigin;
               for (const [index, part] of replyParts.slice(0, -1).entries()) {
@@ -12341,7 +12359,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               logger.warn(error, "[advanced-memory] Could not attach scene check to post-processing trackers");
             }
           }
-          if (customAgentsWithLorebookTriggers.some((agent) => agent.phase === "post_processing")) {
+          if (agentsWithLorebookTriggers.some((agent) => agent.phase === "post_processing")) {
             agentContext.triggeredLorebookEntriesByAgentId = await resolveTriggeredLorebookEntriesByAgentId([
               ...recentMsgs,
               {

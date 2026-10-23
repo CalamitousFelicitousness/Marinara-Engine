@@ -56,6 +56,8 @@ export interface AgentLorebookTriggerResolverOptions {
   filterSourceLorebookIds: (sourceIds: string[], source: LorebookSource) => Promise<string[]>;
   gameState: GameStateForScanning | null;
   generationTriggers: string[];
+  /** Current generation instructions supplement history without consuming its message-depth slots. */
+  supplementalScanMessages?: AgentContext["recentMessages"];
   listEntriesByLorebookIds: (sourceIds: string[]) => Promise<LorebookEntry[]>;
   listLorebooks: () => Promise<Lorebook[]>;
   resolveContent: (value: string) => string;
@@ -161,6 +163,16 @@ export function createAgentLorebookTriggerResolver(
           role: message.role,
           content: message.content,
         }));
+        const supplemental = options.supplementalScanMessages ?? [];
+        // Embeddings retain the guide's user role; keyword depth still counts only historical messages.
+        const semanticScanMessages = supplemental.length ? [...scanMessages, ...supplemental] : scanMessages;
+        const supplementalText = supplemental.map((message) => message.content).join("\n");
+        if (supplementalText) {
+          const latest = scanMessages.at(-1);
+          if (latest)
+            scanMessages[scanMessages.length - 1] = { ...latest, content: `${latest.content}\n${supplementalText}` };
+          else scanMessages.push({ role: "user", content: supplementalText });
+        }
         let chatEmbedding: number[] | null = null;
         let semanticEmbeddingsByLorebookId: Map<string, number[] | number[][] | null> | undefined;
         let semanticSimilarityBaseline = 0;
@@ -173,7 +185,7 @@ export function createAgentLorebookTriggerResolver(
             const semanticEmbeddings = await buildLorebookSemanticEmbeddingsById({
               lorebooks: source.lorebooks,
               entries: source.entries,
-              scanMessages,
+              scanMessages: semanticScanMessages,
               embeddingSource: options.embeddingSource,
               signal: options.signal,
             });

@@ -5830,6 +5830,20 @@ function carriesAlsoUnrolled455(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesAlsoUnrolled455(one, depth + 1));
 }
 
+/** A damage change narrowed to a blow's damage types, or spent once it adds (1.777): oil. */
+function carriesDamageOnTypes777(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesDamageOnTypes777(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (
+    (record.to === "damage" || record.to === "damage-taken") &&
+    (record.onTypes !== undefined || record.spentOnUse !== undefined)
+  )
+    return true;
+  return featureValues(record).some((one) => carriesDamageOnTypes777(one, depth + 1));
+}
+
 /** A duration set by the cost paid, or concentration only below a step (1.454): Bestow Curse. */
 function carriesBySteps454(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -12503,6 +12517,14 @@ export function getCapabilityPackageInstallIssue(
   // What a weight is counted in, 1.776.
   if (!declaresApi(776) && plainRecord(plainRecord(plainRecord(ruleset)?.items)?.carry)?.unit !== undefined) {
     return "A ruleset that names what its weights are counted in (items.carry.unit) requires schemaVersion 2 and capabilityApi 1.776 or newer";
+  }
+  // Damage changes narrowed to a blow's damage types, or spent once they add, 1.777.
+  if (
+    !declaresApi(777) &&
+    (carriesDamageOnTypes777(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesDamageOnTypes777(document)))
+  ) {
+    return "A ruleset whose damage changes count only on some damage types (onTypes) or are spent once they add (spentOnUse) requires schemaVersion 2 and capabilityApi 1.777 or newer";
   }
   // A ruleset over 256 KB or a catalog file over 1 MB, the ceilings before 1.340.
   if (

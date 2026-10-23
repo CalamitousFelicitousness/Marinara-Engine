@@ -3030,19 +3030,25 @@ export function rulesetEffectWorth(
       else each += 0.15;
     }
     // A number added or taken off, whichever way it points, is worth a little; more damage of one
-    // type taken only when somebody on the other side deals that type (lamp oil wants a fire).
+    // type taken only when somebody on the other side deals that type (lamp oil wants a fire), and
+    // one that counts only on blows of some types (1.777) only when somebody deals one of them.
     const counted = (rule?.modifiers ?? []).filter(
       (modifier) =>
         modifier.to !== "damage-taken" ||
-        !modifier.damageType ||
-        (modifier.flat ?? 0) <= 0 ||
-        rulesetSideDeals(encounter, target.side, modifier.damageType),
+        (modifier.onTypes
+          ? modifier.onTypes.some((type) => rulesetSideDeals(encounter, target.side, type))
+          : !modifier.damageType ||
+            (modifier.flat ?? 0) <= 0 ||
+            rulesetSideDeals(encounter, target.side, modifier.damageType)),
     );
     // One that only touches ability checks is next to nothing in a fight (re-test 2026-10-23: a cleric
-    // spent six actions on Guidance).
+    // spent six actions on Guidance); one spent the first time it adds (1.777) is worth half.
     each += Math.min(
       0.3,
-      counted.reduce((sum, modifier) => sum + (modifier.to === "checks" ? 0.02 : 0.1), 0),
+      counted.reduce(
+        (sum, modifier) => sum + (modifier.to === "checks" ? 0.02 : 0.1) * (modifier.spentOnUse ? 0.5 : 1),
+        0,
+      ),
     );
     // An aura it gives off to its own side (5e's Leadership): what it puts on each friend in reach.
     if (!foe) {

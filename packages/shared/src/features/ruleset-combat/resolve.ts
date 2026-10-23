@@ -17294,9 +17294,14 @@ function resolveActionBodyIn(
     // Whether something its target holds took some of it away (1.400): a missile so lessened to
     // nothing is caught.
     let lessened = false;
+    // What the blow itself deals as it lands (1.777), before anything is added: oil wants fire.
+    const carried = new Set(parts.flatMap((part) => (part.damageType ? [part.damageType.toLowerCase()] : [])));
+    // Conditions a change spends once it adds (1.777), with whoever holds them.
+    const spentOnUse: { holder: RulesetCombatant; condition: string }[] = [];
     if (parts.length) {
       for (const one of modifiers) {
         const { modifier } = one;
+        if (modifier.onTypes && !modifier.onTypes.some((type) => carried.has(type.toLowerCase()))) continue;
         // The blow's own dice again, as many more times as it says (1.197), its flat part left be.
         const own = action.damage;
         // On a critical only, more of the blow's own dice, not doubled (1.247): Brutal Critical.
@@ -17316,6 +17321,8 @@ function resolveActionBodyIn(
           spendOncePerTurn(ctx, actor, onceKey(one));
         }
         if (modifier.minus && takenModifiers.includes(one)) lessened = true;
+        if (modifier.spentOnUse && one.level === undefined && !one.item && !one.derived)
+          spentOnUse.push({ holder: takenModifiers.includes(one) ? target : actor, condition: one.condition });
         const amount = dice ?? { count: 0, sides: 0, flat: 0 };
         const rolled = rollAmount(ctx, amount);
         const bonus = critical && !onCritical ? criticalExtra(ctx, amount) : { rolls: [], flat: 0 };
@@ -17343,13 +17350,23 @@ function resolveActionBodyIn(
             ...(critical ? { critical: true } : {}),
           });
       }
-      const times = modifiers.reduce((value, { modifier }) => value * (modifier.times ?? 1), 1);
+      const times = modifiers.reduce(
+        (value, { modifier }) =>
+          modifier.onTypes && !modifier.onTypes.some((type) => carried.has(type.toLowerCase()))
+            ? value
+            : value * (modifier.times ?? 1),
+        1,
+      );
       // Round the scaled TOTAL down once, carrying a fraction across clauses in their written order.
       let total = 0;
       for (const part of parts) {
         const previous = Math.floor(total);
         total += Math.max(0, part.amount) * times;
         landNow({ ...part, amount: Math.floor(total) - previous });
+      }
+      for (const { holder, condition } of spentOnUse) {
+        if (holder.tracked.some((entry) => entry.condition === condition))
+          removeCondition(ctx, holder, condition, "spent");
       }
     }
     if (woundKind && woundTrack && "track" in health) {

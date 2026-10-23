@@ -12998,6 +12998,13 @@ const combatModifierBaseSchema = z
     /** Damage taken from a fall only, and no other (Capability API 1.397): Slow Fall's five times
      *  the monk's level. A condition whose modifier lessens a fall is spent by it. */
     falls: z.literal(true).optional(),
+    /** A damage change only on a blow that carries damage of one of these types, its own or any
+     *  clause of it, read without case (Capability API 1.777): 5e's oil, 5 more fire damage taken
+     *  only from a blow that deals fire. `damageType` still names what the change itself adds. */
+    onTypes: z.array(z.string().trim().min(1).max(80)).min(1).max(8).optional(),
+    /** A damage change that spends the condition it came from the first time it adds (Capability
+     *  API 1.777): burning oil, once. One an item, a level or the sheet itself gives is never spent. */
+    spentOnUse: z.literal(true).optional(),
     /** Only against a target whose creature type or tag one of these text or enum fields of the
      *  holder's sheet names, comma-separated words read without case (Capability API 1.413): 5e's
      *  Foe Slayer against the favored enemies the ranger chose. The holder's own attacks and damage
@@ -13120,7 +13127,7 @@ const combatModifierBaseSchema = z
     if (modifier.atSource && modifier.to !== "attacks")
       add("atSource", '"atSource" narrows the holder\'s own attacks only');
     const damage = modifier.to === "damage" || modifier.to === "damage-taken";
-    for (const key of ["damageType", "alsoUnrolled"] as const) {
+    for (const key of ["damageType", "alsoUnrolled", "onTypes", "spentOnUse"] as const) {
       if (modifier[key] !== undefined && !damage) add(key, `"${key}" narrows damage only`);
     }
     // Defense against one kind of attack (1.493): Arrow-Catching Shield's +2 against ranged ones.

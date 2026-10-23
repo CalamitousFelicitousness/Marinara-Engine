@@ -179,7 +179,7 @@ import {
 import type {
   RulesetBoardProp,
   RulesetAfterAttack,
-  RulesetCombatAmount,
+  RulesetCombatDamage,
   RulesetCombatAgainst,
   RulesetConditionBonus,
   RulesetCombatAction,
@@ -3536,14 +3536,25 @@ export function rulesetDamageModifiers(
   );
 }
 
+/** Whether a blow's damage, its own or any clause of it, is of one of these types (1.777), read
+ *  without case: a clause with no type of its own is the blow's kind. */
+export function rulesetDamageCarries(damage: RulesetCombatDamage, types: readonly string[]): boolean {
+  const wanted = new Set(types.map((type) => type.toLowerCase()));
+  return [damage.type, ...(damage.plus ?? []).map((clause) => clause.type ?? damage.type)].some(
+    (type) => !!type && wanted.has(type.toLowerCase()),
+  );
+}
+
 /** Own additions and multipliers only: a menu cannot promise a target's mark. */
 function modifiedAverage(
   average: number,
   modifiers: RulesetConditionModifier[],
   /** The blow's own damage, whose dice a `diceTimes` throws again (1.197). */
-  own?: RulesetCombatAmount,
+  own?: RulesetCombatDamage,
 ): number {
   for (const { modifier } of modifiers) {
+    // Only on a blow carrying one of its types (1.777), as the blow says it deals them.
+    if (modifier.onTypes && !(own && rulesetDamageCarries(own, modifier.onTypes))) continue;
     const dice =
       modifier.diceTimes && own && own.count > 0
         ? { count: own.count * (modifier.diceTimes - 1), sides: own.sides, flat: 0 }
@@ -3552,7 +3563,17 @@ function modifiedAverage(
           : null;
     average += (modifier.flat ?? 0) + (dice ? (modifier.minus ? -1 : 1) * rulesetAverageDamage(dice) : 0);
   }
-  return Math.max(0, average * modifiers.reduce((times, { modifier }) => times * (modifier.times ?? 1), 1));
+  return Math.max(
+    0,
+    average *
+      modifiers.reduce(
+        (times, { modifier }) =>
+          modifier.onTypes && !(own && rulesetDamageCarries(own, modifier.onTypes))
+            ? times
+            : times * (modifier.times ?? 1),
+        1,
+      ),
+  );
 }
 
 /** What a weapon adds to hit against this target, by what it is (1.187): a mace of smiting's +2 more

@@ -1474,7 +1474,9 @@ const capabilityPackageManifestBaseSchema = z
 //        game's settings offer only those, and a game saved on another plays the first one listed.
 //        Upstream's 1.379, numbered above the held 5e minors.
 // 1.776: what a ruleset's weights are counted in (`items.carry.unit`), said after every weight shown.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 776 } as const);
+// 1.777: a damage change only on a blow carrying given damage types (`onTypes`), and one that spends
+//        its condition once it adds (`spentOnUse`).
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 777 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

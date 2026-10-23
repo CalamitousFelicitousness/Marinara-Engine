@@ -46726,6 +46726,20 @@
                                 "type": "boolean",
                                 "const": true
                               },
+                              "onTypes": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 80
+                                },
+                                "minItems": 1,
+                                "maxItems": 8
+                              },
+                              "spentOnUse": {
+                                "type": "boolean",
+                                "const": true
+                              },
                               "atTypesIn": {
                                 "type": "array",
                                 "items": {
@@ -116945,6 +116959,20 @@
                                 "type": "boolean",
                                 "const": true
                               },
+                              "onTypes": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 80
+                                },
+                                "minItems": 1,
+                                "maxItems": 8
+                              },
+                              "spentOnUse": {
+                                "type": "boolean",
+                                "const": true
+                              },
                               "atTypesIn": {
                                 "type": "array",
                                 "items": {
@@ -120168,6 +120196,20 @@
                                 }
                               },
                               "falls": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "onTypes": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 80
+                                },
+                                "minItems": 1,
+                                "maxItems": 8
+                              },
+                              "spentOnUse": {
                                 "type": "boolean",
                                 "const": true
                               },
@@ -123581,6 +123623,20 @@
                                       }
                                     },
                                     "falls": {
+                                      "type": "boolean",
+                                      "const": true
+                                    },
+                                    "onTypes": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 80
+                                      },
+                                      "minItems": 1,
+                                      "maxItems": 8
+                                    },
+                                    "spentOnUse": {
                                       "type": "boolean",
                                       "const": true
                                     },
@@ -138659,6 +138715,20 @@
                                     }
                                   },
                                   "falls": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "onTypes": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 80
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 8
+                                  },
+                                  "spentOnUse": {
                                     "type": "boolean",
                                     "const": true
                                   },
@@ -165408,6 +165478,20 @@
                                           }
                                         },
                                         "falls": {
+                                          "type": "boolean",
+                                          "const": true
+                                        },
+                                        "onTypes": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "maxLength": 80
+                                          },
+                                          "minItems": 1,
+                                          "maxItems": 8
+                                        },
+                                        "spentOnUse": {
                                           "type": "boolean",
                                           "const": true
                                         },
@@ -192163,6 +192247,20 @@
                                           }
                                         },
                                         "falls": {
+                                          "type": "boolean",
+                                          "const": true
+                                        },
+                                        "onTypes": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "string",
+                                            "minLength": 1,
+                                            "maxLength": 80
+                                          },
+                                          "minItems": 1,
+                                          "maxItems": 8
+                                        },
+                                        "spentOnUse": {
                                           "type": "boolean",
                                           "const": true
                                         },
@@ -224737,6 +224835,20 @@
                       "type": "boolean",
                       "const": true
                     },
+                    "onTypes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 80
+                      },
+                      "minItems": 1,
+                      "maxItems": 8
+                    },
+                    "spentOnUse": {
+                      "type": "boolean",
+                      "const": true
+                    },
                     "atTypesIn": {
                       "type": "array",
                       "items": {
@@ -250764,6 +250876,20 @@
                       }
                     },
                     "falls": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "onTypes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 80
+                      },
+                      "minItems": 1,
+                      "maxItems": 8
+                    },
+                    "spentOnUse": {
                       "type": "boolean",
                       "const": true
                     },

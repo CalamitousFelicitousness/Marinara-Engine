@@ -95,6 +95,10 @@ export interface RulesetItemEffectFact {
     ability?: string;
     type?: string;
     fromSource?: true;
+    /** Only on blows of these types (1.777). */
+    onTypes?: string[];
+    /** Spent the first time it adds (1.777). */
+    spentOnUse?: true;
   };
   /** Conditions and damage labels, and magic, that narrow this save modifier (1.134). */
   against?: { names: string[]; magic?: true };
@@ -802,6 +806,8 @@ export function rulesetItemEffectFacts(
                 : {}),
               ...(modifier.damageType ? { type: modifier.damageType } : {}),
               ...(modifier.fromSource ? { fromSource: modifier.fromSource } : {}),
+              ...(modifier.onTypes ? { onTypes: modifier.onTypes } : {}),
+              ...(modifier.spentOnUse ? { spentOnUse: modifier.spentOnUse } : {}),
             },
           }
         : {};
@@ -899,6 +905,8 @@ export function rulesetItemEffectText(fact: RulesetItemEffectFact): string {
       fact.damage.ability ? `using ${fact.damage.ability}` : "",
       fact.damage.type,
       fact.damage.fromSource ? "from the condition's source only" : "",
+      fact.damage.onTypes ? `only on ${fact.damage.onTypes.join(" or ")} damage` : "",
+      fact.damage.spentOnUse ? "once" : "",
     ]
       .filter(Boolean)
       .join(", ");

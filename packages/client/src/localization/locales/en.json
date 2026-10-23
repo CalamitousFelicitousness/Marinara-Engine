@@ -653,7 +653,7 @@
   "chat.advancedMemory.warning.unscopedAgentMemory": "A separate long-term memory agent is enabled. Its own memory scope still applies; Advanced Memory cannot make that external context character-private.",
   "chat.advancedMemory.warning.unscopedSummaries": "Some existing summaries have no verified source range. Review their audience and coverage before relying on them for character-private or historical memory.",
   "chat.advancedMemory.windowHelp": "Bits of earlier chat added as memories of past events. Set both to 0 to turn them off.",
-  "chat.advancedMemory.wizardDescription": "Enjoy an endless roleplay without worrying about the chat getting too long. In group chats, each character remembers only what they saw.",
+  "chat.advancedMemory.wizardDescription": "Advanced Memory Recall lets you enjoy an endless roleplay without worrying about the chat getting too long. In group chats, each character remembers only what they saw.",
   "chat.advancedMemory.wizardTitle": "Automatic context and memory handling",
   "chat.agentsRunning": "Agents are running",
   "chat.branches.current": "Current branch",

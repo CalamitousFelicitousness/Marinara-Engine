@@ -23,7 +23,7 @@ export const advancedMemorySettingsSchema = z.object({
   sceneCheckInterval: z.number().int().min(1).max(100).default(5),
   retrieveMaxScenes: z.number().int().min(0).max(50).default(3),
   retrieveMinMessages: z.number().int().min(0).max(50).default(3),
-  retrieveMaxMessages: z.number().int().min(0).max(50).default(10),
+  retrieveMaxMessages: z.number().int().min(0).max(50).default(5),
   narratorCharacterId: z.string().nullable().default(null),
   /** Individual group chats only: hide each new message from characters the memory model finds absent. */
   autoMessageVisibility: z.boolean().default(false),

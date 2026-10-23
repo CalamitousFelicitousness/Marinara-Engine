@@ -6,6 +6,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  BUILT_IN_GAME_COMBAT_STYLES,
   parseRulesetDefinition,
   rulesetAllowsCombatStyle,
   rulesetCombatStyle,
@@ -58,11 +59,19 @@ try {
   assert.notEqual(issuesOf(fixture(new Array(9).fill(0).map((_, index) => `style-${index}`))), "", "at most 8");
 
   // The published JSON Schema says what the refinement does: each style once, one of them built in.
-  const published = readSource("docs/extending/ruleset.schema.json");
-  assert.match(
-    published,
-    /"maxItems": 8,\s+"uniqueItems": true,\s+"contains": \{\s+"enum": \[\s+"classic",\s+"tactical"\s+\]/,
-  );
+  const findCombatStyles = (node: unknown): Record<string, unknown> | undefined => {
+    if (!node || typeof node !== "object") return undefined;
+    const properties = (node as { properties?: Record<string, Record<string, unknown>> }).properties;
+    if (properties?.styles && properties.distance) return properties.styles;
+    for (const child of Object.values(node)) {
+      const found = findCombatStyles(child);
+      if (found) return found;
+    }
+    return undefined;
+  };
+  const publishedStyles = findCombatStyles(JSON.parse(readSource("docs/extending/ruleset.schema.json")));
+  assert.equal(publishedStyles?.uniqueItems, true);
+  assert.deepEqual(publishedStyles?.contains, { enum: [...BUILT_IN_GAME_COMBAT_STYLES] });
 
   // ── The helpers ──
   assert.equal(rulesetCombatStyles(open), null, "no list allows every style");

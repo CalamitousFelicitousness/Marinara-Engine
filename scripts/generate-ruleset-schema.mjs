@@ -8,6 +8,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import {
+  BUILT_IN_GAME_COMBAT_STYLES,
   RULESET_CHECK_SCOPED_EFFECTS,
   RULESET_COMBAT_CONDITION_EFFECTS,
   RULESET_CREATURE_PLAIN_NEEDS,
@@ -243,7 +244,7 @@ function checkedCombatStyles(node) {
   const styles = node.properties?.styles;
   if (node.properties?.distance && styles?.type === "array") {
     styles.uniqueItems = true;
-    styles.contains = { enum: ["classic", "tactical"] };
+    styles.contains = { enum: [...BUILT_IN_GAME_COMBAT_STYLES] };
   }
 }
 

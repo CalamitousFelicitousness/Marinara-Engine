@@ -1136,6 +1136,7 @@
   "chat.translation.defaults.save": "Save translator defaults",
   "chat.translation.defaults.saved": "Translator defaults saved for new chats.",
   "chat.wizard.cancelFailed": "We couldn't remove the empty chat; please try again.",
+  "chat.wizard.closing": "Closing setup…",
   "chat.wizard.defaults.failed": "Could not apply wizard defaults. Please try again.",
   "chat.wizard.defaults.reset": "Reset defaults",
   "chat.wizard.defaults.save": "Save as default",

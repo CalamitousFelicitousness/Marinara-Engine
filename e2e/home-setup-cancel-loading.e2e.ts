@@ -327,6 +327,7 @@ test("a stalled setup save releases cancellation and a later attempt retries saf
     await wizard.locator('input[type="text"]').first().fill("User edit finishes after cancel");
     await wizard.getByRole("button", { name: "Close setup", exact: true }).click();
     await saving;
+    await expect(page.getByRole("status").filter({ hasText: "Closing setup…" })).toBeVisible();
     // This PATCH stays unanswered throughout cancellation. Never compare or delete uncertain state.
     await expect(wizard).toHaveCount(0, { timeout: 8_000 });
     expect(discardRequests).toBe(0);
@@ -386,6 +387,7 @@ test("a stalled discard request releases the wizard for a safe retry", async ({ 
       }
     });
     await wizard.getByRole("button", { name: "Close setup", exact: true }).click();
+    await expect(page.getByRole("status").filter({ hasText: "Closing setup…" })).toBeVisible();
     await expect(page.getByText("We couldn't remove the empty chat; please try again.", { exact: true })).toBeVisible({
       timeout: 13_000,
     });
@@ -581,7 +583,19 @@ test("cancel waits for the starred profile and preserves chat-owned user edits",
       }
       allowFetch();
       await committed;
-      await page.getByRole("button", { name: "Home", exact: true }).click();
+      if (edited) {
+        await page.getByRole("button", { name: "Home", exact: true }).click();
+      } else {
+        const loading = page.getByRole("status").filter({ hasText: "Loading..." });
+        await expect(loading).toBeVisible();
+        // The loading shell's first sibling is its dismissible backdrop.
+        await loading
+          .locator("../..")
+          .locator(":scope > div")
+          .first()
+          .click({ position: { x: 2, y: 2 } });
+        await expect(page.getByRole("status").filter({ hasText: "Closing setup…" })).toBeVisible();
+      }
       // The automatic profile response is still outstanding, so cancellation must wait for its whole task.
       expect((await page.request.get(`/api/chats/${id}`)).ok()).toBeTruthy();
       release();

@@ -969,12 +969,28 @@ export function ChatSetupWizard({ chat, onFinish }: ChatSetupWizardProps) {
   // A new chat's starred profile is still being applied: start from its settings, not the blank chat's,
   // or finishing setup would write the blank chat's commands back over the profile's. A profile picked inside the
   // wizard later doesn't hold it, so the open wizard is never unmounted.
-  if (hold.waiting) return <WizardLoading onClose={dismiss} />;
   // Finishing can just open Agents/Connections; navigation still compares the draft and protects real setup writes.
   return (
-    <div className="contents" inert={closing}>
-      <SavedChatSetupWizard key={chat.id} chat={chat} onFinish={onFinish} onDismiss={dismiss} />
-    </div>
+    <>
+      <div className="contents" inert={closing}>
+        {hold.waiting ? (
+          <WizardLoading onClose={dismiss} />
+        ) : (
+          <SavedChatSetupWizard key={chat.id} chat={chat} onFinish={onFinish} onDismiss={dismiss} />
+        )}
+      </div>
+      {closing && (
+        <div className="pointer-events-none absolute inset-0 z-[60] flex items-center justify-center p-3">
+          <div
+            role="status"
+            className={cn(NEUTRAL_PANEL_SHELL, "flex items-center gap-2 p-4 text-sm text-[var(--foreground)]")}
+          >
+            <Loader2 size="1rem" className="motion-safe:animate-spin" aria-hidden="true" />
+            {t("chat.wizard.closing")}
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 

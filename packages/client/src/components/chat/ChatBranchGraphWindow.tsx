@@ -4,7 +4,16 @@
 // Opened from the Chat Branches header (inline or popped out). The Chat Branches list stays the
 // quick switcher; this is the bigger picture, in its own resizable window.
 // ──────────────────────────────────────────────
-import { useEffect, useMemo, useRef, useState, type FocusEvent, type KeyboardEvent, type MouseEvent } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FocusEvent,
+  type KeyboardEvent,
+  type MouseEvent,
+} from "react";
 import { hashKey, useQueryClient } from "@tanstack/react-query";
 import { GitGraph } from "lucide-react";
 import { useTranslation as useUiTranslation } from "react-i18next";
@@ -17,9 +26,9 @@ import { useMatchMedia } from "../../hooks/use-match-media";
 import { getChatDisplayName } from "../../lib/chat-display";
 import { buildChatBranchRows } from "../../lib/chat-branch-tree";
 import {
-  BRANCH_GRAPH_LANE_HEIGHT,
   laneSpansGap,
   layoutChatBranchGraph,
+  type BranchGraphFit,
   type BranchGraphLayout,
   type BranchGraphSpan,
 } from "../../lib/chat-branch-graph-layout";
@@ -35,7 +44,8 @@ const DEFAULT_WIDTH_REM = 52;
 const DEFAULT_HEIGHT_REM = 26;
 /** How long the chat must sit still after a message lands before the graph refetches. */
 const REFRESH_DELAY_MS = 1500;
-const H = BRANCH_GRAPH_LANE_HEIGHT;
+/** The scroll area's vertical padding, plus room for a horizontal scrollbar, kept out of the lanes' height. */
+const FIT_HEIGHT_ALLOWANCE = 28;
 
 /** Centred over the chat, as wide as a long timeline wants and no wider than the chat. */
 function getBranchGraphDefaultLayout(bounds: WindowBounds): WindowLayout {
@@ -126,6 +136,7 @@ function BranchGraph({ chatId, groupId, compact }: { chatId: string; groupId: st
   useRefreshOnNewMessages(chatId, groupId);
   const [expanded, setExpanded] = useState<readonly BranchGraphSpan[] | "all">([]);
   const [pointer, setPointer] = useState<PointerState | null>(null);
+  const [fit, setFit] = useState<BranchGraphFit | null>(null);
   const frameRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
@@ -138,8 +149,32 @@ function BranchGraph({ chatId, groupId, compact }: { chatId: string; groupId: st
       buildChatBranchRows(groupChats.filter((chat) => entries.has(chat.id))),
       entries,
       expanded,
+      fit,
     );
-  }, [groupChats, graph.data, expanded]);
+  }, [groupChats, graph.data, expanded, fit]);
+
+  // The graph fills its window: measure the timeline's room, and again whenever the window is resized.
+  // `drawn` decides whether the body draws the graph, so the timeline is mounted exactly when it holds. An error
+  // keeps the last layout but hides it.
+  const failed = graph.isError || groupFailed;
+  const drawn = !!groupId && !failed && !!layout && layout.lanes.length >= 2;
+  useLayoutEffect(() => {
+    const scroller = scrollRef.current;
+    const timeline = timelineRef.current;
+    if (!drawn || !scroller || !timeline) return;
+    const measure = () => {
+      const width = timeline.clientWidth;
+      const height = Math.max(0, scroller.clientHeight - FIT_HEIGHT_ALLOWANCE);
+      setFit((previous) =>
+        previous && previous.width === width && previous.height === height ? previous : { width, height },
+      );
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(scroller);
+    observer.observe(timeline);
+    return () => observer.disconnect();
+  }, [drawn]);
 
   const characterIds = useMemo(
     () =>
@@ -162,13 +197,13 @@ function BranchGraph({ chatId, groupId, compact }: { chatId: string; groupId: st
   useEffect(() => {
     const scroller = scrollRef.current;
     const timeline = timelineRef.current;
-    if (!layout || !scroller || !timeline || currentLane < 0 || scrolledFor.current === chatId) return;
+    if (!layout || !fit || !scroller || !timeline || currentLane < 0 || scrolledFor.current === chatId) return;
     scrolledFor.current = chatId;
     const lane = layout.lanes[currentLane]!;
-    const tipX = layout.xOf(Math.max(lane.tip, lane.start));
+    const tipX = layout.xOf(Math.max(lane.tip, lane.start)) * layout.scale;
     timeline.scrollLeft = Math.max(0, tipX - timeline.clientWidth / 2);
-    scroller.scrollTop = Math.max(0, layout.laneY(currentLane) - scroller.clientHeight / 2);
-  }, [layout, chatId, currentLane]);
+    scroller.scrollTop = Math.max(0, layout.laneY(currentLane) * layout.scale - scroller.clientHeight / 2);
+  }, [layout, fit, chatId, currentLane]);
 
   const speakerOf = (message: ChatBranchGraphMessage) => {
     if (message.role === "user") return localizeUi("chat.settings.branchGraphSpeakerYou");
@@ -208,11 +243,11 @@ function BranchGraph({ chatId, groupId, compact }: { chatId: string; groupId: st
   );
 
   let body;
-  if (!groupId) body = status(localizeUi("chat.settings.branchGraphEmpty"));
-  else if (graph.isError || groupFailed) body = status(localizeUi("chat.settings.branchGraphError"));
-  else if (!layout) body = status(localizeUi("chat.settings.branchGraphLoading"));
-  else if (layout.lanes.length < 2) body = status(localizeUi("chat.settings.branchGraphEmpty"));
-  else {
+  if (!drawn) {
+    if (failed) body = status(localizeUi("chat.settings.branchGraphError"));
+    else if (groupId && !layout) body = status(localizeUi("chat.settings.branchGraphLoading"));
+    else body = status(localizeUi("chat.settings.branchGraphEmpty"));
+  } else {
     body = (
       <div
         ref={scrollRef}
@@ -233,12 +268,17 @@ function BranchGraph({ chatId, groupId, compact }: { chatId: string; groupId: st
                   aria-current={current ? "true" : undefined}
                   title={localizeUi("chat.settings.branchGraphSwitchTo", { name })}
                   className={cn(
-                    "flex w-full items-center truncate px-2 text-left text-[0.6875rem] transition-colors hover:bg-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--ring)]",
+                    "flex w-full items-center truncate px-2 text-left transition-colors hover:bg-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--ring)]",
                     current
                       ? "bg-[var(--primary)]/10 font-semibold text-[var(--primary)]"
                       : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]",
                   )}
-                  style={{ height: H, paddingLeft: `${0.5 + Math.min(lane.depth, 6) * 0.5}rem` }}
+                  style={{
+                    height: layout.laneHeight * layout.scale,
+                    paddingLeft: `${0.5 + Math.min(lane.depth, 6) * 0.5}rem`,
+                    // Names grow a little with a zoomed-in graph, not as much: they would soon stop fitting.
+                    fontSize: `${0.6875 * Math.min(layout.scale, 1.4)}rem`,
+                  }}
                   onClick={() => setActiveChatId(lane.chat.id)}
                 >
                   <span className="truncate">{name}</span>
@@ -275,7 +315,7 @@ function BranchGraph({ chatId, groupId, compact }: { chatId: string; groupId: st
   const allExpanded = expanded === "all" || (expanded.length > 0 && !canExpand);
   return (
     <div ref={frameRef} className="relative flex min-h-0 flex-1 flex-col">
-      {layout && layout.lanes.length >= 2 && (
+      {drawn && (
         <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-[var(--border)] px-3 py-1.5 text-[0.625rem] text-[var(--muted-foreground)]">
           <LegendDot role="u" label={localizeUi("chat.settings.branchGraphSpeakerYou")} />
           <LegendDot role="a" label={localizeUi("chat.settings.branchGraphLegendCharacter")} />
@@ -379,7 +419,7 @@ function BranchGraphCanvas({
   onHidePoint: () => void;
 }) {
   const { t: localizeUi } = useUiTranslation();
-  const { lanes, columns, xOf, laneY } = layout;
+  const { lanes, columns, laneHeight, xOf, laneY } = layout;
   const expandOnKey = (span: BranchGraphSpan) => (event: KeyboardEvent<SVGGElement>) => {
     if (event.key !== "Enter" && event.key !== " ") return;
     event.preventDefault();
@@ -388,7 +428,12 @@ function BranchGraphCanvas({
   };
 
   return (
-    <svg width={layout.width} height={layout.height} className="block shrink-0">
+    <svg
+      width={layout.width * layout.scale}
+      height={layout.height * layout.scale}
+      viewBox={`0 0 ${layout.width} ${layout.height}`}
+      className="block shrink-0"
+    >
       {/* Elbows first, so the dots sit on top of them. */}
       {lanes.map((lane, laneIndex) => {
         if (lane.anchorLane === null || lane.forkAt === null) return null;
@@ -416,9 +461,9 @@ function BranchGraphCanvas({
           <g key={lane.chat.id} className="cursor-pointer" onClick={() => onSwitch(laneIndex)}>
             <rect
               x={0}
-              y={laneIndex * H}
+              y={laneIndex * laneHeight}
               width={layout.width}
-              height={H}
+              height={laneHeight}
               fill={current ? "var(--primary)" : "transparent"}
               fillOpacity={current ? 0.08 : 0}
             />

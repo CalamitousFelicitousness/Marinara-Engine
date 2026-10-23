@@ -1877,16 +1877,22 @@ const LocalChatArea = memo(function LocalChatArea({
   // only set on truthy values, leaving the global chatBackground stale when
   // switching to a chat whose metadata has been cleared, which made a removed
   // background re-appear after a chat switch round-trip.
-  const restoredChatBackgroundRef = useRef<{ chatId: string | null; url: string | null; isSyncing: boolean }>({
+  const restoredChatBackgroundRef = useRef<{
+    chatId: string | null;
+    url: string | null;
+    isSyncing: boolean;
+    changed: boolean;
+  }>({
     chatId: null,
     url: null,
     isSyncing: false,
+    changed: false,
   });
   useEffect(() => {
     if (!chat?.id) return;
     const savedUrl = chatBackgroundMetadataToUrl(chatMeta.background);
     const restoredUrl = savedUrl ?? (chat.mode === "roleplay" ? useUIStore.getState().defaultRoleplayBackground : null);
-    restoredChatBackgroundRef.current = { chatId: chat.id, url: restoredUrl, isSyncing: true };
+    restoredChatBackgroundRef.current = { chatId: chat.id, url: restoredUrl, isSyncing: true, changed: false };
     useUIStore.getState().setChatBackground(restoredUrl);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chat?.id]);
@@ -1915,7 +1921,9 @@ const LocalChatArea = memo(function LocalChatArea({
 
     const nextBackground = chatBackgroundUrlToMetadata(chatBackground);
     // Merely showing the default backdrop is not a user edit to an untouched new draft.
-    if (pendingNewChatSetupId === chat.id && chatBackground === restoredBackground.url) return;
+    // Once changed, returning to the entry background is a real reset and must also persist.
+    if (chatBackground !== restoredBackground.url) restoredBackground.changed = true;
+    if (pendingNewChatSetupId === chat.id && !restoredBackground.changed) return;
     if (nextBackground === savedBackground) return;
     // A selection is a discrete action, not typing: save immediately so leaving
     // the chat cannot cancel a pending background change.

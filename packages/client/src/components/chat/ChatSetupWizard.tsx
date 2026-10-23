@@ -234,10 +234,10 @@ const CONVERSATION_COMMAND_TOGGLE_OPTIONS: Array<{
 interface ChatSetupWizardProps {
   chat: Chat;
   onFinish: (discarded?: boolean) => void;
-  onDismiss?: () => void;
 }
 
 interface WizardWithDefaultsProps extends ChatSetupWizardProps {
+  onDismiss?: () => void;
   defaultsApplied: boolean;
   defaultsAction: (metadata: Record<string, unknown>) => React.ReactNode;
 }
@@ -946,15 +946,6 @@ export function ChatSetupWizard({ chat, onFinish }: ChatSetupWizardProps) {
   const { t } = useUiTranslation();
   const discard = useDiscardNewChatSetup();
   const [closing, setClosing] = useState(false);
-  const keepChat = () => {
-    if (useChatStore.getState().pendingNewChatSetups[chat.id]) {
-      useChatStore.getState().clearPendingNewChatSetup(chat.id);
-    }
-  };
-  const finish = () => {
-    keepChat();
-    onFinish();
-  };
   const dismiss = async () => {
     if (closing) return;
     setClosing(true);
@@ -979,9 +970,10 @@ export function ChatSetupWizard({ chat, onFinish }: ChatSetupWizardProps) {
   // or finishing setup would write the blank chat's commands back over the profile's. A profile picked inside the
   // wizard later doesn't hold it, so the open wizard is never unmounted.
   if (hold.waiting) return <WizardLoading onClose={dismiss} />;
+  // Finishing can just open Agents/Connections; navigation still compares the draft and protects real setup writes.
   return (
     <div className="contents" inert={closing}>
-      <SavedChatSetupWizard key={chat.id} chat={chat} onFinish={finish} onDismiss={dismiss} />
+      <SavedChatSetupWizard key={chat.id} chat={chat} onFinish={onFinish} onDismiss={dismiss} />
     </div>
   );
 }
@@ -1004,7 +996,11 @@ function WizardLoading({ onClose }: { onClose: () => void }) {
   );
 }
 
-function SavedChatSetupWizard({ chat, onFinish, onDismiss = onFinish }: ChatSetupWizardProps) {
+function SavedChatSetupWizard({
+  chat,
+  onFinish,
+  onDismiss = onFinish,
+}: ChatSetupWizardProps & { onDismiss?: () => void }) {
   const { t } = useUiTranslation();
   const mode = chat.mode === "conversation" ? "conversation" : "roleplay";
   const queryClient = useQueryClient();

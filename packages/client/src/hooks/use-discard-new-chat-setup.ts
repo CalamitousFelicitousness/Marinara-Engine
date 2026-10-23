@@ -32,7 +32,7 @@ export function useDiscardNewChatSetup() {
               }
             });
           });
-        // Finishing setup can retire this pending draft while an automatic save completes.
+        // Another cleanup can retire this pending draft while an automatic save completes.
         const baseline = useChatStore.getState().pendingNewChatSetups[chatId];
         if (baseline?.id !== chatId || baseline.createdAt !== initialChat.createdAt) return false;
         const { deleted } = await api.post<{ deleted: boolean }>(`/chats/${chatId}/discard-empty-setup`, {

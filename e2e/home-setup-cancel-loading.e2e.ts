@@ -139,6 +139,105 @@ test("Home cancel and Skip discard only the untouched new chat in every mode", a
   }
 });
 
+test("Connections hand-offs leave untouched setup chats eligible for cleanup", async ({ page }) => {
+  const connection = await seedConnection(page);
+  const created: string[] = [];
+  try {
+    await page.goto("/");
+    for (const mode of ["conversation", "roleplay"] as const) {
+      const { chat, wizard } = await launch(page, mode);
+      created.push(chat.id);
+      // The connection disappeared after creation: exercise the wizard's real empty-list shortcut.
+      await page.evaluate(async () => {
+        const { queryClient } = await import("/src/lib/query-client.ts" as string);
+        queryClient.setQueryData(["connections", "list"], []);
+      });
+      await wizard.getByRole("button", { name: "Set Up a Connection", exact: true }).click();
+      await expect(wizard).toHaveCount(0);
+      await closeChatSettings(page);
+      await page.getByRole("button", { name: "Home", exact: true }).click();
+      await expect.poll(async () => (await page.request.get(`/api/chats/${chat.id}`)).status()).toBe(404);
+      await page.evaluate(async () => {
+        const { queryClient } = await import("/src/lib/query-client.ts" as string);
+        await queryClient.invalidateQueries({ queryKey: ["connections", "list"] });
+      });
+    }
+  } finally {
+    for (const id of created) await page.request.delete(`/api/chats/${id}`);
+    await page.request.delete(`/api/connections/${connection.id}`);
+  }
+});
+
+test("Download Agents hand-off leaves an untouched setup chat eligible for cleanup", async ({ page }) => {
+  const connection = await seedConnection(page);
+  let chatId = "";
+  try {
+    await page.goto("/");
+    const { chat, wizard } = await launch(page, "conversation");
+    chatId = chat.id;
+    for (let step = 0; step < 3; step += 1) await wizard.getByRole("button", { name: "Next", exact: true }).click();
+    await expect(wizard.getByRole("heading", { name: "Automation", exact: true })).toBeVisible();
+    await wizard.getByRole("button", { name: "Download Agents", exact: true }).click();
+    await expect(wizard).toHaveCount(0);
+    await page.getByRole("button", { name: "Home", exact: true }).click();
+    await expect.poll(async () => (await page.request.get(`/api/chats/${chatId}`)).status()).toBe(404);
+  } finally {
+    if (chatId) await page.request.delete(`/api/chats/${chatId}`);
+    await page.request.delete(`/api/connections/${connection.id}`);
+  }
+});
+
+test("resetting a new chat background persists the reset and retains the real user edit", async ({ page }) => {
+  const connection = await seedConnection(page);
+  let chatId = "";
+  try {
+    await page.route("**/api/backgrounds/file/**", (route) =>
+      route.fulfill({
+        contentType: "image/gif",
+        body: Buffer.from("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7", "base64"),
+      }),
+    );
+    await page.goto("/");
+    const { chat, wizard } = await launch(page, "conversation");
+    chatId = chat.id;
+    // All background controls share this store action and ChatArea's persistence effect.
+    await page.evaluate(async () => {
+      const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+      useUIStore.getState().setChatBackground("/api/backgrounds/file/reset-fixture.gif");
+    });
+    await expect
+      .poll(async () => (await (await page.request.get(`/api/chats/${chatId}`)).json()).metadata.background)
+      .toBe("reset-fixture.gif");
+    await page.evaluate(async () => {
+      const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+      useUIStore.getState().setChatBackground(null);
+    });
+    await expect
+      .poll(async () => (await (await page.request.get(`/api/chats/${chatId}`)).json()).metadata.background)
+      .toBeNull();
+    await wizard.getByRole("button", { name: "Close setup", exact: true }).click();
+    await expect(wizard).toHaveCount(0);
+    expect((await page.request.get(`/api/chats/${chatId}`)).ok()).toBeTruthy();
+    await closeChatSettings(page);
+    await page.getByRole("button", { name: "Home", exact: true }).click();
+    await page.evaluate(async (id) => {
+      const { useChatStore } = await import("/src/stores/chat.store.ts" as string);
+      useChatStore.getState().setActiveChatId(id);
+    }, chatId);
+    await expect
+      .poll(() =>
+        page.evaluate(async () => {
+          const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
+          return useUIStore.getState().chatBackground;
+        }),
+      )
+      .toBeNull();
+  } finally {
+    if (chatId) await page.request.delete(`/api/chats/${chatId}`);
+    await page.request.delete(`/api/connections/${connection.id}`);
+  }
+});
+
 test("editing setup and a delayed saved message both prevent automatic cleanup", async ({ page }) => {
   const connection = await seedConnection(page);
   let firstId = "";

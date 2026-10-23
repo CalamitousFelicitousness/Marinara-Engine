@@ -26,11 +26,19 @@ export type GameActiveState = "exploration" | "dialogue" | "combat" | "travel_re
 export type GameGmMode = "standalone" | "character";
 
 /**
- * Combat presentation preference for Game Mode.
+ * The combat styles the engine ships with.
  * - `classic`: existing cinematic JRPG menu combat (GameCombatUI + combat.service).
  * - `tactical`: Fire Emblem / FFT style grid battle (tactical-combat feature engine).
  */
-export type GameCombatStyle = "classic" | "tactical";
+export const BUILT_IN_GAME_COMBAT_STYLES = ["classic", "tactical"] as const;
+export type BuiltInGameCombatStyle = (typeof BUILT_IN_GAME_COMBAT_STYLES)[number];
+
+/**
+ * Combat presentation preference for Game Mode: a built-in style, or the id of a style a client
+ * registered itself (the client's combat-style registry). An id the client does not know plays as
+ * `classic`.
+ */
+export type GameCombatStyle = BuiltInGameCombatStyle | (string & {});
 
 /** Status of a game session. */
 export type GameSessionStatus = "setup" | "active" | "concluded";

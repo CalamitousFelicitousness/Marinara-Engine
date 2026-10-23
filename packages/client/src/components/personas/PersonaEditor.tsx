@@ -3,7 +3,16 @@
 // Replaces the chat area when editing a persona.
 // Sections: Metadata, Card, Convo, Lorebook, Sprites, Gallery, Colors, Stats
 // ──────────────────────────────────────────────
-import { useState, useEffect, useRef, useCallback, useMemo, type ChangeEvent, type ReactNode } from "react";
+import {
+  useState,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useCallback,
+  useMemo,
+  type ChangeEvent,
+  type ReactNode,
+} from "react";
 import { toast } from "sonner";
 import {
   useCreateCharacter,
@@ -11,6 +20,7 @@ import {
   useUpdatePersona,
   useUploadAvatar,
   useUploadPersonaAvatar,
+  useRemovePersonaAvatar,
   useDeletePersona,
   useDuplicatePersona,
   usePersonaVersions,
@@ -34,6 +44,7 @@ import {
   type PersonaGalleryImage,
 } from "../../hooks/use-characters";
 import { useCardFieldGeneration } from "../../hooks/use-card-field-generation";
+import { CardFieldAlternatives } from "../characters/CardFieldAlternatives";
 import { CardFieldWand } from "../characters/CardFieldWand";
 import { useConnections } from "../../hooks/use-connections";
 import { useUIStore } from "../../stores/ui.store";
@@ -132,6 +143,9 @@ import {
   normalizeSpriteExpressionLabel,
   normalizeRpgStatPools,
   syncRpgHpFromPools,
+  normalizeCardFieldAlternatives,
+  unassignCardFieldAlternatives,
+  type CardFieldAlternative,
   type CardFieldKey,
   type CharacterData,
   type ConvoBehaviorConfig,
@@ -220,6 +234,7 @@ interface PersonaFormData {
   personaVersion: string;
   versioningEnabled: boolean;
   creatorNotes: string;
+  cardFieldAlternatives: CardFieldAlternative[];
   summary: string;
   mes_example: string;
   description: string;
@@ -283,7 +298,7 @@ function formatPersonaFieldValue<K extends keyof PersonaFormData>(
 
 /** Persona mutations the editor coordinates. Only one may run at a time,
  *  because each writes or removes the same Persona row. */
-type PersonaMutationKind = "save" | "avatar" | "gallery-avatar" | "delete";
+type PersonaMutationKind = "save" | "avatar" | "gallery-avatar" | "remove-avatar" | "delete";
 
 /** The decoded PATCH contract this editor writes: the shared update input plus
  *  the character-sheet fields the Persona route still handles separately. */
@@ -337,6 +352,7 @@ function personaFormFromPersona(persona: Persona): PersonaFormData {
     personaVersion: persona.personaVersion ?? "1.0",
     versioningEnabled: persona.versioningEnabled !== false,
     creatorNotes: persona.creatorNotes ?? "",
+    cardFieldAlternatives: normalizeCardFieldAlternatives(persona.cardFieldAlternatives),
     summary: persona.summary ?? "",
     mes_example: persona.mes_example ?? "",
     description: persona.description,
@@ -1280,6 +1296,7 @@ function createCharacterDataFromPersona(formData: PersonaFormData): CharacterDat
     alternate_greetings: [],
     character_book: null,
     extensions: {
+      cardFieldAlternatives: unassignCardFieldAlternatives(formData.cardFieldAlternatives),
       talkativeness: 0.5,
       fav: false,
       world: "",
@@ -1312,6 +1329,7 @@ export function PersonaEditor() {
   const updatePersona = useUpdatePersona();
   const uploadCharacterAvatar = useUploadAvatar();
   const uploadAvatar = useUploadPersonaAvatar();
+  const removeAvatar = useRemovePersonaAvatar();
   const setGalleryImageAsAvatar = useSetPersonaGalleryImageAsAvatar(personaId ?? "");
   const deletePersona = useDeletePersona();
   const duplicatePersona = useDuplicatePersona();
@@ -1387,7 +1405,7 @@ export function PersonaEditor() {
 
   const mutationBusy = mutationKind !== null;
   const saving = mutationKind === "save";
-  const avatarBusy = mutationKind === "avatar" || mutationKind === "gallery-avatar";
+  const avatarUploading = mutationKind === "avatar" || mutationKind === "gallery-avatar";
 
   const beginMutation = useCallback((kind: PersonaMutationKind) => {
     if (mutationTokenRef.current) return null;
@@ -1492,7 +1510,10 @@ export function PersonaEditor() {
 
     // An avatar/gallery replacement owns the preview and crop until it settles;
     // an interim refetch must not flip the image back and forth underneath it.
-    const avatarOperationActive = mutationKindRef.current === "avatar" || mutationKindRef.current === "gallery-avatar";
+    const avatarOperationActive =
+      mutationKindRef.current === "avatar" ||
+      mutationKindRef.current === "gallery-avatar" ||
+      mutationKindRef.current === "remove-avatar";
     const baseline = baselineFormRef.current;
     const avatarUnchanged = authoritativeAvatarPathRef.current === rawPersona.avatarPath;
     if (
@@ -1508,12 +1529,13 @@ export function PersonaEditor() {
   // Forced teardown (unmount, or a Persona switch that never re-hydrates) drops the
   // local identity so an in-flight completion can still update shared caches through
   // the hooks but can no longer write this editor's state.
-  useEffect(() => {
+  useLayoutEffect(() => {
     return () => {
       editorSessionRef.current = generateClientId();
       loadedPersonaIdRef.current = null;
       mutationTokenRef.current = null;
       mutationKindRef.current = null;
+      setMutationKind(null);
     };
   }, [personaId]);
 
@@ -1654,6 +1676,41 @@ export function PersonaEditor() {
     },
     [adoptAuthoritativePersona, commitFormData, isCurrentEditorSession, updateField, uploadAvatar],
   );
+
+  const handleAvatarRemove = useCallback(async () => {
+    if (!personaId || !avatarPreview) return;
+    const token = beginMutation("remove-avatar");
+    if (!token) return;
+    const session = editorSessionRef.current;
+    try {
+      const confirmed = await showConfirmDialog({
+        title: localizeUi("ui.ui.avatarcropwidget.removeAvatar"),
+        message: localizeUi("persona.avatar.removeConfirm", { name: formDataRef.current?.name ?? "" }),
+        confirmLabel: localizeUi("settings.notifications.customSound.actions.remove"),
+        tone: "destructive",
+      });
+      if (!confirmed || !isCurrentEditorSession(session)) return;
+      const updated = await removeAvatar.mutateAsync(personaId);
+      if (!isCurrentEditorSession(session)) return;
+      adoptAuthoritativePersona(updated, { adoptAvatar: true });
+      toast.success(localizeUi("persona.avatar.removed"));
+    } catch (error) {
+      if (isCurrentEditorSession(session)) {
+        toast.error(error instanceof Error ? error.message : localizeUi("persona.avatar.removeFailed"));
+      }
+    } finally {
+      finishMutation(token);
+    }
+  }, [
+    adoptAuthoritativePersona,
+    avatarPreview,
+    beginMutation,
+    finishMutation,
+    isCurrentEditorSession,
+    localizeUi,
+    personaId,
+    removeAvatar,
+  ]);
 
   const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -2143,11 +2200,15 @@ export function PersonaEditor() {
                 onSelectAvatar={() => {
                   if (!mutationBusy) fileInputRef.current?.click();
                 }}
+                onRemoveAvatar={() => void handleAvatarRemove()}
                 onGenerateAvatar={() => {
                   if (!mutationBusy) setAvatarGeneratorOpen(true);
                 }}
                 imageGenerationAvailable={imageGenerationAvailable}
-                avatarUploading={avatarBusy}
+                avatarUploading={avatarUploading}
+                avatarRemoving={
+                  mutationKind === "remove-avatar" && removeAvatar.isPending && removeAvatar.variables === personaId
+                }
                 hasUnsavedChanges={dirty}
                 avatarMutationBusy={mutationBusy}
               />
@@ -3554,8 +3615,10 @@ function PersonaMetadataTab({
   avatarPreview,
   onSelectAvatar,
   onGenerateAvatar,
+  onRemoveAvatar,
   imageGenerationAvailable,
   avatarUploading,
+  avatarRemoving,
   hasUnsavedChanges,
   // The editor's live save/avatar/gallery mutex. Replacing or reframing the avatar
   // while one of those is running would race the image the server is about to
@@ -3568,8 +3631,10 @@ function PersonaMetadataTab({
   avatarPreview: string | null;
   onSelectAvatar: () => void;
   onGenerateAvatar: () => void;
+  onRemoveAvatar: () => void;
   imageGenerationAvailable: boolean;
   avatarUploading: boolean;
+  avatarRemoving: boolean;
   hasUnsavedChanges: boolean;
   avatarMutationBusy: boolean;
 }) {
@@ -3641,6 +3706,8 @@ function PersonaMetadataTab({
               src={avatarPreview}
               alt={formData.name}
               crop={formData.avatarCrop}
+              onRemove={onRemoveAvatar}
+              removing={avatarRemoving}
               onChange={(next) => {
                 if (avatarMutationBusy) return;
                 updateField("avatarCrop", next);
@@ -3770,7 +3837,7 @@ function PersonaMetadataTab({
             <button
               type="button"
               onClick={removeAllTags}
-              className="mari-chrome-accent-surface mari-accent-animated rounded-lg border px-2.5 py-1 text-[0.6875rem] font-medium transition-colors"
+              className="mari-editor-action mari-editor-action--compact px-2.5 py-1 text-[0.6875rem]"
             >
               {localizeUi("ui.personas.personametadatatab.removeAll")}
             </button>
@@ -3996,6 +4063,7 @@ function buildCurrentPersonaSnapshot(formData: PersonaFormData): PersonaCardSnap
     personaVersion: formData.personaVersion,
     versioningEnabled: String(formData.versioningEnabled),
     creatorNotes: formData.creatorNotes,
+    cardFieldAlternatives: JSON.stringify(formData.cardFieldAlternatives),
     summary: formData.summary,
     mes_example: formData.mes_example,
     description: formData.description,
@@ -4284,7 +4352,7 @@ function PersonaVersionHistoryPanel({
                     type="button"
                     onClick={() => handleDeleteVersion(version)}
                     disabled={versionMutationPending}
-                    className="mari-editor-action mari-editor-action--compact mari-editor-action--danger inline-flex h-7 w-7 rounded-lg p-0"
+                    className="mari-editor-action mari-editor-action--compact mari-editor-action--accent inline-flex h-7 w-7 rounded-lg p-0"
                     title={localizeUi("ui.personas.personaversionhistorypanel.deleteThisSavedVersion")}
                   >
                     {deleteVersion.isPending && deleteVersion.variables?.versionId === version.id ? (
@@ -4434,20 +4502,27 @@ function PersonaCardTab({
 }) {
   const { t: localizeUi } = useUiTranslation();
   const personaId = useUIStore((state) => state.personaDetailId);
-  const generation = useCardFieldGeneration(
-    "persona",
-    personaId,
-    {
-      name: formData.name,
-      summary: formData.summary,
-      description: formData.description,
-      personality: formData.personality,
-      backstory: formData.backstory,
-      appearance: formData.appearance,
-      scenario: formData.scenario,
-      mes_example: formData.mes_example,
-    },
-    (field, text) => updateField(field, text),
+  const card = {
+    name: formData.name,
+    summary: formData.summary,
+    description: formData.description,
+    personality: formData.personality,
+    backstory: formData.backstory,
+    appearance: formData.appearance,
+    scenario: formData.scenario,
+    mes_example: formData.mes_example,
+  };
+  const generation = useCardFieldGeneration("persona", personaId, card, (field, text) => updateField(field, text));
+  const alternativesFor = (field: CardFieldKey) => (
+    <CardFieldAlternatives
+      kind="persona"
+      entityId={personaId}
+      field={field}
+      label={generation.labels[field]}
+      card={card}
+      alternatives={formData.cardFieldAlternatives}
+      onChange={(alternatives) => updateField("cardFieldAlternatives", alternatives)}
+    />
   );
   const seedHint = localizeUi("ui.cardFields.seedPlaceholder");
   const wandFor = (field: CardFieldKey) => (
@@ -4478,10 +4553,16 @@ function PersonaCardTab({
             placeholder={localizeUi("ui.characters.summary.placeholder") + " " + seedHint}
             rows={4}
             actions={wandFor("summary")}
+            footer={alternativesFor("summary")}
           />
         </EditorSectionAnchor>
         <EditorSectionAnchor id="persona-card-description">
-          <DescriptionTab formData={formData} updateField={updateField} actions={wandFor("description")} />
+          <DescriptionTab
+            formData={formData}
+            updateField={updateField}
+            actions={wandFor("description")}
+            footer={alternativesFor("description")}
+          />
         </EditorSectionAnchor>
         <EditorSectionAnchor id="persona-card-personality">
           <TextareaTab
@@ -4489,6 +4570,7 @@ function PersonaCardTab({
             subtitle={localizeUi("ui.personas.personacardtab.yourPersonalityTraitsTemperamentAndBehavioralPatterns")}
             helpText={PERSONA_PERSONALITY_HELP}
             actions={wandFor("personality")}
+            footer={alternativesFor("personality")}
             value={formData.personality}
             onChange={(v) => updateField("personality", v)}
             placeholder={
@@ -4503,6 +4585,7 @@ function PersonaCardTab({
             subtitle={localizeUi("ui.personas.personacardtab.yourCharacterSHistoryOriginStoryAndFormativeLife")}
             helpText={PERSONA_BACKSTORY_HELP}
             actions={wandFor("backstory")}
+            footer={alternativesFor("backstory")}
             value={formData.backstory}
             onChange={(v) => updateField("backstory", v)}
             placeholder={
@@ -4519,6 +4602,7 @@ function PersonaCardTab({
             )}
             helpText={PERSONA_APPEARANCE_HELP}
             actions={wandFor("appearance")}
+            footer={alternativesFor("appearance")}
             value={formData.appearance}
             onChange={(v) => updateField("appearance", v)}
             placeholder={
@@ -4561,6 +4645,7 @@ function PersonaCardTab({
             subtitle={localizeUi("ui.personas.personacardtab.yourDefaultSituationOrContextWithinRoleplays")}
             helpText={PERSONA_SCENARIO_HELP}
             actions={wandFor("scenario")}
+            footer={alternativesFor("scenario")}
             value={formData.scenario}
             onChange={(v) => updateField("scenario", v)}
             placeholder={
@@ -4580,6 +4665,7 @@ function PersonaCardTab({
             placeholder={localizeUi("ui.cardFields.personaDialoguePlaceholder") + " " + seedHint}
             rows={10}
             actions={wandFor("mes_example")}
+            footer={alternativesFor("mes_example")}
           />
         </EditorSectionAnchor>
       </div>
@@ -4607,8 +4693,10 @@ function DescriptionTab({
   formData,
   updateField,
   actions,
+  footer,
 }: {
   actions?: ReactNode;
+  footer?: ReactNode;
   formData: PersonaFormData;
   updateField: <K extends keyof PersonaFormData>(key: K, value: PersonaFormData[K]) => void;
 }) {
@@ -4640,6 +4728,7 @@ function DescriptionTab({
       <p className="mt-1.5 text-right text-[0.625rem] text-[var(--muted-foreground)]">
         {formatEstimatedTokens(estimateTextTokens(formData.description), localizeUi)}
       </p>
+      {footer}
     </div>
   );
 }
@@ -4675,8 +4764,10 @@ function TextareaTab({
   rows = 8,
   helpText,
   actions,
+  footer,
 }: {
   actions?: ReactNode;
+  footer?: ReactNode;
   title: string;
   subtitle: string;
   helpText?: ReactNode;
@@ -4705,6 +4796,7 @@ function TextareaTab({
       <p className="mt-1.5 text-right text-[0.625rem] text-[var(--muted-foreground)]">
         {formatEstimatedTokens(estimateTextTokens(value), localizeUi)}
       </p>
+      {footer}
     </div>
   );
 }

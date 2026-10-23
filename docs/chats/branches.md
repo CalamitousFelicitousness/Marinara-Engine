@@ -6,11 +6,11 @@ This guide explains chat branches in Marinara Engine: what a branch is and how t
 
 A branch is a copy of a chat that shares history up to a chosen point. You use branches to explore a different direction while keeping the original chat safe.
 
-All branches of the same chat are grouped together. In the chat list, a chat with more than one branch shows as a single row. A small branch count appears next to it. You open and switch between its branches from the **Chat Branches** section of **Chat Settings** (see below).
+All branches of the same chat are grouped together. In the chat list, the chat keeps its row and shows a branch count. Once at least one branch in the group records which of the group's chats it was made from, clicking that count opens the branches underneath it; a branch whose source is unknown sits directly under the chat. Game sessions are numbered sessions rather than branches, so a Game group always keeps its single row. Each branch shows its display name and when it was last active. A branch made from a branch nests under that one, so branches of branches read as a tree instead of a flat pile. You can switch straight to a branch from the list, or use the **Chat Branches** section of **Chat Settings** (see below) to rename, delete, export or import them.
 
 Each branch can have its own display name, so you can label them like "friendly ending" and "dark ending". This display name is separate from the underlying chat name.
 
-Branch lineage records the immediate source chat and the message where the fork was made. The source message ID and its copied message ID are both retained; this lets integrations identify the fork boundary even though copied messages receive new IDs. Branching a branch records that branch as the immediate parent, not the original root. Older branches and imported siblings keep their display name but have no known lineage.
+Branch lineage records the immediate source chat and the message where the fork was made. The source message ID and its copied message ID are both retained; this lets integrations identify the fork boundary even though copied messages receive new IDs. Branching a branch records that branch as the immediate parent, not the original root. Older branches and imported siblings keep their display name but have no known lineage: a group with no known lineage keeps its single row in the chat list, and its branches are still reached from the **Chat Branches** section.
 
 ## Branch from here
 

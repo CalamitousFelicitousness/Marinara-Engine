@@ -6,6 +6,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
 import {
   canonicalizeLegacyPersonaInput,
+  unassignCardFieldAlternatives,
   createCharacterSchema,
   updateCharacterSchema,
   createGroupSchema,
@@ -152,6 +153,10 @@ const ALLOWED_CALL_VIDEO_CLIP_UPLOAD_EXTS = new Set([".mp4"]);
 const renameCardVersionSchema = z.object({ version: z.string().trim().min(1).max(100) });
 const bakeGreetingImagesSchema = z.object({
   urls: z.array(z.string()).min(1).max(GREETING_IMAGE_BAKE_MAX_PER_REQUEST),
+  bakedImages: z
+    .array(z.object({ url: z.string(), file: z.string().min(1).max(255) }))
+    .max(GREETING_IMAGE_BAKE_MAX_PER_REQUEST)
+    .default([]),
 });
 type UploadedMultipartFile = NonNullable<Awaited<ReturnType<FastifyRequest["file"]>>>;
 
@@ -737,6 +742,16 @@ function streamNativeExport({ envelope, slot, parts }: NativeExport, space = 0) 
   return streamJsonWithSlot(envelope, slot, parts, space);
 }
 
+function cardFieldAlternativesForExport(value: unknown) {
+  try {
+    return unassignCardFieldAlternatives(value);
+  } catch (error) {
+    // Malformed stored shapes fail closed; foreign assignment conflicts are already cleared above.
+    if (error instanceof z.ZodError) return [];
+    throw error;
+  }
+}
+
 async function buildNativeCharacterExport(
   char: { id: string; createdAt: string; updatedAt: string; comment?: string | null; avatarPath?: string | null },
   data: any,
@@ -745,7 +760,10 @@ async function buildNativeCharacterExport(
   const extensions = parseCharacterDataRecord(data?.extensions);
   const characterSheetImageId =
     typeof extensions.characterSheetImageId === "string" ? extensions.characterSheetImageId : null;
-  const portableExtensions = { ...extensions };
+  const portableExtensions: Record<string, unknown> = {
+    ...extensions,
+    cardFieldAlternatives: cardFieldAlternativesForExport(extensions.cardFieldAlternatives),
+  };
   delete portableExtensions.characterSheetImageId;
   const portableData = { ...data, extensions: portableExtensions };
   const gallery = await galleryStorage.listByCharacterId(char.id);
@@ -787,6 +805,7 @@ export function buildCompatibleCharacterExport(
   // Compatible cards carry no gallery, so baked greeting images go back to their web links.
   data = data ? restoreBakedGreetingImages(data) : data;
   const extensions = { ...parseCharacterDataRecord(data?.extensions) };
+  extensions.cardFieldAlternatives = cardFieldAlternativesForExport(extensions.cardFieldAlternatives);
   delete extensions.bakedGreetingImages;
   const description = [typeof data?.description === "string" ? data.description : ""];
   for (const [key, label] of [
@@ -893,7 +912,10 @@ function canonicalizePersonaForExport(persona: Record<string, unknown>): {
     updatedAt: _updatedAt,
     ...projectedFields
   } = projected;
-  const validationFields: Record<string, unknown> = { ...projectedFields };
+  const validationFields: Record<string, unknown> = {
+    ...projectedFields,
+    cardFieldAlternatives: unassignCardFieldAlternatives(projectedFields.cardFieldAlternatives),
+  };
   const usesFallbackName = typeof validationFields.name !== "string" || !validationFields.name.trim();
 
   if (usesFallbackName) validationFields.name = "Unnamed Persona";
@@ -929,6 +951,7 @@ function canonicalizePersonaForExport(persona: Record<string, unknown>): {
   const row: Record<string, unknown> = { ...persona, ...extra, name, description };
   // Export the public boolean contract rather than the storage-only text flag
   // so compatible and native Persona payloads can be imported unchanged.
+  row.cardFieldAlternatives = parsed.data.cardFieldAlternatives ?? [];
   row.versioningEnabled = parsed.data.versioningEnabled ?? true;
   // Same text-column-to-boolean conversion for the image-appearance toggle
   // (#7053): `row` is spread from the raw row above, so without this the export
@@ -1564,6 +1587,16 @@ export async function charactersRoutes(app: FastifyInstance) {
     return reset;
   });
 
+  app.get<{ Params: { id: string } }>("/:id/card-field-chats", async (req, reply) => {
+    if (!(await storage.getById(req.params.id))) return reply.status(404).send({ error: "Character not found" });
+    return storage.listCardFieldChats("character", req.params.id);
+  });
+
+  app.get<{ Params: { id: string } }>("/personas/:id/card-field-chats", async (req, reply) => {
+    if (!(await storage.getPersona(req.params.id))) return reply.status(404).send({ error: "Persona not found" });
+    return storage.listCardFieldChats("persona", req.params.id);
+  });
+
   app.post("/", async (req) => {
     const input = createCharacterSchema.parse(req.body);
     const body = req.body as Record<string, unknown>;
@@ -2118,7 +2151,7 @@ export async function charactersRoutes(app: FastifyInstance) {
     "/:id/gallery/bake",
     { config: { rateLimit: GREETING_IMAGE_BAKE_RATE_LIMIT } },
     async (req, reply) => {
-      const { urls } = bakeGreetingImagesSchema.parse(req.body ?? {});
+      const { urls, bakedImages } = bakeGreetingImagesSchema.parse(req.body ?? {});
       const char = await storage.getById(req.params.id);
       if (!char) return reply.status(404).send({ error: "Character not found" });
       // Paths use the stored id, never the raw route parameter.
@@ -2126,7 +2159,17 @@ export async function charactersRoutes(app: FastifyInstance) {
 
       const dir = await ensureCharacterGalleryDir(id);
       const results: Array<{ url: string; file?: string; error?: string }> = [];
+      const gallery = bakedImages.length ? await characterGallery.listByCharacterId(id) : [];
       for (const url of new Set(urls)) {
+        const cached = bakedImages.find((entry) => entry.url === url);
+        const row = cached ? findGalleryRowByFilename(gallery, cached.file) : null;
+        const stored = row ? resolveStoredGalleryFile(row.filePath) : null;
+        const validCopy = stored ? await validateImageAssetFile(stored.absolutePath, stored.filename) : null;
+        if (stored && validCopy) {
+          await validCopy.handle.close();
+          results.push({ url, file: stored.filename });
+          continue;
+        }
         let image: Awaited<ReturnType<typeof downloadGreetingImage>>;
         try {
           image = await downloadGreetingImage(url);
@@ -2820,6 +2863,16 @@ export async function charactersRoutes(app: FastifyInstance) {
       await removeUnattachedAvatarFile({ avatarPath });
       throw error;
     }
+  });
+
+  app.delete<{ Params: { id: string } }>("/personas/:id/avatar", async (req, reply) => {
+    // ponytail: clear the card reference and retain files for frozen chat identities.
+    // Reclaim them only after checking current, historical and trashed references.
+    const updated = await enqueueUpdate(personaUpdateQueues, req.params.id, () =>
+      storage.updatePersona(req.params.id, { avatarPath: null, avatarCrop: "" }, { versionReason: "Avatar removal" }),
+    );
+    if (!updated) return reply.status(404).send({ error: "Persona not found" });
+    return projectPersona(updated);
   });
 
   app.put("/personas/:id/activate", async (_req, reply) =>

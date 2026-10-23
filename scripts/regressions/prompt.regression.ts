@@ -4922,15 +4922,15 @@ const cases: RegressionCase[] = [
         /style: writerStyle,\s+imagePrompt: removeCopiedPromptGuidance\(imagePrompt, writerGuidance\),/u,
       );
       assert.equal(retryRoute.match(/generatedStyle: writerStyle,/gu)?.length, 2);
-      for (const selfiePath of [
-        "routes/gallery.routes.ts",
-        "services/generation/conversation-selfie-command-runtime.ts",
-      ]) {
-        assert.match(
-          routeSource(selfiePath),
-          /removeCopiedPromptGuidance\(\(promptResult\.content \?\? ""\)\.trim\(\), \[/u,
-        );
-      }
+      assert.match(
+        routeSource("routes/gallery.routes.ts"),
+        /removeCopiedPromptGuidance\(\(promptResult\.content \?\? ""\)\.trim\(\), \[/u,
+      );
+      // The Conversation selfie writer strips leading reasoning first, then the copied guidance.
+      assert.match(
+        routeSource("services/generation/conversation-selfie-command-runtime.ts"),
+        /removeCopiedPromptGuidance\(answer, \[/u,
+      );
       assert.match(
         routeSource("services/generation/illustrator-background-generation.ts"),
         /sceneDescription: removeCopiedPromptGuidance\(plan\.prompt, \[styleInstruction, imagePromptInstructions\]\)/u,

@@ -1128,10 +1128,8 @@ export function resolveGroupIndividualHistorySpeaker(
   }
   if (message.role === "user") return message.personaSnapshotName?.trim() || options.personaName.trim() || "User";
   if (message.role === "assistant") {
-    return (
-      (message.characterId ? (options.characterNamesById.get(message.characterId) ?? null) : null) ??
-      (typeof message.name === "string" && message.name.trim() ? message.name.trim() : null)
-    );
+    const characterName = message.characterId ? options.characterNamesById.get(message.characterId) : undefined;
+    return characterName ?? (typeof message.name === "string" && message.name.trim() ? message.name.trim() : null);
   }
   return null;
 }

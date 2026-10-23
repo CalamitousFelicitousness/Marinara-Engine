@@ -424,6 +424,9 @@ export function rulesetRelightCells(state: RulesetEncounterState, prop: RulesetB
   return cells;
 }
 export const RULESET_FLY_DOWN_OPTION = "move:fly-down";
+/** Into the air or back onto the ground where it stands (1.354): free, as part of moving. */
+export const RULESET_TAKE_OFF_OPTION = "move:take-off";
+export const RULESET_LAND_OPTION = "move:land";
 /** How high above the ground under it a flier may go, in levels. A board's own heights are a handful
  *  of levels, so this is well above anything worth being out of reach over. */
 export const RULESET_FLY_CEILING = 20;
@@ -1002,7 +1005,7 @@ export interface RulesetCombatCost {
   steps: Array<{ op: RulesetSheetOp; label: string }>;
   /** The live state the price leaves behind, or null when there was nothing on a sheet to pay. */
   live: RulesetLiveState | null;
-  cost: Array<{ pool: string; label: string; amount: number }>;
+  cost: Array<{ pool: string; label: string; amount: number; unit?: string; units?: string }>;
 }
 
 /**
@@ -1047,7 +1050,17 @@ export function planRulesetCombatCost(
     const result = applyRulesetSheetOp(definition, build, live, step.op);
     if (!result.ok) return null;
     live = result.live;
-    if (step.op.op === "spend") cost.push({ pool: step.op.pool, label: step.label, amount: step.op.amount });
+    if (step.op.op === "spend") {
+      // What one of it is called, and more than one (1.378): "1 3rd-level slot".
+      const declared = definition.sheet.live.pools.find((pool) => pool.id === (step.op as { pool: string }).pool);
+      cost.push({
+        pool: step.op.pool,
+        label: step.label,
+        amount: step.op.amount,
+        ...(declared?.unit ? { unit: declared.unit } : {}),
+        ...(declared?.units ? { units: declared.units } : {}),
+      });
+    }
   }
   // A pool the ruleset limits per turn or round cannot pay past what is left of that limit, however
   // much is in it.
@@ -1936,6 +1949,8 @@ function forecastFor(
   state: RulesetEncounterState,
   actor: RulesetCombatant,
   action: RulesetCombatAction,
+  /** The one it is pointed at, where the caller knows; the first it may be pointed at otherwise. */
+  pointedAt?: RulesetCombatant,
 ): RulesetCombatOption["forecast"] | undefined {
   const forecast: NonNullable<RulesetCombatOption["forecast"]> = {};
   if (action.sequence) {
@@ -1985,7 +2000,7 @@ function forecastFor(
     if (total > 0) forecast.averageDamage = Math.round(total * 100) / 100;
     return forecast.averageDamage === undefined ? undefined : forecast;
   }
-  const target = firstTarget(definition, state, actor, action) ?? firstAreaTarget(state, actor, action);
+  const target = pointedAt ?? firstTarget(definition, state, actor, action) ?? firstAreaTarget(state, actor, action);
   // A contest's chance is the share it would WIN against the first one it may be taken against.
   if (action.contest) {
     const chance = target ? rulesetContestChance(definition, combat, actor, target, action.contest, state) : null;
@@ -2069,6 +2084,31 @@ function forecastFor(
       ) / 100;
   }
   return forecast.hitChance !== undefined || forecast.averageDamage !== undefined ? forecast : undefined;
+}
+
+/** What one option is expected to do against each of the ones it may be pointed at, by their ids:
+ *  the same numbers the menu shows for the first, worked out for each, so a player choosing between
+ *  targets can compare them. Nothing for a sequence, whose parts each pick their own, nor for an
+ *  option this actor does not have. */
+export function rulesetForecastsByTarget(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  actorId: string,
+  optionId: string,
+  targetIds: readonly string[],
+): Record<string, NonNullable<RulesetCombatOption["forecast"]>> {
+  const combat = definition.combat;
+  const actor = state.combatants.find((one) => one.id === actorId);
+  // A lair option's id carries its prefix; the action behind it is the actor's own.
+  const action = actor ? actionOf(actor, optionId) : undefined;
+  if (!combat || !actor || !action || action.sequence) return {};
+  const forecasts: Record<string, NonNullable<RulesetCombatOption["forecast"]>> = {};
+  for (const id of targetIds) {
+    const target = state.combatants.find((one) => one.id === id);
+    const forecast = target ? forecastFor(definition, combat, state, actor, action, target) : undefined;
+    if (forecast) forecasts[id] = forecast;
+  }
+  return forecasts;
 }
 
 /** Modifiers that belong to THIS attack hit (Capability API 1.133). Rows and held weapons are
@@ -2358,13 +2398,26 @@ function optionFrom(
           },
         }
       : {}),
+    ...(action.save
+      ? {
+          saveAgainst: {
+            label: definition.sheet.saves.find((one) => one.id === action.save!.save)?.label ?? action.save.save,
+            dc: action.save.difficulty,
+            onSuccess: action.save.onSuccess,
+          },
+        }
+      : {}),
     ...(rulesetFreeStrike(actor, action) ? { strikes: actor.strikesLeft } : {}),
     ...(action.heal ? { heals: true } : {}),
     ...(action.switches && "conjured" in action.switches
       ? { dismiss: true as const }
       : action.switches
-        ? { on: "item" in action.switches ? rulesetItemOn(actor, action.switches.item) : !actor.doused }
+        ? {
+            on: "item" in action.switches ? rulesetItemOn(actor, action.switches.item) : !actor.doused,
+            ...(action.switchLabels ? { switchLabels: action.switchLabels } : {}),
+          }
         : {}),
+    ...(action.menuGroup ? { menuGroup: action.menuGroup } : {}),
     ...(action.restore ? { restores: action.restore.pool } : {}),
     ...(action.again ? { again: true as const } : {}),
   };
@@ -2890,8 +2943,22 @@ function movementOptions(
       },
     ];
   }
-  if (left < 1) return [];
-  const options: RulesetCombatOption[] = [];
+  // Taking off and landing where it stands (1.354), free: a flier on the ground, or one in the air at
+  // the ground's own height that has a walk to come down to.
+  const lift: RulesetCombatOption[] = [];
+  if (actor.speeds?.fly && typeof actor.x === "number" && !rulesetAirborne(state.board?.grid, actor)) {
+    const move = (id: string, label: string): RulesetCombatOption => ({
+      id,
+      kind: "move",
+      label,
+      targets: { side: "self", count: 0 },
+      movementCost: 0,
+    });
+    if (!actor.airborne) lift.push(move(RULESET_TAKE_OFF_OPTION, "Take off"));
+    else if (actor.speed > 0) lift.push(move(RULESET_LAND_OPTION, "Land"));
+  }
+  if (left < 1) return lift;
+  const options: RulesetCombatOption[] = [...lift];
   const cells = rulesetReachableCells(definition, state, actor.id);
   if (cells.length > 0) {
     options.push({ id: RULESET_MOVE_OPTION, kind: "move", label: "Move", targets: { side: "self", count: 0 }, cells });

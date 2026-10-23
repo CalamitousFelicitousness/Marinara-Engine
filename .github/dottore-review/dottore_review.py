@@ -142,7 +142,7 @@ MAX_CONTRACT_STATE_LIST_ITEMS = 3
 # its role's time instead (see chat).
 MODEL_REQUEST_TIMEOUT = 360
 FIRST_CALL_TIMEOUT = 180
-# Caps one attempt that keeps streaming, or the role's time box when that is longer; such an attempt is not retried.
+# Limits time without thinking, text or tool-input progress; pings do not keep an attempt alive.
 MODEL_STREAM_LIMIT = 900
 # Reasoning efforts from least to most. A role offered no tools whose reply hits its output cap is retried once at the
 # next lower effort: the cap is a symptom of thinking, and effort is the lever that reduces it.
@@ -184,8 +184,8 @@ MAX_SCOUT_CHARS = 40_000
 # every turn of a tool loop resends the whole conversation.
 ROLE_DEFAULTS = {
     "scout": {"reads": 10, "chars": 40_000, "minutes": 5, "max_tokens": 16_000, "places": MAX_SCOUT_PLACES, "scouts": SCOUTS},
-    "finder": {"reads": 0, "chars": 0, "minutes": 10, "max_tokens": 32_000},
-    "verify": {"reads": 5, "chars": 40_000, "max_tokens": 32_000},
+    "finder": {"reads": 0, "chars": 0, "minutes": 10, "max_tokens": 64_000},
+    "verify": {"reads": 5, "chars": 40_000, "max_tokens": 64_000},
 }
 # DOTTORE_COST_LIMIT_USD stops a review's model calls once it has spent that much (calls in flight still finish). Unset,
 # a review may spend this much; 0 removes the limit.
@@ -1200,13 +1200,19 @@ class ResponseFailed(Exception):
 
 
 def watched(stream, started, timing, limit=MODEL_STREAM_LIMIT):
-    """Yield a stream's events, noting when the first arrived and stopping one that runs too long. A stopped stream
+    """Yield a stream's events, noting when the first arrived and stopping one that makes no progress. A stopped stream
     returns no usage, so the error carries what had streamed by then: thinking, text and tool-input characters."""
     seen = {"thinking": 0, "text": 0, "tool": 0}
     last = 0.0  # when the counts last grew; pings and block boundaries do not count
     for event in stream:
         elapsed = time.monotonic() - started
         timing.setdefault("first_chunk", elapsed)
+        if elapsed - last > limit:
+            raise TimeoutError(
+                f"the reply made no thinking, text or tool-input progress for {elapsed - last:.0f}s "
+                f"(limit {limit:.0f}s, elapsed {elapsed:.0f}s), with {seen['thinking']} thinking, {seen['text']} text "
+                f"and {seen['tool']} tool-input characters streamed, the last at {last:.0f}s"
+            )
         delta = getattr(event, "delta", None)  # Claude content_block_delta, or a Responses delta event's string
         if delta is None and getattr(event, "choices", None):  # Chat Completions chunk
             delta = event.choices[0].delta
@@ -1217,13 +1223,13 @@ def watched(stream, started, timing, limit=MODEL_STREAM_LIMIT):
                 grew = len(delta) if key == streamed else 0
             else:
                 grew = sum(len(getattr(delta, name, None) or "") for name in names) if delta is not None else 0
+                if key == "tool":
+                    grew += sum(
+                        len(getattr(getattr(call, "function", None), "arguments", None) or "")
+                        for call in getattr(delta, "tool_calls", None) or []
+                    )
             seen[key] += grew
             last = elapsed if grew else last
-        if elapsed > limit:
-            raise TimeoutError(
-                f"the reply was still streaming after {limit:.0f}s, with {seen['thinking']} thinking, {seen['text']} text "
-                f"and {seen['tool']} tool-input characters streamed, the last at {last:.0f}s"
-            )
         yield event
 
 
@@ -1249,7 +1255,7 @@ def read_stream(stream, started, timing, limit=MODEL_STREAM_LIMIT):
 
 
 def openai_reply(ctx, settings, messages, tools, tool_choice, read_timeout, started, timing, cache_key, stream_limit=MODEL_STREAM_LIMIT):
-    import httpx
+    import httpx2
     import openai
 
     claude = "claude" in settings["model"]
@@ -1270,10 +1276,14 @@ def openai_reply(ctx, settings, messages, tools, tool_choice, read_timeout, star
     if cache_key:
         # One key per packet keeps the finder's and checker's requests, which share the bundle, on the same cache.
         request["extra_body"] = {"prompt_cache_key": cache_key}
+    stream = None
     try:
         with ctx.clients[settings["slot"]].chat.completions.create(**request) as stream:
             return read_stream(stream, started, timing, stream_limit)
-    except (httpx.TimeoutException, httpx.TransportError) as exc:
+    except (httpx2.TimeoutException, httpx2.TransportError, openai.APIConnectionError) as exc:
+        # OpenAI wraps transport errors during iteration too; only an opened stream uses the stalled-call retry.
+        if stream is None and isinstance(exc, openai.APIConnectionError):
+            raise
         raise StreamStalled(error_text(exc)) from exc
 
 
@@ -1307,7 +1317,7 @@ def responses_input(messages):
 
 def responses_reply(ctx, settings, messages, tools, tool_choice, read_timeout, started, timing, cache_key, stream_limit=MODEL_STREAM_LIMIT):
     """One streamed Responses call, returned in the Chat Completions shape the agents use."""
-    import httpx
+    import httpx2
     import openai
 
     instructions, items = responses_input(messages)
@@ -1333,6 +1343,7 @@ def responses_reply(ctx, settings, messages, tools, tool_choice, read_timeout, s
     if cache_key:
         request["extra_body"] = {"prompt_cache_key": cache_key}
     response, capped = None, False
+    stream = None
     try:
         with ctx.clients[settings["slot"]].responses.create(**request) as stream:
             for event in watched(stream, started, timing, stream_limit):
@@ -1343,7 +1354,9 @@ def responses_reply(ctx, settings, messages, tools, tool_choice, read_timeout, s
                 elif event.type in ("response.failed", "error"):
                     failure = getattr(getattr(event, "response", None), "error", None) or event
                     raise ResponseFailed(getattr(failure, "message", None) or "the provider gave no message", getattr(failure, "code", None))
-    except (httpx.TimeoutException, httpx.TransportError) as exc:
+    except (httpx2.TimeoutException, httpx2.TransportError, openai.APIConnectionError) as exc:
+        if stream is None and isinstance(exc, openai.APIConnectionError):
+            raise
         raise StreamStalled(error_text(exc)) from exc
     if response is None:
         raise StreamStalled("the reply stream ended before the response completed")
@@ -1431,7 +1444,7 @@ def claude_reply(ctx, settings, messages, tools, tool_choice, read_timeout, star
     if settings["effort"]:
         # OpenRouter passes effort to Claude unchanged only beside a thinking field. Alone, it becomes OpenRouter's
         # own reasoning setting, under which Haiku thought until the output cap on every first call.
-        request["thinking"] = {"type": "adaptive"}
+        request["thinking"] = {"type": "adaptive", "display": "summarized"}
         request["output_config"] = {"effort": settings["effort"]}
     try:
         with ctx.clients[settings["slot"]].messages.stream(**request) as stream:
@@ -1526,9 +1539,8 @@ def chat(ctx, role, messages, tools, tool_choice, cache_key="", until=None, sett
         timing = {}
         if len(tools) == 1 and until:
             # Offered only its submit tool, the model does all its thinking before its first byte, which over a
-            # whole bundle takes minutes, so it may stay silent for the rest of the role's time box (`minutes`), and
-            # a reply still streaming when the box ends is cut there: a Sonnet finder at high streamed thinking
-            # for 900 s past its box without finishing.
+            # whole bundle takes minutes, so it may stay silent for the rest of the role's time box (`minutes`).
+            # Meaningful stream progress refreshes that idle allowance; the workflow still bounds an in-flight call.
             read_timeout = stream_limit = max(FIRST_CALL_TIMEOUT, until - started)
         else:
             read_timeout, stream_limit = (FIRST_CALL_TIMEOUT if first_call else MODEL_REQUEST_TIMEOUT), MODEL_STREAM_LIMIT
@@ -3496,7 +3508,8 @@ def render_walkthrough(
             ]
         )
         body.extend([f"- {note}" for note in invalid_findings[:5]])
-    # Last, for a pull request Dottore cannot push to (a fork): the same repair contracts, for an agent of your own.
+    # Last, for a pull request Dottore cannot push to (a fork without maintainer edits): the same repair contracts, for
+    # an agent of your own.
     agent_prompt = render_agent_prompt_details(defects, "🩺 Repair prompt for an agent of your own")
     if agent_prompt:
         body.extend(["", agent_prompt])
@@ -4431,13 +4444,22 @@ def autofix_prompt(args):
         walkthrough = latest_walkthrough_comment(pr_num)
         if not walkthrough or not autofix_ticked(walkthrough.get("body")):
             return
-    fields = "isCrossRepository,headRefName,headRefOid,state"
+    fields = "isCrossRepository,maintainerCanModify,headRepository,headRepositoryOwner,headRefName,headRefOid,state"
     pr = json.loads(run_gh(["pr", "view", pr_num, "--repo", repo, "--json", fields], check=True).stdout)
     if pr.get("state") != "OPEN":
         return
+    # The repair goes to the head branch's repository: this one, or a fork whose author allowed edits by maintainers.
+    owner, name = (pr.get("headRepositoryOwner") or {}).get("login"), (pr.get("headRepository") or {}).get("name")
+    head_repo = f"{owner}/{name}"
     note, threads = "", []
-    if pr.get("isCrossRepository"):
-        note = "Dottore can only push repairs to this repository's own branches; use the repair prompt at the end of the review instead."
+    if not name:
+        note = "This pull request's fork was deleted, so Dottore has no branch to push a repair to."
+    elif pr.get("isCrossRepository") and not pr.get("maintainerCanModify"):
+        note = (
+            f"Dottore cannot push repairs to `{head_repo}`, because this pull request does not allow edits by"
+            " maintainers. Its author can tick **Allow edits and access to secrets by maintainers** on the pull request"
+            " (a fork owned by an organisation cannot), or use the repair prompt at the end of the review instead."
+        )
     elif os.environ.get("DOTTORE_SMALL_API", "").strip().lower() != "anthropic":
         # The repair runs Claude Code, which speaks only Claude's Messages format. Read raw, so a bad value gets this
         # reply instead of model_slot's error.
@@ -4467,7 +4489,7 @@ def autofix_prompt(args):
         heading = re.search(r"### .*?\b(?:BLOCKING|HIGH|MEDIUM|LOW):\s*(.+)", thread["body"])
         title = heading.group(1).strip() if heading else "Dottore finding"
         findings.append({"path": thread["path"], "line": thread["line"], "title": title})
-    meta = {"head_ref": pr["headRefName"], "head_sha": pr["headRefOid"], "findings": findings}
+    meta = {"head_repo": head_repo, "head_ref": pr["headRefName"], "head_sha": pr["headRefOid"], "findings": findings}
     (out / "meta.json").write_text(json.dumps(meta), "utf-8")
     print("autofix=true")
 
@@ -4478,21 +4500,61 @@ def checks_not_passed(base, head):
     repo = os.environ["GITHUB_REPOSITORY"]
     rules = load_json_list(run_gh(["api", f"repos/{repo}/rules/branches/{base}"], check=True).stdout)
     required = {
-        check.get("context")
+        (check.get("context"), check.get("integration_id"))
         for rule in rules
         if rule.get("type") == "required_status_checks"
         for check in (rule.get("parameters") or {}).get("required_status_checks") or []
     }
-    passed = {}
-    # ponytail: the first 100 check runs on the head (the latest per name); page them when a PR carries more.
-    runs = json.loads(run_gh(["api", f"repos/{repo}/commits/{head}/check-runs?per_page=100"], check=True).stdout)
-    for check_run in runs.get("check_runs") or []:
-        done = check_run.get("status") == "completed" and check_run.get("conclusion") in ("success", "neutral", "skipped")
-        passed[check_run.get("name")] = done
-    combined = json.loads(run_gh(["api", f"repos/{repo}/commits/{head}/status"], check=True).stdout)
-    for status in combined.get("statuses") or []:
-        passed[status.get("context")] = status.get("state") == "success"
-    return sorted(name for name in (required or passed) if not passed.get(name))
+    runs = load_json_list(run_gh([
+        "api", f"repos/{repo}/commits/{head}/check-runs?per_page=100", "--paginate", "--jq", ".check_runs",
+    ], check=True).stdout)
+    statuses = load_json_list(run_gh([
+        "api", f"repos/{repo}/commits/{head}/statuses?per_page=100", "--paginate", "--jq", ".",
+    ], check=True).stdout)
+    # Reruns can leave several records for one name. Select the newest ID per source, independently of API order.
+    checks, apps, latest_statuses = {}, {}, {}
+    for run in sorted(runs, key=lambda item: item.get("id", 0), reverse=True):
+        app = run.get("app") or {}
+        if app.get("slug") and app.get("id"):
+            apps[app["slug"] + "[bot]"] = app["id"]
+        done = run.get("status") == "completed" and run.get("conclusion") in ("success", "neutral", "skipped")
+        checks.setdefault((run.get("name"), app.get("id")), done)
+    for status in sorted(statuses, key=lambda item: item.get("id", 0), reverse=True):
+        latest_statuses.setdefault((status.get("context"), (status.get("creator") or {}).get("login")), status)
+    def status_app_id(creator):
+        login = creator.get("login")
+        if creator.get("type") != "Bot":
+            return None
+        if login not in apps:
+            match = re.fullmatch(r"([A-Za-z0-9-]+)\[bot\]", login or "")
+            if not match:
+                raise RuntimeError(f"Could not verify GitHub App identity for status creator {login!r}")
+            result = run_gh(["api", f"apps/{match[1]}", "--jq", ".id"])
+            if result.returncode != 0:
+                # A 404 can also hide a private app. Only a verified identity can satisfy the binding.
+                raise RuntimeError(f"Could not verify GitHub App {match[1]}: {result.stderr.strip()}")
+            elif result.stdout.strip().isdigit():
+                apps[login] = int(result.stdout.strip())
+            else:
+                raise RuntimeError(f"Could not verify GitHub App {match[1]}: invalid app ID response")
+        return apps[login]
+
+    missing = set()
+    contexts = required or {(name, None) for name, _ in checks} | {(name, None) for name, _ in latest_statuses}
+    for name, integration_id in contexts:
+        bound = integration_id not in (None, -1)
+        results = [done for (context, app_id), done in checks.items()
+                   if context == name and (not bound or app_id == integration_id)]
+        for (context, _), status in latest_statuses.items():
+            if context != name or (bound and status_app_id(status.get("creator") or {}) != integration_id):
+                continue
+            # A same-named commit status and check must both pass; neither can erase the other's failure.
+            results.append(status.get("state") == "success")
+            break  # Statuses are newest-first; an unbound context accepts its latest publisher.
+        if not results or not all(results):
+            missing.add(name)
+    return sorted(missing)
+
 
 
 def approve(args):
@@ -4530,8 +4592,13 @@ def approve(args):
         missing.append("its examination of this head did not end Viable")
     if unresolved := len(open_dottore_threads(pr_num, answered=True)):
         missing.append(f"{unresolved} Dottore thread(s) are unresolved")
-    if failing := checks_not_passed(pr["baseRefName"], head):
-        missing.append("these checks have not passed: " + ", ".join(f"`{name}`" for name in failing))
+    try:
+        failing = checks_not_passed(pr["baseRefName"], head)
+    except (RuntimeError, ValueError, subprocess.TimeoutExpired) as exc:
+        missing.append(f"required check evidence could not be verified: {error_text(exc)}")
+    else:
+        if failing:
+            missing.append("these checks have not passed: " + ", ".join(f"`{name}`" for name in failing))
     if missing:
         print("Not approved: " + "; ".join(missing))
         if asked:

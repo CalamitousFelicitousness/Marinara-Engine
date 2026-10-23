@@ -63,6 +63,7 @@ import {
   MAX_PINNED_CONTEXT_MESSAGES,
   semanticSummaryRetrievalSettingsSchema,
   DEFAULT_GENERATION_PARAMS,
+  isStockMarinaraUniversalPreset,
   omitChatMetadataLocalDestinations,
 } from "@marinara-engine/shared";
 import type {
@@ -99,6 +100,7 @@ import { createMessageTrashStorage, MessageTrashPinnedLimitError } from "../serv
 import { createAppSettingsStorage } from "../services/storage/app-settings.storage.js";
 import { createCharactersStorage } from "../services/storage/characters.storage.js";
 import { resolveChatUserIdentity } from "../services/chat-user-identity.js";
+import { withAvatarFileLifecycleLock } from "../services/image/avatar-file-lifecycle.js";
 import { isFeatureEnabled } from "../services/features/feature-settings.js";
 import { createConnectionsStorage } from "../services/storage/connections.storage.js";
 import { createAgentsStorage } from "../services/storage/agents.storage.js";
@@ -532,7 +534,7 @@ function toPeekPromptMessages(
 
 async function buildPersonaSnapshotForChat(
   app: FastifyInstance,
-  chat: { personaId?: string | null; personaCharacterId?: string | null; mode?: string | null } | null,
+  chat: { id?: string; personaId?: string | null; personaCharacterId?: string | null; mode?: string | null } | null,
 ) {
   const charactersStore = createCharactersStorage(app.db);
   if (!chat) return null;
@@ -1447,16 +1449,20 @@ export async function chatsRoutes(app: FastifyInstance) {
     const identityChanged =
       identityBefore?.id !== identityAfter?.id || identityBefore?.source !== identityAfter?.source;
     if (identityChanged) {
-      const previousSnapshot =
-        (await buildPersonaSnapshotForChat(app, existing)) ??
-        ({ personaId: "default-user", source: "persona", name: "You" } as const);
-      const messages = await storage.listMessages(req.params.id);
-      for (const message of messages) {
-        if (message.role !== "user") continue;
-        const extra = parseExtra(message.extra);
-        if (extra.personaSnapshot) continue;
-        await storage.updateMessageExtra(message.id, { personaSnapshot: previousSnapshot });
-      }
+      // Keep the file protected until every backfilled reference is saved, not just until
+      // the avatar URL is read: cleanup may otherwise delete it during an awaited write.
+      await withAvatarFileLifecycleLock(async () => {
+        const previousSnapshot =
+          (await buildPersonaSnapshotForChat(app, existing)) ??
+          ({ personaId: "default-user", source: "persona", name: "You" } as const);
+        const messages = await storage.listMessages(req.params.id);
+        for (const message of messages) {
+          if (message.role !== "user") continue;
+          const extra = parseExtra(message.extra);
+          if (extra.personaSnapshot) continue;
+          await storage.updateMessageExtra(message.id, { personaSnapshot: previousSnapshot });
+        }
+      });
     }
     let roleplayTrackerCharacterIdsToSeed: string[] = [];
     // Characters added to an existing chat need the same card-variable defaults
@@ -2705,11 +2711,14 @@ export async function chatsRoutes(app: FastifyInstance) {
       }),
     );
     if (created?.id && input.role === "user") {
-      const chat = await storage.getById(req.params.id);
-      const personaSnapshot = await buildPersonaSnapshotForChat(app, chat);
-      const saved = personaSnapshot
-        ? ((await storage.updateMessageExtra(created.id, { personaSnapshot })) ?? created)
-        : created;
+      const { chat, saved } = await withAvatarFileLifecycleLock(async () => {
+        const chat = await storage.getById(req.params.id);
+        const personaSnapshot = await buildPersonaSnapshotForChat(app, chat);
+        const saved = personaSnapshot
+          ? ((await storage.updateMessageExtra(created.id, { personaSnapshot })) ?? created)
+          : created;
+        return { chat, saved };
+      });
       const memory = normalizeAdvancedMemorySettings(parseExtra(chat?.metadata).advancedMemory);
       if (chat?.mode !== "roleplay" || !memory.enabled || !memory.autoMessageVisibility) return saved;
       // Your message is decided once, when you post it, even if no reply follows (#7349).
@@ -2997,22 +3006,24 @@ export async function chatsRoutes(app: FastifyInstance) {
     if (chat.personaCharacterId && !(await isValidCharacterIdentity(app.db, chat.personaCharacterId))) {
       return reply.status(400).send({ error: "Selected character identity is invalid or unavailable." });
     }
-    const targetSnapshot = await buildPersonaSnapshotForChat(app, chat);
-    if (!targetSnapshot) {
-      return reply.status(400).send({ error: "Select a persona before updating historical messages." });
-    }
+    return withAvatarFileLifecycleLock(async () => {
+      const targetSnapshot = await buildPersonaSnapshotForChat(app, chat);
+      if (!targetSnapshot) {
+        return reply.status(400).send({ error: "Select a persona before updating historical messages." });
+      }
 
-    const result = await storage.reassignMessagePersonaSnapshots(
-      req.params.chatId,
-      {
-        scope,
-        sourcePersonaId,
-        sourcePersonaSource,
-      },
-      targetSnapshot,
-    );
+      const result = await storage.reassignMessagePersonaSnapshots(
+        req.params.chatId,
+        {
+          scope,
+          sourcePersonaId,
+          sourcePersonaSource,
+        },
+        targetSnapshot,
+      );
 
-    return { success: true, updatedCount: result.updatedCount };
+      return { success: true, updatedCount: result.updatedCount };
+    });
   });
 
   // Get game state for a specific message + swipe (does not fall back to latest)
@@ -3668,7 +3679,10 @@ export async function chatsRoutes(app: FastifyInstance) {
                 isSceneChat: chatMeta.sceneStatus === "active",
                 chatParameters: chatMeta.chatParameters,
                 baseReasoningEffort:
-                  preset && chatMode !== "conversation" && chatMode !== "game"
+                  preset &&
+                  !isStockMarinaraUniversalPreset(preset) &&
+                  chatMode !== "conversation" &&
+                  chatMode !== "game"
                     ? (parsePresetParameters(preset.parameters).reasoningEffort ?? null)
                     : DEFAULT_GENERATION_PARAMS.reasoningEffort,
               })
@@ -4021,7 +4035,7 @@ export async function chatsRoutes(app: FastifyInstance) {
                   individual: normalizeGroupChatMode(chatMeta.groupChatMode) === "individual",
                   impersonate: false,
                   narratorCharacterId: normalizeAdvancedMemorySettings(chatMeta.advancedMemory).narratorCharacterId,
-                  ...(await resolveCharacterMacroData(app.db, assistantCharacterIds)),
+                  ...(await resolveCharacterMacroData(app.db, assistantCharacterIds, chat.id)),
                 })
               : undefined,
             enableAgents: chatMeta.enableAgents === true,
@@ -4095,7 +4109,7 @@ export async function chatsRoutes(app: FastifyInstance) {
 
           // Character info fallback
           for (const cid of assistantCharacterIds) {
-            const charRow = await charStore.getById(cid);
+            const charRow = await charStore.getById(cid, chat.id);
             if (!charRow) continue;
             const charData = JSON.parse(charRow.data as string);
             const charName = charData.name ?? "Unknown";

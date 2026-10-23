@@ -107,10 +107,6 @@ export const OMNIBAR_SETTINGS_TOGGLE_BINDINGS: Readonly<Record<string, OmnibarSe
     get: (state) => state.convertLatexSymbols,
     set: (value) => useUIStore.getState().setConvertLatexSymbols(value),
   },
-  "color-inline-names": {
-    get: (state) => state.colorInlineNames ?? false,
-    set: (value) => useUIStore.getState().setColorInlineNames(value),
-  },
   "disable-inline-name-gradients": {
     get: (state) => state.disableInlineNameGradients ?? false,
     set: (value) => useUIStore.getState().setDisableInlineNameGradients(value),

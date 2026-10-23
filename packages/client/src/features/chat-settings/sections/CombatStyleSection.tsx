@@ -2,6 +2,7 @@ import type { CSSProperties } from "react";
 import { Swords } from "lucide-react";
 import type { GameCombatStyle } from "@marinara-engine/shared";
 import { ChatSettingsSection } from "../ChatSettingsSection";
+import { getCombatStyle, isBuiltInCombatStyle, listCombatStyles } from "../../../components/game/combat-styles";
 import { useTranslation as useUiTranslation } from "react-i18next";
 
 interface CombatStyleSectionProps {
@@ -52,6 +53,13 @@ export function CombatStyleSection({
               {localizeUi("ui.chatSettings.combatstylesection.classicCinematicMenuBattles")}
             </option>
             <option value="tactical">{localizeUi("game.combat.preference.tacticalLabel")}</option>
+            {listCombatStyles()
+              .filter((id) => !isBuiltInCombatStyle(id))
+              .map((id) => (
+                <option key={id} value={id}>
+                  {getCombatStyle(id).label ?? id}
+                </option>
+              ))}
           </select>
         </label>
         {/* A ruleset's own fights roll initiative by its own rules, so the choice is for Tactical battles. */}

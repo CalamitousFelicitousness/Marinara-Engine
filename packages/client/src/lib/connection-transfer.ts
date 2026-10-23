@@ -5,6 +5,7 @@ import {
   resolveDecisionConnectionTimeoutMs,
   resolveTtsRequestTimeoutMs,
   type DecisionSource,
+  type GenerativeAudioSource,
   normalizeImagePromptInstructions,
   normalizeVideoPromptInstructions,
   parsePinnedModels,
@@ -45,6 +46,9 @@ export type ConnectionTransferRow = {
   videoService?: unknown;
   videoPromptInstructions?: unknown;
   audioSource?: unknown;
+  audioGenerationSource?: unknown;
+  audioGenerationCallbackUrl?: unknown;
+  audioSoundEffectsModel?: unknown;
   decisionSource?: unknown;
   maxStateTokens?: unknown;
   decisionTimeoutMs?: unknown;
@@ -95,6 +99,9 @@ export type SafeConnectionExport = {
   videoService: string | null;
   videoPromptInstructions: string | null;
   audioSource: string | null;
+  audioGenerationSource: GenerativeAudioSource | null;
+  audioGenerationCallbackUrl: string | null;
+  audioSoundEffectsModel: string | null;
   decisionSource: DecisionSource | null;
   maxStateTokens: number | null;
   decisionTimeoutMs: number | null;
@@ -154,6 +161,8 @@ export function normalizeImportedConnectionEntry(value: unknown): ConnectionImpo
     provider === "decision" && DECISION_SOURCES.includes(value.decisionSource as DecisionSource)
       ? (value.decisionSource as DecisionSource)
       : null;
+  const generativeAudioSource = asGenerativeAudioSource(value.audioGenerationSource);
+  if (provider === "audio_generation" && !generativeAudioSource) return null;
   const defaultParameters = parseDefaultParameters(value.defaultParameters);
   const imageService = asNullableString(value.imageService ?? value.service);
   const videoService = provider === "video_generation" ? asNullableString(value.videoService ?? value.service) : null;
@@ -198,15 +207,27 @@ export function normalizeImportedConnectionEntry(value: unknown): ConnectionImpo
         provider === "decision" ? asTimeoutMs(value.decisionTimeoutMs, resolveDecisionConnectionTimeoutMs) : null,
       credentialsFromConnectionId: null,
       audioSource: provider === "audio" ? asAudioGenerationSource(value.audioSource ?? value.service) : null,
+      audioGenerationSource: provider === "audio_generation" ? generativeAudioSource : null,
+      audioGenerationCallbackUrl:
+        provider === "audio_generation" ? asNullableString(value.audioGenerationCallbackUrl) : null,
+      audioSoundEffectsModel: provider === "audio_generation" ? asNullableString(value.audioSoundEffectsModel) : null,
       audioVoice: provider === "audio" ? asNullableString(value.audioVoice) : null,
       audioTimeoutMs: provider === "audio" ? asTimeoutMs(value.audioTimeoutMs, resolveTtsRequestTimeoutMs) : null,
-      audioSoundEffects: provider === "audio" && asBoolean(value.audioSoundEffects),
-      audioMusic: provider === "audio" && asBoolean(value.audioMusic),
-      audioMusicEndpoint: provider === "audio" ? asAudioGenerationEndpoint(value.audioMusicEndpoint) : null,
+      audioSoundEffects:
+        (provider === "audio" || provider === "audio_generation") && asBoolean(value.audioSoundEffects),
+      audioMusic: (provider === "audio" || provider === "audio_generation") && asBoolean(value.audioMusic),
+      audioMusicEndpoint:
+        provider === "audio" || provider === "audio_generation"
+          ? asAudioGenerationEndpoint(value.audioMusicEndpoint)
+          : null,
       audioSoundEffectsEndpoint:
-        provider === "audio" ? asAudioGenerationEndpoint(value.audioSoundEffectsEndpoint) : null,
+        provider === "audio" || provider === "audio_generation"
+          ? asAudioGenerationEndpoint(value.audioSoundEffectsEndpoint)
+          : null,
       audioGenerationFormat:
-        provider === "audio" && value.audioGenerationFormat === "chat_completions" ? "chat_completions" : "binary",
+        (provider === "audio" || provider === "audio_generation") && value.audioGenerationFormat === "chat_completions"
+          ? "chat_completions"
+          : "binary",
       promptPresetId: null,
       maxTokensOverride: asNullablePositiveInteger(value.maxTokensOverride),
       maxParallelJobs: asBoundedPositiveInteger(value.maxParallelJobs, 1, MAX_PARALLEL_JOBS),
@@ -227,6 +248,7 @@ function serializeConnectionForExport(connection: ConnectionTransferRow): SafeCo
       : null;
   const isVideoProvider = provider === "video_generation";
   const isAudioProvider = provider === "audio";
+  const isGenerativeAudioProvider = provider === "audio_generation";
   return {
     name: asString(connection.name) || "Unnamed Connection",
     provider,
@@ -266,14 +288,27 @@ function serializeConnectionForExport(connection: ConnectionTransferRow): SafeCo
     decisionTimeoutMs:
       provider === "decision" ? asTimeoutMs(connection.decisionTimeoutMs, resolveDecisionConnectionTimeoutMs) : null,
     audioSource: isAudioProvider ? asNullableString(connection.audioSource ?? connection.service) : null,
+    audioGenerationSource: isGenerativeAudioProvider
+      ? asGenerativeAudioSource(connection.audioGenerationSource ?? "elevenlabs")
+      : null,
+    audioGenerationCallbackUrl: isGenerativeAudioProvider
+      ? asNullableString(connection.audioGenerationCallbackUrl)
+      : null,
+    audioSoundEffectsModel: isGenerativeAudioProvider ? asNullableString(connection.audioSoundEffectsModel) : null,
     audioVoice: isAudioProvider ? asNullableString(connection.audioVoice) : null,
     audioTimeoutMs: isAudioProvider ? asTimeoutMs(connection.audioTimeoutMs, resolveTtsRequestTimeoutMs) : null,
-    audioSoundEffects: isAudioProvider && asBoolean(connection.audioSoundEffects),
-    audioMusic: isAudioProvider && asBoolean(connection.audioMusic),
-    audioMusicEndpoint: isAudioProvider ? asAudioGenerationEndpoint(connection.audioMusicEndpoint) : null,
-    audioSoundEffectsEndpoint: isAudioProvider ? asAudioGenerationEndpoint(connection.audioSoundEffectsEndpoint) : null,
+    audioSoundEffects: (isAudioProvider || isGenerativeAudioProvider) && asBoolean(connection.audioSoundEffects),
+    audioMusic: (isAudioProvider || isGenerativeAudioProvider) && asBoolean(connection.audioMusic),
+    audioMusicEndpoint:
+      isAudioProvider || isGenerativeAudioProvider ? asAudioGenerationEndpoint(connection.audioMusicEndpoint) : null,
+    audioSoundEffectsEndpoint:
+      isAudioProvider || isGenerativeAudioProvider
+        ? asAudioGenerationEndpoint(connection.audioSoundEffectsEndpoint)
+        : null,
     audioGenerationFormat:
-      isAudioProvider && connection.audioGenerationFormat === "chat_completions" ? "chat_completions" : "binary",
+      (isAudioProvider || isGenerativeAudioProvider) && connection.audioGenerationFormat === "chat_completions"
+        ? "chat_completions"
+        : "binary",
     imageEndpointId: asNullableString(connection.imageEndpointId),
     imagePromptInstructions: normalizeImagePromptInstructions(connection.imagePromptInstructions),
     imageGenerationQuality: resolveOpenAIImageQuality(connection.imageGenerationQuality, asString(connection.model)),
@@ -281,6 +316,11 @@ function serializeConnectionForExport(connection: ConnectionTransferRow): SafeCo
     treatAsLocalEndpoint: asBoolean(connection.treatAsLocalEndpoint),
     claudeFastMode: asBoolean(connection.claudeFastMode),
   };
+}
+
+function asGenerativeAudioSource(value: unknown): GenerativeAudioSource | null {
+  const parsed = createConnectionSchema.shape.audioGenerationSource.safeParse(value);
+  return parsed.success ? parsed.data : null;
 }
 
 function asAudioGenerationEndpoint(value: unknown): string | null {

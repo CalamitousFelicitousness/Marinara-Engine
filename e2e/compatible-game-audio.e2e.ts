@@ -2,6 +2,7 @@ import { expect, test, type Locator, type Page, type TestInfo } from "@playwrigh
 import { readFileSync } from "node:fs";
 import { isolateSyncedUISettings, seedUIState } from "./ui-state-fixture.js";
 import { prepareViteFixtureDependencies } from "./vite-fixture-dependencies.js";
+import { clickTopbarPanel } from "./topbar-navigation.js";
 
 const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
 
@@ -39,11 +40,13 @@ async function capture(page: Page, info: TestInfo, label: string, anchor: Locato
 
 for (const theme of ["dark", "light"] as const) {
   test(`compatible Game audio settings save and reopen (${theme})`, async ({ page, request }, info) => {
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
     const response = await request.post("/api/connections", {
       data: {
         name: `Compatible audio ${theme} ${info.project.name}`,
-        provider: "audio",
-        audioSource: "elevenlabs",
+        provider: "audio_generation",
+        audioGenerationSource: "elevenlabs",
         baseUrl: "https://audio.example.test/v1",
         model: "fixture-audio-model",
       },
@@ -53,8 +56,29 @@ for (const theme of ["dark", "light"] as const) {
     const stored = async () => (await request.get(`/api/connections/${id}`)).json();
     try {
       await prepare(page, theme);
+      await clickTopbarPanel(page, "connections");
+      const row = page.locator(`[data-connection-id="${id}"]`);
+      await expect(row).toBeVisible();
+      const icon = row.getByRole("button", { name: "Upload connection picture", exact: true }).locator("span").first();
+      const colors = await icon.evaluate((element) => {
+        const probe = document.createElement("span");
+        element.append(probe);
+        probe.style.color = "var(--primary)";
+        const primary = getComputedStyle(probe).color;
+        probe.style.color = "var(--primary-foreground)";
+        const foreground = getComputedStyle(probe).color;
+        probe.remove();
+        const computed = getComputedStyle(element);
+        return { primary, foreground, gradient: computed.backgroundImage, color: computed.color };
+      });
+      expect(colors.gradient).toContain(colors.primary);
+      expect(colors.color).toBe(colors.foreground);
+      await capture(page, info, `audio-category-theme-${theme}`, row);
       let editor = await openConnection(page, id);
-      await editor.getByRole("button", { name: /OpenAI-compatible/u }).click();
+      await expect(editor.getByRole("button", { name: "Test Connection", exact: true })).not.toBeVisible();
+      await expect(editor.getByRole("button", { name: "Send Test Message", exact: true })).not.toBeVisible();
+      await expect(editor.getByText(/To test this connection, generate music or a sound effect/u)).toBeVisible();
+      await editor.getByRole("button", { name: /^Custom compatible server/u }).click();
       const format = editor.getByRole("combobox", { name: "Generation API format", exact: true });
       const musicPath = editor.getByLabel("Music endpoint path", { exact: true });
       const sfxPath = editor.getByLabel("Sound-effect endpoint path", { exact: true });
@@ -83,14 +107,14 @@ for (const theme of ["dark", "light"] as const) {
       await format.selectOption("chat_completions");
       await musicPath.fill("chat/completions");
       await sfxPath.fill("audio/generations");
-      await editor.getByText("Game sound effects", { exact: true }).click();
-      await editor.getByText("Game music", { exact: true }).click();
-      await expect(editor.getByRole("checkbox", { name: /^Game sound effects/u })).toBeChecked();
-      await expect(editor.getByRole("checkbox", { name: /^Game music/u })).toBeChecked();
+      await editor.getByText("Sound-effect generation", { exact: true }).click();
+      await editor.getByText("Music generation", { exact: true }).click();
+      await expect(editor.getByRole("checkbox", { name: /^Sound-effect generation/u })).toBeChecked();
+      await expect(editor.getByRole("checkbox", { name: /^Music generation/u })).toBeChecked();
       const save = editor.getByRole("button", { name: "Save", exact: true });
       await save.click();
       await expect.poll(stored).toMatchObject({
-        audioSource: "openai",
+        audioGenerationSource: "custom",
         audioGenerationFormat: "chat_completions",
         audioMusicEndpoint: "chat/completions",
         audioSoundEffectsEndpoint: "audio/generations",
@@ -107,8 +131,8 @@ for (const theme of ["dark", "light"] as const) {
       );
       await expect(editor.getByLabel("Music endpoint path", { exact: true })).toHaveValue("chat/completions");
       await expect(editor.getByLabel("Sound-effect endpoint path", { exact: true })).toHaveValue("audio/generations");
-      await expect(editor.getByRole("checkbox", { name: /^Game sound effects/u })).toBeChecked();
-      await expect(editor.getByRole("checkbox", { name: /^Game music/u })).toBeChecked();
+      await expect(editor.getByRole("checkbox", { name: /^Sound-effect generation/u })).toBeChecked();
+      await expect(editor.getByRole("checkbox", { name: /^Music generation/u })).toBeChecked();
 
       await editor.getByLabel("Music endpoint path", { exact: true }).fill("https://other.example.test/generate");
       await editor.getByRole("button", { name: "Save", exact: true }).click();
@@ -133,12 +157,51 @@ for (const theme of ["dark", "light"] as const) {
       await expect(editor.getByLabel("Music endpoint path", { exact: true })).toBeHidden();
       await editor.getByRole("button", { name: "Save", exact: true }).click();
       await expect.poll(stored).toMatchObject({
-        audioSource: "elevenlabs",
+        audioGenerationSource: "elevenlabs",
         audioMusicEndpoint: null,
         audioSoundEffectsEndpoint: null,
         audioGenerationFormat: "binary",
       });
       await expect(editor.getByRole("button", { name: "Dismiss save error", exact: true })).toBeHidden();
+      await editor.getByRole("button", { name: /^SunoAPI Generate audio/u }).click();
+      await editor.getByText("Music generation", { exact: true }).click();
+      await editor.getByRole("button", { name: "Save", exact: true }).click();
+      await expect.poll(stored).toMatchObject({
+        audioGenerationSource: "sunoapi",
+        audioGenerationCallbackUrl: null,
+        audioMusic: "false",
+        audioSoundEffects: "true",
+      });
+      await expect(editor.getByText("Unsaved", { exact: true })).toBeHidden();
+      await editor.getByText("Music generation", { exact: true }).click();
+      await editor.getByRole("button", { name: "Save", exact: true }).click();
+      await expect(
+        editor
+          .getByRole("button", { name: "Dismiss save error", exact: true })
+          .locator("..")
+          .getByText("SunoAPI music requires a public HTTPS callback URL, even when polling.", { exact: true }),
+      ).toBeVisible();
+      expect((await stored()).audioMusic).toBe("false");
+      await editor.getByLabel(/^SunoAPI music callback URL/u).fill("https://callback.example.test/completed");
+      await editor.getByLabel(/^Sound-effect model/u).fill("fixture-sfx-model");
+      await editor.getByRole("button", { name: "Save", exact: true }).click();
+      await expect.poll(stored).toMatchObject({
+        provider: "audio_generation",
+        audioSource: null,
+        audioVoice: null,
+        audioGenerationSource: "sunoapi",
+        audioGenerationCallbackUrl: "https://callback.example.test/completed",
+        audioSoundEffectsModel: "fixture-sfx-model",
+      });
+      await expect(editor.getByText("Unsaved", { exact: true })).toBeHidden();
+      await capture(page, info, `sunoapi-audio-${theme}`, editor.getByLabel(/^SunoAPI music callback URL/u));
+      await page.reload();
+      editor = await openConnection(page, id);
+      await expect(editor.getByLabel(/^SunoAPI music callback URL/u)).toHaveValue(
+        "https://callback.example.test/completed",
+      );
+      await expect(editor.getByLabel(/^Sound-effect model/u)).toHaveValue("fixture-sfx-model");
+      expect(pageErrors).toEqual([]);
     } finally {
       await request.delete(`/api/connections/${id}`);
     }
@@ -150,8 +213,8 @@ test("Game setup enables only the configured compatible audio capabilities", asy
     {
       id: "audio-sfx",
       name: "Sound effects only",
-      provider: "audio",
-      audioSource: "openai",
+      provider: "audio_generation",
+      audioGenerationSource: "custom",
       audioSoundEffects: true,
       audioMusic: true,
       audioSoundEffectsEndpoint: "audio/generations",
@@ -159,8 +222,8 @@ test("Game setup enables only the configured compatible audio capabilities", asy
     {
       id: "audio-music",
       name: "Music only",
-      provider: "audio",
-      audioSource: "openai",
+      provider: "audio_generation",
+      audioGenerationSource: "custom",
       audioSoundEffects: true,
       audioMusic: true,
       audioMusicEndpoint: "chat/completions",
@@ -168,18 +231,36 @@ test("Game setup enables only the configured compatible audio capabilities", asy
     {
       id: "audio-unconfigured",
       name: "Unconfigured capabilities",
-      provider: "audio",
-      audioSource: "openai",
+      provider: "audio_generation",
+      audioGenerationSource: "custom",
       audioSoundEffects: true,
       audioMusic: true,
     },
     {
       id: "audio-legacy",
       name: "Legacy ElevenLabs",
+      provider: "audio_generation",
+      audioGenerationSource: "elevenlabs",
+      audioGenerationLegacyConnectionId: "speech-only",
+      audioSoundEffects: true,
+      audioMusic: true,
+    },
+    {
+      id: "speech-only",
+      name: "Character voices only",
       provider: "audio",
       audioSource: "elevenlabs",
       audioSoundEffects: true,
       audioMusic: true,
+    },
+    {
+      id: "needs-review",
+      name: "Quarantined audio",
+      provider: "audio_generation",
+      audioGenerationSource: "elevenlabs",
+      audioSoundEffects: true,
+      audioMusic: true,
+      profileImportReviewRequired: "true",
     },
   ];
   await page.route("**/api/connections", (route) => route.fulfill({ json: rows }));
@@ -224,6 +305,8 @@ test("Game setup enables only the configured compatible audio capabilities", asy
     await expect(wizard.getByRole("heading", { name: heading, exact: true })).toBeVisible();
   }
   const connection = wizard.locator("select").filter({ has: page.locator('option[value="audio-sfx"]') });
+  await expect(connection.locator('option[value="speech-only"]')).toHaveCount(0);
+  await expect(connection.locator('option[value="needs-review"]')).toHaveCount(0);
   const sfx = wizard.getByRole("button", { name: /^Sound effects Generate short scene sound effects/u });
   const music = wizard.getByRole("button", { name: /^Music Generate background music/u });
   await connection.selectOption("audio-sfx");

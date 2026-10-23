@@ -1938,3 +1938,92 @@ console.log(
     "and off it after fleeing",
   );
 }
+
+// ── The Engine says why its picker did what it did, read back from its own scoring (the debug log) ──
+{
+  const whys = new Set([
+    "damage",
+    "finish",
+    "healing",
+    "support",
+    "setup",
+    "protection",
+    "coordination",
+    "risk",
+    "cost",
+    "walked",
+    "approach",
+    "driven",
+    "nothingWorth",
+  ]);
+  const played = (definition: RulesetDefinition, state: CombatDirectorState, party: Array<{ id: string }>) => {
+    for (const member of party)
+      assert.ok(
+        commandRulesetCombatDirector(definition, state, { type: "control", unitId: member.id, controller: "ai" }).ok,
+      );
+    let guard = 0;
+    while (!state.outcome && guard++ < 60)
+      assert.ok(commandRulesetCombatDirector(definition, state, { type: "continue" }).ok);
+    return state.rulesetFight!.events.map((entry) => entry.event);
+  };
+  const board = played(
+    fiveE,
+    started({
+      definition: fiveE,
+      cards: fiveECards,
+      partyCatalogs: spellCatalogs,
+      party: fiveEParty,
+      enemies: [{ id: "lurker", name: "Thorn Lurker" }],
+      positioned: true,
+    }),
+    fiveEParty,
+  );
+  const plain = played(
+    ember,
+    started({
+      definition: ember,
+      cards: emberCards,
+      partyCatalogs: emberCatalogs,
+      party: emberParty,
+      enemies: [{ id: "moth", name: "Cinder Moth" }],
+      seed: 11,
+    }),
+    emberParty,
+  );
+  for (const events of [board, plain]) {
+    const reasons = events.flatMap((event, index) => (event.type === "reasoning" ? [{ event, index }] : []));
+    assert.ok(reasons.length > 0, "the picker says why it did what it did");
+    for (const { event, index } of reasons) {
+      assert.ok(event.reasons.length > 0, "never an empty reason");
+      for (const reason of event.reasons) {
+        assert.ok(whys.has(reason.why), `a reason the log knows: ${JSON.stringify(reason)}`);
+        if (reason.why === "damage") assert.ok(["heavy", "solid", "some"].includes(reason.strength));
+      }
+      // A turn it did nothing with says so, and follows no step.
+      if (event.reasons.every((reason) => reason.why === "nothingWorth")) continue;
+      // Right after a step of its own: something it did since the last reason or turn began.
+      const since: typeof events = [];
+      for (const one of events.slice(0, index).reverse()) {
+        if (one.type === "reasoning" || one.type === "turn") break;
+        since.push(one);
+      }
+      assert.ok(
+        since.some(
+          (one) =>
+            ("actorId" in one && one.actorId === event.actorId) ||
+            ("sourceId" in one && one.sourceId === event.actorId),
+        ),
+        `${event.actorId}'s reason follows a step of its own: ${JSON.stringify(since)}`,
+      );
+    }
+  }
+  // On a board, a walk is said too: to where it acted from, or toward the nearest opponent.
+  assert.ok(
+    board.some(
+      (event) =>
+        event.type === "reasoning" &&
+        event.reasons.some((reason) => reason.why === "walked" || reason.why === "approach"),
+    ),
+    "a walk on a board says why",
+  );
+}

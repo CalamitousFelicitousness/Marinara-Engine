@@ -1,6 +1,6 @@
 # Chat Branches
 
-This guide explains chat branches in Marinara Engine: what a branch is and how to make one. It also covers switching, renaming, deleting, exporting, and importing branches. A branch lets you try a different path in a chat without losing the original.
+This guide explains chat branches in Marinara Engine: what a branch is and how to make one. It also covers switching, viewing the branch graph, renaming, deleting, exporting, and importing branches. A branch lets you try a different path in a chat without losing the original.
 
 ## What a branch is
 
@@ -43,6 +43,24 @@ The section lists every branch of the current chat, with the branch you are view
 ### Switch to another branch
 
 Click any branch row to open that branch. The chat view switches to the branch you picked.
+
+### See the branch graph
+
+The branch graph shows where each branch split off, which the list cannot.
+
+1. Open the **Chat Branches** section.
+2. Click the tree button in the section's header, next to the **?** help button. In a popped-out Chat Branches window, it sits in the title bar. Click it again to close the graph.
+
+The graph opens in its own window, which you can move and resize. On a phone, it opens as a sheet.
+
+- Each chat in the group gets one row, in the same tree order as the chat list. Messages run left to right, one dot per message. Grey dots are your messages, accent-coloured dots are character replies, and hollow rings are narrator or system messages.
+- A branch draws only its own messages. A line joins it to the message it was branched from, so you can see exactly where it split off.
+- Older branches and branches whose source chat was deleted have no recorded fork point. They are drawn from the top chat with a dashed line, and the legend shows **Fork not recorded**.
+- Long stretches with no fork nearby fold into a **··· N ···** marker, where N is the number of hidden messages. Click it to show those messages, or use **Expand all** to unfold every stretch. **Collapse long runs** folds them again.
+- Fork points and each branch's latest message have a ring. Hover over a ring, or focus it with the keyboard, to see the message number, who wrote it and the start of its text.
+- Click a branch's name or row to switch to that branch. The branch you are viewing is highlighted, and the graph opens scrolled to its latest message.
+
+The graph updates when you branch, rename or delete a chat, and shortly after new messages arrive.
 
 ### Rename a branch
 

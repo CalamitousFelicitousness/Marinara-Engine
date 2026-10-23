@@ -76,8 +76,16 @@ jobs:
             LAST_REVIEWED_SHA="$(jq -r '.[]' <<< "${REVIEW_HEADER:-[]}" \
               | sed -n 's/.*<!-- dottore:last-reviewed-sha=\([0-9a-f]\{40\}\) -->.*/\1/p' \
               | tail -n 1)"
+            REVIEWED_BASE_REF="$(jq -r '.[]' <<< "${REVIEW_HEADER:-[]}" \
+              | sed -n 's/^<!-- dottore:base-ref=\(.*\) -->$/\1/p' \
+              | tail -n 1)"
+            if [ -n "$LAST_REVIEWED_SHA" ] && [ "$REVIEWED_BASE_REF" != "$PR_BASE_REF" ]; then
+              # A retarget made while draft never dispatched; older checkpoints also lack this identity.
+              echo "Recorded review base '${REVIEWED_BASE_REF:-unknown}' differs from $PR_BASE_REF; dispatching a full examination."
+              REVIEW_MODE=full
+              LAST_REVIEWED_SHA=""
             # A partially judged review records its head too; let the reviewer finish its carried candidates.
-            if [ -n "$LAST_REVIEWED_SHA" ] && [ "$LAST_REVIEWED_SHA" = "$PR_HEAD_SHA" ] && \
+            elif [ -n "$LAST_REVIEWED_SHA" ] && [ "$LAST_REVIEWED_SHA" = "$PR_HEAD_SHA" ] && \
               ! jq -e 'any(.[]; test("^<!-- dottore:unjudged=[A-Za-z0-9_=-]+ -->$"))' <<< "$REVIEW_HEADER" >/dev/null; then
               echo "Skipping Dottore auto dispatch because head $PR_HEAD_SHA was already reviewed."
               exit 0

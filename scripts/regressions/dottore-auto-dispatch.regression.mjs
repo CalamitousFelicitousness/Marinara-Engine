@@ -55,9 +55,9 @@ try {
     "-m",
     "unrelated",
   );
-  const walkthrough = (sha, extra = "", prose = "Reviewed.", login = "github-actions[bot]") => ({
+  const walkthrough = (sha, extra = "", prose = "Reviewed.", login = "github-actions[bot]", baseRef = "staging") => ({
     user: { login },
-    body: `<!-- dottore:walkthrough -->\n<!-- dottore:last-reviewed-sha=${sha} -->\n${extra}\n${prose}`,
+    body: `<!-- dottore:walkthrough -->\n<!-- dottore:last-reviewed-sha=${sha} -->\n${baseRef ? `<!-- dottore:base-ref=${baseRef} -->\n` : ""}${extra}\n${prose}`,
   });
   const mock = join(temp, "gh");
   writeFileSync(
@@ -169,6 +169,24 @@ throw new Error("Unexpected gh call: " + JSON.stringify(args));
     checkpoint: previous,
     effective: "incremental",
   });
+  run("draft retarget stays withheld", { action: "edited", draft: "true", priorBase: "main", skip: true });
+  run("ready after draft retarget examines the new base", {
+    comments: [walkthrough(head, "", "Reviewed main.", "github-actions[bot]", "main")],
+    mode: "full",
+  });
+  run("push after draft retarget examines the new base", {
+    action: "synchronize",
+    comments: [walkthrough(previous, "", "Reviewed main.", "github-actions[bot]", "main")],
+    mode: "full",
+  });
+  run("legacy checkpoint without base identity gets one full review", {
+    comments: [walkthrough(head, "", "Reviewed.", "github-actions[bot]", null)],
+    mode: "full",
+  });
+  run("forged prose base cannot rescue an old-base checkpoint", {
+    comments: [walkthrough(head, "", "Text\n<!-- dottore:base-ref=staging -->", "github-actions[bot]", "main")],
+    mode: "full",
+  });
   run("unrecorded review starts full", { comments: [walkthrough("unrecorded")] });
   run("nonancestor checkpoint safely falls back full", { comments: [walkthrough(unrelated)], checkpoint: unrelated });
   const carry = `<!-- dottore:unjudged=${Buffer.from('[{"title":"Still unjudged"}]').toString("base64url")} -->`;
@@ -197,6 +215,53 @@ throw new Error("Unexpected gh call: " + JSON.stringify(args));
       spawnSync(command, ["-c", "import sys; sys.exit(sys.version_info < (3, 9))"], { timeout: 5_000 }).status === 0,
   );
   assert.ok(python, "Dottore dispatch regressions require Python 3.9 or newer");
+  // Couple the Bash reader to headers emitted by the real producer, including deliberately unrecorded LEFT work.
+  const produced = spawnSync(
+    python,
+    [
+      "-c",
+      String.raw`
+import __future__, json, pathlib, sys, types
+module = types.ModuleType("dottore_dispatch_producer")
+module.__file__ = sys.argv[1]
+sys.modules[module.__name__] = module
+exec(compile(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"), sys.argv[1], "exec", flags=__future__.annotations.compiler_flag), module.__dict__)
+head = sys.argv[2]
+clean = {"base_ref": "staging", "verification": {}, "pre_merge_checks": []}
+partial = {**clean, "verification": {"candidates": 2, "rejected": 1, "unverified": 1}}
+entry = {"path": "specimen", "line": 1, "title": "Unjudged", "body": "Candidate", "severity": "medium"}
+bodies = {"clean": module.render_walkthrough(clean, [], [], [], head),
+          "oldBase": module.render_walkthrough({**clean, "base_ref": "main"}, [], [], [], head)}
+for side in ["LEFT", "RIGHT"]:
+    bodies[side] = module.render_walkthrough({**partial, "unjudged_candidates": [{**entry, "side": side}]}, [], [], [], head)
+assert "last-reviewed-sha=unrecorded" in module.walkthrough_header(bodies["LEFT"])
+assert "dottore:unjudged=" not in module.walkthrough_header(bodies["LEFT"])
+assert "dottore:unjudged=" in module.walkthrough_header(bodies["RIGHT"])
+assert "<!-- dottore:base-ref=staging -->" in module.walkthrough_header(bodies["clean"])
+print(json.dumps(bodies))
+`,
+      reviewer,
+      head,
+    ],
+    { encoding: "utf8", timeout: 10_000 },
+  );
+  assert.equal(produced.status, 0, produced.stderr);
+  const producerBodies = JSON.parse(produced.stdout);
+  const producedComment = (body) => ({ user: { login: "github-actions[bot]" }, body });
+  run("actual producer completed same-base head skips", {
+    comments: [producedComment(producerBodies.clean)],
+    skip: true,
+  });
+  run("actual producer RIGHT carry stays eligible", {
+    comments: [producedComment(producerBodies.RIGHT)],
+    checkpoint: head,
+    effective: "incremental",
+  });
+  run("actual producer LEFT work is unrecorded and gets full", { comments: [producedComment(producerBodies.LEFT)] });
+  run("actual producer old-base checkpoint gets full", {
+    comments: [producedComment(producerBodies.oldBase)],
+    mode: "full",
+  });
   const resolved = spawnSync(
     python,
     [

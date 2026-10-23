@@ -166,7 +166,7 @@ export function AnimatedDiceRoll({
         </span>
         <span>
           {/* Who rolled, or why, when the roll said: a party's rolls otherwise all look alike. */}
-          {label ? `${label} · ` : ""}
+          {label ? localizeUi("ui.dice.rolledBy", { name: label }) : ""}
           {notation}
           {dc !== undefined && (
             <>

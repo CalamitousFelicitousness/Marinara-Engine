@@ -22,7 +22,7 @@ import { RoleplayCommandsSettings } from "./RoleplayCommandsSettings";
 import { ChatBranchesPanel } from "./ChatBranchesPanel";
 import { ChatMessageSearch } from "./ChatMessageSearch";
 import { ChatWindowFavoriteButton } from "./ChatWindowFavoriteButton";
-import { resolveCombatStyle } from "../game/combat-styles";
+import { listCombatStyles, resolveCombatStyle } from "../game/combat-styles";
 import { AgentActivitySection } from "../agents/AgentActivitySection";
 import { withAgentActivityStatus } from "../agents/AgentActivityIcon";
 import { useKeepFocusedFieldAboveKeyboard } from "../../hooks/use-keep-focused-field-above-keyboard";
@@ -343,6 +343,8 @@ import {
   resolveDefaultAgentPromptTemplateId,
   resolveAgentPromptTemplate,
   normalizeChatSummaryEntries,
+  rulesetCombatStyle,
+  rulesetCombatStyles,
 } from "@marinara-engine/shared";
 import type {
   Chat,
@@ -2145,10 +2147,6 @@ export function ChatSettingsDrawer({
   const gameImageIncludeCharacterAppearance = metadata.gameImageIncludeCharacterAppearance !== false;
   const gameImageAutoGenerationEnabled = metadata.gameImageAutoGenerationEnabled !== false;
   const gameImageDynamicPromptEnabled = metadata.gameImageDynamicPromptEnabled === true;
-  const effectiveCombatStyle: GameCombatStyle = resolveCombatStyle(
-    (metadata.gameCombatStyle as GameCombatStyle | undefined) ??
-      (metadata.gameSetupConfig?.combatStyle as GameCombatStyle | undefined),
-  );
   // A missing choice is by side: every game before turn order was a choice played that way (combat C6c).
   const effectiveTurnOrder: "side" | "initiative" =
     ((metadata.gameTacticalTurnOrder ?? metadata.gameSetupConfig?.tacticalTurnOrder) as string | undefined) ===
@@ -2172,6 +2170,18 @@ export function ChatSettingsDrawer({
   // positions.
   const rulesetHasPositions =
     rulesetResolvesFights && gameRuleset.status === "ok" && !!gameRuleset.definition.combat?.distance;
+  // The styles that ruleset lets the game play (1.379): a saved one it leaves out shows, and plays, as
+  // the first it lists.
+  const rulesetDefinition = gameRuleset.status === "ok" ? gameRuleset.definition : null;
+  const allowedCombatStyles = rulesetCombatStyles(rulesetDefinition);
+  const effectiveCombatStyle: GameCombatStyle = resolveCombatStyle(
+    rulesetCombatStyle(
+      rulesetDefinition,
+      (metadata.gameCombatStyle as GameCombatStyle | undefined) ??
+        (metadata.gameSetupConfig?.combatStyle as GameCombatStyle | undefined),
+      listCombatStyles(),
+    ),
+  );
   const gameSceneVideosEnabled =
     metadata.gameSceneVideosEnabled === true ||
     (metadata.gameSceneVideosEnabled !== false &&
@@ -3579,7 +3589,7 @@ export function ChatSettingsDrawer({
     if (!agent || (agent.builtIn && agent.category !== "writer" && agent.category !== "tracker")) return null;
     if (agentType === "hierarchical-maps") {
       const api = mapsPackage?.manifest.schemaVersion === 2 ? mapsPackage.manifest.capabilityApi : null;
-      if (!api || api.major < 1 || (api.major === 1 && api.minor < 379)) {
+      if (!api || api.major < 1 || (api.major === 1 && api.minor < 380)) {
         return (
           <p data-agent-lorebook-package-update={agentType} className="text-xs text-[var(--muted-foreground)]">
             {localizeUi("chat.agentLorebook.packageUpdateRequired")}
@@ -5805,6 +5815,7 @@ export function ChatSettingsDrawer({
               combatStyle={effectiveCombatStyle}
               rulesetResolvesFights={rulesetResolvesFights}
               rulesetHasPositions={rulesetHasPositions}
+              allowedStyles={allowedCombatStyles}
               onCombatStyleChange={(gameCombatStyle) => updateMeta.mutate({ id: chat.id, gameCombatStyle })}
               turnOrder={effectiveTurnOrder}
               onTurnOrderChange={(gameTacticalTurnOrder) => updateMeta.mutate({ id: chat.id, gameTacticalTurnOrder })}

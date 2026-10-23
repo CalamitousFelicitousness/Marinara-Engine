@@ -68,6 +68,8 @@ export function AnimatedSkillCheckResult({
     >
       <div className="skill-check-roll-meta">
         <span>
+          {/* Who rolled, when the check names a party member: a party of four cannot tell otherwise. */}
+          {result.who ? localizeUi("ui.dice.rolledBy", { name: result.who }) : ""}
           {result.skill} {localizeUi("ui.agents.customagentrepositoriesmodal.check")}
         </span>
         <span>

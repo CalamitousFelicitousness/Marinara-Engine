@@ -77,7 +77,7 @@ const typesMatch: [
   Equal<keyof MarinaraHostV1, (typeof MEMBERS)[number]>,
   Equal<keyof MarinaraHostV1["stores"], (typeof MARINARA_HOST_STORE_NAMES)[number]>,
   Equal<keyof MarinaraHostV1["modules"], MarinaraHostModuleSpecifier>,
-  Equal<keyof MarinaraHostV1["services"], "tts" | "dialogs">,
+  Equal<keyof MarinaraHostV1["services"], "tts" | "dialogs" | "audio">,
   Equal<keyof MarinaraHostV1["components"], "Modal">,
   Equal<keyof MarinaraHostV1["data"], "emojiCatalog">,
   Equal<keyof MarinaraHostStoreFields, (typeof MARINARA_HOST_STORE_NAMES)[number]>,

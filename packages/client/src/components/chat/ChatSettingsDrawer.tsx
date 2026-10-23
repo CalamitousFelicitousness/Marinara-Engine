@@ -123,6 +123,7 @@ import { CapabilityElement } from "../capabilities/CapabilityElement";
 import type { AvatarCrop, MultiplayerHostAction } from "@marinara-engine/shared";
 import {
   AVATAR_AGENT_IDS,
+  audioConnectionSupportsGeneration,
   BUILT_IN_AGENTS,
   VIDEO_FIRST_FRAMES,
   normalizeVideoFirstFrame,
@@ -8286,10 +8287,13 @@ export function ChatSettingsDrawer({
                       id: string;
                       name: string;
                       provider: string;
+                      audioGenerationSource?: string | null;
+                      audioGenerationLegacyConnectionId?: string | null;
                       audioSoundEffects?: string | boolean;
+                      audioSoundEffectsEndpoint?: string | null;
                       profileImportReviewRequired?: unknown;
                     }>,
-                  ).filter((connection) => isConnectionFlagTrue(connection.audioSoundEffects))}
+                  ).filter((connection) => audioConnectionSupportsGeneration(connection, "sfx"))}
                 />
               )}
               {isGame && (

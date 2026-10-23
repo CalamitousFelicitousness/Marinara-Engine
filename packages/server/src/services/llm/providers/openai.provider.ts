@@ -798,10 +798,16 @@ export class OpenAIProvider extends BaseLLMProvider {
     if (response.status === 400) {
       // A bare "invalid request" says nothing about which part was refused. The shape of what was sent (roles,
       // the fields each message carried, the request's own parameters) without any of its text is what finds it.
+      // The provider's own body can quote the prompt back, so it is logged only in debug mode.
+      logDebugOverride(
+        options.debugMode === true || isDebugAgentsEnabled(),
+        "[debug/openai] %s refusal body: %s",
+        this.chatCompletionsErrorLabel(),
+        errorText.slice(0, 2000),
+      );
       logger.warn(
         {
           status: response.status,
-          body: errorText.slice(0, 2000),
           params: Object.keys(body).filter((key) => key !== "messages" && key !== "tools"),
           tools: Array.isArray(body.tools) ? body.tools.length : 0,
           messages: Array.isArray(body.messages)

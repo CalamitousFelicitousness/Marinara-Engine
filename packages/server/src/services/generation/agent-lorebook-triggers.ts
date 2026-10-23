@@ -24,11 +24,12 @@ export function applyAgentLorebookChatSettings(
   if (!attachment || typeof attachment !== "object" || Array.isArray(attachment)) return settings;
   const value = attachment as Record<string, unknown>;
   if (value.enabled !== true) return settings;
+  const lorebookId = typeof value.lorebookId === "string" ? value.lorebookId.trim() : "";
+  if (!lorebookId) return settings;
   return {
     ...settings,
     chatLorebookAttachmentEnabled: true,
-    chatAttachedLorebookId:
-      typeof value.lorebookId === "string" && value.lorebookId.trim() ? value.lorebookId.trim() : null,
+    chatAttachedLorebookId: lorebookId,
   };
 }
 

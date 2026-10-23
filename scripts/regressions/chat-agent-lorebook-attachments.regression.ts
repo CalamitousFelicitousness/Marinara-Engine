@@ -12,6 +12,8 @@ process.env.MARINARA_LITE = "true";
 process.env.LOG_LEVEL = "silent";
 const require = createRequire(new URL("../../packages/server/package.json", import.meta.url));
 const { getDB, closeDB } = await import("../../packages/server/src/db/connection.js");
+const { chats: chatRows, lorebookEntries: entryRows } = await import("../../packages/server/src/db/schema/index.js");
+const { eq } = await import("../../packages/server/src/db/file-query.js");
 const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
 const { createAgentsStorage } = await import("../../packages/server/src/services/storage/agents.storage.js");
 const { createConnectionsStorage } = await import("../../packages/server/src/services/storage/connections.storage.js");
@@ -25,6 +27,8 @@ const { OpenAIProvider } = await import("../../packages/server/src/services/llm/
 const { replaceBuiltInAgentDefinitions } = await import("../../packages/shared/dist/index.js");
 const { applyAgentLorebookChatSettings } =
   await import("../../packages/server/src/services/generation/agent-lorebook-triggers.js");
+const { captureChatWizardDefaults, wizardDefaultsMetadataPatch } =
+  await import("../../packages/client/src/lib/chat-wizard-defaults.js");
 
 const manifests = ["writer", "tracker"].map((category) => ({
   id: `reference-${category}`,
@@ -144,6 +148,68 @@ try {
     (await app.inject({ method: "GET", url: `/api/chats/${otherChat.id}` })).json().metadata.agentLorebookAttachments,
     undefined,
   );
+  const resetChat = await chats.create({ name: "Wizard reset", mode: "roleplay", characterIds: [] });
+  assert(resetChat);
+  const initialAttachments = {
+    [types[0]!]: { enabled: true, lorebookId: firstBook.id },
+    [types[1]!]: { enabled: true, lorebookId: secondBook.id },
+  };
+  assert.equal((await patch(resetChat.id, initialAttachments)).statusCode, 200);
+  await chats.patchMetadata(resetChat.id, { characterCommands: true });
+  const resetSnapshot = captureChatWizardDefaults((await chats.getById(resetChat.id))!);
+  const emptySnapshot = captureChatWizardDefaults({ ...(await chats.getById(resetChat.id))!, metadata: {} });
+  assert.equal((await patch(resetChat.id, {})).statusCode, 200);
+  assert.deepEqual(
+    (await app.inject({ method: "GET", url: `/api/chats/${resetChat.id}` })).json().metadata.agentLorebookAttachments,
+    initialAttachments,
+    "an empty attachment map merges without clearing existing selections",
+  );
+  const concurrentAttachment = { enabled: true, lorebookId: firstBook.id };
+  assert.equal((await patch(resetChat.id, { concurrent: concurrentAttachment })).statusCode, 200);
+  const resetResponse = await app.inject({
+    method: "PATCH",
+    url: `/api/chats/${resetChat.id}/metadata`,
+    payload: wizardDefaultsMetadataPatch(resetSnapshot, emptySnapshot),
+  });
+  assert.equal(
+    resetResponse.statusCode,
+    200,
+    `Wizard reset must pass the actual metadata route: ${resetResponse.body}`,
+  );
+  const resetMetadata = resetResponse.json().metadata;
+  assert.deepEqual(resetMetadata.agentLorebookAttachments, {
+    [types[0]!]: { enabled: false, lorebookId: null },
+    [types[1]!]: { enabled: false, lorebookId: null },
+    concurrent: concurrentAttachment,
+  });
+  assert.equal(resetMetadata.characterCommands, null, "other wizard reset fields reach storage in the same request");
+  assert.equal(
+    (await patch(resetChat.id, { [types[0]!]: { enabled: true, lorebookId: secondBook.id } })).statusCode,
+    200,
+  );
+  const changedSnapshot = captureChatWizardDefaults((await chats.getById(resetChat.id))!);
+  const targetSnapshot = captureChatWizardDefaults({
+    ...(await chats.getById(resetChat.id))!,
+    metadata: {
+      agentLorebookAttachments: { [types[0]!]: initialAttachments[types[0]!] },
+      characterCommands: true,
+    },
+  });
+  const laterAttachment = { enabled: true, lorebookId: secondBook.id };
+  assert.equal((await patch(resetChat.id, { later: laterAttachment })).statusCode, 200);
+  const restoreResponse = await app.inject({
+    method: "PATCH",
+    url: `/api/chats/${resetChat.id}/metadata`,
+    payload: wizardDefaultsMetadataPatch(changedSnapshot, targetSnapshot),
+  });
+  assert.equal(restoreResponse.statusCode, 200, restoreResponse.body);
+  assert.deepEqual(restoreResponse.json().metadata.agentLorebookAttachments, {
+    [types[0]!]: initialAttachments[types[0]!],
+    [types[1]!]: { enabled: false, lorebookId: null },
+    concurrent: { enabled: false, lorebookId: null },
+    later: laterAttachment,
+  });
+  assert.equal(restoreResponse.json().metadata.characterCommands, true);
   const profiles = createChatPresetsStorage(db);
   const profileTarget = await chats.create({ name: "Profile target", mode: "roleplay", characterIds: [] });
   const freshProfileTarget = await chats.create({ name: "Fresh profile target", mode: "roleplay", characterIds: [] });
@@ -263,6 +329,17 @@ try {
   assert(prompts.some((prompt) => /REFERENCE_TASK_/u.test(prompt) && prompt.includes("TRACKER_BOOK_SECRET")));
   const attached = await resolvePackageAgentLorebookEntries(db, types[0]!, { chatId: chat.id });
   assert(attached.some((entry) => entry.content === "WRITER_BOOK_SECRET"));
+  const originalRoster = (await chats.getById(chat.id))!.characterIds;
+  for (const malformedRoster of ["not-json", "null", "42", '[null,42,""]']) {
+    await db.update(chatRows).set({ characterIds: malformedRoster }).where(eq(chatRows.id, chat.id));
+    assert(
+      (await resolvePackageAgentLorebookEntries(db, types[0]!, { chatId: chat.id })).some(
+        (entry) => entry.content === "WRITER_BOOK_SECRET",
+      ),
+      `legacy roster ${malformedRoster} resolves references with an empty character roster`,
+    );
+  }
+  await db.update(chatRows).set({ characterIds: originalRoster }).where(eq(chatRows.id, chat.id));
   assert(
     attached.every((entry) => !entry.content.includes("TRACKER_BOOK_SECRET")),
     "package feature calls cannot select another agent's attachment",
@@ -336,6 +413,104 @@ try {
     prompts.every((prompt) => !prompt.includes("WRITER_BOOK_SECRET")),
     "an assistant-only continuation does not activate chat-only entries",
   );
+  const windowChat = await chats.create({ name: "Bounded package history", mode: "roleplay", characterIds: [] });
+  const windowBook = await books.create({ name: "Window reference" });
+  assert(windowChat && windowBook);
+  await agents.update(configs[0]!.id, { settings: { contextSize: 2 } });
+  await books.createEntry({
+    lorebookId: windowBook.id,
+    keys: ["inside-window"],
+    content: "RECENT_WINDOW_REFERENCE for {{user}} after {{getvar::processed}} messages",
+  });
+  await books.createEntry({
+    lorebookId: windowBook.id,
+    keys: ["outside-window"],
+    content: "DISCARDED_MACRO_REFERENCE after {{getvar::processed}} messages",
+  });
+  await chats.patchMetadata(windowChat.id, {
+    agentLorebookAttachments: { [types[0]!]: { enabled: true, lorebookId: windowBook.id } },
+    macroVariables: { windowKey: "inside-window", processed: "0" },
+  });
+  for (let index = 0; index < 32; index++)
+    await chats.createMessage({
+      chatId: windowChat.id,
+      role: "assistant",
+      content: `{{incvar::processed}}{{setvar::windowKey::outside-window}} {{lorebooksize::${windowBook.id}}}`,
+    });
+  await chats.createMessage({
+    chatId: windowChat.id,
+    role: "user",
+    content: "Read the current window. {{incvar::processed}}",
+  });
+  await chats.createMessage({
+    chatId: windowChat.id,
+    role: "assistant",
+    content: "{{getvar::windowKey}} {{incvar::processed}}",
+  });
+  const cleanWindowChat = await chats.create({ name: "Only the retained window", mode: "roleplay", characterIds: [] });
+  assert(cleanWindowChat);
+  await chats.patchMetadata(cleanWindowChat.id, {
+    agentLorebookAttachments: { [types[0]!]: { enabled: true, lorebookId: windowBook.id } },
+    macroVariables: { windowKey: "inside-window", processed: "0" },
+  });
+  await chats.createMessage({
+    chatId: cleanWindowChat.id,
+    role: "user",
+    content: "Read the current window. {{incvar::processed}}",
+  });
+  await chats.createMessage({
+    chatId: cleanWindowChat.id,
+    role: "assistant",
+    content: "{{getvar::windowKey}} {{incvar::processed}}",
+  });
+  let entryCountQueries = 0;
+  const originalSelect = db.select;
+  db.select = ((projection?: Record<string, unknown>) => {
+    if (projection && Object.keys(projection).length === 1 && projection.lorebookId === entryRows.lorebookId)
+      entryCountQueries++;
+    return originalSelect(projection as never);
+  }) as typeof db.select;
+  try {
+    const cleanWindowEntries = await resolvePackageAgentLorebookEntries(db, types[0]!, { chatId: cleanWindowChat.id });
+    const baselineCountQueries = entryCountQueries;
+    entryCountQueries = 0;
+    const windowEntries = await resolvePackageAgentLorebookEntries(db, types[0]!, { chatId: windowChat.id });
+    assert.equal(
+      entryCountQueries,
+      baselineCountQueries,
+      `discarded history must not load macro dependencies: ${JSON.stringify(windowEntries)}`,
+    );
+    assert.deepEqual(
+      windowEntries.map((entry) => entry.content),
+      ["RECENT_WINDOW_REFERENCE for User after 2 messages"],
+      "discarded variable writes cannot change the retained history's triggers",
+    );
+    assert.deepEqual(windowEntries, cleanWindowEntries, "the bounded scan matches the equivalent clean window");
+    assert(!Object.hasOwn(windowEntries[0]!, "name"), "unnamed entries omit the optional public string field");
+    await books.updateEntry(windowEntries[0]!.id, { name: "" });
+    await chats.createMessage({
+      chatId: windowChat.id,
+      role: "assistant",
+      content: `{{lorebooksize::${windowBook.id}}} {{getvar::windowKey}} {{incvar::processed}}`,
+    });
+    entryCountQueries = 0;
+    const retainedEntries = await resolvePackageAgentLorebookEntries(db, types[0]!, { chatId: windowChat.id });
+    assert.equal(
+      entryCountQueries,
+      baselineCountQueries + 1,
+      "a macro in the retained window still loads its dependencies",
+    );
+    assert.deepEqual(
+      retainedEntries.map((entry) => entry.content),
+      ["RECENT_WINDOW_REFERENCE for User after 2 messages"],
+    );
+    assert.equal(retainedEntries[0]?.name, "", "an explicitly empty string remains a valid public name");
+    console.info(
+      "PASS: two-message package macro window, discarded-history isolation, dependency controls and optional names",
+    );
+  } finally {
+    db.select = originalSelect;
+  }
   for (const config of configs)
     assert(
       !JSON.parse((await agents.getById(config!.id))!.settings as string).chatLorebookAttachmentEnabled,
@@ -343,6 +518,15 @@ try {
     );
   const settings = { contextSize: 8 };
   assert.equal(applyAgentLorebookChatSettings(types[0]!, settings, {}), settings);
+  for (const lorebookId of [null, "", "   "]) {
+    assert.equal(
+      applyAgentLorebookChatSettings(types[0]!, settings, {
+        agentLorebookAttachments: { [types[0]!]: { enabled: true, lorebookId } },
+      }),
+      settings,
+      "an enabled but unselected attachment cannot admit this agent to the trigger pass",
+    );
+  }
   console.info(
     "PASS: chat-scoped lorebook persistence, validation, triggering, isolation, custom agents, disabling, missing books and grouped retries",
   );

@@ -12812,7 +12812,24 @@
                         "required": [
                           "derived"
                         ],
-                        "additionalProperties": false
+                        "additionalProperties": false,
+                        "oneOf": [
+                          {
+                            "required": [
+                              "equals"
+                            ]
+                          },
+                          {
+                            "required": [
+                              "notEquals"
+                            ]
+                          },
+                          {
+                            "required": [
+                              "in"
+                            ]
+                          }
+                        ]
                       }
                     ]
                   },

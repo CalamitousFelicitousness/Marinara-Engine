@@ -3329,8 +3329,9 @@ export function rulesetBuilderRoll(
 }
 
 /** Whether everything an entry would write is already on the sheet (Capability API 1.733): its rows
- *  are there by the entry's own mark, or by name where something else wrote them (a dwarf's
- *  Dwarvish, written by the race; a cleric's domain spell, granted by a later step). A step offers
+ *  are there by the entry's own mark (a cleric's domain spell, granted by a later step), or by name
+ *  where something else wrote a row that is nothing but its name (a dwarf's Dwarvish, written by
+ *  the race). A step offers
  *  such an entry as already known rather than as one more pick. An entry that writes no rows is
  *  never held. */
 export function rulesetBuilderEntryHeld(
@@ -3349,11 +3350,15 @@ export function rulesetBuilderEntryHeld(
       definition.gm.sheetSummary.lists.find((one) => one.list === list)?.nameColumn ??
       declared?.columns.find((column) => column.type === "text")?.id;
     const name = nameColumn ? row[nameColumn] : undefined;
-    const wanted = typeof name === "string" ? name.trim().toLowerCase() : undefined;
+    // A name speaks for the entry only where the name is all its row writes: a row that also writes
+    // damage or a range is held only by the entry's own mark, or those columns would go unwritten.
+    const nameOnly = Object.keys(row).every((key) => key === nameColumn || key === RULESET_CATALOG_ROW_KEY);
+    const wanted = nameOnly && typeof name === "string" ? name.trim().toLowerCase() : undefined;
+    const mark = row[RULESET_CATALOG_ROW_KEY];
     return held.some((raw) => {
       if (!raw || typeof raw !== "object") return false;
       const other = raw as Record<string, unknown>;
-      if (other[RULESET_CATALOG_ROW_KEY] === row[RULESET_CATALOG_ROW_KEY]) return true;
+      if (mark !== undefined && other[RULESET_CATALOG_ROW_KEY] === mark) return true;
       const otherName = nameColumn ? other[nameColumn] : undefined;
       return !!wanted && typeof otherName === "string" && otherName.trim().toLowerCase() === wanted;
     });

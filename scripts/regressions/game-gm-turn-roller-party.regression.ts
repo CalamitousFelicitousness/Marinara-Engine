@@ -286,13 +286,23 @@ const party = ["Isolde", "Hessa", "Brannoc", "Pip"];
     extractLeadingGmPlanning("\n\nOpening scene: Stilt Row, dusk.\n\nDusk comes to Hollowmere.").content,
     "Dusk comes to Hollowmere.",
   );
+  // Each paragraph answers for itself: the plan is lifted, the answer after it stays.
+  const mixed = extractLeadingGmPlanning(
+    "Plan: let the guard take the coin.\n\nApproach: I'll bribe the gate guard.\n\nThe gate stands.",
+  );
+  assert.equal(mixed.planning, "Plan: let the guard take the coin.");
+  assert.equal(mixed.content, "Approach: I'll bribe the gate guard.\n\nThe gate stands.");
   for (const narration of [
     "Dusk comes to Hollowmere. Plan: none of them had one.",
-    // An out-of-character answer can open with a label too: only a run that is unmistakably a plan is lifted.
+    // An out-of-character answer can open with a label too: only a paragraph that is unmistakably a plan is lifted.
     "Checks: a DC 15 Athletics roll to cross the gap.\n\nThe gap yawns.",
     "Notes: Pip still carries the key.\n\nThe gap yawns.",
     '[Cudge Vantry] [main] [neutral]: "Notes: the bell rang twice."',
     "Plan: only a plan, nothing after it.",
+    "Approach: I'll bribe the gate guard.\n\nThe gate stands.",
+    "Outline: the north road, then the ford.\n\nThe gate stands.",
+    "Beats: the bell, then the gate.\n\nThe gate stands.",
+    "Next steps: find the key.\n\nThe gate stands.",
   ]) {
     assert.deepEqual(extractLeadingGmPlanning(narration), { content: narration, planning: "" }, narration);
   }

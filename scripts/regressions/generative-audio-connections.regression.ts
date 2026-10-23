@@ -38,6 +38,14 @@ const settings = createAppSettingsStorage(db);
 const app = Fastify();
 app.decorate("db", db);
 app.setErrorHandler(errorHandler);
+let enteredSampleRequests = 0;
+app.addHook("preHandler", async (request) => {
+  if (
+    request.url === "/api/audio/generate" &&
+    (request.body as { context?: { scope?: string } } | undefined)?.context?.scope === "connection-test"
+  )
+    enteredSampleRequests++;
+});
 await app.register(audioRoutes, { prefix: "/api/audio" });
 await app.register(ttsRoutes, { prefix: "/api/tts" });
 await app.register(connectionsRoutes, { prefix: "/api/connections" });
@@ -329,13 +337,64 @@ try {
   assert.notEqual(dirname(otherSample.path), sampleDirectory, "connections do not share sample assets or locks");
   assert(existsSync(join(data, "game-assets", sample2.path)));
   const beforeRacingSamples = calls.length;
-  const racingSamples = await Promise.all([generate(row.id, sampleInput), generate(row.id, sampleInput)]);
+  const racingSamples = await Promise.all([
+    generate(row.id, sampleInput),
+    generate(row.id, { ...sampleInput, prompt: "  a   gentle chime  " }),
+  ]);
   assert.equal(racingSamples[0]!.json().path, racingSamples[1]!.json().path);
   assert.equal(calls.length, beforeRacingSamples + 1, "concurrent listeners share one in-flight sample only");
   assert.equal(
     readdirSync(join(data, "game-assets", sampleDirectory)).filter((name) => /^generated-/.test(name)).length,
     1,
   );
+  const queuedConnection = await create({ audioMusicEndpoint: "hold", model: "sample-model-a" });
+  for (const changedInput of ["model", "prompt", "apiKey", "length"] as const) {
+    held = undefined;
+    const beforeQueue = calls.length;
+    const enteredBeforeQueue = enteredSampleRequests;
+    const earlier = generate(queuedConnection.id, sampleInput).then((result) => result);
+    for (let n = 0; n < 100 && !held; n++) await new Promise((resolve) => setTimeout(resolve, 5));
+    const firstHold = held as { release: () => void } | undefined;
+    assert(firstHold, "the first paid request is in flight");
+    if (changedInput === "model") await connections.update(queuedConnection.id, { model: "sample-model-b" });
+    if (changedInput === "apiKey")
+      await connections.update(queuedConnection.id, { apiKey: "changed-fixture-audio-key" });
+    const later = generate(queuedConnection.id, {
+      ...sampleInput,
+      ...(changedInput === "prompt" ? { prompt: "a different test instrumental" } : {}),
+      ...(changedInput === "length" ? { context: { ...sampleInput.context, lengthMs: 15_000 } } : {}),
+    }).then((result) => result);
+    for (let n = 0; n < 100 && enteredSampleRequests < enteredBeforeQueue + 2; n++)
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    assert.equal(enteredSampleRequests, enteredBeforeQueue + 2);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(calls.length, beforeQueue + 1, "different requests serialize publication into their shared directory");
+    firstHold.release();
+    const earlierResult = await earlier;
+    for (let n = 0; n < 100 && held === firstHold; n++) await new Promise((resolve) => setTimeout(resolve, 5));
+    const nextHold = held as { release: () => void } | undefined;
+    assert(
+      nextHold && nextHold !== firstHold,
+      "changed input submits a distinct provider request after the previous one",
+    );
+    nextHold.release();
+    const laterResult = await later;
+    assert.equal(earlierResult.statusCode, 200, earlierResult.body);
+    assert.equal(laterResult.statusCode, 200, laterResult.body);
+    assert.notEqual(earlierResult.json().path, laterResult.json().path);
+    assert.equal(calls.length, beforeQueue + 2);
+    assert.notEqual(
+      changedInput === "apiKey"
+        ? calls[beforeQueue]!.authorization
+        : calls[beforeQueue]!.body[changedInput === "length" ? "duration" : changedInput],
+      changedInput === "apiKey"
+        ? calls[beforeQueue + 1]!.authorization
+        : calls[beforeQueue + 1]!.body[changedInput === "length" ? "duration" : changedInput],
+    );
+    assert.equal(existsSync(join(data, "game-assets", earlierResult.json().path)), false);
+    assert(existsSync(join(data, "game-assets", laterResult.json().path)));
+  }
+  held = undefined;
   for (const extra of [
     { kind: "music" },
     { context: { scope: "gacha-forge", key: "x" } },

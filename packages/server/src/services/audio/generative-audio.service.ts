@@ -130,6 +130,7 @@ export async function resolveGenerativeAudioConfig(db: DB, requestedId?: string 
 }
 
 const locks = new Map<string, Promise<GeneratedAudioAsset>>();
+const testPublicationTails = new Map<string, Promise<GeneratedAudioAsset>>();
 
 /** Report each usable capability independently; checking readiness never calls a provider. */
 export async function resolveGenerativeAudioReadiness(db: DB, requestedId?: string | null) {
@@ -282,16 +283,29 @@ export async function generateAudioAsset(
     request.context && "scope" in request.context && request.context.scope === "connection-test"
       ? { ...request.context, key: createHash("sha256").update(config.id).digest("hex").slice(0, 32) }
       : request.context;
-  const key = context
+  const directoryKey = context
     ? "axis" in context
       ? `music/${context.axis}/${context.key}`
       : `music/contexts/${context.scope}/${context.key}`
     : `${cacheIdentity(config, request.kind)}${request.kind}\0${prompt.toLowerCase()}`;
+  const isConnectionTest = context && "scope" in context && context.scope === "connection-test";
+  const key = isConnectionTest
+    ? `${directoryKey}\0${createHash("sha256")
+        .update(JSON.stringify([config, prompt, context.lengthMs ?? 120_000]))
+        .digest("hex")}`
+    : directoryKey;
   let pending = locks.get(key);
   if (!pending) {
     // Aborting one listener must not discard a paid result for other listeners.
-    pending = compose(config, request.kind, prompt, context).finally(() => locks.delete(key));
+    const previousTest = isConnectionTest ? testPublicationTails.get(directoryKey) : undefined;
+    const generate = () => compose(config, request.kind, prompt, context);
+    pending = (previousTest ? previousTest.catch(() => {}).then(generate) : generate()).finally(() => {
+      locks.delete(key);
+      if (isConnectionTest && testPublicationTails.get(directoryKey) === pending)
+        testPublicationTails.delete(directoryKey);
+    });
     locks.set(key, pending);
+    if (isConnectionTest) testPublicationTails.set(directoryKey, pending);
   }
   let listener: ReturnType<typeof addAbortListener> | undefined;
   try {

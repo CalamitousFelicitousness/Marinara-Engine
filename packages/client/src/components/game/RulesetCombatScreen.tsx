@@ -24,6 +24,7 @@ import { zoneLine } from "./RulesetCombatStatus";
 import { RulesetSideBadge, RulesetTurnOrder, rulesetHealthTone, rulesetStateWord } from "./RulesetTurnOrder";
 import { rulesetDistanceText, rulesetHealthPercent, rulesetHeldCaught } from "../../lib/ruleset-combat-board";
 import type { RulesetMenuStep } from "../../lib/ruleset-combat-menu";
+import { rulesetFoeFates } from "../../lib/ruleset-combat-log";
 import { useCombatScreenStore } from "../../stores/combat-screen.store";
 import { useMatchMedia } from "../../hooks/use-match-media";
 import { cn } from "../../lib/utils";
@@ -683,19 +684,7 @@ export function RulesetFightEnd({
 }) {
   const { t } = useTranslation();
   const party = view.combatants.filter((combatant) => combatant.side === "party" && !combatant.left);
-  const foes = view.combatants.filter((combatant) => combatant.side !== "party");
-  // Each foe's one fate, which the count and the names both read: gone from the fight (fled, sent
-  // away), felled (down when it ended counts, since the fight is over for it), or still on its feet.
-  const fateOf = (one: (typeof foes)[number]) =>
-    one.away || one.left ? "endGone" : one.defeated || one.down ? "endDefeated" : "endStanding";
-  const beaten = foes.filter((one) => fateOf(one) !== "endStanding").length;
-  const fates = (
-    [
-      ["endDefeated", foes.filter((one) => fateOf(one) === "endDefeated")],
-      ["endGone", foes.filter((one) => fateOf(one) === "endGone")],
-      ["endStanding", foes.filter((one) => fateOf(one) === "endStanding")],
-    ] as const
-  ).filter(([, list]) => list.length > 0);
+  const { fates, beaten, total } = rulesetFoeFates(view);
   return (
     <section
       aria-label={t("game.combat.ruleset.screen.endTitle")}
@@ -708,7 +697,7 @@ export function RulesetFightEnd({
         <h3 className="text-base font-bold">{t(OUTCOME_LINE[outcome])}</h3>
         <p className="text-xs text-[var(--muted-foreground)]">
           {t("game.combat.ruleset.screen.endRounds", { count: view.round })}
-          {foes.length > 0 && <> · {t("game.combat.ruleset.screen.endFoes", { beaten, total: foes.length })}</>}
+          {total > 0 && <> · {t("game.combat.ruleset.screen.endFoes", { beaten, total })}</>}
         </p>
       </div>
       {fates.length > 0 && (

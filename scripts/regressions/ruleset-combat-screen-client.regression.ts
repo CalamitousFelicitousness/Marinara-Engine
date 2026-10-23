@@ -54,6 +54,7 @@ import {
   rulesetRefusalKey,
   rulesetRefusalText,
   rulesetValueLabel,
+  rulesetFoeFates,
 } from "../../packages/client/src/lib/ruleset-combat-log.js";
 import { rulesetRichLogLines } from "../../packages/client/src/lib/ruleset-combat-log-rich.js";
 import {
@@ -418,6 +419,34 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
         [2, second],
       ],
     );
+  }
+
+  {
+    // The end card's count and its lines read one fate per foe: a fled foe, one sent away and one
+    // down are each named once, and only the felled are counted beaten.
+    const base = viewOf(state);
+    const foe = base.combatants.find((one) => one.side !== "party")!;
+    const foes = (["down", "left", "away"] as const).map((flag, index) => ({
+      ...foe,
+      id: `foe-${flag}`,
+      name: `Foe ${index}`,
+      [flag]: true,
+    }));
+    const ended = rulesetFoeFates({
+      ...base,
+      combatants: [...base.combatants.filter((one) => one.side === "party"), ...foes],
+    });
+    assert.deepEqual(
+      ended.fates.map(([key, list]) => [key, list.map((one) => one.id)]),
+      [
+        ["endDefeated", ["foe-down"]],
+        ["endGone", ["foe-left", "foe-away"]],
+      ],
+    );
+    assert.equal(ended.beaten, 1, "the tally is the felled line's length");
+    assert.equal(ended.total, 3);
+    const fled = rulesetFoeFates({ ...base, combatants: [{ ...foe, left: true }] });
+    assert.equal(fled.beaten, 0, "a fight every foe left alive beats none of them");
   }
 
   const menu = menuOf(fiveE, state, "brenna");

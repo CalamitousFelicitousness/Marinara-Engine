@@ -99,6 +99,7 @@ async function providerRejection(
           .join("; ")
       : undefined) ??
     errorObject?.message ??
+    (typeof body.error === "string" && !PROVIDER_ERROR_CODES.has(body.error) ? body.error : undefined) ??
     body?.message ??
     body?.msg;
   let reason = typeof message === "string" ? sanitizeApiError(message, message.length) : "";
@@ -113,7 +114,7 @@ async function providerRejection(
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 300);
-  const code = detailObject?.status ?? errorObject?.code ?? body.code;
+  const code = detailObject?.status ?? errorObject?.code ?? body.code ?? body.error;
   return new AudioGenerationProviderError(
     config.source,
     response.status,

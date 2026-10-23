@@ -1624,7 +1624,7 @@ export function ConnectionEditor() {
           audioConnectionId: connectionDetailId,
           context: {
             scope: "connection-test",
-            key: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
+            key: "sample",
             lengthMs: 10_000,
           },
         },
@@ -1641,14 +1641,25 @@ export function ConnectionEditor() {
       if (controller.signal.aborted || testScopeRef.current !== scope) return;
       const payload = error instanceof ApiError ? (error.payload as Record<string, unknown> | undefined) : undefined;
       const status = payload?.providerStatus;
+      const failureMessage =
+        payload?.failureCode === "invalid_audio"
+          ? t("connections.audioGeneration.testMusicInvalidAudio")
+          : payload?.failureCode === "invalid_callback"
+            ? t("connections.audioGeneration.testMusicCallbackError")
+            : payload?.failureCode === "invalid_input"
+              ? t("connections.audioGeneration.testMusicInputError")
+              : payload?.failureCode === "task_failed"
+                ? t("connections.audioGeneration.testMusicTaskError")
+                : undefined;
       const message =
-        typeof status === "number" && Number.isInteger(status) && status >= 100 && status <= 599
+        failureMessage ??
+        (typeof status === "number" && Number.isInteger(status) && status >= 100 && status <= 599
           ? typeof payload?.reason === "string" && payload.reason
             ? t("connections.audioGeneration.testMusicProviderError", { status, reason: payload.reason.slice(0, 300) })
             : t("connections.audioGeneration.testMusicHttpError", { status })
           : error instanceof Error
             ? error.message.slice(0, 300)
-            : t("connections.audioGeneration.testMusicFailed");
+            : t("connections.audioGeneration.testMusicFailed"));
       setAudioTestError(message);
     } finally {
       if (audioTestControllerRef.current === controller) {

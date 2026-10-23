@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 const data = mkdtempSync(join(tmpdir(), "marinara-generative-audio-"));
 Object.assign(process.env, {
@@ -291,6 +292,50 @@ try {
     (await generate(row.id, { ...music, context: { scope: "gacha-forge", key: "world-1-sad" } })).json().path,
     "music/contexts/gacha-forge/world-1-sad/my-track.ogg",
   );
+  const sampleInput = {
+    kind: "music",
+    context: { scope: "connection-test", key: "untrusted-client-key", lengthMs: 10_000 },
+  };
+  const beforeSamples = calls.length;
+  const sample1 = (await generate(row.id, sampleInput)).json();
+  const sampleDirectory = dirname(sample1.path);
+  assert.equal(
+    sampleDirectory,
+    `music/contexts/connection-test/${createHash("sha256").update(row.id).digest("hex").slice(0, 32)}`,
+    "the server derives sample ownership from the selected connection, not a client key",
+  );
+  const sampleReplacement = join(data, "game-assets", sampleDirectory, "my-track.ogg");
+  writeFileSync(sampleReplacement, "user owned audio");
+  const sample2 = (
+    await generate(row.id, { ...sampleInput, context: { ...sampleInput.context, key: "other-key" } })
+  ).json();
+  assert.equal(dirname(sample2.path), sampleDirectory);
+  assert.notEqual(sample1.path, sample2.path, "each successful test has a fresh URL despite browser asset caching");
+  assert.equal(sample1.cached, false);
+  assert.equal(sample2.cached, false);
+  assert.equal(calls.length, beforeSamples + 2, "each later click really contacts the selected provider");
+  assert.equal(existsSync(join(data, "game-assets", sample1.path)), false, "the previous test track is reclaimed");
+  assert.deepEqual(
+    readdirSync(join(data, "game-assets", sampleDirectory)).sort(),
+    [sample2.path.split("/").at(-1), "my-track.ogg"].sort(),
+  );
+  assert.equal(readFileSync(sampleReplacement, "utf8"), "user owned audio");
+  assert.equal(
+    readFileSync(join(replacement, "my-track.ogg"), "utf8"),
+    "user owned audio",
+    "other scopes remain intact",
+  );
+  const otherSample = (await generate(changed.id, sampleInput)).json();
+  assert.notEqual(dirname(otherSample.path), sampleDirectory, "connections do not share sample assets or locks");
+  assert(existsSync(join(data, "game-assets", sample2.path)));
+  const beforeRacingSamples = calls.length;
+  const racingSamples = await Promise.all([generate(row.id, sampleInput), generate(row.id, sampleInput)]);
+  assert.equal(racingSamples[0]!.json().path, racingSamples[1]!.json().path);
+  assert.equal(calls.length, beforeRacingSamples + 1, "concurrent listeners share one in-flight sample only");
+  assert.equal(
+    readdirSync(join(data, "game-assets", sampleDirectory)).filter((name) => /^generated-/.test(name)).length,
+    1,
+  );
   for (const extra of [
     { kind: "music" },
     { context: { scope: "gacha-forge", key: "x" } },
@@ -348,6 +393,22 @@ try {
     assert.equal(nativeRequests[0]!.model_id, "music_v2_5");
     assert.equal(nativeRequests[0]!.music_length_ms, 10_000);
     assert(!rejected.body.includes("fixture-audio-key"));
+    globalThis.fetch = async () => new Response("not MP3 audio");
+    const invalidAudio = await generate(native.id, sampleInput);
+    assert.equal(invalidAudio.statusCode, 502);
+    assert.equal(invalidAudio.json().failureCode, "invalid_audio");
+    assert.equal(invalidAudio.json().providerStatus, undefined);
+    const suno = await create({ audioGenerationSource: "sunoapi", baseUrl: "https://8.8.8.8", model: "V6" });
+    assert.equal((await generate(suno.id, sampleInput)).json().failureCode, "invalid_callback");
+    assert.equal(
+      (await generate(suno.id, { ...sampleInput, prompt: "x".repeat(1001) })).json().failureCode,
+      "invalid_input",
+    );
+    await connections.update(suno.id, { audioGenerationCallbackUrl: "https://9.9.9.9/callback" });
+    globalThis.fetch = async () => new Response(JSON.stringify({ code: 400, msg: "private raw provider text" }));
+    const taskFailure = await generate(suno.id, sampleInput);
+    assert.equal(taskFailure.json().failureCode, "task_failed");
+    assert(!taskFailure.body.includes("private raw provider text"));
   } finally {
     globalThis.fetch = originalFetch;
   }

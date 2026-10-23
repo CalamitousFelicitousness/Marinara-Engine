@@ -60,7 +60,7 @@ for (const theme of ["dark", "light"] as const) {
     expect(created.ok()).toBeTruthy();
     const { id } = await created.json();
     const sent: Record<string, unknown>[] = [];
-    let mode: "success" | "error" | "hold" = "success";
+    let mode: "success" | "error" | "invalid-audio" | "hold" = "success";
     let release: (() => void) | undefined;
     let heldSettled = false;
     // Reuse a bundled MP3 to verify real decoding/playback without a paid provider call.
@@ -91,6 +91,13 @@ for (const theme of ["dark", "light"] as const) {
             providerStatus: 400,
             reason: "The selected music model is unavailable.",
           },
+        });
+        return;
+      }
+      if (mode === "invalid-audio") {
+        await route.fulfill({
+          status: 502,
+          json: { error: "Audio generation failed", detail: "private raw provider text", failureCode: "invalid_audio" },
         });
         return;
       }
@@ -147,6 +154,12 @@ for (const theme of ["dark", "light"] as const) {
       await expect(player).toHaveCount(0);
       expect(sent).toHaveLength(2);
       await capture(page, info, `music-test-error-${theme}`, generate);
+      mode = "invalid-audio";
+      await generate.click();
+      await expect(editor.getByRole("alert")).toHaveText(
+        "The test track could not be played. Check the connection’s audio response format.",
+      );
+      expect(sent).toHaveLength(3);
       mode = "hold";
       await generate.click();
       await expect.poll(() => !!release).toBe(true);
@@ -160,7 +173,7 @@ for (const theme of ["dark", "light"] as const) {
       );
       await expect(player).toHaveCount(0);
       await expect(editor.getByRole("alert")).toHaveCount(0);
-      expect(sent).toHaveLength(3);
+      expect(sent).toHaveLength(4);
     } finally {
       release?.();
       await request.delete(`/api/connections/${id}`);

@@ -202,6 +202,12 @@ try {
   assert.equal(rejected.providerCode, "invalid_model_id");
   const validation = await rejection({ detail: [{ msg: "Invalid output format", input: key }] });
   assert.equal(validation.reason, "Invalid output format", "validation input fields are never exposed");
+  const stringError = await rejection({ error: "Invalid API key", message: "unrelated fallback" });
+  assert.equal(stringError.reason, "Invalid API key");
+  assert.equal((await rejection({ error: `Invalid API key ${key}` })).reason, "Invalid API key [redacted]");
+  const stringCode = await rejection({ error: "invalid_api_key" });
+  assert.equal(stringCode.providerCode, "invalid_api_key");
+  assert.equal(stringCode.reason, undefined, "machine codes do not masquerade as human reasons");
   const callbackUrl = `${eleven.baseUrl}/private-callback`;
   const redacted = await rejection(
     {

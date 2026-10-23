@@ -197,7 +197,9 @@ try {
     [375, "ruleset fight display"],
     [376, "Home browser fullscreen"],
     [377, "the Motion 14 host slot"],
-    [379, "per-agent reference lorebooks"],
+    [378, "a ruleset's own words"],
+    [379, "ruleset combat styles"],
+    [380, "package-bound reference lorebooks"],
     [381, "independent browser audio players"],
   ];
   for (const [minor, label] of supportedMinors) {

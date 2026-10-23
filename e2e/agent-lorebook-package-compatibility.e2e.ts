@@ -118,7 +118,7 @@ for (const mode of ["roleplay", "game"] as const) {
       const attachment = page.locator('[data-agent-lorebook-attachment="hierarchical-maps"]');
       await expect(hint).toBeVisible();
       await expect(attachment).toHaveCount(0);
-      minor = 379;
+      minor = 380;
       await page.reload();
       await open();
       await expect(hint).toHaveCount(0);

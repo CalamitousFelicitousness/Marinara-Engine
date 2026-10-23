@@ -284,7 +284,10 @@ import {
   normalizeRpgStatPools,
   copyRulesetSheetForGame,
   isCommunityRulesetId,
+  GAME_COMBAT_STYLE_ID_PATTERN,
   rulesetLayerSelectionIssues,
+  rulesetAllowsCombatStyle,
+  rulesetCombatStyles,
   rulesetRefSchema,
   worldKitSchema,
   gameWorldKitFromMetadata,
@@ -2101,7 +2104,7 @@ const hudWidgetSchema = z.object({
  * cannot know a client's registrations, so it checks the shape only; a client plays an id it does not
  * know as classic, and so does the server's own prompting.
  */
-const gameCombatStyleIdSchema = z.string().regex(/^[a-z][a-z0-9_-]{0,47}$/);
+const gameCombatStyleIdSchema = z.string().regex(GAME_COMBAT_STYLE_ID_PATTERN);
 
 const gameSetupConfigSchema = z.object({
   genre: z.string().min(1).max(200),
@@ -6997,6 +7000,14 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       const [layerIssue] = rulesetLayerSelectionIssues(registered.definition, requestedOptions);
       if (layerIssue) {
         return rejectGenerationOutput(reply, 400, { error: layerIssue.message, code: layerIssue.code });
+      }
+      // A ruleset may name the combat styles its games play (1.379): one it leaves out is refused, as a
+      // layer it cannot honour is, rather than played on rules the ruleset said it does not fit.
+      if (!rulesetAllowsCombatStyle(registered.definition, parsedCreateGameInput.setupConfig.combatStyle)) {
+        return rejectGenerationOutput(reply, 400, {
+          error: `The ruleset "${registered.definition.name}" plays battles only as ${rulesetCombatStyles(registered.definition)!.join(", ")}.`,
+          code: "combat_style_not_allowed",
+        });
       }
       gameRuleset = { ...createRulesetRef(registered), options: requestedOptions };
     }

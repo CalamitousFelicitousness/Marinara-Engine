@@ -893,6 +893,17 @@ type RetryAgentPhaseToolInputs = {
   agentContext: AgentContext;
 };
 
+function resolveRetryTargetCharacterId(
+  activeCharacterIds: string[],
+  selectedTargetMessage: { role?: unknown; characterId?: unknown } | null | undefined,
+): string | null {
+  return selectedTargetMessage?.role === "assistant" &&
+    typeof selectedTargetMessage.characterId === "string" &&
+    activeCharacterIds.includes(selectedTargetMessage.characterId)
+    ? selectedTargetMessage.characterId
+    : null;
+}
+
 export function resolveRetryAgentPhaseToolInputs(args: {
   requestBody: Record<string, unknown>;
   agentContext: AgentContext;
@@ -904,12 +915,7 @@ export function resolveRetryAgentPhaseToolInputs(args: {
 } {
   const resolveForContext = (agentContext: AgentContext): RetryAgentPhaseToolInputs => {
     const activeCharacterIds = agentContext.characters.map((character) => character.id);
-    const targetCharacterId =
-      args.selectedTargetMessage?.role === "assistant" &&
-      typeof args.selectedTargetMessage.characterId === "string" &&
-      activeCharacterIds.includes(args.selectedTargetMessage.characterId)
-        ? args.selectedTargetMessage.characterId
-        : null;
+    const targetCharacterId = resolveRetryTargetCharacterId(activeCharacterIds, args.selectedTargetMessage);
     const requestBody = { ...args.requestBody };
     if (targetCharacterId) {
       requestBody.forCharacterId = targetCharacterId;
@@ -929,6 +935,7 @@ export function resolveRetryAgentPhaseToolInputs(args: {
 }
 
 async function buildRetryAgentContext(args: {
+  selectedTargetMessage: { role?: unknown; characterId?: unknown } | null | undefined;
   signal: AbortSignal;
   lorebookGenerationTriggers: string[];
   cyoaAgentWillRun: boolean;
@@ -996,14 +1003,15 @@ async function buildRetryAgentContext(args: {
     ? (chatMeta.activeLorebookIds as string[])
     : [];
   const charInfo: AgentContext["characters"] = [];
-  const attachmentCharacterTags = new Set<string>();
+  const characterTagsById = new Map<string, string[]>();
   for (const cid of characterIds) {
     const charRow = await chars.getById(cid, chatId);
     if (!charRow) continue;
     const charData = parseJsonIfString<Record<string, unknown>>(charRow.data as string);
-    if (Array.isArray(charData.tags)) {
-      for (const tag of charData.tags) if (typeof tag === "string") attachmentCharacterTags.add(tag);
-    }
+    characterTagsById.set(
+      cid,
+      Array.isArray(charData.tags) ? charData.tags.filter((tag): tag is string => typeof tag === "string") : [],
+    );
     const extensions =
       charData.extensions && typeof charData.extensions === "object" && !Array.isArray(charData.extensions)
         ? (charData.extensions as Record<string, unknown>)
@@ -1027,6 +1035,11 @@ async function buildRetryAgentContext(args: {
       rpgStats: normalizeCharacterRpgStats(extensions.rpgStats),
     });
   }
+
+  const availableCharacterIds = charInfo.map((character) => character.id);
+  const targetCharacterId = resolveRetryTargetCharacterId(availableCharacterIds, args.selectedTargetMessage);
+  const promptCharacterIds = targetCharacterId ? [targetCharacterId] : availableCharacterIds;
+  const attachmentCharacterTags = new Set(promptCharacterIds.flatMap((id) => characterTagsById.get(id) ?? []));
 
   const lorebookCharacterIds =
     personaContext.identitySource === "character" &&
@@ -1649,7 +1662,7 @@ async function buildRetryAgentContext(args: {
       filterRelevantLorebooks((await lorebooksStore.list()) as unknown as Lorebook[], {
         chatId,
         characterIds: [
-          ...characterIds,
+          ...promptCharacterIds,
           ...(personaContext.identitySource === "character" && personaContext.identityId
             ? [personaContext.identityId]
             : []),
@@ -1672,7 +1685,7 @@ async function buildRetryAgentContext(args: {
             ? [agent.settings.chatAttachedLorebookId]
             : [],
       })),
-      activeCharacterIds: characterIds,
+      activeCharacterIds: promptCharacterIds,
       activeCharacterTags: [...attachmentCharacterTags],
       embeddingSource,
       entryStateOverrides:
@@ -5081,6 +5094,7 @@ export async function registerRetryAgentsRoute(
       );
       const agentContextResult = await runRetrySetupPhase(abortController.signal, () =>
         buildRetryAgentContext({
+          selectedTargetMessage: rangeTarget ?? lastAssistant,
           signal: abortController.signal,
           lorebookGenerationTriggers,
           cyoaAgentWillRun,
@@ -5124,6 +5138,7 @@ export async function registerRetryAgentsRoute(
         hasPreGenerationRetries && preGenerationRecentMessages
           ? await runRetrySetupPhase(abortController.signal, () =>
               buildRetryAgentContext({
+                selectedTargetMessage: rangeTarget ?? lastAssistant,
                 signal: abortController.signal,
                 lorebookGenerationTriggers,
                 cyoaAgentWillRun: false,

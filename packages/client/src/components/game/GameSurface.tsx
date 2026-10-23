@@ -30,6 +30,7 @@ import {
   type CreaturePack,
   rulesetCardItems,
   rulesetReadsItems,
+  rulesetCombatStyle,
   gameDungeonMapFromMetadata,
 } from "@marinara-engine/shared";
 // ──────────────────────────────────────────────
@@ -40,6 +41,7 @@ import { ExperiencePeopleSpritesContext } from "../../hooks/use-overworld-view";
 import {
   getCombatStyle,
   isBuiltInCombatStyle,
+  listCombatStyles,
   offerCombatStart,
   resolveCombatStyle,
   styleOwnedFightFromSnapshot,
@@ -8956,10 +8958,16 @@ function GameSurfaceComponent({
   // (settings drawer) ?? wizard setup choice ?? legacy default "classic". An id
   // this client has not registered plays as classic (#8109).
   const combatSetupConfig = chatMeta.gameSetupConfig as Record<string, unknown> | undefined;
+  // A style the game's ruleset leaves out (`combat.styles`, 1.379) plays as the first it lists; a fight
+  // already pinned keeps its own.
   const effectiveCombatStyle: GameCombatStyle = resolveCombatStyle(
     combatPinnedStyle ??
-      (chatMeta.gameCombatStyle as GameCombatStyle | undefined) ??
-      (combatSetupConfig?.combatStyle as GameCombatStyle | undefined),
+      rulesetCombatStyle(
+        gameRuleset.status === "ok" ? gameRuleset.definition : null,
+        (chatMeta.gameCombatStyle as GameCombatStyle | undefined) ??
+          (combatSetupConfig?.combatStyle as GameCombatStyle | undefined),
+        listCombatStyles(),
+      ),
   );
   const combatStyleSurface = getCombatStyle(effectiveCombatStyle);
   // A style that keeps its own state (#8109) counts as an active fight while it says so.

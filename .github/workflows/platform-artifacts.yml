@@ -58,7 +58,24 @@ jobs:
       - name: Exercise launcher dependency handoff and data preservation
         run: pnpm regression:launcher-update
       - name: Exercise restart ownership
+        id: restart-source
+        env:
+          MARINARA_RESTART_DIAGNOSTICS_DIR: ${{ github.workspace }}/test-results/restart-diagnostics
         run: node scripts/run-regressions.mjs --filter scripts/regressions/restart-supervisor.regression.ts
+      - name: Compare compiled-server restart ownership
+        if: success() || steps.restart-source.outcome == 'failure'
+        env:
+          MARINARA_RESTART_COMPILED: "true"
+          MARINARA_RESTART_DIAGNOSTICS_DIR: ${{ github.workspace }}/test-results/restart-diagnostics
+        run: node scripts/run-regressions.mjs --filter scripts/regressions/restart-supervisor.regression.ts
+      - name: Retain restart diagnostic evidence
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: restart-diagnostics-${{ matrix.os }}
+          path: test-results/restart-diagnostics/
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Exercise native console shutdown and saved-data flush
         # This file runs several separately bounded console/PTY scenarios; the
         # general regression runner's 30s whole-file cap cuts those short.

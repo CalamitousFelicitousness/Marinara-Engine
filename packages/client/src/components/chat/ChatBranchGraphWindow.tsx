@@ -154,8 +154,10 @@ function BranchGraph({ chatId, groupId, compact }: { chatId: string; groupId: st
   }, [groupChats, graph.data, expanded, fit]);
 
   // The graph fills its window: measure the timeline's room, and again whenever the window is resized.
-  // The timeline is mounted only when the body draws the graph; an error keeps the last layout but hides it.
-  const drawn = !!layout && !graph.isError && !groupFailed && layout.lanes.length >= 2;
+  // `drawn` decides whether the body draws the graph, so the timeline is mounted exactly when it holds. An error
+  // keeps the last layout but hides it.
+  const failed = graph.isError || groupFailed;
+  const drawn = !!groupId && !failed && !!layout && layout.lanes.length >= 2;
   useLayoutEffect(() => {
     const scroller = scrollRef.current;
     const timeline = timelineRef.current;
@@ -241,11 +243,11 @@ function BranchGraph({ chatId, groupId, compact }: { chatId: string; groupId: st
   );
 
   let body;
-  if (!groupId) body = status(localizeUi("chat.settings.branchGraphEmpty"));
-  else if (graph.isError || groupFailed) body = status(localizeUi("chat.settings.branchGraphError"));
-  else if (!layout) body = status(localizeUi("chat.settings.branchGraphLoading"));
-  else if (layout.lanes.length < 2) body = status(localizeUi("chat.settings.branchGraphEmpty"));
-  else {
+  if (!drawn) {
+    if (failed) body = status(localizeUi("chat.settings.branchGraphError"));
+    else if (groupId && !layout) body = status(localizeUi("chat.settings.branchGraphLoading"));
+    else body = status(localizeUi("chat.settings.branchGraphEmpty"));
+  } else {
     body = (
       <div
         ref={scrollRef}
@@ -313,7 +315,7 @@ function BranchGraph({ chatId, groupId, compact }: { chatId: string; groupId: st
   const allExpanded = expanded === "all" || (expanded.length > 0 && !canExpand);
   return (
     <div ref={frameRef} className="relative flex min-h-0 flex-1 flex-col">
-      {layout && layout.lanes.length >= 2 && (
+      {drawn && (
         <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-[var(--border)] px-3 py-1.5 text-[0.625rem] text-[var(--muted-foreground)]">
           <LegendDot role="u" label={localizeUi("chat.settings.branchGraphSpeakerYou")} />
           <LegendDot role="a" label={localizeUi("chat.settings.branchGraphLegendCharacter")} />

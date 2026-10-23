@@ -567,6 +567,8 @@ export function GameRulesetSheet({
     ],
     [definition, build],
   );
+  // A tab whose lists are all hidden now (a class changed) falls back to the Overview.
+  const shownTab = tab !== null && tabs.includes(tab) ? tab : null;
   // A track the ruleset shows only once moved (1.377), and a note hidden by the sheet's own values.
   const shownTracks = resolved.tracks.filter(
     (track) =>
@@ -729,10 +731,10 @@ export function GameRulesetSheet({
                   key={one ?? "overview"}
                   type="button"
                   role="tab"
-                  aria-selected={tab === one}
+                  aria-selected={shownTab === one}
                   onClick={() => setTab(one)}
                   className={`${chipClass} ${
-                    tab === one
+                    shownTab === one
                       ? "border-[var(--primary)] bg-[var(--accent)] text-[var(--foreground)]"
                       : "border-[var(--border)] text-[var(--muted-foreground)] hover:bg-[var(--accent)]"
                   }`}
@@ -742,9 +744,9 @@ export function GameRulesetSheet({
               ))}
             </div>
           )}
-          {tab !== null &&
+          {shownTab !== null &&
             definition.sheet.lists
-              .filter((list) => list.display?.tab === tab && !isRulesetItemHidden(list, build, definition))
+              .filter((list) => list.display?.tab === shownTab && !isRulesetItemHidden(list, build, definition))
               .map((list) => (
                 <RulesetSheetListView
                   key={list.id}
@@ -754,7 +756,7 @@ export function GameRulesetSheet({
                   yes={localizeUi("game.ruleset.sheet.yes")}
                 />
               ))}
-          {tab === null && (
+          {shownTab === null && (
             <>
               {(summaryFields.length > 0 || summaryDerived.length > 0) && (
                 <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">

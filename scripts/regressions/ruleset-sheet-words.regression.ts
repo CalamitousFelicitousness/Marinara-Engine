@@ -104,6 +104,27 @@ try {
     issuesOf(fixture((doc) => (doc.sheet.live.text[0].hideWhen = { derived: "spell_save_dc", equals: 0, in: [1] }))),
     /exactly one of/,
   );
+  assert.match(
+    issuesOf(fixture((doc) => (doc.sheet.live.text[0].hideWhen = { derived: "spell_save_dc" }))),
+    /exactly one of/,
+  );
+  {
+    // The published schema says the same: a derived comparison names one way to compare.
+    const schemaText = readFileSync(new URL("../../docs/extending/ruleset.schema.json", import.meta.url), "utf8");
+    const derivedHides: Array<Record<string, any>> = [];
+    JSON.parse(schemaText, (_key, value) => {
+      if (value?.type === "object" && value.properties?.derived && value.properties?.notEquals)
+        derivedHides.push(value);
+      return value;
+    });
+    assert.ok(derivedHides.length > 0, "the schema carries a derived hideWhen");
+    for (const node of derivedHides) {
+      assert.deepEqual(
+        node.oneOf?.map((one: { required: string[] }) => one.required[0]),
+        ["equals", "notEquals", "in"],
+      );
+    }
+  }
   assert.ok(
     issuesOf(
       fixture((doc) => (doc.catalogs[0].entries[0].creature.traits = [{ name: "Long", text: "w".repeat(1300) }])),
@@ -255,6 +276,23 @@ try {
   assert.equal(held([{ name: " dwarvish " }]), true, "written by the race, matched by name");
   assert.equal(held([{ name: "Elvish", _catalog: "languages/dwarvish" }]), true, "or by the entry's own mark");
   assert.equal(held([{ name: "Elvish" }]), false);
+  {
+    // A row that writes more than its name is held only by its own mark.
+    const fuller = {
+      id: "dwarvish",
+      label: "Dwarvish",
+      rows: [{ list: "proficiencies", values: { name: "Dwarvish", note: "a script of runes" } }],
+    } as unknown as RulesetCatalogEntry;
+    const heldFuller = (rows: unknown[]) =>
+      rulesetBuilderEntryHeld(
+        definition,
+        rulesetSheetBuildSchema.parse({ lists: { proficiencies: rows } }),
+        "languages",
+        fuller,
+      );
+    assert.equal(heldFuller([{ name: "Dwarvish" }]), false, "a hand-typed row of the same name");
+    assert.equal(heldFuller([{ name: "Dwarvish", _catalog: "languages/dwarvish" }]), true);
+  }
   assert.equal(
     rulesetBuilderEntryHeld(definition, build, "languages", { id: "none", label: "None" } as RulesetCatalogEntry),
     false,

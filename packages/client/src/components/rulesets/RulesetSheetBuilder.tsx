@@ -73,6 +73,11 @@ import { clamp, inputClass, labelClass, TypedInput } from "./RulesetTypedInput";
 /** A bonus with its sign, as a sheet prints one. */
 const signed = (value: number) => (value > 0 ? `+${value}` : String(value));
 
+/** A choice that builds on training held (5e's Expertise) while nothing it may pick is trained yet:
+ *  every candidate is refused as untrained, so it waits on an earlier step rather than misconfigured. */
+const heldWaiting = (slot: RulesetBuilderTrainedSlot) =>
+  slot.held !== undefined && slot.from.length > 0 && slot.from.every((id) => slot.disabled?.[id] === "untrained");
+
 type StepOf<K extends RulesetBuilderStep["kind"]> = Extract<RulesetBuilderStep, { kind: K }>;
 
 const chipClass =
@@ -427,13 +432,7 @@ export function RulesetSheetBuilder({
       {/* A choice that builds on training already held (5e's Expertise) is said before its skills
           are picked, so a player knows it is coming; it opens as soon as there is something to build on. */}
       {trainedSlots
-        .filter(
-          (slot) =>
-            slot.stepId === step.id &&
-            slot.held !== undefined &&
-            !slot.unresolved &&
-            slot.from.every((id) => slot.disabled?.[id] !== undefined),
-        )
+        .filter((slot) => slot.stepId === step.id && heldWaiting(slot))
         .map((slot) => (
           <p key={slot.key} className="text-xs text-[var(--muted-foreground)]">
             {t("ui.rulesets.builder.heldWaiting", {
@@ -445,16 +444,7 @@ export function RulesetSheetBuilder({
         ))}
       {trainedSlots
         // A choice the picks already answer in full (1.104) has nothing left to offer.
-        .filter(
-          (slot) =>
-            slot.stepId === step.id &&
-            (slot.unresolved || slot.from.length > 0) &&
-            !(
-              slot.held !== undefined &&
-              !slot.unresolved &&
-              slot.from.every((id) => slot.disabled?.[id] !== undefined)
-            ),
-        )
+        .filter((slot) => slot.stepId === step.id && (slot.unresolved || slot.from.length > 0) && !heldWaiting(slot))
         .map((slot) => (
           <ChoiceSlot
             key={slot.key}

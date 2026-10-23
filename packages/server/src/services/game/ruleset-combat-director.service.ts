@@ -751,6 +751,8 @@ function projectCombatant(
   definition: RulesetDefinition,
   combatant: RulesetCombatant,
   state: RulesetEncounterState,
+  /** Whose turn it is, when one is taking it. */
+  attacker: RulesetCombatant | undefined,
 ): DirectedRulesetCombatant {
   const combat = definition.combat!;
   const health = rulesetCombatHealth(definition, combat, combatant);
@@ -770,8 +772,14 @@ function projectCombatant(
     initiative: combatant.initiative,
     health,
     // What an attack is rolled against now, with what its conditions add (a Shield's +5) and what a
-    // dropped shield took away: the number the log will say, not the sheet's.
-    defense: rulesetDefenseAgainst(definition, combat, state, combatant, undefined).defense,
+    // dropped shield took away. Against a foe whose turn it is, cover and high ground from where that
+    // foe stands too: the number the log will say. With no such foe, no position counts, since cover
+    // depends on where a blow comes from.
+    defense: (() => {
+      const against = attacker && attacker.side !== combatant.side ? attacker : undefined;
+      const answer = rulesetDefenseAgainst(definition, combat, state, combatant, against);
+      return against ? answer.defense : answer.defense - answer.cover;
+    })(),
     conditions: conditionsOf(definition, combatant, state),
     hides: rulesetCombatHide(definition, combatant, state),
     damageModifiers: active.flatMap((source) => {
@@ -882,11 +890,13 @@ function heldHitAnswer(
   const combat = definition.combat;
   if (!combat) return undefined;
   const struckId = hit.targetIds?.[0] ?? actorId;
+  // The one struck leads, when the answer may go to them: a reaction shielding an ally.
+  const aimed = targetIds.includes(struckId) ? [struckId, ...targetIds.filter((id) => id !== struckId)] : targetIds;
   try {
     const step = applyRulesetCombatChoice(
       definition,
       encounter,
-      { actorId, optionId: option.id, targetIds: targetIds.slice(0, Math.max(0, option.targets.count)) },
+      { actorId, optionId: option.id, targetIds: aimed.slice(0, Math.max(0, option.targets.count)) },
       (sides) => Math.ceil(sides / 2),
     );
     const struck = rulesetCombatant(step.state, struckId);
@@ -896,7 +906,8 @@ function heldHitAnswer(
     const to = rulesetDefenseAgainst(definition, combat, step.state, struck, source, action).defense;
     if (to <= hit.defense) return undefined;
     return { to, ...(hit.total < to ? { misses: true as const } : {}) };
-  } catch {
+  } catch (error) {
+    logger.debug(error, "[game/combat:ruleset] could not preview %s's answer %s to a held hit", actorId, option.id);
     return undefined;
   }
 }
@@ -991,7 +1002,9 @@ export function directedRulesetView(
       : {}),
     ...(actor && !over ? { actorId: actor.id } : {}),
     controller,
-    combatants: encounter.combatants.map((combatant) => projectCombatant(definition, combatant, encounter)),
+    combatants: encounter.combatants.map((combatant) =>
+      projectCombatant(definition, combatant, encounter, actor && !over ? actor : undefined),
+    ),
     // The areas spells left standing (1.172), drawn on the board and listed beside it.
     ...(rulesetZonesShown(encounter).length > 0 ? { zones: rulesetZonesShown(encounter) } : {}),
     // What stands on the board that may be broken (1.316), broken ones too.

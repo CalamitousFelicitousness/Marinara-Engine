@@ -512,7 +512,7 @@ export function App() {
   const reduceAmbientEffects = useReducedAmbientEffects();
   // In a fight on a board colour is information (whose turn, what may be aimed at), so the accent
   // holds still while one is on screen rather than drifting as if something changed.
-  const fightOnScreen = useCombatScreenStore((state) => state.round !== null);
+  const fightOnScreen = useCombatScreenStore((state) => state.round !== null || state.tacticalShowing);
   const chatChromeTextColor = useUIStore((s) => s.chatChromeTextColor);
   const hasModalOpen = useUIStore((s) => s.modal !== null);
   const rightPanelOpen = useUIStore((s) => s.rightPanelOpen);

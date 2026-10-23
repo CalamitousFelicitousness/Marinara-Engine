@@ -467,7 +467,9 @@ try {
       anchor: "anchor",
       style: "classic",
       party: [unit("ada", "player"), unit("mira", "player")],
-      enemies: [unit("orc", "enemy")],
+      // Sturdy enough that a companion's opening blow never ends the fight before the commands below
+      // (initiative is rolled with real dice, so mira sometimes strikes first and the orc gave up).
+      enemies: [{ ...unit("orc", "enemy"), hp: 600, maxHp: 600 }],
       gm: false,
       difficulty: "normal",
       seed: 3,

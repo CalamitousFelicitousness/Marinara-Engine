@@ -45,7 +45,7 @@ export function extractLeadingGmPlanning(text: string): LeadingPlanningExtractio
  * look something up is cut; anything before it stays.
  */
 const TOOL_ANNOUNCEMENT =
-  /(?:^|(?<=[.!?…"'”’*_)\]])\s+|\s*[—–]\s*|\s+-{1,2}\s+)(?:(?:okay|ok|alright|right|now|first|so),?\s+)*(?:let(?:'s|’s| me| us)|i(?:'ll|’ll| will| need to| have to|'m going to|’m going to| am going to)|time to)\s+(?:roll|re-?roll|get|check|see|find out|throw|call|look up|determine|work out|figure out)\b[^.!?\n]*[.!?:…]*\s*$/i;
+  /(?:^|(?<=[.!?…"'”’*_)\]])\s+|\s*[—–]\s*|\s+-{1,2}\s+)(?:(?:okay|ok|alright|right|now|first|so),?\s+)*(?:let(?:'s|’s| me| us)|i(?:'ll|’ll| will| need to| have to|'m going to|’m going to| am going to)|time to)\s+(?:roll|re-?roll|get|check|see|find out|throw|call|look up|determine|work out|figure out)\b(?:[ \t]+[^\s.!?,;:"“”—–]+){0,10}[ \t]*[.!?:…]*\s*$/i;
 
 export function stripTrailingToolAnnouncement(text: string): string {
   const match = TOOL_ANNOUNCEMENT.exec(text);

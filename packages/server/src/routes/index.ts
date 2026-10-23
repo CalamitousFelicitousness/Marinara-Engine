@@ -65,6 +65,7 @@ import { gameWorldsRoutes } from "./game-worlds.routes.js";
 import { turnGamesRoutes } from "./turn-games.routes.js";
 import { sidecarRoutes } from "./sidecar.routes.js";
 import { ttsRoutes } from "./tts.routes.js";
+import { audioRoutes } from "./audio.routes.js";
 import { speechToTextRoutes } from "./speech-to-text.routes.js";
 import { promptOverridesRoutes } from "./prompt-overrides.routes.js";
 import { csrfDiagnosticsRoutes } from "./csrf-diagnostics.routes.js";
@@ -174,6 +175,7 @@ export async function registerRoutes(app: FastifyInstance) {
   await app.register(gameWorldsRoutes, { prefix: "/api/game-worlds" });
   await app.register(turnGamesRoutes, { prefix: "/api/turn-games" });
   await app.register(ttsRoutes, { prefix: "/api/tts" });
+  await app.register(audioRoutes, { prefix: "/api/audio" });
   await app.register(speechToTextRoutes, { prefix: "/api/speech-to-text" });
   await app.register(promptOverridesRoutes, { prefix: "/api/prompt-overrides" });
   await app.register(csrfDiagnosticsRoutes, { prefix: "/api/csrf" });

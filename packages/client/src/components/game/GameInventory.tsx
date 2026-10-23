@@ -155,7 +155,12 @@ interface GameInventoryProps {
     sheets?: RulesetItemBookSheets;
     layerOptions?: RulesetLayerOptions | null;
     holders: ReadonlySet<string>;
-    onTake: (holder: string | undefined, selection: RulesetStartingGearSelection, again: boolean) => Promise<boolean>;
+    onTake: (
+      holder: string | undefined,
+      selection: RulesetStartingGearSelection,
+      again: boolean,
+      pastLimit?: boolean,
+    ) => Promise<boolean>;
   };
 }
 

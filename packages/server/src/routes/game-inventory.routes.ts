@@ -86,6 +86,8 @@ const startingGearRequestSchema = z
       })
       .strict(),
     again: z.boolean().optional(),
+    /** Taken with Free edit on: into the bag even past what its bearer can carry. */
+    pastLimit: z.boolean().optional(),
   })
   .strict();
 

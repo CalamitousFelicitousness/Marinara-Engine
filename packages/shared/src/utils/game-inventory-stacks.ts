@@ -1262,6 +1262,8 @@ export function placeGameInventoryAddition(
   amount: number,
   destination: GameInventoryDestination,
   rules?: GameInventoryItemRules,
+  /** Into one bag, all of it, past its bearer's limit. */
+  options?: { pastLimit?: boolean },
 ): { shares: Array<{ holder?: string; count: number }>; left: number } {
   // Each bag once, however often it is named: a bag asked twice would have its room counted twice.
   const seen = new Set<string>();
@@ -1288,7 +1290,7 @@ export function placeGameInventoryAddition(
     };
   });
   if (!("among" in destination)) {
-    const count = Math.min(amount, bearers[0]!.most);
+    const count = options?.pastLimit ? amount : Math.min(amount, bearers[0]!.most);
     return { shares: count > 0 ? [{ holder: candidates[0], count }] : [], left: amount - count };
   }
   let left = amount;
@@ -1335,8 +1337,9 @@ export function addGameInventoryPlaced(
   destination: GameInventoryDestination,
   newId?: () => string,
   rules?: GameInventoryItemRules,
+  options?: { pastLimit?: boolean },
 ): { stacks: GameInventoryStack[]; shares: GameInventoryShare[]; left: number } | null {
-  const placed = placeGameInventoryAddition(stacks, like, amount, destination, rules);
+  const placed = placeGameInventoryAddition(stacks, like, amount, destination, rules, options);
   const makeId = newId ?? (() => newGameInventoryStackId(current));
   let current = stacks;
   const shares: GameInventoryShare[] = [];

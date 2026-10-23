@@ -3331,6 +3331,7 @@
   "game.ruleset.startingGear.takenNotice_other": "{{gear}}: {{count}} items added",
   "game.ruleset.startingGear.title": "Starting gear",
   "game.ruleset.startingGear.tooHeavy": "Weighs {{weight}}, more than the {{room}} {{who}} can still carry.",
+  "game.ruleset.startingGear.tooHeavyFree": "Weighs {{weight}}, more than the {{room}} {{who}} can still carry: with Free edit it goes in anyway, and {{who}} is over their limit.",
   "game.ruleset.startingGear.weight": "Weighs {{weight}}; {{who}} can carry {{room}} more.",
   "game.setup.suggestions.cyberpunk.goal1": "Pull one last job and get out clean",
   "game.setup.suggestions.cyberpunk.goal2": "Find out who sold your memories",

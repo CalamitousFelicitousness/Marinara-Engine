@@ -9322,7 +9322,12 @@ function GameSurfaceComponent({
     );
   }, [chatMeta.gameStartingGearTaken]);
   const handleTakeStartingGear = useCallback(
-    async (holder: string | undefined, selection: RulesetStartingGearSelection, again: boolean) => {
+    async (
+      holder: string | undefined,
+      selection: RulesetStartingGearSelection,
+      again: boolean,
+      pastLimit?: boolean,
+    ) => {
       const gearLabel =
         gameRuleset.status === "ok"
           ? (gameRuleset.definition.items?.startingGear?.find((each) => each.id === selection.gear)?.label ??
@@ -9343,6 +9348,7 @@ function GameSurfaceComponent({
             ...(holder ? { holder } : {}),
             selection,
             ...(again ? { again: true } : {}),
+            ...(pastLimit ? { pastLimit: true } : {}),
           }),
         );
       } catch (error) {

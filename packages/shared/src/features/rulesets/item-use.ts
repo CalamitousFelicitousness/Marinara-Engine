@@ -352,8 +352,9 @@ export function useRulesetItemOutsideFight(input: {
     }
   }
 
-  // Harm on its user (2026-10-23 playtest): its save against its difficulty, then its damage (none or
-  // half on a made save) and, failed, what it applies. A Potion of Poison's 3d6 and DC 13.
+  // Harm on its user (2026-10-23 playtest): its save against its difficulty, then its damage (all of it,
+  // half or none on a made save, as its onSuccess says) and, failed, what it applies. A Potion of
+  // Poison's 3d6 and DC 13.
   if (harmsUser) {
     const health = definition.combat?.health ?? definition.battle?.health;
     let saved = false;
@@ -387,11 +388,15 @@ export function useRulesetItemOutsideFight(input: {
       saveSaid = `${/\bsave$/iu.test(named) ? named : `${named} save`} ${thrown.total} against ${thrown.difficulty}, ${saved ? "made" : "failed"}`;
     }
     const dealt = rolled(use.amount);
+    // As a fight reads a save (2026-10-23): "negates" takes nothing, "half" half, and "none" leaves the
+    // damage as it is and only keeps off what it applies (a Potion of Poison's 3d6 always lands).
     const amount = dealt
       ? saved
         ? use.save?.onSuccess === "half"
           ? Math.floor(dealt.total / 2)
-          : 0
+          : use.save?.onSuccess === "negates"
+            ? 0
+            : dealt.total
         : dealt.total
       : 0;
     if (dealt && health && amount > 0) {

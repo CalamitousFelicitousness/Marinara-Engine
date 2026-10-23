@@ -124,7 +124,12 @@ export type GameInventoryOp = z.infer<typeof gameInventoryOpSchema>;
  *  a fake with the real thing), which no op a client sends can, since the schema above is strict. */
 export type GameInventoryEngineOp =
   | GameInventoryOp
-  | (Extract<GameInventoryOp, { op: "add" }> & { truly?: string })
+  | (Extract<GameInventoryOp, { op: "add" }> & {
+      truly?: string;
+      /** Into one bag past what its bearer can carry, who is then over their limit: starting gear
+       *  taken with Free edit on (2026-10-23 playtest). */
+      pastLimit?: true;
+    })
   | (Extract<GameInventoryOp, { op: "take" }> & { kind?: string });
 
 export const gameInventoryOpsRequestSchema = z
@@ -257,6 +262,7 @@ export function applyGameInventoryOps(
           destination,
           makeId,
           rules,
+          "pastLimit" in op && op.pastLimit ? { pastLimit: true } : undefined,
         );
         if (!added || added.shares.length === 0) {
           refuse(added ? "too-heavy" : "refused");

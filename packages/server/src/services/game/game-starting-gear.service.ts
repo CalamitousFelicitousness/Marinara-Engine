@@ -11,6 +11,7 @@ import {
   resolveRulesetStartingGear,
   rulesetStartingGearKind,
   rulesetStartingGearTakenBy,
+  type GameInventoryEngineOp,
   type GameInventoryOp,
   type GameInventoryStack,
   type RulesetStartingGearRefusal,
@@ -63,7 +64,14 @@ export type GameStartingGearOutcome =
 
 export async function takeGameStartingGear(
   db: DB,
-  input: { chatId: string; holder?: string; selection: RulesetStartingGearSelection; again?: boolean },
+  input: {
+    chatId: string;
+    holder?: string;
+    selection: RulesetStartingGearSelection;
+    again?: boolean;
+    /** Free edit: all of it goes in, past what its bearer can carry, who is then over their limit. */
+    pastLimit?: boolean;
+  },
 ): Promise<GameStartingGearOutcome> {
   const refuse = (status: 404 | 409, reason: GameStartingGearRefusal, error: string): GameStartingGearOutcome => ({
     ok: false,
@@ -152,13 +160,14 @@ export async function takeGameStartingGear(
         value: { refused: "taken", error: `${who} has already taken starting gear of this kind` },
       };
     }
-    const ops: GameInventoryOp[] = resolution.adds.map((add) => ({
+    const ops: GameInventoryEngineOp[] = resolution.adds.map((add) => ({
       op: "add",
       name: add.name,
       ...(add.item ? { item: add.item } : {}),
       count: add.count,
       ...(holder ? { holder } : {}),
       log: true,
+      ...(input.pastLimit ? { pastLimit: true as const } : {}),
     }));
     const added = applyGameInventoryOps(stacks, ops, undefined, book);
     // All of it or none of it: gear half in the bag is not what the player chose.

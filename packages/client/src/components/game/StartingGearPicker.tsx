@@ -71,7 +71,12 @@ export function StartingGearPicker({
   sheets?: RulesetItemBookSheets;
   taken: StartingGearTaken;
   /** Resolves to whether the gear went into the bag. */
-  onTake: (holder: string | undefined, selection: RulesetStartingGearSelection, again: boolean) => Promise<boolean>;
+  onTake: (
+    holder: string | undefined,
+    selection: RulesetStartingGearSelection,
+    again: boolean,
+    pastLimit?: boolean,
+  ) => Promise<boolean>;
 }) {
   const { t } = useUiTranslation();
   const firstRef = useRef<HTMLSelectElement>(null);
@@ -156,7 +161,8 @@ export function StartingGearPicker({
       : 0;
   const room = status.limit !== undefined ? status.limit - status.load : undefined;
   const tooHeavy = room !== undefined && weight > room + 1e-9;
-  const canTake = resolved?.ok === true && !tooHeavy && (!replaces || again) && !pending;
+  // With Free edit on, gear past what the bearer can carry still goes in, and they are over their limit.
+  const canTake = resolved?.ok === true && (!tooHeavy || freeEdit) && (!replaces || again) && !pending;
 
   // Written as the bag writes a stack: "Handaxe x2".
   const counted = (name: string, count: number) =>
@@ -400,11 +406,18 @@ export function StartingGearPicker({
                 <p
                   className={`text-[0.6875rem] ${tooHeavy ? "text-[var(--destructive)]" : "text-[var(--muted-foreground)]"}`}
                 >
-                  {t(tooHeavy ? "game.ruleset.startingGear.tooHeavy" : "game.ruleset.startingGear.weight", {
-                    who,
-                    weight: Math.round(weight * 100) / 100,
-                    room: Math.max(0, Math.round(room * 100) / 100),
-                  })}
+                  {t(
+                    tooHeavy
+                      ? freeEdit
+                        ? "game.ruleset.startingGear.tooHeavyFree"
+                        : "game.ruleset.startingGear.tooHeavy"
+                      : "game.ruleset.startingGear.weight",
+                    {
+                      who,
+                      weight: Math.round(weight * 100) / 100,
+                      room: Math.max(0, Math.round(room * 100) / 100),
+                    },
+                  )}
                 </p>
               )}
               {replacedLabel && (
@@ -433,7 +446,7 @@ export function StartingGearPicker({
               if (!selection) return;
               setPending(true);
               try {
-                if (await onTake(holder, selection, again)) onClose();
+                if (await onTake(holder, selection, again, tooHeavy && freeEdit)) onClose();
               } finally {
                 setPending(false);
               }

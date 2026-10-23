@@ -22,7 +22,7 @@ const doc = JSON.parse(readFileSync(join(root, "docs/development/ruleset-5e-2014
   string,
   any
 >;
-const poison = (onSuccess: "none" | "half") => ({
+const poison = (onSuccess: "none" | "half" | "negates") => ({
   kind: "attack",
   budget: "action",
   range: 0,
@@ -42,6 +42,7 @@ doc.catalogs.push({
   entries: [
     { id: "bad", label: "Potion of Poison", item: { category: "potion", use: poison("none") } },
     { id: "worse", label: "Potion of Worse Poison", item: { category: "potion", use: poison("half") } },
+    { id: "mild", label: "Potion of Mild Poison", item: { category: "potion", use: poison("negates") } },
   ],
 });
 const result = parseRulesetDefinition(doc);
@@ -82,22 +83,25 @@ const poisoned = (live: unknown) =>
   assert.match(line, /1 left\.$/u);
   assert.equal(failed.stacks[0]?.quantity, 1);
 }
-// Made (every die a 6, so the save is too): nothing, or half.
+// Made (every die a 6, the save a 20): "none" still takes it all and only keeps off what it applies
+// (the SRD's Potion of Poison), "half" half, "negates" nothing.
 {
   const made = drink("bad", 6, 20);
   const line = rulesetItemUseLine(made.said);
-  assert.match(line, /made, takes nothing/u);
+  assert.match(line, /made, takes 18 poison/u);
   assert.ok(!poisoned(made.live));
-  assert.equal(hp(made.live), 30);
+  assert.equal(hp(made.live), 12);
   const half = drink("worse", 6, 20);
   assert.equal(hp(half.live), 21, "half of 18");
   assert.ok(!poisoned(half.live));
+  const mild = drink("mild", 6, 20);
+  assert.match(rulesetItemUseLine(mild.said), /made, takes nothing/u);
+  assert.equal(hp(mild.live), 30);
 }
-
 // A drinker with no live state yet who makes the save: still a state, never undefined (2026-10-23 retest:
 // the server read its keys and threw).
 {
-  const stacks: GameInventoryStack[] = [{ id: "st", name: "Bottle", item: "gear/bad", quantity: 2 }];
+  const stacks: GameInventoryStack[] = [{ id: "st", name: "Bottle", item: "gear/mild", quantity: 2 }];
   const used = useRulesetItemOutsideFight({
     definition,
     itemOf: book.itemOf,

@@ -47,7 +47,10 @@ async function openAgents(
   }: { folder?: boolean; theme?: "dark" | "light"; registryGate?: Promise<void> } = {},
 ) {
   const copies: Record<string, unknown>[] = [];
-  const agents = [CUSTOM];
+  const agents = [
+    CUSTOM,
+    { ...CUSTOM, id: "configured-director", type: "director", name: "My renamed official agent" },
+  ];
   await isolateSyncedUISettings(page);
   await seedUIState(page, { hasCompletedOnboarding: true, sidebarOpen: false, rightPanelOpen: false, theme });
   await page.addInitScript((version) => localStorage.setItem("marinara:whats-new:seen-version", version), APP_VERSION);
@@ -156,7 +159,7 @@ test("Copy waits for the package registry before classifying agents", async ({ p
     const { panel, copies } = await openAgents(page, { registryGate });
     const custom = panel.locator('[data-agent-card][data-agent-name="My Director"]');
     await expect(custom).toBeVisible();
-    await expect(custom.getByRole("button", { name: "Copy agent", exact: true })).toHaveCount(0);
+    await expect(panel.getByRole("button", { name: "Copy agent", exact: true })).toHaveCount(0);
     releaseRegistry();
     await expect(panel.locator("[data-agent-card]")).toHaveCount(5);
     const copy = custom.getByRole("button", { name: "Copy agent", exact: true });

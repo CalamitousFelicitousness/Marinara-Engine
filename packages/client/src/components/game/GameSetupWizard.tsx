@@ -4388,7 +4388,7 @@ export function GameSetupWizard({
                         <>
                           <Wand2 size={14} />
                           {localizeUi(
-                            multiplayerPlayers ? "multiplayer.game.review" : "ui.game.gamesurfacecomponent.startGame",
+                            multiplayerPlayers ? "multiplayer.game.review" : "ui.game.gamesetupwizard.createWorld",
                           )}
                         </>
                       )}

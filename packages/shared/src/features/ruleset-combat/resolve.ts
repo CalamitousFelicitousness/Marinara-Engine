@@ -42,6 +42,16 @@ import {
   type RulesetCombatPoolThrow,
 } from "./pool.js";
 import {
+  pickRulesetSymbolSpends,
+  rulesetCombatIsSymbol,
+  rulesetSymbolNeeded,
+  rulesetSymbolSpendWorth,
+  rulesetSymbolSuccessHarm,
+  throwRulesetSymbolPool,
+  type RulesetSymbolSpendPick,
+  type RulesetSymbolThrow,
+} from "./symbols.js";
+import {
   currentRulesetActor,
   refreshRulesetBudgets,
   rulesetConditionEconomy,
@@ -1413,6 +1423,33 @@ function throwSave(
   if (cover > 0) ctx.events.push({ type: "cover", targetId: combatant.id, bonus: cover, save });
   const modifier = own + cover;
   const mode = rulesetSaveMode(ctx.definition, ctx.combat, combatant, save, ctx.state, against, lean);
+  if (rulesetCombatIsSymbol(ctx.combat)) {
+    // The save's number is its dice, its difficulty the dice thrown against them, and cover and
+    // what conditions add are boost or setback dice (1.382).
+    const bonuses = rollBonuses(
+      ctx,
+      rulesetConditionModifiers(ctx.definition, ctx.combat, combatant, "saves", ctx.state, save, against),
+    );
+    const thrown = throwSymbols(ctx, combatant, own, cover + bonusTotal(bonuses), mode, { difficulty });
+    const success = thrown.successes >= rulesetSymbolNeeded(ctx.definition);
+    ctx.events.push({
+      type: "save",
+      actorId: combatant.id,
+      ...(sourceId ? { sourceId } : {}),
+      save,
+      ...(mode === "normal" ? {} : { mode }),
+      rolls: thrown.rolls,
+      kept: thrown.successes,
+      modifier,
+      ...(bonuses.length > 0 ? { bonuses } : {}),
+      total: thrown.successes,
+      difficulty,
+      success,
+      pool: symbolRecord(thrown),
+    });
+    spendConditions(ctx, combatant, "own-save");
+    return success;
+  }
   if (rulesetCombatIsPool(ctx.combat)) {
     // The save's number is its pool, and its difficulty the successes it needs, never fewer than one.
     const bonuses = rollBonuses(
@@ -1534,6 +1571,25 @@ function passesGate(
     ...(mode === "normal" ? {} : { mode }),
     modifier: gate.modifier,
   };
+  if (rulesetCombatIsSymbol(ctx.combat)) {
+    // The check's number is its dice and its difficulty the dice against them (1.382).
+    const bonuses = rollBonuses(ctx, modifiers);
+    const thrown = throwSymbols(ctx, actor, gate.modifier, bonusTotal(bonuses), mode, {
+      difficulty: gate.difficulty,
+    });
+    const success = thrown.successes >= rulesetSymbolNeeded(ctx.definition);
+    ctx.events.push({
+      ...said,
+      rolls: thrown.rolls,
+      kept: thrown.successes,
+      ...(bonuses.length > 0 ? { bonuses } : {}),
+      total: thrown.successes,
+      difficulty: gate.difficulty,
+      success,
+      pool: symbolRecord(thrown),
+    });
+    return success;
+  }
   if (rulesetCombatIsPool(ctx.combat)) {
     // The check's number is its pool, and its difficulty the successes it needs: never fewer than
     // one, nor more than the ruleset's pool can count, as the Use button holds it.
@@ -1594,6 +1650,7 @@ function passesGate(
     !!rescueEntry(ctx, actor, "checks", "success") ||
     // Its d20 counted as a 20 where that makes it (1.256): Stroke of Luck.
     (!rulesetCombatIsPool(ctx.combat) &&
+      !rulesetCombatIsSymbol(ctx.combat) &&
       !!rescueEntry(ctx, actor, "checks", "twenty", () => total - kept + 20 >= gate.difficulty));
   ctx.events.push({
     ...said,
@@ -1630,6 +1687,144 @@ function poolRecord(thrown: RulesetCombatPoolThrow & { penalty: number }): Rules
     ...(thrown.penalty < 0 ? { penalty: thrown.penalty } : {}),
     ...(thrown.botch ? { botch: true } : {}),
   };
+}
+
+/** A `symbol-pool` fight's throw (1.382) for an attack, a save, a check or a side of a contest: the
+ *  thrower's own dice, what their conditions add as boost or setback dice, their wound penalty as
+ *  setback, and the boost and setback a spend left for their next roll, which this one uses up. */
+function throwSymbols(
+  ctx: RulesetCombatContext,
+  who: RulesetCombatant,
+  dice: number,
+  bonus: number,
+  mode: RulesetCombatRollMode,
+  against: { upgrades?: number; difficulty?: number } = {},
+): RulesetSymbolThrow & { penalty: number } {
+  const penalty = rulesetCombatPenalty(ctx.definition, who);
+  const waiting = who.symbolDice;
+  delete who.symbolDice;
+  return {
+    ...throwRulesetSymbolPool(ctx.definition, ctx.roll, {
+      dice,
+      ...(against.upgrades ? { upgrades: against.upgrades } : {}),
+      difficulty: Math.max(0, against.difficulty ?? 0),
+      bonus: bonus + penalty,
+      ...(waiting?.boost ? { boost: waiting.boost } : {}),
+      ...(waiting?.setback ? { setback: waiting.setback } : {}),
+      mode,
+    }),
+    penalty,
+  };
+}
+
+/** What an event says about one symbol throw. */
+function symbolRecord(thrown: RulesetSymbolThrow & { penalty: number }): RulesetCombatPoolRoll {
+  return {
+    dice: thrown.dice,
+    target: 0,
+    ...(thrown.penalty < 0 ? { penalty: thrown.penalty } : {}),
+    symbols: { ...thrown.symbols },
+    ...(thrown.upgrades ? { upgrades: thrown.upgrades } : {}),
+    difficulty: thrown.difficulty,
+    ...(thrown.boost ? { boost: thrown.boost } : {}),
+    ...(thrown.setback ? { setback: thrown.setback } : {}),
+  };
+}
+
+/** The next of a side to take a turn after the one now, standing and not `but`: who a spend's
+ *  `-ally` lands on. Nobody when the side has nobody else. */
+function nextAllyOf(
+  ctx: RulesetCombatContext,
+  of: RulesetCombatant,
+  but: RulesetCombatant,
+): RulesetCombatant | undefined {
+  const order = ctx.state.order;
+  for (let step = 1; step <= order.length; step++) {
+    const one = rulesetCombatant(ctx.state, order[(ctx.state.turn + step) % order.length]!);
+    if (one && one.side === of.side && one.id !== of.id && one.id !== but.id && rulesetCombatStanding(one)) return one;
+  }
+  return undefined;
+}
+
+/** Each side buys what the symbols an attack's roll left can buy (1.382): the attacker first, with
+ *  the symbols that favour them, and then their target, with the ones that favour the target. What a
+ *  spend does to the hit itself (harm, a critical) is handed back for the blow; everything else
+ *  happens now and says so. What nobody spends stays on the roll for the story. */
+function spendSymbols(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  target: RulesetCombatant,
+  symbols: Readonly<Record<string, number>>,
+  hit: boolean,
+): { damage: number; critical: boolean } {
+  const out = { damage: 0, critical: false };
+  const whom = (on: "attacker" | "target" | "attacker-ally" | "target-ally") =>
+    on === "attacker"
+      ? actor
+      : on === "target"
+        ? target
+        : on === "attacker-ally"
+          ? nextAllyOf(ctx, actor, target)
+          : nextAllyOf(ctx, target, actor);
+  const apply = (picks: RulesetSymbolSpendPick[], chooser: RulesetCombatant) => {
+    for (const { spend, times } of picks) {
+      const dice = spend.boost ?? spend.setback;
+      const diceOn = dice ? whom(dice.on) : undefined;
+      ctx.events.push({
+        type: "symbol-spend",
+        actorId: chooser.id,
+        rollerId: actor.id,
+        targetId: target.id,
+        spendId: spend.id,
+        label: spend.label,
+        symbol: spend.symbol,
+        cost: spend.cost,
+        times,
+        ...(diceOn ? { onId: diceOn.id } : {}),
+        ...(spend.boost && diceOn ? { boost: spend.boost.dice * times } : {}),
+        ...(spend.setback && diceOn ? { setback: spend.setback.dice * times } : {}),
+        ...(spend.critical ? { critical: true as const } : {}),
+      });
+      if (spend.damage) out.damage += spend.damage * times;
+      if (spend.critical) out.critical = true;
+      for (const [rule, key] of [
+        [spend.boost, "boost"],
+        [spend.setback, "setback"],
+      ] as const) {
+        const on = rule ? whom(rule.on) : undefined;
+        if (!rule || !on || on.defeated) continue;
+        const waiting = (on.symbolDice ??= {});
+        waiting[key] = (waiting[key] ?? 0) + rule.dice * times;
+      }
+      if (spend.condition) {
+        const on = whom(spend.condition.on);
+        if (on && !on.defeated) {
+          applyConditionId(
+            ctx,
+            on,
+            spend.condition.id,
+            {
+              condition: spend.condition.id,
+              duration: spend.condition.rounds ? { rounds: spend.condition.rounds } : "instant",
+            },
+            { sourceId: chooser.id },
+          );
+        }
+      }
+      if (spend.track) {
+        const on = whom(spend.track.on);
+        if (on && !on.defeated) moveTrack(ctx, chooser, on, spend.track.id, spend.track.by * times);
+      }
+    }
+  };
+  // A spend that lands on an ally nobody is goes unbought, and its symbols stay on the roll.
+  const usable = (spend: Parameters<typeof rulesetSymbolSpendWorth>[0]) =>
+    [spend.condition?.on, spend.track?.on, spend.boost?.on, spend.setback?.on].every(
+      (on) => on === undefined || !!whom(on),
+    );
+  apply(pickRulesetSymbolSpends(ctx.combat, symbols, hit, "attacker", usable), actor);
+  if (!target.defeated) apply(pickRulesetSymbolSpends(ctx.combat, symbols, hit, "target", usable), target);
+  return out;
 }
 
 /** What conditions add to one roll, each rolled now: a flat number as it is, dice thrown (and taken
@@ -1794,8 +1989,8 @@ function lowerRoll(
   total: number,
   worth: (most: number, holder: RulesetCombatant) => boolean,
 ): number {
-  // A pool has no single number to take dice off.
-  if (rulesetCombatIsPool(ctx.combat)) return 0;
+  // A pool has no single number to take dice off, nor has a symbol throw.
+  if (rulesetCombatIsPool(ctx.combat) || rulesetCombatIsSymbol(ctx.combat)) return 0;
   for (const holder of ctx.state.combatants) {
     if (holder.side === roller.side || !rulesetCombatStanding(holder)) continue;
     const action = holder.actions.find((one) => {
@@ -4822,6 +5017,20 @@ function throwCheck(
   const mode = rulesetCheckMode(ctx.definition, ctx.combat, who, ctx.state, skill, ability, taken);
   const checkModifiers = () =>
     rulesetConditionModifiers(ctx.definition, ctx.combat, who, "checks", ctx.state, skill, undefined, ability);
+  if (rulesetCombatIsSymbol(ctx.combat)) {
+    // Each side throws its own dice and the more net successes wins (1.382).
+    const bonuses = rollBonuses(ctx, checkModifiers());
+    const thrown = throwSymbols(ctx, who, modifier, bonusTotal(bonuses), mode);
+    return {
+      check,
+      rolls: thrown.rolls,
+      modifier,
+      total: thrown.successes,
+      ...(mode === "normal" ? {} : { mode }),
+      ...(bonuses.length > 0 ? { bonuses } : {}),
+      pool: symbolRecord(thrown),
+    };
+  }
   if (rulesetCombatIsPool(ctx.combat)) {
     const bonuses = rollBonuses(ctx, checkModifiers());
     const pool = throwPool(ctx, who, modifier + bonusTotal(bonuses), mode);
@@ -4920,7 +5129,8 @@ function resolveContest(
   else if (winner === "actor" && theirs && rescueEntry(ctx, target, "checks", "success")) winner = "target";
   // Or counts its d20 as a 20, where that wins it (1.256): Stroke of Luck. A pool has no d20.
   const asTwenty = (who: RulesetCombatant, side: RulesetContestSide, wins: (total: number) => boolean) => {
-    if (side.pool || side.rolls.length === 0 || rulesetCombatIsPool(ctx.combat)) return false;
+    if (side.pool || side.rolls.length === 0 || rulesetCombatIsPool(ctx.combat) || rulesetCombatIsSymbol(ctx.combat))
+      return false;
     const kept = side.total - side.modifier - bonusTotal(side.bonuses ?? []);
     const total = side.total - kept + 20;
     if (!rescueEntry(ctx, who, "checks", "twenty", () => wins(total))) return false;
@@ -5685,7 +5895,7 @@ function reachesHeld(
     reach,
   };
   const above = reaction.above;
-  if (!above || rulesetCombatIsPool(ctx.combat)) {
+  if (!above || rulesetCombatIsPool(ctx.combat) || rulesetCombatIsSymbol(ctx.combat)) {
     ctx.events.push({ ...said, success: false });
     return false;
   }
@@ -8493,6 +8703,7 @@ function resolveActionBody(
   const restore = once(action.restore?.amount);
 
   const pooled = rulesetCombatIsPool(ctx.combat);
+  const symbolic = rulesetCombatIsSymbol(ctx.combat);
   // A spending attack throws the number its maker has as the blow lands, and whether anything landed
   // decides, once every target has been tried, whether the number resets or a miss costs some of it.
   const spends = style?.spends ? { number: spend ?? actor.initiative, landed: false } : null;
@@ -8529,6 +8740,8 @@ function resolveActionBody(
     let critical = false;
     // Under `dice-pool`, the successes a hit had past the ones it needed: each is one more damage die.
     let extraDice = 0;
+    // Under `symbol-pool` (1.382), what the hit's successes and its maker's spends add to its harm.
+    let symbolHarm = 0;
     // What lasted one attack, on either side of it: noted when the roll is made and spent once this
     // blow is over, landed or not, so it counts for the blow's damage as well as its roll.
     let used: { mine: RulesetTrackedCondition[]; theirs: RulesetTrackedCondition[] } | null = null;
@@ -8549,9 +8762,13 @@ function resolveActionBody(
       const roll = held.roll;
       const guarded = rulesetDefenseAgainst(ctx.definition, ctx.combat, ctx.state, target, actor, action);
       const landsAt = roll.critical ? "critical" : "hit";
-      // A pool's successes meet what the defense now asks, never fewer than one.
-      const needed = pooled ? Math.max(1, guarded.defense) : guarded.defense;
-      const outcome = roll.natural || roll.total >= needed ? landsAt : "miss";
+      // A pool's successes meet what the defense now asks, never fewer than one. A symbol throw's
+      // difficulty dice were thrown with it, so what it landed with stands.
+      const needed = symbolic ? roll.defense : pooled ? Math.max(1, guarded.defense) : guarded.defense;
+      const outcome =
+        roll.natural || (symbolic ? roll.total >= rulesetSymbolNeeded(ctx.definition) : roll.total >= needed)
+          ? landsAt
+          : "miss";
       if (pooled && outcome !== "miss") extraDice = roll.total - needed;
       if (needed !== roll.defense || roll.lowered) {
         ctx.events.push({
@@ -8575,6 +8792,11 @@ function resolveActionBody(
       };
       landed = outcome !== "miss";
       critical = outcome === "critical";
+      if (symbolic && roll.symbols) {
+        const bought = spendSymbols(ctx, actor, target, roll.symbols, landed);
+        if (landed) symbolHarm = rulesetSymbolSuccessHarm(ctx.definition, ctx.combat, roll.total) + bought.damage;
+        if (landed && bought.critical) critical = true;
+      }
     } else if (action.toHit !== undefined && !action.autoHit) {
       mode = rulesetAttackMode(ctx.definition, ctx.combat, actor, target, {
         state: ctx.state,
@@ -8588,7 +8810,82 @@ function resolveActionBody(
       if (guarded.cover > 0) {
         ctx.events.push({ type: "cover", targetId: target.id, bonus: guarded.cover, defense: guarded.defense });
       }
-      if (pooled) {
+      if (symbolic) {
+        // The to-hit number is the attacker's dice (some upgraded), the defense the difficulty dice
+        // thrown against them, and what conditions add boost or setback dice (1.382). Net successes
+        // land it; what is left over is spent, by either side, before its harm is dealt.
+        const bonuses = rollBonuses(
+          ctx,
+          rulesetConditionModifiers(
+            ctx.definition,
+            ctx.combat,
+            actor,
+            "attacks",
+            ctx.state,
+            undefined,
+            undefined,
+            action.ability,
+          ).filter(({ modifier }) => rulesetAttackModifierReaches(modifier, ctx.state, actor, target, action)),
+        );
+        const thrown = throwSymbols(ctx, actor, toHit, bonusTotal(bonuses), mode, {
+          ...(action.upgrades ? { upgrades: action.upgrades } : {}),
+          difficulty: guarded.defense,
+        });
+        const outcome = thrown.successes >= rulesetSymbolNeeded(ctx.definition) ? "hit" : "miss";
+        ctx.events.push({
+          type: "attack",
+          actorId: actor.id,
+          targetId: target.id,
+          optionId: action.id,
+          label: action.label,
+          mode,
+          rolls: thrown.rolls,
+          kept: thrown.successes,
+          modifier: toHit,
+          ...(bonuses.length > 0 ? { bonuses } : {}),
+          total: thrown.successes,
+          defense: thrown.difficulty,
+          ...(guarded.guards.length > 0 ? { guards: guarded.guards } : {}),
+          outcome,
+          pool: symbolRecord(thrown),
+        });
+        actor.flags.helped = false;
+        used = { mine: oneUseConditions(actor, "own-attack"), theirs: oneUseConditions(target, "attacked") };
+        landed = outcome === "hit";
+        if (
+          landed &&
+          (!ctx.state.window || ctx.nestHit) &&
+          !hasFallingAnswer(ctx) &&
+          rulesetEncounterOutcome(ctx.state) === "ongoing" &&
+          hitAnswers(ctx, actor, target, action).length > 0
+        ) {
+          // Asked before anything is spent, so an answer that turns the blow aside spends nothing.
+          return {
+            targetId: target.id,
+            rest: targets.slice(targets.indexOf(target) + 1).map((one) => one.id),
+            roll: {
+              mode,
+              total: thrown.successes,
+              defense: thrown.difficulty,
+              critical: false,
+              natural: false,
+              symbols: { ...thrown.symbols },
+            },
+            mine: used.mine.map((entry) => entry.condition),
+            hurt: [],
+            label: action.label,
+            optionId: action.id,
+            ...(action.catalog ? { catalog: action.catalog } : {}),
+            ...(action.entry ? { entry: action.entry } : {}),
+            blow: rulesetBlowKind(ctx.state, actor, target, action),
+          };
+        }
+        const bought = spendSymbols(ctx, actor, target, thrown.symbols, landed);
+        if (landed) {
+          symbolHarm = rulesetSymbolSuccessHarm(ctx.definition, ctx.combat, thrown.successes) + bought.damage;
+          critical = bought.critical;
+        }
+      } else if (pooled) {
         // The to-hit number is the pool, what the attacker's conditions add is dice, and the
         // defense is the successes it needs, never fewer than one. A botch misses whatever it
         // counted, and there are no criticals: what a strong hit is worth is its extra successes.
@@ -9095,7 +9392,10 @@ function resolveActionBody(
       const bonus = critical
         ? empowerCritical(criticalExtra(ctx, action.damage, extra, action.damage.reroll), action.damage)
         : { rolls: [], flat: 0 };
-      const thrown = rolled.total + sumOf(bonus.rolls) + bonus.flat;
+      // A symbol fight's hit adds what its successes and spends bought, and the target soaks it as a
+      // number off the whole blow (1.382), never below none.
+      const soaked = symbolic ? rulesetSoakOf(target, rulesetCombatDamageKind(ctx.combat, action.damage.type)) : 0;
+      const thrown = Math.max(0, rolled.total + sumOf(bonus.rolls) + bonus.flat + symbolHarm - soaked);
       // Never less than the weapon's floor.
       const total = Math.max(thrown, action.damage.floor ?? 0);
       land({
@@ -9103,7 +9403,7 @@ function resolveActionBody(
         label: action.label,
         ...(action.damage.type ? { damageType: action.damage.type } : {}),
         rolls: [...rolled.rolls, ...bonus.rolls],
-        flat: rolled.flat + bonus.flat,
+        flat: rolled.flat + bonus.flat + symbolHarm - soaked,
         amount: halved ? Math.floor(total / 2) : total,
         ...(total > thrown ? { floor: total } : {}),
         ...(halved ? { saved: true } : {}),

@@ -1665,7 +1665,9 @@ function rulesetCandidatesFrom(
             ...others.map((other) => other.id),
             ...Array.from({ length: again }, () => targetId),
           ];
-        candidate.damage = Math.min(2, (average / pool) * (1 + others.length + again)) * chance;
+        // A symbol fight's hit is weighed with what either side's spends buy (1.382).
+        const worth = option.forecast?.worth ?? average;
+        candidate.damage = Math.min(2, (worth / pool) * (1 + others.length + again)) * chance;
         if (average >= pool) candidate.finish = chance;
       } else if (ally) {
         // Giving back a pool that is already full, or one somebody without a sheet does not have,

@@ -2,6 +2,14 @@
 // forecast - picks an id from here, so legality is decided in exactly one place and a client never
 // computes it.
 
+import {
+  rulesetCombatIsSymbol,
+  rulesetSymbolAttackForecast,
+  rulesetSymbolChance,
+  rulesetSymbolDice,
+  rulesetSymbolSuccessDistribution,
+  type RulesetSymbolDice,
+} from "./symbols.js";
 import { rulesetEntryIcons } from "../rulesets/art-icons.js";
 import type {
   RulesetCombat,
@@ -1331,6 +1339,20 @@ function contestTotals(
     ability,
   );
   const mode = rulesetCheckMode(definition, combat, combatant, state, undefined, ability);
+  if (rulesetCombatIsSymbol(combat)) {
+    // A side's dice are its check, and what its conditions and wounds add boost or setback (1.382).
+    const bonus = rulesetBonusDice(modifiers);
+    return rulesetSymbolSuccessDistribution(
+      definition,
+      rulesetSymbolDice(definition, {
+        dice: check.modifier,
+        bonus: bonus.flat + rulesetCombatPenalty(definition, combatant),
+        boost: combatant.symbolDice?.boost,
+        setback: combatant.symbolDice?.setback,
+        mode,
+      }),
+    );
+  }
   if (rulesetCombatIsPool(combat)) {
     // A side's pool is its check, what its conditions add as dice, and its wound penalty.
     const bonus = rulesetBonusDice(modifiers);
@@ -1953,6 +1975,9 @@ function forecastFor(
   pointedAt?: RulesetCombatant,
 ): RulesetCombatOption["forecast"] | undefined {
   const forecast: NonNullable<RulesetCombatOption["forecast"]> = {};
+  // A symbol fight's attack (1.382): the dice it throws, and at whom, for its harm to read.
+  let symbolDice: RulesetSymbolDice | undefined;
+  let symbolTarget: RulesetCombatant | undefined;
   if (action.sequence) {
     const byId = new Map(actor.actions.map((entry) => [entry.id, entry]));
     // A part that has no use left, or is waiting for its dice, will not happen, so it is not
@@ -2025,15 +2050,31 @@ function forecastFor(
     );
     // What the weapon adds against what the target is (1.187), as the roll will.
     const toHit = action.toHit + rulesetToHitAgainst(definition, action, target, actor);
-    const chance = rulesetCombatIsPool(combat)
-      ? rulesetPoolChance(
-          definition,
-          toHit + bonus.flat + rulesetCombatPenalty(definition, actor),
-          Math.max(1, defense),
-          mode,
-          action.target,
-        )
-      : rulesetHitChance(combat, toHit, defense, mode, bonus, actor.criticalFrom);
+    if (rulesetCombatIsSymbol(combat)) {
+      // The attacker's dice against the target's difficulty dice, exactly as the throw will be made
+      // (1.382). What a hit is worth is worked out with its harm, below.
+      symbolDice = rulesetSymbolDice(definition, {
+        dice: toHit,
+        upgrades: action.upgrades,
+        difficulty: defense,
+        bonus: bonus.flat + rulesetCombatPenalty(definition, actor),
+        boost: actor.symbolDice?.boost,
+        setback: actor.symbolDice?.setback,
+        mode,
+      });
+      symbolTarget = target;
+    }
+    const chance = symbolDice
+      ? rulesetSymbolChance(definition, symbolDice)
+      : rulesetCombatIsPool(combat)
+        ? rulesetPoolChance(
+            definition,
+            toHit + bonus.flat + rulesetCombatPenalty(definition, actor),
+            Math.max(1, defense),
+            mode,
+            action.target,
+          )
+        : rulesetHitChance(combat, toHit, defense, mode, bonus, actor.criticalFrom);
     if (chance !== null) forecast.hitChance = Math.round(chance * 1000) / 1000;
   }
   // The whole blow, clauses and all. A clause with a save of its own is counted in full: a forecast
@@ -2050,6 +2091,22 @@ function forecastFor(
       rulesetDamageMinimum(definition, actor, damage),
     );
     forecast.averageDamage = Math.round(average * 100) / 100;
+    if (symbolDice && symbolTarget) {
+      // Over every way the throw may come out (1.382): what its successes add, what each side's
+      // spends buy, and the target's soak. `worth` is what the AI weighs a hit at.
+      const expected = rulesetSymbolAttackForecast(
+        definition,
+        combat,
+        symbolDice,
+        average,
+        rulesetSoakOf(
+          symbolTarget,
+          rulesetTargetDamageKind(definition, combat, symbolTarget, damage.type, damage.qualities).kind,
+        ),
+      );
+      forecast.averageDamage = Math.round(expected.averageDamage * 100) / 100;
+      forecast.worth = Math.round(expected.worth * 100) / 100;
+    }
   } else if (action.heal) forecast.averageDamage = Math.round(rulesetAverageDamage(action.heal) * 100) / 100;
   if (action.innate && action.use?.perCostStep && forecast.averageDamage !== undefined) {
     const steps = Math.max(0, action.innate.level - action.innate.baseLevel);

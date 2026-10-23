@@ -809,6 +809,22 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
       say({ type: "hardness", targetId: "lurker", sourceId: "brenna", label: "Longsword", hardness: 6, dice: 4 }),
     ],
     [
+      "symbol-spend",
+      say({
+        type: "symbol-spend",
+        actorId: "brenna",
+        rollerId: "brenna",
+        targetId: "lurker",
+        spendId: "rally",
+        label: "Rally",
+        symbol: "a",
+        cost: 1,
+        times: 2,
+        onId: "lurker",
+        setback: 2,
+      }),
+    ],
+    [
       "recheck",
       say({
         type: "recheck",
@@ -1148,6 +1164,11 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   assert.equal(
     printed.get("hardness"),
     "Brenna's Longsword lands on Thorn Lurker with 4 dice, below a hardness of 6, and does nothing.",
+  );
+  // A ruleset with no symbols names one by its id.
+  assert.equal(
+    printed.get("symbol-spend"),
+    "Brenna spends 2 a: Rally ×2. Thorn Lurker throws 2 dice more as setback on their next roll.",
   );
   assert.equal(printed.get("shot"), "Longbow: 11 left to shoot.");
   assert.equal(

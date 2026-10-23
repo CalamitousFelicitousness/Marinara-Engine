@@ -1311,6 +1311,27 @@ function rowAbilityAndSkill(
 
 /** What an attack adds to hit from one skill and one ability, each an id or anything else, which
  *  names nothing: see `rowAbilityAndSkill`. */
+/** In a `symbol-pool` fight (1.382) a to-hit number off a sheet is an ability and a skill's ranks
+ *  together. The larger of the two is the dice and the smaller how many of them are upgraded, as the
+ *  ruleset's own checks build a pool; an action that names no ability keeps its number as plain dice. */
+function splitSymbolDice(
+  definition: RulesetDefinition,
+  evaluated: EvaluatedRulesetSheet,
+  actions: RulesetCombatAction[],
+): void {
+  const resolution = definition.resolution;
+  if (definition.combat?.kind !== "symbol-pool" || resolution.kind !== "symbol-pool") return;
+  if (resolution.pool.build === "sum" || !resolution.pool.upgrade) return;
+  for (const action of actions) {
+    if (action.toHit === undefined || action.upgrades !== undefined || !action.ability) continue;
+    const ability = evaluated.abilityMods[action.ability];
+    if (ability === undefined || !Number.isFinite(ability)) continue;
+    const rest = action.toHit - ability;
+    action.toHit = Math.max(ability, rest);
+    action.upgrades = Math.max(0, Math.min(ability, rest));
+  }
+}
+
 function abilityAndSkill(
   definition: RulesetDefinition,
   build: RulesetSheetBuild,
@@ -3324,6 +3345,7 @@ function blockActions(
               : Math.max(1, action.targetCount ?? 1),
           },
     ...(action.toHit !== undefined ? { toHit: action.toHit } : {}),
+    ...(action.upgrades ? { upgrades: action.upgrades } : {}),
     ...(action.autoHit ? { autoHit: true } : {}),
     ...(action.needs ? { needs: [...action.needs] } : {}),
     ...(action.needs && action.needsAny ? { needsAny: true as const } : {}),
@@ -3723,6 +3745,8 @@ function sheetCombatant(
   };
   amendAll(actions);
   for (const made of Object.values(conjurable)) amendAll(made.actions);
+  splitSymbolDice(definition, evaluated, actions);
+  for (const made of Object.values(conjurable)) splitSymbolDice(definition, evaluated, made.actions);
   const riders = abilities.flatMap((entry) => entry.riders);
   // What an item becomes on its last charge (1.272), read now with what it would do then.
   const becomes: NonNullable<RulesetCombatant["becomes"]> = {};
@@ -3738,12 +3762,13 @@ function sheetCombatant(
       ...itemSwitchActions(items),
       ...itemUseActions(definition, combat, items, build, evaluated, perCell),
     ].filter((action) => rulesetActionItemIndex(action) === index);
+    splitSymbolDice(definition, evaluated, made);
     becomes[index] = { ref, name: other.label, item: other.item, actions: made };
   });
   // What they soak and what they may spend, read once like their defense.
   const read = (ref: RulesetValueRef) =>
     Math.max(0, Math.round(resolveRulesetValueRef(definition, build, ref, evaluated)));
-  const soakRule = combat.pool?.soak;
+  const soakRule = combat.pool?.soak ?? combat.symbols?.soak;
   const soak: RulesetCombatSoak | undefined = soakRule
     ? {
         ...(soakRule.all ? { all: read(soakRule.all) } : {}),
@@ -4348,7 +4373,7 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
         ...(combat.checks?.length
           ? { checks: Object.fromEntries(combat.checks.map((check) => [check.id, block.checks?.[check.id] ?? 0])) }
           : {}),
-        ...(block.soak && rulesetCombatIsPool(combat)
+        ...(block.soak && (rulesetCombatIsPool(combat) || combat.kind === "symbol-pool")
           ? {
               soak: {
                 ...(block.soak.all !== undefined ? { all: block.soak.all } : {}),

@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { parseRulesetDefinition } from "../../packages/shared/src/index.js";
 import { buildGmFormatReminder, buildGmSystemPrompt } from "../../packages/server/src/services/game/gm-prompts.js";
+import { OpenAIProvider } from "../../packages/server/src/services/llm/providers/openai.provider.js";
+import type { ChatMessage } from "../../packages/server/src/services/llm/base-provider.js";
 import {
   parseRollDiceToolResult,
   resolveGameDiceRequests,
@@ -114,6 +116,53 @@ const party = ["Isolde", "Hessa", "Brannoc", "Pip"];
     assert.match(reminder, /Never skip a check the action calls for\./);
     assert.match(reminder, /Name who rolls with who="Name"/);
   }
+}
+
+// ── Claude behind an OpenAI-compatible endpoint: unsigned reasoning never goes back ──
+// The playtest's 400 came on the tool round after a roll_dice call: the assistant tool-call turn was replayed
+// with its thinking as plain reasoning_content and no signature, which the endpoint's Anthropic translation
+// refused. Only reasoning carrying its signature is replayed for a Claude model.
+{
+  const format = (model: string, providerMetadata: Record<string, unknown>) =>
+    (
+      new OpenAIProvider(
+        "https://proxy.example/v1",
+        "synthetic",
+        undefined,
+        undefined,
+        undefined,
+        "custom",
+      ) as unknown as {
+        formatMessages(messages: ChatMessage[], model?: string): Array<Record<string, unknown>>;
+      }
+    ).formatMessages(
+      [
+        { role: "user", content: "Hessa casts Cure Wounds." },
+        {
+          role: "assistant",
+          content: "",
+          tool_calls: [{ id: "call_1", type: "function", function: { name: "roll_dice", arguments: "{}" } }],
+          providerMetadata,
+        },
+        { role: "tool", content: "{}", tool_call_id: "call_1" },
+      ],
+      model,
+    )[1]!;
+  const toolTurn = format("claude-opus-5-5", { reasoning_content: "I should roll 1d8+4." });
+  assert.equal(toolTurn.reasoning_content, undefined, "unsigned Claude thinking is not replayed");
+  assert.ok(Array.isArray(toolTurn.tool_calls), "the tool call itself still goes back");
+  const signed = { type: "reasoning.text", text: "I should roll.", signature: "sig" };
+  assert.deepEqual(
+    format("claude-opus-5-5", { reasoning_details: [signed, { type: "reasoning.text", text: "unsigned" }] })
+      .reasoning_details,
+    [signed],
+    "signed Claude thinking still goes back, and only that",
+  );
+  assert.equal(
+    format("deepseek-v4", { reasoning_content: "plan" }).reasoning_content,
+    "plan",
+    "other models keep replaying their reasoning",
+  );
 }
 
 console.log(

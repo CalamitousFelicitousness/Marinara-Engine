@@ -3591,6 +3591,9 @@ export function useGenerate() {
           receivedContent &&
           persistedMessages.size === 0 &&
           partialContent &&
+          // A failed game turn has its own retry; saving what streamed before the failure left a half-turn
+          // (often the GM's lead-in to a tool call) in the story, and a second reply right after it.
+          !(replyErrorSeen && isGameGeneration) &&
           !params.regenerateMessageId &&
           !params.continueMessageId &&
           !(params.impersonate && params.pendingSpatialTransition)

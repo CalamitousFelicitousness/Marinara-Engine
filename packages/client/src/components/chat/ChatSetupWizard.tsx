@@ -2666,6 +2666,7 @@ function RoleplaySetupWizard({
     if (metadata.multiplayerSetup !== true) {
       for (const charId of chatCharIds) await createInitialGreetingForCharacter(charId);
     }
+    useChatStore.getState().clearPendingNewChatSetup(chat.id);
     onFinish();
   }, [
     chat.id,

@@ -16,6 +16,7 @@ const { eq } = await import("../../packages/server/src/db/file-query.js");
 const { advanceChatSetupDraft, advanceStarredProfileDraft } =
   await import("../../packages/client/src/lib/chat-setup-draft.js");
 const { createChatPresetsStorage } = await import("../../packages/server/src/services/storage/chat-presets.storage.js");
+const { createAppSettingsStorage } = await import("../../packages/server/src/services/storage/app-settings.storage.js");
 const db = await getDB();
 const profiles = createChatPresetsStorage(db);
 const storage = createChatsStorage(db);
@@ -150,6 +151,10 @@ try {
       "automatic defaults are accepted; unrelated real user writes are protected",
     );
   }
+  await createAppSettingsStorage(db).set(
+    "translator-defaults",
+    JSON.stringify({ translationProvider: "ai", translationTargetLang: "pl", translateInput: true }),
+  );
   const profile = await profiles.create({
     name: "Starred",
     mode: "roleplay",
@@ -170,7 +175,10 @@ try {
     const raw = await profiles.applyToChat(profile.id, initial.id);
     assert(raw);
     const response = { ...initial, ...raw, characterIds: [], metadata: JSON.parse(raw.metadata ?? "{}") };
-    const baseline = advanceStarredProfileDraft(initial, response, profile);
+    // The profile apply endpoint returns the real storage-encoded metadata string.
+    const encodedResponse = { ...response, metadata: raw.metadata as unknown as typeof response.metadata };
+    const baseline = advanceStarredProfileDraft(initial, encodedResponse, profile);
+    assert.equal(baseline.metadata.translationTargetLang, "pl", "installed translator defaults remain automatic");
     assert.equal(baseline.metadata.summary, null, "preserved response history never becomes automatic baseline");
     assert.deepEqual(baseline.metadata.activeAgentIds, [], "preserved user agent selection stays outside baseline");
     assert.equal(baseline.metadata.advancedMemory, undefined, "chat-owned memory setup stays outside baseline");

@@ -1,7 +1,6 @@
 import {
   CHAT_PRESET_EXCLUDED_METADATA_KEYS,
   CHAT_PRESET_EXCLUDED_PACKAGE_METADATA_KEYS,
-  TRANSLATOR_SETTINGS_KEYS,
   normalizeTranslatorSettings,
   type Chat,
   type ChatPreset,
@@ -46,9 +45,7 @@ export function advanceStarredProfileDraft(
   const settings = profile.settings.metadata ?? {};
   const metadata: Record<string, unknown> = {
     // These are the profile writer's fixed defaults, including the install's translator defaults.
-    ...normalizeTranslatorSettings(
-      Object.fromEntries(TRANSLATOR_SETTINGS_KEYS.map((key) => [key, response.metadata[key]])),
-    ),
+    ...normalizeTranslatorSettings(response.metadata),
     summary: null,
     tags: [],
     enableAgents: true,

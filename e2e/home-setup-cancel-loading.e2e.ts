@@ -698,3 +698,142 @@ for (const themeMode of ["dark", "light"] as const) {
     }
   });
 }
+
+test("successful participant-free Roleplay Start keeps an automatically configured chat on navigation", async ({
+  page,
+}) => {
+  const connection = await seedConnection(page);
+  let chatId = "";
+  let discardRequests = 0;
+  page.on("request", (request) => {
+    if (request.method() === "POST" && request.url().includes("/discard-empty-setup")) discardRequests += 1;
+  });
+  try {
+    await seedUIState(
+      page,
+      {
+        chatWizardDefaults: {
+          roleplay: {
+            connectionId: connection.id,
+            promptPresetId: null,
+            personaId: null,
+            personaCharacterId: null,
+            characterIds: [],
+            metadata: { chatParameters: null },
+          },
+        },
+      },
+      "merge",
+    );
+    await page.goto("/");
+    const { chat, wizard } = await launch(page, "roleplay");
+    chatId = chat.id;
+    await expect
+      .poll(() =>
+        page.evaluate(async (id) => {
+          const { useChatStore } = await import("/src/stores/chat.store.ts" as string);
+          return useChatStore.getState().pendingNewChatSetups[id]?.metadata.chatParameters;
+        }, chatId),
+      )
+      .toBeNull();
+    for (const heading of ["Pick a Preset", "Persona & Characters", "Attach Lorebooks", "Enable Agents"]) {
+      await wizard.getByRole("button", { name: "Next", exact: true }).click();
+      await expect(wizard.getByRole("heading", { name: heading, exact: true })).toBeVisible();
+    }
+    await wizard.getByRole("button", { name: "Start", exact: true }).click();
+    await expect(wizard).toHaveCount(0);
+    await closeChatSettings(page);
+    await page.getByRole("button", { name: "Home", exact: true }).click();
+    await expect
+      .poll(() =>
+        page.evaluate(async (id) => {
+          const { useChatStore } = await import("/src/stores/chat.store.ts" as string);
+          return !!useChatStore.getState().pendingNewChatSetups[id];
+        }, chatId),
+      )
+      .toBe(false);
+    expect((await page.request.get(`/api/chats/${chatId}`)).status()).toBe(200);
+    expect(discardRequests).toBe(0);
+  } finally {
+    if (chatId) await page.request.delete(`/api/chats/${chatId}`);
+    await page.request.delete(`/api/connections/${connection.id}`);
+  }
+});
+
+test("starred-profile translator defaults stay inside the automatic empty-draft baseline", async ({ page }) => {
+  const connection = await seedConnection(page);
+  const previous = await (await page.request.get("/api/app-settings/translator-defaults")).json();
+  const previousProfile = await (await page.request.get("/api/chat-presets/active/roleplay")).json();
+  let profileId = "";
+  let chatId = "";
+  try {
+    expect(
+      (
+        await page.request.put("/api/app-settings/translator-defaults", {
+          data: {
+            value: JSON.stringify({ translationProvider: "ai", translationTargetLang: "pl", translateInput: true }),
+          },
+        })
+      ).ok(),
+    ).toBeTruthy();
+    const created = await page.request.post("/api/chat-presets", {
+      data: {
+        name: "Automatic translator baseline",
+        mode: "roleplay",
+        settings: { connectionId: connection.id, metadata: { contextMessageLimit: 23 } },
+      },
+    });
+    expect(created.ok()).toBeTruthy();
+    profileId = (await created.json()).id;
+    expect((await page.request.post(`/api/chat-presets/${profileId}/set-active`)).ok()).toBeTruthy();
+    const applied = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        new URL(response.url()).pathname.includes(`/chat-presets/${profileId}/apply/`),
+    );
+    await page.goto("/");
+    const { chat, wizard } = await launch(page, "roleplay");
+    chatId = chat.id;
+    const raw = await (await applied).json();
+    expect(typeof raw.metadata).toBe("string");
+    expect(JSON.parse(raw.metadata).translationTargetLang).toBe("pl");
+    await expect
+      .poll(async () => (await (await page.request.get(`/api/chats/${chatId}`)).json()).metadata.translationTargetLang)
+      .toBe("pl");
+    await wizard.getByRole("button", { name: "Close setup", exact: true }).click();
+    await expect.poll(async () => (await page.request.get(`/api/chats/${chatId}`)).status()).toBe(404);
+  } finally {
+    if (chatId) await page.request.delete(`/api/chats/${chatId}`);
+    if (previousProfile?.id) await page.request.post(`/api/chat-presets/${previousProfile.id}/set-active`);
+    if (profileId) await page.request.delete(`/api/chat-presets/${profileId}`);
+    await page.request.put("/api/app-settings/translator-defaults", { data: { value: previous.value ?? "null" } });
+    await page.request.delete(`/api/connections/${connection.id}`);
+  }
+});
+
+test("Game setup after reload preserves a chat whose creation provenance is no longer in this tab", async ({
+  page,
+}) => {
+  const connection = await seedConnection(page);
+  let chatId = "";
+  try {
+    await page.goto("/");
+    const { chat } = await launch(page, "game");
+    chatId = chat.id;
+    await page.reload();
+    const wizard = page.locator('[data-component="GameSetupWizard"]');
+    await expect(wizard).toBeVisible();
+    expect(
+      await page.evaluate(async (id) => {
+        const { useChatStore } = await import("/src/stores/chat.store.ts" as string);
+        return !!useChatStore.getState().pendingNewChatSetups[id];
+      }, chatId),
+    ).toBe(false);
+    await wizard.getByRole("button", { name: "Close setup", exact: true }).click();
+    await expect(wizard).toHaveCount(0);
+    expect((await page.request.get(`/api/chats/${chatId}`)).status()).toBe(200);
+  } finally {
+    if (chatId) await page.request.delete(`/api/chats/${chatId}`);
+    await page.request.delete(`/api/connections/${connection.id}`);
+  }
+});

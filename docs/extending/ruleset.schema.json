@@ -220756,6 +220756,22 @@
           },
           "additionalProperties": false
         },
+        "styles": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,47}$"
+          },
+          "minItems": 1,
+          "maxItems": 8,
+          "uniqueItems": true,
+          "contains": {
+            "enum": [
+              "classic",
+              "tactical"
+            ]
+          }
+        },
         "distance": {
           "type": "object",
           "properties": {

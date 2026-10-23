@@ -8,6 +8,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import {
+  BUILT_IN_GAME_COMBAT_STYLES,
   RULESET_CHECK_SCOPED_EFFECTS,
   RULESET_COMBAT_CONDITION_EFFECTS,
   RULESET_CREATURE_PLAIN_NEEDS,
@@ -237,6 +238,18 @@ function uniqueConditionEndings(node) {
   Object.values(node).forEach(uniqueConditionEndings);
   if (node.type === "object" && node.properties?.condition && node.properties.endsWhen) {
     node.properties.endsWhen.uniqueItems = true;
+  }
+}
+
+// A combat block names each of its styles once, and one of them built in (1.775).
+function checkedCombatStyles(node) {
+  if (Array.isArray(node)) return node.forEach(checkedCombatStyles);
+  if (!node || typeof node !== "object") return;
+  Object.values(node).forEach(checkedCombatStyles);
+  const styles = node.properties?.styles;
+  if (node.properties?.distance && styles?.type === "array") {
+    styles.uniqueItems = true;
+    styles.contains = { enum: [...BUILT_IN_GAME_COMBAT_STYLES] };
   }
 }
 
@@ -783,6 +796,7 @@ requireCatalogFeeds(schema);
 requireSaveEndsUntilSave(schema);
 uniqueConditionEndings(schema);
 uniqueCombatSenses(schema);
+checkedCombatStyles(schema);
 widthOnlyOnALine(schema);
 cancelOnlyWhenAimed(schema);
 modifierSaysSomething(schema);

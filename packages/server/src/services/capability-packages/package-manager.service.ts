@@ -12496,6 +12496,10 @@ export function getCapabilityPackageInstallIssue(
   ) {
     return "A ruleset that names its own words for modifiers, toggles or item uses, gives pools units, lists a display, signs a derived value, hides text by a derived value, leaves conditions out of the picker, shows a track once moved, or has a creature trait over 400 letters requires schemaVersion 2 and capabilityApi 1.378 or newer";
   }
+  // Which combat styles its games may play, 1.775.
+  if (!declaresApi(775) && shownCombat?.styles !== undefined) {
+    return "A ruleset that names the combat styles its games may play requires schemaVersion 2 and capabilityApi 1.775 or newer";
+  }
   // A ruleset over 256 KB or a catalog file over 1 MB, the ceilings before 1.340.
   if (
     !declaresApi(340) &&

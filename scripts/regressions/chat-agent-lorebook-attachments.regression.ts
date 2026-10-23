@@ -18,6 +18,8 @@ const { createConnectionsStorage } = await import("../../packages/server/src/ser
 const { createLorebooksStorage } = await import("../../packages/server/src/services/storage/lorebooks.storage.js");
 const { chatsRoutes } = await import("../../packages/server/src/routes/chats.routes.js");
 const { generateRoutes } = await import("../../packages/server/src/routes/generate.routes.js");
+const { resolvePackageAgentLorebookEntries } =
+  await import("../../packages/server/src/services/capability-packages/capability-agent-lorebook.service.js");
 const { OpenAIProvider } = await import("../../packages/server/src/services/llm/providers/openai.provider.js");
 const { replaceBuiltInAgentDefinitions } = await import("../../packages/shared/dist/index.js");
 const { applyAgentLorebookChatSettings } =
@@ -221,6 +223,52 @@ try {
   assert(mainCalls.every((prompt) => !/WRITER_BOOK_SECRET|TRACKER_BOOK_SECRET/u.test(prompt)));
   assert(prompts.some((prompt) => /REFERENCE_TASK_/u.test(prompt) && prompt.includes("WRITER_BOOK_SECRET")));
   assert(prompts.some((prompt) => /REFERENCE_TASK_/u.test(prompt) && prompt.includes("TRACKER_BOOK_SECRET")));
+  const attached = await resolvePackageAgentLorebookEntries(db, types[0]!, { chatId: chat.id });
+  assert(attached.some((entry) => entry.content === "WRITER_BOOK_SECRET"));
+  assert(
+    attached.every((entry) => !entry.content.includes("TRACKER_BOOK_SECRET")),
+    "package feature calls cannot select another agent's attachment",
+  );
+  assert.deepEqual(await resolvePackageAgentLorebookEntries(db, "other-package", { chatId: chat.id }), []);
+  assert.deepEqual(await resolvePackageAgentLorebookEntries(db, types[0]!, { chatId: otherChat.id }), []);
+  const aborted = new AbortController();
+  aborted.abort();
+  await assert.rejects(resolvePackageAgentLorebookEntries(db, types[0]!, { chatId: chat.id, signal: aborted.signal }), {
+    name: "AbortError",
+  });
+  await patch(chat.id, { [types[0]!]: { enabled: false, lorebookId: firstBook.id } });
+  assert.deepEqual(await resolvePackageAgentLorebookEntries(db, types[0]!, { chatId: chat.id }), []);
+  await patch(chat.id, { [types[0]!]: { enabled: true, lorebookId: "missing" } });
+  assert.deepEqual(await resolvePackageAgentLorebookEntries(db, types[0]!, { chatId: chat.id }), []);
+  await patch(chat.id, { [types[0]!]: { enabled: true, lorebookId: firstBook.id } });
+  await books.update(firstBook.id, { enabled: false });
+  assert.deepEqual(await resolvePackageAgentLorebookEntries(db, types[0]!, { chatId: chat.id }), []);
+  await books.update(firstBook.id, { enabled: true });
+  await books.createEntry({
+    lorebookId: firstBook.id,
+    name: "Macro reference",
+    keys: ["crystal"],
+    content: "The {{user}} keeps {{getvar::reference}}.",
+  });
+  await chats.patchMetadata(chat.id, { macroVariables: { reference: "a map" } });
+  assert(
+    (await resolvePackageAgentLorebookEntries(db, types[0]!, { chatId: chat.id })).some(
+      (entry) => entry.content === "The User keeps a map.",
+    ),
+    "package reference content uses chat macros",
+  );
+  await chats.createMessage({
+    chatId: chat.id,
+    role: "assistant",
+    content: "A silent room.",
+    extra: { isConversationStart: true },
+  });
+  await chats.createMessage({ chatId: chat.id, role: "user", content: "crystal", extra: { hiddenFromAI: true } });
+  assert.deepEqual(
+    await resolvePackageAgentLorebookEntries(db, types[0]!, { chatId: chat.id }),
+    [],
+    "past-start and hidden messages cannot trigger package references",
+  );
   await chats.patchMetadata(otherChat.id, {
     enableAgents: true,
     activeAgentIds: [types[0]!],

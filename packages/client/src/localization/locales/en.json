@@ -660,6 +660,7 @@
   "chat.agentLorebook.description": "Use matching entries for this agent in this chat. Agents running together may also see these entries.",
   "chat.agentLorebook.empty": "Create a lorebook in the Lorebooks tab to attach it here.",
   "chat.agentLorebook.loadError": "Lorebooks could not be loaded. Reopen this menu to try again.",
+  "chat.agentLorebook.packageUpdateRequired": "Update World Maps in Agents → Download Agents to use a reference lorebook here.",
   "chat.agentLorebook.select": "Reference lorebook",
   "chat.agentLorebook.unavailable": "Selected lorebook unavailable",
   "chat.agentLorebook.unavailableHint": "Select another lorebook. An unavailable attachment adds no reference context.",

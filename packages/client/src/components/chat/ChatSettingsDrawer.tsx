@@ -3577,6 +3577,16 @@ export function ChatSettingsDrawer({
   const renderAgentLorebookAttachment = (agentType: string) => {
     const agent = availableAgents.find((entry) => entry.id === agentType);
     if (!agent || (agent.builtIn && agent.category !== "writer" && agent.category !== "tracker")) return null;
+    if (agentType === "hierarchical-maps") {
+      const api = mapsPackage?.manifest.schemaVersion === 2 ? mapsPackage.manifest.capabilityApi : null;
+      if (!api || api.major < 1 || (api.major === 1 && api.minor < 379)) {
+        return (
+          <p data-agent-lorebook-package-update={agentType} className="text-xs text-[var(--muted-foreground)]">
+            {localizeUi("chat.agentLorebook.packageUpdateRequired")}
+          </p>
+        );
+      }
+    }
     return <AgentLorebookAttachment chatId={chat.id} agentType={agentType} />;
   };
 
@@ -9855,6 +9865,7 @@ export function ChatSettingsDrawer({
                                         title={agent.name}
                                         description={worldMapsSettingsDescription}
                                       >
+                                        {renderAgentLorebookAttachment(agent.id)}
                                         <CapabilityElement
                                           packageId={mapsPackage.id}
                                           view="settings"

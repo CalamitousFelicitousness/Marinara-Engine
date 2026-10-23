@@ -182,6 +182,7 @@ import {
 } from "../../services/generation/lorebook-generation-runtime.js";
 import type { Lorebook, LorebookEntry } from "@marinara-engine/shared";
 import type { GameStateForScanning } from "../../services/lorebook/keyword-scanner.js";
+import { filterRelevantLorebooks } from "../../services/lorebook/index.js";
 import { storedContentForTextlessScanEntries } from "../../services/lorebook/lorebook-scan-compaction.js";
 import { createCustomToolsStorage } from "../../services/storage/custom-tools.storage.js";
 import { syncGameMapMetaPartyPosition } from "../../services/game/map-position.service.js";
@@ -211,6 +212,7 @@ import {
   resolveBaseUrl,
   resolveRoleplayChatSummaryForPrompt,
   resolveVisibleGameStateAnchor,
+  resolveKnowledgeSourceLorebookIds,
 } from "./generate-route-utils.js";
 import { shouldAttachSummariesToAgents } from "../../services/generation/roleplay-summary-retrieval.js";
 import { roleplayAgentsSeeWhispers, roleplayAgentText } from "../../services/generation/roleplay-commands.js";
@@ -1185,13 +1187,15 @@ async function buildRetryAgentContext(args: {
   let recalledAgentVectorMemories: string[] = [];
   let embeddingSource: Awaited<ReturnType<typeof resolveMemoryRecallEmbeddingSource>> | null = null;
   let summaryVectorizerAvailable = false;
-  const attachedLorebookAgents = resolvedAgents.filter(
-    (agent) => agent.settings.chatLorebookAttachmentEnabled === true,
+  const agentsWithLorebookTriggers = resolvedAgents.filter(
+    (agent) =>
+      agent.settings.chatLorebookAttachmentEnabled === true ||
+      (!isBuiltInAgentType(agent.type) && agent.settings.triggerLorebooksForAgentCalls === true),
   );
   if (
     customAgentVectorAccessEnabled ||
     chatMeta.semanticSummaryRetrievalEnabled === true ||
-    attachedLorebookAgents.length > 0
+    agentsWithLorebookTriggers.length > 0
   ) {
     try {
       const connectionId = typeof chat.connectionId === "string" ? chat.connectionId : null;
@@ -1199,7 +1203,7 @@ async function buildRetryAgentContext(args: {
         chatMetadata: chatMeta,
         connectionId,
       });
-      if (chatMeta.semanticSummaryRetrievalEnabled === true || attachedLorebookAgents.length > 0) {
+      if (chatMeta.semanticSummaryRetrievalEnabled === true || agentsWithLorebookTriggers.length > 0) {
         summaryVectorizerAvailable =
           embeddingSource !== null ||
           (await isMemoryRecallVectorizerAvailable(db, {
@@ -1639,21 +1643,42 @@ async function buildRetryAgentContext(args: {
     };
   }
 
-  if (attachedLorebookAgents.length > 0) {
+  if (agentsWithLorebookTriggers.length > 0) {
+    const lorebookScopeExclusions = resolveLorebookScopeExclusions(chat.mode, chatMeta);
+    const scopedLorebookIds = new Set(
+      filterRelevantLorebooks((await lorebooksStore.list()) as unknown as Lorebook[], {
+        chatId,
+        characterIds: [
+          ...characterIds,
+          ...(personaContext.identitySource === "character" && personaContext.identityId
+            ? [personaContext.identityId]
+            : []),
+        ],
+        personaId: personaContext.personaId,
+        activeLorebookIds,
+        ...lorebookScopeExclusions,
+      }).map((book) => book.id),
+    );
     agentContext.triggeredLorebookEntriesByAgentId = await createAgentLorebookTriggerResolver({
-      agents: attachedLorebookAgents.map((agent) => ({
+      agents: agentsWithLorebookTriggers.map((agent) => ({
         id: agent.id,
         contextSize: normalizeAgentContextSize(agent.settings.contextSize),
-        sourceLorebookIds:
-          typeof agent.settings.chatAttachedLorebookId === "string" ? [agent.settings.chatAttachedLorebookId] : [],
-        source: "manual",
+        ...(!isBuiltInAgentType(agent.type) && agent.settings.triggerLorebooksForAgentCalls === true
+          ? resolveKnowledgeSourceLorebookIds({ settings: agent.settings, chatActiveLorebookIds: activeLorebookIds })
+          : { sourceLorebookIds: [], source: "none" as const }),
+        additionalManualLorebookIds:
+          agent.settings.chatLorebookAttachmentEnabled === true &&
+          typeof agent.settings.chatAttachedLorebookId === "string"
+            ? [agent.settings.chatAttachedLorebookId]
+            : [],
       })),
       activeCharacterIds: characterIds,
       activeCharacterTags: [...attachmentCharacterTags],
       embeddingSource,
       entryStateOverrides:
         (chatMeta.entryStateOverrides as Record<string, { enabled?: boolean; ephemeral?: number | null }>) ?? {},
-      filterSourceLorebookIds: async (ids) => ids,
+      filterSourceLorebookIds: async (ids, source) =>
+        source === "chat_active" ? ids.filter((id) => scopedLorebookIds.has(id)) : ids,
       gameState: agentContext.gameState as GameStateForScanning | null,
       generationTriggers: args.lorebookGenerationTriggers,
       listEntriesByLorebookIds: async (ids) => (await lorebooksStore.listEntriesByLorebooks(ids)) as LorebookEntry[],

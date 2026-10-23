@@ -68,6 +68,8 @@ The **Agents** section has a few more controls:
 
 In **Chat Settings**, open **Agents**, then the writing, tracking, or custom agent's settings. **Attach lorebook for the specific agent** starts off. Turn it on to reveal **Reference lorebook** and choose one book. The selection belongs to this agent in this chat; it does not change the agent's global definition or other chats.
 
+Downloadable package features such as World Maps also need the matching package update alongside the Engine update.
+
 Matching entries follow the normal lorebook trigger rules and are supplied as reference context for that agent, including manual retries. The attachment does not activate the book for the main reply or unrelated agents. Agents running together may also see the same reference entries. Turning the attachment off stops it from supplying entries; unavailable or deleted books supply none. Existing custom-agent source settings remain available independently.
 
 ### The cost warning

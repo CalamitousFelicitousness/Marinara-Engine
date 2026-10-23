@@ -5993,20 +5993,19 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         const resolveTriggeredLorebookEntriesByAgentId = createAgentLorebookTriggerResolver({
           agents: agentsWithLorebookTriggers.map((agent) => {
             const { sourceLorebookIds, source } =
-              agent.settings.chatLorebookAttachmentEnabled === true
-                ? {
-                    sourceLorebookIds:
-                      typeof agent.settings.chatAttachedLorebookId === "string"
-                        ? [agent.settings.chatAttachedLorebookId]
-                        : [],
-                    source: "manual" as const,
-                  }
-                : resolveKnowledgeSourceLorebookIds({ settings: agent.settings, chatActiveLorebookIds });
+              !builtInAgentTypes.has(agent.type) && agent.settings.triggerLorebooksForAgentCalls === true
+                ? resolveKnowledgeSourceLorebookIds({ settings: agent.settings, chatActiveLorebookIds })
+                : { sourceLorebookIds: [], source: "none" as const };
             return {
               id: agent.id,
               contextSize: normalizeAgentContextSize(agent.settings.contextSize),
               sourceLorebookIds,
               source,
+              additionalManualLorebookIds:
+                agent.settings.chatLorebookAttachmentEnabled === true &&
+                typeof agent.settings.chatAttachedLorebookId === "string"
+                  ? [agent.settings.chatAttachedLorebookId]
+                  : [],
             };
           }),
           activeCharacterIds: promptCharacterIds,

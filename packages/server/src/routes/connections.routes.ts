@@ -1,4 +1,5 @@
 import { resolveDecisionConnection } from "../services/decision/decision-connection.js";
+import { migrateGenerativeAudioConnections } from "../services/connections/generative-audio-connection-migration.js";
 import { askNoulQuestions } from "../services/decision/system-one.client.js";
 import { connectionChatTarget, probeDecisionSlot } from "../services/decision/sidecar-decision.backend.js";
 import {
@@ -533,8 +534,9 @@ export async function connectionsRoutes(app: FastifyInstance) {
     if (validationError) return reply.status(400).send({ error: validationError });
     return withLongTermMemoryEmbeddingChange(app.db, reply, async () => {
       const created = await storage.create(input);
+      if (created?.provider === "audio") await migrateGenerativeAudioConnections(app.db);
       resetMemoryRecallVectorizerCache();
-      return maskConnection(created);
+      return maskConnection(created ? await storage.getById(created.id) : null);
     });
   });
 
@@ -546,8 +548,9 @@ export async function connectionsRoutes(app: FastifyInstance) {
     if (validationError) return reply.status(400).send({ error: validationError });
     return withLongTermMemoryEmbeddingChange(app.db, reply, async () => {
       const updated = await storage.update(req.params.id, data);
+      if (updated?.provider === "audio") await migrateGenerativeAudioConnections(app.db);
       resetMemoryRecallVectorizerCache();
-      return maskConnection(updated);
+      return maskConnection(updated ? await storage.getById(updated.id) : null);
     });
   });
 
@@ -641,6 +644,11 @@ export async function connectionsRoutes(app: FastifyInstance) {
   app.post<{ Params: { id: string } }>("/:id/test", async (req, reply) => {
     const conn = await storage.getWithKey(req.params.id);
     if (!conn) return reply.status(404).send({ error: "Connection not found" });
+    if (conn.provider === "audio_generation") {
+      return reply.status(400).send({
+        error: "Test this connection by generating audio in a mode. No chat or model-list test is supported.",
+      });
+    }
 
     const requestDebug = readDebugMode(req.body);
     const debugLog = (message: string, ...args: any[]) => logDebugOverride(requestDebug, message, ...args);
@@ -1524,6 +1532,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
   app.get<{ Params: { id: string }; Querystring: { refresh?: string } }>("/:id/models", async (req, reply) => {
     const conn = await storage.getWithKey(req.params.id);
     if (!conn) return reply.status(404).send({ error: "Connection not found" });
+    if (conn.provider === "audio_generation") return { models: [] };
     const savesList = connectionSavesModelList(conn.provider);
     if (savesList && req.query.refresh !== "true") {
       const saved = readSavedModelList(conn);
@@ -1860,7 +1869,11 @@ export async function connectionsRoutes(app: FastifyInstance) {
     const conn = await storage.getWithKey(req.params.id);
     if (!conn) return reply.status(404).send({ error: "Connection not found" });
 
-    if (conn.provider === "image_generation" || conn.provider === "video_generation") {
+    if (
+      conn.provider === "image_generation" ||
+      conn.provider === "video_generation" ||
+      conn.provider === "audio_generation"
+    ) {
       return reply.status(400).send({ error: "This provider does not support chat test messages." });
     }
 

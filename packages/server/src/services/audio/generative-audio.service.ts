@@ -1,0 +1,246 @@
+import { createHash, randomUUID } from "node:crypto";
+import { addAbortListener } from "node:events";
+import { access, mkdir, readdir, rename, unlink, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import {
+  GENERATIVE_AUDIO_DEFAULTS,
+  GENERATIVE_AUDIO_SOURCES,
+  TTS_SETTINGS_KEY,
+  audioConnectionSupportsGeneration,
+  ttsConfigSchema,
+  type GenerativeAudioSource,
+} from "@marinara-engine/shared";
+import type { DB } from "../../db/connection.js";
+import { logger, logDebugOverride } from "../../lib/logger.js";
+import { migrateGenerativeAudioConnections } from "../connections/generative-audio-connection-migration.js";
+import { buildAssetManifest, GAME_ASSETS_DIR } from "../game/asset-manifest.service.js";
+import { createAppSettingsStorage } from "../storage/app-settings.storage.js";
+import { createConnectionsStorage } from "../storage/connections.storage.js";
+import { generateAudioBytes, type GenerativeAudioProviderConfig } from "./generative-audio-providers.js";
+
+export type GeneratedAudioContext =
+  { axis: "area" | "tier"; key: string; lengthMs?: number } | { scope: string; key: string; lengthMs?: number };
+export type GeneratedAudioAsset = { tag: string; path: string; cached: boolean };
+type ResolvedConfig = GenerativeAudioProviderConfig & {
+  id: string;
+  music: boolean;
+  soundEffects: boolean;
+  legacyId: string | null;
+};
+
+export class AudioGenerationConfigurationError extends Error {
+  constructor(
+    message: string,
+    readonly statusCode: 400 | 409 = 400,
+  ) {
+    super(message);
+  }
+}
+
+/** Imported endpoints are never promoted here; migration skips quarantined rows. */
+export async function resolveGenerativeAudioConfig(db: DB, requestedId?: string | null): Promise<ResolvedConfig> {
+  await migrateGenerativeAudioConnections(db);
+  const connections = createConnectionsStorage(db);
+  let row;
+  if (requestedId) {
+    const candidate = await connections.getWithKey(requestedId);
+    row =
+      candidate?.provider === "audio_generation"
+        ? candidate
+        : await connections.getAudioGenerationForLegacyConnection(requestedId);
+    if (!row) {
+      if (candidate?.provider === "audio") {
+        throw new AudioGenerationConfigurationError(
+          "Music and sound-effect generation is not enabled for this connection",
+        );
+      }
+      throw new AudioGenerationConfigurationError(
+        "The selected Music & Sound Effects connection is missing or unavailable",
+        409,
+      );
+    }
+  } else {
+    row = (await connections.getDefaultForAudioGeneration()) ?? (await connections.getFallbackForAudioGeneration());
+    if (!row) {
+      // Preserve the old explicit-source failure until the user chooses a new
+      // independent generation default. Never borrow another connection's key.
+      const raw = await createAppSettingsStorage(db).get(TTS_SETTINGS_KEY);
+      let chosenId = "";
+      try {
+        chosenId = ttsConfigSchema.parse(JSON.parse(raw ?? "{}")).connectionId;
+      } catch {
+        /* no usable legacy selection */
+      }
+      if (chosenId && !(await connections.getWithKey(chosenId))) {
+        throw new AudioGenerationConfigurationError(
+          "The Audio connection chosen for Text to Speech is missing or unavailable.",
+          409,
+        );
+      }
+      throw new AudioGenerationConfigurationError("Choose a Music & Sound Effects connection with generation enabled");
+    }
+  }
+  const source = row.audioGenerationSource ?? "elevenlabs";
+  if (!GENERATIVE_AUDIO_SOURCES.includes(source as GenerativeAudioSource)) {
+    throw new AudioGenerationConfigurationError("Unsupported Music & Sound Effects source");
+  }
+  const defaults = GENERATIVE_AUDIO_DEFAULTS[source as GenerativeAudioSource];
+  return {
+    id: row.id,
+    source: source as GenerativeAudioSource,
+    apiKey: row.apiKey,
+    baseUrl: row.baseUrl || defaults.baseUrl,
+    model: row.model || defaults.model,
+    soundEffectsModel: row.audioSoundEffectsModel || defaults.soundEffectsModel,
+    callbackUrl: row.audioGenerationCallbackUrl || undefined,
+    musicEndpoint: row.audioMusicEndpoint || undefined,
+    soundEffectsEndpoint: row.audioSoundEffectsEndpoint || undefined,
+    requestFormat: row.audioGenerationFormat === "chat_completions" ? "chat_completions" : "binary",
+    responseFormat: "mp3",
+    music: audioConnectionSupportsGeneration(row, "music"),
+    soundEffects: audioConnectionSupportsGeneration(row, "sfx"),
+    legacyId: row.audioGenerationLegacyConnectionId ?? null,
+  };
+}
+
+const locks = new Map<string, Promise<GeneratedAudioAsset>>();
+const AUDIO_FILE_PATTERN = /\.(mp3|wav|ogg|m4a|flac|aac|webm)$/i;
+let manifestTimer: ReturnType<typeof setTimeout> | undefined;
+function scheduleManifestRebuild() {
+  if (manifestTimer) clearTimeout(manifestTimer);
+  manifestTimer = setTimeout(() => {
+    manifestTimer = undefined;
+    try {
+      buildAssetManifest();
+    } catch (error) {
+      logger.error(error, "Failed to refresh generated audio assets");
+    }
+  }, 500);
+  manifestTimer.unref();
+}
+
+function cacheIdentity(config: ResolvedConfig, kind: "music" | "sfx") {
+  // Older Game sound effects used a prompt-only ElevenLabs cache. Preserve it
+  // for the migrated default model; new models/endpoints have distinct caches.
+  if (
+    config.legacyId &&
+    config.source === "elevenlabs" &&
+    config.model === "music_v1" &&
+    (!config.soundEffectsModel || config.soundEffectsModel === "eleven_text_to_sound_v2")
+  )
+    return "";
+  return (
+    [
+      config.source,
+      config.baseUrl,
+      kind === "music" ? config.model : config.soundEffectsModel || config.model,
+      config.requestFormat,
+      kind === "music" ? config.musicEndpoint : config.soundEffectsEndpoint,
+    ].join("\0") + "\0"
+  );
+}
+
+async function compose(
+  config: ResolvedConfig,
+  kind: "music" | "sfx",
+  prompt: string,
+  context?: GeneratedAudioContext,
+): Promise<GeneratedAudioAsset> {
+  const hash = createHash("sha256")
+    .update(`${cacheIdentity(config, kind)}${kind}\0${prompt.toLowerCase()}`)
+    .digest("hex");
+  const category = context
+    ? "axis" in context
+      ? `music/${context.axis}/${context.key}`
+      : `music/contexts/${context.scope}/${context.key}`
+    : `${kind === "music" ? "music" : "sfx"}/generated`;
+  const directory = join(GAME_ASSETS_DIR, category);
+  if (context) {
+    // A user-supplied replacement covers the context as well as a generated file.
+    const covered = (await readdir(directory, { withFileTypes: true }).catch(() => [])).find(
+      (entry) => entry.isFile() && !entry.name.startsWith(".") && AUDIO_FILE_PATTERN.test(entry.name),
+    );
+    if (covered)
+      return {
+        tag: `${category.replaceAll("/", ":")}:${covered.name.replace(/\.[^.]+$/, "")}`,
+        path: `${category}/${covered.name}`,
+        cached: true,
+      };
+  }
+  const filename = context ? `generated-${hash.slice(0, 16)}.mp3` : `${hash}.mp3`;
+  const path = `${category}/${filename}`;
+  const tag = `${category.replaceAll("/", ":")}:${filename.replace(/\.mp3$/, "")}`;
+  try {
+    await access(join(GAME_ASSETS_DIR, path));
+    return { tag, path, cached: true };
+  } catch {
+    /* compose below */
+  }
+  const bytes = await generateAudioBytes(config, kind, prompt, {
+    lengthMs: context?.lengthMs ?? (context ? 120_000 : 5_000),
+  });
+  await mkdir(directory, { recursive: true });
+  const temporary = join(directory, `.${hash}.${randomUUID()}.tmp`);
+  try {
+    await writeFile(temporary, bytes);
+    await rename(temporary, join(GAME_ASSETS_DIR, path));
+  } catch (error) {
+    await unlink(temporary).catch(() => {});
+    throw error;
+  }
+  scheduleManifestRebuild();
+  return { tag, path, cached: false };
+}
+
+/** One paid composition per context/prompt, shared by Game, Roleplay and packages. */
+export async function generateAudioAsset(
+  db: DB,
+  request: {
+    kind: "music" | "sfx";
+    prompt: string;
+    audioConnectionId?: string | null;
+    context?: GeneratedAudioContext;
+    debugMode?: boolean;
+    signal?: AbortSignal;
+  },
+): Promise<GeneratedAudioAsset> {
+  request.signal?.throwIfAborted();
+  const config = await resolveGenerativeAudioConfig(db, request.audioConnectionId);
+  request.signal?.throwIfAborted();
+  if (!(request.kind === "music" ? config.music : config.soundEffects)) {
+    throw new AudioGenerationConfigurationError(
+      `${request.kind} generation is not enabled for this Music & Sound Effects connection`,
+    );
+  }
+  if (config.source !== "custom" && !config.apiKey)
+    throw new AudioGenerationConfigurationError("Audio generation API key is not configured");
+  const prompt = request.prompt.trim().replace(/\s+/g, " ");
+  logDebugOverride(request.debugMode ?? false, "[debug/audio/generate] Prompt sent to audio provider:\n%s", prompt);
+  const context = request.context;
+  const key = context
+    ? "axis" in context
+      ? `music/${context.axis}/${context.key}`
+      : `music/contexts/${context.scope}/${context.key}`
+    : `${cacheIdentity(config, request.kind)}${request.kind}\0${prompt.toLowerCase()}`;
+  let pending = locks.get(key);
+  if (!pending) {
+    // Aborting one listener must not discard a paid result for other listeners.
+    pending = compose(config, request.kind, prompt, context).finally(() => locks.delete(key));
+    locks.set(key, pending);
+  }
+  let listener: ReturnType<typeof addAbortListener> | undefined;
+  try {
+    const result = request.signal
+      ? await Promise.race([
+          pending,
+          new Promise<never>((_, reject) => {
+            listener = addAbortListener(request.signal!, () => reject(request.signal!.reason));
+          }),
+        ])
+      : await pending;
+    request.signal?.throwIfAborted();
+    return result;
+  } finally {
+    listener?.[Symbol.dispose]();
+  }
+}

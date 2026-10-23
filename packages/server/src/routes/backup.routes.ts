@@ -839,6 +839,7 @@ const PROFILE_CONNECTION_CREDENTIAL_IDENTITY_FIELDS = [
   "videoGenerationSource",
   "videoService",
   "audioSource",
+  "audioGenerationSource",
   "decisionSource",
   "credentialsFromConnectionId",
 ] as const;
@@ -884,6 +885,8 @@ export function quarantineProfileApiConnectionRow(
     // Like the key: the local saved model list still applies only to the same endpoint.
     savedModels: trustedIdentity ? (existing?.savedModels ?? null) : null,
     profileImportReviewRequired: trustedIdentity ? "false" : "true",
+    // Migration aliases are host provenance, never a binding a profile may invent.
+    audioGenerationLegacyConnectionId: trustedIdentity ? (existing?.audioGenerationLegacyConnectionId ?? null) : null,
   };
   if (trustedIdentity) return { row: secured, trustedIdentity };
   for (const field of PROFILE_CONNECTION_AUTOMATIC_SELECTION_FIELDS) secured[field] = "false";

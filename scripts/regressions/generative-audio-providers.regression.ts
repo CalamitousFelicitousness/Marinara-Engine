@@ -119,6 +119,14 @@ try {
       : call.url.origin === apiBase
         ? success()
         : audio();
+  for (const model of ["V4_5", "V5"]) {
+    reset(taskHandler);
+    assert.deepEqual(
+      await generateAudioBytes({ ...suno, model }, "music", "Legacy instrumental", { lengthMs: 60_000 }),
+      bytes,
+    );
+    assert.equal("duration" in calls[0]!.body!, false, "older supported models choose their own duration");
+  }
   reset(taskHandler);
   assert.deepEqual(
     await generateAudioBytes({ ...suno, soundEffectsModel: "V6_MINI" }, "sfx", "A decisive sword clash"),

@@ -11,6 +11,7 @@ import {
   type GenerativeAudioSource,
 } from "@marinara-engine/shared";
 import type { DB } from "../../db/connection.js";
+import { isDebugAgentsEnabled } from "../../config/runtime-config.js";
 import { logger, logDebugOverride } from "../../lib/logger.js";
 import { migrateGenerativeAudioConnections } from "../connections/generative-audio-connection-migration.js";
 import { buildAssetManifest, GAME_ASSETS_DIR } from "../game/asset-manifest.service.js";
@@ -39,7 +40,6 @@ export class AudioGenerationConfigurationError extends Error {
 
 /** Imported endpoints are never promoted here; migration skips quarantined rows. */
 export async function resolveGenerativeAudioConfig(db: DB, requestedId?: string | null): Promise<ResolvedConfig> {
-  await migrateGenerativeAudioConnections(db);
   const connections = createConnectionsStorage(db);
   let row;
   if (requestedId) {
@@ -48,6 +48,14 @@ export async function resolveGenerativeAudioConfig(db: DB, requestedId?: string 
       candidate?.provider === "audio_generation"
         ? candidate
         : await connections.getAudioGenerationForLegacyConnection(requestedId);
+    if (
+      !row &&
+      candidate?.provider === "audio" &&
+      (audioConnectionSupportsGeneration(candidate, "music") || audioConnectionSupportsGeneration(candidate, "sfx"))
+    ) {
+      await migrateGenerativeAudioConnections(db);
+      row = await connections.getAudioGenerationForLegacyConnection(requestedId);
+    }
     if (!row) {
       if (candidate?.provider === "audio") {
         throw new AudioGenerationConfigurationError(
@@ -61,6 +69,12 @@ export async function resolveGenerativeAudioConfig(db: DB, requestedId?: string 
     }
   } else {
     row = (await connections.getDefaultForAudioGeneration()) ?? (await connections.getFallbackForAudioGeneration());
+    if (!row) {
+      // Legacy/import fixtures can reach this bridge without the startup split.
+      // Configured connections never pay for a migration transaction per cue.
+      await migrateGenerativeAudioConnections(db);
+      row = (await connections.getDefaultForAudioGeneration()) ?? (await connections.getFallbackForAudioGeneration());
+    }
     if (!row) {
       // Preserve the old explicit-source failure until the user chooses a new
       // independent generation default. Never borrow another connection's key.
@@ -215,7 +229,11 @@ export async function generateAudioAsset(
   if (config.source !== "custom" && !config.apiKey)
     throw new AudioGenerationConfigurationError("Audio generation API key is not configured");
   const prompt = request.prompt.trim().replace(/\s+/g, " ");
-  logDebugOverride(request.debugMode ?? false, "[debug/audio/generate] Prompt sent to audio provider:\n%s", prompt);
+  logDebugOverride(
+    request.debugMode === true || isDebugAgentsEnabled(),
+    "[debug/audio/generate] Prompt sent to audio provider:\n%s",
+    prompt,
+  );
   const context = request.context;
   const key = context
     ? "axis" in context

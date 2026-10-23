@@ -226,7 +226,16 @@ try {
   assert.equal((await connections.getDefault())?.id, language.id);
   assert.equal((await connections.getDefaultForAgents())?.id, language.id);
   assert.equal((await connections.getDefaultForAudio())?.id, legacy.id);
-  const first = await generate(row.id);
+  const originalTransaction = db.transaction;
+  db.transaction = async () => {
+    throw new Error("Configured audio must not reopen the migration transaction");
+  };
+  let first;
+  try {
+    first = await generate(row.id);
+  } finally {
+    db.transaction = originalTransaction;
+  }
   assert.equal(first.statusCode, 200, first.body);
   assert.deepEqual(readFileSync(join(data, "game-assets", first.json().path)), mp3);
   const count = calls.length;

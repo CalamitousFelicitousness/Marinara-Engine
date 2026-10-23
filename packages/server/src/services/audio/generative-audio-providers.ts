@@ -157,9 +157,9 @@ export async function generateAudioBytes(
     if (options.lengthMs !== undefined) {
       if (options.lengthMs < 10_000 || options.lengthMs > 360_000)
         throw new Error("SunoAPI music length must be 10–360 seconds");
-      if (!/^(V5_5|V6|V6_MINI|V6_WILD)$/.test(String(body.model)))
-        throw new Error("This SunoAPI model does not support an explicit music length");
-      body.duration = options.lengthMs / 1000;
+      // Older models remain accepted by SunoAPI for compatibility, but cannot
+      // take a duration hint. Let those models choose their normal track length.
+      if (/^(V5_5|V6|V6_MINI|V6_WILD)$/.test(String(body.model))) body.duration = options.lengthMs / 1000;
     }
   }
   const submitted = (await (await api(kind === "music" ? "/generate" : "/generate/sounds", body)).json()) as {

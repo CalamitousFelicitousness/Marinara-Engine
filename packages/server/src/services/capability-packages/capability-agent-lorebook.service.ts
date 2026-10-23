@@ -190,5 +190,9 @@ export async function resolvePackageAgentLorebookEntries(
     signal,
   })(scanMessages);
   signal?.throwIfAborted();
-  return (resolved[packageId] ?? []).map(({ id, name, content }) => ({ id, name, content }));
+  return (resolved[packageId] ?? []).map(({ id, name, content }) => ({
+    id,
+    ...(typeof name === "string" ? { name } : {}),
+    content,
+  }));
 }

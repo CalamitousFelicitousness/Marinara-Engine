@@ -420,33 +420,49 @@ try {
   await books.createEntry({
     lorebookId: windowBook.id,
     keys: ["inside-window"],
-    content: "RECENT_WINDOW_REFERENCE for {{user}}",
+    content: "RECENT_WINDOW_REFERENCE for {{user}} after {{getvar::processed}} messages",
   });
   await books.createEntry({
     lorebookId: windowBook.id,
     keys: ["outside-window"],
-    content: "DISCARDED_MACRO_REFERENCE",
+    content: "DISCARDED_MACRO_REFERENCE after {{getvar::processed}} messages",
   });
   await chats.patchMetadata(windowChat.id, {
     agentLorebookAttachments: { [types[0]!]: { enabled: true, lorebookId: windowBook.id } },
-    macroVariables: { windowKey: "inside-window" },
+    macroVariables: { windowKey: "inside-window", processed: "0" },
   });
   for (let index = 0; index < 32; index++)
     await chats.createMessage({
       chatId: windowChat.id,
       role: "assistant",
-      content: `{{setvar::windowKey::outside-window}} {{lorebooksize::${windowBook.id}}}`,
+      content: `{{incvar::processed}}{{setvar::windowKey::outside-window}} {{lorebooksize::${windowBook.id}}}`,
     });
-  await chats.createMessage({ chatId: windowChat.id, role: "user", content: "Read the current window." });
-  await chats.createMessage({ chatId: windowChat.id, role: "assistant", content: "{{getvar::windowKey}}" });
+  await chats.createMessage({
+    chatId: windowChat.id,
+    role: "user",
+    content: "Read the current window. {{incvar::processed}}",
+  });
+  await chats.createMessage({
+    chatId: windowChat.id,
+    role: "assistant",
+    content: "{{getvar::windowKey}} {{incvar::processed}}",
+  });
   const cleanWindowChat = await chats.create({ name: "Only the retained window", mode: "roleplay", characterIds: [] });
   assert(cleanWindowChat);
   await chats.patchMetadata(cleanWindowChat.id, {
     agentLorebookAttachments: { [types[0]!]: { enabled: true, lorebookId: windowBook.id } },
-    macroVariables: { windowKey: "inside-window" },
+    macroVariables: { windowKey: "inside-window", processed: "0" },
   });
-  await chats.createMessage({ chatId: cleanWindowChat.id, role: "user", content: "Read the current window." });
-  await chats.createMessage({ chatId: cleanWindowChat.id, role: "assistant", content: "{{getvar::windowKey}}" });
+  await chats.createMessage({
+    chatId: cleanWindowChat.id,
+    role: "user",
+    content: "Read the current window. {{incvar::processed}}",
+  });
+  await chats.createMessage({
+    chatId: cleanWindowChat.id,
+    role: "assistant",
+    content: "{{getvar::windowKey}} {{incvar::processed}}",
+  });
   let entryCountQueries = 0;
   const originalSelect = db.select;
   db.select = ((projection?: Record<string, unknown>) => {
@@ -455,7 +471,7 @@ try {
     return originalSelect(projection as never);
   }) as typeof db.select;
   try {
-    await resolvePackageAgentLorebookEntries(db, types[0]!, { chatId: cleanWindowChat.id });
+    const cleanWindowEntries = await resolvePackageAgentLorebookEntries(db, types[0]!, { chatId: cleanWindowChat.id });
     const baselineCountQueries = entryCountQueries;
     entryCountQueries = 0;
     const windowEntries = await resolvePackageAgentLorebookEntries(db, types[0]!, { chatId: windowChat.id });
@@ -466,13 +482,16 @@ try {
     );
     assert.deepEqual(
       windowEntries.map((entry) => entry.content),
-      ["RECENT_WINDOW_REFERENCE for User"],
+      ["RECENT_WINDOW_REFERENCE for User after 2 messages"],
       "discarded variable writes cannot change the retained history's triggers",
     );
+    assert.deepEqual(windowEntries, cleanWindowEntries, "the bounded scan matches the equivalent clean window");
+    assert(!Object.hasOwn(windowEntries[0]!, "name"), "unnamed entries omit the optional public string field");
+    await books.updateEntry(windowEntries[0]!.id, { name: "" });
     await chats.createMessage({
       chatId: windowChat.id,
       role: "assistant",
-      content: `{{lorebooksize::${windowBook.id}}} {{getvar::windowKey}}`,
+      content: `{{lorebooksize::${windowBook.id}}} {{getvar::windowKey}} {{incvar::processed}}`,
     });
     entryCountQueries = 0;
     const retainedEntries = await resolvePackageAgentLorebookEntries(db, types[0]!, { chatId: windowChat.id });
@@ -483,7 +502,11 @@ try {
     );
     assert.deepEqual(
       retainedEntries.map((entry) => entry.content),
-      ["RECENT_WINDOW_REFERENCE for User"],
+      ["RECENT_WINDOW_REFERENCE for User after 2 messages"],
+    );
+    assert.equal(retainedEntries[0]?.name, "", "an explicitly empty string remains a valid public name");
+    console.info(
+      "PASS: two-message package macro window, discarded-history isolation, dependency controls and optional names",
     );
   } finally {
     db.select = originalSelect;

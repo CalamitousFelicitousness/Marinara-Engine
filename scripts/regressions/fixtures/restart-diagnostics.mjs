@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 // Fixture-only evidence for #8081. A report can identify loader workers and native
 // resources; it does not establish which import caused a stall, or cure one.
-export function startRestartDiagnostics(mode, delayMs = 30_000) {
+export function startRestartDiagnostics(mode, delayMs = 15_000) {
   const directory = process.env.MARINARA_RESTART_DIAGNOSTICS_DIR;
   if (!directory) return { phase() {}, ready() {} };
   const started = Date.now();

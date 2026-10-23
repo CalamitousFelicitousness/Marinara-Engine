@@ -45,10 +45,27 @@ function closeOpenJsonContainers(raw: string): string | null {
  */
 const PROPERTY_RE = /^(\s*(?:"[^"\n]+"|'[^'\n]+'|[A-Za-z_$][\w$]*)\s*:\s*")(.*)("\s*,?\s*)$/u;
 
-/** A line split at every `, key: "`, quoted or not; null when a piece isn't a whole `key: "value"` property. */
+/**
+ * A line split at every `, key: "`, quoted or not; null when a piece isn't a whole `key: "value"` property. Dialogue
+ * quotes come in pairs, so a piece whose value holds an odd number of them was cut inside dialogue
+ * (`"The signs read, "Welcome", warning: "Do not enter.""`): pieces are joined back, left to right, until they make one
+ * whole property, so whole properties before and after it (`"name": "x",`, `, mood: "warm"`) still split off.
+ */
 function anyKeyProperties(line: string): string[] | null {
   const pieces = line.split(/,(?=\s*(?:"[^"\n]+"\s*:|(?:'[^'\n]+'|[A-Za-z_$][\w$]*)\s*:\s*["']))/u);
-  return pieces.every((piece) => PROPERTY_RE.test(piece)) ? pieces : null;
+  const whole = (piece: string) => {
+    const value = piece.match(PROPERTY_RE)?.[2];
+    return value !== undefined && (value.match(/(?<!\\)"/gu)?.length ?? 0) % 2 === 0;
+  };
+  const properties: string[] = [];
+  let open: string[] = [];
+  for (const piece of pieces) {
+    open.push(piece);
+    if (!whole(open.join(","))) continue;
+    properties.push(open.join(","));
+    open = [];
+  }
+  return open.length ? null : properties;
 }
 
 function escapeQuotesInsideLineValues(raw: string): string {

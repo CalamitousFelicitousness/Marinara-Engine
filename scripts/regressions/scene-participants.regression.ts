@@ -115,6 +115,48 @@ try {
   assert.equal(quoted.plan?.description, "A library.");
   // The shared repair keeps valid lines as they are: two properties on one valid line stay two properties.
   const { tryParseJsonRecord } = await import("../../packages/server/src/lib/json-repair.js");
+  // Dialogue quotes come in pairs, so a bare `, warning: "` inside quoted dialogue is not a key: no field is cut short.
+  const signsText = 'The signs read, "Welcome", warning: "Do not enter."';
+  for (const [field, other] of [
+    ["firstMessage", "description"],
+    ["description", "firstMessage"],
+  ] as const) {
+    const lines = [
+      "{",
+      '  "name": "Scene: Library",',
+      `  "${field}": "${signsText}",`,
+      `  "${other}": "A library."`,
+      "}",
+    ];
+    providerContent = lines.join("\n");
+    assert.deepEqual(tryParseJsonRecord(providerContent), {
+      name: "Scene: Library",
+      [field]: signsText,
+      [other]: "A library.",
+    });
+    const signs = await api("POST", "/api/scene/plan", {
+      chatId: origin.id,
+      connectionId: conn.id,
+      prompt: "Visit the library",
+      promptPreferences: { pov: "third_person", tense: "past", ...selected },
+    });
+    assert.equal(signs.error, undefined);
+    assert.equal(signs.plan?.[field], signsText, `${field} is kept whole`);
+    assert.equal(signs.plan?.[other], "A library.");
+  }
+  // Real properties before and after that dialogue still split off.
+  assert.deepEqual(tryParseJsonRecord(`{\n  "firstMessage": "${signsText}", mood: "warm"\n}`), {
+    firstMessage: signsText,
+    mood: "warm",
+  });
+  assert.deepEqual(tryParseJsonRecord(`{\n  "name": "Scene", "firstMessage": "${signsText}", mood: "warm"\n}`), {
+    name: "Scene",
+    firstMessage: signsText,
+    mood: "warm",
+  });
+  assert.deepEqual(tryParseJsonRecord(`{\n  "firstMessage": "${signsText.replace("warning", "'warning'")}"\n}`), {
+    firstMessage: signsText.replace("warning", "'warning'"),
+  });
   // Dialogue that quotes a "key": "value" of its own is still one value: only a comma before the key starts another.
   // ("She said, "mood": "warm"" can't be told from a real property, so there jsonrepair's reading stands.)
   for (const dialogue of ['She read "mood": "warm" aloud', 'He said "hi" twice']) {

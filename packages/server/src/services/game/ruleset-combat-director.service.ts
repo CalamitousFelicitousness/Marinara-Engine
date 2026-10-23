@@ -3565,9 +3565,16 @@ function weighCaught(
     // What it puts on them, less what it puts on its own side: a Hypnotic Pattern over the party
     // and not over its own.
     const read = [...foes, ...walkers].some((target) => worthOn(target) !== undefined);
-    const worth = riders(foes) + 0.5 * riders(walkers) - harms(friends);
-    if (read && worth <= 0) return false;
-    candidate.setup = read ? Math.min(2, worth) : 0.4;
+    // What it does that the Engine cannot weigh (a withering blow's initiative, a pool's points) it
+    // does to a friend as much as to a foe (K5: Exalted's withering areas over the thrower's own): each
+    // friend caught takes off what a foe adds.
+    const own = friends.filter((target) => target.id !== actor.id && !target.down).length;
+    const unread = foes.length + 0.5 * walkers.length - friendWeight * own;
+    const worth = read
+      ? riders(foes) + 0.5 * riders(walkers) - harms(friends)
+      : unread / Math.max(1, foes.length + walkers.length);
+    if (worth <= 0) return false;
+    candidate.setup = read ? Math.min(2, worth) : 0.4 * worth;
   } else {
     // Something meant for the other side that would catch only its own: ball bearings under a friend.
     if (option.targets.side === "enemy") return false;
@@ -3580,6 +3587,9 @@ function weighCaught(
       return false;
     }
     const read = friends.some((target) => worthOn(target) !== undefined);
+    // What it does unread is support only where it is meant for its own side (K5: a withering area
+    // thrown over two friends and no foe, logged as support).
+    if (!read && option.targets.side !== "ally" && !option.restores) return false;
     const worth = riders(friends);
     if (read && worth <= 0) return false;
     candidate.support = read ? Math.min(2, worth) : 0.4;

@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import fsPromises from "node:fs/promises";
+import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -204,8 +206,57 @@ try {
     }),
     2,
   );
+
+  // The cleanup transaction also suppresses real flush-tail eviction during cold I/O.
+  const previousCap = process.env.MARINARA_MAX_RESIDENT_CHATS;
+  const residentUnits = db._fileStore.getResidentChatUnits;
+  const readDirectory = fsPromises.readdir;
+  let flushDuringScan: Promise<void> | undefined;
+  let overlappedFlush = false;
+  let residentDuringFlush: string[] | undefined;
+  try {
+    process.env.MARINARA_MAX_RESIDENT_CHATS = "2";
+    await db._fileStore.flush();
+    for (const chatId of ["race", "swipe", "backup"])
+      await db.select().from(messages).where(eq(messages.chatId, chatId));
+    const beforeScan = [...residentUnits()].sort();
+    assert.ok(["race", "swipe", "backup"].every((id) => beforeScan.includes(id)));
+    db._fileStore.getResidentChatUnits = () => {
+      const snapshot = residentUnits();
+      flushDuringScan ??= db._fileStore.flush();
+      return snapshot;
+    };
+    fsPromises.readdir = (async (...args: Parameters<typeof readDirectory>) => {
+      if (!overlappedFlush && String(args[0]).endsWith(join("tables", "messages"))) {
+        overlappedFlush = true;
+        await flushDuringScan;
+        residentDuringFlush = [...residentUnits()].sort();
+      }
+      return readDirectory(...args);
+    }) as typeof readDirectory;
+    syncBuiltinESMExports();
+    const deleted = await unlinkAvatarFilesIfUnreferenced({ db, avatarRoot, avatarPaths: [urlFor("new.png")] });
+    // Assert outside the scanner: its deliberate fail-closed catch must not hide a probe failure.
+    assert.equal(overlappedFlush, true, "the real flush must finish during the scanner's awaited directory read");
+    assert.ok(flushDuringScan, "the flush must start after residency is sampled inside cleanup");
+    assert.deepEqual(residentDuringFlush, beforeScan, "active cleanup transactions prevent flush-tail eviction");
+    assert.equal(deleted, 0);
+    assert.equal(existsSync(pathFor("new.png")), true);
+    db._fileStore.getResidentChatUnits = residentUnits;
+    fsPromises.readdir = readDirectory;
+    syncBuiltinESMExports();
+    await db._fileStore.flush();
+    assert.equal(residentUnits().has("race"), false, "the same flush evicts the oldest unit after cleanup exits");
+    assert.equal(await unlinkAvatarFilesIfUnreferenced({ db, avatarRoot, avatarPaths: [urlFor("new.png")] }), 0);
+  } finally {
+    db._fileStore.getResidentChatUnits = residentUnits;
+    fsPromises.readdir = readDirectory;
+    syncBuiltinESMExports();
+    if (previousCap === undefined) delete process.env.MARINARA_MAX_RESIDENT_CHATS;
+    else process.env.MARINARA_MAX_RESIDENT_CHATS = previousCap;
+  }
   console.info(
-    "Frozen identity avatar cleanup regressions passed (cold/resident messages, swipes, trash, backup, rollback, and read failures).",
+    "Frozen identity avatar cleanup regressions passed (cold/resident messages, swipes, trash, backup, rollback, eviction, and read failures).",
   );
 } finally {
   await db._fileStore.close();

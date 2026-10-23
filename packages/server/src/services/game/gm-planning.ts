@@ -54,12 +54,12 @@ const RESULT_NOUN = String.raw`(?:numbers?|results?|totals?|outcomes?)`;
 const ROLL_KIND = String.raw`(?:[^\s.!?,;:"“”—–]+[ \t]+)?(?:save|saving throw|check|roll)s?`;
 // Only a roll may name what it rolls for; "see the damage" is a look at the scene.
 const ROLLED_FOR = String.raw`(?:initiative|damage|healing|modifiers?)`;
-const OUTCOME = String.raw`(?:what[ \t]+the[ \t]+(?:dice|die)[ \t]+says?|how[ \t]+(?:much[ \t]+)?(?:it|that|this|they)[ \t]+(?:lands|goes|plays out|turns out|heals|hurts|does)|if[ \t]+(?:it|that|this|they)[ \t]+(?:lands|hits|works|succeeds|holds))`;
+const OUTCOME = String.raw`(?:what[ \t]+the[ \t]+(?:dice|die)[ \t]+says?|what[ \t]+(?:it|that|this|they)[ \t]+(?:does|do|says?)|how[ \t]+(?:much[ \t]+)?(?:it|that|this|they)[ \t]+(?:lands|goes|plays out|turns out|heals|hurts|does)|if[ \t]+(?:it|that|this|they)[ \t]+(?:lands|hits|works|succeeds|holds))`;
 // What any announcing verb may be after; a roll may also name what it rolls for.
 const ANNOUNCED_OBJECT = String.raw`(?:${DETERMINER}(?:${RESULT_NOUN}|${ROLL_NOUN})${FOR_TAIL}|${DETERMINER}${ROLL_KIND}|${OUTCOME})`;
 const ROLL_OBJECT = String.raw`(?:(?:it|them|that|this)${FOR_TAIL}|${DETERMINER}${ROLLED_FOR}${FOR_TAIL}|${ANNOUNCED_OBJECT})`;
-// Any announcement may go on to say what it waits to learn: "check and see how that goes", "roll to find out".
-const OUTCOME_TAIL = String.raw`(?:[ \t]+(?:to|and)[ \t]+(?:see|find out)(?:[ \t]+${OUTCOME})?)?`;
+// Any announcement may go on to say what it waits to learn: "check and see how that goes", "roll the die, and see".
+const OUTCOME_TAIL = String.raw`(?:,?[ \t]+(?:to|and)[ \t]+(?:see|find out)(?:[ \t]+${OUTCOME})?)?`;
 const TOOL_ANNOUNCEMENT = new RegExp(
   String.raw`(?:^|(?<=[.!?…"'”’*_)\]])\s+|\s*[—–]\s*|\s+-{1,2}\s+)` +
     String.raw`(?:(?:okay|ok|alright|right|now|first|so),?\s+)*` +

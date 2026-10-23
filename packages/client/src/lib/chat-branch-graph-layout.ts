@@ -6,7 +6,7 @@ import type { BranchTreeChat, BranchTreeRow } from "./chat-branch-tree";
 export const BRANCH_GRAPH_STEP = 16;
 export const BRANCH_GRAPH_GAP_WIDTH = 64;
 export const BRANCH_GRAPH_LANE_HEIGHT = 28;
-/** How far a roomy window may zoom a small graph in, and then spread its dots out; lanes share all the height. */
+/** How far a roomy window may zoom a small graph in, and then spread its dots out. */
 const MAX_SCALE = 2;
 const MAX_STEP = 48;
 /** How far a graph a little too wide for its window may shrink to fit, before it scrolls instead. */
@@ -70,7 +70,8 @@ export type BranchGraphLayout<T extends BranchTreeChat> = {
  * the message it came from. A run never contains a lane's start or tip, so every lane either spans a
  * collapsed run completely or doesn't touch it. With a `fit`, the graph uses the room it is given: the
  * more there is, the fewer runs fold; a graph that still has room left zooms in, then spreads out, and one a
- * little too wide shrinks. The lanes always share the whole height.
+ * little too wide shrinks, down to `MIN_SCALE`, before it scrolls. The lanes share the height, but never get
+ * shorter than `BRANCH_GRAPH_LANE_HEIGHT`: too many of them scroll instead.
  */
 export function layoutChatBranchGraph<T extends BranchTreeChat>(
   rows: readonly BranchTreeRow<T>[],
@@ -178,7 +179,7 @@ export function layoutChatBranchGraph<T extends BranchTreeChat>(
     }
     folded = runs.filter((run) => stillFolded.includes(run));
     // Shrink a graph a little too wide to fit, or zoom a small one in as a whole; then spread its dots over the
-    // width that is left, and its lanes over all the height.
+    // width that is left, and its lanes over the height, down to their base height.
     const lanesAt = Math.max(1, lanes.length);
     const widthRatio = fit.width / widthAt(BRANCH_GRAPH_STEP, folded);
     const heightRatio = fit.height / (lanesAt * BRANCH_GRAPH_LANE_HEIGHT);

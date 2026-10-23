@@ -12,6 +12,26 @@ import { logger } from "../../lib/logger.js";
 type LorebookSource = "manual" | "chat_active" | "none";
 type TriggeredEntriesByAgentId = NonNullable<AgentContext["triggeredLorebookEntriesByAgentId"]>;
 
+/** Apply only this chat's attachment, leaving the saved agent configuration untouched. */
+export function applyAgentLorebookChatSettings(
+  agentType: string,
+  settings: Record<string, unknown>,
+  chatMetadata: Record<string, unknown> | null | undefined,
+): Record<string, unknown> {
+  const attachments = chatMetadata?.agentLorebookAttachments;
+  if (!attachments || typeof attachments !== "object" || Array.isArray(attachments)) return settings;
+  const attachment = (attachments as Record<string, unknown>)[agentType];
+  if (!attachment || typeof attachment !== "object" || Array.isArray(attachment)) return settings;
+  const value = attachment as Record<string, unknown>;
+  if (value.enabled !== true) return settings;
+  return {
+    ...settings,
+    chatLorebookAttachmentEnabled: true,
+    chatAttachedLorebookId:
+      typeof value.lorebookId === "string" && value.lorebookId.trim() ? value.lorebookId.trim() : null,
+  };
+}
+
 export interface AgentLorebookTriggerSource {
   id: string;
   contextSize: number;

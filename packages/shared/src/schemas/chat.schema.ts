@@ -6,6 +6,11 @@ import { pendingSpatialTransitionSchema } from "./spatial-context.schema.js";
 
 export const chatModeSchema = z.enum(["conversation", "roleplay", "game"]);
 
+export const agentLorebookAttachmentsSchema = z.record(
+  z.string().min(1).max(200),
+  z.object({ enabled: z.boolean(), lorebookId: z.string().trim().min(1).max(200).nullable() }).strict(),
+);
+
 export const messageRoleSchema = z.enum(["user", "assistant", "system", "narrator"]);
 
 export const messageReplySchema = z.object({

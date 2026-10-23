@@ -3380,10 +3380,12 @@ function RoleplaySetupWizard({ chat, onFinish, defaultsApplied, defaultsAction }
             ))}
             {available.length === 0 && (
               <p className="px-3 py-2 text-[0.6875rem] text-[var(--muted-foreground)]">
-                {((lorebooks ?? []) as Array<{ id: string }>).filter((lb) => !activeLorebookIds.includes(lb.id))
-                  .length === 0
-                  ? localizeUi("ui.chat.roleplaysetupwizard.allLorebooksAlreadyAdded")
-                  : localizeUi("ui.lorebooks.linkedresourcepicker.noMatches")}
+                {(lorebooks ?? []).length === 0
+                  ? localizeUi("ui.panels.lorebookspanel.noLorebooksYet")
+                  : ((lorebooks ?? []) as Array<{ id: string }>).filter((lb) => !activeLorebookIds.includes(lb.id))
+                        .length === 0
+                    ? localizeUi("ui.chat.roleplaysetupwizard.allLorebooksAlreadyAdded")
+                    : localizeUi("ui.lorebooks.linkedresourcepicker.noMatches")}
               </p>
             )}
           </div>

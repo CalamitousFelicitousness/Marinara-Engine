@@ -20,7 +20,7 @@ Third-party integration reports are investigation leads. Their claims about iner
 
 ## Local release probe
 
-The [official installer](https://antigravity.google/cli/install.sh) and its [Darwin ARM64 release manifest](https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/darwin_arm64.json) were inspected without running the installer. The manifest selected `agy` **1.4.6**, Darwin ARM64, and this archive SHA-512:
+The [official installer](https://antigravity.google/cli/install.sh) and its [Darwin ARM64 release manifest](https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/darwin_arm64.json) were inspected without running the installer. The manifest selected the [versioned `agy` 1.4.6 Darwin ARM64 archive](https://storage.googleapis.com/antigravity-public/antigravity-cli/1.4.6-4884751325200384/darwin-arm/cli_mac_arm64.tar.gz) and this archive SHA-512:
 
 ```text
 25af49004dd6d6013e6231278e2711b95641c8e54b661be871b3519c0a850053d4e707f46b47aa66e84ff9480041b13908194b48b1a97f84f2a22071d9c9fd3f

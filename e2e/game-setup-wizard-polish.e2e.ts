@@ -5,8 +5,8 @@ import { prepareViteFixtureDependencies } from "./vite-fixture-dependencies.js";
 
 /**
  * The new-game wizard and the start screen after it: Goals and preferences kept from the last game say so
- * and can be cleared, an empty lorebook list says there are none yet, and the starting widgets sheet is
- * the only Start Game on screen while it is open.
+ * and can be cleared, an empty lorebook list says there are none yet, and the start screen's Start Game
+ * starts the game: the starting widgets sheet opens only when asked for, as the one Start Game on screen.
  */
 
 const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
@@ -138,7 +138,7 @@ test("a lorebook list that failed to load claims nothing", async ({ page }, test
   await expect(wizard.getByText("All lorebooks already added.", { exact: true })).toHaveCount(0);
 });
 
-test("the starting widgets sheet is the only Start Game on screen", async ({ page, request }, testInfo) => {
+test("Start Game starts the game, and the starting widgets sheet is optional", async ({ page, request }, testInfo) => {
   const chat = (await (
     await request.post("/api/chats", { data: { name: "Starting widgets", mode: "game", characterIds: [] } })
   ).json()) as { id: string };
@@ -184,10 +184,19 @@ test("the starting widgets sheet is the only Start Game on screen", async ({ pag
       },
       { id: chat.id, version },
     );
+    const starts: string[] = [];
+    await page.route("**/api/game/start", async (route) => {
+      starts.push(route.request().postData() ?? "");
+      await route.fulfill({ json: { alreadyStarted: true } });
+    });
     await page.goto("/");
     const start = page.getByRole("button", { name: "Start Game", exact: true });
+    const review = page.getByRole("button", { name: "Review starting widgets", exact: true });
     await expect(start).toHaveCount(1);
-    await start.click();
+    await expect(review).toBeVisible();
+
+    // Reviewing is asked for: the sheet is then the one Start Game on screen.
+    await review.click();
     const sheet = page.getByRole("dialog", { name: "Review Starting Widgets" });
     await expect(sheet).toBeVisible();
     await expect(start).toHaveCount(1);
@@ -195,12 +204,15 @@ test("the starting widgets sheet is the only Start Game on screen", async ({ pag
     if (testInfo.project.name === "desktop-chromium") {
       await page.screenshot({ path: testInfo.outputPath("starting-widgets-sheet.png") });
     }
-
-    // Back to the start screen: its own Start Game returns.
     await sheet.getByRole("button", { name: "Back", exact: true }).click();
     await expect(sheet).toHaveCount(0);
-    await expect(start).toHaveCount(1);
-    await expect(start).toBeEnabled();
+    await expect(review).toBeVisible();
+
+    // Start Game itself starts the game, with no sheet in between.
+    await start.click();
+    await expect.poll(() => starts.length).toBe(1);
+    expect(JSON.parse(starts[0]!)).toMatchObject({ chatId: chat.id });
+    await expect(sheet).toHaveCount(0);
   } finally {
     await request.delete(`/api/chats/${chat.id}`);
   }

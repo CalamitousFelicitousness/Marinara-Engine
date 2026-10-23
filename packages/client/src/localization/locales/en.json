@@ -11087,6 +11087,7 @@
   "ui.game.gamesurfacecomponent.resizeStoryboardViewer": "Resize storyboard viewer",
   "ui.game.gamesurfacecomponent.retry": "Retry",
   "ui.game.gamesurfacecomponent.retrySceneAnalysis": "Retry Scene Analysis",
+  "ui.game.gamesurfacecomponent.reviewStartingWidgets": "Review starting widgets",
   "ui.game.gamesurfacecomponent.sceneAnalysisFailed": "Scene analysis failed",
   "ui.game.gamesurfacecomponent.sceneAnalysisRetried": "Scene analysis retried.",
   "ui.game.gamesurfacecomponent.sceneBackgroundGenerationIsDisabledWhileStoryboardVisualsAre": "Scene background generation is disabled while storyboard visuals are shown as the background.",

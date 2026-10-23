@@ -122,9 +122,6 @@ for (const theme of ["dark", "light"] as const) {
       await generate.click();
       const player = editor.getByLabel("Test music playback", { exact: true });
       await expect(player).toBeVisible();
-      await expect
-        .poll(() => player.evaluate((element: HTMLAudioElement) => element.readyState))
-        .toBeGreaterThanOrEqual(2);
       await player.evaluate((element: HTMLAudioElement) => {
         element.addEventListener(
           "click",
@@ -135,6 +132,9 @@ for (const theme of ["dark", "light"] as const) {
         );
       });
       await player.click({ position: { x: 20, y: 20 } });
+      await expect
+        .poll(() => player.evaluate((element: HTMLAudioElement) => element.readyState))
+        .toBeGreaterThanOrEqual(2);
       await expect.poll(() => player.evaluate((element: HTMLAudioElement) => element.currentTime)).toBeGreaterThan(0);
       await player.evaluate((element: HTMLAudioElement) => element.pause());
       await capture(page, info, `music-test-playback-${theme}`, player);

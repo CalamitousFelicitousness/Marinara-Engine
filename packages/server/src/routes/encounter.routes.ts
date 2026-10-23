@@ -6,7 +6,7 @@ import {
   TTS_SETTINGS_KEY,
   combatAiHintsSchema,
   combatBossSchema,
-  combatInterruptFields,
+  lenientCombatInterruptFields,
   gameInventoryFightLines,
   normalizeGameInventoryStacks,
   rulesetCombatStyle,
@@ -408,7 +408,7 @@ export const encounterBlueprintSchema = z
             .array(
               z
                 .object({
-                  ...combatInterruptFields,
+                  ...lenientCombatInterruptFields,
                   kind: z.enum(["attack", "heal", "buff", "debuff"]).optional(),
                   mpCost: z.number().min(0).max(10000).optional(),
                 })
@@ -463,7 +463,7 @@ export const encounterBlueprintSchema = z
             .array(
               z
                 .object({
-                  ...combatInterruptFields,
+                  ...lenientCombatInterruptFields,
                   kind: z.enum(["attack", "heal", "buff", "debuff"]).optional(),
                   mpCost: z.number().min(0).max(10000).optional(),
                 })

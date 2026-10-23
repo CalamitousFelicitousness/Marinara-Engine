@@ -2757,11 +2757,12 @@ function rulesetCandidatesFrom(
         if (average >= pool) candidate.finish = chance;
         // Everybody it could drop, the others it spreads to included: by its average, and by the most
         // its dice can roll where the blow is not one pulled to knock out (re-test 2026-10-23: a Sacred
-        // Flame of 2d8 on a thug at 11 killed under orders to spare).
+        // Flame of 2d8 on a thug at 11 killed under orders to spare), every dart it takes counted
+        // (round 2: three Magic Missile darts on a captain at 10).
         const most = average * rulesetDamageCeiling(fallingAction?.damage);
         const dropped = [target, ...others].filter((one) => {
           const left = rulesetCombatHealth(definition, combat, one);
-          return most >= Math.max(1, left.value + left.temp);
+          return most * (one === target ? 1 + again : 1) >= Math.max(1, left.value + left.temp);
         });
         if (dropped.length) candidate.action.drops = dropped.map((one) => one.id);
         // What it puts on them as well (a stunning blow), and the spell it may break by hurting
@@ -2802,7 +2803,12 @@ function rulesetCandidatesFrom(
         // thrown at a Fire Bolt only to keep its spender alive. That is its whole price, so none is
         // added.
         const level = rulesetPaidLevel(definition, actor, fallingAction, way.payWith);
-        const above = Math.max(0, level - rulesetStoppedLevel(definition, encounter));
+        const stoppedLevel = rulesetStoppedLevel(definition, encounter);
+        // A slot is never spent on a cantrip but to keep its spender alive (re-test round 2: a
+        // 3rd-level Counterspell on a cult fanatic's Sacred Flame).
+        if (level > 0 && stoppedLevel === 0 && !rulesetStoppedDropsSpender(definition, combat, encounter, actor))
+          continue;
+        const above = Math.max(0, level - stoppedLevel);
         const saved =
           Math.max(0, rulesetStoppedWorth(definition, combat, encounter, actor) - 0.25 - 0.1 * level - 0.15 * above) *
           chance;
@@ -3076,20 +3082,9 @@ export function rulesetStoppedWorth(
   if (answering && counterer) {
     return rulesetStoppedWorth(definition, combat, { ...encounter, window: answering }, counterer);
   }
-  const source = rulesetCombatant(encounter, trigger.sourceId);
-  const action = source?.actions.find((one) => one.id === trigger.optionId);
-  if (!source || !action) return 0.4;
-  // Whom it is aimed at: as the moment says, else as the held use says, its area's catch included.
-  const resume = encounter.window?.resume;
-  const held = resume?.kind === "action" && resume.actorId === source.id ? resume : undefined;
-  const ids = new Set([
-    ...(trigger.kind === "aimed" ? (trigger.targetIds ?? []) : []),
-    ...(held?.targetIds ?? []),
-    ...(held?.at ? rulesetAreaTargets(encounter, source.id, held.optionId, held.at) : []),
-  ]);
-  const aimedAt = [...ids]
-    .map((id) => rulesetCombatant(encounter, id))
-    .filter((one): one is RulesetCombatant => !!one && !one.defeated);
+  const stopped = rulesetStoppedCast(encounter);
+  if (!stopped) return 0.4;
+  const { source, action, aimedAt } = stopped;
   const mine = aimedAt.filter((one) => one.side === actor.side);
   let worth = 0;
   const average = rulesetSafeAverage(action.damage);
@@ -3112,6 +3107,43 @@ export function rulesetStoppedWorth(
   // Something it could read and found small is worth that little; only what says nothing gets a guess.
   const read = average > 0 || !!action.heal || !!action.applies?.length || !!action.summons || !!action.calls;
   return Math.min(2, read ? worth : 0.4);
+}
+
+/** The cast or blow an answer would stop, and whom it is aimed at: as the moment says, else as the
+ *  held use says, its area's catch included. */
+function rulesetStoppedCast(
+  encounter: RulesetEncounterState,
+): { source: RulesetCombatant; action: RulesetCombatAction; aimedAt: RulesetCombatant[] } | undefined {
+  const trigger = encounter.window?.trigger;
+  if (!trigger || (trigger.kind !== "aimed" && trigger.kind !== "used")) return undefined;
+  const source = rulesetCombatant(encounter, trigger.sourceId);
+  const action = source?.actions.find((one) => one.id === trigger.optionId);
+  if (!source || !action) return undefined;
+  const resume = encounter.window?.resume;
+  const held = resume?.kind === "action" && resume.actorId === source.id ? resume : undefined;
+  const ids = new Set([
+    ...(trigger.kind === "aimed" ? (trigger.targetIds ?? []) : []),
+    ...(held?.targetIds ?? []),
+    ...(held?.at ? rulesetAreaTargets(encounter, source.id, held.optionId, held.at) : []),
+  ]);
+  const aimedAt = [...ids]
+    .map((id) => rulesetCombatant(encounter, id))
+    .filter((one): one is RulesetCombatant => !!one && !one.defeated);
+  return { source, action, aimedAt };
+}
+
+/** Whether what an answer would stop could drop its spender, by the most its dice can roll. */
+function rulesetStoppedDropsSpender(
+  definition: RulesetDefinition,
+  combat: NonNullable<RulesetDefinition["combat"]>,
+  encounter: RulesetEncounterState,
+  actor: RulesetCombatant,
+): boolean {
+  const stopped = rulesetStoppedCast(encounter);
+  if (!stopped || !stopped.aimedAt.some((one) => one.id === actor.id)) return false;
+  const most = rulesetSafeAverage(stopped.action.damage) * rulesetDamageCeiling(stopped.action.damage);
+  const health = rulesetCombatHealth(definition, combat, actor);
+  return most > 0 && most >= Math.max(1, health.value + health.temp);
 }
 
 /** The level of the cast an answer would stop (Counterspell's target): what its caster paid for it,
@@ -3847,7 +3879,8 @@ function weighChoices(
     candidates = mindlessCandidates(encounter, actor, unit.tactics!, candidates, !!menu);
   weighRulesetTeam(definition, state, encounter, actor, candidates, orders);
   if (orders) weighRulesetOrders(definition, state, encounter, actor, orders, candidates);
-  weighRulesetDowned(encounter, actor, candidates, orders);
+  weighRulesetDowned(encounter, actor, candidates);
+  if (!menu && actor.side === "party") weighRulesetBlasters(definition, state, encounter, actor, candidates);
   // An honourable one (combat AI T6) strikes nobody running from it, beaten or down, and fights
   // whoever is fighting it, one on one.
   if (unit.tactics!.adjective === "honourable") {
@@ -4115,6 +4148,13 @@ function rulesetConcentrationFails(
 /** How far a companion guarding or protecting somebody strays from them (P7), in squares. */
 const RULESET_LEASH = 3;
 
+/** How far it strays under its orders: three squares from whoever it guards or protects, but beside
+ *  the leader it follows until they strike (re-test 2026-10-23: a rogue on follow walked up beside
+ *  the leader, then Dashed three squares on into the orcs before the leader had struck anyone). */
+function rulesetLeashWithin(orders: CombatOrders): number {
+  return orders.posture === "follow" ? 1 : RULESET_LEASH;
+}
+
 /** Whether an actor could shoot somebody of the other side from where it stands: one in range of a
  *  ranged blow it has and in its sight. Out of sight, staying put is a turn thrown away (re-test
  *  2026-10-23: a wizard stood three turns behind a wall while her friends bled out). */
@@ -4191,7 +4231,7 @@ function rulesetLeashOf(
 ): RulesetLeash | undefined {
   const charge = rulesetChargeOf(state, encounter, actor, orders);
   return charge && charge.id !== actor.id && rulesetCombatStanding(charge) && rulesetPositionOf(charge)
-    ? { charge, within: RULESET_LEASH }
+    ? { charge, within: rulesetLeashWithin(orders) }
     : undefined;
 }
 
@@ -4309,7 +4349,8 @@ function weighRulesetOrders(
     const gap = rulesetGap(actor, guarded);
     // Already off it, it does nothing where it stands but harm or help: no hiding, dodging, readying
     // or waiting out there, so its turn goes to walking back.
-    const strayed = gap > RULESET_LEASH;
+    const within = rulesetLeashWithin(orders);
+    const strayed = gap > within;
     const kept = candidates.filter((candidate) => {
       const to = candidate.action.to;
       if (to) {
@@ -4317,7 +4358,7 @@ function weighRulesetOrders(
         // a foe (re-test 14, a cultist eight squares out walking to six to stab a rogue). It walks
         // back instead.
         const after = rulesetGapFrom(to, rulesetSpanOf(actor), guarded);
-        return after <= RULESET_LEASH;
+        return after <= within;
       }
       return (
         !strayed ||
@@ -4457,13 +4498,13 @@ const RULESET_DOWNED_FOCUS = 2;
 /**
  * A friend down and dying comes first (re-test 2026-10-23: a cleric with Healing Word in hand cast
  * Sacred Flame and swung Spiritual Weapon while the wizard failed a death save): whatever heals one
- * beats any blow, and under orders to heal first it is all it does while it can.
+ * is all it does while it can, whatever its orders (round 2: under no orders, Bless and then Spirit
+ * Guardians outranked lifting a rogue three death saves from dying).
  */
 function weighRulesetDowned(
   encounter: RulesetEncounterState,
   actor: RulesetCombatant,
   candidates: Array<CombatAiCandidate<RulesetCandidate>>,
-  orders?: CombatOrders,
 ): void {
   const raises = candidates.filter((candidate) => {
     if ((candidate.healing ?? 0) <= 0) return false;
@@ -4475,7 +4516,47 @@ function weighRulesetDowned(
   });
   if (raises.length === 0) return;
   for (const candidate of raises) candidate.focus = (candidate.focus ?? 0) + RULESET_DOWNED_FOCUS;
-  if (orders?.heal) candidates.splice(0, candidates.length, ...raises);
+  candidates.splice(0, candidates.length, ...raises);
+}
+
+/** What harming an opponent who drops areas on its side is worth over anything else it could do,
+ *  once one has landed; half that for one who only holds one. */
+const RULESET_BLASTER_FOCUS = 0.8;
+
+/**
+ * A companion goes after whoever is dropping areas on its side (re-test round 2: a cult mage threw a
+ * Fireball into the party every round and ended both fights untouched, while the wizard and the
+ * cleric shot its cultists): a blow, a hold or an area that catches them comes first. Read from the
+ * areas that landed this fight and from what each opponent still holds that harms an area.
+ */
+function weighRulesetBlasters(
+  definition: RulesetDefinition,
+  state: CombatDirectorState,
+  encounter: RulesetEncounterState,
+  actor: RulesetCombatant,
+  candidates: Array<CombatAiCandidate<RulesetCandidate>>,
+): void {
+  const landed = new Set<string>();
+  for (const { event } of fightOf(state)?.events ?? []) if (event.type === "area") landed.add(event.actorId);
+  const blasters = new Map<string, number>();
+  for (const foe of encounter.combatants) {
+    if (foe.side === actor.side || !rulesetCombatStanding(foe)) continue;
+    const holds = foe.actions.some(
+      (action) =>
+        !!(action.area || action.zone) && !!action.damage && rulesetActionAvailable(foe, action, encounter, definition),
+    );
+    if (landed.has(foe.id) && holds) blasters.set(foe.id, RULESET_BLASTER_FOCUS);
+    else if (holds) blasters.set(foe.id, RULESET_BLASTER_FOCUS / 2);
+  }
+  if (blasters.size === 0) return;
+  for (const candidate of candidates) {
+    if ((candidate.damage ?? 0) <= 0 && (candidate.setup ?? 0) <= 0) continue;
+    const { choice, option } = candidate.action;
+    const caught = choice.at ? rulesetAreaTargets(encounter, actor.id, option.id, choice.at) : [];
+    const ids = new Set([...(candidate.targetId ? [candidate.targetId] : []), ...choice.targetIds, ...caught]);
+    const by = Math.max(0, ...[...ids].map((id) => blasters.get(id) ?? 0));
+    if (by > 0) candidate.focus = (candidate.focus ?? 0) + by;
+  }
 }
 
 /** Whether a pick is the action or spell an `opens` names: its own id, or the catalog entry it was

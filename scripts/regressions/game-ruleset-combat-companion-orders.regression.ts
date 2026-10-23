@@ -257,6 +257,51 @@ try {
     assert.notEqual(spared?.option.id, "bolt", `2d6 can roll 12: ${JSON.stringify(spared?.choice)}`);
   }
 
+  // ── Spare counts every dart on the one it drops (re-test round 2) ──
+  {
+    const darts = {
+      id: "darts",
+      name: "Darts",
+      budget: "action",
+      range: { normal: 120 },
+      targets: "enemy",
+      targetCount: 3,
+      autoHit: true,
+      damage: { count: 1, sides: 4, flat: 1 },
+    };
+    const frail = (encounter: RulesetEncounterState) => {
+      const goblin = rulesetCombatant(encounter, "goblin")!;
+      goblin.health = { ...goblin.health!, value: 8 };
+      // Every dart may go at the same one, as Magic Missile's.
+      rulesetCombatant(encounter, "mira")!.actions.find((action) => action.id === "darts")!.targets = {
+        side: "enemy",
+        count: 3,
+        repeat: true,
+      };
+    };
+    const spared = pick(field([darts]), { posture: "hold", spare: true }, [], frail, "patient");
+    const onGoblin = (spared?.choice.targetIds ?? []).filter((id) => id === "goblin").length;
+    assert.ok(onGoblin <= 1, `two darts can roll 10: ${JSON.stringify(spared?.choice)}`);
+  }
+
+  // ── Whoever drops areas on the party comes first (re-test round 2, the cult mage) ──
+  {
+    const blast = {
+      id: "blast",
+      name: "Blast",
+      budget: "action",
+      range: { normal: 150 },
+      area: { shape: "burst", size: 20 },
+      save: { save: "dex_save", difficulty: 15, onSuccess: "half" },
+      damage: { count: 8, sides: 6, flat: 0 },
+    };
+    const scene = field([bolt], { mage: { side: "enemy", block: block([blast]), at: { x: 15, y: 8 } } });
+    const landed = { type: "area", actorId: "mage", optionId: "blast", label: "Blast", at: { x: 8, y: 3 }, cells: [] };
+    const picked = pick(scene, undefined, [landed]);
+    assert.equal(picked?.targetId, "mage", `the one throwing them: ${JSON.stringify(picked?.choice)}`);
+    assert.equal(pick(field([bolt]))?.targetId, "orc", "with nobody throwing them, the one on the leader");
+  }
+
   // ── A friend down comes first, ordered or not (re-test 2026-10-23) ──
   {
     const downed = (encounter: RulesetEncounterState) => {
@@ -267,6 +312,20 @@ try {
     const raised = pick(field([bolt, mend]), undefined, [], downed);
     assert.equal(raised?.option.id, "mend", `it gets Ada up: ${JSON.stringify(raised?.choice)}`);
     assert.equal(raised?.targetId, "ada");
+    // A spell to hold on a friend does not come first either (re-test round 2: Bless, then Spirit
+    // Guardians, while the rogue failed death saves).
+    const rally = {
+      id: "rally",
+      name: "Rally",
+      budget: "action",
+      targets: "ally",
+      targetCount: 3,
+      range: { normal: 30 },
+      concentration: true,
+      applies: [{ condition: "invisible", duration: { rounds: 10 } }],
+    };
+    const lifted = pick(field([rally, bolt, mend]), undefined, [], downed);
+    assert.equal(lifted?.option.id, "mend", `Ada before a held spell: ${JSON.stringify(lifted?.choice)}`);
   }
 
   // ── Following a leader who has struck nobody yet, it stays by them (re-test 2026-10-23) ──
@@ -278,7 +337,17 @@ try {
     });
     const picked = pick(scene, { posture: "follow" });
     const gap = (to: { x: number; y: number }) => Math.max(Math.abs(to.x - 8), Math.abs(to.y - 2));
-    assert.ok(!picked?.to || gap(picked.to) <= 3, `it stays by Ada: ${JSON.stringify(picked?.choice)}`);
+    assert.ok(!picked?.to || gap(picked.to) <= 1, `it stays by Ada: ${JSON.stringify(picked?.choice)}`);
+    // Beside her, not three squares on (round 2: a rogue walked up beside the leader, then Dashed on).
+    const { state } = fight({
+      ada: { side: "party", block: block([smash]), at: { x: 4, y: 5 } },
+      mira: { side: "party", block: block([smash]), at: { x: 1, y: 5 } },
+      orc: { side: "enemy", block: block([smash]), at: { x: 15, y: 5 } },
+    });
+    state.party.find((one) => one.id === "mira")!.orders = { posture: "follow" };
+    assert.ok(commandRulesetCombatDirector(definition, state, { type: "continue" }).ok);
+    const mira = rulesetCombatant(state.rulesetFight!.encounter, "mira")!;
+    assert.ok(Math.max(Math.abs(mira.x! - 4), Math.abs(mira.y! - 5)) <= 1, `beside Ada: ${mira.x},${mira.y}`);
   }
 
   // ── Retreating with nobody near, it does not Dodge the air (re-test 2026-10-23) ──

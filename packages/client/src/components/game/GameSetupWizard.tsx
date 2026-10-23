@@ -3671,7 +3671,7 @@ export function GameSetupWizard({
                               <Plus size={12} className="text-[var(--muted-foreground)]" />
                             </button>
                           ))}
-                          {availableLorebooks.length === 0 && !lorebooksLoading && (
+                          {availableLorebooks.length === 0 && lorebooksList !== undefined && (
                             <p className="px-3 py-2 text-[0.625rem] text-[var(--muted-foreground)]">
                               {lorebooks.length === 0
                                 ? localizeUi("ui.panels.lorebookspanel.noLorebooksYet")

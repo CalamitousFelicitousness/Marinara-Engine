@@ -2187,7 +2187,7 @@ function RoleplaySetupWizard({ chat, onFinish, defaultsApplied, defaultsAction }
   const { data: allPersonas } = usePersonas();
   const { data: allCharacters } = useCharacters();
   const { data: allCharacterGroups } = useCharacterGroups();
-  const { data: lorebooks, isLoading: lorebooksLoading } = useLorebooks();
+  const { data: lorebooks } = useLorebooks();
   const { data: agentConfigs, isLoading: agentConfigsLoading } = useAgentConfigs();
   const { data: installedAgentManifests = [], isLoading: installedAgentsLoading } = useCapabilityAgentRegistry();
 
@@ -3378,7 +3378,7 @@ function RoleplaySetupWizard({ chat, onFinish, defaultsApplied, defaultsAction }
                 <Plus size="0.75rem" className="text-[var(--muted-foreground)]" />
               </button>
             ))}
-            {available.length === 0 && !lorebooksLoading && (
+            {available.length === 0 && lorebooks !== undefined && (
               <p className="px-3 py-2 text-[0.6875rem] text-[var(--muted-foreground)]">
                 {(lorebooks ?? []).length === 0
                   ? localizeUi("ui.panels.lorebookspanel.noLorebooksYet")

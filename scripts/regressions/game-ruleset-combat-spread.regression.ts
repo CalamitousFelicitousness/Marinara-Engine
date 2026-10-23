@@ -23,12 +23,16 @@ import type { TacticalGrid } from "../../packages/shared/src/features/tactical-c
 const dataDir = mkdtempSync(join(tmpdir(), "marinara-spread-"));
 process.env.DATA_DIR = dataDir;
 process.env.FILE_STORAGE_DIR = join(dataDir, "storage");
-const { rulesetClosingMove } = await import("../../packages/server/src/services/game/ruleset-combat-director.service.js");
+const { rulesetClosingMove } =
+  await import("../../packages/server/src/services/game/ruleset-combat-director.service.js");
 
 try {
   const result = parseRulesetDefinition(
     JSON.parse(
-      readFileSync(fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)), "utf8"),
+      readFileSync(
+        fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
+        "utf8",
+      ),
     ),
   );
   assert.ok(result.ok, result.ok ? "" : result.issues.join("; "));
@@ -61,7 +65,13 @@ try {
           id: "mage",
           name: "Mage",
           side: "enemy",
-          block: { health: 60, defense: 12, initiativeModifier: -20, speed: 30, actions } as unknown as RulesetStatBlock,
+          block: {
+            health: 60,
+            defense: 12,
+            initiativeModifier: -20,
+            speed: 30,
+            actions,
+          } as unknown as RulesetStatBlock,
         },
       ],
       board: { grid: grid(), placements: { hero: { x: 0, y: 6 }, friend: { x: 6, y: 1 }, mage: { x: 18, y: 6 } } },
@@ -74,7 +84,11 @@ try {
     const move = rulesetClosingMove(definition, state, "hero");
     assert.ok(move?.to, "it closes in");
     const after = { ...who(state, "hero"), x: move.to.x, y: move.to.y };
-    return { to: move.to, friend: rulesetGap(after, who(state, "friend")), mage: rulesetGap(after, who(state, "mage")) };
+    return {
+      to: move.to,
+      friend: rulesetGap(after, who(state, "friend")),
+      mage: rulesetGap(after, who(state, "mage")),
+    };
   };
 
   // With nothing that blasts, the nearest cell, which may be beside the friend.

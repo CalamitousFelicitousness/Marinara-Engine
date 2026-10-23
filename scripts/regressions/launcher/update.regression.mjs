@@ -23,7 +23,7 @@ const packageManifest = JSON.parse(readFileSync(join(repositoryRoot, "package.js
 const pinnedPnpmDescriptor = packageManifest.packageManager?.split("@")[1];
 const pinnedPnpmVersion = pinnedPnpmDescriptor?.split("+")[0];
 
-assert.equal(pinnedPnpmVersion, "10.34.7", "The workspace must pin the patched pnpm release");
+assert.equal(pinnedPnpmVersion, "12.15.0", "The workspace must pin the patched pnpm release");
 assert.equal(
   packageManifest.engines?.pnpm,
   "10.33.2 || >=10.34.5",
@@ -31,14 +31,14 @@ assert.equal(
 );
 assert.equal(
   pinnedPnpmDescriptor,
-  "10.34.7+sha512.ba98abc585539933375b5971f4bc6d6c73a1b4b7edc4a879e7d102fe5423d1e02309d67c60a11f04955093a96e521ad9c3b138cdd654ca5be563f378b3ae48bd",
-  "Corepack must verify the exact pnpm 10.34.7 release tarball",
+  "12.15.0+sha512.b3951d6d6ff4a9f13dc7cf56cd28d2b8eb37dbcc9c68e52e1e1191873ea9f82a017287ab50baadc5ccc494f036c67c0e47eb13608c2fa36f47711b61ea128e61",
+  "Corepack must verify the exact pnpm 12.15.0 release tarball",
 );
 
 const workspaceSource = readFileSync(join(repositoryRoot, "pnpm-workspace.yaml"), "utf8");
 assert.match(
   workspaceSource,
-  /^managePackageManagerVersions: true$/mu,
+  /^pmOnFail: download$/mu,
   "Plain pnpm fallbacks must delegate project commands to the packageManager pin",
 );
 
@@ -194,11 +194,11 @@ assert.match(
 );
 
 const troubleshootingSource = readFileSync(join(repositoryRoot, "docs/TROUBLESHOOTING.md"), "utf8");
-assert.match(troubleshootingSource, /npm install -g pnpm@10\.34\.7/u);
+assert.match(troubleshootingSource, /npm install -g pnpm@12\.15\.0/u);
 assert.match(
   troubleshootingSource,
-  /10\.33\.2 or 10\.34\.5 launcher can finish the handoff in the same run/u,
-  "Troubleshooting must explain the no-restart launcher handoff",
+  /older global pnpm does not need to be replaced first/u,
+  "Troubleshooting must explain recovery without first replacing global pnpm",
 );
 
 assert.equal(getVersionFromReleaseUrl(releaseUrl), "2.3.4");
@@ -362,6 +362,21 @@ try {
 
   writeFileSync(join(installedLockfileDir, "lock.yaml"), "lockfileVersion: '8.0'\n");
   assert.equal(workspaceLockfileMatches(installFixtureRoot), false);
+
+  const workspaceStore = join(installFixtureRoot, ".pnpm");
+  mkdirSync(workspaceStore);
+  writeFileSync(join(workspaceStore, "lock.yaml"), "lockfileVersion: '9.0'\n");
+  writeFileSync(
+    join(installFixtureRoot, "pnpm-lock.yaml"),
+    "---\nlockfileVersion: '9.0'\nimporters:\n  .:\n    packageManagerDependencies: {}\n---\nlockfileVersion: '9.0'\n",
+  );
+  assert.equal(workspaceLockfileMatches(installFixtureRoot), true, "pnpm 12 stores only the project lock document");
+  writeFileSync(join(workspaceStore, "lock.yaml"), "lockfileVersion: '9.0'\npackages: { stale: {} }\n");
+  assert.equal(
+    workspaceLockfileMatches(installFixtureRoot),
+    false,
+    "A stale project store still requires installation",
+  );
 
   const defaultDataDir = await resolveLauncherDataDir({ root: fixtureRoot, env: {} });
   mkdirSync(defaultDataDir, { recursive: true });

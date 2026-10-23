@@ -342,7 +342,7 @@ export function ChatCommonOverlays({
           />
         </Suspense>
       )}
-      {chat && <ChatBranchGraphWindow chatId={chat.id} />}
+      {chat && <ChatBranchGraphWindow chatId={chat.id} groupId={chat.groupId ?? null} />}
       {chat && (
         <Suspense fallback={null}>{wizardOpen && <ChatSetupWizard chat={chat} onFinish={onWizardFinish} />}</Suspense>
       )}

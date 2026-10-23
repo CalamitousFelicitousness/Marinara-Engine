@@ -5592,11 +5592,18 @@ function sheetCombatant(
       }
     }
   });
+  // A weapon both written on the sheet's attacks list and held is one weapon: the held item's attack,
+  // which reads all it may be swung with (a finesse blade's better of two), is the one offered, and
+  // the row of the same name is left out rather than shown beside it with its one column's ability.
+  const heldAttacks = itemAttackActions(definition, combat, heldItems, build, evaluated, perCell, rowRules);
+  const heldNames = new Set(heldAttacks.map((action) => action.label.trim().toLowerCase()));
   const actions = [
     ...(combat.attacks ?? []).flatMap((source, index) =>
-      attackActions(definition, combat, source, index, build, evaluated, perCell, rowRules),
+      attackActions(definition, combat, source, index, build, evaluated, perCell, rowRules).filter(
+        (action) => !heldNames.has(action.label.trim().toLowerCase()),
+      ),
     ),
-    ...itemAttackActions(definition, combat, heldItems, build, evaluated, perCell, rowRules),
+    ...heldAttacks,
     ...lentTakeActions(heldItems),
     ...itemSwitchActions(input.items),
     ...itemFormActions(input.items),

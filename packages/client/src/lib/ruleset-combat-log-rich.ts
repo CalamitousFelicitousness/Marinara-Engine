@@ -38,6 +38,8 @@ export interface RulesetLogLine {
   pieces: RulesetLogPiece[];
   /** The whole line as plain words, for a screen reader and for a key. */
   text: string;
+  /** The Engine's reason for its AI's last step, shown with Debug on: drawn as an aside. */
+  reason?: true;
 }
 
 /** The event keys whose last clause says a roll went the roller's way, and those that say it did
@@ -107,6 +109,8 @@ export function rulesetRichLogLines(
   definition: RulesetDefinition,
   view: DirectedRulesetView,
   t: TFunction,
+  /** With Debug on: the Engine's reasons for its AI's steps, after each one. */
+  reasons = false,
 ): RulesetLogLine[] {
   const plain = rulesetCombatNames(definition, view, t);
   const sides = new Map(view.combatants.map((combatant) => [combatant.id, combatant.side]));
@@ -157,11 +161,20 @@ export function rulesetRichLogLines(
     }
     if (entry.event.type === "turn") turnOf = entry.event.actorId;
     if (entry.event.type === "budget") continue;
+    const reason = entry.event.type === "reasoning";
+    if (reason && !reasons) continue;
     tone = undefined;
     const text = rulesetCombatEventLine(entry.event, names, marked);
     if (!text) continue;
     const pieces = rulesetLogPieces(text, tone);
-    lines.push({ seq: entry.seq, round, ...(turnOf ? { turnOf } : {}), pieces, text: text.replace(MARKS, "") });
+    lines.push({
+      seq: entry.seq,
+      round,
+      ...(turnOf ? { turnOf } : {}),
+      pieces,
+      text: text.replace(MARKS, ""),
+      ...(reason ? { reason: true as const } : {}),
+    });
   }
   return lines;
 }

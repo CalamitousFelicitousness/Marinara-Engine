@@ -17,7 +17,7 @@ import {
   applyRulesetCombatChoice,
   assignCombatTactics,
   combatMindWithHint,
-  chooseCombatCandidate,
+  chooseRankedCombatCandidate,
   rankCombatCandidates,
   type CombatAiScoreParts,
   clampRulesetStatBlock,
@@ -140,6 +140,8 @@ import {
   type Combatant,
   type CombatDecisionOption,
   type DirectedCommand,
+  type DirectedRulesetEvent,
+  type DirectedRulesetReason,
   type DirectedRulesetCombatant,
   type DirectedRulesetOption,
   rulesetPaidLevel,
@@ -192,7 +194,7 @@ export interface RulesetFightState {
   encounter: RulesetEncounterState;
   /** One per event ever produced, so a client prints only what it has not seen. */
   eventSeq: number;
-  events: Array<{ seq: number; event: RulesetCombatEvent }>;
+  events: Array<{ seq: number; event: DirectedRulesetEvent }>;
   /** Who plays each party member. An opponent is never in here. */
   controllers: Record<string, "manual" | "ai">;
   /** The opponents the client marked as bosses, which is what routes a turn to the Game Master. */
@@ -760,7 +762,7 @@ export function rulesetBoardLightFor(
 const fightOf = (state: CombatDirectorState): RulesetFightState | null =>
   state.style === "ruleset" ? (state.rulesetFight ?? null) : null;
 
-function record(fight: RulesetFightState, events: readonly RulesetCombatEvent[]): void {
+function record(fight: RulesetFightState, events: readonly DirectedRulesetEvent[]): void {
   for (const event of events) fight.events.push({ seq: ++fight.eventSeq, event });
   if (fight.events.length > RULESET_COMBAT_EVENT_LIMIT) {
     fight.events = fight.events.slice(-RULESET_COMBAT_EVENT_LIMIT);
@@ -3737,6 +3739,23 @@ export function pickRulesetChoice(
   /** A window's own menu, when the pick is an answer to one rather than a turn. */
   menu?: RulesetCombatOption[],
 ): RulesetCandidate | null {
+  return pickRulesetRanked(definition, state, encounter, actorId, menu)?.candidate.action ?? null;
+}
+
+/** A pick with how it was scored, for the reasons the debug log gives after it. */
+interface RulesetRankedPick {
+  candidate: CombatAiCandidate<RulesetCandidate>;
+  parts: CombatAiScoreParts;
+}
+
+/** The pick with how it was scored, for the reasons the debug log gives after it. */
+function pickRulesetRanked(
+  definition: RulesetDefinition,
+  state: CombatDirectorState,
+  encounter: RulesetEncounterState,
+  actorId: string,
+  menu?: RulesetCombatOption[],
+): RulesetRankedPick | null {
   // Every sheet, health and condition read while weighing is worked out once for the whole pick.
   return withRulesetPlanMemo(() => pickChoice(definition, state, encounter, actorId, menu));
 }
@@ -3747,17 +3766,18 @@ function pickChoice(
   encounter: RulesetEncounterState,
   actorId: string,
   menu?: RulesetCombatOption[],
-): RulesetCandidate | null {
+): RulesetRankedPick | null {
   const weighed = weighChoices(definition, state, encounter, actorId, menu);
-  if (!weighed || "only" in weighed) return weighed?.only ?? null;
+  if (!weighed || "only" in weighed) return weighed?.only ? { candidate: { action: weighed.only }, parts: {} } : null;
   const { unit, actor, candidates, orders, behavior, opening } = weighed;
-  const chosen = chooseCombatCandidate(
+  const ranked = chooseRankedCombatCandidate(
     unit,
     candidates,
     encounter.round,
     normalizeGameDifficulty(state.difficulty),
     orders,
   );
+  const chosen = ranked.candidate.action;
   if (opening && behavior!.opens!.some((id) => rulesetOpensWith(actor, chosen, id))) unit.tactics!.opened = true;
   // Counted only on its own turn's choice, not on a reaction's. Walking, dashing or waiting is not
   // fighting, so only a blow or a spell lets it grow careful again, and then for one turn at most:
@@ -3767,7 +3787,47 @@ function pickChoice(
     else if (chosen.option.kind !== "move" && chosen.option.kind !== "end-turn" && chosen.option.kind !== "standard")
       unit.tactics!.wary = Math.min(unit.tactics!.wary ?? 0, 1);
   }
-  return chosen;
+  return ranked;
+}
+
+/** How small a part of a pick's score is too small to give as a reason. */
+const RULESET_REASON_FLOOR = 0.05;
+
+/**
+ * Why a pick was made, read back from its own scoring (debug log): the parts that weighed most,
+ * largest first, at most three, then the walk it took to get where it acted from. Nothing here is
+ * asked of a model, and nothing names a ruleset's own spells or attacks.
+ */
+function rulesetPickReasons(
+  candidate: CombatAiCandidate<RulesetCandidate>,
+  parts: CombatAiScoreParts,
+  walked?: number,
+): DirectedRulesetReason[] {
+  const targetId = candidate.targetId;
+  const reasons = (Object.entries(parts) as Array<[keyof CombatAiScoreParts, number]>)
+    .filter(([, part]) => Math.abs(part) >= RULESET_REASON_FLOOR)
+    .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
+    .slice(0, 3)
+    .map(([why]): DirectedRulesetReason => {
+      if (why === "damage") {
+        const damage = candidate.damage ?? 0;
+        return {
+          why,
+          ...(targetId ? { targetId } : {}),
+          strength: damage >= 0.5 ? "heavy" : damage >= 0.2 ? "solid" : "some",
+        };
+      }
+      if (why === "risk" || why === "cost") return { why };
+      return { why, ...(targetId ? { targetId } : {}) };
+    });
+  if (walked) reasons.push({ why: "walked", cells: walked });
+  if (reasons.length === 0 && candidate.action.option.kind === "end-turn") reasons.push({ why: "nothingWorth" });
+  return reasons;
+}
+
+/** The reasons for a step just taken, on the log after it. Nothing when there is nothing to say. */
+function recordReasons(fight: RulesetFightState, actorId: string, reasons: DirectedRulesetReason[]): void {
+  if (reasons.length) record(fight, [{ type: "reasoning", actorId, reasons }]);
 }
 
 /**
@@ -4974,11 +5034,12 @@ function answerRulesetWindows(
     const menu = rulesetWindowOptions(definition, fight.encounter, asking);
     // Somebody hidden from it, and a Detect to look for them with (1.287).
     const looking = searchOption(definition, fight.encounter, asking, menu, false);
-    const picked = looking
+    const ranked = looking
       ? null
       : menu.length > 0
-        ? pickRulesetChoice(definition, state, fight.encounter, asking, menu)
+        ? pickRulesetRanked(definition, state, fight.encounter, asking, menu)
         : null;
+    const picked = ranked?.candidate.action;
     const choice: RulesetCombatChoice = looking
       ? { actorId: asking, optionId: looking.id, targetIds: [], window: window.id }
       : picked?.choice
@@ -5000,6 +5061,8 @@ function answerRulesetWindows(
         targetIds: [],
         window: window.id,
       });
+    } else if (ranked && choice.optionId !== RULESET_PASS_OPTION) {
+      recordReasons(fight, asking, rulesetPickReasons(ranked.candidate, ranked.parts));
     }
   }
 }
@@ -5078,8 +5141,10 @@ function playRulesetTurn(
   }
   // Driven away or toward somebody (1.264), the walk comes first, sprinting where it may.
   const actor = rulesetCombatant(fight.encounter, actorId);
-  if (actor && rulesetDrivenFrom(definition, fight.encounter, actor))
-    walkTowardsTrouble(definition, state, fight, actorId);
+  if (actor && rulesetDrivenFrom(definition, fight.encounter, actor)) {
+    if (walkTowardsTrouble(definition, state, fight, actorId, undefined, undefined, false))
+      recordReasons(fight, actorId, [{ why: "driven" }]);
+  }
   // A leader steadies those of its side running near it (combat AI A6).
   if (actor && !actor.routed) rallyRulesetSide(definition, fight.encounter, actor);
   // Its temperament turned by what has happened (combat AI T7).
@@ -5174,7 +5239,8 @@ function playRulesetTurn(
     remember();
     // Waiting on a person's answer: the rest of the turn waits with it.
     if (fight.encounter.window) return;
-    const picked = pickRulesetChoice(definition, state, fight.encounter, actorId);
+    const ranked = pickRulesetRanked(definition, state, fight.encounter, actorId);
+    const picked = ranked?.candidate.action ?? null;
     const idle = !picked || picked.option.kind === "end-turn";
     if (idle) {
       // A shot thrown, it steps back where nobody can walk up and strike it, still in range for the
@@ -5196,7 +5262,12 @@ function playRulesetTurn(
       if (defended || stays || aloof || feeding) break;
       // Nothing to do yet with the one dropping areas on the party out of reach: it heads for them.
       if (pressing && walkTowardsTrouble(definition, state, fight, actorId, undefined, pressing)) continue;
-      if (!walkTowardsTrouble(definition, state, fight, actorId, leash)) break;
+      if (!walkTowardsTrouble(definition, state, fight, actorId, leash)) {
+        // Ending a turn it did nothing with says why; ending one it already spent says nothing new.
+        if (ranked && picked && action === 0)
+          recordReasons(fight, actorId, rulesetPickReasons(ranked.candidate, ranked.parts));
+        break;
+      }
       continue;
     }
     if (picked.defensive) defended = true;
@@ -5227,6 +5298,7 @@ function playRulesetTurn(
     // A getaway is taken where it stands, and then it runs (1.745).
     if (picked.defensive === "disengage") {
       if (applyChoice(definition, state, fight, picked.choice).refused) break;
+      recordReasons(fight, actorId, rulesetPickReasons(ranked!.candidate, ranked!.parts));
       const away = rulesetRetreatCell(definition, fight.encounter, actorId);
       if (away)
         applyChoice(definition, state, fight, { actorId, optionId: RULESET_MOVE_OPTION, targetIds: [], to: away });
@@ -5236,6 +5308,7 @@ function playRulesetTurn(
       !!picked.to &&
       !picked.defensive &&
       rulesetShootsFromHere(definition, state, fight.encounter, actorId, picked.choice, picked.to);
+    const from = rulesetPositionOf(rulesetCombatant(fight.encounter, actorId));
     if (picked.to && !picked.defensive && !fromHere && !stepBefore(definition, state, fight, actorId, picked.to)) break;
     // Reckless first (1.590), as it is about to make a melee weapon attack.
     takeBeforeMelee(definition, state, fight, actorId, picked.choice);
@@ -5247,6 +5320,9 @@ function playRulesetTurn(
       if (!fromHere || !stepBefore(definition, state, fight, actorId, picked.to!)) break;
       if (applyChoice(definition, state, fight, picked.choice).refused) break;
     }
+    const at = rulesetPositionOf(rulesetCombatant(fight.encounter, actorId));
+    const walked = from && at ? Math.max(Math.abs(at.x - from.x), Math.abs(at.y - from.y)) : undefined;
+    recordReasons(fight, actorId, rulesetPickReasons(ranked!.candidate, ranked!.parts, walked));
     // Kept through what it does after the shot that is no blow of its own (a goblin's Hide), so
     // the rest of its walk still keeps its distance (re-test 9); a blow up close ends it.
     const blow = !!rulesetCombatant(fight.encounter, actorId)?.actions.find((one) => one.id === picked.choice.optionId)
@@ -5895,12 +5971,26 @@ function walkTowardsTrouble(
   leash?: RulesetLeash,
   /** Toward this one only, not the nearest opponent. */
   toward?: string,
+  /** Whether to say why on the debug log: it closed on the nearest opponent, or on `toward`. */
+  explain = true,
 ): boolean {
   if (!fight.encounter.board?.grid) return false;
   const actor = rulesetCombatant(fight.encounter, actorId);
   if (!actor || (actor.movementLeft ?? 0) < 1) return false;
   const closing = rulesetClosingMove(definition, fight.encounter, actorId, leash, toward);
   if (!closing) return false;
+  const walked = (sprinted: boolean): boolean => {
+    if (explain) {
+      const after = rulesetCombatant(fight.encounter, actorId);
+      const nearest = toward ?? (after ? rulesetNearestOpponent(fight.encounter, after)?.id : undefined);
+      recordReasons(fight, actorId, [
+        toward
+          ? { why: "pressCaster", targetId: toward }
+          : { why: "approach", ...(nearest ? { targetId: nearest } : {}), ...(sprinted ? { sprinted: true } : {}) },
+      ]);
+    }
+    return true;
+  };
   // A walk that stops with movement to spare (at the end of a guard's leash, or already beside the
   // opponent) gains nothing from a sprint, which would only be the turn's action thrown away.
   const sprint =
@@ -5916,10 +6006,27 @@ function walkTowardsTrouble(
     // A sprint the rules refused costs nothing: the walk below happens either way.
     if (!sprinted.refused) {
       const again = rulesetClosingMove(definition, fight.encounter, actorId, leash, toward);
-      return !!again && !applyChoice(definition, state, fight, again.choice).refused;
+      return !!again && !applyChoice(definition, state, fight, again.choice).refused && walked(true);
     }
   }
-  return !applyChoice(definition, state, fight, closing.choice).refused;
+  return !applyChoice(definition, state, fight, closing.choice).refused && walked(false);
+}
+
+/** The opponent standing nearest it on the board, for a reason that names whom it walked toward. */
+function rulesetNearestOpponent(
+  encounter: RulesetEncounterState,
+  actor: RulesetCombatant,
+): RulesetCombatant | undefined {
+  const from = rulesetPositionOf(actor);
+  if (!from) return undefined;
+  let best: { one: RulesetCombatant; gap: number } | undefined;
+  for (const one of encounter.combatants) {
+    const at = rulesetPositionOf(one);
+    if (one.side === actor.side || !at || !rulesetCombatStanding(one)) continue;
+    const gap = Math.max(Math.abs(at.x - from.x), Math.abs(at.y - from.y));
+    if (!best || gap < best.gap) best = { one, gap };
+  }
+  return best?.one;
 }
 
 // ── The Game Master's window ──

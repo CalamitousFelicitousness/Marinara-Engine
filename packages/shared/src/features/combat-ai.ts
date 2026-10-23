@@ -305,12 +305,24 @@ export function chooseCombatCandidate<T>(
   /** Its standing orders: its own unless its caller worked out a companion's default. */
   orders: CombatOrders | undefined = unit.orders,
 ): T {
+  return chooseRankedCombatCandidate(unit, candidates, turn, difficulty, orders).candidate.action;
+}
+
+/** `chooseCombatCandidate`'s pick with how it was scored, for a log that says why it was made. Keeps
+ *  the unit's memory of its pick exactly as `chooseCombatCandidate` does. */
+export function chooseRankedCombatCandidate<T>(
+  unit: AiCombatant,
+  candidates: CombatAiCandidate<T>[],
+  turn: number,
+  difficulty: GameDifficulty = "normal",
+  orders: CombatOrders | undefined = unit.orders,
+): RankedCombatCandidate<T> {
   if (!candidates.length) throw new Error("AI needs at least one legal action.");
   const profile = unit.tactics!;
-  const chosen = rankCombatCandidates(unit, candidates, turn, difficulty, orders)[0]!.candidate;
-  profile.holds = chosen.hold ? Math.min(2, (profile.holds ?? 0) + 1) : 0;
-  if (chosen.targetId) profile.targetId = chosen.targetId;
-  return chosen.action;
+  const chosen = rankCombatCandidates(unit, candidates, turn, difficulty, orders)[0]!;
+  profile.holds = chosen.candidate.hold ? Math.min(2, (profile.holds ?? 0) + 1) : 0;
+  if (chosen.candidate.targetId) profile.targetId = chosen.candidate.targetId;
+  return chosen;
 }
 
 /** One candidate as `rankCombatCandidates` scored it. */

@@ -224,7 +224,38 @@ export interface DirectedRulesetCombatant {
 export type DirectedRulesetEvent =
   | RulesetCombatEvent
   /** The fight could not go on: its ruleset is gone, or the game is on another version of it. */
-  | { type: "director"; reason: "ruleset-unavailable"; text: string };
+  | { type: "director"; reason: "ruleset-unavailable"; text: string }
+  /** Why the Engine played a combatant's step the way it did, right after the step: read back from
+   *  its own scoring, never from a model. Shown only with Debug on. */
+  | { type: "reasoning"; actorId: string; reasons: DirectedRulesetReason[] };
+
+/**
+ * One reason the Engine's AI gives for what a combatant just did, in no ruleset's words: the parts of
+ * its scoring that weighed most, largest first, or why it walked where it did.
+ *
+ *   - `damage`: the harm it expects to do, `heavy`, `solid` or `some` against the side's health.
+ *   - `finish`: likely to take its target out of the fight.
+ *   - `healing`, `support`: what it gives a friend back, or helps them with.
+ *   - `setup`: a condition, a broken hold on a spell, a better position for what comes next.
+ *   - `protection`, `coordination`: standing up for a friend, joining its side's attack.
+ *   - `risk`, `cost`: what it was willing to pay: danger to itself, or a limited use spent.
+ *   - `walked`: it walked so many cells first, to where it could do it from.
+ *   - `approach`: nothing in reach, so it closed on the nearest opponent (`sprinted` with a sprint).
+ *   - `driven`: a condition drove it toward or away from somebody.
+ *   - `nothingWorth`: nothing it could do was worth its price, so it ended its turn.
+ *   - `focus`: its target is the one its side most wants down (one dropping areas on it).
+ *   - `pressCaster`: nothing to do yet, so it closed on the one dropping areas on its side from out
+ *     of reach.
+ */
+export type DirectedRulesetReason =
+  | { why: "damage"; targetId?: string; strength: "heavy" | "solid" | "some" }
+  | { why: "finish" | "healing" | "support" | "setup" | "protection" | "coordination" | "focus"; targetId?: string }
+  | { why: "pressCaster"; targetId: string }
+  | { why: "risk" | "cost" }
+  | { why: "walked"; cells: number }
+  | { why: "approach"; targetId?: string; sprinted?: true }
+  | { why: "driven" }
+  | { why: "nothingWorth" };
 /** One option of the legal menu, with the combatants it may be pointed at right now. */
 export interface DirectedRulesetOption extends RulesetCombatOption {
   targetIds: string[];

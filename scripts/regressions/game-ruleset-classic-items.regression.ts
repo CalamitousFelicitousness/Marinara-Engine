@@ -59,12 +59,14 @@ const { combatDirectorRoutes, COMBAT_DIRECTOR_NAMESPACE } =
 let replyText = "{}";
 let replyFinish = "stop";
 let asked = 0;
+const bodies: Array<Record<string, unknown>> = [];
 let prompt = "";
 const provider = createServer(async (req, res) => {
   let raw = "";
   for await (const chunk of req) raw += chunk;
   prompt = JSON.stringify(JSON.parse(raw).messages);
   asked++;
+  bodies.push(JSON.parse(raw));
   res.setHeader("Content-Type", "application/json");
   res.end(
     JSON.stringify({
@@ -678,6 +680,45 @@ try {
     assert.equal(cut.json().reason, "cut-off");
     assert.match(cut.json().error, /cut off before it finished/);
     assert.equal(asked, 1, "a connection that does not think is not asked again");
+    // A connection that thinks hard: the setup thinks at medium at most, and asked again once cut off,
+    // not at all.
+    const thinker = await createConnectionsStorage(db).create({
+      name: "Local thinking fixture",
+      provider: "custom",
+      baseUrl: `http://127.0.0.1:${address.port}/v1`,
+      model: "fixture-model",
+      treatAsLocalEndpoint: true,
+    });
+    await createConnectionsStorage(db).updateDefaultParameters(thinker.id, { reasoningEffort: "xhigh" });
+    replyFinish = "length";
+    asked = 0;
+    bodies.length = 0;
+    const thought = await app.inject({
+      method: "POST",
+      url: "/encounter/init",
+      payload: { chatId: game.chatId, connectionId: thinker.id, settings: {} },
+    });
+    replyFinish = "stop";
+    assert.equal(thought.statusCode, 502, thought.body);
+    assert.equal(thought.json().reason, "cut-off");
+    assert.equal(asked, 2, "cut off, it is asked once more");
+    assert.equal(bodies[0]!.max_tokens, 12000 + 4096, "its own budget, with a medium think's room on top");
+    assert.equal(bodies[1]!.reasoning_effort, "none", "and then without thinking");
+    assert.equal(bodies[1]!.max_tokens, 12000);
+    // Asked twice at once for the same chat (opened again while its setup runs), the model is asked once.
+    replyText = JSON.stringify({ party: [{ name: "Hero" }], enemies: [{ name: "Rat" }] });
+    asked = 0;
+    const both = await Promise.all(
+      [0, 1].map(() =>
+        app.inject({ method: "POST", url: "/encounter/init", payload: { chatId: game.chatId, settings: {} } }),
+      ),
+    );
+    assert.deepEqual(
+      both.map((one) => one.statusCode),
+      [200, 200],
+    );
+    assert.equal(both[0]!.body, both[1]!.body, "the same answer for both");
+    assert.equal(asked, 1, "one setup at a time for a chat");
   }
 
   // The Classic round route: the ruleset's effect, whatever the screen sent; an item the battle does

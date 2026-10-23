@@ -163,6 +163,11 @@ import { createInputMacroResolverForChat, expandMessageIncludes, VARIABLE_WRITE_
 import { parseChatMetadata } from "../../lib/chat-display";
 import { lorebookKeys } from "../../hooks/use-lorebooks";
 import { api, ApiError, getJsonRepairRequest, type JsonRepairRequest } from "../../lib/api-client";
+import {
+  forgetCombatSetupFailure,
+  recalledCombatSetupFailure,
+  rememberCombatSetupFailure,
+} from "../../lib/combat-setup-failures";
 import { useRenderTimer } from "../../lib/perf-diagnostics";
 import { isGenerationSendBlocked } from "../../lib/generation-stream-policy";
 import { showChoiceDialog, showConfirmDialog } from "../../lib/app-dialogs";
@@ -9787,6 +9792,7 @@ function GameSurfaceComponent({
           const blueprintTerrainBriefError = (response.combatState as { battlefield?: { terrainBriefError?: unknown } })
             .battlefield?.terrainBriefError;
 
+          forgetCombatSetupFailure(requestChatId, messageId);
           setPreparedCombatState({
             messageId,
             party: combatants.party,
@@ -9810,12 +9816,14 @@ function GameSurfaceComponent({
           if (combatGenerationRequestIdRef.current !== requestId || activeChatIdRef.current !== requestChatId) return; // superseded; don't set stale error
           const message = err instanceof Error ? err.message : "Combat generation failed.";
           console.warn("[game-combat] Failed to generate combat state", err);
-          setCombatGenerationCutOff(
+          const cutOff =
             err instanceof ApiError &&
-              !!err.payload &&
-              typeof err.payload === "object" &&
-              (err.payload as { reason?: unknown }).reason === "cut-off",
-          );
+            !!err.payload &&
+            typeof err.payload === "object" &&
+            (err.payload as { reason?: unknown }).reason === "cut-off";
+          // Remembered, so opening this chat again waits for Retry Combat rather than asking again.
+          rememberCombatSetupFailure(requestChatId, messageId, { message, cutOff });
+          setCombatGenerationCutOff(cutOff);
           setCombatGenerationError(message);
           // Only the Engine paths (manual button, retry, auto-queue) toast. An Experience/package
           // request passes notify=false and renders its own feedback from combatError, so a failed
@@ -9865,6 +9873,13 @@ function GameSurfaceComponent({
     if (pendingEncounter || combatUiActive || combatGenerationPending || combatGenerationError) return;
     if (preparedCombatState?.messageId === queuedCombatGeneration.messageId) return;
     if (isStreaming || scenePreparing || assetGenerationBlocksScene) return;
+    // This turn's setup already failed: it waits for Retry Combat instead of a new model call.
+    const failed = activeChatId ? recalledCombatSetupFailure(activeChatId, queuedCombatGeneration.messageId) : null;
+    if (failed) {
+      setCombatGenerationCutOff(failed.cutOff);
+      setCombatGenerationError(failed.message);
+      return;
+    }
 
     generateCombatStateForMessage(queuedCombatGeneration.messageId, queuedCombatGeneration.notify);
   }, [
@@ -10020,11 +10035,18 @@ function GameSurfaceComponent({
       toast.error(localizeUi("ui.game.gamesurfacecomponent.noCurrentTurnIsAvailableForCombatGeneration"));
       return;
     }
+    if (activeChatId) forgetCombatSetupFailure(activeChatId, messageId);
     setQueuedCombatGeneration({ messageId, notify: true });
     setPreparedCombatState(null);
     setCombatGenerationError(null);
     generateCombatStateForMessage(messageId, true);
-  }, [generateCombatStateForMessage, latestAssistantMsg?.id, queuedCombatGeneration?.messageId, localizeUi]);
+  }, [
+    activeChatId,
+    generateCombatStateForMessage,
+    latestAssistantMsg?.id,
+    queuedCombatGeneration?.messageId,
+    localizeUi,
+  ]);
 
   /** Keeps the identity-stable combat seam pointing at the CURRENT generator
    *  (whose own identity tracks its render-state deps). */

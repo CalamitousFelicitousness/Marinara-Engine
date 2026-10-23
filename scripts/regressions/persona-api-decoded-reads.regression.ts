@@ -469,6 +469,74 @@ try {
     200,
     "removing the current avatar must preserve a frozen chat identity's file",
   );
+
+  // Force the real reassignment route to fail AFTER its last old avatar reference
+  // has been overwritten. The manual rollback still needs that old file.
+  const { unlinkAvatarFilesIfUnreferenced } =
+    await import("../../packages/server/src/services/image/avatar-file-lifecycle.js");
+  const { messageSwipes: swipeTable } = await import("../../packages/server/src/db/schema/index.js");
+  await requestJson("PATCH", `/api/chats/${frozenChat.id}`, { personaId: activeId });
+  let releaseSnapshot!: () => void;
+  const snapshotGate = new Promise<void>((resolve) => {
+    releaseSnapshot = resolve;
+  });
+  let signalSnapshotWritten!: () => void;
+  const snapshotWritten = new Promise<void>((resolve) => {
+    signalSnapshotWritten = resolve;
+  });
+  const update = db.update;
+  let intercepted = false;
+  db.update = ((table: Parameters<typeof update>[0]) => {
+    const builder = update(table);
+    if (table !== swipeTable) return builder;
+    return {
+      set: (patch: Record<string, unknown>) => {
+        const writer = builder.set(patch);
+        const extra = typeof patch.extra === "string" ? JSON.parse(patch.extra) : null;
+        if (intercepted || extra?.personaSnapshot?.personaId !== activeId) return writer;
+        return {
+          ...writer,
+          where: async (condition: Parameters<typeof writer.where>[0]) => {
+            await writer.where(condition);
+            intercepted = true;
+            signalSnapshotWritten();
+            await snapshotGate;
+            throw new Error("Injected failure after replacing the last frozen identity reference");
+          },
+        };
+      },
+    };
+  }) as typeof update;
+  const reassignment = Promise.resolve(
+    app.inject({
+      method: "POST",
+      url: `/api/chats/${frozenChat.id}/messages/reassign-persona`,
+      payload: { scope: "all" },
+    }),
+  );
+  await Promise.race([
+    snapshotWritten,
+    reassignment.then(() => assert.fail("reassignment ended before snapshot write")),
+  ]);
+  db.update = update;
+  let cleanupSettled = false;
+  const pendingCleanup = unlinkAvatarFilesIfUnreferenced({ db, avatarPaths: [String(frozenAvatar.avatarPath)] }).then(
+    (count) => {
+      cleanupSettled = true;
+      return count;
+    },
+  );
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  const cleanupWaited = !cleanupSettled;
+  releaseSnapshot();
+  assert.equal((await reassignment).statusCode, 500, "the injected route failure must trigger snapshot rollback");
+  assert.equal(await pendingCleanup, 0, "cleanup must preserve the old avatar restored by rollback");
+  assert.equal(cleanupWaited, true, "cleanup must wait until reassignment rollback has finished");
+  assert.equal(
+    (await app.inject({ method: "GET", url: String(frozenAvatar.avatarPath) })).statusCode,
+    200,
+    "a rolled-back real route must still display its frozen avatar",
+  );
 } finally {
   await app?.close();
   for (const [key, previous] of [

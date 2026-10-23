@@ -1,8 +1,9 @@
 import type { Dirent } from "node:fs";
-import { readdir, stat, unlink } from "node:fs/promises";
+import { readdir, readFile, stat, unlink } from "node:fs/promises";
 import { extname, join } from "node:path";
 import type { DB } from "../../db/connection.js";
 import { inArray } from "../../db/file-query.js";
+import { encodeShardKey, isLazyUnitTable, isShardDataFileName } from "../../db/file-backed-store.js";
 import {
   characterCardVersions,
   characterGroups,
@@ -143,6 +144,86 @@ async function referencedAvatarFiles(db: DB, avatarRoot: string): Promise<Set<st
   return referenced;
 }
 
+/**
+ * Read cold identity history without leasing lazy chat tables. Resident rows are authoritative,
+ * including unflushed inserts/deletes; cold units cannot have unflushed writes. Call only
+ * inside a DB transaction: its write gate preserves this view across asynchronous file I/O
+ * and prevents another request's temporary deletion from hiding a reference before rollback.
+ * An unreadable shard/metadata makes cleanup inconclusive, so retain every candidate file.
+ */
+async function frozenIdentityAvatarFiles(db: DB, avatarRoot: string): Promise<Set<string> | null> {
+  const files = new Set<string>();
+  const record = (value: unknown): Record<string, unknown> => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid identity metadata");
+    return value as Record<string, unknown>;
+  };
+  const readExtra = (value: unknown) => {
+    const extra = record(typeof value === "string" ? JSON.parse(value) : (value ?? {}));
+    if (extra.personaSnapshot == null) return;
+    const avatarUrl = record(extra.personaSnapshot).avatarUrl;
+    if (avatarUrl == null) return;
+    if (typeof avatarUrl !== "string") throw new Error("Invalid frozen avatar URL");
+    const filePath = resolveStoredAvatarFile(avatarUrl, avatarRoot);
+    if (filePath) files.add(filePath);
+  };
+  const readRow = (table: string, value: unknown) => {
+    const row = record(value);
+    if (table !== "message_trash") {
+      readExtra(row.extra);
+      return;
+    }
+    const snapshot = record(typeof row.snapshot === "string" ? JSON.parse(row.snapshot) : row.snapshot);
+    readExtra(record(snapshot.message).extra);
+    if (snapshot.swipes != null && !Array.isArray(snapshot.swipes)) throw new Error("Invalid trashed swipes");
+    for (const swipe of (snapshot.swipes ?? []) as unknown[]) readExtra(record(swipe).extra);
+  };
+
+  try {
+    const store = db._fileStore;
+    const residentNames = new Set([...store.getResidentChatUnits()].map((key) => `${encodeShardKey(key)}.json`));
+    const fullyResident = store.getFullyResidentLazyTables();
+    for (const table of ["messages", "message_swipes", "message_trash"]) {
+      if (isLazyUnitTable(table) && !fullyResident.has(table)) {
+        const shardDir = join(store.rootDir, "tables", table);
+        let entries: string[];
+        try {
+          entries = await readdir(shardDir);
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+          entries = [];
+        }
+        // Include lone backups after interrupted flushes; a valid primary is canonical.
+        const names = new Set(entries.filter(isShardDataFileName));
+        for (const entry of entries) {
+          if (entry.endsWith(".json.bak") && isShardDataFileName(entry.slice(0, -4))) names.add(entry.slice(0, -4));
+        }
+        for (const name of names) {
+          if (residentNames.has(name)) continue;
+          const path = join(shardDir, name);
+          const rows = JSON.parse(await readFile(entries.includes(name) ? path : `${path}.bak`, "utf8")) as unknown;
+          if (!Array.isArray(rows)) throw new Error("Invalid identity history shard");
+          for (const row of rows) readRow(table, row);
+        }
+      }
+      for (const row of store.getResidentLazyRows(table)) readRow(table, row);
+    }
+    return files;
+  } catch (error) {
+    logger.warn(error, "Could not inspect frozen identity history; retaining avatar files");
+    return null;
+  }
+}
+
+async function excludeFrozenAvatarFiles(
+  db: DB,
+  avatarRoot: string,
+  files: AbandonedAvatarFile[],
+): Promise<AbandonedAvatarFile[]> {
+  if (files.length === 0) return files;
+  const frozen = await frozenIdentityAvatarFiles(db, avatarRoot);
+  return frozen === null ? [] : files.filter((file) => !frozen.has(file.filePath));
+}
+
 async function abandonedAvatarFilesUnlocked(input: {
   db: DB;
   avatarRoot: string;
@@ -193,15 +274,17 @@ export async function scanAbandonedAvatarFiles(input: {
   /** Test-only age override. */
   minimumAgeMs?: number;
 }): Promise<AbandonedAvatarFileSummary> {
-  return withAvatarFileLifecycleLock(async () =>
-    summarizeAbandonedAvatarFiles(
-      await abandonedAvatarFilesUnlocked({
+  return withAvatarFileLifecycleLock(() =>
+    input.db.transaction(async () => {
+      const avatarRoot = input.avatarRoot ?? join(DATA_DIR, "avatars");
+      const abandoned = await abandonedAvatarFilesUnlocked({
         db: input.db,
-        avatarRoot: input.avatarRoot ?? join(DATA_DIR, "avatars"),
+        avatarRoot,
         minimumAgeMs: input.minimumAgeMs ?? ABANDONED_AVATAR_MIN_AGE_MS,
         nowMs: input.nowMs ?? Date.now(),
-      }),
-    ),
+      });
+      return summarizeAbandonedAvatarFiles(await excludeFrozenAvatarFiles(input.db, avatarRoot, abandoned));
+    }),
   );
 }
 
@@ -215,26 +298,29 @@ export async function deleteAbandonedAvatarFiles(input: {
   /** Test-only age override. */
   minimumAgeMs?: number;
 }): Promise<AbandonedAvatarFileSummary> {
-  return withAvatarFileLifecycleLock(async () => {
-    const abandoned = await abandonedAvatarFilesUnlocked({
-      db: input.db,
-      avatarRoot: input.avatarRoot ?? join(DATA_DIR, "avatars"),
-      minimumAgeMs: input.minimumAgeMs ?? ABANDONED_AVATAR_MIN_AGE_MS,
-      nowMs: input.nowMs ?? Date.now(),
-    });
-    const deleted: AbandonedAvatarFile[] = [];
-    for (const file of abandoned) {
-      try {
-        await unlink(file.filePath);
-        deleted.push(file);
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-          logger.warn(error, "Could not remove abandoned avatar file %s", file.filePath);
+  return withAvatarFileLifecycleLock(() =>
+    input.db.transaction(async () => {
+      const avatarRoot = input.avatarRoot ?? join(DATA_DIR, "avatars");
+      const abandoned = await abandonedAvatarFilesUnlocked({
+        db: input.db,
+        avatarRoot,
+        minimumAgeMs: input.minimumAgeMs ?? ABANDONED_AVATAR_MIN_AGE_MS,
+        nowMs: input.nowMs ?? Date.now(),
+      });
+      const deleted: AbandonedAvatarFile[] = [];
+      for (const file of await excludeFrozenAvatarFiles(input.db, avatarRoot, abandoned)) {
+        try {
+          await unlink(file.filePath);
+          deleted.push(file);
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+            logger.warn(error, "Could not remove abandoned avatar file %s", file.filePath);
+          }
         }
       }
-    }
-    return summarizeAbandonedAvatarFiles(deleted);
-  });
+      return summarizeAbandonedAvatarFiles(deleted);
+    }),
+  );
 }
 
 /** Remove local avatar files after their final database reference has been deleted. */
@@ -243,27 +329,33 @@ async function unlinkAvatarFilesIfUnreferencedUnlocked(input: {
   avatarPaths: readonly string[];
   avatarRoot: string;
 }): Promise<number> {
-  const avatarRoot = input.avatarRoot;
-  const referenced = await referencedAvatarFiles(input.db, avatarRoot);
-  const candidates = new Set<string>();
-  for (const avatarPath of input.avatarPaths) {
-    const filePath = resolveStoredAvatarFile(avatarPath, avatarRoot);
-    if (filePath) candidates.add(filePath);
-  }
+  // Do not collect against another request's uncommitted deletion that may roll back.
+  return input.db.transaction(async () => {
+    const avatarRoot = input.avatarRoot;
+    const referenced = await referencedAvatarFiles(input.db, avatarRoot);
+    const candidates = new Set<string>();
+    for (const avatarPath of input.avatarPaths) {
+      const filePath = resolveStoredAvatarFile(avatarPath, avatarRoot);
+      if (filePath && !referenced.has(filePath)) candidates.add(filePath);
+    }
 
-  let deleted = 0;
-  for (const filePath of candidates) {
-    if (referenced.has(filePath)) continue;
-    try {
-      await unlink(filePath);
-      deleted++;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-        logger.warn(error, "Could not remove unreferenced avatar file %s", filePath);
+    if (candidates.size === 0) return 0;
+    const frozen = await frozenIdentityAvatarFiles(input.db, avatarRoot);
+    if (frozen === null) return 0;
+    let deleted = 0;
+    for (const filePath of candidates) {
+      if (frozen.has(filePath)) continue;
+      try {
+        await unlink(filePath);
+        deleted++;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+          logger.warn(error, "Could not remove unreferenced avatar file %s", filePath);
+        }
       }
     }
-  }
-  return deleted;
+    return deleted;
+  });
 }
 
 /** Remove local avatar files after their final database reference has been deleted. */

@@ -5,11 +5,12 @@
 /** The labels only a plan uses. A run of planning paragraphs is lifted only when one of its lines carries one. */
 const PLAN_ONLY_LABEL = /^\s*(?:[*_#>-]+\s*)?(?:opening scene|scene plan|plan|planning)(?:[*_]+)?\s*:/im;
 /**
- * The labels a plan's other paragraphs open with, which no out-of-character answer plausibly opens with. "Notes:",
- * "Checks:" or "Approach:" can open an answer, so a paragraph opening with one of those ends the run.
+ * The labels a plan's other paragraphs open with, ahead of the plan or behind it, which no out-of-character answer
+ * plausibly opens with. "Notes:", "Checks:", "Approach:", "Goals:", "Outline:" or "Next steps:" can open an answer or
+ * a question to the player, so a paragraph opening with one of those ends the run.
  */
 const PLAN_PART_LABEL =
-  /^\s*(?:[*_#>-]+\s*)?(?:opening scene|scene plan|plan|planning|location|setting|goals?|beats?|outline|next steps?)(?:[*_]+)?\s*:/i;
+  /^\s*(?:[*_#>-]+\s*)?(?:opening scene|scene plan|plan|planning|location|setting|beats?)(?:[*_]+)?\s*:/i;
 
 export interface LeadingPlanningExtraction {
   content: string;

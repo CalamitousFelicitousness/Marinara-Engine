@@ -304,12 +304,22 @@ const party = ["Isolde", "Hessa", "Brannoc", "Pip"];
     ).content,
     "Dusk comes to Hollowmere.",
   );
-  for (const continuation of ["Beats: the bell, then the gate.", "Outline: the bell.", "Next steps: the gate."]) {
-    assert.equal(
-      extractLeadingGmPlanning(`Plan: let the bell ring.\n\n${continuation}\n\nDusk comes to Hollowmere.`).content,
-      "Dusk comes to Hollowmere.",
-      continuation,
+  assert.equal(
+    extractLeadingGmPlanning("Plan: let the bell ring.\n\nBeats: the bell, then the gate.\n\nDusk comes to Hollowmere.")
+      .content,
+    "Dusk comes to Hollowmere.",
+  );
+  // A question or answer to the player behind a plan stays where the player reads it.
+  for (const answer of [
+    "Next steps: tell me whether you bribe him or sneak past.",
+    "Outline: the north road or the ford, your call.",
+    "Goals: survive the night.",
+  ]) {
+    const behindPlan = extractLeadingGmPlanning(
+      `Plan: he bars the gate at dusk.\n\n${answer}\n\nDusk comes to Hollowmere.`,
     );
+    assert.equal(behindPlan.planning, "Plan: he bars the gate at dusk.", answer);
+    assert.equal(behindPlan.content, `${answer}\n\nDusk comes to Hollowmere.`, answer);
   }
   for (const narration of [
     "Dusk comes to Hollowmere. Plan: none of them had one.",

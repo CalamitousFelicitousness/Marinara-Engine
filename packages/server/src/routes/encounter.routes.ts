@@ -1,4 +1,5 @@
 import { resolveStoredChatOptions, resolveStoredMaxTokens } from "../services/generation/generation-parameters.js";
+import { withConnectionThinkingHeadroom } from "../services/generation/agent-generation-parameters.js";
 import { z } from "zod";
 import { resolveGameConnection as resolveEncounterConnection } from "../services/game/connection.service.js";
 import {
@@ -69,6 +70,31 @@ import type {
 // ──────────────────────────────────────────────
 
 const COMBAT_BLUEPRINT_OUTPUT_TOKENS = 12000;
+
+/**
+ * Whether a blueprint answer stopped before it finished: the provider said it ran out of room, or the
+ * JSON ends part way through, inside a string or with an object or list still open. A reply that
+ * merely fails to parse is not this; it is an invalid answer.
+ */
+export function combatBlueprintCutOff(finishReason: string | undefined, content: string | null | undefined): boolean {
+  if (finishReason && ["length", "max_tokens", "max_output_tokens"].includes(finishReason.toLowerCase())) return true;
+  const text = (content ?? "").replace(/```\s*$/u, "").trim();
+  const start = text.indexOf("{");
+  if (start < 0) return false;
+  let depth = 0;
+  let quoted = false;
+  let escaped = false;
+  for (const char of text.slice(start)) {
+    if (quoted) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === '"') quoted = false;
+    } else if (char === '"') quoted = true;
+    else if (char === "{" || char === "[") depth++;
+    else if (char === "}" || char === "]") depth--;
+  }
+  return quoted || depth > 0;
+}
 
 function configuredHpMax(rpgStats: RPGStatsConfig | undefined): number | null {
   if (!rpgStats?.enabled) return null;
@@ -1083,19 +1109,51 @@ export async function encounterRoutes(app: FastifyInstance) {
       debugLog("[debug/game/combat:init] prompt messages:\n%s", JSON.stringify(prompt, null, 2));
 
       const storedOptions = resolveStoredChatOptions(conn.defaultParameters, conn.provider, conn.model);
-      const result = await provider.chatComplete(prompt, {
-        model: conn.model,
-        ...storedOptions,
-        temperature: storedOptions.temperature ?? 0.8,
-        enableThinking: !!storedOptions.reasoningEffort && storedOptions.reasoningEffort !== "none",
-        // A connection's Max Output is sized for story replies; a whole battle's JSON cut off at
-        // 4096 tokens cannot be read (2026-10-23 playtest), so the setup asks for at least its own
-        // budget. The connection's hard cap (maxTokensOverride) still clamps it in the provider.
-        maxTokens: Math.max(
-          resolveStoredMaxTokens(conn.defaultParameters, COMBAT_BLUEPRINT_OUTPUT_TOKENS),
-          COMBAT_BLUEPRINT_OUTPUT_TOKENS,
-        ),
-      });
+      // A connection's Max Output is sized for story replies; a whole battle's JSON cut off at
+      // 4096 tokens cannot be read (2026-10-23 playtest), so the setup asks for at least its own
+      // budget. The connection's hard cap (maxTokensOverride) still clamps it in the provider.
+      const visibleMaxTokens = Math.max(
+        resolveStoredMaxTokens(conn.defaultParameters, COMBAT_BLUEPRINT_OUTPUT_TOKENS),
+        COMBAT_BLUEPRINT_OUTPUT_TOKENS,
+      );
+      // One call for the blueprint. Asked again once, thinking at its lowest, when the answer was cut
+      // off before it finished: a long think at a high effort can spend the room the blueprint needs.
+      const ask = async (reasoningEffort: typeof storedOptions.reasoningEffort) => {
+        const thinking = !!reasoningEffort && reasoningEffort !== "none";
+        const maxTokens = withConnectionThinkingHeadroom({
+          provider: conn.provider,
+          model: conn.model ?? "",
+          maxTokens: visibleMaxTokens,
+          reasoningEffort: thinking ? reasoningEffort : null,
+          maxTokensOverride: conn.maxTokensOverride,
+        });
+        const answer = await provider.chatComplete(prompt, {
+          model: conn.model,
+          ...storedOptions,
+          ...(reasoningEffort !== undefined ? { reasoningEffort } : {}),
+          temperature: storedOptions.temperature ?? 0.8,
+          enableThinking: thinking,
+          maxTokens,
+        });
+        const cutOff = combatBlueprintCutOff(answer.finishReason, answer.content);
+        logger.info(
+          "[game/combat:init] chatId=%s model=%s reasoning=%s maxTokens=%d finish=%s chars=%d outputTokens=%s%s",
+          chatId,
+          conn.model ?? "",
+          thinking ? reasoningEffort : "off",
+          maxTokens,
+          answer.finishReason,
+          answer.content?.length ?? 0,
+          answer.usage?.completionTokens ?? "unknown",
+          cutOff ? " (cut off)" : "",
+        );
+        return { answer, cutOff };
+      };
+      let asked = await ask(storedOptions.reasoningEffort);
+      if (asked.cutOff && storedOptions.reasoningEffort && !["none", "low"].includes(storedOptions.reasoningEffort)) {
+        asked = await ask("low");
+      }
+      const result = asked.answer;
       debugLog(
         "[debug/game/combat:init] raw response chatId=%s model=%s chars=%d\n%s",
         chatId,
@@ -1103,22 +1161,23 @@ export async function encounterRoutes(app: FastifyInstance) {
         result.content?.length ?? 0,
         result.content ?? "",
       );
+      if (asked.cutOff) {
+        return reply.status(502).send({
+          error:
+            "The fight's setup was cut off before it finished: the model ran out of room to answer. Retry, or raise this connection's Max tokens.",
+          reason: "cut-off",
+        });
+      }
 
       if (!result.content) {
         return reply.status(502).send({ error: "No response from AI" });
       }
 
-      // Cut off at its token limit, the JSON is never whole: say so instead of a parse error.
-      const cutOff = ["length", "max_tokens", "max_output_tokens"].includes((result.finishReason ?? "").toLowerCase());
       let combatState: Record<string, unknown>;
       try {
         combatState = parseJSON(result.content) as Record<string, unknown>;
       } catch {
-        return reply.status(502).send({
-          error: cutOff
-            ? "The battle setup was cut off at the connection's output limit. Raise its Max Output and try again."
-            : "AI returned invalid JSON",
-        });
+        return reply.status(502).send({ error: "AI returned invalid JSON" });
       }
 
       if (!combatState?.party || !combatState?.enemies) {

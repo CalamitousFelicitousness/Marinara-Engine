@@ -50,7 +50,7 @@ assert.equal(
   // And the published schema offers a member for every kind the Engine knows, so an editor can
   // read a pool ruleset as well as it reads a summed one.
   const schema = read("../../docs/extending/ruleset.schema.json");
-  const members = (schema.properties?.resolution?.anyOf ?? []) as Array<{ properties?: { kind?: { const?: string } } }>;
+  const members = (schema.properties?.resolution?.oneOf ?? []) as Array<{ properties?: { kind?: { const?: string } } }>;
   assert.deepEqual(
     members.map((member) => member.properties?.kind?.const),
     [...RULESET_RESOLUTION_KINDS],

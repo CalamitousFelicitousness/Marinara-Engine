@@ -126,6 +126,34 @@ function amountOf(amount: RulesetCatalogMechanics["amount"]): RulesetCombatAmoun
 
 // ── Reading a combatant ──
 
+/** A stat block as one fight has it (1.363): its Legendary Resistance and its health (a fixed number, its
+ *  dice no longer thrown) in place of its own. */
+function rulesetAdjustedBlock(
+  block: RulesetStatBlock,
+  adjust: { legendaryResistance?: number; health?: number; calls?: Array<{ action: string; creature: string }> },
+): RulesetStatBlock {
+  const adjusted: RulesetStatBlock = { ...block };
+  // Whom an action calls (1.371): the Shelves Lean calls a wraith once the party is high enough.
+  if (adjust.calls?.length) {
+    const key = (text: string) => text.trim().toLowerCase();
+    adjusted.actions = block.actions.map((action) => {
+      const call = [...adjust.calls!]
+        .reverse()
+        .find((each) => key(each.action) === key(action.id ?? "") || key(each.action) === key(action.name));
+      return call && action.calls ? { ...action, calls: { ...action.calls, creature: call.creature } } : action;
+    });
+  }
+  if (adjust.legendaryResistance !== undefined) {
+    if (adjust.legendaryResistance > 0) adjusted.legendaryResistance = adjust.legendaryResistance;
+    else delete adjusted.legendaryResistance;
+  }
+  if (adjust.health !== undefined) {
+    adjusted.health = adjust.health;
+    delete adjusted.healthDice;
+  }
+  return adjusted;
+}
+
 /** A bestiary reference as the fight keeps it: out of a borrowed catalog (1.220), it also names the
  *  lender's ruleset and catalog, which is what the creature's art is matched by. */
 function creatureRef(
@@ -1646,7 +1674,8 @@ function itemUseActions(
       held.name ??
       definition.items?.categories.find((category) => category.id === item.category)?.label ??
       item.category;
-    const label = named ? `${name}: ${named}` : name;
+    // Called what the ruleset calls it in place of the item's name (1.378): "Scatter ball bearings".
+    const label = use.title ?? (named ? `${name}: ${named}` : name);
     const action = itemUseMechanics(definition, item, use, { id, label }, build, evaluated, perCell, pooled);
     if (!action) return;
     // A fake (1.79) is offered as what it passes for, aimed, timed and spent as that is, so nothing on
@@ -1972,6 +2001,14 @@ function itemSwitchActions(items: readonly RulesetSheetItem[] | undefined): Rule
         budget: toggle.budget,
         targets: { side: "self", count: 0 },
         switches: { item: index },
+        ...(toggle.onLabel || toggle.offLabel
+          ? {
+              switchLabels: {
+                ...(toggle.onLabel ? { on: toggle.onLabel } : {}),
+                ...(toggle.offLabel ? { off: toggle.offLabel } : {}),
+              },
+            }
+          : {}),
       },
     ];
   });
@@ -2993,6 +3030,8 @@ function abilityActions(
   const rows = build.lists?.[source.list];
   if (!Array.isArray(rows)) return { actions: [], riders: [] };
   const byRef = rulesetCatalogEntriesByRef(catalogs);
+  // Where the menu shows what the list gives (1.378): under the list's own tab, split as it is.
+  const display = definition.sheet.lists.find((list) => list.id === source.list)?.display;
   /** A catalog states what its own `range` and `area.size` numbers mean; one that does not is read
    *  in the combat block's own unit. */
   const perCellOf = (ref: string) => {
@@ -3048,6 +3087,12 @@ function abilityActions(
     // entries reads.
     action.catalog = ref.slice(0, ref.indexOf("/"));
     action.entry = ref;
+    if (display?.tab) {
+      const place = display.by ? columnValue(row, display.by.column) : undefined;
+      const order = typeof place === "number" && Number.isInteger(place) ? place : undefined;
+      const sub = order !== undefined ? display.by!.labels[order] : undefined;
+      action.menuGroup = { label: display.tab, ...(sub !== undefined ? { sub: { label: sub, order: order! } } : {}) };
+    }
     seen.add(ref);
     actions.push(action);
   });
@@ -4196,10 +4241,11 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
     if (entry.side === "enemy") {
       // A bestiary reference that names nothing is left out of the fight rather than walked in with
       // no numbers, and the opening says so.
-      const block =
+      const found =
         "block" in entry
           ? entry.block
           : rulesetCreatureBlock(definition, findRulesetCreatureEntry(input.bestiary ?? {}, entry.creature));
+      const block = found && "creature" in entry && entry.adjust ? rulesetAdjustedBlock(found, entry.adjust) : found;
       if (!block) {
         refused.push({ type: "refused", actorId: entry.id, reason: "unknown-creature" });
         continue;
@@ -4508,6 +4554,10 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
   // Grown or shrunk by what they held as the fight began (1.195), before anybody is set down.
   rulesetSyncSizes(definition, state);
   placeRulesetCombatants(definition, combat, state, input.board);
+  // A flier with no walk, or one that hovers, starts in the air (1.354).
+  for (const combatant of state.combatants) {
+    if (combatant.speeds?.fly && (combatant.speed <= 0 || combatant.hover)) combatant.airborne = true;
+  }
   // What auras spread from where everybody stands (1.263).
   rulesetSyncAuras(definition, state);
   // Hidden in plain sight from the start (1.292), from whoever's passive Perception does not beat

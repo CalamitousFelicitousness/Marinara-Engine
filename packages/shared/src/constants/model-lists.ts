@@ -1325,6 +1325,7 @@ export const MODEL_LISTS: Record<APIProvider, KnownModel[]> = {
   custom: [...OPENAI_MODELS, ...ZAI_MODELS],
   image_generation: IMAGE_GEN_MODELS,
   video_generation: VIDEO_GEN_MODELS,
+  audio_generation: [], // Music and sound-effect models are selected per generation source.
   audio: AUDIO_GEN_MODELS,
   decision: [],
 };

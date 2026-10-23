@@ -236,9 +236,7 @@ for side in ["LEFT", "RIGHT"]:
     bodies[side] = module.render_walkthrough({**partial, "unjudged_candidates": [{**entry, "side": side}]}, [], [], [], head)
 assert "last-reviewed-sha=unrecorded" in module.walkthrough_header(bodies["LEFT"])
 assert "dottore:unjudged=" not in module.walkthrough_header(bodies["LEFT"])
-# This main runtime predates RIGHT-candidate carry; unfinished work remains unrecorded.
-assert "last-reviewed-sha=unrecorded" in module.walkthrough_header(bodies["RIGHT"])
-assert "dottore:unjudged=" not in module.walkthrough_header(bodies["RIGHT"])
+assert "dottore:unjudged=" in module.walkthrough_header(bodies["RIGHT"])
 assert "<!-- dottore:base-ref=staging -->" in module.walkthrough_header(bodies["clean"])
 print(json.dumps(bodies))
 `,
@@ -254,8 +252,10 @@ print(json.dumps(bodies))
     comments: [producedComment(producerBodies.clean)],
     skip: true,
   });
-  run("actual legacy producer RIGHT work is unrecorded and gets full", {
+  run("actual producer RIGHT carry stays eligible", {
     comments: [producedComment(producerBodies.RIGHT)],
+    checkpoint: head,
+    effective: "incremental",
   });
   run("actual producer LEFT work is unrecorded and gets full", { comments: [producedComment(producerBodies.LEFT)] });
   run("actual producer old-base checkpoint gets full", {

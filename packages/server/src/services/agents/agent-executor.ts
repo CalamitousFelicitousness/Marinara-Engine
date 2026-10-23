@@ -87,6 +87,7 @@ import {
   resolveBeholderStateResponse,
   type BeholderPassLane,
 } from "./beholder-state.js";
+import { formatOptionalVideoOffer } from "../generation/image-prompt-instructions.js";
 
 const MAX_AGENT_CONTEXT_MESSAGES = 200;
 const EXPRESSION_AGENT_RECENT_CONTEXT_MESSAGES = 2;
@@ -1783,6 +1784,8 @@ function buildBatchSystemPrompt(
     parts.push(``);
     parts.push(`<agent_task id="${escapeXmlAttribute(config.type)}" name="${escapeXmlAttribute(config.name)}">`);
     parts.push(template);
+    const attachedLorebook = buildCustomAgentTriggeredLorebookBlock(config, context);
+    if (attachedLorebook) parts.push(attachedLorebook);
     parts.push(`</agent_task>`);
   }
   parts.push(`</agents>`);
@@ -2126,8 +2129,22 @@ function buildCustomAgentVectorContextBlock(config: AgentExecConfig, context: Ag
 }
 
 function buildCustomAgentTriggeredLorebookBlock(config: AgentExecConfig, context: AgentContext): string {
-  if (config.settings.triggerLorebooksForAgentCalls !== true) return "";
-  const entries = context.triggeredLorebookEntriesByAgentId?.[config.id] ?? [];
+  const agentIds = new Set<string>();
+  if (config.settings.triggerLorebooksForAgentCalls === true || config.settings.chatLorebookAttachmentEnabled === true)
+    agentIds.add(config.id);
+  if (Array.isArray(config.settings._mergedLorebookAttachmentAgentIds)) {
+    for (const id of config.settings._mergedLorebookAttachmentAgentIds) {
+      if (typeof id === "string") agentIds.add(id);
+    }
+  }
+  const seen = new Set<string>();
+  const entries = [...agentIds]
+    .flatMap((id) => context.triggeredLorebookEntriesByAgentId?.[id] ?? [])
+    .filter((entry) => {
+      if (seen.has(entry.id)) return false;
+      seen.add(entry.id);
+      return true;
+    });
   if (entries.length === 0) return "";
   const wrapFormat = normalizeAgentContextWrapFormat(context.wrapFormat);
 
@@ -2273,7 +2290,10 @@ function buildBeholderMessages(
   const narration = narrationOverride ?? context.narrationOverride ?? beholderNarration(config, context);
   const user = buildBeholderUserMessage(context.memory._beholderState, context.persona?.name ?? null, narration);
   return [
-    { role: "system", content: template },
+    {
+      role: "system",
+      content: [template, buildCustomAgentTriggeredLorebookBlock(config, context)].filter(Boolean).join("\n\n"),
+    },
     { role: "user", content: user },
   ];
 }
@@ -2350,6 +2370,8 @@ function buildKnowledgeRetrievalAgentMessages(
   context: AgentContext,
 ): ChatMessage[] {
   const systemParts: string[] = [];
+  const attachedLorebook = buildCustomAgentTriggeredLorebookBlock(config, context);
+  if (attachedLorebook) systemParts.push(attachedLorebook);
   systemParts.push(`<role>`);
   systemParts.push(
     `You are a specialized knowledge retrieval agent. Extract relevant facts from source material; do not roleplay, continue the conversation, write dialogue, or answer as any character.`,
@@ -2575,6 +2597,8 @@ function buildSpotifyAgentMessages(config: AgentExecConfig, template: string, co
   const turnLabel = isGame ? "game" : "roleplay";
   const musicProvider = getMusicProvider(config.settings);
   const systemParts: string[] = [];
+  const attachedLorebook = buildCustomAgentTriggeredLorebookBlock(config, context);
+  if (attachedLorebook) systemParts.push(attachedLorebook);
   const providerLabel =
     musicProvider === "custom" ? "Custom local music" : musicProvider === "youtube" ? "YouTube" : "Spotify";
   systemParts.push(`<role>`);
@@ -2653,6 +2677,8 @@ function buildSpotifyAgentMessages(config: AgentExecConfig, template: string, co
 
 function buildExpressionAgentMessages(config: AgentExecConfig, template: string, context: AgentContext): ChatMessage[] {
   const systemParts: string[] = [];
+  const attachedLorebook = buildCustomAgentTriggeredLorebookBlock(config, context);
+  if (attachedLorebook) systemParts.push(attachedLorebook);
   systemParts.push(`<role>`);
   systemParts.push(`You are a specialized expression-selection agent. Keep the request compact and return only JSON.`);
   systemParts.push(
@@ -2924,8 +2950,19 @@ function buildAgentMessages(
   // assistant. Anthropic treats a trailing assistant turn as prefill and rejects
   // some models, so add a terminal user instruction for that agent type too.
   const outputFormatBlock = options.outputFormatBlock?.trim() ?? "";
+  const generatedVideos =
+    options.includeImagePromptInstructions === true &&
+    context.memory._generatedVideos &&
+    typeof context.memory._generatedVideos === "object"
+      ? (context.memory._generatedVideos as {
+          instructions?: unknown;
+          clipsOnly?: unknown;
+          describeAppearance?: unknown;
+        })
+      : null;
   const requiresTerminalUserInstruction =
     finalParts.length > 0 ||
+    !!generatedVideos ||
     contextAgentTypes.includes("echo-chamber") ||
     !!outputFormatBlock ||
     (options.includeImagePromptInstructions === true &&
@@ -2941,6 +2978,10 @@ function buildAgentMessages(
     );
     finalParts.push(lateImagePromptInstructions);
     finalParts.push("</image_prompting_instructions>");
+  }
+  if (generatedVideos) {
+    // Generated Videos: the picture can become a short clip when the agent decides motion adds to the moment.
+    finalParts.push(`\n${formatOptionalVideoOffer(generatedVideos)}`);
   }
 
   if (requiresTerminalUserInstruction) {

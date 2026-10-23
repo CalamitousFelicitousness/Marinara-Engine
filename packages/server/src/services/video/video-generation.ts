@@ -11,12 +11,14 @@ import {
   runInMediaProviderLane,
   runMediaGenerationRequest,
 } from "../image/image-generation-queue.js";
+import { runSharedGpuTurn } from "../generation/shared-gpu-turns.js";
 import {
   COMFYUI_MAX_REFERENCE_IMAGES,
   numberedComfyReferencePlaceholder,
 } from "../image/comfyui-reference-placeholders.js";
 import { buildAtlasCloudVideoRequest, runAtlasCloudPrediction } from "../media/atlas-cloud.js";
 import { adaptAtlasCloudVideoRequest, fetchAtlasCloudModelSchema } from "../media/atlas-cloud-video-schema.js";
+import { generateToAPIsVideo, isToAPIsMediaUrl, ToAPIsSubmittedTaskError } from "../media/toapis-media.js";
 import { buildComfyUiLoraWorkflowReplacements } from "@marinara-engine/shared";
 
 import type {
@@ -85,7 +87,9 @@ export async function generateVideo(
 ): Promise<VideoGenerationResult> {
   // The request deadline begins when the queued task starts; queue wait time is
   // governed separately by the shared media-generation queue. The provider lane
-  // (#7662) comes first, so its waiters hold neither a connection turn nor a permit.
+  // (#7662) comes first, so its waiters hold neither a connection turn nor a permit. The shared
+  // GPU turn comes after the connection's queue and before the permit, so a clip waiting on a
+  // busy shared GPU holds no permit, and one queued behind its connection holds no GPU turn.
   // Video lanes are their own keyspace: a minutes-long video must not hold up images.
   // Only the primary attempt holds the lane and permit: the fallback connection
   // queues after both are released, so a fallback never waits on another lane
@@ -99,11 +103,13 @@ export async function generateVideo(
           connectionKey: request.connectionKey ?? `${serviceHint || source}:${baseUrl}`,
           queue: request.queue === true,
           signal: request.signal,
+          aroundPermit: (work) => runSharedGpuTurn("media", baseUrl, work, request.signal),
           task: () => generatePrimaryVideo(source, baseUrl, apiKey, serviceHint, { ...request, fallback: undefined }),
         }),
     });
   } catch (error) {
     const fallback = request.fallback;
+    if (error instanceof ToAPIsSubmittedTaskError) throw error;
     if (!fallback || request.signal?.aborted) throw error;
     logger.warn(
       error,
@@ -406,6 +412,9 @@ function comfyUiVideoFetch(url: string | URL, init?: RequestInit, maxResponseByt
       allowLoopback: true,
       allowedProtocols: ["https:", "http:"],
     },
+    // ComfyUI may hold POST /prompt until the render finishes (a render gate), so Undici's
+    // five-minute default would fail any video whose render passes it.
+    agentOptions: { headersTimeout: VIDEO_GEN_TIMEOUT, bodyTimeout: VIDEO_GEN_TIMEOUT },
     maxResponseBytes,
     decodeCompressedResponse: true,
   });
@@ -1290,6 +1299,7 @@ async function generateSeedanceVideo(
   apiKey: string,
   request: VideoGenerationRequest,
 ): Promise<VideoGenerationResult> {
+  if (isToAPIsMediaUrl(baseUrl)) return generateToAPIsVideo(baseUrl, apiKey, request, MAX_VIDEO_RESPONSE_BYTES);
   if (!apiKey.trim()) throw new Error("Seedance video generation requires a Seedance API key");
   const model = request.model?.trim() || DEFAULT_SEEDANCE_VIDEO_MODEL;
   const startUrl = buildSeedanceUrl(baseUrl, "v1/videos/generations");

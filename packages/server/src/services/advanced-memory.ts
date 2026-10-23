@@ -1,3 +1,4 @@
+import { partialInput } from "@marinara-engine/shared";
 import { createHash } from "node:crypto";
 import {
   ADVANCED_MEMORY_SCENE_AUDIENCE as SCENE_AUDIENCE,
@@ -2188,6 +2189,7 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
       chars: createCharactersStorage(db),
       characterIds,
       chatMode: "roleplay",
+      chatId: ctx.chatId,
     });
     if (!cards.length) return undefined;
     const lastUser =
@@ -5764,7 +5766,7 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
     patch: unknown,
     { startRecollections = true, debugMode }: { startRecollections?: boolean; debugMode?: boolean } = {},
   ): Promise<AdvancedMemoryStatus> {
-    const incoming = advancedMemorySettingsSchema.partial().parse(patch);
+    const incoming = partialInput(advancedMemorySettingsSchema).parse(patch);
     const localSlot = decisionLocalSlotForId(incoming.decisionConnectionId);
     if (localSlot) {
       // The same rule as choosing the global Decision model: a local model that cannot answer is refused.

@@ -11,6 +11,7 @@
 // Roads' words and a fight on 5e reads in 5e's.
 import type {
   DirectedRulesetEvent,
+  DirectedRulesetReason,
   DirectedRulesetView,
   RulesetCombatPoolRoll,
   RulesetCombatDamagePool,
@@ -1020,6 +1021,8 @@ export function rulesetCombatEventLine(
         cost: names.distance(event.cost),
         left: names.distance(event.left),
       });
+    case "lift":
+      return key(event.up ? "tookOff" : "landed", { actor: names.combatant(event.actorId) });
     case "flew":
       return key(event.to > event.from ? "flewUp" : "flewDown", {
         actor: names.combatant(event.actorId),
@@ -1203,8 +1206,38 @@ export function rulesetCombatEventLine(
       });
     case "director":
       return key("unavailable", { reason: event.text });
+    case "reasoning":
+      return event.reasons.length
+        ? key("reasoning", {
+            actor: names.combatant(event.actorId),
+            reasons: event.reasons.map((reason) => rulesetReasonText(reason, names, t)).join("; "),
+          })
+        : null;
     default:
       return null;
+  }
+}
+
+/** One reason the Engine gives for an AI combatant's step, in no ruleset's own words. */
+function rulesetReasonText(reason: DirectedRulesetReason, names: RulesetCombatNames, t: TFunction): string {
+  const say = (name: string, params: Record<string, unknown> = {}) =>
+    t(`game.combat.ruleset.event.reason.${name}`, params) as string;
+  const target = (id?: string) => (id ? names.combatant(id) : "") || say("itsTarget");
+  switch (reason.why) {
+    case "damage":
+      return say(`damage_${reason.strength}`, { target: target(reason.targetId) });
+    case "finish":
+    case "healing":
+    case "support":
+    case "setup":
+    case "coordination":
+      return say(reason.why, { target: target(reason.targetId) });
+    case "walked":
+      return say("walked", { distance: names.distance(reason.cells) });
+    case "approach":
+      return say(reason.sprinted ? "approachSprint" : "approach", { target: target(reason.targetId) });
+    default:
+      return say(reason.why);
   }
 }
 
@@ -1268,6 +1301,8 @@ export function rulesetCombatLogLines(
   names: RulesetCombatNames,
   t: TFunction,
   afterSeq = -1,
+  /** With Debug on: the Engine's reasons for its AI's steps, after each one. */
+  reasons = false,
 ): Array<{ seq: number; text: string }> {
   const lines: Array<{ seq: number; text: string }> = [];
   for (const entry of events) {
@@ -1275,8 +1310,36 @@ export function rulesetCombatLogLines(
     // What is left of a budget is a number the status panel already shows, and the resolver reports
     // it BEFORE the action it paid for, so in a log it read as "0 Action left" and then the blow.
     if (entry.event.type === "budget") continue;
+    if (entry.event.type === "reasoning" && !reasons) continue;
     const text = rulesetCombatEventLine(entry.event, names, t);
     if (text) lines.push({ seq: entry.seq, text });
   }
   return lines;
+}
+
+/** Each foe's one fate when a fight ends, which the end card's count and its names both read: gone
+ *  from the fight (fled, sent away), felled (down when it ended counts, since the fight is over for
+ *  it), or still on its feet. `beaten` is exactly the felled list, so the tally names nobody the
+ *  lines file elsewhere. */
+export type RulesetFoeFate = "endDefeated" | "endGone" | "endStanding";
+export function rulesetFoeFates(view: DirectedRulesetView): {
+  fates: Array<[RulesetFoeFate, DirectedRulesetView["combatants"]]>;
+  beaten: number;
+  total: number;
+} {
+  const foes = view.combatants.filter((combatant) => combatant.side !== "party");
+  const fateOf = (one: (typeof foes)[number]): RulesetFoeFate =>
+    one.away || one.left ? "endGone" : one.defeated || one.down ? "endDefeated" : "endStanding";
+  const by: Record<RulesetFoeFate, DirectedRulesetView["combatants"]> = {
+    endDefeated: [],
+    endGone: [],
+    endStanding: [],
+  };
+  for (const one of foes) by[fateOf(one)].push(one);
+  const order: RulesetFoeFate[] = ["endDefeated", "endGone", "endStanding"];
+  return {
+    fates: order.filter((key) => by[key].length > 0).map((key) => [key, by[key]]),
+    beaten: by.endDefeated.length,
+    total: foes.length,
+  };
 }

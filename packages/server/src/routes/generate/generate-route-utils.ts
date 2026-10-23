@@ -1,3 +1,4 @@
+import { partialInput } from "@marinara-engine/shared";
 import { isDeepStrictEqual } from "node:util";
 import type { ChatMessage } from "../../services/llm/base-provider.js";
 import {
@@ -1107,10 +1108,8 @@ export function resolveGroupIndividualHistorySpeaker(
   }
   if (message.role === "user") return message.personaSnapshotName?.trim() || options.personaName.trim() || "User";
   if (message.role === "assistant") {
-    return (
-      (message.characterId ? (options.characterNamesById.get(message.characterId) ?? null) : null) ??
-      (typeof message.name === "string" && message.name.trim() ? message.name.trim() : null)
-    );
+    const characterName = message.characterId ? options.characterNamesById.get(message.characterId) : undefined;
+    return characterName ?? (typeof message.name === "string" && message.name.trim() ? message.name.trim() : null);
   }
   return null;
 }
@@ -1511,7 +1510,7 @@ export function parseStoredGenerationParameters(raw: unknown): StoredGenerationP
 
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
 
-  const result = generationParametersSchema.partial().safeParse(parsed);
+  const result = partialInput(generationParametersSchema).safeParse(parsed);
   if (result.success) return result.data;
 
   // Older installs or extension callers may leave one malformed field in an

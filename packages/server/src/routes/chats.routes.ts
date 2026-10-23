@@ -3,6 +3,7 @@
 // ──────────────────────────────────────────────
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { z } from "zod";
+import { partialInput } from "@marinara-engine/shared";
 import { logger } from "../lib/logger.js";
 import { getMariDbService } from "../services/mari-db/mari-db.service.js";
 import { cardPromptText } from "../services/prompt/card-text.js";
@@ -62,8 +63,13 @@ import {
   MESSAGE_MARK_EXTRA_KEYS,
   MAX_PINNED_CONTEXT_MESSAGES,
   semanticSummaryRetrievalSettingsSchema,
+  agentLorebookAttachmentPatchesSchema,
+  mergeAgentLorebookAttachments,
   DEFAULT_GENERATION_PARAMS,
+  isStockMarinaraUniversalPreset,
   omitChatMetadataLocalDestinations,
+  rulesetAllowsCombatStyle,
+  rulesetCombatStyles,
 } from "@marinara-engine/shared";
 import type {
   CharacterData,
@@ -99,6 +105,7 @@ import { createMessageTrashStorage, MessageTrashPinnedLimitError } from "../serv
 import { createAppSettingsStorage } from "../services/storage/app-settings.storage.js";
 import { createCharactersStorage } from "../services/storage/characters.storage.js";
 import { resolveChatUserIdentity } from "../services/chat-user-identity.js";
+import { withAvatarFileLifecycleLock } from "../services/image/avatar-file-lifecycle.js";
 import { isFeatureEnabled } from "../services/features/feature-settings.js";
 import { createConnectionsStorage } from "../services/storage/connections.storage.js";
 import { createAgentsStorage } from "../services/storage/agents.storage.js";
@@ -138,6 +145,7 @@ import { createSpatialContextStorage } from "../services/storage/spatial-context
 import { restoreBranchHudLists, trimJournalForBranch } from "../services/game/branch-state.js";
 import { removeGameInventoryTelling, switchGameInventoryTelling } from "../services/game/game-inventory.service.js";
 import { applyAllSegmentEdits, applyMessageSegmentEdits } from "../services/game/segment-edits.js";
+import { loadRulesetRegistry, resolveGameRuleset } from "../services/game/ruleset-registry.service.js";
 import type { Journal } from "../services/game/journal.service.js";
 import { createRegexScriptsStorage } from "../services/storage/regex-scripts.storage.js";
 import { filterRelevantLorebooks, processLorebooks } from "../services/lorebook/index.js";
@@ -155,6 +163,7 @@ import { forwardPromptPreview } from "./generate/prompt-preview.js";
 import { wrapContent } from "../services/prompt/format-engine.js";
 import { chatSummaryFingerprintMatches, fingerprintChatSummary } from "../services/prompt/chat-summary-fingerprint.js";
 import { newId } from "../utils/id-generator.js";
+import { readChatBranchGraph } from "../services/chat-branch-graph.js";
 import {
   isStoryTranscriptMessage,
   renderTranscriptHtml,
@@ -532,7 +541,7 @@ function toPeekPromptMessages(
 
 async function buildPersonaSnapshotForChat(
   app: FastifyInstance,
-  chat: { personaId?: string | null; personaCharacterId?: string | null; mode?: string | null } | null,
+  chat: { id?: string; personaId?: string | null; personaCharacterId?: string | null; mode?: string | null } | null,
 ) {
   const charactersStore = createCharactersStorage(app.db);
   if (!chat) return null;
@@ -1331,6 +1340,17 @@ export async function chatsRoutes(app: FastifyInstance) {
     return chats.filter((chat) => !shouldHideProfessorMariChat(chat)).map(normalizeChatForResponse);
   });
 
+  // The branch graph (#8157): where each chat in the group forked and the roles of its own messages.
+  app.get<{ Params: { groupId: string } }>("/group/:groupId/branch-graph", async (req) => {
+    const chats = await storage.listByGroup(req.params.groupId);
+    return readChatBranchGraph(
+      storage,
+      chats
+        .filter((chat) => !shouldHideProfessorMariChat(chat))
+        .map((chat) => ({ id: chat.id, metadata: parseChatMetadata(chat.metadata) })),
+    );
+  });
+
   // Get single chat
   app.get<{ Params: { id: string } }>("/:id", async (req, reply) => {
     const chat = await storage.getById(req.params.id);
@@ -1398,7 +1418,7 @@ export async function chatsRoutes(app: FastifyInstance) {
 
   // Update chat
   app.patch<{ Params: { id: string } }>("/:id", async (req, reply) => {
-    const data = createChatSchema.partial().parse(req.body);
+    const data = partialInput(createChatSchema).parse(req.body);
     const existing = await storage.getById(req.params.id);
     if (!existing || isHomeProfessorMariChat(existing)) {
       return reply.status(404).send({ error: "Chat not found" });
@@ -1447,16 +1467,20 @@ export async function chatsRoutes(app: FastifyInstance) {
     const identityChanged =
       identityBefore?.id !== identityAfter?.id || identityBefore?.source !== identityAfter?.source;
     if (identityChanged) {
-      const previousSnapshot =
-        (await buildPersonaSnapshotForChat(app, existing)) ??
-        ({ personaId: "default-user", source: "persona", name: "You" } as const);
-      const messages = await storage.listMessages(req.params.id);
-      for (const message of messages) {
-        if (message.role !== "user") continue;
-        const extra = parseExtra(message.extra);
-        if (extra.personaSnapshot) continue;
-        await storage.updateMessageExtra(message.id, { personaSnapshot: previousSnapshot });
-      }
+      // Keep the file protected until every backfilled reference is saved, not just until
+      // the avatar URL is read: cleanup may otherwise delete it during an awaited write.
+      await withAvatarFileLifecycleLock(async () => {
+        const previousSnapshot =
+          (await buildPersonaSnapshotForChat(app, existing)) ??
+          ({ personaId: "default-user", source: "persona", name: "You" } as const);
+        const messages = await storage.listMessages(req.params.id);
+        for (const message of messages) {
+          if (message.role !== "user") continue;
+          const extra = parseExtra(message.extra);
+          if (extra.personaSnapshot) continue;
+          await storage.updateMessageExtra(message.id, { personaSnapshot: previousSnapshot });
+        }
+      });
     }
     let roleplayTrackerCharacterIdsToSeed: string[] = [];
     // Characters added to an existing chat need the same card-variable defaults
@@ -1618,6 +1642,13 @@ export async function chatsRoutes(app: FastifyInstance) {
     const chat = await storage.getById(req.params.id);
     if (!chat) return reply.status(404).send({ error: "Chat not found" });
     const incoming = req.body as Record<string, unknown>;
+    let attachmentPatch: Parameters<typeof mergeAgentLorebookAttachments>[1] | undefined;
+    if (Object.prototype.hasOwnProperty.call(incoming, "agentLorebookAttachments")) {
+      const parsed = agentLorebookAttachmentPatchesSchema.safeParse(incoming.agentLorebookAttachments);
+      if (!parsed.success) return reply.status(400).send({ error: "Invalid agent lorebook attachments" });
+      incoming.agentLorebookAttachments = parsed.data;
+      attachmentPatch = parsed.data;
+    }
     const summaryRetrievalFieldSchemas = {
       semanticSummaryRecentCount: semanticSummaryRetrievalSettingsSchema.shape.semanticSummaryRecentCount,
       semanticSummaryOlderCount: semanticSummaryRetrievalSettingsSchema.shape.semanticSummaryOlderCount,
@@ -1749,6 +1780,10 @@ export async function chatsRoutes(app: FastifyInstance) {
       // Numbers clamp to 0-100; anything else returns the chat to the agent's Run Interval.
       incoming.illustratorRunInterval = normalizeIllustratorRunInterval(incoming.illustratorRunInterval);
     }
+    if (Object.prototype.hasOwnProperty.call(incoming, "illustratorVideoRunInterval")) {
+      // Same 0-100 range; anything else returns the chat to the agent's Video Run Interval.
+      incoming.illustratorVideoRunInterval = normalizeIllustratorRunInterval(incoming.illustratorVideoRunInterval);
+    }
     if (
       Object.prototype.hasOwnProperty.call(incoming, "noodleTimelineContextEnabled") &&
       typeof incoming.noodleTimelineContextEnabled !== "boolean"
@@ -1761,39 +1796,73 @@ export async function chatsRoutes(app: FastifyInstance) {
     ) {
       return reply.status(400).send({ error: "slurp2ActivityContextEnabled must be a boolean" });
     }
-    const cancelReplacedAdvancedMemory = (previous: Record<string, unknown>, saved: Record<string, unknown>) => {
-      if (
-        incoming.enableMemoryRecall === true &&
-        !normalizeAdvancedMemorySettings(saved.advancedMemory).enabled &&
-        normalizeAdvancedMemorySettings(previous.advancedMemory).enabled
-      ) {
-        createAdvancedMemoryService(app.db).cancelActiveOperation(req.params.id);
+    return withChatMetadataPatchQueue(req.params.id, async () => {
+      // Check the pair this patch will actually save, after earlier queued changes have landed.
+      // A ruleset-only change must also agree with the saved style (classic when unspecified).
+      if (Object.hasOwn(incoming, "gameRuleset") || Object.hasOwn(incoming, "gameCombatStyle")) {
+        const freshChat = await storage.getById(req.params.id);
+        if (!freshChat) return reply.status(404).send({ error: "Chat not found" });
+        const next = { ...parseChatMetadata(freshChat.metadata), ...incoming };
+        const resolved = resolveGameRuleset(next, await loadRulesetRegistry(app.db));
+        if (
+          resolved.status === "ok" &&
+          !rulesetAllowsCombatStyle(resolved.definition, next.gameCombatStyle as string | null | undefined)
+        ) {
+          return reply.status(400).send({
+            error: `This game's ruleset plays battles only as ${rulesetCombatStyles(resolved.definition)!.join(", ")}.`,
+            code: "combat_style_not_allowed",
+          });
+        }
       }
-    };
-    if (
-      Object.prototype.hasOwnProperty.call(incoming, "hideSummarisedMessages") &&
-      typeof incoming.hideSummarisedMessages === "boolean"
-    ) {
-      const updated = await storage.patchMetadata(
-        req.params.id,
-        async (freshMeta) => ({
-          ...incoming,
-          ...(await summaryHidingPatch(storage, req.params.id, freshMeta, { ...freshMeta, ...incoming })),
-        }),
-        { afterWrite: cancelReplacedAdvancedMemory },
-      );
+      const cancelReplacedAdvancedMemory = (previous: Record<string, unknown>, saved: Record<string, unknown>) => {
+        if (
+          incoming.enableMemoryRecall === true &&
+          !normalizeAdvancedMemorySettings(saved.advancedMemory).enabled &&
+          normalizeAdvancedMemorySettings(previous.advancedMemory).enabled
+        ) {
+          createAdvancedMemoryService(app.db).cancelActiveOperation(req.params.id);
+        }
+      };
+      const mergeIncoming = (freshMeta: Record<string, unknown>) => ({
+        ...incoming,
+        ...(attachmentPatch
+          ? {
+              agentLorebookAttachments: mergeAgentLorebookAttachments(
+                freshMeta.agentLorebookAttachments,
+                attachmentPatch,
+              ),
+            }
+          : {}),
+      });
+      if (
+        Object.prototype.hasOwnProperty.call(incoming, "hideSummarisedMessages") &&
+        typeof incoming.hideSummarisedMessages === "boolean"
+      ) {
+        const updated = await storage.patchMetadata(
+          req.params.id,
+          async (freshMeta) => ({
+            ...mergeIncoming(freshMeta),
+            ...(await summaryHidingPatch(storage, req.params.id, freshMeta, {
+              ...freshMeta,
+              ...mergeIncoming(freshMeta),
+            })),
+          }),
+          { metadataQueueHeld: true, afterWrite: cancelReplacedAdvancedMemory },
+        );
+        return updated ? normalizeChatForResponse(updated) : updated;
+      }
+      // Rearranging windows or dismissing their hint is a view preference, not new chat activity.
+      const changedKeys = Object.keys(incoming);
+      const viewOnly =
+        changedKeys.length > 0 &&
+        changedKeys.every((key) => key === "windowLayout" || key === "chatSettingsHintDismissed");
+      const updated = await storage.patchMetadata(req.params.id, mergeIncoming, {
+        metadataQueueHeld: true,
+        touchUpdatedAt: !viewOnly,
+        afterWrite: cancelReplacedAdvancedMemory,
+      });
       return updated ? normalizeChatForResponse(updated) : updated;
-    }
-    // Rearranging windows or dismissing their hint is a view preference, not new chat activity.
-    const changedKeys = Object.keys(incoming);
-    const viewOnly =
-      changedKeys.length > 0 &&
-      changedKeys.every((key) => key === "windowLayout" || key === "chatSettingsHintDismissed");
-    const updated = await storage.patchMetadata(req.params.id, incoming, {
-      touchUpdatedAt: !viewOnly,
-      afterWrite: cancelReplacedAdvancedMemory,
     });
-    return updated ? normalizeChatForResponse(updated) : updated;
   });
 
   // Mark a chat as having autonomous messages the user has not viewed yet.
@@ -2370,6 +2439,24 @@ export async function chatsRoutes(app: FastifyInstance) {
     },
   );
 
+  // Setup cancellation is deliberately separate from the unconditional user-confirmed delete route.
+  app.post<{ Params: { id: string } }>("/:id/discard-empty-setup", async (req) => {
+    const { initialChat } = z
+      .object({
+        initialChat: z.object({
+          id: z.string(),
+          createdAt: z.string(),
+          name: z.string(),
+          mode: z.enum(["conversation", "roleplay", "game"]),
+          connectionId: z.string().nullable(),
+          promptPresetId: z.string().nullable(),
+          metadata: z.record(z.string(), z.unknown()),
+        }),
+      })
+      .parse(req.body);
+    return { deleted: await storage.removeEmptySetupChat(req.params.id, initialChat) };
+  });
+
   // Delete chat
   app.delete<{ Params: { id: string }; Querystring: { force?: string } }>("/:id", async (req, reply) => {
     const force = req.query.force === "true" || req.query.force === "1";
@@ -2705,11 +2792,14 @@ export async function chatsRoutes(app: FastifyInstance) {
       }),
     );
     if (created?.id && input.role === "user") {
-      const chat = await storage.getById(req.params.id);
-      const personaSnapshot = await buildPersonaSnapshotForChat(app, chat);
-      const saved = personaSnapshot
-        ? ((await storage.updateMessageExtra(created.id, { personaSnapshot })) ?? created)
-        : created;
+      const { chat, saved } = await withAvatarFileLifecycleLock(async () => {
+        const chat = await storage.getById(req.params.id);
+        const personaSnapshot = await buildPersonaSnapshotForChat(app, chat);
+        const saved = personaSnapshot
+          ? ((await storage.updateMessageExtra(created.id, { personaSnapshot })) ?? created)
+          : created;
+        return { chat, saved };
+      });
       const memory = normalizeAdvancedMemorySettings(parseExtra(chat?.metadata).advancedMemory);
       if (chat?.mode !== "roleplay" || !memory.enabled || !memory.autoMessageVisibility) return saved;
       // Your message is decided once, when you post it, even if no reply follows (#7349).
@@ -2997,22 +3087,24 @@ export async function chatsRoutes(app: FastifyInstance) {
     if (chat.personaCharacterId && !(await isValidCharacterIdentity(app.db, chat.personaCharacterId))) {
       return reply.status(400).send({ error: "Selected character identity is invalid or unavailable." });
     }
-    const targetSnapshot = await buildPersonaSnapshotForChat(app, chat);
-    if (!targetSnapshot) {
-      return reply.status(400).send({ error: "Select a persona before updating historical messages." });
-    }
+    return withAvatarFileLifecycleLock(async () => {
+      const targetSnapshot = await buildPersonaSnapshotForChat(app, chat);
+      if (!targetSnapshot) {
+        return reply.status(400).send({ error: "Select a persona before updating historical messages." });
+      }
 
-    const result = await storage.reassignMessagePersonaSnapshots(
-      req.params.chatId,
-      {
-        scope,
-        sourcePersonaId,
-        sourcePersonaSource,
-      },
-      targetSnapshot,
-    );
+      const result = await storage.reassignMessagePersonaSnapshots(
+        req.params.chatId,
+        {
+          scope,
+          sourcePersonaId,
+          sourcePersonaSource,
+        },
+        targetSnapshot,
+      );
 
-    return { success: true, updatedCount: result.updatedCount };
+      return { success: true, updatedCount: result.updatedCount };
+    });
   });
 
   // Get game state for a specific message + swipe (does not fall back to latest)
@@ -3636,6 +3728,7 @@ export async function chatsRoutes(app: FastifyInstance) {
             personaDescription = cardPromptText(identity.description);
 
             personaFields = {
+              example: cardPromptText(identity.mesExample),
               personality: cardPromptText(identity.personality),
               scenario: cardPromptText(identity.scenario),
               backstory: cardPromptText(identity.backstory),
@@ -3667,7 +3760,10 @@ export async function chatsRoutes(app: FastifyInstance) {
                 isSceneChat: chatMeta.sceneStatus === "active",
                 chatParameters: chatMeta.chatParameters,
                 baseReasoningEffort:
-                  preset && chatMode !== "conversation" && chatMode !== "game"
+                  preset &&
+                  !isStockMarinaraUniversalPreset(preset) &&
+                  chatMode !== "conversation" &&
+                  chatMode !== "game"
                     ? (parsePresetParameters(preset.parameters).reasoningEffort ?? null)
                     : DEFAULT_GENERATION_PARAMS.reasoningEffort,
               })
@@ -4020,7 +4116,7 @@ export async function chatsRoutes(app: FastifyInstance) {
                   individual: normalizeGroupChatMode(chatMeta.groupChatMode) === "individual",
                   impersonate: false,
                   narratorCharacterId: normalizeAdvancedMemorySettings(chatMeta.advancedMemory).narratorCharacterId,
-                  ...(await resolveCharacterMacroData(app.db, assistantCharacterIds)),
+                  ...(await resolveCharacterMacroData(app.db, assistantCharacterIds, chat.id)),
                 })
               : undefined,
             enableAgents: chatMeta.enableAgents === true,
@@ -4094,7 +4190,7 @@ export async function chatsRoutes(app: FastifyInstance) {
 
           // Character info fallback
           for (const cid of assistantCharacterIds) {
-            const charRow = await charStore.getById(cid);
+            const charRow = await charStore.getById(cid, chat.id);
             if (!charRow) continue;
             const charData = JSON.parse(charRow.data as string);
             const charName = charData.name ?? "Unknown";
@@ -4214,6 +4310,40 @@ export async function chatsRoutes(app: FastifyInstance) {
                 fieldParts.push(
                   wrapContent(resolvePromptMacros(personaFields.appearance), "appearance", wrapFormat, 2),
                 );
+              // Use actual resolved leaves, not raw preset references: disabled or
+              // unselected branches must still receive the fallback.
+              // ponytail: whitespace/case matching covers wrappers and case macros;
+              // other content transforms would need emitted-field provenance.
+              const normalizedContent = allContent
+                .split("\n")
+                .map((line) => line.trim())
+                .join("\n")
+                .normalize("NFC")
+                .toLowerCase()
+                .toUpperCase()
+                .normalize("NFC");
+              const exampleAlreadyInPrompt = (example: string) => {
+                const normalizedExample = example
+                  .split("\n")
+                  .map((line) => line.trim())
+                  .join("\n")
+                  .trim()
+                  .normalize("NFC")
+                  .toLowerCase()
+                  .toUpperCase()
+                  .normalize("NFC");
+                return !!normalizedExample && normalizedContent.includes(normalizedExample);
+              };
+              const hasEmittedPersonaExample = assembled.resolvedPersonaExamples.some(exampleAlreadyInPrompt);
+              if (!hasEmittedPersonaExample) {
+                const resolvedPersonaExample = resolveMacros(personaFields.example ?? "", {
+                  ...promptMacroContext,
+                  variables: assembled.macroVariables,
+                  agentData: assembled.macroAgentData,
+                });
+                if (resolvedPersonaExample && !exampleAlreadyInPrompt(resolvedPersonaExample))
+                  fieldParts.push(wrapContent(resolvedPersonaExample, "example_dialogue", wrapFormat, 2));
+              }
               if (personaFields.scenario && !alreadyInPrompt(personaFields.scenario))
                 fieldParts.push(wrapContent(resolvePromptMacros(personaFields.scenario), "scenario", wrapFormat, 2));
               // Include enabled RPG attributes
@@ -4563,6 +4693,7 @@ export async function chatsRoutes(app: FastifyInstance) {
     "geminiParts",
     "generationInfo",
     "generationReplay",
+    "lorebookGenerationTriggers",
     "lorebookScan",
   ]);
 

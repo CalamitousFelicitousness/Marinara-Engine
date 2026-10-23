@@ -606,6 +606,7 @@ function hashCombatVoiceKey(value: string): string {
 function buildCombatVoiceConfigSignature(config?: TTSConfig | null): string {
   if (!config) return "combat-tts:none";
   return [
+    config.connectionId,
     config.source,
     config.baseUrl,
     config.model,
@@ -1826,7 +1827,6 @@ export function GameCombatUI({
   const aiControls = (
     <CombatAiControls
       party={party}
-      enemies={enemies}
       defaultController="ai"
       // A ruleset fight has no queued orders and lets anybody be handed over at any point, so the
       // only thing that locks the toggle is a step already on its way to the server.

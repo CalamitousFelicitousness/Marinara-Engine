@@ -1,4 +1,7 @@
+import { partialInput } from "@marinara-engine/shared";
 import { resolveDecisionConnection } from "../services/decision/decision-connection.js";
+import { migrateGenerativeAudioConnections } from "../services/connections/generative-audio-connection-migration.js";
+import { validateSunoMusicCallback } from "../services/audio/generative-audio-providers.js";
 import { askNoulQuestions } from "../services/decision/system-one.client.js";
 import { connectionChatTarget, probeDecisionSlot } from "../services/decision/sidecar-decision.backend.js";
 import {
@@ -125,6 +128,26 @@ const DEFAULT_ATLAS_CLOUD_VIDEO_MODEL = "google/veo3.1/text-to-video";
 const DEFAULT_ATLAS_CLOUD_VIDEO_BASE_URL = "https://api.atlascloud.ai/api/v1";
 const DEFAULT_SEEDANCE_VIDEO_MODEL = "seedance-2-0";
 const DEFAULT_SEEDANCE_VIDEO_BASE_URL = "https://api.seedance2.ai";
+
+async function generativeAudioConnectionError(connection: {
+  provider: string;
+  audioGenerationSource?: string | null;
+  audioGenerationCallbackUrl?: string | null;
+  audioMusic?: boolean | string;
+}): Promise<string | null> {
+  if (
+    connection.provider !== "audio_generation" ||
+    connection.audioGenerationSource !== "sunoapi" ||
+    (connection.audioMusic !== true && connection.audioMusic !== "true")
+  )
+    return null;
+  try {
+    await validateSunoMusicCallback(connection.audioGenerationCallbackUrl);
+    return null;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -469,6 +492,14 @@ function knownStabilityImageModels() {
 
 export async function connectionsRoutes(app: FastifyInstance) {
   const storage = createConnectionsStorage(app.db);
+  const migrateLegacyAudio = async (provider?: string) => {
+    if (provider !== "audio") return;
+    try {
+      await migrateGenerativeAudioConnections(app.db);
+    } catch (error) {
+      logger.warn(error, "[migration] Connection saved; deferring its optional music and sound-effect split");
+    }
+  };
   const maskConnection = <T extends { apiKeyEncrypted?: unknown; managementTokenEncrypted?: unknown } | null>(
     conn: T,
   ): T =>
@@ -529,25 +560,28 @@ export async function connectionsRoutes(app: FastifyInstance) {
 
   app.post("/", async (req, reply) => {
     const input = createConnectionSchema.parse(req.body);
-    const validationError = nanoGptVideoConnectionError(input);
+    const validationError = nanoGptVideoConnectionError(input) || (await generativeAudioConnectionError(input));
     if (validationError) return reply.status(400).send({ error: validationError });
     return withLongTermMemoryEmbeddingChange(app.db, reply, async () => {
       const created = await storage.create(input);
+      await migrateLegacyAudio(created?.provider);
       resetMemoryRecallVectorizerCache();
-      return maskConnection(created);
+      return maskConnection(created ? await storage.getById(created.id) : null);
     });
   });
 
   app.patch<{ Params: { id: string } }>("/:id", async (req, reply) => {
-    const data = createConnectionSchema.partial().parse(req.body);
+    const data = partialInput(createConnectionSchema).parse(req.body);
     const current = await storage.getById(req.params.id);
     if (!current) return reply.status(404).send({ error: "Connection not found" });
-    const validationError = nanoGptVideoConnectionError({ ...current, ...data });
+    const merged = { ...current, ...data };
+    const validationError = nanoGptVideoConnectionError(merged) || (await generativeAudioConnectionError(merged));
     if (validationError) return reply.status(400).send({ error: validationError });
     return withLongTermMemoryEmbeddingChange(app.db, reply, async () => {
       const updated = await storage.update(req.params.id, data);
+      await migrateLegacyAudio(updated?.provider);
       resetMemoryRecallVectorizerCache();
-      return maskConnection(updated);
+      return maskConnection(updated ? await storage.getById(updated.id) : null);
     });
   });
 
@@ -585,7 +619,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
     }
     let params: Record<string, unknown> | null = null;
     if (raw !== null) {
-      const parsed = generationParametersSchema.partial().safeParse(raw);
+      const parsed = partialInput(generationParametersSchema).safeParse(raw);
       if (!parsed.success) {
         return reply.status(400).send({
           error: "Invalid generation parameters",
@@ -641,6 +675,11 @@ export async function connectionsRoutes(app: FastifyInstance) {
   app.post<{ Params: { id: string } }>("/:id/test", async (req, reply) => {
     const conn = await storage.getWithKey(req.params.id);
     if (!conn) return reply.status(404).send({ error: "Connection not found" });
+    if (conn.provider === "audio_generation") {
+      return reply.status(400).send({
+        error: "Test this connection by generating audio in a mode. No chat or model-list test is supported.",
+      });
+    }
 
     const requestDebug = readDebugMode(req.body);
     const debugLog = (message: string, ...args: any[]) => logDebugOverride(requestDebug, message, ...args);
@@ -1524,6 +1563,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
   app.get<{ Params: { id: string }; Querystring: { refresh?: string } }>("/:id/models", async (req, reply) => {
     const conn = await storage.getWithKey(req.params.id);
     if (!conn) return reply.status(404).send({ error: "Connection not found" });
+    if (conn.provider === "audio_generation") return { models: [] };
     const savesList = connectionSavesModelList(conn.provider);
     if (savesList && req.query.refresh !== "true") {
       const saved = readSavedModelList(conn);
@@ -1860,7 +1900,11 @@ export async function connectionsRoutes(app: FastifyInstance) {
     const conn = await storage.getWithKey(req.params.id);
     if (!conn) return reply.status(404).send({ error: "Connection not found" });
 
-    if (conn.provider === "image_generation" || conn.provider === "video_generation") {
+    if (
+      conn.provider === "image_generation" ||
+      conn.provider === "video_generation" ||
+      conn.provider === "audio_generation"
+    ) {
       return reply.status(400).send({ error: "This provider does not support chat test messages." });
     }
 

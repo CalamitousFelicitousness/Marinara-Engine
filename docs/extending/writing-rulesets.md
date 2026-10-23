@@ -19,7 +19,7 @@ All five are described in full under [Resolution kinds](#resolution-kinds).
 
 A mechanic that does not fit these shapes cannot be written in a ruleset file. Opposed pools are one example. Each of those needs a new resolution kind inside the Engine, which is a code contribution with tests, not a JSON file. If your system needs one, open a feature request on the Engine repository and describe the mechanic with a few worked rolls. Those worked rolls become the tests.
 
-Game Mode can resolve a fight using Marinara's own combat or your ruleset's rules. An optional `battle` block lends Marinara's combat the numbers on your character sheets: see [Battles](#battles-lending-the-sheet-to-marinaras-combat). An optional `combat` block instead defines how the ruleset resolves the fight: see [Combat](#combat-a-fight-your-own-rules-resolve). The Engine plays those rules today. The game's Combat Preference selects the Classic presentation or, when the ruleset defines distance, a Tactical battlefield.
+Game Mode can resolve a fight using Marinara's own combat or your ruleset's rules. An optional `battle` block lends Marinara's combat the numbers on your character sheets: see [Battles](#battles-lending-the-sheet-to-marinaras-combat). An optional `combat` block instead defines how the ruleset resolves the fight: see [Combat](#combat-a-fight-your-own-rules-resolve). The Engine plays those rules today. The game's Combat Preference selects the Classic presentation or, when the ruleset defines distance, a Tactical battlefield. A ruleset may limit which of these its games play with `combat.styles` (see [Which styles a game may play](#combat-a-fight-your-own-rules-resolve)).
 
 ## Quickstart
 
@@ -1203,6 +1203,23 @@ Dice spent on a rest (Capability API 1.335). A rest may say `"dice": {"pool": "h
 Rest dice over several pools (Capability API 1.337). A rest's `"dice"` may be a list, one entry per pool, each with its own `die`, `add`, `heals` and `extra`: `[{"pool": "hit_dice_d10", "die": {"const": 10}, ...}, {"pool": "hit_dice_d6", "die": {"const": 6}, ...}]`, so a fighter 1 / wizard 1 spends a d10 and a d6. `[sheet: op="rest" rest="short" dice="N" pool="hit_dice_d6"]` spends from that pool only; without `pool` the dice come from the first listed pool that has any, then the next, and too few in all is refused with nothing spent. The extra die (Song of Rest) is the first entry's that has one, rolled once for the whole spend, and it heals what the first pool spent from heals; it comes even when only a later pool pays. In a game, a rest's dice read what each character carries, so an `itemStat` in `add` or in the extra die's `add` counts: Pell's Teapot, `{"itemStat": {"stat": "song_of_rest_add", "from": "carried", "pick": "max", "default": 0}}`. A ruleset with a list here needs Capability API 1.337.
 
 Icons (Capability API 1.338). A catalog entry and a sheet condition may name their icon, `"icon": "ic_poison_cloud"`: a tile of the game's icons pack (a board pack of kind `icons`; see packages/server/src/assets/board-packs/README.md). Without one, the Engine looks for the derived name: a condition `ic_cond_<id>`, an item `ic_item_<entry id>` (or `ic_item_<name>` for one the Game Master invented), any other catalog entry `ic_<catalog id>_<entry id>` (`ic_spells_fireball`), hyphens as `_`. Without either, today's letter or text is shown. A ruleset that names an icon needs Capability API 1.338.
+
+How the fight screen shows your ruleset (Capability API 1.375). On a board, the combat pane marks each budget with a small round pip: a letter on a colour, filled while the budget is still there to spend. A budget may name both, `"short": "A"` (one or two letters) and `"tone"`, one of `rose`, `amber`, `violet`, `teal`, `sky`, `lime`, `orange` and `slate`; without them the pip takes the first letter of the budget's label and a tone by its place in the list, which gives 5e's Action, Bonus action and Reaction A, B and R in rose, amber and violet. `combat.display` says the rest: `"defense": {"short": "AC"}` heads the turn order's defense column (up to six letters; without it a short label is kept and a longer one becomes its initials, so "Armor Class" reads "AC"), and `"hide": true` leaves the column out for a ruleset whose defense is no single number worth a column. `"pools": ["slots_1", "slots_2", "ki"]` lists the sheet pools shown under the turn in hand, in that order, as dots (spell slots by level, ki). Each must be a pool `sheet.live.pools` declares, named once; a pool a list's rows make is refused. Without it the pools the party's actions spend are shown, in the order they are spent. A ruleset using `short`, `tone` or `combat.display` needs Capability API 1.375.
+
+Your own words on the sheet, the menu and the cards (Capability API 1.378). Each of these is optional, and the Engine's own wording stands wherever you leave one out:
+
+- A pool may say what one of it is called and what more than one are, `"unit": "3rd-level slot"` and `"units": "3rd-level slots"`, so a cost reads "1 3rd-level slot" or "2 3rd-level slots" and paying a spell up reads "Use 1 2nd-level slot". Without them a cost counts the pool by its label. A cost paid out of a pool named the same as the option itself (Action Surge on Action Surge's button) is not printed, since the button already says it.
+- A list may say how a player reads it, `"display": {"tab": "Spells", "by": {"column": "level", "labels": ["Cantrips", "1st level", "2nd level"]}, "mark": "prepared"}`. `tab` names the sheet tab it shows on. `by` splits its rows by a number column, one heading per value from 0 up (`labels[0]` for 0, at most 21 labels; a value past the last label is headed by its number on the sheet, and sits under the tab's name alone on the menu), and must name a number column. `mark` names a yes-or-no column shown as a tick, and must name one. Abilities a fight gives from the list's rows sit under the tab's name on the combat menu, split the same way ("Spells: Cantrips", "Spells: 1st level"), in place of the kind's own heading.
+- A live text field may be hidden, `"hideWhen"`, by a field as a pool is, or by a derived value: `{"derived": "knows_concentration", "equals": 0}` (one of `equals`, `notEquals` or `in`). Only a text field may be hidden by a derived value, since nothing the sheet works out reads one.
+- A sheet condition may say `"pickable": false`: the sheet's "Add condition" picker leaves it out, while play, commands and the Game Master still put it on and take it off. For a spell's or an item's own state.
+- A track that is not a wound track may say `"showWhenSet": true`: off the sheet while it stands where it starts, shown once play or the Game Master moves it.
+- An item toggle may name its two moves, `"toggle": {"onLabel": "Lower the hood", "offLabel": "Raise the hood"}`, which the menu says in place of "Turn on" and the item's name.
+- An item use may name itself, `"use": {"title": "Scatter ball bearings"}`, said on the menu in place of the item's name, with its count left still beside it.
+- A combat modifier may say what it does, `"label": "advantage on saves against being charmed"`, which a card prints in place of the phrase the Engine composes from the rest.
+- A derived value that is a bonus may say `"signed": true`, and the sheet shows it with its sign: a spell attack of "+7", where it would read "7".
+- A creature trait's text may run to 1200 letters, where it was 400.
+
+A ruleset using any of these, or a creature trait over 400 letters, needs Capability API 1.378.
 
 A list of lair actions for a broken concentration (Capability API 1.336). `"brokenNextLair"` may be a list of its own lair actions, each once, instead of one: `["shelves_lean_north", "shelves_lean_south"]`. Once that concentration is broken, the next lair action is one of those and no other, whatever it took the round before, and whoever runs the creature picks which. A creature the Engine runs takes the one that would catch the most of its foes; between equal ones, it weighs them as it weighs anything else. Once taken, the choice is free again. A ruleset with a list here needs Capability API 1.336.
 
@@ -3930,6 +3947,27 @@ player's game is set to the Tactical combat style. With the Classic style, or on
 `distance`, the fight is theatre of the mind exactly as it was: anybody can be pointed at anybody,
 and nothing below is read at all.
 
+**Which styles a game may play.** `combat.styles` names the combat styles a game on your ruleset may
+play, by id: `classic`, `tactical`, or a style a client registered (up to 8, each once, and at least
+one of `classic` and `tactical`). Left out,
+every style is offered, as before. A ruleset whose rules need a board (areas, reach, cover, flanking)
+says `"styles": ["tactical"]`: the New Game wizard and the game's settings then offer only Tactical,
+and so its fights always have positions. A game already saved on a style you do not list plays the
+first one you do that the client can draw (the first built-in one you list, on a client without a
+registered style you list), and a game cannot be
+made, or switched in its settings, to a style you leave out. A fight already under way keeps the
+style it began on. The list holds whether or not the combat director is on, so it also narrows
+Marinara's own Classic and Tactical battles on your ruleset. A ruleset using `styles` needs
+Capability API 1.379.
+
+```json
+"combat": {
+  "kind": "attack-vs-defense",
+  "styles": ["tactical"],
+  "distance": { "label": "feet", "perCell": 5 }
+}
+```
+
 **What the player sees.** The board is drawn, with the tactical style's own terrain. Every square is
 a button, reachable with the pointer or the arrow keys, and says what it is, who is on it and what
 the half-made choice makes of it. Walking lights up the squares the menu offered, each carrying its
@@ -3983,6 +4021,14 @@ ground it is over. While it is up:
 Flying onto ground as high as it is, or higher, lands it, as a flier on the ground flies onto a
 cliff. No new key: an Engine before 1.114 keeps
 fliers on the ground, so a package that relies on height declares 1.114.
+
+**In the air** (Capability API 1.354). On any board, whether a flier is in the air is its own: a flier
+with no walk, or with `hover`, starts in the air; one on the ground takes off with the free Take off
+move, by flying up, or by a step only its flight takes (over water, or where flying is cheaper than
+walking), and comes down with the free Land move (only one with a walk) or when it is knocked prone,
+knocked down or held to a speed of nought, unless it hovers. Fly down to the ground keeps it in the
+air at the ground's height until it lands. Its creature art is its flying art while it is in the air.
+Nothing else in the rules reads it yet.
 
 **Reach and range.** A weapon row gets them from `combat.attacks[].reach` and `.range`, each a
 column of that same list or the same number on every row:
@@ -4723,6 +4769,8 @@ Adding things needs nothing more. When a new layout moves a value somewhere else
 ```
 
 The manifest lists `ruleset.json` and each `catalogs/<id>.json` in `contributions.assets.paths` and in `files`, with each one's size and sha256. A ruleset editor such as Pixelforge makes one. **Import agents** → **Game Mode ruleset** takes the file and shows the same review as for a ruleset file, with each catalog and its number of entries. Nothing in it is compressed, so it never holds more than its own size. It is read as data and never installed as a package: it is refused, with the reason, if it holds anything else (another key, any other file, a document that is not strict base64 or not UTF-8 text), if its manifest is more than a ruleset's (any code, permissions or other contributions), if a file is not the one the manifest lists, if a `$comment` is longer than 2,000 characters or `$schema` names anything but the Engine's own schema, or if the ruleset or a catalog does not read. It is filed as `local/<its id>` like a ruleset file, at most 24 MB, with at most 12 catalog files of 2 MB each. A version is its ruleset and its catalogs together, so a changed catalog needs a higher `version` too. Ruleset packages are not accepted as zips.
+
+**Through the official agents catalog.** A ruleset published in the catalog is a ruleset package file of exactly this shape, `<id>.ruleset.json`, never a package zip (Capability API 1.374). Its manifest declares Capability API 1.374 or newer, so an older Engine is never offered it. The Engine reads it with the same reader and checks as a package file you import, holds it to the manifest the catalog lists, and installs it like any catalog package. A catalog ruleset whose artifact is a zip is refused before anything is downloaded; rulesets already installed keep working.
 
 **From a GitHub repository.** If you keep your work in a public GitHub repository, put each ruleset in a `rulesets` folder at the top of the repository, one file per ruleset:
 

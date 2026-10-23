@@ -1,11 +1,12 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { z } from "zod";
+import { partialInput } from "@marinara-engine/shared";
 import { advancedMemorySettingsSchema } from "@marinara-engine/shared";
 import { createAdvancedMemoryService } from "../services/advanced-memory.js";
 import { logger } from "../lib/logger.js";
 
 const operationSchema = z.object({
-  settings: advancedMemorySettingsSchema.partial().optional(),
+  settings: partialInput(advancedMemorySettingsSchema).optional(),
   debugMode: z.boolean().optional(),
   sceneId: z.string().min(1).optional(),
   /** Repair every flagged scene in one run instead of stopping at the first one that needs review. */

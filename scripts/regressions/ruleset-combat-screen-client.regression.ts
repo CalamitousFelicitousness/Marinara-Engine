@@ -480,6 +480,33 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     `what is left of a budget belongs to the status panel, not the log: ${JSON.stringify(printed)}`,
   );
 
+  // The Engine's reasons for its picks are printed only with Debug on, after the step they explain.
+  {
+    const reasoned = [
+      ...swing.events.map((event, index) => ({ seq: index + 1, event: event as DirectedRulesetEvent })),
+      {
+        seq: swing.events.length + 1,
+        event: {
+          type: "reasoning",
+          actorId: "brenna",
+          reasons: [{ why: "approach", targetId: "lurker", sprinted: true }],
+        } as DirectedRulesetEvent,
+      },
+    ];
+    const hidden = rulesetCombatLogLines(reasoned, names, t).map((entry) => entry.text);
+    assert.ok(!hidden.some((text) => text.startsWith("Why ")), "no reasons without Debug");
+    const shown = rulesetCombatLogLines(reasoned, names, t, -1, true).map((entry) => entry.text);
+    assert.equal(shown.at(-1), "Why Brenna did that: nothing in reach, so it sprinted toward Thorn Lurker.");
+    const richView = viewOf(
+      swing.state,
+      reasoned.map((entry) => entry.event),
+    );
+    assert.ok(!rulesetRichLogLines(fiveE, richView, t as never).some((one) => one.reason), "nor on the board's log");
+    const richLast = rulesetRichLogLines(fiveE, richView, t as never, true).at(-1)!;
+    assert.equal(richLast.reason, true, "drawn as an aside");
+    assert.equal(richLast.text, "Why Brenna did that: nothing in reach, so it sprinted toward Thorn Lurker.");
+  }
+
   // Only the lines that are new are handed back, so a screen prints a fight once.
   const all = swing.events.map((event, index) => ({ seq: index + 1, event: event as DirectedRulesetEvent }));
   assert.deepEqual(rulesetCombatLogLines(all, names, t, all.length), []);
@@ -576,7 +603,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   });
   const say = (event: DirectedRulesetEvent) => line(fiveE, state, event);
 
-  const table: Array<[RulesetCombatEvent["type"] | "director", string | null]> = [
+  const table: Array<[RulesetCombatEvent["type"] | "director" | "reasoning", string | null]> = [
     ["initiative", say({ type: "initiative", entries: [{ actorId: "brenna", roll: [12], modifier: 2, total: 14 }] })],
     ["round", say({ type: "round", round: 3 })],
     ["turn", say({ type: "turn", actorId: "brenna", round: 3 })],
@@ -736,6 +763,18 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ["outcome", say({ type: "outcome", outcome: "victory" })],
     ["refused", say({ type: "refused", actorId: "brenna", optionId: "sword", reason: "no-budget" })],
     ["director", say({ type: "director", reason: "ruleset-unavailable", text: "The rules are gone." })],
+    [
+      "reasoning",
+      say({
+        type: "reasoning",
+        actorId: "lurker",
+        reasons: [
+          { why: "finish", targetId: "brenna" },
+          { why: "damage", targetId: "brenna", strength: "heavy" },
+          { why: "walked", cells: 2 },
+        ],
+      }),
+    ],
     // The four a fight on a board adds. The board itself is a later slice; the lines are here so a
     // positioned fight reads as a fight rather than as a gap in the log.
     [
@@ -1205,6 +1244,10 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   assert.equal(printed.get("outcome"), "The fight is won.");
   assert.equal(printed.get("refused"), "Brenna could not do that: They have nothing left to spend on it this turn.");
   assert.equal(printed.get("director"), "The fight stopped here: The rules are gone.");
+  assert.equal(
+    printed.get("reasoning"),
+    "Why Thorn Lurker did that: likely takes Brenna out of the fight; heavy damage to Brenna; walked 2 first to act from there.",
+  );
   assert.equal(printed.get("move"), "Brenna moves to 4, 2 for 3 and has 3 left.");
   assert.equal(printed.get("opportunity"), "Thorn Lurker strikes at Brenna with Barbed claw as they move away.");
   assert.equal(printed.get("cover"), "Thorn Lurker is under cover, which adds 2 for a defense of 15.");

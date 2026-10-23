@@ -142,7 +142,8 @@ try {
         payload: { chatId: chat.id, settings: {} },
       });
       assert.equal(payload!.temperature, 0.27, "encounter helpers inherit connection sampling");
-      assert.equal(payload!.max_tokens, 4096, "encounter helpers inherit connection output size");
+      // The fight's setup asks for at least its own budget, whatever smaller size the connection names.
+      assert.equal(payload!.max_tokens, 12000, "the fight's setup keeps room for its answer");
       assert.equal(payload!.top_p, undefined);
       const invalid = "mp" in pool && "maxMp" in pool && pool.mp! > pool.maxMp!;
       assert.equal(response.statusCode, invalid ? 502 : 200, response.body);

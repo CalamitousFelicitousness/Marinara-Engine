@@ -6,6 +6,7 @@ import type { DirectedRulesetView, RulesetDefinition } from "@marinara-engine/sh
 import { useTranslation } from "react-i18next";
 import { rulesetRichLogLines, rulesetWindowLineSeq, type RulesetLogPiece } from "../../lib/ruleset-combat-log-rich";
 import { cn } from "../../lib/utils";
+import { useUIStore } from "../../stores/ui.store";
 
 const PIECE_CLASS: Record<RulesetLogPiece["kind"], string> = {
   text: "",
@@ -27,9 +28,11 @@ export function RulesetCombatLog({
   className?: string;
 }) {
   const { t } = useTranslation();
+  // With Debug on, the Engine's reason for each of its AI's steps follows the step.
+  const debugMode = useUIStore((state) => state.debugMode);
   // Built fresh from the events on every view, as the plain log is, so a fight read back or a
   // language changed mid-battle prints in the language on screen now.
-  const lines = useMemo(() => rulesetRichLogLines(definition, view, t), [definition, view, t]);
+  const lines = useMemo(() => rulesetRichLogLines(definition, view, t, debugMode), [definition, view, t, debugMode]);
   const newestFirst = useMemo(() => [...lines].reverse(), [lines]);
   const asking = rulesetWindowLineSeq(view);
   const box = useRef<HTMLDivElement>(null);
@@ -103,7 +106,10 @@ export function RulesetCombatLog({
                     </span>
                   )}
                 </span>
-                <span className="min-w-0 text-[var(--muted-foreground)]">
+                <span
+                  data-log-reason={line.reason ? "" : undefined}
+                  className={cn("min-w-0 text-[var(--muted-foreground)]", line.reason && "pl-3 text-[0.92em] italic")}
+                >
                   {line.pieces.map((piece, n) => (
                     <span key={n} className={PIECE_CLASS[piece.kind]}>
                       {piece.text}

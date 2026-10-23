@@ -36,6 +36,8 @@ export interface ParsedSheetCommandTag {
   who?: string;
   /** Null when the tag names no op this Engine has, or is missing what that op needs. */
   op: RulesetSheetOp | null;
+  /** The value the Game Master said it leaves, as they wrote it. */
+  claimed?: string;
 }
 
 /** Longest name a `who=` may carry, the same ceiling the check tag uses. */
@@ -87,10 +89,12 @@ export function parseSheetCommandTagBody(body: string): ParsedSheetCommandTag {
   const whoValue = values.get("who")?.trim();
   const who = whoValue ? whoValue.slice(0, MAX_WHO_LENGTH) : undefined;
   const sheet = values.get("sheet");
+  const claimed = values.get("now")?.trim().slice(0, MAX_ATTRIBUTE_LENGTH);
   const parsed: ParsedSheetCommandTag = {
     op: null,
     ...(who ? { who } : {}),
     ...(sheet !== undefined ? { sheet } : {}),
+    ...(claimed ? { claimed } : {}),
   };
   const name = readOpName(values.get("op"));
   if (!name) return parsed;

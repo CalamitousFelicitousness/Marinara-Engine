@@ -1456,6 +1456,23 @@ function advanceBuild(
 /** Apply one command to one character's live state. Pure: the input blob is never touched, and the
  *  result is a new sparse state. A refusal changes nothing, which is what lets the Game Master's
  *  fiction be corrected rather than silently accepted. */
+/** What a pool reads now (`12/32`, with any temporary buffer), as a sheet command's `now` writes it,
+ *  or null for a name that is no one pool. A Game Master's command that claims the value the sheet
+ *  already holds is one the fight or an earlier command already paid. */
+export function rulesetPoolNowText(
+  definition: RulesetDefinition,
+  build: RulesetSheetBuild,
+  stored: unknown,
+  pool: string,
+  items?: ReadonlyArray<RulesetSheetItem>,
+): string | null {
+  const match = findPool(
+    resolveLive(definition, build, readStoredLiveState(definition, build, stored), items).pools,
+    pool,
+  );
+  return "refusal" in match ? null : poolNow(match.pool, match.pool.value, match.pool.temp);
+}
+
 /** The condition held on this sheet that keeps a heal off health (1.261), by its label: any heal
  *  for "cannot-heal", one that is not magical for "cannot-heal-nonmagical". */
 function healKeptOffBy(definition: RulesetDefinition, conditions: readonly string[], magical: boolean): string | null {

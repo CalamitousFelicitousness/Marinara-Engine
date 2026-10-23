@@ -1,5 +1,5 @@
 import { CombatWeatherSummary } from "./CombatWeatherSummary";
-import { useCallback, useEffect, useMemo, useRef, type ComponentProps } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 import { ApiError } from "../../lib/api-client";
 import type {
   CombatDecisionOption,
@@ -78,6 +78,8 @@ export function DirectedCombatUI(props: Props) {
   const nameKinds = useCallback((optionId: string, kinds: string[]) => {
     namedKinds.current = { optionId, kinds };
   }, []);
+  // Leaving ends the fight for good, so it asks once more first, as the menu's own Leave does.
+  const [leaving, setLeaving] = useState(false);
   if (loading || !s)
     return (
       <div className="flex h-full items-center justify-center p-4 text-[var(--foreground)]" role="status">
@@ -95,10 +97,14 @@ export function DirectedCombatUI(props: Props) {
             it, nothing changed, and the story goes on. */}
         {error && (
           <button
-            onClick={() => props.onCombatEnd("flee", { outcome: "flee", rounds: 0, party: [], enemies: [] })}
+            onClick={() =>
+              leaving
+                ? props.onCombatEnd("flee", { outcome: "flee", rounds: 0, party: [], enemies: [] })
+                : setLeaving(true)
+            }
             className="ml-3 min-h-11 px-3"
           >
-            {t("game.combat.director.leave")}
+            {t(leaving ? "game.combat.ruleset.menu.fleeConfirm" : "game.combat.director.leave")}
           </button>
         )}
       </div>

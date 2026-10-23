@@ -4623,6 +4623,8 @@ export interface RulesetCombatStep {
 export interface RulesetEncounterSummary {
   outcome: RulesetEncounterOutcome;
   rounds: number;
+  /** How many fighters have begun a turn this fight. */
+  turns?: number;
   party: Array<{
     id: string;
     name: string;

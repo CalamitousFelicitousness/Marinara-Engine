@@ -707,6 +707,7 @@ function formationTargets(
   partyCount: number,
   enemyCount: number,
   rng: () => number,
+  partyTogether = false,
 ): FormationTargets {
   const W = grid.width;
   const H = grid.height;
@@ -790,8 +791,18 @@ function formationTargets(
 
     case "line":
     default: {
-      // Legacy: party on the left strip, enemies on the right strip.
-      const party = columnTargets(grid, [0, 1].slice(0, SPAWN_COLS), partyCount);
+      // Legacy: party on the left strip, enemies on the right strip. A party kept together stands
+      // around the strip's middle instead of spread to its corners.
+      const party = partyTogether
+        ? Array.from({ length: partyCount }, (_, i) => {
+            const rows = Math.ceil(partyCount / SPAWN_COLS);
+            const slot = Math.floor(i / SPAWN_COLS);
+            return {
+              x: clamp(i % SPAWN_COLS, 0, W - 1),
+              y: clamp(Math.floor(H / 2) - Math.floor(rows / 2) + slot, 0, H - 1),
+            };
+          })
+        : columnTargets(grid, [0, 1].slice(0, SPAWN_COLS), partyCount);
       const enemies = columnTargets(grid, [W - 1, W - 2].slice(0, SPAWN_COLS), enemyCount);
       return { party, enemies };
     }
@@ -872,6 +883,9 @@ export function placeSpawns(
   formation: TacticalFormation = "line",
   rng: () => number = () => 0,
   protectedTiles: ReadonlySet<string> = new Set(),
+  /** The party starts together around its strip's middle, not spread to its corners (a ruleset
+   *  fight's, re-test 2026-10-23: a rogue's first turn spent dashing nine squares to the leader). */
+  partyTogether = false,
 ): boolean {
   const occupied = new Set<string>();
   const party = units.filter((u) => u.side === "party");
@@ -879,7 +893,7 @@ export function placeSpawns(
   // Bosses claim their spot first so they anchor the back of the enemy group.
   const bossFirst = [...enemies].sort((a, b) => Number(!!b.isBoss) - Number(!!a.isBoss));
 
-  const targets = formationTargets(grid, formation, party.length, bossFirst.length, rng);
+  const targets = formationTargets(grid, formation, party.length, bossFirst.length, rng, partyTogether);
 
   const lastPartyTarget = targets.party[targets.party.length - 1] ?? { x: 0, y: Math.floor(grid.height / 2) };
   party.forEach((u, i) => {

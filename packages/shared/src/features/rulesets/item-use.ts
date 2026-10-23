@@ -234,8 +234,10 @@ export function useRulesetItemOutsideFight(input: {
       (bounds.atMost === undefined || value <= bounds.atMost)
     );
   };
+  // What they carry counts on the sheet the use writes to (an Amulet of Health's maximum).
+  const carried = rulesetSheetItems({ itemOf: input.itemOf }, stacks, stack.holder);
   const write = (op: RulesetSheetOp): string | undefined => {
-    const result = applyRulesetSheetOp(definition, user.build, live, op);
+    const result = applyRulesetSheetOp(definition, user.build, live, op, undefined, carried);
     if (!result.ok) return undefined;
     live = result.live;
     return result.now;

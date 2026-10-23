@@ -671,7 +671,14 @@ function buildRulesetBoard(
   if (!generated.ok) return { error: generated.error };
   const { grid } = generated;
   if (
-    !placeSpawns(grid, stands, normalizeTacticalFormation(input.formation ?? undefined), rng, generated.protectedTiles)
+    !placeSpawns(
+      grid,
+      stands,
+      normalizeTacticalFormation(input.formation ?? undefined),
+      rng,
+      generated.protectedTiles,
+      true,
+    )
   )
     return { error: "Battlefield features prevent a connected deployment." };
   // A generated board's foothills, read off the tiles as deployment left them (combat C6b).
@@ -1589,6 +1596,8 @@ interface RulesetCandidate {
   /** The harm it is expected to do, before any of it is weighed against health: a blow's average
    *  times its chance to land. */
   expected?: number;
+  /** Whom of the other side it would likely drop, for orders that spare them. */
+  drops?: string[];
 }
 
 /** How many cells a turn is weighed from. The board is small and a turn is short, so this is a
@@ -2701,7 +2710,15 @@ function rulesetCandidatesFrom(
       if (option.heals) {
         // Never on the other side, and never on somebody with nothing to gain by it.
         if (!ally || (health.value >= health.max && !target.down)) continue;
-        candidate.healing = rulesetHealingWorth(average, health) + (target.down ? 1 : 0);
+        // Healing that stops at half their health (Preserve Life) is worth only what it gives below
+        // that (re-test 2026-10-23: a Channel Divinity spent on 2 health).
+        const capped =
+          fallingAction?.sharesHeal === "half"
+            ? { value: health.value, max: Math.max(health.value, Math.floor(health.max / 2)) }
+            : health;
+        if (capped.value >= capped.max && !target.down) continue;
+        candidate.healing =
+          rulesetHealingWorth(average, capped) * (capped.max / Math.max(1, health.max)) + (target.down ? 1 : 0);
       } else if (average > 0) {
         // Never its own side, and never somebody who is already down: the rules let a blow land on
         // them, and a table where every opponent finishes off the dying is not one anybody plays
@@ -2737,6 +2754,12 @@ function rulesetCandidatesFrom(
         candidate.damage = Math.min(2, (average / weighed) * (1 + others.length + again)) * chance;
         candidate.action.expected = average * chance * (1 + others.length + again);
         if (average >= pool) candidate.finish = chance;
+        // Everybody it would likely drop, the others it spreads to included.
+        const dropped = [target, ...others].filter((one) => {
+          const left = rulesetCombatHealth(definition, combat, one);
+          return average >= Math.max(1, left.value + left.temp);
+        });
+        if (dropped.length) candidate.action.drops = dropped.map((one) => one.id);
         // What it puts on them as well (a stunning blow), and the spell it may break by hurting
         // whoever holds one up.
         const rider = rulesetEffectWorth(definition, combat, encounter, actor, fallingAction, target) ?? 0;
@@ -2989,7 +3012,12 @@ export function rulesetEffectWorth(
         (modifier.flat ?? 0) <= 0 ||
         rulesetSideDeals(encounter, target.side, modifier.damageType),
     );
-    each += Math.min(0.3, counted.length * 0.1);
+    // One that only touches ability checks is next to nothing in a fight (re-test 2026-10-23: a cleric
+    // spent six actions on Guidance).
+    each += Math.min(
+      0.3,
+      counted.reduce((sum, modifier) => sum + (modifier.to === "checks" ? 0.02 : 0.1), 0),
+    );
     // An aura it gives off to its own side (5e's Leadership): what it puts on each friend in reach.
     if (!foe) {
       const perCell = combat.distance?.perCell;
@@ -3125,7 +3153,7 @@ function areaCandidates(
   option: RulesetCombatOption,
   standing: { x: number; y: number } | null,
   /** The pool this way of paying spends and the style it is made in, and what that way costs. */
-  way: { payWith?: string; style?: string; mode?: string },
+  way: { payWith?: string; style?: string; mode?: string; option?: RulesetCombatOption },
   price: number,
 ): Array<CombatAiCandidate<RulesetCandidate>> {
   const candidates: Array<CombatAiCandidate<RulesetCandidate>> = [];
@@ -3138,10 +3166,23 @@ function areaCandidates(
   const aims = [...rulesetAimCells(encounter, actor.id, option.id, RULESET_AIM_LIMIT * 4)]
     .sort((left, right) => right.targetIds.length - left.targetIds.length)
     .slice(0, RULESET_AIM_LIMIT);
+  // An alteration that spares its own side for nothing (Sculpt Spells), taken whenever the aim would
+  // catch a friend it can spare (re-test 2026-10-23: an Evoker's Fireball hit the fighter for 23).
+  const action = actor.actions.find((one) => one.id === option.id);
+  const sculpt = option.alters?.find(
+    (offer) => offer.cost === 0 && !offer.budget && ((offer.spares ?? 0) > 0 || offer.sparesByLevel),
+  );
+  const spareable = sculpt
+    ? (sculpt.spares ?? 0) +
+      (sculpt.sparesByLevel && action ? rulesetPaidLevel(definition, actor, action, way.payWith) : 0)
+    : 0;
   for (const aim of aims) {
-    const caught = aim.targetIds
+    const all = aim.targetIds
       .map((id) => rulesetCombatant(encounter, id))
       .filter((target): target is RulesetCombatant => !!target);
+    const mine = all.filter((target) => target.side === actor.side);
+    const spared = sculpt && mine.length > 0 && mine.length <= spareable ? mine.map((one) => one.id) : [];
+    const caught = spared.length ? all.filter((target) => !spared.includes(target.id)) : all;
     const foes = caught.filter((target) => target.side !== actor.side && !target.down);
     const candidate: CombatAiCandidate<RulesetCandidate> = {
       action: {
@@ -3151,6 +3192,9 @@ function areaCandidates(
           targetIds: [],
           at: { x: aim.x, y: aim.y },
           ...paying(way),
+          ...(spared.length
+            ? { alters: [...(way.option?.alterNeeded ? [way.option.alterNeeded] : []), sculpt!.id], spares: spared }
+            : {}),
         },
         option,
         ...(foes[0] ? { targetId: foes[0].id } : {}),
@@ -3217,7 +3261,24 @@ function weighCaught(
   const action = actor.actions.find((one) => one.id === option.id);
   caught = rulesetPoolReaches(definition, combat, actor, action, caught, candidate.action.choice.payWith);
   const foes = caught.filter((target) => target.side !== actor.side && !target.down);
-  const friends = caught.filter((target) => target.side === actor.side);
+  let friends = caught.filter((target) => target.side === actor.side);
+  // A hazard that stays (lamp oil set alight, ball bearings) catches whoever walks into it later, and
+  // its own side is who is fighting beside it (re-test 2026-10-23: the party burnt and tripped on
+  // its own rogue's): a friend within a step of where it lands counts as caught.
+  const at = candidate.action.choice.at;
+  if (at && action?.zone && action.zone.rounds > 0 && action.zone.triggers.length > 0 && !option.heals) {
+    const perCell = definition.combat?.distance?.perCell ?? 1;
+    const reach = Math.ceil((action.area?.size ?? perCell) / perCell);
+    const near = encounter.combatants.filter(
+      (one) =>
+        one.side === actor.side &&
+        rulesetCombatStanding(one) &&
+        !friends.includes(one) &&
+        !!rulesetPositionOf(one) &&
+        rulesetGapFrom(at, 1, one) <= reach,
+    );
+    friends = [...friends, ...near];
+  }
   const worthOn = (target: RulesetCombatant) =>
     rulesetEffectWorth(definition, combat, encounter, actor, action, target);
   const riders = (who: RulesetCombatant[]) => who.reduce((sum, target) => sum + (worthOn(target) ?? 0), 0);
@@ -3276,6 +3337,12 @@ function weighCaught(
     if (hurt > 0 && share < 2 * hurt) return false;
     candidate.damage = Math.max(0, Math.min(2, share - hurt)) * chance;
     if (candidate.damage <= 0) return false;
+    // Whom of the other side it would likely drop, for orders that spare them.
+    const dropped = foes.filter((target) => {
+      const health = rulesetCombatHealth(definition, combat, target);
+      return average >= Math.max(1, health.value + health.temp);
+    });
+    if (dropped.length) candidate.action.drops = dropped.map((target) => target.id);
     // What it puts on those it catches as well, less what it puts on its own (a burst that stuns).
     const rider = riders(foes) - harms(friends);
     if (rider > 0) candidate.setup = Math.min(2, rider) * chance;
@@ -3742,7 +3809,8 @@ function weighChoices(
   if (unit.tactics!.mind === "mindless")
     candidates = mindlessCandidates(encounter, actor, unit.tactics!, candidates, !!menu);
   weighRulesetTeam(definition, state, encounter, actor, candidates, orders);
-  if (orders) weighRulesetOrders(state, encounter, actor, orders, candidates);
+  if (orders) weighRulesetOrders(definition, state, encounter, actor, orders, candidates);
+  weighRulesetDowned(encounter, actor, candidates, orders);
   // An honourable one (combat AI T6) strikes nobody running from it, beaten or down, and fights
   // whoever is fighting it, one on one.
   if (unit.tactics!.adjective === "honourable") {
@@ -4056,12 +4124,7 @@ function rulesetLeashOf(
   actor: RulesetCombatant,
   orders: CombatOrders,
 ): RulesetLeash | undefined {
-  const charge =
-    orders.posture === "protect"
-      ? rulesetCombatant(encounter, orders.protectId!)
-      : orders.posture === "guard"
-        ? rulesetGuardCharge(state, encounter, actor)
-        : undefined;
+  const charge = rulesetChargeOf(state, encounter, actor, orders);
   return charge && charge.id !== actor.id && rulesetCombatStanding(charge) && rulesetPositionOf(charge)
     ? { charge, within: RULESET_LEASH }
     : undefined;
@@ -4072,6 +4135,40 @@ function rulesetLeashOf(
  * the leader is, else the nearest friend with an opponent beside them, so a guard whose leader hangs
  * back goes to the friend fighting alone instead of standing idle at the leader's side.
  */
+/** Whom a companion's orders keep it beside: the friend it protects, the one it guards, and the leader
+ *  it follows until the leader has gone at somebody (re-test 2026-10-23: a rogue on follow dashed ten
+ *  squares into three orcs before the leader had struck anyone). */
+function rulesetChargeOf(
+  state: CombatDirectorState,
+  encounter: RulesetEncounterState,
+  actor: RulesetCombatant,
+  orders: CombatOrders,
+): RulesetCombatant | undefined {
+  if (orders.posture === "protect") return rulesetCombatant(encounter, orders.protectId!);
+  if (orders.posture === "guard") return rulesetGuardCharge(state, encounter, actor);
+  if (orders.posture === "follow" && !rulesetFollowedTarget(state, encounter, actor))
+    return rulesetPartyLeader(state, encounter);
+  return undefined;
+}
+
+/** Whoever the party's leader went at last, still standing, for a companion that follows them. */
+function rulesetFollowedTarget(
+  state: CombatDirectorState,
+  encounter: RulesetEncounterState,
+  actor: RulesetCombatant,
+): string | undefined {
+  const leader = rulesetPartyLeader(state, encounter);
+  if (!leader || leader.id === actor.id) return undefined;
+  for (const { event } of [...(fightOf(state)?.events ?? [])].reverse()) {
+    const by = "sourceId" in event ? event.sourceId : "actorId" in event ? event.actorId : undefined;
+    const at = "targetId" in event ? event.targetId : undefined;
+    if (by !== leader.id || typeof at !== "string") continue;
+    const target = rulesetCombatant(encounter, at);
+    if (target && target.side !== actor.side && rulesetCombatStanding(target)) return target.id;
+  }
+  return undefined;
+}
+
 function rulesetGuardCharge(
   state: CombatDirectorState,
   encounter: RulesetEncounterState,
@@ -4113,37 +4210,33 @@ function rulesetPartyLeader(
  * to walk to while it holds its ground. The weights its orders change are `chooseCombatCandidate`'s.
  */
 function weighRulesetOrders(
+  definition: RulesetDefinition,
   state: CombatDirectorState,
   encounter: RulesetEncounterState,
   actor: RulesetCombatant,
   orders: CombatOrders,
   candidates: Array<CombatAiCandidate<RulesetCandidate>>,
 ): void {
-  const leader = rulesetPartyLeader(state, encounter);
-  const charge =
-    orders.posture === "protect"
-      ? rulesetCombatant(encounter, orders.protectId!)
-      : orders.posture === "guard"
-        ? rulesetGuardCharge(state, encounter, actor)
-        : undefined;
+  const charge = rulesetChargeOf(state, encounter, actor, orders);
   const guarded = charge && charge.id !== actor.id && rulesetCombatStanding(charge) ? charge : undefined;
-  const strength = orders.posture === "protect" ? 0.6 : 0.3;
+  const strength = orders.posture === "protect" ? 1 : 0.3;
+  // Whoever is on the one it protects comes before whoever is on itself (re-test 2026-10-23: a rogue
+  // protecting the wizard stabbed the orc beside him while an ogre clubbed her from 27 to 5).
+  const pressing =
+    orders.posture === "protect" && guarded
+      ? encounter.combatants.some(
+          (foe) =>
+            foe.side !== actor.side &&
+            rulesetCombatStanding(foe) &&
+            !!rulesetPositionOf(foe) &&
+            !!rulesetPositionOf(guarded) &&
+            rulesetGap(foe, guarded) <= 1,
+        )
+      : false;
   const near = (a: RulesetCombatant, b: RulesetCombatant) =>
     !!rulesetPositionOf(a) && !!rulesetPositionOf(b) && rulesetGap(a, b) <= 1;
   // Whoever the leader went at last, still standing.
-  let followed: string | undefined;
-  if (orders.posture === "follow" && leader && leader.id !== actor.id) {
-    for (const { event } of [...(fightOf(state)?.events ?? [])].reverse()) {
-      const by = "sourceId" in event ? event.sourceId : "actorId" in event ? event.actorId : undefined;
-      const at = "targetId" in event ? event.targetId : undefined;
-      if (by !== leader.id || typeof at !== "string") continue;
-      const target = rulesetCombatant(encounter, at);
-      if (target && target.side !== actor.side && rulesetCombatStanding(target)) {
-        followed = target.id;
-        break;
-      }
-    }
-  }
+  const followed = orders.posture === "follow" ? rulesetFollowedTarget(state, encounter, actor) : undefined;
   // Guarding or protecting somebody keeps it on a leash: nothing is worth walking more than three
   // squares from them for, so it never runs off across the board after the first foe it sees. With
   // nothing left, its turn walks back toward them (see `walkTowardsTrouble`).
@@ -4178,6 +4271,7 @@ function weighRulesetOrders(
     let focus = 0;
     if (harms && target!.id === followed) focus += 0.6;
     if (harms && guarded && near(target!, guarded)) focus += strength;
+    else if (harms && pressing) focus -= 0.5;
     if (
       !harms &&
       guarded &&
@@ -4185,17 +4279,95 @@ function weighRulesetOrders(
       ((candidate.healing ?? 0) > 0 || (candidate.support ?? 0) > 0)
     )
       focus += strength * 0.7;
-    if (focus > 0) candidate.focus = (candidate.focus ?? 0) + focus;
-
-    // A blow that would kill: only one in melee by somebody pulling their blows knocks out instead.
-    if (orders.spare && harms && (candidate.finish ?? 0) > 0) {
+    if (focus !== 0) candidate.focus = (candidate.focus ?? 0) + focus;
+  }
+  // Retreating is getting away (re-test 2026-10-23: a wizard on retreat Dodged in a corner five turns
+  // of seven, an ogre beside her, Misty Step in hand): with an opponent beside it, a getaway or a
+  // step through space comes first; with none near, it keeps helping from afar as `back` does rather
+  // than dodging nobody.
+  if (orders.posture === "retreat") {
+    const pressed = encounter.combatants.some(
+      (foe) =>
+        foe.side !== actor.side &&
+        rulesetCombatStanding(foe) &&
+        !!rulesetPositionOf(foe) &&
+        !!rulesetPositionOf(actor) &&
+        rulesetGap(foe, actor) <= 1,
+    );
+    for (const candidate of candidates) {
+      const defensive = rulesetDefensiveName(candidate.action.option);
       const action = actor.actions.find((one) => one.id === candidate.action.option.id);
-      if (!actor.knocksOut || action?.range) {
-        candidate.damage = 0;
-        candidate.finish = 0;
+      const away = defensive === "disengage" || (!!action?.teleport && candidate.action.option.targets.side === "self");
+      if (pressed && away) candidate.focus = (candidate.focus ?? 0) + 1;
+      if (!pressed && defensive === "dodge") {
+        candidate.hold = false;
+        candidate.focus = (candidate.focus ?? 0) - 0.5;
       }
     }
   }
+  // A blow, a spell, an area or an aura that would kill (re-test 2026-10-23: a Fire Bolt, a Fireball
+  // and Spirit Guardians all killed under spare): only one in melee by somebody pulling their blows
+  // knocks out instead. Any of the rest is never taken while something that kills nobody is there: a
+  // knockout, a healthier target, a hold or a Dodge. With nothing else, it is worth no harm.
+  if (orders.spare) {
+    const kills = (candidate: CombatAiCandidate<RulesetCandidate>) => {
+      const target = candidate.targetId ? rulesetCombatant(encounter, candidate.targetId) : undefined;
+      const harms =
+        !!target && target.side !== actor.side && ((candidate.damage ?? 0) > 0 || (candidate.setup ?? 0) > 0);
+      if (!(harms && (candidate.finish ?? 0) > 0) && !candidate.action.drops?.length) return false;
+      const action = actor.actions.find((one) => one.id === candidate.action.option.id);
+      const knocksOut =
+        !!actor.knocksOut &&
+        !action?.range &&
+        !action?.area &&
+        !action?.around &&
+        (candidate.action.drops?.length ?? 1) <= 1;
+      return !knocksOut;
+    };
+    const kind = candidates.filter((candidate) => !kills(candidate));
+    if (kind.length > 0 && kind.length < candidates.length) candidates.splice(0, candidates.length, ...kind);
+    else if (kind.length === 0) {
+      // Everything it could do kills: it ends its turn rather than finish anybody off.
+      const end = rulesetCombatOptions(definition, encounter, actor.id).find((option) => option.kind === "end-turn");
+      if (end)
+        candidates.splice(0, candidates.length, {
+          action: { choice: { actorId: actor.id, optionId: end.id, targetIds: [] }, option: end },
+          hold: true,
+        });
+      else
+        for (const candidate of candidates) {
+          candidate.damage = 0;
+          candidate.finish = 0;
+        }
+    }
+  }
+}
+
+/** What getting a friend back on their feet is worth over anything else it could do. */
+const RULESET_DOWNED_FOCUS = 2;
+
+/**
+ * A friend down and dying comes first (re-test 2026-10-23: a cleric with Healing Word in hand cast
+ * Sacred Flame and swung Spiritual Weapon while the wizard failed a death save): whatever heals one
+ * beats any blow, and under orders to heal first it is all it does while it can.
+ */
+function weighRulesetDowned(
+  encounter: RulesetEncounterState,
+  actor: RulesetCombatant,
+  candidates: Array<CombatAiCandidate<RulesetCandidate>>,
+  orders?: CombatOrders,
+): void {
+  const raises = candidates.filter((candidate) => {
+    if ((candidate.healing ?? 0) <= 0) return false;
+    const ids = candidate.targetId ? [candidate.targetId] : candidate.action.choice.targetIds;
+    return ids.some((id) => {
+      const one = rulesetCombatant(encounter, id);
+      return !!one && one.side === actor.side && one.down && !one.defeated;
+    });
+  });
+  if (raises.length === 0) return;
+  for (const candidate of raises) candidate.focus = (candidate.focus ?? 0) + RULESET_DOWNED_FOCUS;
+  if (orders?.heal) candidates.splice(0, candidates.length, ...raises);
 }
 
 /** Whether a pick is the action or spell an `opens` names: its own id, or the catalog entry it was

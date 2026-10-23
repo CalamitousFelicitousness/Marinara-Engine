@@ -233,6 +233,48 @@ try {
     assert.equal(pick(field(), { posture: "hold", spare: true }, [], frail)?.targetId, "orc", "not when told to spare");
   }
 
+  // ── Spare with nothing but killing shots: it shoots nobody (re-test 2026-10-23) ──
+  {
+    const frail = (encounter: RulesetEncounterState) => {
+      for (const id of ["orc", "goblin"]) {
+        const one = rulesetCombatant(encounter, id)!;
+        one.health = { ...one.health!, value: 3 };
+      }
+    };
+    const spared = pick(field(), { posture: "hold", spare: true }, [], frail);
+    assert.notEqual(spared?.option.id, "bolt", `no killing bolt: ${JSON.stringify(spared?.choice)}`);
+  }
+
+  // ── A friend down comes first, ordered or not (re-test 2026-10-23) ──
+  {
+    const downed = (encounter: RulesetEncounterState) => {
+      const ada = rulesetCombatant(encounter, "ada")!;
+      ada.health = { ...ada.health!, value: 0 };
+      ada.down = true;
+    };
+    const raised = pick(field([bolt, mend]), undefined, [], downed);
+    assert.equal(raised?.option.id, "mend", `it gets Ada up: ${JSON.stringify(raised?.choice)}`);
+    assert.equal(raised?.targetId, "ada");
+  }
+
+  // ── Following a leader who has struck nobody yet, it stays by them (re-test 2026-10-23) ──
+  {
+    const scene = field([smash], {
+      ogre: { side: "enemy", block: block([smash]), at: { x: 15, y: 9 } },
+      orc: { side: "enemy", block: block([smash]), at: { x: 15, y: 0 } },
+      goblin: { side: "enemy", block: block([smash], { health: 20 }), at: { x: 1, y: 9 } },
+    });
+    const picked = pick(scene, { posture: "follow" });
+    const gap = (to: { x: number; y: number }) => Math.max(Math.abs(to.x - 8), Math.abs(to.y - 2));
+    assert.ok(!picked?.to || gap(picked.to) <= 3, `it stays by Ada: ${JSON.stringify(picked?.choice)}`);
+  }
+
+  // ── Retreating with nobody near, it does not Dodge the air (re-test 2026-10-23) ──
+  {
+    const calm = pick(field(), { posture: "retreat" });
+    assert.notEqual(calm?.defensive, "dodge", `no dodge with nobody near: ${JSON.stringify(calm?.choice)}`);
+  }
+
   // ── Hold and retreat ──
   {
     const far = field([smash]);

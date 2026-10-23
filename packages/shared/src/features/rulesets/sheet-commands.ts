@@ -33,6 +33,7 @@ import {
   type RulesetSheetOp,
   type RulesetSheetOpResult,
   rulesetUseHealOutsideFight,
+  rulesetPoolNowText,
 } from "./live-state.js";
 
 /** A priced material a cast used up (1.774): whose, and how many out of which of their stacks. */
@@ -302,7 +303,28 @@ export function applySheetCommandTags(
     if ("refusal" in targets) return record(named, { ok: false, reason: targets.refusal });
 
     const op = parsed.op;
-    const results = targets.cards.map((card) => ({ card, result: applyTo(card, op) }));
+    // Damage or a spend whose `now` is what the sheet already reads was already paid: by the fight
+    // the reply follows, or a command before it. Paying it again would count it twice (a crossbow
+    // hit a fight already took, written again after the fight was left).
+    const paidAlready = (card: SheetCommandCard): RulesetSheetOpResult | null => {
+      if (!parsed.claimed || (op.op !== "damage" && op.op !== "spend") || !("pool" in op)) return null;
+      const reads = rulesetPoolNowText(
+        ctx.definition,
+        card.build,
+        live[normalizeCharacterLookupName(card.name)],
+        op.pool,
+        card.items,
+      );
+      const value = (text: string) => /^(-?\d+)\s*\/\s*(\d+)/.exec(text.trim())?.slice(1, 3).join("/");
+      const said = value(parsed.claimed);
+      if (!reads || !said || value(reads) !== said) return null;
+      return {
+        ok: true,
+        live: (live[normalizeCharacterLookupName(card.name)] ?? {}) as RulesetLiveState,
+        now: `${reads} (already paid)`,
+      };
+    };
+    const results = targets.cards.map((card) => ({ card, result: paidAlready(card) ?? applyTo(card, op) }));
     // One target reads as the value alone; a party tag has to say whose value each one is.
     const many = results.length > 1;
     const applied = results.flatMap((entry) =>

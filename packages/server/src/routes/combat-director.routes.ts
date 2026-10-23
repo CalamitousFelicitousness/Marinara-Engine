@@ -1,6 +1,7 @@
 import { createGameStateStorage, parseStoredRulesetLive } from "../services/storage/game-state.storage.js";
 import {
   normalizeGameDifficulty,
+  DECISION_TIMEOUT_MS,
   combatWeatherSchema,
   applyGameInventoryOps,
   applyRulesetFightItemChanges,
@@ -1248,7 +1249,8 @@ export async function combatDirectorRoutes(
             timer = setTimeout(() => {
               abort.abort();
               reject(new Error("Boss decision timed out."));
-            }, 10000);
+              // Room for a model that thinks before it answers (2026-10-23 re-test: 10 s fell back).
+            }, DECISION_TIMEOUT_MS.thinking);
           }),
         ]);
       } catch (err) {

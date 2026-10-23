@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -121,25 +121,31 @@ export function useDirectedCombat(input: {
   // than landing on a button that was disabled for the moment the poll took ("Let it go by" that
   // needed a second click).
   const polling = mutate.isPending && mutate.variables?.type === "continue";
-  const queued = useRef<Parameters<typeof send>[0] | null>(null);
+  // Every choice waiting, in order: switching several companions to AI while a turn plays keeps each
+  // switch (re-test 2026-10-23: all but the last were lost). A switch or an order sent while
+  // anything is in flight waits too, so it goes out at the fight's newest revision.
+  const queued = useRef<Array<Parameters<typeof send>[0]>>([]);
+  const [waiting, setWaiting] = useState(0);
   const choose = useCallback(
     (command: Parameters<typeof send>[0]) => {
-      if (polling && command.type !== "continue") {
-        queued.current = command;
+      const keeps = command.type === "control" || command.type === "orders";
+      if ((polling && command.type !== "continue") || (keeps && (mutate.isPending || queued.current.length > 0))) {
+        queued.current.push(command);
+        setWaiting(queued.current.length);
         return;
       }
       send(command);
     },
-    [polling, send],
+    [polling, send, mutate.isPending],
   );
   useEffect(() => {
-    if (mutate.isPending || !queued.current) return;
-    const command = queued.current;
-    queued.current = null;
+    if (mutate.isPending || queued.current.length === 0) return;
+    const command = queued.current.shift()!;
+    setWaiting(queued.current.length);
     send(command);
-  }, [mutate.isPending, send]);
+  }, [mutate.isPending, send, waiting]);
   useEffect(() => {
-    if (queued.current) return;
+    if (queued.current.length) return;
     if (!query.data?.window || query.data.window.controller !== "gm" || mutate.isPending || mutate.isError) return;
     const timer = setTimeout(() => send({ type: "continue" }), query.data.window.requestedAt ? 1200 : 0);
     return () => clearTimeout(timer);
@@ -151,14 +157,34 @@ export function useDirectedCombat(input: {
   const ruleset = query.data?.style === "ruleset" ? query.data.ruleset : undefined;
   const autoplay = !!ruleset && !query.data?.window && !query.data?.outcome && ruleset.controller !== "manual";
   useEffect(() => {
-    if (queued.current || !autoplay || mutate.isPending || mutate.isError) return;
+    if (queued.current.length || !autoplay || mutate.isPending || mutate.isError) return;
     if (refusedRevision.current !== null && refusedRevision.current === query.data?.revision) return;
     refusedRevision.current = null;
     const timer = setTimeout(() => send({ type: "continue" }), RULESET_TURN_PAUSE_MS);
     return () => clearTimeout(timer);
   }, [autoplay, query.data?.revision, mutate.isPending, mutate.isError, send]);
+  // A switch or an order shows the moment it is made, while it waits its turn to be sent (re-test
+  // 2026-10-23: "Heal first" took five seconds to tick).
+  const pending = [...(mutate.isPending && mutate.variables ? [mutate.variables] : []), ...queued.current];
+  const session =
+    query.data && pending.some((command) => command.type === "control" || command.type === "orders")
+      ? {
+          ...query.data,
+          party: query.data.party.map((unit) =>
+            pending.reduce((member, command) => {
+              if (command.type === "control" && command.unitId === member.id)
+                return { ...member, controller: command.controller };
+              if (command.type === "orders" && command.unitId === member.id) {
+                const { orders: _orders, ...rest } = member;
+                return command.orders ? { ...rest, orders: command.orders } : rest;
+              }
+              return member;
+            }, unit),
+          ),
+        }
+      : query.data;
   return {
-    session: query.data,
+    session,
     error: query.error ?? mutate.error,
     loading: query.isPending,
     busy: mutate.isPending && !polling,

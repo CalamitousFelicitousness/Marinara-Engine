@@ -18762,6 +18762,9 @@ export function rulesetEncounterSummary(
   return {
     outcome: rulesetEncounterOutcome(state),
     rounds: state.round,
+    // How many have begun a turn, so a fight left in its first round after somebody acted is not
+    // told as one that never began.
+    turns: state.tookTurn?.length ?? 0,
     party: state.combatants
       .filter((combatant) => combatant.side === "party")
       .map((combatant) => {

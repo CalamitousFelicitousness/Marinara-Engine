@@ -1491,6 +1491,7 @@ const labels = (definition: RulesetDefinition, state: RulesetEncounterState, id:
   assert.deepEqual(summary, {
     outcome: "defeat",
     rounds: 1,
+    turns: 0,
     party: [
       {
         id: "brenna",
@@ -1803,6 +1804,7 @@ const labels = (definition: RulesetDefinition, state: RulesetEncounterState, id:
   assert.deepEqual(summary, {
     outcome: "victory",
     rounds: 1,
+    turns: 0,
     party: [
       {
         id: "juno",

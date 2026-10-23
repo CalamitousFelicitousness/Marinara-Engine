@@ -11772,10 +11772,16 @@ function GameSurfaceComponent({
           showInventoryNotification(localizeUi("ui.game.gamesurfacecomponent.lootDropped", { items: lootText }), true);
         }
 
-        // Flee on round 1 means no round actually resolved — phrase it accordingly.
+        // Flee on round 1 means no round actually resolved — phrase it accordingly. A ruleset fight
+        // left during its first round after somebody else had a turn was fought, and its costs stand.
         const rounds = fought ? fought.ruleset.rounds : summary.rounds;
+        const begun = fought ? (fought.ruleset.turns ?? 0) > 1 : false;
         const roundsPhrase =
-          outcome === "flee" && rounds <= 1 ? "before combat began" : `after ${rounds} round${rounds === 1 ? "" : "s"}`;
+          outcome === "flee" && rounds <= 1
+            ? begun
+              ? "during round 1"
+              : "before combat began"
+            : `after ${rounds} round${rounds === 1 ? "" : "s"}`;
 
         const recapLines: string[] = [];
         recapLines.push(`OUTCOME: ${outcome.toUpperCase()} (${roundsPhrase})`);

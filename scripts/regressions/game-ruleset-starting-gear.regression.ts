@@ -415,10 +415,11 @@ try {
     assert.equal(heavy.statusCode, 409);
     assert.equal(heavy.json().reason, "too-heavy");
     assert.deepEqual((await metadataOf(chatId)).gameStartingGearTaken, { "": ["traveller", "pilgrim"] });
-    // Asked again, the calling's gear may be taken a second time, and replaces the first in the marker.
+    // Asked again, the calling's gear may be taken a second time, and the marker keeps both (playtest:
+    // a second calling's kit dropped the first from it).
     const twice = await take({ chatId, selection: { gear: "drifter", choices: [], picks: {} }, again: true });
     assert.equal(twice.statusCode, 200, twice.body);
-    assert.deepEqual(twice.json().taken, { "": ["pilgrim", "drifter"] });
+    assert.deepEqual(twice.json().taken, { "": ["traveller", "pilgrim", "drifter"] });
     // A party member's own bag, by their card's name; nobody else's.
     const juno = await take({ chatId, holder: "juno", selection: { gear: "pilgrim", choices: [], picks: {} } });
     assert.equal(juno.statusCode, 200, juno.body);

@@ -203,7 +203,8 @@ export async function takeGameStartingGear(
     const worn = equips.length > 0 ? applyGameInventoryOps(added.stacks, equips, undefined, book) : added;
     const next: GameStartingGearTaken = {
       ...taken,
-      [bagKey]: [...takenHere.filter((id) => rulesetStartingGearKind(definition, id) !== kind), gear.id],
+      // Taken again, it is taken too: the marker keeps every gear the bag has taken.
+      [bagKey]: [...takenHere.filter((id) => id !== gear.id), gear.id],
     };
     // Written as the bag writes a stack: "Handaxe x2".
     const list = resolution.adds.map((add) => (add.count > 1 ? `${add.name} x${add.count}` : add.name)).join(", ");

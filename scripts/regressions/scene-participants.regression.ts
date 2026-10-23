@@ -154,6 +154,16 @@ try {
     firstMessage: signsText,
     mood: "warm",
   });
+  // A dialogue quote never closed doesn't swallow the whole properties written after it on the line.
+  assert.deepEqual(tryParseJsonRecord('{\n  "firstMessage": "The sign said "Welcome.", mood: "warm",\n  "name": "x"\n}'), {
+    firstMessage: 'The sign said "Welcome.',
+    mood: "warm",
+    name: "x",
+  });
+  assert.deepEqual(
+    tryParseJsonRecord('{\n  "firstMessage": "The sign said "Welcome.", mood: "warm", "tone": "calm"\n}'),
+    { firstMessage: 'The sign said "Welcome.', mood: "warm", tone: "calm" },
+  );
   assert.deepEqual(tryParseJsonRecord(`{\n  "firstMessage": "${signsText.replace("warning", "'warning'")}"\n}`), {
     firstMessage: signsText.replace("warning", "'warning'"),
   });

@@ -101,6 +101,7 @@ import { type ChatToolbarFloatingPanelAnchor } from "./ChatToolbarControls";
 import { PickerDropdown } from "../../features/chat-settings/PickerDropdown";
 import { PersonaHistoryReassignDropdown } from "../../features/chat-settings/sections/PersonaHistoryReassignDropdown";
 import { ChatSettingsSection as Section } from "../../features/chat-settings/ChatSettingsSection";
+import { ChatBranchGraphButton } from "./ChatBranchGraphWindow";
 import { ActiveChatBackgroundPicker } from "../panels/settings/BackgroundPicker";
 import { AdvancedParametersSection } from "../../features/chat-settings/sections/AdvancedParametersSection";
 import { ChatNameSection } from "../../features/chat-settings/sections/ChatNameSection";
@@ -5694,6 +5695,8 @@ export function ChatSettingsDrawer({
               icon={<GitBranch size="0.875rem" />}
               count={branchCount}
               help={localizeUi("chat.settings.branchesHelp")}
+              actions={<ChatBranchGraphButton />}
+              detachedHeaderControls={<ChatBranchGraphButton />}
             >
               <ChatBranchesPanel activeChatId={chat.id} activeChatName={chat.name} groupId={chat.groupId ?? null} />
             </Section>

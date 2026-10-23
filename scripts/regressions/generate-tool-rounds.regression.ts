@@ -259,6 +259,31 @@ for (const chatMode of ["game", "conversation"]) {
   );
   assert.equal((await runToolRounds(ctx, "")).fullResponse, "I kneel. Let me roll for it. It works.");
 }
+for (const lead of ["He reads the result.", " He reads the result."]) {
+  // A round whose streamed words are taken back and written again still starts its own paragraph,
+  // and words that already start with a space get no second break.
+  const { ctx } = setup(
+    [
+      async (_messages, options) => {
+        await options.onToken!("Brannoc kneels.");
+        return { content: "Brannoc kneels.", toolCalls: [rollCall], finishReason: "tool_calls" };
+      },
+      async (_messages, options) => {
+        await options.onToken!(`${lead} [lookup]`);
+        return { content: lead, toolCalls: [{ ...rollCall, id: "r2" }], finishReason: "tool_calls" };
+      },
+      async (_messages, options) => {
+        await options.onToken!("It holds.");
+        return { content: "It holds.", toolCalls: [], finishReason: "stop" };
+      },
+    ],
+    { chatMode: "game" },
+  );
+  const separated = lead.startsWith(" ")
+    ? "Brannoc kneels. He reads the result."
+    : "Brannoc kneels.\n\nHe reads the result.";
+  assert.equal((await runToolRounds(ctx, "")).fullResponse, `${separated}\n\nIt holds.`);
+}
 for (const [before, after] of [
   ["Brannoc kneels — let me get the number.", "Brannoc kneels"],
   ["Brannoc kneels. Let me roll for the healing.", "Brannoc kneels."],
@@ -270,6 +295,10 @@ for (const [before, after] of [
   ["Let me roll it, he says. Brannoc kneels.", "Let me roll it, he says. Brannoc kneels."],
   ["She lets me get the number from the ledger.", "She lets me get the number from the ledger."],
   ["Brannoc kneels in the lamplight", "Brannoc kneels in the lamplight"],
+  [
+    "He rubs his chin. — Let me see the wound, he says, crouching.",
+    "He rubs his chin. — Let me see the wound, he says, crouching.",
+  ],
 ]) {
   assert.equal(stripTrailingToolAnnouncement(before!), after, before);
 }

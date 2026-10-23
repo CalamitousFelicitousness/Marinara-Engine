@@ -2,14 +2,14 @@
 // Game Master planning written out as prose
 // ──────────────────────────────────────────────
 
-/** The labels a paragraph must open with to be considered for lifting at all; on its own a match lifts nothing. */
-const PLANNING_LABEL =
-  /^\s*(?:[*_#>-]+\s*)?(?:opening scene|scene plan|plan|planning|location|setting|goals?|notes?|intent|stakes|mechanics|rolls?|checks?)(?:[*_]+)?\s*:/i;
-/**
- * The labels only a plan uses. An out-of-character answer can open with "Checks:", "Notes:" or "Approach:", so a
- * paragraph is lifted only when one of its own lines carries one of these.
- */
+/** The labels only a plan uses. A run of planning paragraphs is lifted only when one of its lines carries one. */
 const PLAN_ONLY_LABEL = /^\s*(?:[*_#>-]+\s*)?(?:opening scene|scene plan|plan|planning)(?:[*_]+)?\s*:/im;
+/**
+ * The labels a plan's other paragraphs open with, which no out-of-character answer plausibly opens with. "Notes:",
+ * "Checks:" or "Approach:" can open an answer, so a paragraph opening with one of those ends the run.
+ */
+const PLAN_PART_LABEL =
+  /^\s*(?:[*_#>-]+\s*)?(?:opening scene|scene plan|plan|planning|location|setting|goals?|beats?|outline|next steps?)(?:[*_]+)?\s*:/i;
 
 export interface LeadingPlanningExtraction {
   content: string;
@@ -17,28 +17,22 @@ export interface LeadingPlanningExtraction {
 }
 
 /**
- * Lift the plan a Game Master wrote out before its scene ("Opening scene: ... / Plan: ...") off the reply, so it
- * goes with the turn's thinking instead of opening the narration. Only whole paragraphs at the very start are lifted,
- * each only when it opens with a planning label and is unmistakably a plan itself, stopping at the first that is not,
- * and only when something follows them.
+ * Lift the plan a Game Master wrote out before its scene ("Opening scene: ... / Location: ... / Plan: ...") off the
+ * reply, so it goes with the turn's thinking instead of opening the narration. The leading run of paragraphs that
+ * each open with a plan's label is lifted whole, only when one of them names itself a plan and only when something
+ * follows the run; the first paragraph that opens otherwise ends the run and stays with everything behind it.
  */
 export function extractLeadingGmPlanning(text: string): LeadingPlanningExtraction {
   const paragraphs = text.trimStart().split(/(\n\s*\n)/);
   let planned = 0;
   // Paragraphs sit at even indexes, the blank lines between them at odd ones.
-  while (planned < paragraphs.length) {
-    const paragraph = paragraphs[planned] ?? "";
-    if (!PLANNING_LABEL.test(paragraph) || !PLAN_ONLY_LABEL.test(paragraph)) break;
-    planned += 2;
-  }
+  while (planned < paragraphs.length && PLAN_PART_LABEL.test(paragraphs[planned] ?? "")) planned += 2;
   if (planned === 0) return { content: text, planning: "" };
+  const planning = paragraphs
+    .slice(0, planned - 1)
+    .join("")
+    .trim();
   const content = paragraphs.slice(planned).join("").trimStart();
-  if (!content) return { content: text, planning: "" };
-  return {
-    content,
-    planning: paragraphs
-      .slice(0, planned - 1)
-      .join("")
-      .trim(),
-  };
+  if (!content || !PLAN_ONLY_LABEL.test(planning)) return { content: text, planning: "" };
+  return { content, planning };
 }

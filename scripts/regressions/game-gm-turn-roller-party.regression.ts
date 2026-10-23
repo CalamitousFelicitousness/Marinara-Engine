@@ -286,15 +286,34 @@ const party = ["Isolde", "Hessa", "Brannoc", "Pip"];
     extractLeadingGmPlanning("\n\nOpening scene: Stilt Row, dusk.\n\nDusk comes to Hollowmere.").content,
     "Dusk comes to Hollowmere.",
   );
-  // Each paragraph answers for itself: the plan is lifted, the answer after it stays.
+  // An answer behind a plan ends the run: the plan is lifted, the answer stays.
   const mixed = extractLeadingGmPlanning(
     "Plan: let the guard take the coin.\n\nApproach: I'll bribe the gate guard.\n\nThe gate stands.",
   );
   assert.equal(mixed.planning, "Plan: let the guard take the coin.");
   assert.equal(mixed.content, "Approach: I'll bribe the gate guard.\n\nThe gate stands.");
+  // The run lifts whole whether the plan names itself in its first paragraph or a later one.
+  assert.equal(
+    extractLeadingGmPlanning("Location: Stilt Row, dusk.\n\nPlan: bribe the gate guard.\n\nDusk comes to Hollowmere.")
+      .content,
+    "Dusk comes to Hollowmere.",
+  );
+  assert.equal(
+    extractLeadingGmPlanning(
+      "Setting: the marsh.\n\nLocation: Stilt Row, dusk.\n\nPlan: bribe the gate guard.\n\nDusk comes to Hollowmere.",
+    ).content,
+    "Dusk comes to Hollowmere.",
+  );
+  for (const continuation of ["Beats: the bell, then the gate.", "Outline: the bell.", "Next steps: the gate."]) {
+    assert.equal(
+      extractLeadingGmPlanning(`Plan: let the bell ring.\n\n${continuation}\n\nDusk comes to Hollowmere.`).content,
+      "Dusk comes to Hollowmere.",
+      continuation,
+    );
+  }
   for (const narration of [
     "Dusk comes to Hollowmere. Plan: none of them had one.",
-    // An out-of-character answer can open with a label too: only a paragraph that is unmistakably a plan is lifted.
+    // An out-of-character answer can open with a label too: only a run that names itself a plan is lifted, and an answer ends it.
     "Checks: a DC 15 Athletics roll to cross the gap.\n\nThe gap yawns.",
     "Notes: Pip still carries the key.\n\nThe gap yawns.",
     '[Cudge Vantry] [main] [neutral]: "Notes: the bell rang twice."',

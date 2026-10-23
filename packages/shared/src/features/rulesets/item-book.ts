@@ -97,6 +97,8 @@ export interface RulesetItemEffectFact {
   };
   /** Conditions and damage labels, and magic, that narrow this save modifier (1.134). */
   against?: { names: string[]; magic?: true };
+  /** What the ruleset says the modifier does, said in place of the rest (1.733). */
+  label?: string;
   change:
     | { mode: "advantage" | "disadvantage" }
     | { value: string }
@@ -780,6 +782,11 @@ export function rulesetItemEffectFacts(
   }
   for (const modifier of effect.modifiers ?? []) {
     const to = modifier.to;
+    // In the ruleset's own words where it gives them (1.733): "advantage on saves against being charmed".
+    if (modifier.label) {
+      facts.push({ to, names: [], label: modifier.label, change: { effect: modifier.label } });
+      continue;
+    }
     const damage =
       to === "damage" || to === "damage-taken"
         ? {
@@ -871,6 +878,7 @@ function floorLabel(definition: RulesetDefinition, atLeast: number | RulesetValu
 
 /** One effect fact in plain words, as the Game Master reads it: "-1 on checks (Sneak)", "+1 Brawn". */
 export function rulesetItemEffectText(fact: RulesetItemEffectFact): string {
+  if (fact.label) return fact.label;
   const change = fact.change;
   const list = fact.names
     .map((name, index) => (fact.except?.[index]?.length ? `${name} except ${fact.except[index]!.join(" ")}` : name))

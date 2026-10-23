@@ -1620,7 +1620,7 @@ export interface RulesetCombatCost {
   steps: Array<{ op: RulesetSheetOp; label: string }>;
   /** The live state the price leaves behind, or null when there was nothing on a sheet to pay. */
   live: RulesetLiveState | null;
-  cost: Array<{ pool: string; label: string; amount: number }>;
+  cost: Array<{ pool: string; label: string; amount: number; unit?: string; units?: string }>;
   /** What a worn item's charges are left at once it paid (1.519). */
   itemCharges?: { item: number; now: number };
 }
@@ -1671,7 +1671,17 @@ export function planRulesetCombatCost(
     const result = applyRulesetSheetOp(definition, build, live, step.op);
     if (!result.ok) return null;
     live = result.live;
-    if (step.op.op === "spend") cost.push({ pool: step.op.pool, label: step.label, amount: step.op.amount });
+    if (step.op.op === "spend") {
+      // What one of it is called, and more than one (1.733): "1 3rd-level slot".
+      const declared = definition.sheet.live.pools.find((pool) => pool.id === (step.op as { pool: string }).pool);
+      cost.push({
+        pool: step.op.pool,
+        label: step.label,
+        amount: step.op.amount,
+        ...(declared?.unit ? { unit: declared.unit } : {}),
+        ...(declared?.units ? { units: declared.units } : {}),
+      });
+    }
   }
   // A pool the ruleset limits per turn or round cannot pay past what is left of that limit, however
   // much is in it.
@@ -3286,6 +3296,30 @@ function forecastFor(
   return forecast.hitChance !== undefined || forecast.averageDamage !== undefined ? forecast : undefined;
 }
 
+/** What one option is expected to do against each of the ones it may be pointed at, by their ids:
+ *  the same numbers the menu shows for the first, worked out for each, so a player choosing between
+ *  targets can compare them. Nothing for a sequence, whose parts each pick their own, nor for an
+ *  option this actor does not have. */
+export function rulesetForecastsByTarget(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  actorId: string,
+  optionId: string,
+  targetIds: readonly string[],
+): Record<string, NonNullable<RulesetCombatOption["forecast"]>> {
+  const combat = definition.combat;
+  const actor = state.combatants.find((one) => one.id === actorId);
+  const action = actor?.actions.find((one) => one.id === optionId);
+  if (!combat || !actor || !action || action.sequence) return {};
+  const forecasts: Record<string, NonNullable<RulesetCombatOption["forecast"]>> = {};
+  for (const id of targetIds) {
+    const target = state.combatants.find((one) => one.id === id);
+    const forecast = target ? forecastFor(definition, combat, state, actor, action, target) : undefined;
+    if (forecast) forecasts[id] = forecast;
+  }
+  return forecasts;
+}
+
 /** Modifiers that belong to THIS attack hit (Capability API 1.133). Rows and held weapons are
  *  attacks; a single-target stat-block roll is a creature's weapon. Catalog abilities and item
  *  uses are spell/other attacks. A save or an automatic hit never carries these additions. */
@@ -3759,6 +3793,15 @@ function optionFrom(
           },
         }
       : {}),
+    ...(action.save
+      ? {
+          saveAgainst: {
+            label: definition.sheet.saves.find((one) => one.id === action.save!.save)?.label ?? action.save.save,
+            dc: action.save.difficulty,
+            onSuccess: action.save.onSuccess,
+          },
+        }
+      : {}),
     ...(rulesetFreeStrike(actor, action) ? { strikes: actor.strikesLeft } : {}),
     ...(action.heal ? { heals: true } : {}),
     ...(action.concentration ? { concentration: true as const } : {}),
@@ -3776,8 +3819,10 @@ function optionFrom(
                     ? !!actor.knocksOut
                     : !actor.doused,
             ...("knockOut" in action.switches ? { knocksOut: true as const } : {}),
+            ...(action.switchLabels ? { switchLabels: action.switchLabels } : {}),
           }
         : {}),
+    ...(action.menuGroup ? { menuGroup: action.menuGroup } : {}),
     ...(action.restore ? { restores: action.restore.pool } : {}),
     ...(action.again ? { again: true as const } : {}),
     ...(action.sustain ? { sustain: true as const } : {}),

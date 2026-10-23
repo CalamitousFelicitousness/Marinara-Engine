@@ -1248,7 +1248,12 @@ const capabilityPackageManifestBaseSchema = z
 // 1.339: the Game Master's intro message, part of the GM setup and a story's `intro`: defined is the game's
 //        first message exactly, guided only shapes it; an Experience may lock its own.
 // 1.340: a ruleset of up to 512 KB and catalog files of up to 2 MB (256 KB and 1 MB before).
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 732 } as const);
+// 1.733 (upstream 1.377, renumbered when 5e lands): a ruleset's own words on the sheet, menu and cards:
+//        a combat modifier's `label`, a pool's `unit` and `units`, a list's `display` (tab, rows split by a
+//        number column, a tick column), a text field's `hideWhen` by a derived value, a condition's
+//        `pickable: false`, a track's `showWhenSet`, an item toggle's `onLabel` and `offLabel`, an item
+//        use's `title`, a derived value's `signed`, and creature traits to 1200.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 733 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

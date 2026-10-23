@@ -19,10 +19,11 @@ import { rulesetEffectPhrase } from "./RulesetItemPicker";
 import { cn } from "../../lib/utils";
 
 /** The ruleset's own words for what a combatant is (1.168): "Fiend (devil)". */
-function kindLine(kind: { type?: string; tags?: string[] }): string {
+function kindLine(kind: { type?: string; tags?: string[]; alignment?: string }): string {
   const tags = (kind.tags ?? []).join(", ");
-  if (!kind.type) return tags;
-  return tags ? `${kind.type} (${tags})` : kind.type;
+  const what = !kind.type ? tags : tags ? `${kind.type} (${tags})` : kind.type;
+  // Its alignment as the stat block writes it, after what it is: "Humanoid (Goblinoid), neutral evil".
+  return [what, kind.alignment].filter(Boolean).join(", ");
 }
 
 export function RulesetCombatStatus({

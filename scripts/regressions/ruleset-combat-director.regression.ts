@@ -28,6 +28,8 @@ import {
   planRulesetCombatCost,
   rowsFromCatalogEntry,
   RULESET_MOVE_OPTION,
+  RULESET_PASS_OPTION,
+  rulesetActiveConditions,
   rulesetCombatant,
   rulesetCombatRoller,
   rulesetCombatStanding,
@@ -1568,7 +1570,7 @@ console.log(
     } as unknown as RulesetCatalogEntry;
     const shieldRows = rowsFromCatalogEntry("spells", shield).map((row) => row.row);
     const guarded = { ...base, lists: { ...base.lists, spells: [...(base.lists?.spells ?? []), ...shieldRows] } };
-    const hits = { opened: 0, deflected: 0, letGo: 0 };
+    const hits = { opened: 0, deflected: 0, letGo: 0, shownRaised: 0 };
     for (let seed = 1; seed <= 40; seed++) {
       const state = started({
         definition: shielding,
@@ -1586,6 +1588,17 @@ console.log(
         const before = state.rulesetFight!.events.length;
         assert.ok(commandRulesetCombatDirector(shielding, state, { type: "continue" }).ok);
         assert.equal(state.rulesetFight!.encounter.window, undefined, `seed ${seed}: a held hit left open`);
+        // The screen shows the defense an attack is rolled against now: Shield's +5 while it holds.
+        {
+          const encounter = state.rulesetFight!.encounter;
+          const corwin = encounter.combatants.find((one) => one.id === "corwin")!;
+          const up = rulesetActiveConditions(shielding, shielding.combat!, corwin, encounter).some(
+            (source) => source.condition === "shielded",
+          );
+          const shown = view(shielding, state).combatants.find((one) => one.id === "corwin")!.defense;
+          assert.equal(shown, corwin.defense + (up ? 5 : 0), `seed ${seed}: the defense the screen shows`);
+          if (up) hits.shownRaised++;
+        }
         const events = state.rulesetFight!.events.slice(before).map((entry) => entry.event);
         assert.ok(!events.some((event) => event.type === "refused"), `seed ${seed}: an answer the rules refused`);
         for (const [index, event] of events.entries()) {
@@ -1611,6 +1624,56 @@ console.log(
     assert.ok(hits.opened > 0, "hits on a Shield holder the Engine plays were held");
     assert.ok(hits.deflected > 0, "the Engine raised it when it turned the hit aside");
     assert.ok(hits.letGo > 0, "and let a blow it could not stop land");
+    assert.ok(hits.shownRaised > 0, "and the screen showed the raised defense while Shield held");
+
+    // Played by hand, the held hit's answer says what it does: Shield raises the defense by 5, and
+    // says whether that turns the hit aside; the question says what rides on it.
+    let asked = 0;
+    for (let seed = 1; seed <= 40 && asked < 3; seed++) {
+      const state = started({
+        definition: shielding,
+        cards: [card("Corwin", guarded)],
+        partyCatalogs: { spells: [...spellEntries, shield] },
+        party: [{ id: "corwin", name: "Corwin" }],
+        enemies: [
+          { id: "a", name: "Thorn Lurker" },
+          { id: "b", name: "Thorn Lurker" },
+        ],
+        seed,
+      });
+      for (let turn = 0; turn < 10 && !state.outcome; turn++) {
+        const held = state.rulesetFight!.encounter.window;
+        if (held?.trigger.kind === "hit") {
+          const shown = view(shielding, state);
+          const answer = shown.options?.find((option) => option.label === "Shield");
+          if (answer) {
+            asked++;
+            assert.equal(answer.raisesDefense?.to, held.trigger.defense + 5, `seed ${seed}: Shield's raised defense`);
+            assert.equal(
+              answer.raisesDefense?.misses === true,
+              held.trigger.total < held.trigger.defense + 5,
+              `seed ${seed}: whether Shield turns the hit aside`,
+            );
+            assert.ok((shown.window?.stakes ?? 0) > 0, `seed ${seed}: what rides on the hit`);
+          }
+          assert.ok(
+            commandRulesetCombatDirector(shielding, state, {
+              type: "ruleset",
+              optionId: RULESET_PASS_OPTION,
+              targetIds: [],
+            }).ok,
+          );
+          continue;
+        }
+        const options = view(shielding, state).options;
+        const end = options?.find((option) => option.kind === "end-turn");
+        const result = end
+          ? commandRulesetCombatDirector(shielding, state, { type: "ruleset", optionId: end.id, targetIds: [] })
+          : commandRulesetCombatDirector(shielding, state, { type: "continue" });
+        assert.ok(result.ok);
+      }
+    }
+    assert.ok(asked > 0, "a held hit asked the player, with Shield's answer said");
   }
 
   assert.ok(moments.opened > 0, "being hurt opened windows for a party member the Engine plays");

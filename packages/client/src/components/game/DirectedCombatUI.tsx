@@ -13,6 +13,7 @@ import { GameCombatUI } from "./GameCombatUI";
 import { RulesetCombatBoard } from "./RulesetCombatBoard";
 import { RulesetKindsContext } from "./RulesetKindsContext";
 import { RulesetCombatStatus } from "./RulesetCombatStatus";
+import { useCombatScreenStore } from "../../stores/combat-screen.store";
 import { rulesetValueLabel } from "../../lib/ruleset-combat-log";
 import type { RulesetCellChoice } from "../../lib/ruleset-combat-board";
 import { TacticalCombatUI } from "./TacticalCombatUI";
@@ -61,6 +62,13 @@ export function DirectedCombatUI(props: Props) {
     itemEffects: props.combatItemEffects,
   });
   const firstChoice = useRef<HTMLButtonElement>(null);
+  // A fight on screen says so, for the sheet and the accent; it clears as the screen goes.
+  const setRound = useCombatScreenStore((state) => state.setRound);
+  const round = s?.round ?? null;
+  useEffect(() => {
+    setRound(round);
+  }, [round, setRound]);
+  useEffect(() => () => setRound(null), [setRound]);
   useEffect(() => {
     if (s?.window?.controller === "manual") firstChoice.current?.focus();
   }, [s?.window?.id, s?.window?.controller]);
@@ -203,7 +211,6 @@ export function DirectedCombatUI(props: Props) {
                   // A ruleset fight takes a companion's controller at any time but a decision (the
                   // server refuses that one), so having acted this round locks nothing here.
                   party={s.party.map((member) => ({ ...member, hasActed: false }))}
-                  enemies={s.enemies}
                   defaultController="ai"
                   locked={busy}
                   onChange={(unitId, controller) => send({ type: "control", unitId, controller })}

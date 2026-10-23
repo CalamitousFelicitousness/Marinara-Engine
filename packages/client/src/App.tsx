@@ -64,6 +64,7 @@ import { installLongTaskWarner } from "./lib/perf-diagnostics";
 import { getStoreBackLayers } from "./lib/back-layers";
 import { initBackNavigation, syncBackNavigation } from "./lib/back-navigation";
 import { setCustomNotificationSoundUrl } from "./lib/notification-sound";
+import { useCombatScreenStore } from "./stores/combat-screen.store";
 
 const VERSION_CHECK_INTERVAL_MS = 5 * 60_000;
 // Against a frozen host the connection opens but is never answered; without a
@@ -500,6 +501,9 @@ export function App() {
   const appAccentRgbMode = useUIStore((s) => s.appAccentRgbMode);
   const customCursorEnabled = useUIStore((s) => s.customCursorEnabled);
   const reduceAmbientEffects = useReducedAmbientEffects();
+  // In a fight on a board colour is information (whose turn, what may be aimed at), so the accent
+  // holds still while one is on screen rather than drifting as if something changed.
+  const fightOnScreen = useCombatScreenStore((state) => state.round !== null);
   const chatChromeTextColor = useUIStore((s) => s.chatChromeTextColor);
   const hasModalOpen = useUIStore((s) => s.modal !== null);
   const rightPanelOpen = useUIStore((s) => s.rightPanelOpen);
@@ -881,7 +885,10 @@ export function App() {
 
       accentAnimationTimer = window.setTimeout(() => {
         accentAnimationTimer = null;
-        if (!accentAnimationEnabled || !canRunAccentAnimation(reducedMotionQuery, reduceAmbientEffects)) {
+        if (
+          !accentAnimationEnabled ||
+          !canRunAccentAnimation(reducedMotionQuery, reduceAmbientEffects || fightOnScreen)
+        ) {
           stopAccentAnimation();
           return;
         }
@@ -900,7 +907,7 @@ export function App() {
     };
 
     const syncAccentAnimationState = () => {
-      if (accentAnimationEnabled && canRunAccentAnimation(reducedMotionQuery, reduceAmbientEffects)) {
+      if (accentAnimationEnabled && canRunAccentAnimation(reducedMotionQuery, reduceAmbientEffects || fightOnScreen)) {
         if (isTextEntryFocused()) {
           // Root accent ticks invalidate styles across the entire Roleplay
           // surface in Firefox. Freeze the current accent while the user is
@@ -966,6 +973,7 @@ export function App() {
     appAccentRgbMode,
     customCursorEnabled,
     reduceAmbientEffects,
+    fightOnScreen,
     theme,
     themeAccentPulseConfig.enabled,
     themeAccentPulseConfig.source,

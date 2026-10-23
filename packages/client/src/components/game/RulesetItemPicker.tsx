@@ -273,6 +273,8 @@ function rulesetSheetValueWords(value: { what: string; of?: "modifier" | "items"
 
 /** One effect in the player's language, shared by items, sheets and battle details. */
 export function rulesetEffectPhrase(fact: RulesetItemEffectFact, t: TFunction): string {
+  // The ruleset's own words for it (1.733).
+  if (fact.label) return fact.label;
   const names = fact.names
     .map((name, index) =>
       fact.except?.[index]?.length

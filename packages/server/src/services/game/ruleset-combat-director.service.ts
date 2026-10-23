@@ -55,6 +55,9 @@ import {
   rulesetCombatConditions,
   rulesetZoneConditions,
   rulesetCombatHealth,
+  rulesetDefenseAgainst,
+  rulesetForecastsByTarget,
+  rulesetConditionIcons,
   rulesetCombatHide,
   rulesetCombatOptions,
   rulesetCostSteps,
@@ -860,7 +863,7 @@ function conditionsOf(
   definition: RulesetDefinition,
   combatant: RulesetCombatant,
   state?: RulesetEncounterState,
-): Array<{ id: string; label: string; rounds?: number; trait?: true }> {
+): Array<{ id: string; label: string; rounds?: number; trait?: true; icons?: string[] }> {
   const declared = new Map(definition.sheet.live.conditions.map((entry) => [entry.id, entry.label]));
   const tracked = new Map(combatant.tracked.map((entry) => [entry.condition, entry.rounds]));
   // And what a zone they stand in puts on them while they stay (1.179).
@@ -879,11 +882,13 @@ function conditionsOf(
   ]);
   return [...ids].map((id) => {
     const rounds = tracked.get(id);
+    const icons = rulesetConditionIcons(definition, id);
     return {
       id,
       label: declared.get(id) ?? id,
       ...(typeof rounds === "number" ? { rounds } : {}),
       ...(put.has(id) ? {} : { trait: true as const }),
+      ...(icons.length ? { icons } : {}),
     };
   });
 }
@@ -958,7 +963,9 @@ function projectCombatant(
     ...(combatant.creature ? { creature: { ...combatant.creature } } : {}),
     initiative: combatant.initiative,
     health,
-    defense: combatant.defense,
+    // What an attack is rolled against now, with what its conditions add (a Shield's +5) and what a
+    // dropped shield took away: the number the log will say, not the sheet's.
+    defense: rulesetDefenseAgainst(definition, combat, state, combatant, undefined).defense,
     conditions: conditionsOf(definition, combatant, state),
     ...(stances ? { stances } : {}),
     hides: rulesetCombatHide(definition, combatant, state),
@@ -988,8 +995,16 @@ function projectCombatant(
       const kind = rulesetCreatureKind(definition, combatant);
       if (!kinds || (kind.type === undefined && !kind.tags.length)) return {};
       const type = kinds.types.find((one) => one.id === kind.type)?.label;
-      const tags = kind.tags.map((tag) => kinds.tags?.find((one) => one.id === tag)?.label ?? tag);
-      return { kind: { ...(type ? { type } : {}), ...(tags.length ? { tags } : {}) } };
+      // A creature's card names its own tags, and its alignment in its own words beside them: the
+      // tags its alignment names ("Evil", "Neutral") are for the rules to read, not a list to print.
+      const alignment = combatant.block?.alignment?.trim();
+      const shown = combatant.block
+        ? kind.tags.filter((tag) => (combatant.block!.tags ?? []).includes(tag))
+        : kind.tags;
+      const tags = shown.map((tag) => kinds.tags?.find((one) => one.id === tag)?.label ?? tag);
+      return {
+        kind: { ...(type ? { type } : {}), ...(tags.length ? { tags } : {}), ...(alignment ? { alignment } : {}) },
+      };
     })(),
     ...(combatant.concentrating ? { concentrating: combatant.concentrating.label } : {}),
     ...(combatant.block?.tier ? { tier: combatant.block.tier } : {}),
@@ -1063,11 +1078,16 @@ export function rulesetMenu(
             pay: Object.fromEntries(payWith.map((pool) => [pool, rulesetPaidLevel(definition, actor, action, pool)])),
           }
         : undefined;
+    const raisesDefense =
+      inWindow && encounter.window?.trigger.kind === "hit" && option.kind !== "end-turn"
+        ? heldHitAnswer(definition, encounter, actorId, option, targetIds, encounter.window.trigger)
+        : undefined;
     return {
       ...rest,
       ...(payWith ? { payWith, payLabels: rulesetPoolLabels(definition, payWith) } : {}),
       ...(levels ? { levels } : {}),
       targetIds,
+      ...(raisesDefense ? { raisesDefense } : {}),
       ...(aim.length > 0 ? { aim } : {}),
       ...(hitChances && Object.keys(hitChances).length > 0 ? { hitChances } : {}),
       ...(saveChances && Object.keys(saveChances).length > 0 ? { saveChances } : {}),
@@ -1187,6 +1207,55 @@ function rulesetCounterOdds(
       counter: { level: reach, ...(above ? { dc: above.dc + held.level, modifier: above.modifier } : {}) },
     };
   });
+}
+
+type HeldHit = Extract<NonNullable<RulesetEncounterState["window"]>["trigger"], { kind: "hit" }>;
+
+/** What taking one answer to a held hit does to the defense it is checked against: the answer is
+ *  taken on a copy of the fight with every die at its middle, and the defense read again. Nothing
+ *  when it does not raise it (a counter-strike, or a reaction aimed elsewhere). */
+function heldHitAnswer(
+  definition: RulesetDefinition,
+  encounter: RulesetEncounterState,
+  actorId: string,
+  option: RulesetCombatOption,
+  targetIds: string[],
+  hit: HeldHit,
+): { to: number; misses?: true } | undefined {
+  const combat = definition.combat;
+  if (!combat) return undefined;
+  const struckId = hit.targetIds?.[0] ?? actorId;
+  try {
+    const step = applyRulesetCombatChoice(
+      definition,
+      encounter,
+      { actorId, optionId: option.id, targetIds: targetIds.slice(0, Math.max(0, option.targets.count)) },
+      (sides) => Math.ceil(sides / 2),
+    );
+    const struck = rulesetCombatant(step.state, struckId);
+    const source = rulesetCombatant(step.state, hit.sourceId);
+    if (!struck) return undefined;
+    const action = source?.actions.find((one) => one.id === hit.optionId);
+    const to = rulesetDefenseAgainst(definition, combat, step.state, struck, source, action).defense;
+    if (to <= hit.defense) return undefined;
+    return { to, ...(hit.total < to ? { misses: true as const } : {}) };
+  } catch {
+    return undefined;
+  }
+}
+
+/** About how much a held hit's damage comes to against the one it hit. */
+function heldHitStakes(
+  definition: RulesetDefinition,
+  encounter: RulesetEncounterState,
+  hit: HeldHit,
+  /** The one being asked, who was hit where the hit names nobody else. */
+  askedId: string,
+): number | undefined {
+  const struckId = hit.targetIds?.[0] ?? askedId;
+  const damage = rulesetForecastsByTarget(definition, encounter, hit.sourceId, hit.optionId, [struckId])[struckId]
+    ?.averageDamage;
+  return damage !== undefined && Math.round(damage) > 0 ? Math.round(damage) : undefined;
 }
 
 /** What spells called up that strike from a square of their own, standing on the board. */
@@ -1332,7 +1401,11 @@ function rulesetViewOf(definition: RulesetDefinition, state: CombatDirectorState
             ...(rulesetWindowMoment(held.window.trigger) ? { moment: rulesetWindowMoment(held.window.trigger)! } : {}),
             ...("label" in held.window.trigger ? { label: held.window.trigger.label } : {}),
             ...(held.window.trigger.kind === "hit"
-              ? { total: held.window.trigger.total, defense: held.window.trigger.defense }
+              ? ((hit, stakes) => ({
+                  total: hit.total,
+                  defense: hit.defense,
+                  ...(stakes !== undefined ? { stakes } : {}),
+                }))(held.window.trigger, heldHitStakes(definition, encounter, held.window.trigger, held.actorId))
               : {}),
             ...((what) => (what ? { held: what } : {}))(rulesetHeldUse(definition, encounter, held.window)),
             controller: held.controller,

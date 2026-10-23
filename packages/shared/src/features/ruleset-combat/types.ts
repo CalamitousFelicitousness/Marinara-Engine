@@ -39,6 +39,13 @@ export type RulesetCombatRoller = (sides: number) => number;
 export type RulesetCombatSide = "party" | "enemy";
 
 /** Dice plus a flat adjustment, as a fight rolls them. */
+/** A menu heading a ruleset names for abilities from one of its lists (1.733): the list's tab, and
+ *  the heading of the row's place in it, with that place's number to order by. */
+export interface RulesetCombatMenuGroup {
+  label: string;
+  sub?: { label: string; order: number };
+}
+
 export interface RulesetCombatAmount {
   count: number;
   sides: number;
@@ -1589,6 +1596,11 @@ export interface RulesetCombatAction {
     | { shift: { item: number; amount: number } }
     /** A weapon lent by a call taken in hand (1.686), its place in `sheet.items`: a goat's horn. */
     | { take: number };
+  /** What turning it on and off is called (1.733): a hooded lantern's "Raise the hood". */
+  switchLabels?: { on?: string; off?: string };
+  /** The menu heading it sits under, from its list's `display` (1.733): "Spells", and the row's
+   *  split under it, "1st level". */
+  menuGroup?: RulesetCombatMenuGroup;
   /** Other ways to make this attack, chosen with it like an initiative style. */
   modes?: RulesetCombatMode[];
   /** How many one attack shoots when a mode says so, in place of its ammunition's own. */
@@ -4300,6 +4312,9 @@ export interface RulesetCombatOption {
   defies?: { conditions: string[]; cells?: RulesetCombatCell[] };
   /** The holder must pass this save to cancel (1.131). */
   cancelSave?: { save: string; dc: number; label: string };
+  /** The save whoever it lands on makes against it, in the sheet's own words, and what a made one
+   *  leaves: the menu and the aim say it beside the damage. */
+  saveAgainst?: { label: string; dc: number; onSuccess: "none" | "half" | "negates" };
   /** Rolling the sphere its actor is shut in (1.314): `condition` is the sphere's. */
   rollsSealed?: { condition: string; label: string };
   /** Picking up somebody shut in a sphere (1.314), or putting them down (`down`). */
@@ -4326,7 +4341,8 @@ export interface RulesetCombatOption {
   strikes?: number;
   /** `repeat`: the same target may be named more than once, each its own attack (1.305). */
   targets: { side: "enemy" | "ally" | "self" | "any"; count: number; repeat?: true };
-  cost?: Array<{ pool: string; label: string; amount: number }>;
+  /** `unit` and `units` are what one of the pool and more than one are called (1.733). */
+  cost?: Array<{ pool: string; label: string; amount: number; unit?: string; units?: string }>;
   /** Other pools of the same family this could be paid from instead, in declaration order. */
   payWith?: string[];
   /** How many uses may be chosen for it, one up to `max` (1.251): Lay on Hands' points. */
@@ -4413,6 +4429,10 @@ export interface RulesetCombatOption {
   /** The switch pulls its user's blows (1.667): a menu says "knock out" and "strike to kill" rather
    *  than turning the rule's label on and off. */
   knocksOut?: true;
+  /** What turning it on and off is called (1.733), where the ruleset names the two. */
+  switchLabels?: { on?: string; off?: string };
+  /** The menu heading it sits under in place of the kind's own (1.733). */
+  menuGroup?: RulesetCombatMenuGroup;
   /** Putting away a weapon put in hand (1.308), named by `label`. */
   dismiss?: true;
   /** A concentration entry's effect made again (1.310), named by `label`. */

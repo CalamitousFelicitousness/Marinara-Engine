@@ -160,8 +160,9 @@ export interface DirectedRulesetCombatant {
    *  the chance it would land against this combatant, so the number is not a secret to keep. */
   defense: number;
   /** `trait` marks one only what they are or carry keeps on them for the whole fight (a halfling's
-   *  Lucky, a worn ring's): it is listed, never badged, so it does not hide what the fight did. */
-  conditions: Array<{ id: string; label: string; rounds?: number; trait?: true }>;
+   *  Lucky, a worn ring's): it is listed, never badged, so it does not hide what the fight did.
+   *  `icons`: the art icons it may be drawn with (1.338), first found first, for a token's badge. */
+  conditions: Array<{ id: string; label: string; rounds?: number; trait?: true; icons?: string[] }>;
   /** What a standard action left them doing until their next turn: dodging, hidden, disengaged or
    *  with something readied. Not conditions, so a screen names them in its own words. */
   stances?: Array<"dodging" | "hidden" | "disengaged" | "readied">;
@@ -188,12 +189,14 @@ export interface DirectedRulesetCombatant {
   /** What this combatant is holding together, when the ruleset has concentration. */
   concentrating?: string;
   /** A party member's pools their actions spend, as they stand (spell slots, ki): the fight's HUD. */
-  pools?: Array<{ id: string; label: string; value: number; max: number }>;
+  /** `unit` is what one of it is called (1.733). */
+  pools?: Array<{ id: string; label: string; value: number; max: number; unit?: string }>;
   /** An opponent's rung of the threat scale, and the lines the Game Master is shown. */
   tier?: string;
   traits?: Array<{ name: string; text: string }>;
-  /** What it is, in the ruleset's words (1.168): its creature type and tags, read by target tests. */
-  kind?: { type?: string; tags?: string[] };
+  /** What it is, in the ruleset's words (1.168): its creature type and tags, read by target tests.
+   *  A creature's own tags only, with its alignment as it is written (1.733). */
+  kind?: { type?: string; tags?: string[]; alignment?: string };
   /** Active save modifiers narrowed by what the roll is against (1.134). */
   saveModifiers?: RulesetItemEffectFact[];
   /** Where they stand and how many cells of this turn's allowance they have left. Present exactly
@@ -218,6 +221,12 @@ export type DirectedRulesetEvent =
 /** One option of the legal menu, with the combatants it may be pointed at right now. */
 export interface DirectedRulesetOption extends RulesetCombatOption {
   targetIds: string[];
+  /** What it is expected to do against each of `targetIds`, where there is more than one to
+   *  choose between: the target step shows each one's odds. */
+  forecastFor?: Record<string, { hitChance?: number; averageDamage?: number }>;
+  /** For an answer to a held hit: the defense the hit is checked against once it is taken, where it
+   *  raises it, and whether the hit then misses. */
+  raisesDefense?: { to: number; misses?: true };
   /** For an option that lands as a shape: the cells it may be aimed at, and who each aim would
    *  catch, so a board can draw the template before the choice is confirmed. */
   aim?: Array<{ x: number; y: number; targetIds: string[] }>;
@@ -320,6 +329,8 @@ export interface DirectedRulesetView {
     /** For a held hit: what the roll came to, and what it was made against. */
     total?: number;
     defense?: number;
+    /** For a held hit: about how much its damage comes to, what an answer that stops it saves. */
+    stakes?: number;
     /** Who caused the moment: whoever aimed the thing, or whoever dealt the damage. Its own field
      *  rather than `moverId`, which is for the walk that opened a window by leaving a reach. */
     sourceId?: string;

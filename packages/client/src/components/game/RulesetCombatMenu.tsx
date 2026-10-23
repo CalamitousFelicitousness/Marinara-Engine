@@ -1449,12 +1449,12 @@ export function RulesetCombatMenu({
       <div className="flex flex-row flex-wrap items-start gap-2 sm:gap-x-6 sm:gap-y-3">
         {groups.map((group) => (
           <section
-            key={group.kind}
-            aria-label={t(group.labelKey)}
+            key={group.key}
+            aria-label={t(group.labelKey, group.labelValues)}
             className="contents sm:flex sm:min-w-0 sm:flex-col sm:gap-1.5"
           >
             <h4 className="hidden text-[0.6rem] font-semibold uppercase tracking-wide text-white/40 sm:block">
-              {t(group.labelKey)}
+              {t(group.labelKey, group.labelValues)}
             </h4>
             <div className="contents sm:flex sm:flex-wrap sm:gap-2">
               {group.options.map((option) => {

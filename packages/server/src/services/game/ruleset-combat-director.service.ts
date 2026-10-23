@@ -764,9 +764,19 @@ const fightOf = (state: CombatDirectorState): RulesetFightState | null =>
 
 function record(fight: RulesetFightState, events: readonly DirectedRulesetEvent[]): void {
   for (const event of events) fight.events.push({ seq: ++fight.eventSeq, event });
-  if (fight.events.length > RULESET_COMBAT_EVENT_LIMIT) {
-    fight.events = fight.events.slice(-RULESET_COMBAT_EVENT_LIMIT);
-  }
+  fight.events = trimRulesetFightEvents(fight.events);
+}
+
+/**
+ * The fight's events cut back to `RULESET_COMBAT_EVENT_LIMIT`. The AI's reasons (only ever shown
+ * with Debug on) go first, oldest first, so they never cost a player an event of the fight itself:
+ * the fight's own events keep the whole window, and only once they fill it does the oldest go.
+ */
+export function trimRulesetFightEvents<T extends { event: { type: string } }>(events: T[]): T[] {
+  let over = events.length - RULESET_COMBAT_EVENT_LIMIT;
+  if (over <= 0) return events;
+  const kept = events.filter((entry) => !(entry.event.type === "reasoning" && over-- > 0));
+  return over > 0 ? kept.slice(over) : kept;
 }
 
 /** Who plays this combatant: the player, the Engine's own picker, or the Game Master. */
@@ -5982,7 +5992,7 @@ function walkTowardsTrouble(
   const walked = (sprinted: boolean): boolean => {
     if (explain) {
       const after = rulesetCombatant(fight.encounter, actorId);
-      const nearest = toward ?? (after ? rulesetNearestOpponent(fight.encounter, after)?.id : undefined);
+      const nearest = toward ?? (after ? rulesetApproachedOpponent(fight.encounter, after)?.id : undefined);
       recordReasons(fight, actorId, [
         toward
           ? { why: "pressCaster", targetId: toward }
@@ -6012,19 +6022,24 @@ function walkTowardsTrouble(
   return !applyChoice(definition, state, fight, closing.choice).refused && walked(false);
 }
 
-/** The opponent standing nearest it on the board, for a reason that names whom it walked toward. */
-function rulesetNearestOpponent(
+/**
+ * The opponent its walk closed on, for a reason that names whom it walked toward: the one nearest by
+ * the walk still left to reach any cell they fill, which is how the closing move chose its cell, so a
+ * wall between them or a big foe's reach counts as it did there.
+ */
+function rulesetApproachedOpponent(
   encounter: RulesetEncounterState,
   actor: RulesetCombatant,
 ): RulesetCombatant | undefined {
-  const from = rulesetPositionOf(actor);
-  if (!from) return undefined;
+  const grid = encounter.board?.grid;
+  if (!grid || !rulesetPositionOf(actor)) return undefined;
+  const mine = rulesetFootprint(actor);
   let best: { one: RulesetCombatant; gap: number } | undefined;
   for (const one of encounter.combatants) {
-    const at = rulesetPositionOf(one);
-    if (one.side === actor.side || !at || !rulesetCombatStanding(one)) continue;
-    const gap = Math.max(Math.abs(at.x - from.x), Math.abs(at.y - from.y));
-    if (!best || gap < best.gap) best = { one, gap };
+    if (one.side === actor.side || !rulesetPositionOf(one) || !rulesetCombatStanding(one)) continue;
+    const walking = rulesetWalkingDistances(grid, rulesetFootprint(one), actor);
+    const gap = Math.min(...mine.map((cell) => walking.get(`${cell.x},${cell.y}`) ?? Infinity));
+    if (gap < (best?.gap ?? Infinity)) best = { one, gap };
   }
   return best?.one;
 }

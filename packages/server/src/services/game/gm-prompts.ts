@@ -1404,6 +1404,7 @@ function renderRulesetKindCheckLine(
 function renderRulesetSheetSection(
   ruleset: import("@marinara-engine/shared").RulesetDefinition,
   sheetBlocks: string[],
+  oneRequestDice = false,
 ): string[] {
   const blocks = sheetBlocks.map((block) => block.trim()).filter(Boolean);
   if (blocks.length === 0) return [];
@@ -1464,7 +1465,12 @@ function renderRulesetSheetSection(
       : []),
     `Leave out who for the player; who="party" applies to every member. Use the pool, track, field and condition names shown on the sheets. Never write result, reason or now yourself: the Engine adds them. A refused command did not happen, so do not narrate it as if it had.`,
     // Prose alone changes no number: a fall or a burn told without its command never reached the sheet.
-    `Narration alone changes no sheet. Every harm, healing or spent resource you narrate needs its command in the same reply, a fall, a burn or a poison included. When the amount is still to be rolled, ask for the roll with [dice:] and write the command with the total once you have it.`,
+    `Narration alone changes no sheet. Every harm, healing or spent resource you narrate needs its command in the same reply, a fall, a burn or a poison included.${
+      oneRequestDice
+        ? // A turn that finishes itself never gets a total back, so the roll goes where the number is needed.
+          ` When the amount is still to be rolled, write the roll as a placeholder in the command's amount and the engine fills it in before applying it: [sheet: who="Name" op="damage" pool="Pool" amount="[[roll: 1d6]]"].`
+        : ` When the amount is still to be rolled, ask for the roll with [dice:] and write the command with the total once you have it.`
+    }`,
     // A sheet block leaves out a track or a note that still has its default, so the names a command
     // can use are listed once here.
     ...(plainTracks.length > 0
@@ -1760,7 +1766,7 @@ export function buildGmFormatReminder(
     // The player sees every word of the reply, so planning written out in the open would be shown as narration.
     // A model that plans on the page has to do it inside a leading thinking block, which the Engine lifts out.
     `Before you write, decide the next turn privately: current location and time, the story up to this point, character behavior, dynamics, known vs. hidden information, stakes, cause and effect, sensory tone, and the next point at which player agency returns.`,
-    `The player sees everything you write. If you plan in writing, put all of it inside one <think>...</think> block at the very start of the reply and never outside it. After that, output only ${ctx.addressMode === "gm" ? "your out-of-character answer to the player" : "the VN scene text"}: no notes, analysis, headings or plan.`,
+    `The player sees everything you write. If you plan in writing, put all of it inside one <think>...</think> block at the very start of the reply and never outside it. After that, output only ${ctx.addressMode === "gm" ? "your out-of-character answer to the player" : "the VN scene text"}: no notes, analysis, headings or plan. Never open with a planning paragraph such as "Opening scene: ...", "Location: ..." or "Plan: ...": the first words the player reads belong to the scene.`,
     ...(normalizedLanguage && normalizedLanguage.toLowerCase() !== "english"
       ? [
           `LANGUAGE:`,
@@ -2021,7 +2027,7 @@ export function buildGmFormatReminder(
             `  To add a character-sheet modifier, write its name and let the engine add it: [[roll: 1d8+STR]]. Never write the modifier's value yourself and never write the die's result yourself. These are the only names that resolve: ${modifierNames.join(", ")}.`,
           ]
         : []),
-      `  One placeholder holds one NdM notation, at most one flat number, and at most one sheet name. For two different dice, write two placeholders. Never put a placeholder inside a code block or inside another tag's brackets.`,
+      `  One placeholder holds one NdM notation, at most one flat number, and at most one sheet name. For two different dice, write two placeholders. Never put a placeholder inside a code block or inside another tag's brackets${ctx.ruleset ? `, except a sheet command's amount` : ""}.`,
       ``,
       sightedPool
         ? `- ONLY IF THE NUMBER ITSELF HAS TO DECIDE BETWEEN THREE OR MORE DIFFERENT OUTCOMES, spend a pool value instead: write the value shown below into the check's rolls= and name its slot with pool=, then narrate what it meant in this same turn.`
@@ -2058,7 +2064,7 @@ export function buildGmFormatReminder(
     );
   }
 
-  if (ctx.ruleset) lines.push(...renderRulesetSheetSection(ctx.ruleset, ctx.rulesetSheetBlocks ?? []));
+  if (ctx.ruleset) lines.push(...renderRulesetSheetSection(ctx.ruleset, ctx.rulesetSheetBlocks ?? [], oneRequestDice));
   if (ctx.ruleset?.clocks) {
     lines.push(
       "",

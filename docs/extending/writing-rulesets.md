@@ -3353,7 +3353,8 @@ already do:
 - A to-hit number is the attacker's dice. Off a sheet, an attack row's number is its ability and its
   skill's ranks together: the larger is how many dice are thrown and the smaller how many of them are
   upgraded, as `pool.build: "larger-upgraded"` builds a check. A creature action says it as `toHit`
-  (its dice) and `upgrades` (how many of them are upgraded).
+  (its dice) and `upgrades` (how many of them are upgraded), which needs a pool with an `upgrade` die
+  that isn't built by `sum`.
 - `defense` is how many difficulty dice are thrown against the attacker's. A creature's `defense` is
   its own number of them. Cover and a condition's modifier to `defense` add difficulty dice.
 - A condition's modifier to attacks, saves or checks, and the wound penalty your `penaltyFrom` names,
@@ -3389,7 +3390,8 @@ What the symbols do is the `symbols` block:
   kind of harm and `byKind` one per kind of your health track, which wins over `all` for its kind. A
   creature gives its own as `soak: { "all": 2 }`, which needs this `soak` to be declared.
 - `spends`: up to 16 things a symbol left over on an attack's roll buys. `cost` of `symbol` buys it
-  once, and `max` (one) says how many times one roll may buy it. `by` says which side chooses it: the
+  once, and `max` (one) says how many times one roll may buy it; a spend that gives a `condition` or
+  a `critical` lands once, so its `max` stays one. `by` says which side chooses it: the
   attacker spends the symbols that favour them (advantage, triumph), the target the ones that favour
   the target (threat, despair). One side spends a given symbol, and a spend never buys with the
   successes, which already land the blow and add to its harm.

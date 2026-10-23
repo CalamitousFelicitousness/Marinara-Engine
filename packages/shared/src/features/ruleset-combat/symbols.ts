@@ -339,6 +339,17 @@ export function rulesetSymbolSuccessHarm(
   return Math.max(0, counted) * damage.perSuccess;
 }
 
+/** Whether a spend has someone to land on: every side it names is someone in the fight. The fight
+ *  and its forecast both ask, so the AI never prices a spend the Engine would leave unbought. */
+export function rulesetSymbolSpendLands(
+  spend: RulesetSymbolSpend,
+  present: (on: "attacker" | "target" | "attacker-ally" | "target-ally") => boolean,
+): boolean {
+  return [spend.condition?.on, spend.track?.on, spend.boost?.on, spend.setback?.on].every(
+    (on) => on === undefined || present(on),
+  );
+}
+
 /** What an attack is expected to do, exactly over every way its throw may come out: the chance it
  *  lands, the harm a hit does on average (its own average, what its successes and spends add, less
  *  soak, never below none), and what a hit is worth to the attacker with what either side's spends
@@ -350,6 +361,8 @@ export function rulesetSymbolAttackForecast(
   /** The blow's own harm on a hit, on average. */
   base: number,
   soak: number,
+  /** Which spends can be bought in this fight; every one, where the caller doesn't say. */
+  usable: (spend: RulesetSymbolSpend) => boolean = () => true,
 ): { hitChance: number; averageDamage: number; worth: number } {
   const success = rulesetSymbolSuccess(definition);
   const needed = rulesetSymbolNeeded(definition);
@@ -359,8 +372,8 @@ export function rulesetSymbolAttackForecast(
   for (const outcome of rulesetSymbolOutcomes(definition, dice)) {
     const successes = success === undefined ? 0 : (outcome.symbols[success] ?? 0);
     const hit = successes >= needed;
-    const mine = pickRulesetSymbolSpends(combat, outcome.symbols, hit, "attacker");
-    const theirs = pickRulesetSymbolSpends(combat, outcome.symbols, hit, "target");
+    const mine = pickRulesetSymbolSpends(combat, outcome.symbols, hit, "attacker", usable);
+    const theirs = pickRulesetSymbolSpends(combat, outcome.symbols, hit, "target", usable);
     const added = mine.reduce((sum, pick) => sum + (pick.spend.damage ?? 0) * pick.times, 0);
     const dealt = hit ? Math.max(0, base + rulesetSymbolSuccessHarm(definition, combat, successes) + added - soak) : 0;
     const other =

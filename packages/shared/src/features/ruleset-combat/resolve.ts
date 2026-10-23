@@ -45,9 +45,10 @@ import {
   pickRulesetSymbolSpends,
   rulesetCombatIsSymbol,
   rulesetSymbolNeeded,
-  rulesetSymbolSpendWorth,
+  rulesetSymbolSpendLands,
   rulesetSymbolSuccessHarm,
   throwRulesetSymbolPool,
+  type RulesetSymbolSpend,
   type RulesetSymbolSpendPick,
   type RulesetSymbolThrow,
 } from "./symbols.js";
@@ -1818,10 +1819,7 @@ function spendSymbols(
     }
   };
   // A spend that lands on an ally nobody is goes unbought, and its symbols stay on the roll.
-  const usable = (spend: Parameters<typeof rulesetSymbolSpendWorth>[0]) =>
-    [spend.condition?.on, spend.track?.on, spend.boost?.on, spend.setback?.on].every(
-      (on) => on === undefined || !!whom(on),
-    );
+  const usable = (spend: RulesetSymbolSpend) => rulesetSymbolSpendLands(spend, (on) => !!whom(on));
   apply(pickRulesetSymbolSpends(ctx.combat, symbols, hit, "attacker", usable), actor);
   if (!target.defeated) apply(pickRulesetSymbolSpends(ctx.combat, symbols, hit, "target", usable), target);
   return out;

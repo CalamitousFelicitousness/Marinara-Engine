@@ -33,6 +33,7 @@ import {
   rulesetCombatOptions,
   rulesetSheetBuildSchema,
   rulesetSymbolChance,
+  rulesetSymbolAttackForecast,
   rulesetSymbolDice,
   rulesetSymbolOutcomes,
   type RulesetCombatEvent,
@@ -231,6 +232,16 @@ try {
     );
     refuses((document) => delete document.combat.symbols, /says what its symbols do in "symbols"/, "no symbols block");
     refuses(
+      (document) => (document.combat.symbols.spends[2].max = 2),
+      /A condition or a critical lands once/,
+      "a condition or critical bought twice in one throw",
+    );
+    refuses(
+      (document) => (document.resolution.pool.build = "sum"),
+      /has no upgraded dice to throw/,
+      "a creature's upgraded dice on a pool that has none",
+    );
+    refuses(
       (document) => (document.combat.symbols.spends[0].symbol = "s"),
       /Successes land the hit and add its harm/,
       "a spend that buys with successes",
@@ -357,6 +368,20 @@ try {
     assert.ok(option.forecast!.averageDamage! > 3.5 + 3 + 1 - 1, `averageDamage ${option.forecast?.averageDamage}`);
     // What the AI weighs it at counts what the spends buy as well.
     assert.ok(option.forecast!.worth !== undefined && option.forecast!.worth > 0);
+    // The Brute has no ally for Rally's boost, so the fight leaves Rally unbought, and its forecast
+    // prices it the same way: as nothing.
+    const brutesTurn = { ...opened, turn: opened.order.indexOf("brute") };
+    const clubbing = rulesetCombatOptions(definition, brutesTurn, "brute").find((entry) => entry.label === "Club")!;
+    const clubDice = rulesetSymbolDice(definition, { dice: 2, upgrades: 1, difficulty: 2 });
+    const priced = (usable?: (spend: { boost?: { on: string } }) => boolean) =>
+      rulesetSymbolAttackForecast(definition, definition.combat!, clubDice, 2.5, 3, usable).worth;
+    const withoutRally = priced((spend) => spend.boost?.on !== "attacker-ally");
+    assert.ok(priced() > withoutRally, "Rally would be worth something to a Brute with an ally");
+    assert.equal(
+      clubbing.forecast?.worth,
+      Math.round(withoutRally * 100) / 100,
+      "a spend nobody can take is priced at nothing",
+    );
   }
 
   // ── A contest: each side throws its own dice, and the more net successes wins ──

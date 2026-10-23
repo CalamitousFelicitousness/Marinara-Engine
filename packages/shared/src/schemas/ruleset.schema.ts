@@ -12772,6 +12772,10 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         ) {
           issue(path(), "A spend buys something: damage, critical, condition, track, boost or setback");
         }
+        // A condition and a critical land once however many copies are bought, so one is all a throw buys.
+        if ((spend.condition || spend.critical) && spend.max > 1) {
+          issue(path("max"), "A condition or a critical lands once, so a spend that gives one is bought at most once");
+        }
         if (spend.boost && !resolution.boost) issue(path("boost"), "The ruleset's symbol pool has no boost dice");
         if (spend.setback && !resolution.setback)
           issue(path("setback"), "The ruleset's symbol pool has no setback dice");
@@ -14825,7 +14829,12 @@ function creatureIssues(
     // Upgraded dice are some of a symbol fight's to-hit dice (1.382).
     if (action.upgrades !== undefined) {
       if (combat.kind !== "symbol-pool") add([...path, "upgrades"], 'Upgraded dice are for a "symbol-pool" fight');
-      else if (action.toHit === undefined) add([...path, "upgrades"], "Upgraded dice are some of its toHit dice");
+      else if (
+        definition.resolution.kind === "symbol-pool" &&
+        (definition.resolution.pool.build === "sum" || !definition.resolution.pool.upgrade)
+      ) {
+        add([...path, "upgrades"], "The ruleset's symbol pool has no upgraded dice to throw");
+      } else if (action.toHit === undefined) add([...path, "upgrades"], "Upgraded dice are some of its toHit dice");
       else if (action.upgrades > Math.max(0, action.toHit)) {
         add([...path, "upgrades"], `Only its ${Math.max(0, action.toHit)} toHit dice can be upgraded`);
       }

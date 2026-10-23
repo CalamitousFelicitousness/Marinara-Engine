@@ -557,10 +557,12 @@ try {
     "Overall: wind rising\nAspect Ratio: 16:9\nWatermark: none\nCamera Shot_2: wide\n" +
     'Dialogue: "I\'m leaving."\nCamera: "slow pan"\nAspect Ratio: "16:9"\n' +
     'The camera: pans left.\nHer tone: flat\nMara to lens: "We have to go."\nAna smiles: late\n' +
-    'ALICE: I am home.\nAna Lee: bye\nAna: "Wait."';
+    'ALICE: I am home.\nAna Lee: bye\nAna: "Wait."\n' +
+    'Guard: "Stop!"\nOld Guard: "Halt."\nVoiceover: "It was late."\nVoice_Over: "Go."\nLighting: "warm"';
   const shapedNote =
     '\n[Ana sent a video message: wind rising 16:9 none wide "I\'m leaving." "slow pan" "16:9" The camera: pans left. ' +
-    'Her tone: flat Mara to lens: "We have to go." Ana smiles: late ALICE: I am home. Ana Lee: bye Ana: "Wait."]';
+    'Her tone: flat Mara to lens: "We have to go." Ana smiles: late ALICE: I am home. Ana Lee: bye Ana: "Wait." Guard: "Stop!" ' +
+    'Old Guard: "Halt." "It was late." "Go." "warm"]';
   assert.equal(
     formatSentVideoNotes([{ type: "video", characterName: "Ana", prompt: shapedPrompt }], ["Alice"]),
     shapedNote,
@@ -619,7 +621,7 @@ try {
   assert.equal(peek.statusCode, 200, peek.body);
   assert.match(
     JSON.stringify(peek.json().prompt),
-    /\[Aster sent a video message: ALICE: hi BRAM: hey none \\"Stop!\\"\]/u,
+    /\[Aster sent a video message: ALICE: hi BRAM: hey none Guard: \\"Stop!\\"\]/u,
     "the preview's video note keeps the chat's speakers and quoted dialogue",
   );
   // Nested cues go whole, and a long run of brackets is handled in one pass.

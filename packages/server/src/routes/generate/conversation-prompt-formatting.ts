@@ -134,6 +134,12 @@ const PROSE_WORDS = new Set(
     "will would can could should may might must"
   ).split(" "),
 );
+// A quoted sentence after the colon ('Guard: "Stop!"') is speech, so its head is a speaker, unless the head names the
+// spoken words themselves ('Dialogue: "I\'m leaving."'). A quoted setting ('Camera: "slow pan"') isn't a sentence.
+const QUOTED_SENTENCE_RE = /^["“][^"”\n]*[.!?…]["”]/u;
+const SPOKEN_WORD_LABELS = new Set(
+  "dialogue dialog line lines speech voice voiceover vo subtitle subtitles caption captions text quote".split(" "),
+);
 
 /** "lower", "upper" or "title", read from a word's letters before any `_` or digit. */
 function wordCase(word: string): string {
@@ -146,17 +152,21 @@ function wordCase(word: string): string {
 /**
  * Removes line-start field labels. A label is judged by its shape, not a word list: no prose word, and every word in
  * one case ("Aspect Ratio", "camera angle"), so a sentence ("Ana smiles:") stays. A speaker stays too: a head with any
- * word of a chat member's name (`speakerNameParts`: "Ana:", "ALICE:", "Ana Lee:") is dialogue, not a label. A quoted
- * value doesn't save a label ('Camera: "slow pan"'), so a speaker outside the chat ('Guard: "Stop!"') keeps only the
- * words.
+ * word of a chat member's name (`speakerNameParts`: "Ana:", "ALICE:", "Ana Lee:"), or one followed by a quoted
+ * sentence (a speaker outside the chat: 'Guard: "Stop!"'), is dialogue, not a label.
  */
 function stripFieldLabels(text: string, speakerNameParts: ReadonlySet<string>): string {
   return text
     .replace(NEGATIVE_PROMPT_LINE_RE, "")
-    .replace(LINE_START_LABEL_RE, (label, indent: string, head: string) => {
+    .replace(LINE_START_LABEL_RE, (label, indent: string, head: string, offset: number, all: string) => {
       const words = head.split(" ");
       const folded = words.map((word) => word.toLowerCase());
       if (folded.some((word) => PROSE_WORDS.has(word) || speakerNameParts.has(word))) return label;
+      const speech = QUOTED_SENTENCE_RE.test(all.slice(offset + label.length));
+      const namesSpokenWords = folded.some((word) =>
+        word.split(/[_\d]+/u).some((part) => SPOKEN_WORD_LABELS.has(part)),
+      );
+      if (speech && !namesSpokenWords) return label;
       return new Set(words.map(wordCase)).size === 1 ? `${indent} ` : label;
     });
 }

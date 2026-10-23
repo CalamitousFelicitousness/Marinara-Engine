@@ -2,7 +2,7 @@
 // Game Master planning written out as prose
 // ──────────────────────────────────────────────
 
-/** The labels a Game Master's written-out plan opens its paragraphs with. Narration never starts this way. */
+/** The labels a paragraph must open with to be considered for lifting at all; on its own a match lifts nothing. */
 const PLANNING_LABEL =
   /^\s*(?:[*_#>-]+\s*)?(?:opening scene|scene plan|plan|planning|location|setting|goals?|notes?|intent|stakes|mechanics|rolls?|checks?)(?:[*_]+)?\s*:/i;
 /**

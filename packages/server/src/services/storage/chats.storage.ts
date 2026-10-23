@@ -2227,6 +2227,31 @@ export function createChatsStorage(db: DB) {
       return hasGameDeletePayload(chatId);
     },
 
+    /** Each message's id, role and speaker for these chats, in transcript order, without its text. */
+    async listMessageOutlines(chatIds: string[]) {
+      if (chatIds.length === 0) return [];
+      return db
+        .select({
+          id: messages.id,
+          chatId: messages.chatId,
+          role: messages.role,
+          characterId: messages.characterId,
+          createdAt: messages.createdAt,
+        })
+        .from(messages)
+        .where(inArray(messages.chatId, chatIds))
+        .orderBy(messages.createdAt, messages.id);
+    },
+
+    async getMessageContents(ids: string[]): Promise<Map<string, string>> {
+      if (ids.length === 0) return new Map();
+      const rows = await db
+        .select({ id: messages.id, content: messages.content })
+        .from(messages)
+        .where(inArray(messages.id, ids));
+      return new Map(rows.map((row) => [row.id, row.content]));
+    },
+
     async listMessages(chatId: string) {
       const rows = await db
         .select()

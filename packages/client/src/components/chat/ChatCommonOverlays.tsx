@@ -13,6 +13,7 @@ import { FloatingWindow } from "../ui/FloatingWindow";
 import { useMatchMedia } from "../../hooks/use-match-media";
 import { CHAT_SETTINGS_WINDOW_ID } from "../../stores/floating-window.store";
 import { getChatSettingsWindowProps } from "./chat-settings-window";
+import { ChatBranchGraphWindow } from "./ChatBranchGraphWindow";
 import { useHostHasDetachedDrawers } from "../ui/drawer-host";
 
 const loadChatSettingsDrawer = async () => {
@@ -341,6 +342,7 @@ export function ChatCommonOverlays({
           />
         </Suspense>
       )}
+      {chat && <ChatBranchGraphWindow chatId={chat.id} groupId={chat.groupId ?? null} />}
       {chat && (
         <Suspense fallback={null}>{wizardOpen && <ChatSetupWizard chat={chat} onFinish={onWizardFinish} />}</Suspense>
       )}

@@ -44,6 +44,136 @@ async function capture(page: Page, info: TestInfo, label: string, anchor: Locato
 }
 
 for (const theme of ["dark", "light"] as const) {
+  test(`Music connection test saves, plays a sample and reports provider errors without stale results (${theme})`, async ({
+    page,
+    request,
+  }, info) => {
+    const created = await request.post("/api/connections", {
+      data: {
+        name: `Music sample ${theme} ${info.project.name}`,
+        provider: "audio_generation",
+        audioGenerationSource: "elevenlabs",
+        model: "music_v2_5",
+        audioMusic: false,
+      },
+    });
+    expect(created.ok()).toBeTruthy();
+    const { id } = await created.json();
+    const sent: Record<string, unknown>[] = [];
+    let mode: "success" | "error" | "hold" = "success";
+    let release: (() => void) | undefined;
+    let heldSettled = false;
+    // Local PCM verifies real browser decoding/playback without a paid provider call.
+    const pcm = Buffer.alloc(44 + 16000);
+    pcm.write("RIFF", 0);
+    pcm.writeUInt32LE(pcm.length - 8, 4);
+    pcm.write("WAVEfmt ", 8);
+    pcm.writeUInt32LE(16, 16);
+    pcm.writeUInt16LE(1, 20);
+    pcm.writeUInt16LE(1, 22);
+    pcm.writeUInt32LE(8000, 24);
+    pcm.writeUInt32LE(16000, 28);
+    pcm.writeUInt16LE(2, 32);
+    pcm.writeUInt16LE(16, 34);
+    pcm.write("data", 36);
+    pcm.writeUInt32LE(16000, 40);
+    await page.route("**/api/game-assets/file/music/contexts/connection-test/**", (route) =>
+      route.fulfill({ contentType: "audio/wav", body: pcm }),
+    );
+    await page.route("**/api/audio/generate", async (route) => {
+      const input = route.request().postDataJSON();
+      sent.push(input);
+      expect((await (await request.get(`/api/connections/${id}`)).json()).model).toBe("music_v2");
+      expect(input).toMatchObject({
+        kind: "music",
+        audioConnectionId: id,
+        context: { scope: "connection-test", lengthMs: 10000 },
+      });
+      if (mode === "error") {
+        await route.fulfill({
+          status: 502,
+          json: {
+            error: "Audio generation failed",
+            detail: "ElevenLabs audio request returned HTTP 400",
+            providerStatus: 400,
+            reason: "The selected music model is unavailable.",
+          },
+        });
+        return;
+      }
+      if (mode === "hold")
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+      await route
+        .fulfill({
+          json: {
+            tag: "fixture",
+            path: `music/contexts/connection-test/${input.context.key}/generated-fixture.mp3`,
+            cached: false,
+          },
+        })
+        .catch(() => {});
+      if (mode === "hold") heldSettled = true;
+    });
+    try {
+      await prepare(page, theme);
+      const editor = await openConnection(page, id);
+      const generate = editor.getByRole("button", { name: "Generate test music", exact: true });
+      await expect(generate).toBeDisabled();
+      await expect(editor.getByText(/uses provider credits/u)).toBeVisible();
+      expect(sent).toHaveLength(0);
+      await editor.getByText("Music generation", { exact: true }).click();
+      await editor.getByPlaceholder("Or type model ID directly…", { exact: true }).fill("music_v2");
+      expect(sent).toHaveLength(0);
+      await generate.click();
+      const player = editor.getByLabel("Test music playback", { exact: true });
+      await expect(player).toBeVisible();
+      await expect
+        .poll(() => player.evaluate((element: HTMLAudioElement) => element.readyState))
+        .toBeGreaterThanOrEqual(2);
+      await player.evaluate((element: HTMLAudioElement) => {
+        element.addEventListener(
+          "click",
+          () => {
+            void element.play();
+          },
+          { once: true },
+        );
+      });
+      await player.click({ position: { x: 20, y: 20 } });
+      await expect.poll(() => player.evaluate((element: HTMLAudioElement) => element.currentTime)).toBeGreaterThan(0);
+      await player.evaluate((element: HTMLAudioElement) => element.pause());
+      await capture(page, info, `music-test-playback-${theme}`, player);
+      expect(sent).toHaveLength(1);
+      mode = "error";
+      await generate.click();
+      await expect(editor.getByRole("alert")).toHaveText(
+        "Music service returned HTTP 400: The selected music model is unavailable.",
+      );
+      await expect(player).toHaveCount(0);
+      expect(sent).toHaveLength(2);
+      await capture(page, info, `music-test-error-${theme}`, generate);
+      mode = "hold";
+      await generate.click();
+      await expect.poll(() => !!release).toBe(true);
+      await expect(editor.getByRole("button", { name: "Generating test music…", exact: true })).toBeDisabled();
+      await editor.getByPlaceholder("Or type model ID directly…", { exact: true }).fill("new-manual-model");
+      await expect(generate).toBeEnabled();
+      release!();
+      await expect.poll(() => heldSettled).toBe(true);
+      await page.evaluate(
+        () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+      );
+      await expect(player).toHaveCount(0);
+      await expect(editor.getByRole("alert")).toHaveCount(0);
+      expect(sent).toHaveLength(3);
+    } finally {
+      release?.();
+      await request.delete(`/api/connections/${id}`);
+    }
+  });
+
   test(`ElevenLabs music model can be selected without replacing manual source models (${theme})`, async ({
     page,
     request,
@@ -210,7 +340,7 @@ for (const theme of ["dark", "light"] as const) {
       let editor = await openConnection(page, id);
       await expect(editor.getByRole("button", { name: "Test Connection", exact: true })).not.toBeVisible();
       await expect(editor.getByRole("button", { name: "Send Test Message", exact: true })).not.toBeVisible();
-      await expect(editor.getByText(/To test this connection, generate music or a sound effect/u)).toBeVisible();
+      await expect(editor.getByText(/Generate an instrumental sample using this connection/u)).toBeVisible();
       await editor.getByRole("button", { name: /^SunoAPI Generate audio/u }).click();
       await editor.getByRole("button", { name: /^ElevenLabs/u }).click();
       await editor.getByRole("button", { name: "Save", exact: true }).click();

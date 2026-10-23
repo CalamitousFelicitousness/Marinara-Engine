@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { logger } from "../lib/logger.js";
+import { AudioGenerationProviderError } from "../services/audio/generative-audio-providers.js";
 import {
   AudioGenerationConfigurationError,
   generateAudioAsset,
@@ -60,6 +61,9 @@ export async function audioRoutes(app: FastifyInstance) {
       return reply.status(502).send({
         error: "Audio generation failed",
         detail: error instanceof Error ? error.message : "Unknown provider error",
+        ...(error instanceof AudioGenerationProviderError
+          ? { providerStatus: error.providerStatus, providerCode: error.providerCode, reason: error.reason }
+          : {}),
       });
     }
   });

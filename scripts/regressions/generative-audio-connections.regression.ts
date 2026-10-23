@@ -314,6 +314,43 @@ try {
     { models: [] },
   );
   assert.equal(calls.length, beforeUnsupportedTests, "generation connections never send chat/model-list test requests");
+  const native = await create({ audioGenerationSource: "elevenlabs", baseUrl: "https://8.8.8.8", model: "music_v2_5" });
+  const originalFetch = globalThis.fetch;
+  const nativeRequests: Record<string, unknown>[] = [];
+  try {
+    globalThis.fetch = async (url, init) => {
+      assert.equal(new URL(String(url)).hostname, "8.8.8.8");
+      nativeRequests.push(JSON.parse(String(init?.body)));
+      return new Response(
+        JSON.stringify({ detail: { status: "invalid_model_id", message: "Select another model. fixture-audio-key" } }),
+        { status: 400 },
+      );
+    };
+    const rejected = await app.inject({
+      method: "POST",
+      url: "/api/audio/generate",
+      payload: {
+        audioConnectionId: native.id,
+        kind: "music",
+        prompt: "A test sample",
+        context: { scope: "connection-test", key: "fixture", lengthMs: 10_000 },
+      },
+    });
+    assert.equal(rejected.statusCode, 502);
+    assert.deepEqual(rejected.json(), {
+      error: "Audio generation failed",
+      detail: "ElevenLabs audio request returned HTTP 400",
+      providerStatus: 400,
+      providerCode: "invalid_model_id",
+      reason: "Select another model. [redacted]",
+    });
+    assert.equal(nativeRequests.length, 1);
+    assert.equal(nativeRequests[0]!.model_id, "music_v2_5");
+    assert.equal(nativeRequests[0]!.music_length_ms, 10_000);
+    assert(!rejected.body.includes("fixture-audio-key"));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
   const broken = await create({ audioSoundEffectsEndpoint: "error" });
   const beforeFailure = calls.length;
   assert.equal((await generate(broken.id)).statusCode, 502);

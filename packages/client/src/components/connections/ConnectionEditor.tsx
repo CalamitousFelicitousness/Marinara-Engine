@@ -247,6 +247,46 @@ function defaultVideoModelForService(value: string | null | undefined): string {
   return DEFAULT_VIDEO_MODELS[videoSourceToDefaultsService(value)];
 }
 
+// Static form feedback only; the server still checks DNS and the complete outbound policy.
+function isPublicHttpsAudioCallback(value: string): boolean {
+  try {
+    const url = new URL(value);
+    let host = url.hostname.toLowerCase().replace(/^\[|\]$|\.$/g, "");
+    if (
+      url.protocol !== "https:" ||
+      url.username ||
+      url.password ||
+      ["localhost", "localhost.localdomain", "ip6-localhost", "ip6-loopback"].includes(host) ||
+      [".localhost", ".local", ".internal"].some((suffix) => host.endsWith(suffix))
+    )
+      return false;
+    // URL normalizes alternate IPv4 spellings and mapped IPv6 into these literal forms.
+    const mapped = host.match(/^::ffff:([\da-f]{1,4}):([\da-f]{1,4})$/);
+    if (mapped) {
+      const high = parseInt(mapped[1]!, 16);
+      const low = parseInt(mapped[2]!, 16);
+      host = [high >> 8, high & 255, low >> 8, low & 255].join(".");
+    }
+    if (host.includes(":")) return !/^(?:::([\da-f]{1,4}(:[\da-f]{1,4})?)?$|f[cd]|fe[89ab]|ff|2001:db8:)/.test(host);
+    if (!/^(\d+\.){3}\d+$/.test(host)) return true;
+    const [a = 0, b = 0, c = 0] = host.split(".").map(Number);
+    return !(
+      a === 0 ||
+      a === 10 ||
+      a === 127 ||
+      (a === 100 && b >= 64 && b <= 127) ||
+      (a === 169 && b === 254) ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && (b === 168 || (b === 0 && (c === 0 || c === 2)))) ||
+      (a === 198 && (b === 18 || b === 19 || (b === 51 && c === 100))) ||
+      (a === 203 && b === 0 && c === 113) ||
+      a >= 224
+    );
+  } catch {
+    return false;
+  }
+}
+
 function normalizeEndpointUrlInput(raw: string, label: string): { value: string; error: string | null } {
   const trimmed = raw.trim();
   if (!trimmed) return { value: "", error: null };
@@ -885,7 +925,7 @@ export function ConnectionEditor() {
       localProvider === "audio_generation" &&
       localAudioGenerationSource === "sunoapi" &&
       (localAudioMusic || localAudioGenerationCallbackUrl.trim() !== "") &&
-      (!/^https:\/\//i.test(localAudioGenerationCallbackUrl.trim()) ||
+      (!isPublicHttpsAudioCallback(localAudioGenerationCallbackUrl.trim()) ||
         !createConnectionSchema.shape.audioGenerationCallbackUrl.safeParse(localAudioGenerationCallbackUrl).success)
     ) {
       const message = t("connections.audioGeneration.invalidCallback");

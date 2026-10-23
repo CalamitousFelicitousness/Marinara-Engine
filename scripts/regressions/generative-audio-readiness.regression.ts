@@ -12,7 +12,14 @@ process.env.LOG_LEVEL = "silent";
 const require = createRequire(new URL("../../packages/server/package.json", import.meta.url));
 const { createFileNativeDB } = await import("../../packages/server/src/db/file-backed-store.js");
 const { createConnectionsStorage } = await import("../../packages/server/src/services/storage/connections.storage.js");
-const { createConnectionSchema } = await import("../../packages/shared/dist/index.js");
+const { createConnectionSchema, TTS_SETTINGS_KEY, ttsConfigSchema } =
+  await import("../../packages/shared/dist/index.js");
+const { createAppSettingsStorage } = await import("../../packages/server/src/services/storage/app-settings.storage.js");
+const { migrateGenerativeAudioConnections } =
+  await import("../../packages/server/src/services/connections/generative-audio-connection-migration.js");
+const { encryptApiKey } = await import("../../packages/server/src/utils/crypto.js");
+const { filterAudioGenerationConnections, matchesAudioGenerationConnectionId } =
+  await import("../../packages/client/src/lib/connection-filters.js");
 const { audioRoutes } = await import("../../packages/server/src/routes/audio.routes.js");
 const { connectionsRoutes } = await import("../../packages/server/src/routes/connections.routes.js");
 const { errorHandler } = await import("../../packages/server/src/middleware/error-handler.js");
@@ -145,9 +152,54 @@ try {
   assert.equal((await probe(custom.id)).soundEffects, false, "enabling the music endpoint does not enable SFX");
   await connections.update(custom.id, { audioSoundEffectsEndpoint: "sfx" });
   assert.equal((await probe(custom.id)).soundEffects, true);
+
+  await connections.update(custom.id, { defaultForAgents: true });
+  await createAppSettingsStorage(db).set(
+    TTS_SETTINGS_KEY,
+    JSON.stringify(
+      ttsConfigSchema.parse({
+        enabled: false,
+        source: "elevenlabs",
+        baseUrl: "https://api.elevenlabs.io",
+        apiKey: encryptApiKey("legacy-blob-key"),
+        elevenLabsGameMusic: true,
+        elevenLabsGameSoundEffects: true,
+      }),
+    ),
+  );
+  await migrateGenerativeAudioConnections(db);
+  const migratedRows = await connections.list();
+  const blob = migratedRows.find((entry) => entry.name === "ElevenLabs — Music & Sound Effects");
+  assert(blob && blob.provider === "audio_generation");
+  assert.notEqual(
+    blob.defaultForAgents,
+    "true",
+    "preserving another configuration must not replace the chosen default",
+  );
+  assert.notEqual(blob.fallbackForAgents, "true");
+  assert(!blob.audioGenerationLegacyConnectionId, "standalone settings have no historical speech-row id");
+  assert(
+    filterAudioGenerationConnections(migratedRows).some((entry) => matchesAudioGenerationConnectionId(entry, blob.id)),
+    "the preserved non-default connection remains available to the actual Game audio selector",
+  );
+  assert.deepEqual(await probe(blob.id), {
+    connectionId: blob.id,
+    configured: true,
+    music: true,
+    soundEffects: true,
+    source: "elevenlabs",
+  });
+  const defaultProbe = await app.inject({ method: "GET", url: "/api/audio/config" });
+  assert.equal(defaultProbe.statusCode, 200, defaultProbe.body);
+  assert.equal(defaultProbe.json().connectionId, custom.id, "explicit blob access leaves the chosen default intact");
+  await migrateGenerativeAudioConnections(db);
+  assert.equal((await connections.list()).length, migratedRows.length, "non-default blob migration remains idempotent");
+  await connections.remove(blob.id);
+  await migrateGenerativeAudioConnections(db);
+  assert.equal(await connections.getById(blob.id), null, "deleting the preserved connection does not recreate it");
   assert.equal(fetches, 0, "checking prerequisites submits no request or paid composition");
   console.info(
-    "PASS: independent music/SFX readiness, shared Suno public-HTTPS callback validation, keys, compatible endpoints and no provider I/O",
+    "PASS: independent music/SFX readiness, shared Suno public-HTTPS callback validation, keys, compatible endpoints, selectable non-default legacy settings and no provider I/O",
   );
 } finally {
   globalThis.fetch = originalFetch;

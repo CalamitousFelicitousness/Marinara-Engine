@@ -6,6 +6,16 @@ import { newId, now } from "../../utils/id-generator.js";
 import { logger } from "../../lib/logger.js";
 
 const LEGACY_CONFIG_MARKER = "generativeAudioLegacyConfigMigrated";
+const warnedInvalidConfigs = new WeakSet<DB>();
+
+function warnInvalidConfig(db: DB, failure: "json" | "schema", issues?: Array<{ path: string; code: string }>) {
+  if (warnedInvalidConfigs.has(db)) return;
+  warnedInvalidConfigs.add(db);
+  logger.warn(
+    { settingsKey: TTS_SETTINGS_KEY, failure, ...(issues ? { issues } : {}) },
+    "[migration] Legacy TTS settings are unreadable; deferring their music and sound-effect split",
+  );
+}
 
 /** Split only enabled legacy generation settings. Speech rows, voices and old profile IDs survive. */
 export async function migrateGenerativeAudioConnections(db: DB): Promise<void> {
@@ -16,11 +26,18 @@ export async function migrateGenerativeAudioConnections(db: DB): Promise<void> {
     const raw = settings.find((row) => row.key === TTS_SETTINGS_KEY)?.value;
     let stored: unknown;
     try {
-      stored = raw ? JSON.parse(raw) : null;
+      stored = raw === undefined ? undefined : JSON.parse(raw);
     } catch {
-      stored = null;
+      warnInvalidConfig(db, "json");
     }
     const parsed = ttsConfigSchema.safeParse(stored);
+    if (raw !== undefined && stored !== undefined && !parsed.success) {
+      warnInvalidConfig(
+        db,
+        "schema",
+        parsed.error.issues.map((issue) => ({ path: issue.path.map(String).join("."), code: issue.code })),
+      );
+    }
     const cfg = parsed.success ? parsed.data : null;
     const chosenId = cfg?.connectionId.trim() ?? "";
     let hasDefault = rows.some(
@@ -135,7 +152,11 @@ export async function migrateGenerativeAudioConnections(db: DB): Promise<void> {
       });
       created++;
     }
-    if (!settings.some((row) => row.key === LEGACY_CONFIG_MARKER) && created > 0) {
+    if (
+      !settings.some((row) => row.key === LEGACY_CONFIG_MARKER) &&
+      created > 0 &&
+      (raw === undefined || parsed.success)
+    ) {
       // A row-based split also consumes the old blob's generation decision.
       // Deleting its new connection and then its speech row must not resurrect it.
       const timestamp = now();

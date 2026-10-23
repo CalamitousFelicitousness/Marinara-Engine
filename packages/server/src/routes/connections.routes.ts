@@ -491,6 +491,14 @@ function knownStabilityImageModels() {
 
 export async function connectionsRoutes(app: FastifyInstance) {
   const storage = createConnectionsStorage(app.db);
+  const migrateLegacyAudio = async (provider?: string) => {
+    if (provider !== "audio") return;
+    try {
+      await migrateGenerativeAudioConnections(app.db);
+    } catch (error) {
+      logger.warn(error, "[migration] Connection saved; deferring its optional music and sound-effect split");
+    }
+  };
   const maskConnection = <T extends { apiKeyEncrypted?: unknown; managementTokenEncrypted?: unknown } | null>(
     conn: T,
   ): T =>
@@ -555,7 +563,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
     if (validationError) return reply.status(400).send({ error: validationError });
     return withLongTermMemoryEmbeddingChange(app.db, reply, async () => {
       const created = await storage.create(input);
-      if (created?.provider === "audio") await migrateGenerativeAudioConnections(app.db);
+      await migrateLegacyAudio(created?.provider);
       resetMemoryRecallVectorizerCache();
       return maskConnection(created ? await storage.getById(created.id) : null);
     });
@@ -570,7 +578,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
     if (validationError) return reply.status(400).send({ error: validationError });
     return withLongTermMemoryEmbeddingChange(app.db, reply, async () => {
       const updated = await storage.update(req.params.id, data);
-      if (updated?.provider === "audio") await migrateGenerativeAudioConnections(app.db);
+      await migrateLegacyAudio(updated?.provider);
       resetMemoryRecallVectorizerCache();
       return maskConnection(updated ? await storage.getById(updated.id) : null);
     });

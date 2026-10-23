@@ -31,6 +31,11 @@ async function openConnection(page: Page, id: string) {
 }
 
 async function capture(page: Page, info: TestInfo, label: string, anchor: Locator) {
+  const updateToast = page.locator("[data-sonner-toast]").filter({ hasText: "A Marinara update is ready." });
+  if (await updateToast.isVisible()) {
+    await updateToast.getByRole("button", { name: "Close toast", exact: true }).click();
+    await expect(updateToast).toBeHidden();
+  }
   await anchor.scrollIntoViewIfNeeded();
   const path = info.outputPath(`${label}.png`);
   await page.screenshot({ path, animations: "disabled" });
@@ -198,6 +203,19 @@ for (const theme of ["dark", "light"] as const) {
       ).toBeVisible();
       expect(rejectedCallbackPatches).toEqual([]);
       expect((await stored()).audioGenerationCallbackUrl).toBeNull();
+      // A stale nonempty callback is validated even while music is off and SFX stays enabled.
+      for (const callback of ["https://192.168.1.20/hook", "https://user:pass@example.com/hook"]) {
+        await editor.getByLabel(/^SunoAPI music callback URL/u).fill(callback);
+        await editor.getByRole("button", { name: "Save", exact: true }).click();
+        await expect(
+          editor
+            .getByRole("button", { name: "Dismiss save error", exact: true })
+            .locator("..")
+            .getByText("SunoAPI music requires a public HTTPS callback URL, even when polling.", { exact: true }),
+        ).toBeVisible();
+        expect(rejectedCallbackPatches, callback).toEqual([]);
+        expect((await stored()).audioGenerationCallbackUrl).toBeNull();
+      }
       page.off("request", captureCallbackPatch);
       await editor.getByLabel(/^SunoAPI music callback URL/u).fill("https://8.8.8.8/completed");
       await editor.getByRole("button", { name: "Save", exact: true }).click();
@@ -221,13 +239,49 @@ for (const theme of ["dark", "light"] as const) {
           .getByText("SunoAPI music requires a public HTTPS callback URL, even when polling.", { exact: true }),
       ).toBeVisible();
       expect((await stored()).audioMusic).toBe("false");
-      await editor.getByLabel(/^SunoAPI music callback URL/u).fill("https://127.0.0.1/completed");
-      const privateCallbackSave = page.waitForResponse(
-        (response) => response.request().method() === "PATCH" && response.url().endsWith(`/api/connections/${id}`),
+      page.on("request", captureCallbackPatch);
+      const privateCallbacks = [
+        "https://localhost:8443/hook",
+        "https://child.localhost./hook",
+        "https://workstation.local/hook",
+        "https://service.internal/hook",
+        "https://192.168.1.20/hook",
+        "https://127.0.0.1/completed",
+        "https://2130706433/hook",
+        "https://0.0.0.0/hook",
+        "https://10.1.2.3/hook",
+        "https://172.16.0.1/hook",
+        "https://169.254.1.1/hook",
+        "https://100.64.0.1/hook",
+        "https://192.0.2.1/hook",
+        "https://[::1]/hook",
+        "https://[fd12::1]/hook",
+        "https://[fe80::1]/hook",
+        "https://[::ffff:192.168.1.2]/hook",
+        "https://user:pass@example.com/hook",
+      ];
+      for (const callback of privateCallbacks) {
+        await editor.getByLabel(/^SunoAPI music callback URL/u).fill(callback);
+        await editor.getByRole("button", { name: "Save", exact: true }).click();
+        const error = editor.getByRole("button", { name: "Dismiss save error", exact: true }).locator("..");
+        await expect(error).toBeVisible();
+        await info.attach("callback-preflight", {
+          body: JSON.stringify({ callback, patches: [...rejectedCallbackPatches], error: await error.innerText() }),
+          contentType: "application/json",
+        });
+        await expect(
+          error.getByText("SunoAPI music requires a public HTTPS callback URL, even when polling.", { exact: true }),
+        ).toBeVisible();
+        expect(rejectedCallbackPatches, callback).toEqual([]);
+        expect((await stored()).audioGenerationCallbackUrl).toBeNull();
+      }
+      await capture(
+        page,
+        info,
+        `sunoapi-callback-preflight-${theme}`,
+        editor.getByLabel(/^SunoAPI music callback URL/u),
       );
-      await editor.getByRole("button", { name: "Save", exact: true }).click();
-      expect((await privateCallbackSave).status()).toBe(400);
-      await expect(editor.getByRole("button", { name: "Dismiss save error", exact: true })).toBeVisible();
+      page.off("request", captureCallbackPatch);
       expect((await stored()).audioMusic).toBe("false");
       await editor.getByLabel(/^SunoAPI music callback URL/u).fill("https://8.8.8.8/completed");
       await editor.getByLabel(/^Sound-effect model/u).fill("fixture-sfx-model");

@@ -1178,6 +1178,8 @@ export function rulesetCombatEventLine(
         budget: names.budget(event.budget),
         left: event.left,
       });
+    case "prayed":
+      return key("prayed", { actor: names.combatant(event.actorId), label: event.label });
     case "uses":
       return key("uses", { label: event.label, left: event.left, of: event.of });
     case "broke":

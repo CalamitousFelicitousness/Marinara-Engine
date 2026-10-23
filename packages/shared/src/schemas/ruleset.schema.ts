@@ -16046,6 +16046,31 @@ const combatObjectSchema = z
      */
     hiding: combatHidingSchema.optional(),
     /** Up to 16 (Capability API 1.581; 12 before). */
+    /**
+     * What people drawn in layers do for this system's own words (Capability API 1.770), read only by
+     * the art and the fight's marks. `hidden` are live conditions that hide their holder: drawn
+     * sneaking as they move. `divine` is what is cast by praying, as the caster kneels: an ability
+     * whose sheet row's `column` holds one of `values` (5e's spells and features of a Cleric or
+     * Paladin: `{ "column": "class", "values": ["Cleric", "Paladin"] }`), or one of `entries`
+     * (`catalog/entry`) whoever uses it.
+     */
+    poses: z
+      .object({
+        hidden: z.array(sheetId).min(1).max(12).optional(),
+        divine: z
+          .object({
+            column: sheetId.optional(),
+            values: z.array(promptSafeText(60)).min(1).max(24).optional(),
+            entries: z.array(z.string().min(3).max(120)).min(1).max(80).optional(),
+          })
+          .strict()
+          .refine((divine) => (divine.column && divine.values) || divine.entries, {
+            message: '"divine" names a column and its values, or entries',
+          })
+          .optional(),
+      })
+      .strict()
+      .optional(),
     contests: z.array(combatContestSchema).max(16).optional(),
     /** How big a combatant is, smallest first: what a contest's `maxSizeAbove` reads (1.103). */
     sizes: combatSizesSchema.optional(),
@@ -19266,6 +19291,10 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
     unique(combat.contests ?? [], at("contests"), "contest");
     if (combat.standard?.includes("search") && !combat.hiding)
       issue(at("standard"), "Search looks for whoever is hiding, so it needs combat.hiding");
+    // The conditions the art reads as hiding their holder (1.770) are the sheet's own.
+    combat.poses?.hidden?.forEach((id, index) => {
+      if (!conditions.has(id)) issue(at("poses", "hidden", index), `Unknown condition "${id}"`);
+    });
     // The dark (1.294): the senses that see in it are the fight's own, and it needs eyes to keep.
     if (combat.sight?.darkness) {
       const senses = new Set((combat.senses ?? []).map((sense) => sense.id));

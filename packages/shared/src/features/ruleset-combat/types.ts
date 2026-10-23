@@ -945,6 +945,9 @@ export type RulesetCombatantInput =
 /** One thing a combatant may do, with every number already read off the sheet or the stat block.
  *  Resolved once, when the fight begins: armour and bonuses do not change mid-fight in this kind. */
 export interface RulesetCombatAction {
+  /** Cast by praying (Capability API 1.770), as the ruleset's `combat.poses.divine` says: read only
+   *  by the art and the fight's marks, whose caster kneels to pray. */
+  divine?: true;
   /** The entry's qualities, even without damage, for saves against magic (1.134). */
   qualities?: string[];
   /** A catalog attack or debuff targets harmfully even if it deals no damage (1.125). */
@@ -3531,6 +3534,9 @@ export type RulesetCombatEvent =
   | { type: "spend"; actorId: string; pool: string; label: string; amount: number }
   | { type: "budget"; actorId: string; budget: string; left: number }
   | { type: "uses"; actorId: string; optionId: string; label: string; left: number; of: number }
+  /** Cast by praying (1.770, the ruleset's `combat.poses.divine`): told by the fight's director as
+   *  the choice is made, for the screen's praying mark until its caster's next turn. */
+  | { type: "prayed"; actorId: string; optionId: string; label: string }
   /** An item whose last charge was just spent, and whose die said it breaks. */
   | {
       type: "broke";

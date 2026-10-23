@@ -972,12 +972,36 @@ function spentPoolsOf(definition: RulesetDefinition, combatant: RulesetCombatant
     .map((pool) => ({ id: pool.key, label: pool.label, value: pool.value, max: pool.max, ...unitOf(pool.key) }));
   return pools.length ? pools : undefined;
 }
+/** What is done by praying whatever the ruleset marks (1.770): a Channel Divinity, a turning, a prayer. */
+const PRAYED_BY_NAME =
+  /\b(?:channel divinity|turn(?:s|ing)? (?:the )?(?:undead|faithless|unholy)|divine intervention|pray(?:s|ers?|ing)?|worship)\b/i;
+
+/** The ids of what a combatant casts by praying (1.770), in a ruleset with `combat.poses` only. */
+function rulesetPrayedOptions(definition: RulesetDefinition, combatant: RulesetCombatant): string[] {
+  if (!definition.combat?.poses) return [];
+  return combatant.actions
+    .filter((action) => action.divine || PRAYED_BY_NAME.test(action.label))
+    .map((action) => action.id);
+}
+
+/** Who has prayed since their own turn last began (1.770): a "prayed" of theirs after their last "turn". */
+function rulesetPraying(fight: RulesetFightState): Set<string> {
+  const praying = new Set<string>();
+  for (const { event } of fight.events) {
+    if (event.type === "turn") praying.delete(event.actorId);
+    else if (event.type === "prayed") praying.add(event.actorId);
+  }
+  return praying;
+}
+
 function projectCombatant(
   definition: RulesetDefinition,
   combatant: RulesetCombatant,
   state: RulesetEncounterState,
   /** Whose turn it is, when one is taking it. */
   attacker: RulesetCombatant | undefined,
+  /** Who has prayed since their turn began (1.770). */
+  praying?: ReadonlySet<string>,
 ): DirectedRulesetCombatant {
   const combat = definition.combat!;
   const health = rulesetCombatHealth(definition, combat, combatant);
@@ -989,7 +1013,19 @@ function projectCombatant(
       saves: source.saves,
     }),
   );
-  const stances = stancesOf(combatant);
+  // Sneaking (1.770): hidden by Hide or by one of the ruleset's hiding conditions. Only the party's own
+  // are told, which says nothing of an opponent the screen should not know.
+  const sneaking =
+    !!combat.poses &&
+    combatant.side === "party" &&
+    (!!combatant.hiding ||
+      !!combatant.flags.hidden ||
+      (combat.poses.hidden ?? []).some((id) => rulesetCombatConditions(definition, combatant).includes(id)));
+  const posed = [
+    ...(sneaking && !combatant.hiding?.from.length ? (["hidden"] as const) : []),
+    ...(praying?.has(combatant.id) ? (["praying"] as const) : []),
+  ];
+  const stances = posed.length ? [...(stancesOf(combatant) ?? []), ...posed] : stancesOf(combatant);
   return {
     id: combatant.id,
     name: combatant.name,
@@ -1060,6 +1096,13 @@ function projectCombatant(
     ...(combatant.span !== undefined ? { span: combatant.span } : {}),
     // Drawn in its flying art (1.352): never read by the rules.
     ...(rulesetCombatantFlying(state.board?.grid, combatant) ? { flying: true as const } : {}),
+    // Drawn praying as it casts these, and sneaking while hidden (1.770): never read by the rules. Only
+    // the party's own are told hidden, which says nothing of an opponent the screen should not know.
+    ...(() => {
+      const prays = rulesetPrayedOptions(definition, combatant);
+      return prays.length ? { prays } : {};
+    })(),
+    ...(sneaking ? { hidden: true as const } : {}),
   };
 }
 
@@ -1359,6 +1402,7 @@ function rulesetViewOf(definition: RulesetDefinition, state: CombatDirectorState
   const fight = fightOf(state);
   if (!fight || !definition.combat) return undefined;
   const encounter = fight.encounter;
+  const praying = rulesetPraying(fight);
   const actor = currentRulesetActor(encounter);
   const controller = rulesetController(state, fight, actor);
   const over = !!state.outcome || rulesetEncounterOutcome(encounter) !== "ongoing";
@@ -1429,7 +1473,7 @@ function rulesetViewOf(definition: RulesetDefinition, state: CombatDirectorState
     ...(actor && !over ? { actorId: actor.id } : {}),
     controller,
     combatants: encounter.combatants.map((combatant) =>
-      projectCombatant(definition, combatant, encounter, actor && !over ? actor : undefined),
+      projectCombatant(definition, combatant, encounter, actor && !over ? actor : undefined, praying),
     ),
     // The areas spells left standing (1.172), drawn on the board and listed beside it.
     ...(rulesetZonesShown(encounter).length > 0 ? { zones: rulesetZonesShown(encounter) } : {}),
@@ -4452,11 +4496,30 @@ function applyChoiceOnly(
   fight: RulesetFightState,
   choice: RulesetCombatChoice,
 ): { refused: RulesetCombatEvent | null } {
+  // Cast by praying (1.770): read before the step, which may spend what it was.
+  const user = rulesetCombatant(fight.encounter, choice.actorId);
+  const prayed =
+    user && rulesetPrayedOptions(definition, user).includes(choice.optionId)
+      ? user.actions.find((action) => action.id === choice.optionId)
+      : undefined;
   const step = applyRulesetCombatChoice(definition, fight.encounter, choice, rollerFor(fight));
   const refused = step.events.find((event) => event.type === "refused") ?? null;
   // A refusal changes nothing and bumps nothing: the state it was given is the state it hands back.
   if (refused) return { refused };
-  absorb(definition, state, fight, step);
+  absorb(
+    definition,
+    state,
+    fight,
+    prayed
+      ? {
+          ...step,
+          events: [
+            { type: "prayed", actorId: choice.actorId, optionId: prayed.id, label: prayed.label },
+            ...step.events,
+          ],
+        }
+      : step,
+  );
   return { refused: null };
 }
 

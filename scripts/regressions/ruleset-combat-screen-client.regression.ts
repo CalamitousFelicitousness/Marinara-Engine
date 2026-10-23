@@ -666,6 +666,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ["condition", say({ type: "condition", targetId: "brenna", condition: "prone", active: true, reason: "applied" })],
     ["spend", say({ type: "spend", actorId: "corwin", pool: "slots_1", label: "1st-level slots", amount: 1 })],
     ["budget", say({ type: "budget", actorId: "brenna", budget: "bonus", left: 0 })],
+    ["prayed", say({ type: "prayed", actorId: "corwin", optionId: "bless", label: "Bless" })],
     ["uses", say({ type: "uses", actorId: "lurker", optionId: "thorns", label: "Thorns", left: 1, of: 3 })],
     ["broke", say({ type: "broke", actorId: "corwin", optionId: "use:0", label: "Wand of sparks", roll: 1 })],
     [
@@ -1458,6 +1459,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   assert.equal(printed.get("spend"), "Corwin spends 1 1st-level slots.");
   assert.equal(printed.get("budget"), "Brenna has 0 Bonus action left.");
   assert.equal(printed.get("uses"), "Thorns: 1 of 3 left.");
+  assert.equal(printed.get("prayed"), "Corwin prays: Bless.");
   assert.equal(printed.get("recharge"), "Thorns is ready again: 5, needing 5.");
   assert.equal(printed.get("signature"), "Thorn Lurker spends 2 on Wail, with 1 left.");
   assert.equal(printed.get("strikes"), "Brenna swings with Longsword, with 1 strike left.");

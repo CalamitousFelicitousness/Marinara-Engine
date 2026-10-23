@@ -9580,6 +9580,9 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Fight poses (who prays, who sneaks), 1.770.
+  if (!declaresApi(770) && plainRecord(plainRecord(ruleset)?.combat)?.poses !== undefined)
+    return "A ruleset with fight poses (combat.poses) requires schemaVersion 2 and capabilityApi 1.770 or newer";
   // Creature types that never give themselves up, 1.769.
   if (!declaresApi(769) && plainRecord(plainRecord(plainRecord(ruleset)?.combat)?.morale)?.neverSurrender !== undefined)
     return "A ruleset with creature types that never surrender (combat.morale.neverSurrender) requires schemaVersion 2 and capabilityApi 1.769 or newer";

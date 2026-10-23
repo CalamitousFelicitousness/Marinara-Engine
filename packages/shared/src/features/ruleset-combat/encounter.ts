@@ -3778,6 +3778,22 @@ function abilityAction(
   });
 }
 
+/** Whether an action is cast by praying (1.770): one of the ruleset's divine `entries`, or a sheet row
+ *  whose divine `column` holds one of its `values` (matched without case). Art and marks only. */
+function rulesetDivineAction(
+  definition: RulesetDefinition,
+  action: Pick<RulesetCombatAction, "entry">,
+  row?: Record<string, unknown>,
+): boolean {
+  const divine = definition.combat?.poses?.divine;
+  if (!divine) return false;
+  if (action.entry && divine.entries?.includes(action.entry)) return true;
+  if (!row || !divine.column || !divine.values) return false;
+  const held = row[divine.column];
+  const words = (Array.isArray(held) ? held : [held]).filter((one): one is string => typeof one === "string");
+  return words.some((word) => divine.values!.some((value) => value.toLowerCase() === word.trim().toLowerCase()));
+}
+
 /** A teleport's distances in cells (1.276). */
 function rulesetTeleportInCells(teleport: RulesetTeleport, perCell: number): RulesetTeleport {
   return {
@@ -4675,6 +4691,8 @@ function abilityActions(
       // entries reads.
       action.catalog = catalogId;
       action.entry = way.ref;
+      // Cast by praying (1.770), by the row it came from or its entry.
+      if (rulesetDivineAction(definition, action, values)) action.divine = true;
       // What its filters read, for a ward's `where` (1.629): from a catalog file too.
       if (way.entry.filters) action.filters = structuredClone(way.entry.filters);
       action.fromRow = { list: source.list, values: { ...values } };
@@ -4747,6 +4765,7 @@ function innateActions(
       if (!action) return [];
       action.catalog = catalogId;
       action.entry = ref;
+      if (rulesetDivineAction(definition, action)) action.divine = true;
       if (ref !== spell.entry && spell.uses) action.usesKey = spell.entry;
       if ("variantOf" in way) {
         action.variantOf = way.variantOf;
@@ -4928,6 +4947,7 @@ function conditionActions(
         if (!action) return [];
         action.catalog = catalogId;
         action.entry = ref;
+        if (rulesetDivineAction(definition, action)) action.divine = true;
         // What its filters read, for a ward's `where` (1.629): from a catalog file too.
         if (entry.filters) action.filters = structuredClone(entry.filters);
         action.whileHolds = condition.condition;

@@ -252207,6 +252207,55 @@
           ],
           "additionalProperties": false
         },
+        "poses": {
+          "type": "object",
+          "properties": {
+            "hidden": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 40,
+                "pattern": "^[a-z][a-z0-9_]*$"
+              },
+              "minItems": 1,
+              "maxItems": 12
+            },
+            "divine": {
+              "type": "object",
+              "properties": {
+                "column": {
+                  "type": "string",
+                  "maxLength": 40,
+                  "pattern": "^[a-z][a-z0-9_]*$"
+                },
+                "values": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 60
+                  },
+                  "minItems": 1,
+                  "maxItems": 24
+                },
+                "entries": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 120
+                  },
+                  "minItems": 1,
+                  "maxItems": 80
+                },
+                "$comment": {}
+              },
+              "additionalProperties": false
+            },
+            "$comment": {}
+          },
+          "additionalProperties": false
+        },
         "contests": {
           "type": "array",
           "items": {

@@ -165,7 +165,7 @@ export interface DirectedRulesetCombatant {
   conditions: Array<{ id: string; label: string; rounds?: number; trait?: true; icons?: string[] }>;
   /** What a standard action left them doing until their next turn: dodging, hidden, disengaged or
    *  with something readied. Not conditions, so a screen names them in its own words. */
-  stances?: Array<"dodging" | "hidden" | "disengaged" | "readied">;
+  stances?: Array<"dodging" | "hidden" | "disengaged" | "readied" | "praying">;
   /** All active typed defenses, including exceptions (Capability API 1.132). */
   hides?: Pick<RulesetCheckSource, "resist" | "vulnerable" | "immune" | "conditionImmunities">;
   /** Active damage dealt/taken sources (Capability API 1.133), also read by the Game Master. */
@@ -212,6 +212,10 @@ export interface DirectedRulesetCombatant {
   /** Shown in its flying art (1.352): it flies without walking, hovers, is up in the air, or flew this
    *  turn. Art only. */
   flying?: true;
+  /** Art and marks only (1.770): the options it casts by praying (the ruleset's
+   *  `combat.poses.divine`), and that it is hidden, so it sneaks as it moves. */
+  prays?: string[];
+  hidden?: true;
 }
 /**
  * What a ruleset fight's log holds: everything the resolver did, plus the few things the DIRECTOR

@@ -48,6 +48,7 @@ import { resolveConversationSelfieSetup } from "../../lib/conversation-selfie-se
 import {
   captureChatWizardDefaults,
   readChatMetadata,
+  reusableChatWizardDefaults,
   wizardDefaultsMetadataPatch,
   type ChatWizardDefaults,
 } from "../../lib/chat-wizard-defaults";
@@ -1035,7 +1036,9 @@ function SavedChatSetupWizard({
   const updateMeta = useUpdateChatMetadata();
   const apply = useCallback(
     async (defaults: ChatWizardDefaults, reset = false, automatic = false) => {
-      const { metadata, connectionId, promptPresetId, personaId, personaCharacterId, characterIds } = defaults;
+      const { metadata, connectionId, promptPresetId, personaId, personaCharacterId, characterIds } = reset
+        ? defaults
+        : reusableChatWizardDefaults(defaults);
       const advance = (response: Chat, fields: Parameters<typeof advanceChatSetupDraft>[2], keys: string[] = []) => {
         const store = useChatStore.getState();
         const pending = store.pendingNewChatSetups[chat.id];
@@ -1122,7 +1125,9 @@ function SavedChatSetupWizard({
           }
         } else {
           const latest = queryClient.getQueryData<Chat>(chatKeys.detail(chat.id)) ?? chat;
-          useUIStore.getState().setChatWizardDefaults(mode, captureChatWizardDefaults(latest, metadata));
+          useUIStore
+            .getState()
+            .setChatWizardDefaults(mode, reusableChatWizardDefaults(captureChatWizardDefaults(latest, metadata)));
           setDefaultsApplied(true);
           toast.success(t("chat.wizard.defaults.saved"));
         }

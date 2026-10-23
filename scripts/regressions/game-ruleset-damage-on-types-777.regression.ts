@@ -25,7 +25,8 @@ process.env.DATA_DIR = dataDir;
 process.env.FILE_STORAGE_DIR = join(dataDir, "storage");
 const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
-const { rulesetEffectWorth } = await import("../../packages/server/src/services/game/ruleset-combat-director.service.js");
+const { rulesetEffectWorth } =
+  await import("../../packages/server/src/services/game/ruleset-combat-director.service.js");
 
 try {
   const read = (path: string) => readFileSync(fileURLToPath(new URL(path, import.meta.url)), "utf8");

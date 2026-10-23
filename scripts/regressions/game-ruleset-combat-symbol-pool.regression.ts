@@ -35,7 +35,7 @@ import {
   rulesetSymbolChance,
   rulesetSymbolAttackForecast,
   rulesetSymbolDice,
-  rulesetSymbolSpendUsable,
+  rulesetSymbolSpendBudget,
   rulesetSymbolOutcomes,
   type RulesetCombatEvent,
   type RulesetCombatRoller,
@@ -401,9 +401,16 @@ try {
     const brutesTurn = { ...opened, turn: opened.order.indexOf("brute") };
     const clubbing = rulesetCombatOptions(definition, brutesTurn, "brute").find((entry) => entry.label === "Club")!;
     const clubDice = rulesetSymbolDice(definition, { dice: 2, upgrades: 1, difficulty: 2 });
-    const priced = (usable?: (spend: { boost?: { on: string } }) => boolean) =>
-      rulesetSymbolAttackForecast(definition, definition.combat!, clubDice, 2.5, 3, usable).worth;
-    const withoutRally = priced((spend) => spend.boost?.on !== "attacker-ally");
+    const priced = (copies?: (spend: { max: number; boost?: { on: string } }) => number) =>
+      rulesetSymbolAttackForecast(
+        definition,
+        definition.combat!,
+        clubDice,
+        2.5,
+        3,
+        copies ? () => ({ copies, take: () => {} }) : undefined,
+      ).worth;
+    const withoutRally = priced((spend) => (spend.boost?.on === "attacker-ally" ? 0 : spend.max));
     assert.ok(priced() > withoutRally, "Rally would be worth something to a Brute with an ally");
     assert.equal(
       clubbing.forecast?.worth,
@@ -445,7 +452,12 @@ try {
       "no harm on a miss",
     );
     assert.deepEqual(
-      ids(pickRulesetSymbolSpends(combat, { a: 3 }, true, "attacker", (spend) => spend.id !== "rally")),
+      ids(
+        pickRulesetSymbolSpends(combat, { a: 3 }, true, "attacker", {
+          copies: (spend) => (spend.id === "rally" ? 0 : spend.max),
+          take: () => {},
+        }),
+      ),
       [["cut", 1]],
       "an ally nobody is buys nothing",
     );
@@ -543,30 +555,32 @@ try {
     rulesetCombatant(already, "brute")!.tracked.push({ condition: "wounded" } as never);
     const ada = rulesetCombatant(already, "ada")!;
     const brute = rulesetCombatant(already, "brute")!;
-    const usable = rulesetSymbolSpendUsable(kinded, already, ada, brute);
+    const budget = rulesetSymbolSpendBudget(kinded, already, ada, brute);
     const telling = kinded.combat!.symbols!.spends!.find((spend) => spend.id === "telling")!;
-    assert.equal(usable(telling), 0, "a second wound of the kind would not go on");
+    assert.equal(budget.copies(telling), 0, "a second wound of the kind would not go on");
     const fresh = (id: string) => rulesetCombatant(adaAgain, id)!;
-    assert.equal(rulesetSymbolSpendUsable(kinded, adaAgain, fresh("ada"), fresh("brute"))(telling), 1);
-    // A track with no room left that way is not moved, so Overreach is not bought on a Brute whose
-    // heat is full, and buys no more than the room there is.
+    const clean = rulesetSymbolSpendBudget(kinded, adaAgain, fresh("ada"), fresh("brute"));
+    assert.equal(clean.copies(telling), 1);
+    clean.take(telling, 1);
+    assert.equal(clean.copies(telling), 0, "one throw puts it on once");
+    // A track moves only as far as it has room, and what one spend takes another can't: Overreach is
+    // not bought on a Brute whose heat is full, and once one step is bought at 4 of 5 none is left.
     const overreach = kinded.combat!.symbols!.spends!.find((spend) => spend.id === "overreach")!;
     const hot = structuredClone(adaAgain);
-    rulesetCombatant(hot, "brute")!.tracks = { heat: 5 };
-    const swinging = rulesetSymbolSpendUsable(
-      kinded,
-      hot,
-      rulesetCombatant(hot, "brute")!,
-      rulesetCombatant(hot, "ada")!,
-    );
-    assert.equal(swinging(overreach), 0, "heat is full");
-    rulesetCombatant(hot, "brute")!.tracks = { heat: 4 };
-    assert.equal(swinging(overreach), 1);
+    const heated = (heat: number) => {
+      rulesetCombatant(hot, "brute")!.tracks = { heat };
+      return rulesetSymbolSpendBudget(kinded, hot, rulesetCombatant(hot, "brute")!, rulesetCombatant(hot, "ada")!);
+    };
+    assert.equal(heated(5).copies(overreach), 0, "heat is full");
+    const room = heated(4);
+    assert.equal(room.copies(overreach), 1);
+    room.take(overreach, 1);
+    assert.equal(room.copies(overreach), 0, "the step is taken");
     assert.deepEqual(
-      pickRulesetSymbolSpends(kinded.combat!, { h: 2 }, false, "target", () => 0),
-      [],
+      pickRulesetSymbolSpends(kinded.combat!, { h: 2 }, false, "target", heated(5)).map((pick) => pick.spend.id),
+      ["slip"],
     );
-    assert.deepEqual(pickRulesetSymbolSpends(kinded.combat!, { t: 1 }, true, "attacker", usable), []);
+    assert.deepEqual(pickRulesetSymbolSpends(kinded.combat!, { t: 1 }, true, "attacker", budget), []);
     const cleaver = rulesetCombatOptions(kinded, already, "ada").find((entry) => entry.label === "Cleaver")!;
     const declined = applyRulesetCombatChoice(
       kinded,

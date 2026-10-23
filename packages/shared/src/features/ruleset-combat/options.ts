@@ -69,7 +69,7 @@ import {
   rulesetDamageMinimum,
   rulesetCombatEffects,
   rulesetCombatStanding,
-  rulesetSymbolSpendUsable,
+  rulesetSymbolSpendBudget,
   rulesetAbilityNarrowing,
   rulesetCheckAbility,
   rulesetCheckMode,
@@ -2105,7 +2105,7 @@ function forecastFor(
           rulesetTargetDamageKind(definition, combat, symbolTarget, damage.type, damage.qualities).kind,
         ),
         // What the fight leaves unbought, its forecast prices at nothing.
-        rulesetSymbolSpendUsable(definition, state, actor, symbolTarget),
+        () => rulesetSymbolSpendBudget(definition, state, actor, symbolTarget!),
       );
       forecast.averageDamage = Math.round(expected.averageDamage * 100) / 100;
       forecast.worth = Math.round(expected.worth * 100) / 100;

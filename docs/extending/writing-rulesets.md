@@ -3394,7 +3394,7 @@ What the symbols do is the `symbols` block:
   a `critical` lands once, so its `max` stays one, and no two spends put one condition (or two of
   one `oneAtATime` kind) on the same one on the same throw. A spend is left unbought when it would
   do nothing: its condition would not go on (kept off, or one of its kind already held), or its track
-  has no room to move that way. `by` says which side chooses it: the
+  has no room for a whole step that way (room an earlier spend on the same throw may have used). `by` says which side chooses it: the
   attacker spends the symbols that favour them (advantage, triumph), the target the ones that favour
   the target (threat, despair). One side spends a given symbol, and a spend never buys with the
   successes, which already land the blow and add to its harm.

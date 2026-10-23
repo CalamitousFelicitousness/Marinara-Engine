@@ -272,27 +272,35 @@ export interface RulesetSymbolSpendPick {
   times: number;
 }
 
+/** What one throw's spends can still do (1.382): how many more copies of a spend would land, given
+ *  what has already been bought on this throw, and the record of buying them. The fight and its
+ *  forecast hold one per throw, so what is priced is what lands. */
+export interface RulesetSymbolSpendBudget {
+  copies(spend: RulesetSymbolSpend): number;
+  take(spend: RulesetSymbolSpend, times: number): void;
+}
+
+/** A budget with no limits but each spend's own `max`. */
+export const RULESET_SYMBOL_SPEND_UNLIMITED: RulesetSymbolSpendBudget = {
+  copies: (spend) => spend.max,
+  take: () => {},
+};
+
 /** The spends one side buys with the symbols a roll left, the most worth for what it has: each
  *  symbol is its own budget, so each is filled on its own, and a spend worth nothing is never bought.
- *  Ties keep the symbols for the story. */
+ *  Ties keep the symbols for the story. What lands is asked of `budget` as each is bought, so two
+ *  spends reaching for one holder's room never both get it, and nothing is bought that would not land. */
 export function pickRulesetSymbolSpends(
   combat: RulesetCombat,
   symbols: Readonly<Record<string, number>>,
   hit: boolean,
   by: RulesetSymbolSpend["by"],
-  /** Whether a spend can land here, or how many times it can: one whose ally there is nobody to be,
-   *  or whose condition or track would not move, is not bought, and never more often than it lands. */
-  usable: (spend: RulesetSymbolSpend) => boolean | number = () => true,
+  budget: RulesetSymbolSpendBudget = RULESET_SYMBOL_SPEND_UNLIMITED,
 ): RulesetSymbolSpendPick[] {
-  const room = new Map<RulesetSymbolSpend, number>();
-  for (const spend of combat.symbols?.spends ?? []) {
-    const lands = usable(spend);
-    room.set(spend, lands === true ? spend.max : lands === false ? 0 : Math.max(0, Math.min(spend.max, lands)));
-  }
   const spends = (combat.symbols?.spends ?? []).filter(
     (spend) =>
       spend.by === by &&
-      room.get(spend)! > 0 &&
+      budget.copies(spend) > 0 &&
       (symbols[spend.symbol] ?? 0) >= spend.cost &&
       (hit ? spend.when !== "miss" : spend.when !== "hit") &&
       rulesetSymbolSpendWorth(spend) > 0,
@@ -303,7 +311,7 @@ export function pickRulesetSymbolSpends(
     // One item per time a spend may be bought, so a bounded knapsack is a plain one.
     const items = spends
       .filter((spend) => spend.symbol === symbol)
-      .flatMap((spend) => Array.from({ length: room.get(spend)! }, () => spend));
+      .flatMap((spend) => Array.from({ length: Math.min(spend.max, budget.copies(spend)) }, () => spend));
     const best = Array.from({ length: capacity + 1 }, () => ({ worth: 0, used: 0, items: [] as number[] }));
     items.forEach((item, index) => {
       const worth = rulesetSymbolSpendWorth(item);
@@ -322,10 +330,12 @@ export function pickRulesetSymbolSpends(
     );
     const times = new Map<RulesetSymbolSpend, number>();
     for (const index of chosen.items) times.set(items[index]!, (times.get(items[index]!) ?? 0) + 1);
-    // In the order the ruleset lists them.
+    // In the order the ruleset lists them, each only as often as it still lands.
     for (const spend of spends) {
-      const count = times.get(spend);
-      if (count) picks.push({ spend, times: count });
+      const count = Math.min(times.get(spend) ?? 0, budget.copies(spend));
+      if (count <= 0) continue;
+      budget.take(spend, count);
+      picks.push({ spend, times: count });
     }
   }
   return picks.sort(
@@ -356,8 +366,8 @@ export function rulesetSymbolAttackForecast(
   /** The blow's own harm on a hit, on average. */
   base: number,
   soak: number,
-  /** Which spends can be bought in this fight, and how often; every one, where the caller doesn't say. */
-  usable: (spend: RulesetSymbolSpend) => boolean | number = () => true,
+  /** A fresh budget for each way the throw may come out: what this fight's spends can do. */
+  budgetFor: () => RulesetSymbolSpendBudget = () => RULESET_SYMBOL_SPEND_UNLIMITED,
 ): { hitChance: number; averageDamage: number; worth: number } {
   const success = rulesetSymbolSuccess(definition);
   const needed = rulesetSymbolNeeded(definition);
@@ -367,8 +377,10 @@ export function rulesetSymbolAttackForecast(
   for (const outcome of rulesetSymbolOutcomes(definition, dice)) {
     const successes = success === undefined ? 0 : (outcome.symbols[success] ?? 0);
     const hit = successes >= needed;
-    const mine = pickRulesetSymbolSpends(combat, outcome.symbols, hit, "attacker", usable);
-    const theirs = pickRulesetSymbolSpends(combat, outcome.symbols, hit, "target", usable);
+    // One budget for the throw, the attacker buying first, as the fight does.
+    const budget = budgetFor();
+    const mine = pickRulesetSymbolSpends(combat, outcome.symbols, hit, "attacker", budget);
+    const theirs = pickRulesetSymbolSpends(combat, outcome.symbols, hit, "target", budget);
     const added = mine.reduce((sum, pick) => sum + (pick.spend.damage ?? 0) * pick.times, 0);
     const dealt = hit ? Math.max(0, base + rulesetSymbolSuccessHarm(definition, combat, successes) + added - soak) : 0;
     const other =

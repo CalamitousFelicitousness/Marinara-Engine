@@ -30,7 +30,7 @@ import {
   type RulesetValueRef,
 } from "../../schemas/ruleset.schema.js";
 import type { TacticalGrid, TacticalGroundCell } from "../tactical-combat/types.js";
-import type { RulesetSymbolSpend } from "./symbols.js";
+import type { RulesetSymbolSpend, RulesetSymbolSpendBudget } from "./symbols.js";
 import { BOARD_PROP_ART } from "../world/board-pack.js";
 import { rulesetBoardEvents, rulesetRunBoardEvents, type RulesetBoardEventInput } from "./board-events.js";
 import {
@@ -1226,37 +1226,60 @@ export function rulesetSymbolSpendHolder(
   return undefined;
 }
 
-/** How many times a symbol spend can land on this attack (1.382), none where it cannot: everybody it
- *  names is there and standing, a condition it gives would go on (not kept off, not sealed apart from
- *  whoever puts it on, not one of a kind its holder already has), and a track it moves has room to
- *  move that way. The fight and its forecast both ask, so the AI never prices what the Engine leaves
- *  unbought, and no symbol is spent on something that does not happen. */
-export function rulesetSymbolSpendUsable(
+/** What one attack's symbol spends can do (1.382), kept as they are bought: everybody a spend names
+ *  must be there and standing; a condition goes on once per holder and kind on a throw, and not at
+ *  all where it is kept off, sealed apart from whoever puts it on, or one of a kind already held; a
+ *  track moves only as many whole steps as it has room for that way, room the throw's earlier spends
+ *  have used. The fight and its forecast both buy against one of these per throw, so the AI never
+ *  prices what the Engine leaves unbought, and no symbol is spent on something that does not land. */
+export function rulesetSymbolSpendBudget(
   definition: RulesetDefinition,
   state: RulesetEncounterState,
   actor: RulesetCombatant,
   target: RulesetCombatant,
-): (spend: RulesetSymbolSpend) => number {
-  return (spend) => {
-    const named = [spend.condition?.on, spend.track?.on, spend.boost?.on, spend.setback?.on];
-    for (const on of named) {
+): RulesetSymbolSpendBudget {
+  const conditions = definition.combat?.conditions;
+  const kindOf = (condition: string) => {
+    const group = conditions?.find((one) => one.condition === condition)?.oneAtATime;
+    return group === undefined ? { key: `condition:${condition}`, group } : { key: `kind:${group}`, group };
+  };
+  const putOn = new Set<string>();
+  const tracks = new Map<string, { value: number; min: number; top: number }>();
+  const trackOf = (holder: RulesetCombatant, id: string) => {
+    const key = `${holder.id}|${id}`;
+    const known = tracks.get(key);
+    if (known) return known;
+    const declared = definition.sheet.live.tracks.find((entry) => entry.id === id)!;
+    const live = holder.sheet
+      ? readRulesetLive(definition, holder.sheet.build, holder.sheet.live).tracks.find((entry) => entry.id === id)
+      : undefined;
+    const made = {
+      value: live ? live.value : (holder.tracks?.[id] ?? declared.default ?? declared.min),
+      min: declared.min,
+      top: live ? live.max : typeof declared.max === "number" ? declared.max : 1000,
+    };
+    tracks.set(key, made);
+    return made;
+  };
+  const copies = (spend: RulesetSymbolSpend): number => {
+    for (const on of [spend.condition?.on, spend.track?.on, spend.boost?.on, spend.setback?.on]) {
       if (on === undefined) continue;
       const holder = rulesetSymbolSpendHolder(state, actor, target, on);
       if (!holder || holder.defeated) return 0;
     }
     let times = spend.max;
-    const putter = spend.by === "attacker" ? actor : target;
     if (spend.condition) {
       const holder = rulesetSymbolSpendHolder(state, actor, target, spend.condition.on)!;
+      const putter = spend.by === "attacker" ? actor : target;
       const condition = spend.condition.id;
+      const kind = kindOf(condition);
+      if (putOn.has(`${holder.id}|${kind.key}`)) return 0;
       if (rulesetImmuneToCondition(holder, condition, definition, state, putter)) return 0;
       if (rulesetSealedApart(definition, state, putter, holder)) return 0;
-      const conditions = definition.combat?.conditions;
-      const group = conditions?.find((one) => one.condition === condition)?.oneAtATime;
       const held = holder.tracked.some(
-        (entry) => conditions?.find((one) => one.condition === entry.condition)?.oneAtATime === group,
+        (entry) => conditions?.find((one) => one.condition === entry.condition)?.oneAtATime === kind.group,
       );
-      if (group !== undefined && held) return 0;
+      if (kind.group !== undefined && held) return 0;
       times = Math.min(times, 1);
     }
     if (spend.track) {
@@ -1265,17 +1288,29 @@ export function rulesetSymbolSpendUsable(
       if (!declared || declared.kinds) return 0;
       const by = spend.track.by;
       if (by > 0 && rulesetImmuneToCondition(holder, declared.id, definition)) return 0;
-      const live = holder.sheet
-        ? readRulesetLive(definition, holder.sheet.build, holder.sheet.live).tracks.find(
-            (entry) => entry.id === declared.id,
-          )
-        : undefined;
-      const from = live ? live.value : (holder.tracks?.[declared.id] ?? declared.default ?? declared.min);
-      const top = live ? live.max : typeof declared.max === "number" ? declared.max : 1000;
-      const space = by > 0 ? top - from : from - declared.min;
-      times = Math.min(times, Math.max(0, Math.ceil(space / Math.abs(by))));
+      const track = trackOf(holder, declared.id);
+      const space = by > 0 ? track.top - track.value : track.value - track.min;
+      // Whole steps only: a last step the track has no full room for is not bought.
+      times = Math.min(times, Math.max(0, Math.floor(space / Math.abs(by))));
     }
     return times;
+  };
+  return {
+    copies,
+    take(spend, times) {
+      if (times <= 0) return;
+      if (spend.condition) {
+        const holder = rulesetSymbolSpendHolder(state, actor, target, spend.condition.on);
+        if (holder) putOn.add(`${holder.id}|${kindOf(spend.condition.id).key}`);
+      }
+      if (spend.track) {
+        const holder = rulesetSymbolSpendHolder(state, actor, target, spend.track.on);
+        if (holder) {
+          const track = trackOf(holder, spend.track.id);
+          track.value = Math.min(track.top, Math.max(track.min, track.value + spend.track.by * times));
+        }
+      }
+    },
   };
 }
 

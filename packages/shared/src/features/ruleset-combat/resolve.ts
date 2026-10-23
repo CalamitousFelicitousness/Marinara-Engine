@@ -78,7 +78,7 @@ import {
   rulesetCombatHealth,
   rulesetCombatStanding,
   rulesetSymbolSpendHolder,
-  rulesetSymbolSpendUsable,
+  rulesetSymbolSpendBudget,
   rulesetDamageInEffect,
   rulesetCheckMode,
   rulesetInitiativeModifierNow,
@@ -1747,12 +1747,7 @@ function spendSymbols(
   const whom = (on: "attacker" | "target" | "attacker-ally" | "target-ally") =>
     rulesetSymbolSpendHolder(ctx.state, actor, target, on);
   const apply = (picks: RulesetSymbolSpendPick[], chooser: RulesetCombatant) => {
-    for (const pick of picks) {
-      const { spend } = pick;
-      // What landed before it may leave it less to do (two spends on one holder), so it is asked
-      // again as it is spent, and a spend that would do nothing now is not spent at all.
-      const times = Math.min(pick.times, usable(spend));
-      if (times <= 0) continue;
+    for (const { spend, times } of picks) {
       const dice = spend.boost ?? spend.setback;
       const diceOn = dice ? whom(dice.on) : undefined;
       ctx.events.push({
@@ -1802,11 +1797,11 @@ function spendSymbols(
       }
     }
   };
-  // A spend for an ally nobody is, or a condition that would not go on, goes unbought, and its
-  // symbols stay on the roll.
-  const usable = rulesetSymbolSpendUsable(ctx.definition, ctx.state, actor, target);
-  apply(pickRulesetSymbolSpends(ctx.combat, symbols, hit, "attacker", usable), actor);
-  if (!target.defeated) apply(pickRulesetSymbolSpends(ctx.combat, symbols, hit, "target", usable), target);
+  // One budget for the throw, the attacker buying first: a spend that would not land, or whose room
+  // an earlier one took, goes unbought, and its symbols stay on the roll. The forecast buys the same.
+  const budget = rulesetSymbolSpendBudget(ctx.definition, ctx.state, actor, target);
+  apply(pickRulesetSymbolSpends(ctx.combat, symbols, hit, "attacker", budget), actor);
+  if (!target.defeated) apply(pickRulesetSymbolSpends(ctx.combat, symbols, hit, "target", budget), target);
   return out;
 }
 

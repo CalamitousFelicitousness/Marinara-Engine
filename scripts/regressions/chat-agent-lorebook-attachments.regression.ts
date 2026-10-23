@@ -261,6 +261,24 @@ try {
     ),
     "package reference content uses chat macros",
   );
+  await books.createEntry({
+    lorebookId: firstBook.id,
+    name: "Guide reference",
+    keys: ["compass"],
+    content: "GUIDE_ONLY_REFERENCE",
+  });
+  await chats.createMessage({
+    chatId: chat.id,
+    role: "assistant",
+    content: "A light draws near.",
+    extra: { generationReplay: { generationGuide: "A compass arrives.", generationGuideSource: "guide" } },
+  });
+  assert(
+    (await resolvePackageAgentLorebookEntries(db, types[0]!, { chatId: chat.id })).some(
+      (entry) => entry.content === "GUIDE_ONLY_REFERENCE",
+    ),
+    "package reference scans include a saved guide even when the reply omits its keyword",
+  );
   await chats.createMessage({
     chatId: chat.id,
     role: "assistant",

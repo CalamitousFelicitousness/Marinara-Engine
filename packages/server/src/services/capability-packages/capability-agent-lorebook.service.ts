@@ -13,6 +13,7 @@ import { normalizeAgentContextSize } from "../agents/agent-executor.js";
 import { resolveChatUserIdentity } from "../chat-user-identity.js";
 import { createAgentLorebookTriggerResolver } from "../generation/agent-lorebook-triggers.js";
 import {
+  buildLorebookScanMessagesWithGenerationGuide,
   resolveLorebookGenerationTriggers,
   resolveLorebookTokenBudget,
 } from "../generation/lorebook-generation-runtime.js";
@@ -132,6 +133,19 @@ export async function resolvePackageAgentLorebookEntries(
     macros,
     profiles.profilesById,
   );
+  const scanMessages = buildLorebookScanMessagesWithGenerationGuide(
+    messages.map((message) => ({
+      role:
+        message.role === "user"
+          ? ("user" as const)
+          : message.role === "system"
+            ? ("system" as const)
+            : ("assistant" as const),
+      content: message.content,
+    })),
+    replay ?? {},
+    (value) => resolveMacros(value, macros, { trimResult: false }),
+  );
   const config = await createAgentsStorage(db).getByType(packageId);
   const settings = parseExtra(config?.settings);
   let embeddingSource: Awaited<ReturnType<typeof resolveMemoryRecallEmbeddingSource>> | null = null;
@@ -173,7 +187,7 @@ export async function resolvePackageAgentLorebookEntries(
     tokenBudget: resolveLorebookTokenBudget(metadata),
     vectorizerAvailable,
     signal,
-  })(messages);
+  })(scanMessages);
   signal?.throwIfAborted();
   return (resolved[packageId] ?? []).map(({ id, name, content }) => ({ id, name, content }));
 }

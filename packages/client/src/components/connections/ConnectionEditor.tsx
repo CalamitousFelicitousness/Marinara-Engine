@@ -4108,7 +4108,7 @@ export function ConnectionEditor() {
                 type="button"
                 onClick={handleTestMusic}
                 disabled={audioTestPending || !connectionDetailId || !localAudioMusic}
-                className="flex items-center gap-1.5 rounded-xl bg-sky-400/10 px-4 py-2.5 text-xs font-medium text-sky-400 ring-1 ring-sky-400/20 transition-all hover:bg-sky-400/20 active:scale-[0.98] disabled:opacity-50"
+                className="flex items-center gap-1.5 rounded-xl bg-[var(--marinara-app-accent-static)]/10 px-4 py-2.5 text-xs font-medium text-[var(--marinara-app-accent-static)] ring-1 ring-[var(--marinara-app-accent-static)]/20 transition-all hover:bg-[var(--marinara-app-accent-static)]/20 active:scale-[0.98] disabled:opacity-50"
               >
                 {audioTestPending ? <Loader2 size="0.8125rem" className="animate-spin" /> : <Music size="0.8125rem" />}
                 {t(
@@ -4123,7 +4123,7 @@ export function ConnectionEditor() {
                 </p>
               )}
               {audioTestError && (
-                <p role="alert" className="break-words text-xs text-red-400">
+                <p role="alert" className="break-words text-xs text-[var(--marinara-app-accent-static)]">
                   {audioTestError}
                 </p>
               )}

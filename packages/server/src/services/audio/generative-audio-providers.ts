@@ -102,9 +102,10 @@ async function providerRejection(
     body?.message ??
     body?.msg;
   let reason = typeof message === "string" ? sanitizeApiError(message, message.length) : "";
-  for (const secret of [config.apiKey, config.apiKey.trim(), config.baseUrl, config.callbackUrl]) {
-    if (secret) reason = reason.replaceAll(secret, "[redacted]");
-  }
+  const secrets = [config.apiKey, config.apiKey.trim(), config.baseUrl, config.callbackUrl]
+    .filter((value): value is string => Boolean(value))
+    .sort((a, b) => b.length - a.length);
+  for (const secret of secrets) reason = reason.replaceAll(secret, "[redacted]");
   reason = reason
     .replace(/https?:\/\/[^\s"'<>]+/gi, "[redacted URL]")
     .replace(/<[^>]*>/g, " ")

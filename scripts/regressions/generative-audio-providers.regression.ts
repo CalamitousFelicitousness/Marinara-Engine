@@ -202,7 +202,7 @@ try {
   assert.equal(rejected.providerCode, "invalid_model_id");
   const validation = await rejection({ detail: [{ msg: "Invalid output format", input: key }] });
   assert.equal(validation.reason, "Invalid output format", "validation input fields are never exposed");
-  const callbackUrl = "https://9.9.9.9/private-callback";
+  const callbackUrl = `${eleven.baseUrl}/private-callback`;
   const redacted = await rejection(
     {
       detail: {
@@ -212,7 +212,7 @@ try {
     { ...eleven, callbackUrl },
   );
   assert(redacted.reason!.length <= 300);
-  for (const secret of [key, eleven.baseUrl, callbackUrl, "private.example", "<b>", "\n"])
+  for (const secret of [key, eleven.baseUrl, callbackUrl, "private-callback", "private.example", "<b>", "\n"])
     assert(!redacted.reason!.includes(secret), "secrets and markup are removed before the display cap");
   for (const body of [
     null,

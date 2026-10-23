@@ -63,22 +63,15 @@ for (const theme of ["dark", "light"] as const) {
     let mode: "success" | "error" | "hold" = "success";
     let release: (() => void) | undefined;
     let heldSettled = false;
-    // Local PCM verifies real browser decoding/playback without a paid provider call.
-    const pcm = Buffer.alloc(44 + 16000);
-    pcm.write("RIFF", 0);
-    pcm.writeUInt32LE(pcm.length - 8, 4);
-    pcm.write("WAVEfmt ", 8);
-    pcm.writeUInt32LE(16, 16);
-    pcm.writeUInt16LE(1, 20);
-    pcm.writeUInt16LE(1, 22);
-    pcm.writeUInt32LE(8000, 24);
-    pcm.writeUInt32LE(16000, 28);
-    pcm.writeUInt16LE(2, 32);
-    pcm.writeUInt16LE(16, 34);
-    pcm.write("data", 36);
-    pcm.writeUInt32LE(16000, 40);
+    // Reuse a bundled MP3 to verify real decoding/playback without a paid provider call.
+    const sample = readFileSync(
+      new URL(
+        "../packages/server/src/assets/default-game-assets/music/dialogue/slice_of_life/calm/town-peaceful.mp3",
+        import.meta.url,
+      ),
+    );
     await page.route("**/api/game-assets/file/music/contexts/connection-test/**", (route) =>
-      route.fulfill({ contentType: "audio/wav", body: pcm }),
+      route.fulfill({ contentType: "audio/mpeg", body: sample }),
     );
     await page.route("**/api/audio/generate", async (route) => {
       const input = route.request().postDataJSON();

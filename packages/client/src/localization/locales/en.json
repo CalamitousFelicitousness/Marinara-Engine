@@ -14023,6 +14023,7 @@
   "ui.rulesets.builder.allocationHint": "Assign your budget, then buy dots. Free ratings cost no dots. Use All fields for manual overrides.",
   "ui.rulesets.builder.allocationNotConfigured": "This ruleset sets up this step incompletely, so its points cannot be spent here.",
   "ui.rulesets.builder.alreadyKnown": "Already known",
+  "ui.rulesets.builder.alreadyKnownName": "{{name}}, already known",
   "ui.rulesets.builder.assignPriority": "Assign an allotment before buying dots.",
   "ui.rulesets.builder.back": "Back",
   "ui.rulesets.builder.base": "Base",

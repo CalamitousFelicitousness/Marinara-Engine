@@ -31,6 +31,7 @@ import { normalizeAdvancedMemorySettings } from "@marinara-engine/shared";
 import type {
   AdvancedMemoryStatus,
   Chat,
+  ChatBranchGraphEntry,
   ChatMemoryChunk,
   ChatMemoryRecallExportPayload,
   ChatMemoryRecallImportResult,
@@ -65,6 +66,8 @@ export const chatKeys = {
   memories: (chatId: string) => [...chatKeys.all, "memories", chatId] as const,
   notes: (chatId: string) => [...chatKeys.all, "notes", chatId] as const,
   group: (groupId: string) => [...chatKeys.all, "group", groupId] as const,
+  /** Under `group`, so anything that invalidates a group (branching, deleting) redraws its graph too. */
+  branchGraph: (groupId: string) => [...chatKeys.group(groupId), "branchGraph"] as const,
 };
 
 const RECENT_MESSAGE_CONTENT_EDIT_TTL_MS = 5 * 60 * 1000;
@@ -579,6 +582,17 @@ export function useChatGroup(groupId: string | null) {
   });
 }
 
+/** Fork points, lengths and role codes for every chat in a group, for the branch graph window. */
+export function useChatBranchGraph(groupId: string | null) {
+  return useQuery({
+    queryKey: chatKeys.branchGraph(groupId ?? ""),
+    queryFn: () => api.get<ChatBranchGraphEntry[]>(`/chats/group/${groupId}/branch-graph`),
+    enabled: !!groupId,
+    // Only mounted while the window is open, so opening it always shows the current shape.
+    staleTime: 0,
+  });
+}
+
 type DeleteChatInput = string | { id: string; groupId?: string | null; force?: boolean };
 
 function getDeleteChatId(input: DeleteChatInput) {
@@ -751,6 +765,9 @@ export function useCreateChat() {
     }) => api.post<Chat>("/chats", data),
     onSuccess: (chat) => {
       if (chat) {
+        if (chat.characterIds.length === 0 && !chat.personaId && !chat.personaCharacterId) {
+          useChatStore.getState().setPendingNewChatSetup(chat);
+        }
         qc.setQueryData(chatKeys.detail(chat.id), chat);
         qc.setQueryData<Chat[]>(chatKeys.list(), (existing) => upsertCachedChat(existing, chat));
       }

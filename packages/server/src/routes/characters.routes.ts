@@ -2402,27 +2402,26 @@ export async function charactersRoutes(app: FastifyInstance) {
         namePrefix: String(charData.name ?? "Character"),
         existingLorebookId:
           typeof embeddedLorebookMetadata.lorebookId === "string" ? embeddedLorebookMetadata.lorebookId : null,
+        beforeCommit: async (tx, result) => {
+          extensions.importMetadata = {
+            ...importMetadata,
+            embeddedLorebook: {
+              ...embeddedLorebookMetadata,
+              hasEmbeddedLorebook: true,
+              lorebookId: result.lorebookId,
+            },
+          };
+
+          const updated = await createCharactersStorage(tx).update(req.params.id, {
+            extensions: extensions as any,
+          });
+
+          if (!updated) throw new Error("Character no longer exists");
+          await syncCharacterBookFromLorebook(tx, result.lorebookId, { throwOnError: true });
+        },
       },
     );
 
-    if (!result || "error" in result) {
-      return reply.status(500).send({ error: result?.error ?? "Failed to import embedded lorebook" });
-    }
-
-    extensions.importMetadata = {
-      ...importMetadata,
-      embeddedLorebook: {
-        ...embeddedLorebookMetadata,
-        hasEmbeddedLorebook: true,
-        lorebookId: result.lorebookId,
-      },
-    };
-
-    await storage.update(req.params.id, {
-      extensions: extensions as any,
-    });
-
-    await syncCharacterBookFromLorebook(app.db, result.lorebookId);
     return {
       success: true,
       lorebookId: result.lorebookId,

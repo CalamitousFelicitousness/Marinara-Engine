@@ -655,6 +655,7 @@ const LocalChatArea = memo(function LocalChatArea({
   const isPageActive = usePageActivity();
   const regenerateMessageId = useChatStore((s) => s.regenerateMessageId);
   const chatBackground = useUIStore((s) => s.chatBackground);
+  const pendingNewChatSetupId = useChatStore((s) => s.pendingNewChatSetups[activeChatId ?? ""]?.id ?? null);
   const chatWindowIntroDismissed = useUIStore((s) => s.chatWindowIntroDismissed);
   const gameSetupActive = useGameModeStore((state) => state.isSetupActive);
   const weatherEffects = useUIStore((s) => s.weatherEffects);
@@ -1876,16 +1877,22 @@ const LocalChatArea = memo(function LocalChatArea({
   // only set on truthy values, leaving the global chatBackground stale when
   // switching to a chat whose metadata has been cleared, which made a removed
   // background re-appear after a chat switch round-trip.
-  const restoredChatBackgroundRef = useRef<{ chatId: string | null; url: string | null; isSyncing: boolean }>({
+  const restoredChatBackgroundRef = useRef<{
+    chatId: string | null;
+    url: string | null;
+    isSyncing: boolean;
+    changed: boolean;
+  }>({
     chatId: null,
     url: null,
     isSyncing: false,
+    changed: false,
   });
   useEffect(() => {
     if (!chat?.id) return;
     const savedUrl = chatBackgroundMetadataToUrl(chatMeta.background);
     const restoredUrl = savedUrl ?? (chat.mode === "roleplay" ? useUIStore.getState().defaultRoleplayBackground : null);
-    restoredChatBackgroundRef.current = { chatId: chat.id, url: restoredUrl, isSyncing: true };
+    restoredChatBackgroundRef.current = { chatId: chat.id, url: restoredUrl, isSyncing: true, changed: false };
     useUIStore.getState().setChatBackground(restoredUrl);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chat?.id]);
@@ -1913,12 +1920,16 @@ const LocalChatArea = memo(function LocalChatArea({
     }
 
     const nextBackground = chatBackgroundUrlToMetadata(chatBackground);
+    // Merely showing the default backdrop is not a user edit to an untouched new draft.
+    // Once changed, returning to the entry background is a real reset and must also persist.
+    if (chatBackground !== restoredBackground.url) restoredBackground.changed = true;
+    if (pendingNewChatSetupId === chat.id && !restoredBackground.changed) return;
     if (nextBackground === savedBackground) return;
     // A selection is a discrete action, not typing: save immediately so leaving
     // the chat cannot cancel a pending background change.
     updateMeta.mutate({ id: chat.id, background: nextBackground });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chatBackground, chat?.id]);
+  }, [chatBackground, chat?.id, pendingNewChatSetupId]);
 
   const expressionSaveTimer = useRef<ReturnType<typeof setTimeout>>(null);
   const pendingExpressions = useRef<Record<string, string>>(spriteExpressions);
@@ -3026,6 +3037,7 @@ const LocalChatArea = memo(function LocalChatArea({
   // Reset stagger animation flag when switching chats
   useEffect(() => {
     hasAnimatedRef.current = false;
+    setWizardOpen(false);
   }, [activeChatId]);
 
   // Auto-open settings drawer for newly created chats
@@ -3764,9 +3776,9 @@ const LocalChatArea = memo(function LocalChatArea({
             }}
             onCloseSettings={handleCloseSettingsPanel}
             onOpenScheduleEditor={handleOpenScheduleEditor}
-            onWizardFinish={() => {
+            onWizardFinish={(discarded) => {
               setWizardOpen(false);
-              handleOpenSettingsPanel();
+              if (!discarded) handleOpenSettingsPanel();
             }}
             onClosePeekPrompt={() => setPeekPromptData(null)}
             onDeleteConfirm={handleDeleteConfirm}
@@ -3851,9 +3863,9 @@ const LocalChatArea = memo(function LocalChatArea({
             onGenerateSelfie={handleGenerateConversationSelfie}
             onGenerateVideo={handleConversationGalleryVideo}
             onAnimateImage={handleConversationAnimateImage}
-            onWizardFinish={() => {
+            onWizardFinish={(discarded) => {
               setWizardOpen(false);
-              handleOpenSettingsPanel();
+              if (!discarded) handleOpenSettingsPanel();
             }}
             onClosePeekPrompt={() => setPeekPromptData(null)}
             onResetSpritePlacements={handleResetSpritePlacements}
@@ -4006,9 +4018,9 @@ const LocalChatArea = memo(function LocalChatArea({
           onGenerateBackground={handleGenerateRoleplayBackground}
           onGenerateVideo={() => handleGenerateRoleplaySceneVideo()}
           onAnimateImage={(image) => handleGenerateRoleplaySceneVideo({ galleryImageId: image.id })}
-          onWizardFinish={() => {
+          onWizardFinish={(discarded) => {
             setWizardOpen(false);
-            handleOpenSettingsPanel();
+            if (!discarded) handleOpenSettingsPanel();
           }}
           onClosePeekPrompt={() => setPeekPromptData(null)}
           onResetSpritePlacements={handleResetSpritePlacements}

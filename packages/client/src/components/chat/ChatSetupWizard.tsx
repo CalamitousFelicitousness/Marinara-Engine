@@ -28,6 +28,8 @@ import {
   UserPlus,
 } from "lucide-react";
 import { cn, getAvatarCropStyle } from "../../lib/utils";
+import { advanceChatSetupDraft } from "../../lib/chat-setup-draft";
+import { useDiscardNewChatSetup } from "../../hooks/use-discard-new-chat-setup";
 import { useConnections, useModelParameterCapabilities } from "../../hooks/use-connections";
 import { usePresets, usePresetFull, useDefaultPreset } from "../../hooks/use-presets";
 import { useCharacterGroups, useCharacters, usePersonas } from "../../hooks/use-characters";
@@ -92,7 +94,7 @@ import {
   type Persona,
   isConversationCommandToggleOn,
 } from "@marinara-engine/shared";
-import { useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   CHAT_PARAMETER_DEFAULTS,
   GenerationParametersFields,
@@ -232,10 +234,11 @@ const CONVERSATION_COMMAND_TOGGLE_OPTIONS: Array<{
 
 interface ChatSetupWizardProps {
   chat: Chat;
-  onFinish: () => void;
+  onFinish: (discarded?: boolean) => void;
 }
 
 interface WizardWithDefaultsProps extends ChatSetupWizardProps {
+  onDismiss?: () => void;
   defaultsApplied: boolean;
   defaultsAction: (metadata: Record<string, unknown>) => React.ReactNode;
 }
@@ -941,6 +944,22 @@ function SetupGenerationParametersPanel({
 }
 
 export function ChatSetupWizard({ chat, onFinish }: ChatSetupWizardProps) {
+  const { t } = useUiTranslation();
+  const discard = useDiscardNewChatSetup();
+  const [closing, setClosing] = useState(false);
+  const dismiss = async () => {
+    if (closing) return;
+    setClosing(true);
+    try {
+      const discarded = await discard(chat.id);
+      const activeId = useChatStore.getState().activeChatId;
+      if (activeId === chat.id || (discarded && activeId === null)) onFinish(discarded);
+    } catch {
+      toast.error(t("chat.wizard.cancelFailed"));
+    } finally {
+      setClosing(false);
+    }
+  };
   const applyingProfile = useIsApplyingChatPreset(chat.id);
   const [applyHold, setApplyHold] = useState<WizardApplyHold | null>(null);
   const hold = nextWizardApplyHold(applyHold, chat.id, applyingProfile);
@@ -951,8 +970,29 @@ export function ChatSetupWizard({ chat, onFinish }: ChatSetupWizardProps) {
   // A new chat's starred profile is still being applied: start from its settings, not the blank chat's,
   // or finishing setup would write the blank chat's commands back over the profile's. A profile picked inside the
   // wizard later doesn't hold it, so the open wizard is never unmounted.
-  if (hold.waiting) return <WizardLoading onClose={onFinish} />;
-  return <SavedChatSetupWizard key={chat.id} chat={chat} onFinish={onFinish} />;
+  // Finishing can just open Agents/Connections; navigation still compares the draft and protects real setup writes.
+  return (
+    <>
+      <div className="contents" inert={closing}>
+        {hold.waiting ? (
+          <WizardLoading onClose={dismiss} />
+        ) : (
+          <SavedChatSetupWizard key={chat.id} chat={chat} onFinish={onFinish} onDismiss={dismiss} />
+        )}
+      </div>
+      {closing && (
+        <div className="pointer-events-none absolute inset-0 z-[60] flex items-center justify-center p-3">
+          <div
+            role="status"
+            className={cn(NEUTRAL_PANEL_SHELL, "flex items-center gap-2 p-4 text-sm text-[var(--foreground)]")}
+          >
+            <Loader2 size="1rem" className="motion-safe:animate-spin" aria-hidden="true" />
+            {t("chat.wizard.closing")}
+          </div>
+        </div>
+      )}
+    </>
+  );
 }
 
 function WizardLoading({ onClose }: { onClose: () => void }) {
@@ -973,7 +1013,11 @@ function WizardLoading({ onClose }: { onClose: () => void }) {
   );
 }
 
-function SavedChatSetupWizard({ chat, onFinish }: ChatSetupWizardProps) {
+function SavedChatSetupWizard({
+  chat,
+  onFinish,
+  onDismiss = onFinish,
+}: ChatSetupWizardProps & { onDismiss?: () => void }) {
   const { t } = useUiTranslation();
   const mode = chat.mode === "conversation" ? "conversation" : "roleplay";
   const queryClient = useQueryClient();
@@ -991,12 +1035,19 @@ function SavedChatSetupWizard({ chat, onFinish }: ChatSetupWizardProps) {
   const updateChat = useUpdateChat();
   const updateMeta = useUpdateChatMetadata();
   const apply = useCallback(
-    async (defaults: ChatWizardDefaults, reset = false) => {
+    async (defaults: ChatWizardDefaults, reset = false, automatic = false) => {
       const { metadata, connectionId, promptPresetId, personaId, personaCharacterId, characterIds } = reset
         ? defaults
         : reusableChatWizardDefaults(defaults);
+      const advance = (response: Chat, fields: Parameters<typeof advanceChatSetupDraft>[2], keys: string[] = []) => {
+        const store = useChatStore.getState();
+        const pending = store.pendingNewChatSetups[chat.id];
+        if (automatic && pending?.id === chat.id) {
+          store.setPendingNewChatSetup(advanceChatSetupDraft(pending, response, fields, keys));
+        }
+      };
       // Older saved templates still contain a name. Apply only reusable setup fields.
-      await updateChat.mutateAsync({
+      const configured = await updateChat.mutateAsync({
         id: chat.id,
         connectionId,
         promptPresetId,
@@ -1004,14 +1055,21 @@ function SavedChatSetupWizard({ chat, onFinish }: ChatSetupWizardProps) {
         personaCharacterId,
         characterIds,
       });
+      advance(configured, ["connectionId", "promptPresetId", "personaId", "personaCharacterId", "characterIds"]);
       const latest = queryClient.getQueryData<Chat>(chatKeys.detail(chat.id)) ?? chat;
-      await updateMeta.mutateAsync({
+      const configuredMetadata = await updateMeta.mutateAsync({
         id: chat.id,
         ...(reset ? wizardDefaultsMetadataPatch(captureChatWizardDefaults(latest), defaults) : metadata),
       });
+      advance(configuredMetadata, [], Object.keys(metadata));
     },
     [chat, queryClient, updateChat, updateMeta],
   );
+
+  const { mutateAsync: applyAutomaticDefaults } = useMutation({
+    mutationKey: ["chat-setup", "automatic-defaults"],
+    mutationFn: ({ defaults }: { chatId: string; defaults: ChatWizardDefaults }) => apply(defaults, false, true),
+  });
 
   useEffect(() => {
     if (!settingsSyncReady || initialApplyDone.current) return;
@@ -1021,10 +1079,13 @@ function SavedChatSetupWizard({ chat, onFinish }: ChatSetupWizardProps) {
       return;
     }
     let active = true;
-    pendingApply.current ??= apply({
-      ...saved,
-      // A card launch is an explicit participant choice, ahead of saved defaults.
-      characterIds: initial.characterIds.length ? initial.characterIds : saved.characterIds,
+    pendingApply.current ??= applyAutomaticDefaults({
+      chatId: chat.id,
+      defaults: {
+        ...saved,
+        // A card launch is an explicit participant choice, ahead of saved defaults.
+        characterIds: initial.characterIds.length ? initial.characterIds : saved.characterIds,
+      },
     });
     void pendingApply.current
       .then(() => {
@@ -1043,7 +1104,7 @@ function SavedChatSetupWizard({ chat, onFinish }: ChatSetupWizardProps) {
     return () => {
       active = false;
     };
-  }, [apply, initial.characterIds, saved, settingsSyncReady, t]);
+  }, [applyAutomaticDefaults, chat.id, initial.characterIds, saved, settingsSyncReady, t]);
 
   const defaultsAction = (metadata: Record<string, unknown>) => (
     <button
@@ -1076,9 +1137,9 @@ function SavedChatSetupWizard({ chat, onFinish }: ChatSetupWizardProps) {
     </button>
   );
 
-  if (!ready) return <WizardLoading onClose={onFinish} />;
+  if (!ready) return <WizardLoading onClose={onDismiss} />;
   const currentChat = queryClient.getQueryData<Chat>(chatKeys.detail(chat.id)) ?? chat;
-  const props = { chat: currentChat, onFinish, defaultsApplied, defaultsAction };
+  const props = { chat: currentChat, onFinish, onDismiss, defaultsApplied, defaultsAction };
   return mode === "conversation" ? (
     <ConversationQuickSetup key={revision} {...props} />
   ) : (
@@ -1090,7 +1151,13 @@ function SavedChatSetupWizard({ chat, onFinish }: ChatSetupWizardProps) {
 // Conversation Quick Setup — Discord-style "New DM" picker
 // ──────────────────────────────────────────────
 
-function ConversationQuickSetup({ chat, onFinish, defaultsApplied, defaultsAction }: WizardWithDefaultsProps) {
+function ConversationQuickSetup({
+  chat,
+  onFinish,
+  onDismiss = onFinish,
+  defaultsApplied,
+  defaultsAction,
+}: WizardWithDefaultsProps) {
   const { t: localizeUi } = useUiTranslation();
   const showCharacterIdentities = useUIStore((state) => state.showCharactersInPersonaPickers);
   const [step, setStep] = useState(0);
@@ -1520,6 +1587,7 @@ function ConversationQuickSetup({ chat, onFinish, defaultsApplied, defaultsActio
       customSystemPrompt,
       ...(selfieSetup.imageGenConnectionId ? { imageGenConnectionId: selfieSetup.imageGenConnectionId } : {}),
     });
+    useChatStore.getState().clearPendingNewChatSetup(chat.id);
     if (autonomousEnabled && generateSchedule && metadata.multiplayerSetup !== true) {
       setScheduleState("generating");
       try {
@@ -2110,16 +2178,16 @@ function ConversationQuickSetup({ chat, onFinish, defaultsApplied, defaultsActio
 
   return (
     <>
-      <WizardBackdrop onClose={onFinish} />
+      <WizardBackdrop onClose={onDismiss} />
       <SetupWizardShell
         title={localizeUi("navigation.chatSidebar.new.conversation")}
         steps={CONVERSATION_STEPS}
         step={step}
         currentStep={currentStep}
         animationKey={`conversation-${currentStep.key}`}
-        onClose={onFinish}
+        onClose={onDismiss}
         onBack={step > 0 ? goBack : undefined}
-        onSkip={onFinish}
+        onSkip={onDismiss}
         onPrimary={isLast ? handleStartChatting : goNext}
         primaryLabel={isLast ? "Start Chatting" : "Next"}
         primaryIcon={isLast ? <MessageCircle size="0.75rem" /> : <ChevronRight size="0.75rem" />}
@@ -2148,7 +2216,13 @@ function ConversationQuickSetup({ chat, onFinish, defaultsApplied, defaultsActio
 // Roleplay Setup Wizard — step-by-step guided setup
 // ──────────────────────────────────────────────
 
-function RoleplaySetupWizard({ chat, onFinish, defaultsApplied, defaultsAction }: WizardWithDefaultsProps) {
+function RoleplaySetupWizard({
+  chat,
+  onFinish,
+  onDismiss = onFinish,
+  defaultsApplied,
+  defaultsAction,
+}: WizardWithDefaultsProps) {
   const { t: localizeUi } = useUiTranslation();
   const localizeText = useLocalizedUiText();
   const defaultDisplayStyle = useUIStore((state) => state.roleplayDisplayStyle);
@@ -2598,6 +2672,7 @@ function RoleplaySetupWizard({ chat, onFinish, defaultsApplied, defaultsAction }
     if (metadata.multiplayerSetup !== true) {
       for (const charId of chatCharIds) await createInitialGreetingForCharacter(charId);
     }
+    useChatStore.getState().clearPendingNewChatSetup(chat.id);
     onFinish();
   }, [
     chat.id,
@@ -2631,13 +2706,16 @@ function RoleplaySetupWizard({ chat, onFinish, defaultsApplied, defaultsAction }
       onFinish();
       return;
     }
+    let profileApplied = false;
     try {
       setShortcutApplying(true);
       await applyChatPreset.mutateAsync({ presetId: shortcutPresetId, chatId: chat.id });
+      profileApplied = true;
     } catch {
       /* fall through — still close the wizard */
     } finally {
       await seedInitialGreetingsIfEmpty();
+      if (profileApplied) useChatStore.getState().clearPendingNewChatSetup(chat.id);
       setShortcutApplying(false);
       onFinish();
     }
@@ -3805,7 +3883,7 @@ function RoleplaySetupWizard({ chat, onFinish, defaultsApplied, defaultsAction }
 
   return (
     <>
-      <WizardBackdrop onClose={onFinish} />
+      <WizardBackdrop onClose={onDismiss} />
 
       <ChoiceSelectionModal
         open={showChoiceModal}
@@ -3863,9 +3941,9 @@ function RoleplaySetupWizard({ chat, onFinish, defaultsApplied, defaultsAction }
             step={0}
             currentStep={shortcutStep}
             animationKey="roleplay-shortcut"
-            onClose={onFinish}
+            onClose={onDismiss}
             onBack={() => setShortcutMode(false)}
-            onSkip={onFinish}
+            onSkip={onDismiss}
             onPrimary={handleShortcutApply}
             primaryLabel={shortcutApplying ? "Applying..." : "Apply & Start"}
             primaryIcon={shortcutApplying ? <Loader2 size="0.75rem" className="animate-spin" /> : undefined}
@@ -3880,9 +3958,9 @@ function RoleplaySetupWizard({ chat, onFinish, defaultsApplied, defaultsAction }
             step={step}
             currentStep={currentStep}
             animationKey={`roleplay-${currentStep.key}`}
-            onClose={onFinish}
+            onClose={onDismiss}
             onBack={step > 0 ? previous : undefined}
-            onSkip={onFinish}
+            onSkip={onDismiss}
             onPrimary={next}
             primaryLabel={isLast ? "Start" : "Next"}
             primaryIcon={isLast ? <Check size="0.75rem" /> : <ChevronRight size="0.75rem" />}

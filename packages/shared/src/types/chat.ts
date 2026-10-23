@@ -1281,3 +1281,32 @@ export function normalizeManualTrackerAgentTypes(value: unknown): Record<string,
   }
   return manualTypes;
 }
+
+/** A message the branch graph labels: a branch's fork point or its latest message. */
+export interface ChatBranchGraphMessage {
+  messageId: string;
+  /** Position in its chat's transcript, from 0. */
+  index: number;
+  role: MessageRole;
+  characterId: string | null;
+  /** The message text on one line, cut to about 80 characters. */
+  snippet: string;
+}
+
+/** One chat of a group in `GET /chats/group/:groupId/branch-graph`. */
+export interface ChatBranchGraphEntry {
+  chatId: string;
+  /**
+   * Index of the fork message in this chat's own transcript (its copy of the parent's message). -1 when
+   * it was branched from an empty chat; null when unknown (a root, an older or imported branch, or a
+   * deleted fork message).
+   */
+  forkIndex: number | null;
+  /** Index of the fork message in the parent's transcript; null when the parent or that message is gone. */
+  parentForkIndex: number | null;
+  messageCount: number;
+  /** One letter per message after the fork (every message when forkIndex is null): u, a, s or n. */
+  roles: string;
+  fork: ChatBranchGraphMessage | null;
+  tip: ChatBranchGraphMessage | null;
+}

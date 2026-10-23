@@ -68,24 +68,24 @@ export async function resolvePackageAgentLorebookEntries(
     personaCharacterId: chat.personaCharacterId,
   });
   const allMessages = await chats.listMessages(chatId);
-  let boundary = 0;
-  for (let index = allMessages.length - 1; index >= 0; index--) {
-    if (parseExtra(allMessages[index]!.extra).isConversationStart) {
-      boundary = index;
-      break;
-    }
-  }
-  const visible = allMessages
-    .slice(boundary)
-    .filter((message) => chat.mode === "game" || !isMessageHiddenFromAI(message));
   const config = await createAgentsStorage(db).getByType(packageId);
   const contextSize = normalizeAgentContextSize(parseExtra(config?.settings).contextSize);
-  const agentMessages = visible.slice(-contextSize);
-  const last = visible.at(-1);
-  const prior = visible
-    .slice(0, -1)
-    .filter((message) => message.role === "user" || message.role === "assistant")
-    .at(-1);
+  const agentMessages: typeof allMessages = [];
+  let last: (typeof allMessages)[number] | undefined;
+  let prior: (typeof allMessages)[number] | undefined;
+  let lastInput: string | undefined;
+  for (let index = allMessages.length - 1; index >= 0; index--) {
+    const message = allMessages[index]!;
+    if (chat.mode === "game" || !isMessageHiddenFromAI(message)) {
+      if (!last) last = message;
+      else if (!prior && (message.role === "user" || message.role === "assistant")) prior = message;
+      if (lastInput === undefined && message.role === "user") lastInput = message.content;
+      if (agentMessages.length < contextSize) agentMessages.push(message);
+    }
+    if (parseExtra(message.extra).isConversationStart) break;
+    if (agentMessages.length === contextSize && lastInput !== undefined && prior) break;
+  }
+  agentMessages.reverse();
   const replay = normalizeGenerationReplay(parseExtra(last?.extra).generationReplay);
   const generationTriggers = resolveLorebookGenerationTriggers(
     {
@@ -117,7 +117,7 @@ export async function resolvePackageAgentLorebookEntries(
       : {},
     variables: {},
     localVariables: { ...normalizeChatMacroVariables(metadata.macroVariables) },
-    lastInput: [...visible].reverse().find((message) => message.role === "user")?.content,
+    lastInput,
     macroSources: [...agentMessages.map((message) => message.content), ...sourceEntries.map((entry) => entry.content)],
   });
   const profiles = await resolveCharacterMacroData(db, characterIds, chatId);
@@ -136,18 +136,17 @@ export async function resolvePackageAgentLorebookEntries(
     macros,
     profiles.profilesById,
   );
-  const scanMessages = buildLorebookScanMessagesWithGenerationGuide(
-    messages.map((message) => ({
-      role:
-        message.role === "user"
-          ? ("user" as const)
-          : message.role === "system"
-            ? ("system" as const)
-            : ("assistant" as const),
-      content: message.content,
-    })),
-    replay ?? {},
-    (value) => resolveMacros(value, macros, { trimResult: false }),
+  const scanMessages = messages.map((message) => ({
+    role:
+      message.role === "user"
+        ? ("user" as const)
+        : message.role === "system"
+          ? ("system" as const)
+          : ("assistant" as const),
+    content: message.content,
+  }));
+  const supplementalScanMessages = buildLorebookScanMessagesWithGenerationGuide([], replay ?? {}, (value) =>
+    resolveMacros(value, macros, { trimResult: false }),
   );
   let embeddingSource: Awaited<ReturnType<typeof resolveMemoryRecallEmbeddingSource>> | null = null;
   let vectorizerAvailable = false;
@@ -181,6 +180,7 @@ export async function resolvePackageAgentLorebookEntries(
     filterSourceLorebookIds: async (ids) => ids,
     gameState: snapshot ? { ...parseGameStateRow(snapshot) } : null,
     generationTriggers,
+    supplementalScanMessages,
     listEntriesByLorebookIds: async (ids) =>
       sourceEntries.filter((entry) => ids.includes(entry.lorebookId)) as LorebookEntry[],
     listLorebooks: async () => (await books.list()) as unknown as Lorebook[],

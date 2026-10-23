@@ -1408,6 +1408,10 @@ const labels = (definition: RulesetDefinition, state: RulesetEncounterState, id:
   assert.equal(firstOf(up.events, "dying").result, "revived");
   assert.deepEqual(firstOf(up.events, "revived"), { type: "revived", actorId: "brenna", health: 1 });
   assert.deepEqual([who(up.state, "brenna").down, who(up.state, "brenna").dying], [false, false]);
+  // The roll is said before the revival, and she acts on the turn it brings her back on.
+  const said = up.events.findIndex((event) => event.type === "dying");
+  assert.ok(said >= 0 && said < up.events.findIndex((event) => event.type === "revived"));
+  assert.ok(labels(fiveE, up.state, "brenna").includes("Longsword"), "brought back up, she acts on this turn");
   assert.equal(tracks("brenna", "death_save_failures", up.state), 0, "the tracks are cleared with her");
   assert.deepEqual(rulesetEncounterSummary(fiveE, up.state).party[0]!.conditions, [], "and so is being down");
 }

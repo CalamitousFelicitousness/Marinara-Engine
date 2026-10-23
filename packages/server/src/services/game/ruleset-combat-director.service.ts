@@ -4029,9 +4029,16 @@ function pickRulesetRanked(
   encounter: RulesetEncounterState,
   actorId: string,
   menu?: RulesetCombatOption[],
+  /** Choices already tried this turn that could not be carried out (`rulesetChoiceKey`). */
+  skip?: ReadonlySet<string>,
 ): RulesetRankedPick | null {
   // Every sheet, health and condition read while weighing is worked out once for the whole pick.
-  return withRulesetPlanMemo(() => pickChoice(definition, state, encounter, actorId, menu));
+  return withRulesetPlanMemo(() => pickChoice(definition, state, encounter, actorId, menu, skip));
+}
+
+/** One choice as a key, to tell a choice already tried this turn from another. */
+function rulesetChoiceKey(choice: RulesetCombatChoice): string {
+  return JSON.stringify([choice.optionId, choice.targetIds, choice.to ?? null, choice.at ?? null]);
 }
 
 function pickChoice(
@@ -4040,8 +4047,9 @@ function pickChoice(
   encounter: RulesetEncounterState,
   actorId: string,
   menu?: RulesetCombatOption[],
+  skip?: ReadonlySet<string>,
 ): RulesetRankedPick | null {
-  const weighed = weighChoices(definition, state, encounter, actorId, menu);
+  const weighed = weighChoices(definition, state, encounter, actorId, menu, skip);
   if (!weighed || "only" in weighed) return weighed?.only ? { candidate: { action: weighed.only }, parts: {} } : null;
   const { unit, actor, candidates, orders, behavior, opening } = weighed;
   const ranked = chooseRankedCombatCandidate(
@@ -4144,6 +4152,7 @@ function weighChoices(
   encounter: RulesetEncounterState,
   actorId: string,
   menu?: RulesetCombatOption[],
+  skip?: ReadonlySet<string>,
 ):
   | { only: RulesetCandidate }
   | {
@@ -4205,6 +4214,7 @@ function weighChoices(
   let candidates = menu
     ? rulesetCandidatesFrom(definition, encounter, actorId, null, brokenLairMenu(definition, encounter, actorId, menu))
     : rulesetCandidates(definition, encounter, actorId, false, unit?.tactics, orders);
+  if (skip?.size) candidates = candidates.filter((candidate) => !skip.has(rulesetChoiceKey(candidate.action.choice)));
   if (candidates.length === 0) return null;
   if (!unit || !actor) return { only: candidates[0]!.action };
   // A mindless bodyguard weighs nothing but the blow, so its order narrows what it does instead: it
@@ -5511,12 +5521,20 @@ function playRulesetTurn(
       ...(struckClose ? { struckClose } : {}),
     };
   };
+  // What it picked and could not carry out this turn: it picks again without it, rather than ending a
+  // turn it did nothing with (laptop playtest 2026-10-23: two turns of nothing, with no reason).
+  const tried = new Set<string>();
   for (let action = 0; action < RULESET_TURN_ACTION_LIMIT; action++) {
     if (rulesetEncounterOutcome(fight.encounter) !== "ongoing") break;
     remember();
     // Waiting on a person's answer: the rest of the turn waits with it.
     if (fight.encounter.window) return;
-    const ranked = pickRulesetRanked(definition, state, fight.encounter, actorId);
+    // Back on its feet since the turn began (a roll against death): it stands before anything else.
+    const standUp = rulesetCombatOptions(definition, fight.encounter, actorId).find(
+      (option) => option.id === RULESET_STAND_OPTION,
+    );
+    if (standUp) applyChoice(definition, state, fight, { actorId, optionId: standUp.id, targetIds: [] });
+    const ranked = pickRulesetRanked(definition, state, fight.encounter, actorId, undefined, tried);
     const picked = ranked?.candidate.action ?? null;
     const idle = !picked || picked.option.kind === "end-turn";
     if (idle) {
@@ -5586,7 +5604,10 @@ function playRulesetTurn(
       !picked.defensive &&
       rulesetShootsFromHere(definition, state, fight.encounter, actorId, picked.choice, picked.to);
     const from = rulesetPositionOf(rulesetCombatant(fight.encounter, actorId));
-    if (picked.to && !picked.defensive && !fromHere && !stepBefore(definition, state, fight, actorId, picked.to)) break;
+    if (picked.to && !picked.defensive && !fromHere && !stepBefore(definition, state, fight, actorId, picked.to)) {
+      tried.add(rulesetChoiceKey(picked.choice));
+      continue;
+    }
     // Reckless first (1.590), as it is about to make a melee weapon attack.
     takeBeforeMelee(definition, state, fight, actorId, picked.choice);
     const afar = rulesetShotFromAfar(definition, state, fight.encounter, actorId, picked.choice);
@@ -5594,8 +5615,14 @@ function playRulesetTurn(
     // instead of asking again with the same state and looping.
     if (applyChoice(definition, state, fight, picked.choice).refused) {
       // Refused from where it stood after all: it takes the walk it was picked with, and shoots.
-      if (!fromHere || !stepBefore(definition, state, fight, actorId, picked.to!)) break;
-      if (applyChoice(definition, state, fight, picked.choice).refused) break;
+      if (
+        !fromHere ||
+        !stepBefore(definition, state, fight, actorId, picked.to!) ||
+        applyChoice(definition, state, fight, picked.choice).refused
+      ) {
+        tried.add(rulesetChoiceKey(picked.choice));
+        continue;
+      }
     }
     const at = rulesetPositionOf(rulesetCombatant(fight.encounter, actorId));
     const walked = from && at ? Math.max(Math.abs(at.x - from.x), Math.abs(at.y - from.y)) : undefined;
@@ -5608,14 +5635,16 @@ function playRulesetTurn(
     if (blow && !afar) struckClose = true;
   }
   delete fight.turnSoFar;
-  // Keeping to its ground with nobody on it (combat AI T4): said, so it is no frozen token (re-test 14).
-  if (
-    territory &&
+  // A turn it did nothing with always says why (laptop playtest 2026-10-23).
+  const silent =
     !earlier &&
     !fight.encounter.window &&
-    !fight.events.some((one) => one.seq > seqBefore && "actorId" in one.event && one.event.actorId === actorId)
-  )
-    record(fight, [{ type: "holdsGround", actorId }]);
+    rulesetEncounterOutcome(fight.encounter) === "ongoing" &&
+    !fight.events.some((one) => one.seq > seqBefore && "actorId" in one.event && one.event.actorId === actorId);
+  // Keeping to its ground with nobody on it (combat AI T4): said, so it is no frozen token (re-test 14).
+  if (silent && territory) record(fight, [{ type: "holdsGround", actorId }]);
+  else if (silent && rulesetCombatStanding(rulesetCombatant(fight.encounter, actorId)!))
+    recordReasons(fight, actorId, [{ why: tried.size > 0 ? "noWay" : stays ? "holding" : "nothingWorth" }]);
   advanceTurn(definition, state, fight);
 }
 

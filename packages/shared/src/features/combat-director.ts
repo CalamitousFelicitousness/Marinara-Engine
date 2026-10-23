@@ -264,6 +264,8 @@ export type DirectedRulesetEvent =
  *   - `approach`: nothing in reach, so it closed on the nearest opponent (`sprinted` with a sprint).
  *   - `driven`: a condition drove it toward or away from somebody.
  *   - `nothingWorth`: nothing it could do was worth its price, so it ended its turn.
+ *   - `noWay`: what it meant to do could not be carried out from where it got to, so it ended its turn.
+ *   - `holding`: told to hold or fall back, it stayed where it was with nothing in reach.
  *   - `focus`: its target is the one its side most wants down (one dropping areas on it).
  *   - `pressCaster`: nothing to do yet, so it closed on the one dropping areas on its side from out
  *     of reach.
@@ -283,7 +285,7 @@ export type DirectedRulesetReason =
   | { why: "walked"; cells: number }
   | { why: "approach"; targetId?: string; sprinted?: true }
   | { why: "driven" }
-  | { why: "nothingWorth" };
+  | { why: "nothingWorth" | "noWay" | "holding" };
 /** One option of the legal menu, with the combatants it may be pointed at right now. */
 export interface DirectedRulesetOption extends RulesetCombatOption {
   targetIds: string[];

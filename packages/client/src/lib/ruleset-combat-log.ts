@@ -423,7 +423,9 @@ export function rulesetCombatEventLine(
       );
       if (event.critical) lines.push(key("damageCritical"));
       if (event.floor !== undefined) lines.push(key("damageFloor", { floor: event.floor }));
-      if (event.adjust !== "none") lines.push(key(`damage${event.adjust[0]!.toUpperCase()}${event.adjust.slice(1)}`));
+      if (event.resistedBy) lines.push(key("damageResistBy", { condition: names.condition(event.resistedBy) }));
+      else if (event.adjust !== "none")
+        lines.push(key(`damage${event.adjust[0]!.toUpperCase()}${event.adjust.slice(1)}`));
       if (event.saved) lines.push(key("damageSaved"));
       if (event.toTemp > 0) lines.push(key("damageTemporary", { amount: event.toTemp }));
       return lines.join(" ");
@@ -1657,7 +1659,11 @@ export function rulesetCombatEventLine(
     case "dying": {
       if (event.result === "stable") return key("dyingStable", { actor: names.combatant(event.actorId) });
       if (event.result === "dead") return key("dyingDead", { actor: names.combatant(event.actorId) });
-      if (event.result === "revived") return key("dyingRevived", { actor: names.combatant(event.actorId) });
+      if (event.result === "revived")
+        return key("dyingRevived", {
+          actor: names.combatant(event.actorId),
+          roll: rulesetRollText({ ...event, modifier: 0, total: event.total ?? event.kept }, t, bonusNamer(names, t)),
+        });
       return key(event.result === "success" ? "dyingSuccess" : "dyingFailure", {
         actor: names.combatant(event.actorId),
         roll: rulesetRollText({ ...event, modifier: 0, total: event.total ?? event.kept }, t, bonusNamer(names, t)),

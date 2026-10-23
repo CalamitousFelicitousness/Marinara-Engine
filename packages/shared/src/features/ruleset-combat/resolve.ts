@@ -1047,6 +1047,9 @@ function applyDamage(
   if (type && standing.length > 0) igniteZones(ctx, [type], standing);
   let dealt = Math.max(0, Math.floor(input.amount));
   let adjust: "none" | "resist" | "vulnerable" | "immune" = "none";
+  // The condition that halved it, where its own hide did not (laptop playtest 2026-10-23: Uncanny
+  // Dodge read as plain "Resisted").
+  let resistedBy: string | undefined;
   // A creature's own hide, and what the target's items keep off.
   const hide = type ? rulesetCombatHide(ctx.definition, target, ctx.state) : undefined;
   // A condition that keeps this very entry off (1.117) does, whatever kind of harm it is.
@@ -1092,6 +1095,10 @@ function applyDamage(
     } else if (resistant && !vulnerable) {
       dealt = Math.floor(dealt / 2);
       adjust = "resist";
+      if (!(type && hide && matches(hide.resist, type, input.qualities)))
+        resistedBy = rulesetActiveConditions(ctx.definition, ctx.combat, target, ctx.state).find((one) =>
+          one.effects.includes("resist-all"),
+        )?.condition;
     } else if (vulnerable && !resistant) {
       dealt *= 2;
       adjust = "vulnerable";
@@ -1214,6 +1221,7 @@ function applyDamage(
     amount: Math.max(0, Math.floor(input.amount)),
     dealt,
     adjust,
+    ...(resistedBy ? { resistedBy } : {}),
     ...(input.saved ? { saved: true } : {}),
     toTemp,
     health: after.value,
@@ -2722,9 +2730,11 @@ function deathSave(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
       result,
     });
 
+  // The roll is said before the revival it brings (laptop playtest 2026-10-23: "back up on 1" with
+  // no roll shown).
   if (top && dying.naturals.max === "revive-1") {
-    dealHeal(ctx, actor, { rolls: [], flat: 1, amount: 1 });
     say("revived");
+    dealHeal(ctx, actor, { rolls: [], flat: 1, amount: 1 });
     return;
   }
   let failures = 0;
@@ -18172,6 +18182,9 @@ function beginNextTurn(
     if (!actor.defeated) aurasAtTurn(ctx, actor);
     // What strikes by itself for them as their turn starts (1.523): a Faithful Hound's bite.
     if (!actor.defeated) summonsStrike(ctx, actor);
+    // Before the walk and the budgets are read, so one a roll brings back up stands and acts on
+    // this turn (laptop playtest 2026-10-23: back up on 1, still prone, with no walk to stand with).
+    if (actor.dying && !actor.stable && !actor.defeated) deathSave(ctx, actor);
     // A condition that ended as the turn began no longer holds this turn's walk: nothing has been
     // spent yet, so the allowance is simply read again.
     refreshRulesetMovement(definition, combat, actor, ctx.state);
@@ -18182,7 +18195,6 @@ function beginNextTurn(
       "turn",
       rulesetConditionEconomy(definition, combat, actor, ctx.state).budgets,
     );
-    if (actor.dying && !actor.stable && !actor.defeated) deathSave(ctx, actor);
     // Out of their caller's command (1.604): too far, or the caller unable to act. They act on their
     // own this turn, and the caller pays nothing for it.
     if (actor.calledCommandWithin !== undefined) {

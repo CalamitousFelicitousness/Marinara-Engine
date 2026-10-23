@@ -3433,6 +3433,8 @@ export type RulesetCombatEvent =
       amount: number;
       dealt: number;
       adjust: "none" | "resist" | "vulnerable" | "immune";
+      /** The condition that halved it, where that was no resistance of the target's own. */
+      resistedBy?: string;
       /** Halved because the target saved, which is separate from what its hide is made of. */
       saved?: boolean;
       toTemp: number;

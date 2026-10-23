@@ -1984,9 +1984,12 @@ console.log(
     "approach",
     "driven",
     "nothingWorth",
+    "noWay",
+    "holding",
     "focus",
     "pressCaster",
   ]);
+  const idle = new Set(["nothingWorth", "noWay", "holding"]);
   const played = (definition: RulesetDefinition, state: CombatDirectorState, party: Array<{ id: string }>) => {
     for (const member of party)
       assert.ok(
@@ -2022,6 +2025,22 @@ console.log(
     emberParty,
   );
   for (const events of [board, plain]) {
+    // Never a turn with nothing in it (laptop playtest 2026-10-23): each one shows a step of its
+    // own, or says why it took none.
+    events.forEach((event, index) => {
+      if (event.type !== "turn") return;
+      const next = events.findIndex((one, at) => at > index && one.type === "turn");
+      const during = events.slice(index + 1, next < 0 ? undefined : next);
+      if (next < 0 && during.length === 0) return;
+      assert.ok(
+        during.some(
+          (one) =>
+            ("actorId" in one && one.actorId === event.actorId) ||
+            ("sourceId" in one && one.sourceId === event.actorId),
+        ),
+        `${event.actorId}'s turn ${index} shows something: ${JSON.stringify(during)}`,
+      );
+    });
     const reasons = events.flatMap((event, index) => (event.type === "reasoning" ? [{ event, index }] : []));
     assert.ok(reasons.length > 0, "the picker says why it did what it did");
     for (const { event, index } of reasons) {
@@ -2031,7 +2050,7 @@ console.log(
         if (reason.why === "damage") assert.ok(["heavy", "solid", "some"].includes(reason.strength));
       }
       // A turn it did nothing with says so, and follows no step.
-      if (event.reasons.every((reason) => reason.why === "nothingWorth")) continue;
+      if (event.reasons.every((reason) => idle.has(reason.why))) continue;
       // Right after a step of its own: something it did since the last reason or turn began.
       const since: typeof events = [];
       for (const one of events.slice(0, index).reverse()) {

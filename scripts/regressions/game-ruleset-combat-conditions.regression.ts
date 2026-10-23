@@ -634,6 +634,7 @@ try {
     const cut = act(fiveE, wardedAgain, { actorId: "snag", optionId: "scimitar", targetIds: ["brenna"] }, 15, 6);
     assert.equal(firstOf(cut.events, "attack").outcome, "hit");
     assert.equal(firstOf(cut.events, "damage").dealt, 4, "6 + 2 halved");
+    assert.equal(firstOf(cut.events, "damage").resistedBy, "warded", "and the log names what halved it");
     assert.ok(!conditionsOf(cut.state, "brenna").includes("warded"));
     // A blow that marks what it hits uses up the old mark and leaves its own.
     const brandTurn = endTurn(fiveE, endTurn(fiveE, marked.state, "snag").state, "brenna").state;

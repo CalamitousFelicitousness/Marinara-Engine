@@ -110,6 +110,8 @@ import {
   getAgentContextSources,
   normalizeAgentPromptTemplateOptions,
   normalizeStoryboardAgentSettings,
+  normalizeIllustratorRunInterval,
+  MAX_ILLUSTRATOR_RUN_INTERVAL,
   parseAgentSettingsRecord,
   homeAgentWidgetsSchema,
   type HomeAgentWidgetDefinition,
@@ -761,6 +763,7 @@ export function AgentEditor() {
   const [localContextSize, setLocalContextSize] = useState<number | "">("");
   const [localMaxTokens, setLocalMaxTokens] = useState<number | "">("");
   const [localRunInterval, setLocalRunInterval] = useState<number | "">("");
+  const [localVideoRunInterval, setLocalVideoRunInterval] = useState<number | "">("");
   const [localEchoMessageDelaySeconds, setLocalEchoMessageDelaySeconds] = useState(
     DEFAULT_ECHO_CHAMBER_MESSAGE_DELAY_SECONDS,
   );
@@ -923,6 +926,9 @@ export function AgentEditor() {
       setLocalRunInterval(
         (settings.runInterval as number | undefined) ?? (defaultSettings.runInterval as number) ?? "",
       );
+      setLocalVideoRunInterval(
+        normalizeIllustratorRunInterval(settings.videoRunInterval ?? defaultSettings.videoRunInterval) ?? "",
+      );
       setLocalEchoMessageDelaySeconds(normalizeEchoChamberMessageDelaySeconds(settings.messageDelaySeconds));
       setLocalActivationKeywordsText(
         Array.isArray(settings.activationKeywords)
@@ -1048,6 +1054,7 @@ export function AgentEditor() {
       setLocalContextSize("");
       setLocalMaxTokens((defaultSettings.maxTokens as number) ?? "");
       setLocalRunInterval((defaultSettings.runInterval as number) ?? "");
+      setLocalVideoRunInterval(normalizeIllustratorRunInterval(defaultSettings.videoRunInterval) ?? "");
       setLocalEchoMessageDelaySeconds(DEFAULT_ECHO_CHAMBER_MESSAGE_DELAY_SECONDS);
       setLocalActivationKeywordsText("");
       setLocalActivationQuestion("");
@@ -1118,6 +1125,7 @@ export function AgentEditor() {
       setLocalContextSize("");
       setLocalMaxTokens(DEFAULT_AGENT_MAX_TOKENS);
       setLocalRunInterval(customRunIntervalMeta?.defaultValue ?? "");
+      setLocalVideoRunInterval("");
       setLocalEchoMessageDelaySeconds(DEFAULT_ECHO_CHAMBER_MESSAGE_DELAY_SECONDS);
       setLocalActivationKeywordsText("");
       setLocalActivationQuestion("");
@@ -1500,6 +1508,7 @@ export function AgentEditor() {
         ...(!isDirectorAgent && !isStoryboardAgent && localRunInterval !== ""
           ? { runInterval: Number(localRunInterval) }
           : {}),
+        ...(isIllustratorAgent && localVideoRunInterval !== "" ? { videoRunInterval: localVideoRunInterval } : {}),
         ...(isEchoChamberAgent ? { messageDelaySeconds: localEchoMessageDelaySeconds } : {}),
         ...(localInjectAsSection ? { injectAsSection: true } : {}),
         ...(isMusicAgent
@@ -1622,6 +1631,8 @@ export function AgentEditor() {
     localContextSize,
     localMaxTokens,
     localRunInterval,
+    localVideoRunInterval,
+    isIllustratorAgent,
     localEchoMessageDelaySeconds,
     localActivationQuestion,
     localActivationThreshold,
@@ -1749,6 +1760,7 @@ export function AgentEditor() {
       ...(!isDirectorAgent && !isStoryboardAgent && localRunInterval !== ""
         ? { runInterval: Number(localRunInterval) }
         : {}),
+      ...(isIllustratorAgent && localVideoRunInterval !== "" ? { videoRunInterval: localVideoRunInterval } : {}),
       ...(isEchoChamberAgent ? { messageDelaySeconds: localEchoMessageDelaySeconds } : {}),
       ...(localInjectAsSection ? { injectAsSection: true } : {}),
       ...(exportingMusicAgent
@@ -3428,7 +3440,7 @@ export function AgentEditor() {
           {/* ── Run Interval (Illustrator) ── */}
           {isIllustratorAgent && (
             <FieldGroup
-              label={localizeUi("ui.agents.agenteditor.runInterval")}
+              label={localizeUi("ui.agents.agenteditor.imageRunInterval")}
               icon={<Clock size="0.875rem" className="text-[var(--primary)]" />}
               help={localizeUi(
                 "ui.agents.agenteditor.howManyAssistantMessagesBetweenAllowedIllustratorImageGenerations",
@@ -3440,6 +3452,7 @@ export function AgentEditor() {
                   min={0}
                   max={100}
                   value={localRunInterval}
+                  aria-label={localizeUi("ui.agents.agenteditor.imageRunInterval")}
                   onChange={(e) => {
                     const v = e.target.value;
                     setLocalRunInterval(v === "" ? "" : Math.max(0, Math.min(100, parseInt(v) || 0)));
@@ -3461,6 +3474,34 @@ export function AgentEditor() {
               <p className="mt-1 text-[0.625rem] text-[var(--muted-foreground)]">
                 {localizeUi("agents.illustrator.manualOnlyIntervalHelp")}
               </p>
+            </FieldGroup>
+          )}
+          {isIllustratorAgent && (
+            <FieldGroup
+              label={localizeUi("ui.agents.agenteditor.videoRunInterval")}
+              icon={<Clock size="0.875rem" className="text-[var(--primary)]" />}
+              help={localizeUi("agents.illustrator.videoRunIntervalHelp")}
+            >
+              <div className="flex items-center gap-3">
+                <input
+                  type="number"
+                  min={0}
+                  max={MAX_ILLUSTRATOR_RUN_INTERVAL}
+                  value={localVideoRunInterval}
+                  aria-label={localizeUi("ui.agents.agenteditor.videoRunInterval")}
+                  onChange={(e) => {
+                    setLocalVideoRunInterval(
+                      e.target.value === "" ? "" : (normalizeIllustratorRunInterval(e.target.value) ?? ""),
+                    );
+                    markDirty();
+                  }}
+                  placeholder="5"
+                  className="w-28 rounded-xl bg-[var(--secondary)] px-3 py-2.5 text-sm tabular-nums ring-1 ring-[var(--border)] placeholder:text-[var(--muted-foreground)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
+                />
+                <span className="text-[0.6875rem] text-[var(--muted-foreground)]">
+                  {localizeUi("ui.agents.agenteditor.messages")}
+                </span>
+              </div>
             </FieldGroup>
           )}
 

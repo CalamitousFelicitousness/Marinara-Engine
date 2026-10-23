@@ -1882,7 +1882,51 @@ function rulesetDangerAt(
     harm += worst;
   }
   harm += rulesetZoneHarmAt(encounter, actor, cell);
+  harm += rulesetCrowdHarmAt(definition, encounter, actor, cell);
   return Math.min(3, harm / pool);
+}
+
+/**
+ * What standing bunched with its own side adds where an opponent holds a blast it could still use
+ * (S1): an area is worth more to its maker the more it catches, so each friend within its size of the
+ * cell makes it likelier to land there, a share of its average for each, up to all of it. Any area
+ * that harms, whatever the ruleset calls it: a dragon's breath, a fireball, a grenade.
+ */
+function rulesetCrowdHarmAt(
+  definition: RulesetDefinition,
+  encounter: RulesetEncounterState,
+  actor: RulesetCombatant,
+  cell: { x: number; y: number },
+): number {
+  const perCell = definition.combat?.distance?.perCell;
+  const span = rulesetSpanOf(actor);
+  const friends = encounter.combatants.filter(
+    (one) =>
+      one.side === actor.side &&
+      one.id !== actor.id &&
+      !one.object &&
+      rulesetCombatStanding(one) &&
+      !!rulesetPositionOf(one),
+  );
+  if (friends.length === 0) return 0;
+  let harm = 0;
+  for (const foe of encounter.combatants) {
+    if (foe.side === actor.side || !rulesetCombatStanding(foe) || !rulesetPositionOf(foe)) continue;
+    const gap = rulesetGapFrom(cell, span, foe);
+    const walks = perCell ? rulesetInCells(foe.speed, perCell) : 6;
+    let worst = 0;
+    for (const action of foe.actions) {
+      if (!action.area || !action.damage) continue;
+      if (!rulesetActionAvailable(foe, action, encounter, definition)) continue;
+      if (gap > (action.range?.long ?? action.range?.normal ?? action.area.size) + walks) continue;
+      // A burst catches all around its centre; a cone or a line only along one way, so less of it.
+      const across = action.area.shape === "burst" ? action.area.size : Math.max(1, Math.floor(action.area.size / 3));
+      const caught = friends.filter((one) => rulesetGapFrom(cell, span, one) <= across).length;
+      worst = Math.max(worst, rulesetSafeAverage(action.damage) * Math.min(1, 0.3 * caught));
+    }
+    harm += worst;
+  }
+  return harm;
 }
 
 /** The harm a zone at a cell does whoever starts or ends a turn in it, whoever left it (1.745):
@@ -3706,12 +3750,20 @@ export function rulesetClosingMove(
   const nearest = (cell: { x: number; y: number }) =>
     Math.min(...rulesetFootprintAt(cell, span).map((one) => walking.get(`${one.x},${one.y}`) ?? Infinity));
   const already = nearest(from);
+  // Bunched with its own side under an opponent's blast (S1): as good as a couple of cells further
+  // off at worst, so it closes in spread out rather than in a clump.
+  const combat = definition.combat;
+  const health = combat ? rulesetCombatHealth(definition, combat, actor) : undefined;
+  const pool = Math.max(1, (health?.value ?? 1) + (health?.temp ?? 0));
+  const crowded = (cell: { x: number; y: number }) =>
+    Math.min(2, (2 * rulesetCrowdHarmAt(definition, encounter, actor, cell)) / pool);
   let best: { cell: { x: number; y: number; cost: number; provokes: string[] }; away: number } | null = null;
   // Every cell it may walk to, not a sample of them: closing the distance is one comparison a cell.
   for (const cell of rulesetWalkableCells(definition, encounter, actorId)) {
-    const away = nearest(cell);
-    if (away >= already) continue;
+    const closer = nearest(cell);
+    if (closer >= already) continue;
     if (leash && !strayed && rulesetGapFrom(cell, span, leash.charge) > leash.within) continue;
+    const away = closer + crowded(cell);
     const better =
       !best ||
       away < best.away ||

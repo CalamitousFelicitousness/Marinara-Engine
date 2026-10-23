@@ -52,8 +52,10 @@ import {
   directedRulesetView,
   rulesetDirectorStage,
   rulesetFightLiveStates,
+  RULESET_COMBAT_EVENT_LIMIT,
   rulesetWindowTargetOf,
   syncRulesetCombatants,
+  trimRulesetFightEvents,
   type RulesetFightOpponent,
 } from "../../packages/server/src/services/game/ruleset-combat-director.service.js";
 import type { Combatant } from "../../packages/shared/src/types/game.js";
@@ -1937,4 +1939,156 @@ console.log(
     !JSON.stringify(rulesetFightLiveStates(fled.rulesetFight!)).includes("reeling"),
     "and off it after fleeing",
   );
+}
+
+// ── The Engine says why its picker did what it did, read back from its own scoring (the debug log) ──
+{
+  const whys = new Set([
+    "damage",
+    "finish",
+    "healing",
+    "support",
+    "setup",
+    "protection",
+    "coordination",
+    "risk",
+    "cost",
+    "walked",
+    "approach",
+    "driven",
+    "nothingWorth",
+  ]);
+  const played = (definition: RulesetDefinition, state: CombatDirectorState, party: Array<{ id: string }>) => {
+    for (const member of party)
+      assert.ok(
+        commandRulesetCombatDirector(definition, state, { type: "control", unitId: member.id, controller: "ai" }).ok,
+      );
+    let guard = 0;
+    while (!state.outcome && guard++ < 60)
+      assert.ok(commandRulesetCombatDirector(definition, state, { type: "continue" }).ok);
+    return state.rulesetFight!.events.map((entry) => entry.event);
+  };
+  const board = played(
+    fiveE,
+    started({
+      definition: fiveE,
+      cards: fiveECards,
+      partyCatalogs: spellCatalogs,
+      party: fiveEParty,
+      enemies: [{ id: "lurker", name: "Thorn Lurker" }],
+      positioned: true,
+    }),
+    fiveEParty,
+  );
+  const plain = played(
+    ember,
+    started({
+      definition: ember,
+      cards: emberCards,
+      partyCatalogs: emberCatalogs,
+      party: emberParty,
+      enemies: [{ id: "moth", name: "Cinder Moth" }],
+      seed: 11,
+    }),
+    emberParty,
+  );
+  for (const events of [board, plain]) {
+    const reasons = events.flatMap((event, index) => (event.type === "reasoning" ? [{ event, index }] : []));
+    assert.ok(reasons.length > 0, "the picker says why it did what it did");
+    for (const { event, index } of reasons) {
+      assert.ok(event.reasons.length > 0, "never an empty reason");
+      for (const reason of event.reasons) {
+        assert.ok(whys.has(reason.why), `a reason the log knows: ${JSON.stringify(reason)}`);
+        if (reason.why === "damage") assert.ok(["heavy", "solid", "some"].includes(reason.strength));
+      }
+      // A turn it did nothing with says so, and follows no step.
+      if (event.reasons.every((reason) => reason.why === "nothingWorth")) continue;
+      // Right after a step of its own: something it did since the last reason or turn began.
+      const since: typeof events = [];
+      for (const one of events.slice(0, index).reverse()) {
+        if (one.type === "reasoning" || one.type === "turn") break;
+        since.push(one);
+      }
+      assert.ok(
+        since.some(
+          (one) =>
+            ("actorId" in one && one.actorId === event.actorId) ||
+            ("sourceId" in one && one.sourceId === event.actorId),
+        ),
+        `${event.actorId}'s reason follows a step of its own: ${JSON.stringify(since)}`,
+      );
+    }
+  }
+  // On a board, a walk is said too: to where it acted from, or toward the nearest opponent.
+  assert.ok(
+    board.some(
+      (event) =>
+        event.type === "reasoning" &&
+        event.reasons.some((reason) => reason.why === "walked" || reason.why === "approach"),
+    ),
+    "a walk on a board says why",
+  );
+}
+
+// The opponent a closing walk is said to close on is the one its walk got nearer, by the walk still
+// left to reach them, not the nearest in a straight line: a jackal walled in beside her is not
+// whom she walked toward.
+{
+  const axeOnly = build({
+    abilities: { brawn: 3, wits: 0, heart: 0 },
+    fields: { toughness: 6 },
+    lists: { gear: [{ name: "Road axe", swing: "brawn", damage: "1d6", harm: "cut" }] },
+  });
+  const state = started({
+    definition: ember,
+    cards: [card("Juno", axeOnly)],
+    partyCatalogs: {},
+    party: [emberParty[0]!],
+    enemies: [
+      { id: "jackal", name: "Rust Jackal" },
+      { id: "moth", name: "Cinder Moth" },
+    ],
+    seed: 3,
+    positioned: true,
+  });
+  const encounter = state.rulesetFight!.encounter;
+  const grid = encounter.board!.grid;
+  const drawn = ["....mmm.....", "....m.m.....", "....mmm.....", ...Array.from({ length: 37 }, () => "............")];
+  const terrain = { ".": "plains", m: "mountain" } as const;
+  grid.width = 12;
+  grid.height = drawn.length;
+  grid.tiles = drawn.map((row) => [...row].map((cell) => terrain[cell as keyof typeof terrain]));
+  Object.assign(rulesetCombatant(encounter, "juno")!, { x: 5, y: 4 });
+  Object.assign(rulesetCombatant(encounter, "jackal")!, { x: 5, y: 1 });
+  Object.assign(rulesetCombatant(encounter, "moth")!, { x: 5, y: 38 });
+  assert.ok(commandRulesetCombatDirector(ember, state, { type: "control", unitId: "juno", controller: "ai" }).ok);
+  let approach: { targetId?: string } | undefined;
+  for (let guard = 0; guard < 12 && !approach && !state.outcome; guard++) {
+    assert.ok(commandRulesetCombatDirector(ember, state, { type: "continue" }).ok);
+    for (const { event } of state.rulesetFight!.events)
+      if (event.type === "reasoning" && event.actorId === "juno")
+        approach ??= event.reasons.find((reason) => reason.why === "approach");
+  }
+  assert.ok(approach, "Juno walks toward trouble with nothing in reach");
+  assert.equal(approach.targetId, "moth", "toward the moth her walk closed on, not the jackal behind the rock");
+}
+
+// The AI's reasons give way first when the fight's events are cut back: the fight's own events keep
+// the whole window, and only once they fill it does the oldest of them go.
+{
+  const entry = (seq: number, type: string) => ({ seq, event: { type } });
+  const real = Array.from({ length: RULESET_COMBAT_EVENT_LIMIT }, (_, index) => entry(index * 2, "attack"));
+  const mixed = real.flatMap((one) => [one, entry(one.seq + 1, "reasoning")]);
+  assert.deepEqual(trimRulesetFightEvents(mixed), real, "every reason goes before any event of the fight");
+  const fewer = [...real.slice(0, 150).flatMap((one) => [one, entry(one.seq + 1, "reasoning")])];
+  const trimmed = trimRulesetFightEvents(fewer);
+  assert.equal(trimmed.length, RULESET_COMBAT_EVENT_LIMIT);
+  assert.equal(trimmed.filter((one) => one.event.type === "attack").length, 150, "no event of the fight lost");
+  assert.deepEqual(
+    trimmed.filter((one) => one.event.type === "reasoning").map((one) => one.seq),
+    real.slice(100, 150).map((one) => one.seq + 1),
+    "the newest reasons are the ones kept",
+  );
+  const over = [...real, entry(RULESET_COMBAT_EVENT_LIMIT * 2, "attack")];
+  assert.deepEqual(trimRulesetFightEvents(over), over.slice(1), "with no reason left, the oldest event goes");
 }

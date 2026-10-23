@@ -168,14 +168,16 @@ export const LLAMA_CPP_RUNTIME_MANIFEST = {
 
 export const MLX_RUNTIME_MANIFEST = {
   mlxLm: {
-    revision: "e5baded8c1d286754edb479ffbde4655a68e2758",
-    packageSpec: "mlx-lm @ https://github.com/ml-explore/mlx-lm/archive/e5baded8c1d286754edb479ffbde4655a68e2758.zip",
-    requirementsLockSha256: "cba3d1727bb039d848fc2b25dd393ce402e63857bb9dea2e229818ea2b49f04d",
+    // The immutable release sdist matches all 208 runtime files at this source revision;
+    // it also carries the generated version metadata needed for a build without Git.
+    revision: "93e6d4a6447b3080861985947f0820e76fcb957d",
+    packageSpec: "mlx-lm @ https://files.pythonhosted.org/packages/e1/46/eff1c17019b82912020d4d716527e6fcf4ac392b55cddef03eeb60566ab4/mlx_lm-0.32.2.tar.gz",
+    requirementsLockSha256: "8e4e7f36643d6cd737ba17dd0195c55a2013219fe195654880a4ce0ff5c50049",
     archive: {
-      name: "mlx-lm-e5baded8c1d286754edb479ffbde4655a68e2758.zip",
-      browser_download_url: "https://github.com/ml-explore/mlx-lm/archive/e5baded8c1d286754edb479ffbde4655a68e2758.zip",
-      size: 516_242,
-      sha256: "0ceac44ed08546e5ce7cb786ac438b3377936d9ddaf06c7555070fd9c7ea630e",
+      name: "mlx_lm-0.32.2.tar.gz",
+      browser_download_url: "https://files.pythonhosted.org/packages/e1/46/eff1c17019b82912020d4d716527e6fcf4ac392b55cddef03eeb60566ab4/mlx_lm-0.32.2.tar.gz",
+      size: 449827,
+      sha256: "1af8a92f6a141c3e2bf5b0369ac4464203a8e2189c47b9e40d3e921e5b3a1fe9",
     },
   },
   uv: {

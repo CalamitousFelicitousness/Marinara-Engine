@@ -541,7 +541,9 @@ function collectPoints(layout: BranchGraphLayout<{ id: string }>): GraphPoint[] 
   layout.lanes.forEach((lane, laneIndex) => {
     const entry = lane.entry;
     if (entry?.tip && entry.tip.index >= lane.start) at(laneIndex, entry.tip.index).tip = entry.tip;
-    if (entry?.fork && lane.forkAt !== null && lane.forkAt >= 0) {
+    // A top chat that has added nothing since its own fork: its tip ring already marks that message.
+    const forkIsOwnTip = lane.anchorLane === null && lane.forkAt === lane.tip;
+    if (entry?.fork && lane.forkAt !== null && lane.forkAt >= 0 && !forkIsOwnTip) {
       const point = at(lane.anchorLane ?? laneIndex, lane.forkAt);
       point.fork ??= entry.fork;
     }

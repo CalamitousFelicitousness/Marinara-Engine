@@ -302,6 +302,116 @@ test("editing setup and a delayed saved message both prevent automatic cleanup",
   }
 });
 
+test("a stalled setup save releases cancellation and a later attempt retries safely", async ({ page }) => {
+  const connection = await seedConnection(page);
+  let chatId = "";
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let discardRequests = 0;
+  try {
+    await page.goto("/");
+    const { chat, wizard } = await launch(page, "conversation");
+    chatId = chat.id;
+    await page.route(`**/api/chats/${chatId}`, async (route) => {
+      if (route.request().method() === "PATCH") await gate;
+      await route.continue();
+    });
+    page.on("request", (request) => {
+      if (request.url().endsWith(`/${chatId}/discard-empty-setup`)) discardRequests += 1;
+    });
+    const saving = page.waitForRequest(
+      (request) => request.method() === "PATCH" && new URL(request.url()).pathname === `/api/chats/${chatId}`,
+    );
+    await wizard.locator('input[type="text"]').first().fill("User edit finishes after cancel");
+    await wizard.getByRole("button", { name: "Close setup", exact: true }).click();
+    await saving;
+    // This PATCH stays unanswered throughout cancellation. Never compare or delete uncertain state.
+    await expect(wizard).toHaveCount(0, { timeout: 8_000 });
+    expect(discardRequests).toBe(0);
+    expect((await page.request.get(`/api/chats/${chatId}`)).ok()).toBeTruthy();
+    expect(
+      await page.evaluate(async (id) => {
+        const { useChatStore } = await import("/src/stores/chat.store.ts" as string);
+        return !!useChatStore.getState().pendingNewChatSetups[id];
+      }, chatId),
+    ).toBe(true);
+    release();
+    await expect
+      .poll(async () => (await (await page.request.get(`/api/chats/${chatId}`)).json()).name)
+      .toBe("User edit finishes after cancel");
+    await closeChatSettings(page);
+    await page.getByRole("button", { name: "Home", exact: true }).click();
+    // A new call must run, rather than joining the abandoned wait promise.
+    await expect.poll(() => discardRequests).toBeGreaterThan(0);
+    await expect
+      .poll(() =>
+        page.evaluate(async (id) => {
+          const { useChatStore } = await import("/src/stores/chat.store.ts" as string);
+          return useChatStore.getState().pendingNewChatSetups[id] ?? null;
+        }, chatId),
+      )
+      .toBeNull();
+    const kept = await page.request.get(`/api/chats/${chatId}`);
+    expect(kept.ok()).toBeTruthy();
+    expect((await kept.json()).name).toBe("User edit finishes after cancel");
+  } finally {
+    release();
+    if (chatId) await page.request.delete(`/api/chats/${chatId}`);
+    await page.request.delete(`/api/connections/${connection.id}`);
+  }
+});
+
+test("a stalled discard request releases the wizard for a safe retry", async ({ page }) => {
+  const connection = await seedConnection(page);
+  let chatId = "";
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let attempts = 0;
+  try {
+    await page.goto("/");
+    const { chat, wizard } = await launch(page, "conversation");
+    chatId = chat.id;
+    await page.route(`**/api/chats/${chatId}/discard-empty-setup`, async (route) => {
+      attempts += 1;
+      if (attempts === 1) {
+        // This controlled failure is held before it reaches the server.
+        await gate;
+        await route.abort().catch(() => {});
+      } else {
+        await route.continue();
+      }
+    });
+    await wizard.getByRole("button", { name: "Close setup", exact: true }).click();
+    await expect(page.getByText("We couldn't remove the empty chat; please try again.", { exact: true })).toBeVisible({
+      timeout: 13_000,
+    });
+    expect(attempts).toBe(1);
+    await expect(wizard.getByRole("button", { name: "Close setup", exact: true })).toBeEnabled();
+    expect((await page.request.get(`/api/chats/${chatId}`)).ok()).toBeTruthy();
+    expect(
+      await page.evaluate(async (id) => {
+        const { useChatStore } = await import("/src/stores/chat.store.ts" as string);
+        return !!useChatStore.getState().pendingNewChatSetups[id];
+      }, chatId),
+    ).toBe(true);
+    // On narrow screens the error notification overlaps Close setup; dismiss it as a user would.
+    await page.getByRole("button", { name: "Close toast", exact: true }).click();
+    await wizard.getByRole("button", { name: "Close setup", exact: true }).click();
+    await expect(wizard).toHaveCount(0);
+    await expect.poll(async () => (await page.request.get(`/api/chats/${chatId}`)).status()).toBe(404);
+    expect(attempts).toBe(2);
+    await expect(page.locator('[data-component="HomeBrowserHub.HomePage"]')).toBeVisible();
+  } finally {
+    release();
+    if (chatId) await page.request.delete(`/api/chats/${chatId}`);
+    await page.request.delete(`/api/connections/${connection.id}`);
+  }
+});
+
 test("cancel waits for automatic defaults and preserves a racing user edit", async ({ page }) => {
   const connection = await seedConnection(page);
   const retained: string[] = [];

@@ -1,6 +1,6 @@
 import { useCallback, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { api } from "../lib/api-client";
+import { api, requestTimeoutSignal } from "../lib/api-client";
 import { useChatStore } from "../stores/chat.store";
 import { chatKeys } from "./use-chats";
 import { homeFeedKeys } from "./use-home-feed";
@@ -23,21 +23,32 @@ export function useDiscardNewChatSetup() {
             return mutation.state.status === "pending" && (variables?.id === chatId || variables?.chatId === chatId);
           });
         // A just-blurred name or a still-applying profile must finish before the comparison.
-        if (saving())
-          await new Promise<void>((resolve) => {
+        if (saving()) {
+          const settled = await new Promise<boolean>((resolve) => {
+            const timer = setTimeout(() => {
+              unsubscribe();
+              resolve(false);
+            }, 5_000);
             const unsubscribe = mutations.subscribe(() => {
               if (!saving()) {
+                clearTimeout(timer);
                 unsubscribe();
-                resolve();
+                resolve(true);
               }
             });
           });
+          // A stalled or offline save must not trap the wizard or make uncertain state safe to delete.
+          // Keep its baseline so a later cancellation can retry after the save settles.
+          if (!settled) return false;
+        }
         // Another cleanup can retire this pending draft while an automatic save completes.
         const baseline = useChatStore.getState().pendingNewChatSetups[chatId];
         if (baseline?.id !== chatId || baseline.createdAt !== initialChat.createdAt) return false;
-        const { deleted } = await api.post<{ deleted: boolean }>(`/chats/${chatId}/discard-empty-setup`, {
-          initialChat: baseline,
-        });
+        const { deleted } = await api.post<{ deleted: boolean }>(
+          `/chats/${chatId}/discard-empty-setup`,
+          { initialChat: baseline },
+          { signal: requestTimeoutSignal(10_000) },
+        );
         if (useChatStore.getState().pendingNewChatSetups[chatId] === baseline) {
           useChatStore.getState().clearPendingNewChatSetup(chatId);
         }

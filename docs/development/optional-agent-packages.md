@@ -103,10 +103,12 @@ installs them and keeps the version it has. When a member is missing anyway, the
 copy of a stateful Engine service: the `ui` and `chat` stores become read-only copies that never write, and every other
 member reports that the feature needs a newer Marinara Engine.
 
-**Host modules.** `modules[specifier]` is exactly what `import * as m from "<specifier>"` returns in the Engine's own
-build, including `default` where the library has one. The specifiers are `react`, `react/jsx-runtime`, `react-dom`,
+**Host modules.** `modules[specifier]` is a complete module namespace, including `default` where the library has one.
+`MARINARA_HOST_MODULE_IMPORTS` in the client contract maps each public slot to the dependency it imports. Most map
+to themselves. The stable `framer-motion` slot maps to `framer-motion-v13` (an exact npm alias of Motion 13.5.1),
+while the opt-in `motion/react` slot maps to the Engine's primary `framer-motion` 14 dependency. Package tooling uses this mapping for both its export inventory and TypeScript paths; public slot names need not be physical dependencies. The specifiers are `react`, `react/jsx-runtime`, `react-dom`,
 `react-dom/client`, `@tanstack/react-query`, `zustand`, `zustand/middleware`, `sonner`, `zod`, `i18next`,
-`react-i18next`, `framer-motion`, `tailwind-merge` and `clsx`. A package build resolves these specifiers to shims that
+`react-i18next`, `framer-motion`, `motion/react`, `tailwind-merge` and `clsx`. A package build resolves these specifiers to shims that
 read the namespace, so the package renders with the Engine's one React and shares its React Query cache and toasts.
 
 - Packages never render a `<Toaster>` and never create a `QueryClient`. A `toast` from `sonner` shows at the user's
@@ -117,10 +119,16 @@ read the namespace, so the package renders with the Engine's one React and share
 - `lucide-react`, `chess.js`, `scheduler` and `@marinara-engine/shared` are not host modules; packages bundle what they
   use of them.
 - Packages are built against these majors: `react` 19, `react-dom` 19, `@tanstack/react-query` 5, `zustand` 5,
-  `sonner` 2, `zod` 3, `i18next` 26, `react-i18next` 17, `framer-motion` 13, `tailwind-merge` 3 and `clsx` 2. A major
-  upgrade of one of them in the Engine (React first) breaks every package built against the old major, so it requires a
-  capability API **major**. `scripts/regressions/marinara-host-namespace.regression.ts` fails when a major in
-  `packages/client/package.json` changes and the contract does not.
+  `sonner` 2, `zod` 3, `i18next` 26, `react-i18next` 17, `framer-motion` 13, `motion` 14 (the `motion/react` slot),
+  `tailwind-merge` 3 and `clsx` 2. Replacing the major behind an existing public slot requires a capability API **major**.
+  Adding a distinct slot is additive: capability API 1.377 adds `motion/react` without changing `framer-motion`.
+  `scripts/regressions/marinara-host-namespace.regression.ts` pins each slot's mapped dependency and major.
+- Existing installed packages keep their full Motion 13 namespace and do not need rebuilding. A package choosing
+  Motion 14 imports `motion/react` through the host shim and declares capability API 1.377 or newer. Older hosts
+  reject that declaration rather than silently substituting Motion 13. Keep each animation tree on one version:
+  `AnimatePresence`, `MotionConfig`, `LayoutGroup`, motion values and their consumers must come from the same slot.
+  The versions have distinct contexts; no context bridge is provided. Package views mount their own React roots,
+  while the host `Modal` uses CSS animations. Do not expect shared layout or presence across the version boundary.
 
 **Store fields packages read.** Published packages read these fields today. The Engine keeps each of them, and
 dropping or renaming one needs a capability API major (`MARINARA_HOST_STORE_FIELDS` pins them with `Pick<>`):
@@ -1750,6 +1758,21 @@ Rules worth knowing:
   conclude exactly as for a Conversation scene.
 
 `scenes` is refused on a manifest that declares a `capabilityApi` older than 1.66.
+
+### Capability API 1.376: Home browser fullscreen
+
+A `home-browser-tab` view receives `capabilityProps.browserFullscreen`:
+
+- `active`: whether this package currently fills the Home browser content area.
+- `setActive(boolean)`: enter or leave fullscreen for this active package.
+- `enterLabel` and `exitLabel`: localized accessible labels for the toggle.
+
+This is in-app fullscreen: Home's tabs, address bar and bookmarks are hidden, while the Engine
+topbar stays available. It does not call the browser Fullscreen API or require browser fullscreen
+support. The state is temporary and resets on navigation away from the package or Home. Keep an
+exit button available on every package screen and use `aria-pressed` to reflect `active`. Prop updates
+must update the button without replacing unfinished forms. Packages depending on this control
+declare capability API 1.376 or newer; older packages can keep their existing layouts.
 
 ### Capability API 1.50: Professor Mari actions
 

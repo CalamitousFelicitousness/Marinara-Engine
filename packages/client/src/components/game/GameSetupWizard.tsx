@@ -96,6 +96,7 @@ import { useConnections, useModelParameterCapabilities } from "../../hooks/use-c
 import { useDefaultPreset, usePresets } from "../../hooks/use-presets";
 import { useCharacterGroups, usePersonas } from "../../hooks/use-characters";
 import { GameSetupRulesChooser, GameSetupRulesetSheetStatus } from "./GameSetupRulesChooser";
+import { resolveCombatStyle } from "./combat-styles";
 import { GameSetupWorldKitChooser, MapPackLock } from "./GameSetupWorldKitChooser";
 import { useExperienceMapPack } from "../../hooks/use-map-pack";
 import { useOverworldGamesEnabled } from "../../hooks/use-world-library";
@@ -1369,7 +1370,7 @@ export function GameSetupWizard({
       setDifficulty(
         DIFFICULTIES.find((d) => normalizeGameDifficulty(d) === normalizeGameDifficulty(config.difficulty)) ?? "Normal",
       );
-      setCombatStyle(config.combatStyle === "tactical" ? "tactical" : "classic");
+      setCombatStyle(resolveCombatStyle(config.combatStyle));
       setGmBossControl(config.gmBossControl ?? true);
       setTacticalBattlefieldSize(config.tacticalBattlefield?.size ?? "auto");
       setRating(config.rating);

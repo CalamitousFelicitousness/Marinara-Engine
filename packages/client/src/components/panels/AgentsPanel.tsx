@@ -77,6 +77,7 @@ import { sortBasicPanelItems, sortPanelFolders } from "../../lib/panel-sort";
 import { downloadZipFile } from "../../lib/download-zip";
 import { useTouchFolderDrag } from "../../hooks/use-touch-folder-drag";
 import {
+  createDuplicateAgentInput,
   countSkippedAgentImportFunctions,
   createAgentFolderPackageFilename,
   createAgentFolderPackageFiles,
@@ -233,27 +234,6 @@ function createBuiltInAgentConfigRow(
 
 function getAgentLibraryDisplayName(agent: AgentConfigRow) {
   return BUILT_IN_AGENTS.find((entry) => entry.id === agent.type)?.name ?? agent.name;
-}
-
-function createDuplicateAgentInput(agent: AgentConfigRow) {
-  const settings = sanitizeAgentSettingsForTransfer(parseAgentSettings(agent.settings));
-  if (typeof settings.author !== "string" || !settings.author.trim()) {
-    settings.author = "Unknown";
-  }
-  const resultType = typeof settings.resultType === "string" ? settings.resultType : undefined;
-
-  return {
-    type: `${agent.type}-copy`,
-    name: `${getAgentLibraryDisplayName(agent)} (Copy)`,
-    description: agent.description,
-    phase: normalizeAgentPhaseForType(agent.type, agent.phase),
-    enabled: true,
-    connectionId: agent.connectionId,
-    imagePath: agent.imagePath,
-    promptTemplate: agent.promptTemplate,
-    settings,
-    ...(resultType ? { resultType } : {}),
-  };
 }
 
 export function AgentsPanel() {

@@ -311,7 +311,8 @@ export function ChatCommonOverlays({
   onSelectAllBelowSelection,
 }: ChatCommonOverlaysProps) {
   // Popped-out sections render from inside Chat Settings, so it stays mounted (hidden) while any is out.
-  const settingsSectionsPoppedOut = useHostHasDetachedDrawers(CHAT_SETTINGS_WINDOW_ID);
+  // The setup wizard sits below floating windows, so they wait until it closes; their layout is kept.
+  const settingsSectionsPoppedOut = useHostHasDetachedDrawers(CHAT_SETTINGS_WINDOW_ID) && !wizardOpen;
   return (
     <>
       {chat && (settingsOpen || settingsSectionsPoppedOut) && (

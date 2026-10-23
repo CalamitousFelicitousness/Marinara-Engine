@@ -29,7 +29,8 @@ import {
   logStorageDiagnostics,
 } from "./config/runtime-config.js";
 import { logCsrfTrustSummary } from "./middleware/csrf-protection.js";
-import { getPasswordlessPeers } from "./middleware/ip-allowlist.js";
+import { getPasswordlessPeers, isLoopbackBind } from "./middleware/ip-allowlist.js";
+import { enableLoginSetupCode } from "./config/login-credential.js";
 import { startEnvWatcher } from "./config/env-watcher.js";
 import { migrateTaskbarShortcuts } from "./services/setup/taskbar-shortcut-migration.js";
 import { sidecarProcessService } from "./services/sidecar/sidecar-process.service.js";
@@ -173,13 +174,15 @@ async function main() {
     logCsrfTrustSummary();
     // The bound address, not HOST: a DNS name in HOST hides a Tailscale bind.
     const bound = app.server.address();
-    const passwordlessPeers = getPasswordlessPeers(bound && typeof bound === "object" ? bound.address : host);
+    const boundHost = bound && typeof bound === "object" ? bound.address : host;
+    const passwordlessPeers = getPasswordlessPeers(boundHost);
     if (passwordlessPeers.length > 0) {
       logger.warn(
         "[access] These visitors get in without a password: %s. See Settings → Advanced → Access and docs/REMOTE_ACCESS.md.",
         passwordlessPeers.join(", "),
       );
     }
+    if (!isLoopbackBind(boundHost)) enableLoginSetupCode();
     scheduleTaskbarShortcutMigration();
     // The platform launcher opens its browser only after this child has finished
     // loading configuration, registering routes and binding the listener.

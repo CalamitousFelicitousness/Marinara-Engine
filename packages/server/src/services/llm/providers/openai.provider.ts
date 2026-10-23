@@ -8,6 +8,7 @@ import {
   llmFetch,
   llmHttpErrorFromResponse,
   sanitizeApiError,
+  toolCallFinishReason,
   type ChatMessage,
   type ChatOptions,
   type ChatCompletionResult,
@@ -1953,7 +1954,7 @@ export class OpenAIProvider extends BaseLLMProvider {
       return {
         content: resolvedContent,
         toolCalls,
-        finishReason: toolCalls.length > 0 ? "tool_calls" : (choice?.finish_reason ?? "stop"),
+        finishReason: toolCallFinishReason(toolCalls.length, choice?.finish_reason ?? "stop"),
         usage,
         ...(OpenAIProvider.hasReasoningMetadata(reasoningMetadata) ? { providerMetadata: reasoningMetadata } : {}),
       };
@@ -2166,7 +2167,7 @@ export class OpenAIProvider extends BaseLLMProvider {
     return {
       content: content || null,
       toolCalls,
-      finishReason: toolCalls.length > 0 ? "tool_calls" : finishReason,
+      finishReason: toolCallFinishReason(toolCalls.length, finishReason),
       usage: streamUsage,
       ...(OpenAIProvider.hasReasoningMetadata(reasoningMetadata) ? { providerMetadata: reasoningMetadata } : {}),
     };
@@ -3049,10 +3050,7 @@ export class OpenAIProvider extends BaseLLMProvider {
     } finally {
       options.signal?.removeEventListener("abort", onAbortCCR);
     }
-    // Check if we got tool calls
-    if (functionCalls.length > 0) {
-      finishReason = "tool_calls";
-    }
+    finishReason = toolCallFinishReason(functionCalls.length, finishReason);
 
     return {
       content: content || null,
@@ -3238,16 +3236,14 @@ export class OpenAIProvider extends BaseLLMProvider {
     }
 
     const status = json.status as string | undefined;
-    let finishReason: string;
-    if (toolCalls.length > 0) {
-      finishReason = "tool_calls";
-    } else if (status === "incomplete") {
-      finishReason = OpenAIProvider.normalizeResponsesIncompleteFinishReason(
-        (json.incomplete_details as Record<string, unknown> | undefined)?.reason,
-      );
-    } else {
-      finishReason = "stop";
-    }
+    const finishReason = toolCallFinishReason(
+      toolCalls.length,
+      status === "incomplete"
+        ? OpenAIProvider.normalizeResponsesIncompleteFinishReason(
+            (json.incomplete_details as Record<string, unknown> | undefined)?.reason,
+          )
+        : "stop",
+    );
 
     return {
       content: text || null,

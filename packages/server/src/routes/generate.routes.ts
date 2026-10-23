@@ -364,6 +364,7 @@ import {
 import { createPromptsStorage } from "../services/storage/prompts.storage.js";
 import { createCharactersStorage } from "../services/storage/characters.storage.js";
 import { resolveChatUserIdentity } from "../services/chat-user-identity.js";
+import { withAvatarFileLifecycleLock } from "../services/image/avatar-file-lifecycle.js";
 import { createAgentsStorage } from "../services/storage/agents.storage.js";
 import {
   createGameStateStorage,
@@ -1592,34 +1593,37 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
       // Snapshot Persona info for per-message tracking. Only Conversation may
       // fall back to the active Persona; Roleplay and Game can stay Persona-less.
       if (userMsg?.id) {
-        resolvedUserIdentity = await resolveChatUserIdentity(chars, {
-          id: input.chatId,
-          personaId: chat.personaId,
-          personaCharacterId: chat.personaCharacterId,
-          mode: requestChatMode,
-        }).catch(releaseActiveGenerationAndRethrow);
-        if (resolvedUserIdentity) {
-          const updatedUserMsg = await chats
-            .updateMessageExtra(userMsg.id, {
-              personaSnapshot: {
-                personaId: resolvedUserIdentity.id,
-                source: resolvedUserIdentity.source,
-                name: resolvedUserIdentity.name,
-                description: resolvedUserIdentity.description,
-                personality: resolvedUserIdentity.personality,
-                scenario: resolvedUserIdentity.scenario,
-                backstory: resolvedUserIdentity.backstory,
-                appearance: resolvedUserIdentity.appearance,
-                avatarUrl: resolvedUserIdentity.avatarPath,
-                avatarCrop: resolvedUserIdentity.avatarCrop ? JSON.stringify(resolvedUserIdentity.avatarCrop) : null,
-                nameColor: resolvedUserIdentity.nameColor,
-                dialogueColor: resolvedUserIdentity.dialogueColor,
-                boxColor: resolvedUserIdentity.boxColor,
-              },
-            })
-            .catch(releaseActiveGenerationAndRethrow);
-          if (updatedUserMsg) userMsg = updatedUserMsg;
-        }
+        const personaMessageId = userMsg.id;
+        await withAvatarFileLifecycleLock(async () => {
+          resolvedUserIdentity = await resolveChatUserIdentity(chars, {
+            id: input.chatId,
+            personaId: chat.personaId,
+            personaCharacterId: chat.personaCharacterId,
+            mode: requestChatMode,
+          }).catch(releaseActiveGenerationAndRethrow);
+          if (resolvedUserIdentity) {
+            const updatedUserMsg = await chats
+              .updateMessageExtra(personaMessageId, {
+                personaSnapshot: {
+                  personaId: resolvedUserIdentity.id,
+                  source: resolvedUserIdentity.source,
+                  name: resolvedUserIdentity.name,
+                  description: resolvedUserIdentity.description,
+                  personality: resolvedUserIdentity.personality,
+                  scenario: resolvedUserIdentity.scenario,
+                  backstory: resolvedUserIdentity.backstory,
+                  appearance: resolvedUserIdentity.appearance,
+                  avatarUrl: resolvedUserIdentity.avatarPath,
+                  avatarCrop: resolvedUserIdentity.avatarCrop ? JSON.stringify(resolvedUserIdentity.avatarCrop) : null,
+                  nameColor: resolvedUserIdentity.nameColor,
+                  dialogueColor: resolvedUserIdentity.dialogueColor,
+                  boxColor: resolvedUserIdentity.boxColor,
+                },
+              })
+              .catch(releaseActiveGenerationAndRethrow);
+            if (updatedUserMsg) userMsg = updatedUserMsg;
+          }
+        });
       }
       currentTurnUserMessage = userMsg;
 

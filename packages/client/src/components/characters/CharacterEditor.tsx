@@ -141,6 +141,7 @@ import {
   getCardVariableChipNames,
   normalizeAvatarCrop,
   readBakedGreetingImages,
+  hasBakedGreetingImages,
   restoreBakedGreetingImages,
   type WeekSchedule,
 } from "@marinara-engine/shared";
@@ -3374,14 +3375,17 @@ function DialogueTab({
   const greetingKeysRef = useRef<string[]>([]);
   const bakeImages = useBakeCharacterGalleryImages(selfCharacterId ?? "");
   const greetingImageUrls = findGreetingImageUrls(formData);
-  const hasBakedImages = readBakedGreetingImages(formData.extensions).length > 0;
+  const hasBakedImages = hasBakedGreetingImages(formData);
 
   // Only on this explicit click: download the greetings' web images into the
   // gallery, then point the greetings at the saved copies (#7221).
   const saveGreetingImages = async () => {
     const characterId = selfCharacterId;
     if (!characterId || greetingImageUrls.length === 0 || bakeImages.isPending) return;
-    const results = await bakeImages.mutateAsync(greetingImageUrls);
+    const results = await bakeImages.mutateAsync({
+      urls: greetingImageUrls,
+      bakedImages: readBakedGreetingImages(formData.extensions),
+    });
     if (useUIStore.getState().characterDetailId !== characterId) return;
     const saved = results.flatMap((result) => (result.file ? [{ file: result.file, url: result.url }] : []));
     const failed = results.filter((result) => !result.file);

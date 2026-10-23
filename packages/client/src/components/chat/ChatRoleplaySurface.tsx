@@ -370,6 +370,7 @@ function StreamingIndicator({
   personaInfo,
   chatMode,
   groupChatMode,
+  colorInlineNames,
   expressionAvatarResolver,
   visualNovel = false,
   visualNovelParagraphIndex,
@@ -383,6 +384,7 @@ function StreamingIndicator({
   personaInfo?: PersonaInfo;
   chatMode: string;
   groupChatMode?: string;
+  colorInlineNames?: boolean;
   expressionAvatarResolver?: ExpressionAvatarResolver;
   visualNovel?: boolean;
   visualNovelParagraphIndex?: number;
@@ -435,6 +437,7 @@ function StreamingIndicator({
         personaInfo={personaInfo}
         chatMode={chatMode}
         groupChatMode={groupChatMode}
+        colorInlineNames={colorInlineNames}
         chatCharacterIds={chatCharIds}
         mergedGroupCharacterIds={mergedGroupCharacterIds}
         expressionAvatarResolver={expressionAvatarResolver}
@@ -1014,6 +1017,8 @@ export function ChatRoleplaySurface({
   const vnAutoPlay = useUIStore((s) => s.roleplayVnAutoPlay);
   const vnAutoPlayDelay = useUIStore((s) => s.roleplayVnAutoPlayDelay);
   const visualNovel = isRoleplay && (chatMeta.roleplayDisplayStyle ?? defaultDisplayStyle) === "visual-novel";
+  // Undefined until the chat sets it; ChatMessage then falls back to the retired global switch.
+  const colorInlineNames = typeof chatMeta.colorInlineNames === "boolean" ? chatMeta.colorInlineNames : undefined;
   const chatPosition = useUIStore((s) => s.roleplayChatPosition);
   const roleplayAvatarStyle = useUIStore((s) => s.roleplayAvatarStyle);
   const roleplayAvatarScale = useUIStore((s) => s.roleplayAvatarScale);
@@ -1985,6 +1990,7 @@ export function ChatRoleplaySurface({
                           messageOrderIndex={messageOrderIndex}
                           isGrouped={isGrouped(sourceIndex)}
                           groupChatMode={groupChatMode}
+                          colorInlineNames={colorInlineNames}
                           chatCharacterIds={chatCharIds}
                           mergedGroupCharacterIds={activeChatCharacterIds}
                           expressionAvatarResolver={expressionAvatarResolver}
@@ -2023,6 +2029,7 @@ export function ChatRoleplaySurface({
                           messageOrderIndex={messageOrderIndex}
                           isGrouped={isGrouped(sourceIndex)}
                           groupChatMode={groupChatMode}
+                          colorInlineNames={colorInlineNames}
                           chatCharacterIds={chatCharIds}
                           mergedGroupCharacterIds={activeChatCharacterIds}
                           expressionAvatarResolver={expressionAvatarResolver}
@@ -2057,6 +2064,7 @@ export function ChatRoleplaySurface({
                     personaInfo={personaInfo}
                     chatMode={chatMode}
                     groupChatMode={groupChatMode}
+                    colorInlineNames={colorInlineNames}
                     expressionAvatarResolver={expressionAvatarResolver}
                   />
                 )}
@@ -2117,6 +2125,7 @@ export function ChatRoleplaySurface({
                               characterMap={characterMap}
                               personaInfo={personaInfo}
                               groupChatMode={groupChatMode}
+                              colorInlineNames={colorInlineNames}
                               chatCharacterIds={chatCharIds}
                               mergedGroupCharacterIds={activeChatCharacterIds}
                               expressionAvatarResolver={expressionAvatarResolver}
@@ -2134,6 +2143,7 @@ export function ChatRoleplaySurface({
                               personaInfo={personaInfo}
                               chatMode="roleplay"
                               groupChatMode={groupChatMode}
+                              colorInlineNames={colorInlineNames}
                               expressionAvatarResolver={expressionAvatarResolver}
                             />
                           )
@@ -2157,6 +2167,7 @@ export function ChatRoleplaySurface({
                               characterMap={characterMap}
                               personaInfo={personaInfo}
                               groupChatMode={groupChatMode}
+                              colorInlineNames={colorInlineNames}
                               chatCharacterIds={chatCharIds}
                               mergedGroupCharacterIds={activeChatCharacterIds}
                               expressionAvatarResolver={expressionAvatarResolver}

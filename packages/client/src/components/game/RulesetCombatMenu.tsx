@@ -9,7 +9,7 @@
 // On a board, a step that picks a cell (walking, or aiming a shape) is drawn by the board rather
 // than listed here, so the half-made choice is HELD by the board and handed back down: one step,
 // two ways of finishing it, and the same pure rules behind both.
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { ChevronDown } from "lucide-react";
 import { RULESET_CHARGE_STEP_PREFIX, RULESET_PASS_OPTION } from "@marinara-engine/shared";
 import type { DirectedRulesetOption, DirectedRulesetView } from "@marinara-engine/shared";
@@ -29,14 +29,18 @@ import {
   rulesetDefaultTargets,
   rulesetPicksStep,
   rulesetMenuGroups,
+  rulesetMenuReadyName,
   rulesetOptionCostText,
   rulesetModeText,
   rulesetOptionForecastText,
   rulesetOptionLabel,
+  rulesetOptionOutOfReach,
   rulesetOptionNeedsTargets,
   rulesetPickTarget,
   rulesetSendsOnPick,
   rulesetStyleForecastText,
+  rulesetUpcastOwnText,
+  rulesetUpcastPoolText,
   type RulesetMenuStep,
 } from "../../lib/ruleset-combat-menu";
 import { cn } from "../../lib/utils";
@@ -146,7 +150,10 @@ export function rulesetWindowPrompt(view: DirectedRulesetView, defenseLabel: str
   if (!window) return "";
   const nameOf = (id: string | undefined) => view.combatants.find((combatant) => combatant.id === id)?.name ?? "";
   const asked = nameOf(window.actorId);
-  return t(
+  // What rides on a held hit, so an answer that stops it is weighed against what it saves.
+  const stakes =
+    window.stakes !== undefined ? ` ${t("game.combat.ruleset.menu.windowStakes", { amount: window.stakes })}` : "";
+  return `${t(
     `game.combat.ruleset.menu.window${window.targetIds?.some((id) => id !== window.actorId) && (window.moment === "aimed" || window.moment === "hit") ? "Bystander" : WINDOW_PROMPTS[window.moment ?? window.kind]}`,
     {
       name: asked,
@@ -157,9 +164,12 @@ export function rulesetWindowPrompt(view: DirectedRulesetView, defenseLabel: str
       defense:
         window.defense === undefined ? "" : defenseLabel ? `${defenseLabel} ${window.defense}` : String(window.defense),
     },
-  );
+  )}${stakes}`;
 }
 
+/** Kinds the sidebar menu folds into a line of their own rather than listing: ending the turn is
+ *  the footer's, and the standard actions and contests are the moves a turn takes least. */
+const FOLDED_KINDS: ReadonlySet<string> = new Set(["end-turn", "standard", "contest"]);
 export function RulesetCombatMenu({
   view,
   budgetLabel,
@@ -212,10 +222,11 @@ export function RulesetCombatMenu({
   const actorName = nameOf(view.actorId);
   const groups = useMemo(() => rulesetMenuGroups(view.options), [view.options]);
   // A pool by its own name where the fight sent it (the party's pools), else by its id.
-  const poolLabel = (id: string) =>
+  const poolOf = (id: string) =>
     view.combatants
       .find((combatant) => combatant.id === (view.window?.actorId ?? view.actorId))
-      ?.pools?.find((pool) => pool.id === id)?.label ?? id;
+      ?.pools?.find((pool) => pool.id === id);
+  const poolLabel = (id: string) => poolOf(id)?.label ?? id;
   // A fresh menu is a fresh choice: the turn moved on, so a half-finished pick from the last one
   // must never be sent against it.
   // A menu that mounts while its owner holds a step (a phone moving the step to the bar under the
@@ -781,7 +792,7 @@ export function RulesetCombatMenu({
                 onClick={() => paid(undefined)}
                 className={cn(buttonClass, `${ink.border} ${ink.fill} ${ink.body} ${ink.hover}`)}
               >
-                {t("game.combat.ruleset.upcast.own", { cost: rulesetOptionCostText(option, budgetLabel, t, distance) })}
+                {rulesetUpcastOwnText(option, budgetLabel, t, distance)}
               </button>
             )}
             {pools.map((pool, index) => (
@@ -798,7 +809,7 @@ export function RulesetCombatMenu({
                   ? t("game.combat.ruleset.upcast.charges", {
                       count: Number(pool.slice(RULESET_CHARGE_STEP_PREFIX.length)),
                     })
-                  : t("game.combat.ruleset.upcast.pool", { pool: poolLabel(pool) })}
+                  : rulesetUpcastPoolText(option, pool, poolOf(pool)?.unit ?? poolLabel(pool), !!poolOf(pool)?.unit, t)}
               </button>
             ))}
           </div>
@@ -845,12 +856,21 @@ export function RulesetCombatMenu({
                     ? "game.combat.ruleset.board.aimPrompt"
                     : "game.combat.ruleset.board.aimNobody";
       // On a touch screen there is no Enter or Escape to name: the same ask, worded for a tap.
-      const touchWords = touch && TOUCH_PROMPTS.has(prompt) ? `${prompt}Touch` : prompt;
+      const touchWords =
+        touch && step.stage === "move" && step.to
+          ? "game.combat.ruleset.board.movePromptConfirm"
+          : touch && TOUCH_PROMPTS.has(prompt)
+            ? `${prompt}Touch`
+            : prompt;
       return (
         <div className="flex flex-col gap-2 p-3">
           <p className={`text-xs ${ink.ask}`}>
             {t(touchWords, { label: rulesetOptionLabel(option, t), name: actorName, count: copies, placed })}
           </p>
+          {/* What the shape asks of whoever it catches, and what it does to them, while it is aimed. */}
+          {area && option.saveAgainst && (
+            <p className={`text-xs ${ink.faint}`}>{rulesetOptionForecastText(option, t)}</p>
+          )}
           {/* How a wall is laid (1.177) and how many copies are down (1.178): the board takes the cells. */}
           {carries && (
             <div className="flex flex-wrap gap-2">
@@ -1006,6 +1026,12 @@ export function RulesetCombatMenu({
                       max: combatant.health.max,
                     })}
                   </span>
+                  {/* Its odds against this one, as the server worked them out, so targets compare. */}
+                  {option.forecastFor?.[combatant.id] && (
+                    <span className={`mt-0.5 block text-[0.65rem] tabular-nums ${ink.body}`}>
+                      {rulesetOptionForecastText({ ...option, forecast: option.forecastFor[combatant.id] }, t)}
+                    </span>
+                  )}
                   {times > 1 && (
                     <span className={`mt-0.5 block text-[0.65rem] font-semibold tabular-nums ${ink.body}`}>
                       {t("game.combat.ruleset.target.times", { count: times })}
@@ -1070,11 +1096,23 @@ export function RulesetCombatMenu({
   if (pane) {
     const marksById = new Map(marks.map((mark) => [mark.id, mark]));
     const openId = step?.option.id;
-    const row = (option: DirectedRulesetOption, answer = false, index = -1) => {
+    const row = (option: DirectedRulesetOption, answer = false, index = -1, label?: string) => {
       const mark = option.budget ? marksById.get(option.budget) : undefined;
       // What it spends besides its budget, which the pip already says.
       const cost = rulesetOptionCostText({ ...option, budget: undefined }, budgetLabel, t, distance);
-      const forecast = rulesetOptionForecastText(option, t);
+      // An answer to a held hit says what it does to the defense the hit is checked against.
+      const forecast = option.raisesDefense
+        ? t(
+            option.raisesDefense.misses
+              ? "game.combat.ruleset.screen.defenseRaisedMiss"
+              : "game.combat.ruleset.screen.defenseRaised",
+            {
+              defense: defenseLabel ?? "",
+              from: view.window?.defense ?? "",
+              to: option.raisesDefense.to,
+            },
+          ).trim()
+        : rulesetOptionForecastText(option, t);
       const reach = option.area
         ? t("game.combat.ruleset.screen.area", {
             size: rulesetDistanceText(option.area.size, distance, t),
@@ -1109,7 +1147,7 @@ export function RulesetCombatMenu({
               <span className="min-w-0">
                 <span className="flex min-w-0 items-center gap-1.5">
                   <span className="truncate font-semibold text-[var(--foreground)]">
-                    {rulesetOptionLabel(option, t)}
+                    {label ?? rulesetOptionLabel(option, t)}
                   </span>
                   {mark && <RulesetBudgetPip mark={mark} size="sm" />}
                   {(cost || reach) && (
@@ -1169,23 +1207,43 @@ export function RulesetCombatMenu({
     }
     // Ending the turn is the footer's; the standard actions fold into one row of their own, and so
     // does every readied option, which would otherwise bury the turn under one "Ready …" per action.
+    // An option with nobody to point it at folds into one line under the rest, so the ones that can
+    // be taken are the ones a player reads first.
+    const unreachable = groups
+      .filter((group) => !FOLDED_KINDS.has(group.kind))
+      .flatMap((group) => group.options.filter((option) => !option.ready && rulesetOptionOutOfReach(option)));
     const listed = groups
-      .filter((group) => group.kind !== "end-turn" && group.kind !== "standard")
-      .map((group) => ({ ...group, options: group.options.filter((option) => !option.ready) }))
+      .filter((group) => !FOLDED_KINDS.has(group.kind))
+      .map((group) => ({
+        ...group,
+        options: group.options.filter((option) => !option.ready && !rulesetOptionOutOfReach(option)),
+      }))
       .filter((group) => group.options.length > 0);
     const readied = groups.flatMap((group) =>
       group.kind === "end-turn" || group.kind === "standard" ? [] : group.options.filter((option) => option.ready),
     );
-    const standard = groups.find((group) => group.kind === "standard");
-    const fold = (labelKey: string, options: typeof readied, summary: string) => {
+    // Every group of a folded kind folds on its own, under its own heading: a ruleset may name more
+    // than one (one per list it gives a tab).
+    const standard = groups.filter((group) => group.kind === "standard");
+    // Grabs and shoves are the moves a turn takes least, so they fold as the standard actions do.
+    const contests = groups.filter((group) => group.kind === "contest");
+    const fold = (
+      labelKey: string,
+      options: typeof readied,
+      summary: string,
+      body?: ReactNode,
+      group?: { key: string; labelValues?: Record<string, string | number> },
+    ) => {
+      const foldKey = group?.key ?? labelKey;
       const stepping = options.some((option) => option.id === openId);
       return (
         <details
-          open={stepping || foldsOpen[labelKey] === true}
+          key={foldKey}
+          open={stepping || foldsOpen[foldKey] === true}
           onToggle={(event) => {
             if (stepping) return;
             const open = event.currentTarget.open;
-            setFoldsOpen((folds) => (folds[labelKey] === open ? folds : { ...folds, [labelKey]: open }));
+            setFoldsOpen((folds) => (folds[foldKey] === open ? folds : { ...folds, [foldKey]: open }));
           }}
           className="group"
         >
@@ -1197,35 +1255,106 @@ export function RulesetCombatMenu({
             className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-md px-2 text-[0.78rem] font-semibold text-[var(--foreground)] hover:bg-[var(--foreground)]/[0.05] md:min-h-[1.875rem] [&::-webkit-details-marker]:hidden"
           >
             <ChevronDown className="h-3.5 w-3.5 text-[var(--muted-foreground)] transition-transform group-open:rotate-180" />
-            {t(labelKey)}
+            {t(labelKey, group?.labelValues)}
             <span className="truncate text-[0.68rem] font-normal text-[var(--muted-foreground)]">{summary}</span>
           </summary>
-          <ul className="m-0 grid list-none gap-px p-0 pl-2">{options.map((option) => row(option))}</ul>
+          <ul className="m-0 grid list-none gap-px p-0 pl-2">{body ?? options.map((option) => row(option))}</ul>
         </details>
       );
     };
+    // Readying is one choice in two picks: the action first, then the moment it waits for. Each
+    // action is one row that opens onto its moments, so a caster's list is said once, not twice.
+    const readiedBy = new Map<string, DirectedRulesetOption[]>();
+    for (const option of readied) {
+      const key = option.ready!.optionId;
+      readiedBy.set(key, [...(readiedBy.get(key) ?? []), option]);
+    }
+    const readyRows = [...readiedBy.values()].map((moments) => {
+      const ready = moments[0]!.ready!;
+      const stepping = moments.some((option) => option.id === openId);
+      return (
+        <li key={ready.optionId}>
+          <details
+            open={stepping || foldsOpen[`ready:${ready.optionId}`] === true}
+            onToggle={(event) => {
+              if (stepping) return;
+              const key = `ready:${ready.optionId}`;
+              const open = event.currentTarget.open;
+              setFoldsOpen((folds) => (folds[key] === open ? folds : { ...folds, [key]: open }));
+            }}
+            className="group/ready"
+          >
+            <summary
+              onClick={(event) => {
+                if (stepping) event.preventDefault();
+              }}
+              className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-md px-2 text-[0.78rem] font-semibold text-[var(--foreground)] hover:bg-[var(--foreground)]/[0.05] md:min-h-[1.875rem] [&::-webkit-details-marker]:hidden"
+            >
+              <ChevronDown className="h-3.5 w-3.5 text-[var(--muted-foreground)] transition-transform group-open/ready:rotate-180" />
+              {rulesetMenuReadyName(ready.label, ready.optionId, t)}
+            </summary>
+            <ul className="m-0 grid list-none gap-px p-0 pl-4">
+              {moments.map((option) =>
+                row(
+                  option,
+                  false,
+                  -1,
+                  t(
+                    option.ready!.on === "comes"
+                      ? "game.combat.ruleset.screen.readyWhenComes"
+                      : "game.combat.ruleset.screen.readyWhenActs",
+                  ),
+                ),
+              )}
+            </ul>
+          </details>
+        </li>
+      );
+    });
     return (
       <div ref={root} tabIndex={-1} className="flex flex-col gap-2 px-2 py-2 outline-none">
         {listed.map((group) => (
-          <section key={group.kind} aria-label={t(group.labelKey)}>
+          <section key={group.key} aria-label={t(group.labelKey, group.labelValues)}>
             <h4 className="px-2 pb-0.5 text-[0.6rem] font-semibold uppercase tracking-[0.08em] text-[var(--muted-foreground)]">
-              {t(group.labelKey)}
+              {t(group.labelKey, group.labelValues)}
             </h4>
             <ul className="m-0 grid list-none gap-px p-0">{group.options.map((option) => row(option))}</ul>
           </section>
         ))}
+        {unreachable.length > 0 &&
+          fold(
+            "game.combat.ruleset.screen.outOfReachFold",
+            unreachable,
+            unreachable.map((option) => rulesetOptionLabel(option, t)).join(", "),
+          )}
         {readied.length > 0 &&
           fold(
             "game.combat.ruleset.screen.readyFold",
             readied,
-            t("game.combat.ruleset.screen.readyCount", { count: readied.length }),
+            t("game.combat.ruleset.screen.readyCount", { count: readiedBy.size }),
+            readyRows,
           )}
-        {standard &&
+        {contests.map((group) => {
+          const open = group.options.filter((option) => !option.ready);
+          return open.length > 0
+            ? fold(
+                group.labelKey,
+                open,
+                open.map((option) => rulesetOptionLabel(option, t)).join(", "),
+                undefined,
+                group,
+              )
+            : null;
+        })}
+        {standard.map((group) =>
           fold(
-            standard.labelKey,
-            standard.options,
-            standard.options.map((option) => rulesetOptionLabel(option, t)).join(", "),
-          )}
+            group.labelKey,
+            group.options,
+            group.options.map((option) => rulesetOptionLabel(option, t)).join(", "),
+            undefined,
+            group,
+          ),
+        )}
       </div>
     );
   }
@@ -1257,12 +1386,12 @@ export function RulesetCombatMenu({
       <div className="flex flex-row flex-wrap items-start gap-2 sm:gap-x-6 sm:gap-y-3">
         {groups.map((group) => (
           <section
-            key={group.kind}
-            aria-label={t(group.labelKey)}
+            key={group.key}
+            aria-label={t(group.labelKey, group.labelValues)}
             className="contents sm:flex sm:min-w-0 sm:flex-col sm:gap-1.5"
           >
             <h4 className={`hidden text-[0.6rem] font-semibold uppercase tracking-wide ${ink.faint} sm:block`}>
-              {t(group.labelKey)}
+              {t(group.labelKey, group.labelValues)}
             </h4>
             <div className="contents sm:flex sm:flex-wrap sm:gap-2">
               {group.options.map((option) => {

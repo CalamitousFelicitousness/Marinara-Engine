@@ -1,4 +1,5 @@
 import { resolveStoredChatOptions, resolveStoredMaxTokens } from "../services/generation/generation-parameters.js";
+import { withConnectionThinkingHeadroom } from "../services/generation/agent-generation-parameters.js";
 import { z } from "zod";
 import { resolveGameConnection as resolveEncounterConnection } from "../services/game/connection.service.js";
 import {
@@ -69,6 +70,33 @@ import type {
 // ──────────────────────────────────────────────
 
 const COMBAT_BLUEPRINT_OUTPUT_TOKENS = 12000;
+/** Reasoning efforts the blueprint call turns down to medium. */
+const COMBAT_BLUEPRINT_EFFORT_CAPPED = new Set(["high", "xhigh", "max"]);
+
+/**
+ * Whether a blueprint answer stopped before it finished: the provider said it ran out of room, or the
+ * JSON ends part way through, inside a string or with an object or list still open. A reply that
+ * merely fails to parse is not this; it is an invalid answer.
+ */
+export function combatBlueprintCutOff(finishReason: string | undefined, content: string | null | undefined): boolean {
+  if (finishReason && ["length", "max_tokens", "max_output_tokens"].includes(finishReason.toLowerCase())) return true;
+  const text = (content ?? "").replace(/```\s*$/u, "").trim();
+  const start = text.indexOf("{");
+  if (start < 0) return false;
+  let depth = 0;
+  let quoted = false;
+  let escaped = false;
+  for (const char of text.slice(start)) {
+    if (quoted) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === '"') quoted = false;
+    } else if (char === '"') quoted = true;
+    else if (char === "{" || char === "[") depth++;
+    else if (char === "}" || char === "]") depth--;
+  }
+  return quoted || depth > 0;
+}
 
 function configuredHpMax(rpgStats: RPGStatsConfig | undefined): number | null {
   if (!rpgStats?.enabled) return null;
@@ -881,8 +909,45 @@ export async function encounterRoutes(app: FastifyInstance) {
   }
 
   // ───────────────────────── INIT ─────────────────────────
+  // One fight setup at a time for a chat (playtest B1): a second request while one is running, from
+  // the chat opened again or another tab, waits for it and gets the same answer instead of asking the
+  // model again, which may take minutes.
+  const settingUp = new Map<string, Promise<{ status: number; body: unknown }>>();
+  type SetupReply = { status(code: number): { send(body: unknown): unknown } };
   app.post<{ Body: EncounterInitRequest }>("/init", async (req, reply) => {
-    const { chatId, connectionId, settings, spellbookId, debugMode } = req.body;
+    const chatId = typeof req.body?.chatId === "string" ? req.body.chatId : "";
+    let pending = chatId ? settingUp.get(chatId) : undefined;
+    if (!pending) {
+      const answered = { status: 200, body: undefined as unknown };
+      const recorder: SetupReply = {
+        status: (code) => ({
+          send: (body) => {
+            answered.status = code;
+            answered.body = body;
+            return answered;
+          },
+        }),
+      };
+      const running = initEncounter(req.body, recorder).then((result) => {
+        if (result !== answered) answered.body = result;
+        return answered;
+      });
+      pending = running;
+      if (chatId) {
+        settingUp.set(chatId, running);
+        void running
+          .finally(() => {
+            if (settingUp.get(chatId) === running) settingUp.delete(chatId);
+          })
+          .catch(() => {});
+      }
+    }
+    const answer = await pending;
+    return reply.status(answer.status).send(answer.body);
+  });
+
+  async function initEncounter(body: EncounterInitRequest, reply: SetupReply): Promise<unknown> {
+    const { chatId, connectionId, settings, spellbookId, debugMode } = body;
     const debugLog = (message: string, ...args: unknown[]) => {
       logDebugOverride(debugMode === true, message, ...args);
     };
@@ -1010,13 +1075,52 @@ export async function encounterRoutes(app: FastifyInstance) {
       debugLog("[debug/game/combat:init] prompt messages:\n%s", JSON.stringify(prompt, null, 2));
 
       const storedOptions = resolveStoredChatOptions(conn.defaultParameters, conn.provider, conn.model);
-      const result = await provider.chatComplete(prompt, {
-        model: conn.model,
-        ...storedOptions,
-        temperature: storedOptions.temperature ?? 0.8,
-        enableThinking: !!storedOptions.reasoningEffort && storedOptions.reasoningEffort !== "none",
-        maxTokens: resolveStoredMaxTokens(conn.defaultParameters, COMBAT_BLUEPRINT_OUTPUT_TOKENS),
-      });
+      // A connection's Max tokens is sized for story replies, and a whole battle's JSON cut off at
+      // 4096 tokens cannot be read (playtest), so the setup asks for at least its own budget. The
+      // connection's hard cap (maxTokensOverride) still clamps it in the provider.
+      const visibleMaxTokens = Math.max(
+        resolveStoredMaxTokens(conn.defaultParameters, COMBAT_BLUEPRINT_OUTPUT_TOKENS),
+        COMBAT_BLUEPRINT_OUTPUT_TOKENS,
+      );
+      // One call for the blueprint, thinking at medium effort at most: it is structured output, and a
+      // long think at a high effort spends the room the blueprint needs (playtest: 16000 tokens at
+      // xhigh left about 6000 for a 20000-character answer). Asked again once with thinking off when
+      // the answer was cut off before it finished.
+      const ask = async (reasoningEffort: typeof storedOptions.reasoningEffort) => {
+        const thinking = !!reasoningEffort && reasoningEffort !== "none";
+        const maxTokens = withConnectionThinkingHeadroom({
+          provider: conn.provider,
+          model: conn.model ?? "",
+          maxTokens: visibleMaxTokens,
+          reasoningEffort: thinking ? reasoningEffort : null,
+          maxTokensOverride: conn.maxTokensOverride,
+        });
+        const answer = await provider.chatComplete(prompt, {
+          model: conn.model,
+          ...storedOptions,
+          ...(reasoningEffort !== undefined ? { reasoningEffort } : {}),
+          temperature: storedOptions.temperature ?? 0.8,
+          enableThinking: thinking,
+          maxTokens,
+        });
+        const cutOff = combatBlueprintCutOff(answer.finishReason, answer.content);
+        logger.info(
+          "[game/combat:init] chatId=%s model=%s reasoning=%s maxTokens=%d finish=%s chars=%d outputTokens=%s%s",
+          chatId,
+          conn.model ?? "",
+          thinking ? reasoningEffort : "off",
+          maxTokens,
+          answer.finishReason,
+          answer.content?.length ?? 0,
+          answer.usage?.completionTokens ?? "unknown",
+          cutOff ? " (cut off)" : "",
+        );
+        return { answer, cutOff };
+      };
+      const effort = storedOptions.reasoningEffort;
+      let asked = await ask(effort && COMBAT_BLUEPRINT_EFFORT_CAPPED.has(effort) ? "medium" : effort);
+      if (asked.cutOff && effort && effort !== "none") asked = await ask("none");
+      const result = asked.answer;
       debugLog(
         "[debug/game/combat:init] raw response chatId=%s model=%s chars=%d\n%s",
         chatId,
@@ -1024,6 +1128,13 @@ export async function encounterRoutes(app: FastifyInstance) {
         result.content?.length ?? 0,
         result.content ?? "",
       );
+      if (asked.cutOff) {
+        return reply.status(502).send({
+          error:
+            "The fight's setup was cut off before it finished: the model ran out of room to answer. Retry, or raise this connection's Max tokens.",
+          reason: "cut-off",
+        });
+      }
 
       if (!result.content) {
         return reply.status(502).send({ error: "No response from AI" });
@@ -1076,7 +1187,7 @@ export async function encounterRoutes(app: FastifyInstance) {
       logger.warn(err, "[game/combat:init] Encounter init failed");
       return reply.status(500).send({ error: `Encounter init failed: ${message}` });
     }
-  });
+  }
 
   // ───────────────────────── ACTION ─────────────────────────
   app.post<{ Body: EncounterActionRequest }>("/action", async (req, reply) => {

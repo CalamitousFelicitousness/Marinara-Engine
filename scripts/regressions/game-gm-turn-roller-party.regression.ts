@@ -43,6 +43,8 @@ const party = ["Isolde", "Hessa", "Brannoc", "Pip"];
     JSON.stringify({ notation: "1d8+4", rolls: [5], modifier: 4, total: 9, reason: "Hessa: Cure Wounds" }),
   );
   assert.equal(rolled?.label, "Hessa: Cure Wounds");
+  // A continued turn reads its saved rolls back through the same reader: the label survives.
+  assert.equal(parseRollDiceToolResult(JSON.stringify(rolled))?.label, "Hessa: Cure Wounds");
   const unnamed = parseRollDiceToolResult(JSON.stringify({ notation: "1d6", rolls: [2], modifier: 0, total: 2 }));
   assert.equal(unnamed?.label, undefined);
 }

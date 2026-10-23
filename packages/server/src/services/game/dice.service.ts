@@ -73,7 +73,9 @@ export function parseRollDiceToolResult(raw: string): DiceRollResult | null {
   if (!Number.isFinite(modifier)) return null;
   const dc = payload.dc;
   if (dc !== undefined && (typeof dc !== "number" || !Number.isSafeInteger(dc))) return null;
-  const label = typeof payload.reason === "string" ? cleanRollLabel(payload.reason) : "";
+  // A fresh tool result names its roller in `reason`; a saved roll read back (a continued turn) in `label`.
+  const named = typeof payload.label === "string" ? payload.label : payload.reason;
+  const label = typeof named === "string" ? cleanRollLabel(named) : "";
 
   return { notation, rolls, modifier, total, ...(dc !== undefined ? { dc } : {}), ...(label ? { label } : {}) };
 }
@@ -181,9 +183,9 @@ export function resolveGameDiceRequests(
         // The pool's own attachment point, BEFORE the return below: the complete record the
         // pool prompt asks for parses as a record here, so the roller further down is never
         // reached for it and a branch placed after this return would never run.
-        const poolBody = pool ? readPoolDiceBody(body) : null;
+        const poolBody = pool ? readPoolDiceBody(roller.body) : null;
         if (pool && poolBody)
-          return resolvePoolDiceTag(pool, poolBody, body, diceRolls, () => rolled++, poolTagIndex++);
+          return resolvePoolDiceTag(pool, poolBody, roller.body, diceRolls, () => rolled++, poolTagIndex++, roller.who);
         if (pool && hasPoolClaim(body)) {
           // `pool=` written in front of nothing the grammar can read. The numbers on such
           // a record are a claim the pool never validated, so they are dropped with the
@@ -385,6 +387,7 @@ function resolvePoolDiceTag(
   diceRolls: DiceRollResult[],
   countRoll: () => void,
   tagIndex: number,
+  who = "",
 ): string {
   const notation = clampParsedDiceToLimits(poolBody.notation);
   const spent = spendPoolForNotation(pool, notation, body, tagIndex);
@@ -394,9 +397,10 @@ function resolvePoolDiceTag(
     ...(poolBody.slots ? { slots: poolBody.slots.slots } : {}),
     values: readRecordedDiceValues(body),
   });
-  diceRolls.push(spent.result);
+  const result = who ? { ...spent.result, label: who } : spent.result;
+  diceRolls.push(result);
   countRoll();
-  return serializeDiceRecord(spent.result, spent.name);
+  return serializeDiceRecord(result, spent.name);
 }
 
 /** The per-die numbers the model wrote inside a `[dice: NdM = T (a + b)]` record. */

@@ -852,13 +852,67 @@ export function rulesetMenu(
       targetIds.length > 1 && option.forecast && !option.area
         ? rulesetForecastsByTarget(definition, encounter, actorId, option.id, targetIds)
         : undefined;
+    const raisesDefense =
+      inWindow && encounter.window?.trigger.kind === "hit" && option.kind !== "end-turn"
+        ? heldHitAnswer(definition, encounter, actorId, option, targetIds, encounter.window.trigger)
+        : undefined;
     return {
       ...option,
       targetIds,
       ...(forecastFor && Object.keys(forecastFor).length > 0 ? { forecastFor } : {}),
+      ...(raisesDefense ? { raisesDefense } : {}),
       ...(aim.length > 0 ? { aim } : {}),
     };
   });
+}
+
+type HeldHit = Extract<NonNullable<RulesetEncounterState["window"]>["trigger"], { kind: "hit" }>;
+
+/** What taking one answer to a held hit does to the defense it is checked against: the answer is
+ *  taken on a copy of the fight with every die at its middle, and the defense read again. Nothing
+ *  when it does not raise it (a counter-strike, or a reaction aimed elsewhere). */
+function heldHitAnswer(
+  definition: RulesetDefinition,
+  encounter: RulesetEncounterState,
+  actorId: string,
+  option: RulesetCombatOption,
+  targetIds: string[],
+  hit: HeldHit,
+): { to: number; misses?: true } | undefined {
+  const combat = definition.combat;
+  if (!combat) return undefined;
+  const struckId = hit.targetIds?.[0] ?? actorId;
+  try {
+    const step = applyRulesetCombatChoice(
+      definition,
+      encounter,
+      { actorId, optionId: option.id, targetIds: targetIds.slice(0, Math.max(0, option.targets.count)) },
+      (sides) => Math.ceil(sides / 2),
+    );
+    const struck = rulesetCombatant(step.state, struckId);
+    const source = rulesetCombatant(step.state, hit.sourceId);
+    if (!struck) return undefined;
+    const action = source?.actions.find((one) => one.id === hit.optionId);
+    const to = rulesetDefenseAgainst(definition, combat, step.state, struck, source, action).defense;
+    if (to <= hit.defense) return undefined;
+    return { to, ...(hit.total < to ? { misses: true as const } : {}) };
+  } catch {
+    return undefined;
+  }
+}
+
+/** About how much a held hit's damage comes to against the one it hit. */
+function heldHitStakes(
+  definition: RulesetDefinition,
+  encounter: RulesetEncounterState,
+  hit: HeldHit,
+  /** The one being asked, who was hit where the hit names nobody else. */
+  askedId: string,
+): number | undefined {
+  const struckId = hit.targetIds?.[0] ?? askedId;
+  const damage = rulesetForecastsByTarget(definition, encounter, hit.sourceId, hit.optionId, [struckId])[struckId]
+    ?.averageDamage;
+  return damage !== undefined && Math.round(damage) > 0 ? Math.round(damage) : undefined;
 }
 
 /** The fight as a screen reads it. A projection: no sheet build, no live blob and no catalogs. */
@@ -968,7 +1022,11 @@ export function directedRulesetView(
             ...(rulesetWindowMoment(held.window.trigger) ? { moment: rulesetWindowMoment(held.window.trigger)! } : {}),
             ...("label" in held.window.trigger ? { label: held.window.trigger.label } : {}),
             ...(held.window.trigger.kind === "hit"
-              ? { total: held.window.trigger.total, defense: held.window.trigger.defense }
+              ? ((hit, stakes) => ({
+                  total: hit.total,
+                  defense: hit.defense,
+                  ...(stakes !== undefined ? { stakes } : {}),
+                }))(held.window.trigger, heldHitStakes(definition, encounter, held.window.trigger, held.actorId))
               : {}),
             controller: held.controller,
             ...((cells) => (cells ? { cells } : {}))(

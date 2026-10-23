@@ -424,9 +424,37 @@ export function RulesetSheetBuilder({
             onChange={(chosen) => update({ ...state, abilityChoices: { ...state.abilityChoices, [slot.key]: chosen } })}
           />
         ))}
+      {/* A choice that builds on training already held (5e's Expertise) is said before its skills
+          are picked, so a player knows it is coming; it opens as soon as there is something to build on. */}
+      {trainedSlots
+        .filter(
+          (slot) =>
+            slot.stepId === step.id &&
+            slot.held !== undefined &&
+            !slot.unresolved &&
+            slot.from.every((id) => slot.disabled?.[id] !== undefined),
+        )
+        .map((slot) => (
+          <p key={slot.key} className="text-xs text-[var(--muted-foreground)]">
+            {t("ui.rulesets.builder.heldWaiting", {
+              from: slot.entry?.label ?? step.label,
+              count: slot.count,
+              what: t(slot.what === "skills" ? "ui.rulesets.builder.heldSkills" : "ui.rulesets.builder.heldSaves"),
+            })}
+          </p>
+        ))}
       {trainedSlots
         // A choice the picks already answer in full (1.104) has nothing left to offer.
-        .filter((slot) => slot.stepId === step.id && (slot.unresolved || slot.from.length > 0))
+        .filter(
+          (slot) =>
+            slot.stepId === step.id &&
+            (slot.unresolved || slot.from.length > 0) &&
+            !(
+              slot.held !== undefined &&
+              !slot.unresolved &&
+              slot.from.every((id) => slot.disabled?.[id] !== undefined)
+            ),
+        )
         .map((slot) => (
           <ChoiceSlot
             key={slot.key}
@@ -1669,8 +1697,25 @@ export function RulesetSheetBuilder({
   };
 
   const trainedStep = () => {
-    const fixed = (["skills", "saves"] as const).flatMap((what) =>
-      Object.keys(state.applied?.[what] ?? {}).map((id) => (what === "skills" ? skillLabel(id) : saveLabel(id))),
+    // Each one at the tier it is trained to where that is above the first (Expertise), whether the
+    // picks gave it outright or a choice built on them.
+    const tiers = definition.resolution.proficiencyTiers;
+    const rank = (tier: string) => tiers.findIndex((each) => each.id === tier);
+    const named = new Map<string, { label: string; tier: string }>();
+    for (const what of ["skills", "saves"] as const) {
+      for (const [id, tier] of Object.entries(state.applied?.[what] ?? {}))
+        named.set(`${what}:${id}`, { label: what === "skills" ? skillLabel(id) : saveLabel(id), tier });
+    }
+    for (const slot of trainedSlots) {
+      for (const id of slot.chosen) {
+        const key = `${slot.what}:${id}`;
+        const was = named.get(key);
+        if (was ? rank(slot.tier) > rank(was.tier) : rank(slot.tier) > 1)
+          named.set(key, { label: slot.what === "skills" ? skillLabel(id) : saveLabel(id), tier: slot.tier });
+      }
+    }
+    const fixed = [...named.values()].map(({ label, tier }) =>
+      rank(tier) > 1 ? `${label} (${tiers[rank(tier)]!.label})` : label,
     );
     return (
       <div className="space-y-2">

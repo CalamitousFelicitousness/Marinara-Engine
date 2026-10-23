@@ -1577,6 +1577,20 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     "a heal is worded as healing, because both are an amount",
   );
   assert.equal(rulesetOptionForecastText({ ...sword, forecast: undefined }, t), "");
+  // A save is said before the damage, and what a made one leaves after it.
+  const blast = { ...sword, forecast: { averageDamage: 28 } };
+  assert.equal(
+    rulesetOptionForecastText({ ...blast, saveAgainst: { label: "DEX save", dc: 15, onSuccess: "half" } }, t),
+    "DEX save DC 15, about 28 damage (14 on a save)",
+  );
+  assert.equal(
+    rulesetOptionForecastText({ ...blast, saveAgainst: { label: "WIS save", dc: 13, onSuccess: "negates" } }, t),
+    "WIS save DC 13, about 28 damage (none on a save)",
+  );
+  assert.equal(
+    rulesetOptionForecastText({ ...blast, saveAgainst: { label: "CON save", dc: 12, onSuccess: "none" } }, t),
+    "CON save DC 12, about 28 damage",
+  );
 
   // What a spell costs is the sheet's own pool name, and how many are left is the server's count.
   // The menu only ever holds the actor on turn's own options, so the wizard is given the initiative

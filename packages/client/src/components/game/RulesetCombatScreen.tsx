@@ -94,12 +94,12 @@ export function RulesetCombatScreen({
   }, [view.actorId, view.round, window?.id]);
 
   // ── A phone ──
-  // The board and the pane are two tabs. A step finished on the board takes the phone to the board,
+  // The board, the pane, the turn order and the log are four tabs. A step finished on the board takes the phone to the board,
   // and it stays there once the step is sent or dropped so the player sees what it did. A new turn
   // or a new question chooses again: a question and the player's own turn go to the options,
   // somebody else's turn goes to the board. Nothing switches while a step is open.
   const narrow = useMatchMedia("(max-width: 767px)");
-  const [phoneTab, setPhoneTab] = useState<"board" | "pane">("pane");
+  const [phoneTab, setPhoneTab] = useState<"board" | "pane" | "order" | "log">("pane");
   const [orderOpen, setOrderOpen] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const boardStep = !!step && (step.stage === "move" || step.stage === "aim" || step.stage === "target");
@@ -109,7 +109,8 @@ export function RulesetCombatScreen({
     if (narrow && boardStep) setPhoneTab("board");
   }, [narrow, boardStep]);
   useEffect(() => {
-    if (narrow) setPhoneTab(ended || askedId || ownTurn ? "pane" : "board");
+    // Somebody else's turn leaves a player reading the turn order or the log where they are.
+    if (narrow) setPhoneTab((tab) => (ended || askedId || ownTurn ? "pane" : tab === "pane" ? "board" : tab));
   }, [narrow, ended, askedId, ownTurn, view.actorId, view.round]);
   useEffect(() => {
     setLeaving(false);
@@ -255,7 +256,8 @@ export function RulesetCombatScreen({
         menuRef={menuRoot}
         onHover={setHovered}
       />
-      {logOpen && !(narrow && boardStep) && (
+      {/* A phone has the log as a tab of its own, so the board keeps the height. */}
+      {logOpen && !narrow && (
         <RulesetCombatLog
           definition={definition}
           view={view}
@@ -274,20 +276,20 @@ export function RulesetCombatScreen({
         className="flex h-full min-h-0 flex-col bg-[var(--background)] text-[var(--foreground)]"
       >
         <div role="tablist" className="flex shrink-0 gap-1 border-b border-[var(--border)] bg-[var(--card)] p-1">
-          {(["board", "pane"] as const).map((tab) => (
+          {(["board", "pane", "order", "log"] as const).map((tab) => (
             <button
               key={tab}
               type="button"
               role="tab"
               aria-selected={phoneTab === tab}
-              disabled={boardStep && tab === "pane"}
+              disabled={boardStep && tab !== "board"}
               onClick={() => setPhoneTab(tab)}
               className={cn(
-                "inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-lg text-sm font-semibold disabled:opacity-50",
+                "inline-flex min-h-11 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg px-1 text-[0.8rem] font-semibold disabled:opacity-50",
                 phoneTab === tab ? "bg-[var(--primary)]/15 text-[var(--foreground)]" : "text-[var(--muted-foreground)]",
               )}
             >
-              {t(tab === "board" ? "game.combat.ruleset.screen.tabBoard" : "game.combat.ruleset.screen.tabPane")}
+              <span className="truncate">{t(PHONE_TAB_KEYS[tab])}</span>
               {tab === "pane" && asked && phoneTab !== "pane" && (
                 <span aria-hidden="true" className="h-2 w-2 animate-pulse rounded-full bg-[#f5c97a]" />
               )}
@@ -298,59 +300,79 @@ export function RulesetCombatScreen({
           <>
             {boardColumn}
             {/* The bar under the board: the open step with its way back, the way back to a question,
-                or the end of the player's turn. */}
-            {boardStep ? (
-              <div className="max-h-[45%] shrink-0 overflow-y-auto border-t border-[var(--border)] bg-[var(--card)]">
-                <RulesetCombatMenu
-                  layout="step"
-                  marks={marks}
-                  view={view}
-                  budgetLabel={budgetLabel}
-                  defenseLabel={defenseLabel}
-                  busy={busy}
-                  onChoose={onChoose}
-                  onFlee={onFlee}
-                  step={step}
-                  onStepChange={setStep}
-                  menuRef={menuRoot}
-                />
-              </div>
-            ) : ended ? (
-              <button
-                type="button"
-                onClick={() => setPhoneTab("pane")}
-                className="m-2 min-h-11 shrink-0 rounded-lg bg-[var(--primary)] text-sm font-semibold text-[var(--primary-foreground)]"
-              >
-                {t("game.combat.ruleset.screen.howItEnded")}
-              </button>
-            ) : asked ? (
-              <button
-                type="button"
-                onClick={() => setPhoneTab("pane")}
-                className="m-2 min-h-11 shrink-0 rounded-lg border-2 border-[#f5c97a] bg-[var(--card)] text-sm font-semibold"
-              >
-                {t("game.combat.ruleset.screen.backToAnswer")}
-              </button>
-            ) : ending ? (
-              <div className="flex shrink-0 gap-2 border-t border-[var(--border)] bg-[var(--card)] p-2">
+                or the end of the player's turn. It keeps one height whichever it holds, so the board
+                above never jumps between steps under a finger about to tap it. */}
+            <div className={cn("flex shrink-0 flex-col justify-end overflow-hidden", !ended && "h-[min(10.5rem,36%)]")}>
+              {boardStep ? (
+                <div className="min-h-0 flex-1 overflow-y-auto border-t border-[var(--border)] bg-[var(--card)]">
+                  <RulesetCombatMenu
+                    layout="step"
+                    marks={marks}
+                    view={view}
+                    budgetLabel={budgetLabel}
+                    defenseLabel={defenseLabel}
+                    busy={busy}
+                    onChoose={onChoose}
+                    onFlee={onFlee}
+                    step={step}
+                    onStepChange={setStep}
+                    menuRef={menuRoot}
+                  />
+                </div>
+              ) : ended ? (
                 <button
                   type="button"
                   onClick={() => setPhoneTab("pane")}
-                  className="min-h-11 flex-1 rounded-lg border border-[var(--border)] text-sm"
+                  className="m-2 min-h-11 shrink-0 rounded-lg bg-[var(--primary)] text-sm font-semibold text-[var(--primary-foreground)]"
                 >
-                  {t("game.combat.ruleset.screen.tabPane")}
+                  {t("game.combat.ruleset.screen.howItEnded")}
                 </button>
+              ) : asked ? (
                 <button
                   type="button"
-                  disabled={busy}
-                  onClick={() => onChoose(ending.id, [])}
-                  className="min-h-11 flex-1 rounded-lg bg-[var(--primary)] text-sm font-semibold text-[var(--primary-foreground)] disabled:opacity-50"
+                  onClick={() => setPhoneTab("pane")}
+                  className="m-2 min-h-11 shrink-0 rounded-lg border-2 border-[#f5c97a] bg-[var(--card)] text-sm font-semibold"
                 >
-                  {t("game.combat.ruleset.menu.endTurn")}
+                  {t("game.combat.ruleset.screen.backToAnswer")}
                 </button>
-              </div>
-            ) : null}
+              ) : ending ? (
+                <div className="flex shrink-0 gap-2 border-t border-[var(--border)] bg-[var(--card)] p-2">
+                  <button
+                    type="button"
+                    onClick={() => setPhoneTab("pane")}
+                    className="min-h-11 flex-1 rounded-lg border border-[var(--border)] text-sm"
+                  >
+                    {t("game.combat.ruleset.screen.tabPane")}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => onChoose(ending.id, [])}
+                    className="min-h-11 flex-1 rounded-lg bg-[var(--primary)] text-sm font-semibold text-[var(--primary-foreground)] disabled:opacity-50"
+                  >
+                    {t("game.combat.ruleset.menu.endTurn")}
+                  </button>
+                </div>
+              ) : (
+                // Somebody else's turn: what they are doing, in the room the step would take.
+                <RulesetCombatLog definition={definition} view={view} className="m-2 min-h-0 flex-1" />
+              )}
+            </div>
           </>
+        ) : phoneTab === "order" ? (
+          <div className="min-h-0 flex-1 overflow-y-auto bg-[var(--card)]">
+            <RulesetTurnOrder
+              definition={definition}
+              view={view}
+              units={units}
+              selectedId={selected}
+              onSelect={setSelected}
+              onControl={onControl}
+              locked={busy}
+            />
+          </div>
+        ) : phoneTab === "log" ? (
+          <RulesetCombatLog definition={definition} view={view} className="m-2 min-h-0 flex-1" />
         ) : (
           <div data-game-section="ruleset-pane" className="flex min-h-0 flex-1 flex-col bg-[var(--card)]">
             {paneBody(true)}
@@ -632,6 +654,13 @@ function PhoneTurnStrip({
     </div>
   );
 }
+
+const PHONE_TAB_KEYS = {
+  board: "game.combat.ruleset.screen.tabBoard",
+  pane: "game.combat.ruleset.screen.tabPane",
+  order: "game.combat.ruleset.screen.tabOrder",
+  log: "game.combat.ruleset.screen.tabLog",
+} as const;
 
 const OUTCOME_LINE = {
   victory: "game.combat.ruleset.event.outcomeVictory",

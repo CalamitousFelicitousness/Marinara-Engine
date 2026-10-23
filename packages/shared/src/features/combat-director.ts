@@ -196,6 +196,9 @@ export interface DirectedRulesetOption extends RulesetCombatOption {
   /** What it is expected to do against each of `targetIds`, where there is more than one to
    *  choose between: the target step shows each one's odds. */
   forecastFor?: Record<string, { hitChance?: number; averageDamage?: number }>;
+  /** For an answer to a held hit: the defense the hit is checked against once it is taken, where it
+   *  raises it, and whether the hit then misses. */
+  raisesDefense?: { to: number; misses?: true };
   /** For an option that lands as a shape: the cells it may be aimed at, and who each aim would
    *  catch, so a board can draw the template before the choice is confirmed. */
   aim?: Array<{ x: number; y: number; targetIds: string[] }>;
@@ -274,6 +277,8 @@ export interface DirectedRulesetView {
     /** For a held hit: what the roll came to, and what it was made against. */
     total?: number;
     defense?: number;
+    /** For a held hit: about how much its damage comes to, what an answer that stops it saves. */
+    stakes?: number;
     /** Who caused the moment: whoever aimed the thing, or whoever dealt the damage. Its own field
      *  rather than `moverId`, which is for the walk that opened a window by leaving a reach. */
     sourceId?: string;

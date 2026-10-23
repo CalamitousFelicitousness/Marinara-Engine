@@ -217,7 +217,7 @@ export function rulesetOptionLabel(option: DirectedRulesetOption, t: TFunction):
 }
 
 /** The name a readied option goes by (1.288): a walk is the Engine's own word. */
-function rulesetMenuReadyName(label: string, optionId: string, t: TFunction): string {
+export function rulesetMenuReadyName(label: string, optionId: string, t: TFunction): string {
   return optionId === RULESET_MOVE_OPTION ? t("game.combat.ruleset.board.walk", { defaultValue: label }) : label;
 }
 
@@ -340,11 +340,22 @@ export function rulesetOptionForecastText(option: DirectedRulesetOption, t: TFun
   // An attack made in a style does what its style does, which the style step says: the weapon's
   // own damage is neither what a taking style takes nor what a spending one throws.
   // "About 0 damage" (an Unarmed Strike with no Strength to speak of) says nothing worth reading.
+  // A save is said before what it would do, and what a made one leaves after it: "DEX save DC 15,
+  // about 28 (14 on a save)".
+  const save = option.saveAgainst;
+  if (save) parts.push(t("game.combat.ruleset.option.forecastSave", { save: save.label, dc: save.dc }));
   if (typeof forecast?.averageDamage === "number" && Math.round(forecast.averageDamage) > 0 && !option.styles?.length) {
+    const amount = Math.round(forecast.averageDamage);
+    const damage = t(
+      option.heals ? "game.combat.ruleset.option.forecastHeal" : "game.combat.ruleset.option.forecastDamage",
+      { amount },
+    );
     parts.push(
-      t(option.heals ? "game.combat.ruleset.option.forecastHeal" : "game.combat.ruleset.option.forecastDamage", {
-        amount: Math.round(forecast.averageDamage),
-      }),
+      save?.onSuccess === "half"
+        ? t("game.combat.ruleset.option.forecastSavedHalf", { damage, amount: Math.floor(amount / 2) })
+        : save?.onSuccess === "negates"
+          ? t("game.combat.ruleset.option.forecastSavedNone", { damage })
+          : damage,
     );
   }
   return parts.join(", ");

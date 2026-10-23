@@ -2397,6 +2397,15 @@ function optionFrom(
           },
         }
       : {}),
+    ...(action.save
+      ? {
+          saveAgainst: {
+            label: definition.sheet.saves.find((one) => one.id === action.save!.save)?.label ?? action.save.save,
+            dc: action.save.difficulty,
+            onSuccess: action.save.onSuccess,
+          },
+        }
+      : {}),
     ...(rulesetFreeStrike(actor, action) ? { strikes: actor.strikesLeft } : {}),
     ...(action.heal ? { heals: true } : {}),
     ...(action.switches && "conjured" in action.switches

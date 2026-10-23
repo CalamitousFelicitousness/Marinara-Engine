@@ -2769,6 +2769,9 @@ export interface RulesetCombatAlterOffer {
 export interface RulesetCombatOption {
   /** The holder must pass this save to cancel (1.131). */
   cancelSave?: { save: string; dc: number; label: string };
+  /** The save whoever it lands on makes against it, in the sheet's own words, and what a made one
+   *  leaves: the menu and the aim say it beside the damage. */
+  saveAgainst?: { label: string; dc: number; onSuccess: "none" | "half" | "negates" };
   /** Rolling the sphere its actor is shut in (1.314): `condition` is the sphere's. */
   rollsSealed?: { condition: string; label: string };
   /** Picking up somebody shut in a sphere (1.314), or putting them down (`down`). */

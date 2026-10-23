@@ -47,6 +47,7 @@ import {
   type RulesetBoardCell,
 } from "../../lib/ruleset-combat-board";
 import {
+  rulesetOptionForecastText,
   rulesetPickTarget,
   rulesetSendsOnPick,
   rulesetPicksStep,
@@ -390,6 +391,23 @@ export function RulesetCombatBoard({
                     sentences.get(key) ?? "",
                     cell.zones ? t("game.combat.ruleset.board.zones", { zones: cell.zones.join(", ") }) : "",
                   ].join(" ")}
+                  // Who stands here, said on hover as the token's letters cannot, with the odds against
+                  // them while a target is being picked.
+                  title={
+                    cell.occupant
+                      ? [
+                          cell.occupant.name,
+                          step?.stage === "target" && cell.targetable && step.option.forecastFor?.[cell.occupant.id]
+                            ? rulesetOptionForecastText(
+                                { ...step.option, forecast: step.option.forecastFor[cell.occupant.id] },
+                                t,
+                              )
+                            : "",
+                        ]
+                          .filter(Boolean)
+                          .join(": ")
+                      : undefined
+                  }
                   onClick={() => takeCell(cell)}
                   onKeyDown={(event) => onKeyDown(event, cell)}
                   onFocus={() => {
@@ -683,7 +701,7 @@ export function RulesetCombatBoard({
                     apart and the ring's colour only repeats it. */}
                 <div
                   className={cn(
-                    "relative flex aspect-square w-full items-center justify-center border-2 shadow-lg drop-shadow-[0_2px_3px_rgba(0,0,0,0.6)]",
+                    "relative flex aspect-square w-full items-center justify-center border-2 shadow-lg drop-shadow-[0_2px_3px_rgba(0,0,0,0.6)] @container",
                     party ? "rounded-full" : "rounded-[24%]",
                   )}
                   style={{
@@ -713,8 +731,11 @@ export function RulesetCombatBoard({
                   ) : sprite.kind === "emoji" ? (
                     <span className="text-[min(4vw,1.5rem)] leading-none">{sprite.value}</span>
                   ) : (
-                    <span className="text-[min(3vw,0.9rem)] font-black text-white/90">
-                      {initialsOf(combatant.name)}
+                    // Sized by the token itself, so the letters stay inside it however small the
+                    // squares are; a token too small for two keeps the first.
+                    <span className="text-[38cqw] font-black leading-none text-white/90">
+                      <span className="hidden @min-[24px]:inline">{initialsOf(combatant.name)}</span>
+                      <span className="@min-[24px]:hidden">{initialsOf(combatant.name).slice(0, 1)}</span>
                     </span>
                   )}
                   {(combatant.defeated || combatant.down) && (

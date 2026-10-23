@@ -617,7 +617,7 @@ function isValidLegacySchedule(value: unknown): value is WeekSchedule {
   );
 }
 
-function parseCharacterIds(raw: unknown): string[] {
+export function parseCharacterIds(raw: unknown): string[] {
   if (Array.isArray(raw)) return raw.filter((id): id is string => typeof id === "string" && id.length > 0);
   if (typeof raw !== "string") return [];
   try {

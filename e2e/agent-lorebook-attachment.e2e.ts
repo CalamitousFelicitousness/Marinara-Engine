@@ -110,6 +110,16 @@ for (const theme of ["dark", "light"] as const) {
       await expect(select()).toHaveCount(0);
       await attachment.getByText("Attach lorebook for the specific agent", { exact: true }).click();
       await expect(select()).toHaveValue(book.id);
+      const hidden = await page.request.patch(`/api/lorebooks/${book.id}`, { data: { hiddenFromLibrary: true } });
+      expect(hidden.ok(), await hidden.text()).toBeTruthy();
+      await page.reload();
+      attachment = await open();
+      await expect(select()).toHaveValue(book.id);
+      await expect(select().locator(`option[value="${book.id}"]`)).toHaveText(book.name);
+      await expect(select().locator(`option[value="${book.id}"]`)).toHaveJSProperty("disabled", true);
+      await expect(
+        attachment.getByText("Select another lorebook. An unavailable attachment adds no reference context."),
+      ).toHaveCount(0);
       await page.request.delete(`/api/lorebooks/${book.id}`);
       ids.book = "";
       await page.reload();

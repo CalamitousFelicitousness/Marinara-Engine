@@ -12,6 +12,8 @@ process.env.MARINARA_LITE = "true";
 process.env.LOG_LEVEL = "silent";
 const require = createRequire(new URL("../../packages/server/package.json", import.meta.url));
 const { getDB, closeDB } = await import("../../packages/server/src/db/connection.js");
+const { chats: chatRows } = await import("../../packages/server/src/db/schema/index.js");
+const { eq } = await import("../../packages/server/src/db/file-query.js");
 const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
 const { createAgentsStorage } = await import("../../packages/server/src/services/storage/agents.storage.js");
 const { createConnectionsStorage } = await import("../../packages/server/src/services/storage/connections.storage.js");
@@ -263,6 +265,17 @@ try {
   assert(prompts.some((prompt) => /REFERENCE_TASK_/u.test(prompt) && prompt.includes("TRACKER_BOOK_SECRET")));
   const attached = await resolvePackageAgentLorebookEntries(db, types[0]!, { chatId: chat.id });
   assert(attached.some((entry) => entry.content === "WRITER_BOOK_SECRET"));
+  const originalRoster = (await chats.getById(chat.id))!.characterIds;
+  for (const malformedRoster of ["not-json", "null", "42", '[null,42,""]']) {
+    await db.update(chatRows).set({ characterIds: malformedRoster }).where(eq(chatRows.id, chat.id));
+    assert(
+      (await resolvePackageAgentLorebookEntries(db, types[0]!, { chatId: chat.id })).some(
+        (entry) => entry.content === "WRITER_BOOK_SECRET",
+      ),
+      `legacy roster ${malformedRoster} resolves references with an empty character roster`,
+    );
+  }
+  await db.update(chatRows).set({ characterIds: originalRoster }).where(eq(chatRows.id, chat.id));
   assert(
     attached.every((entry) => !entry.content.includes("TRACKER_BOOK_SECRET")),
     "package feature calls cannot select another agent's attachment",
@@ -343,6 +356,15 @@ try {
     );
   const settings = { contextSize: 8 };
   assert.equal(applyAgentLorebookChatSettings(types[0]!, settings, {}), settings);
+  for (const lorebookId of [null, "", "   "]) {
+    assert.equal(
+      applyAgentLorebookChatSettings(types[0]!, settings, {
+        agentLorebookAttachments: { [types[0]!]: { enabled: true, lorebookId } },
+      }),
+      settings,
+      "an enabled but unselected attachment cannot admit this agent to the trigger pass",
+    );
+  }
   console.info(
     "PASS: chat-scoped lorebook persistence, validation, triggering, isolation, custom agents, disabling, missing books and grouped retries",
   );

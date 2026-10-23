@@ -28,7 +28,7 @@ import {
 } from "../prompt/macro-context.js";
 import { createAgentsStorage } from "../storage/agents.storage.js";
 import { createCharactersStorage } from "../storage/characters.storage.js";
-import { createChatsStorage } from "../storage/chats.storage.js";
+import { createChatsStorage, parseCharacterIds } from "../storage/chats.storage.js";
 import { createGameStateStorage } from "../storage/game-state.storage.js";
 import { createLorebooksStorage } from "../storage/lorebooks.storage.js";
 
@@ -53,7 +53,7 @@ export async function resolvePackageAgentLorebookEntries(
   if (selected.enabled !== true || typeof selected.lorebookId !== "string" || !selected.lorebookId.trim()) return [];
 
   const characters = createCharactersStorage(db);
-  const roster: string[] = typeof chat.characterIds === "string" ? JSON.parse(chat.characterIds) : chat.characterIds;
+  const roster = parseCharacterIds(chat.characterIds);
   const characterIds = resolveActiveCharacterIds(roster, metadata, { mode: chat.mode });
   const tags = new Set<string>();
   for (const id of characterIds) {

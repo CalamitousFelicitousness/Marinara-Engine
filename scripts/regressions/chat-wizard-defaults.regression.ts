@@ -12,6 +12,7 @@ const chat = {
   characterIds: '["a","b","a"]',
   metadata: JSON.stringify({
     activeLorebookIds: ["lore"],
+    agentLorebookAttachments: { writer: { enabled: true, lorebookId: "reference" } },
     activeAgentIds: ["agent"],
     chatBackground: "/image.png",
     presetChoices: { path: "left" },
@@ -35,6 +36,7 @@ assert.deepEqual(saved.characterIds, ["a", "b"]);
 assert.equal(saved.connectionId, "connection");
 assert.equal(saved.personaId, null);
 assert.deepEqual(saved.metadata.activeLorebookIds, ["lore"]);
+assert.deepEqual(saved.metadata.agentLorebookAttachments, { writer: { enabled: true, lorebookId: "reference" } });
 assert.deepEqual(saved.metadata.presetChoices, { path: "left" });
 assert.equal(saved.metadata.autonomousMessages, false);
 assert.equal(saved.metadata.autoTranslate, false, "Explicit saved wizard toggles override global translator defaults");
@@ -51,6 +53,7 @@ const initial = captureChatWizardDefaults({ ...chat, name: "Fresh", metadata: {}
 const reset = wizardDefaultsMetadataPatch(saved, initial);
 assert.equal(reset.autonomousMessages, null);
 assert.equal(reset.activeLorebookIds, null);
+assert.equal(reset.agentLorebookAttachments, null);
 for (const raw of ["{broken", "null", "[]", "42"]) {
   const invalid = captureChatWizardDefaults({ ...chat, metadata: raw, characterIds: raw } as unknown as Chat);
   assert.deepEqual(invalid.metadata, {});

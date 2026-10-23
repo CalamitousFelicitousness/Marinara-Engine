@@ -6,12 +6,14 @@ import { AgentSettingsToggle } from "./AgentSettingsControls";
 export function AgentLorebookAttachment({ chatId, agentType }: { chatId: string; agentType: string }) {
   const { t } = useTranslation();
   const { data: chat } = useChat(chatId);
-  const { data: lorebooks = [], isLoading, isError } = useLorebooks();
+  const { data: lorebooks = [], isLoading, isError } = useLorebooks(undefined, { includeHidden: true });
   const updateMetadata = useUpdateChatMetadata({ serialize: true });
   const attachment = chat?.metadata.agentLorebookAttachments?.[agentType];
   const enabled = attachment?.enabled === true;
   const selectedId = attachment?.lorebookId ?? "";
-  const missing = selectedId !== "" && !lorebooks.some((book) => book.id === selectedId);
+  const selectedBook = lorebooks.find((book) => book.id === selectedId);
+  const missing = selectedId !== "" && !isLoading && !isError && !selectedBook;
+  const visibleLorebooks = lorebooks.filter((book) => !book.hiddenFromLibrary);
   const save = (patch: { enabled?: boolean; lorebookId?: string | null }) => {
     updateMetadata.mutate({
       id: chatId,
@@ -40,7 +42,12 @@ export function AgentLorebookAttachment({ chatId, agentType }: { chatId: string;
           >
             <option value="">{t("chat.agentLorebook.choose")}</option>
             {missing && <option value={selectedId}>{t("chat.agentLorebook.unavailable")}</option>}
-            {lorebooks.map((book) => (
+            {selectedBook?.hiddenFromLibrary && (
+              <option value={selectedId} disabled>
+                {selectedBook.name}
+              </option>
+            )}
+            {visibleLorebooks.map((book) => (
               <option key={book.id} value={book.id} disabled={book.enabled === false}>
                 {book.name}
               </option>
@@ -50,7 +57,7 @@ export function AgentLorebookAttachment({ chatId, agentType }: { chatId: string;
             <span role="status">{t("chat.agentLorebook.loadError")}</span>
           ) : missing ? (
             <span>{t("chat.agentLorebook.unavailableHint")}</span>
-          ) : !isLoading && lorebooks.length === 0 ? (
+          ) : !isLoading && visibleLorebooks.length === 0 && !selectedBook ? (
             <span>{t("chat.agentLorebook.empty")}</span>
           ) : null}
         </label>

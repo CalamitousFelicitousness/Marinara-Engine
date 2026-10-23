@@ -57,7 +57,7 @@ export function RoleplayCommandsSettings({
             <div className="grid gap-2 @lg:grid-cols-2">
               {ROLEPLAY_COMMAND_KEYS.map((key) => {
                 const available =
-                  key === "illustrate"
+                  key === "illustrate" || key === "video"
                     ? installedAgentIds.has("illustrator") && metadata.activeAgentIds?.includes("illustrator") === true
                     : key === "combat"
                       ? installedAgentIds.has("combat") && metadata.activeAgentIds?.includes("combat") === true
@@ -87,7 +87,7 @@ export function RoleplayCommandsSettings({
                           ? t(
                               key === "notes" || key === "memory" || key === "whisper"
                                 ? "roleplay.commands.individualRequired"
-                                : key === "illustrate"
+                                : key === "illustrate" || key === "video"
                                   ? "roleplay.commands.agentAttachedRequired"
                                   : `roleplay.commands.${key}.agentRequired`,
                             )

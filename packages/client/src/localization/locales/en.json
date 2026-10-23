@@ -10757,6 +10757,7 @@
   "ui.game.gamesetupwizard.coordinatesTheGameNarrationStoryboardPlanningImageFormattingAnd": "Coordinates the game narration, storyboard planning, image formatting, and video formatting without enabling media generation or changing your connections.",
   "ui.game.gamesetupwizard.couldNotImportThisGameModeSetupFile": "Could not import this Game Mode setup file.",
   "ui.game.gamesetupwizard.createManually": "Create manually",
+  "ui.game.gamesetupwizard.createWorld": "Create world",
   "ui.game.gamesetupwizard.customHudWidgets": "Custom HUD Widgets",
   "ui.game.gamesetupwizard.customizeParameters": "Customize Parameters",
   "ui.game.gamesetupwizard.customPlaceTarget": "Custom place target",

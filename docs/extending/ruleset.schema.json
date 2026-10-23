@@ -63117,6 +63117,10 @@
                       "minimum": 0,
                       "maximum": 100000
                     },
+                    "fellsKill": {
+                      "type": "boolean",
+                      "const": true
+                    },
                     "dismissesIs": {
                       "type": "object",
                       "properties": {
@@ -64071,6 +64075,51 @@
                           "type": "string",
                           "maxLength": 40,
                           "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        "against": {
+                          "type": "object",
+                          "properties": {
+                            "where": {
+                              "type": "object",
+                              "properties": {
+                                "filter": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "equals": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 60
+                                    },
+                                    {
+                                      "type": "number"
+                                    }
+                                  ]
+                                },
+                                "$comment": {}
+                              },
+                              "required": [
+                                "filter",
+                                "equals"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "fromTypes": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "minItems": 1,
+                              "maxItems": 12
+                            },
+                            "$comment": {}
+                          },
+                          "additionalProperties": false
                         },
                         "$comment": {}
                       },
@@ -79528,6 +79577,10 @@
                           "minItems": 1,
                           "maxItems": 6
                         },
+                        "castsOne": {
+                          "type": "boolean",
+                          "const": true
+                        },
                         "signature": {
                           "type": "object",
                           "properties": {
@@ -85494,6 +85547,10 @@
                           "additionalProperties": false
                         },
                         "dyingOnly": {
+                          "type": "boolean",
+                          "const": true
+                        },
+                        "whileFlying": {
                           "type": "boolean",
                           "const": true
                         },
@@ -100989,6 +101046,10 @@
                             "minItems": 1,
                             "maxItems": 6
                           },
+                          "castsOne": {
+                            "type": "boolean",
+                            "const": true
+                          },
                           "signature": {
                             "type": "object",
                             "properties": {
@@ -106955,6 +107016,10 @@
                             "additionalProperties": false
                           },
                           "dyingOnly": {
+                            "type": "boolean",
+                            "const": true
+                          },
+                          "whileFlying": {
                             "type": "boolean",
                             "const": true
                           },
@@ -154658,6 +154723,10 @@
                           "minimum": 0,
                           "maximum": 100000
                         },
+                        "fellsKill": {
+                          "type": "boolean",
+                          "const": true
+                        },
                         "dismissesIs": {
                           "type": "object",
                           "properties": {
@@ -155404,6 +155473,51 @@
                               "type": "string",
                               "maxLength": 40,
                               "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "against": {
+                              "type": "object",
+                              "properties": {
+                                "where": {
+                                  "type": "object",
+                                  "properties": {
+                                    "filter": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "equals": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string",
+                                          "minLength": 1,
+                                          "maxLength": 60
+                                        },
+                                        {
+                                          "type": "number"
+                                        }
+                                      ]
+                                    },
+                                    "$comment": {}
+                                  },
+                                  "required": [
+                                    "filter",
+                                    "equals"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                "fromTypes": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "minItems": 1,
+                                  "maxItems": 12
+                                },
+                                "$comment": {}
+                              },
+                              "additionalProperties": false
                             },
                             "$comment": {}
                           },
@@ -181288,6 +181402,10 @@
                                 "minimum": 0,
                                 "maximum": 100000
                               },
+                              "fellsKill": {
+                                "type": "boolean",
+                                "const": true
+                              },
                               "dismissesIs": {
                                 "type": "object",
                                 "properties": {
@@ -182034,6 +182152,51 @@
                                     "type": "string",
                                     "maxLength": 40,
                                     "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "against": {
+                                    "type": "object",
+                                    "properties": {
+                                      "where": {
+                                        "type": "object",
+                                        "properties": {
+                                          "filter": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "equals": {
+                                            "anyOf": [
+                                              {
+                                                "type": "string",
+                                                "minLength": 1,
+                                                "maxLength": 60
+                                              },
+                                              {
+                                                "type": "number"
+                                              }
+                                            ]
+                                          },
+                                          "$comment": {}
+                                        },
+                                        "required": [
+                                          "filter",
+                                          "equals"
+                                        ],
+                                        "additionalProperties": false
+                                      },
+                                      "fromTypes": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 12
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "additionalProperties": false
                                   },
                                   "$comment": {}
                                 },
@@ -207924,6 +208087,10 @@
                                 "minimum": 0,
                                 "maximum": 100000
                               },
+                              "fellsKill": {
+                                "type": "boolean",
+                                "const": true
+                              },
                               "dismissesIs": {
                                 "type": "object",
                                 "properties": {
@@ -208670,6 +208837,51 @@
                                     "type": "string",
                                     "maxLength": 40,
                                     "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  "against": {
+                                    "type": "object",
+                                    "properties": {
+                                      "where": {
+                                        "type": "object",
+                                        "properties": {
+                                          "filter": {
+                                            "type": "string",
+                                            "maxLength": 40,
+                                            "pattern": "^[a-z][a-z0-9_]*$"
+                                          },
+                                          "equals": {
+                                            "anyOf": [
+                                              {
+                                                "type": "string",
+                                                "minLength": 1,
+                                                "maxLength": 60
+                                              },
+                                              {
+                                                "type": "number"
+                                              }
+                                            ]
+                                          },
+                                          "$comment": {}
+                                        },
+                                        "required": [
+                                          "filter",
+                                          "equals"
+                                        ],
+                                        "additionalProperties": false
+                                      },
+                                      "fromTypes": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        "minItems": 1,
+                                        "maxItems": 12
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "additionalProperties": false
                                   },
                                   "$comment": {}
                                 },

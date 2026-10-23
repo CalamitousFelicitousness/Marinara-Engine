@@ -235,6 +235,14 @@ export function rulesetTookAttackAction(actor: RulesetCombatant, after: RulesetA
   );
 }
 
+/** Up in the air (1.771): off the ground on the board, or flying where there is none, or able only to
+ *  fly. What a creature action's `whileFlying` reads. */
+export function rulesetUpInTheAir(state: RulesetEncounterState, actor: RulesetCombatant): boolean {
+  if (actor.airborne) return true;
+  if ((actor.speeds?.fly ?? 0) > 0 && actor.speed <= 0) return true;
+  return rulesetAirborne(state.board?.grid, actor);
+}
+
 export function rulesetFreeStrike(actor: RulesetCombatant, action: RulesetCombatAction): boolean {
   return action.strikes !== undefined && (actor.strikesLeft ?? 0) > 0;
 }
@@ -3644,6 +3652,8 @@ function optionFrom(
 ): RulesetCombatOption | null {
   // What its holder does as it dies (1.524) is never chosen.
   if (action.onDeath) return null;
+  // Only up in the air (1.771): a wyvern's claws.
+  if (action.whileFlying && !rulesetUpInTheAir(state, actor)) return null;
   // Only in a shape it names (1.531): its own, or a form's.
   if (action.inShape) {
     const form = actor.shape?.form;

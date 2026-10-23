@@ -4166,6 +4166,7 @@ function mechanicsAction(
       by: rescue.by,
       ...(rescue.saves ? { saves: [...rescue.saves] } : {}),
       ...(rescue.budget ? { budget: rescue.budget } : {}),
+      ...(rescue.against ? { against: structuredClone(rescue.against) } : {}),
       ...(rescue.by === "die" && dice && dice.sides >= 1
         ? { amount: { count: dice.count, sides: dice.sides, flat: dice.flat } }
         : {}),
@@ -4283,6 +4284,8 @@ function mechanicsAction(
   if (mechanics.dismisses) action.dismisses = structuredClone(mechanics.dismisses);
   // Divine Word (1.434): killed at the lowest health, and only some kinds sent away.
   if (mechanics.killsAtMost !== undefined) action.killsAtMost = mechanics.killsAtMost;
+  // Dust at 0 (1.771): Disintegrate.
+  if (mechanics.fellsKill) action.fellsKill = true;
   if (mechanics.dismissesIs) action.dismissesIs = structuredClone(mechanics.dismissesIs);
   if (mechanics.stabilizes) action.stabilizes = true;
   if (mechanics.tracks) action.tracks = mechanics.tracks.map((entry) => ({ ...entry }));
@@ -5156,6 +5159,8 @@ function blockActions(
     // Consume Life (1.311).
     ...(action.dyingOnly ? { dyingOnly: true as const } : {}),
     ...(action.inShape ? { inShape: [...action.inShape] } : {}),
+    ...(action.whileFlying ? { whileFlying: true as const } : {}),
+    ...(action.castsOne ? { castsOne: true as const } : {}),
     ...(action.slaysOnFailedSave ? { slaysOnFailedSave: true as const } : {}),
     ...(action.slaysHealthAtMost !== undefined ? { slaysHealthAtMost: action.slaysHealthAtMost } : {}),
     ...(action.dropsOnFailedSave ? { dropsOnFailedSave: true as const } : {}),

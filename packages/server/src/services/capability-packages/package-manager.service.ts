@@ -2939,6 +2939,18 @@ function carriesHungry768(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesHungry768(one, depth + 1));
 }
 
+/** Ruleset's 10-23 asks (1.771): a `fellsKill`, a creature action's `whileFlying` or `castsOne`, or a
+ *  rescue's `against`. */
+function carriesAsks771(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesAsks771(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.fellsKill !== undefined || record.whileFlying !== undefined || record.castsOne !== undefined) return true;
+  if (plainRecord(record.rescue)?.against !== undefined) return true;
+  return featureValues(record).some((one) => carriesAsks771(one, depth + 1));
+}
+
 /** An honourable one (1.767): a behavior whose `temperament`, or one it turns to, is `honourable`. */
 function carriesHonourable767(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -9580,6 +9592,12 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // Dust at 0, flying-only actions, a spell after a sequence, a narrowed rescue: 1.771.
+  if (
+    !declaresApi(771) &&
+    (carriesAsks771(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesAsks771(document)))
+  )
+    return "A ruleset with fellsKill, a creature action's whileFlying or castsOne, or a rescue's against requires schemaVersion 2 and capabilityApi 1.771 or newer";
   // Fight poses (who prays, who sneaks), 1.770.
   if (!declaresApi(770) && plainRecord(plainRecord(ruleset)?.combat)?.poses !== undefined)
     return "A ruleset with fight poses (combat.poses) requires schemaVersion 2 and capabilityApi 1.770 or newer";

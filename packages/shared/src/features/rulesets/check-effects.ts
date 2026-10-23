@@ -51,6 +51,8 @@ export interface RulesetSaveAgainst {
   alone?: boolean;
   /** What its save says it is (1.636): a gas. */
   qualities?: readonly string[];
+  /** The declared filters of the entry it is against (1.771), for a rescue's `against.where`. */
+  filters?: Record<string, unknown>;
 }
 
 /** Any one match is enough; the save's own name is checked separately. */

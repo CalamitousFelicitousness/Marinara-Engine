@@ -517,6 +517,10 @@ export interface RulesetStatBlockAction {
   onDeath?: true;
   /** Only in these shapes (1.531): "own", or a form's "catalog/entry". */
   inShape?: string[];
+  /** Only while up in the air (1.771): a wyvern's claws. */
+  whileFlying?: true;
+  /** A sequence after which one spell of its spellcasting follows for nothing (1.771): a glabrezu. */
+  castsOne?: true;
   name: string;
   budget: string;
   toHit?: number;
@@ -1061,6 +1065,8 @@ export interface RulesetCombatAction {
   kills?: true;
   /** Kills outright whoever fails its save with this much health or less (1.434). */
   killsAtMost?: number;
+  /** Whoever its damage drops to 0, or finds there, dies outright (1.771): Disintegrate. */
+  fellsKill?: true;
   /** `dismisses` sends away only those that are this (1.434). */
   dismissesIs?: RulesetTargetIs;
   /** What goes on after the blow, its contest too, goes only on a target that is this (1.682): a
@@ -1182,6 +1188,10 @@ export interface RulesetCombatAction {
   onDeath?: true;
   /** Offered only while its holder is in one of these shapes (1.531): "own", or "catalog/entry". */
   inShape?: string[];
+  /** Offered only while its holder is up in the air (1.771), and made in a sequence only then. */
+  whileFlying?: true;
+  /** Made, one spell of its holder's spellcasting may follow this turn for nothing (1.771). */
+  castsOne?: true;
   /** Its holder's other actions whose effects happen too as this one does (1.519), each on whom its
    *  burst around them catches, spending nothing of theirs: Thunder and Lightning's Thunderclap. */
   alongside?: string[];
@@ -2308,7 +2318,16 @@ export interface RulesetCombatant {
     spellsCast?: { bonus?: true; other?: true };
     /** What an action made this turn lets its user make for nothing (1.280), each once. `paid` when
      *  its uses and recharge were spent with what came first. */
-    followUps?: Array<{ id: string; paid?: true; budget?: string; targetId?: string; uncharged?: true }>;
+    followUps?: Array<{
+      id: string;
+      paid?: true;
+      budget?: string;
+      targetId?: string;
+      uncharged?: true;
+      /** One of a choice (1.771): the spells a sequence's `castsOne` offers, the others gone once
+       *  one is made. The id of the sequence. */
+      oneOf?: string;
+    }>;
     /** A strike again was made this turn (1.412): Horde Breaker, once a turn. */
     struckAgain?: true;
   };
@@ -4292,6 +4311,9 @@ export interface RulesetCombatRescue {
   saves?: string[];
   /** The budget spending it takes (1.257): a ring of evasion's reaction. */
   budget?: string;
+  /** Only a save against these (1.771), either one enough: an entry whose filter reads so, or a
+   *  creature of one of these types. A Scarab of Protection. */
+  against?: { where?: { filter: string; equals: string | number }; fromTypes?: string[] };
 }
 
 /** An alteration an option may be used with (1.253), and what it costs at the option's own level. */

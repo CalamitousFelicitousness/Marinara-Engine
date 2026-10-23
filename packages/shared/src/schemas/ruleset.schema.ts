@@ -5413,6 +5413,7 @@ export interface RulesetCatalogRescue {
   die?: { from: RulesetValueRef; table: Array<[number, number]> };
   saves?: string[];
   budget?: string;
+  against?: { where?: { filter: string; equals: string | number }; fromTypes?: string[] };
 }
 const catalogRescueSchema: z.ZodType<RulesetCatalogRescue, z.ZodTypeDef, unknown> = z
   .object({
@@ -5435,8 +5436,33 @@ const catalogRescueSchema: z.ZodType<RulesetCatalogRescue, z.ZodTypeDef, unknown
       .optional(),
     /** The budget spending it takes (Capability API 1.257): a ring of evasion's reaction. */
     budget: sheetId.optional(),
+    /** Only a save against these (Capability API 1.771), either one enough: an entry whose declared
+     *  filter reads so (`where`, as a ward's), or anything a creature of one of `fromTypes` (ids of
+     *  `combat.creatureTypes`) makes them save against. A Scarab of Protection's "a necromancy spell
+     *  or a harmful effect originating from an undead creature". */
+    against: z
+      .object({
+        where: z
+          .object({ filter: sheetId, equals: z.union([promptSafeText(60), z.number()]) })
+          .strict()
+          .optional(),
+        fromTypes: z
+          .array(sheetId)
+          .min(1)
+          .max(12)
+          .refine((types) => new Set(types).size === types.length, { message: "Name each type once" })
+          .optional(),
+      })
+      .strict()
+      .refine((against) => against.where !== undefined || against.fromTypes !== undefined, {
+        message: 'Say what it rescues against: "where", "fromTypes" or both',
+      })
+      .optional(),
   })
   .strict()
+  .refine((rescue) => rescue.against === undefined || rescue.roll === "saves", {
+    message: '"against" narrows a rescue of "saves"',
+  })
   .refine((rescue) => rescue.saves === undefined || rescue.roll === "saves", {
     message: '"saves" narrows a rescue of "saves"',
   })
@@ -7681,6 +7707,10 @@ const catalogMechanicsObject = z
     /** Kills outright whoever fails its save with this much health left or less, in place of all
      *  else it does to them (Capability API 1.434): Divine Word at 20. */
     killsAtMost: z.number().int().min(0).max(100000).optional(),
+    /** Whoever its damage drops to 0 dies outright, never dying (Capability API 1.771): 5e's
+     *  Disintegrate, "If this damage reduces the target to 0 hit points, it is disintegrated". A
+     *  target its blow finds already at 0 dies too; one that hangs on at 1 (Death Ward) does not. */
+    fellsKill: z.literal(true).optional(),
     /** Sends out of the fight with `dismisses` only those that are this (Capability API 1.434):
      *  Divine Word's celestials, elementals, fey and fiends. */
     dismissesIs: targetIsSchema.optional(),
@@ -8070,6 +8100,13 @@ const catalogMechanicsSchema: z.ZodType<
       code: z.ZodIssueCode.custom,
       path: ["dismissesIs"],
       message: '"dismissesIs" narrows whom "dismisses" sends away: it goes with "dismisses"',
+    });
+  }
+  if (mechanics.fellsKill && (mechanics.kind !== "attack" || !mechanics.amount)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["fellsKill"],
+      message: '"fellsKill" kills whoever its damage drops to 0: it goes with an attack\'s "amount"',
     });
   }
   if (mechanics.killsAtMost !== undefined && !mechanics.save) {
@@ -9148,6 +9185,11 @@ const creatureActionFullSchema = z
       .min(1)
       .max(6)
       .optional(),
+    /** Then one spell (Capability API 1.771): once this sequence is made, its creature may cast any
+     *  one spell of its own spellcasting this turn without spending the budget again (its uses and
+     *  slots are still spent). A glabrezu's "two attacks with its pincers and casts one spell", as a
+     *  second Multiattack of the two pincers with this. Only on a sequence. */
+    castsOne: z.literal(true).optional(),
     /** Bought out of the creature's own points instead of a budget. */
     signature: z
       .object({ cost: z.number().int().min(1).max(20) })
@@ -9228,6 +9270,10 @@ const creatureActionFullSchema = z
     /** Only a creature at no health that is still alive may be picked (Capability API 1.311): a
      *  will-o'-wisp's Consume Life, at a dying or stable character. */
     dyingOnly: z.literal(true).optional(),
+    /** Offered only while its holder is up in the air (Capability API 1.771), and a sequence step
+     *  naming it is made only then: a wyvern's claws, "While flying, it can use its claws in place of
+     *  one other attack", as a second Multiattack of bite and claws with this. */
+    whileFlying: z.literal(true).optional(),
     /** Offered only while its holder is in one of these shapes (Capability API 1.531): `"own"` for
      *  its own, or a form's bestiary entry as `"<catalogId>/<entryId>"`. A wereboar's Charge in boar
      *  or hybrid form, a mimic's Adhesive in object form. */
@@ -9772,6 +9818,14 @@ const creatureActionFullSchema = z
           });
         }
       }
+    }
+    // Then one spell (1.771) follows a sequence.
+    if (action.castsOne && !action.sequence) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["castsOne"],
+        message: '"castsOne" is the spell a sequence lets follow, so it goes with "sequence"',
+      });
     }
     if (action.sequence) {
       // A sequence is a container. Anything else on it would be a second thing the one budget also

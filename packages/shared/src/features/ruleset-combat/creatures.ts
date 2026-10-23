@@ -230,6 +230,8 @@ function creatureAction(action: RulesetCreatureAction): RulesetStatBlockAction {
     // At the dying, and deadly to them (1.311): a will-o'-wisp's Consume Life.
     ...(action.dyingOnly ? { dyingOnly: true as const } : {}),
     ...(action.inShape ? { inShape: [...action.inShape] } : {}),
+    ...(action.whileFlying ? { whileFlying: true as const } : {}),
+    ...(action.castsOne ? { castsOne: true as const } : {}),
     ...(action.slaysOnFailedSave ? { slaysOnFailedSave: true as const } : {}),
     ...(action.slaysHealthAtMost !== undefined ? { slaysHealthAtMost: action.slaysHealthAtMost } : {}),
     ...(action.dropsOnFailedSave ? { dropsOnFailedSave: true as const } : {}),

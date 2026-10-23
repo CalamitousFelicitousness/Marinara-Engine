@@ -99,6 +99,7 @@ import {
   rulesetConditionKin,
   rulesetTargetIs,
   rulesetTargetTypesAllow,
+  rulesetCatalogWhereReads,
   rulesetCombatConditions,
   rulesetCombatEffects,
   rulesetDefiance,
@@ -277,6 +278,7 @@ import {
   rulesetToHitAgainst,
   rulesetMarkedBy,
   rulesetFreeStrike,
+  rulesetUpInTheAir,
   rulesetGrantedStandard,
   rulesetOptionTargets,
   rulesetUsedOn,
@@ -2949,7 +2951,7 @@ function throwSave(
   spendConditions(ctx, combatant, "own-save");
   // Failed, what its holder spends to roll again or succeed all the same (1.249): Indomitable.
   if (!success && !rerolled) {
-    const rescue = rescueEntry(ctx, combatant, "saves", undefined, undefined, save);
+    const rescue = rescueEntry(ctx, combatant, "saves", undefined, undefined, save, against);
     if (rescue?.rescue?.by === "reroll")
       return throwSave(ctx, combatant, save, difficulty, sourceId, from, against, lean, true);
     if (rescue) return true;
@@ -3268,6 +3270,8 @@ function rescueEntry(
   worth?: (action: RulesetCombatAction) => boolean,
   /** The save it is, for an entry narrowed to some (1.257). */
   save?: string,
+  /** What the save is against (1.771), for an entry narrowed by its `against`. */
+  against?: RulesetSaveAgainst,
 ): RulesetCombatAction | undefined {
   const found = holder.actions.find(
     (action) =>
@@ -3277,6 +3281,8 @@ function rescueEntry(
       (by === undefined ? action.rescue.by === "reroll" || action.rescue.by === "success" : action.rescue.by === by) &&
       // Only the saves it names (1.257): a ring of evasion's Dexterity saves.
       (!action.rescue.saves || (save !== undefined && action.rescue.saves.includes(save))) &&
+      // Only against what it names (1.771): a Scarab of Protection's necromancy and undead.
+      (!action.rescue.against || rescuesAgainst(action.rescue.against, against)) &&
       // With the budget it takes still to be had (1.257): a ring of evasion's reaction.
       (!action.rescue.budget || canSpendAnswer(ctx, holder, action.rescue.budget)) &&
       (!worth || worth(action)) &&
@@ -3293,6 +3299,17 @@ function rescueEntry(
     by: found.rescue!.by,
   });
   return found;
+}
+
+/** Whether a save is against what a rescue's `against` names (1.771), either one enough. */
+function rescuesAgainst(
+  wanted: NonNullable<RulesetCombatRescue["against"]>,
+  against: RulesetSaveAgainst | undefined,
+): boolean {
+  if (!against) return false;
+  if (wanted.where && against.filters && rulesetCatalogWhereReads({ filters: against.filters }, wanted.where))
+    return true;
+  return !!wanted.fromTypes && !!against.from?.type && wanted.fromTypes.includes(against.from.type);
 }
 
 /** Whether a holder may spend `budget` on something they answer with off their turn (1.257): one
@@ -8445,7 +8462,11 @@ function applyChoice(
   // The other half of an action made this turn (1.280), once, and already paid for when the strike
   // came first. Made as the first half, it lets the other follow.
   const following = option.followUp ? working.flags.followUps?.find((one) => one.id === action.id) : undefined;
-  if (following) working.flags.followUps = working.flags.followUps!.filter((one) => one !== following);
+  // One of a choice (1.771): the rest of it are gone with it.
+  if (following)
+    working.flags.followUps = working.flags.followUps!.filter(
+      (one) => one !== following && (!following.oneOf || one.oneOf !== following.oneOf),
+    );
   if (following?.uncharged) ctx.uncharged = true;
   if (!following?.paid) spendAvailability(ctx, working, action);
   markUsedOn(ctx.state, working, action, workingTargets);
@@ -8458,6 +8479,14 @@ function applyChoice(
   // Those it commands through this action act at their next turn (1.720): a chain devil's chains.
   for (const one of ctx.state.combatants) {
     if (one.calledBy === working.id && one.calledCommand?.action === action.id) one.calledCommand.given = true;
+  }
+  // Then one spell of its own spellcasting (1.771): a glabrezu's, after its pincers.
+  if (!option.followUp && action.castsOne) {
+    const spells = working.actions.filter((one) => one.innate && !one.reaction && !one.lair && one.id !== action.id);
+    working.flags.followUps = [
+      ...(working.flags.followUps ?? []).filter((one) => !spells.some((spell) => spell.id === one.id)),
+      ...spells.map((spell) => ({ id: spell.id, oneOf: action.id })),
+    ];
   }
   if (!option.followUp && action.followUp) {
     (working.flags.followUps ??= []).push({
@@ -14041,6 +14070,8 @@ function resolveSequence(
     // pointing at nothing, and it costs that part rather than the turn. One left out in the mode
     // the sequence is made in (1.627) does not happen either.
     if (!named || named.sequence || step.skipped) return;
+    // Only up in the air (1.771): a wyvern's claws.
+    if (named.whileFlying && !rulesetUpInTheAir(ctx.state, actor)) return;
     let strikes = rulesetStepTimes(actor, step);
     let places = strikes;
     if (step.dice) {
@@ -16782,6 +16813,8 @@ function resolveActionBodyIn(
       ...((action.casts ?? action.catalog) ? { catalog: action.casts ?? action.catalog } : {}),
       // Aimed at them alone (1.507).
       ...(target === only ? { alone: true } : {}),
+      // What its entry declares (1.771): a necromancy spell, for a Scarab of Protection.
+      ...(action.filters ? { filters: action.filters } : {}),
     };
     let saved = false;
     if (action.save && (careful.has(target.id) || savesOutright(ctx, target, action.save))) {
@@ -17328,6 +17361,10 @@ function resolveActionBodyIn(
       }
     }
     if (before) afterBlow(ctx, target, dealt, critical);
+    // Dust at 0 (1.771): whoever its damage leaves at 0 dies outright, never dying. One that hung on
+    // at 1 is not down; a thing is broken as it was.
+    if (action.fellsKill && dealt > 0 && target.down && !target.defeated && !target.object)
+      slay(ctx, target, actor.id, action.label);
     // Dropped by this blow (1.661): a giant spider's poison leaves them stable, poisoned and paralyzed.
     if (action.onFell && !downBefore && target.down && !target.defeated) fellByBlow(ctx, actor, action, target);
     // A weapon that hit it corroded (1.535): a rust monster's Rust Metal.

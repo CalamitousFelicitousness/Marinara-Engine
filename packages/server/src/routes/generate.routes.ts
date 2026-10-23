@@ -9778,8 +9778,11 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               const records = [...fullResponse.matchAll(createGameRollTagRegex())].map((match) => match[0]);
               const checks = [...(rolled.results ?? []), ...generalRolls.checkResults];
               const resolvedSummary = [
-                ...checks.map(formatSkillCheckResultSummary),
-                ...toolDiceRollResults.map((result) => `🎲 ${result.notation} = ${result.total}`),
+                // Each line names its roller, so the sheet commands asked for below land on the right member.
+                ...checks.map((check) => `${check.who ? `${check.who}: ` : ""}${formatSkillCheckResultSummary(check)}`),
+                ...toolDiceRollResults.map(
+                  (result) => `🎲 ${result.label ? `${result.label}: ` : ""}${result.notation} = ${result.total}`,
+                ),
               ].join("\n");
               // A prompt that ended on an assistant prefill already holds the start of the draft's
               // turn. Sent as a second assistant message after it, the two turns no longer alternate,

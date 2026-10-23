@@ -73,6 +73,7 @@ import {
   type GameAssetManifest,
 } from "../../hooks/use-game-assets";
 import { cleanNpcAvatarDisplayName, normalizeNpcAvatarName } from "../../lib/game-npc-avatar";
+import { useDiscardNewChatSetup } from "../../hooks/use-discard-new-chat-setup";
 import { useChatStore } from "../../stores/chat.store";
 import { useUIStore } from "../../stores/ui.store";
 import { useCombatScreenStore } from "../../stores/combat-screen.store";
@@ -132,7 +133,6 @@ import {
   guardServerChatSnapshot,
   useBranchChat,
   useCreateMessage,
-  useDeleteChat,
   useUpdateChat,
   useUpdateChatMetadata,
   useUpdateMessage,
@@ -7286,7 +7286,7 @@ function GameSurfaceComponent({
   const updateCampaignProgression = useUpdateCampaignProgression();
   const startSession = useStartSession();
   const generateMap = useGenerateMap();
-  const deleteChat = useDeleteChat();
+  const discardNewChatSetup = useDiscardNewChatSetup();
   const updateChatMetadata = useUpdateChatMetadata();
   const uploadCharacterAvatar = useUploadAvatar();
   const uploadPersonaAvatar = useUploadPersonaAvatar();
@@ -12113,7 +12113,6 @@ function GameSurfaceComponent({
     [chat.characterIds],
   );
   const setupWizardDismissed = dismissedSetupWizardChatId === activeChatId;
-  const canAutoDeleteEmptySetupChat = needsCreation && !isMessagesLoading && messages.length === 0;
   const shouldShowSetupWizard =
     isSetupActive || (!setupWizardDismissed && (needsCreation || sessionStatus === "setup"));
 
@@ -12137,7 +12136,7 @@ function GameSurfaceComponent({
   if (shouldShowSetupWizard) {
     // Shared with an experience's own setup, so closing either one behaves identically.
     /** Closes setup from either wizard: no-op while a launch is pending, and drops an empty chat. */
-    const dismissSetupWizard = () => {
+    const dismissSetupWizard = async () => {
       if (
         createGame.isPending ||
         gameSetup.isPending ||
@@ -12148,10 +12147,10 @@ function GameSurfaceComponent({
       )
         return;
       useGameModeStore.getState().setSetupActive(false);
-      if (canAutoDeleteEmptySetupChat) {
-        deleteChat.mutate(activeChatId, {
-          onSuccess: () => useChatStore.getState().setActiveChatId(null),
-        });
+      try {
+        if (await discardNewChatSetup(activeChatId)) return;
+      } catch {
+        toast.error(localizeUi("chat.wizard.cancelFailed"));
         return;
       }
       setDismissedSetupWizardChatId(activeChatId);

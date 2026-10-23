@@ -2415,6 +2415,24 @@ export async function chatsRoutes(app: FastifyInstance) {
     },
   );
 
+  // Setup cancellation is deliberately separate from the unconditional user-confirmed delete route.
+  app.post<{ Params: { id: string } }>("/:id/discard-empty-setup", async (req) => {
+    const { initialChat } = z
+      .object({
+        initialChat: z.object({
+          id: z.string(),
+          createdAt: z.string(),
+          name: z.string(),
+          mode: z.enum(["conversation", "roleplay", "game"]),
+          connectionId: z.string().nullable(),
+          promptPresetId: z.string().nullable(),
+          metadata: z.record(z.string(), z.unknown()),
+        }),
+      })
+      .parse(req.body);
+    return { deleted: await storage.removeEmptySetupChat(req.params.id, initialChat) };
+  });
+
   // Delete chat
   app.delete<{ Params: { id: string }; Querystring: { force?: string } }>("/:id", async (req, reply) => {
     const force = req.query.force === "true" || req.query.force === "1";

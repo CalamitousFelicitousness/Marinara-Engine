@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { stripTypeScriptTypes } from "node:module";
 import { setImmediate as nextTurn } from "node:timers/promises";
 import { runInNewContext } from "node:vm";
+import { GENERATIVE_AUDIO_DEFAULTS } from "../../packages/shared/src/types/connection.js";
 import {
   ROLEPLAY_COMMAND_KEYS,
   isRoleplayCommandEnabled,
@@ -114,8 +115,10 @@ const sound = runInNewContext(
     addAbortListener,
     Promise,
     Symbol,
+    GENERATIVE_AUDIO_DEFAULTS,
     resolveGenerativeAudioConfig: async () => ({
       source: "elevenlabs",
+      ...GENERATIVE_AUDIO_DEFAULTS.elevenlabs,
       model: "music_v1",
       legacyId: "fixture",
       soundEffects: true,

@@ -1582,6 +1582,7 @@ function ConversationQuickSetup({
       customSystemPrompt,
       ...(selfieSetup.imageGenConnectionId ? { imageGenConnectionId: selfieSetup.imageGenConnectionId } : {}),
     });
+    useChatStore.getState().clearPendingNewChatSetup(chat.id);
     if (autonomousEnabled && generateSchedule && metadata.multiplayerSetup !== true) {
       setScheduleState("generating");
       try {
@@ -2700,13 +2701,16 @@ function RoleplaySetupWizard({
       onFinish();
       return;
     }
+    let profileApplied = false;
     try {
       setShortcutApplying(true);
       await applyChatPreset.mutateAsync({ presetId: shortcutPresetId, chatId: chat.id });
+      profileApplied = true;
     } catch {
       /* fall through — still close the wizard */
     } finally {
       await seedInitialGreetingsIfEmpty();
+      if (profileApplied) useChatStore.getState().clearPendingNewChatSetup(chat.id);
       setShortcutApplying(false);
       onFinish();
     }

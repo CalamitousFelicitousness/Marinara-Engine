@@ -699,6 +699,150 @@ for (const themeMode of ["dark", "light"] as const) {
   });
 }
 
+for (const scheduled of [false, true]) {
+  test(`successful Conversation Start retires setup before navigation (${scheduled ? "buffered schedule" : "immediate"})`, async ({
+    page,
+  }) => {
+    const connection = await seedConnection(page);
+    const created = await page.request.post("/api/characters", {
+      data: { data: { name: "Started conversation fixture" } },
+    });
+    expect(created.ok()).toBeTruthy();
+    const character = (await created.json()) as { id: string };
+    let chatId = "";
+    let discardRequests = 0;
+    let scheduleRequests = 0;
+    page.on("request", (request) => {
+      if (request.method() === "POST" && request.url().includes("/discard-empty-setup")) discardRequests += 1;
+    });
+    await page.route("**/api/conversation/schedule/generate", (route) => {
+      scheduleRequests += 1;
+      return route.fulfill({ json: { success: true } });
+    });
+    try {
+      await seedUIState(
+        page,
+        {
+          chatWizardDefaults: {
+            conversation: {
+              connectionId: connection.id,
+              promptPresetId: null,
+              personaId: null,
+              personaCharacterId: null,
+              characterIds: [character.id],
+              metadata: { autonomousMessages: scheduled, conversationSchedulesEnabled: scheduled },
+            },
+          },
+        },
+        "merge",
+      );
+      await page.goto("/");
+      const { chat, wizard } = await launch(page, "conversation");
+      chatId = chat.id;
+      for (const heading of ["Prompt Preset", "Persona & Characters", "Automation"]) {
+        await wizard.getByRole("button", { name: "Next", exact: true }).click();
+        await expect(wizard.getByRole("heading", { name: heading, exact: true })).toBeVisible();
+      }
+      await wizard.getByRole("button", { name: "Start Chatting", exact: true }).click();
+      await expect(wizard).toHaveCount(0);
+      await closeChatSettings(page);
+      const detail = await page.request.get(`/api/chats/${chatId}`);
+      expect(detail.status()).toBe(200);
+      expect((await detail.json()).metadata.conversationSetupComplete).toBe(true);
+      expect(scheduleRequests).toBe(scheduled ? 1 : 0);
+      await page.getByRole("button", { name: "Home", exact: true }).click();
+      await expect(page.locator('[data-component="HomeBrowserHub.HomePage"]')).toBeVisible();
+      await expect
+        .poll(() =>
+          page.evaluate(async (id) => {
+            const { useChatStore } = await import("/src/stores/chat.store.ts" as string);
+            return !!useChatStore.getState().pendingNewChatSetups[id];
+          }, chatId),
+        )
+        .toBe(false);
+      expect((await page.request.get(`/api/chats/${chatId}`)).status()).toBe(200);
+      expect(discardRequests).toBe(0);
+    } finally {
+      if (chatId) await page.request.delete(`/api/chats/${chatId}`);
+      await page.request.delete(`/api/characters/${character.id}`);
+      await page.request.delete(`/api/connections/${connection.id}`);
+    }
+  });
+}
+
+test("successful participant-free Roleplay Apply & Start retires setup before navigation", async ({ page }) => {
+  const connection = await seedConnection(page);
+  let chatId = "";
+  let discardRequests = 0;
+  page.on("request", (request) => {
+    if (request.method() === "POST" && request.url().includes("/discard-empty-setup")) discardRequests += 1;
+  });
+  try {
+    await page.goto("/");
+    const { chat, wizard } = await launch(page, "roleplay");
+    chatId = chat.id;
+    await wizard.getByRole("button", { name: /^(Use a Profile|Profile)$/ }).click();
+    await wizard.getByRole("button", { name: "Apply & Start", exact: true }).click();
+    await expect(wizard).toHaveCount(0);
+    await closeChatSettings(page);
+    await page.getByRole("button", { name: "Home", exact: true }).click();
+    await expect(page.locator('[data-component="HomeBrowserHub.HomePage"]')).toBeVisible();
+    await expect
+      .poll(() =>
+        page.evaluate(async (id) => {
+          const { useChatStore } = await import("/src/stores/chat.store.ts" as string);
+          return !!useChatStore.getState().pendingNewChatSetups[id];
+        }, chatId),
+      )
+      .toBe(false);
+    expect((await page.request.get(`/api/chats/${chatId}`)).status()).toBe(200);
+    expect(discardRequests).toBe(0);
+  } finally {
+    if (chatId) await page.request.delete(`/api/chats/${chatId}`);
+    await page.request.delete(`/api/connections/${connection.id}`);
+  }
+});
+
+test("failed participant-free Roleplay profile application preserves empty-draft cleanup", async ({ page }) => {
+  const connection = await seedConnection(page);
+  let chatId = "";
+  let discardRequests = 0;
+  page.on("request", (request) => {
+    if (request.method() === "POST" && request.url().includes("/discard-empty-setup")) discardRequests += 1;
+  });
+  try {
+    await page.goto("/");
+    const { chat, wizard } = await launch(page, "roleplay");
+    chatId = chat.id;
+    await wizard.getByRole("button", { name: /^(Use a Profile|Profile)$/ }).click();
+    await page.route("**/api/chat-presets/*/apply/*", (route) =>
+      route.fulfill({ status: 503, json: { error: "Fixture failure" } }),
+    );
+    const failed = page.waitForResponse(
+      (response) => response.request().method() === "POST" && response.url().includes(`/apply/${chatId}`),
+    );
+    await wizard.getByRole("button", { name: "Apply & Start", exact: true }).click();
+    expect((await failed).status()).toBe(503);
+    await expect(wizard).toHaveCount(0);
+    await closeChatSettings(page);
+    await page.getByRole("button", { name: "Home", exact: true }).click();
+    await expect(page.locator('[data-component="HomeBrowserHub.HomePage"]')).toBeVisible();
+    await expect
+      .poll(() =>
+        page.evaluate(async (id) => {
+          const { useChatStore } = await import("/src/stores/chat.store.ts" as string);
+          return !!useChatStore.getState().pendingNewChatSetups[id];
+        }, chatId),
+      )
+      .toBe(false);
+    expect((await page.request.get(`/api/chats/${chatId}`)).status()).toBe(404);
+    expect(discardRequests).toBe(1);
+  } finally {
+    if (chatId) await page.request.delete(`/api/chats/${chatId}`);
+    await page.request.delete(`/api/connections/${connection.id}`);
+  }
+});
+
 test("successful participant-free Roleplay Start keeps an automatically configured chat on navigation", async ({
   page,
 }) => {

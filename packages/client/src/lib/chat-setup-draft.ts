@@ -1,6 +1,7 @@
 import {
   CHAT_PRESET_EXCLUDED_METADATA_KEYS,
   CHAT_PRESET_EXCLUDED_PACKAGE_METADATA_KEYS,
+  TRANSLATOR_SETTINGS_KEYS,
   normalizeTranslatorSettings,
   type Chat,
   type ChatPreset,
@@ -43,6 +44,7 @@ export function advanceStarredProfileDraft(
   const chatOwned = (key: string) =>
     excluded.has(key) || (key.startsWith("scene") && !sceneSettings.has(key)) || key.startsWith("multiplayer");
   const settings = profile.settings.metadata ?? {};
+  const translatorKeys = new Set<string>(TRANSLATOR_SETTINGS_KEYS);
   const metadata: Record<string, unknown> = {
     // These are the profile writer's fixed defaults, including the install's translator defaults.
     ...normalizeTranslatorSettings(response.metadata),
@@ -51,7 +53,7 @@ export function advanceStarredProfileDraft(
     enableAgents: true,
     activeToolIds: [],
     chatSettingsHintDismissed: false,
-    ...Object.fromEntries(Object.entries(settings).filter(([key]) => !chatOwned(key))),
+    ...Object.fromEntries(Object.entries(settings).filter(([key]) => !chatOwned(key) && !translatorKeys.has(key))),
     ...normalizeTranslatorSettings(settings),
     ...Object.fromEntries(Object.entries(initial.metadata).filter(([key]) => chatOwned(key))),
     appliedChatPresetId: profile.id,

@@ -17,6 +17,7 @@ const { advanceChatSetupDraft, advanceStarredProfileDraft } =
   await import("../../packages/client/src/lib/chat-setup-draft.js");
 const { createChatPresetsStorage } = await import("../../packages/server/src/services/storage/chat-presets.storage.js");
 const { createAppSettingsStorage } = await import("../../packages/server/src/services/storage/app-settings.storage.js");
+const { TRANSLATOR_SETTINGS_KEYS, normalizeTranslatorSettings } = await import("../../packages/shared/src/index.js");
 const db = await getDB();
 const profiles = createChatPresetsStorage(db);
 const storage = createChatsStorage(db);
@@ -183,6 +184,42 @@ try {
     assert.deepEqual(baseline.metadata.activeAgentIds, [], "preserved user agent selection stays outside baseline");
     assert.equal(baseline.metadata.advancedMemory, undefined, "chat-owned memory setup stays outside baseline");
     assert.equal(await storage.removeEmptySetupChat(initial.id, baseline), !edited, "starred profile ownership guard");
+  }
+  for (const metadata of [
+    { translationProvider: "unrecognized" },
+    { translateInput: "true" },
+    { translationPrompt: { text: "invalid" } },
+    { translationTargetLang: 42 },
+    { translationTargetLang: "de" },
+  ]) {
+    const profile = await profiles.create({
+      name: "Translator normalization",
+      mode: "roleplay",
+      settings: { metadata },
+    });
+    assert(profile);
+    const initial = await fixture();
+    const raw = await profiles.applyToChat(profile.id, initial.id);
+    assert(raw);
+    const response = {
+      ...initial,
+      ...raw,
+      characterIds: [],
+      metadata: raw.metadata as unknown as typeof initial.metadata,
+    };
+    const baseline = advanceStarredProfileDraft(initial, response, profile);
+    assert.deepEqual(
+      Object.fromEntries(
+        TRANSLATOR_SETTINGS_KEYS.filter((key) => key in baseline.metadata).map((key) => [key, baseline.metadata[key]]),
+      ),
+      normalizeTranslatorSettings(raw.metadata),
+      "raw invalid profile values never override the writer's normalized translator settings or legacy back-fill",
+    );
+    assert.equal(
+      await storage.removeEmptySetupChat(initial.id, baseline),
+      true,
+      "normalized automatic profile remains disposable",
+    );
   }
   const participant = await fixture();
   const populated = await storage.update(participant.id, { characterIds: ["auto-selected-participant"] });

@@ -717,6 +717,7 @@ function hashVoiceKey(value: string): string {
 function buildVoiceConfigSignature(config?: TTSConfig | null): string {
   if (!config) return "tts:none";
   return [
+    config.connectionId,
     config.source,
     config.baseUrl,
     config.model,
@@ -748,6 +749,7 @@ function buildVoiceLineTextCacheKey(
   job: Omit<GameVoiceAudioJob, "cacheKey" | "textCacheKey">,
 ): string {
   const rawKey = [
+    config.connectionId,
     config.source,
     config.baseUrl,
     config.model,

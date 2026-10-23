@@ -34,7 +34,7 @@ If you already set up an **Audio** connection (see [Supported AI Providers](../c
 
 Marinara then speaks with that connection's base URL, API key, model, and **Request timeout (seconds)**, so the card hides those fields. The key stays in the connection: it is not copied into the card's settings or sent to your browser. Changes you make to the connection, such as a new key, take effect right away.
 
-Voices, speed, and the other speech settings are saved separately for each connection. Two connections of the same type, such as two OpenAI-compatible servers, never share them. Your settings for the four regular Sources stay as they were, so you can switch back at any time. The switch in the card header still turns Text to Speech on and off, and a game's own audio connection still makes that game's sound effects and music.
+Voices, speed, and the other speech settings are saved separately for each connection. Two connections of the same type, such as two OpenAI-compatible servers, never share them. Your settings for the four regular Sources stay as they were, so you can switch back at any time. The switch in the card header still turns regular Text to Speech on and off. Generated music and sound effects now use their own connection category.
 
 If the chosen connection is deleted or can't be used, the card shows **Missing Audio connection** and nothing is spoken until you choose another Source. Marinara never switches to a different connection on its own.
 
@@ -42,18 +42,26 @@ When the connection lists its voices, the card names any saved voice that is not
 
 ## Game music and sound effects on a compatible audio server
 
-In **Connections**, create or open an **Audio** connection and choose **OpenAI-compatible**. Use the address, key and model for your music or sound-effect server. Set **Generation API format**, enter the endpoint paths your server provides, and enable **Game music** or **Game sound effects**. A blank path leaves that capability unavailable. Select this Audio connection in Game setup or the game's audio settings. A music-only model is not a speech model; keep your speech connection selected separately in the Text to Speech card.
+In **Connections**, create a **Music & Sound Effects** connection and choose **Custom compatible server**. Use the address, key and model for your music or sound-effect server. Set **Generation API format**, enter the endpoint paths your server provides, and enable **Music generation**, **Sound-effect generation**, or both. A blank path leaves that capability unavailable. Select this connection in Game setup or the game's audio settings. Keep your speech connection selected separately in the Text to Speech card.
 
-Endpoint paths are appended to the connection's Base URL: for `http://localhost:8002/v1`, use `chat/completions` to reach `/v1/chat/completions`. No new provider entry is needed. Local HTTP endpoints require `TTS_LOCAL_URLS_ENABLED=true` in `.env`, as other local compatible audio requests do.
+Endpoint paths are appended to the connection's Base URL: for `http://localhost:8002/v1`, use `chat/completions` to reach `/v1/chat/completions`. Local HTTP endpoints require `TTS_LOCAL_URLS_ENABLED=true` in `.env`, as other local compatible audio requests do.
 
 Two explicit API contracts are supported:
 
 - **Prompt JSON → MP3 audio** posts `{ "model": "your-model", "prompt": "the requested sound", "duration": 5, "response_format": "mp3" }` and expects MP3 bytes. Game music uses the context track's duration (120 seconds by default); sound effects request 5 seconds. Use an endpoint or adapter that accepts these fields.
 - **Chat Completions → inline audio (ACE-Step compatible)** posts `model`, one user `messages` entry, `stream: false`, and `audio_config` with `duration`, `instrumental: true` and `format: "mp3"`. It accepts inline MP3 audio from `choices[0].message.audio`, either an ACE-Step audio URL array containing a base64 data URL or an object with base64 `data`. See the [ACE-Step compatible API contract](https://github.com/ace-step/ACE-Step-1.5/blob/main/docs/en/Openrouter_API_DOC.md). Remote result URLs and asynchronous job APIs are not supported by these contracts.
 
-Only enable the capabilities your server actually implements. An OpenAI-compatible speech endpoint alone does not imply music or sound-effect support. A provider such as Infermatic must expose one of the contracts above, or supply an adapter; its live music endpoint has not been verified here. ElevenLabs keeps its existing native music and sound-effect requests.
+Only enable the capabilities your server actually implements. An OpenAI-compatible speech endpoint alone does not imply music or sound-effect support. A provider such as Infermatic must expose one of the contracts above, or supply an adapter; its live music endpoint has not been verified here. For native ElevenLabs or SunoAPI generation, use the corresponding source under **Music & Sound Effects**; see [the connection reference](../connections/providers-reference.md#music--sound-effects).
 
 Generated context music is still composed once per area or encounter tier and reused. Repeated sound effects use the audio cache. A generation error leaves the cache available for retry.
+
+## Gacha Forge dialogue and audio
+
+Gacha Forge 1.11.0 or later uses the **Text to Speech** card's currently selected connection and its per-character voice assignments. In a new world's **Lore** setup step, or **Settings → World → Sources** for an existing world, enable **Read character dialogue** to read dialogue from imported characters with an explicitly assigned voice. Narration, thoughts, generated units without an Engine character ID, and characters without an assigned voice stay silent. A character name alone never borrows another character's voice. A selected Audio connection can be used when the world's TTS toggle is on; when using the card's legacy source settings directly, its main TTS switch must also be on.
+
+Stock Game music and sound effects work without a generation connection. To compose new tracks, enable **Generate music and sound effects** in Gacha Forge, then choose a Music & Sound Effects connection under **Audio connection**. This selector appears when generation is enabled. Home, combat, boss, happy/tense/sad story scenes and character stories use separate context tracks, generated when first needed and then reused. These requests use your provider account.
+
+The top-right mute button silences music, dialogue and sound effects together. **Settings → Look (Visual)** has separate volume controls for those three channels, including zero volume, plus the autoplay pause. The pause defaults to **3 seconds** and starts after the text reveal and any spoken dialogue finish. Choices still wait for the player. Spoken dialogue is canceled when leaving a scene. Music continues or changes to match the new screen; leaving the world stops its audio. Update the installed Gacha Forge package as well as the Engine to get these controls.
 
 ## Step 2: Enter the Base URL, API Key, and Model
 

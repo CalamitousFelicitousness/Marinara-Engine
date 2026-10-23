@@ -75,6 +75,7 @@ import { Check, X } from "lucide-react";
 import {
   PROFESSOR_MARI_ID,
   buildGuidedGenerationInstructionMessage,
+  getDrawerWindowId,
   normalizeAvatarCrop,
   normalizeAdvancedMemorySettings,
   normalizeGroupChatMode,
@@ -685,6 +686,7 @@ const LocalChatArea = memo(function LocalChatArea({
   const settingsOpen = useFloatingWindowStore((s) => s.open[CHAT_SETTINGS_WINDOW_ID] === true);
   const settingsPinned = useFloatingWindowStore((s) => s.layouts[CHAT_SETTINGS_WINDOW_ID]?.pinned === true);
   const [settingsInitialSection, setSettingsInitialSection] = useState<ChatSettingsInitialSection>(null);
+  const advancedMemoryRequest = useUIStore((state) => state.advancedMemoryRequest);
   const [settingsAnchor, setSettingsAnchor] = useState<FloatingPanelAnchor>(null);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [spriteArrangeMode, setSpriteArrangeMode] = useState(false);
@@ -782,12 +784,34 @@ const LocalChatArea = memo(function LocalChatArea({
   useEffect(() => {
     const openMemorySettings = (event: Event) => {
       const chatId = (event as CustomEvent<{ chatId?: string }>).detail?.chatId;
-      if (chatId !== useChatStore.getState().activeChatId) return;
-      handleOpenSettingsPanel(undefined, { initialSection: "memory-recall" });
+      if (!chatId || chatId !== useChatStore.getState().activeChatId) return;
+      const ui = useUIStore.getState();
+      const request = ui.advancedMemoryRequest;
+      ui.setAdvancedMemoryRequest(request?.chatId === chatId ? { ...request } : { chatId });
     };
     window.addEventListener(ADVANCED_MEMORY_SETTINGS_EVENT, openMemorySettings);
     return () => window.removeEventListener(ADVANCED_MEMORY_SETTINGS_EVENT, openMemorySettings);
-  }, [handleOpenSettingsPanel]);
+  }, []);
+  useEffect(() => {
+    // A notice can return to another chat. Its layout must hydrate before choosing the window owner.
+    if (!advancedMemoryRequest || advancedMemoryRequest.chatId !== chatDetail?.id || chatDetail.id !== activeChatId)
+      return;
+    const ui = useUIStore.getState();
+    ui.setChatSettingsSectionExpanded("roleplay-memory-recall", true);
+    const windows = useFloatingWindowStore.getState();
+    const memoryWindowId = getDrawerWindowId(CHAT_SETTINGS_WINDOW_ID, "roleplay-memory-recall");
+    if (windows.detached[memoryWindowId]) {
+      void preloadChatSettingsDrawer();
+      windows.openWindow(memoryWindowId);
+    } else handleOpenSettingsPanel(undefined, { initialSection: "memory-recall" });
+    // Fix and scene requests belong to their existing consumers; plain navigation is complete here.
+    if (
+      !advancedMemoryRequest.fix &&
+      !advancedMemoryRequest.sceneId &&
+      ui.advancedMemoryRequest === advancedMemoryRequest
+    )
+      ui.setAdvancedMemoryRequest(null);
+  }, [activeChatId, advancedMemoryRequest, chatDetail?.id, handleOpenSettingsPanel]);
 
   // The Chat Summary agent's "open summaries" link and the omnibar's chat tool rows land on their Chat Settings drawer.
   useEffect(() => {

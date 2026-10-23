@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { stripTypeScriptTypes } from "node:module";
 import { setImmediate as nextTurn } from "node:timers/promises";
 import { runInNewContext } from "node:vm";
+import { GENERATIVE_AUDIO_DEFAULTS } from "../../packages/shared/src/types/connection.js";
 import {
   ROLEPLAY_COMMAND_KEYS,
   isRoleplayCommandEnabled,
@@ -34,7 +35,6 @@ import { isDiceRollResult, readRoleplayDiceRolls } from "../../packages/client/s
 import { executeToolCalls } from "../../packages/server/src/services/tools/tool-executor.js";
 import { parseRollDiceToolResult } from "../../packages/server/src/services/game/dice.service.js";
 import { splitAtSceneBreaks } from "../../packages/shared/src/utils/scene-breaks.js";
-import { audioConnectionSupportsGeneration } from "../../packages/shared/src/types/connection.js";
 
 const rollResult = JSON.stringify({ notation: "2d1+3", rolls: [1, 1], modifier: 3, total: 5 });
 const inlineRoll = {
@@ -88,8 +88,14 @@ await assert.rejects(
 const soundSource = readFileSync(new URL("../../packages/server/src/routes/tts.routes.ts", import.meta.url), "utf8");
 const soundEntry = soundSource.match(/^export async function generateRoleplaySoundEffect\([\s\S]*?^}/m)?.[0];
 assert.ok(soundEntry);
-const soundIdentity = soundSource.match(/^function gameAudioCacheIdentity\([\s\S]*?^}/m)?.[0];
+const generationSource = readFileSync(
+  new URL("../../packages/server/src/services/audio/generative-audio.service.ts", import.meta.url),
+  "utf8",
+);
+const soundIdentity = generationSource.match(/^function cacheIdentity\([\s\S]*?^}/m)?.[0];
 assert.ok(soundIdentity);
+const sharedSoundEntry = generationSource.match(/^export async function generateAudioAsset\([\s\S]*?^}/m)?.[0];
+assert.ok(sharedSoundEntry);
 type AudioResult = { tag: string; path: string; cached: boolean };
 let finishAudio!: (value: AudioResult) => void;
 let failAudio!: (error: Error) => void;
@@ -102,19 +108,26 @@ let upstreamAudio = deferredAudio();
 const sharedAudio = new Map<string, Promise<AudioResult>>();
 const audioRequests: unknown[][] = [];
 const sound = runInNewContext(
-  stripTypeScriptTypes(`${soundIdentity}\n${soundEntry.replace(/^export /, "")}`) + "\ngenerateRoleplaySoundEffect",
+  stripTypeScriptTypes(
+    `${soundIdentity}\n${sharedSoundEntry.replace(/^export /, "")}\n${soundEntry.replace(/^export /, "")}`,
+  ) + "\ngenerateRoleplaySoundEffect",
   {
     addAbortListener,
     Promise,
     Symbol,
-    createAppSettingsStorage: () => ({}),
-    createConnectionsStorage: () => ({}),
-    resolveAudioConfig: async () => ({ source: "elevenlabs", elevenLabsGameSoundEffects: true, apiKey: "fixture-key" }),
-    normalizeGameAudioPrompt: (prompt: string) => prompt.trim(),
+    GENERATIVE_AUDIO_DEFAULTS,
+    resolveGenerativeAudioConfig: async () => ({
+      source: "elevenlabs",
+      ...GENERATIVE_AUDIO_DEFAULTS.elevenlabs,
+      model: "music_v1",
+      legacyId: "fixture",
+      soundEffects: true,
+      apiKey: "fixture-key",
+    }),
     logDebugOverride: () => {},
-    audioConnectionSupportsGeneration,
-    gameAudioGenerationLocks: sharedAudio,
-    generateGameAudio: (...args: unknown[]) => {
+    isDebugAgentsEnabled: () => false,
+    locks: sharedAudio,
+    compose: (...args: unknown[]) => {
       audioRequests.push(args);
       return upstreamAudio;
     },
@@ -126,7 +139,9 @@ const firstWait = sound(null as never, "Shared cue", null, false, firstSound.sig
 const secondWait = sound(null as never, "Shared cue", null, false, secondSound.signal);
 await nextTurn();
 assert.equal(audioRequests.length, 1, "identical cues share a single generation");
-assert.equal(audioRequests[0]?.length, 3, "the shared provider work must not receive a caller's signal");
+assert.equal(audioRequests[0]?.length, 4);
+assert.deepEqual(audioRequests[0]?.slice(1), ["sfx", "Shared cue", undefined]);
+assert(!audioRequests[0]?.includes(firstSound.signal), "shared provider work never receives the caller's signal");
 const gameWait = sharedAudio.get("sfx\0shared cue");
 assert.ok(gameWait, "Game audio joins the same pending generation");
 const cancelledWait = assert.rejects(firstWait, { name: "AbortError" });

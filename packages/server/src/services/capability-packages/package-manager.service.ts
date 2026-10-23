@@ -2951,6 +2951,19 @@ function carriesAsks771(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesAsks771(one, depth + 1));
 }
 
+/** Ruleset's ship-readiness asks (1.772): a fields step's `unansweredAtDefault`, a grant's
+ *  `entries.add`, a heal's `outsideFight`, or an item's `aliases`. */
+function carriesAsks772(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesAsks772(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.unansweredAtDefault !== undefined || record.outsideFight !== undefined) return true;
+  if (record.aliases !== undefined && record.item !== undefined) return true;
+  if (plainRecord(plainRecord(record.grants)?.entries)?.add !== undefined) return true;
+  return featureValues(record).some((one) => carriesAsks772(one, depth + 1));
+}
+
 /** An honourable one (1.767): a behavior whose `temperament`, or one it turns to, is `honourable`. */
 function carriesHonourable767(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -9592,6 +9605,12 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A default that waits, entries given outright, a heal outside a fight, an item's other names: 1.772.
+  if (
+    !declaresApi(772) &&
+    (carriesAsks772(ruleset) || [...(catalogDocuments?.values() ?? [])].some((document) => carriesAsks772(document)))
+  )
+    return "A ruleset with a fields step's unansweredAtDefault, a grant's entries.add, a heal's outsideFight, or an item's aliases requires schemaVersion 2 and capabilityApi 1.772 or newer";
   // Dust at 0, flying-only actions, a spell after a sequence, a narrowed rescue: 1.771.
   if (
     !declaresApi(771) &&

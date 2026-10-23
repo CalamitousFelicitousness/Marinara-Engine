@@ -1148,6 +1148,7 @@ export function rulesetItemBook(
   const visible: RulesetItemBookEntry[] = [];
   const offered = new Set<string>();
   const byName = new Map<string, RulesetItemBookEntry>();
+  const aliased: Array<{ read: RulesetItemBookEntry; aliases: readonly string[] }> = [];
   for (const catalog of definition.catalogs ?? []) {
     if (catalog.holds !== "items") continue;
     for (const entry of entries[catalog.id] ?? []) {
@@ -1160,8 +1161,15 @@ export function rulesetItemBook(
       // Two items of one name: the first the ruleset lists is the one the name finds.
       const key = gameInventoryNameKey(entry.label);
       if (!byName.has(key)) byName.set(key, read);
+      if (entry.aliases) aliased.push({ read, aliases: entry.aliases });
     }
   }
+  // Other names (1.772) find an item after every item's own name: "Plate" for Plate Armor.
+  for (const { read, aliases } of aliased)
+    for (const alias of aliases) {
+      const key = gameInventoryNameKey(alias);
+      if (!byName.has(key)) byName.set(key, read);
+    }
   // The items the Game Master invented, found by name after the ruleset's own. One name may have
   // several: each telling of a turn that proposed it made its own, and a switch back to an older
   // telling must still find the one it holds. A name finds the newest.

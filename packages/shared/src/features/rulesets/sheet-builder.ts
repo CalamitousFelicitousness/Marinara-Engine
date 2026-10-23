@@ -1351,9 +1351,16 @@ export function rulesetBuilderEntrySlots(
   build?: RulesetSheetBuild,
 ): RulesetBuilderEntrySlot[] {
   const steps = definition.sheet.builder?.steps ?? [];
+  const granting = orderedGrants(definition, state, catalogs, build);
+  // What the picks give outright (1.772) is held already, so no choice offers it again.
+  const given = new Set<string>(
+    granting.flatMap(({ entry }) =>
+      (entry.grants?.entries?.add ?? []).flatMap((add) => add.ids.map((id) => `${add.catalog}/${id}`)),
+    ),
+  );
   const taken = new Set<string>();
   const earlier = new Map<string, string[]>();
-  const slots = orderedGrants(definition, state, catalogs, build).flatMap(({ step, entry }) =>
+  const slots = granting.flatMap(({ step, entry }) =>
     (entry.grants?.entries?.choose ?? [])
       .filter((choice) => {
         const host = steps.find((each) => each.kind === "choices" && each.catalog === choice.catalog);
@@ -1363,7 +1370,7 @@ export function rulesetBuilderEntrySlots(
         const key = rulesetBuilderChoiceKey(
           step.id,
           entry.id,
-          choice.id ?? entry.grants!.entries!.choose.indexOf(choice),
+          choice.id ?? entry.grants!.entries!.choose!.indexOf(choice),
         );
         const host = steps.find(
           (each) =>
@@ -1377,6 +1384,7 @@ export function rulesetBuilderEntrySlots(
               (option.rows?.length ?? 0) > 0 &&
               Object.entries(choice.filters ?? {}).every(([filterId, value]) => filterHas(option, filterId, value)) &&
               (!choice.ids || choice.ids.includes(option.id)) &&
+              !given.has(`${choice.catalog}/${option.id}`) &&
               (!option.offeredWhen || !build || resolveRulesetValueRef(definition, build, option.offeredWhen) > 0),
           )
           .map((option) => option.id);
@@ -1631,6 +1639,14 @@ function desired(
       if (!out.rows.includes(ref)) out.rows.push(ref);
     }
   }
+  // Entries given outright (1.772): an elf's Common and Elvish.
+  for (const { entry } of rulesetBuilderGranting(definition, state, catalogs, build))
+    for (const given of entry.grants?.entries?.add ?? [])
+      for (const id of given.ids) {
+        const ref = catalogRowRef(given.catalog, id);
+        if ((catalogs[given.catalog] ?? []).some((each) => each.id === id) && !out.rows.includes(ref))
+          out.rows.push(ref);
+      }
   // An improvement check that raised an ability (1.209) stays an increase while its step shows.
   for (const step of definition.sheet.builder?.steps ?? []) {
     if (step.kind !== "roll" || !rulesetBuilderStepVisible(definition, step, build)) continue;
@@ -2330,6 +2346,12 @@ function applyRulesetBuilderLegacy(
       if (entry) entriesByRef.set(catalogRowRef(slot.catalog, id), entry);
     }
   }
+  for (const { entry: giver } of rulesetBuilderGranting(definition, state, catalogs, readingBuild))
+    for (const given of giver.grants?.entries?.add ?? [])
+      for (const id of given.ids) {
+        const entry = (catalogs[given.catalog] ?? []).find((each) => each.id === id);
+        if (entry) entriesByRef.set(catalogRowRef(given.catalog, id), entry);
+      }
   for (const ref of want.rows) {
     if (previous.rows.includes(ref)) {
       next.rows.push(ref);
@@ -2534,6 +2556,12 @@ export function rulesetBuilderRemaining(
         rulesetBuilderShownFields(definition, step, build).filter((id) => {
           if (step.optional?.includes(id)) return false;
           const value = build.fields[id];
+          // A default that means "not chosen yet" (1.772) still waits: a dragon ancestor of "none".
+          if (
+            step.unansweredAtDefault?.includes(id) &&
+            value === definition.sheet.fields.find((field) => field.id === id)?.default
+          )
+            return true;
           return value === undefined || value === "";
         }).length,
       );

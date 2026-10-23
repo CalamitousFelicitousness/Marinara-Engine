@@ -2293,6 +2293,47 @@ function listNameColumn(definition: RulesetDefinition, list: RulesetList): strin
 }
 
 /**
+ * What a Game Master's `use` of an entry heals its user outside a fight (1.772): an entry whose
+ * mechanics heal `self` with `outsideFight`, rolled with `roll` (each die its average without one)
+ * plus its `amountAdd`, onto the sheet's health. Null for an entry that does not, or a sheet with no
+ * health pool to heal.
+ */
+export function rulesetUseHealOutsideFight(
+  definition: RulesetDefinition,
+  build: RulesetSheetBuild,
+  catalogs: RulesetCatalogEntriesById,
+  name: string,
+  stored: unknown,
+  roll?: (sides: number) => number,
+  items?: ReadonlyArray<RulesetSheetItem>,
+): RulesetSheetOpResult | null {
+  const found = rulesetEntryNamed(definition, build, catalogs, name);
+  const mechanics = found.ok ? found.entry.mechanics : undefined;
+  if (!mechanics?.outsideFight || mechanics.kind !== "heal" || !mechanics.amount) return null;
+  const health = definition.combat?.health;
+  const pool = health && "pool" in health ? health.pool : undefined;
+  if (!pool) return null;
+  const [, count, sides, plus] = /^(\d+)d(\d+)([+-]\d+)?$/u.exec(mechanics.amount.dice ?? "") ?? [];
+  let amount = (mechanics.amount.flat ?? 0) + Number(plus ?? 0);
+  for (let die = 0; die < Number(count ?? 0); die++) {
+    const faces = Number(sides);
+    amount += roll ? Math.max(1, Math.min(faces, Math.trunc(roll(faces)))) : (faces + 1) / 2;
+  }
+  if (mechanics.amountAdd) {
+    const added = resolveRulesetValueRef(
+      definition,
+      build,
+      mechanics.amountAdd,
+      evaluateRulesetSheetLive(definition, build, stored, items),
+    );
+    if (Number.isFinite(added)) amount += Math.trunc(added);
+  }
+  const total = Math.max(0, Math.floor(amount));
+  if (total === 0) return null;
+  return applyRulesetSheetOp(definition, build, stored, { op: "restore", pool, amount: total }, roll, items);
+}
+
+/**
  * What using one catalog-picked ability spends, or why it cannot be worked out. Pure: nothing is
  * applied here, and the caller puts every step through `applyRulesetSheetOp` on a working copy so a
  * refusal in the middle leaves the sheet exactly as it was.

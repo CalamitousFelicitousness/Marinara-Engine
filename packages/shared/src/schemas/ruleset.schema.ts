@@ -1929,6 +1929,9 @@ const builderStepSchema = z.discriminatedUnion("kind", [
       fields: z.array(sheetId).min(1).max(20),
       /** Fields of the step its badge does not wait on, such as a subclass chosen at a later level. */
       optional: z.array(sheetId).min(1).max(20).optional(),
+      /** Fields of the step its badge still waits on while they hold their default (Capability API
+       *  1.772): an enum whose default means "not chosen yet", 5e's dragon ancestor. */
+      unansweredAtDefault: z.array(sheetId).min(1).max(20).optional(),
       /** Fields shown only while their value reference reads above 0 on the sheet (1.107). */
       shownWhen: z
         .record(sheetId, rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>)
@@ -2171,6 +2174,7 @@ export type RulesetBuilderStep =
       kind: "fields";
       fields: string[];
       optional?: string[];
+      unansweredAtDefault?: string[];
       shownWhen?: Record<string, RulesetValueRef>;
       total?: { fields: string[]; max: number };
     })
@@ -7711,6 +7715,9 @@ const catalogMechanicsObject = z
      *  Disintegrate, "If this damage reduces the target to 0 hit points, it is disintegrated". A
      *  target its blow finds already at 0 dies too; one that hangs on at 1 (Death Ward) does not. */
     fellsKill: z.literal(true).optional(),
+    /** A heal on its user that a Game Master's `use` of it makes outside a fight too (Capability API
+     *  1.772), rolled and put on the sheet's health: 5e's Second Wind. */
+    outsideFight: z.literal(true).optional(),
     /** Sends out of the fight with `dismisses` only those that are this (Capability API 1.434):
      *  Divine Word's celestials, elementals, fey and fiends. */
     dismissesIs: targetIsSchema.optional(),
@@ -8100,6 +8107,14 @@ const catalogMechanicsSchema: z.ZodType<
       code: z.ZodIssueCode.custom,
       path: ["dismissesIs"],
       message: '"dismissesIs" narrows whom "dismisses" sends away: it goes with "dismisses"',
+    });
+  }
+  if (mechanics.outsideFight && (mechanics.kind !== "heal" || mechanics.targets !== "self" || !mechanics.amount)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["outsideFight"],
+      message:
+        '"outsideFight" heals its user when used outside a fight: it goes with a "heal" on "self" with an "amount"',
     });
   }
   if (mechanics.fellsKill && (mechanics.kind !== "attack" || !mechanics.amount)) {
@@ -12189,7 +12204,8 @@ export interface RulesetCatalogGrants {
   sets?: Record<string, number | string | boolean>;
   itemAccess?: string[];
   entries?: {
-    choose: (RulesetBuilderChoice &
+    add?: { catalog: string; ids: string[] }[];
+    choose?: (RulesetBuilderChoice &
       RulesetBuilderCatalogLimits & { catalog: string; filters?: Record<string, number | string>; ids?: string[] })[];
   };
 }
@@ -12250,6 +12266,13 @@ const catalogGrantsSchema: z.ZodType<RulesetCatalogGrants, z.ZodTypeDef, unknown
      *  and their rows go on the sheet. */
     entries: z
       .object({
+        /** Entries of another catalog given outright (Capability API 1.772), their rows on the sheet: an
+         *  elf's Common and Elvish. A choice of the same catalog never offers them again. */
+        add: z
+          .array(z.object({ catalog: sheetId, ids: z.array(z.string().max(80)).min(1).max(20) }).strict())
+          .min(1)
+          .max(6)
+          .optional(),
         choose: z
           .array(
             z
@@ -12264,9 +12287,13 @@ const catalogGrantsSchema: z.ZodType<RulesetCatalogGrants, z.ZodTypeDef, unknown
               .strict(),
           )
           .min(1)
-          .max(6),
+          .max(6)
+          .optional(),
       })
       .strict()
+      .refine((entries) => entries.add !== undefined || entries.choose !== undefined, {
+        message: 'Say what entries it gives: "add", "choose" or both',
+      })
       .optional(),
   })
   .strict();
@@ -12290,6 +12317,9 @@ const catalogEntrySchema = z
     creature: rulesetCreatureSchema.optional(),
     /** A thing to carry instead: it goes into Game Mode's inventory, not onto a sheet or into a fight. */
     item: catalogItemSchema.optional(),
+    /** Other names an item is found by (Capability API 1.772), after every item's own: "Plate" for
+     *  Plate Armor, as a Game Master or a shop's buy tag may say it. */
+    aliases: z.array(promptSafeText(120)).min(1).max(8).optional(),
     /** What a pick through the guided builder gives (1.86). An entry that grants may write no rows. */
     grants: catalogGrantsSchema.optional(),
     /** A group this entry shares with others a builder step offers (Capability API 1.94): a step keeps
@@ -12323,6 +12353,12 @@ const catalogEntrySchema = z
   })
   .strict()
   .superRefine((entry, ctx) => {
+    if (entry.aliases && !entry.item)
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["aliases"],
+        message: '"aliases" names an item: it goes with "item"',
+      });
     if (entry.variants && new Set(entry.variants).size !== entry.variants.length) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["variants"], message: "A variant is listed once" });
     }
@@ -18576,6 +18612,11 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
           if (!step.fields.includes(id))
             issue([...path, "optional", optionalIndex], `"${id}" is not one of this step's fields`);
         });
+        step.unansweredAtDefault?.forEach((id, waitIndex) => {
+          const at = [...path, "unansweredAtDefault", waitIndex];
+          if (!step.fields.includes(id)) issue(at, `"${id}" is not one of this step's fields`);
+          else if (fieldById.get(id)?.default === undefined) issue(at, `Field "${id}" has no default to wait past`);
+        });
         for (const [id, ref] of Object.entries(step.shownWhen ?? {})) {
           const at = [...path, "shownWhen", id];
           if (!step.fields.includes(id)) issue(at, `"${id}" is not one of this step's fields`);
@@ -23759,7 +23800,7 @@ function builderChoicesIssues(
             : (choice.from ?? definition.sheet[choice.what].map((entry) => entry.id)))
             freeRatingWrites(choice.what === "skills" ? { skill: id } : { save: id });
         for (const row of entry.rows ?? []) writes.lists.add(row.list);
-        for (const choice of grants?.entries?.choose ?? [])
+        for (const choice of [...(grants?.entries?.choose ?? []), ...(grants?.entries?.add ?? [])])
           for (const id of definition.catalogs?.find((catalog) => catalog.id === choice.catalog)?.feeds ?? [])
             writes.lists.add(id);
       }
@@ -24003,7 +24044,27 @@ function grantsIssues(
     if (grants.itemAccess!.indexOf(ref) !== index) add(at, `"${ref}" is named twice`);
   });
   // Entries to choose (1.91) are chosen at a `choices` step, which is what loads their catalog.
-  grants.entries?.choose.forEach((choice, index) => {
+  grants.entries?.add?.forEach((given, index) => {
+    const at = [...path, "entries", "add", index];
+    const catalog = definition.catalogs?.find((each) => each.id === given.catalog);
+    if (!catalog || (catalog.holds ?? "rows") !== "rows")
+      return add([...at, "catalog"], `No catalog of rows "${given.catalog}"`);
+    // The builder loads only the catalogs its steps read.
+    if (
+      !sheet.builder?.steps.some(
+        (step) => (step.kind === "choices" || step.kind === "catalog") && step.catalog === given.catalog,
+      )
+    )
+      add([...at, "catalog"], `No builder step reads catalog "${given.catalog}"`);
+    if (!catalog.entries || catalog.from) return;
+    given.ids.forEach((id, idIndex) => {
+      const entry = catalog.entries!.find((each) => each.id === id);
+      if (!entry) add([...at, "ids", idIndex], `No entry "${id}" in catalog "${given.catalog}"`);
+      else if (!entry.rows?.length) add([...at, "ids", idIndex], `"${id}" writes no rows`);
+      if (given.ids.indexOf(id) !== idIndex) add([...at, "ids", idIndex], `"${id}" is named twice`);
+    });
+  });
+  grants.entries?.choose?.forEach((choice, index) => {
     const at = [...path, "entries", "choose", index];
     builderChoiceIssues(definition, choice, at, add);
     builderLimitsIssues(

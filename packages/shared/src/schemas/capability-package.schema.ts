@@ -1468,9 +1468,9 @@ const capabilityPackageManifestBaseSchema = z
 //        field's `hideWhen` by a derived value, a condition's `pickable: false`, a track's `showWhenSet`,
 //        an item toggle's `onLabel` and `offLabel`, an item use's `title`, a derived value's `signed`,
 //        and creature traits to 1200.
-// 1.379-1.771: the 5e work (Ruleset Engine capabilities and combat AI), held until 5e lands; each
+// 1.379-1.772: the 5e work (Ruleset Engine capabilities and combat AI), held until 5e lands; each
 //        minor's keys are documented in docs/extending/writing-rulesets.md.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 771 } as const);
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 772 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

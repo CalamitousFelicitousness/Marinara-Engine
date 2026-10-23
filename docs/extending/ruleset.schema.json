@@ -15915,6 +15915,16 @@
                         "minItems": 1,
                         "maxItems": 20
                       },
+                      "unansweredAtDefault": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        "minItems": 1,
+                        "maxItems": 20
+                      },
                       "shownWhen": {
                         "type": "object",
                         "additionalProperties": {
@@ -28801,6 +28811,16 @@
                         "maxItems": 20
                       },
                       "optional": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        "minItems": 1,
+                        "maxItems": 20
+                      },
+                      "unansweredAtDefault": {
                         "type": "array",
                         "items": {
                           "type": "string",
@@ -63118,6 +63138,10 @@
                       "maximum": 100000
                     },
                     "fellsKill": {
+                      "type": "boolean",
+                      "const": true
+                    },
+                    "outsideFight": {
                       "type": "boolean",
                       "const": true
                     },
@@ -154727,6 +154751,10 @@
                           "type": "boolean",
                           "const": true
                         },
+                        "outsideFight": {
+                          "type": "boolean",
+                          "const": true
+                        },
                         "dismissesIs": {
                           "type": "object",
                           "properties": {
@@ -181403,6 +181431,10 @@
                                 "maximum": 100000
                               },
                               "fellsKill": {
+                                "type": "boolean",
+                                "const": true
+                              },
+                              "outsideFight": {
                                 "type": "boolean",
                                 "const": true
                               },
@@ -208091,6 +208123,10 @@
                                 "type": "boolean",
                                 "const": true
                               },
+                              "outsideFight": {
+                                "type": "boolean",
+                                "const": true
+                              },
                               "dismissesIs": {
                                 "type": "object",
                                 "properties": {
@@ -212863,6 +212899,16 @@
                   ],
                   "additionalProperties": false
                 },
+                "aliases": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  },
+                  "minItems": 1,
+                  "maxItems": 8
+                },
                 "grants": {
                   "type": "object",
                   "properties": {
@@ -213672,6 +213718,36 @@
                     "entries": {
                       "type": "object",
                       "properties": {
+                        "add": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "catalog": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "ids": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "maxLength": 80
+                                },
+                                "minItems": 1,
+                                "maxItems": 20
+                              },
+                              "$comment": {}
+                            },
+                            "required": [
+                              "catalog",
+                              "ids"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "minItems": 1,
+                          "maxItems": 6
+                        },
                         "choose": {
                           "type": "array",
                           "items": {
@@ -213989,9 +214065,6 @@
                         },
                         "$comment": {}
                       },
-                      "required": [
-                        "choose"
-                      ],
                       "additionalProperties": false
                     },
                     "$comment": {}

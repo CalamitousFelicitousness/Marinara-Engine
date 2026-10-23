@@ -31,6 +31,7 @@ import {
   type RulesetLiveStates,
   type RulesetSheetOp,
   type RulesetSheetOpResult,
+  rulesetUseHealOutsideFight,
 } from "./live-state.js";
 
 export interface SheetCommandCard {
@@ -157,6 +158,21 @@ export function applySheetCommandTags(
       if (!result.ok) return result;
       state = result.live;
       paid.push(`${step.label} ${result.now}`);
+    }
+    // What it heals its user outside a fight (1.772): Second Wind's 1d10 plus the fighter's level.
+    const healed = rulesetUseHealOutsideFight(
+      ctx.definition,
+      card.build,
+      ctx.catalogs ?? {},
+      op.name,
+      state ?? live[key],
+      ctx.roll,
+      card.items,
+    );
+    if (healed && !healed.ok && healed.reason !== "cannot-heal") return healed;
+    if (healed?.ok) {
+      state = healed.live;
+      paid.push(`${plan.label} ${healed.now}`);
     }
     // An ability that costs nothing, such as a cantrip or a passive feature, is fine and changes
     // nothing: it is the Game Master saying what happened, not asking to spend.

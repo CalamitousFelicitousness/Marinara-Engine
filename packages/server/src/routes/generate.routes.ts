@@ -9330,8 +9330,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             fullResponse = inlineThinking.content;
             contentReplaced = true;
           }
-          // A Game Master that plans on the page instead ("Opening scene: ... / Plan: ...") keeps it out of the scene.
-          if (chatMode === "game") {
+          // A Game Master (not the player's own impersonated line) that plans on the page instead ("Opening scene: ... / Plan: ...") keeps it out of the scene.
+          if (chatMode === "game" && !input.impersonate) {
             const writtenPlan = extractLeadingGmPlanning(fullResponse);
             if (writtenPlan.planning) {
               fullThinking = fullThinking ? `${fullThinking}\n\n${writtenPlan.planning}` : writtenPlan.planning;

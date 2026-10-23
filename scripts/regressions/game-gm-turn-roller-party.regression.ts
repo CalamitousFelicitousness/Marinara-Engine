@@ -281,8 +281,16 @@ const party = ["Isolde", "Hessa", "Brannoc", "Pip"];
     "Location: the Ward Shrine.\nPlan: roll 1d6 fire damage, apply via sheet command.\n\n**Plan:** keep it short.\n\nThe iron hisses.",
   );
   assert.equal(labelled.content, "The iron hisses.");
+  // A reply that opens with a blank line is lifted the same.
+  assert.equal(
+    extractLeadingGmPlanning("\n\nOpening scene: Stilt Row, dusk.\n\nDusk comes to Hollowmere.").content,
+    "Dusk comes to Hollowmere.",
+  );
   for (const narration of [
     "Dusk comes to Hollowmere. Plan: none of them had one.",
+    // An out-of-character answer can open with a label too: only a run that is unmistakably a plan is lifted.
+    "Checks: a DC 15 Athletics roll to cross the gap.\n\nThe gap yawns.",
+    "Notes: Pip still carries the key.\n\nThe gap yawns.",
     '[Cudge Vantry] [main] [neutral]: "Notes: the bell rang twice."',
     "Plan: only a plan, nothing after it.",
   ]) {

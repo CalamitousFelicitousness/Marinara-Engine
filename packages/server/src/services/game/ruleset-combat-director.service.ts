@@ -2818,7 +2818,7 @@ function rulesetCandidatesFrom(
         // A limited heal (a potion, a slot, a use a day) waits until a friend is below half (I2 re-test
         // 2026-10-23: potions drunk at 26 of 38): above that it is worth a fifth, taken only when
         // nothing better is on offer.
-        const limited = price > 0 || !!fallingAction?.uses || !!fallingAction?.itemUse || !!fallingAction?.charges;
+        const limited = price > 0 || !!fallingAction?.uses || !!fallingAction?.itemUse;
         if (limited && !target.down && health.value > health.max / 2) candidate.healing *= 0.2;
       } else if (average > 0) {
         // Never its own side, and never somebody who is already down: the rules let a blow land on

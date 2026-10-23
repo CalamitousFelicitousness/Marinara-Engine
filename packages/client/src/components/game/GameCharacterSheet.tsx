@@ -94,6 +94,8 @@ export type GameCharacterSheetRuleset =
       readOnly?: boolean;
       /** What the character holds, which a value reading their items shows. */
       items?: ReadonlyArray<RulesetSheetItem>;
+      /** Whether what they carry encumbers them, or is past the most they can carry. */
+      carrying?: { encumbered: boolean; over: boolean };
       /** A rest the game takes, with the charges it brings back to what the character carries. */
       onRest?: (
         rest: string,
@@ -737,6 +739,7 @@ export function GameCharacterSheet({
                   onEnvelopeSave={ruleset.onEnvelopeSave}
                   readOnly={ruleset.readOnly}
                   items={ruleset.items}
+                  carrying={ruleset.carrying}
                   onRest={ruleset.onRest}
                   onRestOffers={ruleset.onRestOffers}
                 />

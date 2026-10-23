@@ -8,6 +8,7 @@ import {
   combatInterruptFields,
   gameInventoryFightLines,
   normalizeGameInventoryStacks,
+  rulesetCombatStyle,
   rulesetProposedCreatureSchema,
   type CombatItemEffect,
   type RulesetDefinition,
@@ -1000,10 +1001,15 @@ export async function encounterRoutes(app: FastifyInstance) {
         chatMeta = (chat.metadata as Record<string, unknown> | null) ?? null;
       }
       const { personaName, personaCtx } = withStandIn(identity, chatMeta);
-      const combatStyle =
+      // The game's ruleset, read once: it may name the combat styles its games play (1.775), and a fight
+      // it resolves gets its brief below.
+      const resolvedRuleset =
+        chatMeta?.gameRuleset != null ? resolveGameRuleset(chatMeta, await loadRulesetRegistry()) : null;
+      const combatStyle = rulesetCombatStyle(
+        resolvedRuleset?.status === "ok" ? resolvedRuleset.definition : null,
         (chatMeta?.gameCombatStyle as string | undefined) ??
-        ((chatMeta?.gameSetupConfig as Record<string, unknown> | undefined)?.combatStyle as string | undefined) ??
-        "classic";
+          ((chatMeta?.gameSetupConfig as Record<string, unknown> | undefined)?.combatStyle as string | undefined),
+      );
       const setupConfig = chatMeta?.gameSetupConfig as Record<string, unknown> | undefined;
       const tacticalBattlefieldResult =
         combatStyle === "tactical" && setupConfig?.tacticalBattlefield !== undefined
@@ -1031,17 +1037,15 @@ export async function encounterRoutes(app: FastifyInstance) {
       let rulesetBrief: EncounterRulesetBrief | null = null;
       const items = { guess: true, ruleset: [] as string[] };
       let fightRuleset: { definition: RulesetDefinition; packageId: string | null } | null = null;
-      if (chatMeta?.gameRuleset != null) {
-        const resolved = resolveGameRuleset(chatMeta, await loadRulesetRegistry());
-        if (resolved.status === "ok") {
-          fightRuleset = { definition: resolved.definition, packageId: resolved.packageId };
-          rulesetBrief = await encounterRulesetBrief(resolved.definition, resolved.packageId);
-          items.guess = resolved.definition.items?.native !== false;
-          if (resolved.definition.items) {
-            items.ruleset = gameInventoryFightLines(normalizeGameInventoryStacks(chatMeta.gameInventory)).flatMap(
-              (line) => (line.item ? [line.name] : []),
-            );
-          }
+      if (chatMeta && resolvedRuleset?.status === "ok") {
+        const resolved = resolvedRuleset;
+        fightRuleset = { definition: resolved.definition, packageId: resolved.packageId };
+        rulesetBrief = await encounterRulesetBrief(resolved.definition, resolved.packageId);
+        items.guess = resolved.definition.items?.native !== false;
+        if (resolved.definition.items) {
+          items.ruleset = gameInventoryFightLines(normalizeGameInventoryStacks(chatMeta.gameInventory)).flatMap(
+            (line) => (line.item ? [line.name] : []),
+          );
         }
       }
       const prompt = buildInitPrompt(

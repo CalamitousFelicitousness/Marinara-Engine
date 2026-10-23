@@ -40,6 +40,10 @@ export type BuiltInGameCombatStyle = (typeof BUILT_IN_GAME_COMBAT_STYLES)[number
  */
 export type GameCombatStyle = BuiltInGameCombatStyle | (string & {});
 
+/** The shape of a combat style id, built-in or registered: what a game's setup and a ruleset's
+ *  `combat.styles` (Capability API 1.775) may name. */
+export const GAME_COMBAT_STYLE_ID_PATTERN = /^[a-z][a-z0-9_-]{0,47}$/;
+
 /** Status of a game session. */
 export type GameSessionStatus = "setup" | "active" | "concluded";
 

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { BUILT_IN_GAME_COMBAT_STYLES, GAME_COMBAT_STYLE_ID_PATTERN } from "../types/game.js";
 import { GAME_INVENTORY_MAX_NEW_STACKS, GAME_INVENTORY_MAX_QUANTITY } from "../utils/game-inventory-stacks.js";
 import { COMBAT_MINDS, COMBAT_ROLES, COMBAT_SHIFT_TRIGGERS, COMBAT_TEMPERAMENTS } from "../features/combat-minds.js";
 
@@ -10964,9 +10965,15 @@ const itemsSchema = z
      *  class, race, and level requirements on the use of magic items". */
     needsWaivedBy: (rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>).optional(),
     /** Which stat is an item's weight, and what a character carries before they are encumbered and
-     *  at most, read off their sheet. Without it weight means nothing and nobody is encumbered. */
+     *  at most, read off their sheet. Without it weight means nothing and nobody is encumbered. `unit`
+     *  is what a weight is counted in ("lb"), said after it wherever one is shown (Capability API 1.776). */
     carry: z
-      .object({ stat: sheetId, encumberedAbove: rulesetValueRefSchema, limit: rulesetValueRefSchema.optional() })
+      .object({
+        stat: sheetId,
+        encumberedAbove: rulesetValueRefSchema,
+        limit: rulesetValueRefSchema.optional(),
+        unit: promptSafeText(12).optional(),
+      })
       .strict()
       .optional(),
     currencies: z.array(currencyFamilySchema).max(6).optional(),
@@ -16020,6 +16027,13 @@ const combatObjectSchema = z
       })
       .strict()
       .optional(),
+    /** The combat styles a game on this ruleset may play (Capability API 1.775), by id: `classic`,
+     *  `tactical`, or a style a client registered. The New Game wizard and the game's settings offer
+     *  only these, and a game whose saved style is not among them plays the first one listed that the
+     *  client has (the first built-in one listed, which the list must hold, when it has none). Left
+     *  out, every style is offered. A ruleset whose rules need a board (areas, reach, cover) lists
+     *  `["tactical"]`. */
+    styles: z.array(z.string().regex(GAME_COMBAT_STYLE_ID_PATTERN)).min(1).max(8).optional(),
     /** What one cell of a board is worth in this system's own distance, and what that distance is
      *  called. Declaring it is what makes a fight positionable at all: without it every fight stays
      *  theatre of the mind, and everything below is refused. */
@@ -18120,6 +18134,18 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       );
     } else if (named.indexOf(id) !== index) issue(path, `Duplicate pool "${id}"`);
   });
+
+  // Each combat style once, and one of them built in (1.775): a client without a registered style
+  // plays the first built-in one listed, never one the list leaves out.
+  def.combat?.styles?.forEach((id, index, named) => {
+    if (named.indexOf(id) !== index) issue(["combat", "styles", index], `Duplicate combat style "${id}"`);
+  });
+  if (
+    def.combat?.styles &&
+    !def.combat.styles.some((id) => (BUILT_IN_GAME_COMBAT_STYLES as readonly string[]).includes(id))
+  ) {
+    issue(["combat", "styles"], "List classic or tactical too, for a client that has none of the other styles");
+  }
 
   def.rests.forEach((rest, restIndex) => {
     rest.restore.forEach((op, opIndex) => {

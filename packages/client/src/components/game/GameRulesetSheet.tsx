@@ -508,6 +508,8 @@ export interface GameRulesetSheetProps {
   onDraftStart?: () => void;
   /** What the character holds, which a value reading their items (`itemStat`) shows. */
   items?: ReadonlyArray<RulesetSheetItem>;
+  /** Whether what they carry encumbers them, or is past the most they can carry: a chip on the sheet. */
+  carrying?: { encumbered: boolean; over: boolean };
   /** A rest taken by the game rather than here: the sheet and what the character carries change
    *  together, and it answers with the rest's own words, or null when it was not taken. */
   onRest?: (
@@ -533,6 +535,7 @@ export function GameRulesetSheet({
   draftNotice,
   onDraftStart,
   items,
+  carrying,
   onRest,
   onRestOffers,
 }: GameRulesetSheetProps) {
@@ -744,6 +747,18 @@ export function GameRulesetSheet({
               ? localizeUi("game.ruleset.sheet.nameWithLayers", { name: definition.name, layers: layerNames })
               : definition.name}
           </p>
+          {/* Past the most they can carry, or encumbered: what the bag does to them, on the sheet too. */}
+          {carrying && (carrying.over || carrying.encumbered) && (
+            <span
+              className={`mt-1 inline-block rounded px-1.5 py-0.5 text-[0.625rem] font-medium ${
+                carrying.over
+                  ? "bg-[var(--destructive)]/15 text-[var(--destructive)]"
+                  : "bg-amber-500/15 text-amber-600 dark:text-amber-300"
+              }`}
+            >
+              {localizeUi(carrying.over ? "ui.game.gameinventory.overLimit" : "ui.game.gameinventory.encumbered")}
+            </span>
+          )}
         </div>
         {!locked && !draft && !inFight && (
           <button

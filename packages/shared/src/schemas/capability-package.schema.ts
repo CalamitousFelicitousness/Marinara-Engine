@@ -1470,7 +1470,11 @@ const capabilityPackageManifestBaseSchema = z
 //        and creature traits to 1200.
 // 1.379-1.774: the 5e work (Ruleset Engine capabilities and combat AI), held until 5e lands; each
 //        minor's keys are documented in docs/extending/writing-rulesets.md.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 774 } as const);
+// 1.775: which combat styles a ruleset's games may play (`combat.styles`): the New Game wizard and the
+//        game's settings offer only those, and a game saved on another plays the first one listed.
+//        Upstream's 1.379, numbered above the held 5e minors.
+// 1.776: what a ruleset's weights are counted in (`items.carry.unit`), said after every weight shown.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 776 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

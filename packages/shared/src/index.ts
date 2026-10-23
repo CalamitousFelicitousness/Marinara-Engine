@@ -279,6 +279,7 @@ export * from "./features/rulesets/combat-bridge.js";
 export * from "./features/rulesets/layers.js";
 export * from "./features/rulesets/item-book.js";
 export * from "./features/rulesets/plan-memo.js";
+export * from "./features/rulesets/combat-styles.js";
 export * from "./features/rulesets/item-fight.js";
 export * from "./features/rulesets/check-effects.js";
 export * from "./features/rulesets/package-file.js";

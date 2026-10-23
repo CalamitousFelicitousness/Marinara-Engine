@@ -13,6 +13,8 @@ import {
   type WorldElementSet,
   gameInventoryBags,
   gameInventoryBagKey,
+  gameInventoryBearerStatus,
+  gameInventoryOverLimit,
   gameInventoryFoldStandIn,
   gameInventoryFightEffects,
   gameFightOffers,
@@ -31,8 +33,10 @@ import {
   type RulesetRestRecovery,
   type RulesetUseRecover,
   type CreaturePack,
+  rulesetCardHolder,
   rulesetCardItems,
   rulesetReadsItems,
+  rulesetCombatStyle,
   gameDungeonMapFromMetadata,
 } from "@marinara-engine/shared";
 // ──────────────────────────────────────────────
@@ -43,6 +47,7 @@ import { ExperiencePeopleSpritesContext } from "../../hooks/use-overworld-view";
 import {
   getCombatStyle,
   isBuiltInCombatStyle,
+  listCombatStyles,
   offerCombatStart,
   resolveCombatStyle,
   styleOwnedFightFromSnapshot,
@@ -9047,10 +9052,16 @@ function GameSurfaceComponent({
   // (settings drawer) ?? wizard setup choice ?? legacy default "classic". An id
   // this client has not registered plays as classic (#8109).
   const combatSetupConfig = chatMeta.gameSetupConfig as Record<string, unknown> | undefined;
+  // A style the game's ruleset leaves out (`combat.styles`, 1.775) plays as the first it lists; a fight
+  // already pinned keeps its own.
   const effectiveCombatStyle: GameCombatStyle = resolveCombatStyle(
     combatPinnedStyle ??
-      (chatMeta.gameCombatStyle as GameCombatStyle | undefined) ??
-      (combatSetupConfig?.combatStyle as GameCombatStyle | undefined),
+      rulesetCombatStyle(
+        gameRuleset.status === "ok" ? gameRuleset.definition : null,
+        (chatMeta.gameCombatStyle as GameCombatStyle | undefined) ??
+          (combatSetupConfig?.combatStyle as GameCombatStyle | undefined),
+        listCombatStyles(),
+      ),
   );
   const combatStyleSurface = getCombatStyle(effectiveCombatStyle);
   // A style that keeps its own state (#8109) counts as an active fight while it says so.
@@ -10946,9 +10957,25 @@ function GameSurfaceComponent({
             inventoryPlayerName,
           )(cardTitle)
         : undefined;
+    // Whether they carry more than they should, for a chip on the sheet: their bag against what they
+    // can carry, as the inventory reads it.
+    const cardNames = cards.flatMap((card) => (typeof card.name === "string" && card.name.trim() ? [card.name.trim()] : []));
+    const bearer =
+      inventoryItemBook?.bearer && gameRuleset.definition.items?.carry
+        ? gameInventoryBearerStatus(
+            inventoryItems,
+            rulesetCardHolder(cardNames, inventoryPlayerName)(cardTitle) ?? undefined,
+            inventoryItemBook,
+          )
+        : undefined;
+    const carrying =
+      bearer && bearer.encumberedAbove !== undefined
+        ? { encumbered: bearer.encumbered, over: gameInventoryOverLimit(bearer) }
+        : undefined;
     return {
       status: "ok",
       definition: gameRuleset.definition,
+      ...(carrying ? { carrying } : {}),
       // What the pin turned on: the names the sheet heads itself with, and the record the catalog
       // picker leaves hidden entries out by.
       layers: gameRuleset.layers,

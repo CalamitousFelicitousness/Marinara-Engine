@@ -19,7 +19,7 @@ All five are described in full under [Resolution kinds](#resolution-kinds).
 
 A mechanic that does not fit these shapes cannot be written in a ruleset file. Opposed pools are one example. Each of those needs a new resolution kind inside the Engine, which is a code contribution with tests, not a JSON file. If your system needs one, open a feature request on the Engine repository and describe the mechanic with a few worked rolls. Those worked rolls become the tests.
 
-Game Mode can resolve a fight using Marinara's own combat or your ruleset's rules. An optional `battle` block lends Marinara's combat the numbers on your character sheets: see [Battles](#battles-lending-the-sheet-to-marinaras-combat). An optional `combat` block instead defines how the ruleset resolves the fight: see [Combat](#combat-a-fight-your-own-rules-resolve). The Engine plays those rules today. The game's Combat Preference selects the Classic presentation or, when the ruleset defines distance, a Tactical battlefield.
+Game Mode can resolve a fight using Marinara's own combat or your ruleset's rules. An optional `battle` block lends Marinara's combat the numbers on your character sheets: see [Battles](#battles-lending-the-sheet-to-marinaras-combat). An optional `combat` block instead defines how the ruleset resolves the fight: see [Combat](#combat-a-fight-your-own-rules-resolve). The Engine plays those rules today. The game's Combat Preference selects the Classic presentation or, when the ruleset defines distance, a Tactical battlefield. A ruleset may limit which of these its games play with `combat.styles` (see [Which styles a game may play](#combat-a-fight-your-own-rules-resolve)).
 
 ## Quickstart
 
@@ -2931,7 +2931,7 @@ The block goes in `items` at the top level of the file. This is Ember Roads', a 
 - `stats`: optional, up to 24. The numbers and words an item carries, declared exactly like a list column: `number`, `text`, `boolean`, `enum` or `dice`, with a range, values and a default where the type has them. `promptVisible` (default `true`) says whether the Game Master is shown the stat beside the item. Set it to `false` for something only the player should see, such as where an item is hidden.
 - `slots`: optional, up to 12. Where an item is worn or held, and how many of that slot a character has, from 1 to 20.
 - `binding`: optional. Attunement, investiture, or anything else that limits how many items one character may have bound at once. `label` is what it is called, and `max` is a value read off the character's sheet, such as `{ "abilityScore": "nerve" }` or a derived value. It cannot read the live state, because how many items a character may bind does not change with every blow.
-- `carry`: optional. `stat` names the number stat that is an item's weight, whose `min` is 0 or more. `encumberedAbove` is how much a character carries before they are encumbered, and `limit` (optional) the most they can carry at all. Both are read off the sheet like `binding.max`. Without `carry`, weight means nothing and nobody is ever encumbered.
+- `carry`: optional. `stat` names the number stat that is an item's weight, whose `min` is 0 or more. `encumberedAbove` is how much a character carries before they are encumbered, and `limit` (optional) the most they can carry at all. Both are read off the sheet like `binding.max`. Without `carry`, weight means nothing and nobody is ever encumbered. `unit` (optional, up to 12 letters, Capability API 1.776) is what a weight is counted in, such as `"lb"`: the inventory's load, the starting gear picker's weights and a kit option's weight say it after the number.
 - `currencies`: optional, up to six families of one to ten coins each.
   - Coins of one family change into each other by `value`, which counts the family's smallest coin. So the smallest coin is worth 1, and no two coins of a family are worth the same.
   - Two families never change into each other. A second nation's coin, or a setting's favours, is a family of its own.
@@ -4745,6 +4745,27 @@ has no such distance.
 player's game is set to the Tactical combat style. With the Classic style, or on a ruleset without
 `distance`, the fight is theatre of the mind exactly as it was: anybody can be pointed at anybody,
 and nothing below is read at all.
+
+**Which styles a game may play.** `combat.styles` names the combat styles a game on your ruleset may
+play, by id: `classic`, `tactical`, or a style a client registered (up to 8, each once, and at least
+one of `classic` and `tactical`). Left out,
+every style is offered, as before. A ruleset whose rules need a board (areas, reach, cover, flanking)
+says `"styles": ["tactical"]`: the New Game wizard and the game's settings then offer only Tactical,
+and so its fights always have positions. A game already saved on a style you do not list plays the
+first one you do that the client can draw (the first built-in one you list, on a client without a
+registered style you list), and a game cannot be
+made, or switched in its settings, to a style you leave out. A fight already under way keeps the
+style it began on. The list holds whether or not the combat director is on, so it also narrows
+Marinara's own Classic and Tactical battles on your ruleset. A ruleset using `styles` needs
+Capability API 1.775.
+
+```json
+"combat": {
+  "kind": "attack-vs-defense",
+  "styles": ["tactical"],
+  "distance": { "label": "feet", "perCell": 5 }
+}
+```
 
 **What the player sees.** The board is drawn, with the tactical style's own terrain. Every square is
 a button, reachable with the pointer or the arrow keys, and says what it is, who is on it and what

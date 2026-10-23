@@ -16,7 +16,7 @@ const LAST_PREFERENCES = "slow-burn mystery";
 
 /**
  * A fresh new-game setup wizard, on its own, opened after a game that kept its goals and preferences.
- * Its (empty) lorebook list answers once `lorebooksAnswered` settles.
+ * Its lorebook list answers once `lorebooksAnswered` settles: empty, or with an error when it rejects.
  */
 async function mountWizard(page: Page, testInfo: TestInfo, lorebooksAnswered: Promise<void>): Promise<Locator> {
   await page.route("**/api/app-settings/ui", (route) => route.fulfill({ json: { value: "" } }));
@@ -30,8 +30,10 @@ async function mountWizard(page: Page, testInfo: TestInfo, lorebooksAnswered: Pr
     }),
   );
   await page.route("**/api/lorebooks", async (route) => {
-    await lorebooksAnswered;
-    await route.fulfill({ json: [] });
+    await lorebooksAnswered.then(
+      () => route.fulfill({ json: [] }),
+      () => route.fulfill({ status: 500, json: { error: "Lorebooks are unavailable" } }),
+    );
   });
   await seedUIState(page, {
     hasCompletedOnboarding: true,
@@ -123,6 +125,16 @@ test("goals and preferences kept from the last game say so and can be cleared", 
   await expect(wizard.getByText("No lorebooks yet", { exact: true })).toHaveCount(0);
   answerLorebooks();
   await expect(wizard.getByText("No lorebooks yet", { exact: true })).toBeVisible();
+  await expect(wizard.getByText("All lorebooks already added.", { exact: true })).toHaveCount(0);
+});
+
+test("a lorebook list that failed to load claims nothing", async ({ page }, testInfo) => {
+  const unavailable = Promise.reject(new Error("unavailable"));
+  unavailable.catch(() => {});
+  const wizard = await mountWizard(page, testInfo, unavailable);
+  await stepTo(wizard, "Lorebooks");
+  await expect(wizard.getByPlaceholder("Search lorebooks…")).toBeVisible();
+  await expect(wizard.getByText("No lorebooks yet", { exact: true })).toHaveCount(0);
   await expect(wizard.getByText("All lorebooks already added.", { exact: true })).toHaveCount(0);
 });
 

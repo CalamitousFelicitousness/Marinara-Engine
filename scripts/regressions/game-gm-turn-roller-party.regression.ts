@@ -119,7 +119,7 @@ const party = ["Isolde", "Hessa", "Brannoc", "Pip"];
   assert.match(rules, /a fall, a burn or a poison included/);
   assert.match(
     rules,
-    /Its who is the one the narration says it happens to, by that name, never whoever acted or spoke last\./,
+    /Its who is the one the narration names: whoever takes the harm or the healing, or whoever pays the resource, and the player only when that is the player\. Check it against the narration, not against whoever acted or spoke last\./,
   );
   for (const reminder of [rules, withPersona]) {
     assert.match(reminder, /Never skip a check the action calls for\./);

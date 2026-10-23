@@ -398,6 +398,8 @@ export interface ChatMetadata {
   activeAgentIds: string[];
   /** Per-chat selected named prompt template for each agent type. Missing/default = the agent's default prompt. */
   agentPromptTemplateIds?: Record<string, string>;
+  /** Optional reference lorebook for each agent type, scoped to this chat. */
+  agentLorebookAttachments?: Record<string, { enabled: boolean; lorebookId: string | null }>;
   /** Whether Illustrator should append matched character card appearance text to image prompts. */
   illustratorIncludeCharacterAppearance?: boolean;
   /** Whether Illustrator should send matching character/persona avatar references to image providers. */

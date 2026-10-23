@@ -771,15 +771,17 @@ function projectCombatant(
     ...(combatant.creature ? { creature: { ...combatant.creature } } : {}),
     initiative: combatant.initiative,
     health,
-    // What an attack is rolled against now, with what its conditions add (a Shield's +5) and what a
-    // dropped shield took away. Against a foe whose turn it is, cover and high ground from where that
-    // foe stands too: the number the log will say. With no such foe, no position counts, since cover
-    // depends on where a blow comes from.
-    defense: (() => {
-      const against = attacker && attacker.side !== combatant.side ? attacker : undefined;
-      const answer = rulesetDefenseAgainst(definition, combat, state, combatant, against);
-      return against ? answer.defense : answer.defense - answer.cover;
-    })(),
+    // What an attack is rolled against now, with what its conditions add (a Shield's +5), what a
+    // dropped shield took away and the cover of the ground it stands on. Against a foe whose turn it
+    // is, the cover and high ground between them too: the number the log will say. With no such foe,
+    // only what holds against a blow from anywhere.
+    defense: rulesetDefenseAgainst(
+      definition,
+      combat,
+      state,
+      combatant,
+      attacker && attacker.side !== combatant.side ? attacker : undefined,
+    ).defense,
     conditions: conditionsOf(definition, combatant, state),
     hides: rulesetCombatHide(definition, combatant, state),
     damageModifiers: active.flatMap((source) => {

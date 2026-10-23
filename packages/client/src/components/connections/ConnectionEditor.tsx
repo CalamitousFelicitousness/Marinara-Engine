@@ -2761,7 +2761,10 @@ export function ConnectionEditor() {
                       setLocalAudioGenerationSource(source);
                       // Credentials cannot silently move to a different service.
                       setLocalApiKey("");
-                      setClearStoredApiKeyOnSave(true);
+                      setClearStoredApiKeyOnSave(
+                        conn?.provider !== "audio_generation" ||
+                          source !== (conn.audioGenerationSource ?? "elevenlabs"),
+                      );
                       markDirty();
                     }}
                     className={cn(

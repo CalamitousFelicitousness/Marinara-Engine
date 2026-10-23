@@ -47,6 +47,7 @@ for (const theme of ["dark", "light"] as const) {
         name: `Compatible audio ${theme} ${info.project.name}`,
         provider: "audio_generation",
         audioGenerationSource: "elevenlabs",
+        apiKey: "fixture-original-audio-key",
         baseUrl: "https://audio.example.test/v1",
         model: "fixture-audio-model",
       },
@@ -78,6 +79,10 @@ for (const theme of ["dark", "light"] as const) {
       await expect(editor.getByRole("button", { name: "Test Connection", exact: true })).not.toBeVisible();
       await expect(editor.getByRole("button", { name: "Send Test Message", exact: true })).not.toBeVisible();
       await expect(editor.getByText(/To test this connection, generate music or a sound effect/u)).toBeVisible();
+      await editor.getByRole("button", { name: /^SunoAPI Generate audio/u }).click();
+      await editor.getByRole("button", { name: /^ElevenLabs/u }).click();
+      await editor.getByRole("button", { name: "Save", exact: true }).click();
+      await expect.poll(async () => (await stored()).apiKeyEncrypted).toBe("••••••••");
       await editor.getByRole("button", { name: /^Custom compatible server/u }).click();
       const format = editor.getByRole("combobox", { name: "Generation API format", exact: true });
       const musicPath = editor.getByLabel("Music endpoint path", { exact: true });
@@ -119,6 +124,7 @@ for (const theme of ["dark", "light"] as const) {
         audioMusicEndpoint: "chat/completions",
         audioSoundEffectsEndpoint: "audio/generations",
         audioMusic: "true",
+        apiKeyEncrypted: "",
         audioSoundEffects: "true",
       });
       await expect(editor.getByText("Unsaved", { exact: true })).toBeHidden();
@@ -182,7 +188,11 @@ for (const theme of ["dark", "light"] as const) {
           .getByText("SunoAPI music requires a public HTTPS callback URL, even when polling.", { exact: true }),
       ).toBeVisible();
       expect((await stored()).audioMusic).toBe("false");
-      await editor.getByLabel(/^SunoAPI music callback URL/u).fill("https://callback.example.test/completed");
+      await editor.getByLabel(/^SunoAPI music callback URL/u).fill("https://127.0.0.1/completed");
+      await editor.getByRole("button", { name: "Save", exact: true }).click();
+      await expect(editor.getByRole("button", { name: "Dismiss save error", exact: true })).toBeVisible();
+      expect((await stored()).audioMusic).toBe("false");
+      await editor.getByLabel(/^SunoAPI music callback URL/u).fill("https://8.8.8.8/completed");
       await editor.getByLabel(/^Sound-effect model/u).fill("fixture-sfx-model");
       await editor.getByRole("button", { name: "Save", exact: true }).click();
       await expect.poll(stored).toMatchObject({
@@ -190,16 +200,14 @@ for (const theme of ["dark", "light"] as const) {
         audioSource: null,
         audioVoice: null,
         audioGenerationSource: "sunoapi",
-        audioGenerationCallbackUrl: "https://callback.example.test/completed",
+        audioGenerationCallbackUrl: "https://8.8.8.8/completed",
         audioSoundEffectsModel: "fixture-sfx-model",
       });
       await expect(editor.getByText("Unsaved", { exact: true })).toBeHidden();
       await capture(page, info, `sunoapi-audio-${theme}`, editor.getByLabel(/^SunoAPI music callback URL/u));
       await page.reload();
       editor = await openConnection(page, id);
-      await expect(editor.getByLabel(/^SunoAPI music callback URL/u)).toHaveValue(
-        "https://callback.example.test/completed",
-      );
+      await expect(editor.getByLabel(/^SunoAPI music callback URL/u)).toHaveValue("https://8.8.8.8/completed");
       await expect(editor.getByLabel(/^Sound-effect model/u)).toHaveValue("fixture-sfx-model");
       expect(pageErrors).toEqual([]);
     } finally {

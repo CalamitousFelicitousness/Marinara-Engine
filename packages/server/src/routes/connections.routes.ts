@@ -1,5 +1,6 @@
 import { resolveDecisionConnection } from "../services/decision/decision-connection.js";
 import { migrateGenerativeAudioConnections } from "../services/connections/generative-audio-connection-migration.js";
+import { validateSunoMusicCallback } from "../services/audio/generative-audio-providers.js";
 import { askNoulQuestions } from "../services/decision/system-one.client.js";
 import { connectionChatTarget, probeDecisionSlot } from "../services/decision/sidecar-decision.backend.js";
 import {
@@ -126,6 +127,26 @@ const DEFAULT_ATLAS_CLOUD_VIDEO_MODEL = "google/veo3.1/text-to-video";
 const DEFAULT_ATLAS_CLOUD_VIDEO_BASE_URL = "https://api.atlascloud.ai/api/v1";
 const DEFAULT_SEEDANCE_VIDEO_MODEL = "seedance-2-0";
 const DEFAULT_SEEDANCE_VIDEO_BASE_URL = "https://api.seedance2.ai";
+
+async function generativeAudioConnectionError(connection: {
+  provider: string;
+  audioGenerationSource?: string | null;
+  audioGenerationCallbackUrl?: string | null;
+  audioMusic?: boolean | string;
+}): Promise<string | null> {
+  if (
+    connection.provider !== "audio_generation" ||
+    connection.audioGenerationSource !== "sunoapi" ||
+    (connection.audioMusic !== true && connection.audioMusic !== "true")
+  )
+    return null;
+  try {
+    await validateSunoMusicCallback(connection.audioGenerationCallbackUrl);
+    return null;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -530,7 +551,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
 
   app.post("/", async (req, reply) => {
     const input = createConnectionSchema.parse(req.body);
-    const validationError = nanoGptVideoConnectionError(input);
+    const validationError = nanoGptVideoConnectionError(input) || (await generativeAudioConnectionError(input));
     if (validationError) return reply.status(400).send({ error: validationError });
     return withLongTermMemoryEmbeddingChange(app.db, reply, async () => {
       const created = await storage.create(input);
@@ -544,7 +565,8 @@ export async function connectionsRoutes(app: FastifyInstance) {
     const data = createConnectionSchema.partial().parse(req.body);
     const current = await storage.getById(req.params.id);
     if (!current) return reply.status(404).send({ error: "Connection not found" });
-    const validationError = nanoGptVideoConnectionError({ ...current, ...data });
+    const merged = { ...current, ...data };
+    const validationError = nanoGptVideoConnectionError(merged) || (await generativeAudioConnectionError(merged));
     if (validationError) return reply.status(400).send({ error: validationError });
     return withLongTermMemoryEmbeddingChange(app.db, reply, async () => {
       const updated = await storage.update(req.params.id, data);

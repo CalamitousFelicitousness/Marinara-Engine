@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { GenerationStreamOutput } from "../../packages/server/src/routes/generate/generation-stream-output.js";
 import { createGenerationEventSink } from "../../packages/server/src/routes/generate/sse.js";
 import { runToolRounds, type ToolRoundsContext } from "../../packages/server/src/routes/generate/tool-rounds.js";
+import { stripTrailingToolAnnouncement } from "../../packages/server/src/services/game/gm-planning.js";
 import type { ChatMessage, ChatOptions } from "../../packages/server/src/services/llm/base-provider.js";
 
 // Pins the tool-call rounds moved out of generate.routes.ts (#7573).
@@ -204,6 +205,73 @@ const lookupCall = { id: "c1", type: "function" as const, function: { name: "loo
     assert.equal(outcome.narratorMessages.at(-1)?.content, "Prefill");
     assert.match(String(outcome.narratorMessages.at(-2)?.content), /^The engine ran a separate tool-planning pass/);
   }
+}
+
+// (f) The round after a native call starts a new paragraph, and a Game Master's announcement of the call is cut.
+const rollCall = {
+  id: "r1",
+  type: "function" as const,
+  function: { name: "roll_dice", arguments: '{"notation":"2d8+3","reason":"Brannoc: Cure Wounds"}' },
+};
+for (const chatMode of ["game", "conversation"]) {
+  const { ctx, events } = setup(
+    [
+      async (_messages, options) => {
+        await options.onToken!("Brannoc kneels in the lamplight");
+        await options.onToken!(" — let me get the number.");
+        return {
+          content: "Brannoc kneels in the lamplight — let me get the number.",
+          toolCalls: [rollCall],
+          finishReason: "tool_calls",
+        };
+      },
+      async (_messages, options) => {
+        await options.onToken!("Warmth goes out of his hands.");
+        return { content: "Warmth goes out of his hands.", toolCalls: [], finishReason: "stop" };
+      },
+    ],
+    { chatMode },
+  );
+  const outcome = await runToolRounds(ctx, "");
+  const tokens = events
+    .filter((event) => event.type === "token" || event.type === "content_replace")
+    .map((event) => (event.type === "content_replace" ? `|${String(event.data)}|` : String(event.data)))
+    .join("");
+  if (chatMode === "game") {
+    assert.equal(outcome.fullResponse, "Brannoc kneels in the lamplight\n\nWarmth goes out of his hands.");
+    assert.match(tokens, /\|Brannoc kneels in the lamplight\|\n\nWarmth goes out of his hands\.$/);
+  } else {
+    assert.equal(
+      outcome.fullResponse,
+      "Brannoc kneels in the lamplight — let me get the number.\n\nWarmth goes out of his hands.",
+    );
+    assert.equal(events.filter((event) => event.type === "content_replace").length, 0);
+  }
+}
+{
+  // The player's own impersonated line keeps every word.
+  const { ctx } = setup(
+    [
+      async () => ({ content: "I kneel. Let me roll for it.", toolCalls: [rollCall], finishReason: "tool_calls" }),
+      async () => ({ content: " It works.", toolCalls: [], finishReason: "stop" }),
+    ],
+    { chatMode: "game", impersonate: true, streaming: false },
+  );
+  assert.equal((await runToolRounds(ctx, "")).fullResponse, "I kneel. Let me roll for it. It works.");
+}
+for (const [before, after] of [
+  ["Brannoc kneels — let me get the number.", "Brannoc kneels"],
+  ["Brannoc kneels. Let me roll for the healing.", "Brannoc kneels."],
+  ["Brannoc kneels. Okay, now I'll check the save:", "Brannoc kneels."],
+  ["Let me roll Cure Wounds.", ""],
+  ["Brannoc kneels -- time to see how much it heals.", "Brannoc kneels"],
+  // Narration that only sounds like it is left alone.
+  ['Brannoc kneels. "Let me check the wound."', 'Brannoc kneels. "Let me check the wound."'],
+  ["Let me roll it, he says. Brannoc kneels.", "Let me roll it, he says. Brannoc kneels."],
+  ["She lets me get the number from the ledger.", "She lets me get the number from the ledger."],
+  ["Brannoc kneels in the lamplight", "Brannoc kneels in the lamplight"],
+]) {
+  assert.equal(stripTrailingToolAnnouncement(before!), after, before);
 }
 
 console.info("Generate tool-rounds regression passed.");

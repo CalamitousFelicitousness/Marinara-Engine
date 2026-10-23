@@ -1,6 +1,7 @@
 import type { AgentResult, DiceRollResult, RoleplayCommandActivity } from "@marinara-engine/shared";
 import { logger } from "../../lib/logger.js";
 import { parseRollDiceToolResult } from "../../services/game/dice.service.js";
+import { stripTrailingToolAnnouncement } from "../../services/game/gm-planning.js";
 import { appendRoundGeminiParts } from "../../services/generation/generation-parameters.js";
 import { getRequestInputTokens } from "../../services/generation/generation-text-utils.js";
 import { parseRoleplayCommands, RoleplayCommandStreamFilter } from "../../services/generation/roleplay-commands.js";
@@ -90,7 +91,16 @@ export async function runToolRounds(ctx: ToolRoundsContext, fullResponse: string
   let geminiResponseParts: unknown[] | null = null;
   let narratorMessages = ctx.initialMessages;
   const aborted = (): ToolRoundsOutcome => ({ aborted: true, fullResponse: text });
+  // Each round's text is appended to the last. After a native tool call the next round starts a new
+  // beat, so it starts a new paragraph instead of running on from the end of the text before the call.
+  let breakBeforeNextRound = false;
+  const separateRound = (chunk: string) => {
+    if (!breakBeforeNextRound || !chunk) return chunk;
+    breakBeforeNextRound = false;
+    return /^\s/.test(chunk) ? chunk : `\n\n${chunk}`;
+  };
   const write = async (chunk: string) => {
+    chunk = separateRound(chunk);
     text += chunk;
     await stream.write(chunk);
   };
@@ -112,6 +122,7 @@ export async function runToolRounds(ctx: ToolRoundsContext, fullResponse: string
     if (generationSignal.aborted) {
       return;
     }
+    chunk = separateRound(chunk);
     text += chunk;
     // A held stream still feeds the command filter, which spots a roll request.
     if (stream.holdForTextRewrite) stream.roleplayCommandFilter?.push(chunk);
@@ -228,6 +239,19 @@ export async function runToolRounds(ctx: ToolRoundsContext, fullResponse: string
     }
 
     if (!result.toolCalls.length) break;
+
+    if (!textualRoll) {
+      // A Game Master's "let me get the number." before a call is not part of the scene.
+      if (ctx.chatMode === "game" && !ctx.impersonate) {
+        const announced = text.slice(roundResponseStart);
+        const kept = stripTrailingToolAnnouncement(announced);
+        if (kept !== announced) {
+          text = text.slice(0, roundResponseStart) + kept;
+          if (!stream.holdForTextRewrite) sendSseEvent(ctx.output, { type: "content_replace", data: text });
+        }
+      }
+      breakBeforeNextRound = /\S$/.test(text);
+    }
 
     loopMessages.push({
       role: "assistant",

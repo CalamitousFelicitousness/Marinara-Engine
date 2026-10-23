@@ -1681,21 +1681,38 @@ import { useChatAvatarAgentIds } from "../../features/avatars/stage/use-chat-ava
 /** Empty "New Game" chats about to be dropped because the player left them, by chat id. */
 const emptySetupChatDrops = new Map<string, ReturnType<typeof setTimeout>>();
 
+/** How long the world overview takes to type out at most, however long it is. */
+const INTRO_TYPEWRITER_MAX_MS = 20_000;
+
 function IntroTypewriter({ text, onComplete }: { text: string; onComplete?: () => void }) {
   const [visible, setVisible] = useState(0);
   const endRef = useRef<HTMLSpanElement>(null);
   const firedRef = useRef(false);
+  // The latest callback, so a parent re-rendering with a new one never restarts the clock.
+  const onCompleteRef = useRef(onComplete);
+  useEffect(() => {
+    onCompleteRef.current = onComplete;
+  }, [onComplete]);
+  // The reveal is read off the clock: a re-render that cleared the next tick, or a hidden tab whose
+  // timers the browser slows to one a second, used to hold the Continue button for minutes (the
+  // 2026-10-23 playtest's 6-minute opening). A long overview types faster, never past 20 seconds.
+  const startedAtRef = useRef<number | null>(null);
   useEffect(() => {
     if (visible >= text.length) {
       if (!firedRef.current) {
         firedRef.current = true;
-        onComplete?.();
+        onCompleteRef.current?.();
       }
       return;
     }
-    const t = window.setTimeout(() => setVisible((v) => v + 1), 28);
+    startedAtRef.current ??= performance.now();
+    const msPerChar = Math.min(28, INTRO_TYPEWRITER_MAX_MS / Math.max(1, text.length));
+    const t = window.setTimeout(() => {
+      const byClock = Math.floor((performance.now() - startedAtRef.current!) / msPerChar);
+      setVisible((v) => Math.min(text.length, Math.max(v + 1, byClock)));
+    }, 28);
     return () => window.clearTimeout(t);
-  }, [visible, text.length, onComplete]);
+  }, [visible, text.length]);
   // Keep the reveal edge in view by scrolling the nearest scrollable ancestor.
   // A nested overflow-y-auto here blocks Android touch-scroll from reaching the
   // parent scroll container, so we don't create our own overflow on this div.

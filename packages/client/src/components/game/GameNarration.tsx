@@ -3814,8 +3814,14 @@ export function GameNarration({
     const TICK_MS = 33; // ~30 fps
     const charsPerTick = Math.max(1, Math.round((cps * TICK_MS) / 1000));
 
+    // Read off the clock as well as counted per tick: a browser slows the timers of a tab it hides
+    // to one a second, and counted alone a turn then took minutes to type out (the 2026-10-23
+    // playtest's fight that waited 6.5 minutes on the narration).
+    const startedAt = performance.now();
+    const from = tw.pos;
     const interval = setInterval(() => {
-      tw.pos = Math.min(dispLen, tw.pos + charsPerTick);
+      const byClock = from + Math.floor((performance.now() - startedAt) / msPerChar);
+      tw.pos = Math.min(dispLen, Math.max(tw.pos + charsPerTick, byClock));
       setVisibleChars(tw.pos);
       if (tw.pos >= dispLen) clearInterval(interval);
     }, TICK_MS);

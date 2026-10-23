@@ -242,8 +242,12 @@ export async function runMediaGenerationRequest<T>(args: {
   /** Wraps the permit and the task, after the per-connection FIFO: a wait placed here (the shared GPU turn) holds
    *  neither a permit nor a place that blocks others while the request ahead on its connection still renders. */
   aroundPermit?: <R>(work: () => Promise<R>) => Promise<R>;
+  /** The task is generateImage/generateVideo, which take their own shared GPU turn and permit in the right order:
+   *  this call keeps only the per-connection FIFO, so nothing reserves a permit while the task waits for the GPU. */
+  taskTakesPermit?: boolean;
 }): Promise<T> {
   const runWithPermit = async () => {
+    if (args.taskTakesPermit) return args.task();
     const releasePermit = await acquireGlobalPermit(args.signal, args.priority);
     try {
       if (args.signal?.aborted) throw mediaGenerationAbortError(args.signal);

@@ -416,6 +416,9 @@ async function generateSelfie(
             connectionKey: imgConnFull.id?.trim() || `${serviceHint || imgSource}:${imgBaseUrl}:${imgModel}`,
             queue: args.queue,
             signal: args.signal,
+            // generateImage waits for a shared GPU turn before its own permit; a permit taken here would be held
+            // through that wait.
+            taskTakesPermit: true,
             task: drawSelfie,
           }),
     onVariantError: (error, index) =>

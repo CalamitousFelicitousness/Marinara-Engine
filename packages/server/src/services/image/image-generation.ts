@@ -311,8 +311,10 @@ export function imageAdmissionKey(normalizedBaseUrl: string, resolvedSource: str
  * way generateVideo already is, so EVERY image path is capped at this single
  * point — game assets, sprites, avatars, storyboards, Mari images — instead of
  * relying on per-caller wiring. Callers that additionally wrap in
- * runImageGenerationRequest for the per-connection FIFO are safe: the nested
- * acquire re-uses their held permit (AsyncLocalStorage re-entrancy guard). Batch/automatic work
+ * runImageGenerationRequest for the per-connection FIFO pass taskTakesPermit, so
+ * the shared GPU turn is waited for here before any permit is taken. (A wrapper
+ * that does take a permit is still safe from deadlock: the nested acquire re-uses
+ * it through the AsyncLocalStorage re-entrancy guard.) Batch/automatic work
  * (admissionMode "background") never occupies the last permit ahead of
  * interactive requests.
  *

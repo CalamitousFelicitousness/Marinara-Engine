@@ -65,6 +65,9 @@ export interface GmPromptContext {
   playerName: string;
   /** Full player persona card */
   playerCard?: string | null;
+  /** The player has no character of their own (no persona): they direct the party, so "you" is the
+   *  party and every check names its roller. Absent or false is a player with a character. */
+  playerIsParty?: boolean;
   gmCharacterCard: string | null;
   difficulty: string;
   /** "classic" (menu combat) or "tactical" (grid battle). Absent = classic. */
@@ -843,6 +846,10 @@ export function buildGmSystemPrompt(ctx: GmPromptContext): string {
   const partyLines: string[] = [];
   if (ctx.playerCard) {
     partyLines.push(`Player:\n${ctx.playerCard}`);
+  } else if (ctx.playerIsParty) {
+    partyLines.push(
+      `Player: no character of their own. The player directs the party members below; none of them is the player.`,
+    );
   } else {
     partyLines.push(`Player: ${ctx.playerName}`);
   }
@@ -912,8 +919,9 @@ function renderRulesetSkillCheckLine(
   ruleset: import("@marinara-engine/shared").RulesetDefinition,
   playerDiceRollSubmitted: boolean,
   oneRequestDice: boolean,
+  playerIsParty = false,
 ): string {
-  const line = renderRulesetKindCheckLine(ruleset, playerDiceRollSubmitted, oneRequestDice);
+  const line = renderRulesetKindCheckLine(ruleset, playerDiceRollSubmitted, oneRequestDice, playerIsParty);
   // Checks that roll their own way (1.140), named so the Game Master asks for them like any other.
   const overrides = ruleset.resolution.overrides ?? [];
   if (overrides.length === 0) return line;
@@ -935,6 +943,7 @@ function renderRulesetKindCheckLine(
   ruleset: import("@marinara-engine/shared").RulesetDefinition,
   playerDiceRollSubmitted: boolean,
   oneRequestDice: boolean,
+  playerIsParty = false,
 ): string {
   const resolution = ruleset.resolution;
   // `with=` needs somewhere to go: a sheet with one ability has no other ability to roll with.
@@ -947,7 +956,10 @@ function renderRulesetKindCheckLine(
         `When the outcome splits two ways, add branch="label" to this tag and write the branch block described under DICE.`,
       ]
     : [];
-  const whoClause = `Add who="Character Name" to roll for a party member; without it the player is checked.`;
+  // With no character of their own, a check without a roller would be rolled off a blank sheet.
+  const whoClause = playerIsParty
+    ? `Always add who="Character Name" naming the party member who rolls: the player has no character of their own.`
+    : `Add who="Character Name" to roll for a party member; without it the player is checked.`;
   // Every ruleset has a ladder, so every ruleset can be asked for a step by name.
   const difficultyClause = `Or name a step with difficulty="Label" in place of dc.`;
   // What having no training does, named by the section that says it or the skill or save that says
@@ -1506,6 +1518,8 @@ function renderRulesetSheetSection(
         ]
       : []),
     `Leave out who for the player; who="party" applies to every member. Use the pool, track, field and condition names shown on the sheets. Never write result, reason or now yourself: the Engine adds them. A refused command did not happen, so do not narrate it as if it had.`,
+    // Prose alone changes no number: a fall or a burn told without its command never reached the sheet.
+    `Narration alone changes no sheet. Every harm, healing or spent resource you narrate needs its command in the same reply, a fall, a burn or a poison included. When the amount is still to be rolled, ask for the roll with [dice:] and write the command with the total once you have it.`,
     // A sheet block leaves out a track or a note that still has its default, so the names a command
     // can use are listed once here.
     ...(plainTracks.length > 0
@@ -1611,6 +1625,7 @@ export function buildGmFormatReminder(
     | "map"
     | "partyNames"
     | "playerName"
+    | "playerIsParty"
     | "characterSprites"
     | "playerInventory"
     | "partyInventory"
@@ -1686,6 +1701,8 @@ export function buildGmFormatReminder(
 
   const partyNames = normalizePromptTextList(ctx.partyNames);
   const hasParty = partyNames.length > 0;
+  // No character of the player's own: the party is who the player plays.
+  const partyDirected = ctx.playerIsParty === true && hasParty;
   const characterSprites = Array.isArray(ctx.characterSprites) ? ctx.characterSprites : [];
   const customSpriteLines = characterSprites
     .map((character) => ({
@@ -1835,13 +1852,23 @@ export function buildGmFormatReminder(
     hasParty
       ? `[${partyNames[0]}] [main] [worried]: "We should move. Now."`
       : `[Guide] [main] [worried]: "We should move. Now."`,
-    `[${ctx.playerName ?? "Player"}] [main] [amused]: You remind him that he says that every time the wind changes.`,
+    ...(partyDirected
+      ? [`[${partyNames[1] ?? partyNames[0]}] [main] [amused]: "You say that every time the wind changes."`]
+      : [
+          `[${ctx.playerName ?? "Player"}] [main] [amused]: You remind him that he says that every time the wind changes.`,
+        ]),
     ``,
     ``,
     `PLAYER INPUT:`,
     `- Continue with new content directly from the player's input, treating it like a concluded beat. Do not reiterate anything.`,
-    `- Treat only quoted player text as spoken aloud; unquoted text is action, narration, or internal thoughts that cannot be accessed by NPCs unless made observable. NEVER quote or speak for the player character (${ctx.playerName ?? "Player"}). You may indirectly narrate obvious, low-stakes participation and their thoughts (nodding during conversation, laying out details, looking around, etc.) in the second person, but never determine their strategic decisions or exact dialogue. Example:`,
-    `[${ctx.playerName ?? "Player"}] [thought] [smirk]: You think to yourself that you're the best.`,
+    ...(partyDirected
+      ? [
+          `- The player has no character of their own: they direct the whole party (${partyNames.join(", ")}). Their input says what one or more party members do or say. "You" means the party together, never one member: call each member by name when they act, speak, or are hurt or healed. Treat only quoted text as spoken aloud, by the member the input names. Never decide a member's strategic choices beyond what the player wrote.`,
+        ]
+      : [
+          `- Treat only quoted player text as spoken aloud; unquoted text is action, narration, or internal thoughts that cannot be accessed by NPCs unless made observable. NEVER quote or speak for the player character (${ctx.playerName ?? "Player"}). You may indirectly narrate obvious, low-stakes participation and their thoughts (nodding during conversation, laying out details, looking around, etc.) in the second person, but never determine their strategic decisions or exact dialogue. Example:`,
+          `[${ctx.playerName ?? "Player"}] [thought] [smirk]: You think to yourself that you're the best.`,
+        ]),
     `- CRITICAL: NEVER echo dialogue, especially not after the player. NO PARROTING!`,
     `- Player agency is not player immunity: the player controls intent, not the world's response. Let successes earned through effort, luck, or cleverness and failures caused by mistakes, bad luck, or poor decisions land with consequences; both good and bad ends can be earned.`,
     `- Keep turn length flexible. If player agency is low (exploration, travel/rest), go longer; if high (combat, dialogue, intense danger), stay concise. Sometimes one line of dialogue or narrative beat is enough.`,
@@ -1882,7 +1909,14 @@ export function buildGmFormatReminder(
 
   // The engine supplies numbers before the GM writes outcome narration.
   if (ctx.ruleset) {
-    lines.push(renderRulesetSkillCheckLine(ctx.ruleset, ctx.playerDiceRollSubmitted === true, oneRequestDice));
+    lines.push(
+      renderRulesetSkillCheckLine(
+        ctx.ruleset,
+        ctx.playerDiceRollSubmitted === true,
+        oneRequestDice,
+        ctx.playerIsParty === true,
+      ),
+    );
   } else if (ctx.playerDiceRollSubmitted) {
     lines.push(
       `- [skill_check: skill="Skill Name" dc="1-20" rolls="the player's d20 result"] - use the player's exact die and choose a fair DC (5 trivial, 10 routine under pressure, 15 hard, 20 desperate). Do NOT write modifier, total or result: the engine applies their character-sheet modifiers.`,
@@ -1897,7 +1931,7 @@ export function buildGmFormatReminder(
     );
   }
   lines.push(
-    `- [dice: 3d8+2] - request any NdM roll with an optional flat modifier, even without a tools API. The engine rolls it, capped at 100 dice and 1000 sides per die. Never write the numbers yourself.${
+    `- [dice: 3d8+2] - request any NdM roll with an optional flat modifier, even without a tools API. The engine rolls it, capped at 100 dice and 1000 sides per die. Never write the numbers yourself. Name who rolls with who="Name", as in [dice: 1d8+4 who="${partyNames[0] ?? "Name"}"], so the player sees whose roll it is.${
       oneRequestDice
         ? ` When the number does not fork the prose, write a [[roll: 3d8+2]] placeholder in the sentence instead of this tag and keep writing.`
         : ""
@@ -1908,6 +1942,8 @@ export function buildGmFormatReminder(
       : [
           `- For other checks, declare the actual notation: [skill_check: skill="Endurance" dc="12" dice="3d6+2"]. These use the notation's modifier, not d20 character-sheet modifiers. For a pool, declare the per-die threshold and required successes: [skill_check: skill="Intimidation" dc="4" dice="6d10" resolution="successes" threshold="6"]. Each die at or above threshold counts once; dc is the number of successes needed. Exploding dice, botches, or other special pool rules are not implemented. Never invent pool results or omit its threshold.`,
         ]),
+    // A playtest GM narrated a sneak and a search as successes with no check at all.
+    `- Never skip a check the action calls for. Sneaking, searching, spotting, persuading, climbing or anything else whose outcome is uncertain gets its check tag, for each character who attempts it; never narrate such an attempt succeeding or failing without one.`,
     // The stop-at-the-attempt line is exactly the instruction the second request exists to
     // serve, so it is dropped while the turn has to finish itself.
     ...(oneRequestDice
@@ -2069,7 +2105,7 @@ export function buildGmFormatReminder(
     lines.push(
       ``,
       `DICE:`,
-      `- roll_dice is a real die you can throw. Call it the moment you need an actual number before you can keep writing - an attack, a save, damage, a random outcome the scene then reacts to - passing the notation (for example "1d20+3") and a short reason.`,
+      `- roll_dice is a real die you can throw. Call it the moment you need an actual number before you can keep writing - an attack, a save, damage, a random outcome the scene then reacts to - passing the notation (for example "1d20+3") and a short reason that starts with who rolls (for example "${partyNames[0] ?? "Name"}: Cure Wounds").`,
       `- Never invent a die result. Wait for the number the tool gives you, then narrate what it means, once, in this same turn.`,
       // A ruleset game's checks come from the character sheet, so a tool-made modifier is never
       // the record: the engine would roll such a tag again and contradict the narration.

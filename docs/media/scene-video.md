@@ -1,6 +1,6 @@
 # Scene Video Generation
 
-This guide explains how Marinara Engine turns a scene illustration into a short MP4 video clip. It covers the video providers, how to generate a clip from the Gallery, the Game Mode controls, and the video settings. A scene video is a brief animated clip made from one still image.
+This guide explains how Marinara Engine turns a scene illustration into a short MP4 video clip. It covers the video providers, how to generate a clip from the Gallery, the Game Mode controls, and the video settings. A scene video is a brief animated clip made from a still image or, in **Roleplay**, from the story alone.
 
 ## What scene video does
 
@@ -217,7 +217,7 @@ Your chat has no video connection selected. Open **Chat Settings**, then **Agent
 
 ### "Add or generate a gallery image before generating a scene video"
 
-Scene video always animates an existing picture. Use **Illustrate**, upload a picture, or click **Animate illustration** on a picture you already have.
+**Game Mode** and **Animate illustration** require an existing picture; **Roleplay** can generate from the story alone when no first frame is chosen. Use **Illustrate**, upload a picture, or click **Animate illustration** on a picture you already have.
 
 ### The video takes a long time
 

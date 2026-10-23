@@ -5,7 +5,12 @@ import ts from "typescript";
 import { ttsConfigSchema } from "../../packages/shared/src/types/tts.js";
 import { withTTSVoiceRequestCacheKeys } from "../../packages/client/src/lib/tts-dialogue.js";
 import { ttsService, type TTSSpeakRequest } from "../../packages/client/src/lib/tts-service.js";
-import { __resetTTSMemoryCacheForTests } from "../../packages/client/src/lib/tts-audio-cache.js";
+import {
+  __resetTTSMemoryCacheForTests,
+  deleteCachedTTSAudioKeys,
+  getCachedTTSAudioBlob,
+  getOrCreateCachedTTSAudioBlob,
+} from "../../packages/client/src/lib/tts-audio-cache.js";
 
 class FixtureAudio extends EventTarget {
   src = "";
@@ -68,12 +73,13 @@ try {
   const aliases = otherVoice.map((line) => ({ ...line, cacheKey: `another:${line.cacheKey}` }));
   await play(aliases);
   check(sent.length === 10, "same-context text aliases still share synthesis");
-  await ttsService.clearCachedAudio(otherVoice);
+  const keyOnlyRequests = otherVoice.map(({ cacheKey, cacheAliases }) => ({ cacheKey, cacheAliases }));
+  await ttsService.clearCachedAudio(keyOnlyRequests);
   await play(otherVoice);
   check(sent.length === 12, "clearing the current primary and aliases regenerates both clips");
-  await ttsService.clearCachedAudio(otherVoice, { audioConnectionId: "connection-b" });
+  await ttsService.clearCachedAudio(keyOnlyRequests);
   await play(otherVoice, "connection-b");
-  check(sent.length === 14, "explicit-source clearing removes the corresponding cache namespace");
+  check(sent.length === 14, "key-only clearing removes other source variants of the same line");
   assert.deepEqual(
     sent.map(({ audioConnectionId, voice }) => [audioConnectionId, voice]),
     [
@@ -87,6 +93,142 @@ try {
     "actual synthesis requests preserve the selected source and voice, including the legacy sentinel",
   );
   check(ttsService.getState() === "idle" && ttsService.getPlayback() === null, "sequence playback cleans up");
+
+  // A minimal transaction fixture exercises the actual persistent-cache branch without adding a dependency.
+  // The companion browser proof uses real Chromium IndexedDB; this fixture makes the regression portable in Node.
+  const originalIndexedDB = Object.getOwnPropertyDescriptor(globalThis, "indexedDB");
+  const stores = new Map(["voiceLines", "voiceLineMeta"].map((name) => [name, new Map<string, any>()]));
+  const db = {
+    objectStoreNames: { contains: (name: string) => stores.has(name) },
+    close() {},
+    transaction() {
+      let pending = 0;
+      const tx = { oncomplete: null as (() => void) | null, objectStore };
+      function request(read: () => unknown) {
+        pending += 1;
+        const result = { result: undefined as unknown, onsuccess: null as (() => void) | null };
+        queueMicrotask(() => {
+          result.result = read();
+          result.onsuccess?.();
+          if (--pending === 0) setTimeout(() => tx.oncomplete?.(), 0);
+        });
+        return result;
+      }
+      function objectStore(name: string) {
+        const values = stores.get(name)!;
+        return {
+          get: (key: string) => request(() => values.get(key)),
+          getAllKeys: () => request(() => [...values.keys()]),
+          getAll: () => request(() => [...values.values()]),
+          put: (value: { key: string }) => request(() => values.set(value.key, value)),
+          delete: (key: string) => request(() => values.delete(key)),
+        };
+      }
+      return tx;
+    },
+  };
+  Object.defineProperty(globalThis, "indexedDB", {
+    configurable: true,
+    value: {
+      open() {
+        const request = { result: db, onsuccess: null as (() => void) | null };
+        queueMicrotask(() => request.onsuccess?.());
+        return request;
+      },
+    },
+  });
+  try {
+    const old = new Blob(["old"]);
+    const fresh = new Blob(["fresh"]);
+    const unrelated = new Blob(["unrelated"]);
+    await getOrCreateCachedTTSAudioBlob("legacy", async () => old, ["legacy-text"]);
+    for (const identity of ["source-a", "source-b"])
+      await getOrCreateCachedTTSAudioBlob("persistent", async () => old, ["persistent-text"], identity);
+    await getOrCreateCachedTTSAudioBlob("untouched", async () => unrelated, [], "other");
+    __resetTTSMemoryCacheForTests();
+    await deleteCachedTTSAudioKeys(["legacy", "legacy-text", "persistent", "persistent-text"]);
+    for (const values of stores.values()) {
+      assert.equal(values.size, 1, "persistent deletion preserves only the unrelated clip and its metadata");
+      assert.ok([...values.keys()][0]?.includes("untouched"));
+    }
+    assert.equal(await getCachedTTSAudioBlob("legacy"), null, "legacy raw keys are deleted too");
+    assert.equal(
+      await getOrCreateCachedTTSAudioBlob(
+        "untouched",
+        async () => assert.fail("unrelated clip was purged"),
+        [],
+        "other",
+      ),
+      unrelated,
+    );
+
+    let start!: () => void;
+    let finish!: (blob: Blob) => void;
+    const started = new Promise<void>((resolve) => (start = resolve));
+    const pending = getOrCreateCachedTTSAudioBlob(
+      "pending-family",
+      () => {
+        start();
+        return new Promise<Blob>((resolve) => (finish = resolve));
+      },
+      ["pending-alias"],
+      "source-a",
+    );
+    await started;
+    await deleteCachedTTSAudioKeys(["pending-family", "pending-alias"]);
+    const replacement = await getOrCreateCachedTTSAudioBlob(
+      "pending-family",
+      async () => fresh,
+      ["pending-alias"],
+      "source-a",
+    );
+    finish(old);
+    await pending;
+    assert.equal(replacement, fresh, "a caller after the purge does not join the old in-flight synthesis");
+    __resetTTSMemoryCacheForTests();
+    assert.equal(
+      await getOrCreateCachedTTSAudioBlob(
+        "pending-family",
+        async () => assert.fail("fresh clip is missing"),
+        [],
+        "source-a",
+      ),
+      fresh,
+      "late completion cannot resurrect old audio in persistent storage",
+    );
+
+    let startEarly!: () => void;
+    let finishEarly!: (blob: Blob) => void;
+    const earlyStarted = new Promise<void>((resolve) => (startEarly = resolve));
+    const early = getOrCreateCachedTTSAudioBlob(
+      "early-family",
+      () => {
+        startEarly();
+        return new Promise<Blob>((resolve) => (finishEarly = resolve));
+      },
+      ["early-alias"],
+      "source-b",
+    );
+    await deleteCachedTTSAudioKeys(["early-family", "early-alias"]);
+    await earlyStarted;
+    await getOrCreateCachedTTSAudioBlob("early-family", async () => fresh, ["early-alias"], "source-b");
+    finishEarly(old);
+    await early;
+    __resetTTSMemoryCacheForTests();
+    assert.equal(
+      await getOrCreateCachedTTSAudioBlob(
+        "early-family",
+        async () => assert.fail("early purge lost fresh audio"),
+        [],
+        "source-b",
+      ),
+      fresh,
+      "a purge during initial asynchronous lookup fences later registration and persistence",
+    );
+  } finally {
+    if (originalIndexedDB) Object.defineProperty(globalThis, "indexedDB", originalIndexedDB);
+    else delete (globalThis as Record<string, unknown>).indexedDB;
+  }
 
   const config = ttsConfigSchema.parse({ source: "openai", connectionId: "connection-a", voice: "same-voice" });
   const alternate = { ...config, connectionId: "connection-b" };

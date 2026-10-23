@@ -2024,6 +2024,9 @@ Shared request/result types are exported by `@marinara-engine/shared`. Keep pack
 From capability API **1.380**, `__MARINARA_HOST__.services.audio` provides Engine-owned playback and
 asset selection. Declare that minor in the package manifest, and update the Engine alongside the package.
 Speech remains in `services.tts`; music and sound effects use `services.audio`.
+`services.tts.ttsService.speakSequence(requests, id?, options?)` accepts `options.audioConnectionId`
+from 1.380, applying that selected speech connection to every chunk while retaining each request's
+voice. Leave it undefined for the normal default, or pass `""` to explicitly use legacy TTS settings.
 
 - `createPlayer()` returns an independent player with `unlock()`, `playMusic(tag, assets?)`,
   `stopMusic(immediate?)`, `playSfx(tag, assets?, loopCount?)`, `setVolumes({ music, sfx })`,

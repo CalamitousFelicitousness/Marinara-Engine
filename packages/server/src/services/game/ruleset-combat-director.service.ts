@@ -1938,18 +1938,44 @@ function rulesetZoneHarmAt(
   cell: { x: number; y: number },
 ): number {
   const filled = rulesetFootprintAt(cell, rulesetSpanOf(actor));
+  const from = rulesetPositionOf(actor);
+  const standsOn = from ? rulesetFootprintAt(from, rulesetSpanOf(actor)) : [];
   let harm = 0;
   for (const caster of encounter.combatants) {
     for (const zone of caster.zones ?? []) {
       const action = caster.actions.find((entry) => entry.id === zone.actionId);
-      if (!action?.damage || !zone.triggers.some((when) => when === "turn-start" || when === "turn-end")) continue;
+      if (!action?.damage) continue;
       const cells = rulesetZoneCells(encounter, caster, zone);
-      if (!filled.some((one) => cells.some((at) => at.x === one.x && at.y === one.y))) continue;
+      const covers = (at: ReadonlyArray<{ x: number; y: number }>) =>
+        at.some((one) => cells.some((cell) => cell.x === one.x && cell.y === one.y));
+      if (!covers(filled)) continue;
+      // Struck where it stays, or on the way in by one that strikes whoever enters (a teleport into
+      // an aura as much as a walk).
+      const strikes = zone.triggers.some(
+        (when) => when === "turn-start" || when === "turn-end" || (when === "enter" && !covers(standsOn)),
+      );
+      if (!strikes) continue;
       if (!rulesetZoneCatches(caster, zone, action, actor)) continue;
       harm += rulesetSafeAverage(action.damage);
     }
   }
   return harm;
+}
+
+/** Whether a lasting area or aura there would likely finish it (playtest: a mage at 4 health that Misty
+ *  Stepped into Spirit Guardians): no cell to step or teleport to, whatever it would gain there. */
+function rulesetZoneKillsAt(
+  definition: RulesetDefinition,
+  encounter: RulesetEncounterState,
+  actor: RulesetCombatant,
+  cell: { x: number; y: number },
+): boolean {
+  const combat = definition.combat;
+  if (!combat) return false;
+  const harm = rulesetZoneHarmAt(encounter, actor, cell);
+  if (harm <= 0) return false;
+  const health = rulesetCombatHealth(definition, combat, actor);
+  return harm >= health.value + health.temp;
 }
 
 /** The cell furthest from every opponent a combatant may walk to (1.745), its danger breaking ties:
@@ -3698,7 +3724,10 @@ function repositionCell(
   const foes = encounter.combatants.filter(
     (one) => one.side !== actor.side && rulesetCombatStanding(one) && !one.away && !!rulesetPositionOf(one),
   );
-  if (cells.length === 0 || foes.length === 0 || !rulesetPositionOf(actor)) return null;
+  if (foes.length === 0 || !rulesetPositionOf(actor)) return null;
+  // Never into a lasting area or aura that would finish it.
+  cells = cells.filter((cell) => !rulesetZoneKillsAt(definition, encounter, actor, cell));
+  if (cells.length === 0) return null;
   const nearest = (at: { x: number; y: number }) => Math.min(...foes.map((foe) => rulesetGapFrom(at, span, foe)));
   const here = rulesetPositionOf(actor)!;
   const health = rulesetCombatHealth(definition, combat, actor);
@@ -4219,7 +4248,9 @@ function shiftRulesetTemperament(
 ): { to: string; on: string } | undefined {
   const combat = definition.combat;
   const unit = [...state.party, ...state.enemies].find((one) => one.id === actor.id);
-  if (!combat || !unit?.tactics) return undefined;
+  // One that is down or out has no temper left to turn (playtest: "is out of the fight", then "is
+  // cornered and turns reckless").
+  if (!combat || !unit?.tactics || !rulesetCombatStanding(actor)) return undefined;
   const shifts = unit.aiHints?.shifts ?? rulesetCombatantBehavior(definition, actor)?.shifts;
   const health = rulesetCombatHealth(definition, combat, actor);
   const ours = encounter.combatants.filter(
@@ -5697,7 +5728,7 @@ function getClearToShoot(
     if (option.budget && shots.every((shot) => shot.option.budget === option.budget)) continue;
     let best: { cell: { x: number; y: number }; danger: number } | null = null;
     for (const cell of option.teleport.cells) {
-      if (!clear(cell)) continue;
+      if (!clear(cell) || rulesetZoneKillsAt(definition, encounter, actor, cell)) continue;
       const danger = rulesetDangerAt(definition, encounter, actor, cell);
       if (!best || danger < best.danger) best = { cell: { x: cell.x, y: cell.y }, danger };
     }

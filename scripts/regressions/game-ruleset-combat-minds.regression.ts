@@ -1027,6 +1027,47 @@ try {
       );
       assert.notEqual(shot?.mode, "disadvantage", "and not at disadvantage");
     }
+    // Nearly dead, and every cell it could step to lies in the knight's aura: it does not teleport into
+    // it to die there (playtest: a mage at 4 health that Misty Stepped into Spirit Guardians).
+    for (const health of [4, 60]) {
+      const misty = { id: "misty", name: "Misty Step", budget: "bonus", teleport: { distance: 30 } };
+      const { encounter, state } = wide(
+        { archer: { x: 3, y: 3 }, knight: { x: 2, y: 3 } },
+        {
+          archer: { side: "enemy", block: block({ type: "humanoid", mind: "cunning", health, actions: [bow, misty] }) },
+          knight: { side: "party", block: block({ health: 80, actions: [claw] }) },
+        },
+        { archer: { ...master, temperament: "disciplined" } },
+      );
+      const knight = rulesetCombatant(encounter, "knight")!;
+      const triggers = ["enter", "turn-start"];
+      knight.actions.push({
+        id: "guardians",
+        label: "Guardians",
+        kind: "attack",
+        budget: "action",
+        autoHit: true,
+        targets: { side: "enemy", count: 0 },
+        area: { shape: "burst", size: 12 },
+        damage: { count: 3, sides: 8, flat: 0 },
+        zone: { rounds: 10, triggers, anchor: "caster" },
+      } as never);
+      knight.zones = [{ actionId: "guardians", label: "Guardians", rounds: 10, anchor: "caster", triggers } as never];
+      state.rulesetFight = {
+        encounter,
+        events: [],
+        eventSeq: 0,
+        controllers: { knight: "manual" },
+        bosses: [],
+      } as never;
+      assert.ok(commandRulesetCombatDirector(definition, state, { type: "continue" }).ok);
+      const turn = state.rulesetFight!.events.map((entry) => entry.event);
+      assert.equal(
+        turn.some((event) => event.type === "teleported"),
+        health > 4,
+        `${health} health: ${JSON.stringify(turn)}`,
+      );
+    }
   }
 
   // ── Refused ──

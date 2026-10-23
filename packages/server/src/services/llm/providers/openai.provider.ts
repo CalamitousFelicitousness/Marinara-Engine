@@ -657,6 +657,22 @@ export class OpenAIProvider extends BaseLLMProvider {
       const geminiToolRound = hasToolCalls && this.isOpenRouterGeminiModel(model);
       return geminiToolRound && metadata.reasoning_details ? { reasoning_details: metadata.reasoning_details } : {};
     }
+    if (model && capabilityModelId(model).includes("claude")) {
+      // Anthropic takes a thinking block back only with the signature it was issued with. Claude behind an
+      // OpenAI-compatible endpoint hands its thinking back as plain reasoning text, which the endpoint turns
+      // into an unsigned thinking block and refuses (400 on the tool round after a roll_dice call, and on
+      // every later turn that replays the saved reply). Only signed reasoning goes back.
+      const signed = Array.isArray(metadata.reasoning_details)
+        ? metadata.reasoning_details.filter(
+            (detail): detail is Record<string, unknown> =>
+              typeof detail === "object" &&
+              detail !== null &&
+              typeof (detail as Record<string, unknown>).signature === "string" &&
+              !!(detail as Record<string, unknown>).signature,
+          )
+        : [];
+      return signed.length ? { reasoning_details: signed } : {};
+    }
     if (providerMetadata.partial === true) metadata.partial = true;
     if (Array.isArray(metadata.reasoning_details) && metadata.reasoning_details.length) {
       return { reasoning_details: metadata.reasoning_details };
@@ -778,6 +794,36 @@ export class OpenAIProvider extends BaseLLMProvider {
         if (response.ok) return response;
         errorText = await response.text();
       }
+    }
+    if (response.status === 400) {
+      // A bare "invalid request" says nothing about which part was refused. The shape of what was sent (roles,
+      // the fields each message carried, the request's own parameters) without any of its text is what finds it.
+      // The provider's own body can quote the prompt back, so only a sanitized copy is logged, in debug mode.
+      logDebugOverride(
+        options.debugMode === true || isDebugAgentsEnabled(),
+        "[debug/openai] %s refusal body: %s",
+        this.chatCompletionsErrorLabel(),
+        sanitizeApiError(errorText),
+      );
+      logger.warn(
+        {
+          status: response.status,
+          rawLength: errorText.length,
+          params: Object.keys(body).filter((key) => key !== "messages" && key !== "tools"),
+          tools: Array.isArray(body.tools) ? body.tools.length : 0,
+          messages: Array.isArray(body.messages)
+            ? body.messages.map((message: Record<string, unknown>) =>
+                [
+                  message.role,
+                  ...Object.keys(message).filter((key) => key !== "role" && key !== "content"),
+                  ...(message.content == null || message.content === "" ? ["(no content)"] : []),
+                ].join("+"),
+              )
+            : [],
+        },
+        "[OpenAI] %s refused the request",
+        this.chatCompletionsErrorLabel(),
+      );
     }
     const hint = ROLE_ALTERNATION_ERROR.test(errorText) ? ROLE_ALTERNATION_HINT : "";
     throw llmHttpErrorFromResponse(

@@ -12531,7 +12531,8 @@ function GameSurfaceComponent({
                     </button>
                   )}
                 </div>
-              ) : (
+              ) : prepareInitialWidgetsOpen ? null : (
+                // The starting widgets sheet has its own Start Game; one button at a time.
                 <button
                   onClick={() => {
                     audioManager.unlock();

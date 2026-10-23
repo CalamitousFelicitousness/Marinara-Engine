@@ -1461,7 +1461,9 @@ const capabilityPackageManifestBaseSchema = z
 //        its manifest declares 1.374 or newer.
 // 1.375: how the fight screen shows a ruleset: a budget's `short` letters and `tone`, and `combat.display`
 //        (the defense column's `short` and `hide`, and which pools show under a turn).
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 376 } as const);
+// 1.376: Home package browser fullscreen controls.
+// 1.377: explicit Motion 14 host slot (motion/react); the existing framer-motion slot stays on Motion 13.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 377 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

@@ -19,7 +19,8 @@ const dataDir = mkdtempSync(join(tmpdir(), "marinara-ruleset-stand-in-fight-"));
 process.env.DATA_DIR = dataDir;
 process.env.FILE_STORAGE_DIR = join(dataDir, "storage");
 
-const { createRulesetFight } = await import("../../packages/server/src/services/game/ruleset-combat-director.service.js");
+const { createRulesetFight } =
+  await import("../../packages/server/src/services/game/ruleset-combat-director.service.js");
 
 try {
   const read = (path: string) => readFileSync(fileURLToPath(new URL(path, import.meta.url)), "utf8");
@@ -70,7 +71,7 @@ try {
     assert.ok(built.fight.adjustments.includes("User fights as Ada, the character the player plays."));
   }
 
-  // Ada already in the party: nobody else becomes her, and the sheetless member is refused as before.
+  // Ada already in the party: nobody else becomes her, and the sheetless member sits out.
   {
     const built = fight(
       [
@@ -79,26 +80,41 @@ try {
       ],
       null,
     );
-    assert.equal(built.ok, false);
+    assert.ok(built.ok, built.ok ? "" : built.error);
+    assert.deepEqual(
+      built.fight.encounter.combatants.filter((one) => one.side === "party").map((one) => one.name),
+      ["Ada"],
+    );
+    assert.ok(built.fight.adjustments.includes("User has no ruleset sheet and stays out of the fight."));
   }
 
-  // With a persona the player is the persona, never a card.
+  // With a persona the player is the persona, never a card: a party with no sheet at all is refused.
   {
     const built = fight([{ id: "user", name: "User" }], "Mia");
     assert.equal(built.ok, false);
+    if (!built.ok) assert.match(built.error, /^Nobody in this party has a ruleset sheet/);
   }
 
   // The routes and the screen.
   const encounter = read("../../packages/server/src/routes/encounter.routes.ts");
-  assert.equal((encounter.match(/withStandIn\(/g) ?? []).length >= 4, true, "every encounter call site reads the stand-in");
+  assert.equal(
+    (encounter.match(/withStandIn\(/g) ?? []).length >= 4,
+    true,
+    "every encounter call site reads the stand-in",
+  );
   const screen = read("../../packages/client/src/components/game/DirectedCombatUI.tsx");
   assert.match(screen, /props\.onCombatEnd\("flee", \{ outcome: "flee", rounds: 0, party: \[\], enemies: \[\] \}\)/);
   assert.match(screen, /game\.combat\.director\.leave/);
   // S4: the reply's own wear tags count before its sheet commands are read.
   const route = read("../../packages/server/src/routes/generate.routes.ts");
-  assert.match(route, /input\.regenerateMessageId,\s*\/\/ What the reply puts on[^\n]*\n\s*\{\s*content: fullResponse,\s*party: \{ player: gameStandIn/);
+  assert.match(
+    route,
+    /input\.regenerateMessageId,\s*\/\/ What the reply puts on[^\n]*\n\s*\{\s*content: fullResponse,\s*party: \{ player: gameStandIn/,
+  );
 
-  console.log("Stand-in fight: a persona-less party's User fights as the first card, never doubled, with a way out of a broken battle.");
+  console.log(
+    "Stand-in fight: a persona-less party's User fights as the first card, never doubled, with a way out of a broken battle.",
+  );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

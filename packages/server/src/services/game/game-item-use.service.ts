@@ -22,6 +22,10 @@ import {
   type RulesetItemUseRefusal,
   type RulesetItemUseSaid,
   type RulesetLiveStates,
+  applyRulesetRestRecoveries,
+  rulesetRestRecoveries,
+  type RulesetRestRecovery,
+  type RulesetUseRecover,
 } from "@marinara-engine/shared";
 import type { DB } from "../../db/connection.js";
 import { resolveVisibleGameStateAnchor } from "../../routes/generate/generate-route-utils.js";
@@ -29,7 +33,11 @@ import { createChatsStorage, withChatMetadataPatchQueue } from "../storage/chats
 import { createGameStateStorage, parseStoredRulesetLive } from "../storage/game-state.storage.js";
 import { rollDieSecurely } from "./dice-rng.js";
 import { applyGameInventoryChangeHeld, loadGameInventoryItemBook, readMetadata } from "./game-inventory.service.js";
-import { loadGameRulesetSheetContext, type GameRulesetSheetContext } from "./ruleset-sheet-turn.service.js";
+import {
+  loadGameRulesetSheetContext,
+  loadTurnRulesetCatalogs,
+  type GameRulesetSheetContext,
+} from "./ruleset-sheet-turn.service.js";
 
 export type GameItemUseResult =
   | {
@@ -155,7 +163,7 @@ function useForCarrier(
   if (!outcome.ok) return { outcome, live };
   const next: RulesetLiveStates = { ...live };
   // A character back at their defaults drops out of the store, as the in-game sheet leaves them.
-  if (Object.keys(outcome.live).length > 0) next[key] = outcome.live;
+  if (outcome.live && Object.keys(outcome.live).length > 0) next[key] = outcome.live;
   else delete next[key];
   return { outcome, live: next, ...(revealed ? { revealed } : {}) };
 }
@@ -336,11 +344,14 @@ export async function restGameRulesetCharacter(
   roll: (sides: number) => number = rollDieSecurely,
   /** The dice spent to heal first, by pool: the hit dice a Short rest asks for. */
   diceFrom?: Record<string, number>,
+  /** The features the player chose to use as it ends (1.773), with what each gives back. */
+  recover?: ReadonlyArray<{ name: string; recover: RulesetUseRecover[] }>,
 ): Promise<GameRestResult> {
   const context = await loadGameRulesetSheetContext(db, chatId);
   if (!context) return { ok: false, status: 409, error: "This game has no ruleset", reason: "no-ruleset" };
   const found = cardAndBag(context, character);
   if (!found) return { ok: false, status: 404, error: "No such character", reason: "unknown-character" };
+  const catalogs = recover?.length ? await loadTurnRulesetCatalogs(context, "", { force: true }) : {};
   const book = await loadGameInventoryItemBook(db, { chatId }, "player");
   const key = normalizeCharacterLookupName(found.card.name);
   let result: GameRestResult | null = null;
@@ -370,6 +381,22 @@ export async function restGameRulesetCharacter(
           held,
         );
         if (!rested.ok) throw new RestRefused(rested.reason);
+        // What the player chose to use as it ends (1.773): Arcane Recovery's slots, after the rest.
+        if (recover?.length) {
+          const used = applyRulesetRestRecoveries(
+            context.definition,
+            found.card.build,
+            rested.live,
+            catalogs,
+            rest,
+            recover,
+            roll,
+            held,
+          );
+          if (!used.ok) throw new RestRefused(used.reason);
+          rested.live = (used.live ?? {}) as typeof rested.live;
+          rested.now = [rested.now, ...used.now].join("; ");
+        }
         let recharged: RulesetItemRecharge[] = [];
         const committed = book
           ? await applyGameInventoryChangeHeld(db, chatId, (stacks) => {
@@ -487,4 +514,29 @@ class RestRefused extends Error {
   constructor(readonly reason: string) {
     super(reason);
   }
+}
+
+/** The features a rest offers this character to use as it ends (1.773), read off their sheet as it
+ *  stands: what the rest dialog lists, each with what it would give back by itself. */
+export async function gameRulesetRestOffers(
+  db: DB,
+  chatId: string,
+  character: string,
+  rest: string,
+): Promise<{ ok: true; offers: RulesetRestRecovery[] } | { ok: false; status: 404 | 409; error: string }> {
+  const context = await loadGameRulesetSheetContext(db, chatId);
+  if (!context) return { ok: false, status: 409, error: "This game has no ruleset" };
+  const found = cardAndBag(context, character);
+  if (!found) return { ok: false, status: 404, error: "No such character" };
+  // Only a rest some feature names is worth reading catalogs for.
+  if (!context.definition.rests.some((one) => one.id === rest)) return { ok: true, offers: [] };
+  const catalogs = await loadTurnRulesetCatalogs(context, "", { force: true });
+  const visibleAnchor = resolveVisibleGameStateAnchor(await createChatsStorage(db).listMessages(chatId));
+  const row = await createGameStateStorage(db).getForGeneration(chatId, { preferLatestVisible: true, visibleAnchor });
+  const stored: RulesetLiveStates = parseStoredRulesetLive(row?.rulesetLive) ?? {};
+  const key = normalizeCharacterLookupName(found.card.name);
+  return {
+    ok: true,
+    offers: rulesetRestRecoveries(context.definition, found.card.build, stored[key], catalogs, rest),
+  };
 }

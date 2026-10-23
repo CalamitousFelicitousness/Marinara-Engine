@@ -3266,6 +3266,8 @@
   "game.ruleset.sheet.restFailed": "The rest could not be taken. Nothing changed.",
   "game.ruleset.sheet.restoreAria": "Restore one {{name}} for {{who}}",
   "game.ruleset.sheet.restRecharged": "{{item}} {{now}}/{{max}} charges",
+  "game.ruleset.sheet.restRecover": "Use {{name}} as the {{rest}} ends (up to {{levels}} levels)",
+  "game.ruleset.sheet.restRecoverAria": "{{name}} that {{feature}} gives back to {{who}}",
   "game.ruleset.sheet.save": "Save sheet",
   "game.ruleset.sheet.saved": "{{name}}'s sheet was saved.",
   "game.ruleset.sheet.saveFailed": "The sheet for {{name}} could not be saved.",

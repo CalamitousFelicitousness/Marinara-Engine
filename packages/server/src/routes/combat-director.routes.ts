@@ -38,7 +38,6 @@ import {
   combatOrdersSchema,
   combatTacticsSchema,
   combatAiHintsSchema,
-  normalizeCharacterLookupName,
   rulesetBestiarySheetCatalogIds,
   rulesetCardHolder,
   rulesetCardItems,
@@ -968,11 +967,9 @@ export async function combatDirectorRoutes(
                 persona?.name ?? null,
               )
             : undefined;
+          // Every sheet's lists, since the fight's party is who holds a sheet, whatever names the setup used.
           const partyLists = new Set(
-            input.party.flatMap((member) => {
-              const build = builds.get(normalizeCharacterLookupName(member.name));
-              return build ? rulesetCatalogIdsForBuild(definition, build) : [];
-            }),
+            [...builds.values()].flatMap((build) => rulesetCatalogIdsForBuild(definition, build)),
           );
           // One read of the visible game state, for both its live sheets and its time of day.
           const liveRow = (await visibleLiveRow(input.chatId)).row;
@@ -1030,6 +1027,31 @@ export async function combatDirectorRoutes(
             time: liveRow?.time ?? null,
           });
           if (!built.ok) return reply.code(400).send({ error: built.error });
+          // The Engine's own party array follows the fight's: a sheet the setup left out joins it, a
+          // member with no sheet leaves it, and a stand-in carries its card's name (2026-10-23 playtest).
+          const fought = new Map(
+            built.fight.encounter.combatants.flatMap((one) =>
+              one.side === "party" ? [[one.id, one.name] as const] : [],
+            ),
+          );
+          const template = state.party[0];
+          state.party = state.party.filter((unit) => fought.has(unit.id));
+          for (const unit of state.party) unit.name = fought.get(unit.id) ?? unit.name;
+          for (const [id, name] of fought) {
+            if (state.party.some((unit) => unit.id === id)) continue;
+            state.party.push({
+              id,
+              name,
+              hp: 1,
+              maxHp: 1,
+              attack: 0,
+              defense: 0,
+              speed: 0,
+              level: 1,
+              side: "player",
+              ...(template?.controller ? { controller: template.controller } : {}),
+            });
+          }
           state.rulesetFight = built.fight;
           syncRulesetCombatants(definition, state);
           state.stage = rulesetDirectorStage(state);

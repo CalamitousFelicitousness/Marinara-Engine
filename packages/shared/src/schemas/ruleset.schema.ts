@@ -7841,6 +7841,9 @@ const catalogMechanicsObject = z
         upTo: rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>,
         most: z.number().int().min(1).max(100).optional(),
         count: z.number().int().min(1).max(20).optional(),
+        /** The rest (Capability API 1.773) that offers to use it as it ends, with the spent pools to
+         *  give back picked there: 5e's Arcane Recovery and Natural Recovery on a Short rest. */
+        atRest: sheetId.optional(),
       })
       .strict()
       .optional(),
@@ -11843,6 +11846,10 @@ export const rulesetItemUseSchema = catalogMechanicsObject
     }
     if (use.recovers && use.recovers.count === undefined) {
       issue("recovers", "An item's use says how many spent pools it gives back, as count");
+    }
+    // A rest offers a feature (1.773); an item is used when its holder uses it.
+    if (use.recovers?.atRest !== undefined) {
+      issue("recovers", "atRest is for a feature a rest offers, not an item's use");
     }
     // As is raising an ability (1.500), and only its own user's.
     if (use.raises && (use.kind !== "buff" || use.targets !== "self")) {
@@ -24537,6 +24544,12 @@ export function rulesetCatalogEntryIssues(
     if (mechanics?.recovers) {
       if (!definition.sheet.live.pools.some((pool) => pool.group === mechanics.recovers!.group))
         add([index, "mechanics", "recovers", "group"], `Unknown pool group "${mechanics.recovers.group}"`);
+      // The rest that offers it (1.773) is one the ruleset has.
+      if (
+        mechanics.recovers.atRest !== undefined &&
+        !definition.rests.some((rest) => rest.id === mechanics.recovers!.atRest)
+      )
+        add([index, "mechanics", "recovers", "atRest"], `Unknown rest "${mechanics.recovers.atRest}"`);
       for (const found of rulesetValueRefIssues(mechanics.recovers.upTo, names, names.derived, false)) {
         add([index, "mechanics", "recovers", "upTo", found.key], found.message);
       }

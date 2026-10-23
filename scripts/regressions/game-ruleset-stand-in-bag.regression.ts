@@ -11,6 +11,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  applyGameInventoryTags,
   gameInventoryBags,
   gameInventoryFoldStandIn,
   parseRulesetDefinition,
@@ -74,6 +75,32 @@ const names = (items: ReturnType<ReturnType<typeof rulesetCardItems>>) => items.
   const itemsOf = rulesetCardItems(book, stacks, ["Ada", "Brannoc"], "Ada");
   assert.deepEqual(names(itemsOf("Brannoc")), ["Lantern-keeper's coat"]);
   assert.deepEqual(names(itemsOf("Ada")), ["Grave spade"], "the player's own bag, as before");
+}
+
+// A save from before: what was put in the stand-in's own name is still reached by the Game Master's
+// tags, with or without who= (2026-10-23 retest).
+{
+  const party = { player: "Brannoc", members: ["Brannoc", "Ada"] };
+  const named = applyGameInventoryTags(
+    `[inventory: action="unequip" item="Lantern-keeper's coat" who="Brannoc"]`,
+    stacks,
+    party,
+    undefined,
+    book,
+  );
+  const coat = named.stacks.find((stack) => stack.name === "Lantern-keeper's coat");
+  assert.ok(coat && !coat.equipped, JSON.stringify(named.stacks));
+  assert.equal(coat.holder, undefined, "folded into the player's bag");
+  const plain = applyGameInventoryTags(
+    `[inventory: action="unequip" item="Lantern-keeper's coat"]`,
+    stacks,
+    party,
+    undefined,
+    book,
+  );
+  assert.ok(!plain.stacks.find((stack) => stack.name === "Lantern-keeper's coat")!.equipped);
+  // Ada's own bag is hers.
+  assert.equal(named.stacks.find((stack) => stack.name === "Watch pistol")!.holder, "Ada");
 }
 
 // The Game Master's tags and the window.

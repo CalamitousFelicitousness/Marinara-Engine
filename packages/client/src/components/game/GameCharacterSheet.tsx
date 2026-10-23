@@ -24,8 +24,10 @@ import type {
   RulesetDefinition,
   RulesetLayerOptions,
   RulesetLiveState,
+  RulesetRestRecovery,
   RulesetSheetEnvelope,
   RulesetSheetItem,
+  RulesetUseRecover,
 } from "@marinara-engine/shared";
 import { cn, getAvatarCropStyle } from "../../lib/utils";
 import { useBackdropDismiss } from "../../hooks/use-backdrop-dismiss";
@@ -93,7 +95,12 @@ export type GameCharacterSheetRuleset =
       /** What the character holds, which a value reading their items shows. */
       items?: ReadonlyArray<RulesetSheetItem>;
       /** A rest the game takes, with the charges it brings back to what the character carries. */
-      onRest?: (rest: string, diceFrom?: Record<string, number>) => Promise<string | null>;
+      onRest?: (
+        rest: string,
+        diceFrom?: Record<string, number>,
+        recover?: Array<{ name: string; recover: RulesetUseRecover[] }>,
+      ) => Promise<string | null>;
+      onRestOffers?: (rest: string) => Promise<RulesetRestRecovery[]>;
     };
 
 interface GameCharacterSheetProps {
@@ -731,6 +738,7 @@ export function GameCharacterSheet({
                   readOnly={ruleset.readOnly}
                   items={ruleset.items}
                   onRest={ruleset.onRest}
+                  onRestOffers={ruleset.onRestOffers}
                 />
               ) : (
                 <p className="text-xs text-[var(--muted-foreground)]">

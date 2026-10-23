@@ -1,5 +1,6 @@
 import { CombatWeatherSummary } from "./CombatWeatherSummary";
 import { useCallback, useEffect, useMemo, useRef, type ComponentProps } from "react";
+import { ApiError } from "../../lib/api-client";
 import type {
   CombatDecisionOption,
   RulesetDefinition,
@@ -81,6 +82,10 @@ export function DirectedCombatUI(props: Props) {
     return (
       <div className="flex h-full items-center justify-center p-4 text-[var(--foreground)]" role="status">
         {error ? t("game.combat.director.error") : t("game.combat.director.loading")}
+        {/* The server's own reason, where it gave one: "Nobody in this party has a ruleset sheet". */}
+        {error instanceof ApiError && typeof (error.payload as { error?: unknown } | undefined)?.error === "string" && (
+          <span className="ml-2 text-[var(--muted-foreground)]">{(error.payload as { error: string }).error}</span>
+        )}
         {error && (
           <button onClick={() => void refresh()} className="ml-3 min-h-11 px-3">
             {t("game.combat.director.retry")}

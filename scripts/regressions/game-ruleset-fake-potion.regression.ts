@@ -94,4 +94,20 @@ const poisoned = (live: unknown) =>
   assert.ok(!poisoned(half.live));
 }
 
+// A drinker with no live state yet who makes the save: still a state, never undefined (2026-10-23 retest:
+// the server read its keys and threw).
+{
+  const stacks: GameInventoryStack[] = [{ id: "st", name: "Bottle", item: "gear/bad", quantity: 2 }];
+  const used = useRulesetItemOutsideFight({
+    definition,
+    itemOf: book.itemOf,
+    stacks,
+    stackId: "st",
+    user: { name: "Ada", build, live: undefined },
+    roll: (sides: number) => (sides === 20 ? 20 : 6),
+  });
+  assert.ok(used.ok, JSON.stringify(used));
+  assert.deepEqual(used.live, {});
+}
+
 console.log("A fake potion drunk: its save, its harm and what it applies, on whoever drank it.");

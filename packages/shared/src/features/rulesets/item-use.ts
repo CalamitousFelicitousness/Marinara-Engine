@@ -530,7 +530,8 @@ export function useRulesetItemOutsideFight(input: {
     ok: true,
     stacks: spent.stacks,
     journal,
-    live: live as RulesetLiveState,
+    // A user with no live state yet, whom nothing changed, is still a state (a made save, 2026-10-23).
+    live: (live ?? {}) as RulesetLiveState,
     said: {
       user: user.name,
       item: chosen ? `${entry.name}: ${chosen.label}` : entry.name,

@@ -24,6 +24,7 @@ import {
   type GameInventoryCoin,
   type GameInventoryItemRules,
   type GameInventoryStack,
+  gameInventoryFoldStandIn,
   gameInventoryStackKind,
   gameInventoryStackNamed,
   revealGameInventoryFake,
@@ -224,7 +225,9 @@ export function applyGameInventoryTags(
    *  refused. */
   market?: GameInventoryMarket,
 ): GameInventoryTagsOutcome {
-  let current = stacks;
+  // What was put in the player's own name before is the player's bag (2026-10-23 playtest): a save
+  // from before a persona-less party's first card played as the player keeps its gear in reach.
+  let current = party.player ? gameInventoryFoldStandIn(stacks, party.player) : stacks;
   const journal: GameInventoryJournalEntry[] = [];
   let tags = 0;
 

@@ -28,6 +28,8 @@ import {
   type GameInventoryStack,
   type PlayerStats,
   type RulesetLiveStates,
+  type RulesetRestRecovery,
+  type RulesetUseRecover,
   type CreaturePack,
   rulesetCardItems,
   rulesetReadsItems,
@@ -9943,7 +9945,10 @@ function GameSurfaceComponent({
     }
     if (pendingEncounter || combatUiActive || combatGenerationPending || combatGenerationError) return;
     if (preparedCombatState?.messageId === queuedCombatGeneration.messageId) return;
-    if (isStreaming || scenePreparing || assetGenerationBlocksScene) return;
+    // The setup reads the saved reply, not the scene: it starts as soon as the reply is in, while the
+    // scene and its pictures are still being prepared (a 6.5-minute wait in the 2026-10-23 playtest),
+    // and the fight is only shown once they are, below.
+    if (isStreaming) return;
 
     generateCombatStateForMessage(queuedCombatGeneration.messageId, queuedCombatGeneration.notify);
   }, [
@@ -9954,11 +9959,9 @@ function GameSurfaceComponent({
     generateCombatStateForMessage,
     isStreaming,
     latestAssistantMsg?.id,
-    assetGenerationBlocksScene,
     pendingEncounter,
     preparedCombatState?.messageId,
     queuedCombatGeneration,
-    scenePreparing,
   ]);
 
   useEffect(() => {
@@ -10875,7 +10878,12 @@ function GameSurfaceComponent({
    *  charges it brings back to what the character carries are written with the sheet. Answers with
    *  what the sheet shows after it, or null when it was not taken. */
   const handleRulesetRest = useCallback(
-    async (cardTitle: string, rest: string, diceFrom?: Record<string, number>): Promise<string | null> => {
+    async (
+      cardTitle: string,
+      rest: string,
+      diceFrom?: Record<string, number>,
+      recover?: Array<{ name: string; recover: RulesetUseRecover[] }>,
+    ): Promise<string | null> => {
       if (!activeChatId) return null;
       try {
         // A sheet edit still waiting to be saved lands first, so the rest starts from it.
@@ -10887,7 +10895,13 @@ function GameSurfaceComponent({
             now: string;
             recharged: Array<{ item: string; now: number; max: number }>;
             playerStats?: PlayerStats;
-          }>("/game/inventory/rest", { chatId, character: cardTitle, rest, ...(diceFrom ? { diceFrom } : {}) }),
+          }>("/game/inventory/rest", {
+            chatId,
+            character: cardTitle,
+            rest,
+            ...(diceFrom ? { diceFrom } : {}),
+            ...(recover ? { recover } : {}),
+          }),
         );
         if (!rested) return null;
         return [
@@ -10939,7 +10953,22 @@ function GameSurfaceComponent({
       // Where the ruleset has items, a rest may bring charges back to what is carried.
       ...(inventoryItemBook
         ? {
-            onRest: (rest: string, diceFrom?: Record<string, number>) => handleRulesetRest(cardTitle, rest, diceFrom),
+            onRest: (
+              rest: string,
+              diceFrom?: Record<string, number>,
+              recover?: Array<{ name: string; recover: RulesetUseRecover[] }>,
+            ) => handleRulesetRest(cardTitle, rest, diceFrom, recover),
+            // What a rest offers to use as it ends (1.773), read off the server's sheet.
+            onRestOffers: async (rest: string) =>
+              activeChatId
+                ? (
+                    await api.post<{ offers: RulesetRestRecovery[] }>("/game/inventory/rest-offers", {
+                      chatId: activeChatId,
+                      character: cardTitle,
+                      rest,
+                    })
+                  ).offers
+                : [],
           }
         : {}),
       onEnvelopeSave: (next) => handleSaveRulesetSheet(cardTitle, next),
@@ -10949,6 +10978,7 @@ function GameSurfaceComponent({
       ...(combatUiActive ? { readOnly: true } : {}),
     };
   }, [
+    activeChatId,
     combatUiActive,
     characterSheetCharId,
     findStoredGameCard,

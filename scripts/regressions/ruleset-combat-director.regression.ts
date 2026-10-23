@@ -284,16 +284,18 @@ const emberParty = [
   assert.equal(unitOf(state, "brenna").maxHp, 60, "the Engine's own party array is kept in step");
   assert.equal(unitOf(state, "brenna").hp, 60);
 
-  assert.match(
-    refusedStart({
+  // A member the setup invented, with no sheet, stays out of the fight (2026-10-23 playtest).
+  {
+    const without = started({
       definition: fiveE,
       cards: fiveECards,
       partyCatalogs: spellCatalogs,
       party: [...fiveEParty, { id: "tam", name: "Tam" }],
       enemies: [{ id: "lurker", name: "Thorn Lurker" }],
-    }),
-    /^Tam has no ruleset sheet/,
-  );
+    });
+    assert.ok(!without.rulesetFight!.encounter.combatants.some((one) => one.id === "tam"));
+    assert.ok(without.rulesetFight!.adjustments.includes("Tam has no ruleset sheet and stays out of the fight."));
+  }
 
   // The pools a ruleset names for the turn are shown in its order, once each (1.375).
   const shown = parsedOrThrow(
@@ -323,16 +325,18 @@ const emberParty = [
     enemies: [{ id: "moth", name: "Cinder Moth" }],
   });
   assert.equal(view(ember, rough).ruleset.id, "ember-roads");
-  assert.match(
-    refusedStart({
+  // A member the setup invented, with no sheet, stays out of the fight (2026-10-23 playtest).
+  {
+    const without = started({
       definition: ember,
       cards: emberCards,
       partyCatalogs: emberCatalogs,
       party: [...emberParty, { id: "wick", name: "Wick" }],
       enemies: [{ id: "moth", name: "Cinder Moth" }],
-    }),
-    /^Wick has no ruleset sheet/,
-  );
+    });
+    assert.ok(!without.rulesetFight!.encounter.combatants.some((one) => one.id === "wick"));
+    assert.ok(without.rulesetFight!.adjustments.includes("Wick has no ruleset sheet and stays out of the fight."));
+  }
 }
 
 // ── Where an opponent's numbers come from: a bestiary, a proposal, a tier ──

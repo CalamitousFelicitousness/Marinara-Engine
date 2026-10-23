@@ -9,7 +9,7 @@
 // Nothing here knows a system by name. Every pool, track, note, condition and rest is read out of
 // the definition, so a ruleset whose only resource is an empty-start "stress" track renders as
 // completely as one with spell slots.
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Check, Minus, Pencil, Plus, X } from "lucide-react";
 import type { TFunction } from "i18next";
 import { useTranslation as useUiTranslation } from "react-i18next";
@@ -43,6 +43,8 @@ import {
   type RulesetSheetEnvelope,
   type RulesetSheetOp,
   type RulesetSheetItem,
+  type RulesetRestRecovery,
+  type RulesetUseRecover,
 } from "@marinara-engine/shared";
 import { ArtIcon } from "./ArtIcon";
 import { rulesetEffectPhrase } from "./RulesetItemPicker";
@@ -508,7 +510,13 @@ export interface GameRulesetSheetProps {
   items?: ReadonlyArray<RulesetSheetItem>;
   /** A rest taken by the game rather than here: the sheet and what the character carries change
    *  together, and it answers with the rest's own words, or null when it was not taken. */
-  onRest?: (rest: string, diceFrom?: Record<string, number>) => Promise<string | null>;
+  onRest?: (
+    rest: string,
+    diceFrom?: Record<string, number>,
+    recover?: Array<{ name: string; recover: RulesetUseRecover[] }>,
+  ) => Promise<string | null>;
+  /** The features a rest offers to use as it ends (1.773): Arcane Recovery on a Short rest. */
+  onRestOffers?: (rest: string) => Promise<RulesetRestRecovery[]>;
 }
 
 export function GameRulesetSheet({
@@ -526,6 +534,7 @@ export function GameRulesetSheet({
   onDraftStart,
   items,
   onRest,
+  onRestOffers,
 }: GameRulesetSheetProps) {
   const readOnly = locked || buildOnly;
   // In a fight on screen the sheet is read as it stands: only what play spends (points, slots,
@@ -541,6 +550,10 @@ export function GameRulesetSheet({
   const [resting, setResting] = useState(false);
   // The dice a rest spends to heal first (a Short rest's hit dice), picked pool by pool before it.
   const [restDice, setRestDice] = useState<Record<string, number>>({});
+  // What each rest offers to use as it ends (1.773), by rest, and what the player picked of it: on or
+  // off, and how many of each spent pool, keyed "rest/feature".
+  const [restOffers, setRestOffers] = useState<Record<string, RulesetRestRecovery[]>>({});
+  const [restRecover, setRestRecover] = useState<Record<string, { on: boolean; counts: Record<string, number> }>>({});
 
   const layerNames = layers?.map((layer) => layer.label).join(", ") || null;
 
@@ -622,6 +635,39 @@ export function GameRulesetSheet({
       return pool && pool.value > 0 ? [pool] : [];
     });
   }, [definition.rests, resolved.pools]);
+
+  // Read again whenever the sheet changes, since a spent slot or a used counter changes the offer.
+  const settledForOffers = readOnly || inFight;
+  useEffect(() => {
+    if (!onRestOffers || settledForOffers || definition.rests.length === 0) return;
+    let cancelled = false;
+    void Promise.all(
+      definition.rests.map((rest) =>
+        onRestOffers(rest.id)
+          .then((offers) => [rest.id, offers] as const)
+          .catch(() => [rest.id, [] as RulesetRestRecovery[]] as const),
+      ),
+    ).then((pairs) => {
+      if (cancelled) return;
+      setRestOffers(Object.fromEntries(pairs.filter(([, offers]) => offers.length > 0)));
+      setRestRecover((current) => {
+        const next: typeof current = {};
+        for (const [rest, offers] of pairs) {
+          for (const offer of offers) {
+            const key = `${rest}/${offer.name}`;
+            next[key] = {
+              on: current[key]?.on ?? false,
+              counts: Object.fromEntries(offer.picks.map((pick) => [pick.pool, pick.count])),
+            };
+          }
+        }
+        return next;
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [onRestOffers, settledForOffers, definition.rests, live]);
 
   const poolGroups = useMemo(() => {
     const groups: Array<{ id: string; pools: ResolvedRulesetLive["pools"] }> = [];
@@ -1087,8 +1133,16 @@ export function GameRulesetSheet({
                           const diceFrom = Object.keys(picked).length > 0 ? picked : undefined;
                           setRestDice({});
                           if (!onRest) return apply({ op: "rest", rest: rest.id, ...(diceFrom ? { diceFrom } : {}) });
+                          // The features ticked for this rest, with the spent pools picked for each.
+                          const recover = (restOffers[rest.id] ?? []).flatMap((offer) => {
+                            const chosen = restRecover[`${rest.id}/${offer.name}`];
+                            const pools = Object.entries(chosen?.counts ?? {})
+                              .filter(([, count]) => count > 0)
+                              .map(([pool, count]) => ({ pool, count }));
+                            return chosen?.on && pools.length > 0 ? [{ name: offer.name, recover: pools }] : [];
+                          });
                           setResting(true);
-                          void onRest(rest.id, diceFrom)
+                          void onRest(rest.id, diceFrom, recover.length > 0 ? recover : undefined)
                             .then((now) => {
                               if (now !== null) setRestNotice(now);
                             })
@@ -1131,6 +1185,62 @@ export function GameRulesetSheet({
                       ))}
                     </div>
                   )}
+                  {!settled &&
+                    definition.rests.flatMap((rest) =>
+                      (restOffers[rest.id] ?? []).map((offer) => {
+                        const key = `${rest.id}/${offer.name}`;
+                        const chosen = restRecover[key] ?? { on: false, counts: {} };
+                        const set = (next: Partial<typeof chosen>) =>
+                          setRestRecover((current) => ({ ...current, [key]: { ...chosen, ...next } }));
+                        return (
+                          <div key={key} className="space-y-1 text-[0.6875rem]">
+                            <label className="flex items-center gap-1.5">
+                              <input
+                                type="checkbox"
+                                checked={chosen.on}
+                                onChange={(event) => set({ on: event.target.checked })}
+                              />
+                              <span>
+                                {localizeUi("game.ruleset.sheet.restRecover", {
+                                  name: offer.name,
+                                  rest: rest.label,
+                                  levels: offer.upTo,
+                                })}
+                              </span>
+                            </label>
+                            {chosen.on && (
+                              <div className="flex flex-wrap items-center gap-2 pl-5">
+                                {offer.pools.map((pool) => (
+                                  <label key={pool.key} className="flex items-center gap-1">
+                                    <span>{pool.label}</span>
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      max={pool.spent}
+                                      value={chosen.counts[pool.key] ?? 0}
+                                      onChange={(event) => {
+                                        const count = Math.min(
+                                          Math.max(Math.trunc(Number(event.target.value) || 0), 0),
+                                          pool.spent,
+                                        );
+                                        set({ counts: { ...chosen.counts, [pool.key]: count } });
+                                      }}
+                                      aria-label={localizeUi("game.ruleset.sheet.restRecoverAria", {
+                                        name: pool.label,
+                                        feature: offer.name,
+                                        who: cardName,
+                                      })}
+                                      className="w-12 rounded border border-[var(--border)] bg-transparent px-1 py-0.5 text-center"
+                                    />
+                                    <span className="text-[var(--muted-foreground)]">/ {pool.spent}</span>
+                                  </label>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      }),
+                    )}
                   {restNotice && (
                     <p role="status" className="text-[0.6875rem] text-[var(--muted-foreground)]">
                       {restNotice}

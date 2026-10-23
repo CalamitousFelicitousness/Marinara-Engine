@@ -2561,6 +2561,132 @@ export function rulesetRecoverPicks(
   return picks;
 }
 
+/** A feature a rest offers to use as it ends (Capability API 1.773): its `recovers.atRest` names the
+ *  rest. 5e's Arcane Recovery and Natural Recovery on a Short rest. */
+export interface RulesetRestRecovery {
+  /** The entry's name, as a `use` names it. */
+  name: string;
+  /** The most levels it gives back in all, read off the sheet. */
+  upTo: number;
+  /** No pool above this level. */
+  most?: number;
+  /** How many pools in all, at most. */
+  count?: number;
+  /** The spent pools of its group it may give back, highest level first. */
+  pools: Array<{ key: string; label: string; level: number; spent: number }>;
+  /** What it gives back by itself: the highest spent pools that fit. */
+  picks: RulesetUseRecover[];
+}
+
+/** The features a rest offers to use as it ends (1.773): every entry on the sheet whose `recovers`
+ *  names this rest in `atRest`, that has a use left and something spent to give back. */
+export function rulesetRestRecoveries(
+  definition: RulesetDefinition,
+  build: RulesetSheetBuild,
+  stored: unknown,
+  catalogs: RulesetCatalogEntriesById,
+  restId: string,
+): RulesetRestRecovery[] {
+  const byRef = rulesetCatalogEntriesByRef(catalogs);
+  const seen = new Set<string>();
+  const offers: RulesetRestRecovery[] = [];
+  const resolved = readRulesetLive(definition, build, stored).pools;
+  for (const list of definition.sheet.lists) {
+    const rows = build.lists?.[list.id];
+    if (!Array.isArray(rows)) continue;
+    for (const row of rows) {
+      if (!row || typeof row !== "object") continue;
+      const ref = own(row as Record<string, unknown>, RULESET_CATALOG_ROW_KEY);
+      if (typeof ref !== "string" || seen.has(ref)) continue;
+      seen.add(ref);
+      const entry = byRef.get(ref);
+      const recovers = entry?.mechanics?.recovers;
+      if (!entry || !recovers || recovers.atRest !== restId) continue;
+      const group = definition.sheet.live.pools.filter((pool) => pool.group === recovers.group);
+      const levelOf = (id: string): number => {
+        const pool = group.find((one) => one.id === id);
+        if (!pool) return 0;
+        if (pool.level) return Math.max(0, Math.trunc(resolveRulesetValueRef(definition, build, pool.level)));
+        return group.indexOf(pool) + 1;
+      };
+      const pools = resolved
+        .filter((pool) => !pool.listId && group.some((one) => one.id === pool.key))
+        .map((pool) => ({
+          key: pool.key,
+          label: pool.label,
+          level: levelOf(pool.key),
+          spent: Math.max(0, pool.max - pool.value),
+        }))
+        .filter((pool) => pool.spent > 0 && (recovers.most === undefined || pool.level <= recovers.most))
+        .sort((a, b) => b.level - a.level);
+      const upTo = Math.max(0, Math.trunc(resolveRulesetValueRef(definition, build, recovers.upTo)));
+      // The highest that fit, one at a time, as many as `count` allows (every one that fits without it).
+      const left = new Map(pools.map((pool) => [pool.key, pool.spent]));
+      const given = new Map<string, number>();
+      let room = upTo;
+      for (let one = 0; one < (recovers.count ?? 100); one++) {
+        const best = pools.find((pool) => (left.get(pool.key) ?? 0) > 0 && pool.level <= room);
+        if (!best) break;
+        left.set(best.key, left.get(best.key)! - 1);
+        given.set(best.key, (given.get(best.key) ?? 0) + 1);
+        room -= best.level;
+      }
+      const picks = [...given].map(([pool, count]) => ({ pool, count }));
+      if (picks.length === 0) continue;
+      // Offered only when its use would be taken: a use left on its counter, the levels in reach.
+      const tried = applyRulesetRestRecoveries(definition, build, stored, catalogs, restId, [
+        { name: entry.label, recover: picks },
+      ]);
+      if (!tried.ok) continue;
+      offers.push({
+        name: entry.label,
+        upTo,
+        ...(recovers.most !== undefined ? { most: recovers.most } : {}),
+        ...(recovers.count !== undefined ? { count: recovers.count } : {}),
+        pools,
+        picks,
+      });
+    }
+  }
+  return offers;
+}
+
+/** The features a player chose to use as a rest ends (1.773), each a `use` with what it gives back,
+ *  all or nothing: one this rest does not offer, or a use that is refused, refuses them all. */
+export function applyRulesetRestRecoveries(
+  definition: RulesetDefinition,
+  build: RulesetSheetBuild,
+  stored: unknown,
+  catalogs: RulesetCatalogEntriesById,
+  restId: string,
+  chosen: ReadonlyArray<{ name: string; recover: RulesetUseRecover[] }>,
+  roll?: (sides: number) => number,
+  items?: ReadonlyArray<RulesetSheetItem>,
+): { ok: true; live: unknown; now: string[] } | { ok: false; reason: RulesetSheetRefusal } {
+  let state = stored;
+  const now: string[] = [];
+  for (const one of chosen) {
+    const found = rulesetEntryNamed(definition, build, catalogs, one.name);
+    if (!found.ok) return found;
+    if (found.entry.mechanics?.recovers?.atRest !== restId) return { ok: false, reason: "unknown-entry" };
+    const plan = planRulesetUse(definition, build, state, catalogs, {
+      op: "use",
+      name: one.name,
+      recover: one.recover,
+    });
+    if (!plan.ok) return plan;
+    const paid: string[] = [];
+    for (const step of plan.steps) {
+      const result = applyRulesetSheetOp(definition, build, state, step.op, roll, items);
+      if (!result.ok) return result;
+      state = result.live;
+      paid.push(`${step.label} ${result.now}`);
+    }
+    now.push(`${plan.label}: ${paid.join(", ")}`);
+  }
+  return { ok: true, live: state, now };
+}
+
 type RestDiceList = NonNullable<RulesetDefinition["rests"][number]["dice"]>;
 type RestDice = Extract<RestDiceList, { pool: string }>;
 

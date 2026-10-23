@@ -346,6 +346,8 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
         .map((card) => (typeof card.name === "string" ? card.name.trim() : ""))
         .find((name) => name && builds.has(normalizeCharacterLookupName(name)));
   let standIn = firstCard && !named.has(normalizeCharacterLookupName(firstCard)) ? firstCard : undefined;
+  // A member the setup invented, with neither a sheet nor a creature, stays out of the fight
+  // (2026-10-23 playtest), and the fight's numbers are only ever a sheet's.
   for (const listed of input.party) {
     let member = listed;
     if (
@@ -366,7 +368,8 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
       continue;
     }
     if (!build) {
-      return { ok: false, error: `${member.name} has no ruleset sheet, so this fight cannot read their numbers.` };
+      adjustments.push(`${member.name} has no ruleset sheet and stays out of the fight.`);
+      continue;
     }
     combatants.push({
       id: member.id,
@@ -378,6 +381,9 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
       ...(input.items ? { items: input.items(member.name) } : {}),
       ...(input.holders ? { holder: input.holders(member.name) } : {}),
     });
+  }
+  if (input.party.length > 0 && !combatants.some((one) => one.side === "party")) {
+    return { ok: false, error: "Nobody in this party has a ruleset sheet, so this fight cannot read their numbers." };
   }
 
   for (const opponent of input.enemies) {

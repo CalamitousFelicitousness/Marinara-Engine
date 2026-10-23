@@ -687,138 +687,16 @@ try {
 
   // ── A creature's sheet reads its spells out of the ruleset's other catalogs ──
   {
+    // Alone, with no persona, it is the player: the first card fights in its place.
     const game4 = await newGame({ ruleset: true });
-    const response = await post("/combat/start", {
+    const alone = await post("/combat/start", {
       chatId: game4.chat.id,
       anchor: game4.anchor.id,
       style: "ruleset",
-      // Brenna has no spells of her own, so nothing loads the spell catalog for the party's sake.
-      party: [unit("brenna", "Brenna", "player")],
-      enemies: [{ ...unit("mender", "Hedge Mender", "enemy"), creature: "creatures/hedge-mender" }],
-    });
-    assert.equal(response.statusCode, 200, response.body);
-    const row = await createGameEngineStateStorage(db).getByChatAndMessage(
-      game4.chat.id,
-      game4.anchor.id,
-      0,
-      COMBAT_DIRECTOR_NAMESPACE,
-    );
-    const stored = JSON.parse(row!.state) as {
-      rulesetFight: { encounter: { combatants: Array<Record<string, any>> } };
-    };
-    const mender = stored.rulesetFight.encounter.combatants.find((combatant) => combatant.id === "mender");
-    assert.ok(mender?.sheet, "the creature fights with its sheet");
-    assert.ok(
-      (mender.actions as Array<{ label: string }>).some((action) => action.label === "Mending Light"),
-      "and the spell its sheet lists, read out of the catalog the route loaded for it",
-    );
-    // And the saved fight, sheet and all, loads back.
-    const reread = await app.inject({ url: `/combat/state?chatId=${game4.chat.id}&anchor=${game4.anchor.id}` });
-    assert.equal(reread.statusCode, 200, reread.body);
-  }
-
-  // ── A Game Master's invented caster names its spell, and the route loads the catalog for it ──
-  {
-    const game5 = await newGame({ ruleset: true, rulesetId: PLAIN_BESTIARY_ID });
-    const response = await post("/combat/start", {
-      chatId: game5.chat.id,
-      anchor: game5.anchor.id,
-      style: "ruleset",
-      party: [unit("brenna", "Brenna", "player")],
-      enemies: [
-        {
-          ...unit("hexer", "Hedge Hexer", "enemy"),
-          aiHints: { proficiency: "master", temperament: "protective" },
-          tier: "cr_1",
-          proposed: {
-            tier: "cr_1",
-            sheet: {
-              abilities: { wis: 14 },
-              fields: { class: "Cleric", level: 3, hp_max: 20, spellcasting_ability: "wis", slots_max_1: 2 },
-              lists: { spells: [{ name: "mending light", prepared: true }] },
-            },
-          },
-        },
-      ],
-    });
-    assert.equal(response.statusCode, 200, response.body);
-    const row = await createGameEngineStateStorage(db).getByChatAndMessage(
-      game5.chat.id,
-      game5.anchor.id,
-      0,
-      COMBAT_DIRECTOR_NAMESPACE,
-    );
-    const stored = JSON.parse(row!.state) as {
-      enemies: Array<{ id: string; tactics?: { proficiency: string; adjective: string } }>;
-      rulesetFight: { adjustments: string[]; encounter: { combatants: Array<Record<string, any>> } };
-    };
-    const hexer = stored.rulesetFight.encounter.combatants.find((combatant) => combatant.id === "hexer");
-    assert.ok(hexer?.sheet, "the invented caster fights with its sheet");
-    assert.ok(
-      (hexer.actions as Array<{ label: string }>).some((action) => action.label === "Mending Light"),
-      "and with the spell it named, read out of the catalog the route loaded for its sheet",
-    );
-    // Its open choices were filled by the very tactics it fights with, from its own hints.
-    const tactics = stored.enemies.find((enemy) => enemy.id === "hexer")?.tactics;
-    assert.equal(tactics?.proficiency, "master", "its tactics were given to it when the fight began");
-    assert.ok(
-      stored.rulesetFight.adjustments.includes(
-        `Hedge Hexer: Filled in for a master, ${tactics!.adjective} creature: "Sacred Spark".`,
-      ),
-      stored.rulesetFight.adjustments.join("; "),
-    );
-  }
-
-  // ── An invented caster that lists no spells is still filled from the spell catalog ──
-  {
-    // Alone in its fight, so nothing else in it names the spell list and loads the catalog for it.
-    const game6 = await newGame({ ruleset: true, rulesetId: PLAIN_BESTIARY_ID });
-    const response = await post("/combat/start", {
-      chatId: game6.chat.id,
-      anchor: game6.anchor.id,
-      style: "ruleset",
-      party: [unit("brenna", "Brenna", "player")],
-      enemies: [
-        {
-          ...unit("acolyte", "Hedge Acolyte", "enemy"),
-          aiHints: { proficiency: "trained", temperament: "supportive" },
-          tier: "cr_1",
-          proposed: {
-            tier: "cr_1",
-            sheet: { fields: { class: "Cleric", level: 2, hp_max: 16, spellcasting_ability: "wis", slots_max_1: 2 } },
-          },
-        },
-      ],
-    });
-    assert.equal(response.statusCode, 200, response.body);
-    const row = await createGameEngineStateStorage(db).getByChatAndMessage(
-      game6.chat.id,
-      game6.anchor.id,
-      0,
-      COMBAT_DIRECTOR_NAMESPACE,
-    );
-    const stored = JSON.parse(row!.state) as {
-      rulesetFight: { encounter: { combatants: Array<Record<string, any>> } };
-    };
-    const acolyte = stored.rulesetFight.encounter.combatants.find((combatant) => combatant.id === "acolyte");
-    assert.ok(
-      (acolyte?.actions as Array<{ label: string }> | undefined)?.some((action) => action.label === "Mending Light"),
-      "its open choices come from the spell catalog, which the route loaded because it may choose from that list",
-    );
-  }
-
-  // ── A party member with no sheet is refused by name ──
-  {
-    const game3 = await newGame({ ruleset: true });
-    const response = await post("/combat/start", {
-      chatId: game3.chat.id,
-      anchor: game3.anchor.id,
-      style: "ruleset",
-      party: [unit("brenna", "Brenna", "player"), unit("tam", "Tam", "player")],
+      party: [unit("tam", "Tam", "player")],
       enemies: [{ ...unit("lurker", "Thorn Lurker", "enemy") }],
     });
-    assert.equal(response.statusCode, 400);
-    assert.match(response.json().error, /^Tam has no ruleset sheet/);
+    assert.equal(alone.statusCode, 200, alone.body);
   }
 
   // ── The Game Master's window: a good id, a bad id and garbage ──

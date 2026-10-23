@@ -2951,6 +2951,16 @@ function carriesAsks771(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesAsks771(one, depth + 1));
 }
 
+/** A feature a rest offers (1.773): a `recovers` with `atRest`. */
+function carriesRestRecovery773(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesRestRecovery773(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.recovers)?.atRest !== undefined) return true;
+  return featureValues(record).some((one) => carriesRestRecovery773(one, depth + 1));
+}
+
 /** Ruleset's ship-readiness asks (1.772): a fields step's `unansweredAtDefault`, a grant's
  *  `entries.add`, a heal's `outsideFight`, or an item's `aliases`. */
 function carriesAsks772(value: unknown, depth = 0): boolean {
@@ -9605,6 +9615,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A feature a rest offers, 1.773.
+  if (
+    !declaresApi(773) &&
+    (carriesRestRecovery773(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesRestRecovery773(document)))
+  )
+    return "A ruleset with a feature a rest offers (recovers.atRest) requires schemaVersion 2 and capabilityApi 1.773 or newer";
   // A default that waits, entries given outright, a heal outside a fight, an item's other names: 1.772.
   if (
     !declaresApi(772) &&

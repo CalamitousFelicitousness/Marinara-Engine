@@ -120,6 +120,8 @@ export interface MarinaraHostV1 {
     readonly backfill: typeof useRollingBackfillStore;
   };
   readonly services: {
+    /** Capability API 1.380: independent package audio players and the shared asset selector. */
+    readonly audio: typeof import("./audio-service");
     /** The module namespace of lib/tts-service.ts (ttsService, playWhenAvailable, ...). */
     readonly tts: typeof import("./tts-service");
     /** The module namespace of lib/app-dialogs.ts (showAlertDialog, showConfirmDialog, ...). */

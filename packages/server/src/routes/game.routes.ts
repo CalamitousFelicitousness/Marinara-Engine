@@ -6654,7 +6654,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     chatPersonaId: string | null,
     meta: Record<string, unknown>,
     setupConfig: GameSetupConfig | null,
-  ): Promise<{ definition: RulesetDefinition; stored: Map<string, unknown> } | null> => {
+  ): Promise<{ definition: RulesetDefinition; stored: Map<string, unknown>; names: Map<string, string> } | null> => {
     if (meta.gameRuleset == null) return null;
     // loadRulesetRegistry never throws (a failed read is an empty registry) and resolving is pure,
     // so an install that cannot honour the pin arrives here as a status, not as an exception.
@@ -6666,13 +6666,18 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const rulesetId = pinned.definition.id;
     const characters = createCharactersStorage(app.db);
     const stored = new Map<string, unknown>();
+    // Each sheet's character as named, so one the setup left out can still be given a card.
+    const names = new Map<string, string>();
     for (const pcId of setupConfig?.partyCharacterIds ?? []) {
       const pc = await characters.getById(pcId);
       if (!pc) continue;
       try {
         const data = typeof pc.data === "string" ? JSON.parse(pc.data) : pc.data;
         const sheet = data?.extensions?.rulesetSheets?.[rulesetId];
-        if (sheet && typeof data.name === "string") stored.set(normalizeCharacterLookupName(data.name), sheet);
+        if (sheet && typeof data.name === "string") {
+          stored.set(normalizeCharacterLookupName(data.name), sheet);
+          names.set(normalizeCharacterLookupName(data.name), data.name);
+        }
       } catch {
         /* an unreadable card simply has no sheet to copy */
       }
@@ -6684,12 +6689,15 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         const stats = persona.personaStats ? JSON.parse(persona.personaStats) : null;
         const sheet = stats?.rulesetSheets?.[rulesetId];
         // The persona is the player, so its sheet wins a name it shares with a party member.
-        if (sheet) stored.set(normalizeCharacterLookupName(persona.name), sheet);
+        if (sheet) {
+          stored.set(normalizeCharacterLookupName(persona.name), sheet);
+          names.set(normalizeCharacterLookupName(persona.name), persona.name);
+        }
       } catch {
         /* skip */
       }
     }
-    return { definition: pinned.definition, stored };
+    return { definition: pinned.definition, stored, names };
   };
 
   const applyGameSetupPayload = async (args: {
@@ -6829,9 +6837,22 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       if (arcs.length > 0) updates.gamePartyArcs = arcs;
     }
 
-    if (setupData.characterCards && Array.isArray(setupData.characterCards)) {
-      const rulesetSheets = await loadSetupRulesetSheets(chatId, args.chatPersonaId, meta, setupConfig);
-      const cards = (setupData.characterCards as Array<Record<string, unknown>>)
+    const setupSheets =
+      meta.gameRuleset != null ? await loadSetupRulesetSheets(chatId, args.chatPersonaId, meta, setupConfig) : null;
+    if ((setupData.characterCards && Array.isArray(setupData.characterCards)) || (setupSheets?.stored.size ?? 0) > 0) {
+      const rulesetSheets = setupSheets;
+      const generated = Array.isArray(setupData.characterCards)
+        ? (setupData.characterCards as Array<Record<string, unknown>>)
+        : [];
+      // A party member with a sheet the Game Master's setup left out still gets a card, or their
+      // sheet would never reach the game.
+      const carded = new Set(
+        generated.flatMap((card) => (typeof card.name === "string" ? [normalizeCharacterLookupName(card.name)] : [])),
+      );
+      const missing = [...(rulesetSheets?.names ?? new Map<string, string>())]
+        .filter(([key]) => !carded.has(key))
+        .map(([, name]) => ({ name }) as Record<string, unknown>);
+      const cards = [...generated, ...missing]
         .map((c) => {
           const name = (c.name as string) || "";
           const normalizedCard = normalizeGeneratedGameCharacterCard(c, name);

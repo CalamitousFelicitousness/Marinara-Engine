@@ -278,7 +278,7 @@ import type { GameCharacterSheetGameCard, GameCharacterSheetRuleset } from "@/co
 import { GameRulesetPartySheet, describeRefusedSheetCommands } from "./GameRulesetSheet";
 import { useGameRuleset } from "../../hooks/use-game-ruleset";
 import { useRulesetItemBook } from "../../hooks/use-ruleset-item-book";
-import { flushGameStatePatch, useGameStatePatcher } from "../../hooks/use-game-state-patcher";
+import { createEmptyGameState, flushGameStatePatch, useGameStatePatcher } from "../../hooks/use-game-state-patcher";
 import { GameDiceResult } from "./GameDiceResult";
 import { GameSkillCheckResult } from "./GameSkillCheckResult";
 import { GameElementReaction } from "./GameElementReaction";
@@ -7943,8 +7943,11 @@ function GameSurfaceComponent({
       if (response.rulesetLive && seq > inventoryCommitSeq.current.sheetApplied) {
         inventoryCommitSeq.current.sheetApplied = seq;
         const shown = useGameStateStore.getState().current;
-        if (shown?.chatId === activeChatId) {
-          useGameStateStore.getState().setGameState({ ...shown, rulesetLive: response.rulesetLive });
+        // A game with no state before this (its first turn not taken) has one now, made by the route.
+        if (shown?.chatId === activeChatId || !shown) {
+          useGameStateStore
+            .getState()
+            .setGameState({ ...(shown ?? createEmptyGameState(activeChatId)), rulesetLive: response.rulesetLive });
         }
       }
       // The server applies requests in order, so an answer to an older one that arrives after a
@@ -10830,10 +10833,24 @@ function GameSurfaceComponent({
       // landed since this sheet was rendered, and they must not be written back out.
       const current = useGameStateStore.getState().current;
       // The patch replaces the WHOLE live object. Built from a snapshot that is missing, or that
-      // belongs to another chat, it would wipe every other character's state, so the edit is
-      // refused and said out loud instead.
+      // belongs to another chat, it would wipe every other character's state, so the server merges
+      // this one character in instead (and makes the game's first state if it has none yet).
       if (current?.chatId !== activeChatId) {
-        toast.error(localizeUi("game.ruleset.sheet.stateNotReady"));
+        const chatId = activeChatId;
+        void api
+          .post<{ rulesetLive: RulesetLiveStates }>("/game/inventory/live", {
+            chatId,
+            character: cardTitle,
+            live: Object.keys(next).length > 0 ? next : null,
+          })
+          .then((saved) => {
+            const shown = useGameStateStore.getState().current;
+            if (shown && shown.chatId !== chatId) return;
+            useGameStateStore
+              .getState()
+              .setGameState({ ...(shown ?? createEmptyGameState(chatId)), rulesetLive: saved.rulesetLive });
+          })
+          .catch(() => toast.error(localizeUi("game.ruleset.sheet.stateNotReady")));
         return;
       }
       const { [key]: _previous, ...others } = current.rulesetLive ?? {};
@@ -10848,7 +10865,7 @@ function GameSurfaceComponent({
    *  charges it brings back to what the character carries are written with the sheet. Answers with
    *  what the sheet shows after it, or null when it was not taken. */
   const handleRulesetRest = useCallback(
-    async (cardTitle: string, rest: string): Promise<string | null> => {
+    async (cardTitle: string, rest: string, diceFrom?: Record<string, number>): Promise<string | null> => {
       if (!activeChatId) return null;
       try {
         // A sheet edit still waiting to be saved lands first, so the rest starts from it.
@@ -10860,7 +10877,7 @@ function GameSurfaceComponent({
             now: string;
             recharged: Array<{ item: string; now: number; max: number }>;
             playerStats?: PlayerStats;
-          }>("/game/inventory/rest", { chatId, character: cardTitle, rest }),
+          }>("/game/inventory/rest", { chatId, character: cardTitle, rest, ...(diceFrom ? { diceFrom } : {}) }),
         );
         if (!rested) return null;
         return [
@@ -10910,7 +10927,11 @@ function GameSurfaceComponent({
       live: gameSnapshot?.rulesetLive?.[normalizeCharacterLookupName(cardTitle)],
       onLiveChange: (next) => handleRulesetLiveChange(cardTitle, next),
       // Where the ruleset has items, a rest may bring charges back to what is carried.
-      ...(inventoryItemBook ? { onRest: (rest: string) => handleRulesetRest(cardTitle, rest) } : {}),
+      ...(inventoryItemBook
+        ? {
+            onRest: (rest: string, diceFrom?: Record<string, number>) => handleRulesetRest(cardTitle, rest, diceFrom),
+          }
+        : {}),
       onEnvelopeSave: (next) => handleSaveRulesetSheet(cardTitle, next),
       ...(items ? { items } : {}),
       // Mid-fight the fight keeps the sheet's pools and tracks: a slot pressed back with + would be

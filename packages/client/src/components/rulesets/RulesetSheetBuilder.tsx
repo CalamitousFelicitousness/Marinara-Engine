@@ -45,6 +45,7 @@ import {
   rulesetBuilderMethod,
   rulesetSheetBuildIsBlank,
   rulesetBuilderEntryHeld,
+  listRulesetLivePools,
   defaultRulesetSheetBuild,
   isRulesetItemHidden,
   evaluateRulesetSheet,
@@ -258,6 +259,8 @@ export function RulesetSheetBuilder({
   state: rawState,
   evaluated: rawEvaluated,
   onApply,
+  outsideGame = false,
+  gearNote = false,
 }: {
   definition: RulesetDefinition;
   layerOptions?: RulesetLayerOptions;
@@ -266,6 +269,10 @@ export function RulesetSheetBuilder({
   evaluated: ReturnType<typeof evaluateRulesetSheet>;
   /** The build with the choices applied, and the choices: one envelope change. */
   onApply: (build: RulesetSheetBuild, state: RulesetBuilderState) => void;
+  /** Shown outside a game: what the sheet has to spend at its most, as the All fields tab shows it. */
+  outsideGame?: boolean;
+  /** Armor and weapons wait on a game's Starting gear, so armor class here counts none worn. */
+  gearNote?: boolean;
 }) {
   const { t } = useUiTranslation();
   const builder = definition.sheet.builder!;
@@ -597,6 +604,8 @@ export function RulesetSheetBuilder({
           .flatMap((filter) => {
             const value = entry.filters?.[filter.id];
             if (value === undefined || value === "" || Array.isArray(value)) return [];
+            // A value written as an id ("multiclass", "bard") is for the steps to match on, not words.
+            if (typeof value === "string" && /^[a-z0-9_-]+$/u.test(value)) return [];
             return [filter.type === "number" ? `${filter.label} ${value}` : String(value)];
           })
           .join(" · ");
@@ -684,10 +693,13 @@ export function RulesetSheetBuilder({
               // Taken without asking (1.750): only a choice within an `exclusive` group is the player's.
               const locked = !!current.takesAll && !entry.exclusive;
               // Already on the sheet from somewhere else (a domain spell a later step grants): no pick.
+              // A step that names its pick in a field (a class, a race) is held only by that pick: a
+              // Paladin's armour rows are a Fighter's too, and do not make a Fighter one.
               const known =
                 !on &&
                 !stored &&
                 takenAt === undefined &&
+                !current.field &&
                 rulesetBuilderEntryHeld(definition, build, current.catalog, entry);
               const full =
                 locked ||
@@ -701,8 +713,9 @@ export function RulesetSheetBuilder({
                   key={entry.id}
                   className={`flex flex-col gap-1 rounded-lg border p-2 ${on ? "border-[var(--primary)]" : "border-[var(--border)]"} bg-[var(--card)]`}
                 >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="min-w-0 break-words text-xs font-semibold text-[var(--foreground)]">
+                  {/* The buttons wrap below a long name rather than squeezing it to a letter a line. */}
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="min-w-[6rem] flex-1 break-words text-xs font-semibold text-[var(--foreground)]">
                       {entry.label}
                       {tellsApart(entry) && (
                         <span className="block text-[0.625rem] font-normal text-[var(--muted-foreground)]">
@@ -1913,6 +1926,7 @@ export function RulesetSheetBuilder({
   // fields step asks for is left out while it still stands at its default, so ten class levels at 0
   // never crowd the scores.
   const summary = definition.gm.sheetSummary;
+  const restingPools = outsideGame ? listRulesetLivePools(definition, build) : [];
   const fieldById = new Map(definition.sheet.fields.map((field) => [field.id, field]));
   const blankFields = defaultRulesetSheetBuild(definition).fields;
   const shownFields = [
@@ -2125,6 +2139,23 @@ export function RulesetSheetBuilder({
                 </div>
               ))}
             </dl>
+          )}
+          {outsideGame && restingPools.length > 0 && (
+            <dl className="grid grid-cols-2 gap-1 text-[0.6875rem]" aria-label={t("ui.rulesets.sheet.pools")}>
+              {restingPools.map((pool) => (
+                <div key={pool.key} className="rounded border border-dashed border-[var(--border)] px-1.5 py-0.5">
+                  <dt className="break-words text-[0.625rem] leading-tight text-[var(--muted-foreground)]">
+                    {pool.label}
+                  </dt>
+                  <dd className="text-xs font-semibold tabular-nums text-[var(--foreground)]">
+                    {pool.start === "empty" ? t("ui.rulesets.sheet.poolStartsEmpty", { max: pool.max }) : pool.max}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          )}
+          {gearNote && (
+            <p className="text-[0.6875rem] text-[var(--muted-foreground)]">{t("ui.rulesets.sheet.gearInGame")}</p>
           )}
           {(["saves", "skills"] as const).map((what) => {
             const names = trainedNames(what);

@@ -167,6 +167,7 @@ import {
   rulesetCanSee,
   rulesetSeesTrue,
   rulesetCarriesLight,
+  rulesetDaylit,
   rulesetHiddenFrom,
   rulesetHidingTraits,
   rulesetStaysHidden,
@@ -1722,9 +1723,12 @@ function itemSlotCost(
   // Only a pool its holder has some of, and none past the item's most (1.574): the Rod of Absorption.
   const most = held.item.worn.paysSlotsMax;
   if (most !== undefined && at > family.indexOf(most)) return null;
-  const own = readRulesetLive(definition, combatant.sheet!.build, combatant.sheet!.live).pools.find(
-    (pool) => !pool.listId && pool.key === slot.pool,
-  );
+  const own = readRulesetLive(
+    definition,
+    combatant.sheet!.build,
+    combatant.sheet!.live,
+    combatant.sheet!.items,
+  ).pools.find((pool) => !pool.listId && pool.key === slot.pool);
   if (!own || own.max <= 0) return null;
   const level = rulesetPaidLevel(definition, combatant, action, slot.pool);
   const max = rulesetHeldChargesMax(held);
@@ -2439,7 +2443,7 @@ function rulesetSealedHealth(definition: RulesetDefinition, combatant: RulesetCo
   if (!combatant.sheet) return combatant.health?.sealed ?? 0;
   const health = definition.combat?.health;
   if (!health || "track" in health) return 0;
-  const live = readRulesetLive(definition, combatant.sheet.build, combatant.sheet.live);
+  const live = readRulesetLive(definition, combatant.sheet.build, combatant.sheet.live, combatant.sheet.items);
   return live.pools.find((entry) => !entry.listId && entry.key === health.pool)?.sealed ?? 0;
 }
 
@@ -2448,7 +2452,7 @@ function rulesetTrackAboveFloor(definition: RulesetDefinition, combatant: Rulese
   const declared = definition.sheet.live.tracks.find((entry) => entry.id === track);
   if (!declared) return false;
   if (!combatant.sheet) return (combatant.tracks?.[track] ?? declared.default ?? declared.min) > declared.min;
-  const live = readRulesetLive(definition, combatant.sheet.build, combatant.sheet.live);
+  const live = readRulesetLive(definition, combatant.sheet.build, combatant.sheet.live, combatant.sheet.items);
   const now = live.tracks.find((entry) => entry.id === track);
   return !!now && now.value > now.min;
 }
@@ -2986,9 +2990,10 @@ export function rulesetActionAvailable(
   // Only beside a prop (1.332): Fennick's Hymnal at the Year-Wheel.
   if (action.usableNear && !(state && rulesetNearProp(state, actor, action.usableNear.prop, action.usableNear.within)))
     return false;
-  // A light only while they carry one, and for nothing once a turn (1.295).
+  // A light only while they carry one, and for nothing once a turn (1.295). Never where they stand in
+  // daylight: nobody lights a torch there, so it is neither lit nor to be put out.
   if (action.switches && "carried" in action.switches) {
-    if (!definition || !rulesetCarriesLight(definition, actor, state)) return false;
+    if (!definition || !rulesetCarriesLight(definition, actor, state) || rulesetDaylit(actor, state)) return false;
     if (action.free && actor.flags.lightSwitched) return false;
   }
   // Lent by a call (1.723): only while it stands, and where it is taken first, taken once and then
@@ -3017,7 +3022,7 @@ export function rulesetActionAvailable(
   // sorcerer with no 4th-level slots at all.
   if (action.restore && action.targets.side === "self" && actor.sheet && definition) {
     const wanted = action.restore.pool.trim().toLowerCase();
-    const pools = readRulesetLive(definition, actor.sheet.build, actor.sheet.live).pools;
+    const pools = readRulesetLive(definition, actor.sheet.build, actor.sheet.live, actor.sheet.items).pools;
     if (!pools.some((pool) => pool.key === action.restore!.pool || pool.label.toLowerCase() === wanted)) return false;
   }
   // Sending away who it called only while some of them are here (1.433).

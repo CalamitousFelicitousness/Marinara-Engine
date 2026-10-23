@@ -4,9 +4,13 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { isDeepStrictEqual } from "node:util";
-import { applyGameInventoryOps, gameInventoryOpsRequestSchema } from "@marinara-engine/shared";
+import { applyGameInventoryOps, gameInventoryOpsRequestSchema, rulesetLiveStateSchema } from "@marinara-engine/shared";
 import { commitGameInventoryChange, loadGameInventoryItemBook } from "../services/game/game-inventory.service.js";
-import { restGameRulesetCharacter, useGameRulesetItem } from "../services/game/game-item-use.service.js";
+import {
+  restGameRulesetCharacter,
+  setGameRulesetLive,
+  useGameRulesetItem,
+} from "../services/game/game-item-use.service.js";
 import { lootGameFight } from "../services/game/game-loot.service.js";
 import { takeGameStartingGear } from "../services/game/game-starting-gear.service.js";
 import { rollDieSecurely } from "../services/game/dice-rng.js";
@@ -16,6 +20,18 @@ const restRequestSchema = z
     chatId: z.string().min(1).max(200),
     character: z.string().min(1).max(200),
     rest: z.string().min(1).max(64),
+    /** The dice spent to heal first, by pool (a Short rest's hit dice). */
+    diceFrom: z
+      .record(z.string().min(1).max(64), z.number().int().min(0).max(100))
+      .refine((dice) => Object.keys(dice).length <= 12, { message: "Too many pools" })
+      .optional(),
+  })
+  .strict();
+const liveRequestSchema = z
+  .object({
+    chatId: z.string().min(1).max(200),
+    character: z.string().min(1).max(200),
+    live: rulesetLiveStateSchema.nullable(),
   })
   .strict();
 const lootRequestSchema = z
@@ -156,12 +172,31 @@ export async function gameInventoryRoutes(app: FastifyInstance) {
     if (!parsed.success) {
       return reply.status(400).send({ error: "Invalid rest", issues: parsed.error.issues.slice(0, 10) });
     }
-    const rested = await restGameRulesetCharacter(app.db, parsed.data.chatId, parsed.data.character, parsed.data.rest);
+    const rested = await restGameRulesetCharacter(
+      app.db,
+      parsed.data.chatId,
+      parsed.data.character,
+      parsed.data.rest,
+      undefined,
+      parsed.data.diceFrom,
+    );
     if (!rested.ok)
       return reply
         .status(rested.status)
         .send({ error: rested.error, ...(rested.reason ? { reason: rested.reason } : {}) });
     const { ok: _ok, ...answer } = rested;
     return answer;
+  });
+
+  // One character's sheet set from the in-game sheet while the screen has no game state to patch
+  // (before the first turn): merged into the others here, and the row made if there is none.
+  app.post("/live", async (req, reply) => {
+    const parsed = liveRequestSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: "Invalid sheet state", issues: parsed.error.issues.slice(0, 10) });
+    }
+    const set = await setGameRulesetLive(app.db, parsed.data.chatId, parsed.data.character, parsed.data.live);
+    if (!set.ok) return reply.status(set.status).send({ error: set.error });
+    return { rulesetLive: set.rulesetLive };
   });
 }

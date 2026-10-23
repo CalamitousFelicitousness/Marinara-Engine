@@ -352,7 +352,7 @@ function combatHealth(
     if (raised > 0) health.max += raised;
     return halvedHealth(definition, combat, combatant, health);
   }
-  const live = readRulesetLive(definition, combatant.sheet.build, combatant.sheet.live);
+  const live = readRulesetLive(definition, combatant.sheet.build, combatant.sheet.live, combatant.sheet.items);
   const health = combat.health;
   if ("track" in health) {
     const track = live.tracks.find((entry) => entry.id === health.track);
@@ -508,7 +508,14 @@ export function writeRulesetSheet(
   op: RulesetSheetOp,
 ): boolean {
   if (!combatant.sheet) return false;
-  const result = applyRulesetSheetOp(definition, combatant.sheet.build, combatant.sheet.live, op);
+  const result = applyRulesetSheetOp(
+    definition,
+    combatant.sheet.build,
+    combatant.sheet.live,
+    op,
+    undefined,
+    combatant.sheet.items,
+  );
   if (!result.ok) return false;
   combatant.sheet.live = result.live;
   return true;
@@ -534,7 +541,7 @@ export function rulesetCombatConditions(
     : combatant.tracked;
   const ids = new Set(tracked.map((entry) => entry.condition));
   if (combatant.sheet) {
-    const live = readRulesetLive(definition, combatant.sheet.build, combatant.sheet.live);
+    const live = readRulesetLive(definition, combatant.sheet.build, combatant.sheet.live, combatant.sheet.items);
     for (const condition of live.conditions) if (condition.active) ids.add(condition.id);
     // And what their items keep on them (1.497), for as long as each is worn or carried.
     if (combatant.sheet.items?.length)
@@ -1510,7 +1517,7 @@ function activeLevels(
   if (!combat.levels?.length) return [];
   const sheet = combatant.sheet;
   if (!sheet && !combatant.tracks) return [];
-  const live = sheet ? readRulesetLive(definition, sheet.build, sheet.live) : undefined;
+  const live = sheet ? readRulesetLive(definition, sheet.build, sheet.live, sheet.items) : undefined;
   let derived: Record<string, number> | undefined;
   // Even the non-recursive read must honor the creature's and items' existing track immunities.
   const baseImmunities = rawLevels
@@ -7519,15 +7526,18 @@ function openRefills(definition: RulesetDefinition, state: RulesetEncounterState
       const refill = entry?.mechanics?.refillsAtInitiative;
       if (!entry || !refill) continue;
       const wanted = refill.pool.trim().toLowerCase();
-      const pool = readRulesetLive(definition, sheet.build, sheet.live).pools.find(
+      const pool = readRulesetLive(definition, sheet.build, sheet.live, sheet.items).pools.find(
         (one) => one.key.toLowerCase() === wanted || one.label.trim().toLowerCase() === wanted,
       );
       if (!pool || pool.value > 0) continue;
-      const done = applyRulesetSheetOp(definition, sheet.build, sheet.live, {
-        op: "restore",
-        pool: pool.key,
-        amount: refill.amount ?? 1,
-      });
+      const done = applyRulesetSheetOp(
+        definition,
+        sheet.build,
+        sheet.live,
+        { op: "restore", pool: pool.key, amount: refill.amount ?? 1 },
+        undefined,
+        sheet.items,
+      );
       if (!done.ok) continue;
       sheet.live = done.live;
       events.push({ type: "refilled", actorId: combatant.id, label: entry.label, pool: pool.label, now: done.now });
@@ -7550,7 +7560,7 @@ function openLevels(
     // Only the points they bring are held: the stored maximum stays whole, and is halved as it is read.
     if (combatant.health) combatant.health.value = Math.min(combatant.health.value, health.max);
     else if (combatant.sheet && !("track" in combat.health)) {
-      const live = readRulesetLive(definition, combatant.sheet.build, combatant.sheet.live);
+      const live = readRulesetLive(definition, combatant.sheet.build, combatant.sheet.live, combatant.sheet.items);
       const pool = live.pools.find((entry) => !entry.listId && entry.key === (combat.health as { pool: string }).pool);
       if (pool && pool.value > health.max) {
         writeRulesetSheet(definition, combatant, { op: "spend", pool: pool.key, amount: pool.value - health.max });
@@ -8002,7 +8012,9 @@ export function rulesetSyncAbilities(
       starting &&
       !before &&
       ids.every((id) =>
-        readRulesetLive(definition, sheet.build, sheet.live).conditions.some((one) => one.id === id && one.active),
+        readRulesetLive(definition, sheet.build, sheet.live, sheet.items).conditions.some(
+          (one) => one.id === id && one.active,
+        ),
       )
     )
       continue;

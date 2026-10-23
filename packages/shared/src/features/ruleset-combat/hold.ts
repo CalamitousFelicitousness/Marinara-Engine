@@ -559,7 +559,9 @@ export function holdRulesetSheetHealth(
 function poolValues(definition: RulesetDefinition, combatant: RulesetCombatant): Map<string, number> {
   const sheet = combatant.sheet;
   if (!sheet) return new Map();
-  return new Map(readRulesetLive(definition, sheet.build, sheet.live).pools.map((pool) => [pool.key, pool.value]));
+  return new Map(
+    readRulesetLive(definition, sheet.build, sheet.live, sheet.items).pools.map((pool) => [pool.key, pool.value]),
+  );
 }
 
 /** How many rungs the biggest payment it can afford climbs, for an action that grows when paid for

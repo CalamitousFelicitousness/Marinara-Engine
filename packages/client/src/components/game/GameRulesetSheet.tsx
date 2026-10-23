@@ -18,6 +18,7 @@ import {
   rulesetConditionIcons,
   rulesetItemEffectFacts,
   applyRulesetSheetOp,
+  rulesetRestDiceEntries,
   rulesetPartyDefinition,
   readRulesetPartySheet,
   readResolvedSheetCommandTags,
@@ -25,6 +26,7 @@ import {
   defaultRulesetSheetBuild,
   evaluateRulesetSheet,
   readRulesetLive,
+  rulesetCheckEffects,
   rulesetCheckSources,
   rulesetHideLines,
   rulesetSectionGroups,
@@ -506,7 +508,7 @@ export interface GameRulesetSheetProps {
   items?: ReadonlyArray<RulesetSheetItem>;
   /** A rest taken by the game rather than here: the sheet and what the character carries change
    *  together, and it answers with the rest's own words, or null when it was not taken. */
-  onRest?: (rest: string) => Promise<string | null>;
+  onRest?: (rest: string, diceFrom?: Record<string, number>) => Promise<string | null>;
 }
 
 export function GameRulesetSheet({
@@ -537,11 +539,13 @@ export function GameRulesetSheet({
   const [restNotice, setRestNotice] = useState<string | null>(null);
   // A rest the Engine takes is one at a time: a second click would rest (and roll recharges) again.
   const [resting, setResting] = useState(false);
+  // The dice a rest spends to heal first (a Short rest's hit dice), picked pool by pool before it.
+  const [restDice, setRestDice] = useState<Record<string, number>>({});
 
   const layerNames = layers?.map((layer) => layer.label).join(", ") || null;
 
   const build = useMemo(() => envelope?.build ?? defaultRulesetSheetBuild(definition), [definition, envelope]);
-  const resolved = useMemo(() => readRulesetLive(definition, build, live), [definition, build, live]);
+  const resolved = useMemo(() => readRulesetLive(definition, build, live, items), [definition, build, live, items]);
   // Against the live state as it stands, so a value that reads a track or a pool shows what it is now,
   // and against what the character holds, so one that reads their items does too.
   const evaluated = useMemo(
@@ -592,7 +596,8 @@ export function GameRulesetSheet({
   /** Every change a player makes takes the same route a Game Master command does. */
   const apply = (op: RulesetSheetOp) => {
     if (readOnly) return;
-    const result = applyRulesetSheetOp(definition, build, live, op);
+    // What they hold counts, as a Game Master's command's does: an Amulet of Health's hit points.
+    const result = applyRulesetSheetOp(definition, build, live, op, undefined, items);
     if (!result.ok) return;
     setRestNotice(op.op === "rest" ? result.now : null);
     onLiveChange(result.live);
@@ -606,6 +611,17 @@ export function GameRulesetSheet({
     const amount = Math.abs(target - pool.value);
     apply(target > pool.value ? { op: "restore", pool: pool.key, amount } : { op: "spend", pool: pool.key, amount });
   };
+
+  // Every pool a rest may spend dice from to heal first that has any left, in the rests' own order.
+  const restDicePools = useMemo(() => {
+    const keys = [
+      ...new Set(definition.rests.flatMap((rest) => rulesetRestDiceEntries(rest.dice).map((entry) => entry.pool))),
+    ];
+    return keys.flatMap((key) => {
+      const pool = resolved.pools.find((one) => one.key === key);
+      return pool && pool.value > 0 ? [pool] : [];
+    });
+  }, [definition.rests, resolved.pools]);
 
   const poolGroups = useMemo(() => {
     const groups: Array<{ id: string; pools: ResolvedRulesetLive["pools"] }> = [];
@@ -633,7 +649,17 @@ export function GameRulesetSheet({
       label: save.label,
       section: save.section,
       tier: evaluated.saveTiers[save.id],
-      modifier: evaluated.saveMods[save.id] ?? 0,
+      // What is worn counts as it does on the roll: a Cloak of Protection's +1 to every save. Only a
+      // number that always applies; dice, and a bonus against something named, wait for the roll.
+      modifier:
+        (evaluated.saveMods[save.id] ?? 0) +
+        rulesetCheckEffects(checkSources, { type: "save", id: save.id, label: save.label }).modifiers.reduce(
+          (sum, { modifier }) =>
+            modifier.against || modifier.dice !== undefined || modifier.add !== undefined
+              ? sum
+              : sum + (modifier.flat ?? 0),
+          0,
+        ),
     })),
   ].filter((entry) => entry.tier !== undefined && entry.tier !== untrainedTier);
 
@@ -1054,9 +1080,15 @@ export function GameRulesetSheet({
                         disabled={settled || resting}
                         onClick={() => {
                           if (settled || resting) return;
-                          if (!onRest) return apply({ op: "rest", rest: rest.id });
+                          const owns = new Set(rulesetRestDiceEntries(rest.dice).map((entry) => entry.pool));
+                          const picked = Object.fromEntries(
+                            Object.entries(restDice).filter(([pool, count]) => owns.has(pool) && count > 0),
+                          );
+                          const diceFrom = Object.keys(picked).length > 0 ? picked : undefined;
+                          setRestDice({});
+                          if (!onRest) return apply({ op: "rest", rest: rest.id, ...(diceFrom ? { diceFrom } : {}) });
                           setResting(true);
-                          void onRest(rest.id)
+                          void onRest(rest.id, diceFrom)
                             .then((now) => {
                               if (now !== null) setRestNotice(now);
                             })
@@ -1070,6 +1102,35 @@ export function GameRulesetSheet({
                       </button>
                     ))}
                   </div>
+                  {restDicePools.length > 0 && !settled && (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={labelClass}>{localizeUi("game.ruleset.sheet.restDice")}</span>
+                      {restDicePools.map((pool) => (
+                        <label key={pool.key} className="flex items-center gap-1 text-[0.6875rem]">
+                          <span>{pool.label}</span>
+                          <input
+                            type="number"
+                            min={0}
+                            max={pool.value}
+                            value={restDice[pool.key] ?? 0}
+                            onChange={(event) => {
+                              const count = Math.min(
+                                Math.max(Math.trunc(Number(event.target.value) || 0), 0),
+                                pool.value,
+                              );
+                              setRestDice((current) => ({ ...current, [pool.key]: count }));
+                            }}
+                            aria-label={localizeUi("game.ruleset.sheet.restDiceAria", {
+                              name: pool.label,
+                              who: cardName,
+                            })}
+                            className="w-12 rounded border border-[var(--border)] bg-transparent px-1 py-0.5 text-center"
+                          />
+                          <span className="text-[var(--muted-foreground)]">/ {pool.value}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
                   {restNotice && (
                     <p role="status" className="text-[0.6875rem] text-[var(--muted-foreground)]">
                       {restNotice}

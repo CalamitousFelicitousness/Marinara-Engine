@@ -581,6 +581,8 @@ export function RulesetSheetEditor({
             state={builderState}
             evaluated={evaluated}
             onApply={commitBuilder}
+            outsideGame={live === undefined}
+            gearNote={items === undefined && (definition.items?.startingGear?.length ?? 0) > 0}
           />
         </div>
       </div>

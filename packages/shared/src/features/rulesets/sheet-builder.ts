@@ -9,7 +9,7 @@
 // own answer for that value changes.
 
 import { z } from "zod";
-import { withRulesetPlanMemo } from "./plan-memo.js";
+import { rulesetPlanMemo, withRulesetPlanMemo } from "./plan-memo.js";
 import {
   catalogRowRef,
   rulesetBuilderRatingKey,
@@ -547,9 +547,21 @@ let judgingWithoutGroups = false;
 /** The step and group that sheet is without: its default (1.756) is not taken in their place either, or
  *  the improvement a feat replaces would still meet the feat's prerequisite. */
 let judgingWithout: { step: string; group: string } | null = null;
+/** What a read made under the judging above depends on, as one memo key. */
+const judgingKey = () =>
+  judgingWithoutGroups ? `${judgingWithout?.step ?? ""}\u0000${judgingWithout?.group ?? ""}` : "";
+/** Each memoised read's own place in an open pass. */
+const builderPicksMemo = {};
+const builderOptionsMemo = {};
+const builderGrantingMemo = {};
 
 /** Sheets already worked out without a group, per sheet and state (both are never changed in place), so
  *  the many reads of one builder pass rebuild each only once. */
+const WITHOUT_GROUP_CONTENT_SIZE = 200;
+const withoutGroupByContent = new WeakMap<
+  RulesetDefinition,
+  WeakMap<RulesetCatalogEntriesById, Map<string, RulesetSheetBuild>>
+>();
 const withoutGroupCache = new WeakMap<
   RulesetSheetBuild,
   WeakMap<
@@ -567,6 +579,18 @@ export function rulesetBuilderOptions(
   catalogs: RulesetCatalogEntriesById,
   /** The sheet as it stands, which a step's `upTo` reads; no limit without it. */
   build?: RulesetSheetBuild,
+): RulesetCatalogEntry[] {
+  return rulesetPlanMemo([builderOptionsMemo, definition, step, state, catalogs, build, judgingKey()], () =>
+    builderOptions(definition, step, state, catalogs, build),
+  );
+}
+
+function builderOptions(
+  definition: RulesetDefinition,
+  step: StepOf<"catalog">,
+  state: RulesetBuilderState,
+  catalogs: RulesetCatalogEntriesById,
+  build: RulesetSheetBuild | undefined,
 ): RulesetCatalogEntry[] {
   if (!rulesetBuilderStepVisible(definition, step, build)) return [];
   const entries = catalogs[step.catalog] ?? [];
@@ -687,6 +711,25 @@ function rulesetBuilderBuildWithoutGroup(
     ...state,
     picks: { ...state.picks, [step.id]: picks.filter((id) => !inGroup.has(id)) },
   };
+  // The same sheet and choices in new objects (each pass of a pick, each render) come to the same
+  // answer: kept by what they are, so a level-20 sheet's feats are not judged afresh on every read.
+  let byCatalogs = withoutGroupByContent.get(definition);
+  if (!byCatalogs) withoutGroupByContent.set(definition, (byCatalogs = new WeakMap()));
+  let byContent = byCatalogs.get(catalogs);
+  if (!byContent) byCatalogs.set(catalogs, (byContent = new Map()));
+  let contentKey: string | undefined;
+  try {
+    contentKey = `${key}\u0000${JSON.stringify(build)}\u0000${JSON.stringify(without)}`;
+  } catch {
+    contentKey = undefined;
+  }
+  const known = contentKey === undefined ? undefined : byContent.get(contentKey);
+  if (known) {
+    byContent.delete(contentKey!);
+    byContent.set(contentKey!, known);
+    byGroup.set(key, { definition, catalogs, without: known });
+    return known;
+  }
   judgingWithoutGroups = true;
   judgingWithout = { step: step.id, group };
   try {
@@ -697,6 +740,10 @@ function rulesetBuilderBuildWithoutGroup(
       result = again;
     }
     byGroup.set(key, { definition, catalogs, without: result.build });
+    if (contentKey !== undefined) {
+      byContent.set(contentKey, result.build);
+      if (byContent.size > WITHOUT_GROUP_CONTENT_SIZE) byContent.delete(byContent.keys().next().value!);
+    }
     return result.build;
   } finally {
     judgingWithoutGroups = false;
@@ -730,6 +777,20 @@ export function rulesetBuilderPicks(
   catalogs: RulesetCatalogEntriesById,
   /** The sheet as it stands, which a step's `upTo` reads; no limit without it. */
   build?: RulesetSheetBuild,
+): RulesetCatalogEntry[] {
+  // One builder pass reads each step's picks many times over (every grant, slot and step that asks):
+  // worked out once per sheet, state and judging (1.100) while the pass is open. Read, never changed.
+  return rulesetPlanMemo([builderPicksMemo, definition, stepId, state, catalogs, build, judgingKey()], () =>
+    builderPicks(definition, stepId, state, catalogs, build),
+  );
+}
+
+function builderPicks(
+  definition: RulesetDefinition,
+  stepId: string,
+  state: RulesetBuilderState,
+  catalogs: RulesetCatalogEntriesById,
+  build: RulesetSheetBuild | undefined,
 ): RulesetCatalogEntry[] {
   const step = stepById(definition, stepId);
   if (!step || step.kind !== "catalog" || !rulesetBuilderStepVisible(definition, step, build)) return [];
@@ -866,6 +927,17 @@ export function rulesetBuilderGranting(
   /** The sheet as it stands, which a step's `upTo` reads; no limit without it. */
   build?: RulesetSheetBuild,
 ): { step: StepOf<"catalog">; entry: RulesetCatalogEntry }[] {
+  return rulesetPlanMemo([builderGrantingMemo, definition, state, catalogs, build, judgingKey()], () =>
+    builderGranting(definition, state, catalogs, build),
+  );
+}
+
+function builderGranting(
+  definition: RulesetDefinition,
+  state: RulesetBuilderState,
+  catalogs: RulesetCatalogEntriesById,
+  build: RulesetSheetBuild | undefined,
+): { step: StepOf<"catalog">; entry: RulesetCatalogEntry }[] {
   // One entry picked at two steps on one catalog (a feat and a bonus feat) grants once.
   const seen = new Set<string>();
   return (definition.sheet.builder?.steps ?? []).flatMap((step) =>
@@ -991,7 +1063,8 @@ function orderedGrants(
     )
   )
     return granted;
-  return granted.sort((a, b) => {
+  // A copy: what the grants are is read again, in their own order, elsewhere in the pass.
+  return [...granted].sort((a, b) => {
     if (a.step !== b.step) return 0;
     const entries = catalogs[a.step.catalog] ?? [];
     return entries.indexOf(a.entry) - entries.indexOf(b.entry);
@@ -1449,6 +1522,8 @@ function stepFieldValue(
   definition: RulesetDefinition,
   step: StepOf<"catalog">,
   picks: readonly RulesetCatalogEntry[],
+  /** The step's whole catalog, which tells a pick's own name from what only sets it apart there. */
+  entries: readonly RulesetCatalogEntry[] = [],
 ): Scalar | undefined {
   const field = step.field ? definition.sheet.fields.find((each) => each.id === step.field) : undefined;
   if (!field || picks.length === 0) return undefined;
@@ -1460,8 +1535,15 @@ function stepFieldValue(
     return undefined;
   }
   if (field.type === "text" || field.type === "longtext") {
+    // "Cleric (second class)" is the catalog's Cleric told apart from the first-class one: the sheet
+    // says Cleric, as it does when the same name stands on its own in the catalog.
+    const labels = new Set(entries.map((entry) => entry.label.trim().toLowerCase()));
+    const named = (label: string) => {
+      const bare = /^(.*\S)\s*\([^()]*\)$/u.exec(label.trim())?.[1];
+      return bare && labels.has(bare.toLowerCase()) ? bare : label;
+    };
     return picks
-      .map((entry) => entry.label)
+      .map((entry) => named(entry.label))
       .join(", ")
       .slice(0, field.maxLength);
   }
@@ -1519,7 +1601,12 @@ function desired(
   }
   for (const step of definition.sheet.builder?.steps ?? []) {
     if (step.kind !== "catalog") continue;
-    const value = stepFieldValue(definition, step, rulesetBuilderPicks(definition, step.id, state, catalogs, build));
+    const value = stepFieldValue(
+      definition,
+      step,
+      rulesetBuilderPicks(definition, step.id, state, catalogs, build),
+      catalogs[step.catalog],
+    );
     if (value !== undefined && step.field) out.fields[step.field] = value;
   }
   for (const slot of rulesetBuilderAbilitySlots(definition, state, catalogs, build)) {

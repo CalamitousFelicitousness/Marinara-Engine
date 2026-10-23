@@ -93,7 +93,7 @@ export type GameCharacterSheetRuleset =
       /** What the character holds, which a value reading their items shows. */
       items?: ReadonlyArray<RulesetSheetItem>;
       /** A rest the game takes, with the charges it brings back to what the character carries. */
-      onRest?: (rest: string) => Promise<string | null>;
+      onRest?: (rest: string, diceFrom?: Record<string, number>) => Promise<string | null>;
     };
 
 interface GameCharacterSheetProps {

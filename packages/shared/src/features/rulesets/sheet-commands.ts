@@ -153,7 +153,7 @@ export function applySheetCommandTags(
     let state = live[key] as RulesetLiveState | undefined;
     const paid: string[] = [];
     for (const step of plan.steps) {
-      const result = applyRulesetSheetOp(ctx.definition, card.build, state, step.op);
+      const result = applyRulesetSheetOp(ctx.definition, card.build, state, step.op, ctx.roll, card.items);
       if (!result.ok) return result;
       state = result.live;
       paid.push(`${step.label} ${result.now}`);

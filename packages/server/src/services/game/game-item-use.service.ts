@@ -11,6 +11,7 @@ import {
   rollRulesetItemGate,
   rulesetCombatRoller,
   rulesetItemUseLine,
+  rulesetSheetItems,
   revealGameInventoryFake,
   useRulesetItemOutsideFight,
   type RulesetItemRecharge,
@@ -275,8 +276,8 @@ export async function useGameRulesetItem(
         const states = createGameStateStorage(db);
         const visibleAnchor = resolveVisibleGameStateAnchor(await createChatsStorage(db).listMessages(chatId));
         const row = await states.getForGeneration(chatId, { preferLatestVisible: true, visibleAnchor });
-        if (!row) throw new ItemUseRefused("no-state");
-        const stored: RulesetLiveStates = parseStoredRulesetLive(row.rulesetLive) ?? {};
+        // A game with no state yet uses it on a fresh sheet, and the row is made as it is written.
+        const stored: RulesetLiveStates = parseStoredRulesetLive(row?.rulesetLive) ?? {};
         let next: RulesetLiveStates = stored;
         committed = await applyGameInventoryChangeHeld(db, chatId, (stacks) => {
           const done = useForCarrier(context, book.itemOf, stacks, stackId, stored, roll, more, lasts);
@@ -287,12 +288,7 @@ export async function useGameRulesetItem(
           return { stacks: done.outcome.stacks, journal: done.outcome.journal, value: null };
         });
         if (!committed || !outcome) throw new ItemUseRefused("no-stack");
-        const written =
-          (visibleAnchor
-            ? await states.updateByMessage(visibleAnchor.messageId, visibleAnchor.swipeIndex, chatId, {
-                rulesetLive: next,
-              })
-            : null) ?? (await states.updateLatest(chatId, { rulesetLive: next }));
+        const written = await writeGameRulesetLive(db, chatId, visibleAnchor, next);
         if (!written) throw new ItemUseRefused("no-state");
         rulesetLive = parseStoredRulesetLive(written.rulesetLive) ?? {};
       }),
@@ -338,6 +334,8 @@ export async function restGameRulesetCharacter(
   character: string,
   rest: string,
   roll: (sides: number) => number = rollDieSecurely,
+  /** The dice spent to heal first, by pool: the hit dice a Short rest asks for. */
+  diceFrom?: Record<string, number>,
 ): Promise<GameRestResult> {
   const context = await loadGameRulesetSheetContext(db, chatId);
   if (!context) return { ok: false, status: 409, error: "This game has no ruleset", reason: "no-ruleset" };
@@ -352,9 +350,25 @@ export async function restGameRulesetCharacter(
         const states = createGameStateStorage(db);
         const visibleAnchor = resolveVisibleGameStateAnchor(await createChatsStorage(db).listMessages(chatId));
         const row = await states.getForGeneration(chatId, { preferLatestVisible: true, visibleAnchor });
-        if (!row) throw new ItemUseRefused("no-state");
-        const stored: RulesetLiveStates = parseStoredRulesetLive(row.rulesetLive) ?? {};
-        const rested = applyRulesetSheetOp(context.definition, found.card.build, stored[key], { op: "rest", rest });
+        // A game that has no state yet rests from a fresh sheet, and the row is made as it is written.
+        const stored: RulesetLiveStates = parseStoredRulesetLive(row?.rulesetLive) ?? {};
+        // What they carry counts, as on their sheet: an Amulet of Health's hit points are healed to.
+        const chat = await createChatsStorage(db).getById(chatId);
+        const held = book
+          ? rulesetSheetItems(
+              { itemOf: book.itemOf },
+              normalizeGameInventoryStacks(readMetadata(chat?.metadata).gameInventory),
+              found.holder,
+            )
+          : undefined;
+        const rested = applyRulesetSheetOp(
+          context.definition,
+          found.card.build,
+          stored[key],
+          { op: "rest", rest, ...(diceFrom ? { diceFrom } : {}) },
+          roll,
+          held,
+        );
         if (!rested.ok) throw new RestRefused(rested.reason);
         let recharged: RulesetItemRecharge[] = [];
         const committed = book
@@ -378,12 +392,7 @@ export async function restGameRulesetCharacter(
         const next: RulesetLiveStates = { ...stored };
         if (Object.keys(rested.live).length > 0) next[key] = rested.live;
         else delete next[key];
-        const written =
-          (visibleAnchor
-            ? await states.updateByMessage(visibleAnchor.messageId, visibleAnchor.swipeIndex, chatId, {
-                rulesetLive: next,
-              })
-            : null) ?? (await states.updateLatest(chatId, { rulesetLive: next }));
+        const written = await writeGameRulesetLive(db, chatId, visibleAnchor, next);
         if (!written) throw new ItemUseRefused("no-state");
         result = {
           ok: true,
@@ -403,6 +412,74 @@ export async function restGameRulesetCharacter(
     throw error;
   }
   return result ?? { ok: false, status: 404, error: "Chat not found", reason: "no-chat" };
+}
+
+/**
+ * Writes the game's live sheets onto the row the player sees. A game with no state yet (its sheets
+ * used before the first turn) gets one, made from the visible message or, with none, as a first row.
+ */
+async function writeGameRulesetLive(
+  db: DB,
+  chatId: string,
+  visibleAnchor: ReturnType<typeof resolveVisibleGameStateAnchor>,
+  rulesetLive: RulesetLiveStates,
+) {
+  const states = createGameStateStorage(db);
+  const written =
+    (visibleAnchor
+      ? await states.updateByMessage(visibleAnchor.messageId, visibleAnchor.swipeIndex, chatId, { rulesetLive })
+      : null) ?? (await states.updateLatest(chatId, { rulesetLive }));
+  if (written) return written;
+  await states.create({
+    chatId,
+    messageId: "",
+    swipeIndex: 0,
+    date: null,
+    time: null,
+    location: null,
+    weather: null,
+    temperature: null,
+    worldCustomFields: [],
+    presentCharacters: [],
+    recentEvents: [],
+    playerStats: null,
+    personaStats: null,
+    fieldLocks: null,
+    hiddenTrackerFields: null,
+    rulesetLive,
+  });
+  return states.getLatest(chatId);
+}
+
+/**
+ * One character's live sheet set from the in-game sheet, merged into the others on the server: the
+ * way a sheet edit is saved while the screen has no state to patch (before the game's first turn).
+ */
+export async function setGameRulesetLive(
+  db: DB,
+  chatId: string,
+  character: string,
+  live: RulesetLiveStates[string] | null,
+): Promise<{ ok: true; rulesetLive: RulesetLiveStates } | { ok: false; status: 404 | 409; error: string }> {
+  const context = await loadGameRulesetSheetContext(db, chatId);
+  if (!context) return { ok: false, status: 409, error: "This game has no ruleset" };
+  const found = cardAndBag(context, character);
+  if (!found) return { ok: false, status: 404, error: "No such character" };
+  const key = normalizeCharacterLookupName(found.card.name);
+  let result: RulesetLiveStates | null = null;
+  await withChatMetadataPatchQueue(chatId, () =>
+    db.transaction(async () => {
+      const states = createGameStateStorage(db);
+      const visibleAnchor = resolveVisibleGameStateAnchor(await createChatsStorage(db).listMessages(chatId));
+      const row = await states.getForGeneration(chatId, { preferLatestVisible: true, visibleAnchor });
+      const next: RulesetLiveStates = { ...(parseStoredRulesetLive(row?.rulesetLive) ?? {}) };
+      if (live && Object.keys(live).length > 0) next[key] = live;
+      else delete next[key];
+      const written = await writeGameRulesetLive(db, chatId, visibleAnchor, next);
+      result = written ? (parseStoredRulesetLive(written.rulesetLive) ?? {}) : null;
+    }),
+  );
+  return result ? { ok: true, rulesetLive: result } : { ok: false, status: 404, error: "Chat not found" };
 }
 
 /** A rest the sheet refused, so nothing it touched is written. */

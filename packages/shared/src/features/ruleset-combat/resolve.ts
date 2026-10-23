@@ -1994,7 +1994,7 @@ function unsealHealth(ctx: RulesetCombatContext, actor: RulesetCombatant, target
   if (target.sheet) {
     const health = ctx.combat.health;
     if ("track" in health) return;
-    const live = readRulesetLive(ctx.definition, target.sheet.build, target.sheet.live);
+    const live = readRulesetLive(ctx.definition, target.sheet.build, target.sheet.live, target.sheet.items);
     const pool = live.pools.find((entry) => !entry.listId && entry.key === health.pool);
     if (!pool || pool.sealed <= 0) return;
     amount = pool.sealed;
@@ -2041,7 +2041,7 @@ function moveTrack(
   if (target.health && target.health.value > health.max) target.health.value = health.max;
   else if (target.sheet && !("track" in ctx.combat.health)) {
     const key = ctx.combat.health.pool;
-    const live = readRulesetLive(ctx.definition, target.sheet.build, target.sheet.live);
+    const live = readRulesetLive(ctx.definition, target.sheet.build, target.sheet.live, target.sheet.items);
     const pool = live.pools.find((entry) => !entry.listId && entry.key === key);
     if (pool && pool.value > health.max) {
       writeRulesetSheet(ctx.definition, target, { op: "spend", pool: key, amount: pool.value - health.max });
@@ -2095,7 +2095,7 @@ function sealedOf(ctx: RulesetCombatContext, target: RulesetCombatant): number {
   if (!target.sheet) return target.health?.sealed ?? 0;
   const health = ctx.combat.health;
   if ("track" in health) return 0;
-  const live = readRulesetLive(ctx.definition, target.sheet.build, target.sheet.live);
+  const live = readRulesetLive(ctx.definition, target.sheet.build, target.sheet.live, target.sheet.items);
   return live.pools.find((entry) => !entry.listId && entry.key === health.pool)?.sealed ?? 0;
 }
 
@@ -2104,7 +2104,7 @@ function rulesetSealedAway(ctx: RulesetCombatContext, target: RulesetCombatant):
   if (!target.sheet) return !!target.health && (target.health.sealed ?? 0) >= target.health.max;
   const health = ctx.combat.health;
   if ("track" in health) return false;
-  const live = readRulesetLive(ctx.definition, target.sheet.build, target.sheet.live);
+  const live = readRulesetLive(ctx.definition, target.sheet.build, target.sheet.live, target.sheet.items);
   const pool = live.pools.find((entry) => !entry.listId && entry.key === health.pool);
   return !!pool && pool.max > 0 && pool.sealed >= pool.max;
 }
@@ -2150,7 +2150,7 @@ function restorePool(
     writeRulesetSheet(ctx.definition, target, { op: "restore", pool, amount, ...(overMax ? { overMax } : {}) });
   }
   // A list row's pool is named by its row (1.252), as the sheet's own command finds it.
-  const pools = readRulesetLive(ctx.definition, target.sheet.build, target.sheet.live).pools;
+  const pools = readRulesetLive(ctx.definition, target.sheet.build, target.sheet.live, target.sheet.items).pools;
   const wanted = pool.trim().toLowerCase();
   const now =
     pools.find((entry) => entry.key === pool) ??
@@ -2211,7 +2211,7 @@ function sheetPool(
   key: string,
 ): { key: string; value: number; max: number } | undefined {
   if (!target.sheet) return undefined;
-  const pools = readRulesetLive(ctx.definition, target.sheet.build, target.sheet.live).pools;
+  const pools = readRulesetLive(ctx.definition, target.sheet.build, target.sheet.live, target.sheet.items).pools;
   // A declared pool by id, or a list row's by its name (1.388): the half-orc's Relentless Endurance.
   const wanted = key.trim().toLowerCase();
   return (
@@ -2590,7 +2590,7 @@ function vanishMade(ctx: RulesetCombatContext, maker: RulesetCombatant): void {
 
 function trackValue(ctx: RulesetCombatContext, combatant: RulesetCombatant, track: string): number {
   if (!combatant.sheet) return 0;
-  const live = readRulesetLive(ctx.definition, combatant.sheet.build, combatant.sheet.live);
+  const live = readRulesetLive(ctx.definition, combatant.sheet.build, combatant.sheet.live, combatant.sheet.items);
   return live.tracks.find((entry) => entry.id === track)?.value ?? 0;
 }
 
@@ -2598,7 +2598,7 @@ function trackValue(ctx: RulesetCombatContext, combatant: RulesetCombatant, trac
  *  value the sheet works out. A combatant with no sheet has no track to fill. */
 function trackMax(ctx: RulesetCombatContext, combatant: RulesetCombatant, track: string): number {
   if (!combatant.sheet) return 0;
-  const live = readRulesetLive(ctx.definition, combatant.sheet.build, combatant.sheet.live);
+  const live = readRulesetLive(ctx.definition, combatant.sheet.build, combatant.sheet.live, combatant.sheet.items);
   return live.tracks.find((entry) => entry.id === track)?.max ?? 0;
 }
 
@@ -8654,7 +8654,7 @@ function counterSpent(definition: RulesetDefinition, holder: RulesetCombatant, a
   const name = alter.use?.name;
   if (!holder.sheet || !name) return 0;
   const wanted = `counters:${name.trim().toLowerCase()}`;
-  const pool = readRulesetLive(definition, holder.sheet.build, holder.sheet.live).pools.find(
+  const pool = readRulesetLive(definition, holder.sheet.build, holder.sheet.live, holder.sheet.items).pools.find(
     (one) => one.key === wanted || one.label.trim().toLowerCase() === name.trim().toLowerCase(),
   );
   return pool ? Math.max(0, pool.max - pool.value) : 0;

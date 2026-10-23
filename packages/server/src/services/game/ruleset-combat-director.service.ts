@@ -892,7 +892,7 @@ function conditionsOf(
     ...combatant.tracked.filter((entry) => !entry.kept).map((entry) => entry.condition),
     ...zoned,
     ...(combatant.sheet
-      ? readRulesetLive(definition, combatant.sheet.build, combatant.sheet.live)
+      ? readRulesetLive(definition, combatant.sheet.build, combatant.sheet.live, combatant.sheet.items)
           .conditions.filter((condition) => condition.active)
           .map((condition) => condition.id)
       : []),
@@ -924,7 +924,7 @@ function deathTrackOf(definition: RulesetDefinition, combatant: RulesetCombatant
   const dying = definition.combat?.dying;
   // Only the party rolls against death; an opponent at zero is out, sheet or no sheet.
   if (!dying || combatant.side !== "party" || !combatant.sheet) return undefined;
-  const live = readRulesetLive(definition, combatant.sheet.build, combatant.sheet.live);
+  const live = readRulesetLive(definition, combatant.sheet.build, combatant.sheet.live, combatant.sheet.items);
   const value = (track: string) => live.tracks.find((entry) => entry.id === track)?.value ?? 0;
   // The member's own top, since a plain track's maximum may be a value their sheet works out.
   const max = (track: string) => live.tracks.find((entry) => entry.id === track)?.max ?? 0;
@@ -948,7 +948,7 @@ function spentPoolsOf(definition: RulesetDefinition, combatant: RulesetCombatant
   // The ruleset may name them itself, in its own order (1.375).
   const named = definition.combat?.display?.pools;
   if (named) {
-    const live = readRulesetLive(definition, combatant.sheet.build, combatant.sheet.live);
+    const live = readRulesetLive(definition, combatant.sheet.build, combatant.sheet.live, combatant.sheet.items);
     const pools = named.flatMap((id) =>
       live.pools
         .filter((pool) => pool.key === id && !pool.listId && pool.max > 0)
@@ -966,7 +966,7 @@ function spentPoolsOf(definition: RulesetDefinition, combatant: RulesetCombatant
     if ((pool.group && groups.has(pool.group)) || pool.pays?.some((group) => groups.has(group))) spent.add(pool.id);
   }
   if (spent.size === 0) return undefined;
-  const live = readRulesetLive(definition, combatant.sheet.build, combatant.sheet.live);
+  const live = readRulesetLive(definition, combatant.sheet.build, combatant.sheet.live, combatant.sheet.items);
   const pools = live.pools
     .filter((pool) => !pool.listId && pool.max > 0 && spent.has(pool.key))
     .map((pool) => ({ id: pool.key, label: pool.label, value: pool.value, max: pool.max, ...unitOf(pool.key) }));
@@ -2174,7 +2174,10 @@ export function priced(
   // for when it matters (half again its price) and a full pool is spent freely.
   const left = actor.sheet
     ? new Map(
-        readRulesetLive(definition, actor.sheet.build, actor.sheet.live).pools.map((pool) => [pool.key, pool.value]),
+        readRulesetLive(definition, actor.sheet.build, actor.sheet.live, actor.sheet.items).pools.map((pool) => [
+          pool.key,
+          pool.value,
+        ]),
       )
     : undefined;
   for (const option of menu ?? rulesetCombatOptions(definition, encounter, actor.id)) {
@@ -3077,7 +3080,7 @@ function rulesetHealingWorth(average: number, health: { value: number; max: numb
 /** Whether a pool of this fighter's sheet has room for more. */
 function rulesetPoolHasRoom(definition: RulesetDefinition, fighter: RulesetCombatant, pool: string): boolean {
   if (!fighter.sheet) return false;
-  const now = readRulesetLive(definition, fighter.sheet.build, fighter.sheet.live).pools.find(
+  const now = readRulesetLive(definition, fighter.sheet.build, fighter.sheet.live, fighter.sheet.items).pools.find(
     (entry) => entry.key === pool,
   );
   return !!now && now.value < now.max;
@@ -4199,7 +4202,7 @@ function weighRulesetReserve(
   const answers = actor.actions.filter((action) => action.reaction && !action.innate?.coven);
   if (answers.length === 0) return;
   const pools = actor.sheet
-    ? readRulesetLive(definition, actor.sheet.build, actor.sheet.live).pools.map((pool) => pool.key)
+    ? readRulesetLive(definition, actor.sheet.build, actor.sheet.live, actor.sheet.items).pools.map((pool) => pool.key)
     : [];
   // Whether one of its answers can be paid by this holder, as its slots, uses and sheet stand.
   const answerable = (holder: RulesetCombatant) =>

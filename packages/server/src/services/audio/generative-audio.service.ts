@@ -240,7 +240,11 @@ async function compose(
     throw error;
   }
   if (isConnectionTest) {
-    for (const entry of await readdir(directory, { withFileTypes: true })) {
+    const previousTracks = await readdir(directory, { withFileTypes: true }).catch((error) => {
+      logger.warn(error, "Failed to list previous connection test tracks");
+      return [];
+    });
+    for (const entry of previousTracks) {
       if (entry.isFile() && /^generated-[a-f0-9]{16}\.mp3$/.test(entry.name) && entry.name !== filename)
         await unlink(join(directory, entry.name)).catch((error) =>
           logger.warn(error, "Failed to remove a previous connection test track"),

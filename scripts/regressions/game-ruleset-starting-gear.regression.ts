@@ -41,6 +41,8 @@ const { createGameStateStorage } = await import("../../packages/server/src/servi
 const { createGameRulesetsStorage } =
   await import("../../packages/server/src/services/storage/game-rulesets.storage.js");
 const { gameInventoryRoutes } = await import("../../packages/server/src/routes/game-inventory.routes.js");
+const { readGameStartingGearTaken } =
+  await import("../../packages/server/src/services/game/game-starting-gear.service.js");
 const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
@@ -420,6 +422,9 @@ try {
     const twice = await take({ chatId, selection: { gear: "drifter", choices: [], picks: {} }, again: true });
     assert.equal(twice.statusCode, 200, twice.body);
     assert.deepEqual(twice.json().taken, { "": ["traveller", "pilgrim", "drifter"] });
+    // Read back, a bag's marker keeps its newest forty: the kit just taken is never the one dropped.
+    const many = Array.from({ length: 41 }, (_, index) => `kit-${index}`);
+    assert.deepEqual(readGameStartingGearTaken({ "": many })[""], many.slice(1));
     // A party member's own bag, by their card's name; nobody else's.
     const juno = await take({ chatId, holder: "juno", selection: { gear: "pilgrim", choices: [], picks: {} } });
     assert.equal(juno.statusCode, 200, juno.body);

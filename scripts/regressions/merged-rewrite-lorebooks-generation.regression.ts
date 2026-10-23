@@ -98,7 +98,8 @@ try {
   });
   assert(chat);
   await chats.createMessage({ chatId: chat.id, role: "user", content: "Inspect the crystal." });
-  await chats.createMessage({ chatId: chat.id, role: "assistant", content: "A crystal glows." });
+  const target = await chats.createMessage({ chatId: chat.id, role: "assistant", content: "A crystal glows." });
+  assert(target);
   const selections = [[], ["continuity"], ["prose-guardian"], types];
   for (const attachedTypes of selections) {
     await chats.patchMetadata(chat.id, {
@@ -113,7 +114,12 @@ try {
         ]),
       ),
     });
-    for (const kind of ["normal", "retry"]) {
+    for (const kind of ["normal", "retry", "pre_retry"]) {
+      for (const type of types) {
+        const config = await agents.getByType(type);
+        assert(config);
+        await agents.update(config.id, { phase: kind === "pre_retry" ? "pre_generation" : "post_processing" });
+      }
       prompts.length = 0;
       const response = await app.inject({
         method: "POST",
@@ -121,7 +127,7 @@ try {
         payload:
           kind === "normal"
             ? { chatId: chat.id, userMessage: "Inspect the crystal again." }
-            : { chatId: chat.id, agentTypes: types },
+            : { chatId: chat.id, agentTypes: types, ...(kind === "pre_retry" ? { forMessageId: target.id } : {}) },
       });
       assert.equal(response.statusCode, 200, response.body);
       assert(!response.body.includes('"type":"error"'), response.body);
@@ -140,7 +146,9 @@ try {
       assert(!prompt.includes("REFERENCE_unrelated"), `${kind} excludes another agent's selected book`);
     }
   }
-  console.info("PASS: both real generation routes resolve each original editor's keyword-triggered attachment before one merged request");
+  console.info(
+    "PASS: normal generation and both retry phases resolve each original editor's stored keyword attachment before one merged request",
+  );
 } finally {
   await app.close();
   await closeDB();

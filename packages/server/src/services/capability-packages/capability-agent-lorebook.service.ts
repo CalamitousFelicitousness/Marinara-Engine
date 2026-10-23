@@ -54,7 +54,7 @@ export async function resolvePackageAgentLorebookEntries(
 
   const characters = createCharactersStorage(db);
   const roster = parseCharacterIds(chat.characterIds);
-  const characterIds = resolveActiveCharacterIds(roster, metadata, { mode: chat.mode });
+  const characterIds = resolveActiveCharacterIds(roster, metadata, { mode: chat.mode, allowEmpty: true });
   const tags = new Set<string>();
   for (const id of characterIds) {
     const card = await characters.getById(id);
@@ -71,21 +71,21 @@ export async function resolvePackageAgentLorebookEntries(
   const config = await createAgentsStorage(db).getByType(packageId);
   const contextSize = normalizeAgentContextSize(parseExtra(config?.settings).contextSize);
   const agentMessages: typeof allMessages = [];
-  let last: (typeof allMessages)[number] | undefined;
   let lastTurn: (typeof allMessages)[number] | undefined;
-  let prior: (typeof allMessages)[number] | undefined;
+  let priorTurn: (typeof allMessages)[number] | undefined;
   let lastInput: string | undefined;
   for (let index = allMessages.length - 1; index >= 0; index--) {
     const message = allMessages[index]!;
     if (chat.mode === "game" || !isMessageHiddenFromAI(message)) {
-      if (!last) last = message;
-      else if (!prior && (message.role === "user" || message.role === "assistant")) prior = message;
-      if (!lastTurn && (message.role === "user" || message.role === "assistant")) lastTurn = message;
+      if (message.role === "user" || message.role === "assistant") {
+        if (!lastTurn) lastTurn = message;
+        else if (!priorTurn) priorTurn = message;
+      }
       if (lastInput === undefined && message.role === "user") lastInput = message.content;
       if (agentMessages.length < contextSize) agentMessages.push(message);
     }
     if (parseExtra(message.extra).isConversationStart) break;
-    if (agentMessages.length === contextSize && lastInput !== undefined && prior) break;
+    if (agentMessages.length === contextSize && lastInput !== undefined && priorTurn) break;
   }
   agentMessages.reverse();
   const replay = normalizeGenerationReplay(parseExtra(lastTurn?.extra).generationReplay);
@@ -102,14 +102,18 @@ export async function resolvePackageAgentLorebookEntries(
           triggers.length === storedTriggers.length && triggers.every((value) => storedTriggers.includes(value)),
       )
     : undefined;
+  // Legacy group replies and continuations can have identical rows. Older input supplies macros,
+  // not proof of this turn's intent; retain the adjacent-turn fallback for that history.
   const generationTriggers =
     savedTriggers ??
     resolveLorebookGenerationTriggers(
       {
         ...replay,
         userMessage:
-          replay?.userMessage ?? (last?.role === "user" ? last.content : prior?.role === "user" ? prior.content : null),
-        regenerateMessageId: last?.role === "assistant" && (last.activeSwipeIndex ?? 0) > 0 ? last.id : null,
+          replay?.userMessage ??
+          (lastTurn?.role === "user" ? lastTurn.content : priorTurn?.role === "user" ? priorTurn.content : null),
+        regenerateMessageId:
+          lastTurn?.role === "assistant" && (lastTurn.activeSwipeIndex ?? 0) > 0 ? lastTurn.id : null,
       },
       chat.mode,
     );

@@ -16,6 +16,7 @@ const { chats: chatRows, lorebookEntries: entryRows } = await import("../../pack
 const { eq } = await import("../../packages/server/src/db/file-query.js");
 const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
 const { createAgentsStorage } = await import("../../packages/server/src/services/storage/agents.storage.js");
+const { createCharactersStorage } = await import("../../packages/server/src/services/storage/characters.storage.js");
 const { createConnectionsStorage } = await import("../../packages/server/src/services/storage/connections.storage.js");
 const { createChatPresetsStorage } = await import("../../packages/server/src/services/storage/chat-presets.storage.js");
 const { createLorebooksStorage } = await import("../../packages/server/src/services/storage/lorebooks.storage.js");
@@ -24,7 +25,7 @@ const { generateRoutes } = await import("../../packages/server/src/routes/genera
 const { resolvePackageAgentLorebookEntries } =
   await import("../../packages/server/src/services/capability-packages/capability-agent-lorebook.service.js");
 const { OpenAIProvider } = await import("../../packages/server/src/services/llm/providers/openai.provider.js");
-const { replaceBuiltInAgentDefinitions } = await import("../../packages/shared/dist/index.js");
+const { characterDataSchema, replaceBuiltInAgentDefinitions } = await import("../../packages/shared/dist/index.js");
 const { applyAgentLorebookChatSettings } =
   await import("../../packages/server/src/services/generation/agent-lorebook-triggers.js");
 const { captureChatWizardDefaults, reusableChatWizardDefaults, wizardDefaultsMetadataPatch } =
@@ -347,6 +348,80 @@ try {
   assert(prompts.some((prompt) => /REFERENCE_TASK_/u.test(prompt) && prompt.includes("TRACKER_BOOK_SECRET")));
   const attached = await resolvePackageAgentLorebookEntries(db, types[0]!, { chatId: chat.id });
   assert(attached.some((entry) => entry.content === "WRITER_BOOK_SECRET"));
+  const scopedCast = await Promise.all(
+    ["Alice", "Bob"].map((name) =>
+      createCharactersStorage(db).create(characterDataSchema.parse({ name, tags: [`scope-${name}`] })),
+    ),
+  );
+  assert(scopedCast[0] && scopedCast[1]);
+  const rosterBook = await books.create({ name: "Active roster reference" });
+  assert(rosterBook);
+  for (const [index, card] of scopedCast.entries()) {
+    assert(card);
+    const name = ["Alice", "Bob"][index]!;
+    await books.createEntry({
+      lorebookId: rosterBook.id,
+      constant: true,
+      content: `ID_${name}`,
+      characterFilterMode: "include",
+      characterFilterIds: [card.id],
+    });
+    await books.createEntry({
+      lorebookId: rosterBook.id,
+      constant: true,
+      content: `TAG_${name}`,
+      characterTagFilterMode: "include",
+      characterTagFilters: [`scope-${name}`],
+    });
+  }
+  await books.createEntry({ lorebookId: rosterBook.id, constant: true, content: "CAST={{char}}" });
+  for (const mode of ["conversation", "roleplay", "game"] as const) {
+    const rosterChat = await chats.create({
+      name: "All-inactive roster",
+      mode,
+      characterIds: scopedCast.map((card) => card.id),
+    });
+    assert(rosterChat);
+    await chats.patchMetadata(rosterChat.id, {
+      inactiveCharacterIds: scopedCast.map((card) => card.id),
+      agentLorebookAttachments: { [types[0]!]: { enabled: true, lorebookId: rosterBook.id } },
+    });
+    await chats.createMessage({ chatId: rosterChat.id, role: "user", content: "Inspect the reference." });
+    const contents = async () =>
+      (await resolvePackageAgentLorebookEntries(db, types[0]!, { chatId: rosterChat.id })).map(
+        (entry) => entry.content,
+      );
+    const inactiveEntries = await contents();
+    for (const name of ["Alice", "Bob"]) {
+      assert.equal(
+        inactiveEntries.includes(`ID_${name}`),
+        mode === "game",
+        `${mode}: inactive identity scope matches the live path`,
+      );
+      assert.equal(
+        inactiveEntries.includes(`TAG_${name}`),
+        mode === "game",
+        `${mode}: inactive tag scope matches the live path`,
+      );
+    }
+    assert(
+      inactiveEntries.some((content) => content.startsWith("CAST=")),
+      "ungated entries still resolve with an empty active roster",
+    );
+    if (mode !== "game") {
+      assert(
+        inactiveEntries.filter((content) => content.startsWith("CAST=")).every((content) => !/Alice|Bob/.test(content)),
+        "macros do not describe excluded cards",
+      );
+      await chats.patchMetadata(rosterChat.id, { inactiveCharacterIds: [scopedCast[0].id] });
+      const oneActive = await contents();
+      assert(oneActive.includes("ID_Bob") && oneActive.includes("TAG_Bob"));
+      assert(!oneActive.includes("ID_Alice") && !oneActive.includes("TAG_Alice"));
+      await chats.patchMetadata(rosterChat.id, { inactiveCharacterIds: [] });
+      const restored = await contents();
+      assert(["ID_Alice", "TAG_Alice", "ID_Bob", "TAG_Bob"].every((value) => restored.includes(value)));
+    }
+  }
   const originalRoster = (await chats.getById(chat.id))!.characterIds;
   for (const malformedRoster of ["not-json", "null", "42", '[null,42,""]']) {
     await db.update(chatRows).set({ characterIds: malformedRoster }).where(eq(chatRows.id, chat.id));

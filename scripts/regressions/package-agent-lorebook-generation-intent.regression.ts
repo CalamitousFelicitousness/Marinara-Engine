@@ -87,8 +87,8 @@ try {
     assert(!result.body.includes('"type":"error"'), result.body);
     return chats.listMessages(chat.id);
   };
-  const expectIntent = async (expected: string, label: string) => {
-    const entries = await resolvePackageAgentLorebookEntries(db, agent, { chatId: chat.id });
+  const expectIntent = async (expected: string, label: string, chatId = chat.id) => {
+    const entries = await resolvePackageAgentLorebookEntries(db, agent, { chatId });
     assert.deepEqual(
       entries.map((entry) => entry.content).filter((content) => content.startsWith("TRIGGER_")),
       [`TRIGGER_${expected}`],
@@ -163,6 +163,36 @@ try {
     await chats.updateMessageExtra(typed.id, { lorebookGenerationTriggers: value });
     await expectIntent("chat", "missing, invalid or contradictory snapshots fall back to transcript derivation");
   }
+
+  const legacy = await chats.create({
+    name: "Legacy without saved intent",
+    mode: "roleplay",
+    characterIds: [cast[0].id],
+    connectionId: connection.id,
+  });
+  assert(legacy);
+  await chats.patchMetadata(legacy.id, {
+    agentLorebookAttachments: { [agent]: { enabled: true, lorebookId: book.id } },
+  });
+  await chats.createMessage({ chatId: legacy.id, role: "user", content: "Inspect it." });
+  const legacyReply = await chats.createMessage({
+    chatId: legacy.id,
+    role: "assistant",
+    characterId: cast[0].id,
+    content: "It glows.",
+  });
+  assert(legacyReply);
+  assert.equal(extra(legacyReply).lorebookGenerationTriggers, undefined);
+  await expectIntent("chat", "legacy single reply derives its submitted user turn", legacy.id);
+  const note = await chats.createMessage({ chatId: legacy.id, role: "system", content: "Visible narrator note" });
+  assert(note);
+  await expectIntent("chat", "a visible system tail preserves derivable legacy chat intent", legacy.id);
+  await chats.removeMessage(note.id);
+  await chats.addSwipe(legacyReply.id, "Another answer.");
+  await expectIntent("swipe", "legacy active swipe derives regeneration without saved intent", legacy.id);
+  await chats.createMessage({ chatId: legacy.id, role: "system", content: "Another visible narrator note" });
+  await expectIntent("swipe", "a visible system tail cannot hide a legacy active swipe", legacy.id);
+
   const exported = await app.inject({ method: "GET", url: `/api/chats/${chat.id}/export?format=jsonl` });
   assert.equal(exported.statusCode, 200, exported.body);
   assert(

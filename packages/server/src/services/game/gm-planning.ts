@@ -58,12 +58,15 @@ const OUTCOME = String.raw`(?:what[ \t]+the[ \t]+(?:dice|die)[ \t]+says?|how[ \t
 // What any announcing verb may be after; a roll may also name what it rolls for.
 const ANNOUNCED_OBJECT = String.raw`(?:${DETERMINER}(?:${RESULT_NOUN}|${ROLL_NOUN})${FOR_TAIL}|${DETERMINER}${ROLL_KIND}|${OUTCOME})`;
 const ROLL_OBJECT = String.raw`(?:(?:it|them|that|this)${FOR_TAIL}|${DETERMINER}${ROLLED_FOR}${FOR_TAIL}|${ANNOUNCED_OBJECT})`;
+// Any announcement may go on to say what it waits to learn: "check and see how that goes", "roll to find out".
+const OUTCOME_TAIL = String.raw`(?:[ \t]+(?:to|and)[ \t]+(?:see|find out)(?:[ \t]+${OUTCOME})?)?`;
 const TOOL_ANNOUNCEMENT = new RegExp(
   String.raw`(?:^|(?<=[.!?…"'”’*_)\]])\s+|\s*[—–]\s*|\s+-{1,2}\s+)` +
     String.raw`(?:(?:okay|ok|alright|right|now|first|so),?\s+)*` +
     String.raw`(?:let(?:'s|’s| me| us)|i(?:'ll|’ll| will| need to| have to|'m going to|’m going to| am going to)|time to)\s+` +
-    String.raw`(?:(?:roll|re-?roll|throw)(?:[ \t]+${ROLL_OBJECT})?${FOR_TAIL}(?:[ \t]+(?:to|and)[ \t]+(?:see|find out)(?:[ \t]+${OUTCOME})?)?` +
+    String.raw`(?:(?:roll|re-?roll|throw)(?:[ \t]+${ROLL_OBJECT})?${FOR_TAIL}` +
     String.raw`|(?:get|check|see|find out|call|look up|determine|work out|figure out)(?:[ \t]+${ANNOUNCED_OBJECT})?)` +
+    OUTCOME_TAIL +
     String.raw`[ \t]*[.!?:…]*\s*$`,
   "i",
 );

@@ -50,6 +50,11 @@ try {
   assert.match(issuesOf(fixture(["tactical", "tactical"])), /Duplicate combat style "tactical"/);
   assert.notEqual(issuesOf(fixture([])), "", "an empty list says nothing and is refused");
   assert.notEqual(issuesOf(fixture(["Tactical"])), "", "a style id is lower case");
+  assert.match(
+    issuesOf(fixture(["hex-board"])),
+    /List classic or tactical too/,
+    "a list of registered styles only could leave a client with nothing it may draw",
+  );
   assert.notEqual(issuesOf(fixture(new Array(9).fill(0).map((_, index) => `style-${index}`))), "", "at most 8");
 
   // ── The helpers ──
@@ -70,7 +75,19 @@ try {
     "tactical",
     "a client without the registered style plays the first listed one it has",
   );
-  assert.equal(rulesetCombatStyle(registered, "classic", ["classic"]), "hex-board", "none known: the first listed");
+  assert.equal(
+    rulesetCombatStyle(registered, "classic", ["classic"]),
+    "tactical",
+    "a client that has no listed style it registered plays the first built-in one listed, never classic",
+  );
+  // Whatever a client has registered, the style it plays is one the ruleset lists and one it can draw.
+  for (const known of [["classic", "tactical"], ["classic", "tactical", "hex-board"], ["classic"]]) {
+    for (const saved of ["classic", "tactical", "hex-board", undefined]) {
+      const played = rulesetCombatStyle(registered, saved, known);
+      assert.ok(registered.combat!.styles!.includes(played), `${saved} on ${known} plays a listed style`);
+      assert.ok(known.includes(played) || played === "tactical", `${saved} on ${known} plays a style the client draws`);
+    }
+  }
 
   // ── The gate ──
   const gate = /capabilityApi 1\.379 or newer/;
@@ -104,6 +121,7 @@ try {
   assert.match(section, /!isBuiltInCombatStyle\(id\) && offered\(id\)/);
   const drawer = readSource("packages/client/src/components/chat/ChatSettingsDrawer.tsx");
   assert.match(drawer, /allowedStyles=\{allowedCombatStyles\}/);
+  assert.match(drawer, /rulesetCombatStyle\(\s+rulesetDefinition,[\s\S]{0,200}listCombatStyles\(\),/);
   const surface = readSource("packages/client/src/components/game/GameSurface.tsx");
   assert.match(
     surface,
@@ -119,6 +137,7 @@ try {
   assert.match(gameRoutes, /code: "combat_style_not_allowed"/);
   const chatRoutes = readSource("packages/server/src/routes/chats.routes.ts");
   assert.match(chatRoutes, /!rulesetAllowsCombatStyle\(resolved\.definition, incoming\.gameCombatStyle\)/);
+  assert.equal(chatRoutes.match(/code: "combat_style_not_allowed"/g)?.length, 1, "the settings refusal names its code");
   const encounterRoutes = readSource("packages/server/src/routes/encounter.routes.ts");
   assert.match(encounterRoutes, /const combatStyle = rulesetCombatStyle\(/);
   const prompt = readSource("packages/server/src/services/generation/game-gm-prompt-runtime.ts");

@@ -3948,15 +3948,16 @@ player's game is set to the Tactical combat style. With the Classic style, or on
 and nothing below is read at all.
 
 **Which styles a game may play.** `combat.styles` names the combat styles a game on your ruleset may
-play, by id: `classic`, `tactical`, or a style a client registered (up to 8, each once). Left out,
+play, by id: `classic`, `tactical`, or a style a client registered (up to 8, each once, and at least
+one of `classic` and `tactical`). Left out,
 every style is offered, as before. A ruleset whose rules need a board (areas, reach, cover, flanking)
 says `"styles": ["tactical"]`: the New Game wizard and the game's settings then offer only Tactical,
 and so its fights always have positions. A game already saved on a style you do not list plays the
-first one you do (the first this client can draw, for a registered style), and a game cannot be
+first one you do that the client can draw (the first built-in one you list, on a client without a
+registered style you list), and a game cannot be
 made, or switched in its settings, to a style you leave out. A fight already under way keeps the
 style it began on. The list holds whether or not the combat director is on, so it also narrows
-Marinara's own Classic and Tactical battles on your ruleset. List a built-in style after a
-registered one: a client without that style plays the built-in one. A ruleset using `styles` needs
+Marinara's own Classic and Tactical battles on your ruleset. A ruleset using `styles` needs
 Capability API 1.379.
 
 ```json

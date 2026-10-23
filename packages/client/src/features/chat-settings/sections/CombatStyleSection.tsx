@@ -91,7 +91,7 @@ export function CombatStyleSection({
             {localizeUi("game.combat.ruleset.stylesLimited")}
           </p>
         )}
-        {rulesetResolvesFights && !allowedStyles && (
+        {rulesetResolvesFights && (
           <p className="text-[0.575rem] leading-relaxed text-[var(--muted-foreground)]">
             {localizeUi(
               rulesetHasPositions ? "game.combat.ruleset.preferencePositions" : "game.combat.ruleset.preferenceIgnored",

@@ -1748,6 +1748,7 @@ export async function chatsRoutes(app: FastifyInstance) {
         if (resolved.status === "ok" && !rulesetAllowsCombatStyle(resolved.definition, incoming.gameCombatStyle)) {
           return reply.status(400).send({
             error: `This game's ruleset plays battles only as ${rulesetCombatStyles(resolved.definition)!.join(", ")}.`,
+            code: "combat_style_not_allowed",
           });
         }
       }

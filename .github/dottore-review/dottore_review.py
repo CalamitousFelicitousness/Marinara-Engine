@@ -3254,6 +3254,8 @@ def render_walkthrough(
         DOTTORE_MARKER,
         state_marker,
     ]
+    if review_obj.get("base_ref"):
+        body.append(f"<!-- dottore:base-ref={review_obj['base_ref']} -->")
     # ponytail: a head with no new diff to review is not discharged even when the last verdict was Viable;
     # carry the prior verdict forward if base merges keep withholding approval.
     signal = merge_signal(review_obj, defects, notes, pre_merge)

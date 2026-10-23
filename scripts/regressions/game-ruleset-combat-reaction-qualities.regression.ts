@@ -1,5 +1,5 @@
 /**
- * Reactions narrowed by what is thrown and by who holds what (Capability API 1.511).
+ * Reactions narrowed by what is thrown and by who holds what (Capability API 1.548).
  *
  *   - `against.qualities`: Rock Catching answers any attack carrying a quality ("thrown_object"),
  *     whatever it is called; nothing else opens it.
@@ -33,7 +33,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 511);
+  assert.ok(supportedCapabilityApi.minor >= 548);
   const text = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -167,7 +167,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a reaction narrowed by qualities or by what the one it answers for holds (against.qualities, forHolds) requires schemaVersion 2 and capabilityApi 1.511 or newer";
+      "A ruleset with a reaction narrowed by qualities or by what the one it answers for holds (against.qualities, forHolds) requires schemaVersion 2 and capabilityApi 1.548 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -181,13 +181,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(510) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(511) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(510) as never, JSON.parse(text)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(547) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(548) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(547) as never, JSON.parse(text)), gate);
   }
 
   console.log(
-    "Reaction qualities: Rock Catching answers a hurled boulder by its quality, not a club; Shield answers only for the amulet's holder; gated at 1.511.",
+    "Reaction qualities: Rock Catching answers a hurled boulder by its quality, not a club; Shield answers only for the amulet's holder; gated at 1.548.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

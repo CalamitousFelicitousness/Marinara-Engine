@@ -97,14 +97,14 @@ export interface RulesetItemEffectFact {
   };
   /** Conditions and damage labels, and magic, that narrow this save modifier (1.134). */
   against?: { names: string[]; magic?: true };
-  /** What the ruleset says the modifier does, said in place of the rest (1.733). */
+  /** What the ruleset says the modifier does, said in place of the rest (1.378). */
   label?: string;
   change:
     | { mode: "advantage" | "disadvantage" }
     | { value: string }
     | { fails: true }
     | { atLeast: number }
-    /** Defense never below this (1.353): a number, or the label of what it reads off the sheet. */
+    /** Defense never below this (1.390): a number, or the label of what it reads off the sheet. */
     | { floor: string }
     | { times: 0.5 | 2 }
     | { effect: string }
@@ -182,7 +182,7 @@ export interface RulesetItemUseFact {
    *  and the dead it brings back within so many rounds. */
   ends?: { conditions: string[]; count?: number };
   stabilizes?: true;
-  /** Its chance in 100 to backfire on its user as it is used (1.577), what it deals them, and whether
+  /** Its chance in 100 to backfire on its user as it is used (1.614), what it deals them, and whether
    *  it is destroyed. */
   backfires?: { chance: number; amount: string; damageType?: string; destroys?: true };
   revives?: { withinRounds: number; health: string };
@@ -191,13 +191,13 @@ export interface RulesetItemUseFact {
   charges?: {
     cost: number;
     max: number;
-    /** The dice a stack is found holding (1.520), rather than full. */
+    /** The dice a stack is found holding (1.557), rather than full. */
     rolled?: string;
-    /** `after` (1.503): the days, and the hours (a sum, perhaps dice), it waits once run out. */
+    /** `after` (1.540): the days, and the hours (a sum, perhaps dice), it waits once run out. */
     recharge?: { rests: string[]; amount: "max" | string; after?: { days?: number; hours?: string } };
     /** `regains` (1.271): the faces at or over `atLeast` give back `amount` charges. */
     breaksOn?: { die: number; atMost?: number; regains?: { atLeast: number; amount: string }; becomes?: string };
-    /** Used on with none left (1.571): its chance in 100 of tearing, cumulative or not. */
+    /** Used on with none left (1.608): its chance in 100 of tearing, cumulative or not. */
     overuse?: { chance: number; cumulative?: true };
   };
   /** A pool it gives back some of, by the pool's label. */
@@ -253,7 +253,7 @@ export interface RulesetItemAttackFact {
    *  conditions it puts on the one hit, by their labels. */
   spends?: Array<{
     label: string;
-    /** Or its own uses (1.481), and its amount none where it only puts conditions on. */
+    /** Or its own uses (1.518), and its amount none where it only puts conditions on. */
     charges?: number;
     uses?: number;
     amount?: string;
@@ -782,7 +782,7 @@ export function rulesetItemEffectFacts(
   }
   for (const modifier of effect.modifiers ?? []) {
     const to = modifier.to;
-    // In the ruleset's own words where it gives them (1.733): "advantage on saves against being charmed".
+    // In the ruleset's own words where it gives them (1.378): "advantage on saves against being charmed".
     if (modifier.label) {
       facts.push({ to, names: [], label: modifier.label, change: { effect: modifier.label } });
       continue;
@@ -870,7 +870,7 @@ export function rulesetItemEffectFacts(
   return facts;
 }
 
-/** What a floor under defense reads (1.353), as a reader would say it: its number, or the sheet value
+/** What a floor under defense reads (1.390), as a reader would say it: its number, or the sheet value
  *  it reads in the sheet's own words. */
 function floorLabel(definition: RulesetDefinition, atLeast: number | RulesetValueRef): string {
   return typeof atLeast === "number" ? String(atLeast) : sheetBonusWords(definition, atLeast);
@@ -1376,7 +1376,7 @@ export function rulesetItemBearers(
   };
 }
 
-/** What a stack of an item with rolled charges holds before anything spent or gained them (1.520),
+/** What a stack of an item with rolled charges holds before anything spent or gained them (1.557),
  *  against its written most or its stat's. */
 function foundCharges(item: RulesetCatalogItem, stackId: string): number {
   const most = item.charges?.max;
@@ -1401,7 +1401,7 @@ export function rulesetSheetItems(
     if (!stack.item || gameInventoryBagKey(stack.holder) !== bag) return [];
     const made = book.itemOf(stack.item)?.entry.item;
     if (!made) return [];
-    // In another form (1.522): that form's item's attack, worn effect and switch.
+    // In another form (1.559): that form's item's attack, worn effect and switch.
     const formRef = stack.form ? made.forms?.into[stack.form - 1]?.item : undefined;
     const formItem = formRef ? book.itemOf(formRef)?.entry.item : undefined;
     const item = formItem ? rulesetFormedItem(made, formItem) : made;
@@ -1429,7 +1429,7 @@ export function rulesetSheetItems(
         ...(stack.absorbedEver ? { absorbedEver: stack.absorbedEver } : {}),
         ...(stack.callRoll ? { callRoll: stack.callRoll } : {}),
         ...(stack.usesLeft ? { usesLeft: stack.usesLeft } : {}),
-        // Found holding some (1.523) until a fight stores or casts out of it.
+        // Found holding some (1.560) until a fight stores or casts out of it.
         ...(stack.storedEntries
           ? { storedEntries: stack.storedEntries }
           : item.stores?.found
@@ -1467,7 +1467,7 @@ export function rulesetCardItems(
   return (cardName) => rulesetSheetItems(book, stacks, holderOf(cardName) ?? undefined);
 }
 
-/** Whose bag a party card's items are in (1.668): the card read for the player (the one named for
+/** Whose bag a party card's items are in (1.705): the card read for the player (the one named for
  *  who the chat plays as, else the first) carries the player's own, null; every other card its own,
  *  by its name. */
 export function rulesetCardHolder(

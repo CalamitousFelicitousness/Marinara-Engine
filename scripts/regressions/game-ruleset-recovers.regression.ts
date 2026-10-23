@@ -1,5 +1,5 @@
 /**
- * Pools given back within a budget (Capability API 1.357): 5e's Arcane Recovery.
+ * Pools given back within a budget (Capability API 1.394): 5e's Arcane Recovery.
  *
  *   - A 4th-level wizard recovers two levels of spent slots: two 1st, or one 2nd, and its counter.
  *   - Refused whole past the budget, above `most`, outside the group, or more than were spent.
@@ -33,7 +33,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 357);
+  assert.ok(supportedCapabilityApi.minor >= 394);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -161,7 +161,7 @@ try {
     assert.equal(plan.ok ? "ok" : plan.reason, "bad-pool", "above the most it recovers");
   }
 
-  // ── A count caps how many come back (1.603) ──
+  // ── A count caps how many come back (1.640) ──
   {
     const counted = {
       ...recovery,
@@ -211,7 +211,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose entry gives back pools its user picks within a budget (mechanics.recovers) requires schemaVersion 2 and capabilityApi 1.357 or newer";
+      "A ruleset whose entry gives back pools its user picks within a budget (mechanics.recovers) requires schemaVersion 2 and capabilityApi 1.394 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -225,13 +225,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(356) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(357) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(356) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(393) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(394) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(393) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Recovers: Arcane Recovery gives back two levels of spent slots, refused whole past the budget, above its most, outside the group or beyond what was spent; the tag carries recover; gated at 1.357.",
+    "Recovers: Arcane Recovery gives back two levels of spent slots, refused whole past the budget, above its most, outside the group or beyond what was spent; the tag carries recover; gated at 1.394.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

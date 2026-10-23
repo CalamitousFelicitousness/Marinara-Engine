@@ -1,5 +1,5 @@
 /**
- * A condition that ends when its holder regains health (Capability API 1.631).
+ * A condition that ends when its holder regains health (Capability API 1.668).
  *
  *   - `endsWhen: ["healed"]`: caltrops' slowed walk ends on any heal that gives back at least one
  *     point, magical or not; a heal at full health ends nothing.
@@ -28,7 +28,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 631);
+  assert.ok(supportedCapabilityApi.minor >= 668);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -113,7 +113,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a condition that ends when its holder regains health (endsWhen healed, healed-by-magic) requires schemaVersion 2 and capabilityApi 1.631 or newer";
+      "A ruleset with a condition that ends when its holder regains health (endsWhen healed, healed-by-magic) requires schemaVersion 2 and capabilityApi 1.668 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -127,12 +127,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(630) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(631) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(630) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(667) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(668) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(667) as never, JSON.parse(fiveEText)), gate);
   }
 
-  console.log("Ends healed: any heal frees a slowed walk, only magic closes an Infernal Wound; gated at 1.631.");
+  console.log("Ends healed: any heal frees a slowed walk, only magic closes an Infernal Wound; gated at 1.668.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

@@ -1,5 +1,5 @@
 /**
- * Turning a foe's spell aimed at the holder alone back at its caster (Capability API 1.470).
+ * Turning a foe's spell aimed at the holder alone back at its caster (Capability API 1.507).
  *
  *   - A save against a spell aimed at its holder alone is thrown with advantage (`against.alone`);
  *     against a burst it is not.
@@ -38,7 +38,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 470);
+  assert.ok(supportedCapabilityApi.minor >= 507);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -250,7 +250,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose conditions or worn items turn back an entry aimed at their holder alone (turns, against.alone) requires schemaVersion 2 and capabilityApi 1.470 or newer";
+      "A ruleset whose conditions or worn items turn back an entry aimed at their holder alone (turns, against.alone) requires schemaVersion 2 and capabilityApi 1.507 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -264,13 +264,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(469) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(470) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(469) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(506) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(507) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(506) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Spell turning: a save against a spell aimed at its holder alone has advantage; on the top face a spell at or under the limit turns back on its caster, from a condition or a worn ring; never a burst or a higher spell; gated at 1.470.",
+    "Spell turning: a save against a spell aimed at its holder alone has advantage; on the top face a spell at or under the limit turns back on its caster, from a condition or a worn ring; never a burst or a higher spell; gated at 1.507.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

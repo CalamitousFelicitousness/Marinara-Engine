@@ -1,6 +1,6 @@
 /**
  * Called creatures leashed to their caller, and sent away on a budget of its own (Capability API
- * 1.557): 5e's treant's Animate Trees, "until the treant dies or is more than 120 feet from the
+ * 1.594): 5e's treant's Animate Trees, "until the treant dies or is more than 120 feet from the
  * tree; or until the treant takes a bonus action to turn it back into an inanimate tree".
  *
  *   - The dismissal is on the bonus action, not the action's own budget.
@@ -33,7 +33,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 557);
+  assert.ok(supportedCapabilityApi.minor >= 594);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -187,7 +187,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose called creatures leave once their caller is too far (calls.leash), or are sent away on a budget of its own (calls.dismissible.budget), requires schemaVersion 2 and capabilityApi 1.557 or newer";
+      "A ruleset whose called creatures leave once their caller is too far (calls.leash), or are sent away on a budget of its own (calls.dismissible.budget), requires schemaVersion 2 and capabilityApi 1.594 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -201,13 +201,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(556) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(557) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(593) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(594) as never, fiveE()), gate);
     const leashOnly = fiveE({ ...animate, dismissible: true });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(556) as never, leashOnly), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(593) as never, leashOnly), gate);
   }
 
-  console.log("Called creatures leashed to their caller and sent away on a bonus action; refusals; gated at 1.557.");
+  console.log("Called creatures leashed to their caller and sent away on a bonus action; refusals; gated at 1.594.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

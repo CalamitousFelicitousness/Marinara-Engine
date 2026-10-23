@@ -1,5 +1,5 @@
 /**
- * Zones caught only by moving into them (Capability API 1.711).
+ * Zones caught only by moving into them (Capability API 1.748).
  *
  *   - `enterOnlyByMoving: true`: a zone's `enter` catches a creature that moves into it, never one
  *     the zone comes onto, carried with its caster (Spirit Guardians) or moved by them (Moonbeam).
@@ -40,7 +40,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 711);
+  assert.ok(supportedCapabilityApi.minor >= 748);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -223,18 +223,18 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with a zone that catches only a creature moving into it (zone enterOnlyByMoving) requires schemaVersion 2 and capabilityApi 1.711 or newer";
+      "A ruleset with a zone that catches only a creature moving into it (zone enterOnlyByMoving) requires schemaVersion 2 and capabilityApi 1.748 or newer";
     const withGuard = fiveE((doc) => {
       doc.catalogs.push({ id: "zones", label: "Zones", feeds: ["spells"], entries: [guard] });
     });
     parsed(withGuard);
-    assert.equal(getCapabilityPackageInstallIssue(manifest(710) as never, withGuard), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(711) as never, withGuard), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(710) as never, fiveE()), gate, "nothing without the key");
+    assert.equal(getCapabilityPackageInstallIssue(manifest(747) as never, withGuard), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(748) as never, withGuard), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(747) as never, fiveE()), gate, "nothing without the key");
   }
 
   console.log(
-    "Zone enterOnlyByMoving: Spirit Guardians carried and Moonbeam moved onto A leave A be, walking in still catches; without it the log says the zone reached them; gated at 1.711.",
+    "Zone enterOnlyByMoving: Spirit Guardians carried and Moonbeam moved onto A leave A be, walking in still catches; without it the log says the zone reached them; gated at 1.748.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

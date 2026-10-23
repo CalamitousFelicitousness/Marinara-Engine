@@ -1,5 +1,5 @@
 /**
- * An item that changes form (Capability API 1.522): a Rod of Lordly Might.
+ * An item that changes form (Capability API 1.559): a Rod of Lordly Might.
  *
  *   - `forms`: in a fight, its holder turns it into another form on its budget, and it strikes as
  *     that form's item from then; turned back, it strikes as it was made. The form goes back to its
@@ -43,7 +43,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 522);
+  assert.ok(supportedCapabilityApi.minor >= 559);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -232,7 +232,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with an item that changes form (forms) requires schemaVersion 2 and capabilityApi 1.522 or newer";
+      "A ruleset with an item that changes form (forms) requires schemaVersion 2 and capabilityApi 1.559 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -246,13 +246,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(521) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(522) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(521) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(558) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(559) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(558) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Item forms: a rod turned into a flame tongue on its bonus action strikes as one, keeps that form on its stack, turns back; the inventory turns it too; gated at 1.522.",
+    "Item forms: a rod turned into a flame tongue on its bonus action strikes as one, keeps that form on its stack, turns back; the inventory turns it too; gated at 1.559.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

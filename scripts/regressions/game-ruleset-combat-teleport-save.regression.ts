@@ -1,5 +1,5 @@
 /**
- * Teleporting out only past a save (Capability API 1.550): 5e's Forcecage.
+ * Teleporting out only past a save (Capability API 1.587): 5e's Forcecage.
  *
  *   - Zone `forbids.teleport` as `{save, difficulty: "caster"}`: one inside who teleports out throws
  *     the save against its caster's difficulty. Made, they go; failed, they stay, the use spent.
@@ -34,7 +34,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 550);
+  assert.ok(supportedCapabilityApi.minor >= 587);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -189,7 +189,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a zone that lets nobody teleport out of it without a save (forbids.teleport save) requires schemaVersion 2 and capabilityApi 1.550 or newer";
+      "A ruleset with a zone that lets nobody teleport out of it without a save (forbids.teleport save) requires schemaVersion 2 and capabilityApi 1.587 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -203,13 +203,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(549) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(550) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(549) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(586) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(587) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(586) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Teleport save: out of a box or a ring's middle only past its save, the use spent on a failure; within it freely; gated at 1.550.",
+    "Teleport save: out of a box or a ring's middle only past its save, the use spent on a failure; within it freely; gated at 1.587.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

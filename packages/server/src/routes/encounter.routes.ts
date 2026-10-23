@@ -309,7 +309,7 @@ export const encounterBlueprintSchema = z
           aiHints: combatAiHintsSchema.optional(),
           // Caught unaware as the fight begins (1.237); a ruleset fight reads it.
           surprised: z.boolean().optional().catch(undefined),
-          // What it set up before the fight, standing as it begins (1.409); a ruleset fight reads it.
+          // What it set up before the fight, standing as it begins (1.446); a ruleset fight reads it.
           standing: z
             .array(
               z
@@ -353,7 +353,7 @@ export const encounterBlueprintSchema = z
           aiHints: combatAiHintsSchema.optional(),
           // Caught unaware as the fight begins (1.237); a ruleset fight reads it, and any other fight checks such an opponent's morale first.
           surprised: z.boolean().optional().catch(undefined),
-          // What it set up before the fight, standing as it begins (1.409); a ruleset fight reads it.
+          // What it set up before the fight, standing as it begins (1.446); a ruleset fight reads it.
           standing: z
             .array(
               z

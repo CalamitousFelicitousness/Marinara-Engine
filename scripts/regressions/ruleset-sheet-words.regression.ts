@@ -1,8 +1,8 @@
-/** Capability API 1.733: a ruleset's own words on its sheet, menu and cards. A combat modifier's
+/** Capability API 1.378: a ruleset's own words on its sheet, menu and cards. A combat modifier's
  *  `label` said in place of the composed phrase, a pool's `unit` and `units`, a list's `display`, a
  *  text field hidden by a derived value, a condition left out of the picker, a track shown once
  *  moved, an item toggle's labels, an item use's title, creature traits to 1200 letters, and the
- *  gate that asks for 1.733. */
+ *  gate that asks for 1.378. */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -51,7 +51,7 @@ const issuesOf = (doc: unknown) => {
 const list = (doc: Record<string, any>, id: string) => doc.sheet.lists.find((one: { id: string }) => one.id === id);
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 733);
+  assert.ok(supportedCapabilityApi.minor >= 378);
 
   const words = fixture((doc) => {
     doc.sheet.live.pools[1].unit = "hit die";
@@ -305,7 +305,7 @@ try {
   );
 
   // ── The gate ──
-  const gate = /capabilityApi 1\.733 or newer/;
+  const gate = /capabilityApi 1\.378 or newer/;
   const manifest = (minor: number) => ({
     schemaVersion: 2,
     capabilityApi: { major: 1, minor },
@@ -321,9 +321,9 @@ try {
   });
   const issueAt = (minor: number, doc: unknown, catalogs?: Map<string, unknown>) =>
     getCapabilityPackageInstallIssue(manifest(minor) as never, doc as never, catalogs as never) ?? "";
-  assert.doesNotMatch(issueAt(732, fixture()), gate, "the example asks for nothing new");
-  assert.match(issueAt(732, words), gate);
-  assert.doesNotMatch(issueAt(733, words), gate);
+  assert.doesNotMatch(issueAt(769, fixture()), gate, "the example asks for nothing new");
+  assert.match(issueAt(769, words), gate);
+  assert.doesNotMatch(issueAt(378, words), gate);
   for (const edit of [
     (doc: Record<string, any>) => (doc.sheet.live.pools[1].unit = "hit die"),
     (doc: Record<string, any>) => (list(doc, "spells").display = { tab: "Spells" }),
@@ -335,22 +335,22 @@ try {
     (doc: Record<string, any>) =>
       (doc.catalogs[0].entries[0].creature.traits = [{ name: "Long", text: "w".repeat(401) }]),
   ]) {
-    assert.match(issueAt(732, fixture(edit)), gate);
+    assert.match(issueAt(769, fixture(edit)), gate);
   }
-  // A trait of 400 letters, the old ceiling, still installs below 1.733.
+  // A trait of 400 letters, the old ceiling, still installs below 1.378.
   assert.doesNotMatch(
     issueAt(
-      732,
+      769,
       fixture((doc) => (doc.catalogs[0].entries[0].creature.traits = [{ name: "Long", text: "w".repeat(400) }])),
     ),
     gate,
   );
-  // An item toggle's labels and an item use's title in a catalog file ask for 1.733 as well.
+  // An item toggle's labels and an item use's title in a catalog file ask for 1.378 as well.
   const items = (item: Record<string, unknown>) =>
     new Map([["catalogs/items.json", { id: "items", entries: [{ id: "lantern", ...item }] }]]);
-  assert.match(issueAt(732, fixture(), items({ toggle: { onLabel: "Raise the hood" } })), gate);
-  assert.match(issueAt(732, fixture(), items({ use: { title: "Scatter ball bearings" } })), gate);
-  assert.doesNotMatch(issueAt(733, fixture(), items({ use: { title: "Scatter ball bearings" } })), gate);
+  assert.match(issueAt(769, fixture(), items({ toggle: { onLabel: "Raise the hood" } })), gate);
+  assert.match(issueAt(769, fixture(), items({ use: { title: "Scatter ball bearings" } })), gate);
+  assert.doesNotMatch(issueAt(378, fixture(), items({ use: { title: "Scatter ball bearings" } })), gate);
 
   console.log("Ruleset sheet words: labels, units, list display, hidden text, the picker, tracks, traits, the gate.");
 } finally {

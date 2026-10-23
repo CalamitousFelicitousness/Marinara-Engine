@@ -1,6 +1,6 @@
 /**
  * Called creatures that come against their user unless it meets a requirement (Capability API
- * 1.558): a Horn of Valhalla, "If you blow the horn without meeting its requirement, the summoned
+ * 1.595): a Horn of Valhalla, "If you blow the horn without meeting its requirement, the summoned
  * berserkers attack you".
  *
  *   - A user whose derived value is at least `atLeast`: the berserkers are on their side.
@@ -33,7 +33,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 558);
+  assert.ok(supportedCapabilityApi.minor >= 595);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -150,7 +150,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose called creatures come against their user unless it meets a requirement (calls.hostileUnless) requires schemaVersion 2 and capabilityApi 1.558 or newer";
+      "A ruleset whose called creatures come against their user unless it meets a requirement (calls.hostileUnless) requires schemaVersion 2 and capabilityApi 1.595 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -164,11 +164,11 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(557) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(558) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(594) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(595) as never, document()), gate);
   }
 
-  console.log("Called creatures against their user unless a requirement is met; refusal; gated at 1.558.");
+  console.log("Called creatures against their user unless a requirement is met; refusal; gated at 1.595.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

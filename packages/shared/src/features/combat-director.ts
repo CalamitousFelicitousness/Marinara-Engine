@@ -65,21 +65,21 @@ export type DirectedCommand =
       also?: Array<{ x: number; y: number }>;
       /** A wall's section struck at instead of a creature (1.200): one of the option's `walls`. */
       wall?: { x: number; y: number };
-      /** A lasting area ended instead of a creature (1.374): one of the option's `dispels`. */
+      /** A lasting area ended instead of a creature (1.411): one of the option's `dispels`. */
       dispel?: { casterId: string; actionId: string };
-      /** A condition struck at and cut away instead of a creature (1.478): one of the option's `cuts`. */
+      /** A condition struck at and cut away instead of a creature (1.515): one of the option's `cuts`. */
       cut?: { holderId: string; condition: string };
-      /** Which of its target's conditions it ends (1.374), from the option's `endsChoices`. */
+      /** Which of its target's conditions it ends (1.411), from the option's `endsChoices`. */
       ends?: string[];
       /** Who goes along on a teleport (1.276): ids its option's `teleport.carries` offers. */
       carries?: string[];
-      /** Whom a layered wall spares (1.439): ids its option's `designates` offers. */
+      /** Whom a layered wall spares (1.476): ids its option's `designates` offers. */
       designates?: string[];
-      /** The kinds its zone strikes (1.700): ids its option's `kindsOf` offers. */
+      /** The kinds its zone strikes (1.737): ids its option's `kindsOf` offers. */
       kinds?: string[];
-      /** Stored instead of done (1.471). */
+      /** Stored instead of done (1.508). */
       storesIn?: { holderId: string; item?: number };
-      /** How many levels up a target moved to `to` is lifted (1.512): Telekinesis. */
+      /** How many levels up a target moved to `to` is lifted (1.549): Telekinesis. */
       rises?: number;
       /** How many uses it spends, where the option offers an `amount` (1.251): Lay on Hands. */
       amount?: number;
@@ -178,7 +178,7 @@ export interface DirectedRulesetCombatant {
   defeated: boolean;
   /** Sent out of the fight, alive (1.236): off the board until it comes back, if it does. */
   away?: true;
-  /** Gave itself up (1.709): out of the fight, but still standing where it gave up, a prisoner. */
+  /** Gave itself up (1.746): out of the fight, but still standing where it gave up, a prisoner. */
   surrendered?: true;
   /** Gone of its own accord, by a teleport that leaves the fight (1.279). */
   left?: true;
@@ -189,13 +189,13 @@ export interface DirectedRulesetCombatant {
   /** What this combatant is holding together, when the ruleset has concentration. */
   concentrating?: string;
   /** A party member's pools their actions spend, as they stand (spell slots, ki): the fight's HUD. */
-  /** `unit` is what one of it is called (1.733). */
+  /** `unit` is what one of it is called (1.378). */
   pools?: Array<{ id: string; label: string; value: number; max: number; unit?: string }>;
   /** An opponent's rung of the threat scale, and the lines the Game Master is shown. */
   tier?: string;
   traits?: Array<{ name: string; text: string }>;
   /** What it is, in the ruleset's words (1.168): its creature type and tags, read by target tests.
-   *  A creature's own tags only, with its alignment as it is written (1.733). */
+   *  A creature's own tags only, with its alignment as it is written (1.378). */
   kind?: { type?: string; tags?: string[]; alignment?: string };
   /** Active save modifiers narrowed by what the roll is against (1.134). */
   saveModifiers?: RulesetItemEffectFact[];

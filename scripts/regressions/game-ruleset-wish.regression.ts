@@ -1,12 +1,12 @@
 /**
- * 5e's Wish, its other uses and its stress (Capability API 1.703, 1.704).
+ * 5e's Wish, its other uses and its stress (Capability API 1.740, 1.741).
  *
- *   - 1.703: a condition's `abilities` may lower one to a number only where it is higher (`atMost`):
+ *   - 1.740: a condition's `abilities` may lower one to a number only where it is higher (`atMost`):
  *     "your Strength drops to 3, if it isn't 3 or lower already". Its `lastsDays` may be rolled
  *     (`{ dice }`), each day spent resting counting `restingCounts` (a sheet `pass` with `resting`):
  *     "for 2d4 days. For each of those days that you spend resting ..., your remaining recovery time
  *     decreases by 2 days".
- *   - 1.704: a heal of all the health each target is missing (`healsAll`): "regain all hit points".
+ *   - 1.741: a heal of all the health each target is missing (`healsAll`): "regain all hit points".
  *   - Refusals and the install gates.
  */
 import assert from "node:assert/strict";
@@ -42,7 +42,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 704);
+  assert.ok(supportedCapabilityApi.minor >= 741);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -148,7 +148,7 @@ try {
     return result;
   };
 
-  // ── 1.703: Strength at most 3, only where it is higher ──
+  // ── 1.740: Strength at most 3, only where it is higher ──
   assert.deepEqual(rulesetChangedAbilityScores(definition, { str: 18, dex: 12 }, [{ str: { atMost: 3 } }]), {
     str: 3,
     dex: 12,
@@ -164,7 +164,7 @@ try {
     { str: 3 },
   );
 
-  // ── 1.703: put on in a fight, its days rolled; lifted onto the sheet, resting days count double ──
+  // ── 1.740: put on in a fight, its days rolled; lifted onto the sheet, resting days count double ──
   let live: RulesetLiveState;
   {
     // 2d4 rolled 3 and 3: six days.
@@ -222,7 +222,7 @@ try {
   });
   assert.deepEqual(parseSheetCommandTagBody('who="Mage" op="pass" days="2"').op, { op: "pass", days: 2 });
 
-  // ── 1.704: all the health they are missing ──
+  // ── 1.741: all the health they are missing ──
   {
     const roll = () => 10;
     const step = cast(fight(roll), "Restore", ["ally"], roll);
@@ -258,28 +258,28 @@ try {
       restartRequired: false,
     });
     const stressGate =
-      "A ruleset with an ability lowered only where it is higher (atMost) or a condition's days rolled (lastsDays dice) requires schemaVersion 2 and capabilityApi 1.703 or newer";
+      "A ruleset with an ability lowered only where it is higher (atMost) or a condition's days rolled (lastsDays dice) requires schemaVersion 2 and capabilityApi 1.740 or newer";
     const healGate =
-      "A ruleset with a heal of all the health its targets are missing (healsAll) requires schemaVersion 2 and capabilityApi 1.704 or newer";
+      "A ruleset with a heal of all the health its targets are missing (healsAll) requires schemaVersion 2 and capabilityApi 1.741 or newer";
     const onlyStress = fiveE({ entries: [stress()] });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(702) as never, onlyStress), stressGate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(739) as never, onlyStress), stressGate);
     assert.equal(
       getCapabilityPackageInstallIssue(
-        manifest(702) as never,
+        manifest(739) as never,
         fiveE({ change: { to: 3 }, entries: [stress({ dice: "1d4" })] }),
       ),
       stressGate,
       "rolled days alone",
     );
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(703) as never, onlyStress), stressGate);
-    assert.equal(getCapabilityPackageInstallIssue(manifest(703) as never, fiveE()), healGate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(704) as never, fiveE()), healGate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(702) as never, JSON.parse(fiveEText)), stressGate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(703) as never, JSON.parse(fiveEText)), healGate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(740) as never, onlyStress), stressGate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(740) as never, fiveE()), healGate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(741) as never, fiveE()), healGate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(739) as never, JSON.parse(fiveEText)), stressGate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(740) as never, JSON.parse(fiveEText)), healGate);
   }
 
   console.log(
-    "Wish: its stress drops Strength to 3 only where it is higher, for 2d4 days, resting days counting two; its heal gives back all one is missing; gated at 1.703 and 1.704.",
+    "Wish: its stress drops Strength to 3 only where it is higher, for 2d4 days, resting days counting two; its heal gives back all one is missing; gated at 1.740 and 1.741.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

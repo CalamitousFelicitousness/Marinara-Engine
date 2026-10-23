@@ -1,5 +1,5 @@
 /**
- * A duration rolled in dice (Capability API 1.572): 5e's Potion of Growth, "1d4 hours", as
+ * A duration rolled in dice (Capability API 1.609): 5e's Potion of Growth, "1d4 hours", as
  * `{"rounds": 600, "times": "1d4"}`.
  *
  *   - Put on, it lasts its rounds times what the dice roll then.
@@ -29,7 +29,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 572);
+  assert.ok(supportedCapabilityApi.minor >= 609);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -129,7 +129,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a duration rolled in dice (duration.times) requires schemaVersion 2 and capabilityApi 1.572 or newer";
+      "A ruleset with a duration rolled in dice (duration.times) requires schemaVersion 2 and capabilityApi 1.609 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -143,11 +143,11 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(571) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(572) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(608) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(609) as never, document()), gate);
   }
 
-  console.log("duration times: a Potion of Growth lasts 600 rounds times its 1d4; refused past a day; gated at 1.572.");
+  console.log("duration times: a Potion of Growth lasts 600 rounds times its 1d4; refused past a day; gated at 1.609.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

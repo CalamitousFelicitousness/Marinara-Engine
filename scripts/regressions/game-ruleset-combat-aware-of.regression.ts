@@ -1,6 +1,6 @@
 /**
  * Awareness of some kinds of creature only, past no total cover, and from a condition or a level
- * (Capability API 1.386).
+ * (Capability API 1.423).
  *
  *   - Divine Sense: a condition that leaves no fiend or undead within 60 feet hidden from its holder,
  *     unless a wall stands between them; a goblin hides as before.
@@ -34,7 +34,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 386);
+  assert.ok(supportedCapabilityApi.minor >= 423);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -177,7 +177,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose conditions or levels make their holder aware of the hidden, or whose awareness is of some kinds only (of) or past no total cover (uncovered), requires schemaVersion 2 and capabilityApi 1.386 or newer";
+      "A ruleset whose conditions or levels make their holder aware of the hidden, or whose awareness is of some kinds only (of) or past no total cover (uncovered), requires schemaVersion 2 and capabilityApi 1.423 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -191,18 +191,18 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(385) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(422) as never, fiveE()), gate);
     const plain = fiveE((doc) => {
       doc.combat.conditions.at(-1).aware = { within: 10 };
       delete doc.combat.conditions.at(-2).aware;
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(385) as never, plain), gate, "a condition's own");
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(386) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(385) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(422) as never, plain), gate, "a condition's own");
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(423) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(422) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Aware of: Divine Sense finds a fiend in the open within 60 feet but not behind a wall or a goblin, Primeval Awareness finds one anywhere, and a trait's aware takes kinds too; gated at 1.386.",
+    "Aware of: Divine Sense finds a fiend in the open within 60 feet but not behind a wall or a goblin, Primeval Awareness finds one anywhere, and a trait's aware takes kinds too; gated at 1.423.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

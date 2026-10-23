@@ -1,5 +1,5 @@
 /**
- * Creature saves failed badly (Capability API 1.620).
+ * Creature saves failed badly (Capability API 1.657).
  *
  *   - A creature action's `save.failedBy {atLeast}`: a mummy's Dreadful Glare, frightened and
  *     paralyzed on a failure by 5 or more, frightened on any other failure, nothing on a success.
@@ -31,7 +31,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 620);
+  assert.ok(supportedCapabilityApi.minor >= 657);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -189,7 +189,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a creature's save failed by a margin, or a save failed by a total that low (save.failedBy on a creature, resultAtMost), requires schemaVersion 2 and capabilityApi 1.620 or newer";
+      "A ruleset with a creature's save failed by a margin, or a save failed by a total that low (save.failedBy on a creature, resultAtMost), requires schemaVersion 2 and capabilityApi 1.657 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -207,13 +207,13 @@ try {
     withGlare.catalogs
       .find((one: { holds?: string }) => one.holds === "creatures")
       .entries[0].creature.actions.push(glare);
-    assert.equal(getCapabilityPackageInstallIssue(manifest(619) as never, withGlare), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(620) as never, withGlare), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(619) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(656) as never, withGlare), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(657) as never, withGlare), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(656) as never, document()), gate);
   }
 
   console.log(
-    "Creature failedBy: Dreadful Glare paralyzes on a failure by 5 or more, a sprite's arrow knocks out on a total of 5 or lower; gated at 1.620.",
+    "Creature failedBy: Dreadful Glare paralyzes on a failure by 5 or more, a sprite's arrow knocks out on a total of 5 or lower; gated at 1.657.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

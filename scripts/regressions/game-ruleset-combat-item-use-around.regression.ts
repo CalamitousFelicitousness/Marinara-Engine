@@ -1,5 +1,5 @@
 /**
- * Item uses centred on their user (Capability API 1.479).
+ * Item uses centred on their user (Capability API 1.516).
  *
  *   - The Staff of Thunder and Lightning's Thunderclap: a burst `around` its wielder, never aimed,
  *     catches everybody within 60 feet but the wielder; one farther off is not caught. A `moreUses`
@@ -34,7 +34,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 479);
+  assert.ok(supportedCapabilityApi.minor >= 516);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -139,7 +139,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with an item's use centred on its user (use area around) requires schemaVersion 2 and capabilityApi 1.479 or newer";
+      "A ruleset with an item's use centred on its user (use area around) requires schemaVersion 2 and capabilityApi 1.516 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -153,18 +153,18 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(478) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(515) as never, document()), gate);
     assert.equal(
-      getCapabilityPackageInstallIssue(manifest(478) as never, document(undefined, true)),
+      getCapabilityPackageInstallIssue(manifest(515) as never, document(undefined, true)),
       gate,
       "more uses",
     );
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(479) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(478) as never, JSON.parse(fiveEText)), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(516) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(515) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Item use around: a staff's Thunderclap, first use or one of its more, catches everybody within 60 feet but its wielder and nobody farther; gated at 1.479.",
+    "Item use around: a staff's Thunderclap, first use or one of its more, catches everybody within 60 feet but its wielder and nobody farther; gated at 1.516.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

@@ -1,10 +1,10 @@
 /**
- * Answers to a hit that happen by themselves, and hard going on a worn item (Capability API 1.436).
+ * Answers to a hit that happen by themselves, and hard going on a worn item (Capability API 1.473).
  *
  *   - Holy Aura: a fiend hitting its holder in melee saves with Constitution against the caster's
  *     save difficulty or is blinded, held by the aura's concentration; a fiend that saves, one
  *     shooting from afar, a beast, or a miss is not.
- *   - Given through another's aura (1.438), it answers on the same terms.
+ *   - Given through another's aura (1.475), it answers on the same terms.
  *   - Ring of Free Action: worn, hard going costs its wearer no more than plain ground.
  *   - Refusals and the install gate.
  */
@@ -36,7 +36,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 436);
+  assert.ok(supportedCapabilityApi.minor >= 473);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -199,7 +199,7 @@ try {
     assert.equal(of(step.events, "save").find((one) => one.actorId === "foe")?.difficulty, 9);
   }
 
-  // ── Given through the cleric's aura (1.438): the caster's difficulty and concentration all the same ──
+  // ── Given through the cleric's aura (1.475): the caster's difficulty and concentration all the same ──
   {
     const doc = document();
     doc.sheet.live.conditions.push({ id: "holy_caster", label: "Holy Aura (caster)" });
@@ -253,7 +253,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose items cross hard going freely (ignoresHardGround on an item) or whose conditions answer a hit by themselves (whenHit) requires schemaVersion 2 and capabilityApi 1.436 or newer";
+      "A ruleset whose items cross hard going freely (ignoresHardGround on an item) or whose conditions answer a hit by themselves (whenHit) requires schemaVersion 2 and capabilityApi 1.473 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -267,17 +267,17 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(435) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(436) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(472) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(473) as never, document()), gate);
     const ringOnly = document();
     ringOnly.combat.conditions = ringOnly.combat.conditions.filter(
       (one: { condition: string }) => one.condition !== "holy",
     );
-    assert.equal(getCapabilityPackageInstallIssue(manifest(435) as never, ringOnly), gate, "the ring alone");
+    assert.equal(getCapabilityPackageInstallIssue(manifest(472) as never, ringOnly), gate, "the ring alone");
   }
 
   console.log(
-    "When hit: Holy Aura blinds a fiend that hits in melee and fails its save against the caster's number, held by the aura's concentration; not one that saves, shoots, is no fiend, or misses; the Ring of Free Action worn; gated at 1.436.",
+    "When hit: Holy Aura blinds a fiend that hits in melee and fails its save against the caster's number, held by the aura's concentration; not one that saves, shoots, is no fiend, or misses; the Ring of Free Action worn; gated at 1.473.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

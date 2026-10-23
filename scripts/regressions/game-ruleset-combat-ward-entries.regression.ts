@@ -1,5 +1,5 @@
 /**
- * Wards of only some entries (Capability API 1.592).
+ * Wards of only some entries (Capability API 1.629).
  *
  *   - `where`: Mind Blank's divination spells are kept off its holder, an evocation is not.
  *   - `entries`: Wish's "immunity to a single spell" keeps that spell off, and no other.
@@ -30,7 +30,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 592);
+  assert.ok(supportedCapabilityApi.minor >= 629);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -158,7 +158,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a ward of only some entries (wards.where, wards.entries) requires schemaVersion 2 and capabilityApi 1.592 or newer";
+      "A ruleset with a ward of only some entries (wards.where, wards.entries) requires schemaVersion 2 and capabilityApi 1.629 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -173,12 +173,12 @@ try {
       restartRequired: false,
     });
     const doc = () => document({ catalogs: ["spells"], maxLevel: 9, entries: ["spells/great"] });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(591) as never, doc()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(592) as never, doc()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(628) as never, doc()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(629) as never, doc()), gate);
   }
 
   console.log(
-    "Ward entries: Mind Blank keeps divination off, Wish one spell; a ward's entries are of its catalogs; gated at 1.592.",
+    "Ward entries: Mind Blank keeps divination off, Wish one spell; a ward's entries are of its catalogs; gated at 1.629.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

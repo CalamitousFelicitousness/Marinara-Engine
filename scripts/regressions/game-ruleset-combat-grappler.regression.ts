@@ -1,5 +1,5 @@
 /**
- * Attacks and contests on a target held by its holder (Capability API 1.500).
+ * Attacks and contests on a target held by its holder (Capability API 1.537).
  *
  *   - A mimic's Grappler: attack mode advantage only at a creature it has grappled itself.
  *   - The Grappler feat: a modifier narrowed to a target grappled by the holder.
@@ -35,7 +35,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 500);
+  assert.ok(supportedCapabilityApi.minor >= 537);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -189,7 +189,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with attacks or contests on a target held by its holder (targetHoldsFromSelf, targetHeldBySelf, onWin.both) requires schemaVersion 2 and capabilityApi 1.500 or newer";
+      "A ruleset with attacks or contests on a target held by its holder (targetHoldsFromSelf, targetHeldBySelf, onWin.both) requires schemaVersion 2 and capabilityApi 1.537 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -203,14 +203,14 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(499) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(500) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(536) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(537) as never, document()), gate);
     const onlyPin = document((doc) => doc.combat.conditions.pop());
-    assert.equal(getCapabilityPackageInstallIssue(manifest(499) as never, onlyPin), gate, "the pin alone");
+    assert.equal(getCapabilityPackageInstallIssue(manifest(536) as never, onlyPin), gate, "the pin alone");
   }
 
   console.log(
-    "Grappler: a mimic and the feat attack with advantage only at whom they grapple; the pin is offered only on them and restrains both until the grapple ends; gated at 1.500.",
+    "Grappler: a mimic and the feat attack with advantage only at whom they grapple; the pin is offered only on them and restrains both until the grapple ends; gated at 1.537.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

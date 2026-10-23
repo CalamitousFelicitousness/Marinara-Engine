@@ -169,10 +169,10 @@ export function parseSheetCommandTagBody(body: string): ParsedSheetCommandTag {
     return { ...parsed, op: { op: "note", field, value: values.get("value") ?? "" } };
   }
   if (name === "pass") {
-    // Days of game time (1.392): a whole count.
+    // Days of game time (1.429): a whole count.
     const days = readInteger(values.get("days"));
     if (days === null || days < 1) return parsed;
-    // Spent resting (1.703): yes, true or on.
+    // Spent resting (1.740): yes, true or on.
     const resting = /^(yes|true|on)$/i.test(values.get("resting")?.trim() ?? "");
     return { ...parsed, op: { op: "pass", days, ...(resting ? { resting: true as const } : {}) } };
   }
@@ -181,7 +181,7 @@ export function parseSheetCommandTagBody(body: string): ParsedSheetCommandTag {
     const entry = (values.get("name") ?? values.get("spell"))?.trim();
     if (!entry) return parsed;
     const pool = values.get("pool")?.trim();
-    // What it gives back (1.357): `recover="Level 1 Slot:2, Level 2 Slot:1"`, a count after each pool.
+    // What it gives back (1.394): `recover="Level 1 Slot:2, Level 2 Slot:1"`, a count after each pool.
     const rawRecover = values.get("recover");
     const recover = rawRecover === undefined ? [] : readRecover(rawRecover);
     if (recover === null) return parsed;

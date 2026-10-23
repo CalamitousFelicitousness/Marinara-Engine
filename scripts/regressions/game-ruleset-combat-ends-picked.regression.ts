@@ -1,5 +1,5 @@
 /**
- * Picking which of the conditions an action ends (Capability API 1.389).
+ * Picking which of the conditions an action ends (Capability API 1.426).
  *
  *   - Greater Restoration (`ends.chosen`, one of): the menu offers what the target holds of its list,
  *     and the one picked ends rather than the first named; nothing picked, the first named.
@@ -36,7 +36,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 389);
+  assert.ok(supportedCapabilityApi.minor >= 426);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -142,7 +142,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose entries let their user pick which conditions end (ends chosen) requires schemaVersion 2 and capabilityApi 1.389 or newer";
+      "A ruleset whose entries let their user pick which conditions end (ends chosen) requires schemaVersion 2 and capabilityApi 1.426 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -156,14 +156,14 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(388) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(389) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(425) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(426) as never, fiveE()), gate);
     const plain = fiveE({ conditions: ["charmed"], count: 1 });
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(388) as never, plain), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(425) as never, plain), gate);
   }
 
   console.log(
-    "Ends picked: Greater Restoration ends the effect picked of those the target holds, the first named when none is, and refuses a pick it did not offer; gated at 1.389.",
+    "Ends picked: Greater Restoration ends the effect picked of those the target holds, the first named when none is, and refuses a pick it did not offer; gated at 1.426.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

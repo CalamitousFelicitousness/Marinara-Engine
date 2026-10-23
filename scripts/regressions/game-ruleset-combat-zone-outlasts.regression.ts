@@ -1,5 +1,5 @@
 /**
- * Zones that outlast their caster (Capability API 1.403).
+ * Zones that outlast their caster (Capability API 1.440).
  *
  *   - Glyph of Warding: its caster smashed out of the fight, it stays (a plain zone beside it ends),
  *     is still set off by whoever walks in, and counts its rounds down as each round ends.
@@ -39,7 +39,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 403);
+  assert.ok(supportedCapabilityApi.minor >= 440);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -268,7 +268,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose zones outlast their caster (outlasts) requires schemaVersion 2 and capabilityApi 1.403 or newer";
+      "A ruleset whose zones outlast their caster (outlasts) requires schemaVersion 2 and capabilityApi 1.440 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -288,13 +288,13 @@ try {
     const plain = fiveE((doc) => {
       doc.catalogs.push({ id: "spells", label: "Spells", feeds: ["spells"], entries: [plainGlyph] });
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(402) as never, withGlyph), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(403) as never, withGlyph), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(402) as never, plain), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(439) as never, withGlyph), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(440) as never, withGlyph), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(439) as never, plain), gate);
   }
 
   console.log(
-    "Zone outlasts: a glyph stays when its caster is out of the fight, still goes off, and ends with its rounds; gated at 1.403.",
+    "Zone outlasts: a glyph stays when its caster is out of the fight, still goes off, and ends with its rounds; gated at 1.440.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

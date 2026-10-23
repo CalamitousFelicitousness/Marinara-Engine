@@ -1,5 +1,5 @@
 /**
- * More conditions kept from whoever a zone holds (Capability API 1.644): Magic Circle and Hallow
+ * More conditions kept from whoever a zone holds (Capability API 1.681): Magic Circle and Hallow
  * naming "possessed" as a ninth beside the eight a ruleset folds into "charmed, frightened".
  *
  *   - Nine to twelve in `cantGive` and `frees` are read; thirteen are refused.
@@ -32,7 +32,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 644);
+  assert.ok(supportedCapabilityApi.minor >= 681);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -181,7 +181,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a zone keeping out more than 8 conditions (keepsOut.cantGive, keepsOut.frees) requires schemaVersion 2 and capabilityApi 1.644 or newer";
+      "A ruleset with a zone keeping out more than 8 conditions (keepsOut.cantGive, keepsOut.frees) requires schemaVersion 2 and capabilityApi 1.681 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -195,12 +195,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(643) as never, fiveE(9)), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(644) as never, fiveE(9)), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(643) as never, fiveE(8)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(680) as never, fiveE(9)), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(681) as never, fiveE(9)), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(680) as never, fiveE(8)), gate);
   }
 
-  console.log("Zone keepsOut: up to 12 conditions kept and freed, the ninth held like the rest; gated at 1.644.");
+  console.log("Zone keepsOut: up to 12 conditions kept and freed, the ninth held like the rest; gated at 1.681.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

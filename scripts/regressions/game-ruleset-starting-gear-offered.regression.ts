@@ -1,5 +1,5 @@
 /**
- * A starting gear choice's option offered only to some sheets (Capability API 1.608): 5e's cleric's
+ * A starting gear choice's option offered only to some sheets (Capability API 1.645): 5e's cleric's
  * "(a) a mace or (b) a warhammer (if proficient)".
  *
  *   - An option whose `offeredWhen` reads zero is refused for that sheet; above zero it is taken.
@@ -111,7 +111,7 @@ try {
   assert.equal(bad.ok, false);
   if (!bad.ok) assert.match(bad.issues.join("; "), /choices\.0\.options\.0\.offeredWhen/);
   const gate =
-    "A ruleset with starting gear options offered only to some sheets (offeredWhen on a gear choice's option) requires schemaVersion 2 and capabilityApi 1.608 or newer";
+    "A ruleset with starting gear options offered only to some sheets (offeredWhen on a gear choice's option) requires schemaVersion 2 and capabilityApi 1.645 or newer";
   const manifest = (minor: number) => ({
     schemaVersion: 2,
     capabilityApi: { major: 1, minor },
@@ -125,10 +125,10 @@ try {
     permissions: [],
     restartRequired: false,
   });
-  assert.equal(getCapabilityPackageInstallIssue(manifest(607) as never, withGear()), gate);
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(608) as never, withGear()), gate);
+  assert.equal(getCapabilityPackageInstallIssue(manifest(644) as never, withGear()), gate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(645) as never, withGear()), gate);
 
-  console.log("Starting gear: a choice's option offered only while its sheet read is above zero; gated at 1.608.");
+  console.log("Starting gear: a choice's option offered only while its sheet read is above zero; gated at 1.645.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

@@ -1,5 +1,5 @@
 /**
- * Zones in stages (Capability API 1.504): Storm of Vengeance.
+ * Zones in stages (Capability API 1.541): Storm of Vengeance.
  *
  *   - As cast, its own effect; on its caster's second turn acid rain on everybody inside, on the
  *     third one bolt (`count`) at the nearest foe with a save for half, and from the fourth hard
@@ -36,7 +36,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 504);
+  assert.ok(supportedCapabilityApi.minor >= 541);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -195,7 +195,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a zone in stages (zone.stages) requires schemaVersion 2 and capabilityApi 1.504 or newer";
+      "A ruleset with a zone in stages (zone.stages) requires schemaVersion 2 and capabilityApi 1.541 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -209,13 +209,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(503) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(504) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(503) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(540) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(541) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(540) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Zone stages: Storm of Vengeance thunders as cast, rains acid on its second turn, sends one bolt at the nearest foe on its third, and from its fourth is hard going, a heavy cloud and no shots through it; gated at 1.504.",
+    "Zone stages: Storm of Vengeance thunders as cast, rains acid on its second turn, sends one bolt at the nearest foe on its third, and from its fourth is hard going, a heavy cloud and no shots through it; gated at 1.541.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

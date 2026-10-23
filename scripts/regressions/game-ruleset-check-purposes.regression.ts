@@ -1,5 +1,5 @@
 /**
- * Changes to checks made only for some purposes (Capability API 1.699): 5e's Gloves of Swimming and
+ * Changes to checks made only for some purposes (Capability API 1.736): 5e's Gloves of Swimming and
  * Climbing, "a +5 bonus to Strength (Athletics) checks made to climb or swim".
  *
  *   - A `checks` modifier with `for: ["climb", "swim"]` adds only to a check the Game Master's tag
@@ -41,7 +41,7 @@ const [
 ]);
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 699);
+  assert.ok(supportedCapabilityApi.minor >= 736);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -167,7 +167,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      'A ruleset with a change to checks made only for some purposes (a modifier\'s "for") requires schemaVersion 2 and capabilityApi 1.699 or newer';
+      'A ruleset with a change to checks made only for some purposes (a modifier\'s "for") requires schemaVersion 2 and capabilityApi 1.736 or newer';
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -181,13 +181,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(698) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(699) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(698) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(735) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(736) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(735) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Check purposes: Gloves of Swimming and Climbing add +5 to Athletics only for a check marked for climb or swim, never for anything else or a fight's shove; the record keeps for=, the Game Master is told the purposes; gated at 1.699.",
+    "Check purposes: Gloves of Swimming and Climbing add +5 to Athletics only for a check marked for climb or swim, never for anything else or a fight's shove; the record keeps for=, the Game Master is told the purposes; gated at 1.736.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

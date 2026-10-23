@@ -1,5 +1,5 @@
 /**
- * A weapon's bonus moved to its wielder's defense (Capability API 1.684): a Defender's +3.
+ * A weapon's bonus moved to its wielder's defense (Capability API 1.721): a Defender's +3.
  *
  *   - Before the first attack with it on a turn, 1 to 3 of its bonus may go to defense, for nothing:
  *     its attacks that turn lose it, and defense keeps it until the start of the wielder's next turn.
@@ -35,7 +35,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 684);
+  assert.ok(supportedCapabilityApi.minor >= 721);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -160,7 +160,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a weapon whose bonus may go to its wielder's defense (attack.bonusToDefense) requires schemaVersion 2 and capabilityApi 1.684 or newer";
+      "A ruleset with a weapon whose bonus may go to its wielder's defense (attack.bonusToDefense) requires schemaVersion 2 and capabilityApi 1.721 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -174,13 +174,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(683) as never, document({ upTo: 3 })), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(684) as never, document({ upTo: 3 })), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(683) as never, document(null)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(720) as never, document({ upTo: 3 })), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(721) as never, document({ upTo: 3 })), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(720) as never, document(null)), gate);
   }
 
   console.log(
-    "Bonus to defense: a Defender lends 1 to 3 of its +3 to defense before its first attack a turn, back at its wielder's next turn; gated at 1.684.",
+    "Bonus to defense: a Defender lends 1 to 3 of its +3 to defense before its first attack a turn, back at its wielder's next turn; gated at 1.721.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

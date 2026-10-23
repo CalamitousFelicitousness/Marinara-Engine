@@ -1,5 +1,5 @@
 /**
- * A teleport's familiarity table (Capability API 1.617).
+ * A teleport's familiarity table (Capability API 1.654).
  *
  *   - Each familiarity row is a mode, and leaving the fight needs one; landing on the board does not.
  *   - A d100 against the row: a mishap hurts its user and everybody along and rolls again; then
@@ -37,7 +37,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 617);
+  assert.ok(supportedCapabilityApi.minor >= 654);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -211,7 +211,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a teleport's familiarity table (teleport.familiarity or teleport.mishap) requires schemaVersion 2 and capabilityApi 1.617 or newer";
+      "A ruleset with a teleport's familiarity table (teleport.familiarity or teleport.mishap) requires schemaVersion 2 and capabilityApi 1.654 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -230,13 +230,13 @@ try {
         spell("teleport", { kind: "utility", teleport: { distance: 30, leaves: true } }),
       ];
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(616) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(617) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(616) as never, plain), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(653) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(654) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(653) as never, plain), gate);
   }
 
   console.log(
-    "Teleport familiarity: each row a mode needed to leave; a d100 against it, a mishap hurting every traveller and rolling again; gated at 1.617.",
+    "Teleport familiarity: each row a mode needed to leave; a d100 against it, a mishap hurting every traveller and rolling again; gated at 1.654.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

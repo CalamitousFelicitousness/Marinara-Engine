@@ -1,5 +1,5 @@
 /**
- * Actions that never hinder a creature (Capability API 1.651): a giant spider's Web Walker,
+ * Actions that never hinder a creature (Capability API 1.688): a giant spider's Web Walker,
  * "ignores movement restrictions caused by webbing".
  *
  *   - A web's lasting area is hard going for a fighter, and none for the spider: it never catches it.
@@ -34,7 +34,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 651);
+  assert.ok(supportedCapabilityApi.minor >= 688);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -149,7 +149,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a condition whose holder some actions never hinder (unhinderedBy) requires schemaVersion 2 and capabilityApi 1.651 or newer";
+      "A ruleset with a condition whose holder some actions never hinder (unhinderedBy) requires schemaVersion 2 and capabilityApi 1.688 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -166,13 +166,13 @@ try {
     const without = fiveE((doc) => {
       delete doc.combat.conditions.find((one: { condition: string }) => one.condition === "web_walker").unhinderedBy;
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(650) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(651) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(650) as never, without), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(687) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(688) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(687) as never, without), gate);
   }
 
   console.log(
-    "Unhindered by: a web's ground slows the fighter and not the spider, a Web attack restrains the fighter and not the spider; gated at 1.651.",
+    "Unhindered by: a web's ground slows the fighter and not the spider, a Web attack restrains the fighter and not the spider; gated at 1.688.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

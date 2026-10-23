@@ -1,5 +1,5 @@
 /**
- * Familiars (Capability API 1.434).
+ * Familiars (Capability API 1.471).
  *
  *   - Find Familiar: the owl or the cat, as a celestial, fey or fiend, picked as it is cast; the
  *     bond its `appliesSelf` puts on the caster lands with the call.
@@ -39,7 +39,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 434);
+  assert.ok(supportedCapabilityApi.minor >= 471);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -248,7 +248,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose entries aim only at what their user called (calledBySelf) or call a creature as another type (calls asTypes) requires schemaVersion 2 and capabilityApi 1.434 or newer";
+      "A ruleset whose entries aim only at what their user called (calledBySelf) or call a creature as another type (calls asTypes) requires schemaVersion 2 and capabilityApi 1.471 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -262,14 +262,14 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(433) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(434) as never, document()), gate);
-    assert.equal(getCapabilityPackageInstallIssue(manifest(433) as never, document([voice()])), gate, "calledBySelf");
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(433) as never, document([antipathy])), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(470) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(471) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(470) as never, document([voice()])), gate, "calledBySelf");
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(470) as never, document([antipathy])), gate);
   }
 
   console.log(
-    "Familiar: Find Familiar's creature and type picked as cast with its bond on the caster; Voice of the Chain Master only at one's own; set up before the fight by mode or kind, one with no way said; gated at 1.434.",
+    "Familiar: Find Familiar's creature and type picked as cast with its bond on the caster; Voice of the Chain Master only at one's own; set up before the fight by mode or kind, one with no way said; gated at 1.471.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

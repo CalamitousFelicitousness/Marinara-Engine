@@ -1,5 +1,5 @@
 /**
- * An item's stats for some wearers only (Capability API 1.647): the Talisman of Pure Good's "+2 to
+ * An item's stats for some wearers only (Capability API 1.684): the Talisman of Pure Good's "+2 to
  * spell attack rolls" for a good cleric or paladin, any other wearer getting nothing of it.
  *
  *   - Worn by a cleric or a paladin, the stat reads 2 more; by a fighter, nothing more; carried, nothing.
@@ -30,7 +30,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 647);
+  assert.ok(supportedCapabilityApi.minor >= 684);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -156,7 +156,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with an item's stats added to while its wearer meets what it asks (statsIf) requires schemaVersion 2 and capabilityApi 1.647 or newer";
+      "A ruleset with an item's stats added to while its wearer meets what it asks (statsIf) requires schemaVersion 2 and capabilityApi 1.684 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -170,12 +170,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(646) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(647) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(646) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(683) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(684) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(683) as never, JSON.parse(fiveEText)), gate);
   }
 
-  console.log("Item stats for some wearers: the Talisman's +2 for a cleric or paladin only; gated at 1.647.");
+  console.log("Item stats for some wearers: the Talisman's +2 for a cleric or paladin only; gated at 1.684.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

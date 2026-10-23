@@ -1,5 +1,5 @@
 /**
- * A save on damage that leans (Capability API 1.659): 5e's Hideous Laughter, saved against at the end
+ * A save on damage that leans (Capability API 1.696): 5e's Hideous Laughter, saved against at the end
  * of each turn and, with advantage, each time its holder takes damage.
  *
  *   - `saveWhenDamaged: {lean: "advantage"}`: the save damage brings is rolled with advantage.
@@ -30,7 +30,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 659);
+  assert.ok(supportedCapabilityApi.minor >= 696);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -131,7 +131,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a condition saved against on damage with a lean (saveWhenDamaged.lean) requires schemaVersion 2 and capabilityApi 1.659 or newer";
+      "A ruleset with a condition saved against on damage with a lean (saveWhenDamaged.lean) requires schemaVersion 2 and capabilityApi 1.696 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -145,13 +145,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(658) as never, fiveE({ lean: "advantage" })), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(659) as never, fiveE({ lean: "advantage" })), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(658) as never, fiveE(true)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(695) as never, fiveE({ lean: "advantage" })), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(696) as never, fiveE({ lean: "advantage" })), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(695) as never, fiveE(true)), gate);
   }
 
   console.log(
-    "Damaged save lean: Hideous Laughter's save on damage rolls 4 and 17 with advantage and ends it; plainly the 4 holds it; gated at 1.659.",
+    "Damaged save lean: Hideous Laughter's save on damage rolls 4 and 17 with advantage and ends it; plainly the 4 holds it; gated at 1.696.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

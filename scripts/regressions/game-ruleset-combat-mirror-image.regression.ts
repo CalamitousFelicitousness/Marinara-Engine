@@ -1,5 +1,5 @@
 /**
- * Illusory duplicates (Capability API 1.452).
+ * Illusory duplicates (Capability API 1.489).
  *
  *   - A d20 at or over the threshold for how many are left turns an attack onto a duplicate, rolled
  *     against 10 + the holder's Dexterity modifier; a hit destroys it and deals nothing.
@@ -31,7 +31,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 452);
+  assert.ok(supportedCapabilityApi.minor >= 489);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -174,7 +174,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose conditions make illusory duplicates that draw attacks (a condition's duplicates) requires schemaVersion 2 and capabilityApi 1.452 or newer";
+      "A ruleset whose conditions make illusory duplicates that draw attacks (a condition's duplicates) requires schemaVersion 2 and capabilityApi 1.489 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -190,13 +190,13 @@ try {
     });
     const doc = JSON.parse(fiveEText) as Record<string, any>;
     doc.combat.conditions[0].duplicates = duplicates;
-    assert.equal(getCapabilityPackageInstallIssue(manifest(451) as never, doc), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(452) as never, doc), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(451) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(488) as never, doc), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(489) as never, doc), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(488) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Mirror Image: duplicates draw attacks on a d20 by how many are left, die when hit and end the condition with the last, and never fool blindsight; gated at 1.452.",
+    "Mirror Image: duplicates draw attacks on a d20 by how many are left, die when hit and end the condition with the last, and never fool blindsight; gated at 1.489.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

@@ -1,5 +1,5 @@
 /**
- * An item's use at its own level, and one that stops what it answers (Capability API 1.677): a scroll
+ * An item's use at its own level, and one that stops what it answers (Capability API 1.714): a scroll
  * of Counterspell.
  *
  *   - An item's `use.level` is the level it casts at: what reads an entry's paid level reads it.
@@ -41,7 +41,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 677);
+  assert.ok(supportedCapabilityApi.minor >= 714);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -194,7 +194,7 @@ try {
 
   // ── The install gate ──
   const gate =
-    "A ruleset with an item's use that casts at a level (use.level) or a utility use that stops what it answers requires schemaVersion 2 and capabilityApi 1.677 or newer";
+    "A ruleset with an item's use that casts at a level (use.level) or a utility use that stops what it answers requires schemaVersion 2 and capabilityApi 1.714 or newer";
   const withScroll = (use: Record<string, unknown> = scrollUse()) => {
     const doc = JSON.parse(fiveEText) as Record<string, any>;
     doc.catalogs.push({
@@ -217,14 +217,14 @@ try {
     permissions: [],
     restartRequired: false,
   });
-  assert.equal(getCapabilityPackageInstallIssue(manifest(676) as never, withScroll()), gate);
+  assert.equal(getCapabilityPackageInstallIssue(manifest(713) as never, withScroll()), gate);
   const levelOnly = withScroll({ kind: "attack", budget: "action", level: 1, autoHit: true, amount: { flat: 3 } });
-  assert.equal(getCapabilityPackageInstallIssue(manifest(676) as never, levelOnly), gate);
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(677) as never, withScroll()), gate);
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(676) as never, JSON.parse(fiveEText)), gate);
+  assert.equal(getCapabilityPackageInstallIssue(manifest(713) as never, levelOnly), gate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(714) as never, withScroll()), gate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(713) as never, JSON.parse(fiveEText)), gate);
 
   console.log(
-    "Scroll of Counterspell: an item's use casts at its own level and stops a spell up to it, or above on its reader's check; gated at 1.677.",
+    "Scroll of Counterspell: an item's use casts at its own level and stops a spell up to it, or above on its reader's check; gated at 1.714.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

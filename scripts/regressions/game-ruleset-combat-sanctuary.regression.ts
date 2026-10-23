@@ -1,5 +1,5 @@
 /**
- * A sanctuary (Capability API 1.370).
+ * A sanctuary (Capability API 1.407).
  *
  *   - Sanctuary: whoever attacks its holder first makes a Wisdom save against the difficulty it was put
  *     on with; failed, the attack goes to the nearest other creature it could be made at, or is lost.
@@ -35,7 +35,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 370);
+  assert.ok(supportedCapabilityApi.minor >= 407);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -219,7 +219,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose conditions keep attacks off their holder behind a save (sanctuary) requires schemaVersion 2 and capabilityApi 1.370 or newer";
+      "A ruleset whose conditions keep attacks off their holder behind a save (sanctuary) requires schemaVersion 2 and capabilityApi 1.407 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -233,13 +233,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(369) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(370) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(369) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(406) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(407) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(406) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Sanctuary: a failed save sends an attack to the nearest other creature or loses it, a save lets it through, an area is never stopped; Nature's Sanctuary holds only beasts and plants, reads its difficulty off the sheet and frees one that saved; gated at 1.370.",
+    "Sanctuary: a failed save sends an attack to the nearest other creature or loses it, a save lets it through, an area is never stopped; Nature's Sanctuary holds only beasts and plants, reads its difficulty off the sheet and frees one that saved; gated at 1.407.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

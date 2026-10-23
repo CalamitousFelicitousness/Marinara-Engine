@@ -175,7 +175,7 @@ function enumTableShape(node) {
   if (!node || typeof node !== "object") return;
   Object.values(node).forEach(enumTableShape);
   const properties = node.properties;
-  // A words table (1.637) names one to forty words the same way.
+  // A words table (1.674) names one to forty words the same way.
   if (node.type === "object" && properties?.op?.const === "wordsTable" && properties.table) {
     properties.table.minProperties = 1;
     properties.table.maxProperties = 40;
@@ -315,7 +315,7 @@ function modifierSaysSomething(node) {
     },
     ...["attacks", "blow", "ability", "damageType", "fromSource"].map((key) => ({
       if: { required: [key] },
-      // fromSource also narrows the advantage of attacks-taken (1.449): True Strike.
+      // fromSource also narrows the advantage of attacks-taken (1.486): True Strike.
       then: {
         properties: {
           to: { enum: key === "fromSource" ? ["damage-taken", "attacks-taken"] : ["damage", "damage-taken"] },

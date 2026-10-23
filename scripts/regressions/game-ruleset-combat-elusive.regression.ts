@@ -1,5 +1,5 @@
 /**
- * Held off while, saves against what is seen, and no advantage against (Capability API 1.364).
+ * Held off while, saves against what is seen, and no advantage against (Capability API 1.401).
  *
  *   - Elusive: no attack roll against its holder has advantage, a disadvantage still counts, and not
  *     while they cannot act.
@@ -34,7 +34,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 364);
+  assert.ok(supportedCapabilityApi.minor >= 401);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -186,7 +186,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose conditions or levels are held off by others (notWhile), make saves only against what is seen (whenSeen), or keep advantage off attacks against them (attacks-against-no-advantage) requires schemaVersion 2 and capabilityApi 1.364 or newer";
+      "A ruleset whose conditions or levels are held off by others (notWhile), make saves only against what is seen (whenSeen), or keep advantage off attacks against them (attacks-against-no-advantage) requires schemaVersion 2 and capabilityApi 1.401 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -200,13 +200,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(363) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(364) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(363) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(400) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(401) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(400) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Elusive and Danger Sense: no advantage against while able to act; Dexterity saves with advantage against what is seen, held off while blinded, deafened or incapacitated; gated at 1.364.",
+    "Elusive and Danger Sense: no advantage against while able to act; Dexterity saves with advantage against what is seen, held off while blinded, deafened or incapacitated; gated at 1.401.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

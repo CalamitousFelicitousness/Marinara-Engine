@@ -1,5 +1,5 @@
 /**
- * Pulled toward whoever pulls (Capability API 1.622).
+ * Pulled toward whoever pulls (Capability API 1.659).
  *
  *   - A creature action's `pull`: a balor's whip pulls whoever fails its save straight toward it, a
  *     cell at a time, and stops beside it, at a filled cell, or when the distance runs out. A made
@@ -39,7 +39,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 622);
+  assert.ok(supportedCapabilityApi.minor >= 659);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -242,7 +242,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset that pulls somebody toward whoever pulls them (pull) requires schemaVersion 2 and capabilityApi 1.622 or newer";
+      "A ruleset that pulls somebody toward whoever pulls them (pull) requires schemaVersion 2 and capabilityApi 1.659 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -261,13 +261,13 @@ try {
         .find((one: { holds?: string }) => one.holds === "creatures")
         .entries[0].creature.actions.push(whipEntry),
     );
-    assert.equal(getCapabilityPackageInstallIssue(manifest(621) as never, withWhip), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(622) as never, withWhip), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(621) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(658) as never, withWhip), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(659) as never, withWhip), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(658) as never, fiveE()), gate);
   }
 
   console.log(
-    "Pull: straight toward the puller, stopping beside them or at a filled cell; on a failed save; Reel; Thorn Whip; gated at 1.622.",
+    "Pull: straight toward the puller, stopping beside them or at a filled cell; on a failed save; Reel; Thorn Whip; gated at 1.659.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

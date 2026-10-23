@@ -1,5 +1,5 @@
 /**
- * No critical hits (Capability API 1.457).
+ * No critical hits (Capability API 1.494).
  *
  *   - `criticals-against-normal`: a natural 20 on its holder is a plain hit, its dice rolled once.
  *   - It wins over `attacks-from-adjacent-critical` too; without it, both still crit.
@@ -29,7 +29,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 457);
+  assert.ok(supportedCapabilityApi.minor >= 494);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -105,7 +105,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose conditions or worn items turn critical hits on their holder into plain hits (the criticals-against-normal effect) requires schemaVersion 2 and capabilityApi 1.457 or newer";
+      "A ruleset whose conditions or worn items turn critical hits on their holder into plain hits (the criticals-against-normal effect) requires schemaVersion 2 and capabilityApi 1.494 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -121,8 +121,8 @@ try {
     });
     const doc = JSON.parse(fiveEText) as Record<string, any>;
     doc.combat.conditions[0].effects = ["criticals-against-normal"];
-    assert.equal(getCapabilityPackageInstallIssue(manifest(456) as never, doc), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(457) as never, doc), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(493) as never, doc), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(494) as never, doc), gate);
     const item = JSON.parse(fiveEText) as Record<string, any>;
     item.catalogs.push({
       id: "armory",
@@ -130,12 +130,12 @@ try {
       feeds: ["features"],
       entries: [{ id: "plate", label: "Adamantine Plate", worn: { effects: ["criticals-against-normal"] } }],
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(456) as never, item), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(456) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(493) as never, item), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(493) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "No criticals: a natural 20 or a hit from beside one held still is a plain hit on whoever has criticals-against-normal; gated at 1.457.",
+    "No criticals: a natural 20 or a hit from beside one held still is a plain hit on whoever has criticals-against-normal; gated at 1.494.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

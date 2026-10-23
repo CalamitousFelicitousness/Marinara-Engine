@@ -1,5 +1,5 @@
 /**
- * Losing heart in a fight (Capability API 1.709).
+ * Losing heart in a fight (Capability API 1.746).
  *
  *   - A rolled check against a creature's morale score, once per trigger: broken, it runs; one at the
  *     board's edge is gone at once; one that holds is not asked again for the same thing.
@@ -38,7 +38,7 @@ const { commandRulesetCombatDirector, createRulesetFight, rulesetDirectorStage, 
   await import("../../packages/server/src/services/game/ruleset-combat-director.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 709);
+  assert.ok(supportedCapabilityApi.minor >= 746);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -415,7 +415,7 @@ try {
     );
   }
 
-  // ── Caught unaware, helpless, half down unanswered (1.722) ──
+  // ── Caught unaware, helpless, half down unanswered (1.759) ──
   {
     const definition = parsed(fiveE({ check: { roll: "2d6" }, on: ["surprised", "helpless"] }));
     const caught = fight(definition, { gob: { block: block({ morale: 7 }), at: { x: 6, y: 4 } } });
@@ -471,7 +471,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with losing heart in a fight (combat.morale, or a creature's morale score or leader) requires schemaVersion 2 and capabilityApi 1.709 or newer";
+      "A ruleset with losing heart in a fight (combat.morale, or a creature's morale score or leader) requires schemaVersion 2 and capabilityApi 1.746 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -485,29 +485,29 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(708) as never, fiveE(saved)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(745) as never, fiveE(saved)), gate);
     const scored = fiveE();
     scored.catalogs.find((one: { holds?: string }) => one.holds === "creatures").entries[0].creature.morale = 8;
-    assert.equal(getCapabilityPackageInstallIssue(manifest(708) as never, scored), gate, "a morale score alone");
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(709) as never, fiveE(saved)), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(708) as never, fiveE()), gate);
-    const gate722 =
-      "A ruleset whose fighters lose heart when surprised or helpless (combat.morale.on), or only when half down unanswered (combat.morale.halfDownUnanswered), requires schemaVersion 2 and capabilityApi 1.722 or newer";
+    assert.equal(getCapabilityPackageInstallIssue(manifest(745) as never, scored), gate, "a morale score alone");
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(746) as never, fiveE(saved)), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(745) as never, fiveE()), gate);
+    const gate759 =
+      "A ruleset whose fighters lose heart when surprised or helpless (combat.morale.on), or only when half down unanswered (combat.morale.halfDownUnanswered), requires schemaVersion 2 and capabilityApi 1.759 or newer";
     for (const newer of [
       { ...saved, on: ["hurt", "surprised"] },
       { ...saved, on: ["helpless"] },
       { ...rolled, halfDownUnanswered: true },
     ]) {
       assert.equal(
-        getCapabilityPackageInstallIssue(manifest(721) as never, fiveE(newer)),
-        gate722,
+        getCapabilityPackageInstallIssue(manifest(758) as never, fiveE(newer)),
+        gate759,
         JSON.stringify(newer),
       );
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(722) as never, fiveE(newer)), gate722);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(759) as never, fiveE(newer)), gate759);
     }
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(721) as never, fiveE(saved)), gate722);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(758) as never, fiveE(saved)), gate759);
 
-    // ── Kinds that never give themselves up (1.732) ──
+    // ── Kinds that never give themselves up (1.769) ──
     const typed = (morale: unknown) => {
       const doc = fiveE(morale);
       doc.combat.creatureTypes = {
@@ -530,14 +530,14 @@ try {
     assert.deepEqual(outcomeOf("humanoid"), ["surrender"], "a goblin still does");
     refused(typed({ ...saved, neverSurrender: ["fiend"] }), /Unknown creature type "fiend"/);
     refused(typed({ ...saved, neverSurrender: ["undead", "undead"] }), /Name each once/);
-    const gate732 =
-      "A ruleset with creature types that never surrender (combat.morale.neverSurrender) requires schemaVersion 2 and capabilityApi 1.732 or newer";
-    assert.equal(getCapabilityPackageInstallIssue(manifest(731) as never, typed(stubborn)), gate732);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(732) as never, typed(stubborn)), gate732);
+    const gate769 =
+      "A ruleset with creature types that never surrender (combat.morale.neverSurrender) requires schemaVersion 2 and capabilityApi 1.769 or newer";
+    assert.equal(getCapabilityPackageInstallIssue(manifest(768) as never, typed(stubborn)), gate769);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(769) as never, typed(stubborn)), gate769);
   }
 
   console.log(
-    "Combat morale: a broken goblin runs and gets away off the edge, one that holds is not asked again, a hurt thinker beside the hero surrenders, the fearless and the mindless never check; the director runs it off the board; surprised, helpless and half down unanswered (1.722); the undead never surrender (1.732); gated at 1.709, 1.722 and 1.732.",
+    "Combat morale: a broken goblin runs and gets away off the edge, one that holds is not asked again, a hurt thinker beside the hero surrenders, the fearless and the mindless never check; the director runs it off the board; surprised, helpless and half down unanswered (1.759); the undead never surrender (1.769); gated at 1.746, 1.759 and 1.769.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

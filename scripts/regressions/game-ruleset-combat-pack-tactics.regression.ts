@@ -1,5 +1,5 @@
 /**
- * Attacks that read who stands beside the target and how hurt it is (Capability API 1.343).
+ * Attacks that read who stands beside the target and how hurt it is (Capability API 1.380).
  *
  *   - A creature's `attackModes` with `allyAdjacent`: 5e's Pack Tactics, advantage while one of its
  *     allies who can act stands beside the target.
@@ -37,7 +37,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 343);
+  assert.ok(supportedCapabilityApi.minor >= 380);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -72,7 +72,7 @@ try {
   const cleric = creature("cleric", {
     riders: [{ id: "divine", name: "Divine Strike", on: "hit", oncePer: "own-turn", amount: { flat: 6 } }],
   });
-  // Blood Frenzy on melee attacks only (1.349): its thrown spear never has it.
+  // Blood Frenzy on melee attacks only (1.386): its thrown spear never has it.
   const sahuagin = creature("sahuagin", {
     attackModes: [{ mode: "advantage", targetHurt: true, melee: true }],
     actions: [
@@ -198,7 +198,7 @@ try {
     assert.equal(mode(state, "shark", "hero"), "advantage", "one point down is enough");
   }
 
-  // ── Blood Frenzy on melee attacks only (1.349) ──
+  // ── Blood Frenzy on melee attacks only (1.386) ──
   {
     const state = fight("sahuagin");
     who(state, "hero").health!.value = 29;
@@ -334,27 +334,27 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with a creature attack mode by an ally beside or a hurt target, a rider on a hurt target, or a rider once on its holder's own turn, requires schemaVersion 2 and capabilityApi 1.343 or newer";
+      "A ruleset with a creature attack mode by an ally beside or a hurt target, a rider on a hurt target, or a rider once on its holder's own turn, requires schemaVersion 2 and capabilityApi 1.380 or newer";
     for (const beast of beasts.filter((one) => one !== sahuagin)) {
       const doc = JSON.parse(fiveEText) as Record<string, any>;
       doc.catalogs.find((catalog: { id: string }) => catalog.id === "creatures").entries.push(structuredClone(beast));
-      assert.equal(getCapabilityPackageInstallIssue(manifest(342) as never, doc), gate, beast.id);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(343) as never, doc), gate, beast.id);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(379) as never, doc), gate, beast.id);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(380) as never, doc), gate, beast.id);
     }
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(342) as never, JSON.parse(fiveEText)), gate);
-    // Melee alone is 1.349's.
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(379) as never, JSON.parse(fiveEText)), gate);
+    // Melee alone is 1.386's.
     const melee = JSON.parse(fiveEText) as Record<string, any>;
     melee.catalogs
       .find((catalog: { id: string }) => catalog.id === "creatures")
       .entries.push(structuredClone(sahuagin));
     const meleeGate =
-      "A ruleset with calls read from a catalog or scaled by cost, or an attack mode on melee attacks, requires schemaVersion 2 and capabilityApi 1.349 or newer";
-    assert.equal(getCapabilityPackageInstallIssue(manifest(348) as never, melee), meleeGate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(349) as never, melee), meleeGate);
+      "A ruleset with calls read from a catalog or scaled by cost, or an attack mode on melee attacks, requires schemaVersion 2 and capabilityApi 1.386 or newer";
+    assert.equal(getCapabilityPackageInstallIssue(manifest(385) as never, melee), meleeGate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(386) as never, melee), meleeGate);
   }
 
   console.log(
-    "Pack Tactics beside a standing pack-mate, Blood Frenzy at a hurt target, Colossus Slayer's extra on one, Divine Strike only on its own turn; refusals; gated at 1.343.",
+    "Pack Tactics beside a standing pack-mate, Blood Frenzy at a hurt target, Colossus Slayer's extra on one, Divine Strike only on its own turn; refusals; gated at 1.380.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

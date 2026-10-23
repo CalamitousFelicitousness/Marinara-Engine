@@ -1,5 +1,5 @@
 /**
- * A zone that turns shots aside (Capability API 1.528): Wind Wall.
+ * A zone that turns shots aside (Capability API 1.565): Wind Wall.
  *
  *   - An attack from afar with a weapon that is not magical, into, out of or across it, is stopped;
  *     one well clear of it, a magical one, and one it `spares` by label are not.
@@ -36,7 +36,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 528);
+  assert.ok(supportedCapabilityApi.minor >= 565);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -141,7 +141,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a zone that turns aside attacks from afar with weapons that are not magical (turnsShots) requires schemaVersion 2 and capabilityApi 1.528 or newer";
+      "A ruleset with a zone that turns aside attacks from afar with weapons that are not magical (turnsShots) requires schemaVersion 2 and capabilityApi 1.565 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -155,13 +155,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(527) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(528) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(527) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(564) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(565) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(564) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Turns shots: Wind Wall turns aside a bow shot across it but not a giant's rock, a magical arrow or one well clear; gated at 1.528.",
+    "Turns shots: Wind Wall turns aside a bow shot across it but not a giant's rock, a magical arrow or one well clear; gated at 1.565.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

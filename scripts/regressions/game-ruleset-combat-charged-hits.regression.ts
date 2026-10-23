@@ -384,7 +384,7 @@ try {
       document((doc) => (gear(doc, 1).attack.spends[0].chargeStep.amount = {})),
       /A charge more adds dice, a flat amount, or both/,
     );
-    // Rounds beside a save that ends it are the most it lasts since 1.481; counted on the wielder's
+    // Rounds beside a save that ends it are the most it lasts since 1.518; counted on the wielder's
     // turns, it lasts some.
     refused(
       document((doc) => {

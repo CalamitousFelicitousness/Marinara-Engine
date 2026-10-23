@@ -1,5 +1,5 @@
 /**
- * A sense that sees things as they truly are (Capability API 1.596): 5e's Witch Sight.
+ * A sense that sees things as they truly are (Capability API 1.633): 5e's Witch Sight.
  *
  *   - An image (`calls.illusion`) is never offered to whoever sees it truly, in range; out of range it
  *     is.
@@ -36,7 +36,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 596);
+  assert.ok(supportedCapabilityApi.minor >= 633);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -211,7 +211,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a sense that sees things as they truly are (combat.senses[].seesTrue) requires schemaVersion 2 and capabilityApi 1.596 or newer";
+      "A ruleset with a sense that sees things as they truly are (combat.senses[].seesTrue) requires schemaVersion 2 and capabilityApi 1.633 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -225,11 +225,11 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(595) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(596) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(632) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(633) as never, document()), gate);
   }
 
-  console.log("Witch Sight: no image or duplicate fools a sense that sees truly; gated at 1.596.");
+  console.log("Witch Sight: no image or duplicate fools a sense that sees truly; gated at 1.633.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

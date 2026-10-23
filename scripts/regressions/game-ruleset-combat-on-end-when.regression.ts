@@ -1,5 +1,5 @@
 /**
- * What a condition leaves behind only as it ends some ways (Capability API 1.579): 5e's Pipes of the
+ * What a condition leaves behind only as it ends some ways (Capability API 1.616): 5e's Pipes of the
  * Sewers, "If a friendly swarm starts its turn and can't hear the pipes' music, your control over that
  * swarm ends, and the swarm ... can't be swayed by the pipes' music for the next 24 hours."
  *
@@ -35,7 +35,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 579);
+  assert.ok(supportedCapabilityApi.minor >= 616);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -208,7 +208,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a condition leaving something behind only as it ends some ways (onEnd.when) requires schemaVersion 2 and capabilityApi 1.579 or newer";
+      "A ruleset with a condition leaving something behind only as it ends some ways (onEnd.when) requires schemaVersion 2 and capabilityApi 1.616 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -222,12 +222,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(578) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(579) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(615) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(616) as never, document()), gate);
   }
 
   console.log(
-    "onEnd.when: a swarm that can't hear its piper goes free and unswayed, one whose piper stops only free; the other way round when named so; gated at 1.579.",
+    "onEnd.when: a swarm that can't hear its piper goes free and unswayed, one whose piper stops only free; the other way round when named so; gated at 1.616.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

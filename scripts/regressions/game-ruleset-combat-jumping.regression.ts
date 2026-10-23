@@ -1,5 +1,5 @@
 /**
- * Jumping (Capability API 1.446).
+ * Jumping (Capability API 1.483).
  *
  *   - A long jump of the Strength score in feet after a 10-foot run-up, half that standing; every
  *     cell of it a cell of movement.
@@ -37,7 +37,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 446);
+  assert.ok(supportedCapabilityApi.minor >= 483);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -224,7 +224,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose combatants jump (combat jumping, a condition's jumps) requires schemaVersion 2 and capabilityApi 1.446 or newer";
+      "A ruleset whose combatants jump (combat jumping, a condition's jumps) requires schemaVersion 2 and capabilityApi 1.483 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -240,16 +240,16 @@ try {
     });
     const only = JSON.parse(fiveEText) as Record<string, any>;
     only.combat.jumping = rule;
-    assert.equal(getCapabilityPackageInstallIssue(manifest(445) as never, only), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(446) as never, only), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(482) as never, only), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(483) as never, only), gate);
     const keyOnly = JSON.parse(fiveEText) as Record<string, any>;
     keyOnly.combat.conditions[0].jumps = { times: 2 };
-    assert.equal(getCapabilityPackageInstallIssue(manifest(445) as never, keyOnly), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(445) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(482) as never, keyOnly), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(482) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Jumping: Strength in feet after a run-up, half standing, over water and friends but not walls or foes, Jump triples it, a hard landing knocks prone on a failed check; gated at 1.446.",
+    "Jumping: Strength in feet after a run-up, half standing, over water and friends but not walls or foes, Jump triples it, a hard landing knocks prone on a failed check; gated at 1.483.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

@@ -1,5 +1,5 @@
 /**
- * Items a condition forbids, and more conditions by the slot (Capability API 1.472).
+ * Items a condition forbids, and more conditions by the slot (Capability API 1.509).
  *
  *   - Feeblemind's "can't ... activate magic items": a condition whose `forbids.items` names a tag
  *     keeps that item's use off the fight menu and refuses it outside a fight; an item without the
@@ -35,7 +35,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 472);
+  assert.ok(supportedCapabilityApi.minor >= 509);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -161,7 +161,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose conditions forbid using items (forbids.items) or whose entries put on more than six conditions by the steps paid (paidSteps) requires schemaVersion 2 and capabilityApi 1.472 or newer";
+      "A ruleset whose conditions forbid using items (forbids.items) or whose entries put on more than six conditions by the steps paid (paidSteps) requires schemaVersion 2 and capabilityApi 1.509 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -175,15 +175,15 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(471) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(508) as never, document()), gate);
     const onlyPaid = document({ casts: ["smites"] });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(471) as never, onlyPaid), gate, "the applies alone");
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(472) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(471) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(508) as never, onlyPaid), gate, "the applies alone");
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(509) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(508) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Forbidden items: a condition that forbids magic items keeps a wand off the menu and refuses it outside a fight, a salve still used; with no tags, any item; up to 12 conditions by paidSteps; gated at 1.472.",
+    "Forbidden items: a condition that forbids magic items keeps a wand off the menu and refuses it outside a fight, a salve still used; with no tags, any item; up to 12 conditions by paidSteps; gated at 1.509.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

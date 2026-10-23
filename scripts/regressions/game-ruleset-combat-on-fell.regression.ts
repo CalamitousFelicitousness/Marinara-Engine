@@ -1,5 +1,5 @@
 /**
- * What a creature's blow does to whoever it drops (Capability API 1.624).
+ * What a creature's blow does to whoever it drops (Capability API 1.661).
  *
  *   - `onFell` on a creature action: a giant spider's bite that drops a character leaves them stable,
  *     poisoned and paralyzed. A blow that drops nobody, or lands on somebody already down, does none
@@ -31,7 +31,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 624);
+  assert.ok(supportedCapabilityApi.minor >= 661);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -191,7 +191,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a creature's blow that does something to whoever it drops (onFell) requires schemaVersion 2 and capabilityApi 1.624 or newer";
+      "A ruleset with a creature's blow that does something to whoever it drops (onFell) requires schemaVersion 2 and capabilityApi 1.661 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -216,13 +216,13 @@ try {
         damage: { dice: "1d8", flat: 3, type: "piercing" },
         onFell,
       });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(623) as never, withBite), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(624) as never, withBite), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(623) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(660) as never, withBite), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(661) as never, withBite), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(660) as never, document()), gate);
   }
 
   console.log(
-    "onFell: a blow that drops somebody leaves them stable with its conditions, and only then; gated at 1.624.",
+    "onFell: a blow that drops somebody leaves them stable with its conditions, and only then; gated at 1.661.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

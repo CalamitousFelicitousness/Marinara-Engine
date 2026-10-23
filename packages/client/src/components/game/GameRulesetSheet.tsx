@@ -241,7 +241,7 @@ function RulesetSheetConditions({
   );
 }
 
-/** A list the ruleset gives a tab of its own (1.733): its rows by name, under a heading for each
+/** A list the ruleset gives a tab of its own (1.378): its rows by name, under a heading for each
  *  place a number column puts them in ("Cantrips", "1st level"), with a tick for a yes-or-no column. */
 function RulesetSheetListView({
   definition,
@@ -569,7 +569,7 @@ export function GameRulesetSheet({
   );
   // A tab whose lists are all hidden now (a class changed) falls back to the Overview.
   const shownTab = tab !== null && tabs.includes(tab) ? tab : null;
-  // A track the ruleset shows only once moved (1.733), and a note hidden by the sheet's own values.
+  // A track the ruleset shows only once moved (1.378), and a note hidden by the sheet's own values.
   const shownTracks = resolved.tracks.filter(
     (track) =>
       !(

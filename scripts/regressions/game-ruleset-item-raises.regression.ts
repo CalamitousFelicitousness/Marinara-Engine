@@ -1,5 +1,5 @@
 /**
- * Abilities an item raises for good (Capability API 1.463).
+ * Abilities an item raises for good (Capability API 1.500).
  *
  *   - A Manual of Gainful Exercise read outside a fight: Strength +2 and its most +2, kept in the
  *     live state, so the sheet reads it past the ruleset's own 20 when the ruleset's most is 20.
@@ -35,7 +35,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 463);
+  assert.ok(supportedCapabilityApi.minor >= 500);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -171,7 +171,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose items raise their user's abilities for good (an item use's raises) requires schemaVersion 2 and capabilityApi 1.463 or newer";
+      "A ruleset whose items raise their user's abilities for good (an item use's raises) requires schemaVersion 2 and capabilityApi 1.500 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -185,13 +185,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(462) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(463) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(462) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(499) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(500) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(499) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Item raises: a Manual of Gainful Exercise raises Strength and its most by 2 for good outside a fight, never offered in one; gated at 1.463.",
+    "Item raises: a Manual of Gainful Exercise raises Strength and its most by 2 for good outside a fight, never offered in one; gated at 1.500.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

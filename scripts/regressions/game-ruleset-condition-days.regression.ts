@@ -1,5 +1,5 @@
 /**
- * Conditions that last a number of days (Capability API 1.610): 5e's Quivering Palm, "the
+ * Conditions that last a number of days (Capability API 1.647): 5e's Quivering Palm, "the
  * vibrations last for a number of days equal to your monk level".
  *
  *   - Put on in a fight with `duration: "until-dispelled"` and `lastsDays` read off the sheet of
@@ -39,7 +39,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 610);
+  assert.ok(supportedCapabilityApi.minor >= 647);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -175,7 +175,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose conditions last a number of days (an applied condition's lastsDays) requires schemaVersion 2 and capabilityApi 1.610 or newer";
+      "A ruleset whose conditions last a number of days (an applied condition's lastsDays) requires schemaVersion 2 and capabilityApi 1.647 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -189,13 +189,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(609) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(610) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(609) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(646) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(647) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(646) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Condition days: Quivering Palm's vibrations have no clock in the fight, keep the monk's level in days on the sheet as it ends, and come off as they pass; gated at 1.610.",
+    "Condition days: Quivering Palm's vibrations have no clock in the fight, keep the monk's level in days on the sheet as it ends, and come off as they pass; gated at 1.647.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

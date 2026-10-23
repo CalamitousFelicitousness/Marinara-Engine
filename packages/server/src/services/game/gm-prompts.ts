@@ -1012,7 +1012,7 @@ function renderRulesetKindCheckLine(
         contextualLists.length ? ` (${contextualLists.join(", ")})` : ""
       } applies to this particular roll, add apply="Its name" to that check, several separated by ";". Name only what the situation makes apply: having it is not enough. The engine works out what it does and what it costs.`,
     );
-  // What checks are made for (1.699), where something changes only a check made for it: Gloves of
+  // What checks are made for (1.736), where something changes only a check made for it: Gloves of
   // Swimming and Climbing.
   const purposes = new Set<string>();
   const findPurposes = (value: unknown, depth: number): void => {
@@ -1407,7 +1407,7 @@ function renderRulesetKindCheckLine(
   ].join(" ");
 }
 
-/** Whether any condition the ruleset applies wears off faster while its holder rests (1.703), read
+/** Whether any condition the ruleset applies wears off faster while its holder rests (1.740), read
  *  once per ruleset. */
 const restingDaysRead = new WeakMap<object, boolean>();
 function countsRestingDays(ruleset: import("@marinara-engine/shared").RulesetDefinition): boolean {
@@ -1463,13 +1463,13 @@ function renderRulesetSheetSection(
     ...(ruleset.rests.length > 0
       ? [`- [sheet: who="Name" op="rest" rest="Rest"] - rests: ${names(ruleset.rests)}.`]
       : []),
-    // Days of game time (1.392): rows that recharge after so many days count them.
+    // Days of game time (1.429): rows that recharge after so many days count them.
     ...(ruleset.sheet.lists.some((list) => list.pools?.rechargeDays)
       ? [
           `- [sheet: who="Name" op="pass" days="N"] - when N days of game time pass for them; what recharges after days (${[...new Set(ruleset.sheet.lists.flatMap((list) => Object.entries(list.pools?.rechargeDays ?? {}).map(([value, days]) => `${value}: ${days} days`)))].join(", ")}) comes back once they have.`,
         ]
       : []),
-    // Days spent resting (1.703): what wears off faster while its holder rests, Wish's stress.
+    // Days spent resting (1.740): what wears off faster while its holder rests, Wish's stress.
     ...(countsRestingDays(ruleset)
       ? [
           `- [sheet: who="Name" op="pass" days="N" resting="yes"] - N days they spent resting and doing nothing more than light activity; some conditions wear off faster for it.`,
@@ -1495,7 +1495,7 @@ function renderRulesetSheetSection(
           `- [sheet: who="Name" op="use" name="Name on the sheet"] - pays what that ability costs. Add pool="Pool" to pay from a higher pool of the same group.`,
         ]
       : []),
-    // What a use gives back that its user picks (1.357): Arcane Recovery's slots.
+    // What a use gives back that its user picks (1.394): Arcane Recovery's slots.
     ...(ruleset.catalogs?.some((catalog) => catalog.entries?.some((entry) => entry.mechanics?.recovers))
       ? [
           `- For an ability that recovers spent pools (such as ${
@@ -1922,7 +1922,7 @@ export function buildGmFormatReminder(
       ? []
       : [
           `- [inventory: action="add|remove|give" item="Item A, Item B" count="3" who="Name" to="Name"] - every real item gain or loss, keep names short and use count/quantity for stacked items. Everyone in the party carries their own things: who is whose bag an item goes into or comes out of, and leaving it out means the player (a remove without who then takes from the rest of the party once the player has none). A give hands items from who to to. An item listed as "Nickname (Name)" is one item: write either name in item, never both. Never write result, reason or now yourself: the Engine adds them, and a refused one did not happen.`,
-          // Things made to last only so long (1.707), counted on the game's clock: Creation's.
+          // Things made to last only so long (1.744), counted on the game's clock: Creation's.
           ...(ctx.ruleset
             ? [
                 `  Something made to last only so long (a conjured or created object): add lasts="10 minutes", "12 hours" or "1 day" to the add, and it vanishes from the bag once that much game time has passed.`,

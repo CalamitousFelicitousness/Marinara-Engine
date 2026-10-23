@@ -1116,7 +1116,7 @@ export function generatedPartyMemberToCombatant(
     movementMode,
     // Caught unaware as the scene set it (1.237), read by a ruleset fight only.
     ...(member.surprised === true ? { surprised: true } : {}),
-    // What they set up before it (1.409), read by a ruleset fight only.
+    // What they set up before it (1.446), read by a ruleset fight only.
     ...(Array.isArray(member.standing) && member.standing.length ? { standing: member.standing } : {}),
   };
 }
@@ -8126,7 +8126,7 @@ function GameSurfaceComponent({
     [activeChatId, commitInventory, inventoryRefusal, localizeUi],
   );
 
-  /** One stack turned into another of its forms (1.522), 0 as it was made. */
+  /** One stack turned into another of its forms (1.559), 0 as it was made. */
   const handleFormInventoryStack = useCallback(
     async (stackId: string, form: number) => {
       if (!activeChatId) return null;

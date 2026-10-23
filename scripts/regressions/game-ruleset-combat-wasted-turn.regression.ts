@@ -1,5 +1,5 @@
 /**
- * Wasting a turn to a condition (Capability API 1.410).
+ * Wasting a turn to a condition (Capability API 1.447).
  *
  *   - Bestow Curse's wasted turn: a cursed foe failing its Wisdom save as its turn starts has no
  *     action that turn; one that makes it keeps its action.
@@ -34,7 +34,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 410);
+  assert.ok(supportedCapabilityApi.minor >= 447);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -147,7 +147,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose conditions waste a turn's budget on a failed save (behavior wastes) requires schemaVersion 2 and capabilityApi 1.410 or newer";
+      "A ruleset whose conditions waste a turn's budget on a failed save (behavior wastes) requires schemaVersion 2 and capabilityApi 1.447 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -161,12 +161,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(409) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(410) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(446) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(447) as never, fiveE()), gate);
   }
 
   console.log(
-    "Wasted turn: a cursed foe failing its save as its turn starts loses its action, one making it keeps it; gated at 1.410.",
+    "Wasted turn: a cursed foe failing its save as its turn starts loses its action, one making it keeps it; gated at 1.447.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

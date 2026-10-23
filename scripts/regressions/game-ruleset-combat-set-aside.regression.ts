@@ -1,5 +1,5 @@
 /**
- * Called creatures set aside (Capability API 1.480).
+ * Called creatures set aside (Capability API 1.517).
  *
  *   - Antimagic Field's "summoned creatures disappear": a wolf called by a spell, standing where the
  *     field is cast, is out of the fight while it covers it, never counted as fallen, and back where
@@ -39,7 +39,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 480);
+  assert.ok(supportedCapabilityApi.minor >= 517);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -238,7 +238,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a zone that sets aside creatures called into it (suppresses setsAsideCalled) requires schemaVersion 2 and capabilityApi 1.480 or newer";
+      "A ruleset with a zone that sets aside creatures called into it (suppresses setsAsideCalled) requires schemaVersion 2 and capabilityApi 1.517 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -252,13 +252,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(479) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(480) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(479) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(516) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(517) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(516) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Set aside: a wolf a spell called disappears inside an antimagic field, counted as no loss, and is back where it stood once the field is gone; one called by no spell stays; gated at 1.480.",
+    "Set aside: a wolf a spell called disappears inside an antimagic field, counted as no loss, and is back where it stood once the field is gone; one called by no spell stays; gated at 1.517.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

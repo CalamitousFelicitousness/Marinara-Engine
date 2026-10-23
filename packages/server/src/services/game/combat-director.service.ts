@@ -75,7 +75,7 @@ export interface CombatDirectorState extends DirectedCombatView {
   gm: boolean;
   /** The Game Master plays the named and the brilliant opponents as well as the bosses (combat AI P9). */
   gmNamed?: boolean;
-  /** The Game Master plays every opponent (1.721): the game's ruleset gives it the opposition. */
+  /** The Game Master plays every opponent (1.758): the game's ruleset gives it the opposition. */
   gmAll?: boolean;
   /** The game lets a cruel opponent strike those already down (combat AI T3). */
   cruel?: boolean;
@@ -140,7 +140,7 @@ const ready = (s: CombatDirectorState, u: Unit, k: CombatSkill) =>
   (k.slotLevel ? (u.spellSlots?.[String(k.slotLevel)] ?? 0) > 0 : (u.mp ?? 0) >= k.mpCost);
 const canAct = (u: Unit) => canCombatantAct(u);
 /** Whether the Game Master plays this opponent's turns: a boss, and in a game that asks for it a named
- *  or a brilliant one (combat AI P9), or every one where the ruleset gives it the opposition (1.721). */
+ *  or a brilliant one (combat AI P9), or every one where the ruleset gives it the opposition (1.758). */
 const gmPlays = (s: CombatDirectorState, u: Unit) =>
   s.gm &&
   (!!u.boss ||

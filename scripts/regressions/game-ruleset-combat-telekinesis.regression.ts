@@ -1,5 +1,5 @@
 /**
- * A contest on a catalog entry, and a target moved where its user picks (Capability API 1.512):
+ * A contest on a catalog entry, and a target moved where its user picks (Capability API 1.549):
  * 5e's Telekinesis.
  *
  *   - `mechanics.contest`: the caster's check against the target's; only on a win does the rest land.
@@ -38,7 +38,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 512);
+  assert.ok(supportedCapabilityApi.minor >= 549);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -233,7 +233,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with an entry won by a contest of checks or one that moves its target where its user picks (mechanics.contest, movesTarget) requires schemaVersion 2 and capabilityApi 1.512 or newer";
+      "A ruleset with an entry won by a contest of checks or one that moves its target where its user picks (mechanics.contest, movesTarget) requires schemaVersion 2 and capabilityApi 1.549 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -247,18 +247,18 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(511) as never, document()), gate);
-    assert.equal(getCapabilityPackageInstallIssue(manifest(511) as never, document({ contest: undefined })), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(548) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(548) as never, document({ contest: undefined })), gate);
     assert.equal(
-      getCapabilityPackageInstallIssue(manifest(511) as never, document({ movesTarget: undefined, applies: [] })),
+      getCapabilityPackageInstallIssue(manifest(548) as never, document({ movesTarget: undefined, applies: [] })),
       gate,
     );
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(512) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(511) as never, JSON.parse(fiveEText)), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(549) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(548) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Telekinesis: a contest of checks decides it, the ogre moved where picked within 30 feet and lifted, held up by a hover condition and down without one, untouched on a loss; refusals; gated at 1.512.",
+    "Telekinesis: a contest of checks decides it, the ogre moved where picked within 30 feet and lifted, held up by a hover condition and down without one, untouched on a loss; refusals; gated at 1.549.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

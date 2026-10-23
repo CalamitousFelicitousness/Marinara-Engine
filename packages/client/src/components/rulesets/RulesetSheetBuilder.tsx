@@ -678,7 +678,7 @@ export function RulesetSheetBuilder({
               const replaces =
                 !!entry.exclusive &&
                 options.some((other) => other.exclusive === entry.exclusive && picked.includes(other.id));
-              // Taken without asking (1.713): only a choice within an `exclusive` group is the player's.
+              // Taken without asking (1.750): only a choice within an `exclusive` group is the player's.
               const locked = !!current.takesAll && !entry.exclusive;
               // Already on the sheet from somewhere else (a domain spell a later step grants): no pick.
               const known =
@@ -991,7 +991,7 @@ export function RulesetSheetBuilder({
 
   // Named rows (1.154): the player's own rows are edited where they sit in the list, so two rows with
   // the same name stay two rows. Rows a pick wrote are shown and left to the pick.
-  // Rows already on a list, marked to tick one of their columns (1.714): a wizard's prepared spells.
+  // Rows already on a list, marked to tick one of their columns (1.751): a wizard's prepared spells.
   const markStep = (current: StepOf<"mark">) => {
     const list = definition.sheet.lists.find((each) => each.id === current.list);
     const name = list?.columns.find((column) => column.type === "text")?.id;
@@ -1935,7 +1935,7 @@ export function RulesetSheetBuilder({
     const entry = definition.sheet.derived.find((each) => each.id === id);
     const value = evaluated.derived[id];
     if (!entry || value === undefined || isRulesetItemHidden(entry, build, definition)) return [];
-    // A bonus the ruleset marks as one (1.733) reads with its sign: a spell attack of "+5".
+    // A bonus the ruleset marks as one (1.378) reads with its sign: a spell attack of "+5".
     return [{ id, label: entry.label, text: entry.signed && value > 0 ? `+${value}` : String(value) }];
   });
 

@@ -1,6 +1,6 @@
 /**
  * A rest that gives back one named row's pool, and only while a value off the sheet says so
- * (Capability API 1.381).
+ * (Capability API 1.418).
  *
  *   - Sorcerous Restoration: a short rest gives a 20th-level sorcerer 4 spent sorcery points back,
  *     never past the most, and a 19th-level one nothing; another counter on the same list is left be.
@@ -27,7 +27,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 381);
+  assert.ok(supportedCapabilityApi.minor >= 418);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -106,7 +106,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose rests give back one named row's pool (row) or only while a value off the sheet says so (when) requires schemaVersion 2 and capabilityApi 1.381 or newer";
+      "A ruleset whose rests give back one named row's pool (row) or only while a value off the sheet says so (when) requires schemaVersion 2 and capabilityApi 1.418 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -120,13 +120,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(380) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(381) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(380) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(417) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(418) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(417) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Rest rows: a short rest gives a 20th-level sorcerer 4 sorcery points back, up to the most, a 19th-level one nothing, and leaves another counter be; gated at 1.381.",
+    "Rest rows: a short rest gives a 20th-level sorcerer 4 sorcery points back, up to the most, a 19th-level one nothing, and leaves another counter be; gated at 1.418.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

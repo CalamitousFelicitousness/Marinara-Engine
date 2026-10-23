@@ -79,7 +79,7 @@ export function DirectedCombatUI(props: Props) {
   }, [definition]);
   // What the ruleset calls the number an attack is rolled against, for the one prompt that shows it.
   const defenseLabel = definition ? rulesetValueLabel(definition, definition.combat?.defense) : "";
-  // The kinds a zone strikes, named in the menu as it is cast (1.700), sent with that option once.
+  // The kinds a zone strikes, named in the menu as it is cast (1.737), sent with that option once.
   // Every hook comes before the loading return, so the screen asks for the same hooks every time.
   const namedKinds = useRef<{ optionId: string; kinds: string[] } | null>(null);
   const nameKinds = useCallback((optionId: string, kinds: string[]) => {

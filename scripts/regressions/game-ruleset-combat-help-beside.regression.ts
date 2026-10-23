@@ -1,5 +1,5 @@
 /**
- * Help against an opponent beside the helper (Capability API 1.718): `combat.standardEffects.help`.
+ * Help against an opponent beside the helper (Capability API 1.755): `combat.standardEffects.help`.
  *
  *   - With `beside: true`, Help is not offered while the helper has no opponent beside them.
  *   - Given beside an opponent, it counts only for an attack against that opponent, and only such an
@@ -34,7 +34,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 718);
+  assert.ok(supportedCapabilityApi.minor >= 755);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -180,12 +180,12 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset whose help is against an opponent beside the helper (standardEffects.help) requires schemaVersion 2 and capabilityApi 1.718 or newer";
-    assert.equal(getCapabilityPackageInstallIssue(manifest(717) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(718) as never, fiveE()), gate);
+      "A ruleset whose help is against an opponent beside the helper (standardEffects.help) requires schemaVersion 2 and capabilityApi 1.755 or newer";
+    assert.equal(getCapabilityPackageInstallIssue(manifest(754) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(755) as never, fiveE()), gate);
     assert.notEqual(
       getCapabilityPackageInstallIssue(
-        manifest(717) as never,
+        manifest(754) as never,
         fiveE(() => {}),
       ),
       gate,
@@ -193,7 +193,7 @@ try {
   }
 
   console.log(
-    "Help beside: offered only beside an opponent, counting and spent only against one who was beside the helper; gated at 1.718.",
+    "Help beside: offered only beside an opponent, counting and spent only against one who was beside the helper; gated at 1.755.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

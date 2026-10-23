@@ -1,5 +1,5 @@
 /**
- * A contest's `takes` as a mode of its own (Capability API 1.639): 5e's Telekinesis, one cast either
+ * A contest's `takes` as a mode of its own (Capability API 1.676): 5e's Telekinesis, one cast either
  * pulling an object a creature holds or moving the creature, and a repeat keeping its grip on the same.
  *
  *   - Cast in the takes mode, a win takes the mace and does nothing else: no condition goes on.
@@ -36,7 +36,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 639);
+  assert.ok(supportedCapabilityApi.minor >= 676);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -246,7 +246,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a contest whose takes is a mode of its own (contest.takesMode) requires schemaVersion 2 and capabilityApi 1.639 or newer";
+      "A ruleset with a contest whose takes is a mode of its own (contest.takesMode) requires schemaVersion 2 and capabilityApi 1.676 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -260,12 +260,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(638) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(639) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(675) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(676) as never, document()), gate);
   }
 
   console.log(
-    "Takes mode: Telekinesis pulls the mace or holds the cleric, one cast either way, its repeat keeping the same; gated at 1.639.",
+    "Takes mode: Telekinesis pulls the mace or holds the cleric, one cast either way, its repeat keeping the same; gated at 1.676.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

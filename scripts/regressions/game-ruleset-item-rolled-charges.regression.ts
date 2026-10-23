@@ -1,5 +1,5 @@
 /**
- * Charges found at a rolled count (Capability API 1.520): a Rod of Absorption's 1d10.
+ * Charges found at a rolled count (Capability API 1.557): a Rod of Absorption's 1d10.
  *
  *   - `charges.rolled`: each stack starts with that many, rolled once and the same at every reading
  *     after, never past `max`; a count the stack keeps wins over it.
@@ -27,7 +27,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 520);
+  assert.ok(supportedCapabilityApi.minor >= 557);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -93,7 +93,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with an item found holding a rolled count of charges (charges.rolled) requires schemaVersion 2 and capabilityApi 1.520 or newer";
+      "A ruleset with an item found holding a rolled count of charges (charges.rolled) requires schemaVersion 2 and capabilityApi 1.557 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -107,13 +107,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(519) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(520) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(519) as never, document({ max: 10 })), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(556) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(557) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(556) as never, document({ max: 10 })), gate);
   }
 
   console.log(
-    "Rolled charges: each stack is found holding its own roll, never past max, a kept count wins; gated at 1.520.",
+    "Rolled charges: each stack is found holding its own roll, never past max, a kept count wins; gated at 1.557.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

@@ -76,13 +76,13 @@ export interface InventoryItem {
   loaded?: number;
   /** What an item that holds charges has left, as a fight left it. Absent reads as full. */
   charges?: number;
-  /** What is left of its further uses that count their own (1.466), by place. Absent reads as full. */
+  /** What is left of its further uses that count their own (1.503), by place. Absent reads as full. */
   usesLeft?: Record<string, number>;
-  /** What it stores to be cast later (1.471), as a fight left it. */
+  /** What it stores to be cast later (1.508), as a fight left it. */
   storedEntries?: Array<{ entry: string; label?: string; level: number }>;
   /** An item with a switch turned on, as the player or a fight left it (1.170). Only ever one item. */
   on?: true;
-  /** The form an item with forms is in (1.522), from 1; absent as it was made. Only ever one item. */
+  /** The form an item with forms is in (1.559), from 1; absent as it was made. Only ever one item. */
   form?: number;
 }
 
@@ -126,7 +126,7 @@ interface GameInventoryProps {
   onWearItem?: (stackId: string, wear: GameInventoryWear) => Promise<string | null> | string | null;
   /** Called when the user turns an item with a switch on or off (1.170). Resolves to the stack's id. */
   onSwitchItem?: (stackId: string, on: boolean) => Promise<string | null> | string | null;
-  /** Called when the user turns an item into another of its forms (1.522), 0 as it was made. Resolves
+  /** Called when the user turns an item into another of its forms (1.559), 0 as it was made. Resolves
    *  to the stack's id. */
   onFormItem?: (stackId: string, form: number) => Promise<string | null> | string | null;
   /** Called when the user wants to use an item during input phase */
@@ -162,7 +162,7 @@ const ITEMS_PER_PAGE = 20;
 
 /** A drop's change is fire-and-forget: whoever handles it says what went wrong, and a rejection it
  *  did not catch is not left unhandled here. */
-/** How long what a use makes may last (Capability API 1.707), each a button of its own picked by its
+/** How long what a use makes may last (Capability API 1.744), each a button of its own picked by its
  *  place from 1, when there are several to pick from; one plain button otherwise. */
 function lastsPicks(
   lasts: ReadonlyArray<{ label?: string; minutes: number }> | undefined,
@@ -1131,7 +1131,7 @@ export function GameInventory({
                     {selectedRulesetItem.toggle.label}
                   </button>
                 )}
-              {/* Its forms (1.522): what it is as made, then each other form. */}
+              {/* Its forms (1.559): what it is as made, then each other form. */}
               {selectedInventoryItem &&
                 selectedRulesetItem?.forms &&
                 selectedInventoryItem.quantity === 1 &&
@@ -1157,7 +1157,7 @@ export function GameInventory({
               {selectedInventoryItem &&
                 canInteract &&
                 onUseItem &&
-                // What it makes lasting as long as its user picks (1.707): one button for each.
+                // What it makes lasting as long as its user picks (1.744): one button for each.
                 lastsPicks(selectedRulesetItem?.entry.item?.use?.makesItems?.lasts).map((pick) => (
                   <button
                     key={pick?.label ?? "use"}
@@ -1181,13 +1181,13 @@ export function GameInventory({
                     {pick ? pick.label : localizeUi("ui.agents.agenteditor.use")}
                   </button>
                 ))}
-              {/* Its further uses (Capability API 1.466), each its own button. */}
+              {/* Its further uses (Capability API 1.503), each its own button. */}
               {selectedInventoryItem &&
                 canInteract &&
                 onUseItem &&
                 (selectedRulesetItem?.entry.item?.use || selectedRulesetItem?.entry.item?.moreUsesRolled) &&
                 selectedRulesetItem.entry.item.moreUses?.map((more, n) => {
-                  // A count rolled to none for this stack (1.693) is never offered.
+                  // A count rolled to none for this stack (1.730) is never offered.
                   const item = selectedRulesetItem.entry.item!;
                   const at = more.usesOf ? rulesetMoreUsesOf(item, more) : n;
                   const counted = at >= 0 ? item.moreUses?.[at]?.uses : undefined;
@@ -1363,7 +1363,7 @@ function RulesetItemDetails({
   loaded?: number;
   charges?: number;
   usesLeft?: Record<string, number>;
-  /** Its stack, whose own rolled counts it reads (1.483). */
+  /** Its stack, whose own rolled counts it reads (1.520). */
   stackId?: string;
   storedEntries?: Array<{ entry: string; label?: string; level: number }>;
 }) {
@@ -1400,7 +1400,7 @@ function RulesetItemDetails({
       {chargesMax !== undefined && (
         <div className="text-[0.65rem] leading-tight text-white/70">
           {localizeUi("ui.game.gameinventory.chargesLeft", {
-            // Found with rolled charges (1.520) until something changed them.
+            // Found with rolled charges (1.557) until something changed them.
             now: Math.min(charges ?? rulesetChargesStart(facts.use!.charges!, chargesMax, stackId), chargesMax),
             max: chargesMax,
           })}
@@ -1419,8 +1419,8 @@ function RulesetItemDetails({
           </div>
         );
       })}
-      {/* What it stores to be cast later (1.471): a Ring of Spell Storing's spells, or what it was found
-          holding (1.523) until a fight changed them. */}
+      {/* What it stores to be cast later (1.508): a Ring of Spell Storing's spells, or what it was found
+          holding (1.560) until a fight changed them. */}
       {details.entry.item?.stores && (
         <div className="text-[0.65rem] leading-tight text-white/70">
           {heldStored?.length

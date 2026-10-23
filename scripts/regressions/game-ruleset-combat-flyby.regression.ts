@@ -1,5 +1,5 @@
 /**
- * Flyby (Capability API 1.626).
+ * Flyby (Capability API 1.663).
  *
  *   - A condition's `flyby`, kept on an owl: with a flying speed it leaves an enemy's reach without
  *     drawing an opportunity attack. Without the condition, or without a flying speed, it draws one.
@@ -28,7 +28,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 626);
+  assert.ok(supportedCapabilityApi.minor >= 663);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -105,7 +105,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a condition whose holder flies out of reach without drawing a strike (flyby) requires schemaVersion 2 and capabilityApi 1.626 or newer";
+      "A ruleset with a condition whose holder flies out of reach without drawing a strike (flyby) requires schemaVersion 2 and capabilityApi 1.663 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -119,13 +119,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(625) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(626) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(625) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(662) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(663) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(662) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Flyby: out of reach on the wing without a strike, and only with the condition and a flying speed; gated at 1.626.",
+    "Flyby: out of reach on the wing without a strike, and only with the condition and a flying speed; gated at 1.663.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

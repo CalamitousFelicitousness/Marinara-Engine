@@ -97,12 +97,12 @@ export function rulesetCombatRecapLines(definition: RulesetDefinition, summary: 
   if (gone.length > 0) {
     lines.push(`Got away: ${gone.map((enemy) => `${enemy.name} (${enemy.health}/${enemy.maxHealth})`).join(", ")}`);
   }
-  // Beaten but alive (1.667): knocked out, unconscious and stable, for the story to deal with.
+  // Beaten but alive (1.704): knocked out, unconscious and stable, for the story to deal with.
   const knocked = summary.enemies.filter((enemy) => enemy.knockedOut);
   if (knocked.length > 0) {
     lines.push(`Knocked out, alive: ${knocked.map((enemy) => enemy.name).join(", ")}`);
   }
-  // Gave up (1.709): alive and the party's to deal with, captives for the story.
+  // Gave up (1.746): alive and the party's to deal with, captives for the story.
   const yielded = summary.enemies.filter((enemy) => enemy.surrendered);
   if (yielded.length > 0) {
     lines.push(`Surrendered to the party, alive: ${yielded.map((enemy) => enemy.name).join(", ")}`);

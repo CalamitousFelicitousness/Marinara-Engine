@@ -1,5 +1,5 @@
 /**
- * Attacks drawn to a holder (Capability API 1.605): 5e's Shield of Missile Attraction's curse,
+ * Attacks drawn to a holder (Capability API 1.642): 5e's Shield of Missile Attraction's curse,
  * "Whenever a ranged weapon attack is made against a target within 10 feet of you, the curse causes you
  * to become the target instead."
  *
@@ -33,7 +33,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 605);
+  assert.ok(supportedCapabilityApi.minor >= 642);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -163,7 +163,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with attacks drawn to whoever holds a drawsAim near their target requires schemaVersion 2 and capabilityApi 1.605 or newer";
+      "A ruleset with attacks drawn to whoever holds a drawsAim near their target requires schemaVersion 2 and capabilityApi 1.642 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -177,12 +177,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(604) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(605) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(641) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(642) as never, fiveE()), gate);
   }
 
   console.log(
-    "Shield of Missile Attraction: a ranged weapon attack at someone within 10 feet is made at its holder, forced; gated at 1.605.",
+    "Shield of Missile Attraction: a ranged weapon attack at someone within 10 feet is made at its holder, forced; gated at 1.642.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

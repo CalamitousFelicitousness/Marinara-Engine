@@ -1,5 +1,5 @@
 /**
- * An aura while ridden (Capability API 1.682): a goat of terror.
+ * An aura while ridden (Capability API 1.719): a goat of terror.
  *
  *   - A condition's aura with `whileRidden` spreads only while somebody rides its holder.
  *   - Its sides are read from the rider's: `enemies` are the rider's foes.
@@ -28,7 +28,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 682);
+  assert.ok(supportedCapabilityApi.minor >= 719);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -98,7 +98,7 @@ try {
 
   // ── The install gate ──
   const gate =
-    "A ruleset with an aura that spreads only while its holder is ridden (auras[].whileRidden) requires schemaVersion 2 and capabilityApi 1.682 or newer";
+    "A ruleset with an aura that spreads only while its holder is ridden (auras[].whileRidden) requires schemaVersion 2 and capabilityApi 1.719 or newer";
   const manifest = (minor: number) => ({
     schemaVersion: 2,
     capabilityApi: { major: 1, minor },
@@ -112,14 +112,14 @@ try {
     permissions: [],
     restartRequired: false,
   });
-  assert.equal(getCapabilityPackageInstallIssue(manifest(681) as never, fiveE()), gate);
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(682) as never, fiveE()), gate);
+  assert.equal(getCapabilityPackageInstallIssue(manifest(718) as never, fiveE()), gate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(719) as never, fiveE()), gate);
   assert.notEqual(
-    getCapabilityPackageInstallIssue(manifest(681) as never, fiveE(terror({ whileRidden: undefined }))),
+    getCapabilityPackageInstallIssue(manifest(718) as never, fiveE(terror({ whileRidden: undefined }))),
     gate,
   );
 
-  console.log("Goat of terror: an aura spreading only while ridden, at its rider's foes; gated at 1.682.");
+  console.log("Goat of terror: an aura spreading only while ridden, at its rider's foes; gated at 1.719.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

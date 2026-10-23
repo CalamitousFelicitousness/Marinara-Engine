@@ -1,8 +1,8 @@
 /**
- * Forbiddance's choices and its bar on teleporting in (Capability API 1.700): "creatures can't
+ * Forbiddance's choices and its bar on teleporting in (Capability API 1.737): "creatures can't
  * teleport into the area ... Choose one or more of the following: celestials, elementals, fey,
  * fiends, and undead ... the creature takes 5d10 radiant or necrotic damage (your choice when you
- * cast this spell)". And a creature of up to 16 actions (Capability API 1.701): the vampire's.
+ * cast this spell)". And a creature of up to 16 actions (Capability API 1.738): the vampire's.
  *
  *   - `zone.forbids.teleport: "into"` bars everybody from teleporting into the zone, whoever it works
  *     on; teleporting within it or out of it stays allowed.
@@ -43,7 +43,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 701);
+  assert.ok(supportedCapabilityApi.minor >= 738);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -266,7 +266,7 @@ try {
     assert.deepEqual(zone.strikesIs, { types: ["fiend"] });
   }
 
-  // ── A creature of up to 16 actions (1.701) ──
+  // ── A creature of up to 16 actions (1.738) ──
   const creature = (count: number) => {
     const doc = fiveE();
     const bestiary = doc.catalogs.find((catalog: { id: string }) => catalog.id === "creatures");
@@ -309,31 +309,31 @@ try {
       restartRequired: false,
     });
     const gate =
-      'A ruleset with a zone nobody teleports into (forbids.teleport "into"), kinds its zone strikes named as it is cast (kindChoice "many") or a damage type named as it is cast (damageTypeChoice) requires schemaVersion 2 and capabilityApi 1.700 or newer';
+      'A ruleset with a zone nobody teleports into (forbids.teleport "into"), kinds its zone strikes named as it is cast (kindChoice "many") or a damage type named as it is cast (damageTypeChoice) requires schemaVersion 2 and capabilityApi 1.737 or newer';
     const { damageTypeChoice: _type, kindChoice: _kinds, ...plain } = ward();
-    assert.equal(getCapabilityPackageInstallIssue(manifest(699) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(736) as never, fiveE()), gate);
     assert.equal(
-      getCapabilityPackageInstallIssue(manifest(699) as never, fiveE(ward({ damageTypeChoice: undefined }))),
+      getCapabilityPackageInstallIssue(manifest(736) as never, fiveE(ward({ damageTypeChoice: undefined }))),
       gate,
       "the kinds alone",
     );
     assert.equal(
-      getCapabilityPackageInstallIssue(manifest(699) as never, fiveE(ward({ kindChoice: undefined }))),
+      getCapabilityPackageInstallIssue(manifest(736) as never, fiveE(ward({ kindChoice: undefined }))),
       gate,
       "the damage type alone",
     );
-    assert.equal(getCapabilityPackageInstallIssue(manifest(699) as never, fiveE(plain)), gate, "teleporting in alone");
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(700) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(699) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(736) as never, fiveE(plain)), gate, "teleporting in alone");
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(737) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(736) as never, JSON.parse(fiveEText)), gate);
     const many =
-      "A ruleset with a creature of more than 12 actions requires schemaVersion 2 and capabilityApi 1.701 or newer";
-    assert.equal(getCapabilityPackageInstallIssue(manifest(700) as never, creature(13)), many);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(701) as never, creature(13)), many);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(700) as never, creature(12)), many);
+      "A ruleset with a creature of more than 12 actions requires schemaVersion 2 and capabilityApi 1.738 or newer";
+    assert.equal(getCapabilityPackageInstallIssue(manifest(737) as never, creature(13)), many);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(738) as never, creature(13)), many);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(737) as never, creature(12)), many);
   }
 
   console.log(
-    "Forbiddance: nobody teleports into its ward, within and out of it they may; it strikes the kinds named as it is cast (its own when none), in the damage type picked as a mode, cast or set up beforehand; gated at 1.700; a creature of 16 actions at 1.701.",
+    "Forbiddance: nobody teleports into its ward, within and out of it they may; it strikes the kinds named as it is cast (its own when none), in the damage type picked as a mode, cast or set up beforehand; gated at 1.737; a creature of 16 actions at 1.738.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

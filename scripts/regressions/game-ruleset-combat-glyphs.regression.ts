@@ -1,5 +1,5 @@
 /**
- * Glyphs set off by whoever enters them (Capability API 1.398).
+ * Glyphs set off by whoever enters them (Capability API 1.435).
  *
  *   - Glyph of Warding: somebody other than its caster walking into it sets it off, with no save of
  *     their own; it reaches everybody within `within` of its middle, not only its cells; its caster
@@ -41,7 +41,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 398);
+  assert.ok(supportedCapabilityApi.minor >= 435);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -250,7 +250,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose zones go off as somebody enters them or reach past their cells (detonates entered, within) requires schemaVersion 2 and capabilityApi 1.398 or newer";
+      "A ruleset whose zones go off as somebody enters them or reach past their cells (detonates entered, within) requires schemaVersion 2 and capabilityApi 1.435 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -267,13 +267,13 @@ try {
     const withGlyph = fiveE((doc) => {
       doc.catalogs.push({ id: "spells", label: "Spells", feeds: ["spells"], entries: [glyph] });
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(397) as never, withGlyph), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(398) as never, withGlyph), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(397) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(434) as never, withGlyph), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(435) as never, withGlyph), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(434) as never, fiveE()), gate);
   }
 
   console.log(
-    "Glyphs: set off by whoever but their caster walks in, reaching everybody within their reach, only by a fiend with by, and quiet as their time runs out; gated at 1.398.",
+    "Glyphs: set off by whoever but their caster walks in, reaching everybody within their reach, only by a fiend with by, and quiet as their time runs out; gated at 1.435.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

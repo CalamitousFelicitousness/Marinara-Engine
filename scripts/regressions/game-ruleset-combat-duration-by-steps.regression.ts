@@ -1,9 +1,9 @@
 /**
- * Durations and concentration set by the cost paid (Capability API 1.417).
+ * Durations and concentration set by the cost paid (Capability API 1.454).
  *
  *   - Bestow Curse, as a 1st-level entry here: ten rounds and concentration on a 1st-level slot, a
  *     hundred and concentration on a 2nd, 4800 and no concentration on a 3rd.
- *   - Conditions picked by the steps paid (1.464): Magic Weapon's +1, +2 and +3 as three conditions.
+ *   - Conditions picked by the steps paid (1.501): Magic Weapon's +1, +2 and +3 as three conditions.
  *   - Refusals and the install gate.
  */
 import assert from "node:assert/strict";
@@ -32,7 +32,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 417);
+  assert.ok(supportedCapabilityApi.minor >= 454);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -154,21 +154,21 @@ try {
     assert.deepEqual(lasts(definition, "slots_3"), [4800, null], "two higher: eight hours, unheld");
     const always = parsed(fiveE({ rounds: 10, bySteps: [100] }, { concentrationBelowStep: undefined }));
     assert.deepEqual(lasts(always, "slots_3"), [100, "Bestow Curse"], "the last step holds beyond");
-    // Until dispelled (1.429): no clock at all from that step up.
+    // Until dispelled (1.466): no clock at all from that step up.
     const forever = parsed(fiveE({ rounds: 10, bySteps: [100, "until-dispelled"] }));
     assert.deepEqual(lasts(forever, "slots_2"), [100, "Bestow Curse"]);
     assert.deepEqual(lasts(forever, "slots_3"), [null, null], "two higher: until dispelled, unheld");
-    // A day of rounds (1.429): Aid's eight hours, as written.
+    // A day of rounds (1.466): Aid's eight hours, as written.
     const aid = parsed(fiveE({ rounds: 4800 }, { concentrationBelowStep: undefined, concentration: undefined }));
     assert.deepEqual(lasts(aid, undefined), [4800, null]);
-    // Until dispelled, said plainly (1.432): Continual Flame, no clock at all.
+    // Until dispelled, said plainly (1.469): Continual Flame, no clock at all.
     const flame = parsed(
       fiveE("until-dispelled" as never, { concentrationBelowStep: undefined, concentration: undefined }),
     );
     assert.deepEqual(lasts(flame, undefined), [null, null]);
   }
 
-  // ── Conditions picked by the steps paid (1.464) ──
+  // ── Conditions picked by the steps paid (1.501) ──
   {
     const keen = [
       { condition: "cursed", duration: { rounds: 10 } },
@@ -196,7 +196,7 @@ try {
       /atLeast is no more than atMost/,
     );
     const gate =
-      "A ruleset whose entries put conditions on by the steps paid for them (an applies entry's paidSteps) requires schemaVersion 2 and capabilityApi 1.464 or newer";
+      "A ruleset whose entries put conditions on by the steps paid for them (an applies entry's paidSteps) requires schemaVersion 2 and capabilityApi 1.501 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -211,8 +211,8 @@ try {
       restartRequired: false,
     });
     const doc = fiveE(undefined, { applies: keen, concentrationBelowStep: undefined });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(463) as never, doc), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(464) as never, doc), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(500) as never, doc), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(501) as never, doc), gate);
   }
 
   // ── Refusals ──
@@ -224,7 +224,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose durations are set by the cost paid, or whose concentration holds only below a step (bySteps, concentrationBelowStep), requires schemaVersion 2 and capabilityApi 1.417 or newer";
+      "A ruleset whose durations are set by the cost paid, or whose concentration holds only below a step (bySteps, concentrationBelowStep), requires schemaVersion 2 and capabilityApi 1.454 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -238,37 +238,37 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(416) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(453) as never, fiveE()), gate);
     assert.equal(
-      getCapabilityPackageInstallIssue(manifest(416) as never, fiveE({ rounds: 10 })),
+      getCapabilityPackageInstallIssue(manifest(453) as never, fiveE({ rounds: 10 })),
       gate,
       "concentrationBelowStep alone",
     );
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(417) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(454) as never, fiveE()), gate);
     assert.notEqual(
       getCapabilityPackageInstallIssue(
-        manifest(416) as never,
+        manifest(453) as never,
         fiveE({ rounds: 10 }, { concentrationBelowStep: undefined }),
       ),
       gate,
     );
-    // Past 1000 rounds, or until dispelled (1.429).
+    // Past 1000 rounds, or until dispelled (1.466).
     const later =
-      "A ruleset whose durations run past 1000 rounds, or end only when dispelled once paid high enough (bySteps until-dispelled), requires schemaVersion 2 and capabilityApi 1.429 or newer";
+      "A ruleset whose durations run past 1000 rounds, or end only when dispelled once paid high enough (bySteps until-dispelled), requires schemaVersion 2 and capabilityApi 1.466 or newer";
     for (const duration of [{ rounds: 4800 }, { rounds: 10, bySteps: [100, "until-dispelled"] }]) {
-      assert.equal(getCapabilityPackageInstallIssue(manifest(428) as never, fiveE(duration)), later);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(429) as never, fiveE(duration)), later);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(465) as never, fiveE(duration)), later);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(466) as never, fiveE(duration)), later);
     }
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(428) as never, fiveE({ rounds: 1000 })), later);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(465) as never, fiveE({ rounds: 1000 })), later);
     const plain =
-      'A ruleset whose durations are "until-dispelled" requires schemaVersion 2 and capabilityApi 1.432 or newer';
+      'A ruleset whose durations are "until-dispelled" requires schemaVersion 2 and capabilityApi 1.469 or newer';
     const flameDoc = fiveE("until-dispelled" as never, { concentrationBelowStep: undefined });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(431) as never, flameDoc), plain);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(432) as never, flameDoc), plain);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(468) as never, flameDoc), plain);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(469) as never, flameDoc), plain);
   }
 
   console.log(
-    "Duration by steps: Bestow Curse lasts a minute, ten, then eight hours by the slot spent, held by concentration only below its step, and conditions are picked by the steps paid; gated at 1.417 and 1.464.",
+    "Duration by steps: Bestow Curse lasts a minute, ten, then eight hours by the slot spent, held by concentration only below its step, and conditions are picked by the steps paid; gated at 1.454 and 1.501.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

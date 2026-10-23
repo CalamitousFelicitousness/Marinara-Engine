@@ -1,5 +1,5 @@
 /**
- * Saves against a quality (Capability API 1.599): 5e's Necklace of Adaptation, advantage on saves
+ * Saves against a quality (Capability API 1.636): 5e's Necklace of Adaptation, advantage on saves
  * against gases.
  *
  *   - A save whose `against.qualities` is `["gas"]` is reached by a modifier for saves against gas;
@@ -29,7 +29,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 599);
+  assert.ok(supportedCapabilityApi.minor >= 636);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -114,7 +114,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a save against a quality (save.against.qualities, a modifier's against.qualities) requires schemaVersion 2 and capabilityApi 1.599 or newer";
+      "A ruleset with a save against a quality (save.against.qualities, a modifier's against.qualities) requires schemaVersion 2 and capabilityApi 1.636 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -128,13 +128,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(598) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(599) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(598) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(635) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(636) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(635) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Saves against a quality: a Necklace of Adaptation's advantage against gas, and nothing else; gated at 1.599.",
+    "Saves against a quality: a Necklace of Adaptation's advantage against gas, and nothing else; gated at 1.636.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

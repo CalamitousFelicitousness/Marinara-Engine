@@ -1,5 +1,5 @@
 /**
- * Creatures built from their caller and acting only as commanded (Capability API 1.505): 5e's
+ * Creatures built from their caller and acting only as commanded (Capability API 1.542): 5e's
  * Arcane Hand.
  *
  *   - `fromCaller`: the hand's health is its caller's maximum, its fist's bonus and an added amount
@@ -36,7 +36,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 505);
+  assert.ok(supportedCapabilityApi.minor >= 542);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -172,7 +172,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with creatures built from their caller or commanded by them (calls.fromCaller, calls.commandedWith) requires schemaVersion 2 and capabilityApi 1.505 or newer";
+      "A ruleset with creatures built from their caller or commanded by them (calls.fromCaller, calls.commandedWith) requires schemaVersion 2 and capabilityApi 1.542 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -186,13 +186,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(504) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(505) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(504) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(541) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(542) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(541) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Commanded calls: Arcane Hand takes its caller's health maximum, bonus and modifier, acts free as cast, then only on its caller's bonus action; gated at 1.505.",
+    "Commanded calls: Arcane Hand takes its caller's health maximum, bonus and modifier, acts free as cast, then only on its caller's bonus action; gated at 1.542.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

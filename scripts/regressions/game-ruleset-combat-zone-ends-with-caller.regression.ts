@@ -1,5 +1,5 @@
 /**
- * An area that ends as its maker is incapacitated (Capability API 1.688): an ice devil's Wall of Ice,
+ * An area that ends as its maker is incapacitated (Capability API 1.725): an ice devil's Wall of Ice,
  * "until the devil is incapacitated or dies".
  *
  *   - `zone.endsWithCaller: "incapacitated"`: stunned, the devil's wall is gone; without it, it stays.
@@ -29,7 +29,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 688);
+  assert.ok(supportedCapabilityApi.minor >= 725);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -152,7 +152,7 @@ try {
   // ── Refusals and the install gate ──
   assert.equal(parseRulesetDefinition(fiveE("asleep")).ok, false);
   const gate =
-    "A ruleset with an area that ends as its maker is incapacitated (zone.endsWithCaller) requires schemaVersion 2 and capabilityApi 1.688 or newer";
+    "A ruleset with an area that ends as its maker is incapacitated (zone.endsWithCaller) requires schemaVersion 2 and capabilityApi 1.725 or newer";
   const manifest = (minor: number) => ({
     schemaVersion: 2,
     capabilityApi: { major: 1, minor },
@@ -166,11 +166,11 @@ try {
     permissions: [],
     restartRequired: false,
   });
-  assert.equal(getCapabilityPackageInstallIssue(manifest(687) as never, fiveE()), gate);
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(688) as never, fiveE()), gate);
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(687) as never, fiveE(null)), gate);
+  assert.equal(getCapabilityPackageInstallIssue(manifest(724) as never, fiveE()), gate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(725) as never, fiveE()), gate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(724) as never, fiveE(null)), gate);
 
-  console.log("Zone ends with caller: an ice devil's Wall of Ice ends as the devil is stunned; gated at 1.688.");
+  console.log("Zone ends with caller: an ice devil's Wall of Ice ends as the devil is stunned; gated at 1.725.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

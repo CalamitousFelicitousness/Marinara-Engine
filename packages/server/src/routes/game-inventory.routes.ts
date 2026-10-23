@@ -28,9 +28,9 @@ const itemUseRequestSchema = z
   .object({
     chatId: z.string().min(1).max(200),
     stackId: z.string().min(1).max(200),
-    /** One of the item's further uses (Capability API 1.466), by its place in `moreUses` from 1. */
+    /** One of the item's further uses (Capability API 1.503), by its place in `moreUses` from 1. */
     more: z.number().int().min(1).max(16).optional(),
-    /** How long what it makes lasts (Capability API 1.707), by its place in `makesItems.lasts` from 1. */
+    /** How long what it makes lasts (Capability API 1.744), by its place in `makesItems.lasts` from 1. */
     lasts: z.number().int().min(1).max(8).optional(),
   })
   .strict();

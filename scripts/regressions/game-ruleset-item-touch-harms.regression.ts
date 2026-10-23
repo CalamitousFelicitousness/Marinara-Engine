@@ -1,5 +1,5 @@
 /**
- * An item that harms whoever takes it up (Capability API 1.648): 5e's Talisman of Pure Good, "A
+ * An item that harms whoever takes it up (Capability API 1.685): 5e's Talisman of Pure Good, "A
  * creature that is neither good nor evil in alignment takes 6d6 radiant damage upon touching the
  * talisman. An evil creature takes 8d6 radiant damage upon touching the talisman."
  *
@@ -43,7 +43,7 @@ app.decorate("db", db);
 await app.register(gameInventoryRoutes, { prefix: "/game/inventory" });
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 648);
+  assert.ok(supportedCapabilityApi.minor >= 685);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -183,7 +183,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with an item that harms whoever it comes into the hands of (touchHarms) requires schemaVersion 2 and capabilityApi 1.648 or newer";
+      "A ruleset with an item that harms whoever it comes into the hands of (touchHarms) requires schemaVersion 2 and capabilityApi 1.685 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -197,12 +197,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(647) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(648) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(647) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(684) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(685) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(684) as never, JSON.parse(fiveEText)), gate);
   }
 
-  console.log("Touch harms: the Talisman burns the evil knight who takes it up, not the saint; gated at 1.648.");
+  console.log("Touch harms: the Talisman burns the evil knight who takes it up, not the saint; gated at 1.685.");
 } finally {
   await app.close();
   closeDB();

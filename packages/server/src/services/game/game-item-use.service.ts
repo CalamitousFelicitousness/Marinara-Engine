@@ -101,9 +101,9 @@ function useForCarrier(
   stackId: string,
   live: RulesetLiveStates,
   roll: (sides: number) => number,
-  /** One of its further uses (1.267, 1.466), by its place in `moreUses` from 1. */
+  /** One of its further uses (1.267, 1.503), by its place in `moreUses` from 1. */
   more?: number,
-  /** How long what it makes lasts (1.707), by its place in `makesItems.lasts` from 1. */
+  /** How long what it makes lasts (1.744), by its place in `makesItems.lasts` from 1. */
   lasts?: number,
 ): { outcome: RulesetItemUseOutcome; live: RulesetLiveStates; revealed?: string } {
   const stack = stacks.find((each) => each.id === stackId);
@@ -255,9 +255,9 @@ export async function useGameRulesetItem(
   chatId: string,
   stackId: string,
   roll: (sides: number) => number = rollDieSecurely,
-  /** One of its further uses (1.267, 1.466), by its place in `moreUses` from 1. */
+  /** One of its further uses (1.267, 1.503), by its place in `moreUses` from 1. */
   more?: number,
-  /** How long what it makes lasts (1.707), by its place in `makesItems.lasts` from 1. */
+  /** How long what it makes lasts (1.744), by its place in `makesItems.lasts` from 1. */
   lasts?: number,
 ): Promise<GameItemUseResult> {
   // Read before the chat's queue is held, as every other inventory change reads them.

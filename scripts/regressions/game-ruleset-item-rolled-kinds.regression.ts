@@ -1,5 +1,5 @@
 /**
- * Further uses' counts rolled for each stack (Capability API 1.693): 5e's Necklace of Prayer Beads,
+ * Further uses' counts rolled for each stack (Capability API 1.730): 5e's Necklace of Prayer Beads,
  * 1d4 + 2 beads, each of six kinds picked on a d20 (6, 6, 4, 2, 1, 1).
  *
  *   - Each stack's beads are thrown once, the same at every reading: 3 to 6 of them, each counted
@@ -37,7 +37,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 693);
+  assert.ok(supportedCapabilityApi.minor >= 730);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -194,7 +194,7 @@ try {
 
   // ── The install gate ──
   const gate =
-    "A ruleset with an item whose further uses' counts are rolled (item.moreUsesRolled) requires schemaVersion 2 and capabilityApi 1.693 or newer";
+    "A ruleset with an item whose further uses' counts are rolled (item.moreUsesRolled) requires schemaVersion 2 and capabilityApi 1.730 or newer";
   const manifest = (minor: number) => ({
     schemaVersion: 2,
     capabilityApi: { major: 1, minor },
@@ -208,18 +208,18 @@ try {
     permissions: [],
     restartRequired: false,
   });
-  assert.equal(getCapabilityPackageInstallIssue(manifest(692) as never, document()), gate);
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(693) as never, document()), gate);
+  assert.equal(getCapabilityPackageInstallIssue(manifest(729) as never, document()), gate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(730) as never, document()), gate);
   assert.notEqual(
     getCapabilityPackageInstallIssue(
-      manifest(692) as never,
+      manifest(729) as never,
       document((item) => delete item.moreUsesRolled),
     ),
     gate,
   );
 
   console.log(
-    "Item rolled kinds: a Necklace of Prayer Beads' 1d4+2 beads thrown once for each stack, each one kind's use by weight, offered in a fight, refused outside one where none, brought back by a rest; refusals and the gate at 1.693.",
+    "Item rolled kinds: a Necklace of Prayer Beads' 1d4+2 beads thrown once for each stack, each one kind's use by weight, offered in a fight, refused outside one where none, brought back by a rest; refusals and the gate at 1.730.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

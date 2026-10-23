@@ -1,5 +1,5 @@
 /**
- * Ground that forbids teleporting (Capability API 1.414).
+ * Ground that forbids teleporting (Capability API 1.451).
  *
  *   - Hallow's Extradimensional Interference: from outside, no cell inside it to teleport to; from
  *     inside, nowhere at all; one it does not work on (another kind) teleports freely.
@@ -34,7 +34,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 414);
+  assert.ok(supportedCapabilityApi.minor >= 451);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -161,7 +161,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose zones forbid teleporting (forbids teleport) requires schemaVersion 2 and capabilityApi 1.414 or newer";
+      "A ruleset whose zones forbid teleporting (forbids teleport) requires schemaVersion 2 and capabilityApi 1.451 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -175,12 +175,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(413) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(414) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(450) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(451) as never, fiveE()), gate);
   }
 
   console.log(
-    "Forbids teleport: nobody it works on teleports into, out of or within it; another kind goes freely; gated at 1.414.",
+    "Forbids teleport: nobody it works on teleports into, out of or within it; another kind goes freely; gated at 1.451.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

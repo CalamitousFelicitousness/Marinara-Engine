@@ -1,5 +1,5 @@
 /**
- * Attacks that ignore some cover (Capability API 1.652): a Wand of the War Mage, "you ignore half
+ * Attacks that ignore some cover (Capability API 1.689): a Wand of the War Mage, "you ignore half
  * cover when making a spell attack".
  *
  *   - Behind a creature (half cover), a spell attack from the wand's holder ignores it; a weapon
@@ -32,7 +32,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 652);
+  assert.ok(supportedCapabilityApi.minor >= 689);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -153,7 +153,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a condition whose holder's attacks ignore some cover (coverIgnored) requires schemaVersion 2 and capabilityApi 1.652 or newer";
+      "A ruleset with a condition whose holder's attacks ignore some cover (coverIgnored) requires schemaVersion 2 and capabilityApi 1.689 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -170,13 +170,13 @@ try {
     const without = fiveE((doc) => {
       for (const one of doc.combat.conditions) delete one.coverIgnored;
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(651) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(652) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(651) as never, without), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(688) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(689) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(688) as never, without), gate);
   }
 
   console.log(
-    "Cover ignored: the wand's spell attack ignores half cover but not three-quarters, a weapon attack ignores none, Spell Sniper ignores three-quarters; gated at 1.652.",
+    "Cover ignored: the wand's spell attack ignores half cover but not three-quarters, a weapon attack ignores none, Spell Sniper ignores three-quarters; gated at 1.689.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

@@ -1,6 +1,6 @@
 /**
  * A condition that stops casting and concentrating, and one its holder going down ends (Capability
- * API 1.385).
+ * API 1.422).
  *
  *   - Rage: no spell offered while it holds, nor anything needing concentration, and a spell already
  *     concentrated on ends as it comes on; it comes off once its holder is knocked down, whether its
@@ -37,7 +37,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 387);
+  assert.ok(supportedCapabilityApi.minor >= 424);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -222,7 +222,7 @@ try {
     assert.ok(has(state, "barbarian", "raging") && has(state, "barbarian", "frenzied"));
   }
 
-  // ── Ended by gaining a condition (1.387): put to sleep, still standing ──
+  // ── Ended by gaining a condition (1.424): put to sleep, still standing ──
   {
     const slept = parsed(fiveE({ ...rage, endsWhenHolder: { downed: true, gains: ["unconscious"] } }));
     const state = fight();
@@ -260,7 +260,7 @@ try {
   refused(fiveE({ endsWhenHolder: { gains: ["raging"] } }), /never ended by gaining itself/);
   {
     const gate =
-      "A ruleset whose conditions end when their holder gains another condition (endsWhenHolder gains) requires schemaVersion 2 and capabilityApi 1.387 or newer";
+      "A ruleset whose conditions end when their holder gains another condition (endsWhenHolder gains) requires schemaVersion 2 and capabilityApi 1.424 or newer";
     const doc = fiveE({ endsWhenHolder: { gains: ["unconscious"] } });
     const manifest = (minor: number) => ({
       schemaVersion: 2,
@@ -275,14 +275,14 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(386) as never, doc), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(387) as never, doc), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(423) as never, doc), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(424) as never, doc), gate);
   }
 
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose conditions stop casting from a catalog or concentrating (forbids casts, concentration) or end when their holder goes down (endsWhenHolder downed) requires schemaVersion 2 and capabilityApi 1.385 or newer";
+      "A ruleset whose conditions stop casting from a catalog or concentrating (forbids casts, concentration) or end when their holder goes down (endsWhenHolder downed) requires schemaVersion 2 and capabilityApi 1.422 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -296,17 +296,17 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(384) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(421) as never, fiveE()), gate);
     assert.equal(
-      getCapabilityPackageInstallIssue(manifest(384) as never, fiveE({ endsWhenHolder: { downed: true } })),
+      getCapabilityPackageInstallIssue(manifest(421) as never, fiveE({ endsWhenHolder: { downed: true } })),
       gate,
     );
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(385) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(384) as never, JSON.parse(fiveEText)), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(422) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(421) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Rage ways: no spell and nothing needing concentration while raging, Hex ends as rage comes on, and rage comes off when its holder is knocked down; gated at 1.385.",
+    "Rage ways: no spell and nothing needing concentration while raging, Hex ends as rage comes on, and rage comes off when its holder is knocked down; gated at 1.422.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

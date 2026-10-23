@@ -4,7 +4,7 @@ import { rulesetAbilityScore, rulesetCombatConditions, rulesetCreatureKind } fro
 import type { RulesetCombatant, RulesetEncounterState } from "./types.js";
 
 /**
- * How much thought a combatant puts into a fight (Capability API 1.708), as its own data says: its
+ * How much thought a combatant puts into a fight (Capability API 1.745), as its own data says: its
  * stat block's `mind`, else its type's (`combat.creatureTypes.types[].mind`), else the tier its
  * `combat.minds` ability score reaches. One that takes legendary actions or has Legendary Resistance
  * is a `genius` where it would be `tactical`. A ruleset that says nothing of minds still knows an
@@ -39,7 +39,7 @@ export function rulesetCombatantMind(
 }
 
 /**
- * How a combatant goes about a fight (Capability API 1.710), as its own data says: the ruleset's
+ * How a combatant goes about a fight (Capability API 1.747), as its own data says: the ruleset's
  * `combat.behavior`, its type's over that, and its stat block's over both, each key on its own.
  * Undefined when nothing says.
  */

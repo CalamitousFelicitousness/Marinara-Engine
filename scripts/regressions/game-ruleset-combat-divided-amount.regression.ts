@@ -1,5 +1,5 @@
 /**
- * An amount multiplied and split among those an area catches (Capability API 1.540): a Wand of
+ * An amount multiplied and split among those an area catches (Capability API 1.577): a Wand of
  * Wonder's gems.
  *
  *   - `amountTimes: 10`: the 1d4 is rolled once and multiplied.
@@ -32,7 +32,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 540);
+  assert.ok(supportedCapabilityApi.minor >= 577);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -138,7 +138,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with an amount multiplied or split among those an area catches (amountTimes, dividedAmong) requires schemaVersion 2 and capabilityApi 1.540 or newer";
+      "A ruleset with an amount multiplied or split among those an area catches (amountTimes, dividedAmong) requires schemaVersion 2 and capabilityApi 1.577 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -152,12 +152,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(539) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(540) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(576) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(577) as never, document()), gate);
   }
 
   console.log(
-    "Divided amount: 1d4 × 10 gems split evenly, rounded down, among those the area catches; refusals; gated at 1.540.",
+    "Divided amount: 1d4 × 10 gems split evenly, rounded down, among those the area catches; refusals; gated at 1.577.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

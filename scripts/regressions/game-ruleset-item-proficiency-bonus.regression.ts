@@ -1,5 +1,5 @@
 /**
- * An item that adds to its holder's proficiency bonus (Capability API 1.586): 5e's Ioun Stone of
+ * An item that adds to its holder's proficiency bonus (Capability API 1.623): 5e's Ioun Stone of
  * Mastery, "Your proficiency bonus increases by 1 while this pale green prism orbits your head."
  *
  *   - Worn, it adds to the bonus and to everything that reads it: a trained skill and save, the spell
@@ -27,7 +27,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 586);
+  assert.ok(supportedCapabilityApi.minor >= 623);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -84,7 +84,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with an item that adds to its holder's proficiency bonus (proficiencyBonus) requires schemaVersion 2 and capabilityApi 1.586 or newer";
+      "A ruleset with an item that adds to its holder's proficiency bonus (proficiencyBonus) requires schemaVersion 2 and capabilityApi 1.623 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -98,12 +98,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(585) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(586) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(622) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(623) as never, document()), gate);
   }
 
   console.log(
-    "Ioun Stone of Mastery: worn, it adds 1 to the proficiency bonus and everything reading it; gated at 1.586.",
+    "Ioun Stone of Mastery: worn, it adds 1 to the proficiency bonus and everything reading it; gated at 1.623.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

@@ -1,5 +1,5 @@
 /**
- * A guided-builder step's filter that lists values (Capability API 1.678): a bard's Magical Secrets.
+ * A guided-builder step's filter that lists values (Capability API 1.715): a bard's Magical Secrets.
  *
  *   - A catalog step's `filters` may give a filter a list: an entry matching any value is offered.
  *   - Each value takes the filter's own type; import refusals and the install gate.
@@ -23,7 +23,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 678);
+  assert.ok(supportedCapabilityApi.minor >= 715);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -84,7 +84,7 @@ try {
 
   // ── The install gate ──
   const gate =
-    "A ruleset with a guided-builder step's filter that lists values (steps[].filters) requires schemaVersion 2 and capabilityApi 1.678 or newer";
+    "A ruleset with a guided-builder step's filter that lists values (steps[].filters) requires schemaVersion 2 and capabilityApi 1.715 or newer";
   const manifest = (minor: number) => ({
     schemaVersion: 2,
     capabilityApi: { major: 1, minor },
@@ -98,11 +98,11 @@ try {
     permissions: [],
     restartRequired: false,
   });
-  assert.equal(getCapabilityPackageInstallIssue(manifest(677) as never, fiveE()), gate);
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(678) as never, fiveE()), gate);
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(677) as never, fiveE({ kind: "spell" })), gate);
+  assert.equal(getCapabilityPackageInstallIssue(manifest(714) as never, fiveE()), gate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(715) as never, fiveE()), gate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(714) as never, fiveE({ kind: "spell" })), gate);
 
-  console.log("Magical Secrets: a builder step's filter lists values, an entry matching any offered; gated at 1.678.");
+  console.log("Magical Secrets: a builder step's filter lists values, an entry matching any offered; gated at 1.715.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

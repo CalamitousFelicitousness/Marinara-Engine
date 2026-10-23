@@ -398,11 +398,11 @@ try {
     for (const key of ["needs", "lacks"] as const) {
       const shape = properties?.[key];
       if (!shape) continue;
-      // Not a sense (1.564): the conditions whose lack in its applier ends a condition.
+      // Not a sense (1.601): the conditions whose lack in its applier ends a condition.
       if (key === "lacks" && properties.holderLacks) continue;
-      // Not a sense either (1.614): what an item asks of whoever binds it, read off their sheet.
+      // Not a sense either (1.651): what an item asks of whoever binds it, read off their sheet.
       if (key === "needs" && properties.needsWorn) continue;
-      // Nor (1.647, 1.648): what an item's wearer is, for its statsIf and touchHarms lines.
+      // Nor (1.684, 1.685): what an item's wearer is, for its statsIf and touchHarms lines.
       const wearer = ["$comment", "needs", "needsAny", "add", "dice", "flat", "type"];
       if (key === "needs" && Object.keys(properties).every((one) => wearer.includes(one))) continue;
       found[key]++;
@@ -417,14 +417,14 @@ try {
   walk(schema);
   assert.deepEqual(
     found,
-    // An item's use, and each further use, carries them too since 1.575.
+    // An item's use, and each further use, carries them too since 1.612.
     { needs: 7, lacks: 1 },
     "the published schema carries the entry, creature action, aura, condition and item use keys",
   );
   assert.equal(
     rulesetItemUseSchema.safeParse({ kind: "attack", amount: { flat: 4 }, needs: ["hearing"] }).success,
     true,
-    "item uses may need senses (1.575)",
+    "item uses may need senses (1.612)",
   );
 
   const manifest = (minor: number) => ({

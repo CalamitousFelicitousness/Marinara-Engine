@@ -1,5 +1,5 @@
 /**
- * A climb kept off some ground (Capability API 1.618).
+ * A climb kept off some ground (Capability API 1.655).
  *
  *   - A condition's climb with `climbNotOn` (Slippers of Spider Climbing) takes no step into a tile
  *     it names, nor into ground a lasting area makes slippery (`terrain.slippery`, Grease).
@@ -33,7 +33,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 618);
+  assert.ok(supportedCapabilityApi.minor >= 655);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -174,7 +174,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a climb kept off some ground or slippery ground (climbNotOn or terrain.slippery) requires schemaVersion 2 and capabilityApi 1.618 or newer";
+      "A ruleset with a climb kept off some ground or slippery ground (climbNotOn or terrain.slippery) requires schemaVersion 2 and capabilityApi 1.655 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -191,13 +191,13 @@ try {
     const plain = fiveE((doc) => {
       delete doc.combat.conditions.find((one: { condition: string }) => one.condition === "spider").climbNotOn;
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(617) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(618) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(617) as never, plain), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(654) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(655) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(654) as never, plain), gate);
   }
 
   console.log(
-    "Climb kept off: the slippers climb neither into grease nor onto the forest, a free climb beside them climbs anywhere, a board of that place gives none; gated at 1.618.",
+    "Climb kept off: the slippers climb neither into grease nor onto the forest, a free climb beside them climbs anywhere, a board of that place gives none; gated at 1.655.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

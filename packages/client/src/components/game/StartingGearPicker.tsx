@@ -350,7 +350,7 @@ export function StartingGearPicker({
                 </div>
               )}
               {chosen.choices.map((choice, choiceIndex) =>
-                // Only the options offered to this sheet (1.608), and no choice with none.
+                // Only the options offered to this sheet (1.645), and no choice with none.
                 !choice.options.some((one) => rulesetStartingGearOptionOffered(definition, one, build)) ? null : (
                   <fieldset key={choiceIndex} className="space-y-1.5">
                     <legend className={labelClass}>{choice.label}</legend>

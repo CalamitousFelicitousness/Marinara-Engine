@@ -1,11 +1,11 @@
 /**
- * A floor under checks (Capability API 1.365).
+ * A floor under checks (Capability API 1.402).
  *
  *   - Reliable Talent: a d20 below 10 on a skill its holder adds their whole proficiency to counts as
  *     10, outside a fight; not on an untrained skill, not on half proficiency, never on a save.
  *   - Indomitable Might: a Strength check's total below the Strength score counts as the score,
  *     outside a fight and in a fight's contest.
- *   - Held off while (1.364) counts outside a fight too.
+ *   - Held off while (1.401) counts outside a fight too.
  *   - Refusals and the install gate.
  */
 import assert from "node:assert/strict";
@@ -36,7 +36,7 @@ const [{ buildSkillCheckRulesetContext, resolveSkillCheckWithContext }, { getCap
   ]);
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 365);
+  assert.ok(supportedCapabilityApi.minor >= 402);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -167,7 +167,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose conditions or levels put a floor under their holder's checks (checkFloor) requires schemaVersion 2 and capabilityApi 1.365 or newer";
+      "A ruleset whose conditions or levels put a floor under their holder's checks (checkFloor) requires schemaVersion 2 and capabilityApi 1.402 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -187,13 +187,13 @@ try {
         return rest;
       });
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(364) as never, floorOnly), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(365) as never, floorOnly), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(364) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(401) as never, floorOnly), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(402) as never, floorOnly), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(401) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Check floors: Reliable Talent lifts a d20 below 10 on a fully proficient skill, never a save, held off as notWhile says; Indomitable Might lifts a Strength check's total to the score, outside a fight and in a contest; gated at 1.365.",
+    "Check floors: Reliable Talent lifts a d20 below 10 on a fully proficient skill, never a save, held off as notWhile says; Indomitable Might lifts a Strength check's total to the score, outside a fight and in a contest; gated at 1.402.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

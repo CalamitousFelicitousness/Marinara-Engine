@@ -1,5 +1,5 @@
 /**
- * Heads that die and grow back (Capability API 1.497).
+ * Heads that die and grow back (Capability API 1.534).
  *
  *   - A hydra's Multiattack bites once per head: five targets to pick, four once a head has died.
  *   - Multiple Heads: 25 damage in one turn kills one head, once a turn; as its turn ends two grow
@@ -38,7 +38,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 497);
+  assert.ok(supportedCapabilityApi.minor >= 534);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -266,7 +266,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a creature whose heads die and grow back (heads, perHead) requires schemaVersion 2 and capabilityApi 1.497 or newer";
+      "A ruleset with a creature whose heads die and grow back (heads, perHead) requires schemaVersion 2 and capabilityApi 1.534 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -280,12 +280,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(496) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(497) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(533) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(534) as never, fiveE()), gate);
   }
 
   console.log(
-    "Heads: a hydra bites once per head, loses one to 25 damage in a turn (once a turn), grows two back with 10 hit points each unless burned, loses what many heads give at one and dies at none, and a spare head still threatens with its reaction spent; gated at 1.497.",
+    "Heads: a hydra bites once per head, loses one to 25 damage in a turn (once a turn), grows two back with 10 hit points each unless burned, loses what many heads give at one and dies at none, and a spare head still threatens with its reaction spent; gated at 1.534.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

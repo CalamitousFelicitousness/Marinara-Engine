@@ -1,5 +1,5 @@
 /**
- * A missile caught and thrown back (Capability API 1.363).
+ * A missile caught and thrown back (Capability API 1.400).
  *
  *   - Deflect Missiles: an arrow lessened to nothing opens a "caught" moment for the monk, whose throw
  *     back deals the arrow's own die and type with its own Dexterity, free of the reaction, for 1 ki.
@@ -41,7 +41,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 363);
+  assert.ok(supportedCapabilityApi.minor >= 400);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -288,7 +288,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose reaction answers a caught missile (on caught, throwsCaught) or needs a free slot (freeSlot) requires schemaVersion 2 and capabilityApi 1.363 or newer";
+      "A ruleset whose reaction answers a caught missile (on caught, throwsCaught) or needs a free slot (freeSlot) requires schemaVersion 2 and capabilityApi 1.400 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -302,13 +302,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(362) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(363) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(362) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(399) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(400) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(399) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Caught: an arrow lessened to nothing opens a caught moment, thrown back with its own die and type for 1 ki, free of the reaction; not when only lessened or with no hand free; gated at 1.363.",
+    "Caught: an arrow lessened to nothing opens a caught moment, thrown back with its own die and type for 1 ki, free of the reaction; not when only lessened or with no hand free; gated at 1.400.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

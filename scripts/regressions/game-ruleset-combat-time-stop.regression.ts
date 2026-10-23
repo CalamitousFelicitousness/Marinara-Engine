@@ -1,5 +1,5 @@
 /**
- * Stopping time (Capability API 1.454).
+ * Stopping time (Capability API 1.491).
  *
  *   - 1d4 + 1 turns in a row once the casting turn ends: no step along the order, no new round.
  *   - Nobody else answers meanwhile: walking out of an ogre's reach provokes nothing.
@@ -31,7 +31,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 454);
+  assert.ok(supportedCapabilityApi.minor >= 491);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -158,7 +158,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose conditions stop time for turns in a row (a condition's stopsTime) requires schemaVersion 2 and capabilityApi 1.454 or newer";
+      "A ruleset whose conditions stop time for turns in a row (a condition's stopsTime) requires schemaVersion 2 and capabilityApi 1.491 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -174,13 +174,13 @@ try {
     });
     const doc = JSON.parse(fiveEText) as Record<string, any>;
     doc.combat.conditions[0].stopsTime = { dice: "1d4", flat: 1 };
-    assert.equal(getCapabilityPackageInstallIssue(manifest(453) as never, doc), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(454) as never, doc), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(453) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(490) as never, doc), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(491) as never, doc), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(490) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Time Stop: 1d4 + 1 turns in a row with no new round, no answers from anybody else, over after the last or at once on reaching somebody; gated at 1.454.",
+    "Time Stop: 1d4 + 1 turns in a row with no new round, no answers from anybody else, over after the last or at once on reaching somebody; gated at 1.491.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

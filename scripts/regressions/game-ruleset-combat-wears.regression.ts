@@ -1,5 +1,5 @@
 /**
- * What a target wears (Capability API 1.658): 5e's "a creature wearing armor made of metal".
+ * What a target wears (Capability API 1.695): 5e's "a creature wearing armor made of metal".
  *
  *   - targetIs `wears: {tags}`: only one wearing an item of those tags passes, worn on its sheet; one
  *     carried and not worn does not.
@@ -38,7 +38,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 658);
+  assert.ok(supportedCapabilityApi.minor >= 695);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -174,7 +174,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset that tests what a target wears, or gives a creature worn tags (wears), requires schemaVersion 2 and capabilityApi 1.658 or newer";
+      "A ruleset that tests what a target wears, or gives a creature worn tags (wears), requires schemaVersion 2 and capabilityApi 1.695 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -189,21 +189,21 @@ try {
       restartRequired: false,
     });
     const bare = JSON.parse(fiveEText);
-    assert.equal(getCapabilityPackageInstallIssue(manifest(657) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(694) as never, fiveE()), gate);
     assert.equal(
       getCapabilityPackageInstallIssue(
-        manifest(657) as never,
+        manifest(694) as never,
         fiveE((doc) => delete doc.catalogs.at(-1).entries[0].mechanics.plus),
       ),
       gate,
       "a creature's wears alone",
     );
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(658) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(657) as never, bare), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(695) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(694) as never, bare), gate);
   }
 
   console.log(
-    "Wears: the paladin in worn chain mail and a knight in metal pass, chain mail carried does not; Shocking Grasp deals 8 to the knight and 1 to a bandit; gated at 1.658.",
+    "Wears: the paladin in worn chain mail and a knight in metal pass, chain mail carried does not; Shocking Grasp deals 8 to the knight and 1 to a bandit; gated at 1.695.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

@@ -10095,7 +10095,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
        *  fallback asks the ruleset the same question generation would have. Each is ignored where the
        *  ruleset does not take it. */
       withAbility: z.string().trim().min(1).max(100).optional(),
-      /** `for=` (1.699): what the check is made for, "climb" or "swim". */
+      /** `for=` (1.736): what the check is made for, "climb" or "swim". */
       purpose: z.string().trim().min(1).max(40).optional(),
       threshold: z.number().int().min(1).max(1000).optional(),
       bonusDice: z.number().int().min(-20).max(20).optional(),
@@ -11183,7 +11183,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       return { gameTime: newTime };
     });
     if (!updated || !newTime) throw new Error("Chat not found");
-    // What waits on game time counts it (1.503).
+    // What waits on game time counts it (1.540).
     await passGameInventoryTime(app.db, chatId, passed);
 
     // Also update the game state snapshot so WeatherEffects picks it up

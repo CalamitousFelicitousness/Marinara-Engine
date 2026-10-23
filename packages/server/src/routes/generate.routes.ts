@@ -5281,7 +5281,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             ? (stack: (typeof promptInventoryStacks)[number]) => {
                 const held = stack.item ? promptItemBook.itemOf(stack.item)?.facts.use?.charges : undefined;
                 const max = held?.max;
-                // Found with rolled charges (1.520) until something changed them.
+                // Found with rolled charges (1.557) until something changed them.
                 const now = stack.charges ?? (held ? rulesetChargesStart(held, held.max, stack.id) : 0);
                 return max === undefined ? undefined : { now: Math.min(max, now), max };
               }
@@ -10969,7 +10969,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   ) as any,
                 );
               }
-              // What waits on game time counts the days (1.503).
+              // What waits on game time counts the days (1.540).
               if (clock) await passGameInventoryTime(app.db, input.chatId, turnClockDays * 24 * 60);
             } catch (err) {
               // The reply is saved either way: a failed write is logged, never the turn's failure.

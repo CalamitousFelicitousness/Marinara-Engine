@@ -4,6 +4,9 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+const startedAt = performance.now();
+const reportStage = (stage: string) =>
+  console.info(`Chat request validation: ${stage} (${Math.round(performance.now() - startedAt)}ms elapsed)`);
 const dataDir = await mkdtemp(join(tmpdir(), "marinara-chat-request-validation-"));
 process.env.DATA_DIR = dataDir;
 process.env.FILE_STORAGE_DIR = join(dataDir, "storage");
@@ -106,6 +109,7 @@ try {
   assert.equal(diagnostics.statusCode, 400);
   assert.equal(diagnostics.json().details.length, 50, "other schema errors have bounded public diagnostics");
   assert.ok(diagnostics.rawPayload.length < 10_000);
+  reportStage("ordinary resource and bounded diagnostic controls passed");
 
   // Real native JSON import/export retains user text well beyond the resource budget.
   const description = "Large user-authored text: zażółć gęślą jaźń 🎲\n".repeat(100_000);
@@ -127,6 +131,7 @@ try {
   assert.equal(exportedCharacter.statusCode, 200, exportedCharacter.body.slice(0, 200));
   assert.ok(exportedCharacter.rawPayload.length > CHAT_REQUEST_BODY_LIMIT);
   assert.equal(hash(exportedCharacter.json().data.data.description), hash(description));
+  reportStage("large native character JSON round trip passed");
 
   // The same large native file also round-trips through the multipart package path.
   const boundary = "marinara-chat-validation-transfer";
@@ -150,6 +155,7 @@ try {
   });
   assert.equal(reExportedCharacter.statusCode, 200);
   assert.equal(hash(reExportedCharacter.json().data.data.description), hash(description));
+  reportStage("large native character multipart round trip passed");
 
   // A separate high-cardinality transfer proves that no ordinary-roster budget leaks into collections.
   const entries = Array.from({ length: 10_001 }, (_, i) => ({
@@ -176,6 +182,7 @@ try {
     new Map(exportedEntries.map((e) => [e.name, e.content])),
     new Map(entries.map((e) => [e.name, e.content])),
   );
+  reportStage("10,001-entry native lorebook round trip passed");
   console.info("Chat request validation and large transfer regression passed", {
     characterExportBytes: exportedCharacter.rawPayload.length,
     lorebookExportBytes: exportedLorebook.rawPayload.length,

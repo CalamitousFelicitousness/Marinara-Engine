@@ -3391,7 +3391,9 @@ What the symbols do is the `symbols` block:
   creature gives its own as `soak: { "all": 2 }`, which needs this `soak` to be declared.
 - `spends`: up to 16 things a symbol left over on an attack's roll buys. `cost` of `symbol` buys it
   once, and `max` (one) says how many times one roll may buy it; a spend that gives a `condition` or
-  a `critical` lands once, so its `max` stays one. `by` says which side chooses it: the
+  a `critical` lands once, so its `max` stays one, and no two spends put one condition (or two of
+  one `oneAtATime` kind) on the same one. A condition spend is left unbought when its condition
+  would not go on: kept off, or one of its kind already held. `by` says which side chooses it: the
   attacker spends the symbols that favour them (advantage, triumph), the target the ones that favour
   the target (threat, despair). One side spends a given symbol, and a spend never buys with the
   successes, which already land the blow and add to its harm.

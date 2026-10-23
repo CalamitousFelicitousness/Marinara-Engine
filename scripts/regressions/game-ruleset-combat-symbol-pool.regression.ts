@@ -35,6 +35,7 @@ import {
   rulesetSymbolChance,
   rulesetSymbolAttackForecast,
   rulesetSymbolDice,
+  rulesetSymbolSpendUsable,
   rulesetSymbolOutcomes,
   type RulesetCombatEvent,
   type RulesetCombatRoller,
@@ -235,6 +236,19 @@ try {
       (document) => (document.combat.symbols.spends[2].max = 2),
       /A condition or a critical lands once/,
       "a condition or critical bought twice in one throw",
+    );
+    refuses(
+      (document) =>
+        document.combat.symbols.spends.push({
+          id: "again",
+          label: "Again",
+          by: "attacker",
+          symbol: "a",
+          cost: 3,
+          condition: { id: "wounded", on: "target" },
+        }),
+      /already puts that condition, or one of its kind, on the same one/,
+      "two spends putting one condition on one holder",
     );
     refuses(
       (document) => (document.resolution.pool.build = "sum"),
@@ -499,6 +513,36 @@ try {
     const damage = firstOf(fourth.events, "damage");
     assert.equal(damage.critical, true, "the blow is a critical one");
     assert.ok(rulesetCombatant(fourth.state, "brute")!.defeated);
+  }
+
+  // ── A condition that would not go on is not bought ──
+  {
+    // Wounded is one of a kind; a Brute already wounded can't take a second, so Telling blow (its
+    // critical with it) stays on the roll rather than charging the triumph for nothing.
+    const kinded = parsedOrThrow(
+      doc((document) => {
+        document.combat.conditions.find((one: { condition: string }) => one.condition === "wounded").oneAtATime =
+          "hurt";
+      }),
+    );
+    const already = structuredClone(adaAgain);
+    rulesetCombatant(already, "brute")!.tracked.push({ condition: "wounded" } as never);
+    const ada = rulesetCombatant(already, "ada")!;
+    const brute = rulesetCombatant(already, "brute")!;
+    const usable = rulesetSymbolSpendUsable(kinded, already, ada, brute);
+    const telling = kinded.combat!.symbols!.spends!.find((spend) => spend.id === "telling")!;
+    assert.equal(usable(telling), false, "a second wound of the kind would not go on");
+    const fresh = (id: string) => rulesetCombatant(adaAgain, id)!;
+    assert.equal(rulesetSymbolSpendUsable(kinded, adaAgain, fresh("ada"), fresh("brute"))(telling), true);
+    assert.deepEqual(pickRulesetSymbolSpends(kinded.combat!, { t: 1 }, true, "attacker", usable), []);
+    const cleaver = rulesetCombatOptions(kinded, already, "ada").find((entry) => entry.label === "Cleaver")!;
+    const declined = applyRulesetCombatChoice(
+      kinded,
+      already,
+      { actorId: "ada", optionId: cleaver.id, targetIds: ["brute"] },
+      dice(12, 1, 1, 1, 1, 1, 6),
+    );
+    assert.equal(eventsOf(declined.events, "symbol-spend").length, 0);
   }
 
   // ── The log ──

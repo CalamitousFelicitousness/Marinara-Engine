@@ -45,10 +45,8 @@ import {
   pickRulesetSymbolSpends,
   rulesetCombatIsSymbol,
   rulesetSymbolNeeded,
-  rulesetSymbolSpendLands,
   rulesetSymbolSuccessHarm,
   throwRulesetSymbolPool,
-  type RulesetSymbolSpend,
   type RulesetSymbolSpendPick,
   type RulesetSymbolThrow,
 } from "./symbols.js";
@@ -79,6 +77,8 @@ import {
   rulesetTargetDamageKind,
   rulesetCombatHealth,
   rulesetCombatStanding,
+  rulesetSymbolSpendHolder,
+  rulesetSymbolSpendUsable,
   rulesetDamageInEffect,
   rulesetCheckMode,
   rulesetInitiativeModifierNow,
@@ -1732,21 +1732,6 @@ function symbolRecord(thrown: RulesetSymbolThrow & { penalty: number }): Ruleset
   };
 }
 
-/** The next of a side to take a turn after the one now, standing and not `but`: who a spend's
- *  `-ally` lands on. Nobody when the side has nobody else. */
-function nextAllyOf(
-  ctx: RulesetCombatContext,
-  of: RulesetCombatant,
-  but: RulesetCombatant,
-): RulesetCombatant | undefined {
-  const order = ctx.state.order;
-  for (let step = 1; step <= order.length; step++) {
-    const one = rulesetCombatant(ctx.state, order[(ctx.state.turn + step) % order.length]!);
-    if (one && one.side === of.side && one.id !== of.id && one.id !== but.id && rulesetCombatStanding(one)) return one;
-  }
-  return undefined;
-}
-
 /** Each side buys what the symbols an attack's roll left can buy (1.382): the attacker first, with
  *  the symbols that favour them, and then their target, with the ones that favour the target. What a
  *  spend does to the hit itself (harm, a critical) is handed back for the blow; everything else
@@ -1760,13 +1745,7 @@ function spendSymbols(
 ): { damage: number; critical: boolean } {
   const out = { damage: 0, critical: false };
   const whom = (on: "attacker" | "target" | "attacker-ally" | "target-ally") =>
-    on === "attacker"
-      ? actor
-      : on === "target"
-        ? target
-        : on === "attacker-ally"
-          ? nextAllyOf(ctx, actor, target)
-          : nextAllyOf(ctx, target, actor);
+    rulesetSymbolSpendHolder(ctx.state, actor, target, on);
   const apply = (picks: RulesetSymbolSpendPick[], chooser: RulesetCombatant) => {
     for (const { spend, times } of picks) {
       const dice = spend.boost ?? spend.setback;
@@ -1818,8 +1797,9 @@ function spendSymbols(
       }
     }
   };
-  // A spend that lands on an ally nobody is goes unbought, and its symbols stay on the roll.
-  const usable = (spend: RulesetSymbolSpend) => rulesetSymbolSpendLands(spend, (on) => !!whom(on));
+  // A spend for an ally nobody is, or a condition that would not go on, goes unbought, and its
+  // symbols stay on the roll.
+  const usable = rulesetSymbolSpendUsable(ctx.definition, ctx.state, actor, target);
   apply(pickRulesetSymbolSpends(ctx.combat, symbols, hit, "attacker", usable), actor);
   if (!target.defeated) apply(pickRulesetSymbolSpends(ctx.combat, symbols, hit, "target", usable), target);
   return out;

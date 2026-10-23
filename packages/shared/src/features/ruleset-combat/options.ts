@@ -7,7 +7,6 @@ import {
   rulesetSymbolAttackForecast,
   rulesetSymbolChance,
   rulesetSymbolDice,
-  rulesetSymbolSpendLands,
   rulesetSymbolSuccessDistribution,
   type RulesetSymbolDice,
 } from "./symbols.js";
@@ -70,6 +69,7 @@ import {
   rulesetDamageMinimum,
   rulesetCombatEffects,
   rulesetCombatStanding,
+  rulesetSymbolSpendUsable,
   rulesetAbilityNarrowing,
   rulesetCheckAbility,
   rulesetCheckMode,
@@ -2104,18 +2104,8 @@ function forecastFor(
           symbolTarget,
           rulesetTargetDamageKind(definition, combat, symbolTarget, damage.type, damage.qualities).kind,
         ),
-        // The fight leaves a spend for an ally nobody is unbought, so its forecast does too.
-        (spend) =>
-          rulesetSymbolSpendLands(spend, (on) => {
-            if (on === "attacker" || on === "target") return true;
-            const [of, but] = on === "attacker-ally" ? [actor, symbolTarget!] : [symbolTarget!, actor];
-            return state.order.some((id) => {
-              const one = rulesetCombatant(state, id);
-              return (
-                !!one && one.side === of.side && one.id !== of.id && one.id !== but.id && rulesetCombatStanding(one)
-              );
-            });
-          }),
+        // What the fight leaves unbought, its forecast prices at nothing.
+        rulesetSymbolSpendUsable(definition, state, actor, symbolTarget),
       );
       forecast.averageDamage = Math.round(expected.averageDamage * 100) / 100;
       forecast.worth = Math.round(expected.worth * 100) / 100;

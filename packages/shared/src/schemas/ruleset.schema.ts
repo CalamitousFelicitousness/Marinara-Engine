@@ -12772,6 +12772,27 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         ) {
           issue(path(), "A spend buys something: damage, critical, condition, track, boost or setback");
         }
+        // One condition of a kind goes on one holder per throw, so no two spends reach for it.
+        const kindOf = (id: string) => {
+          const group = combat.conditions?.find((one) => one.condition === id)?.oneAtATime;
+          return group === undefined ? `condition:${id}` : `kind:${group}`;
+        };
+        const twin = spend.condition
+          ? combat
+              .symbols!.spends!.slice(0, index)
+              .find(
+                (one) =>
+                  one.condition &&
+                  one.condition.on === spend.condition!.on &&
+                  kindOf(one.condition.id) === kindOf(spend.condition!.id),
+              )
+          : undefined;
+        if (twin) {
+          issue(
+            path("condition"),
+            `"${twin.id}" already puts that condition, or one of its kind, on the same one; one throw lands one`,
+          );
+        }
         // A condition and a critical land once however many copies are bought, so one is all a throw buys.
         if ((spend.condition || spend.critical) && spend.max > 1) {
           issue(path("max"), "A condition or a critical lands once, so a spend that gives one is bought at most once");

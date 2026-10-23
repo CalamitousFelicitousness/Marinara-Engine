@@ -30,6 +30,7 @@ import {
   type RulesetValueRef,
 } from "../../schemas/ruleset.schema.js";
 import type { TacticalGrid, TacticalGroundCell } from "../tactical-combat/types.js";
+import type { RulesetSymbolSpend } from "./symbols.js";
 import { BOARD_PROP_ART } from "../world/board-pack.js";
 import { rulesetBoardEvents, rulesetRunBoardEvents, type RulesetBoardEventInput } from "./board-events.js";
 import {
@@ -1203,6 +1204,56 @@ export function rulesetLightMatches(light: RulesetBoardLight | undefined, wanted
 /** A combatant who can still be acted on and still take a turn. */
 export function rulesetCombatStanding(combatant: RulesetCombatant): boolean {
   return !combatant.defeated && !combatant.down;
+}
+
+/** Who a symbol spend lands on (1.382): the attacker, their target, or the next of either side to
+ *  take a turn after the one now, standing and neither of the two. Nobody when that side has nobody
+ *  else. */
+export function rulesetSymbolSpendHolder(
+  state: RulesetEncounterState,
+  actor: RulesetCombatant,
+  target: RulesetCombatant,
+  on: RulesetSymbolSpend["by"] | "attacker-ally" | "target-ally",
+): RulesetCombatant | undefined {
+  if (on === "attacker") return actor;
+  if (on === "target") return target;
+  const [of, but] = on === "attacker-ally" ? [actor, target] : [target, actor];
+  const order = state.order;
+  for (let step = 1; step <= order.length; step++) {
+    const one = rulesetCombatant(state, order[(state.turn + step) % order.length]!);
+    if (one && one.side === of.side && one.id !== of.id && one.id !== but.id && rulesetCombatStanding(one)) return one;
+  }
+  return undefined;
+}
+
+/** Whether a symbol spend can be bought on this attack (1.382): everybody it names is there, and a
+ *  condition it gives would go on (not kept off, not sealed apart from whoever puts it on, not one of
+ *  a kind its holder already has). The fight and its forecast both ask, so the AI never prices what
+ *  the Engine would leave unbought, and no symbol is charged for a condition that does not land. */
+export function rulesetSymbolSpendUsable(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  actor: RulesetCombatant,
+  target: RulesetCombatant,
+): (spend: RulesetSymbolSpend) => boolean {
+  return (spend) => {
+    const named = [spend.condition?.on, spend.track?.on, spend.boost?.on, spend.setback?.on];
+    if (!named.every((on) => on === undefined || !!rulesetSymbolSpendHolder(state, actor, target, on))) return false;
+    if (!spend.condition) return true;
+    const holder = rulesetSymbolSpendHolder(state, actor, target, spend.condition.on)!;
+    const putter = spend.by === "attacker" ? actor : target;
+    const condition = spend.condition.id;
+    if (rulesetImmuneToCondition(holder, condition, definition, state, putter)) return false;
+    if (rulesetSealedApart(definition, state, putter, holder)) return false;
+    const conditions = definition.combat?.conditions;
+    const group = conditions?.find((one) => one.condition === condition)?.oneAtATime;
+    return (
+      group === undefined ||
+      !holder.tracked.some(
+        (entry) => conditions?.find((one) => one.condition === entry.condition)?.oneAtATime === group,
+      )
+    );
+  };
 }
 
 // ── Building what a combatant can do ──

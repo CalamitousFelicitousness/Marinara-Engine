@@ -135,6 +135,8 @@ export {
   rulesetCombatHealth,
   rulesetCombatHide,
   rulesetCombatStanding,
+  rulesetSymbolSpendHolder,
+  rulesetSymbolSpendUsable,
   rulesetConditionModifiers,
   rulesetDamageInEffect,
   rulesetSizeRank,

@@ -339,17 +339,6 @@ export function rulesetSymbolSuccessHarm(
   return Math.max(0, counted) * damage.perSuccess;
 }
 
-/** Whether a spend has someone to land on: every side it names is someone in the fight. The fight
- *  and its forecast both ask, so the AI never prices a spend the Engine would leave unbought. */
-export function rulesetSymbolSpendLands(
-  spend: RulesetSymbolSpend,
-  present: (on: "attacker" | "target" | "attacker-ally" | "target-ally") => boolean,
-): boolean {
-  return [spend.condition?.on, spend.track?.on, spend.boost?.on, spend.setback?.on].every(
-    (on) => on === undefined || present(on),
-  );
-}
-
 /** What an attack is expected to do, exactly over every way its throw may come out: the chance it
  *  lands, the harm a hit does on average (its own average, what its successes and spends add, less
  *  soak, never below none), and what a hit is worth to the attacker with what either side's spends

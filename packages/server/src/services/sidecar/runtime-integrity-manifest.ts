@@ -171,11 +171,13 @@ export const MLX_RUNTIME_MANIFEST = {
     // The immutable release sdist matches all 208 runtime files at this source revision;
     // it also carries the generated version metadata needed for a build without Git.
     revision: "93e6d4a6447b3080861985947f0820e76fcb957d",
-    packageSpec: "mlx-lm @ https://files.pythonhosted.org/packages/e1/46/eff1c17019b82912020d4d716527e6fcf4ac392b55cddef03eeb60566ab4/mlx_lm-0.32.2.tar.gz",
+    packageSpec:
+      "mlx-lm @ https://files.pythonhosted.org/packages/e1/46/eff1c17019b82912020d4d716527e6fcf4ac392b55cddef03eeb60566ab4/mlx_lm-0.32.2.tar.gz",
     requirementsLockSha256: "8e4e7f36643d6cd737ba17dd0195c55a2013219fe195654880a4ce0ff5c50049",
     archive: {
       name: "mlx_lm-0.32.2.tar.gz",
-      browser_download_url: "https://files.pythonhosted.org/packages/e1/46/eff1c17019b82912020d4d716527e6fcf4ac392b55cddef03eeb60566ab4/mlx_lm-0.32.2.tar.gz",
+      browser_download_url:
+        "https://files.pythonhosted.org/packages/e1/46/eff1c17019b82912020d4d716527e6fcf4ac392b55cddef03eeb60566ab4/mlx_lm-0.32.2.tar.gz",
       size: 449827,
       sha256: "1af8a92f6a141c3e2bf5b0369ac4464203a8e2189c47b9e40d3e921e5b3a1fe9",
     },

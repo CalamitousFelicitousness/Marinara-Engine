@@ -684,14 +684,16 @@ export function RulesetFightEnd({
   const { t } = useTranslation();
   const party = view.combatants.filter((combatant) => combatant.side === "party" && !combatant.left);
   const foes = view.combatants.filter((combatant) => combatant.side !== "party");
-  const beaten = foes.filter((combatant) => combatant.defeated || combatant.down || combatant.left).length;
-  // Each foe's fate by name: the ones felled, the ones gone from the fight (fled, sent away), and any
-  // still on their feet when it ended.
+  // Each foe's one fate, which the count and the names both read: gone from the fight (fled, sent
+  // away), felled (down when it ended counts, since the fight is over for it), or still on its feet.
+  const fateOf = (one: (typeof foes)[number]) =>
+    one.away || one.left ? "endGone" : one.defeated || one.down ? "endDefeated" : "endStanding";
+  const beaten = foes.filter((one) => fateOf(one) !== "endStanding").length;
   const fates = (
     [
-      ["endDefeated", foes.filter((one) => !one.away && !one.left && (one.defeated || one.down))],
-      ["endGone", foes.filter((one) => one.away || one.left)],
-      ["endStanding", foes.filter((one) => !one.away && !one.left && !one.defeated && !one.down)],
+      ["endDefeated", foes.filter((one) => fateOf(one) === "endDefeated")],
+      ["endGone", foes.filter((one) => fateOf(one) === "endGone")],
+      ["endStanding", foes.filter((one) => fateOf(one) === "endStanding")],
     ] as const
   ).filter(([, list]) => list.length > 0);
   return (

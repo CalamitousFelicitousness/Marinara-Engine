@@ -2099,7 +2099,8 @@ export function rulesetForecastsByTarget(
 ): Record<string, NonNullable<RulesetCombatOption["forecast"]>> {
   const combat = definition.combat;
   const actor = state.combatants.find((one) => one.id === actorId);
-  const action = actor?.actions.find((one) => one.id === optionId);
+  // A lair option's id carries its prefix; the action behind it is the actor's own.
+  const action = actor ? actionOf(actor, optionId) : undefined;
   if (!combat || !actor || !action || action.sequence) return {};
   const forecasts: Record<string, NonNullable<RulesetCombatOption["forecast"]>> = {};
   for (const id of targetIds) {

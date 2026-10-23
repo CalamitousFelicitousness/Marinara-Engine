@@ -150,7 +150,11 @@ export function rulesetRichLogLines(
   let round = firstRound?.type !== "round" ? Math.max(1, view.round) : trimmed ? 0 : Math.max(1, firstRound.round - 1);
   let turnOf: string | undefined;
   for (const entry of view.events) {
-    if (entry.event.type === "round") round = entry.event.round;
+    // A new round ends the last turn too: its opening line belongs to nobody's turn.
+    if (entry.event.type === "round") {
+      round = entry.event.round;
+      turnOf = undefined;
+    }
     if (entry.event.type === "turn") turnOf = entry.event.actorId;
     if (entry.event.type === "budget") continue;
     tone = undefined;

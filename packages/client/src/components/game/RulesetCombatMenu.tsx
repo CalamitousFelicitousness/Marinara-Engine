@@ -1222,18 +1222,28 @@ export function RulesetCombatMenu({
     const readied = groups.flatMap((group) =>
       group.kind === "end-turn" || group.kind === "standard" ? [] : group.options.filter((option) => option.ready),
     );
-    const standard = groups.find((group) => group.kind === "standard");
+    // Every group of a folded kind folds on its own, under its own heading: a ruleset may name more
+    // than one (one per list it gives a tab).
+    const standard = groups.filter((group) => group.kind === "standard");
     // Grabs and shoves are the moves a turn takes least, so they fold as the standard actions do.
-    const contests = groups.find((group) => group.kind === "contest");
-    const fold = (labelKey: string, options: typeof readied, summary: string, body?: ReactNode) => {
+    const contests = groups.filter((group) => group.kind === "contest");
+    const fold = (
+      labelKey: string,
+      options: typeof readied,
+      summary: string,
+      body?: ReactNode,
+      group?: { key: string; labelValues?: Record<string, string | number> },
+    ) => {
+      const foldKey = group?.key ?? labelKey;
       const stepping = options.some((option) => option.id === openId);
       return (
         <details
-          open={stepping || foldsOpen[labelKey] === true}
+          key={foldKey}
+          open={stepping || foldsOpen[foldKey] === true}
           onToggle={(event) => {
             if (stepping) return;
             const open = event.currentTarget.open;
-            setFoldsOpen((folds) => (folds[labelKey] === open ? folds : { ...folds, [labelKey]: open }));
+            setFoldsOpen((folds) => (folds[foldKey] === open ? folds : { ...folds, [foldKey]: open }));
           }}
           className="group"
         >
@@ -1245,7 +1255,7 @@ export function RulesetCombatMenu({
             className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-md px-2 text-[0.78rem] font-semibold text-[var(--foreground)] hover:bg-[var(--foreground)]/[0.05] md:min-h-[1.875rem] [&::-webkit-details-marker]:hidden"
           >
             <ChevronDown className="h-3.5 w-3.5 text-[var(--muted-foreground)] transition-transform group-open:rotate-180" />
-            {t(labelKey)}
+            {t(labelKey, group?.labelValues)}
             <span className="truncate text-[0.68rem] font-normal text-[var(--muted-foreground)]">{summary}</span>
           </summary>
           <ul className="m-0 grid list-none gap-px p-0 pl-2">{body ?? options.map((option) => row(option))}</ul>
@@ -1324,22 +1334,27 @@ export function RulesetCombatMenu({
             t("game.combat.ruleset.screen.readyCount", { count: readiedBy.size }),
             readyRows,
           )}
-        {contests &&
-          contests.options.some((option) => !option.ready) &&
+        {contests.map((group) => {
+          const open = group.options.filter((option) => !option.ready);
+          return open.length > 0
+            ? fold(
+                group.labelKey,
+                open,
+                open.map((option) => rulesetOptionLabel(option, t)).join(", "),
+                undefined,
+                group,
+              )
+            : null;
+        })}
+        {standard.map((group) =>
           fold(
-            contests.labelKey,
-            contests.options.filter((option) => !option.ready),
-            contests.options
-              .filter((option) => !option.ready)
-              .map((option) => rulesetOptionLabel(option, t))
-              .join(", "),
-          )}
-        {standard &&
-          fold(
-            standard.labelKey,
-            standard.options,
-            standard.options.map((option) => rulesetOptionLabel(option, t)).join(", "),
-          )}
+            group.labelKey,
+            group.options,
+            group.options.map((option) => rulesetOptionLabel(option, t)).join(", "),
+            undefined,
+            group,
+          ),
+        )}
       </div>
     );
   }

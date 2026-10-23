@@ -55,6 +55,7 @@ import {
   rulesetRefusalText,
   rulesetValueLabel,
 } from "../../packages/client/src/lib/ruleset-combat-log.js";
+import { rulesetRichLogLines } from "../../packages/client/src/lib/ruleset-combat-log-rich.js";
 import {
   rulesetAimSoFar,
   rulesetAimTake,
@@ -397,6 +398,27 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   );
   assert.equal(line(fiveE, state, { type: "round", round: 1 }), "Round 1.");
   assert.equal(line(fiveE, state, { type: "turn", actorId: "brenna", round: 1 }), "Brenna takes their turn.");
+  {
+    // A new round's line belongs to nobody's turn: the turn before it ended with the round.
+    const [first, second] = state.order;
+    const rich = rulesetRichLogLines(
+      fiveE,
+      viewOf(state, [
+        { type: "turn", actorId: first!, round: 1 },
+        { type: "round", round: 2 },
+        { type: "turn", actorId: second!, round: 2 },
+      ] as DirectedRulesetEvent[]),
+      t as never,
+    );
+    assert.deepEqual(
+      rich.map((one) => [one.round, one.turnOf]),
+      [
+        [1, first],
+        [2, undefined],
+        [2, second],
+      ],
+    );
+  }
 
   const menu = menuOf(fiveE, state, "brenna");
   const sword = menu.find((option) => option.label === "Longsword")!;

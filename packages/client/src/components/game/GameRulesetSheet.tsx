@@ -528,7 +528,7 @@ export function GameRulesetSheet({
   const readOnly = locked || buildOnly;
   // In a fight on screen the sheet is read as it stands: only what play spends (points, slots,
   // wounds) is still moved here, and the rest waits for the fight to end.
-  const inFight = useCombatScreenStore((state) => state.round !== null);
+  const inFight = useCombatScreenStore((state) => state.round !== null || state.tacticalShowing);
   const settled = readOnly || inFight;
   const { t: localizeUi } = useUiTranslation();
   const [tab, setTab] = useState<string | null>(null);

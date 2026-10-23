@@ -98,7 +98,7 @@ import { useConnections, useModelParameterCapabilities } from "../../hooks/use-c
 import { useDefaultPreset, usePresets } from "../../hooks/use-presets";
 import { useCharacterGroups, usePersonas } from "../../hooks/use-characters";
 import { GameSetupRulesChooser, GameSetupRulesetSheetStatus } from "./GameSetupRulesChooser";
-import { listCombatStyles, resolveCombatStyle } from "./combat-styles";
+import { getCombatStyle, isBuiltInCombatStyle, listCombatStyles, resolveCombatStyle } from "./combat-styles";
 import { GameSetupWorldKitChooser, MapPackLock } from "./GameSetupWorldKitChooser";
 import { useExperienceMapPack } from "../../hooks/use-map-pack";
 import { useOverworldGamesEnabled } from "../../hooks/use-world-library";
@@ -2268,13 +2268,13 @@ export function GameSetupWizard({
                       <label className="mb-1.5 block text-xs font-medium text-[var(--foreground)]">
                         {localizeUi("ui.game.gamesetupwizard.combatPreference")}
                       </label>
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2">
                         {(!combatStyles || combatStyles.includes("classic")) && (
                           <button
                             onClick={() => setCombatStyle("classic")}
                             aria-pressed={combatStyle === "classic"}
                             className={cn(
-                              "flex-1 rounded-lg p-3 text-left text-xs transition-colors ring-1",
+                              "min-w-0 flex-1 basis-36 rounded-lg p-3 text-left text-xs break-words transition-colors ring-1",
                               combatStyle === "classic"
                                 ? "bg-[var(--primary)]/10 ring-[var(--primary)]/40"
                                 : "bg-[var(--secondary)] ring-[var(--border)] hover:ring-[var(--primary)]/20",
@@ -2293,7 +2293,7 @@ export function GameSetupWizard({
                             onClick={() => setCombatStyle("tactical")}
                             aria-pressed={combatStyle === "tactical"}
                             className={cn(
-                              "flex-1 rounded-lg p-3 text-left text-xs transition-colors ring-1",
+                              "min-w-0 flex-1 basis-36 rounded-lg p-3 text-left text-xs break-words transition-colors ring-1",
                               combatStyle === "tactical"
                                 ? "bg-[var(--primary)]/10 ring-[var(--primary)]/40"
                                 : "bg-[var(--secondary)] ring-[var(--border)] hover:ring-[var(--primary)]/20",
@@ -2307,6 +2307,26 @@ export function GameSetupWizard({
                             </div>
                           </button>
                         )}
+                        {listCombatStyles()
+                          .filter((id) => !isBuiltInCombatStyle(id) && (!combatStyles || combatStyles.includes(id)))
+                          .map((id) => (
+                            <button
+                              key={id}
+                              type="button"
+                              onClick={() => setCombatStyle(id)}
+                              aria-pressed={combatStyle === id}
+                              className={cn(
+                                "min-w-0 flex-1 basis-36 rounded-lg p-3 text-left text-xs break-words transition-colors ring-1",
+                                combatStyle === id
+                                  ? "bg-[var(--primary)]/10 ring-[var(--primary)]/40"
+                                  : "bg-[var(--secondary)] ring-[var(--border)] hover:ring-[var(--primary)]/20",
+                              )}
+                            >
+                              <span className="font-medium text-[var(--foreground)]">
+                                {getCombatStyle(id).label ?? id}
+                              </span>
+                            </button>
+                          ))}
                       </div>
                       {combatStyles && activeRuleset && (
                         <p className="mt-1.5 text-xs text-[var(--muted-foreground)]">

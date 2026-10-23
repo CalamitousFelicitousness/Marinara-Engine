@@ -4,6 +4,7 @@ import type { Chat } from "../../packages/shared/src/types/chat.js";
 import { normalizeTranslatorSettings } from "../../packages/shared/src/utils/translator-defaults.js";
 import {
   captureChatWizardDefaults,
+  reusableChatWizardDefaults,
   wizardDefaultsMetadataPatch,
 } from "../../packages/client/src/lib/chat-wizard-defaults.js";
 
@@ -38,6 +39,25 @@ assert.equal(saved.connectionId, "connection");
 assert.equal(saved.personaId, null);
 assert.deepEqual(saved.metadata.activeLorebookIds, ["lore"]);
 assert.deepEqual(saved.metadata.agentLorebookAttachments, { writer: { enabled: true, lorebookId: "reference" } });
+const savedBeforeReuse = structuredClone(saved);
+const reusable = reusableChatWizardDefaults(saved);
+assert(
+  !Object.hasOwn(reusable.metadata, "agentLorebookAttachments"),
+  "saving/applying reusable mode defaults omits per-chat bindings",
+);
+assert.deepEqual(
+  reusable.metadata.activeLorebookIds,
+  ["lore"],
+  "the independent chat-wide lorebook setup remains reusable",
+);
+assert.deepEqual(saved, savedBeforeReuse, "reusable filtering never mutates the full same-chat reset snapshot");
+for (const binding of [null, {}, { disabled: { enabled: false, lorebookId: "reference" } }])
+  assert(
+    !Object.hasOwn(
+      reusableChatWizardDefaults({ ...saved, metadata: { agentLorebookAttachments: binding } }).metadata,
+      "agentLorebookAttachments",
+    ),
+  );
 assert.deepEqual(saved.metadata.presetChoices, { path: "left" });
 assert.equal(saved.metadata.autonomousMessages, false);
 assert.equal(saved.metadata.autoTranslate, false, "Explicit saved wizard toggles override global translator defaults");

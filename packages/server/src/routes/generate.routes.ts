@@ -782,6 +782,7 @@ import {
 } from "../services/generation/provider-generation-runtime.js";
 import { applyContextMessageLimitWithPins, supportsNativeToolCalls } from "@marinara-engine/shared";
 import { planGameToolCalls } from "../services/generation/game-tool-planning.js";
+import { extractLeadingGmPlanning } from "../services/game/gm-planning.js";
 import {
   countProfessorMariCommands,
   handleProfessorMariCommand,
@@ -9340,6 +9341,15 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             fullResponse = inlineThinking.content;
             contentReplaced = true;
           }
+          // A Game Master (not the player's own impersonated line) that plans on the page instead ("Opening scene: ... / Plan: ...") keeps it out of the scene.
+          if (chatMode === "game" && !input.impersonate) {
+            const writtenPlan = extractLeadingGmPlanning(fullResponse);
+            if (writtenPlan.planning) {
+              fullThinking = fullThinking ? `${fullThinking}\n\n${writtenPlan.planning}` : writtenPlan.planning;
+              fullResponse = writtenPlan.content;
+              contentReplaced = true;
+            }
+          }
 
           // ── LOG_LEVEL=debug or Settings -> Advanced -> Debug mode: log full response + usage to server console ──
           if (isDebug || requestDebug) {
@@ -11190,6 +11200,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               }
             }
             extraUpdate.generationReplay = buildGenerationReplay(input);
+            // Every group reply retains this request's intent, even after other replies or system notes follow it.
+            extraUpdate.lorebookGenerationTriggers = [...lorebookGenerationTriggers];
             extraUpdate.startsNewAssistantBubble = startsNewAssistantBubble;
             if (chatMode === "game") {
               const previousExtra = input.continueMessageId ? parseExtra(savedMsg.extra) : {};
@@ -11264,7 +11276,12 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               ];
               const pick = (keys: string[]) =>
                 Object.fromEntries(keys.filter((key) => key in extraUpdate).map((key) => [key, extraUpdate[key]]));
-              const everyPart = pick(["contextInjections", "generationReplay", "referencedCharacterIds"]);
+              const everyPart = pick([
+                "contextInjections",
+                "generationReplay",
+                "lorebookGenerationTriggers",
+                "referencedCharacterIds",
+              ]);
               // Every fallback-written part keeps its identity, without duplicating the turn's usage.
               if (generationProviderOrigin.fallback) everyPart.generationInfo = generationProviderOrigin;
               for (const [index, part] of replyParts.slice(0, -1).entries()) {

@@ -54,6 +54,13 @@ export function readChatMetadata(chat: Chat): Record<string, unknown> {
   }
 }
 
+/** Shared mode defaults cannot carry a binding owned by the source chat. Keep full snapshots for same-chat reset. */
+export function reusableChatWizardDefaults(defaults: ChatWizardDefaults): ChatWizardDefaults {
+  const metadata = { ...defaults.metadata };
+  delete metadata.agentLorebookAttachments;
+  return { ...defaults, metadata };
+}
+
 export function wizardDefaultsMetadataPatch(current: ChatWizardDefaults, target: ChatWizardDefaults) {
   const patch = { ...Object.fromEntries(Object.keys(current.metadata).map((key) => [key, null])), ...target.metadata };
   if (

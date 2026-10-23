@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import { useChat, useUpdateChatMetadata } from "../../hooks/use-chats";
 import { useLorebooks } from "../../hooks/use-lorebooks";
 import { AgentSettingsToggle } from "./AgentSettingsControls";
@@ -15,12 +16,14 @@ export function AgentLorebookAttachment({ chatId, agentType }: { chatId: string;
   const missing = selectedId !== "" && !isLoading && !isError && !selectedBook;
   const visibleLorebooks = lorebooks.filter((book) => !book.hiddenFromLibrary);
   const save = (patch: { enabled?: boolean; lorebookId?: string | null }) => {
-    updateMetadata.mutate({
-      id: chatId,
-      agentLorebookAttachments: {
-        [agentType]: { enabled, lorebookId: selectedId || null, ...patch },
-      },
-    });
+    void updateMetadata
+      .mutateAsync({
+        id: chatId,
+        agentLorebookAttachments: {
+          [agentType]: { enabled, lorebookId: selectedId || null, ...patch },
+        },
+      })
+      .catch(() => toast.error(t("chat.agentLorebook.saveError")));
   };
 
   return (

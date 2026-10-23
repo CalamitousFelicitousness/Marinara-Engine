@@ -161,6 +161,7 @@ import { forwardPromptPreview } from "./generate/prompt-preview.js";
 import { wrapContent } from "../services/prompt/format-engine.js";
 import { chatSummaryFingerprintMatches, fingerprintChatSummary } from "../services/prompt/chat-summary-fingerprint.js";
 import { newId } from "../utils/id-generator.js";
+import { readChatBranchGraph } from "../services/chat-branch-graph.js";
 import {
   isStoryTranscriptMessage,
   renderTranscriptHtml,
@@ -1337,6 +1338,17 @@ export async function chatsRoutes(app: FastifyInstance) {
     return chats.filter((chat) => !shouldHideProfessorMariChat(chat)).map(normalizeChatForResponse);
   });
 
+  // The branch graph (#8157): where each chat in the group forked and the roles of its own messages.
+  app.get<{ Params: { groupId: string } }>("/group/:groupId/branch-graph", async (req) => {
+    const chats = await storage.listByGroup(req.params.groupId);
+    return readChatBranchGraph(
+      storage,
+      chats
+        .filter((chat) => !shouldHideProfessorMariChat(chat))
+        .map((chat) => ({ id: chat.id, metadata: parseChatMetadata(chat.metadata) })),
+    );
+  });
+
   // Get single chat
   app.get<{ Params: { id: string } }>("/:id", async (req, reply) => {
     const chat = await storage.getById(req.params.id);
@@ -1745,20 +1757,6 @@ export async function chatsRoutes(app: FastifyInstance) {
       }
       return updated ? normalizeChatForResponse(updated) : updated;
     }
-    if (typeof incoming.gameCombatStyle === "string") {
-      // A game's ruleset may name the combat styles its games play (1.379): one it leaves out is
-      // refused here, as it is when the game is made.
-      const chatMetadata = parseChatMetadata(chat.metadata);
-      if (chatMetadata.gameRuleset != null) {
-        const resolved = resolveGameRuleset(chatMetadata, await loadRulesetRegistry(app.db));
-        if (resolved.status === "ok" && !rulesetAllowsCombatStyle(resolved.definition, incoming.gameCombatStyle)) {
-          return reply.status(400).send({
-            error: `This game's ruleset plays battles only as ${rulesetCombatStyles(resolved.definition)!.join(", ")}.`,
-            code: "combat_style_not_allowed",
-          });
-        }
-      }
-    }
     if (Object.prototype.hasOwnProperty.call(incoming, "groupChatMode")) {
       // Store only a mode generation understands, so the drawer and the prompt never read it differently.
       incoming.groupChatMode = normalizeGroupChatMode(incoming.groupChatMode);
@@ -1794,53 +1792,73 @@ export async function chatsRoutes(app: FastifyInstance) {
     ) {
       return reply.status(400).send({ error: "slurp2ActivityContextEnabled must be a boolean" });
     }
-    const cancelReplacedAdvancedMemory = (previous: Record<string, unknown>, saved: Record<string, unknown>) => {
-      if (
-        incoming.enableMemoryRecall === true &&
-        !normalizeAdvancedMemorySettings(saved.advancedMemory).enabled &&
-        normalizeAdvancedMemorySettings(previous.advancedMemory).enabled
-      ) {
-        createAdvancedMemoryService(app.db).cancelActiveOperation(req.params.id);
+    return withChatMetadataPatchQueue(req.params.id, async () => {
+      // Check the pair this patch will actually save, after earlier queued changes have landed.
+      // A ruleset-only change must also agree with the saved style (classic when unspecified).
+      if (Object.hasOwn(incoming, "gameRuleset") || Object.hasOwn(incoming, "gameCombatStyle")) {
+        const freshChat = await storage.getById(req.params.id);
+        if (!freshChat) return reply.status(404).send({ error: "Chat not found" });
+        const next = { ...parseChatMetadata(freshChat.metadata), ...incoming };
+        const resolved = resolveGameRuleset(next, await loadRulesetRegistry(app.db));
+        if (
+          resolved.status === "ok" &&
+          !rulesetAllowsCombatStyle(resolved.definition, next.gameCombatStyle as string | null | undefined)
+        ) {
+          return reply.status(400).send({
+            error: `This game's ruleset plays battles only as ${rulesetCombatStyles(resolved.definition)!.join(", ")}.`,
+            code: "combat_style_not_allowed",
+          });
+        }
       }
-    };
-    const mergeIncoming = (freshMeta: Record<string, unknown>) => ({
-      ...incoming,
-      ...(incoming.agentLorebookAttachments
-        ? {
-            agentLorebookAttachments: {
-              ...(freshMeta.agentLorebookAttachments as Record<string, unknown> | undefined),
-              ...(incoming.agentLorebookAttachments as Record<string, unknown>),
-            },
-          }
-        : {}),
-    });
-    if (
-      Object.prototype.hasOwnProperty.call(incoming, "hideSummarisedMessages") &&
-      typeof incoming.hideSummarisedMessages === "boolean"
-    ) {
-      const updated = await storage.patchMetadata(
-        req.params.id,
-        async (freshMeta) => ({
-          ...mergeIncoming(freshMeta),
-          ...(await summaryHidingPatch(storage, req.params.id, freshMeta, {
-            ...freshMeta,
+      const cancelReplacedAdvancedMemory = (previous: Record<string, unknown>, saved: Record<string, unknown>) => {
+        if (
+          incoming.enableMemoryRecall === true &&
+          !normalizeAdvancedMemorySettings(saved.advancedMemory).enabled &&
+          normalizeAdvancedMemorySettings(previous.advancedMemory).enabled
+        ) {
+          createAdvancedMemoryService(app.db).cancelActiveOperation(req.params.id);
+        }
+      };
+      const mergeIncoming = (freshMeta: Record<string, unknown>) => ({
+        ...incoming,
+        ...(incoming.agentLorebookAttachments
+          ? {
+              agentLorebookAttachments: {
+                ...(freshMeta.agentLorebookAttachments as Record<string, unknown> | undefined),
+                ...(incoming.agentLorebookAttachments as Record<string, unknown>),
+              },
+            }
+          : {}),
+      });
+      if (
+        Object.prototype.hasOwnProperty.call(incoming, "hideSummarisedMessages") &&
+        typeof incoming.hideSummarisedMessages === "boolean"
+      ) {
+        const updated = await storage.patchMetadata(
+          req.params.id,
+          async (freshMeta) => ({
             ...mergeIncoming(freshMeta),
-          })),
-        }),
-        { afterWrite: cancelReplacedAdvancedMemory },
-      );
+            ...(await summaryHidingPatch(storage, req.params.id, freshMeta, {
+              ...freshMeta,
+              ...mergeIncoming(freshMeta),
+            })),
+          }),
+          { metadataQueueHeld: true, afterWrite: cancelReplacedAdvancedMemory },
+        );
+        return updated ? normalizeChatForResponse(updated) : updated;
+      }
+      // Rearranging windows or dismissing their hint is a view preference, not new chat activity.
+      const changedKeys = Object.keys(incoming);
+      const viewOnly =
+        changedKeys.length > 0 &&
+        changedKeys.every((key) => key === "windowLayout" || key === "chatSettingsHintDismissed");
+      const updated = await storage.patchMetadata(req.params.id, mergeIncoming, {
+        metadataQueueHeld: true,
+        touchUpdatedAt: !viewOnly,
+        afterWrite: cancelReplacedAdvancedMemory,
+      });
       return updated ? normalizeChatForResponse(updated) : updated;
-    }
-    // Rearranging windows or dismissing their hint is a view preference, not new chat activity.
-    const changedKeys = Object.keys(incoming);
-    const viewOnly =
-      changedKeys.length > 0 &&
-      changedKeys.every((key) => key === "windowLayout" || key === "chatSettingsHintDismissed");
-    const updated = await storage.patchMetadata(req.params.id, mergeIncoming, {
-      touchUpdatedAt: !viewOnly,
-      afterWrite: cancelReplacedAdvancedMemory,
     });
-    return updated ? normalizeChatForResponse(updated) : updated;
   });
 
   // Mark a chat as having autonomous messages the user has not viewed yet.
@@ -2416,6 +2434,24 @@ export async function chatsRoutes(app: FastifyInstance) {
       return reply.status(204).send();
     },
   );
+
+  // Setup cancellation is deliberately separate from the unconditional user-confirmed delete route.
+  app.post<{ Params: { id: string } }>("/:id/discard-empty-setup", async (req) => {
+    const { initialChat } = z
+      .object({
+        initialChat: z.object({
+          id: z.string(),
+          createdAt: z.string(),
+          name: z.string(),
+          mode: z.enum(["conversation", "roleplay", "game"]),
+          connectionId: z.string().nullable(),
+          promptPresetId: z.string().nullable(),
+          metadata: z.record(z.string(), z.unknown()),
+        }),
+      })
+      .parse(req.body);
+    return { deleted: await storage.removeEmptySetupChat(req.params.id, initialChat) };
+  });
 
   // Delete chat
   app.delete<{ Params: { id: string }; Querystring: { force?: string } }>("/:id", async (req, reply) => {
@@ -4653,6 +4689,7 @@ export async function chatsRoutes(app: FastifyInstance) {
     "geminiParts",
     "generationInfo",
     "generationReplay",
+    "lorebookGenerationTriggers",
     "lorebookScan",
   ]);
 

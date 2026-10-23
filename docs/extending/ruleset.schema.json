@@ -215989,6 +215989,11 @@
                 ]
               }
             },
+            "unit": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 12
+            },
             "$comment": {}
           },
           "required": [

@@ -10959,7 +10959,9 @@ function GameSurfaceComponent({
         : undefined;
     // Whether they carry more than they should, for a chip on the sheet: their bag against what they
     // can carry, as the inventory reads it.
-    const cardNames = cards.flatMap((card) => (typeof card.name === "string" && card.name.trim() ? [card.name.trim()] : []));
+    const cardNames = cards.flatMap((card) =>
+      typeof card.name === "string" && card.name.trim() ? [card.name.trim()] : [],
+    );
     const bearer =
       inventoryItemBook?.bearer && gameRuleset.definition.items?.carry
         ? gameInventoryBearerStatus(

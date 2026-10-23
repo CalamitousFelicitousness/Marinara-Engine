@@ -36,10 +36,10 @@ try {
   assert.ok(supportedCapabilityApi.minor >= 776);
   const document = (unit?: string) => {
     const doc = JSON.parse(read("../../docs/development/ruleset-5e-2014.example.json")) as Record<string, any>;
-    doc.sheet.fields.push({ id: "carry_max", label: "Carry", type: "number", default: 150 });
+    doc.sheet.fields.push({ id: "carry_max", label: "Carry", type: "number", min: 0, max: 9999, default: 150 });
     doc.items = {
       categories: [{ id: "gear", label: "Gear" }],
-      stats: [{ id: "weight", label: "Weight", type: "number", min: 0, integer: false }],
+      stats: [{ id: "weight", label: "Weight", type: "number", min: 0, max: 9999, integer: false }],
       carry: {
         stat: "weight",
         encumberedAbove: { const: 75 },
@@ -96,7 +96,10 @@ try {
   const surface = read("../../packages/client/src/components/game/GameSurface.tsx");
   assert.match(surface, /over: gameInventoryOverLimit\(bearer\)/u);
   const sheet = read("../../packages/client/src/components/game/GameRulesetSheet.tsx");
-  assert.match(sheet, /carrying\.over \? "ui\.game\.gameinventory\.overLimit" : "ui\.game\.gameinventory\.encumbered"/u);
+  assert.match(
+    sheet,
+    /carrying\.over \? "ui\.game\.gameinventory\.overLimit" : "ui\.game\.gameinventory\.encumbered"/u,
+  );
   const messages = JSON.parse(read("../../packages/client/src/localization/locales/en.json")) as Record<string, string>;
   for (const key of ["game.ruleset.startingGear.weighs", "ui.game.gameinventory.overLimit"])
     assert.ok(messages[key], `en.json is missing ${key}`);
@@ -121,7 +124,9 @@ try {
   assert.notEqual(getCapabilityPackageInstallIssue(manifest(776) as never, document("lb")), gate);
   assert.notEqual(getCapabilityPackageInstallIssue(manifest(775) as never, document()), gate);
 
-  console.log("Carry unit 1.776: said after every weight, each kit option's weight, Over limit on the bag and the sheet, gated at 1.776.");
+  console.log(
+    "Carry unit 1.776: said after every weight, each kit option's weight, Over limit on the bag and the sheet, gated at 1.776.",
+  );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

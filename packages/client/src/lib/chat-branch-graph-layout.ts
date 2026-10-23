@@ -24,11 +24,17 @@ export type BranchGraphLane<T extends BranchTreeChat> = {
   roles: string;
   /** The lane this one branches off; null for the chat at the top. */
   anchorLane: number | null;
-  /** Where on the anchor lane it forks: a message index, or -1 for "before the first message". */
+  /**
+   * Where on the anchor lane it forks: a message index, or -1 for "before the first message". The top chat
+   * has one only when it was branched from a chat that left the group; that fork sits on its own lane.
+   */
   forkAt: number | null;
-  /** False when the drawn fork is a best guess: an older branch, or a parent that has been deleted. */
+  /** False when the drawn fork is a best guess: an older branch, a deleted parent, or copies that disagree. */
   lineageKnown: boolean;
 };
+
+/** A run of message indices the reader unfolded; it stays open even if a new fork cuts it in two. */
+export type BranchGraphSpan = { from: number; to: number };
 
 export type BranchGraphColumn =
   { kind: "message"; index: number; x: number } | { kind: "gap"; from: number; to: number; x: number };
@@ -56,7 +62,7 @@ export type BranchGraphLayout<T extends BranchTreeChat> = {
 export function layoutChatBranchGraph<T extends BranchTreeChat>(
   rows: readonly BranchTreeRow<T>[],
   entries: ReadonlyMap<string, ChatBranchGraphEntry>,
-  expanded: ReadonlySet<number> | "all",
+  expanded: readonly BranchGraphSpan[] | "all",
 ): BranchGraphLayout<T> {
   const lanes: BranchGraphLane<T>[] = [];
   const lastAtDepth: number[] = [];
@@ -71,6 +77,7 @@ export function layoutChatBranchGraph<T extends BranchTreeChat>(
       // The top chat owns its whole transcript. If it was itself branched from a chat that has left the
       // group, the server sent roles only after its fork: the copied part is drawn as unknown.
       const ownRoles = entry?.roles ?? "";
+      const ownFork = entry?.forkIndex ?? null;
       lanes.push({
         chat: row.chat,
         depth: row.depth,
@@ -79,7 +86,7 @@ export function layoutChatBranchGraph<T extends BranchTreeChat>(
         tip: messageCount - 1,
         roles: "?".repeat(Math.max(0, messageCount - ownRoles.length)) + ownRoles,
         anchorLane: null,
-        forkAt: null,
+        forkAt: ownFork !== null && ownFork >= 0 ? ownFork : null,
         lineageKnown: true,
       });
       continue;
@@ -88,18 +95,10 @@ export function layoutChatBranchGraph<T extends BranchTreeChat>(
     // The tree flattens a branch whose parent is gone under the top chat; it is drawn there, dashed.
     const realParent = lanes[treeParent]!.chat.id === readParentChatId(row.chat);
     const forkIndex = entry?.forkIndex ?? null;
-    let forkAt: number;
-    let lineageKnown: boolean;
-    if (forkIndex === null) {
-      forkAt = -1;
-      lineageKnown = false;
-    } else if (realParent && entry?.parentForkIndex != null) {
-      forkAt = entry.parentForkIndex;
-      lineageKnown = true;
-    } else {
-      forkAt = forkIndex;
-      lineageKnown = false;
-    }
+    // The branch's lane starts after its own copy of the fork, so that copy places it. The parent's index
+    // for the same message only confirms it: a delete above the fork in either chat makes them disagree.
+    const forkAt = forkIndex ?? -1;
+    const lineageKnown = forkIndex !== null && realParent && entry?.parentForkIndex === forkIndex;
     // A fork inside history the parent copied belongs on the lane that actually holds that message.
     let anchorLane = treeParent;
     while (forkAt >= 0 && lanes[anchorLane]!.start > forkAt && lanes[anchorLane]!.anchorLane !== null) {
@@ -154,7 +153,8 @@ export function layoutChatBranchGraph<T extends BranchTreeChat>(
     }
     let to = index;
     while (to + 1 <= maxIndex && !kept.has(to + 1)) to += 1;
-    if (to - index + 1 < MIN_GAP || expanded === "all" || expanded.has(index)) {
+    const opened = expanded === "all" || expanded.some((span) => span.from <= to && span.to >= index);
+    if (to - index + 1 < MIN_GAP || opened) {
       for (let run = index; run <= to; run += 1) pushMessage(run);
     } else {
       const center = x + BRANCH_GRAPH_GAP_WIDTH / 2;

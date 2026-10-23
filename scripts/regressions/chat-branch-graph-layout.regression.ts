@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import type { ChatBranchGraphEntry } from "@marinara-engine/shared";
 import { buildChatBranchRows, type BranchTreeChat } from "../../packages/client/src/lib/chat-branch-tree.js";
-import { laneSpansGap, layoutChatBranchGraph } from "../../packages/client/src/lib/chat-branch-graph-layout.js";
+import {
+  laneSpansGap,
+  layoutChatBranchGraph,
+  type BranchGraphSpan,
+} from "../../packages/client/src/lib/chat-branch-graph-layout.js";
 
 function chat(id: string, createdAt: string, parent?: string): BranchTreeChat {
   return { id, createdAt, metadata: parent ? { branchParentChatId: parent } : {} };
@@ -28,7 +32,7 @@ function entry(
 function layout(
   chats: BranchTreeChat[],
   entries: ChatBranchGraphEntry[],
-  expanded: ReadonlySet<number> | "all" = new Set(),
+  expanded: readonly BranchGraphSpan[] | "all" = [],
 ) {
   return layoutChatBranchGraph(
     buildChatBranchRows(chats),
@@ -68,9 +72,13 @@ assert.equal(laneSpansGap(collapsed.lanes[0]!, collapsed.gaps[0]!), true);
 assert.equal(laneSpansGap(collapsed.lanes[1]!, collapsed.gaps[0]!), false, "a branch never draws its parent's run");
 
 // Expanding one run widens only that part; expanding everything leaves no pills.
-const oneOpen = layout([root, branch, nested], entries, new Set([4]));
+const oneOpen = layout([root, branch, nested], entries, [{ from: 4, to: 146 }]);
 assert.deepEqual(oneOpen.gaps, [{ from: 168, to: 295 }]);
 assert.ok(oneOpen.width > collapsed.width);
+// A new branch forking inside an opened run cuts it in two; both halves stay open.
+const cut = chat("cut", "2026-10-08T00:00:00.000Z", "root");
+const cutOpen = layout([root, branch, nested, cut], [...entries, entry("cut", 80, 75)], [{ from: 4, to: 146 }]);
+assert.deepEqual(cutOpen.gaps, [{ from: 168, to: 295 }]);
 const allOpen = layout([root, branch, nested], entries, "all");
 assert.equal(allOpen.gaps.length, 0);
 assert.equal(allOpen.columns.length, 300);
@@ -108,6 +116,14 @@ assert.ok(guessed.xOf(-1) < guessed.xOf(0), "a start column exists for forks bef
 const adopted = layout([chat("adopted", "2026-10-07T00:00:00.000Z", "gone")], [entry("adopted", 8, 4)]);
 assert.equal(adopted.lanes[0]!.roles, "?????uau");
 assert.equal(adopted.lanes[0]!.roles.length, 8);
+assert.deepEqual([adopted.lanes[0]!.anchorLane, adopted.lanes[0]!.forkAt], [null, 4], "its fork is still recorded");
+
+// A delete above the fork in either chat shifts one copy of it; the branch's own copy places it, dashed.
+const shifted = layout([root, branch], [entry("root", 300, null), entry("branch", 160, 150, 147)]);
+assert.deepEqual(
+  [shifted.lanes[1]!.forkAt, shifted.lanes[1]!.start, shifted.lanes[1]!.lineageKnown],
+  [150, 151, false],
+);
 
 // A branch made at its parent's tip, with nothing of its own yet, still gets a lane and a column.
 const fresh = layout([root, branch], [entry("root", 5, null), entry("branch", 5, 4)]);

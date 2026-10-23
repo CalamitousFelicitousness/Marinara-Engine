@@ -21,6 +21,7 @@ import {
   laneSpansGap,
   layoutChatBranchGraph,
   type BranchGraphLayout,
+  type BranchGraphSpan,
 } from "../../lib/chat-branch-graph-layout";
 import type { WindowBounds, WindowLayout } from "../../lib/floating-window-layout";
 import { cn } from "../../lib/utils";
@@ -120,10 +121,10 @@ type PointerState = { point: GraphPoint; left: number; top: number; below: boole
 function BranchGraph({ chatId, groupId, compact }: { chatId: string; groupId: string | null; compact: boolean }) {
   const { t: localizeUi } = useUiTranslation();
   const setActiveChatId = useChatStore((state) => state.setActiveChatId);
-  const { data: groupChats } = useChatGroup(groupId);
+  const { data: groupChats, isError: groupFailed } = useChatGroup(groupId);
   const graph = useChatBranchGraph(groupId);
   useRefreshOnNewMessages(chatId, groupId);
-  const [expanded, setExpanded] = useState<ReadonlySet<number> | "all">(() => new Set());
+  const [expanded, setExpanded] = useState<readonly BranchGraphSpan[] | "all">([]);
   const [pointer, setPointer] = useState<PointerState | null>(null);
   const frameRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -208,7 +209,7 @@ function BranchGraph({ chatId, groupId, compact }: { chatId: string; groupId: st
 
   let body;
   if (!groupId) body = status(localizeUi("chat.settings.branchGraphEmpty"));
-  else if (graph.isError) body = status(localizeUi("chat.settings.branchGraphError"));
+  else if (graph.isError || groupFailed) body = status(localizeUi("chat.settings.branchGraphError"));
   else if (!layout) body = status(localizeUi("chat.settings.branchGraphLoading"));
   else if (layout.lanes.length < 2) body = status(localizeUi("chat.settings.branchGraphEmpty"));
   else {
@@ -259,9 +260,7 @@ function BranchGraph({ chatId, groupId, compact }: { chatId: string; groupId: st
               }
               expandRunLabel={(count) => localizeUi("chat.settings.branchGraphExpandRun", { count })}
               onSwitch={(laneIndex) => setActiveChatId(layout.lanes[laneIndex]!.chat.id)}
-              onExpand={(from) =>
-                setExpanded((previous) => (previous === "all" ? previous : new Set(previous).add(from)))
-              }
+              onExpand={(span) => setExpanded((previous) => (previous === "all" ? previous : [...previous, span]))}
               onShowPoint={showPoint}
               onHidePoint={hidePoint}
             />
@@ -273,7 +272,7 @@ function BranchGraph({ chatId, groupId, compact }: { chatId: string; groupId: st
 
   const anyGuessed = layout?.lanes.some((lane) => lane.anchorLane !== null && !lane.lineageKnown) ?? false;
   const canExpand = layout ? layout.gaps.length > 0 : false;
-  const allExpanded = expanded === "all" || (expanded.size > 0 && !canExpand);
+  const allExpanded = expanded === "all" || (expanded.length > 0 && !canExpand);
   return (
     <div ref={frameRef} className="relative flex min-h-0 flex-1 flex-col">
       {layout && layout.lanes.length >= 2 && (
@@ -296,7 +295,7 @@ function BranchGraph({ chatId, groupId, compact }: { chatId: string; groupId: st
               onClick={() => {
                 // Every run changes width at once, so find the current branch's tip again.
                 scrolledFor.current = null;
-                setExpanded(allExpanded ? new Set() : "all");
+                setExpanded(allExpanded ? [] : "all");
               }}
             >
               {localizeUi(allExpanded ? "chat.settings.branchGraphCollapseAll" : "chat.settings.branchGraphExpandAll")}
@@ -375,17 +374,17 @@ function BranchGraphCanvas({
   describePoint: (point: GraphPoint) => string;
   expandRunLabel: (count: number) => string;
   onSwitch: (lane: number) => void;
-  onExpand: (from: number) => void;
+  onExpand: (span: BranchGraphSpan) => void;
   onShowPoint: (point: GraphPoint, event: MouseEvent<SVGElement> | FocusEvent<SVGElement>) => void;
   onHidePoint: () => void;
 }) {
   const { t: localizeUi } = useUiTranslation();
   const { lanes, columns, xOf, laneY } = layout;
-  const expandOnKey = (from: number) => (event: KeyboardEvent<SVGGElement>) => {
+  const expandOnKey = (span: BranchGraphSpan) => (event: KeyboardEvent<SVGGElement>) => {
     if (event.key !== "Enter" && event.key !== " ") return;
     event.preventDefault();
     event.stopPropagation();
-    onExpand(from);
+    onExpand(span);
   };
 
   return (
@@ -450,9 +449,9 @@ function BranchGraphCanvas({
                     className="focus-visible:outline-none [&:focus-visible>rect]:stroke-[var(--ring)]"
                     onClick={(event) => {
                       event.stopPropagation();
-                      onExpand(column.from);
+                      onExpand({ from: column.from, to: column.to });
                     }}
-                    onKeyDown={expandOnKey(column.from)}
+                    onKeyDown={expandOnKey({ from: column.from, to: column.to })}
                   >
                     <title>{expandRunLabel(count)}</title>
                     <rect
@@ -524,7 +523,10 @@ function BranchGraphCanvas({
   );
 }
 
-/** Fork messages land on the lane that holds them; a lane's tip lands on its own lane. One dot each. */
+/**
+ * Fork messages land on the lane that holds them (the top chat's own fork, on its own lane); a lane's tip
+ * lands on its own lane. One dot each.
+ */
 function collectPoints(layout: BranchGraphLayout<{ id: string }>): GraphPoint[] {
   const byKey = new Map<string, GraphPoint>();
   const at = (lane: number, index: number) => {
@@ -539,8 +541,8 @@ function collectPoints(layout: BranchGraphLayout<{ id: string }>): GraphPoint[] 
   layout.lanes.forEach((lane, laneIndex) => {
     const entry = lane.entry;
     if (entry?.tip && entry.tip.index >= lane.start) at(laneIndex, entry.tip.index).tip = entry.tip;
-    if (entry?.fork && lane.anchorLane !== null && lane.forkAt !== null && lane.forkAt >= 0) {
-      const point = at(lane.anchorLane, lane.forkAt);
+    if (entry?.fork && lane.forkAt !== null && lane.forkAt >= 0) {
+      const point = at(lane.anchorLane ?? laneIndex, lane.forkAt);
       point.fork ??= entry.fork;
     }
   });

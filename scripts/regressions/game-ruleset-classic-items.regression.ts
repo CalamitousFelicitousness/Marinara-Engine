@@ -50,24 +50,27 @@ const { createGameRulesetsStorage } =
 const { resolveCombatRound } = await import("../../packages/server/src/services/game/combat.service.js");
 const { loadGameFightItems, loadGameInventoryItemBook } =
   await import("../../packages/server/src/services/game/game-inventory.service.js");
-const { encounterRoutes } = await import("../../packages/server/src/routes/encounter.routes.js");
+const { combatBlueprintCutOff, encounterRoutes } = await import("../../packages/server/src/routes/encounter.routes.js");
 const { gameRoutes } = await import("../../packages/server/src/routes/game.routes.js");
 const { gameInventoryRoutes } = await import("../../packages/server/src/routes/game-inventory.routes.js");
 const { combatDirectorRoutes, COMBAT_DIRECTOR_NAMESPACE } =
   await import("../../packages/server/src/routes/combat-director.routes.js");
 
 let replyText = "{}";
+let replyFinish = "stop";
+let asked = 0;
 let prompt = "";
 const provider = createServer(async (req, res) => {
   let raw = "";
   for await (const chunk of req) raw += chunk;
   prompt = JSON.stringify(JSON.parse(raw).messages);
+  asked++;
   res.setHeader("Content-Type", "application/json");
   res.end(
     JSON.stringify({
       id: "local-proof",
       object: "chat.completion",
-      choices: [{ index: 0, message: { role: "assistant", content: replyText }, finish_reason: "stop" }],
+      choices: [{ index: 0, message: { role: "assistant", content: replyText }, finish_reason: replyFinish }],
       usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
     }),
   );
@@ -650,6 +653,31 @@ try {
       (closedStart.json().combatState.itemEffects as CombatItemEffect[]).map((effect) => effect.name),
       ["Poultice"],
     );
+  }
+
+  // A setup cut off before it finished says so (playtest B1): the provider ran out of room, or the JSON
+  // stops part way, and either way the screen is told it was cut off rather than that it failed.
+  {
+    assert.equal(combatBlueprintCutOff("length", '{"party": []}'), true, "the provider says it ran out");
+    assert.equal(combatBlueprintCutOff("stop", '{"party": [{"name": "Get up onto the pili'), true, "inside a string");
+    assert.equal(combatBlueprintCutOff("stop", '```json\n{"party": [{"name": "A"}],'), true, "an object left open");
+    assert.equal(combatBlueprintCutOff("stop", '{"party": [{"name": "A \\"B\\" {"}]}'), false, "a whole answer");
+    assert.equal(combatBlueprintCutOff("stop", '```json\n{"party": []}\n```'), false, "fenced and whole");
+    assert.equal(combatBlueprintCutOff("stop", "not json at all"), false, "a refusal is not a cut-off");
+    const game = await newGame(emberPin);
+    replyText = '{"party": [{"name": "Hero"}], "enemies": [{"name": "Rat", "description": "Get up onto the pili';
+    replyFinish = "length";
+    asked = 0;
+    const cut = await app.inject({
+      method: "POST",
+      url: "/encounter/init",
+      payload: { chatId: game.chatId, settings: {} },
+    });
+    replyFinish = "stop";
+    assert.equal(cut.statusCode, 502, cut.body);
+    assert.equal(cut.json().reason, "cut-off");
+    assert.match(cut.json().error, /cut off before it finished/);
+    assert.equal(asked, 1, "a connection that does not think is not asked again");
   }
 
   // The Classic round route: the ruleset's effect, whatever the screen sent; an item the battle does

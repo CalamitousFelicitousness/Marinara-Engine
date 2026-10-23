@@ -450,6 +450,8 @@ interface GameNarrationProps {
   combatStarting?: boolean;
   /** Whether combat state generation failed for the current combat beat. */
   combatGenerationFailed?: boolean;
+  /** The failed setup was cut off before it finished, rather than refused or malformed. */
+  combatGenerationCutOff?: boolean;
   /** Retry combat state generation. */
   onRetryCombatGeneration?: () => void;
   /** Open the standard delete-message flow for a backing chat message. */
@@ -1187,6 +1189,7 @@ export function GameNarration({
   onRequestCombatStart,
   combatStarting,
   combatGenerationFailed,
+  combatGenerationCutOff,
   onRetryCombatGeneration,
   onDeleteMessage,
   onPeekPrompt,
@@ -4128,7 +4131,9 @@ export function GameNarration({
           <span>
             {combatStarting
               ? localizeUi("ui.game.gamenarration.combatStartingPleaseWait")
-              : localizeUi("ui.game.gamenarration.combatGenerationFailed")}
+              : combatGenerationCutOff
+                ? localizeUi("ui.game.gamenarration.combatGenerationCutOff")
+                : localizeUi("ui.game.gamenarration.combatGenerationFailed")}
           </span>
         </span>
         {combatGenerationFailed && onRetryCombatGeneration && (

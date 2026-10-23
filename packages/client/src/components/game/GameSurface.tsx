@@ -3029,6 +3029,8 @@ function GameSurfaceComponent({
   const [preparedCombatState, setPreparedCombatState] = useState<PreparedCombatState | null>(null);
   const [combatGenerationPending, setCombatGenerationPending] = useState(false);
   const [combatGenerationError, setCombatGenerationError] = useState<string | null>(null);
+  /** The last failed setup stopped part way: the model ran out of room to answer (B1). */
+  const [combatGenerationCutOff, setCombatGenerationCutOff] = useState(false);
   /** Synchronous in-flight flag beside the async combatGenerationPending state: same-frame double
    *  requests all read the stale state, the ref does not. Declared early so the turn-retry handler,
    *  which must abandon an in-flight generation, can reach it. #5094. */
@@ -9808,6 +9810,12 @@ function GameSurfaceComponent({
           if (combatGenerationRequestIdRef.current !== requestId || activeChatIdRef.current !== requestChatId) return; // superseded; don't set stale error
           const message = err instanceof Error ? err.message : "Combat generation failed.";
           console.warn("[game-combat] Failed to generate combat state", err);
+          setCombatGenerationCutOff(
+            err instanceof ApiError &&
+              !!err.payload &&
+              typeof err.payload === "object" &&
+              (err.payload as { reason?: unknown }).reason === "cut-off",
+          );
           setCombatGenerationError(message);
           // Only the Engine paths (manual button, retry, auto-queue) toast. An Experience/package
           // request passes notify=false and renders its own feedback from combatError, so a failed
@@ -13638,6 +13646,7 @@ function GameSurfaceComponent({
                             onRequestCombatStart={classicCombatStarter}
                             combatStarting={combatStarting}
                             combatGenerationFailed={combatGenerationFailedAtGate}
+                            combatGenerationCutOff={combatGenerationCutOff}
                             onRetryCombatGeneration={retryCombatGeneration}
                             onDeleteMessage={onDeleteMessage}
                             onPeekPrompt={onPeekPrompt}
@@ -13737,6 +13746,7 @@ function GameSurfaceComponent({
                         onRequestCombatStart={classicCombatStarter}
                         combatStarting={combatStarting}
                         combatGenerationFailed={combatGenerationFailedAtGate}
+                        combatGenerationCutOff={combatGenerationCutOff}
                         onRetryCombatGeneration={retryCombatGeneration}
                         onDeleteMessage={onDeleteMessage}
                         onPeekPrompt={onPeekPrompt}

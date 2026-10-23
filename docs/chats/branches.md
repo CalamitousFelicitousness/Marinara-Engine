@@ -57,7 +57,7 @@ The graph opens in its own window, which you can move and resize. On a phone, it
 - A branch draws only its own messages. A line joins it to the message it was branched from, so you can see exactly where it split off.
 - Older branches and branches whose source chat was deleted have no recorded fork point. They are drawn from the top chat with a dashed line, and the legend shows **Fork not recorded**.
 - Long stretches with no fork nearby fold into a **··· N ···** marker, where N is the number of hidden messages. Click it to show those messages, or use **Expand all** to unfold every stretch. **Collapse long runs** folds them again.
-- Fork points and each branch's latest message have a ring. Hover over a ring, or focus it with the keyboard, to see the message number, who wrote it and the start of its text.
+- Fork points and each branch's latest message have a ring. Hover over a ring, tap it, or focus it with the keyboard to see the message number, who wrote it and the start of its text.
 - Click a branch's name or row to switch to that branch. The branch you are viewing is highlighted, and the graph opens scrolled to its latest message.
 
 The graph updates when you branch, rename or delete a chat, and shortly after new messages arrive.

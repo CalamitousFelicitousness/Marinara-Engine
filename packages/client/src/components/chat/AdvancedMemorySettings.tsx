@@ -643,11 +643,12 @@ export function AdvancedMemorySettings({
               {t("chat.advancedMemory.reviewKnowledge")}
             </button>
           )}
-          {(status.data?.job.status === "idle" || status.data?.job.status === "needs_confirmation") && (
-            <button type="button" disabled={disabled} className={`${actionClass} w-full`} onClick={initialize}>
-              {t("chat.advancedMemory.initialize")}
-            </button>
-          )}
+          {variant === "drawer" &&
+            (status.data?.job.status === "idle" || status.data?.job.status === "needs_confirmation") && (
+              <button type="button" disabled={disabled} className={`${actionClass} w-full`} onClick={initialize}>
+                {t("chat.advancedMemory.initialize")}
+              </button>
+            )}
         </div>
       )}
       {confirmKnowledge && (

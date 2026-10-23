@@ -65,6 +65,8 @@ import {
   DEFAULT_GENERATION_PARAMS,
   isStockMarinaraUniversalPreset,
   omitChatMetadataLocalDestinations,
+  rulesetAllowsCombatStyle,
+  rulesetCombatStyles,
 } from "@marinara-engine/shared";
 import type {
   CharacterData,
@@ -140,6 +142,7 @@ import { createSpatialContextStorage } from "../services/storage/spatial-context
 import { restoreBranchHudLists, trimJournalForBranch } from "../services/game/branch-state.js";
 import { removeGameInventoryTelling, switchGameInventoryTelling } from "../services/game/game-inventory.service.js";
 import { applyAllSegmentEdits, applyMessageSegmentEdits } from "../services/game/segment-edits.js";
+import { loadRulesetRegistry, resolveGameRuleset } from "../services/game/ruleset-registry.service.js";
 import type { Journal } from "../services/game/journal.service.js";
 import { createRegexScriptsStorage } from "../services/storage/regex-scripts.storage.js";
 import { filterRelevantLorebooks, processLorebooks } from "../services/lorebook/index.js";
@@ -1771,39 +1774,59 @@ export async function chatsRoutes(app: FastifyInstance) {
     ) {
       return reply.status(400).send({ error: "slurp2ActivityContextEnabled must be a boolean" });
     }
-    const cancelReplacedAdvancedMemory = (previous: Record<string, unknown>, saved: Record<string, unknown>) => {
-      if (
-        incoming.enableMemoryRecall === true &&
-        !normalizeAdvancedMemorySettings(saved.advancedMemory).enabled &&
-        normalizeAdvancedMemorySettings(previous.advancedMemory).enabled
-      ) {
-        createAdvancedMemoryService(app.db).cancelActiveOperation(req.params.id);
+    return withChatMetadataPatchQueue(req.params.id, async () => {
+      // Check the pair this patch will actually save, after earlier queued changes have landed.
+      // A ruleset-only change must also agree with the saved style (classic when unspecified).
+      if (Object.hasOwn(incoming, "gameRuleset") || Object.hasOwn(incoming, "gameCombatStyle")) {
+        const freshChat = await storage.getById(req.params.id);
+        if (!freshChat) return reply.status(404).send({ error: "Chat not found" });
+        const next = { ...parseChatMetadata(freshChat.metadata), ...incoming };
+        const resolved = resolveGameRuleset(next, await loadRulesetRegistry(app.db));
+        if (
+          resolved.status === "ok" &&
+          !rulesetAllowsCombatStyle(resolved.definition, next.gameCombatStyle as string | null | undefined)
+        ) {
+          return reply.status(400).send({
+            error: `This game's ruleset plays battles only as ${rulesetCombatStyles(resolved.definition)!.join(", ")}.`,
+            code: "combat_style_not_allowed",
+          });
+        }
       }
-    };
-    if (
-      Object.prototype.hasOwnProperty.call(incoming, "hideSummarisedMessages") &&
-      typeof incoming.hideSummarisedMessages === "boolean"
-    ) {
-      const updated = await storage.patchMetadata(
-        req.params.id,
-        async (freshMeta) => ({
-          ...incoming,
-          ...(await summaryHidingPatch(storage, req.params.id, freshMeta, { ...freshMeta, ...incoming })),
-        }),
-        { afterWrite: cancelReplacedAdvancedMemory },
-      );
+      const cancelReplacedAdvancedMemory = (previous: Record<string, unknown>, saved: Record<string, unknown>) => {
+        if (
+          incoming.enableMemoryRecall === true &&
+          !normalizeAdvancedMemorySettings(saved.advancedMemory).enabled &&
+          normalizeAdvancedMemorySettings(previous.advancedMemory).enabled
+        ) {
+          createAdvancedMemoryService(app.db).cancelActiveOperation(req.params.id);
+        }
+      };
+      if (
+        Object.prototype.hasOwnProperty.call(incoming, "hideSummarisedMessages") &&
+        typeof incoming.hideSummarisedMessages === "boolean"
+      ) {
+        const updated = await storage.patchMetadata(
+          req.params.id,
+          async (freshMeta) => ({
+            ...incoming,
+            ...(await summaryHidingPatch(storage, req.params.id, freshMeta, { ...freshMeta, ...incoming })),
+          }),
+          { metadataQueueHeld: true, afterWrite: cancelReplacedAdvancedMemory },
+        );
+        return updated ? normalizeChatForResponse(updated) : updated;
+      }
+      // Rearranging windows or dismissing their hint is a view preference, not new chat activity.
+      const changedKeys = Object.keys(incoming);
+      const viewOnly =
+        changedKeys.length > 0 &&
+        changedKeys.every((key) => key === "windowLayout" || key === "chatSettingsHintDismissed");
+      const updated = await storage.patchMetadata(req.params.id, incoming, {
+        metadataQueueHeld: true,
+        touchUpdatedAt: !viewOnly,
+        afterWrite: cancelReplacedAdvancedMemory,
+      });
       return updated ? normalizeChatForResponse(updated) : updated;
-    }
-    // Rearranging windows or dismissing their hint is a view preference, not new chat activity.
-    const changedKeys = Object.keys(incoming);
-    const viewOnly =
-      changedKeys.length > 0 &&
-      changedKeys.every((key) => key === "windowLayout" || key === "chatSettingsHintDismissed");
-    const updated = await storage.patchMetadata(req.params.id, incoming, {
-      touchUpdatedAt: !viewOnly,
-      afterWrite: cancelReplacedAdvancedMemory,
     });
-    return updated ? normalizeChatForResponse(updated) : updated;
   });
 
   // Mark a chat as having autonomous messages the user has not viewed yet.

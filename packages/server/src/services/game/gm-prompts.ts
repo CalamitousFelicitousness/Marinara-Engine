@@ -1468,7 +1468,7 @@ function renderRulesetSheetSection(
     `Narration alone changes no sheet. Every harm, healing or spent resource you narrate needs its command in the same reply, a fall, a burn or a poison included. Its who is the one the narration names: whoever takes the harm or the healing, or whoever pays the resource, and the player only when that is the player. Check it against the narration, not against whoever acted or spoke last.${
       oneRequestDice
         ? // A turn that finishes itself never gets a total back, so the roll goes where the number is needed.
-          ` When the amount is still to be rolled, write the roll as a placeholder in the command's amount and the engine fills it in before applying it: [sheet: who="Name" op="damage" pool="Pool" amount="[[roll: 1d6]]"].`
+          ` When the amount is still to be rolled, write the roll as a placeholder in the command's amount and the engine fills it in before applying it: [sheet: who="Name" op="damage" pool="Pool" amount="[[roll: 1d6]]"]. When the narration already shows that roll, write the same placeholder in the amount and the sheet takes the number the narration shows.`
         : ` When the amount is still to be rolled, ask for the roll with [dice:] and write the command with the total once you have it.`
     }`,
     // A sheet block leaves out a track or a note that still has its default, so the names a command

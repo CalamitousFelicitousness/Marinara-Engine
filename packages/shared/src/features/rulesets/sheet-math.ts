@@ -749,7 +749,7 @@ export function isRulesetItemHidden(
   return value === hide.equals;
 }
 
-/** Whether a live text field is off the sheet (Capability API 1.377): by a field, as anything else
+/** Whether a live text field is off the sheet (Capability API 1.378): by a field, as anything else
  *  is, or by a derived value, which only a text field may be hidden by. `derived` is what the sheet
  *  worked out. */
 export function isRulesetTextHidden(

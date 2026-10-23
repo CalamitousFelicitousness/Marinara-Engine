@@ -159,7 +159,7 @@ export interface DirectedRulesetCombatant {
   /** What this combatant is holding together, when the ruleset has concentration. */
   concentrating?: string;
   /** A party member's pools their actions spend, as they stand (spell slots, ki): the fight's HUD. */
-  /** `unit` is what one of it is called (1.377). */
+  /** `unit` is what one of it is called (1.378). */
   pools?: Array<{ id: string; label: string; value: number; max: number; unit?: string }>;
   /** An opponent's rung of the threat scale, and the lines the Game Master is shown. */
   tier?: string;

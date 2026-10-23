@@ -1674,7 +1674,7 @@ function itemUseActions(
       held.name ??
       definition.items?.categories.find((category) => category.id === item.category)?.label ??
       item.category;
-    // Called what the ruleset calls it in place of the item's name (1.377): "Scatter ball bearings".
+    // Called what the ruleset calls it in place of the item's name (1.378): "Scatter ball bearings".
     const label = use.title ?? (named ? `${name}: ${named}` : name);
     const action = itemUseMechanics(definition, item, use, { id, label }, build, evaluated, perCell, pooled);
     if (!action) return;
@@ -3030,7 +3030,7 @@ function abilityActions(
   const rows = build.lists?.[source.list];
   if (!Array.isArray(rows)) return { actions: [], riders: [] };
   const byRef = rulesetCatalogEntriesByRef(catalogs);
-  // Where the menu shows what the list gives (1.377): under the list's own tab, split as it is.
+  // Where the menu shows what the list gives (1.378): under the list's own tab, split as it is.
   const display = definition.sheet.lists.find((list) => list.id === source.list)?.display;
   /** A catalog states what its own `range` and `area.size` numbers mean; one that does not is read
    *  in the combat block's own unit. */

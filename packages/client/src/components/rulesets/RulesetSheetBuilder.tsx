@@ -643,7 +643,7 @@ export function RulesetSheetBuilder({
                       onClick={() => toggle(entry.id)}
                       aria-label={
                         !on && known
-                          ? `${entry.label}: ${t("ui.rulesets.builder.alreadyKnown")}`
+                          ? t("ui.rulesets.builder.alreadyKnownName", { name: entry.label })
                           : t(stored ? "ui.rulesets.builder.unpick" : "ui.rulesets.builder.pick", { name: entry.label })
                       }
                       className={`${chipClass} ${on ? chipOn : chipOff}`}
@@ -1796,7 +1796,7 @@ export function RulesetSheetBuilder({
     const entry = definition.sheet.derived.find((each) => each.id === id);
     const value = evaluated.derived[id];
     if (!entry || value === undefined || isRulesetItemHidden(entry, build, definition)) return [];
-    // A bonus the ruleset marks as one (1.377) reads with its sign: a spell attack of "+5".
+    // A bonus the ruleset marks as one (1.378) reads with its sign: a spell attack of "+5".
     return [{ id, label: entry.label, text: entry.signed && value > 0 ? `+${value}` : String(value) }];
   });
 

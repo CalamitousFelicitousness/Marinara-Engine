@@ -95,7 +95,7 @@ export interface RulesetMenuGroup {
   key: string;
   /** The heading key for this group, so a caller never builds one by hand. */
   labelKey: string;
-  /** What a ruleset-named heading fills in (1.377): its list's tab, and the row's place in it. */
+  /** What a ruleset-named heading fills in (1.378): its list's tab, and the row's place in it. */
   labelValues?: { tab: string; sub?: string };
   options: DirectedRulesetOption[];
 }
@@ -115,7 +115,7 @@ export function rulesetMenuGroups(options: DirectedRulesetOption[] | undefined):
         labelKey: `game.combat.ruleset.group.${kind === "end-turn" ? "endTurn" : kind}`,
         options: own,
       });
-    // What a ruleset's list gives sits under the list's own heading (1.377), "Spells", split by
+    // What a ruleset's list gives sits under the list's own heading (1.378), "Spells", split by
     // the row's place in it, "Spells: 1st level", in its order.
     const named = new Map<string, { order: number; group: RulesetMenuGroup }>();
     for (const option of found) {
@@ -189,7 +189,7 @@ export function rulesetOptionLabel(option: DirectedRulesetOption, t: TFunction):
   if (option.again) return t("game.combat.ruleset.menu.again", { label: option.label });
   // A switch says which way it turns the item, which is the Engine's own word too.
   if (option.kind === "switch") {
-    // In the ruleset's own words for the two, where it gives them (1.377): "Lower the hood".
+    // In the ruleset's own words for the two, where it gives them (1.378): "Lower the hood".
     const named = option.on ? option.switchLabels?.off : option.switchLabels?.on;
     if (named) return named;
     return t(option.on ? "game.combat.ruleset.menu.switchOff" : "game.combat.ruleset.menu.switchOn", {
@@ -251,7 +251,7 @@ export function rulesetOptionCostText(
     // Paid out of a pool of its own name (Action Surge on Action Surge's card) says nothing the
     // button does not.
     if (cost.amount === 1 && cost.label.trim().toLowerCase() === option.label.trim().toLowerCase()) continue;
-    // In the pool's own words for one and for more than one (1.377), "1 3rd-level slot".
+    // In the pool's own words for one and for more than one (1.378), "1 3rd-level slot".
     const pool = (cost.amount === 1 ? cost.unit : cost.units) ?? cost.label;
     parts.push(t("game.combat.ruleset.option.cost", { amount: cost.amount, pool }));
   }

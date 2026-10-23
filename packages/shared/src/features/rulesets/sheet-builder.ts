@@ -3156,7 +3156,7 @@ export function rulesetBuilderRoll(
   };
 }
 
-/** Whether everything an entry would write is already on the sheet (Capability API 1.377): its rows
+/** Whether everything an entry would write is already on the sheet (Capability API 1.378): its rows
  *  are there by the entry's own mark (a cleric's domain spell, granted by a later step), or by name
  *  where something else wrote a row that is nothing but its name (a dwarf's Dwarvish, written by
  *  the race). A step offers

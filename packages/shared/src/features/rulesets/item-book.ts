@@ -96,7 +96,7 @@ export interface RulesetItemEffectFact {
   };
   /** Conditions and damage labels, and magic, that narrow this save modifier (1.134). */
   against?: { names: string[]; magic?: true };
-  /** What the ruleset says the modifier does, said in place of the rest (1.377). */
+  /** What the ruleset says the modifier does, said in place of the rest (1.378). */
   label?: string;
   change:
     | { mode: "advantage" | "disadvantage" }
@@ -745,7 +745,7 @@ export function rulesetItemEffectFacts(
   }
   for (const modifier of effect.modifiers ?? []) {
     const to = modifier.to;
-    // In the ruleset's own words where it gives them (1.377): "advantage on saves against being charmed".
+    // In the ruleset's own words where it gives them (1.378): "advantage on saves against being charmed".
     if (modifier.label) {
       facts.push({ to, names: [], label: modifier.label, change: { effect: modifier.label } });
       continue;

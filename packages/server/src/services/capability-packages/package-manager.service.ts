@@ -2098,7 +2098,7 @@ function carriesSaveDifficulty(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesSaveDifficulty(one, depth + 1));
 }
 
-/** How a sheet, a menu or a card reads, in the ruleset's own words (1.377): a modifier's own label,
+/** How a sheet, a menu or a card reads, in the ruleset's own words (1.378): a modifier's own label,
  *  a creature trait over the old 400 letters, a text field hidden by a value, a condition left out
  *  of the picker, a track shown once moved, a pool's unit, a list's display, an item toggle's labels,
  *  and an item use's own title. */
@@ -2132,7 +2132,7 @@ function carriesSheetWords(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesSheetWords(one, depth + 1));
 }
 
-/** The 1.377 keys only the ruleset's own sheet carries: a text field's `hideWhen`, a pool's `unit`
+/** The 1.378 keys only the ruleset's own sheet carries: a text field's `hideWhen`, a pool's `unit`
  *  and `units`, a list's `display`, and a derived value's `signed`. */
 function rulesetCarriesSheetDisplay(ruleset: unknown): boolean {
   const sheet = plainRecord(plainRecord(ruleset)?.sheet);
@@ -5234,14 +5234,14 @@ export function getCapabilityPackageInstallIssue(
   ) {
     return "A ruleset that says how the fight screen shows its budgets, defense or pools requires schemaVersion 2 and capabilityApi 1.375 or newer";
   }
-  // The ruleset's own words on its sheet, menu and cards, 1.377.
+  // The ruleset's own words on its sheet, menu and cards, 1.378.
   if (
-    !declaresApi(377) &&
+    !declaresApi(378) &&
     (rulesetCarriesSheetDisplay(ruleset) ||
       carriesSheetWords(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesSheetWords(document)))
   ) {
-    return "A ruleset that names its own words for modifiers, toggles or item uses, gives pools units, lists a display, signs a derived value, hides text by a derived value, leaves conditions out of the picker, shows a track once moved, or has a creature trait over 400 letters requires schemaVersion 2 and capabilityApi 1.377 or newer";
+    return "A ruleset that names its own words for modifiers, toggles or item uses, gives pools units, lists a display, signs a derived value, hides text by a derived value, leaves conditions out of the picker, shows a track once moved, or has a creature trait over 400 letters requires schemaVersion 2 and capabilityApi 1.378 or newer";
   }
   // A ruleset over 256 KB or a catalog file over 1 MB, the ceilings before 1.340.
   if (

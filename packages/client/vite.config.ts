@@ -123,9 +123,16 @@ function manualChunks(id: string) {
   const lucideIcon = id.match(/lucide-react\/dist\/esm\/icons\/([^/]+)\.m?js$/u);
   if (lucideIcon) return `vendor-icons-${lucideIcon[1]?.[0] ?? "misc"}`;
   if (id.includes("lucide-react")) return "vendor-icons";
+  // Installed API-1 packages keep Motion 13, loaded only with the lazy host namespace.
+  // Match before peer-dependency paths containing "react" merge both majors into an eager vendor chunk.
+  if (
+    /\/\.pnpm\/(?:framer-motion|motion-dom|motion-utils)@13[^/]*\/node_modules\//u.test(id) ||
+    /\/node_modules\/framer-motion-v13\//u.test(id)
+  )
+    return "vendor-motion-legacy";
+  if (/\/node_modules\/(?:framer-motion|motion-dom|motion-utils)\//u.test(id)) return "vendor-motion";
   if (id.includes("react") || id.includes("scheduler")) return "vendor-react";
   if (id.includes("@tanstack")) return "vendor-tanstack";
-  if (id.includes("framer-motion")) return "vendor-motion";
   if (id.includes("zustand")) return "vendor-state";
   if (id.includes("dompurify") || id.includes("sonner")) return "vendor-ui";
 
@@ -144,6 +151,22 @@ function bundleBudget(): Plugin {
           isEntry: chunk.isEntry,
         }))
         .sort((a, b) => b.sizeKb - a.sizeKb);
+
+      // Compatibility code must not become a startup cost through a shared vendor chunk.
+      const pending = Object.values(bundle)
+        .filter((item) => item.type === "chunk" && item.isEntry)
+        .map((item) => item.fileName);
+      const visited = new Set<string>();
+      while (pending.length) {
+        const name = pending.pop()!;
+        if (visited.has(name)) continue;
+        visited.add(name);
+        const item = bundle[name];
+        if (item?.type !== "chunk") continue;
+        if (item.name === "vendor-motion-legacy")
+          this.error("Legacy Motion 13 must load only with the dynamic package host");
+        pending.push(...item.imports);
+      }
 
       const lines = chunks.slice(0, 10).map((chunk) => {
         const label = chunk.isEntry ? "entry" : "chunk";

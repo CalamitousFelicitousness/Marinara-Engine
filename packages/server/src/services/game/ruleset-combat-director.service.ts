@@ -692,7 +692,7 @@ function deathTrackOf(definition: RulesetDefinition, combatant: RulesetCombatant
  *  for the fight's own HUD: a player should not have to open the sheet mid-fight to count slots. */
 function spentPoolsOf(definition: RulesetDefinition, combatant: RulesetCombatant) {
   if (combatant.side !== "party" || !combatant.sheet) return undefined;
-  // What one of it is called, for a player paying with it (1.377): "a 2nd-level slot".
+  // What one of it is called, for a player paying with it (1.378): "a 2nd-level slot".
   const unitOf = (id: string) => {
     const declared = definition.sheet.live.pools.find((pool) => pool.id === id);
     return declared?.unit ? { unit: declared.unit } : {};

@@ -1051,7 +1051,7 @@ export function planRulesetCombatCost(
     if (!result.ok) return null;
     live = result.live;
     if (step.op.op === "spend") {
-      // What one of it is called, and more than one (1.377): "1 3rd-level slot".
+      // What one of it is called, and more than one (1.378): "1 3rd-level slot".
       const declared = definition.sheet.live.pools.find((pool) => pool.id === (step.op as { pool: string }).pool);
       cost.push({
         pool: step.op.pool,

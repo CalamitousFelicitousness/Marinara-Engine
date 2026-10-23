@@ -260,7 +260,7 @@ const roundingSchema = z.enum(["down", "up", "nearest"]);
  *  1.188, which 5e's own list outgrew, and 160 until 1.269, which its monsters' traits outgrew. */
 export const RULESET_CONDITIONS_MAX = 320;
 
-/** How long one creature trait's words may run: 400 until Capability API 1.377, which 5e's Vampire
+/** How long one creature trait's words may run: 400 until Capability API 1.378, which 5e's Vampire
  *  Weaknesses and Hag Coven outgrew. */
 export const RULESET_CREATURE_TRAIT_TEXT_MAX = 1200;
 
@@ -288,7 +288,7 @@ const hideWhenSchema = z
 export type RulesetHideWhen = z.infer<typeof hideWhenSchema>;
 
 /** Off the sheet while a derived value is one value, anything but it, or one of a few (Capability API
- *  1.377), for a live text field only: nothing the sheet works out reads one, so hiding it never
+ *  1.378), for a live text field only: nothing the sheet works out reads one, so hiding it never
  *  changes a number. 5e's "Concentrating on" while the character knows no concentration spell. */
 const derivedHideWhenSchema = z
   .object({
@@ -1049,7 +1049,7 @@ const derivedBase = {
   label,
   section: sheetId.optional(),
   hideWhen: hideWhenSchema.optional(),
-  /** A bonus, shown with its sign on the sheet (Capability API 1.377): a spell attack of "+7". */
+  /** A bonus, shown with its sign on the sheet (Capability API 1.378): a spell attack of "+7". */
   signed: z.literal(true).optional(),
 };
 /** The most derived values a sheet may have: 400 since Capability API 1.111 (240 since 1.88,
@@ -1207,7 +1207,7 @@ const listSchema = z
       .object({ nameColumn: sheetId, maxColumn: sheetId, rechargeColumn: sheetId.optional() })
       .strict()
       .optional(),
-    /** How a player reads the list (Capability API 1.377): the sheet's tab it shows on, the number
+    /** How a player reads the list (Capability API 1.378): the sheet's tab it shows on, the number
      *  column its rows are split by with a heading for each value from 0 up ("Cantrips", "1st
      *  level"), and a yes-or-no column shown as a tick ("Prepared"). Abilities a fight gives from its
      *  rows sit under the same tab's name on the combat menu, split the same way. */
@@ -1246,7 +1246,7 @@ const livePoolSchema = z
      *  POW, Fate Points at Refresh. Held to 0..max; a value that reads 0 or less starts it empty. */
     startFrom: (rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>).optional(),
     hideWhen: hideWhenSchema.optional(),
-    /** What one of it is called, and more than one, where a cost counts it (Capability API 1.377):
+    /** What one of it is called, and more than one, where a cost counts it (Capability API 1.378):
      *  "1 3rd-level slot", "2 3rd-level slots". The pool's label when left out. */
     unit: label.optional(),
     units: label.optional(),
@@ -1328,7 +1328,7 @@ const liveTrackSchema = z
     extra: z.object({ list: sheetId, countColumn: sheetId, penaltyColumn: sheetId }).strict().optional(),
     /** Printed in the sheet block even at its default, for a rating that matters every turn. */
     alwaysShow: z.boolean().optional(),
-    /** Off the sheet while it stands where it starts (Capability API 1.377), shown once play or the
+    /** Off the sheet while it stands where it starts (Capability API 1.378), shown once play or the
      *  Game Master moves it: 5e's penalty for coming back from the dead. Never on a wound track. */
     showWhenSet: z.literal(true).optional(),
     /** Off the sheet while a field says so, as a pool can be. Never on a wound track, which rolls
@@ -1388,7 +1388,7 @@ const liveSchema = z
             id: sheetId,
             label,
             maxLength: z.number().int().min(1).max(500),
-            /** Off the sheet while a field or a derived value says so (Capability API 1.377). */
+            /** Off the sheet while a field or a derived value says so (Capability API 1.378). */
             hideWhen: z.union([hideWhenSchema, derivedHideWhenSchema]).optional(),
           })
           .strict(),
@@ -1402,7 +1402,7 @@ const liveSchema = z
             id: sheetId,
             label,
             icon: artIconRef.optional(),
-            /** Left out of the sheet's "Add condition" picker (Capability API 1.377): a spell's or an
+            /** Left out of the sheet's "Add condition" picker (Capability API 1.378): a spell's or an
              *  item's own state, which play and commands still put on and take off. */
             pickable: z.literal(false).optional(),
           })
@@ -7325,7 +7325,7 @@ export const rulesetItemUseSchema = catalogMechanicsObject
     /** What the menu calls it beside the item's name (Capability API 1.271), as a `moreUses` label
      *  is: a staff's first spell. */
     label: promptSafeText(60).optional(),
-    /** What the menu calls it in place of the item's name (Capability API 1.377): "Scatter ball
+    /** What the menu calls it in place of the item's name (Capability API 1.378): "Scatter ball
      *  bearings". Its count left still shows beside it. */
     title: promptSafeText(60).optional(),
     /** More charges its user may spend on it (Capability API 1.269), up to `max` beyond `charges`:
@@ -7530,7 +7530,7 @@ const catalogItemObjectSchema = z
         /** The light it sheds while switched off (Capability API 1.296), in place of its effect's:
          *  a hooded lantern with its hood down, dim light 5 feet. */
         offLight: lightRadiusSchema.optional(),
-        /** What turning it on and off is called on the menu (Capability API 1.377), in place of the
+        /** What turning it on and off is called on the menu (Capability API 1.378), in place of the
          *  Engine's "Turn on" and the item's name: "Raise the hood", "Lower the hood". */
         onLabel: promptSafeText(40).optional(),
         offLabel: promptSafeText(40).optional(),
@@ -8207,7 +8207,7 @@ const combatModifierSchema = z
      *  API 1.249): 5e's Bardic Inspiration, Guidance and Resistance, added after seeing the roll. */
     rescue: z.literal(true).optional(),
     /** What a card says it does, in place of the phrase the Engine composes from the rest (Capability
-     *  API 1.377): 5e's Fey Ancestry, "advantage on saves against being charmed". */
+     *  API 1.378): 5e's Fey Ancestry, "advantage on saves against being charmed". */
     label: promptSafeText(120).optional(),
   })
   .strict()

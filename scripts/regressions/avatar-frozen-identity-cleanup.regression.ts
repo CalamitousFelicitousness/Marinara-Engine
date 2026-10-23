@@ -14,10 +14,14 @@ delete process.env.MARINARA_EAGER_STORAGE;
 writeFileSync(process.env.MARINARA_ENV_FILE, "");
 const { createFileNativeDB, encodeShardKey } = await import("../../packages/server/src/db/file-backed-store.js");
 const { eq } = await import("../../packages/server/src/db/file-query.js");
-const { chats, messages, messageSwipes, messageTrash, personas } =
+const { appSettings, chats, messages, messageSwipes, messageTrash, personas } =
   await import("../../packages/server/src/db/schema/index.js");
-const { deleteAbandonedAvatarFiles, scanAbandonedAvatarFiles, unlinkAvatarFilesIfUnreferenced } =
-  await import("../../packages/server/src/services/image/avatar-file-lifecycle.js");
+const {
+  deleteAbandonedAvatarFiles,
+  scanAbandonedAvatarFiles,
+  unlinkAvatarFilesIfUnreferenced,
+  withAvatarFileLifecycleLock,
+} = await import("../../packages/server/src/services/image/avatar-file-lifecycle.js");
 
 const avatarRoot = join(root, "avatars");
 mkdirSync(avatarRoot);
@@ -36,6 +40,43 @@ const message = (id: string, chatId: string, extra = "{}") => ({
 });
 const shardPath = (table: string, id: string) => join(root, "storage", "tables", table, `${encodeShardKey(id)}.json`);
 const writeAvatar = (name: string) => writeFileSync(pathFor(name), name);
+async function duringColdRead<T>(operation: () => Promise<T>, during: () => Promise<unknown>): Promise<T> {
+  const readDirectory = fsPromises.readdir;
+  let release!: () => void;
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let reached!: () => void;
+  const paused = new Promise<void>((resolve) => {
+    reached = resolve;
+  });
+  let held = false;
+  fsPromises.readdir = (async (...args: Parameters<typeof readDirectory>) => {
+    if (!held && String(args[0]).endsWith(join("tables", "messages"))) {
+      held = true;
+      reached();
+      await released;
+    }
+    return readDirectory(...args);
+  }) as typeof readDirectory;
+  syncBuiltinESMExports();
+  const pending = operation();
+  try {
+    await Promise.race([
+      paused,
+      pending.then(() => {
+        throw new Error("cleanup did not reach cold history I/O");
+      }),
+    ]);
+    await during();
+  } finally {
+    release();
+    fsPromises.readdir = readDirectory;
+    syncBuiltinESMExports();
+    await pending;
+  }
+  return pending;
+}
 for (const name of ["message.png", "swipe.png", "trash-message.png", "trash-swipe.png", "backup.png", "orphan.png"])
   writeAvatar(name);
 let db = await createFileNativeDB();
@@ -207,56 +248,182 @@ try {
     2,
   );
 
-  // The cleanup transaction also suppresses real flush-tail eviction during cold I/O.
+  // Each public cleanup path leaves unrelated writers free during cold I/O.
+  for (const mode of ["scan", "delete", "direct"] as const) {
+    const name = `progress-${mode}.png`;
+    writeAvatar(name);
+    let write: Promise<unknown> | undefined;
+    let completedWhilePaused = false;
+    const count = await duringColdRead(
+      async () => {
+        if (mode === "direct") return unlinkAvatarFilesIfUnreferenced({ db, avatarRoot, avatarPaths: [urlFor(name)] });
+        return (await (mode === "scan" ? scanAbandonedAvatarFiles(input) : deleteAbandonedAvatarFiles(input))).files;
+      },
+      async () => {
+        let wrote = false;
+        write = db
+          .insert(appSettings)
+          .values({ key: `progress-${mode}`, value: "done", updatedAt: at })
+          .then(() => {
+            wrote = true;
+          });
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        completedWhilePaused = wrote;
+      },
+    );
+    await write;
+    assert.equal(completedWhilePaused, true, `${mode} must not hold the write gate during cold I/O`);
+    assert.ok(count > 0);
+    assert.equal(existsSync(pathFor(name)), mode === "scan");
+    rmSync(pathFor(name), { force: true });
+  }
+
+  // Real identity writers need both the avatar lifecycle lock and the storage write gate.
+  for (const mode of ["scan", "delete", "direct"] as const) {
+    const name = `identity-progress-${mode}.png`;
+    writeAvatar(name);
+    let writer: Promise<unknown> | undefined;
+    let completedWhilePaused = false;
+    const count = await duringColdRead(
+      async () => {
+        if (mode === "direct") return unlinkAvatarFilesIfUnreferenced({ db, avatarRoot, avatarPaths: [urlFor(name)] });
+        return (await (mode === "scan" ? scanAbandonedAvatarFiles(input) : deleteAbandonedAvatarFiles(input))).files;
+      },
+      async () => {
+        let wrote = false;
+        writer = withAvatarFileLifecycleLock(async () => {
+          await db
+            .update(messages)
+            .set({ content: `identity writer ${mode}` })
+            .where(eq(messages.id, "m-new"));
+          wrote = true;
+        });
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        completedWhilePaused = wrote;
+      },
+    );
+    await writer;
+    assert.equal(completedWhilePaused, true, `${mode} must release both gates during cold I/O`);
+    assert.equal(count, 0, "a completed history writer invalidates the captured generation");
+    assert.equal(existsSync(pathFor(name)), true);
+  }
+
+  // Any history-table write after capture invalidates the whole reclamation pass.
+  for (const table of ["messages", "message_swipes", "message_trash"] as const) {
+    const name = `changed-${table}.png`;
+    writeAvatar(name);
+    const removed = await duringColdRead(
+      () => unlinkAvatarFilesIfUnreferenced({ db, avatarRoot, avatarPaths: [urlFor(name)] }),
+      async () => {
+        if (table === "messages")
+          await db
+            .update(messages)
+            .set({ extra: extraFor(name) })
+            .where(eq(messages.id, "m-new"));
+        else if (table === "message_swipes")
+          await db
+            .update(messageSwipes)
+            .set({ extra: extraFor(name) })
+            .where(eq(messageSwipes.id, "s-history"));
+        else
+          await db.insert(messageTrash).values({
+            id: "phase-trash",
+            chatId: "trash",
+            messageId: "phase-deleted",
+            role: "user",
+            content: "Deleted",
+            messageCreatedAt: at,
+            deletedAt: at,
+            snapshot: JSON.stringify({ message: message("phase-deleted", "trash", extraFor(name)), swipes: [] }),
+          });
+      },
+    );
+    assert.equal(removed, 0, `${table} generation change must retain every candidate`);
+    assert.equal(existsSync(pathFor(name)), true);
+  }
+  await db
+    .update(messages)
+    .set({ extra: extraFor("new.png") })
+    .where(eq(messages.id, "m-new"));
+  await db
+    .update(messageSwipes)
+    .set({ extra: extraFor("swipe.png") })
+    .where(eq(messageSwipes.id, "s-history"));
+  await db.delete(messageTrash).where(eq(messageTrash.id, "phase-trash"));
+
+  writeAvatar("phase-rollback.png");
+  assert.equal(
+    await duringColdRead(
+      () => unlinkAvatarFilesIfUnreferenced({ db, avatarRoot, avatarPaths: [urlFor("phase-rollback.png")] }),
+      () =>
+        assert.rejects(
+          db.transaction(async (tx) => {
+            await tx.delete(messages).where(eq(messages.id, "m-new"));
+            throw new Error("rollback between avatar scan phases");
+          }),
+          /rollback between avatar scan phases/u,
+        ),
+    ),
+    0,
+    "rollback cannot restore the earlier generation and certify a stale scan",
+  );
+  assert.equal(existsSync(pathFor("phase-rollback.png")), true);
+
+  writeAvatar("phase-card.png");
+  assert.equal(
+    await duringColdRead(
+      () => unlinkAvatarFilesIfUnreferenced({ db, avatarRoot, avatarPaths: [urlFor("phase-card.png")] }),
+      async () => {
+        await db.insert(personas).values({
+          id: "phase-owner",
+          name: "New owner",
+          avatarPath: urlFor("phase-card.png"),
+          createdAt: at,
+          updatedAt: at,
+        });
+      },
+    ),
+    0,
+    "final validation must re-read current cards after cold I/O",
+  );
+  await db.delete(personas).where(eq(personas.id, "phase-owner"));
+
+  // Real flush-tail eviction is now allowed during cold I/O: captured resident refs remain safe.
   const previousCap = process.env.MARINARA_MAX_RESIDENT_CHATS;
-  const residentUnits = db._fileStore.getResidentChatUnits;
-  const readDirectory = fsPromises.readdir;
-  let flushDuringScan: Promise<void> | undefined;
-  let overlappedFlush = false;
-  let residentDuringFlush: string[] | undefined;
   try {
     process.env.MARINARA_MAX_RESIDENT_CHATS = "2";
     await db._fileStore.flush();
     for (const chatId of ["race", "swipe", "backup"])
       await db.select().from(messages).where(eq(messages.chatId, chatId));
-    const beforeScan = [...residentUnits()].sort();
-    assert.ok(["race", "swipe", "backup"].every((id) => beforeScan.includes(id)));
-    db._fileStore.getResidentChatUnits = () => {
-      const snapshot = residentUnits();
-      flushDuringScan ??= db._fileStore.flush();
-      return snapshot;
-    };
-    fsPromises.readdir = (async (...args: Parameters<typeof readDirectory>) => {
-      if (!overlappedFlush && String(args[0]).endsWith(join("tables", "messages"))) {
-        overlappedFlush = true;
-        await flushDuringScan;
-        residentDuringFlush = [...residentUnits()].sort();
-      }
-      return readDirectory(...args);
-    }) as typeof readDirectory;
-    syncBuiltinESMExports();
-    const deleted = await unlinkAvatarFilesIfUnreferenced({ db, avatarRoot, avatarPaths: [urlFor("new.png")] });
-    // Assert outside the scanner: its deliberate fail-closed catch must not hide a probe failure.
-    assert.equal(overlappedFlush, true, "the real flush must finish during the scanner's awaited directory read");
-    assert.ok(flushDuringScan, "the flush must start after residency is sampled inside cleanup");
-    assert.deepEqual(residentDuringFlush, beforeScan, "active cleanup transactions prevent flush-tail eviction");
-    assert.equal(deleted, 0);
-    assert.equal(existsSync(pathFor("new.png")), true);
-    db._fileStore.getResidentChatUnits = residentUnits;
-    fsPromises.readdir = readDirectory;
-    syncBuiltinESMExports();
-    await db._fileStore.flush();
-    assert.equal(residentUnits().has("race"), false, "the same flush evicts the oldest unit after cleanup exits");
-    assert.equal(await unlinkAvatarFilesIfUnreferenced({ db, avatarRoot, avatarPaths: [urlFor("new.png")] }), 0);
+    assert.equal(db._fileStore.getResidentChatUnits().has("race"), true);
+    writeAvatar("eviction-orphan.png");
+    assert.equal(
+      await duringColdRead(
+        () =>
+          unlinkAvatarFilesIfUnreferenced({
+            db,
+            avatarRoot,
+            avatarPaths: [urlFor("new.png"), urlFor("eviction-orphan.png")],
+          }),
+        async () => {
+          await db._fileStore.flush();
+          assert.equal(
+            db._fileStore.getResidentChatUnits().has("race"),
+            false,
+            "real eviction must finish while cold I/O is paused",
+          );
+        },
+      ),
+      1,
+    );
+    assert.equal(existsSync(pathFor("new.png")), true, "eviction cannot hide the resident reference already captured");
+    assert.equal(existsSync(pathFor("eviction-orphan.png")), false);
   } finally {
-    db._fileStore.getResidentChatUnits = residentUnits;
-    fsPromises.readdir = readDirectory;
-    syncBuiltinESMExports();
     if (previousCap === undefined) delete process.env.MARINARA_MAX_RESIDENT_CHATS;
     else process.env.MARINARA_MAX_RESIDENT_CHATS = previousCap;
   }
   console.info(
-    "Frozen identity avatar cleanup regressions passed (cold/resident messages, swipes, trash, backup, rollback, eviction, and read failures).",
+    "Frozen identity avatar cleanup regressions passed (cold/resident messages, swipes, trash, backup, rollback, staged writes, eviction, and read failures).",
   );
 } finally {
   await db._fileStore.close();

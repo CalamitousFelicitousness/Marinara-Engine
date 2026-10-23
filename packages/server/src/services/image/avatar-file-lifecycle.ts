@@ -30,6 +30,12 @@ type AbandonedAvatarFile = {
   bytes: number;
 };
 
+const IDENTITY_HISTORY_TABLES = ["messages", "message_swipes", "message_trash"] as const;
+type FrozenAvatarReferenceScan = {
+  files: Set<string>;
+  generations: ReadonlyMap<string, number>;
+};
+
 /** Serialize avatar-reference mutations with final-reference file cleanup. */
 export async function withAvatarFileLifecycleLock<T>(operation: () => Promise<T> | T): Promise<T> {
   const previous = avatarLifecycleQueue;
@@ -146,18 +152,19 @@ async function referencedAvatarFiles(db: DB, avatarRoot: string): Promise<Set<st
 
 /**
  * Read cold identity history without leasing lazy chat tables. Resident rows are authoritative,
- * including unflushed inserts/deletes; cold units cannot have unflushed writes. Call only
- * inside a DB transaction: its write gate preserves this view across asynchronous file I/O
- * and prevents another request's temporary deletion from hiding a reference before rollback.
+ * including unflushed inserts/deletes; cold units cannot have unflushed writes. Capture
+ * committed resident references in a short transaction, then read cold shards outside it.
+ * The caller must validate the sampled generations under the final avatar lock and count/unlink transaction.
  * An unreadable shard/metadata makes cleanup inconclusive, so retain every candidate file.
  */
 async function frozenIdentityAvatarFiles(
   db: DB,
   avatarRoot: string,
   candidates: ReadonlySet<string>,
-): Promise<Set<string> | null> {
+): Promise<FrozenAvatarReferenceScan | null> {
   const startedAt = performance.now();
   const files = new Set<string>();
+  if (candidates.size === 0) return { files, generations: new Map() };
   const record = (value: unknown): Record<string, unknown> => {
     if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid identity metadata");
     return value as Record<string, unknown>;
@@ -185,12 +192,29 @@ async function frozenIdentityAvatarFiles(
 
   try {
     const store = db._fileStore;
-    // transaction() keeps activeTransactionCount > 0 across awaits; maybeEvictUnits refuses
-    // eviction while it is active, so skipped shards remain represented by resident rows below.
-    const residentNames = new Set([...store.getResidentChatUnits()].map((key) => `${encodeShardKey(key)}.json`));
-    const fullyResident = store.getFullyResidentLazyTables();
-    for (const table of ["messages", "message_swipes", "message_trash"]) {
-      if (isLazyUnitTable(table) && !fullyResident.has(table)) {
+    const snapshot = await db.transaction(async () => {
+      for (const filePath of await referencedAvatarFiles(db, avatarRoot)) {
+        if (candidates.has(filePath)) files.add(filePath);
+      }
+      const residentNames = new Set([...store.getResidentChatUnits()].map((key) => `${encodeShardKey(key)}.json`));
+      const fullyResident = store.getFullyResidentLazyTables();
+      // No awaits while sampling resident rows: eviction afterward cannot hide captured refs.
+      for (const table of IDENTITY_HISTORY_TABLES) {
+        if (files.size === candidates.size) break;
+        for (const row of store.getResidentLazyRows(table)) {
+          readRow(table, row);
+          if (files.size === candidates.size) break;
+        }
+      }
+      const generations = new Map(
+        IDENTITY_HISTORY_TABLES.map((table) => [table, store.getTableWriteGeneration(table)]),
+      );
+      return { residentNames, fullyResident, generations };
+    });
+    const result = { files, generations: snapshot.generations };
+    if (files.size === candidates.size) return result;
+    for (const table of IDENTITY_HISTORY_TABLES) {
+      if (isLazyUnitTable(table) && !snapshot.fullyResident.has(table)) {
         const shardDir = join(store.rootDir, "tables", table);
         let entries: string[];
         try {
@@ -205,22 +229,18 @@ async function frozenIdentityAvatarFiles(
           if (entry.endsWith(".json.bak") && isShardDataFileName(entry.slice(0, -4))) names.add(entry.slice(0, -4));
         }
         for (const name of names) {
-          if (residentNames.has(name)) continue;
+          if (snapshot.residentNames.has(name)) continue;
           const path = join(shardDir, name);
           const rows = JSON.parse(await readFile(entries.includes(name) ? path : `${path}.bak`, "utf8")) as unknown;
           if (!Array.isArray(rows)) throw new Error("Invalid identity history shard");
           for (const row of rows) {
             readRow(table, row);
-            if (files.size === candidates.size) return files;
+            if (files.size === candidates.size) return result;
           }
         }
       }
-      for (const row of store.getResidentLazyRows(table)) {
-        readRow(table, row);
-        if (files.size === candidates.size) return files;
-      }
     }
-    return files;
+    return result;
   } catch (error) {
     logger.warn(error, "Could not inspect frozen identity history; retaining avatar files");
     return null;
@@ -233,18 +253,32 @@ async function frozenIdentityAvatarFiles(
   }
 }
 
+/** Call inside the final avatar lifecycle lock and DB transaction, after cold I/O. */
 async function excludeFrozenAvatarFiles(
   db: DB,
   avatarRoot: string,
   files: AbandonedAvatarFile[],
+  scan: FrozenAvatarReferenceScan | null,
 ): Promise<AbandonedAvatarFile[]> {
-  if (files.length === 0) return files;
-  const frozen = await frozenIdentityAvatarFiles(db, avatarRoot, new Set(files.map((file) => file.filePath)));
-  return frozen === null ? [] : files.filter((file) => !frozen.has(file.filePath));
+  if (files.length === 0 || scan === null) return [];
+  const current = await referencedAvatarFiles(db, avatarRoot);
+  if (!frozenIdentityHistoryUnchanged(db, scan)) {
+    // ponytail: concurrent history edits retain candidates until the next cleanup;
+    // add a bounded rescan if busy profiles need immediate reclamation.
+    logger.debug("Frozen identity history changed during inspection; retaining avatar files");
+    return [];
+  }
+  return files.filter((file) => !scan.files.has(file.filePath) && !current.has(file.filePath));
+}
+
+function frozenIdentityHistoryUnchanged(db: DB, scan: FrozenAvatarReferenceScan | null): boolean {
+  return (
+    scan !== null &&
+    [...scan.generations].every(([table, generation]) => db._fileStore.getTableWriteGeneration(table) === generation)
+  );
 }
 
 async function abandonedAvatarFilesUnlocked(input: {
-  db: DB;
   avatarRoot: string;
   minimumAgeMs: number;
   nowMs: number;
@@ -257,12 +291,10 @@ async function abandonedAvatarFilesUnlocked(input: {
     throw error;
   }
 
-  const referenced = await referencedAvatarFiles(input.db, input.avatarRoot);
   const abandoned: AbandonedAvatarFile[] = [];
   for (const entry of entries) {
     if (!entry.isFile() || !STORED_AVATAR_EXTENSIONS.has(extname(entry.name).toLowerCase())) continue;
     const filePath = assertInsideDir(input.avatarRoot, join(input.avatarRoot, entry.name));
-    if (referenced.has(filePath)) continue;
     try {
       const fileStat = await stat(filePath);
       if (!fileStat.isFile() || input.nowMs - fileStat.mtimeMs < input.minimumAgeMs) continue;
@@ -293,19 +325,17 @@ export async function scanAbandonedAvatarFiles(input: {
   /** Test-only age override. */
   minimumAgeMs?: number;
 }): Promise<AbandonedAvatarFileSummary> {
-  // ponytail: an accurate scan holds the write gate across all cold history, so large profiles can delay writes.
-  // Keep the committed view and eviction guard; upgrade to a persisted avatar-reference index
-  // when cleanup needs bounded work per transaction.
+  const avatarRoot = input.avatarRoot ?? join(DATA_DIR, "avatars");
+  const abandoned = await abandonedAvatarFilesUnlocked({
+    avatarRoot,
+    minimumAgeMs: input.minimumAgeMs ?? ABANDONED_AVATAR_MIN_AGE_MS,
+    nowMs: input.nowMs ?? Date.now(),
+  });
+  const frozen = await frozenIdentityAvatarFiles(input.db, avatarRoot, new Set(abandoned.map((file) => file.filePath)));
   return withAvatarFileLifecycleLock(() =>
     input.db.transaction(async () => {
-      const avatarRoot = input.avatarRoot ?? join(DATA_DIR, "avatars");
-      const abandoned = await abandonedAvatarFilesUnlocked({
-        db: input.db,
-        avatarRoot,
-        minimumAgeMs: input.minimumAgeMs ?? ABANDONED_AVATAR_MIN_AGE_MS,
-        nowMs: input.nowMs ?? Date.now(),
-      });
-      return summarizeAbandonedAvatarFiles(await excludeFrozenAvatarFiles(input.db, avatarRoot, abandoned));
+      const files = await excludeFrozenAvatarFiles(input.db, avatarRoot, abandoned, frozen);
+      return summarizeAbandonedAvatarFiles(frozenIdentityHistoryUnchanged(input.db, frozen) ? files : []);
     }),
   );
 }
@@ -320,17 +350,18 @@ export async function deleteAbandonedAvatarFiles(input: {
   /** Test-only age override. */
   minimumAgeMs?: number;
 }): Promise<AbandonedAvatarFileSummary> {
+  const avatarRoot = input.avatarRoot ?? join(DATA_DIR, "avatars");
+  const abandoned = await abandonedAvatarFilesUnlocked({
+    avatarRoot,
+    minimumAgeMs: input.minimumAgeMs ?? ABANDONED_AVATAR_MIN_AGE_MS,
+    nowMs: input.nowMs ?? Date.now(),
+  });
+  const frozen = await frozenIdentityAvatarFiles(input.db, avatarRoot, new Set(abandoned.map((file) => file.filePath)));
   return withAvatarFileLifecycleLock(() =>
     input.db.transaction(async () => {
-      const avatarRoot = input.avatarRoot ?? join(DATA_DIR, "avatars");
-      const abandoned = await abandonedAvatarFilesUnlocked({
-        db: input.db,
-        avatarRoot,
-        minimumAgeMs: input.minimumAgeMs ?? ABANDONED_AVATAR_MIN_AGE_MS,
-        nowMs: input.nowMs ?? Date.now(),
-      });
       const deleted: AbandonedAvatarFile[] = [];
-      for (const file of await excludeFrozenAvatarFiles(input.db, avatarRoot, abandoned)) {
+      for (const file of await excludeFrozenAvatarFiles(input.db, avatarRoot, abandoned, frozen)) {
+        if (!frozenIdentityHistoryUnchanged(input.db, frozen)) break;
         try {
           await unlink(file.filePath);
           deleted.push(file);
@@ -346,56 +377,42 @@ export async function deleteAbandonedAvatarFiles(input: {
 }
 
 /** Remove local avatar files after their final database reference has been deleted. */
-async function unlinkAvatarFilesIfUnreferencedUnlocked(input: {
-  db: DB;
-  avatarPaths: readonly string[];
-  avatarRoot: string;
-}): Promise<number> {
-  // Do not collect against another request's uncommitted deletion that may roll back.
-  return input.db.transaction(async () => {
-    const avatarRoot = input.avatarRoot;
-    const referenced = await referencedAvatarFiles(input.db, avatarRoot);
-    const candidates = new Set<string>();
-    for (const avatarPath of input.avatarPaths) {
-      const filePath = resolveStoredAvatarFile(avatarPath, avatarRoot);
-      if (filePath && !referenced.has(filePath)) candidates.add(filePath);
-    }
-
-    if (candidates.size === 0) return 0;
-    const frozen = await frozenIdentityAvatarFiles(input.db, avatarRoot, candidates);
-    if (frozen === null) return 0;
-    let deleted = 0;
-    for (const filePath of candidates) {
-      if (frozen.has(filePath)) continue;
-      try {
-        await unlink(filePath);
-        deleted++;
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-          logger.warn(error, "Could not remove unreferenced avatar file %s", filePath);
-        }
-      }
-    }
-    return deleted;
-  });
-}
-
-/** Remove local avatar files after their final database reference has been deleted. */
 export async function unlinkAvatarFilesIfUnreferenced(input: {
   db: DB;
   avatarPaths: readonly string[];
   /** Test-only filesystem override. */
   avatarRoot?: string;
 }): Promise<number> {
+  const avatarRoot = input.avatarRoot ?? join(DATA_DIR, "avatars");
+  const candidates = new Set<string>();
+  for (const avatarPath of input.avatarPaths) {
+    const filePath = resolveStoredAvatarFile(avatarPath, avatarRoot);
+    if (filePath) candidates.add(filePath);
+  }
+  if (candidates.size === 0) return 0;
+  const frozen = await frozenIdentityAvatarFiles(input.db, avatarRoot, candidates);
+  const files = [...candidates].map((filePath) => ({ filePath, bytes: 0 }));
+  // Validate after cold I/O, then keep the reference decision and unlink in one write turn.
   return withAvatarFileLifecycleLock(() =>
-    unlinkAvatarFilesIfUnreferencedUnlocked({
-      ...input,
-      avatarRoot: input.avatarRoot ?? join(DATA_DIR, "avatars"),
+    input.db.transaction(async () => {
+      let deleted = 0;
+      for (const { filePath } of await excludeFrozenAvatarFiles(input.db, avatarRoot, files, frozen)) {
+        if (!frozenIdentityHistoryUnchanged(input.db, frozen)) break;
+        try {
+          await unlink(filePath);
+          deleted++;
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+            logger.warn(error, "Could not remove unreferenced avatar file %s", filePath);
+          }
+        }
+      }
+      return deleted;
     }),
   );
 }
 
-/** Hold the lifecycle lock from reference capture through mutation and cleanup. */
+/** Hold reference capture and mutation together, then stage cleanup without holding the lock over cold I/O. */
 export async function mutateAvatarReferencesAndCleanup<T>(input: {
   db: DB;
   collectAvatarPaths: () => Promise<string[]>;
@@ -404,17 +421,18 @@ export async function mutateAvatarReferencesAndCleanup<T>(input: {
   /** Test-only filesystem override. */
   avatarRoot?: string;
 }): Promise<{ result: T; filesDeleted: number }> {
-  return withAvatarFileLifecycleLock(async () => {
-    const shouldCleanup = input.cleanupFiles !== false;
+  const shouldCleanup = input.cleanupFiles !== false;
+  const { result, avatarPaths } = await withAvatarFileLifecycleLock(async () => {
     const avatarPaths = shouldCleanup ? await input.collectAvatarPaths() : [];
     const result = await input.mutateReferences();
-    const filesDeleted = shouldCleanup
-      ? await unlinkAvatarFilesIfUnreferencedUnlocked({
-          db: input.db,
-          avatarPaths,
-          avatarRoot: input.avatarRoot ?? join(DATA_DIR, "avatars"),
-        })
-      : 0;
-    return { result, filesDeleted };
+    return { result, avatarPaths };
   });
+  const filesDeleted = shouldCleanup
+    ? await unlinkAvatarFilesIfUnreferenced({
+        db: input.db,
+        avatarPaths,
+        avatarRoot: input.avatarRoot ?? join(DATA_DIR, "avatars"),
+      })
+    : 0;
+  return { result, filesDeleted };
 }

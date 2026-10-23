@@ -1084,7 +1084,13 @@ export async function encounterRoutes(app: FastifyInstance) {
         ...storedOptions,
         temperature: storedOptions.temperature ?? 0.8,
         enableThinking: !!storedOptions.reasoningEffort && storedOptions.reasoningEffort !== "none",
-        maxTokens: resolveStoredMaxTokens(conn.defaultParameters, COMBAT_BLUEPRINT_OUTPUT_TOKENS),
+        // A connection's Max Output is sized for story replies; a whole battle's JSON cut off at
+        // 4096 tokens cannot be read (2026-10-23 playtest), so the setup asks for at least its own
+        // budget. The connection's hard cap (maxTokensOverride) still clamps it in the provider.
+        maxTokens: Math.max(
+          resolveStoredMaxTokens(conn.defaultParameters, COMBAT_BLUEPRINT_OUTPUT_TOKENS),
+          COMBAT_BLUEPRINT_OUTPUT_TOKENS,
+        ),
       });
       debugLog(
         "[debug/game/combat:init] raw response chatId=%s model=%s chars=%d\n%s",
@@ -1098,11 +1104,17 @@ export async function encounterRoutes(app: FastifyInstance) {
         return reply.status(502).send({ error: "No response from AI" });
       }
 
+      // Cut off at its token limit, the JSON is never whole: say so instead of a parse error.
+      const cutOff = ["length", "max_tokens", "max_output_tokens"].includes((result.finishReason ?? "").toLowerCase());
       let combatState: Record<string, unknown>;
       try {
         combatState = parseJSON(result.content) as Record<string, unknown>;
       } catch {
-        return reply.status(502).send({ error: "AI returned invalid JSON" });
+        return reply.status(502).send({
+          error: cutOff
+            ? "The battle setup was cut off at the connection's output limit. Raise its Max Output and try again."
+            : "AI returned invalid JSON",
+        });
       }
 
       if (!combatState?.party || !combatState?.enemies) {

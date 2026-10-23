@@ -348,7 +348,11 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
   let standIn = firstCard && !named.has(normalizeCharacterLookupName(firstCard)) ? firstCard : undefined;
   for (const listed of input.party) {
     let member = listed;
-    if (standIn && !builds.has(normalizeCharacterLookupName(member.name)) && !creatures.has(normalizeCharacterLookupName(member.name))) {
+    if (
+      standIn &&
+      !builds.has(normalizeCharacterLookupName(member.name)) &&
+      !creatures.has(normalizeCharacterLookupName(member.name))
+    ) {
       adjustments.push(`${member.name} fights as ${standIn}, the character the player plays.`);
       member = { ...member, name: standIn };
       standIn = undefined;

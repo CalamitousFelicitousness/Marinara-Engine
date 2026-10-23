@@ -378,7 +378,7 @@ export function useRulesetItemOutsideFight(input: {
           difficulty:
             typeof use.saveDifficulty === "number"
               ? use.saveDifficulty
-              : resolveRulesetValueRef(definition, user.build, use.saveDifficulty, evaluated),
+              : Number(item?.stats?.[use.saveDifficulty.stat]) || 0,
         },
         roll,
       );

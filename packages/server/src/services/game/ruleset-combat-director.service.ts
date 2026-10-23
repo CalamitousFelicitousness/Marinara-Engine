@@ -60,6 +60,8 @@ import {
   rulesetForecastsByTarget,
   rulesetConditionIcons,
   rulesetCombatHide,
+  rulesetRegenerations,
+  rulesetTargetIs,
   rulesetCombatOptions,
   rulesetCostSteps,
   rulesetAverageAmount,
@@ -1612,6 +1614,8 @@ interface RulesetCandidate {
   expected?: number;
   /** Whom of the other side it would likely drop, for orders that spare them. */
   drops?: string[];
+  /** Why it is worth more against its target than its forecast says (I1), for its reasons. */
+  edge?: RulesetBlowEdge;
 }
 
 /** How many cells a turn is weighed from. The board is small and a turn is short, so this is a
@@ -2767,15 +2771,17 @@ function rulesetCandidatesFrom(
         )?.averageDamage ?? 0;
       // As the target's own hide takes it, on the other side only: a weakness found, a regeneration
       // stopped, an immunity not wasted on (I1).
-      const average =
+      const against =
         !ally && !sequenced && fallingAction?.damage
-          ? rulesetAverageAgainst(definition, combat, encounter, target, fallingAction.damage, forecast)
-          : forecast;
+          ? rulesetAverageAgainst(definition, combat, encounter, target, fallingAction, forecast)
+          : undefined;
+      const average = against ? against.worth : forecast;
       const candidate: CombatAiCandidate<RulesetCandidate> = {
         action: {
           choice: { actorId, optionId: option.id, targetIds: lands ? [] : [targetId], ...paying(way) },
           option,
           targetId,
+          ...(against?.edge ? { edge: against.edge } : {}),
         },
         targetId,
         cost: price,
@@ -2809,6 +2815,11 @@ function rulesetCandidatesFrom(
         if (capped.value >= capped.max && !target.down) continue;
         candidate.healing =
           rulesetHealingWorth(average, capped) * (capped.max / Math.max(1, health.max)) + (target.down ? 1 : 0);
+        // A limited heal (a potion, a slot, a use a day) waits until a friend is below half (I2 re-test
+        // 2026-10-23: potions drunk at 26 of 38): above that it is worth a fifth, taken only when
+        // nothing better is on offer.
+        const limited = price > 0 || !!fallingAction?.uses || !!fallingAction?.itemUse || !!fallingAction?.charges;
+        if (limited && !target.down && health.value > health.max / 2) candidate.healing *= 0.2;
       } else if (average > 0) {
         // Never its own side, and never somebody who is already down: the rules let a blow land on
         // them, and a table where every opponent finishes off the dying is not one anybody plays
@@ -2984,55 +2995,91 @@ function rulesetBlowsBeforeTurn(
   return Math.min(1, friends * 0.5);
 }
 
+/** Why a blow is worth more against this one than its forecast says (I1): a damage type it is
+ *  vulnerable to, one that stops it regenerating, or a clause dealt only to what it is. */
+type RulesetBlowEdge = { way: "vulnerable" | "stops" | "suits"; damageType: string };
+
 /**
  * A blow's average as its target's own hide takes it (I1), part by part: nothing to a type it is
- * immune to, half to one it resists, double to one it is vulnerable to. And where one of the blow's
- * types stops it regenerating, what it would have regained besides: holy water on a fiend, fire on
- * a troll, whatever the ruleset calls them. The menu's forecast leaves a target's hide out (it cannot
- * promise what the player has not found out); the Engine's own side reads it.
+ * immune to, half to one it resists, double to one it is vulnerable to. A clause dealt only to what
+ * the target is (re-test 2026-10-23: holy water's radiant on undead) counts, as the menu's forecast,
+ * which reads only its first target, does not. And where one of the blow's types, or of the harm a
+ * condition it puts on deals (alchemist's fire), stops it regenerating, what it would have regained
+ * besides, whatever the ruleset calls them. The menu's forecast leaves a target's hide out (it
+ * cannot promise what the player has not found out); the Engine's own side reads it.
  */
 function rulesetAverageAgainst(
   definition: RulesetDefinition,
   combat: NonNullable<RulesetDefinition["combat"]>,
   encounter: RulesetEncounterState,
   target: RulesetCombatant,
-  damage: RulesetCombatAction["damage"],
+  action: RulesetCombatAction,
   average: number,
-): number {
-  if (!damage || average <= 0 || rulesetCombatIsPool(combat)) return average;
-  const parts = [
-    { type: damage.type, average: rulesetSafeAverage({ ...damage, plus: undefined }) },
-    ...(damage.plus ?? []).map((clause) => ({
-      type: clause.type ?? damage.type,
-      average: rulesetSafeAverage({ count: clause.count, sides: clause.sides, flat: clause.flat }),
-    })),
-  ].filter((part) => part.average > 0);
-  const whole = parts.reduce((sum, part) => sum + part.average, 0);
-  if (whole <= 0) return average;
+): { worth: number; edge?: RulesetBlowEdge } {
+  const damage = action.damage;
+  if (!damage || rulesetCombatIsPool(combat)) return { worth: average };
   const hide = rulesetCombatHide(definition, target, encounter);
   const listed = (list: ReadonlyArray<string | { type: string; except: string[] }>, type: string) =>
     list.some((entry) => (typeof entry === "string" ? entry : entry.type).trim().toLowerCase() === type);
-  let taken = 0;
   const types = new Set<string>();
-  for (const part of parts) {
-    const type = part.type?.trim().toLowerCase();
-    if (!type) {
-      taken += part.average;
-      continue;
-    }
+  let edge: RulesetBlowEdge | undefined;
+  // What a part is worth as this one takes it.
+  const taken = (written: string | undefined, amount: number) => {
+    const type = written?.trim().toLowerCase();
+    if (!type) return amount;
     types.add(type);
     const resists = listed(hide.resist, type);
     const vulnerable = listed(hide.vulnerable, type);
-    taken +=
-      part.average * (listed(hide.immune, type) ? 0 : resists && !vulnerable ? 0.5 : vulnerable && !resists ? 2 : 1);
+    if (vulnerable && !resists) edge ??= { way: "vulnerable", damageType: type };
+    return amount * (listed(hide.immune, type) ? 0 : resists && !vulnerable ? 0.5 : vulnerable && !resists ? 2 : 1);
+  };
+  const live = (clause: NonNullable<typeof damage.plus>[number]) => !clause.onCritical && clause.whileOn === undefined;
+  // What the forecast counts: the first amount and every clause dealt to anybody, scaled as it is.
+  const parts = [
+    { type: damage.type, average: rulesetSafeAverage({ ...damage, plus: undefined }) },
+    ...(damage.plus ?? [])
+      .filter((clause) => live(clause) && !clause.targetIs)
+      .map((clause) => ({
+        type: clause.type ?? damage.type,
+        average: rulesetSafeAverage({ count: clause.count, sides: clause.sides, flat: clause.flat }),
+      })),
+  ].filter((part) => part.average > 0);
+  const whole = parts.reduce((sum, part) => sum + part.average, 0);
+  let worth = 0;
+  if (whole > 0 && average > 0) {
+    const got = parts.reduce((sum, part) => sum + taken(part.type, part.average), 0);
+    worth = average * (got / whole);
+  } else worth = Math.max(0, average);
+  // What is dealt only to what this one is, on top.
+  for (const clause of damage.plus ?? []) {
+    if (!live(clause) || !clause.targetIs || !rulesetTargetIs(definition, target, clause.targetIs)) continue;
+    if (clause.not && rulesetTargetIs(definition, target, clause.not)) continue;
+    const type = clause.type ?? damage.type;
+    const added = taken(type, rulesetSafeAverage({ count: clause.count, sides: clause.sides, flat: clause.flat }));
+    if (added <= 0) continue;
+    worth += added;
+    if (type && edge?.way !== "vulnerable") edge = { way: "suits", damageType: type.trim().toLowerCase() };
   }
-  let worth = average * (taken / whole);
-  const regenerates = target.block?.regenerates;
-  if (worth > 0 && regenerates?.stoppedBy?.some((type) => types.has(type.trim().toLowerCase()))) {
+  // The types of what the conditions it puts on harm with, which reach a regeneration as well.
+  const harmTypes = new Set<string>();
+  for (const applied of action.applies ?? []) {
+    const type = combat.conditions?.find((entry) => entry.condition === applied.condition)?.harms?.type;
+    if (type?.trim()) harmTypes.add(type.trim().toLowerCase());
+  }
+  if (worth <= 0 && harmTypes.size === 0) return { worth, ...(edge ? { edge } : {}) };
+  for (const regenerates of rulesetRegenerations(definition, combat, target, encounter)) {
+    const stopper = regenerates.stoppedBy
+      ?.map((type) => type.trim().toLowerCase())
+      .find((type) => (worth > 0 && types.has(type)) || harmTypes.has(type));
+    if (!stopper) continue;
     const dice = regenerates.dice ? parseRulesetCombatDice(regenerates.dice) : null;
-    worth += (regenerates.flat ?? 0) + (dice ? rulesetSafeAverage(dice) : 0);
+    const regained = (regenerates.flat ?? 0) + (dice ? rulesetSafeAverage(dice) : 0);
+    if (regained <= 0) continue;
+    worth += regained;
+    edge = { way: "stops", damageType: stopper };
+    break;
   }
-  return worth;
+  return { worth, ...(edge ? { edge } : {}) };
 }
 
 /** An amount's average, nothing for one that has none or is written loosely. */
@@ -3995,6 +4042,7 @@ function rulesetPickReasons(
           why,
           ...(targetId ? { targetId } : {}),
           strength: damage >= 0.5 ? "heavy" : damage >= 0.2 ? "solid" : "some",
+          ...(candidate.action.edge ? { edge: { ...candidate.action.edge } } : {}),
         };
       }
       if (why === "risk" || why === "cost") return { why };
@@ -6328,6 +6376,13 @@ function suggestRulesetOptions(
   return out;
 }
 
+/** A blow's edge on its target, in a few words for a Game Master. */
+const RULESET_EDGE_SAID: Record<RulesetBlowEdge["way"], (type: string, target: string) => string> = {
+  vulnerable: (type, target) => `${target} takes double from ${type}`,
+  stops: (type, target) => `${type} stops ${target} regenerating`,
+  suits: (type, target) => `its extra ${type} is dealt to what ${target} is`,
+};
+
 /** How many of the Engine's own picks a Game Master is shown. */
 const RULESET_SUGGESTION_COUNT = 3;
 
@@ -6342,11 +6397,14 @@ function rulesetSuggestionReason(
   const option = candidate.action.option;
   const said: Record<keyof CombatAiScoreParts, () => string> = {
     damage: () => {
+      const edge = candidate.action.edge;
       const average = option.forecast?.averageDamage;
       const chance = option.forecast?.hitChance;
       return `${(candidate.damage ?? 0) >= 0.5 ? "heavy" : (candidate.damage ?? 0) >= 0.2 ? "solid" : "some"} damage${
         target ? ` to ${target}` : ""
-      }${average !== undefined ? ` (about ${Math.round(average)} damage${chance !== undefined ? `, ${Math.round(chance * 100)}% to hit` : ""})` : ""}`;
+      }${average !== undefined ? ` (about ${Math.round(average)} damage${chance !== undefined ? `, ${Math.round(chance * 100)}% to hit` : ""})` : ""}${
+        edge ? `, ${RULESET_EDGE_SAID[edge.way](edge.damageType, target || "its target")}` : ""
+      }`;
     },
     finish: () => `likely takes ${target || "its target"} out of the fight`,
     healing: () => `heals ${target || "a friend"}`,

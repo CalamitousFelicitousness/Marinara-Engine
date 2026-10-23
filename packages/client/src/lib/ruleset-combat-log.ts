@@ -1726,7 +1726,12 @@ function rulesetReasonText(reason: DirectedRulesetReason, names: RulesetCombatNa
   const target = (id?: string) => (id ? names.combatant(id) : "") || say("itsTarget");
   switch (reason.why) {
     case "damage":
-      return say(`damage_${reason.strength}`, { target: target(reason.targetId) });
+      return reason.edge
+        ? say("damageEdge", {
+            damage: say(`damage_${reason.strength}`, { target: target(reason.targetId) }),
+            edge: say(`edge_${reason.edge.way}`, { target: target(reason.targetId), type: reason.edge.damageType }),
+          })
+        : say(`damage_${reason.strength}`, { target: target(reason.targetId) });
     case "finish":
     case "healing":
     case "support":

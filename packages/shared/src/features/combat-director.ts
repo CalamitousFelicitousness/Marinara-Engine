@@ -248,7 +248,14 @@ export type DirectedRulesetEvent =
  *     of reach.
  */
 export type DirectedRulesetReason =
-  | { why: "damage"; targetId?: string; strength: "heavy" | "solid" | "some" }
+  | {
+      why: "damage";
+      targetId?: string;
+      strength: "heavy" | "solid" | "some";
+      /** Why it is worth more against the target than its forecast says (I1): a damage type it is
+       *  vulnerable to, one that stops it regenerating, or a clause dealt only to what it is. */
+      edge?: { way: "vulnerable" | "stops" | "suits"; damageType: string };
+    }
   | { why: "finish" | "healing" | "support" | "setup" | "protection" | "coordination" | "focus"; targetId?: string }
   | { why: "pressCaster"; targetId: string }
   | { why: "risk" | "cost" }

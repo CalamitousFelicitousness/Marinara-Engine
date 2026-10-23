@@ -164,6 +164,7 @@ export {
   rulesetCreatureKind,
   rulesetTagsNamed,
   rulesetTargetIs,
+  rulesetRegenerations,
   rulesetTargetTypesAllow,
   rulesetLanguages,
   rulesetItemCallRoll,

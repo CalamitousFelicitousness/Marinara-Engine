@@ -4,8 +4,9 @@
  *   - A paralysing hold goes on the most dangerous opponent, never on one already held or one that
  *     cannot be held; a condition worth nothing is not cast at all.
  *   - Healing is worth what is missing: no Second Wind at 35 of 44.
- *   - Healing a friend waits for a wound worth a turn.
- *   - A weakness is used, an immunity not wasted on, a regeneration stopped.
+ *   - Healing a friend waits for a wound worth a turn, and a limited heal for below half.
+ *   - A weakness is used, an immunity not wasted on, a regeneration stopped: by what a flask deals
+ *     only to what its target is, and by the burning it leaves.
  *   - Oil that makes fire hurt more is thrown only where a fire will follow.
  *   - A Counterspell is worth what it stops: a blast at the party far more than a flick.
  */
@@ -190,9 +191,9 @@ try {
       range: { normal: 30 },
       heal: { count: 2, sides: 8, flat: 3 },
     };
-    const at = (value: number) => {
+    const at = (value: number, mends: Record<string, unknown> = cure, also: Record<string, unknown> = flick) => {
       const { encounter, state } = fight({
-        priest: { side: "enemy", block: block([flick, cure]), at: { x: 2, y: 4 } },
+        priest: { side: "enemy", block: block([also, mends]), at: { x: 2, y: 4 } },
         knight: { side: "enemy", block: block([poke]), at: { x: 3, y: 4 } },
         foe: { side: "party", block: block([poke]), at: { x: 10, y: 4 } },
       });
@@ -204,6 +205,14 @@ try {
     const hurt = at(15);
     assert.equal(hurt?.option.id, "cure", "at 15 of 60 it mends");
     assert.equal(hurt?.targetId, "knight");
+    // A limited one waits for below half (I2 re-test 2026-10-23: potions drunk at 26 of 38).
+    // Above half it is given only when nothing better is on offer.
+    const potion = { ...cure, id: "potion", uses: { per: "day", count: 2 } };
+    const bolt = { ...flick, id: "bolt", damage: { count: 1, sides: 10, flat: 0 } };
+    assert.equal(at(36, potion, bolt)?.option.id, "bolt", "a limited mend kept at 36 of 60");
+    assert.equal(at(36, cure, bolt)?.option.id, "cure", "where an unlimited one is given");
+    assert.equal(at(36, potion)?.option.id, "potion", "unless nothing better is on offer");
+    assert.equal(at(26, potion, bolt)?.option.id, "potion", "and given at 26 of 60");
   }
 
   // ── A weakness is used, an immunity not wasted on, a regeneration stopped (I1) ──
@@ -236,6 +245,53 @@ try {
     assert.equal(pick({ resist: ["cold"] }), "burn", "not cold where cold is halved");
     assert.equal(pick({ immune: ["cold"] }), "burn", "never cold where it does nothing");
     assert.equal(pick({ regenerates: { flat: 10, stoppedBy: ["fire"] } }), "burn", "fire where it stops regrowth");
+
+    // Re-test 2026-10-23: what a flask deals only to what its target is, and a burning that deals
+    // nothing on the hit but stops regrowth after, are both worth throwing where they bite.
+    combat.conditions = [
+      ...(combat.conditions ?? []),
+      { condition: "sticky_fire", harms: { dice: "1d4", type: "fire" } },
+    ] as typeof combat.conditions;
+    combat.creatureTypes = { types: [{ id: "undead", label: "Undead" }], tags: [] } as typeof combat.creatureTypes;
+    const holy = {
+      id: "holy",
+      name: "Holy",
+      budget: "action",
+      toHit: 6,
+      range: { normal: 90 },
+      damage: {
+        count: 0,
+        sides: 0,
+        flat: 0,
+        type: "radiant",
+        plus: [{ count: 2, sides: 6, flat: 0, type: "radiant", targetIs: { types: ["undead"] } }],
+      },
+    };
+    const flask = {
+      id: "flask",
+      name: "Flask",
+      budget: "action",
+      toHit: 6,
+      range: { normal: 90 },
+      damage: { count: 0, sides: 0, flat: 0, type: "fire" },
+      applies: [{ condition: "sticky_fire", duration: "until-dispelled" }],
+    };
+    const thrown = (actions: unknown[], extra: Record<string, unknown>) => {
+      const { encounter, state } = fight({
+        mage: { side: "enemy", block: block(actions), at: { x: 2, y: 4 } },
+        beast: { side: "party", block: block([poke], extra), at: { x: 10, y: 4 } },
+      });
+      const picked = pickRulesetChoice(definition, state, encounter, "mage");
+      return picked?.option.id;
+    };
+    assert.equal(thrown([holy, chill], {}), "chill", "nothing of it reaches a living beast");
+    assert.equal(thrown([holy, chill], { type: "undead" }), "holy", "its radiant on the undead");
+    assert.equal(thrown([flask, chill], {}), "chill", "a little burning, all else alike");
+    assert.equal(
+      thrown([flask, chill], { regenerates: { flat: 10, stoppedBy: ["acid", "fire"] } }),
+      "flask",
+      "a burning that stops regrowth",
+    );
   }
 
   // ── Oil is worth throwing only where a fire will follow ──

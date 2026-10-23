@@ -190,7 +190,7 @@ for (const theme of ["dark", "light"] as const) {
         );
       }
       expect(sent).toHaveLength(5);
-      await capture(page, info, `music-test-auth-error-${theme}`, generate);
+      await capture(page, info, `music-test-auth-error-${theme}`, editor.getByRole("alert"));
       mode = "auth-reason";
       await generate.click();
       await expect(editor.getByRole("alert")).toHaveText(
@@ -203,7 +203,7 @@ for (const theme of ["dark", "light"] as const) {
         "The test input or connection configuration is invalid. Check the track length, selected model, and endpoint settings.",
       );
       expect(sent).toHaveLength(7);
-      await capture(page, info, `music-test-input-error-${theme}`, generate);
+      await capture(page, info, `music-test-input-error-${theme}`, editor.getByRole("alert"));
       mode = "hold";
       await generate.click();
       await expect.poll(() => !!release).toBe(true);

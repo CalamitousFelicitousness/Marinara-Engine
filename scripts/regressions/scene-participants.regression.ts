@@ -155,15 +155,35 @@ try {
     mood: "warm",
   });
   // A dialogue quote never closed doesn't swallow the whole properties written after it on the line.
-  assert.deepEqual(tryParseJsonRecord('{\n  "firstMessage": "The sign said "Welcome.", mood: "warm",\n  "name": "x"\n}'), {
-    firstMessage: 'The sign said "Welcome.',
-    mood: "warm",
-    name: "x",
-  });
+  assert.deepEqual(
+    tryParseJsonRecord('{\n  "firstMessage": "The sign said "Welcome.", mood: "warm",\n  "name": "x"\n}'),
+    {
+      firstMessage: 'The sign said "Welcome.',
+      mood: "warm",
+      name: "x",
+    },
+  );
   assert.deepEqual(
     tryParseJsonRecord('{\n  "firstMessage": "The sign said "Welcome.", mood: "warm", "tone": "calm"\n}'),
     { firstMessage: 'The sign said "Welcome.', mood: "warm", tone: "calm" },
   );
+  // A value missing its own closing quote doesn't swallow the bare property after it either.
+  const openHead = '"description": "The lab was cold, title: "The Lab"';
+  assert.deepEqual(tryParseJsonRecord(`{\n  ${openHead}\n}`), { description: "The lab was cold", title: "The Lab" });
+  assert.deepEqual(tryParseJsonRecord(`{\n  "name": "x", ${openHead}\n}`), {
+    name: "x",
+    description: "The lab was cold",
+    title: "The Lab",
+  });
+  providerContent = `{\n  "name": "Scene: Lab",\n  "firstMessage": "Cold in here.",\n  ${openHead}\n}`;
+  const openHeadPlan = await api("POST", "/api/scene/plan", {
+    chatId: origin.id,
+    connectionId: conn.id,
+    prompt: "Visit the lab",
+    promptPreferences: { pov: "third_person", tense: "past", ...selected },
+  });
+  assert.equal(openHeadPlan.error, undefined);
+  assert.equal(openHeadPlan.plan?.description, "The lab was cold", "the description isn't joined to the next property");
   assert.deepEqual(tryParseJsonRecord(`{\n  "firstMessage": "${signsText.replace("warning", "'warning'")}"\n}`), {
     firstMessage: signsText.replace("warning", "'warning'"),
   });

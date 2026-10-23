@@ -68,10 +68,13 @@ function anyKeyProperties(line: string): string[] | null {
   if (!open.length) return properties;
   // A quote left open to the end of the line (`"The sign said "Welcome.", mood: "warm"`) decides nothing about the
   // pieces after it: trailing pieces that are whole properties on their own still split off, and the rest is one value.
+  // A value whose own closing quote is missing (`"description": "The lab was cold, title: "The Lab"`) gets it back.
   let head = open.length;
   while (head > 1 && whole(open[head - 1]!)) head--;
-  if (head === open.length || !PROPERTY_RE.test(open.slice(0, head).join(","))) return null;
-  return [...properties, open.slice(0, head).join(","), ...open.slice(head)];
+  const rest = open.slice(0, head).join(",");
+  const closed = PROPERTY_RE.test(rest) ? rest : `${rest.trimEnd()}"`;
+  if (head === open.length || !PROPERTY_RE.test(closed)) return null;
+  return [...properties, closed, ...open.slice(head)];
 }
 
 function escapeQuotesInsideLineValues(raw: string): string {

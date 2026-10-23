@@ -131,6 +131,7 @@ function manualChunks(id: string) {
   )
     return "vendor-motion-legacy";
   if (/\/node_modules\/(?:framer-motion|motion-dom|motion-utils)\//u.test(id)) return "vendor-motion";
+  if (/\/node_modules\/zod\//u.test(id)) return "vendor-validation";
   if (id.includes("react") || id.includes("scheduler")) return "vendor-react";
   if (id.includes("@tanstack")) return "vendor-tanstack";
   if (id.includes("zustand")) return "vendor-state";

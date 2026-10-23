@@ -506,6 +506,14 @@ try {
   });
   assert.equal(recoveredPrefills?.assistantPrefill, "Visible prefix");
   assert.equal(recoveredPrefills?.assistantReasoningPrefill, "Reasoning prefix");
+  assert.deepEqual(recoveredPrefills, {
+    assistantPrefill: "Visible prefix",
+    assistantReasoningPrefill: "Reasoning prefix",
+  });
+  // Connection/chat overlays share this parser across modes; omitted fields must not override another source.
+  assert.deepEqual(parseStoredGenerationParameters({}), {});
+  assert.deepEqual(parseStoredGenerationParameters({ temperature: 0.7 }), { temperature: 0.7 });
+  assert.deepEqual(parseStoredGenerationParameters('{"topP":0.8}'), { topP: 0.8 });
 
   customParametersRequestBody = null;
   await provider.chatComplete(buildPrefillMessages("Visible prefix  \n", "Reasoning prefix  \n"), {

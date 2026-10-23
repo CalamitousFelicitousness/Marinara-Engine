@@ -5985,20 +5985,27 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   message.role === "user" && (!advancedAgentSourceIds || advancedAgentSourceIds.has(message.id)),
               )?.content ?? "")
           : undefined;
-        const customAgentsWithLorebookTriggers = resolvedAgents.filter(
-          (agent) => !builtInAgentTypes.has(agent.type) && agent.settings.triggerLorebooksForAgentCalls === true,
+        const agentsWithLorebookTriggers = resolvedAgents.filter(
+          (agent) =>
+            agent.settings.chatLorebookAttachmentEnabled === true ||
+            (!builtInAgentTypes.has(agent.type) && agent.settings.triggerLorebooksForAgentCalls === true),
         );
         const resolveTriggeredLorebookEntriesByAgentId = createAgentLorebookTriggerResolver({
-          agents: customAgentsWithLorebookTriggers.map((agent) => {
-            const { sourceLorebookIds, source } = resolveKnowledgeSourceLorebookIds({
-              settings: agent.settings,
-              chatActiveLorebookIds,
-            });
+          agents: agentsWithLorebookTriggers.map((agent) => {
+            const { sourceLorebookIds, source } =
+              !builtInAgentTypes.has(agent.type) && agent.settings.triggerLorebooksForAgentCalls === true
+                ? resolveKnowledgeSourceLorebookIds({ settings: agent.settings, chatActiveLorebookIds })
+                : { sourceLorebookIds: [], source: "none" as const };
             return {
               id: agent.id,
               contextSize: normalizeAgentContextSize(agent.settings.contextSize),
               sourceLorebookIds,
               source,
+              additionalManualLorebookIds:
+                agent.settings.chatLorebookAttachmentEnabled === true &&
+                typeof agent.settings.chatAttachedLorebookId === "string"
+                  ? [agent.settings.chatAttachedLorebookId]
+                  : [],
             };
           }),
           activeCharacterIds: promptCharacterIds,
@@ -12273,7 +12280,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               logger.warn(error, "[advanced-memory] Could not attach scene check to post-processing trackers");
             }
           }
-          if (customAgentsWithLorebookTriggers.some((agent) => agent.phase === "post_processing")) {
+          if (agentsWithLorebookTriggers.some((agent) => agent.phase === "post_processing")) {
             agentContext.triggeredLorebookEntriesByAgentId = await resolveTriggeredLorebookEntriesByAgentId([
               ...recentMsgs,
               {

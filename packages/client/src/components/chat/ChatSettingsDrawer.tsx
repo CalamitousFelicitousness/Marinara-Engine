@@ -167,6 +167,7 @@ import {
 import { ExpressionSpriteSettings } from "./ExpressionSpriteSettings";
 import { AvatarLayoutSettings, type AvatarLayoutControls } from "./AvatarLayoutSettings";
 import { AgentPromptTemplateSelect } from "./AgentPromptTemplateSelect";
+import { AgentLorebookAttachment } from "./AgentLorebookAttachment";
 import { HapticConnectionPanel } from "./HapticConnectionPanel";
 import { HAPTIC_SENSITIVITY_OPTIONS } from "./haptic-sensitivity-options";
 import { ChatModeIcon } from "./ChatModeIcon";
@@ -3573,6 +3574,22 @@ export function ChatSettingsDrawer({
     await toggleAgent(agentId, { skipDirectorRemovalWarning: true });
   };
 
+  const renderAgentLorebookAttachment = (agentType: string) => {
+    const agent = availableAgents.find((entry) => entry.id === agentType);
+    if (!agent || (agent.builtIn && agent.category !== "writer" && agent.category !== "tracker")) return null;
+    if (agentType === "hierarchical-maps") {
+      const api = mapsPackage?.manifest.schemaVersion === 2 ? mapsPackage.manifest.capabilityApi : null;
+      if (!api || api.major < 1 || (api.major === 1 && api.minor < 379)) {
+        return (
+          <p data-agent-lorebook-package-update={agentType} className="text-xs text-[var(--muted-foreground)]">
+            {localizeUi("chat.agentLorebook.packageUpdateRequired")}
+          </p>
+        );
+      }
+    }
+    return <AgentLorebookAttachment chatId={chat.id} agentType={agentType} />;
+  };
+
   const getRoleplayAgentMenuRemoveHandler = (agentId: string, agentName: string) => {
     if (!isRoleplayMode) return undefined;
     return () => {
@@ -3686,6 +3703,7 @@ export function ChatSettingsDrawer({
         order={getRoleplayAgentSettingsOrder(agent.id)}
         onRemove={getRoleplayAgentMenuRemoveHandler(agent.id, agent.name)}
       >
+        {renderAgentLorebookAttachment(agent.id)}
         {settings}
       </AgentSettingsCard>
     );
@@ -5199,6 +5217,7 @@ export function ChatSettingsDrawer({
                   overridden={typeof agentPromptTemplateSelections[agent.id] === "string"}
                   onChange={(promptTemplateId) => updateAgentPromptTemplateSelection(agent.id, promptTemplateId)}
                 />
+                {renderAgentLorebookAttachment(agent.id)}
                 {backfillAvailable && agentConfig && (
                   <div className="mt-2 space-y-2">
                     <AgentSettingsToggle
@@ -5323,6 +5342,7 @@ export function ChatSettingsDrawer({
         order={getRoleplayAgentSettingsOrder("haptic")}
         onRemove={getRoleplayAgentMenuRemoveHandler("haptic", hapticAgentMeta.name)}
       >
+        {renderAgentLorebookAttachment("haptic")}
         <AgentSettingsToggle
           label={localizeUi("ui.chat.hapticsetupfields.hapticFeedback")}
           description={
@@ -7470,6 +7490,7 @@ export function ChatSettingsDrawer({
                         )}
                         initialOpen={false}
                       >
+                        {renderAgentLorebookAttachment("illustrator")}
                         <GenerationSettingsLink
                           onClick={openGenerationSettings}
                           title={localizeUi("ui.chat.chatsettingsdrawer.openSettingsGenerations")}
@@ -8695,6 +8716,7 @@ export function ChatSettingsDrawer({
                           order={getRoleplayAgentSettingsOrder("lorebook-keeper")}
                           onRemove={getRoleplayAgentMenuRemoveHandler("lorebook-keeper", lorebookKeeperAgentMeta.name)}
                         >
+                          {renderAgentLorebookAttachment("lorebook-keeper")}
                           <div className="flex flex-col items-stretch gap-2 rounded-lg bg-[var(--background)]/75 px-3 py-2 ring-1 ring-[var(--border)] @lg:flex-row @lg:items-center @lg:justify-between">
                             <p className="min-w-0 flex-1 text-[0.625rem] leading-snug text-[var(--muted-foreground)]">
                               {localizeUi(
@@ -8791,6 +8813,7 @@ export function ChatSettingsDrawer({
                             cardEvolutionAuditorAgentMeta.name,
                           )}
                         >
+                          {renderAgentLorebookAttachment("card-evolution-auditor")}
                           <div className="space-y-2 rounded-lg bg-[var(--background)]/75 px-3 py-2 ring-1 ring-[var(--border)]">
                             <p className="text-[0.625rem] leading-snug text-[var(--muted-foreground)]">
                               {localizeUi("ui.chat.chatsettingsdrawer.thisAgentNeverEditsCardsDirectlyItProposesExact")}
@@ -8818,6 +8841,7 @@ export function ChatSettingsDrawer({
                           order={getRoleplayAgentSettingsOrder("prose-guardian")}
                           onRemove={getRoleplayAgentMenuRemoveHandler("prose-guardian", proseGuardianAgentMeta.name)}
                         >
+                          {renderAgentLorebookAttachment("prose-guardian")}
                           <AgentSettingsTextarea
                             label={localizeUi("ui.agents.agenteditor.bannedWords")}
                             value={proseGuardianBannedDraft}
@@ -8890,6 +8914,7 @@ export function ChatSettingsDrawer({
                           order={getRoleplayAgentSettingsOrder("director")}
                           onRemove={getRoleplayAgentMenuRemoveHandler("director", directorAgentMeta.name)}
                         >
+                          {renderAgentLorebookAttachment("director")}
                           <p className="rounded-lg bg-[var(--background)]/45 px-2.5 py-2 text-[0.625rem] text-[var(--muted-foreground)] ring-1 ring-[var(--border)]">
                             {localizeUi("ui.chat.agentaddsetupfields.chooseBetweenANaturalOrRandomPushEachTime")}
                           </p>
@@ -8953,6 +8978,7 @@ export function ChatSettingsDrawer({
                           order={getRoleplayAgentSettingsOrder("continuity")}
                           onRemove={getRoleplayAgentMenuRemoveHandler("continuity", continuityAgentMeta.name)}
                         >
+                          {renderAgentLorebookAttachment("continuity")}
                           <AgentSettingsToggle
                             label={localizeUi("ui.chat.agentaddsetupfields.holdMessageUntilRewrite")}
                             description={
@@ -8981,6 +9007,7 @@ export function ChatSettingsDrawer({
                           order={getRoleplayAgentSettingsOrder("html")}
                           onRemove={getRoleplayAgentMenuRemoveHandler("html", htmlAgentMeta.name)}
                         >
+                          {renderAgentLorebookAttachment("html")}
                           <AgentSettingsToggle
                             label={localizeUi("ui.chat.agentaddsetupfields.holdMessageUntilRewrite")}
                             description={
@@ -9002,6 +9029,7 @@ export function ChatSettingsDrawer({
 
                       {metadata.enableAgents && isRoleplayMode && knowledgeRetrievalActive && (
                         <KnowledgeAgentSettingsCard
+                          attachment={renderAgentLorebookAttachment("knowledge-retrieval")}
                           id={getAgentSettingsMenuId(chat.id, "knowledge-retrieval")}
                           agentType="knowledge-retrieval"
                           title={knowledgeRetrievalAgentMeta.name}
@@ -9019,6 +9047,7 @@ export function ChatSettingsDrawer({
 
                       {metadata.enableAgents && isRoleplayMode && knowledgeRouterActive && (
                         <KnowledgeAgentSettingsCard
+                          attachment={renderAgentLorebookAttachment("knowledge-router")}
                           id={getAgentSettingsMenuId(chat.id, "knowledge-router")}
                           agentType="knowledge-router"
                           title={knowledgeRouterAgentMeta.name}
@@ -9052,6 +9081,7 @@ export function ChatSettingsDrawer({
                             ) : null
                           }
                         >
+                          {renderAgentLorebookAttachment("expression")}
                           <ExpressionSpriteSettings
                             chatId={chat.id}
                             displayModes={spriteDisplayModes}
@@ -9136,6 +9166,7 @@ export function ChatSettingsDrawer({
                           order={getRoleplayAgentSettingsOrder("echo-chamber")}
                           onRemove={getRoleplayAgentMenuRemoveHandler("echo-chamber", echoChamberAgentMeta.name)}
                         >
+                          {renderAgentLorebookAttachment("echo-chamber")}
                           <AgentPromptTemplateSelect
                             options={getPromptOptionsForAgent("echo-chamber")}
                             selectedId={
@@ -9176,6 +9207,7 @@ export function ChatSettingsDrawer({
                           order={getRoleplayAgentSettingsOrder("illustrator")}
                           onRemove={getRoleplayAgentMenuRemoveHandler("illustrator", illustratorAgentMeta.name)}
                         >
+                          {renderAgentLorebookAttachment("illustrator")}
                           <AgentPromptTemplateSelect
                             options={getPromptOptionsForAgent("illustrator")}
                             selectedId={
@@ -9383,6 +9415,7 @@ export function ChatSettingsDrawer({
                           order={getRoleplayAgentSettingsOrder("spotify")}
                           onRemove={getRoleplayAgentMenuRemoveHandler("spotify", musicDjAgentMeta.name)}
                         >
+                          {renderAgentLorebookAttachment("spotify")}
                           <p className="text-[0.55rem] text-[var(--muted-foreground)]/80">
                             {localizeUi("ui.chat.musicdjsetupfields.activePlayer")}{" "}
                             {getMusicProviderLabel(musicPlayerSource)}.
@@ -9553,6 +9586,7 @@ export function ChatSettingsDrawer({
                         "ui.chat.chatsettingsdrawer.autoGenerateSceneIllustrationsNpcPortraitsAndLocationBackgrounds",
                       )}
                     >
+                      {renderAgentLorebookAttachment("illustrator")}
                       <GenerationSettingsLink
                         onClick={openGenerationSettings}
                         title={localizeUi("ui.chat.chatsettingsdrawer.openSettingsGenerations")}
@@ -9831,6 +9865,7 @@ export function ChatSettingsDrawer({
                                         title={agent.name}
                                         description={worldMapsSettingsDescription}
                                       >
+                                        {renderAgentLorebookAttachment(agent.id)}
                                         <CapabilityElement
                                           packageId={mapsPackage.id}
                                           view="settings"
@@ -9941,8 +9976,10 @@ export function ChatSettingsDrawer({
                                       )}
                                       labelClassName="min-w-0 text-xs font-medium [&>span>label]:block [&>span>label]:truncate"
                                     />
+                                    {active && !knowledgeAgentType && renderAgentLorebookAttachment(agent.id)}
                                     {active && knowledgeAgentType && (
                                       <KnowledgeAgentSettingsCard
+                                        attachment={renderAgentLorebookAttachment(knowledgeAgentType)}
                                         agentType={knowledgeAgentType}
                                         title={agent.name}
                                         description={getActiveAgentMenuDescription(agent.description)}
@@ -10170,6 +10207,7 @@ export function ChatSettingsDrawer({
                                               }
                                             />
                                           )}
+                                          {renderAgentLorebookAttachment(agent.id)}
                                           {renderDownloadedAgentChatSettings(agent)}
                                         </div>
                                       );
@@ -11414,6 +11452,7 @@ function MemoryRecallMemoriesModal({
 }
 
 function KnowledgeAgentSettingsCard({
+  attachment,
   id,
   agentType,
   title,
@@ -11424,6 +11463,7 @@ function KnowledgeAgentSettingsCard({
   onChange,
   onRemove,
 }: {
+  attachment?: React.ReactNode;
   id?: string;
   agentType: KnowledgeAgentType;
   title: string;
@@ -11478,6 +11518,7 @@ function KnowledgeAgentSettingsCard({
       order={order}
       onRemove={onRemove}
     >
+      {attachment}
       <AgentSettingsToggle
         label={localizeUi("ui.chat.knowledgesourcefields.useChatActiveLorebooks")}
         description={

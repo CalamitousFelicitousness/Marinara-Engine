@@ -12,11 +12,33 @@ import { logger } from "../../lib/logger.js";
 type LorebookSource = "manual" | "chat_active" | "none";
 type TriggeredEntriesByAgentId = NonNullable<AgentContext["triggeredLorebookEntriesByAgentId"]>;
 
+/** Apply only this chat's attachment, leaving the saved agent configuration untouched. */
+export function applyAgentLorebookChatSettings(
+  agentType: string,
+  settings: Record<string, unknown>,
+  chatMetadata: Record<string, unknown> | null | undefined,
+): Record<string, unknown> {
+  const attachments = chatMetadata?.agentLorebookAttachments;
+  if (!attachments || typeof attachments !== "object" || Array.isArray(attachments)) return settings;
+  const attachment = (attachments as Record<string, unknown>)[agentType];
+  if (!attachment || typeof attachment !== "object" || Array.isArray(attachment)) return settings;
+  const value = attachment as Record<string, unknown>;
+  if (value.enabled !== true) return settings;
+  return {
+    ...settings,
+    chatLorebookAttachmentEnabled: true,
+    chatAttachedLorebookId:
+      typeof value.lorebookId === "string" && value.lorebookId.trim() ? value.lorebookId.trim() : null,
+  };
+}
+
 export interface AgentLorebookTriggerSource {
   id: string;
   contextSize: number;
   sourceLorebookIds: string[];
   source: LorebookSource;
+  /** Chat attachments supplement the configured source using manual-selection policy. */
+  additionalManualLorebookIds?: string[];
 }
 
 interface PreparedAgentLorebookSource {
@@ -74,13 +96,13 @@ export function createAgentLorebookTriggerResolver(
 
     const prepared = (async () => {
       const enabledLorebooksById = await getEnabledLorebooksById();
-      const sourceIds = Array.from(
-        new Set(
-          (await options.filterSourceLorebookIds(agent.sourceLorebookIds, agent.source)).filter((id) =>
-            enabledLorebooksById.has(id),
-          ),
-        ),
-      ).sort();
+      const filteredSources = await Promise.all([
+        options.filterSourceLorebookIds(agent.sourceLorebookIds, agent.source),
+        agent.additionalManualLorebookIds?.length
+          ? options.filterSourceLorebookIds(agent.additionalManualLorebookIds, "manual")
+          : [],
+      ]);
+      const sourceIds = [...new Set(filteredSources.flat().filter((id) => enabledLorebooksById.has(id)))].sort();
       if (sourceIds.length === 0) return { entries: [], lorebooks: [] };
 
       const sourceKey = sourceIds.join("\u0000");
@@ -89,7 +111,11 @@ export function createAgentLorebookTriggerResolver(
         const sourceIdSet = new Set(sourceIds);
         entriesPromise = options
           .listEntriesByLorebookIds(sourceIds)
-          .then((entries) => entries.filter((entry) => sourceIdSet.has(entry.lorebookId)));
+          .then((entries) => [
+            ...new Map(
+              entries.filter((entry) => sourceIdSet.has(entry.lorebookId)).map((entry) => [entry.id, entry]),
+            ).values(),
+          ]);
         entriesBySourceKey.set(sourceKey, entriesPromise);
       }
 

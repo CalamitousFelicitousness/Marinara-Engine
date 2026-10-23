@@ -965,6 +965,12 @@ export function useUpdateChatMetadata(options?: { serialize?: boolean }) {
       const previous = qc.getQueryData<Chat>(chatKeys.detail(id));
       const fallback = useChatStore.getState().activeChat?.id === id ? useChatStore.getState().activeChat : null;
       const base = previous ?? fallback;
+      if (metadata.agentLorebookAttachments && typeof metadata.agentLorebookAttachments === "object") {
+        metadata.agentLorebookAttachments = {
+          ...normalizeChatMetadataValue(base?.metadata).agentLorebookAttachments,
+          ...metadata.agentLorebookAttachments,
+        };
+      }
       const previousAdvancedStatus = enablesBasicRecall
         ? qc.getQueryData<AdvancedMemoryStatus>(["advanced-memory", id])
         : undefined;

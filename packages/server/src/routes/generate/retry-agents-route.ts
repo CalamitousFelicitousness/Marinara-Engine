@@ -174,6 +174,15 @@ import {
 import { createGameStateStorage } from "../../services/storage/game-state.storage.js";
 import { normalizeCharacterRpgStats } from "../../services/generation/character-prompt-context.js";
 import { createLorebooksStorage } from "../../services/storage/lorebooks.storage.js";
+import { normalizeGenerationReplay } from "./generation-replay.js";
+import { createAgentLorebookTriggerResolver } from "../../services/generation/agent-lorebook-triggers.js";
+import {
+  resolveLorebookGenerationTriggers,
+  resolveLorebookTokenBudget,
+} from "../../services/generation/lorebook-generation-runtime.js";
+import type { Lorebook, LorebookEntry } from "@marinara-engine/shared";
+import type { GameStateForScanning } from "../../services/lorebook/keyword-scanner.js";
+import { filterRelevantLorebooks } from "../../services/lorebook/index.js";
 import { storedContentForTextlessScanEntries } from "../../services/lorebook/lorebook-scan-compaction.js";
 import { createCustomToolsStorage } from "../../services/storage/custom-tools.storage.js";
 import { syncGameMapMetaPartyPosition } from "../../services/game/map-position.service.js";
@@ -203,6 +212,7 @@ import {
   resolveBaseUrl,
   resolveRoleplayChatSummaryForPrompt,
   resolveVisibleGameStateAnchor,
+  resolveKnowledgeSourceLorebookIds,
 } from "./generate-route-utils.js";
 import { shouldAttachSummariesToAgents } from "../../services/generation/roleplay-summary-retrieval.js";
 import { roleplayAgentsSeeWhispers, roleplayAgentText } from "../../services/generation/roleplay-commands.js";
@@ -919,6 +929,8 @@ export function resolveRetryAgentPhaseToolInputs(args: {
 }
 
 async function buildRetryAgentContext(args: {
+  signal: AbortSignal;
+  lorebookGenerationTriggers: string[];
   cyoaAgentWillRun: boolean;
   chatId: string;
   /** Prose Beholder should read instead of the chat, when the operator typed a correction. */
@@ -984,10 +996,14 @@ async function buildRetryAgentContext(args: {
     ? (chatMeta.activeLorebookIds as string[])
     : [];
   const charInfo: AgentContext["characters"] = [];
+  const attachmentCharacterTags = new Set<string>();
   for (const cid of characterIds) {
     const charRow = await chars.getById(cid, chatId);
     if (!charRow) continue;
     const charData = parseJsonIfString<Record<string, unknown>>(charRow.data as string);
+    if (Array.isArray(charData.tags)) {
+      for (const tag of charData.tags) if (typeof tag === "string") attachmentCharacterTags.add(tag);
+    }
     const extensions =
       charData.extensions && typeof charData.extensions === "object" && !Array.isArray(charData.extensions)
         ? (charData.extensions as Record<string, unknown>)
@@ -1171,14 +1187,23 @@ async function buildRetryAgentContext(args: {
   let recalledAgentVectorMemories: string[] = [];
   let embeddingSource: Awaited<ReturnType<typeof resolveMemoryRecallEmbeddingSource>> | null = null;
   let summaryVectorizerAvailable = false;
-  if (customAgentVectorAccessEnabled || chatMeta.semanticSummaryRetrievalEnabled === true) {
+  const agentsWithLorebookTriggers = resolvedAgents.filter(
+    (agent) =>
+      agent.settings.chatLorebookAttachmentEnabled === true ||
+      (!isBuiltInAgentType(agent.type) && agent.settings.triggerLorebooksForAgentCalls === true),
+  );
+  if (
+    customAgentVectorAccessEnabled ||
+    chatMeta.semanticSummaryRetrievalEnabled === true ||
+    agentsWithLorebookTriggers.length > 0
+  ) {
     try {
       const connectionId = typeof chat.connectionId === "string" ? chat.connectionId : null;
       embeddingSource = await resolveMemoryRecallEmbeddingSource(db, {
         chatMetadata: chatMeta,
         connectionId,
       });
-      if (chatMeta.semanticSummaryRetrievalEnabled === true) {
+      if (chatMeta.semanticSummaryRetrievalEnabled === true || agentsWithLorebookTriggers.length > 0) {
         summaryVectorizerAvailable =
           embeddingSource !== null ||
           (await isMemoryRecallVectorizerAvailable(db, {
@@ -1618,6 +1643,52 @@ async function buildRetryAgentContext(args: {
     };
   }
 
+  if (agentsWithLorebookTriggers.length > 0) {
+    const lorebookScopeExclusions = resolveLorebookScopeExclusions(chat.mode, chatMeta);
+    const scopedLorebookIds = new Set(
+      filterRelevantLorebooks((await lorebooksStore.list()) as unknown as Lorebook[], {
+        chatId,
+        characterIds: [
+          ...characterIds,
+          ...(personaContext.identitySource === "character" && personaContext.identityId
+            ? [personaContext.identityId]
+            : []),
+        ],
+        personaId: personaContext.personaId,
+        activeLorebookIds,
+        ...lorebookScopeExclusions,
+      }).map((book) => book.id),
+    );
+    agentContext.triggeredLorebookEntriesByAgentId = await createAgentLorebookTriggerResolver({
+      agents: agentsWithLorebookTriggers.map((agent) => ({
+        id: agent.id,
+        contextSize: normalizeAgentContextSize(agent.settings.contextSize),
+        ...(!isBuiltInAgentType(agent.type) && agent.settings.triggerLorebooksForAgentCalls === true
+          ? resolveKnowledgeSourceLorebookIds({ settings: agent.settings, chatActiveLorebookIds: activeLorebookIds })
+          : { sourceLorebookIds: [], source: "none" as const }),
+        additionalManualLorebookIds:
+          agent.settings.chatLorebookAttachmentEnabled === true &&
+          typeof agent.settings.chatAttachedLorebookId === "string"
+            ? [agent.settings.chatAttachedLorebookId]
+            : [],
+      })),
+      activeCharacterIds: characterIds,
+      activeCharacterTags: [...attachmentCharacterTags],
+      embeddingSource,
+      entryStateOverrides:
+        (chatMeta.entryStateOverrides as Record<string, { enabled?: boolean; ephemeral?: number | null }>) ?? {},
+      filterSourceLorebookIds: async (ids, source) =>
+        source === "chat_active" ? ids.filter((id) => scopedLorebookIds.has(id)) : ids,
+      gameState: agentContext.gameState as GameStateForScanning | null,
+      generationTriggers: args.lorebookGenerationTriggers,
+      listEntriesByLorebookIds: async (ids) => (await lorebooksStore.listEntriesByLorebooks(ids)) as LorebookEntry[],
+      listLorebooks: async () => (await lorebooksStore.list()) as unknown as Lorebook[],
+      resolveContent: (value) => resolveMacros(value, promptMacroContext, { trimResult: false }),
+      tokenBudget: resolveLorebookTokenBudget(chatMeta),
+      vectorizerAvailable: summaryVectorizerAvailable,
+      signal: args.signal,
+    })(agentContext.recentMessages);
+  }
   return { agentContext, initialMacroVariables, macroVariables: retryMacroVariables, agentWhisperNames };
 }
 
@@ -4879,6 +4950,25 @@ export async function registerRetryAgentsRoute(
         if (!rangeTarget) throw new Error("The selected range has no messages visible to the AI");
         historicalGameStateAnchor = lastAssistant ? resolveVisibleGameStateAnchor([lastAssistant]) : null;
       }
+      const lorebookRetryTarget = rangeTarget ?? lastAssistant;
+      const lorebookTargetIndex = lorebookRetryTarget
+        ? recentMessages.findIndex((message: any) => message.id === lorebookRetryTarget.id)
+        : recentMessages.length;
+      const previousTurnMessage = recentMessages
+        .slice(0, lorebookTargetIndex < 0 ? recentMessages.length : lorebookTargetIndex)
+        .filter((message: any) => message.role === "user" || message.role === "assistant")
+        .at(-1);
+      const replay = normalizeGenerationReplay(parseExtra(lorebookRetryTarget?.extra).generationReplay);
+      const lorebookGenerationTriggers = resolveLorebookGenerationTriggers(
+        {
+          ...replay,
+          userMessage:
+            replay?.userMessage ?? (previousTurnMessage?.role === "user" ? previousTurnMessage.content : null),
+          regenerateMessageId:
+            lorebookRetryTarget && (lorebookRetryTarget.activeSwipeIndex ?? 0) > 0 ? lorebookRetryTarget.id : null,
+        },
+        chat.mode,
+      );
       let retryMessageId = rangeTarget?.id ?? lastAssistant?.id ?? "";
       let retrySwipeIndex = (rangeTarget ?? lastAssistant)?.activeSwipeIndex ?? 0;
       activeAgentRun.messageId = retryMessageId || null;
@@ -4991,6 +5081,8 @@ export async function registerRetryAgentsRoute(
       );
       const agentContextResult = await runRetrySetupPhase(abortController.signal, () =>
         buildRetryAgentContext({
+          signal: abortController.signal,
+          lorebookGenerationTriggers,
           cyoaAgentWillRun,
           chatId,
           beholderDirective: sanitisedDirective,
@@ -5032,6 +5124,8 @@ export async function registerRetryAgentsRoute(
         hasPreGenerationRetries && preGenerationRecentMessages
           ? await runRetrySetupPhase(abortController.signal, () =>
               buildRetryAgentContext({
+                signal: abortController.signal,
+                lorebookGenerationTriggers,
                 cyoaAgentWillRun: false,
                 beholderDirective: sanitisedDirective,
                 chatId,

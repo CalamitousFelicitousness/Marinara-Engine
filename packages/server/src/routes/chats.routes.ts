@@ -62,6 +62,7 @@ import {
   MESSAGE_MARK_EXTRA_KEYS,
   MAX_PINNED_CONTEXT_MESSAGES,
   semanticSummaryRetrievalSettingsSchema,
+  agentLorebookAttachmentsSchema,
   DEFAULT_GENERATION_PARAMS,
   isStockMarinaraUniversalPreset,
   omitChatMetadataLocalDestinations,
@@ -1624,6 +1625,11 @@ export async function chatsRoutes(app: FastifyInstance) {
     const chat = await storage.getById(req.params.id);
     if (!chat) return reply.status(404).send({ error: "Chat not found" });
     const incoming = req.body as Record<string, unknown>;
+    if (Object.prototype.hasOwnProperty.call(incoming, "agentLorebookAttachments")) {
+      const parsed = agentLorebookAttachmentsSchema.safeParse(incoming.agentLorebookAttachments);
+      if (!parsed.success) return reply.status(400).send({ error: "Invalid agent lorebook attachments" });
+      incoming.agentLorebookAttachments = parsed.data;
+    }
     const summaryRetrievalFieldSchemas = {
       semanticSummaryRecentCount: semanticSummaryRetrievalSettingsSchema.shape.semanticSummaryRecentCount,
       semanticSummaryOlderCount: semanticSummaryRetrievalSettingsSchema.shape.semanticSummaryOlderCount,
@@ -1780,6 +1786,17 @@ export async function chatsRoutes(app: FastifyInstance) {
         createAdvancedMemoryService(app.db).cancelActiveOperation(req.params.id);
       }
     };
+    const mergeIncoming = (freshMeta: Record<string, unknown>) => ({
+      ...incoming,
+      ...(incoming.agentLorebookAttachments
+        ? {
+            agentLorebookAttachments: {
+              ...(freshMeta.agentLorebookAttachments as Record<string, unknown> | undefined),
+              ...(incoming.agentLorebookAttachments as Record<string, unknown>),
+            },
+          }
+        : {}),
+    });
     if (
       Object.prototype.hasOwnProperty.call(incoming, "hideSummarisedMessages") &&
       typeof incoming.hideSummarisedMessages === "boolean"
@@ -1787,8 +1804,11 @@ export async function chatsRoutes(app: FastifyInstance) {
       const updated = await storage.patchMetadata(
         req.params.id,
         async (freshMeta) => ({
-          ...incoming,
-          ...(await summaryHidingPatch(storage, req.params.id, freshMeta, { ...freshMeta, ...incoming })),
+          ...mergeIncoming(freshMeta),
+          ...(await summaryHidingPatch(storage, req.params.id, freshMeta, {
+            ...freshMeta,
+            ...mergeIncoming(freshMeta),
+          })),
         }),
         { afterWrite: cancelReplacedAdvancedMemory },
       );
@@ -1799,7 +1819,7 @@ export async function chatsRoutes(app: FastifyInstance) {
     const viewOnly =
       changedKeys.length > 0 &&
       changedKeys.every((key) => key === "windowLayout" || key === "chatSettingsHintDismissed");
-    const updated = await storage.patchMetadata(req.params.id, incoming, {
+    const updated = await storage.patchMetadata(req.params.id, mergeIncoming, {
       touchUpdatedAt: !viewOnly,
       afterWrite: cancelReplacedAdvancedMemory,
     });

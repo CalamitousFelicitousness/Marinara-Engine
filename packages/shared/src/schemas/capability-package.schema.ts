@@ -1468,7 +1468,8 @@ const capabilityPackageManifestBaseSchema = z
 //        field's `hideWhen` by a derived value, a condition's `pickable: false`, a track's `showWhenSet`,
 //        an item toggle's `onLabel` and `offLabel`, an item use's `title`, a derived value's `signed`,
 //        and creature traits to 1200.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 378 } as const);
+// 1.379: package-bound per-chat agent reference lorebook trigger resolution.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 379 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

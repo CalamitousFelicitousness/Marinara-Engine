@@ -115,6 +115,11 @@ assert.equal(
   "the checked-in MLX dependency lock must match its manifest digest",
 );
 const mlxRequirementsText = mlxRequirementsLock.toString("utf8");
+assert.doesNotMatch(
+  mlxRequirementsText,
+  /^\s*#.*\s-r\s+(?:[/\\]|[a-z]:[/\\])/imu,
+  "the shipped MLX lock must not include machine-specific absolute input annotations",
+);
 for (const requirementBlock of mlxRequirementsText.split(/(?=^[a-z0-9])/gimu).slice(1)) {
   assert.match(requirementBlock, /==[^\s\\]+/u, "every MLX dependency must be pinned exactly");
   assert.match(requirementBlock, /--hash=sha256:[a-f0-9]{64}/u, "every MLX dependency must carry a SHA-256");

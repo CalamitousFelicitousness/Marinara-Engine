@@ -1872,6 +1872,7 @@
   "game.combat.ai.order.conserve": "Save resources",
   "game.combat.ai.order.heal": "Heal first",
   "game.combat.ai.order.spare": "Non-lethal",
+  "game.combat.ai.orderSummary": "{{name}}: {{posture}}",
   "game.combat.ai.ordersFor": "Orders for {{name}}",
   "game.combat.ai.posture.back": "Stay back",
   "game.combat.ai.posture.follow": "Attack my target",

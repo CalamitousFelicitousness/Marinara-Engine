@@ -57,6 +57,18 @@ export function CombatAiControls({
     if (next.posture === "guard") delete next.posture;
     onOrders?.(member.id, Object.keys(next).length > 0 ? next : null);
   };
+  const postureLabel = (orders?: CombatOrders) =>
+    orders?.posture === "protect"
+      ? t("game.combat.ai.posture.protect", {
+          name: party.find((other) => other.id === orders.protectId)?.name ?? orders.protectId,
+        })
+      : t(`game.combat.ai.posture.${orders?.posture ?? "guard"}`);
+  const orderLine = onOrders
+    ? party
+        .filter((member) => member.id !== leader && member.hp > 0 && (member.controller ?? defaultController) === "ai")
+        .map((member) => t("game.combat.ai.orderSummary", { name: member.name, posture: postureLabel(member.orders) }))
+        .join(", ")
+    : "";
   return (
     <details
       data-game-section="combat-ai"
@@ -67,6 +79,8 @@ export function CombatAiControls({
     >
       <summary className="cursor-pointer font-medium focus-visible:outline focus-visible:outline-[var(--primary)]">
         {t("game.combat.ai.controls")}
+        {/* Each AI companion's orders, read while the panel is closed (2026-10-23 playtest: hidden). */}
+        {orderLine && <span className="ml-2 font-normal text-[var(--muted-foreground)]">{orderLine}</span>}
       </summary>
       <p className="my-2 text-[var(--muted-foreground)]">{t("game.combat.ai.help")}</p>
       <div className="max-h-40 space-y-2 overflow-y-auto">

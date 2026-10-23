@@ -10,7 +10,10 @@ import { fileURLToPath } from "node:url";
 const read = (path: string) => readFileSync(fileURLToPath(new URL(path, import.meta.url)), "utf8");
 
 const surface = read("../../packages/client/src/components/game/GameSurface.tsx");
-const intro = surface.slice(surface.indexOf("function IntroTypewriter"), surface.indexOf("function normalizeInventoryName"));
+const intro = surface.slice(
+  surface.indexOf("function IntroTypewriter"),
+  surface.indexOf("function normalizeInventoryName"),
+);
 assert.match(intro, /performance\.now\(\) - startedAtRef\.current!\) \/ msPerChar/u, "the overview reads the clock");
 assert.match(intro, /INTRO_TYPEWRITER_MAX_MS \/ Math\.max\(1, text\.length\)/u, "a long overview types faster");
 assert.match(intro, /\}, \[visible, text\.length\]\);/u, "a new onComplete never restarts it");
@@ -23,4 +26,6 @@ assert.match(
   "the narration catches up with the clock",
 );
 
-console.log("Typewriters: the opening overview and the narration read the clock, so a hidden tab never holds the game.");
+console.log(
+  "Typewriters: the opening overview and the narration read the clock, so a hidden tab never holds the game.",
+);

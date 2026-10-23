@@ -146,4 +146,16 @@ const example = () => JSON.parse(readSource("docs/development/ruleset-5e-2014.ex
   assert.match(JSON.stringify(used), /19\/19/u, "and the note says so");
 }
 
-console.log("Re-tests: turns in a summary, damage already paid, and an item's heal up to a worn maximum.");
+// ── A companion's orders show while the party panel is closed ──
+{
+  const controls = readSource("packages/client/src/components/game/CombatAiControls.tsx");
+  assert.match(controls, /\{orderLine && <span/u);
+  assert.match(
+    controls,
+    /t\("game\.combat\.ai\.orderSummary", \{ name: member\.name, posture: postureLabel\(member\.orders\) \}\)/u,
+  );
+}
+
+console.log(
+  "Re-tests: turns in a summary, damage already paid, an item's heal up to a worn maximum, and orders in sight.",
+);

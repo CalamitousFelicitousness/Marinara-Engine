@@ -5327,7 +5327,7 @@ const rootPackageJson = JSON.parse(readFileSync(new URL("../../package.json", im
 assert.match(serverPackageJson.scripts?.dev ?? "", /--ignore \.\.\/shared\/dist/u);
 assert.match(
   rootPackageJson.scripts?.["dev:server"] ?? "",
-  /^pnpm build:shared && pnpm --filter @marinara-engine\/server dev$/u,
+  /^node \.\/scripts\/pnpm-runner\.mjs build:shared && node \.\/scripts\/pnpm-runner\.mjs --filter @marinara-engine\/server dev$/u,
   "The server-only development command must establish shared build output first",
 );
 assert.equal(resolveDevSharedBuildScript({ DEV_PRESERVE_SHARED_DIST: "true" }), "build:preserve");

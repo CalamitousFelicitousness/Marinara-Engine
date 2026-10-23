@@ -22,9 +22,11 @@ const { migrateGenerativeAudioConnections } =
 const { resolveGenerativeAudioConfig } =
   await import("../../packages/server/src/services/audio/generative-audio.service.js");
 const { connectionsRoutes } = await import("../../packages/server/src/routes/connections.routes.js");
+const { audioRoutes } = await import("../../packages/server/src/routes/audio.routes.js");
 const { errorHandler } = await import("../../packages/server/src/middleware/error-handler.js");
 const { logger } = await import("../../packages/server/src/lib/logger.js");
-const { createConnectionSchema, TTS_SETTINGS_KEY } = await import("../../packages/shared/dist/index.js");
+const { createConnectionSchema, TTS_SETTINGS_KEY, ttsConfigSchema } =
+  await import("../../packages/shared/dist/index.js");
 const warnings: unknown[][] = [];
 const originalWarn = logger.warn;
 logger.warn = ((...args: unknown[]) => warnings.push(args)) as typeof logger.warn;
@@ -44,6 +46,7 @@ const app = Fastify();
 app.decorate("db", db);
 app.setErrorHandler(errorHandler);
 await app.register(connectionsRoutes, { prefix: "/api/connections" });
+await app.register(audioRoutes, { prefix: "/api/audio" });
 const input = {
   name: "Committed speech import",
   provider: "audio",
@@ -160,6 +163,83 @@ try {
       assert.equal(resolved.apiKey, input.apiKey);
     },
   );
+
+  await check("optional no-row migration failure reports unconfigured readiness and warns once", async () => {
+    await db.delete(apiConnections);
+    await db.delete(appSettings);
+    const start = warnings.length;
+    for (let index = 0; index < 2; index++) {
+      failTransaction(1);
+      const response = await app.inject({ method: "GET", url: "/api/audio/config" });
+      db.transaction = originalTransaction;
+      assert.equal(response.statusCode, 200, response.body);
+      assert.deepEqual(response.json(), {
+        connectionId: null,
+        configured: false,
+        music: false,
+        soundEffects: false,
+        source: null,
+      });
+    }
+    failTransaction(1);
+    const generation = await app.inject({
+      method: "POST",
+      url: "/api/audio/generate",
+      payload: { kind: "sfx", prompt: "A door closes." },
+    });
+    db.transaction = originalTransaction;
+    assert.equal(generation.statusCode, 400, generation.body);
+    assert.match(generation.json().error, /Choose a Music & Sound Effects connection/);
+    assert.equal(warnings.length, start + 1, "repeated readiness polls emit one migration warning per DB");
+    assert.equal(warnings.at(-1)?.[0], migrationFailure, "the warning retains the error as its first argument");
+    assert.equal((await connections.list()).length, 0);
+  });
+
+  await check(
+    "an unavailable explicit legacy selection remains a configuration conflict after optional failure",
+    async () => {
+      await createAppSettingsStorage(db).set(
+        TTS_SETTINGS_KEY,
+        JSON.stringify(ttsConfigSchema.parse({ connectionId: "deleted-speech-connection" })),
+      );
+      failTransaction(1);
+      const response = await app.inject({ method: "GET", url: "/api/audio/config" });
+      db.transaction = originalTransaction;
+      assert.equal(response.statusCode, 409, response.body);
+      assert.match(response.json().error, /chosen for Text to Speech is missing/);
+      await db.delete(appSettings);
+    },
+  );
+
+  await check("necessary explicit legacy migration failures never borrow a different ready default", async () => {
+    const unrelated = await connections.create(
+      createConnectionSchema.parse({
+        name: "Unrelated generation default",
+        provider: "audio_generation",
+        audioGenerationSource: "elevenlabs",
+        apiKey: "unrelated-key",
+        audioMusic: true,
+        audioSoundEffects: true,
+        defaultForAgents: true,
+      }),
+    );
+    const speech = await connections.create(createConnectionSchema.parse(input));
+    assert(unrelated && speech);
+    failTransaction(1);
+    const readiness = await app.inject({ method: "GET", url: `/api/audio/config?audioConnectionId=${speech.id}` });
+    db.transaction = originalTransaction;
+    assert.equal(readiness.statusCode, 500, "the required bridge failure remains an actual server failure");
+    failTransaction(1);
+    const generation = await app.inject({
+      method: "POST",
+      url: "/api/audio/generate",
+      payload: { kind: "sfx", prompt: "A door closes.", audioConnectionId: speech.id },
+    });
+    db.transaction = originalTransaction;
+    assert.equal(generation.statusCode, 502, "an explicit failed bridge cannot silently choose the unrelated key");
+    assert.equal(await connections.getAudioGenerationForLegacyConnection(speech.id), null);
+    assert.equal((await connections.getDefaultForAudioGeneration())?.id, unrelated.id);
+  });
 } finally {
   db.transaction = originalTransaction;
   await app.close();

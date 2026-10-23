@@ -2794,9 +2794,14 @@ export function ConnectionEditor() {
                       if (source === localAudioGenerationSource) return;
                       const before = GENERATIVE_AUDIO_DEFAULTS[localAudioGenerationSource];
                       const next = GENERATIVE_AUDIO_DEFAULTS[source];
-                      if (!localBaseUrl || localBaseUrl === before.baseUrl) setLocalBaseUrl(next.baseUrl);
-                      if (!localModel || localModel === before.model) setLocalModel(next.model);
-                      if (!localAudioSoundEffectsModel || localAudioSoundEffectsModel === before.soundEffectsModel)
+                      if (!before.baseUrl || !localBaseUrl || localBaseUrl === before.baseUrl)
+                        setLocalBaseUrl(next.baseUrl);
+                      if (!before.model || !localModel || localModel === before.model) setLocalModel(next.model);
+                      if (
+                        !before.soundEffectsModel ||
+                        !localAudioSoundEffectsModel ||
+                        localAudioSoundEffectsModel === before.soundEffectsModel
+                      )
                         setLocalAudioSoundEffectsModel(next.soundEffectsModel);
                       setLocalAudioGenerationSource(source);
                       // Credentials cannot silently move to a different service.

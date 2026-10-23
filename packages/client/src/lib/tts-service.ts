@@ -52,6 +52,20 @@ export interface TTSSpeakSequenceOptions extends Pick<
   onChunkEnd?: (request: TTSSpeakRequest, index: number) => void;
 }
 
+function speechCacheKey(
+  key: string,
+  options: Pick<TTSSpeakOptions, "audioConnectionId" | "voice" | "speaker" | "tone">,
+): string {
+  // Caller keys describe the line; the synthesis request also owns its source and voice.
+  return `tts-request-v1:${JSON.stringify([
+    key,
+    options.audioConnectionId ?? null,
+    options.voice || null,
+    options.speaker || null,
+    options.tone || null,
+  ])}`;
+}
+
 /** The clip on the playback element now. Avatar lip sync (features/avatars/audio) reads it to follow the voice
  *  without touching the element, so playback and the autoplay handling below stay as they are. */
 export interface TTSPlayback {
@@ -421,13 +435,13 @@ class TTSService {
   private async getAudioBlob(text: string, options: TTSSpeakOptions = {}): Promise<Blob> {
     if (!options.cacheKey) return this.generateAudio(text, options);
     const sharedPromise = getOrCreateCachedTTSAudioBlob(
-      options.cacheKey,
+      speechCacheKey(options.cacheKey, options),
       () =>
         this.generateAudio(text, {
           ...options,
           signal: options.abortCacheGenerationOnAbort ? options.signal : undefined,
         }),
-      options.cacheAliases,
+      options.cacheAliases?.map((key) => speechCacheKey(key, options)),
     );
     return this.blobReady(await waitForBlobWithAbort(sharedPromise, options.signal));
   }
@@ -437,12 +451,17 @@ class TTSService {
    * aliases) so the next speak regenerates them instead of replaying audio
    * that was synthesized by an older provider or configuration.
    */
-  async clearCachedAudio(requests: Array<Pick<TTSSpeakRequest, "cacheKey" | "cacheAliases">>): Promise<void> {
+  async clearCachedAudio(
+    requests: Array<Pick<TTSSpeakRequest, "cacheKey" | "cacheAliases" | "voice" | "speaker" | "tone">>,
+    options: Pick<TTSSpeakOptions, "audioConnectionId"> = {},
+  ): Promise<void> {
     const keys = new Set<string>();
     for (const request of requests) {
-      if (request.cacheKey) keys.add(request.cacheKey);
-      for (const alias of request.cacheAliases ?? []) {
-        if (alias) keys.add(alias);
+      for (const key of [request.cacheKey, ...(request.cacheAliases ?? [])]) {
+        if (key) {
+          keys.add(key); // Also remove entries written before synthesis identities were namespaced.
+          keys.add(speechCacheKey(key, { ...request, ...options }));
+        }
       }
     }
     if (keys.size === 0) return;

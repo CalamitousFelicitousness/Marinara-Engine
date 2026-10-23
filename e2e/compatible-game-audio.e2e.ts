@@ -44,6 +44,53 @@ async function capture(page: Page, info: TestInfo, label: string, anchor: Locato
 }
 
 for (const theme of ["dark", "light"] as const) {
+  test(`Custom audio source switches to preset defaults (${theme})`, async ({ page, request }, info) => {
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    const custom = {
+      audioGenerationSource: "custom",
+      baseUrl: "https://custom-audio.example.test/v1",
+      model: "custom-music",
+      audioSoundEffectsModel: "custom-sfx",
+    };
+    const created = await request.post("/api/connections", {
+      data: {
+        name: `Custom source switch ${theme} ${info.project.name}`,
+        provider: "audio_generation",
+        apiKey: "fixture-custom-source-key",
+        ...custom,
+      },
+    });
+    expect(created.ok()).toBeTruthy();
+    const { id } = await created.json();
+    const stored = async () => (await request.get(`/api/connections/${id}`)).json();
+    try {
+      await prepare(page, theme);
+      let editor = await openConnection(page, id);
+      await editor.getByRole("button", { name: /^Custom compatible server/u }).click();
+      await editor.getByRole("button", { name: "Save", exact: true }).click();
+      await expect.poll(stored).toMatchObject({ ...custom, apiKeyEncrypted: "••••••••" });
+      await editor.getByRole("button", { name: /^ElevenLabs/u }).click();
+      await editor.getByRole("button", { name: "Save", exact: true }).click();
+      const preset = {
+        audioGenerationSource: "elevenlabs",
+        baseUrl: "https://api.elevenlabs.io",
+        model: "music_v2_5",
+        audioSoundEffectsModel: "eleven_text_to_sound_v2",
+        apiKeyEncrypted: "",
+      };
+      await expect.poll(stored).toMatchObject(preset);
+      await page.reload();
+      editor = await openConnection(page, id);
+      await expect(editor.getByRole("button", { name: /^ElevenLabs/u })).toHaveAttribute("aria-pressed", "true");
+      expect(await stored()).toMatchObject(preset);
+      await capture(page, info, `custom-to-preset-${theme}`, editor.getByRole("button", { name: /^ElevenLabs/u }));
+      expect(pageErrors).toEqual([]);
+    } finally {
+      await request.delete(`/api/connections/${id}`);
+    }
+  });
+
   test(`compatible Game audio settings save and reopen (${theme})`, async ({ page, request }, info) => {
     const pageErrors: string[] = [];
     page.on("pageerror", (error) => pageErrors.push(error.message));

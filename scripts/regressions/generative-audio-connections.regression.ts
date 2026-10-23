@@ -76,6 +76,33 @@ try {
   );
   assert.equal(unchangedRestore.trustedIdentity, true);
   assert.equal(unchangedRestore.row.apiKeyEncrypted, "local-ciphertext");
+  for (const source of [null, undefined]) {
+    for (const [existing, imported] of [
+      [{ ...localGeneration, audioGenerationSource: source }, localGeneration],
+      [localGeneration, { ...localGeneration, audioGenerationSource: source }],
+    ]) {
+      const restored = quarantineProfileApiConnectionRow({ ...imported, apiKeyEncrypted: "" }, existing);
+      assert.equal(restored.trustedIdentity, true, "a missing generation source resolves to ElevenLabs");
+      assert.equal(restored.row.apiKeyEncrypted, "local-ciphertext");
+      assert.equal(restored.row.defaultForAgents, "true");
+      assert.equal(restored.row.audioGenerationLegacyConnectionId, "real-legacy-id");
+    }
+  }
+  for (const changed of [
+    { audioGenerationSource: "" },
+    { audioGenerationSource: " " },
+    { audioGenerationSource: " elevenlabs " },
+    { audioGenerationSource: "future-source" },
+    { audioGenerationSource: "sunoapi" },
+    { baseUrl: "https://different.example/v1" },
+  ]) {
+    const rejected = quarantineProfileApiConnectionRow({ ...localGeneration, ...changed }, localGeneration);
+    assert.equal(rejected.trustedIdentity, false, "unsupported sources and different endpoints remain untrusted");
+    assert.equal(rejected.row.apiKeyEncrypted, "");
+    assert.equal(rejected.row.defaultForAgents, "false");
+    assert.equal(rejected.row.profileImportReviewRequired, "true");
+    assert.equal(rejected.row.audioGenerationLegacyConnectionId, null);
+  }
   const changedSource = quarantineProfileApiConnectionRow(
     { ...localGeneration, audioGenerationSource: "sunoapi" },
     localGeneration,

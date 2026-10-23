@@ -32,6 +32,7 @@ type ResolvedConfig = GenerativeAudioProviderConfig & {
   soundEffects: boolean;
   legacyId: string | null;
 };
+const warnedOptionalMigrationFailures = new WeakSet<DB>();
 
 export class AudioGenerationConfigurationError extends Error {
   constructor(
@@ -76,7 +77,14 @@ export async function resolveGenerativeAudioConfig(db: DB, requestedId?: string 
     if (!row) {
       // Legacy/import fixtures can reach this bridge without the startup split.
       // Configured connections never pay for a migration transaction per cue.
-      await migrateGenerativeAudioConnections(db);
+      try {
+        await migrateGenerativeAudioConnections(db);
+      } catch (error) {
+        if (!warnedOptionalMigrationFailures.has(db)) {
+          warnedOptionalMigrationFailures.add(db);
+          logger.warn(error, "[migration] Deferring the optional unconfigured music and sound-effect split");
+        }
+      }
       row = (await connections.getDefaultForAudioGeneration()) ?? (await connections.getFallbackForAudioGeneration());
     }
     if (!row) {

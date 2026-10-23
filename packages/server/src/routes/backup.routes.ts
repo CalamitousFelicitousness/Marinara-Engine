@@ -860,9 +860,17 @@ function profileConnectionCredentialIdentityMatches(
   existing: Record<string, unknown>,
   imported: Record<string, unknown>,
 ) {
-  return PROFILE_CONNECTION_CREDENTIAL_IDENTITY_FIELDS.every(
-    (field) => profileConnectionIdentityValue(existing[field]) === profileConnectionIdentityValue(imported[field]),
-  );
+  return PROFILE_CONNECTION_CREDENTIAL_IDENTITY_FIELDS.every((field) => {
+    if (
+      field === "audioGenerationSource" &&
+      existing.provider === "audio_generation" &&
+      imported.provider === "audio_generation"
+    ) {
+      // Match the resolver's nullish default; blank, padded and unknown sources are not inferred.
+      return (existing[field] ?? "elevenlabs") === (imported[field] ?? "elevenlabs");
+    }
+    return profileConnectionIdentityValue(existing[field]) === profileConnectionIdentityValue(imported[field]);
+  });
 }
 
 type ProfileApiConnectionImportPlan = {

@@ -489,23 +489,33 @@ function BranchGraphCanvas({
               );
             })}
             {lanePoints.map((point) => (
-              <circle
+              // A tap shows the point's text instead of switching, since touch has no hover.
+              <g
                 key={`point:${point.index}`}
-                cx={xOf(point.index)}
-                cy={y}
-                r={6}
-                fill="transparent"
-                stroke={current ? "var(--primary)" : "var(--muted-foreground)"}
-                strokeWidth={1.25}
                 tabIndex={0}
                 role="img"
                 aria-label={describePoint(point)}
-                className="focus-visible:outline-none focus-visible:[stroke-width:2.5]"
+                className="group outline-none"
                 onMouseEnter={(event) => onShowPoint(point, event)}
                 onMouseLeave={onHidePoint}
                 onFocus={(event) => onShowPoint(point, event)}
                 onBlur={onHidePoint}
-              />
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onShowPoint(point, event);
+                }}
+              >
+                <circle cx={xOf(point.index)} cy={y} r={10} fill="transparent" />
+                <circle
+                  cx={xOf(point.index)}
+                  cy={y}
+                  r={6}
+                  fill="transparent"
+                  stroke={current ? "var(--primary)" : "var(--muted-foreground)"}
+                  strokeWidth={1.25}
+                  className="pointer-events-none group-focus-visible:[stroke-width:2.5]"
+                />
+              </g>
             ))}
           </g>
         );

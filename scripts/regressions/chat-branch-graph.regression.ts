@@ -10,7 +10,11 @@ process.env.FILE_STORAGE_DIR = join(dataDir, "storage");
 process.env.NODE_ENV = "test";
 process.env.MARINARA_LITE = "true";
 
-let app: { close(): Promise<void>; inject(options: Record<string, unknown>): Promise<any> } | null = null;
+let app: {
+  ready(): Promise<unknown>;
+  close(): Promise<void>;
+  inject(options: Record<string, unknown>): Promise<any>;
+} | null = null;
 
 try {
   const { buildApp } = await import("../../packages/server/src/app.js");

@@ -162,6 +162,10 @@ try {
     });
     assert.equal(response.statusCode, 200, response.body);
     assert(!response.body.includes('"type":"error"'), response.body);
+    assert(
+      prompts.some((prompt) => prompt.includes("REFERENCE_TASK_")),
+      "the requested reference agent actually runs before checking its sources",
+    );
   };
   await retry();
   const writer = prompts.find((prompt) => prompt.includes(`REFERENCE_TASK_${types[0]}`));

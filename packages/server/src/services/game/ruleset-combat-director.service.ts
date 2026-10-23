@@ -128,6 +128,7 @@ import {
   rulesetAreaCells,
   rulesetZoneCatches,
   rulesetZoneCells,
+  RULESET_LAIR_OPTION_PREFIX,
   RULESET_MOVE_OPTION,
   RULESET_ZONE_OPTION_PREFIX,
   RULESET_ZONE_TURN_OPTION_PREFIX,
@@ -1252,7 +1253,10 @@ function heldHitAnswer(
     const struck = rulesetCombatant(step.state, struckId);
     const source = rulesetCombatant(step.state, hit.sourceId);
     if (!struck) return undefined;
-    const action = source?.actions.find((one) => one.id === hit.optionId);
+    const heldId = hit.optionId.startsWith(RULESET_LAIR_OPTION_PREFIX)
+      ? hit.optionId.slice(RULESET_LAIR_OPTION_PREFIX.length)
+      : hit.optionId;
+    const action = source?.actions.find((one) => one.id === heldId);
     const to = rulesetDefenseAgainst(definition, combat, step.state, struck, source, action).defense;
     if (to <= hit.defense) return undefined;
     return { to, ...(hit.total < to ? { misses: true as const } : {}) };

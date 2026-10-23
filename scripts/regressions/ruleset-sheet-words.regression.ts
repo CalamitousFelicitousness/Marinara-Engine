@@ -257,6 +257,11 @@ try {
     assert.deepEqual(Object.keys(odds).sort(), ["hard", "soft"]);
     assert.ok(odds.soft!.hitChance! > odds.hard!.hitChance!, "an easier target is likelier hit");
     assert.deepEqual(rulesetForecastsByTarget(ruleset, state, "fighter", "no-such-option", ["soft"]), {});
+    // A lair option's id carries its prefix, and still finds the action behind it.
+    assert.deepEqual(rulesetForecastsByTarget(ruleset, state, "fighter", `lair>${sword!.id}`, ["soft", "hard"]), {
+      soft: odds.soft,
+      hard: odds.hard,
+    });
   }
 
   // ── What the builder offers as already known ──

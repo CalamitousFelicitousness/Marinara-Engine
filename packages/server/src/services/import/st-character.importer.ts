@@ -309,28 +309,29 @@ export async function importSTCharacter(raw: Record<string, unknown>, db: DB, op
         characterId: charId,
         namePrefix: data.name,
         timestampOverrides: options?.timestampOverrides,
+        beforeCommit: async (tx, result) => {
+          const updatedImportMetadata = {
+            ...(data.extensions[IMPORT_METADATA_KEY] as Record<string, unknown>),
+            embeddedLorebook: {
+              ...(((data.extensions[IMPORT_METADATA_KEY] as Record<string, unknown>)?.embeddedLorebook as
+                Record<string, unknown> | undefined) ?? {}),
+              hasEmbeddedLorebook: true,
+              lorebookId: result.lorebookId as string,
+            },
+          };
+          data.extensions[IMPORT_METADATA_KEY] = updatedImportMetadata;
+          await createCharactersStorage(tx).update(charId, { extensions: { ...data.extensions } }, undefined, {
+            updatedAt: normalizedTimestamps?.updatedAt ?? normalizedTimestamps?.createdAt ?? null,
+            skipVersionSnapshot: true,
+          });
+          await syncCharacterBookFromLorebook(tx, result.lorebookId as string, { throwOnError: true });
+        },
       });
       if (result && "lorebookId" in result) {
         lorebookResult = {
           lorebookId: result.lorebookId as string,
           entriesImported: result.entriesImported as number,
         };
-
-        const updatedImportMetadata = {
-          ...(data.extensions[IMPORT_METADATA_KEY] as Record<string, unknown>),
-          embeddedLorebook: {
-            ...(((data.extensions[IMPORT_METADATA_KEY] as Record<string, unknown>)?.embeddedLorebook as
-              Record<string, unknown> | undefined) ?? {}),
-            hasEmbeddedLorebook: true,
-            lorebookId: result.lorebookId as string,
-          },
-        };
-        data.extensions[IMPORT_METADATA_KEY] = updatedImportMetadata;
-        await storage.update(charId, { extensions: { ...data.extensions } }, undefined, {
-          updatedAt: normalizedTimestamps?.updatedAt ?? normalizedTimestamps?.createdAt ?? null,
-          skipVersionSnapshot: true,
-        });
-        await syncCharacterBookFromLorebook(db, result.lorebookId as string, { throwOnError: true });
       } else if (hasEmbeddedLorebook) {
         throw new Error(
           typeof result?.error === "string"

@@ -16,6 +16,7 @@ COPY packages/server/package.json packages/server/
 COPY packages/client/package.json packages/client/
 COPY scripts/clean-stale-client-artifacts.mjs scripts/clean-stale-client-artifacts.mjs
 COPY scripts/ensure-native-deps.mjs scripts/ensure-native-deps.mjs
+COPY scripts/pnpm-runner.mjs scripts/pnpm-runner.mjs
 
 # Enable corepack — version is read from the packageManager field in package.json
 RUN corepack enable && corepack install
@@ -62,6 +63,7 @@ COPY packages/server/package.json packages/server/
 COPY packages/client/package.json packages/client/
 COPY scripts/clean-stale-client-artifacts.mjs scripts/clean-stale-client-artifacts.mjs
 COPY scripts/ensure-native-deps.mjs scripts/ensure-native-deps.mjs
+COPY scripts/pnpm-runner.mjs scripts/pnpm-runner.mjs
 
 # Enable corepack — version is read from the packageManager field in package.json
 RUN corepack enable && corepack install

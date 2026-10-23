@@ -121,8 +121,7 @@ const SENT_SELFIE_DESCRIPTION_MAX_CHARS = 600;
 
 // A field label starts a line: one to three words, then a colon ("camera: …", "Shot_1: …", "Aspect Ratio: …",
 // "OVERALL_SOUNDSCAPE: …"). A link ("https://…") is not one.
-const LINE_START_LABEL_RE =
-  /^([ \t]*)((?:[A-Za-z][A-Za-z0-9_]* ){0,2}[A-Za-z][A-Za-z0-9_]*)[ \t]*:(?!\/\/)([ \t]*["“]?)/gmu;
+const LINE_START_LABEL_RE = /^([ \t]*)((?:[A-Za-z][A-Za-z0-9_]* ){0,2}[A-Za-z][A-Za-z0-9_]*)[ \t]*:(?!\/\/)[ \t]*/gmu;
 // A negative prompt lists what the clip must not show, so its line goes whole, as its JSON field does.
 const NEGATIVE_PROMPT_LINE_RE = /^[ \t]*negative(?:[ _]prompt)?[ \t]*:.*$/gimu;
 // Words a label never holds: articles, pronouns, prepositions, conjunctions and auxiliaries mark prose ("The camera:",
@@ -147,15 +146,14 @@ function wordCase(word: string): string {
 /**
  * Removes line-start field labels. A label is judged by its shape, not a word list: no prose word, and every word in
  * one case ("Aspect Ratio", "camera angle"), so a sentence ("Ana smiles:") stays. A speaker stays too: a head with any
- * word of a chat member's name (`speakerNameParts`: "Ana:", "ALICE:", "Ana Lee:"), or one followed by a quote, is
- * dialogue, not a label.
+ * word of a chat member's name (`speakerNameParts`: "Ana:", "ALICE:", "Ana Lee:") is dialogue, not a label. A quoted
+ * value doesn't save a label ('Camera: "slow pan"'), so a speaker outside the chat ('Guard: "Stop!"') keeps only the
+ * words.
  */
 function stripFieldLabels(text: string, speakerNameParts: ReadonlySet<string>): string {
   return text
     .replace(NEGATIVE_PROMPT_LINE_RE, "")
-    .replace(LINE_START_LABEL_RE, (label, indent: string, head: string, after: string) => {
-      // Quoted words after the colon are dialogue ('Guard: "Stop!"'), so a speaker outside the chat keeps their name.
-      if (/["“]/u.test(after)) return label;
+    .replace(LINE_START_LABEL_RE, (label, indent: string, head: string) => {
       const words = head.split(" ");
       const folded = words.map((word) => word.toLowerCase());
       if (folded.some((word) => PROSE_WORDS.has(word) || speakerNameParts.has(word))) return label;

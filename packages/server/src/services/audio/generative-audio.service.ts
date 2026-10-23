@@ -291,7 +291,7 @@ export async function generateAudioAsset(
   const isConnectionTest = context && "scope" in context && context.scope === "connection-test";
   const key = isConnectionTest
     ? `${directoryKey}\0${createHash("sha256")
-        .update(JSON.stringify([config, prompt, context.lengthMs ?? 120_000]))
+        .update(JSON.stringify([config, request.kind, prompt, context.lengthMs ?? 120_000]))
         .digest("hex")}`
     : directoryKey;
   let pending = locks.get(key);

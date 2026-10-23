@@ -395,6 +395,23 @@ try {
     assert(existsSync(join(data, "game-assets", laterResult.json().path)));
   }
   held = undefined;
+  const beforeCrossKind = calls.length;
+  const crossKind = await Promise.all(
+    (["music", "sfx"] as const).map((kind) =>
+      generateAudioAsset(db, {
+        ...sampleInput,
+        audioConnectionId: row.id,
+        prompt: "kind-specific test sample",
+        kind,
+      }),
+    ),
+  );
+  assert.equal(
+    calls.length,
+    beforeCrossKind + 2,
+    "different audio kinds cannot coalesce in the internal shared helper",
+  );
+  assert.notEqual(crossKind[0]!.path, crossKind[1]!.path);
   for (const extra of [
     { kind: "music" },
     { context: { scope: "gacha-forge", key: "x" } },

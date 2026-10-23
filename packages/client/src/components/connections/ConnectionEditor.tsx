@@ -836,11 +836,15 @@ export function ConnectionEditor() {
 
   // Model list for current provider
   const providerModels = useMemo(() => {
+    if (localProvider === "audio_generation")
+      return localAudioGenerationSource === "elevenlabs"
+        ? [{ id: "music_v2_5", name: "Eleven Music v2.5", context: 0, maxOutput: 0 }]
+        : [];
     if (localProvider === "video_generation" && selectedVideoProvider === "nanogpt") return [];
     if (localProvider === "image_generation" && selectedImageService === "novelai")
       return (MODEL_LISTS[localProvider] ?? []).filter((m) => m.id.startsWith("nai-"));
     return MODEL_LISTS[localProvider] ?? [];
-  }, [localProvider, selectedVideoProvider, selectedImageService]);
+  }, [localProvider, localAudioGenerationSource, selectedVideoProvider, selectedImageService]);
 
   // Merge known models with remote models (remote first, deduped)
   const allModels = useMemo(
@@ -3151,7 +3155,7 @@ export function ConnectionEditor() {
             )}
 
             {/* Context display */}
-            {selectedModelInfo && (
+            {selectedModelInfo && !isGenerativeAudioProvider && (
               <div className="mt-2 flex items-center gap-4 rounded-lg bg-sky-400/5 px-3 py-2 text-[0.6875rem]">
                 <span className="text-[var(--muted-foreground)]">
                   {localizeUi("ui.connections.connectioneditor.context")}{" "}

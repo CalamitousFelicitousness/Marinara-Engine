@@ -44,6 +44,85 @@ async function capture(page: Page, info: TestInfo, label: string, anchor: Locato
 }
 
 for (const theme of ["dark", "light"] as const) {
+  test(`ElevenLabs music model can be selected without replacing manual source models (${theme})`, async ({
+    page,
+    request,
+  }, info) => {
+    const created = await request.post("/api/connections", {
+      data: {
+        name: `Music model picker ${theme} ${info.project.name}`,
+        provider: "audio_generation",
+        audioGenerationSource: "elevenlabs",
+        audioMusic: false,
+        audioSoundEffects: false,
+        model: "music_v2",
+        maxContext: 64000,
+        maxTokensOverride: 777,
+      },
+    });
+    expect(created.ok()).toBeTruthy();
+    const { id } = await created.json();
+    const stored = async () => (await request.get(`/api/connections/${id}`)).json();
+    const before = await stored();
+    const modelFetches: string[] = [];
+    page.on("request", (sent) => {
+      if (new URL(sent.url()).pathname === `/api/connections/${id}/models`) modelFetches.push(sent.url());
+    });
+    try {
+      await prepare(page, theme);
+      let editor = await openConnection(page, id);
+      let manual = editor.getByPlaceholder("Or type model ID directly…", { exact: true });
+      await expect(manual).toHaveValue("music_v2");
+      await editor.getByText("music_v2", { exact: true }).click();
+      const option = () => editor.getByRole("button", { name: "Eleven Music v2.5 music_v2_5", exact: true });
+      await expect(option()).toBeVisible();
+      await capture(page, info, `elevenlabs-music-option-${theme}`, option());
+      await option().click();
+      await expect(manual).toHaveValue("music_v2_5");
+      await expect(editor.getByText("Context:", { exact: true })).toHaveCount(0);
+      await expect(editor.getByText("Max Output:", { exact: true })).toHaveCount(0);
+      await editor.getByRole("button", { name: "Save", exact: true }).click();
+      await expect.poll(stored).toMatchObject({
+        model: "music_v2_5",
+        maxContext: before.maxContext,
+        maxTokensOverride: before.maxTokensOverride,
+      });
+      await page.reload();
+      editor = await openConnection(page, id);
+      manual = editor.getByPlaceholder("Or type model ID directly…", { exact: true });
+      await expect(manual).toHaveValue("music_v2_5");
+      await editor.getByRole("button", { name: /^SunoAPI Generate audio/u }).click();
+      await expect(manual).toHaveValue("V6");
+      await editor.getByText("V6", { exact: true }).click();
+      await expect(option()).toHaveCount(0);
+      await manual.fill("saved-suno-model");
+      await editor.getByRole("button", { name: "Save", exact: true }).click();
+      await expect.poll(stored).toMatchObject({ audioGenerationSource: "sunoapi", model: "saved-suno-model" });
+      await page.reload();
+      editor = await openConnection(page, id);
+      manual = editor.getByPlaceholder("Or type model ID directly…", { exact: true });
+      await expect(manual).toHaveValue("saved-suno-model");
+      await editor.getByRole("button", { name: /^ElevenLabs/u }).click();
+      await expect(manual).toHaveValue("saved-suno-model");
+      await editor.getByText("saved-suno-model", { exact: true }).click();
+      await expect(option()).toBeVisible();
+      await editor.getByRole("button", { name: /^Custom compatible server/u }).click();
+      await editor.getByPlaceholder("https://api.elevenlabs.io", { exact: true }).fill("https://audio.example.test/v1");
+      await manual.fill("saved-custom-model");
+      await editor.getByText("saved-custom-model", { exact: true }).click();
+      await expect(option()).toHaveCount(0);
+      await editor.getByRole("button", { name: "Save", exact: true }).click();
+      await expect.poll(stored).toMatchObject({ audioGenerationSource: "custom", model: "saved-custom-model" });
+      await page.reload();
+      editor = await openConnection(page, id);
+      manual = editor.getByPlaceholder("Or type model ID directly…", { exact: true });
+      await expect(manual).toHaveValue("saved-custom-model");
+      expect(modelFetches).toEqual([]);
+    } finally {
+      await request.delete(`/api/connections/${id}`);
+    }
+  });
+
   test(`Custom audio source switches to preset defaults (${theme})`, async ({ page, request }, info) => {
     const pageErrors: string[] = [];
     page.on("pageerror", (error) => pageErrors.push(error.message));

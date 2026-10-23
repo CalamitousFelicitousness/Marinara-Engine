@@ -2327,10 +2327,6 @@ export async function charactersRoutes(app: FastifyInstance) {
       },
     );
 
-    if (!result || "error" in result) {
-      return reply.status(500).send({ error: result?.error ?? "Failed to import embedded lorebook" });
-    }
-
     return {
       success: true,
       lorebookId: result.lorebookId,

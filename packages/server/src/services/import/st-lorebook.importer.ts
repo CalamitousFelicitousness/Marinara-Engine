@@ -393,7 +393,7 @@ export async function importSTLorebook(
     /** Runs with the imported rows, before commit and chat-reference cleanup. */
     beforeCommit?: (tx: DB, result: LorebookImportResult) => Promise<void>;
   },
-): Promise<LorebookImportResult | { error: string }> {
+): Promise<LorebookImportResult> {
   const wi = raw as unknown as STWorldInfo;
 
   const entryList = asEntryList(wi.entries);

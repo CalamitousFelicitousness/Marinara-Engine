@@ -316,29 +316,27 @@ export async function importSTCharacter(raw: Record<string, unknown>, db: DB, op
               ...(((data.extensions[IMPORT_METADATA_KEY] as Record<string, unknown>)?.embeddedLorebook as
                 Record<string, unknown> | undefined) ?? {}),
               hasEmbeddedLorebook: true,
-              lorebookId: result.lorebookId as string,
+              lorebookId: result.lorebookId,
             },
           };
           data.extensions[IMPORT_METADATA_KEY] = updatedImportMetadata;
-          await createCharactersStorage(tx).update(charId, { extensions: { ...data.extensions } }, undefined, {
-            updatedAt: normalizedTimestamps?.updatedAt ?? normalizedTimestamps?.createdAt ?? null,
-            skipVersionSnapshot: true,
-          });
-          await syncCharacterBookFromLorebook(tx, result.lorebookId as string, { throwOnError: true });
+          const updated = await createCharactersStorage(tx).update(
+            charId,
+            { extensions: { ...data.extensions } },
+            undefined,
+            {
+              updatedAt: normalizedTimestamps?.updatedAt ?? normalizedTimestamps?.createdAt ?? null,
+              skipVersionSnapshot: true,
+            },
+          );
+          if (!updated) throw new Error("Character no longer exists");
+          await syncCharacterBookFromLorebook(tx, result.lorebookId, { throwOnError: true });
         },
       });
-      if (result && "lorebookId" in result) {
-        lorebookResult = {
-          lorebookId: result.lorebookId as string,
-          entriesImported: result.entriesImported as number,
-        };
-      } else if (hasEmbeddedLorebook) {
-        throw new Error(
-          typeof result?.error === "string"
-            ? result.error
-            : "Character imported but the embedded lorebook could not be saved — the import has been rolled back.",
-        );
-      }
+      lorebookResult = {
+        lorebookId: result.lorebookId,
+        entriesImported: result.entriesImported,
+      };
     } catch (err) {
       await rollbackImportedCharacter(db, charId, avatarPath);
       logger.warn(err, "Rolled back character import after embedded lorebook import failed");

@@ -265,7 +265,7 @@ type ChatCommonOverlaysProps = {
   sceneSettings: SharedSceneSettingsProps;
   onCloseSettings: (options?: { force?: boolean }) => void;
   onOpenScheduleEditor?: (characterId: string, options?: { initialDay?: string | null }) => void;
-  onWizardFinish: () => void;
+  onWizardFinish: (discarded?: boolean) => void;
   onClosePeekPrompt: () => void;
   onDeleteConfirm: () => void;
   onDeleteSwipe: () => void;

@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import { currentRoomGeneration, resolveRoomGenerationPolicy } from "../multiplayer/generation-policy.js";
 // ──────────────────────────────────────────────
 // Storage: Chats
@@ -21,6 +22,7 @@ import {
   characters,
   chats,
   messages,
+  messageTrash,
   messageSwipes,
   gameStateSnapshots,
   spatialContextSnapshots,
@@ -40,6 +42,7 @@ import {
   conversationCallSessions,
   conversationCallMessages,
   lorebookEntries,
+  promptPresets,
 } from "../../db/schema/index.js";
 import { newId, now } from "../../utils/id-generator.js";
 import { parseSourceMessageRefs } from "./lorebook-provenance.js";
@@ -54,6 +57,7 @@ import {
   getChatWindowDefaultSettingsKey,
   parseChatWindowDefault,
   type CreateChatInput,
+  type Chat,
   type CreateMessageInput,
   type RoleplayCommandActivity,
 } from "@marinara-engine/shared";
@@ -2137,6 +2141,56 @@ export function createChatsStorage(db: DB) {
     async remove(id: string) {
       const galleryFilePaths = await db.transaction((tx) => removeChatDatabaseRecords(tx, id));
       await cleanupDeletedChatFiles(id, galleryFilePaths);
+    },
+
+    /** Compare and remove inside one transaction so messages/settings cannot race cancellation. */
+    async removeEmptySetupChat(
+      id: string,
+      initial: Pick<Chat, "id" | "createdAt" | "name" | "mode" | "connectionId" | "promptPresetId"> & {
+        metadata: Record<string, unknown>;
+      },
+    ): Promise<boolean> {
+      const galleryFilePaths = await db.transaction(async (tx) => {
+        const [chat] = await tx.select().from(chats).where(eq(chats.id, id)).limit(1);
+        if (
+          !chat ||
+          initial.id !== id ||
+          chat.createdAt !== initial.createdAt ||
+          chat.name !== initial.name ||
+          chat.mode !== initial.mode ||
+          chat.connectionId !== initial.connectionId ||
+          chat.personaId ||
+          chat.personaCharacterId ||
+          parseCharacterIds(chat.characterIds).length ||
+          chat.groupId ||
+          chat.folderId ||
+          chat.connectedChatId ||
+          chat.sortOrder ||
+          !isDeepStrictEqual(parseMetadata(chat.metadata), JSON.parse(JSON.stringify(initial.metadata)))
+        )
+          return null;
+        // The wizard auto-selects the built-in prompt preset without user input.
+        if (chat.promptPresetId !== initial.promptPresetId) {
+          if (initial.promptPresetId || !chat.promptPresetId) return null;
+          const [preset] = await tx
+            .select()
+            .from(promptPresets)
+            .where(eq(promptPresets.id, chat.promptPresetId))
+            .limit(1);
+          if (preset?.isDefault !== "true") return null;
+        }
+        // Empty means no durable content, including imported memory or restorable deleted messages.
+        if (chat.mode === "game" ? await isProtectedGameDeleteTarget(chat) : await hasGameDeletePayload(id))
+          return null;
+        for (const table of [memoryChunks, agentMemory, messageTrash]) {
+          const rows = await tx.select({ id: table.id }).from(table).where(eq(table.chatId, id)).limit(1);
+          if (rows.length) return null;
+        }
+        return removeChatDatabaseRecords(tx, id);
+      });
+      if (!galleryFilePaths) return false;
+      await cleanupDeletedChatFiles(id, galleryFilePaths);
+      return true;
     },
 
     /** Atomically remove a marked Roleplay DM thread only while it is still empty. */

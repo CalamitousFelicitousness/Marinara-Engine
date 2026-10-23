@@ -751,6 +751,9 @@ export function useCreateChat() {
     }) => api.post<Chat>("/chats", data),
     onSuccess: (chat) => {
       if (chat) {
+        if (chat.characterIds.length === 0 && !chat.personaId && !chat.personaCharacterId) {
+          useChatStore.getState().setPendingNewChatSetup(chat);
+        }
         qc.setQueryData(chatKeys.detail(chat.id), chat);
         qc.setQueryData<Chat[]>(chatKeys.list(), (existing) => upsertCachedChat(existing, chat));
       }

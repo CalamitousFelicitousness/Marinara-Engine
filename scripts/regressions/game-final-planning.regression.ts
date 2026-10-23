@@ -19,13 +19,16 @@ const { generateRoutes } = await import("../../packages/server/src/routes/genera
 const { OpenAIProvider } = await import("../../packages/server/src/services/llm/providers/openai.provider.js");
 let outputs: string[] = [];
 let calls = 0;
-OpenAIProvider.prototype.chat = async function* () {
+let instructions: string[] = [];
+OpenAIProvider.prototype.chat = async function* (messages) {
+  instructions.push(String(messages.at(-1)?.content ?? ""));
   const content = outputs[calls++];
   assert.notEqual(content, undefined, "no unexpected model request is needed");
   yield content!;
   return { promptTokens: 1, completionTokens: 1, totalTokens: 2, finishReason: "stop" };
 };
-OpenAIProvider.prototype.chatComplete = async () => {
+OpenAIProvider.prototype.chatComplete = async (messages) => {
+  instructions.push(String(messages.at(-1)?.content ?? ""));
   const content = outputs[calls++];
   assert.notEqual(content, undefined, "no unexpected completion request is needed");
   return {
@@ -60,6 +63,7 @@ try {
   ) => {
     outputs = replies;
     calls = 0;
+    instructions = [];
     const chat = await chats.create({ name: label, mode, characterIds: [], connectionId: connection.id });
     assert(chat);
     await chats.patchMetadata(chat.id, { enableAgents: false, enableTools: false, gameActiveState: "exploration" });
@@ -91,7 +95,7 @@ try {
         error: events.some((event) => event.type === "error"),
       }),
     );
-    return { finalized, saved, events };
+    return { finalized, saved, events, finalInstruction: instructions.at(-1) ?? "" };
   };
   const test = async (name: string, check: () => Promise<void>) => {
     try {
@@ -116,6 +120,7 @@ try {
     const expected = "The stone strikes the floor.\n[dice: 1d1 = 1 (1)]";
     assert.equal(result.saved?.content, expected);
     assert.equal(result.finalized, expected);
+    assert.match(result.finalInstruction, /starting directly with the scene/);
     const extra = typeof result.saved?.extra === "string" ? JSON.parse(result.saved.extra) : result.saved?.extra;
     assert.match(extra.thinking, /Plan: This is hidden final planning/);
   });
@@ -168,6 +173,11 @@ try {
       if (name !== "ordinary") {
         const extra = typeof result.saved?.extra === "string" ? JSON.parse(result.saved.extra) : result.saved?.extra;
         assert.match(extra.thinking, /Private preparation/);
+      }
+      if (name === "post-roll") {
+        assert.match(result.finalInstruction, /Rewrite your entire last out-of-character answer/);
+        assert.match(result.finalInstruction, /starting directly with the answer/);
+        assert.doesNotMatch(result.finalInstruction, /Narrate the consequences now|starting directly with the scene/);
       }
     });
   if (failures.length) throw new AggregateError(failures, "Final Game planning controls failed");

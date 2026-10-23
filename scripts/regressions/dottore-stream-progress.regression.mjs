@@ -234,6 +234,10 @@ class StreamProgress(unittest.TestCase):
                 self.assertEqual(published, {"defects": 1, "notes": 0, "verdict": "Repair Required"})
                 self.assertEqual([(item["path"], item["line"]) for item in inline], [("f.py", 10)])
                 self.assertIn("Carried defect", pathlib.Path("review.md").read_text())
+                # A carried file can also be absent from the entire incremental diff.
+                with patch.object(reviewer, "touched_lines", side_effect=lambda base: full if base == "full-pr" else {"g.py": {"RIGHT": {20}, "LEFT": set()}}):
+                    kept, _, _ = reviewer.validate_review_items(report, "previous", outside_ok=True)
+                self.assertEqual([(item.path, item.line) for item in kept], [("f.py", 10)])
             finally:
                 reviewer.os.chdir(previous_dir)
 

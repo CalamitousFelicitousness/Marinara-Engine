@@ -2039,7 +2039,7 @@ def run_finders(ctx):
     try:
         return [(label, index, future.result()) for label, index, future in finders]
     finally:
-        pool.shutdown(wait=False, cancel_futures=True)
+        pool.shutdown(wait=True, cancel_futures=True)
 
 
 # ponytail: line-based declaration patterns, not a parser. An unnamed callback or an unusual signature
@@ -2829,6 +2829,12 @@ def validate_review_items(review_obj, base, outside_ok=False):
     """The findings and nitpicks whose diff locations hold. With outside_ok, a confirmed finding the checker placed
     outside the changed lines keeps its place when that line exists at the head; the finder's never do."""
     allowed = touched_lines(base)
+    # Confirmed carried findings can sit on older PR changes; finder output and nitpicks stay incremental.
+    finding_lines = (
+        anchorable_lines(allowed, review_obj["base_ref"], review_obj.get("mode"))
+        if outside_ok and review_obj.get("base_ref")
+        else allowed
+    )
     findings = []
     nitpicks = []
     invalid = []
@@ -2840,6 +2846,7 @@ def validate_review_items(review_obj, base, outside_ok=False):
             invalid.append(f"Malformed finding skipped: {exc}")
             continue
         target = nitpicks if finding.severity == "nitpick" else findings
+        locations = allowed if target is nitpicks else finding_lines
         if finding.severity not in severities:
             finding.severity = "nitpick" if target is nitpicks else "medium"
         if finding.outside_diff and finding.side == "RIGHT":
@@ -2852,7 +2859,7 @@ def validate_review_items(review_obj, base, outside_ok=False):
                 continue
             target.append(finding)
             continue
-        if not finding.path or finding.path not in allowed:
+        if not finding.path or finding.path not in locations:
             invalid.append(
                 f"{finding.severity} '{finding.title or '<untitled>'}' at "
                 f"{finding.path or '<missing path>'}: not in changed files"
@@ -2871,14 +2878,14 @@ def validate_review_items(review_obj, base, outside_ok=False):
                 f"{finding.path}:{finding.line}: deleted-line findings need a full review (`/dottore full`)"
             )
             continue
-        removed = allowed[finding.path].get("LEFT", set())
+        removed = locations[finding.path].get("LEFT", set())
         if finding.side == "LEFT" and finding.line not in removed and removed:
             # A defect that only removes code is often placed on the unchanged line beside the deletion; anchor it on
             # the nearest removed line GitHub shows with it rather than withhold it.
             near = min(removed, key=lambda number: abs(number - finding.line))
             if abs(near - finding.line) <= GITHUB_CONTEXT_LINES:
                 finding.line = near
-        if finding.line not in allowed[finding.path].get(finding.side, set()):
+        if finding.line not in locations[finding.path].get(finding.side, set()):
             invalid.append(
                 f"{finding.severity} '{finding.title or '<untitled>'}' at "
                 f"{finding.path}:{finding.line}: line is not part of the change"

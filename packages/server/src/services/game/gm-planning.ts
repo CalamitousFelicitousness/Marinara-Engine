@@ -37,3 +37,17 @@ export function extractLeadingGmPlanning(text: string): LeadingPlanningExtractio
   if (!content || !PLAN_ONLY_LABEL.test(planning)) return { content: text, planning: "" };
   return { content, planning };
 }
+
+/**
+ * A Game Master that calls a tool mid-reply often announces it first ("... in the lamplight — let me get the
+ * number."). The announcement is the model talking to itself, not the scene, so it is cut off the end of the text
+ * written before the call. Only a final sentence or dash-led clause that says the writer is about to roll, check or
+ * look something up is cut; anything before it stays.
+ */
+const TOOL_ANNOUNCEMENT =
+  /(?:^|(?<=[.!?…"'”’*_)\]])\s+|\s*[—–]\s*|\s+-{1,2}\s+)(?:(?:okay|ok|alright|right|now|first|so),?\s+)*(?:let(?:'s|’s| me| us)|i(?:'ll|’ll| will| need to| have to|'m going to|’m going to| am going to)|time to)\s+(?:roll|re-?roll|get|check|see|find out|throw|call|look up|determine|work out|figure out)\b[^.!?\n]*[.!?:…]*\s*$/i;
+
+export function stripTrailingToolAnnouncement(text: string): string {
+  const match = TOOL_ANNOUNCEMENT.exec(text);
+  return match ? text.slice(0, match.index).trimEnd() : text;
+}

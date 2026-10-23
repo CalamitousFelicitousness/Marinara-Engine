@@ -2117,6 +2117,7 @@ export function buildGmFormatReminder(
       `DICE:`,
       `- roll_dice is a real die you can throw. Call it the moment you need an actual number before you can keep writing - an attack, a save, damage, a random outcome the scene then reacts to - passing the notation (for example "1d20+3") and a short reason that starts with who rolls (for example "${partyNames[0] ?? "Name"}: Cure Wounds").`,
       `- Never invent a die result. Wait for the number the tool gives you, then narrate what it means, once, in this same turn.`,
+      `- Call it without announcing it: the narration never says you are about to roll, check or get a number.`,
       // A ruleset game's checks come from the character sheet, so a tool-made modifier is never
       // the record: the engine would roll such a tag again and contradict the narration.
       ctx.ruleset

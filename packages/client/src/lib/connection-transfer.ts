@@ -289,7 +289,7 @@ function serializeConnectionForExport(connection: ConnectionTransferRow): SafeCo
       provider === "decision" ? asTimeoutMs(connection.decisionTimeoutMs, resolveDecisionConnectionTimeoutMs) : null,
     audioSource: isAudioProvider ? asNullableString(connection.audioSource ?? connection.service) : null,
     audioGenerationSource: isGenerativeAudioProvider
-      ? asGenerativeAudioSource(connection.audioGenerationSource ?? "elevenlabs")
+      ? asGenerativeAudioSource(asNullableString(connection.audioGenerationSource) ?? "elevenlabs")
       : null,
     audioGenerationCallbackUrl: isGenerativeAudioProvider
       ? asNullableString(connection.audioGenerationCallbackUrl)

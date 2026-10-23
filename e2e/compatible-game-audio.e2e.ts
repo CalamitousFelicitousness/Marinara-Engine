@@ -179,6 +179,39 @@ for (const theme of ["dark", "light"] as const) {
         audioSoundEffects: "true",
       });
       await expect(editor.getByText("Unsaved", { exact: true })).toBeHidden();
+      const rejectedCallbackPatches: string[] = [];
+      const captureCallbackPatch = (sent: import("@playwright/test").Request) => {
+        if (sent.method() === "PATCH" && sent.url().endsWith(`/api/connections/${id}`))
+          rejectedCallbackPatches.push(sent.postData() || "");
+      };
+      page.on("request", captureCallbackPatch);
+      await editor.getByLabel(/^SunoAPI music callback URL/u).fill("not-a-url");
+      await editor.getByRole("button", { name: /^ElevenLabs/u }).click();
+      await editor.getByRole("button", { name: /^SunoAPI Generate audio/u }).click();
+      await expect(editor.getByLabel(/^SunoAPI music callback URL/u)).toHaveValue("not-a-url");
+      await editor.getByRole("button", { name: "Save", exact: true }).click();
+      await expect(
+        editor
+          .getByRole("button", { name: "Dismiss save error", exact: true })
+          .locator("..")
+          .getByText("SunoAPI music requires a public HTTPS callback URL, even when polling.", { exact: true }),
+      ).toBeVisible();
+      expect(rejectedCallbackPatches).toEqual([]);
+      expect((await stored()).audioGenerationCallbackUrl).toBeNull();
+      page.off("request", captureCallbackPatch);
+      await editor.getByLabel(/^SunoAPI music callback URL/u).fill("https://8.8.8.8/completed");
+      await editor.getByRole("button", { name: "Save", exact: true }).click();
+      await expect.poll(stored).toMatchObject({
+        audioGenerationCallbackUrl: "https://8.8.8.8/completed",
+        audioMusic: "false",
+        audioSoundEffects: "true",
+      });
+      await expect(editor.getByText("Unsaved", { exact: true })).toBeHidden();
+      await editor.getByLabel(/^SunoAPI music callback URL/u).fill("");
+      await expect(editor.getByLabel(/^SunoAPI music callback URL/u)).toHaveValue("");
+      await editor.getByRole("button", { name: "Save", exact: true }).click();
+      await expect(editor.getByText("Unsaved", { exact: true })).toBeHidden();
+      await expect.poll(async () => (await stored()).audioGenerationCallbackUrl).toBeNull();
       await editor.getByText("Music generation", { exact: true }).click();
       await editor.getByRole("button", { name: "Save", exact: true }).click();
       await expect(
@@ -189,7 +222,11 @@ for (const theme of ["dark", "light"] as const) {
       ).toBeVisible();
       expect((await stored()).audioMusic).toBe("false");
       await editor.getByLabel(/^SunoAPI music callback URL/u).fill("https://127.0.0.1/completed");
+      const privateCallbackSave = page.waitForResponse(
+        (response) => response.request().method() === "PATCH" && response.url().endsWith(`/api/connections/${id}`),
+      );
       await editor.getByRole("button", { name: "Save", exact: true }).click();
+      expect((await privateCallbackSave).status()).toBe(400);
       await expect(editor.getByRole("button", { name: "Dismiss save error", exact: true })).toBeVisible();
       expect((await stored()).audioMusic).toBe("false");
       await editor.getByLabel(/^SunoAPI music callback URL/u).fill("https://8.8.8.8/completed");

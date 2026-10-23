@@ -118,6 +118,24 @@ await tick();
 assert.equal(active("second.mp3").length, 0, "late readiness cannot restart a disposed player");
 
 audioManager.dispose();
+windowStub.AudioContext = class {
+  constructor() {
+    throw new DOMException("Audio contexts unavailable", "NotSupportedError");
+  }
+};
+const refusedContext = createAudioPlayer();
+refusedContext.playMusic("blocked", { blocked: { path: "music/blocked.mp3" } });
+await tick();
+assert.equal(listenerCount(), 4, "a refused playback still registers its gesture retry");
+refusedContext.playMusic("second", assets);
+await tick();
+assert.doesNotThrow(gesture, "a refused AudioContext cannot escape the document gesture handler");
+await tick();
+assert.equal(listenerCount(), 0, "a refused AudioContext does not strand interaction listeners");
+assert.equal(active("second.mp3").length, 1, "music falls back to a media element when context construction fails");
+refusedContext.dispose();
+assert.equal(active("second.mp3").length, 0);
+delete windowStub.AudioContext;
 const originalFetch = globalThis.fetch;
 const contexts: ContextStub[] = [];
 class GainStub {

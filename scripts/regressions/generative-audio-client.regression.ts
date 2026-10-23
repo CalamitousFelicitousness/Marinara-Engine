@@ -108,6 +108,23 @@ for (const audioGenerationSource of [null, undefined]) {
   assert.equal(imported.connection.audioMusic, true);
   assert.doesNotThrow(() => createConnectionSchema.parse(imported.connection));
 }
+// Profile imports preserve raw rows, including blank source strings that ordinary creates reject.
+for (const audioGenerationSource of ["", "  \t  "]) {
+  const stored = {
+    ...rows[1]!,
+    audioGenerationSource,
+    profileImportReviewRequired: "true",
+  };
+  assert.equal(createConnectionSchema.shape.audioGenerationSource.safeParse(audioGenerationSource).success, false);
+  const exported = createConnectionExportEnvelope([stored]).connections[0]!;
+  assert.equal(exported.audioGenerationSource, "elevenlabs", "Blank restored sources use the absent-source default");
+  const imported = normalizeImportedConnectionEntry(exported);
+  assert.ok(imported, "A blank-source profile row must survive connection export/import");
+  assert.equal(imported.connection.audioGenerationSource, "elevenlabs");
+  assert.equal(imported.connection.audioMusic, true);
+  assert.equal(imported.connection.defaultForAgents, false);
+  assert.doesNotThrow(() => createConnectionSchema.parse(imported.connection));
+}
 assert.equal(
   normalizeImportedConnectionEntry(
     createConnectionExportEnvelope([

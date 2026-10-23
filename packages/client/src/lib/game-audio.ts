@@ -226,7 +226,11 @@ class GameAudioManager {
       const AudioContextCtor =
         window.AudioContext ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
       if (!AudioContextCtor) return null;
-      this.sfxAudioContext = new AudioContextCtor();
+      try {
+        this.sfxAudioContext = new AudioContextCtor();
+      } catch {
+        return null;
+      }
     }
     if (this.sfxAudioContext.state === "suspended") {
       void this.sfxAudioContext.resume().catch(() => {});

@@ -155,24 +155,26 @@ function scheduleManifestRebuild() {
 }
 
 function cacheIdentity(config: ResolvedConfig, kind: "music" | "sfx") {
-  // Older Game sound effects used a prompt-only ElevenLabs cache. Preserve it
-  // for the migrated default model; new models/endpoints have distinct caches.
+  // Legacy row and standalone settings shared a prompt-only ElevenLabs cache.
+  // Only the canonical endpoint and original models can safely reuse it.
   if (
-    config.legacyId &&
     config.source === "elevenlabs" &&
+    config.baseUrl.replace(/\/+$/, "") === GENERATIVE_AUDIO_DEFAULTS.elevenlabs.baseUrl &&
     config.model === "music_v1" &&
-    (!config.soundEffectsModel || config.soundEffectsModel === "eleven_text_to_sound_v2")
+    (!config.soundEffectsModel || config.soundEffectsModel === "eleven_text_to_sound_v2") &&
+    !config.musicEndpoint &&
+    !config.soundEffectsEndpoint
   )
     return "";
-  return (
+  const identity =
     [
-      config.source,
       config.baseUrl,
       kind === "music" ? config.model : config.soundEffectsModel || config.model,
       config.requestFormat,
       kind === "music" ? config.musicEndpoint : config.soundEffectsEndpoint,
-    ].join("\0") + "\0"
-  );
+    ].join("\0") + "\0";
+  // Compatible generation already keyed all of these fields before the split.
+  return config.source === "custom" ? identity : `${config.source}\0${identity}`;
 }
 
 async function compose(

@@ -884,7 +884,7 @@ export function ConnectionEditor() {
     if (
       localProvider === "audio_generation" &&
       localAudioGenerationSource === "sunoapi" &&
-      localAudioMusic &&
+      (localAudioMusic || localAudioGenerationCallbackUrl.trim() !== "") &&
       (!/^https:\/\//i.test(localAudioGenerationCallbackUrl.trim()) ||
         !createConnectionSchema.shape.audioGenerationCallbackUrl.safeParse(localAudioGenerationCallbackUrl).success)
     ) {

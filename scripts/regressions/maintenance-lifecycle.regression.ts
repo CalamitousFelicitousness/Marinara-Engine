@@ -25,20 +25,21 @@ const reasoningRecoveryIndex = generateRouteSource.indexOf("const pastReasoning 
 // The branch is keyed on the responder's attached tools, not enableChatTools: Game Mode attaches the dice tool
 // without the chat's tool toggle being on.
 const toolBranchIndex =
-  /if \(responderToolsAttached &&[^{}]*provider\.chatComplete/u.exec(generateRouteSource)?.index ?? -1;
+  /if \(\s*responderToolsAttached &&[^{}]*provider\.chatComplete/u.exec(generateRouteSource)?.index ?? -1;
 assert.ok(reasoningRecoveryIndex >= 0 && reasoningRecoveryIndex < toolBranchIndex);
 assert.match(
   generateRouteSource.slice(reasoningRecoveryIndex, toolBranchIndex),
   /collectPastReasoningMetadata\(\s*chatMessages,[\s\S]*scopedMessages[\s\S]*extra\.commandOnly === true/u,
 );
 
-const hiddenAnchorStart = generateRouteSource.indexOf("const anchoredMsg = savedMsg?.id");
-const hiddenAnchorEnd = generateRouteSource.indexOf(
-  "\n              if (\n                anchoredMsg?.id",
-  hiddenAnchorStart,
+assert.match(
+  generateRouteSource,
+  /const anchoredMsg = await saveHiddenCommandAnchor\(chats, \{[\s\S]*?encryptedReasoningItems,\n/u,
 );
-assert.ok(hiddenAnchorStart >= 0 && hiddenAnchorEnd > hiddenAnchorStart);
-const hiddenAnchorSource = generateRouteSource.slice(hiddenAnchorStart, hiddenAnchorEnd);
+const hiddenAnchorSource = readFileSync(
+  new URL("../../packages/server/src/routes/generate/hidden-command-anchor.ts", import.meta.url),
+  "utf8",
+);
 assert.match(hiddenAnchorSource, /updateMessageExtra\(savedMsg\.id/u);
 assert.match(hiddenAnchorSource, /commandOnly: true/u);
-assert.match(hiddenAnchorSource, /encryptedReasoning: encryptedReasoningItems\?\.length/u);
+assert.match(hiddenAnchorSource, /encryptedReasoning: anchor\.encryptedReasoningItems\?\.length/u);

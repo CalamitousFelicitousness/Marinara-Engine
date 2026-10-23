@@ -55,7 +55,7 @@ let warnedInvalidWaitTimeoutEnv = false;
 
 /** Bound on how long a caller may WAIT for a permit (`0` disables the bound); invalid values
  *  warn once and use the default, matching `resolveGlobalMediaGenerationLimit`. */
-function resolveGlobalMediaGenerationWaitTimeoutMs(): number {
+export function resolveGlobalMediaGenerationWaitTimeoutMs(): number {
   const raw = (process.env.MARINARA_MEDIA_GENERATION_WAIT_TIMEOUT_MS ?? "").trim();
   if (!raw) return DEFAULT_MEDIA_GENERATION_WAIT_TIMEOUT_MS;
   const value = parseStrictNonNegativeInt(raw);
@@ -239,12 +239,15 @@ export async function runMediaGenerationRequest<T>(args: {
   /** Batch/automatic work should pass "background" so it can never occupy the
    *  last permit ahead of interactive requests. Defaults to foreground. */
   priority?: MediaGenerationPriority;
+  /** Wraps the permit and the task, after the per-connection FIFO: a wait placed here (the shared GPU turn) holds
+   *  neither a permit nor a place that blocks others while the request ahead on its connection still renders. */
+  aroundPermit?: <R>(work: () => Promise<R>) => Promise<R>;
+  /** The task is generateImage/generateVideo, which take their own shared GPU turn and permit in the right order:
+   *  this call keeps only the per-connection FIFO, so nothing reserves a permit while the task waits for the GPU. */
+  taskTakesPermit?: boolean;
 }): Promise<T> {
-  if (!args.queue) {
-    if (args.signal?.aborted) throw mediaGenerationAbortError(args.signal);
-    // Non-queued callers skip the per-connection FIFO but NOT the global
-    // ceiling — previously they had no limit at all (#5097). This is a
-    // deliberate behavior change for them.
+  const runWithPermit = async () => {
+    if (args.taskTakesPermit) return args.task();
     const releasePermit = await acquireGlobalPermit(args.signal, args.priority);
     try {
       if (args.signal?.aborted) throw mediaGenerationAbortError(args.signal);
@@ -252,6 +255,14 @@ export async function runMediaGenerationRequest<T>(args: {
     } finally {
       releasePermit();
     }
+  };
+  const permitAndTask = () => (args.aroundPermit ? args.aroundPermit(runWithPermit) : runWithPermit());
+  if (!args.queue) {
+    if (args.signal?.aborted) throw mediaGenerationAbortError(args.signal);
+    // Non-queued callers skip the per-connection FIFO but NOT the global
+    // ceiling — previously they had no limit at all (#5097). This is a
+    // deliberate behavior change for them.
+    return permitAndTask();
   }
 
   const connectionKey = args.connectionKey.trim() || "default";
@@ -269,13 +280,7 @@ export async function runMediaGenerationRequest<T>(args: {
     // Invariant: the global permit is acquired AFTER the per-connection turn,
     // never before — otherwise a full permit pool could be held by tasks that
     // are themselves waiting on connection turns held behind the pool.
-    const releasePermit = await acquireGlobalPermit(args.signal, args.priority);
-    try {
-      if (args.signal?.aborted) throw mediaGenerationAbortError(args.signal);
-      return await heldMediaPermit.run(true, () => args.task());
-    } finally {
-      releasePermit();
-    }
+    return await permitAndTask();
   } finally {
     releaseCurrent();
     void queuedTail.finally(() => {
@@ -288,3 +293,129 @@ export async function runMediaGenerationRequest<T>(args: {
 
 /** Backward-compatible image-specific entry point for existing callers. */
 export const runImageGenerationRequest = runMediaGenerationRequest;
+
+// ── Provider lanes ───────────────────────────────────────────────────────────
+// "Queue media generation requests" means one request at a time per provider
+// account, whichever feature sends it. The per-connection FIFO above only
+// covers callers that opt in, so agents, trackers and capability packages
+// bypassed it and providers that reject parallel work (NovelAI) still got
+// overlapping requests. Lanes are entered inside generateImage itself, keyed on
+// the physical endpoint plus the account (API key), so every path shares one
+// line per account no matter which connection row it came through.
+//
+// Order vs the global ceiling: callers enter the lane first and take a permit
+// inside it (invariant 1 above), so lane waiters never sit on permits. Image
+// routes no longer wrap generateImage in the per-connection FIFO; video still
+// passes through it, inside its lane, for callers that opt in.
+
+let providerLanesEnabled = true;
+const providerLaneTails = new Map<string, Promise<void>>();
+const heldProviderLanes = new AsyncLocalStorage<ReadonlySet<string>>();
+
+/**
+ * Mirror the user's "Queue media generation requests" toggle from the synced
+ * `ui` app setting (null = key removed). Anything but an explicit `false`
+ * keeps the default, which is on.
+ */
+export function applyMediaQueueUiSettingsValue(value: string | null): void {
+  let parsed: unknown = null;
+  if (value) {
+    try {
+      parsed = JSON.parse(value);
+    } catch {
+      parsed = null;
+    }
+  }
+  const flag =
+    parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>).queueImageGenerationRequests
+      : undefined;
+  providerLanesEnabled = flag !== false;
+}
+
+/** Load the toggle at startup; app-settings writes keep it current afterwards. */
+export async function loadMediaQueueUiSettings(storage: { get(key: string): Promise<string | null> }) {
+  applyMediaQueueUiSettingsValue(await storage.get("ui"));
+}
+
+export function mediaProviderLanesEnabled(): boolean {
+  return providerLanesEnabled;
+}
+
+// API keys are interned to opaque account numbers, so lane keys never carry a key
+// (or anything derived from it) and nothing secret is hashed. The numbers only need
+// to be stable while a lane is in use, so the map is emptied whenever every lane
+// goes idle: no key outlives the requests that brought it in.
+const mediaProviderAccountIds = new Map<string, number>();
+
+/** One lane per provider endpoint and account. */
+export function mediaProviderLaneKey(endpointKey: string, apiKey: string): string {
+  const key = apiKey.trim();
+  let account = 0;
+  if (key && providerLanesEnabled) {
+    account = mediaProviderAccountIds.get(key) ?? mediaProviderAccountIds.size + 1;
+    mediaProviderAccountIds.set(key, account);
+  }
+  return `${endpointKey.trim() || "default"}|account-${account}`;
+}
+
+// Some providers keep their own one-at-a-time lock for a moment after they answer,
+// so a request sent the instant the previous one returns can still be rejected.
+// The lane stays closed for this long after each request; the caller is not held.
+const MEDIA_PROVIDER_LANE_GAP_MS: Readonly<Record<string, number>> = { novelai: 1_000 };
+
+/** Breathing room between back-to-back requests in one lane, by resolved backend. */
+export function mediaProviderLaneGapMs(resolvedSource: string): number {
+  return MEDIA_PROVIDER_LANE_GAP_MS[resolvedSource] ?? 0;
+}
+
+/**
+ * Run `task` alone in its provider lane when the queue setting is on. Re-entrant:
+ * a task that already holds this lane (a nested generateImage call) runs straight
+ * through instead of waiting on itself. `gapMs` keeps the lane closed after the
+ * task settles, without delaying the task's own caller.
+ */
+export async function runInMediaProviderLane<T>(args: {
+  laneKey: string;
+  task: MediaGenerationQueueTask<T>;
+  signal?: AbortSignal;
+  gapMs?: number;
+}): Promise<T> {
+  if (!providerLanesEnabled) return args.task();
+  const held = heldProviderLanes.getStore();
+  if (held?.has(args.laneKey)) return args.task();
+
+  const laneKey = args.laneKey;
+  const previous = providerLaneTails.get(laneKey) ?? Promise.resolve();
+  let releaseCurrent: () => void = () => undefined;
+  const current = new Promise<void>((resolve) => {
+    releaseCurrent = resolve;
+  });
+  const queuedTail = previous.catch(() => undefined).then(() => current);
+  providerLaneTails.set(laneKey, queuedTail);
+
+  try {
+    await waitForMediaGenerationTurn(previous, args.signal);
+    if (args.signal?.aborted) throw mediaGenerationAbortError(args.signal);
+    const nextHeld = new Set(held ?? []);
+    nextHeld.add(laneKey);
+    return await heldProviderLanes.run(nextHeld, () => args.task());
+  } finally {
+    const gapMs = args.gapMs ?? 0;
+    if (gapMs > 0) setTimeout(releaseCurrent, gapMs);
+    else releaseCurrent();
+    void queuedTail.finally(() => {
+      if (providerLaneTails.get(laneKey) === queuedTail) providerLaneTails.delete(laneKey);
+      if (providerLaneTails.size === 0) mediaProviderAccountIds.clear();
+    });
+  }
+}
+
+/** Test-only: lanes with a holder or waiters. */
+export function inspectMediaProviderLanesForTests() {
+  return {
+    activeLanes: providerLaneTails.size,
+    internedAccounts: mediaProviderAccountIds.size,
+    enabled: providerLanesEnabled,
+  };
+}

@@ -4,6 +4,7 @@ import {
   __setSdkForTesting,
   ClaudeSubscriptionProvider,
 } from "../../packages/server/src/services/llm/providers/claude-subscription.provider.js";
+import { splitHistoryForResume } from "../../packages/server/src/services/llm/providers/claude-subscription/jsonl-entries.js";
 
 const originalDebug = logger.debug;
 let logged: Record<string, unknown> | undefined;
@@ -59,6 +60,37 @@ try {
   }
   await provider.chatComplete([{ role: "user", content: "Hello" }], { model: "claude-opus-5" });
   assert.deepEqual(sdkOptions.settings, { fastMode: false }, "off preserves Claude's account-dependent default TTL");
+
+  // The xml </chat_history> close moves from the last history entry (which Claude Code marks for
+  // caching) to the start of the current turn, so that entry is identical next turn.
+  const split = splitHistoryForResume([
+    { role: "system", content: "System" },
+    { role: "user", content: "<chat_history>\nOne" },
+    { role: "assistant", content: "Reply one\n</chat_history>" },
+    { role: "user", content: "<last_message>\nTwo\n</last_message>" },
+  ]);
+  assert.equal(split.history.at(-1)?.content, "Reply one");
+  assert.equal(split.current.content, "</chat_history>\n<last_message>\nTwo\n</last_message>");
+  const continued = splitHistoryForResume([
+    { role: "user", content: "One" },
+    { role: "assistant", content: "Reply one" },
+    { role: "user", content: "Two" },
+  ]);
+  assert.equal(continued.history.at(-1)?.content, "Reply one", "unwrapped history is left alone");
+  assert.equal(continued.current.content, "Two");
+  // No cache_control of Marinara's own: Claude Code already uses all four markers.
+  await provider.chatComplete(
+    [
+      { role: "user", content: "<chat_history>\nOne" },
+      { role: "assistant", content: "Reply one\n</chat_history>" },
+      { role: "user", content: "Two" },
+    ],
+    { model: "claude-opus-5", anthropicExtendedCacheTtl: true },
+  );
+  const store = sdkOptions.sessionStore as { load(key: { sessionId: string }): Promise<unknown[] | null> };
+  const entries = await store.load({ sessionId: sdkOptions.resume as string });
+  assert.ok(entries?.length);
+  assert.ok(!JSON.stringify(entries).includes("cache_control"), "the resumed history carries no cache markers");
 } finally {
   logger.debug = originalDebug;
   __setSdkForTesting(null);

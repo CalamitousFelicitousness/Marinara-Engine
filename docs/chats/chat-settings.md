@@ -42,7 +42,7 @@ On a computer, Chat Settings floats over the chat. Its contents rearrange to fit
 - **Lock** stops the window from moving or resizing and fixes its button in place. You can still click the button to open the window. Unlock the window to move either one again.
 - **Close** (the **X**) hides the window.
 
-Windows stay inside the chat area when you resize the browser or open a sidebar.
+Windows stay inside the chat area when you resize the browser or open a sidebar. On a computer, a window or button can sit in the space beside the message box, all the way down to the bottom of the chat. It never covers the message box itself.
 
 On a phone, Chat Settings opens as a full-width panel. The panel fits above the keyboard while you type.
 
@@ -165,6 +165,8 @@ Three things are worth knowing.
 - Variables belong to this chat alone. Another chat has its own list, and yours survives a restart.
 - This is the same storage `{{setvar}}` uses. A value set by a prompt section or a lorebook entry shows up here as a row you can edit, and such an entry overwrites the value you typed if it uses the same name.
 
+With many variables, click **Search and edit all in the State Editor** at the top of the section. It opens every variable in one list where you can search, edit values as fields, or paste in many at once as JSON, and review the changes before saving. Saving only changes the names you edited, so a value `{{setvar}}` saves meanwhile under another name is kept. See [The State Editor](../roleplay/hud-and-trackers.md#the-state-editor).
+
 For everything else you can write in double braces, see [Prompt Macros](../prompts/macros.md).
 
 ## Chat tools in Chat Settings
@@ -176,7 +178,7 @@ The chat's tools are sections of Chat Settings too. Which ones you see depends o
 - **Chat Summary**, under **Lorebooks**, reviews and creates summaries of a Roleplay chat. See [Memory Recall and Chat Summaries](../agents/memory.md#chat-summary-roleplay).
 - **Active Context**, under **Chat Summary**, shows the lorebooks and context active in this chat. See [Token Budgets and Recursion](../lorebooks/token-budgets.md#seeing-skipped-entries-in-active-context).
 - **Agent activity**, just below **Agents** in a Roleplay chat that uses agents or Advanced Memory, shows what the chat's agents did. It also lets you re-run trackers, retry or stop agents, and clear trackers. See [Agent activity](../roleplay/getting-started.md#agent-activity).
-- **Author's Notes**, under **Agents**, holds a note the AI reads on every turn of a Roleplay chat. See [Author's Notes](../roleplay/getting-started.md#authors-notes).
+- **Author's Notes**, under **Agents**, holds a note the AI reads on every turn of a Roleplay chat. When you pop it out, its text box grows with the window; on a phone it fills the screen. See [Author's Notes](../roleplay/getting-started.md#authors-notes).
 - **Gallery** holds the chat's images and videos. See [Scene Backgrounds and the Gallery](../media/scene-backgrounds.md).
 
 ## Other sections in the panel

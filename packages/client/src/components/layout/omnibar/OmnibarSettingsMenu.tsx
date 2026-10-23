@@ -35,6 +35,7 @@ import {
   OMNIBAR_WINDOW_HEIGHT_MAX_REM,
   OMNIBAR_WINDOW_WIDTH_MIN_REM,
   OMNIBAR_WINDOW_WIDTH_MAX_REM,
+  shownMariAppearancePack,
   useUIStore,
 } from "../../../stores/ui.store";
 import { api } from "../../../lib/api-client";
@@ -44,8 +45,9 @@ import {
   MARI_APPEARANCE_PACKS,
   mariImgLoading,
   playHoursFromMs,
-  resolveMariAppearancePack,
+  visibleMariAppearancePacks,
 } from "../../../lib/mari-work-animations";
+import { seasonalThemeFor } from "../../../lib/seasonal-themes";
 import { useActivityOverview } from "../../../hooks/use-chat-insights";
 import { MARI_QUICK_CONNECTION, OMNIBAR_ASIDE_DELAY_CHOICES_MS } from "../../../lib/omnibar-aside-text";
 import { useLocalizedUiText } from "../../../localization/use-localized-ui-text";
@@ -240,6 +242,49 @@ const MARI_RUNTIME_LABEL_KEYS: Record<MariRuntime, string> = {
 
 type MariRuntimeStatus = Pick<MariWorkspaceStatus, "runtimeSelected" | "runtimeActive">;
 
+// #7949: the "read the handbook before the first write" gate. Server-authoritative like the runtime
+// below, so Mari cannot lift it; on until the server says otherwise.
+function SkillGateRow() {
+  const { t } = useTranslation();
+  const [enabled, setEnabled] = useState(true);
+  const writeSeqRef = useRef(0);
+  useEffect(() => {
+    let cancelled = false;
+    const seqAtStart = writeSeqRef.current;
+    api
+      .get<{ enabled: boolean }>("/professor-mari/workspace/skill-gate")
+      .then((response) => {
+        if (!cancelled && writeSeqRef.current === seqAtStart) setEnabled(response.enabled);
+      })
+      .catch(() => {
+        // The toggle keeps the default; a failed read is not worth a toast in a settings view.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const change = async (next: boolean) => {
+    const writeSeq = ++writeSeqRef.current;
+    setEnabled(next);
+    try {
+      await enqueueMariPermissionsModeWrite(() => api.put("/professor-mari/workspace/skill-gate", { enabled: next }));
+    } catch {
+      if (writeSeqRef.current !== writeSeq) return;
+      setEnabled(!next);
+      toast.error(t("omnibar.settings.mariSkillGate.couldNotChange"));
+    }
+  };
+  return (
+    <SettingRow
+      controlId="mari-skill-gate"
+      label={t("omnibar.settings.mariSkillGate.label")}
+      description={t("omnibar.settings.mariSkillGate.description")}
+      checked={enabled}
+      onChange={(next) => void change(next)}
+    />
+  );
+}
+
 // Professor Mari's runtime ("classic" or "pi"), the same server-authoritative pattern as the
 // Permissions Mode row above. The workspace status answers for her connection, so it also says
 // when "pi" is selected but the next run falls back to "classic" there.
@@ -331,12 +376,12 @@ function RuntimeRow() {
 function AppearancePacks() {
   const { t } = useTranslation();
   const baseId = useId();
-  const storedId = useUIStore((state) => state.mariAppearancePackId);
   const unlockedIds = useUIStore((state) => state.mariUnlockedPackIds);
+  const seasonalThemeId = useUIStore((state) => seasonalThemeFor(state).themeId);
   const selectPack = useUIStore((state) => state.setMariAppearancePack);
   const anyLocked = MARI_APPEARANCE_PACKS.some((pack) => !isMariPackUnlocked(pack, unlockedIds));
   const playHours = playHoursFromMs(useActivityOverview(anyLocked).data?.playTime.totalMs);
-  const selected = resolveMariAppearancePack(storedId, unlockedIds, playHours).id;
+  const selected = useUIStore((state) => shownMariAppearancePack(state, playHours)).id;
   const gridRef = useRef<HTMLDivElement>(null);
   const [near, setNear] = useState(false);
   useEffect(() => {
@@ -360,7 +405,7 @@ function AppearancePacks() {
       role="radiogroup"
       aria-label={t("mari.appearancePacks.heading")}
     >
-      {MARI_APPEARANCE_PACKS.map((pack) => {
+      {visibleMariAppearancePacks(seasonalThemeId).map((pack) => {
         const nameId = `${baseId}-${pack.id}-name`;
         const descriptionId = `${baseId}-${pack.id}-description`;
         const locked = !isMariPackUnlocked(pack, unlockedIds, playHours);
@@ -762,6 +807,7 @@ export function OmnibarSettingsSheet({
           />
           <PermissionsModeRow />
           <RuntimeRow />
+          <SkillGateRow />
           <SettingRow
             controlId="professor-mari-suggestions"
             label={t("settings.controls.professorMariSuggestions.label")}

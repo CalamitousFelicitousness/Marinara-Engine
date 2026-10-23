@@ -48,9 +48,11 @@ import { loadFeatureSettings } from "../services/features/feature-settings.js";
 import { TRIPO_API_KEY_SETTING } from "../services/avatars/generation/tripo-key.js";
 import {
   canReparentFolder,
+  CHAT_METADATA_LOCAL_DESTINATION_KEYS,
   isStockMarinaraUniversalPreset,
   MARINARA_UNIVERSAL_PRESET_SYSTEM_KEY,
   normalizePersonalExtensionCapabilities,
+  TRANSLATOR_DEFAULTS_SETTINGS_KEY,
   type ExportEnvelope,
   parseLorebookDecisionActivation,
   restoreBakedGreetingImages,
@@ -121,6 +123,9 @@ const PROFILE_IMPORT_BODY_LIMIT_BYTES = 256 * 1024 * 1024;
 const PROFILE_IMPORT_ARCHIVE_LIMIT_BYTES = 2 * 1024 * 1024 * 1024;
 const PROFILE_ARCHIVE_ENTRY_LIMIT_BYTES = 256 * 1024 * 1024;
 const PROFILE_ARCHIVE_CENTRAL_DIRECTORY_LIMIT_BYTES = 8 * 1024 * 1024;
+// Full backups also contain the raw per-record storage tree. Keep their metadata bounded, with a
+// separate budget from ordinary profile imports; read directory records individually below.
+const STORED_BACKUP_CENTRAL_DIRECTORY_LIMIT_BYTES = 32 * 1024 * 1024;
 const PROFILE_ARCHIVE_TOTAL_UNCOMPRESSED_LIMIT_BYTES = 2 * 1024 * 1024 * 1024;
 const LARGE_STORED_IMAGE_EXTENSIONS = new Set([".avif", ".gif", ".jpeg", ".jpg", ".png", ".webp"]);
 const LARGE_STORED_VIDEO_EXTENSIONS = new Set([".mov", ".mp4", ".webm"]);
@@ -546,6 +551,7 @@ async function buildCompatibleProfileZip(app: FastifyInstance) {
     );
     // Compatible cards carry no gallery, so baked greeting images go back to their web links (#7221).
     const charData = embedded ? restoreBakedGreetingImages(embedded) : embedded;
+    if (charData?.extensions && typeof charData.extensions === "object") delete charData.extensions.bakedGreetingImages;
     zip.addFile(
       uniqueExportName(
         usedNames,
@@ -618,15 +624,22 @@ function resolveProfileExportFilePath(dataDir: string, filePath: unknown) {
   }
 }
 
-function redactAgentSecrets(agent: any) {
-  const SECRET_KEY_RE = /token|secret|password|api[_-]?key/i;
+// An agent setting is a credential when its name ENDS in a credential word, optionally stored
+// "Encrypted": token, spotifyAccessToken, youtubeApiKey, clientSecret, password, apiKeyEncrypted.
+// Token counts end in plural "Tokens" or put "Token" first (maxTokens, existingNoteTokenBudget), and
+// Secret Plot settings only start with "secret", so they export (#7661).
+// ponytail: name-based, so a credential saved under a name that doesn't end in a credential word
+// (e.g. "secretValue") still exports; give such a setting a credential-word ending or add it here.
+const AGENT_CREDENTIAL_KEY_RE =
+  /(?:token|(?:access|refresh|auth|api|bearer|session)[_-]?tokens|secrets?|passwords?|passwd|passphrase|credentials?|bearer|(?:api|access|private|secret)[_-]?keys?)(?:[_-]?encrypted)?$/i;
 
+function redactAgentSecrets(agent: any) {
   const redactSettings = (settings: unknown): unknown => {
     if (Array.isArray(settings)) return settings.map(redactSettings);
     if (!settings || typeof settings !== "object") return settings;
     const out: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(settings)) {
-      if (SECRET_KEY_RE.test(key)) {
+      if (AGENT_CREDENTIAL_KEY_RE.test(key)) {
         out[key] = null;
       } else if (value && typeof value === "object") {
         out[key] = redactSettings(value);
@@ -678,8 +691,56 @@ for (const candidate of Object.values(schema)) {
   }
 }
 
+/**
+ * Where profile rows hold the chat settings that stay on one install (CHAT_METADATA_LOCAL_DESTINATION_KEYS:
+ * the Discord mirror, translator address and key, haptics server): chat metadata, a settings profile's
+ * metadata and the translator defaults for new chats. Like the connection keys, profiles are exported
+ * without them and an import brings none; a row restored over this install's own keeps its values.
+ */
+const PROFILE_LOCAL_DESTINATION_ROWS: Record<string, { key: string; column: string }> = {
+  chats: { key: "id", column: "metadata" },
+  chat_presets: { key: "id", column: "settings" },
+  app_settings: { key: "key", column: "value" },
+};
+
+function readProfileLocalDestinations(tableName: string, row: Record<string, unknown> | undefined) {
+  const field = PROFILE_LOCAL_DESTINATION_ROWS[tableName];
+  if (!field || !row || (tableName === "app_settings" && row.key !== TRANSLATOR_DEFAULTS_SETTINGS_KEY)) return null;
+  const isRecord = (value: unknown): value is Record<string, unknown> =>
+    !!value && typeof value === "object" && !Array.isArray(value);
+  let parsed: unknown;
+  try {
+    const value = row[field.column];
+    // Copied, so the row it came from is never changed.
+    parsed = JSON.parse(typeof value === "string" ? value : (JSON.stringify(value) ?? ""));
+  } catch {
+    return null;
+  }
+  const holder = tableName === "chat_presets" && isRecord(parsed) ? parsed.metadata : parsed;
+  return isRecord(parsed) && isRecord(holder) ? { column: field.column, parsed, holder } : null;
+}
+
+/** `row` with `local`'s values for the settings that stay on one install, or none when there is no `local`. */
+export function withProfileLocalDestinations(
+  tableName: string,
+  row: Record<string, unknown>,
+  local?: Record<string, unknown>,
+): Record<string, unknown> {
+  const target = readProfileLocalDestinations(tableName, row);
+  if (!target) return row;
+  const kept = readProfileLocalDestinations(tableName, local)?.holder;
+  for (const key of CHAT_METADATA_LOCAL_DESTINATION_KEYS) {
+    if (kept && Object.prototype.hasOwnProperty.call(kept, key)) target.holder[key] = kept[key];
+    else delete target.holder[key];
+  }
+  return { ...row, [target.column]: JSON.stringify(target.parsed) };
+}
+
 export function sanitizeProfileTableRows(tableName: string, rows: Array<Record<string, unknown>>) {
   if (tableName === "noodler_fan_activity_state") return [];
+  if (PROFILE_LOCAL_DESTINATION_ROWS[tableName]) {
+    rows = rows.map((row) => withProfileLocalDestinations(tableName, row));
+  }
   if (tableName === "chats") {
     return rows.map((row) => {
       if (typeof row.metadata !== "string") return row;
@@ -1150,6 +1211,7 @@ function previewProfileStorageSnapshotStats(
 ) {
   const tableCounts: Record<string, number> = {};
   for (const tableName of FILE_BACKED_TABLES) {
+    if (!profileTableObjects.has(tableName)) continue;
     const rows = snapshot.tables[tableName];
     tableCounts[tableName] = Array.isArray(rows) ? rows.length : 0;
   }
@@ -1207,6 +1269,7 @@ function previewLegacyProfileImportStats(
 
 function countProfileStorageSnapshotItems(snapshot: ProfileStorageSnapshot) {
   const tableRows = FILE_BACKED_TABLES.reduce((count, tableName) => {
+    if (!profileTableObjects.has(tableName)) return count;
     const rows = snapshot.tables[tableName];
     return count + (Array.isArray(rows) ? rows.length : 0);
   }, 0);
@@ -1229,7 +1292,8 @@ function validateProfileStorageTableInputs(snapshot: ProfileStorageSnapshot) {
     }
 
     const table = profileTableObjects.get(tableName);
-    if (!table) throw new ProfileImportRequestError(`Profile table ${tableName} is not supported.`);
+    // Package-registered tables are not profile data; the write step skips them too.
+    if (!table) continue;
     const primaryKey = schemaPrimaryKeyColumn(table);
     for (const row of rows) {
       if (!row || typeof row !== "object" || Array.isArray(row)) {
@@ -1365,8 +1429,24 @@ async function importProfileStorageSnapshot(
           }
 
           emit("tables", `Importing ${tableName.replace(/_/g, " ")}`);
+          const localDestinationField = PROFILE_LOCAL_DESTINATION_ROWS[tableName];
+          const localDestinationRows = localDestinationField
+            ? new Map(
+                ((await tx.select().from(table as any)) as Array<Record<string, unknown>>).map((local) => [
+                  local[localDestinationField.key],
+                  local,
+                ]),
+              )
+            : null;
           for (const [rowIndex, row] of rows.entries()) {
             let cleanRow = { ...row };
+            if (localDestinationField && localDestinationRows) {
+              cleanRow = withProfileLocalDestinations(
+                tableName,
+                cleanRow,
+                localDestinationRows.get(cleanRow[localDestinationField.key]),
+              );
+            }
             // A pre-rename snapshot carries `visibility`/`publicAccountId`. Inserting it raw
             // lets the column default fill `platform: "noodle"`, putting a restored NoodleR
             // account and its posts on the Noodle timeline.
@@ -1887,6 +1967,7 @@ export async function writeStoredBackupArchiveForRegression(
     entryLimitBytes?: number;
     unlimitedArchiveSize?: boolean;
     forceZip64?: boolean;
+    fullBackup?: boolean;
   } = {},
 ) {
   return writeStoredZipArchive(
@@ -2225,6 +2306,7 @@ async function writeStoredZipArchive(
     onOmittedEntry?: (entryName: string) => void;
     unlimitedArchiveSize?: boolean;
     forceZip64?: boolean;
+    fullBackup?: boolean;
   } = {},
 ) {
   const output = await open(outputPath, "w", PRIVATE_FILE_MODE);
@@ -2237,6 +2319,9 @@ async function writeStoredZipArchive(
   let position = 0;
   let totalUncompressedBytes = 0;
   let centralDirectorySizeEstimate = 0;
+  const centralDirectoryLimitBytes = options.fullBackup
+    ? STORED_BACKUP_CENTRAL_DIRECTORY_LIMIT_BYTES
+    : PROFILE_ARCHIVE_CENTRAL_DIRECTORY_LIMIT_BYTES;
   const archiveLimitBytes = options.unlimitedArchiveSize ? Number.MAX_SAFE_INTEGER : PROFILE_IMPORT_ARCHIVE_LIMIT_BYTES;
   const totalLimitBytes = options.unlimitedArchiveSize
     ? Number.MAX_SAFE_INTEGER
@@ -2316,13 +2401,13 @@ async function writeStoredZipArchive(
           ),
         );
       }
-      if (nextCentralDirectorySize > PROFILE_ARCHIVE_CENTRAL_DIRECTORY_LIMIT_BYTES) {
+      if (nextCentralDirectorySize > centralDirectoryLimitBytes) {
         await output.truncate(entryStart);
         throw new ProfileArchiveTooLargeError(
           profileArchiveSizeError(
             "Profile archive central directory",
             nextCentralDirectorySize,
-            PROFILE_ARCHIVE_CENTRAL_DIRECTORY_LIMIT_BYTES,
+            centralDirectoryLimitBytes,
           ),
         );
       }
@@ -2340,13 +2425,9 @@ async function writeStoredZipArchive(
     }
     const centralDirectorySize = position - centralDirectoryOffset;
     assertZipSafeInteger(centralDirectorySize, "central directory size");
-    if (centralDirectorySize > PROFILE_ARCHIVE_CENTRAL_DIRECTORY_LIMIT_BYTES) {
+    if (centralDirectorySize > centralDirectoryLimitBytes) {
       throw new ProfileArchiveTooLargeError(
-        profileArchiveSizeError(
-          "Profile archive central directory",
-          centralDirectorySize,
-          PROFILE_ARCHIVE_CENTRAL_DIRECTORY_LIMIT_BYTES,
-        ),
+        profileArchiveSizeError("Profile archive central directory", centralDirectorySize, centralDirectoryLimitBytes),
       );
     }
     const end = buildEndOfCentralDirectory(
@@ -2554,7 +2635,7 @@ function isStoredFullBackupArchive(entries: ProfileZipEntry[], archiveSize: numb
   return true;
 }
 
-async function readProfileZipArchive(filePath: string): Promise<ProfileZipArchive> {
+async function readProfileZipArchive(filePath: string, onEntryMaterialized?: () => void): Promise<ProfileZipArchive> {
   const archiveStat = await stat(filePath);
   if (archiveStat.size < ZIP_EOCD_MIN_SIZE) {
     throw new ProfileImportRequestError("Profile archive is not a valid ZIP file.");
@@ -2577,105 +2658,186 @@ async function readProfileZipArchive(filePath: string): Promise<ProfileZipArchiv
       eocdSearch,
       eocdOffset,
     );
-    if (centralDirectorySize > PROFILE_ARCHIVE_CENTRAL_DIRECTORY_LIMIT_BYTES) {
+    if (centralDirectorySize > STORED_BACKUP_CENTRAL_DIRECTORY_LIMIT_BYTES) {
       throw new ProfileImportRequestError(
         profileArchiveSizeError(
           "Profile archive central directory",
           centralDirectorySize,
-          PROFILE_ARCHIVE_CENTRAL_DIRECTORY_LIMIT_BYTES,
+          STORED_BACKUP_CENTRAL_DIRECTORY_LIMIT_BYTES,
         ),
       );
     }
     if (checkedZipSum(centralDirectoryOffset, centralDirectorySize, "central directory") > archiveStat.size) {
       throw new ProfileImportRequestError("Profile archive central directory is outside the ZIP file.");
     }
+    if (totalEntries > Math.floor(centralDirectorySize / 46)) {
+      throw new ProfileImportRequestError("Profile archive central directory entry count is damaged.");
+    }
 
-    const centralDirectory = Buffer.alloc(centralDirectorySize);
-    await readProfileZipBytes(handle, centralDirectory, centralDirectoryOffset, "central directory");
-
-    const entries: ProfileZipEntry[] = [];
-    const entriesByName = new Map<string, ProfileZipEntry>();
-    let offset = 0;
-    for (let index = 0; index < totalEntries; index++) {
-      if (
-        offset + 46 > centralDirectory.length ||
-        centralDirectory.readUInt32LE(offset) !== ZIP_CENTRAL_DIRECTORY_SIGNATURE
-      ) {
-        throw new ProfileImportRequestError("Profile archive central directory is damaged.");
-      }
-
-      const flags = centralDirectory.readUInt16LE(offset + 8);
-      if ((flags & ZIP_ENCRYPTED_FLAG) !== 0) {
-        throw new ProfileImportRequestError("Profile archive encrypted ZIP entries are not supported.");
-      }
-      const method = centralDirectory.readUInt16LE(offset + 10);
-      const crc32 = centralDirectory.readUInt32LE(offset + 16);
-      const compressedSize32 = centralDirectory.readUInt32LE(offset + 20);
-      const size32 = centralDirectory.readUInt32LE(offset + 24);
-      const fileNameLength = centralDirectory.readUInt16LE(offset + 28);
-      const extraLength = centralDirectory.readUInt16LE(offset + 30);
-      const commentLength = centralDirectory.readUInt16LE(offset + 32);
-      const entryDisk = centralDirectory.readUInt16LE(offset + 34);
-      if (entryDisk !== 0) throw new ProfileImportRequestError("Profile archive split ZIP files are not supported.");
-      const localHeaderOffset32 = centralDirectory.readUInt32LE(offset + 42);
-      const nextOffset = offset + 46 + fileNameLength + extraLength + commentLength;
-      if (nextOffset > centralDirectory.length) {
-        throw new ProfileImportRequestError("Profile archive central directory entry is damaged.");
-      }
-      const entryName = centralDirectory.subarray(offset + 46, offset + 46 + fileNameLength).toString("utf8");
-      const normalizedName = normalizeProfileArchiveEntryPath(entryName);
-      const extraStart = offset + 46 + fileNameLength;
-      const zip64Values = readZip64ExtraValues(centralDirectory.subarray(extraStart, extraStart + extraLength), {
-        size: size32 === ZIP32_MAX_VALUE,
-        compressedSize: compressedSize32 === ZIP32_MAX_VALUE,
-        localHeaderOffset: localHeaderOffset32 === ZIP32_MAX_VALUE,
-      });
-      const size = zip64Values.size ?? size32;
-      const compressedSize = zip64Values.compressedSize ?? compressedSize32;
-      const localHeaderOffset = zip64Values.localHeaderOffset ?? localHeaderOffset32;
-      if (checkedZipSum(localHeaderOffset, 30, "local file header") > archiveStat.size) {
-        throw new ProfileImportRequestError("Profile archive entry points outside the ZIP file.");
-      }
-      const localHeader = Buffer.alloc(30);
-      await readProfileZipBytes(handle, localHeader, localHeaderOffset, "local file header");
-      if (localHeader.readUInt32LE(0) !== ZIP_LOCAL_FILE_HEADER_SIGNATURE) {
-        throw new ProfileImportRequestError("Profile archive local file header is damaged.");
-      }
-      const localFileNameLength = localHeader.readUInt16LE(26);
-      const localExtraLength = localHeader.readUInt16LE(28);
-      const dataOffset = localHeaderOffset + 30 + localFileNameLength + localExtraLength;
-      if (
-        !Number.isSafeInteger(dataOffset) ||
-        dataOffset < 0 ||
-        checkedZipSum(dataOffset, compressedSize, normalizedName || "entry data") > centralDirectoryOffset
-      ) {
-        throw new ProfileImportRequestError("Profile archive entry data is outside the ZIP file.");
-      }
-
-      const entry: ProfileZipEntry = {
-        entryName: normalizedName,
-        isDirectory: normalizedName.endsWith("/"),
-        header: { method, crc32, compressedSize, size, dataOffset },
+    const largeDirectory = centralDirectorySize > PROFILE_ARCHIVE_CENTRAL_DIRECTORY_LIMIT_BYTES;
+    const readDirectory = async (materialize: boolean): Promise<ProfileZipArchive> => {
+      const entries: ProfileZipEntry[] = [];
+      const entriesByName = new Map<string, ProfileZipEntry>();
+      let windowStart = 0;
+      let centralWindow = Buffer.alloc(0);
+      const readCentral = async (relativeOffset: number, length: number) => {
+        if (relativeOffset < windowStart || relativeOffset + length > windowStart + centralWindow.length) {
+          windowStart = relativeOffset;
+          centralWindow = Buffer.alloc(Math.min(Math.max(64 * 1024, length), centralDirectorySize - relativeOffset));
+          await readProfileZipBytes(
+            handle,
+            centralWindow,
+            centralDirectoryOffset + relativeOffset,
+            "central directory",
+          );
+        }
+        return centralWindow.subarray(relativeOffset - windowStart, relativeOffset - windowStart + length);
       };
-      entries.push(entry);
-      if (normalizedName && !entriesByName.has(normalizedName)) entriesByName.set(normalizedName, entry);
-      offset = nextOffset;
-    }
+      let backupRoot: string | undefined;
+      let backupManifestSeen = false;
+      let backupRestoreSeen = false;
+      let previousBackupDataEnd = 0;
+      let backupStoredBytes = 0;
+      let offset = 0;
+      for (let index = 0; index < totalEntries; index++) {
+        if (offset + 46 > centralDirectorySize) {
+          throw new ProfileImportRequestError("Profile archive central directory is damaged.");
+        }
+        const centralHeader = await readCentral(offset, 46);
+        if (centralHeader.readUInt32LE(0) !== ZIP_CENTRAL_DIRECTORY_SIGNATURE) {
+          throw new ProfileImportRequestError("Profile archive central directory is damaged.");
+        }
 
-    if (offset !== centralDirectory.length) {
-      throw new ProfileImportRequestError("Profile archive central directory has unexpected trailing data.");
-    }
+        const flags = centralHeader.readUInt16LE(8);
+        if ((flags & ZIP_ENCRYPTED_FLAG) !== 0) {
+          throw new ProfileImportRequestError("Profile archive encrypted ZIP entries are not supported.");
+        }
+        const method = centralHeader.readUInt16LE(10);
+        const crc32 = centralHeader.readUInt32LE(16);
+        const compressedSize32 = centralHeader.readUInt32LE(20);
+        const size32 = centralHeader.readUInt32LE(24);
+        const fileNameLength = centralHeader.readUInt16LE(28);
+        const extraLength = centralHeader.readUInt16LE(30);
+        const commentLength = centralHeader.readUInt16LE(32);
+        const entryDisk = centralHeader.readUInt16LE(34);
+        if (entryDisk !== 0) throw new ProfileImportRequestError("Profile archive split ZIP files are not supported.");
+        const localHeaderOffset32 = centralHeader.readUInt32LE(42);
+        const nextOffset = offset + 46 + fileNameLength + extraLength + commentLength;
+        if (nextOffset > centralDirectorySize) {
+          throw new ProfileImportRequestError("Profile archive central directory entry is damaged.");
+        }
+        const entryMetadata = await readCentral(offset + 46, fileNameLength + extraLength);
+        const entryName = entryMetadata.subarray(0, fileNameLength).toString("utf8");
+        const normalizedName = normalizeProfileArchiveEntryPath(entryName);
+        const zip64Values = readZip64ExtraValues(entryMetadata.subarray(fileNameLength), {
+          size: size32 === ZIP32_MAX_VALUE,
+          compressedSize: compressedSize32 === ZIP32_MAX_VALUE,
+          localHeaderOffset: localHeaderOffset32 === ZIP32_MAX_VALUE,
+        });
+        const size = zip64Values.size ?? size32;
+        const compressedSize = zip64Values.compressedSize ?? compressedSize32;
+        const localHeaderOffset = zip64Values.localHeaderOffset ?? localHeaderOffset32;
+        if (largeDirectory) {
+          const root = normalizedName.split("/")[0] ?? "";
+          backupRoot ??= root;
+          const manifestEntry = normalizedName === `${root}/marinara-profile.json`;
+          // Refuse ordinary archives before materializing their directory. A larger
+          // budget requires stored entries under one backup root and its manifest
+          // within the ordinary budget. The validation pass also requires RESTORE.txt,
+          // which the writer defers until last so its notes include every omission.
+          if (
+            !/^marinara-(?:automatic-backup|backup-[A-Za-z0-9_-]+)$/u.test(root) ||
+            root !== backupRoot ||
+            method !== 0 ||
+            compressedSize !== size ||
+            (normalizedName.endsWith("/marinara-profile.json") && (!manifestEntry || backupManifestSeen)) ||
+            (nextOffset > PROFILE_ARCHIVE_CENTRAL_DIRECTORY_LIMIT_BYTES && !backupManifestSeen)
+          ) {
+            throw new ProfileImportRequestError(
+              profileArchiveSizeError(
+                "Profile archive central directory",
+                centralDirectorySize,
+                PROFILE_ARCHIVE_CENTRAL_DIRECTORY_LIMIT_BYTES,
+              ),
+            );
+          }
+          backupManifestSeen ||= manifestEntry;
+          backupRestoreSeen ||= normalizedName === `${root}/RESTORE.txt`;
+        }
+        if (checkedZipSum(localHeaderOffset, 30, "local file header") > archiveStat.size) {
+          throw new ProfileImportRequestError("Profile archive entry points outside the ZIP file.");
+        }
+        const localHeader = Buffer.alloc(30);
+        await readProfileZipBytes(handle, localHeader, localHeaderOffset, "local file header");
+        if (localHeader.readUInt32LE(0) !== ZIP_LOCAL_FILE_HEADER_SIGNATURE) {
+          throw new ProfileImportRequestError("Profile archive local file header is damaged.");
+        }
+        const localFileNameLength = localHeader.readUInt16LE(26);
+        const localExtraLength = localHeader.readUInt16LE(28);
+        const dataOffset = localHeaderOffset + 30 + localFileNameLength + localExtraLength;
+        if (
+          !Number.isSafeInteger(dataOffset) ||
+          dataOffset < 0 ||
+          checkedZipSum(dataOffset, compressedSize, normalizedName || "entry data") > centralDirectoryOffset
+        ) {
+          throw new ProfileImportRequestError("Profile archive entry data is outside the ZIP file.");
+        }
+        if (largeDirectory) {
+          backupStoredBytes = checkedZipSum(backupStoredBytes, size, "stored backup contents");
+          // ponytail: oversized backups retain the writer's physical entry order;
+          // reordered directories would need a bounded interval index instead.
+          if (localHeaderOffset < previousBackupDataEnd || backupStoredBytes > archiveStat.size) {
+            throw new ProfileImportRequestError(
+              "Stored backup entries overlap, exceed the archive, or are out of archive order.",
+            );
+          }
+          previousBackupDataEnd = checkedZipSum(dataOffset, size, normalizedName || "entry data");
+        }
 
-    const isFullBackup = isStoredFullBackupArchive(entries, archiveStat.size);
-    return { filePath, entries, entriesByName, isFullBackup };
+        if (materialize) {
+          const entry: ProfileZipEntry = {
+            entryName: normalizedName,
+            isDirectory: normalizedName.endsWith("/"),
+            header: { method, crc32, compressedSize, size, dataOffset },
+          };
+          entries.push(entry);
+          if (normalizedName && !entriesByName.has(normalizedName)) entriesByName.set(normalizedName, entry);
+          onEntryMaterialized?.();
+        }
+        offset = nextOffset;
+      }
+
+      if (offset !== centralDirectorySize) {
+        throw new ProfileImportRequestError("Profile archive central directory has unexpected trailing data.");
+      }
+
+      const isFullBackup = materialize
+        ? isStoredFullBackupArchive(entries, archiveStat.size)
+        : backupManifestSeen && backupRestoreSeen;
+      if (!isFullBackup && centralDirectorySize > PROFILE_ARCHIVE_CENTRAL_DIRECTORY_LIMIT_BYTES) {
+        throw new ProfileImportRequestError(
+          profileArchiveSizeError(
+            "Profile archive central directory",
+            centralDirectorySize,
+            PROFILE_ARCHIVE_CENTRAL_DIRECTORY_LIMIT_BYTES,
+          ),
+        );
+      }
+      return { filePath, entries, entriesByName, isFullBackup };
+    };
+    // Validate oversized directories without retaining entry objects first. In
+    // particular, a missing last-written RESTORE.txt cannot consume the larger
+    // materialization budget. Both passes use the same open file handle.
+    if (largeDirectory) await readDirectory(false);
+    return await readDirectory(true);
   } finally {
     await handle.close();
   }
 }
 
 /** Test seam for ZIP64/full-backup classification without exposing archive internals to routes. */
-export async function inspectStoredBackupArchiveForRegression(filePath: string) {
-  const zip = await readProfileZipArchive(filePath);
+export async function inspectStoredBackupArchiveForRegression(filePath: string, onEntryMaterialized?: () => void) {
+  const zip = await readProfileZipArchive(filePath, onEntryMaterialized);
   return {
     isFullBackup: zip.isFullBackup,
     entries: zip.entries.map((entry) => ({
@@ -3280,6 +3442,7 @@ async function writeFullBackupArchive(
     skipFailedFileEntries: true,
     entryLimitBytes: Number.MAX_SAFE_INTEGER,
     unlimitedArchiveSize: true,
+    fullBackup: true,
     onOmittedEntry: (entryName) => omittedEntries.add(entryName),
   });
   return { omittedEntries: [...omittedEntries] };
@@ -3993,6 +4156,12 @@ export async function backupRoutes(app: FastifyInstance) {
                     p.versioningEnabled === false || p.versioningEnabled === "false" ? "false" : "true",
                   creatorNotes: p.creatorNotes,
                   phoneticName: typeof p.phoneticName === "string" ? p.phoneticName : "",
+                  cardFieldAlternatives:
+                    typeof p.cardFieldAlternatives === "string"
+                      ? p.cardFieldAlternatives
+                      : JSON.stringify(p.cardFieldAlternatives ?? []),
+                  summary: typeof p.summary === "string" ? p.summary : "",
+                  mes_example: typeof p.mes_example === "string" ? p.mes_example : "",
                   personality: p.personality,
                   backstory: p.backstory,
                   appearance: p.appearance,

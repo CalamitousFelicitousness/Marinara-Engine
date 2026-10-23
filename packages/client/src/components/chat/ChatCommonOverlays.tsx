@@ -4,6 +4,7 @@ import { useTranslation, useTranslation as useUiTranslation } from "react-i18nex
 import { ChevronUp, ChevronDown, Layers, ListChecks, Loader2, Trash2, X } from "lucide-react";
 import type { PeekPromptData } from "./chat-area.types";
 import type { LocalSpriteVisualSettings } from "./local-sprite-visual-settings";
+import type { AvatarLayoutControls } from "./AvatarLayoutSettings";
 import { cn } from "../../lib/utils";
 import { Modal } from "../ui/Modal";
 import { NEUTRAL_PANEL_SHELL } from "../ui/neutral-surface-styles";
@@ -51,6 +52,8 @@ type SharedSceneSettingsProps = {
   onSpriteSideChange: (side: SpriteSide, characterId?: string) => void;
   spriteVisualSettings?: LocalSpriteVisualSettings;
   onSpriteVisualSettingsChange?: (patch: Partial<LocalSpriteVisualSettings>) => void;
+  /** The Avatars drawer's controls, in chats whose stage can show avatars. */
+  avatarLayout?: AvatarLayoutControls;
 };
 
 type DeleteDialogProps = {
@@ -308,7 +311,8 @@ export function ChatCommonOverlays({
   onSelectAllBelowSelection,
 }: ChatCommonOverlaysProps) {
   // Popped-out sections render from inside Chat Settings, so it stays mounted (hidden) while any is out.
-  const settingsSectionsPoppedOut = useHostHasDetachedDrawers(CHAT_SETTINGS_WINDOW_ID);
+  // The setup wizard sits below floating windows, so they wait until it closes; their layout is kept.
+  const settingsSectionsPoppedOut = useHostHasDetachedDrawers(CHAT_SETTINGS_WINDOW_ID) && !wizardOpen;
   return (
     <>
       {chat && (settingsOpen || settingsSectionsPoppedOut) && (
@@ -332,6 +336,7 @@ export function ChatCommonOverlays({
             onSpriteSideChange={sceneSettings.onSpriteSideChange}
             spriteVisualSettings={sceneSettings.spriteVisualSettings}
             onSpriteVisualSettingsChange={sceneSettings.onSpriteVisualSettingsChange}
+            avatarLayout={sceneSettings.avatarLayout}
             onOpenScheduleEditor={onOpenScheduleEditor}
           />
         </Suspense>

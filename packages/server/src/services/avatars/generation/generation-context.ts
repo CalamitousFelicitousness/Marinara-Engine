@@ -14,7 +14,7 @@ import {
   AVATAR_PROMPT_TEMPLATE_SETTINGS_KEY,
   AVATAR_PROMPT_TEMPLATE_VARIABLES,
   LOCAL_SIDECAR_CONNECTION_ID,
-  compileImagePrompt,
+  type AvatarPngtuberVariant,
   isChatProvider,
   isOpenAIGptImageModel,
   mergeBuiltInAgentSettings,
@@ -34,13 +34,18 @@ import {
   resolveConnectionImageDefaults,
   resolveConnectionImageQuality,
 } from "../../image/image-generation-defaults.js";
-import { loadImageGenerationUserSettings } from "../../image/image-generation-settings.js";
-import { generateImage } from "../../image/image-generation.js";
+import { generateImage, imageConnectionTakesReferencePicture } from "../../image/image-generation.js";
 import { renderTemplate } from "../../prompt-overrides/template.js";
 import { getSharp } from "../../image/sharp-runtime.js";
 import { createAgentsStorage } from "../../storage/agents.storage.js";
 import { createCharactersStorage } from "../../storage/characters.storage.js";
 import { createConnectionsStorage } from "../../storage/connections.storage.js";
+import {
+  alignAvatarPicture,
+  keepAvatarFaceChange,
+  type AvatarPictureFrame,
+  type RgbaPixels,
+} from "./variant-composite.js";
 
 /** A refusal with the HTTP status the route answers and a message plain enough to show the user. */
 export class AvatarGenerationError extends Error {
@@ -171,8 +176,8 @@ export function listAvatarSourceSprites(ownerId: string, { all = false } = {}): 
     .sort((a, b) => a.localeCompare(b));
 }
 
-/** Path of the owner's raster sprite with this exact label, or null. */
-export function findAvatarSpriteFile(ownerId: string, label: string): string | null {
+/** Reads one of the owner's sprites by its exact label and decodes it to PNG. */
+export async function readAvatarSourceSprite(ownerId: string, label: string): Promise<AvatarSourceSprite> {
   const dir = assertInsideDir(SPRITES_ROOT, join(SPRITES_ROOT, ownerId));
   const filename = existsSync(dir)
     ? readdirSync(dir).find(
@@ -180,11 +185,8 @@ export function findAvatarSpriteFile(ownerId: string, label: string): string | n
           SPRITE_SOURCE_EXTENSIONS.has(extname(name).toLowerCase()) && name.slice(0, -extname(name).length) === label,
       )
     : undefined;
-  return filename ? assertInsideDir(dir, join(dir, filename)) : null;
-}
-
-/** Decodes a sprite file to PNG, first frame for animated sprites. */
-export async function decodeAvatarSourceSprite(label: string, bytes: Buffer): Promise<AvatarSourceSprite> {
+  if (!filename) throw new AvatarGenerationError(404, `The sprite "${label}" was not found.`);
+  const bytes = await readFile(assertInsideDir(dir, join(dir, filename)));
   if (!isAllowedImageBuffer(bytes)) {
     throw new AvatarGenerationError(422, `The sprite "${label}" is not a picture the image model can read.`);
   }
@@ -199,13 +201,6 @@ export async function decodeAvatarSourceSprite(label: string, bytes: Buffer): Pr
     transparent: !stats.isOpaque,
     hash: createHash("sha256").update(bytes).digest("hex"),
   };
-}
-
-/** Reads one of the owner's sprites by its exact label and decodes it to PNG. */
-export async function readAvatarSourceSprite(ownerId: string, label: string): Promise<AvatarSourceSprite> {
-  const file = findAvatarSpriteFile(ownerId, label);
-  if (!file) throw new AvatarGenerationError(404, `The sprite "${label}" was not found.`);
-  return decodeAvatarSourceSprite(label, await readFile(file));
 }
 
 // ── The 2D Avatars agent: templates and connection ──
@@ -281,6 +276,9 @@ export async function resolveAvatarVisionConnection(
 export interface AvatarImageConnection {
   conn: NonNullable<Awaited<ReturnType<ReturnType<typeof createConnectionsStorage>["getWithKey"]>>>;
   fallback: Awaited<ReturnType<typeof resolveImageConnectionFallback>>;
+  /** Whether the connection sends a picture to its model, so it can edit a sprite. One that can't draws a
+   *  new face with its blink and talk pictures instead (drawTalkingHeadSet in routes/sprites.routes.ts). */
+  canEdit: boolean;
 }
 
 export async function resolveAvatarImageConnection(
@@ -303,7 +301,24 @@ export async function resolveAvatarImageConnection(
       "That connection doesn't make pictures. Choose an image generation connection.",
     );
   }
-  return { conn, fallback: await resolveImageConnectionFallback(connections, conn.id) };
+  return {
+    conn,
+    fallback: await resolveImageConnectionFallback(connections, conn.id),
+    canEdit: imageConnectionTakesReferencePicture(avatarImageService(conn)),
+  };
+}
+
+/** The service an avatar picture is asked of, as generateImage receives it. */
+export function avatarImageService(conn: AvatarImageConnection["conn"]) {
+  const model = conn.model || "";
+  const source = (conn as { imageGenerationSource?: string | null }).imageGenerationSource || model;
+  return {
+    source,
+    baseUrl: conn.baseUrl || "https://image.pollinations.ai",
+    serviceHint: conn.imageService || source,
+    model,
+    comfyWorkflow: conn.comfyuiWorkflow || undefined,
+  };
 }
 
 /** The size to ask the provider for: the sprite's own shape, within what the model accepts. */
@@ -345,23 +360,6 @@ export interface AvatarImageEditRequest {
   logLabel: string;
 }
 
-/** The provider prompt for an edit: the template text compiled with the user's image style settings,
- *  exactly like sprite generation. */
-export async function compileAvatarImagePrompt(
-  db: DB,
-  image: AvatarImageConnection,
-  prompt: string,
-): Promise<{ prompt: string; negativePrompt: string }> {
-  const settings = await loadImageGenerationUserSettings(db);
-  const compiled = compileImagePrompt({
-    kind: "sprite",
-    prompt,
-    styleProfiles: settings.styleProfiles,
-    imageDefaults: resolveConnectionImageDefaults(image.conn),
-  });
-  return { prompt: compiled.prompt, negativePrompt: compiled.negativePrompt };
-}
-
 /** Where the sprite sits on a canvas of another shape: scaled to fit and centred, never stretched. */
 export function avatarCanvasPlacement(
   source: { width: number; height: number },
@@ -373,18 +371,20 @@ export function avatarCanvasPlacement(
   return { left: Math.floor((canvas.width - width) / 2), top: Math.floor((canvas.height - height) / 2), width, height };
 }
 
-/** Edits a sprite through the image connection (with its fallback) and returns a PNG of exactly the
- *  sprite's size. The provider gets the sprite already on a canvas of the size it is asked for, with
- *  see-through or repeated edges around it, so an edit that keeps the picture where it is comes back
- *  lined up with the sprite whatever canvas shapes the model accepts. No see-through background is asked
- *  for: some models can't make one (GPT Image 2), and a cut-out gets the sprite's own outline back. */
+/** Edits a sprite through the image connection (with its fallback) and returns the model's picture lined up
+ *  with the sprite, as a PNG of exactly the sprite's size with the sprite's alpha (fitAvatarImageToSource). The
+ *  provider gets only the sprite, already on a canvas of the size it is asked for (a cut-out on white, an
+ *  opaque sprite with repeated edges). No see-through background is asked for: some models can't make one (GPT
+ *  Image 2), and the sprite's own alpha is used. A blink or talk picture then keeps only its eyes or mouth
+ *  (avatarVariantPicture). */
 export async function drawAvatarImageEdit(request: AvatarImageEditRequest): Promise<Buffer> {
   const { conn, fallback } = request.image;
-  const model = conn.model || "";
+  const service = avatarImageService(conn);
+  const { model } = service;
   const size = avatarImageRequestSize(request.source.width, request.source.height, model);
   const place = avatarCanvasPlacement(request.source, size);
   const sharp = await getSharp();
-  const reference = await sharp(request.source.png)
+  const placed = await sharp(request.source.png)
     .resize(place.width, place.height, { fit: "fill" })
     .extend({
       top: place.top,
@@ -397,6 +397,21 @@ export async function drawAvatarImageEdit(request: AvatarImageEditRequest): Prom
     })
     .png()
     .toBuffer();
+  // A cut-out goes on plain white: providers read its see-through pixels as black, which hides dark
+  // clothes and hair and gets the whole picture redrawn. Only the mostly see-through pixels turn white;
+  // the others keep their own colour, since blending a soft inside pixel with white would come back
+  // lighter than the face it swaps with.
+  // ponytail: white hides a very pale outline the same way; pick the backdrop from the sprite's colours if
+  // that shows up.
+  let reference = placed;
+  if (request.source.transparent) {
+    const { data, info } = await sharp(placed).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    for (let index = 0; index < data.length; index += 4) if (data[index + 3]! < 128) data.fill(255, index, index + 3);
+    reference = await sharp(data, { raw: { width: info.width, height: info.height, channels: 4 } })
+      .removeAlpha()
+      .png()
+      .toBuffer();
+  }
   logDebugOverride(
     request.debug,
     "[debug/avatar-generation] %s image prompt (%dx%d):\n%s\nnegative: %s",
@@ -406,33 +421,83 @@ export async function drawAvatarImageEdit(request: AvatarImageEditRequest): Prom
     request.prompt,
     request.negativePrompt ?? "",
   );
-  const result = await generateImage(
-    (conn as { imageGenerationSource?: string | null }).imageGenerationSource || model,
-    conn.baseUrl || "https://image.pollinations.ai",
-    conn.apiKey || "",
-    conn.imageService || (conn as { imageGenerationSource?: string | null }).imageGenerationSource || model,
-    {
-      prompt: request.prompt,
-      negativePrompt: request.negativePrompt || undefined,
-      model,
-      width: size.width,
-      height: size.height,
-      referenceImage: reference.toString("base64"),
-      imageEndpointId: conn.imageEndpointId || undefined,
-      comfyWorkflow: conn.comfyuiWorkflow || undefined,
-      imageDefaults: resolveConnectionImageDefaults(conn),
-      quality: resolveConnectionImageQuality(conn),
-      fallback,
-      signal: request.signal,
-      debugMode: request.debug,
-    },
-  );
+  const result = await generateImage(service.source, service.baseUrl, conn.apiKey || "", service.serviceHint, {
+    prompt: request.prompt,
+    negativePrompt: request.negativePrompt || undefined,
+    model,
+    width: size.width,
+    height: size.height,
+    referenceImage: reference.toString("base64"),
+    referenceIsCanvas: true,
+    imageEndpointId: conn.imageEndpointId || undefined,
+    comfyWorkflow: service.comfyWorkflow,
+    imageDefaults: resolveConnectionImageDefaults(conn),
+    quality: resolveConnectionImageQuality(conn),
+    fallback,
+    signal: request.signal,
+    debugMode: request.debug,
+  });
   return fitAvatarImageToSource(Buffer.from(result.base64, "base64"), request.source, size);
 }
 
-/** Cuts the sprite's place back out of a drawn picture (`canvas` is the size it was asked for; a picture
- *  of another size is read in proportion), scales it to the sprite's exact size, and gives it the
- *  sprite's outline when the sprite is a cut-out (applyAvatarSourceOutline). */
+/** Straight RGBA pixels of a picture (first frame). */
+export async function readRgbaPixels(picture: Buffer): Promise<RgbaPixels> {
+  const sharp = await getSharp();
+  const { data, info } = await sharp(picture, { animated: false })
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  return { data: new Uint8Array(data.buffer, data.byteOffset, data.length), width: info.width, height: info.height };
+}
+
+export async function rgbaPixelsPng(pixels: RgbaPixels): Promise<Buffer> {
+  const sharp = await getSharp();
+  return sharp(Buffer.from(pixels.data.buffer, pixels.data.byteOffset, pixels.data.length), {
+    raw: { width: pixels.width, height: pixels.height, channels: 4 },
+  })
+    .png()
+    .toBuffer();
+}
+
+/** Where the sprite may sit in a drawn picture: the canvas it was placed on (`canvas`, avatarCanvasPlacement)
+ *  read in proportion when the picture is of another size, or scaled evenly to fit inside or to cover it, as
+ *  models that change the canvas shape do. The proportional reading comes first. */
+export function avatarPictureFrames(
+  source: { width: number; height: number },
+  canvas: { width: number; height: number },
+  drawn: { width: number; height: number },
+): AvatarPictureFrame[] {
+  const place = avatarCanvasPlacement(source, canvas);
+  const frames: AvatarPictureFrame[] = [];
+  const add = (kx: number, ky: number, offsetX: number, offsetY: number) => {
+    const frame = {
+      left: offsetX + place.left * kx,
+      top: offsetY + place.top * ky,
+      width: place.width * kx,
+      height: place.height * ky,
+    };
+    const same = frames.some(
+      (other) =>
+        Math.abs(other.left - frame.left) < 1 &&
+        Math.abs(other.top - frame.top) < 1 &&
+        Math.abs(other.width - frame.width) < 1 &&
+        Math.abs(other.height - frame.height) < 1,
+    );
+    if (!same) frames.push(frame);
+  };
+  add(drawn.width / canvas.width, drawn.height / canvas.height, 0, 0);
+  for (const k of [
+    Math.min(drawn.width / canvas.width, drawn.height / canvas.height),
+    Math.max(drawn.width / canvas.width, drawn.height / canvas.height),
+  ]) {
+    add(k, k, (drawn.width - canvas.width * k) / 2, (drawn.height - canvas.height * k) / 2);
+  }
+  return frames;
+}
+
+/** A drawn picture lined up with the sprite (alignAvatarPicture), as a PNG of exactly the sprite's size with
+ *  the sprite's alpha. `canvas` is the size the picture was asked for; one that came back at another size or
+ *  shape, padded, moved or scaled a little is found by its content. */
 export async function fitAvatarImageToSource(
   drawn: Buffer,
   source: AvatarSourceSprite,
@@ -440,77 +505,29 @@ export async function fitAvatarImageToSource(
 ): Promise<Buffer> {
   if (!isAllowedImageBuffer(drawn))
     throw new AvatarGenerationError(502, "The image model sent back something that isn't a picture.");
-  const sharp = await getSharp();
-  const { data: picture, info } = await sharp(drawn, { animated: false }).png().toBuffer({ resolveWithObject: true });
-  const place = avatarCanvasPlacement(source, canvas);
-  const fx = info.width / canvas.width;
-  const fy = info.height / canvas.height;
-  const left = Math.min(info.width - 1, Math.round(place.left * fx));
-  const top = Math.min(info.height - 1, Math.round(place.top * fy));
-  const fitted = await sharp(picture)
-    .extract({
-      left,
-      top,
-      width: Math.max(1, Math.min(info.width - left, Math.round(place.width * fx))),
-      height: Math.max(1, Math.min(info.height - top, Math.round(place.height * fy))),
-    })
-    .resize(source.width, source.height, { fit: "fill" })
-    .ensureAlpha()
-    .png()
-    .toBuffer();
-  return source.transparent ? applyAvatarSourceOutline(fitted, source) : fitted;
+  const picture = await readRgbaPixels(drawn);
+  const face = await readRgbaPixels(source.png);
+  return rgbaPixelsPng(alignAvatarPicture(face, picture, avatarPictureFrames(source, canvas, picture)));
 }
 
-/** A picture drawn from a cut-out sprite, with exactly the sprite's outline: the picture is laid over the
- *  sprite (so a see-through spot the model left shows the sprite) and takes the sprite's alpha. Along the
- *  outline (avatarOutlineBand) the sprite's own pixels stay, colour and all: the model drew them mixed with
- *  whatever background it painted, which would show as a lighter or darker rim. So a blink or talk picture
- *  never shows a background, a halo or another edge than the face it swaps with. */
-export async function applyAvatarSourceOutline(picture: Buffer, source: AvatarSourceSprite): Promise<Buffer> {
-  const sharp = await getSharp();
-  const { width, height } = source;
-  const sprite = await sharp(source.png).ensureAlpha().raw().toBuffer();
-  const layered = await sharp(source.png)
-    .ensureAlpha()
-    .composite([{ input: picture }])
-    .png()
-    .toBuffer();
-  const drawn = await sharp(layered).ensureAlpha().raw().toBuffer();
-  const band = avatarOutlineBand(sprite, width, height);
-  for (let pixel = 0; pixel < band.length; pixel += 1) {
-    if (!band[pixel]) drawn.copy(sprite, pixel * 4, pixel * 4, pixel * 4 + 3);
-  }
-  return sharp(sprite, { raw: { width, height, channels: 4 } })
-    .png()
-    .toBuffer();
+/** A blink or talk picture: `face` with only its eyes (`eyes-closed`) or mouth (`mouth-open`) taken from
+ *  `aligned`, a picture of the same size already lined up with it (keepAvatarFaceChange). Every other pixel and
+ *  the alpha stay the face's own. Throws AvatarPictureUnusableError when the picture can't be used. */
+export async function avatarVariantPicture(
+  face: Buffer,
+  aligned: Buffer,
+  variant: AvatarPngtuberVariant,
+): Promise<Buffer> {
+  const { picture } = keepAvatarFaceChange(await readRgbaPixels(face), await readRgbaPixels(aligned), variant);
+  return rgbaPixelsPng(picture);
 }
 
-/** The pixels along a cut-out's outline (1) and inside it (0), from RGBA pixels: those within a few pixels
- *  of a pixel that is less than half covered. Not every pixel short of solid: the AI remover's mask leaves
- *  many inside the face (over the eyes too), and those must take the drawn picture. The band widens with
- *  the picture because that mask is made at 320 pixels and scaled up, so its soft edge widens too. */
-function avatarOutlineBand(rgba: Buffer, width: number, height: number): Uint8Array {
-  const reach = Math.max(4, Math.ceil(Math.max(width, height) / 160));
-  const far = reach + 1;
-  // Chessboard distance to the nearest mostly see-through pixel, counted up to `far`, in two passes.
-  const distance = new Uint16Array(width * height);
-  for (let pixel = 0; pixel < distance.length; pixel += 1) distance[pixel] = rgba[pixel * 4 + 3]! < 128 ? 0 : far;
-  const at = (x: number, y: number) => (x < 0 || y < 0 || x >= width || y >= height ? far : distance[y * width + x]!);
-  for (let y = 0; y < height; y += 1) {
-    for (let x = 0; x < width; x += 1) {
-      const pixel = y * width + x;
-      const before = Math.min(at(x - 1, y), at(x - 1, y - 1), at(x, y - 1), at(x + 1, y - 1));
-      distance[pixel] = Math.min(distance[pixel]!, before + 1);
-    }
-  }
-  for (let y = height - 1; y >= 0; y -= 1) {
-    for (let x = width - 1; x >= 0; x -= 1) {
-      const pixel = y * width + x;
-      const after = Math.min(at(x + 1, y), at(x + 1, y + 1), at(x, y + 1), at(x - 1, y + 1));
-      distance[pixel] = Math.min(distance[pixel]!, after + 1);
-    }
-  }
-  return Uint8Array.from(distance, (value) => (value <= reach ? 1 : 0));
+/** A picture of the same face drawn separately (another cell of one sheet), lined up with `face` by its
+ *  content, at the face's size. */
+export async function alignAvatarPicturePng(face: Buffer, picture: Buffer): Promise<Buffer> {
+  const [facePixels, drawn] = [await readRgbaPixels(face), await readRgbaPixels(picture)];
+  const frame = { left: 0, top: 0, width: drawn.width, height: drawn.height };
+  return rgbaPixelsPng(alignAvatarPicture(facePixels, drawn, [frame]));
 }
 
 // ── One job per avatar ──

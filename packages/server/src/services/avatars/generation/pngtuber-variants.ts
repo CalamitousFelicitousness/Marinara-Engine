@@ -2,24 +2,32 @@
 // Avatar generation: PNGTuber blink and talk variants (lane: generation)
 // ──────────────────────────────────────────────
 // One click from a sprite: edit it into "eyes closed" and "mouth open" variants with the existing
-// image generation (services/image, the same provider routing, fallback connection and style settings
-// as sprite generation), using the 2D agent's `avatar-pngtuber-eyes-closed` / `avatar-pngtuber-mouth-open`
-// templates. Generating returns drafts and stores nothing, so the avatar stays as it was until the user
-// keeps a picture; saving stores the kept pictures as PNGTuber layers through services/avatars/storage.ts,
-// merged into the stored setup inside its per-owner queue. Pictures are drawn from the sprite as it is; a
-// picture drawn from a see-through sprite takes its outline (applyAvatarSourceOutline).
-// The final prompt is logged with logDebugOverride (debugMode / DEBUG_AGENTS) before it reaches the provider.
+// image generation (services/image, the same provider routing and fallback connection as sprite
+// generation), using the 2D agent's `avatar-pngtuber-eyes-closed` / `avatar-pngtuber-mouth-open`
+// templates, sent as written with the sprite as the only reference. The model's picture is lined up with the
+// sprite and only its eyes or mouth are kept (avatarVariantPicture): every other pixel stays the sprite's own.
+// An image connection that can't edit pictures draws a new face with its blink and talk pictures instead, in
+// one sheet so they match (drawTalkingHeadSet); keeping that set replaces the face. Generating returns drafts
+// and stores nothing, so the avatar stays as it was until the user keeps a picture; saving stores the kept
+// pictures as PNGTuber layers through services/avatars/storage.ts, merged into the stored setup inside its
+// per-owner queue. The final prompt is logged with logDebugOverride (debugMode / DEBUG_AGENTS) before it
+// reaches the provider.
 import { createHash } from "node:crypto";
 import {
+  AVATAR_EXTRA_FEELINGS,
+  AVATAR_PNGTUBER_VARIANTS,
   AVATAR_PROMPT_TEMPLATE_IDS,
   PNGTUBER_DEFAULT_MOTION,
   SPRITE_EXPRESSION_LABELS,
   avatarKindDataSchema,
   createAvatarConfig,
   detectSpriteEmotionBindings,
+  detectSpriteFeelingBindings,
   isAvatarFilePath,
   normalizeSpriteExpressionKey,
+  type AvatarExpressionBinding,
   type AvatarExpressionMap,
+  type AvatarFeelingMap,
   type AvatarFilePath,
   type AvatarGenerationResponse,
   type AvatarOwnerRef,
@@ -29,15 +37,17 @@ import {
   type PngtuberLayerSet,
 } from "@marinara-engine/shared";
 import type { DB } from "../../../db/connection.js";
+import { drawTalkingHeadSet, talkingHeadSetPrompt } from "../../../routes/sprites.routes.js";
 import { isAllowedImageBuffer } from "../../../utils/security.js";
 import { resolveReviewedImagePromptSubmission } from "../../image/image-prompt-review.js";
 import { getSharp } from "../../image/sharp-runtime.js";
 import { readAvatarConfig, readAvatarFile, updateAvatarConfig, writeAvatarFiles } from "../storage.js";
 import {
   AvatarGenerationError,
+  alignAvatarPicturePng,
   avatarGenerationDebug,
   avatarImageRequestSize,
-  compileAvatarImagePrompt,
+  avatarVariantPicture,
   drawAvatarImageEdit,
   listAvatarSourceSprites,
   plainErrorText,
@@ -73,12 +83,15 @@ export interface PngtuberVariantDraft {
   /** The sprite it was made from. */
   label: string;
   variant: AvatarPngtuberVariant;
-  /** PNG data URL, the sprite's exact size. */
+  /** PNG data URL, the sprite's exact size (the new face's, with `face`). */
   image: string;
   width: number;
   height: number;
   /** The sprite file's hash when the picture was made (AvatarSourceSprite.hash). */
   sourceHash: string;
+  /** With an image connection that can't edit pictures: the new face (PNG data URL) this picture was drawn
+   *  with, in one set with the other variant. Keeping the set makes it the face of the expression. */
+  face?: string;
 }
 
 export interface PngtuberVariantsDraftResponse {
@@ -88,7 +101,8 @@ export interface PngtuberVariantsDraftResponse {
 
 export interface PngtuberVariantsSaveRequest {
   owner: AvatarOwnerRef;
-  images: Array<{ label: string; variant: AvatarPngtuberVariant; image: string; sourceHash: string }>;
+  /** `face` is the draft's new face, for pictures from a set (PngtuberVariantDraft.face). */
+  images: Array<{ label: string; variant: AvatarPngtuberVariant; image: string; sourceHash: string; face?: string }>;
 }
 
 export interface AvatarPromptReviewItem {
@@ -160,7 +174,7 @@ export function spriteBuiltPngtuber(labels: readonly string[]): PngtuberAvatarDa
       variant.mouthOpen && variant.eyesClosed ? "eyesClosedMouthOpen" : variant.mouthOpen ? "mouthOpen" : "eyesClosed";
     set[slot] ??= { source: "sprite", label: variant.key };
   }
-  const known: readonly string[] = SPRITE_EXPRESSION_LABELS;
+  const known: readonly string[] = [...SPRITE_EXPRESSION_LABELS, ...AVATAR_EXTRA_FEELINGS];
   const rank = (key: string) => (known.includes(key) ? known.indexOf(key) : known.length);
   const keys = [...layers.keys()]
     .sort((left, right) => rank(left) - rank(right) || left.localeCompare(right))
@@ -169,6 +183,7 @@ export function spriteBuiltPngtuber(labels: readonly string[]): PngtuberAvatarDa
   return {
     layers: Object.fromEntries(keys.map((key) => [key, layers.get(key)!])),
     expressionMap: detectSpriteEmotionBindings(keys),
+    feelingMap: detectSpriteFeelingBindings(keys),
     motion: { ...PNGTUBER_DEFAULT_MOTION },
     source: "sprites",
   };
@@ -177,6 +192,11 @@ export function spriteBuiltPngtuber(labels: readonly string[]): PngtuberAvatarDa
 /** The review id of one variant prompt, shared by the preview and the generate request. */
 export function variantPromptId(label: string, variant: AvatarPngtuberVariant): string {
   return `avatar:pngtuber:${label}:${variant}`;
+}
+
+/** The review id of a face's set prompt (an image connection that can't edit pictures). */
+export function setPromptId(label: string): string {
+  return `avatar:pngtuber:${label}:set`;
 }
 
 /** The layer key of a sprite label (the contract keys PNGTuber layer sets by normalized label). */
@@ -209,11 +229,27 @@ export interface KeptPngtuberSet {
   keepOthers: boolean;
 }
 
+/** Fresh bindings for the layer keys, with the current bindings laid over them that still name a face (or
+ *  none on purpose). */
+function keepCurrentBindings<M extends Partial<Record<string, AvatarExpressionBinding>>>(
+  detected: M,
+  current: M | undefined,
+  layers: Record<string, PngtuberLayerSet>,
+): M {
+  const map: Partial<Record<string, AvatarExpressionBinding>> = detected;
+  for (const [slot, binding] of Object.entries(current ?? {})) {
+    if (binding && binding.source !== "missing" && (binding.target === null || Object.hasOwn(layers, binding.target))) {
+      map[slot] = binding;
+    }
+  }
+  return detected;
+}
+
 /** Puts kept pictures into the owner's PNGTuber setup (pass spriteBuiltPngtuber when none is saved). A
  *  layer set that was built from another picture (another sprite, or a PNGTuber Plus import) is replaced,
  *  so a blink never swaps to a picture drawn for a different base. Bindings the user or an import chose
- *  stay. A setup built from sprites becomes a generated one, so refreshing it from the sprites can't drop
- *  the new pictures. */
+ *  stay, for the six emotions and the extra feelings. A setup built from sprites becomes a generated one, so
+ *  refreshing it from the sprites can't drop the new pictures. */
 export function mergePngtuberVariants(
   current: PngtuberAvatarData | undefined,
   kept: readonly KeptPngtuberSet[],
@@ -229,15 +265,15 @@ export function mergePngtuberVariants(
     delete set.eyesClosedMouthOpen;
     layers[key] = set;
   }
-  const expressionMap: AvatarExpressionMap = detectSpriteEmotionBindings(Object.keys(layers));
-  for (const [slot, binding] of Object.entries(current?.expressionMap ?? {})) {
-    if (binding && binding.source !== "missing" && (binding.target === null || binding.target in layers)) {
-      expressionMap[slot as keyof AvatarExpressionMap] = binding;
-    }
-  }
+  const keys = Object.keys(layers);
   return {
     layers,
-    expressionMap,
+    expressionMap: keepCurrentBindings<AvatarExpressionMap>(
+      detectSpriteEmotionBindings(keys),
+      current?.expressionMap,
+      layers,
+    ),
+    feelingMap: keepCurrentBindings<AvatarFeelingMap>(detectSpriteFeelingBindings(keys), current?.feelingMap, layers),
     motion: current?.motion ?? { ...PNGTUBER_DEFAULT_MOTION },
     source: current?.source === "pngtuber-plus" ? "pngtuber-plus" : "generated",
   };
@@ -248,25 +284,24 @@ export interface AvatarVariantPromptContext extends AvatarOwnerInfo {
 }
 
 /** The provider prompt for one variant of one sprite: the reviewed prompt when the user edited it, else
- *  the agent's template rendered with the owner's card text and compiled like a sprite prompt. */
-export async function avatarVariantPrompt(
-  db: DB,
-  image: AvatarImageConnection,
+ *  the agent's template rendered with the owner's card text. It is sent as written, never through the
+ *  sprite prompt compiler or style profiles: those cut an edit instruction down to tags, dropping "open
+ *  the mouth" and "keep the framing" and adding "full body", so the model redrew the whole character. */
+export function avatarVariantPrompt(
   context: AvatarVariantPromptContext,
   label: string,
   variant: AvatarPngtuberVariant,
   override?: AvatarPromptOverride,
-): Promise<{ prompt: string; negativePrompt: string }> {
+): { prompt: string; negativePrompt: string } {
   const id = VARIANT_TEMPLATE_IDS[variant];
   const rendered = renderAvatarPromptTemplate(context.template(id), id, {
     characterName: context.name || "the character",
     appearance: context.appearance,
     expression: label.replace(/[_-]+/gu, " "),
   });
-  const compiled = await compileAvatarImagePrompt(db, image, rendered);
   return resolveReviewedImagePromptSubmission({
-    generatedPrompt: compiled.prompt,
-    generatedNegativePrompt: compiled.negativePrompt,
+    generatedPrompt: rendered,
+    generatedNegativePrompt: "",
     promptOverride: override?.prompt,
     negativePromptOverride: override?.negativePrompt,
   });
@@ -312,10 +347,19 @@ export async function previewPngtuberVariantPrompts(
   ]);
   const items: AvatarPromptReviewItem[] = [];
   for (const label of labels) {
+    if (!image.canEdit) {
+      items.push({
+        id: setPromptId(label),
+        kind: "sprite",
+        title: `${label.replace(/_/gu, " ")}: new face, eyes closed and mouth open`,
+        ...(await pngtuberSetPrompt(db, image, owner, label)),
+      });
+      continue;
+    }
     const source = await readAvatarSourceSprite(request.owner.ownerId, label);
     const size = avatarImageRequestSize(source.width, source.height, image.conn.model || "");
     for (const variant of request.variants) {
-      const prompt = await avatarVariantPrompt(db, image, { template: agent.template, ...owner }, label, variant);
+      const prompt = avatarVariantPrompt({ template: agent.template, ...owner }, label, variant);
       items.push({
         id: variantPromptId(label, variant),
         kind: "sprite",
@@ -326,6 +370,64 @@ export async function previewPngtuberVariantPrompts(
     }
   }
   return items;
+}
+
+/** The prompt of a face's set, or the one reviewed for it. The set is drawn from the appearance text, since
+ *  the connection can't be shown the sprite. */
+async function pngtuberSetPrompt(
+  db: DB,
+  image: AvatarImageConnection,
+  owner: AvatarOwnerInfo,
+  label: string,
+  override?: AvatarPromptOverride,
+) {
+  if (!owner.appearance) {
+    throw new AvatarGenerationError(
+      400,
+      "This image connection can't edit pictures, so it draws a new face from the appearance. Add an appearance or description to the character or persona first.",
+    );
+  }
+  const built = await talkingHeadSetPrompt(db, image, { face: label, appearance: owner.appearance });
+  return {
+    ...built,
+    ...resolveReviewedImagePromptSubmission({
+      generatedPrompt: built.prompt,
+      generatedNegativePrompt: built.negativePrompt,
+      promptOverride: override?.prompt,
+      negativePromptOverride: override?.negativePrompt,
+    }),
+  };
+}
+
+const pngDataUrl = (png: Buffer) => `data:image/png;base64,${png.toString("base64")}`;
+
+/** A new face with its eyes-closed and mouth-open pictures, drawn in one sheet. Each variant cell is lined up
+ *  with the face cell and gives only its eyes or mouth, so the three match. Both variants come back, whichever
+ *  was asked for: the face is new, so a picture drawn for the old face would not match it. */
+async function drawPngtuberSet(
+  image: AvatarImageConnection,
+  prompt: Awaited<ReturnType<typeof pngtuberSetPrompt>>,
+  label: string,
+  source: AvatarSourceSprite,
+  signal: AbortSignal,
+  debug: boolean,
+): Promise<PngtuberVariantDraft[]> {
+  const set = await drawTalkingHeadSet(image, { prompt, signal, debug, logLabel: `pngtuber ${label} set` });
+  const { width = 0, height = 0 } = await (await getSharp())(set.face).metadata();
+  const drafts: PngtuberVariantDraft[] = [];
+  for (const variant of AVATAR_PNGTUBER_VARIANTS) {
+    const picture = await avatarVariantPicture(set.face, await alignAvatarPicturePng(set.face, set[variant]), variant);
+    drafts.push({
+      label,
+      variant,
+      image: pngDataUrl(picture),
+      width,
+      height,
+      sourceHash: source.hash,
+      face: pngDataUrl(set.face),
+    });
+  }
+  return drafts;
 }
 
 /** Draws the requested variants one after another and returns them without storing anything. One
@@ -349,18 +451,28 @@ export async function generatePngtuberVariants(
     for (const label of labels) {
       pngtuberLayerKey(label); // refuse a label that can't be stored before paying for a picture
       const source = await readAvatarSourceSprite(request.owner.ownerId, label);
+      if (!image.canEdit) {
+        if (signal.aborted) throw signal.reason ?? new Error("Cancelled");
+        try {
+          const prompt = await pngtuberSetPrompt(db, image, owner, label, overrides.get(setPromptId(label)));
+          response.drafts.push(...(await drawPngtuberSet(image, prompt, label, source, signal, debug)));
+        } catch (error) {
+          if (signal.aborted || error instanceof AvatarGenerationError) throw error;
+          const message = plainErrorText(error, "The pictures could not be made.");
+          for (const variant of request.variants) response.failed.push({ label, variant, error: message });
+        }
+        continue;
+      }
       for (const variant of request.variants) {
         if (signal.aborted) throw signal.reason ?? new Error("Cancelled");
         try {
-          const prompt = await avatarVariantPrompt(
-            db,
-            image,
+          const prompt = avatarVariantPrompt(
             { template: agent.template, ...owner },
             label,
             variant,
             overrides.get(variantPromptId(label, variant)),
           );
-          const png = await drawAvatarImageEdit({
+          const aligned = await drawAvatarImageEdit({
             image,
             ...prompt,
             source,
@@ -368,10 +480,11 @@ export async function generatePngtuberVariants(
             debug,
             logLabel: `pngtuber ${label} ${variant}`,
           });
+          const png = await avatarVariantPicture(source.png, aligned, variant);
           response.drafts.push({
             label,
             variant,
-            image: `data:image/png;base64,${png.toString("base64")}`,
+            image: pngDataUrl(png),
             width: source.width,
             height: source.height,
             sourceHash: source.hash,
@@ -395,9 +508,13 @@ function decodeDataUrl(value: string): Buffer {
   return Buffer.from(comma >= 0 ? value.slice(comma + 1) : value, "base64");
 }
 
-/** A kept picture from the browser: must be a picture of exactly the sprite's size. Re-encoded so only
- *  pixels are stored. */
-async function keptPicturePng(image: string, source: AvatarSourceSprite): Promise<Buffer> {
+/** A kept picture from the browser: must be a picture of exactly `size` (the sprite's, or the new face's for a
+ *  set; a face itself has any size). Re-encoded so only pixels are stored. */
+async function keptPicturePng(
+  image: string,
+  source: AvatarSourceSprite,
+  size: { width: number; height: number } | null = source,
+): Promise<Buffer> {
   const bytes = decodeDataUrl(image);
   if (!isAllowedImageBuffer(bytes)) throw new AvatarGenerationError(400, "A kept picture isn't a picture.");
   const sharp = await getSharp();
@@ -408,22 +525,35 @@ async function keptPicturePng(image: string, source: AvatarSourceSprite): Promis
     .catch((error: unknown) => {
       throw new AvatarGenerationError(400, "A kept picture couldn't be read.", { cause: error });
     });
-  if (info.width !== source.width || info.height !== source.height) {
-    throw new AvatarGenerationError(400, `A kept picture for "${source.label}" isn't the sprite's size.`);
+  if (size && (info.width !== size.width || info.height !== size.height)) {
+    throw new AvatarGenerationError(400, `A kept picture for "${source.label}" isn't the size of its face.`);
   }
   return data;
 }
 
 /** Stores the kept pictures as PNGTuber layers and returns the saved setup. The sprite each picture was
- *  made from is copied next to it as it is, and each kept picture is stored as drawn (one from a see-through
- *  sprite already has its outline), so the base and its variants always line up; a sprite replaced since its pictures were made is refused. The
- *  files are written first and the setup is merged inside the owner's queue, so a change saved meanwhile
- *  (another tab, an import) is kept, not overwritten.
+ *  made from is copied next to it as it is, or, for a set from an image connection that can't edit pictures,
+ *  the set's new face (the sprite file itself is never changed). Each kept picture is stored as drawn (it
+ *  already has its face's alpha), so the base and its variants always line up; a sprite replaced since its
+ *  pictures were made is refused. The files are written first and the setup is merged inside the owner's
+ *  queue, so a change saved meanwhile (another tab, an import) is kept, not overwritten.
  *  ponytail: pictures of a replaced imported set stay on disk until the next PNGTuber import or removal
  *  tidies the folder; storage has no queued "tidy" call for generation to use. */
 export async function savePngtuberVariants(request: PngtuberVariantsSaveRequest): Promise<AvatarGenerationResponse> {
   const files = new Map<AvatarFilePath, Uint8Array>();
-  const sets = new Map<string, KeptPngtuberSet & { label: string; source: AvatarSourceSprite; sameBase: boolean }>();
+  const sets = new Map<
+    string,
+    KeptPngtuberSet & {
+      label: string;
+      source: AvatarSourceSprite;
+      sameBase: boolean;
+      /** The new face as kept (a set's), else undefined. */
+      face?: string;
+      /** The picture stored as the base: the sprite, or the set's new face, and its size. */
+      basePng: Buffer;
+      size: { width: number; height: number };
+    }
+  >();
   const family = familySourceSprites(request.owner.ownerId);
   for (const entry of request.images) {
     const key = pngtuberLayerKey(entry.label);
@@ -436,8 +566,22 @@ export async function savePngtuberVariants(request: PngtuberVariantsSaveRequest)
         throw new AvatarGenerationError(400, `"${entry.label}" isn't one of the PNGTuber avatar's sprites.`);
       }
       const source = await readAvatarSourceSprite(request.owner.ownerId, entry.label);
-      set = { key, label: entry.label, source, variants: [], keepOthers: false, sameBase: false };
+      const basePng = entry.face ? await keptPicturePng(entry.face, source, null) : source.png;
+      const { width = 0, height = 0 } = entry.face ? await (await getSharp())(basePng).metadata() : source;
+      set = {
+        key,
+        label: entry.label,
+        source,
+        variants: [],
+        keepOthers: false,
+        sameBase: false,
+        face: entry.face,
+        basePng,
+        size: { width, height },
+      };
       sets.set(key, set);
+    } else if (set.face !== entry.face) {
+      throw new AvatarGenerationError(400, `Keep a new face together with its own blink and talk pictures ("${key}").`);
     }
     if (entry.sourceHash !== set.source.hash) {
       throw new AvatarGenerationError(
@@ -445,16 +589,15 @@ export async function savePngtuberVariants(request: PngtuberVariantsSaveRequest)
         `The sprite "${entry.label}" changed after its pictures were made. Make them again.`,
       );
     }
-    // Drawing already gave a picture from a see-through sprite its outline; giving it again would lay it over
-    // the sprite once more and show the sprite through a soft mask.
-    files.set(pngtuberVariantFilePath(key, entry.variant), await keptPicturePng(entry.image, set.source));
+    // Drawing already gave the picture its face's alpha and pixels outside the eyes or mouth.
+    files.set(pngtuberVariantFilePath(key, entry.variant), await keptPicturePng(entry.image, set.source, set.size));
     if (!set.variants.includes(entry.variant)) set.variants.push(entry.variant);
   }
   for (const set of sets.values()) {
     const basePath = pngtuberVariantFilePath(set.key, "base");
     // Read before anything is written: earlier pictures stay only when they were drawn for this picture.
-    set.sameBase = !!(await readAvatarFile(request.owner, basePath))?.equals(set.source.png);
-    files.set(basePath, set.source.png);
+    set.sameBase = !!(await readAvatarFile(request.owner, basePath))?.equals(set.basePng);
+    files.set(basePath, set.basePng);
   }
   const allSprites = listAvatarSourceSprites(request.owner.ownerId, { all: true });
   await writeAvatarFiles(
@@ -463,13 +606,30 @@ export async function savePngtuberVariants(request: PngtuberVariantsSaveRequest)
   );
   const config = await updateAvatarConfig(request.owner, (current) => {
     // An owner without a saved setup shows the one built from the sprites; start from it.
-    const start = current?.kinds.pngtuber ?? spriteBuiltPngtuber(allSprites);
+    const built = spriteBuiltPngtuber(allSprites);
+    const saved = current?.kinds.pngtuber ?? built;
+    // Each face being saved starts from its sprite-built set under its saved one, so a `_blink` or `_talk`
+    // sprite added since (or a face added since) stays next to the new picture; a saved picture wins over a
+    // sprite. Sprite pictures never reach another base: keepOthers below drops them with the old set.
+    const start = saved && {
+      ...saved,
+      layers: {
+        ...saved.layers,
+        ...Object.fromEntries(
+          [...sets.keys()].flatMap((key) =>
+            built?.layers[key] ? [[key, { ...built.layers[key], ...saved.layers[key] }]] : [],
+          ),
+        ),
+      },
+    };
     const kept = [...sets.values()].map((set) => {
       const existing = start?.layers[set.key]?.base;
+      // A new face matches none of the pictures the old one had.
       const keepOthers =
-        existing?.source === "sprite"
+        !set.face &&
+        (existing?.source === "sprite"
           ? existing.label === set.key
-          : existing?.path === pngtuberVariantFilePath(set.key, "base") && set.sameBase;
+          : existing?.path === pngtuberVariantFilePath(set.key, "base") && set.sameBase);
       return { ...set, keepOthers };
     });
     const data = mergePngtuberVariants(start, kept);

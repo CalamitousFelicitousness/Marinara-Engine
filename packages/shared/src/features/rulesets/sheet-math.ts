@@ -600,10 +600,6 @@ export function rulesetSectionGroups<T extends { section?: string }>(
   return loose.length > 0 ? [...groups, { section: null, entries: loose }] : groups;
 }
 
-/** Every number the sheet yields, computed once, top to bottom. `live` is what a live track or pool
- *  reads; without it they read 0, which is right only where the format refuses them (a maximum, the
- *  proficiency bonus, a catalog's scaling). Anything a player or the Game Master sees, and anything a
- *  check or a fight reads, goes through `evaluateRulesetSheetLive`, which supplies it. */
 /** A creature's own scores as the conditions it holds change them (1.499), as a sheet's are: for a
  *  stat block with no sheet. A score past the sheet's most stays where it was printed. */
 export function rulesetChangedAbilityScores(
@@ -666,20 +662,70 @@ export function rulesetSheetTotalsOver(
   });
 }
 
+/** Every number the sheet yields, computed once, top to bottom. `live` is what a live track or pool
+ *  reads; without it they read 0, which is right only where the format refuses them (a maximum, the
+ *  proficiency bonus, a catalog's scaling). Anything a player or the Game Master sees, and anything a
+ *  check or a fight reads, goes through `evaluateRulesetSheetLive`, which supplies it. Without `live`,
+ *  inside `withRulesetSheetEvaluationCache`, a build already evaluated comes back as it was. */
 export function evaluateRulesetSheet(
   definition: RulesetDefinition,
   stored: RulesetSheetBuild,
   live?: RulesetSheetLiveValues,
 ): EvaluatedRulesetSheet {
-  // Once a planning pass (see `withRulesetPlanMemo`).
+  if (live !== undefined || !scopedEvaluations) return evaluateRulesetSheetMemo(definition, stored, live);
+  let byBuild = scopedEvaluations.get(definition);
+  if (!byBuild) scopedEvaluations.set(definition, (byBuild = new WeakMap()));
+  const known = byBuild.get(stored);
+  if (known) return known;
+  const evaluated = evaluateRulesetSheetMemo(definition, stored);
+  byBuild.set(stored, evaluated);
+  return evaluated;
+}
+
+/** The live-less evaluations of the open scope, by definition and build, or null outside one. */
+let scopedEvaluations: WeakMap<RulesetDefinition, WeakMap<RulesetSheetBuild, EvaluatedRulesetSheet>> | null = null;
+
+/**
+ * Runs `run` (synchronous) with every live-less sheet evaluation remembered by the identity of its
+ * definition and build, and forgets them all when it ends; a scope opened inside another uses the
+ * outer one. A fight option or picker loop reads the same sheet thousands of times in one command.
+ * Sound only while nothing writes to a build after it has been evaluated, so inside a scope a build
+ * is evaluated only after its last write: a clone is edited first, then read. A `run` that returns a
+ * promise throws.
+ */
+export function withRulesetSheetEvaluationCache<T>(run: () => T): T {
+  if (scopedEvaluations) return synchronous(run());
+  scopedEvaluations = new WeakMap();
+  try {
+    return synchronous(run());
+  } finally {
+    scopedEvaluations = null;
+  }
+}
+
+/** A promise would be awaited after the scope has closed, so its reads would go uncached, or into
+ *  another command's scope. */
+function synchronous<T>(result: T): T {
+  if (typeof (result as { then?: unknown } | null | undefined)?.then === "function") {
+    throw new TypeError("withRulesetSheetEvaluationCache takes synchronous work only.");
+  }
+  return result;
+}
+
+/** Once a planning pass (see `withRulesetPlanMemo`), and once per content. */
+function evaluateRulesetSheetMemo(
+  definition: RulesetDefinition,
+  stored: RulesetSheetBuild,
+  live?: RulesetSheetLiveValues,
+): EvaluatedRulesetSheet {
   return rulesetPlanMemo(["evaluateRulesetSheet", definition, stored, live], () =>
     rulesetContentMemo(definition, "evaluateRulesetSheet", [stored, live], () =>
-      evaluateSheet(definition, stored, live),
+      evaluateRulesetSheetUncached(definition, stored, live),
     ),
   );
 }
 
-function evaluateSheet(
+function evaluateRulesetSheetUncached(
   definition: RulesetDefinition,
   stored: RulesetSheetBuild,
   live?: RulesetSheetLiveValues,

@@ -8,6 +8,7 @@ import {
   llmFetch,
   llmHttpErrorFromResponse,
   sanitizeApiError,
+  toolCallFinishReason,
   type ChatMessage,
   type ChatOptions,
   type ChatCompletionResult,
@@ -17,6 +18,8 @@ import {
 } from "../base-provider.js";
 import { parseTextualToolCalls, stripTextualToolCalls } from "../textual-tool-call-parser.js";
 import {
+  capabilityModelId,
+  impliesProxyThinking,
   isClaudeAdaptiveOnlyNoSamplingModel,
   isClaudeStrictRequestModel,
   isGeminiModel,
@@ -784,11 +787,11 @@ export class OpenAIProvider extends BaseLLMProvider {
   }
 
   private isGpt55Model(model: string): boolean {
-    return model.toLowerCase().startsWith("gpt-5.5");
+    return capabilityModelId(model).startsWith("gpt-5.5");
   }
 
   private isOpenAINoSamplingModel(model: string): boolean {
-    const normalized = model.toLowerCase();
+    const normalized = capabilityModelId(model);
     return (
       normalized.startsWith("gpt-5.5") || isOpenAIGpt56Model(normalized) || isOpenAIGpt6AlwaysReasoningModel(normalized)
     );
@@ -805,7 +808,7 @@ export class OpenAIProvider extends BaseLLMProvider {
   private isReasoningModel(model: string): boolean {
     if (isOpenAIGpt6Model(model)) return true;
     if (this.isGenericCustomProvider() && !this.isOpenAINoSamplingModel(model)) return false;
-    const m = model.toLowerCase();
+    const m = capabilityModelId(model);
     return /^(o1|o3|o4)/.test(m) || m.startsWith("gpt-5") || isOpenAIGpt6AlwaysReasoningModel(m);
   }
 
@@ -819,13 +822,13 @@ export class OpenAIProvider extends BaseLLMProvider {
     return (
       !this.isGenericCustomProvider() &&
       this.baseUrl.includes("openrouter.ai") &&
-      model.toLowerCase().startsWith("x-ai/grok-")
+      capabilityModelId(model).startsWith("x-ai/grok-")
     );
   }
 
   private isXAIMultiAgentModel(model: string): boolean {
     if (this.isGenericCustomProvider()) return false;
-    return model.toLowerCase() === "grok-4.20-multi-agent";
+    return capabilityModelId(model) === "grok-4.20-multi-agent";
   }
 
   private isNativeXAIConfigurableReasoningModel(model: string): boolean {
@@ -834,7 +837,7 @@ export class OpenAIProvider extends BaseLLMProvider {
 
   private isXAIReasoningModel(model: string): boolean {
     if (!this.isXAIEndpoint() && !this.isOpenRouterXAIModel(model)) return false;
-    const m = model.toLowerCase();
+    const m = capabilityModelId(model);
     return (
       m.startsWith("x-ai/grok-") ||
       isXaiConfigurableReasoningModel(m) ||
@@ -888,10 +891,11 @@ export class OpenAIProvider extends BaseLLMProvider {
     if (isOpenAIGpt6Model(model)) return isOpenAIGpt6AlwaysReasoningModel(model) || reasoningEffort !== "none";
     if (this.isGenericCustomProvider() && !this.isOpenAINoSamplingModel(model) && !isClaudeStrictRequestModel(model))
       return false;
-    const m = model.toLowerCase();
+    const m = capabilityModelId(model);
     if (/^(o1|o3|o4)/.test(m)) return true;
     if (this.isOpenAINoSamplingModel(m)) return true;
-    if (m.startsWith("gpt-5") && reasoningEffort && reasoningEffort !== "none") return true;
+    if (m.startsWith("gpt-5") && ((reasoningEffort && reasoningEffort !== "none") || impliesProxyThinking(model)))
+      return true;
     // Claude adaptive-only models forbid all sampling params (covers reverse proxies).
     if (isClaudeAdaptiveOnlyNoSamplingModel(m)) return true;
     // Argon and the newer Gemini Flash models ignore sampling and reject penalties (OpenRouter, NanoGPT).
@@ -993,7 +997,7 @@ export class OpenAIProvider extends BaseLLMProvider {
   }
 
   private supportsOpenAIReasoningDisable(model: string): boolean {
-    const normalized = model.toLowerCase().replace(/^openai\//, "");
+    const normalized = capabilityModelId(model).replace(/^openai\//, "");
     if (normalized.includes("-pro")) return false;
     if (isOpenAIGpt6Model(normalized)) return !isOpenAIGpt6AlwaysReasoningModel(normalized);
     const version = normalized.match(/^gpt-5\.(\d+)/)?.[1];
@@ -1009,7 +1013,7 @@ export class OpenAIProvider extends BaseLLMProvider {
 
   private supportsOpenRouterReasoningDisable(model: string): boolean {
     if (isClaudeStrictRequestModel(model)) return false;
-    const normalized = model.toLowerCase();
+    const normalized = capabilityModelId(model);
     return (
       this.supportsOpenAIReasoningDisable(normalized) ||
       this.supportsXAIReasoningDisable(normalized) ||
@@ -1037,7 +1041,7 @@ export class OpenAIProvider extends BaseLLMProvider {
 
   private supportsOpenRouterUnifiedReasoning(model: string): boolean {
     if (!this.isOpenRouterEndpoint()) return false;
-    const m = model.toLowerCase();
+    const m = capabilityModelId(model);
     return (
       m.includes("claude-3.7") ||
       /claude-(?:opus|sonnet|haiku)-4(?:[.-]|\b)/.test(m) ||
@@ -1047,7 +1051,7 @@ export class OpenAIProvider extends BaseLLMProvider {
 
   private isOpenRouterGeminiModel(model: string): boolean {
     if (!this.isOpenRouterEndpoint()) return false;
-    const m = model.toLowerCase();
+    const m = capabilityModelId(model);
     return m.startsWith("google/gemini") || m.includes("/gemini-");
   }
 
@@ -1319,7 +1323,7 @@ export class OpenAIProvider extends BaseLLMProvider {
     // isReasoningModel / isNoTemperatureModel which have their own GPT-5.5 gates.
     if (this.isGenericCustomProvider()) return false;
     if (this.isGpt55Model(model) || (isOpenAIGpt6Model(model) && !this.isOpenRouterEndpoint())) return true;
-    const m = model.toLowerCase();
+    const m = capabilityModelId(model);
     return (
       this.isXAIMultiAgentModel(model) ||
       (!!options?.captureReasoning && this.isXAIReasoningModel(model)) ||
@@ -1344,7 +1348,7 @@ export class OpenAIProvider extends BaseLLMProvider {
 
   private supportsGpt5Verbosity(model: string): boolean {
     if (this.isOpenAIChatGPTProvider()) return false;
-    return this.isGenericCustomProvider() || model.toLowerCase().startsWith("gpt-5") || isOpenAIGpt6Model(model);
+    return this.isGenericCustomProvider() || capabilityModelId(model).startsWith("gpt-5") || isOpenAIGpt6Model(model);
   }
 
   private applyResponsesTextOptions(body: Record<string, unknown>, options: ChatOptions): void {
@@ -1411,7 +1415,7 @@ export class OpenAIProvider extends BaseLLMProvider {
    */
   private usesDeveloperRole(model: string): boolean {
     if (this.isGenericCustomProvider()) return false;
-    const m = model.toLowerCase();
+    const m = capabilityModelId(model);
     return (
       m.startsWith("gpt-5") || isOpenAIGpt6Model(m) || m.startsWith("o1") || m.startsWith("o3") || m.startsWith("o4")
     );
@@ -1950,7 +1954,7 @@ export class OpenAIProvider extends BaseLLMProvider {
       return {
         content: resolvedContent,
         toolCalls,
-        finishReason: toolCalls.length > 0 ? "tool_calls" : (choice?.finish_reason ?? "stop"),
+        finishReason: toolCallFinishReason(toolCalls.length, choice?.finish_reason ?? "stop"),
         usage,
         ...(OpenAIProvider.hasReasoningMetadata(reasoningMetadata) ? { providerMetadata: reasoningMetadata } : {}),
       };
@@ -2163,7 +2167,7 @@ export class OpenAIProvider extends BaseLLMProvider {
     return {
       content: content || null,
       toolCalls,
-      finishReason: toolCalls.length > 0 ? "tool_calls" : finishReason,
+      finishReason: toolCallFinishReason(toolCalls.length, finishReason),
       usage: streamUsage,
       ...(OpenAIProvider.hasReasoningMetadata(reasoningMetadata) ? { providerMetadata: reasoningMetadata } : {}),
     };
@@ -3046,10 +3050,7 @@ export class OpenAIProvider extends BaseLLMProvider {
     } finally {
       options.signal?.removeEventListener("abort", onAbortCCR);
     }
-    // Check if we got tool calls
-    if (functionCalls.length > 0) {
-      finishReason = "tool_calls";
-    }
+    finishReason = toolCallFinishReason(functionCalls.length, finishReason);
 
     return {
       content: content || null,
@@ -3235,16 +3236,14 @@ export class OpenAIProvider extends BaseLLMProvider {
     }
 
     const status = json.status as string | undefined;
-    let finishReason: string;
-    if (toolCalls.length > 0) {
-      finishReason = "tool_calls";
-    } else if (status === "incomplete") {
-      finishReason = OpenAIProvider.normalizeResponsesIncompleteFinishReason(
-        (json.incomplete_details as Record<string, unknown> | undefined)?.reason,
-      );
-    } else {
-      finishReason = "stop";
-    }
+    const finishReason = toolCallFinishReason(
+      toolCalls.length,
+      status === "incomplete"
+        ? OpenAIProvider.normalizeResponsesIncompleteFinishReason(
+            (json.incomplete_details as Record<string, unknown> | undefined)?.reason,
+          )
+        : "stop",
+    );
 
     return {
       content: text || null,

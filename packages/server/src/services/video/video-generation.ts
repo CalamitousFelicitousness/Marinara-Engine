@@ -6,13 +6,19 @@ import { newId } from "../../utils/id-generator.js";
 import { logger, logDebugOverride } from "../../lib/logger.js";
 import { assertInsideDir, safeFetch } from "../../utils/security.js";
 import { notifyGenerationFallback } from "../generation/fallback-notification.js";
-import { runMediaGenerationRequest } from "../image/image-generation-queue.js";
+import {
+  mediaProviderLaneKey,
+  runInMediaProviderLane,
+  runMediaGenerationRequest,
+} from "../image/image-generation-queue.js";
+import { runSharedGpuTurn } from "../generation/shared-gpu-turns.js";
 import {
   COMFYUI_MAX_REFERENCE_IMAGES,
   numberedComfyReferencePlaceholder,
 } from "../image/comfyui-reference-placeholders.js";
 import { buildAtlasCloudVideoRequest, runAtlasCloudPrediction } from "../media/atlas-cloud.js";
 import { adaptAtlasCloudVideoRequest, fetchAtlasCloudModelSchema } from "../media/atlas-cloud-video-schema.js";
+import { generateToAPIsVideo, isToAPIsMediaUrl, ToAPIsSubmittedTaskError } from "../media/toapis-media.js";
 import { buildComfyUiLoraWorkflowReplacements } from "@marinara-engine/shared";
 
 import type {
@@ -80,76 +86,30 @@ export async function generateVideo(
   request: VideoGenerationRequest,
 ): Promise<VideoGenerationResult> {
   // The request deadline begins when the queued task starts; queue wait time is
-  // governed separately by the shared media-generation queue.
-  return runMediaGenerationRequest({
-    connectionKey: request.connectionKey ?? `${serviceHint || source}:${baseUrl}`,
-    queue: request.queue === true,
-    signal: request.signal,
-    task: () => generateVideoUnqueued(source, baseUrl, apiKey, serviceHint, request),
-  });
-}
-
-async function generateVideoUnqueued(
-  source: string,
-  baseUrl: string,
-  apiKey: string,
-  serviceHint: string,
-  request: VideoGenerationRequest,
-): Promise<VideoGenerationResult> {
-  const resolvedService =
-    normalizeVideoService(source) === "swarmui" || normalizeVideoService(source) === "nanogpt"
-      ? normalizeVideoService(source)
-      : normalizeVideoService(serviceHint || source);
-  const primaryRequest = { ...request, fallback: undefined };
+  // governed separately by the shared media-generation queue. The provider lane
+  // (#7662) comes first, so its waiters hold neither a connection turn nor a permit. The shared
+  // GPU turn comes after the connection's queue and before the permit, so a clip waiting on a
+  // busy shared GPU holds no permit, and one queued behind its connection holds no GPU turn.
+  // Video lanes are their own keyspace: a minutes-long video must not hold up images.
+  // Only the primary attempt holds the lane and permit: the fallback connection
+  // queues after both are released, so a fallback never waits on another lane
+  // while holding capacity that lane's request needs.
   try {
-    if (resolvedService === "gemini_omni") {
-      return await withVideoGenerationDeadline(request.signal, VIDEO_GEN_TIMEOUT, (signal) =>
-        generateGeminiOmniVideo(baseUrl, apiKey, { ...primaryRequest, signal }),
-      );
-    }
-    if (resolvedService === "google_veo") {
-      return await withVideoGenerationDeadline(request.signal, VIDEO_GEN_TIMEOUT, (signal) =>
-        generateGoogleVeoVideo(baseUrl, apiKey, { ...primaryRequest, signal }),
-      );
-    }
-    if (resolvedService === "xai") {
-      return await withVideoGenerationDeadline(request.signal, VIDEO_GEN_TIMEOUT, (signal) =>
-        generateXaiVideo(baseUrl, apiKey, { ...primaryRequest, signal }),
-      );
-    }
-    if (resolvedService === "openrouter") {
-      return await withVideoGenerationDeadline(request.signal, VIDEO_GEN_TIMEOUT, (signal) =>
-        generateOpenRouterVideo(baseUrl, apiKey, { ...primaryRequest, signal }),
-      );
-    }
-    if (resolvedService === "nanogpt") {
-      return await withVideoGenerationDeadline(request.signal, VIDEO_GEN_TIMEOUT, (signal) =>
-        generateNanoGptVideo(baseUrl, apiKey, { ...primaryRequest, signal }),
-      );
-    }
-    if (resolvedService === "atlas") {
-      return await withVideoGenerationDeadline(request.signal, VIDEO_GEN_TIMEOUT, (signal) =>
-        generateAtlasCloudVideo(baseUrl, apiKey, { ...primaryRequest, signal }),
-      );
-    }
-    if (resolvedService === "seedance") {
-      return await withVideoGenerationDeadline(request.signal, VIDEO_GEN_TIMEOUT, (signal) =>
-        generateSeedanceVideo(baseUrl, apiKey, { ...primaryRequest, signal }),
-      );
-    }
-    if (resolvedService === "comfyui") {
-      return await withVideoGenerationDeadline(request.signal, VIDEO_GEN_TIMEOUT, (signal) =>
-        generateComfyUiVideo(baseUrl, { ...primaryRequest, signal }),
-      );
-    }
-    if (resolvedService === "swarmui") {
-      return await withVideoGenerationDeadline(request.signal, VIDEO_GEN_TIMEOUT, (signal) =>
-        generateSwarmUiVideo(baseUrl, apiKey, { ...primaryRequest, signal }),
-      );
-    }
-    throw new Error(`Unsupported video generation service: ${resolvedService || serviceHint || source}`);
+    return await runInMediaProviderLane({
+      laneKey: mediaProviderLaneKey(`video:${resolveVideoService(source, serviceHint)}:${baseUrl.trim()}`, apiKey),
+      signal: request.signal,
+      task: () =>
+        runMediaGenerationRequest({
+          connectionKey: request.connectionKey ?? `${serviceHint || source}:${baseUrl}`,
+          queue: request.queue === true,
+          signal: request.signal,
+          aroundPermit: (work) => runSharedGpuTurn("media", baseUrl, work, request.signal),
+          task: () => generatePrimaryVideo(source, baseUrl, apiKey, serviceHint, { ...request, fallback: undefined }),
+        }),
+    });
   } catch (error) {
     const fallback = request.fallback;
+    if (error instanceof ToAPIsSubmittedTaskError) throw error;
     if (!fallback || request.signal?.aborted) throw error;
     logger.warn(
       error,
@@ -178,6 +138,68 @@ async function generateVideoUnqueued(
       connectionKey: fallback.connectionId,
     });
   }
+}
+
+function resolveVideoService(source: string, serviceHint: string): string {
+  return normalizeVideoService(source) === "swarmui" || normalizeVideoService(source) === "nanogpt"
+    ? normalizeVideoService(source)
+    : normalizeVideoService(serviceHint || source);
+}
+
+async function generatePrimaryVideo(
+  source: string,
+  baseUrl: string,
+  apiKey: string,
+  serviceHint: string,
+  request: VideoGenerationRequest,
+): Promise<VideoGenerationResult> {
+  const resolvedService = resolveVideoService(source, serviceHint);
+  if (resolvedService === "gemini_omni") {
+    return await withVideoGenerationDeadline(request.signal, VIDEO_GEN_TIMEOUT, (signal) =>
+      generateGeminiOmniVideo(baseUrl, apiKey, { ...request, signal }),
+    );
+  }
+  if (resolvedService === "google_veo") {
+    return await withVideoGenerationDeadline(request.signal, VIDEO_GEN_TIMEOUT, (signal) =>
+      generateGoogleVeoVideo(baseUrl, apiKey, { ...request, signal }),
+    );
+  }
+  if (resolvedService === "xai") {
+    return await withVideoGenerationDeadline(request.signal, VIDEO_GEN_TIMEOUT, (signal) =>
+      generateXaiVideo(baseUrl, apiKey, { ...request, signal }),
+    );
+  }
+  if (resolvedService === "openrouter") {
+    return await withVideoGenerationDeadline(request.signal, VIDEO_GEN_TIMEOUT, (signal) =>
+      generateOpenRouterVideo(baseUrl, apiKey, { ...request, signal }),
+    );
+  }
+  if (resolvedService === "nanogpt") {
+    return await withVideoGenerationDeadline(request.signal, VIDEO_GEN_TIMEOUT, (signal) =>
+      generateNanoGptVideo(baseUrl, apiKey, { ...request, signal }),
+    );
+  }
+  if (resolvedService === "atlas") {
+    return await withVideoGenerationDeadline(request.signal, VIDEO_GEN_TIMEOUT, (signal) =>
+      generateAtlasCloudVideo(baseUrl, apiKey, { ...request, signal }),
+    );
+  }
+  if (resolvedService === "seedance") {
+    return await withVideoGenerationDeadline(request.signal, VIDEO_GEN_TIMEOUT, (signal) =>
+      generateSeedanceVideo(baseUrl, apiKey, { ...request, signal }),
+    );
+  }
+  if (resolvedService === "comfyui") {
+    return await withVideoGenerationDeadline(request.signal, VIDEO_GEN_TIMEOUT, (signal) =>
+      generateComfyUiVideo(baseUrl, { ...request, signal }),
+    );
+  }
+  if (resolvedService === "swarmui") {
+    return await withVideoGenerationDeadline(request.signal, VIDEO_GEN_TIMEOUT, (signal) =>
+      generateSwarmUiVideo(baseUrl, apiKey, { ...request, signal }),
+    );
+  }
+  throw new Error(`Unsupported video generation service: ${resolvedService || serviceHint || source}`);
 }
 
 export function resolveVideoReferencePublicUploadOptions(
@@ -390,6 +412,9 @@ function comfyUiVideoFetch(url: string | URL, init?: RequestInit, maxResponseByt
       allowLoopback: true,
       allowedProtocols: ["https:", "http:"],
     },
+    // ComfyUI may hold POST /prompt until the render finishes (a render gate), so Undici's
+    // five-minute default would fail any video whose render passes it.
+    agentOptions: { headersTimeout: VIDEO_GEN_TIMEOUT, bodyTimeout: VIDEO_GEN_TIMEOUT },
     maxResponseBytes,
     decodeCompressedResponse: true,
   });
@@ -1274,6 +1299,7 @@ async function generateSeedanceVideo(
   apiKey: string,
   request: VideoGenerationRequest,
 ): Promise<VideoGenerationResult> {
+  if (isToAPIsMediaUrl(baseUrl)) return generateToAPIsVideo(baseUrl, apiKey, request, MAX_VIDEO_RESPONSE_BYTES);
   if (!apiKey.trim()) throw new Error("Seedance video generation requires a Seedance API key");
   const model = request.model?.trim() || DEFAULT_SEEDANCE_VIDEO_MODEL;
   const startUrl = buildSeedanceUrl(baseUrl, "v1/videos/generations");

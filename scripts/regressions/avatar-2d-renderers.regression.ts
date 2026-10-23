@@ -2,7 +2,10 @@
  * The rules the 2D avatar renderers follow, frame by frame:
  *   - an owner's expression sprites become a PNGTuber setup with no setup step: one face per sprite, with
  *     `_talk` and `_blink` sprites as its mouth-open and eyes-closed pictures, portraits before full-body;
- *   - a frame picks the exact sprite label first, then the emotion's face, then the resting face;
+ *   - sprites named after one of the 23 extra feelings (or a word for it) become that feeling's face, and are never
+ *     cut by the 64-face cap;
+ *   - a frame picks the exact sprite label first, then the face of its feeling when that belongs to its emotion,
+ *     then the emotion's face, then the resting face;
  *   - the mouth opens on vowels and closes on consonants (it flaps with the syllables of streamed text),
  *     blinks come every 3 to 6 seconds, and a hop lasts one short arc;
  *   - a mesh avatar frame turns into the runtime's emotion tag or live expression, a held vowel or a voice
@@ -62,6 +65,26 @@ assert.equal(layers.buildPngtuberLayersFromSprites([]), null, "no sprites, no se
 assert.equal(layers.buildPngtuberLayersFromSprites([sprite("happy_talk")]), null, "a lone variant is not a face");
 const many = layers.buildPngtuberLayersFromSprites(Array.from({ length: 80 }, (_, index) => sprite(`pose${index}`)));
 assert.equal(Object.keys(many!.layers).length, 64, "a setup holds at most 64 faces, like the schema");
+const manyFeelings = layers.buildPngtuberLayersFromSprites(
+  [...Array.from({ length: 80 }, (_, index) => `pose${index}`), "remorse", "Scared"].map(sprite),
+);
+assert.deepEqual(
+  Object.keys(manyFeelings!.layers).slice(0, 2),
+  ["scared", "remorse"],
+  "the suggested labels, then the feelings' names, come before other faces",
+);
+assert.deepEqual(manyFeelings!.feelingMap, {
+  remorse: { target: "remorse", source: "sprite-label", confidence: 1 },
+  fear: { target: "scared", source: "sprite-label", confidence: 0.8 },
+});
+assert.deepEqual(data.feelingMap, { amusement: { target: "smirk_2", source: "sprite-label", confidence: 0.8 } });
+assert.deepEqual(
+  Object.keys(layers.AVATAR_FEELING_LABEL_KEYS).sort(),
+  ["admiration", "amusement", "annoyance", "approval", "caring", "confusion", "curiosity", "desire"]
+    .concat(["disappointment", "disapproval", "disgust", "embarrassment", "excitement", "fear", "gratitude"])
+    .concat(["grief", "love", "nervousness", "optimism", "pride", "realization", "relief", "remorse"]),
+  "every extra feeling has a name",
+);
 
 assert.deepEqual(layers.splitSpriteVariant("happy_mouth_open_eyes_closed"), {
   base: "happy",
@@ -109,6 +132,134 @@ assert.equal(
   "b",
   "else the first face",
 );
+{
+  const feelingData = layers.buildPngtuberLayersFromSprites(["neutral", "happy", "embarrassed", "sad"].map(sprite))!;
+  const pick = (frame: Record<string, unknown>, extra: Record<string, unknown> = {}) =>
+    layers.pickPngtuberLayerKey({ ...feelingData, ...extra }, frame as never);
+  assert.equal(pick({ emotion: "happy", feeling: "embarrassment" }), "embarrassed", "the feeling's face");
+  assert.equal(
+    pick({ emotion: "happy", feeling: "embarrassment", label: "Sad" }),
+    "sad",
+    "an exact label still comes first",
+  );
+  assert.equal(pick({ emotion: "sad", feeling: "embarrassment" }), "sad", "a feeling of another emotion is ignored");
+  assert.equal(
+    pick({ emotion: "happy", feeling: "gratitude" }),
+    "happy",
+    "a feeling without a face shows its emotion's",
+  );
+  assert.equal(
+    pick(
+      { emotion: "happy", feeling: "embarrassment" },
+      { feelingMap: { embarrassment: { target: null, source: "user", confidence: 1 } } },
+    ),
+    "happy",
+    "the user chose the main face for it",
+  );
+  assert.equal(
+    pick({ emotion: "happy", feeling: "embarrassment" }, { feelingMap: undefined }),
+    "happy",
+    "an older setup",
+  );
+}
+// ── The talking head's faces on the generation panel ──
+// One row per face the six feelings show, in feeling order, with every feeling that shows it.
+{
+  const set = (label: string) => ({ base: { source: "sprite" as const, label } });
+  const bind = (target: string | null, source: "sprite-label" | "user" = "sprite-label") => ({
+    target,
+    source,
+    confidence: 1,
+  });
+  const labelFor = (key: string) => (key === "imported" ? null : `${key}_sprite`);
+  const saved = {
+    layers: {
+      neutral: set("neutral"),
+      smile: set("smile"),
+      glare: set("glare"),
+      imported: set("imported"),
+    },
+    expressionMap: {
+      neutral: bind("neutral"),
+      happy: bind("smile"),
+      angry: bind(null, "user"),
+      sad: bind("gone"),
+      relaxed: bind("smile"),
+      surprised: bind("imported"),
+    },
+    motion: { bounceOnTalk: true, bounceHeight: 0.06, blinkIntervalSeconds: 4.5 },
+    source: "generated" as const,
+  };
+  // Sprites made after the setup was saved: a sad face, and an angry one the user chose not to use.
+  const fresh = layers.buildPngtuberLayersFromSprites(["neutral", "sad", "angry"].map(sprite));
+  const faces = layers.talkingHeadFaces(saved, fresh, labelFor);
+  assert.deepEqual(
+    faces.map((entry) => [entry.key, entry.emotions, entry.label]),
+    [
+      ["neutral", ["neutral", "angry"], "neutral_sprite"],
+      ["smile", ["happy", "relaxed"], "smile_sprite"],
+      ["sad", ["sad"], "sad_sprite"],
+      ["imported", ["surprised"], null],
+    ],
+    "two feelings on one face share a row; the user's resting choice stays; unbound faces (glare) are left out",
+  );
+  assert.equal(faces[0]!.set, saved.layers.neutral, "a saved face shows its saved pictures");
+  assert.deepEqual(faces[2]!.set, fresh!.layers.sad, "a face made for a feeling the setup lacks is offered");
+  assert.deepEqual(
+    layers.talkingHeadFaces(fresh, fresh, labelFor).map((entry) => [entry.key, entry.emotions]),
+    [
+      ["neutral", ["neutral", "happy", "relaxed", "surprised"]],
+      ["angry", ["angry"]],
+      ["sad", ["sad"]],
+    ],
+    "without a saved setup the sprites are the talking head, feelings without a face on the resting face",
+  );
+  assert.deepEqual(
+    layers
+      .talkingHeadFaces({ ...saved, source: "pngtuber-plus" }, fresh, labelFor)
+      .map((entry) => [entry.key, entry.emotions]),
+    [
+      ["neutral", ["neutral", "angry", "sad"]],
+      ["smile", ["happy", "relaxed"]],
+      ["imported", ["surprised"]],
+    ],
+    "a PNGTuber Plus import keeps its own faces: no sprite face joins it",
+  );
+  assert.deepEqual(layers.talkingHeadFaces(null, null, labelFor), [], "no setup and no sprites, no faces");
+
+  // Extra feelings list the faces they have of their own, after the six; the others ride on their emotion's row.
+  const withFeelings = {
+    ...saved,
+    layers: { ...saved.layers, fear_face: set("fear_face") },
+    feelingMap: {
+      fear: bind("fear_face", "user"),
+      amusement: bind("smile"),
+      gratitude: bind(null, "user"),
+      pride: bind("gone"),
+    },
+  };
+  // Sprites made since: a pride face, and a gratitude face the user chose not to use.
+  const freshFeelings = layers.buildPngtuberLayersFromSprites(["neutral", "pride", "gratitude"].map(sprite));
+  const listed = (shown: typeof withFeelings) =>
+    layers.talkingHeadFaces(shown, freshFeelings, labelFor).map((entry) => [entry.key, entry.emotions, entry.feelings]);
+  assert.deepEqual(
+    listed(withFeelings),
+    [
+      ["neutral", ["neutral", "angry", "sad"], []],
+      ["smile", ["happy", "relaxed"], ["amusement"]],
+      ["imported", ["surprised"], []],
+      ["pride", [], ["pride"]],
+      ["fear_face", [], ["fear"]],
+    ],
+    "own faces and new sprite faces for extra feelings join the list; the user's main-face choice adds no row",
+  );
+  assert.deepEqual(
+    listed({ ...withFeelings, source: "pngtuber-plus" }).map(([key]) => key),
+    ["neutral", "smile", "imported", "fear_face"],
+    "no sprite face joins a PNGTuber Plus import for a feeling either",
+  );
+}
+
 const happy = data.layers.happy!;
 assert.equal(layers.pickPngtuberPicture(happy, true, true), happy.eyesClosedMouthOpen);
 assert.equal(layers.pickPngtuberPicture(data.layers.sad!, true, true), data.layers.sad!.mouthOpen, "talking wins");
@@ -227,7 +378,31 @@ assert.deepEqual(face.meshAvatarMouth({}, { viseme: "oh", mouthOpen: 0.6 }, true
 assert.deepEqual(face.meshAvatarMouth({}, { viseme: "oh", mouthOpen: 0.02 }, true), { mode: "hold", vowel: "n" });
 assert.deepEqual(face.meshAvatarMouth({}, { viseme: null, mouthOpen: 1.4 }, true), { mode: "voice", level: 1 });
 assert.deepEqual(face.meshAvatarMouth({}, { viseme: "aa", mouthOpen: 1 }, false), { mode: "off" });
-assert.deepEqual(face.meshAvatarOverrides({}, { still: false, blink: true, eyeOpen: 1 }), {}, "nothing to override");
+// A text viseme keeps its vowel, but the director sets how far that vowel opens.
+for (const [viseme, mouthOpen, vowel] of [
+  ["aa", 0.2, "a"],
+  ["oh", 0.6, "o"],
+] as const) {
+  assert.deepEqual(face.meshAvatarMouth({}, { viseme, mouthOpen }, true), { mode: "hold", vowel });
+  assert.deepEqual(
+    face.meshAvatarOverrides({}, { still: false, blink: true, eyeOpen: 1, mouthOpen }),
+    { mouthOpen },
+    `${viseme} keeps the director's ${mouthOpen} opening`,
+  );
+}
+for (const [mouthOpen, expected] of [
+  [-0.2, 0],
+  [1.4, 1],
+] as const) {
+  assert.deepEqual(face.meshAvatarOverrides({}, { still: false, blink: true, eyeOpen: 1, mouthOpen }), {
+    mouthOpen: expected,
+  });
+}
+assert.deepEqual(
+  face.meshAvatarOverrides({}, { still: false, blink: true, eyeOpen: 1 }),
+  {},
+  "voice and idle frames leave the runtime's own mouth opening alone",
+);
 assert.deepEqual(
   face.meshAvatarOverrides({ blink: 0.75, lookAt: { x: 2, y: -0.5 } }, { still: false, blink: true, eyeOpen: 1 }),
   { eyeLOpen: 0.25, eyeROpen: 0.25, gazeX: 1, gazeY: -0.5 },
@@ -243,7 +418,7 @@ assert.deepEqual(face.meshAvatarOverrides({}, { still: true, blink: false, eyeOp
   eyeROpen: 1,
 });
 // With blinking off (or a director blink), the eyelid override keeps each feeling's own eye shape, the
-// openness mesh-avatar 0.1.1's emotion presets hold: wide for surprised, narrowed for the others.
+// openness mesh-avatar 0.2.1's emotion presets hold: wide for surprised, narrowed for the others.
 for (const [emotion, eyes] of Object.entries({ happy: 0.8, angry: 0.72, sad: 0.78, relaxed: 0.82, surprised: 1.18 })) {
   let eyeOpen = 1;
   for (let index = 0; index < 60; index += 1) eyeOpen = face.easeMeshAvatarEyes(eyeOpen, emotion as never, 1 / 30);
@@ -258,6 +433,83 @@ assert.deepEqual(face.meshAvatarOverrides({ blink: 0.5 }, { still: false, blink:
   eyeLOpen: 0.4,
   eyeROpen: 0.4,
 });
+
+// Evaluate the installed, pinned runtime's real composition step, including its lip-sync precedence.
+// The identity overlay isolates parameter composition; WebGL and image loading are not needed here.
+const meshRuntime = readFileSync(
+  new URL("../../packages/client/node_modules/mesh-avatar/dist/index.js", import.meta.url),
+  "utf8",
+);
+const composeBody = meshRuntime.match(/  function A\(M\) \{\n([\s\S]*?)\n  \}\n  function E\(M\)/u)?.[1];
+assert.ok(composeBody, "the pinned runtime's parameter composition exists");
+const compose = new Function("L", "P", "G", "q", "e", `let J; return function(M) {${composeBody}}`);
+function runtimeParameters(
+  overrides: Record<string, number>,
+  open: number,
+  held: number | null = open,
+  preserve = false,
+) {
+  return compose(
+    { update: () => ({ mouthOpen: open, mouthForm: -0.2 }), lipOpen: held, P: { mouthOpen: open, mouthForm: 0.4 } },
+    overrides,
+    1,
+    { apply: (value: Record<string, number>) => value },
+    { preserveMouthForm: preserve },
+  )(1 / 60) as Record<string, number>;
+}
+for (const [viseme, mouthOpen, runtimeOpen] of [
+  ["aa", 0.2, 0.9],
+  ["oh", 0.6, 0.75],
+  ["aa", -0.2, 0.9],
+  ["oh", 1.4, 0.75],
+] as const) {
+  const overrides = face.meshAvatarOverrides({}, { still: false, blink: true, eyeOpen: 1, mouthOpen });
+  assert.deepEqual(
+    runtimeParameters(overrides, runtimeOpen),
+    { mouthOpen: Math.max(0, Math.min(1, mouthOpen)), mouthForm: 0.4 },
+    `${viseme} uses clock openness and retains the held vowel form`,
+  );
+}
+assert.deepEqual(
+  runtimeParameters({}, 0.58),
+  { mouthOpen: 0.58, mouthForm: 0.4 },
+  "voice without an override is unchanged",
+);
+assert.deepEqual(
+  runtimeParameters({}, 0.06, null),
+  { mouthOpen: 0.06, mouthForm: -0.2 },
+  "idle without lip sync is unchanged",
+);
+assert.deepEqual(
+  runtimeParameters({ mouthForm: -0.7 }, 0.58),
+  { mouthOpen: 0.58, mouthForm: 0.4 },
+  "default held form precedence is unchanged",
+);
+assert.deepEqual(
+  runtimeParameters({ mouthForm: -0.7 }, 0.58, 0.58, true),
+  { mouthOpen: 0.58, mouthForm: -0.7 },
+  "preserved held form precedence is unchanged",
+);
+// The painted mouth opens over |s| < wf of the rig's halfLen (centre to lip corner): every vowel and motion
+// opens across the whole drawn line, not only its middle.
+const mouthWidth = meshRuntime.match(/float wf = ([^;]+);\n\s*float k = 1\.0 - \(s \/ wf\) \* \(s \/ wf\);/u)?.[1];
+assert.ok(mouthWidth, "the pinned runtime's painted mouth width exists");
+const paintedWidth = new Function("form", "mix", "clamp", `return ${mouthWidth};`) as (
+  form: number,
+  mix: unknown,
+  clamp: unknown,
+) => number;
+for (const form of [-1, -0.85, -0.4, 0, 0.6, 0.9, 1]) {
+  assert.equal(
+    paintedWidth(
+      form,
+      (a: number, b: number, t: number) => a + (b - a) * t,
+      (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v)),
+    ),
+    1,
+    `mouth form ${form} opens to the lip corners`,
+  );
+}
 
 // Every mesh avatar draws at the shared canvas's size and is scaled onto its own canvas as if drawn there:
 // mesh-avatar fits the picture plus margins, centred and standing on the bottom edge.
@@ -293,6 +545,11 @@ const root = join(fileURLToPath(new URL(".", import.meta.url)), "..", "..");
 const english = JSON.parse(readFileSync(join(root, "packages/client/src/localization/locales/en.json"), "utf8"));
 const known = new Set(Object.keys(english).map((key) => key.replace(/_(?:one|other)$/u, "")));
 const rendererRoot = join(root, "packages/client/src/features/avatars/renderers");
+assert.match(
+  readFileSync(join(rendererRoot, "mesh-avatar/mesh-avatar-renderer.ts"), "utf8"),
+  /meshAvatarOverrides\(frame,\s*\{[^}]*mouthOpen: mouth\.mode === "hold" \? frame\.mouthOpen : undefined/u,
+  "only held text visemes supply the runtime openness override",
+);
 for (const folder of ["pngtuber", "mesh-avatar"]) {
   for (const file of readdirSync(join(rendererRoot, folder))) {
     const source = readFileSync(join(rendererRoot, folder, file), "utf8");

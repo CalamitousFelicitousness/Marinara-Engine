@@ -86,6 +86,7 @@ import {
   SETTINGS_SECTIONS,
   SETTINGS_TABS,
   isOmnibarSettingsTarget,
+  searchSettings,
 } from "../../packages/client/src/lib/settings-registry.js";
 import {
   getCharacterDisplayIdentity,
@@ -989,6 +990,34 @@ assert.equal(
   settingsDestinations.length,
   SETTINGS_TABS.length + SETTINGS_SECTIONS.length + SETTINGS_SEARCHABLE_CONTROLS.length,
 );
+
+// Every registry control resolves its copy through en.json keys, and search matches the translated text as
+// well as the English text and aliases.
+{
+  const english = JSON.parse(
+    readFileSync(new URL("../../packages/client/src/localization/locales/en.json", import.meta.url), "utf8"),
+  ) as Record<string, string>;
+  for (const control of SETTINGS_SEARCHABLE_CONTROLS) {
+    assert.equal(english[control.labelKey], control.label, `${control.id} labelKey matches its English label`);
+    assert.equal(
+      english[control.descriptionKey],
+      control.description,
+      `${control.id} descriptionKey matches its English description`,
+    );
+  }
+  const control = SETTINGS_SEARCHABLE_CONTROLS.find((entry) => entry.id === "hide-chat-help-button");
+  assert.ok(control, "hide-chat-help-button exists");
+  const translated = (key: string, fallback: string) =>
+    key === control.labelKey ? "Ocultar boton de ayuda" : key === control.descriptionKey ? "Quita la ayuda." : fallback;
+  const ids = (query: string) =>
+    searchSettings(query, (text) => text, translated).flatMap((result) =>
+      result.type === "control" ? [result.control.id] : [],
+    );
+  assert.ok(ids("ocultar boton").includes(control.id), "search matches the translated label");
+  assert.ok(ids("quita la").includes(control.id), "search matches the translated description");
+  assert.ok(ids("hide chat help").includes(control.id), "search still matches the English label");
+  assert.ok(ids("tutorial").includes(control.id), "search still matches aliases");
+}
 
 assert.equal(inferProfessorMariCommandCenterCapability("make Luna's greeting shorter"), "edit");
 assert.equal(inferProfessorMariCommandCenterCapability("make a new character"), "create");
@@ -2997,7 +3026,7 @@ assert.ok(!("mariDetailId" in mariSession));
 // `--mari-layer-omnibar`. No other numeric z-index in the client may reach it, except a few
 // deliberate, known exceptions above it: user extension windows/menus (they sit near 2^31 and
 // above the sonner toaster too, so outranking them would need the toaster moved as well) and the
-// touch folder-drag ghost. Sonner's toaster (999999999) stays above
+// touch folder-drag ghost. Sonner's toaster and its clipped phone host (999999999) stay above
 // the layer so Undo toasts remain visible over the omnibar.
 {
   const clientSource = (relativePath: string) =>
@@ -3021,7 +3050,14 @@ assert.ok(!("mariDetailId" in mariSession));
     const normalizedFile = file.replaceAll("\\", "/");
     if (aboveLayerAllowed.has(normalizedFile)) return [];
     const source = clientSource(file);
-    return [...source.matchAll(/z-\[(\d+)\]|zIndex:\s*"?(\d+)|z-index:\s*(\d+)|Z_INDEX\s*=\s*"?(\d+)/gu)]
+    const layerSource =
+      normalizedFile === "App.tsx"
+        ? source.replace(
+            '"pointer-events-none fixed inset-0 z-[999999999] [&_[data-sonner-toast]]:pointer-events-auto"',
+            '"pointer-events-none fixed inset-0 [&_[data-sonner-toast]]:pointer-events-auto"',
+          )
+        : source;
+    return [...layerSource.matchAll(/z-\[(\d+)\]|zIndex:\s*"?(\d+)|z-index:\s*(\d+)|Z_INDEX\s*=\s*"?(\d+)/gu)]
       .map((match) => Number(match[1] ?? match[2] ?? match[3] ?? match[4]))
       .filter((value) => value >= layer)
       .map((value) => `${file}: ${value}`);
@@ -4046,7 +4082,7 @@ assert.ok(!("mariDetailId" in mariSession));
   // without a reopen), and an arrival door waits for the run instead of landing under the live thread.
   assert.match(
     mariSource,
-    /if \(!ended \|\| !chatId\) return;\s*void loadMessages\(chatId,/u,
+    /if \(!ended \|\| !chatId \|\| sending\) return;\s*void loadMessages\(chatId,/u,
     "UX-03: the thread reloads when a run ends",
   );
   assert.match(

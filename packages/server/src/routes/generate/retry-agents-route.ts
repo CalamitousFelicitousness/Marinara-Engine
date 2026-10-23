@@ -8,7 +8,6 @@ import {
   applyQuestUpdatesToPlayerStats,
   applyTrackerFieldLocksToGameStatePatch,
   getCustomAgentResultCapability,
-  NARRATIVE_DIRECTOR_SECRET_PLOT_PROMPT,
   customAgentHasCapability,
   isAgentAvailableInChatMode,
   isAgentConfigDeleted,
@@ -37,6 +36,7 @@ import {
   type GenerationParameterSendMap,
   type ManagedGenerationParameterDefinition,
   CUSTOM_GENERATION_PARAMETERS_SETTINGS_KEY,
+  buildChatImageGenerationRecord,
   parseManagedGenerationParameterDefinitions,
   removeCopiedPromptGuidance,
 } from "@marinara-engine/shared";
@@ -116,6 +116,7 @@ import {
   resolveConnectionImageQuality,
 } from "../../services/image/image-generation-defaults.js";
 import { injectMemoryRecallContext } from "../../services/generation/memory-recall-context.js";
+import { buildDirectorSecretPlotAgent } from "../../services/generation/director-secret-plot-runtime.js";
 import {
   appendTrackerLorebookBatchContextKey,
   applyTrackerLorebookContextPolicy,
@@ -139,10 +140,9 @@ import { persistGeneratedImageToEntityGalleries } from "../../services/image/gen
 import { resolveImageConnectionFallback } from "../../services/generation/media-connection-fallback.js";
 import type { GenerationFallbackNotifier } from "../../services/generation/fallback-notification.js";
 import { createReplyFallbackNotifier } from "./fallback-notification.js";
-import { runImageGenerationRequest } from "../../services/image/image-generation-queue.js";
+import { mediaProviderLanesEnabled } from "../../services/image/image-generation-queue.js";
 import { generateIllustratorImageVariants } from "../../services/image/illustrator-image-variants.js";
 import {
-  buildCharacterAppearanceReferenceBlock,
   buildUncaptionedCharacterAppearanceBlock,
   IMAGE_APPEARANCE_OVERRIDES_MEMORY_KEY,
   personaEntityId,
@@ -271,7 +271,10 @@ import {
   resolveIllustratorCharacterPromptInstruction,
   resolveIllustratorPromptStyle,
 } from "../../services/generation/illustrator-background-generation.js";
-import { writeManualIllustratorPromptPlan } from "../../services/generation/illustrator-manual-prompt-generation.js";
+import {
+  buildManualIllustratorCharacterPromptInstruction,
+  writeManualIllustratorPromptPlan,
+} from "../../services/generation/illustrator-manual-prompt-generation.js";
 import {
   isExclusiveIllustratorRetryTarget,
   parseIllustratorRetryTargets,
@@ -307,7 +310,7 @@ type PersonaContext = {
   identitySource: "persona" | "character" | null;
   personaName: string;
   personaDescription: string;
-  personaFields: { personality?: string; scenario?: string; backstory?: string; appearance?: string };
+  personaFields: { example?: string; personality?: string; scenario?: string; backstory?: string; appearance?: string };
   /** Image-prompt appearance override (#7053); empty when the user has none. */
   imageAppearanceOverride: string;
   personaAvatarPath?: string | null;
@@ -646,43 +649,16 @@ async function executeManualIllustratorPromptRequest(args: {
       typeof args.chatMeta.illustratorIncludeCharacterAppearance === "boolean"
         ? args.chatMeta.illustratorIncludeCharacterAppearance
         : args.illustratorEntry.resolved.settings.includeCharacterAppearance === true;
-    const manualCharacterPromptInstruction =
-      characterPromptInstruction && manualAttachCardAppearance
-        ? [
-            characterPromptInstruction,
-            buildCharacterAppearanceReferenceBlock([
-              ...args.agentContext.characters.map((char) => ({
-                name: char.name,
-                // #7053: the image override replaces the card appearance for the
-                // manual illustrator prompt only.
-                appearance:
-                  readIllustratorImageAppearanceOverride(args.agentContext.memory, char.id) ?? char.appearance ?? "",
-              })),
-              ...(args.agentContext.persona
-                ? [
-                    {
-                      name: args.agentContext.persona.name,
-                      // Personas are keyed by their own id, like characters (#7053).
-                      appearance:
-                        readIllustratorImageAppearanceOverride(
-                          args.agentContext.memory,
-                          personaEntityId(args.agentContext.memory),
-                        ) ??
-                        args.agentContext.persona.appearance ??
-                        "",
-                    },
-                  ]
-                : []),
-            ]),
-          ]
-            .filter(Boolean)
-            .join("\n")
-        : characterPromptInstruction;
+    const manualCharacterPromptInstruction = buildManualIllustratorCharacterPromptInstruction(
+      args.agentContext,
+      characterPromptInstruction,
+      manualAttachCardAppearance,
+    );
     const generated = await writeManualIllustratorPromptPlan({
       illustratorAgent: args.illustratorEntry.resolved,
       context: args.agentContext,
       styleInstruction,
-      characterPromptInstruction: manualCharacterPromptInstruction || undefined,
+      characterPromptInstruction: manualCharacterPromptInstruction,
       imagePromptInstructions: normalizeImagePromptInstructions(imageConnection?.imagePromptInstructions) ?? undefined,
       signal: args.agentContext.signal,
       debugLog: (message, ...values) => logDebugOverride(args.debugMode || isDebugAgentsEnabled(), message, ...values),
@@ -732,6 +708,7 @@ async function resolvePersonaContext(
 
   const chatMode = ((chat as { mode?: ChatMode }).mode ?? "conversation") as ChatMode;
   const persona = await resolveChatUserIdentity(chars, {
+    id: chat.id,
     personaId: chat.personaId,
     personaCharacterId: chat.personaCharacterId,
     mode: chatMode,
@@ -759,6 +736,7 @@ async function resolvePersonaContext(
   const personaAvatarPath = typeof persona.avatarPath === "string" ? persona.avatarPath : null;
   imageAppearanceOverride = persona.imageAppearanceOverride ?? "";
   personaFields = {
+    example: cardPromptText(persona.mesExample),
     personality: cardPromptText(persona.personality),
     scenario: cardPromptText(persona.scenario),
     backstory: cardPromptText(persona.backstory),
@@ -928,7 +906,7 @@ async function buildRetryAgentContext(args: {
     : [];
   const charInfo: AgentContext["characters"] = [];
   for (const cid of characterIds) {
-    const charRow = await chars.getById(cid);
+    const charRow = await chars.getById(cid, chatId);
     if (!charRow) continue;
     const charData = parseJsonIfString<Record<string, unknown>>(charRow.data as string);
     const extensions =
@@ -986,7 +964,7 @@ async function buildRetryAgentContext(args: {
       typeof chatMeta.authorNotes === "string" ? chatMeta.authorNotes : "",
     ],
   });
-  const historyMacroProfilesById = (await resolveCharacterMacroData(db, allCharacterIds)).profilesById;
+  const historyMacroProfilesById = (await resolveCharacterMacroData(db, allCharacterIds, chatId)).profilesById;
   const resolveHistoryMessageMacros = <T extends { content: string; characterId?: string | null }>(
     messages: T[],
   ): T[] => resolvePromptMessageMacros(messages, promptMacroContext, historyMacroProfilesById);
@@ -2941,7 +2919,6 @@ async function applyRetryResultEffects(args: {
     conns,
     chars,
     resolvedAgents,
-    queueImageGenerationRequests,
     reviewImagePromptsBeforeSend,
     illustratorPromptReviewOverride,
     illustratorRetryTargets,
@@ -3778,7 +3755,7 @@ async function applyRetryResultEffects(args: {
                 ? agentContext.memory._userIdentitySource
                 : null;
             const retryPersonaId = retryIdentitySource === "persona" ? retryIdentityId : null;
-            const retryPersonaReference = retryPersonaId ? await chars.getPersona(retryPersonaId) : null;
+            const retryPersonaReference = retryPersonaId ? await chars.getPersona(retryPersonaId, chatId) : null;
             assertRetryActive();
             // #7053: a character-backed user identity ("Add persona as character")
             // carries its override on the identity, not on `_personaId`, which is
@@ -4030,11 +4007,10 @@ async function applyRetryResultEffects(args: {
                 promptSubmission.negativePrompt,
               );
             }
-            const imageConnectionQueueKey = imgConnFull.id?.trim() || `${imgServiceHint}:${imgBaseUrl}:${imgModel}`;
             logger.debug(
               "[retry-agents] Illustrator image request queue=%s connection=%s",
-              queueImageGenerationRequests ? "enabled" : "disabled",
-              imageConnectionQueueKey,
+              mediaProviderLanesEnabled() ? "enabled" : "disabled",
+              imgConnFull.id?.trim() || `${imgServiceHint}:${imgBaseUrl}:${imgModel}`,
             );
             assertRetryActive();
             sendSseEvent(reply, {
@@ -4044,32 +4020,24 @@ async function applyRetryResultEffects(args: {
             const imageResults = await generateIllustratorImageVariants({
               count: chatMeta.illustratorImagesPerGeneration,
               generate: () =>
-                runImageGenerationRequest({
-                  connectionKey: imageConnectionQueueKey,
-                  queue: queueImageGenerationRequests,
+                generateImage(imgModel, imgBaseUrl, imgApiKey, imgServiceHint, {
+                  prompt: promptSubmission.prompt,
+                  negativePrompt: promptSubmission.negativePrompt || undefined,
+                  model: imgModel,
+                  width: imgWidth,
+                  height: imgHeight,
+                  imageEndpointId: imgConnFull.imageEndpointId || undefined,
+                  comfyWorkflow: (imgConnFull as any).comfyuiWorkflow || undefined,
+                  imageDefaults,
+                  quality: resolveConnectionImageQuality(imgConnFull),
+                  referenceImages,
+                  ...(illustratorCharacterPrompts.length > 0 ? { characterPrompts: illustratorCharacterPrompts } : {}),
                   signal: agentContext.signal,
-                  task: () =>
-                    generateImage(imgModel, imgBaseUrl, imgApiKey, imgServiceHint, {
-                      prompt: promptSubmission.prompt,
-                      negativePrompt: promptSubmission.negativePrompt || undefined,
-                      model: imgModel,
-                      width: imgWidth,
-                      height: imgHeight,
-                      imageEndpointId: imgConnFull.imageEndpointId || undefined,
-                      comfyWorkflow: (imgConnFull as any).comfyuiWorkflow || undefined,
-                      imageDefaults,
-                      quality: resolveConnectionImageQuality(imgConnFull),
-                      referenceImages,
-                      ...(illustratorCharacterPrompts.length > 0
-                        ? { characterPrompts: illustratorCharacterPrompts }
-                        : {}),
-                      signal: agentContext.signal,
-                      fallback: providerAwareImageFallback,
-                      onFallback: (notice) => {
-                        assertRetryActive();
-                        notifyImageFallback(notice);
-                      },
-                    }),
+                  fallback: providerAwareImageFallback,
+                  onFallback: (notice) => {
+                    assertRetryActive();
+                    notifyImageFallback(notice);
+                  },
                 }),
               onVariantError: (error, index) =>
                 logger.warn(error, "[retry-agents] Illustrator image variant %d failed", index + 1),
@@ -4094,6 +4062,15 @@ async function applyRetryResultEffects(args: {
                 model: effectiveImageModel,
                 width: imgWidth,
                 height: imgHeight,
+                generation: buildChatImageGenerationRecord({
+                  prompt: promptSubmission.prompt,
+                  connectionId: imgConnFull.id,
+                  negativePrompt: promptSubmission.negativePrompt,
+                  characterPrompts: illustratorCharacterPrompts,
+                  referenceCharacterIds: useAvatarRefs ? referenceResolution.characterIds : [],
+                  referencePersonaId: useAvatarRefs ? referenceResolution.personaId : null,
+                  locationImageId: spatialLocationReferenceImage ? retryOwnerSpatialProjection?.referenceImageId : null,
+                }),
               });
               assertRetryActive();
               await persistGeneratedImageToEntityGalleries({
@@ -4828,14 +4805,7 @@ export async function registerRetryAgentsRoute(
       const secretPlotDirectorRetry =
         secretPlotRerollMode && resolvedAgents.find((entry) => entry.resolved.type === "director");
       if (secretPlotDirectorRetry) {
-        secretPlotDirectorRetry.resolved = {
-          ...secretPlotDirectorRetry.resolved,
-          promptTemplate: NARRATIVE_DIRECTOR_SECRET_PLOT_PROMPT,
-          settings: {
-            ...secretPlotDirectorRetry.resolved.settings,
-            resultType: "secret_plot",
-          },
-        };
+        secretPlotDirectorRetry.resolved = buildDirectorSecretPlotAgent(secretPlotDirectorRetry.resolved);
       }
       const cyoaAgentWillRun = resolvedAgents.some((e) => e.resolved.type === "cyoa");
       const retryPersonaContext = await runRetrySetupPhase(abortController.signal, () =>

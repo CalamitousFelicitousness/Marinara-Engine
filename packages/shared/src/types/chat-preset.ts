@@ -8,7 +8,8 @@
 //
 // What profiles DO carry: connection, prompt preset selection, and most metadata
 // (agents, tools, lorebook settings, translation, advanced parameters,
-// context limit, memory recall, discord mirror, etc.).
+// context limit, memory recall, discord mirror, etc.). Exported profile files leave out the outside
+// addresses and keys (CHAT_METADATA_LOCAL_DESTINATION_KEYS), and imported ones never bring them.
 //
 // What profiles DO NOT carry: per-chat identity (name, characters,
 // persona, group, sprites, scene prompt, generated summaries, tags,
@@ -216,6 +217,7 @@ export const CHAT_PROFILE_FOLLOWER_SYNC_KEYS: readonly string[] = [
   "forceToolCall", // Make the model call a tool
   "activeToolIds", // Tools the model may call
   "cardCssMode", // How character card styles apply
+  "colorInlineNames", // Colour character names in message text
   "scopedRegexMode", // Which scoped regex scripts run
   // Group chats
   "groupChatMode", // Merged or individual narration
@@ -235,6 +237,9 @@ export const CHAT_PROFILE_FOLLOWER_SYNC_KEYS: readonly string[] = [
   "selfieResolution", // Selfie size
   "selfieUseAvatarReferences", // Send avatars as selfie references
   "selfieIncludeCharacterAppearance", // Add card appearance to selfie prompts
+  "selfieVideoUseAvatarReferences", // Video messages: send the avatar when there is no first frame
+  "selfieVideoIncludeCharacterAppearance", // Video messages: add card appearance to video prompts
+  "sceneVideoFirstFrame", // Video messages: the picture a clip starts from
   "conversationCallsEnabled", // Calls: the call button
   "conversationCallVoiceCues", // Calls: voice cues in replies
   "conversationCallSummaryConnectionId", // Calls: connection that summarises calls
@@ -244,6 +249,7 @@ export const CHAT_PROFILE_FOLLOWER_SYNC_KEYS: readonly string[] = [
   "roleplayDmCommandsEnabled", // Older switch for character DMs, read when roleplayCommandsEnabled is missing
   "roleplayCommandToggles", // Which Roleplay commands are on
   "roleplaySoundConnectionId", // Connection for sound effects
+  "roleplayIllustrateInline", // Illustrate command images shown where the command was written
   // Agents
   "enableAgents", // Agents on or off
   "activeAgentIds", // Which agents run, except the agents each chat sets up itself
@@ -258,6 +264,7 @@ export const CHAT_PROFILE_FOLLOWER_SYNC_KEYS: readonly string[] = [
   "illustratorPromptConnectionId", // Illustrator: prompt connection
   "illustratorIncludeCharacterAppearance", // Illustrator: add card appearance
   "illustratorUseAvatarReferences", // Illustrator: send avatars as references
+  "illustratorVideoIncludeCharacterAppearance", // Illustrator: add card appearance to video prompts
   "illustratorAutoBackgroundsEnabled", // Illustrator: make a background when the scene moves
   "illustratorImagesPerGeneration", // Illustrator: images per run
   "illustratorRunInterval", // Illustrator: run interval
@@ -360,3 +367,22 @@ export function chatFollowsChatPreset(
 
 /** Top-level chat keys that CAN be saved into a profile. */
 export const CHAT_PRESET_INCLUDED_CHAT_KEYS: readonly string[] = ["connectionId", "promptPresetId"] as const;
+
+/**
+ * Chat settings that send chat text to an address outside the app, or hold the key for one. They stay
+ * on the install where the user entered them: profiles saved there keep them, but chat logs, settings
+ * profiles and full profiles are exported without them, and imports drop them.
+ */
+export const CHAT_METADATA_LOCAL_DESTINATION_KEYS: readonly string[] = [
+  "discordWebhookUrl", // Discord mirror
+  "translationDeeplxUrl", // DeepLX address
+  "translationDeeplApiKey", // DeepL key
+  "hapticIntifaceUrl", // Haptics: device server address
+] as const;
+
+/** A copy of chat metadata without the settings that stay on this install. */
+export function omitChatMetadataLocalDestinations<T extends object>(metadata: T): T {
+  const copy = { ...metadata } as Record<string, unknown>;
+  for (const key of CHAT_METADATA_LOCAL_DESTINATION_KEYS) delete copy[key];
+  return copy as T;
+}

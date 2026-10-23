@@ -106,10 +106,15 @@ export const apiConnections = fileTable("api_connections", {
   decisionTimeoutMs: integer("decision_timeout_ms"),
   /** Default voice id/name for speech synthesis on this audio connection. */
   audioVoice: text("audio_voice"),
+  /** How long a speech request on this audio connection may take, in milliseconds; null uses the default. */
+  audioTimeoutMs: integer("audio_timeout_ms"),
   /** Whether this audio connection may generate game sound effects ("true"/"false"). */
   audioSoundEffects: text("audio_sound_effects").notNull().default("false"),
   /** Whether this audio connection may generate game music ("true"/"false"). */
   audioMusic: text("audio_music").notNull().default("false"),
+  audioMusicEndpoint: text("audio_music_endpoint"),
+  audioSoundEffectsEndpoint: text("audio_sound_effects_endpoint"),
+  audioGenerationFormat: text("audio_generation_format").notNull().default("binary"),
   /** Default generation parameters (stored as JSON) for new chats using this connection */
   defaultParameters: text("default_parameters"),
   /** Optional prompt preset override for Roleplay chats using this connection */

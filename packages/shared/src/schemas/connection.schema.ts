@@ -9,6 +9,7 @@ import {
   MAX_PINNED_MODELS,
 } from "../types/connection.js";
 import { DECISION_CONNECTION_TIMEOUT_BOUNDS_MS } from "../types/decision.js";
+import { TTS_REQUEST_TIMEOUT_MS } from "../types/tts.js";
 import { MAX_IMAGE_PROMPT_INSTRUCTIONS_LENGTH } from "../constants/defaults.js";
 
 export const apiProviderSchema = z.enum([
@@ -35,6 +36,17 @@ export const apiProviderSchema = z.enum([
 ]);
 
 export const audioGenerationSourceSchema = z.enum(["openai", "elevenlabs", "pockettts", "xai"]);
+
+const audioGenerationEndpointSchema = z
+  .string()
+  .trim()
+  .max(500)
+  .refine(
+    (value) => value === "" || /^(?!\/\/)[^?#:\\\s]+$/.test(value),
+    "Use an endpoint path without a host, query, or fragment",
+  )
+  .nullable()
+  .default(null);
 
 export const imageGenerationQualitySchema = z.enum(IMAGE_GENERATION_QUALITIES);
 
@@ -111,8 +123,19 @@ export const createConnectionSchema = z.object({
     .nullable()
     .default(null),
   audioVoice: z.string().nullable().default(null),
+  /** Milliseconds; null keeps the default. */
+  audioTimeoutMs: z
+    .number()
+    .int()
+    .min(TTS_REQUEST_TIMEOUT_MS.min)
+    .max(TTS_REQUEST_TIMEOUT_MS.max)
+    .nullable()
+    .default(null),
   audioSoundEffects: z.boolean().default(false),
   audioMusic: z.boolean().default(false),
+  audioMusicEndpoint: audioGenerationEndpointSchema,
+  audioSoundEffectsEndpoint: audioGenerationEndpointSchema,
+  audioGenerationFormat: z.enum(["binary", "chat_completions"]).default("binary"),
   promptPresetId: z.string().nullable().default(null),
   maxTokensOverride: z.number().int().min(1).nullable().default(null),
   maxParallelJobs: z.number().int().min(1).max(16).default(1),

@@ -29,8 +29,21 @@ const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? `http://127.0.0.1:${clientPor
 // device for the first AudioContext, such as the generation-complete sound, can block a headless
 // page's main thread for many seconds on a Linux audio stack; toasts, timers and Playwright's own
 // checks all stall with it, and a toast can be gone before it is checked. Audio still plays, to a
-// device nobody hears.
-const chromiumLaunchOptions = { args: ["--disable-audio-output"] };
+// device nobody hears, and --mute-audio keeps the tab silent as well. WebKit has neither switch:
+// seedUIState in e2e/ui-state-fixture.ts mutes its pages and turns the reply pings off.
+const chromiumLaunchOptions = { args: ["--disable-audio-output", "--mute-audio"] };
+// WebKit on Linux plays through GStreamer, which opens the audio device on the page's main thread for the
+// first <audio> play() or AudioContext; the app does both on the first tap (its audio unlock). An audio
+// stack that hangs then freezes the page at that tap, so the click never finishes. Ranking GStreamer's
+// fake audio sink first keeps every device closed while playback keeps its clock and events. Browsers
+// inherit this environment, including a spec's own WebKit launch options; other browsers ignore it.
+// Workers load this file again, so it is only added once.
+const fakeAudioSinkFirst = "fakeaudiosink:MAX";
+if (!process.env.GST_PLUGIN_FEATURE_RANK?.split(",").includes(fakeAudioSinkFirst)) {
+  process.env.GST_PLUGIN_FEATURE_RANK = [process.env.GST_PLUGIN_FEATURE_RANK, fakeAudioSinkFirst]
+    .filter(Boolean)
+    .join(",");
+}
 const mobileBaseURL = process.env.PLAYWRIGHT_MOBILE_BASE_URL ?? `http://127.0.0.1:${mobileClientPort}`;
 
 export default defineConfig({

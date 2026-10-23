@@ -44,6 +44,11 @@ export interface MacroContext {
   chatId?: string;
   /** Model name (for {{model}}) */
   model?: string;
+  /**
+   * Reasoning level this request runs with (for {{reasoning}}): `low` to `max`, or `off` when thinking stays off.
+   * `off` reads as false in `{{#if reasoning}}`, so a block can follow whether the model thinks at all.
+   */
+  reasoning?: string;
   /** Generation trigger/type label (for {{lastGenerationType}}) */
   lastGenerationType?: string;
   /** Human-readable time since the last chat activity before this generation (for {{idle_duration}}) */
@@ -83,6 +88,7 @@ export interface MacroContext {
   };
   /** Active persona card fields used by {{persona}} */
   personaFields?: {
+    example?: string;
     phoneticName?: string;
     description?: string;
     personality?: string;
@@ -129,6 +135,8 @@ export interface MacroDecisionAnswers {
 
 export interface ResolveMacroOptions {
   trimResult?: boolean;
+  /** Observe resolved Persona example leaves without changing macro evaluation. */
+  onPersonaExampleResolved?: (text: string) => void;
   /**
    * Preserve character macros as internal tokens for a later known-speaker pass.
    * "names" delays {{char}}/{{charName}} and {{group}}; "all" also delays character field macros.
@@ -156,7 +164,7 @@ export interface ResolveMacroOptions {
   maxMacroDepth?: number;
   /** Maximum macro replacement operations in one resolution tree. */
   maxMacroExpansions?: number;
-  /** Maximum resolved output length. */
+  /** Absolute output cap; defaults to the input length plus 200,000 characters of expansion. */
   maxMacroOutputLength?: number;
 }
 
@@ -328,6 +336,22 @@ function readMacroVariable(map: Record<string, string> | undefined, name: string
   return typeof value === "string" ? value : undefined;
 }
 
+/**
+ * `{{reasoning}}`, or undefined when a preset or chat variable of that name owns it. Presets made before the macro
+ * existed may define their own `reasoning` variable, so the variable keeps the name. `name` is the spelling as
+ * written: the macro matches any case, but variables match exactly, as in the catch-all pass.
+ */
+function readReasoningMacro(ctx: MacroContext, name: string): string | undefined {
+  if (
+    readMacroVariable(ctx.variables, name) !== undefined ||
+    ctx.deferredPresetVariableNames?.has(name) ||
+    readMacroVariable(ctx.localVariables, name) !== undefined
+  ) {
+    return undefined;
+  }
+  return ctx.reasoning ?? "";
+}
+
 function clampMacroOutput(value: string, options: ResolveMacroOptions): string {
   const maxLength = macroLimit(options, "maxMacroOutputLength");
   if (value.length <= maxLength) return value;
@@ -496,6 +520,11 @@ export const SUPPORTED_MACROS: readonly SupportedMacroDefinition[] = [
   },
   { category: "Context", syntax: "{{input}}", description: "Most recent user message" },
   { category: "Context", syntax: "{{model}}", description: "Current model name" },
+  {
+    category: "Context",
+    syntax: "{{reasoning}}",
+    description: "Current reasoning level (low, medium, high, xhigh, max), or off; off is false in {{#if reasoning}}",
+  },
   { category: "Context", syntax: "{{chatId}}", description: "Current chat ID" },
   { category: "Context", syntax: "{{lastGenerationType}}", description: "Current generation type label" },
   { category: "Context", syntax: "{{idle_duration}}", description: "Time since the last chat activity" },
@@ -666,6 +695,7 @@ function macroContextForCharacterProfile(profile: CharacterMacroProfile, base?: 
     lastInput: base?.lastInput,
     chatId: base?.chatId,
     model: base?.model,
+    reasoning: base?.reasoning,
     lastGenerationType: base?.lastGenerationType,
     idleDuration: base?.idleDuration,
     timeZone: base?.timeZone,
@@ -1135,6 +1165,59 @@ function decisionOperandTiming(raw: string): DecisionStatementModifiers {
 /** Comparisons that name one option. `contains` and the numeric operators do not. */
 const DECISION_CHOICE_OPERATORS = new Set(["==", "=", "is", "!=", "is not"]);
 
+/**
+ * An option written with criteria (#7791): `"angry":"Kaelen shouts or threatens someone"`.
+ * The criteria tell the Decision model what the option means; the option alone is what
+ * is chosen and compared. Both parts use the same kind of quote and escape like any
+ * other quoted value. Null for anything else, which keeps its old meaning.
+ */
+function splitChoiceCriteria(raw: string): { option: string; optionRaw: string; criteria: string } | null {
+  const trimmed = raw.trim();
+  if (stripOuterQuotes(trimmed) === null) return null;
+  const kind = quoteKind(trimmed[0]);
+  let escaped = false;
+  for (let index = 1; index < trimmed.length - 1; index += 1) {
+    const character = trimmed[index]!;
+    if (escaped) escaped = false;
+    else if (character === "\\") escaped = true;
+    else if (quoteKind(character) === kind) {
+      // The option's closing quote: criteria follow only after a colon and a new quote.
+      const separator = /^\s*:\s*/u.exec(trimmed.slice(index + 1));
+      const rest = separator ? trimmed.slice(index + 1 + separator[0].length) : "";
+      const criteria = quoteKind(rest[0]) === kind ? stripOuterQuotes(rest) : null;
+      if (criteria === null) return null;
+      const optionRaw = trimmed.slice(0, index + 1);
+      return { option: stripOuterQuotes(optionRaw)!, optionRaw, criteria };
+    }
+  }
+  return null;
+}
+
+/** A comparison with a Choice statement compares the option alone, never its criteria. */
+function withoutChoiceCriteria(parsed: ParsedConditionExpression): ParsedConditionExpression {
+  if (parsed.right === undefined || !DECISION_CHOICE_OPERATORS.has(parsed.operator)) return parsed;
+  if (decisionChoiceQuestionFromOperand(parsed.left) !== null) {
+    const right = splitChoiceCriteria(parsed.right)?.optionRaw;
+    return right ? { ...parsed, right } : parsed;
+  }
+  if (decisionChoiceQuestionFromOperand(parsed.right) !== null) {
+    const left = splitChoiceCriteria(parsed.left)?.optionRaw;
+    return left ? { ...parsed, left } : parsed;
+  }
+  return parsed;
+}
+
+/** Adds an option a Choice statement is compared with, and its criteria if it has any. */
+function addChoiceOption(question: CollectedDecisionQuestion, raw: string): void {
+  const withCriteria = splitChoiceCriteria(raw);
+  const option = (withCriteria?.option ?? stripOuterQuotes(raw))?.trim();
+  if (!option) return;
+  const criteria = withCriteria?.criteria.trim() ?? "";
+  if (criteria && !question.criteria) question.criteria = question.options.map(() => "");
+  question.criteria?.push(criteria);
+  question.options.push(option);
+}
+
 /** Whitespace-normalized, so a line break inside a statement does not change its key. */
 export function normalizeDecisionQuestion(text: string): string {
   return text.replace(/\s+/gu, " ").trim();
@@ -1155,6 +1238,8 @@ export interface CollectedDecisionQuestion extends DecisionStatementModifiers {
   question: string;
   /** For a Choice statement: the literals it is compared with, as written. */
   options: string[];
+  /** Each option's criteria, by the same index ("" for none). Only set when an option has some. */
+  criteria?: string[];
 }
 
 /**
@@ -1180,10 +1265,9 @@ export function collectDecisionQuestions(template: string): CollectedDecisionQue
       // parse as bare atoms, and belong to the Choice statement before them.
       let lastChoice: CollectedDecisionQuestion | null = null;
       for (const parsed of parseConditionComparisons(condition)) {
-        if (parsed.right === undefined) {
-          const literal = stripOuterQuotes(parsed.left);
-          if (literal !== null && lastChoice && literal.trim()) lastChoice.options.push(literal.trim());
-          if (literal !== null) continue;
+        if (parsed.right === undefined && stripOuterQuotes(parsed.left) !== null) {
+          if (lastChoice) addChoiceOption(lastChoice, parsed.left);
+          continue;
         }
         for (const [operand, other] of [
           [parsed.left, parsed.right],
@@ -1197,16 +1281,9 @@ export function collectDecisionQuestions(template: string): CollectedDecisionQue
           }
           const choice = decisionChoiceQuestionFromOperand(operand);
           if (!choice) continue;
-          const literal =
-            other !== undefined && DECISION_CHOICE_OPERATORS.has(parsed.operator.toLowerCase())
-              ? stripOuterQuotes(other)
-              : null;
-          lastChoice = {
-            kind: "choice",
-            question: choice,
-            options: literal?.trim() ? [literal.trim()] : [],
-            ...decisionOperandTiming(operand),
-          };
+          lastChoice = { kind: "choice", question: choice, options: [], ...decisionOperandTiming(operand) };
+          if (other !== undefined && DECISION_CHOICE_OPERATORS.has(parsed.operator.toLowerCase()))
+            addChoiceOption(lastChoice, other);
           questions.push(lastChoice);
         }
       }
@@ -1245,15 +1322,19 @@ export function containsDecisionStatements(value: unknown, depth = 0): boolean {
  * The resolved statements a template can ask in this context: one for the context
  * itself, plus one per character when the statement names `{{char}}` or another
  * character macro, because a group block or a per-responder pass asks it once per
- * character.
+ * character. Each comes with the context it was resolved in, so a Choice option's
+ * criteria name the same character as their statement.
  */
-export function resolveDecisionQuestionVariants(question: string, ctx: MacroContext): string[] {
-  const variants = new Set([resolveDecisionQuestionText(question, ctx)]);
+export function resolveDecisionQuestionVariants(question: string, ctx: MacroContext): Map<string, MacroContext> {
+  const variants = new Map<string, MacroContext>();
+  const contexts = [ctx];
   if (hasCharacterMacro(question))
-    for (const profile of ctx.characterProfiles ?? [])
-      variants.add(resolveDecisionQuestionText(question, macroContextForCharacterProfile(profile, ctx)));
-  variants.delete("");
-  return [...variants];
+    for (const profile of ctx.characterProfiles ?? []) contexts.push(macroContextForCharacterProfile(profile, ctx));
+  for (const context of contexts) {
+    const key = resolveDecisionQuestionText(question, context);
+    if (key && !variants.has(key)) variants.set(key, context);
+  }
+  return variants;
 }
 
 function normalizeConditionKey(value: string): string {
@@ -1267,6 +1348,7 @@ function resolvePersonaText(ctx: MacroContext): string {
     ctx.personaFields?.backstory,
     ctx.personaFields?.appearance,
     ctx.personaFields?.scenario,
+    ctx.personaFields?.example,
   ]
     .filter((part): part is string => typeof part === "string" && part.trim().length > 0)
     .join("\n");
@@ -1335,6 +1417,12 @@ function resolveConditionalOperand(raw: string, ctx: MacroContext, options: Reso
       return ctx.lastInput ?? "";
     case "model":
       return ctx.model ?? "";
+    case "reasoning": {
+      const name = token.replace(/^@/, "");
+      const reasoning = readReasoningMacro(ctx, name);
+      if (reasoning !== undefined) return reasoning;
+      return readMacroVariable(ctx.variables, name) ?? readMacroVariable(ctx.localVariables, name) ?? "";
+    }
     case "chatid":
       return ctx.chatId ?? "";
     case "description":
@@ -1725,10 +1813,11 @@ function resolveConditionMacros(condition: string, ctx: MacroContext, options: R
 }
 
 function evaluateParsedCondition(
-  parsed: ParsedConditionExpression,
+  written: ParsedConditionExpression,
   ctx: MacroContext,
   options: ResolveMacroOptions,
 ): boolean {
+  const parsed = withoutChoiceCriteria(written);
   const left = resolveConditionalOperand(parsed.left, ctx, options);
   if (parsed.operator === "truthy") return left.trim().length > 0 && !/^(false|0|no|off|null|undefined)$/i.test(left);
   const right = resolveConditionalOperand(parsed.right ?? "", ctx, options);
@@ -2142,6 +2231,7 @@ const PLAN_FIXED_OPERAND_NAMES = new Set([
   "group",
   "input",
   "model",
+  "reasoning",
   "chatid",
   "description",
   "personality",
@@ -2220,6 +2310,7 @@ function planConditionAtom(
   } else if (equalityShorthand && parsed.operator === "truthy" && stripOuterQuotes(parsed.left) !== null) {
     effective = { ...equalityShorthand, right: parsed.left };
   }
+  effective = withoutChoiceCriteria(effective);
   const statements: string[] = [];
   const left = planConditionOperand(effective.left, statements, ctx, options);
   const right =
@@ -3149,6 +3240,7 @@ export function expandLorebookIncludes(
  *  - {{decvar::name}} — decrement numeric variable by 1
  *  - {{input}} — last user message
  *  - {{model}} — current model name
+ *  - {{reasoning}} — current reasoning level, or "off"
  *  - {{chatId}} — current chat ID
  *  - {{lastGenerationType}} — current generation type label
  *  - {{idle_duration}} — time since the last chat activity
@@ -3167,12 +3259,18 @@ export function expandLorebookIncludes(
  *  - {{#if char == "Name" || "Other"}}...{{else}}...{{/if}} — conditional block with OR/AND logic
  */
 export function resolveMacros(template: string, ctx: MacroContext, options: ResolveMacroOptions = {}): string {
+  // Keep authored text intact. Bound additional expansion once per resolution tree,
+  // and share that limit with nested calls without pinning it on reused caller options.
+  options = {
+    ...options,
+    macroBudget: getMacroBudget(options),
+    maxMacroOutputLength: options.maxMacroOutputLength ?? template.length + MAX_MACRO_OUTPUT_LENGTH,
+  };
   const macroDepth = options.macroDepth ?? 0;
   if (macroDepth > macroLimit(options, "maxMacroDepth")) {
     getMacroBudget(options).exceeded = true;
     return clampMacroOutput(template, options);
   }
-  getMacroBudget(options);
   // #3104: content with no macro syntax has nothing to resolve. Every step below
   // is triggered by "{{" (live macros), the "\x1e" deferred-character token
   // sentinel, or the "\x00" trim-marker sentinel, so a template containing none
@@ -3223,17 +3321,19 @@ export function resolveMacros(template: string, ctx: MacroContext, options: Reso
   // position, before the conditional/variable-op passes, so persona-field side
   // effects such as {{setvar::…}} still land before conditions that read them.
   let personaText: string | null = null;
-  const buildPersonaText = (): string =>
-    [
+  const buildPersonaText = (): string => {
+    const parts = [
       ctx.personaFields?.description,
       ctx.personaFields?.personality,
       ctx.personaFields?.backstory,
       ctx.personaFields?.appearance,
       ctx.personaFields?.scenario,
-    ]
-      .map((part) => (typeof part === "string" ? resolveNestedFieldMacros(part) : part))
-      .filter((part): part is string => typeof part === "string" && part.trim().length > 0)
-      .join("\n");
+      ctx.personaFields?.example,
+    ].map((part) => (typeof part === "string" ? resolveNestedFieldMacros(part) : part));
+    const example = parts[5];
+    if (typeof example === "string") options.onPersonaExampleResolved?.(example);
+    return parts.filter((part): part is string => typeof part === "string" && part.trim().length > 0).join("\n");
+  };
   if (/\{\{persona\}\}/i.test(result)) personaText = buildPersonaText();
 
   // ── Multi-character bracket blocks — expand before global substitutions ──
@@ -3301,6 +3401,7 @@ export function resolveMacros(template: string, ctx: MacroContext, options: Reso
   );
   result = result.replace(/\{\{input\}\}/gi, ctx.lastInput ?? "");
   result = result.replace(/\{\{model\}\}/gi, ctx.model ?? "");
+  result = result.replace(/\{\{(reasoning)\}\}/gi, (match, name: string) => readReasoningMacro(ctx, name) ?? match);
   result = result.replace(/\{\{chatId\}\}/gi, ctx.chatId ?? "");
   result = result.replace(/\{\{lastGenerationType\}\}/gi, ctx.lastGenerationType ?? "");
   result = result.replace(/\{\{idle_duration\}\}/gi, ctx.idleDuration ?? "");

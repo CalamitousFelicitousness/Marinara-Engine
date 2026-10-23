@@ -412,11 +412,30 @@ export function splitHistoryForResume(messages: readonly ChatMessage[]): SplitRe
     };
   }
 
+  const history = nonSystem.slice(0, nonSystem.length - 1);
   return {
-    history: nonSystem.slice(0, nonSystem.length - 1),
-    current: trailing,
+    history,
+    current: trailing.role === "user" ? moveHistoryCloseToCurrent(history, trailing) : trailing,
     shape: trailing.role === "tool" ? "trailing-tool" : "trailing-user",
   };
+}
+
+const XML_HISTORY_CLOSE = "\n</chat_history>";
+
+/**
+ * Claude Code puts its own cache marker on the last history entry, and the
+ * xml wrap appends `</chat_history>` to that entry. The tag moves to the next
+ * reply every turn, so the marked entry never matched the following request
+ * and the whole history was written to the cache again. Moving the tag to the
+ * start of the current turn keeps the text order and leaves the marked entry
+ * identical next turn. Claude Code can already use all four cache markers, so
+ * adding one of Marinara's own is rejected ("A maximum of 4 blocks").
+ */
+function moveHistoryCloseToCurrent(history: ChatMessage[], current: ChatMessage): ChatMessage {
+  const last = history.at(-1);
+  if (!last?.content?.endsWith(XML_HISTORY_CLOSE)) return current;
+  history[history.length - 1] = { ...last, content: last.content.slice(0, -XML_HISTORY_CLOSE.length) };
+  return { ...current, content: `${XML_HISTORY_CLOSE.trimStart()}\n${current.content ?? ""}` };
 }
 
 // ──────────────────────────────────────────────

@@ -11,18 +11,24 @@
 //     3 GB of memory keep the keyword tier.
 // When a keyword names an emotion, the model's scores are averaged with it: the model reads dialogue well but
 // calls most narrated prose neutral, and explicit words ("tears", "laughs") are the strongest evidence there is.
+// Each result also names the more specific feeling inside its emotion when one stands out (the model's strongest
+// label of that emotion, or a keyword's), which a talking head with a face for it shows.
 // Never an LLM, never LLM-written tags, never a Decision model: those run after generation and cannot follow the
 // stream. Game mode uses the Game Master's per-line expressions and does not call this.
 // User text is logged at debug level only; debug mode and DEBUG_AGENTS show counts, tiers and timings.
 import { createHash } from "node:crypto";
 import {
   AVATAR_EMOTIONS,
+  AVATAR_FEELING_EMOTIONS,
   classifyExpressionKeywords,
+  isAvatarExtraFeeling,
   type AvatarClassification,
   type AvatarClassifierTier,
   type AvatarClassifyRequest,
   type AvatarClassifyResponse,
   type AvatarEmotion,
+  type AvatarExtraFeeling,
+  type AvatarFeeling,
 } from "@marinara-engine/shared";
 import { isDebugAgentsEnabled } from "../../config/runtime-config.js";
 import { logDebugOverride, logger } from "../../lib/logger.js";
@@ -42,39 +48,47 @@ const IDLE_UNLOAD_MS = 10 * 60_000;
 const LOAD_RETRY_MS = 10 * 60_000;
 const CACHE_LIMIT = 512;
 
-/** label → [emotion, how much of it the label carries, the model's own decision threshold]. Thresholds come
- *  from thresholds.json at the pinned revision; a score at twice its threshold counts in full, so labels the
- *  model rarely fires are not drowned by `neutral`. The emotions follow SPRITE_EXPRESSION_AVATAR_EMOTIONS. */
-const GO_EMOTION_LABELS: Readonly<Record<string, readonly [AvatarEmotion, number, number]>> = {
-  admiration: ["happy", 0.6, 0.4],
-  amusement: ["happy", 1, 0.2],
-  anger: ["angry", 1, 0.28],
-  annoyance: ["angry", 0.6, 0.16],
-  approval: ["relaxed", 0.4, 0.16],
-  caring: ["relaxed", 0.8, 0.28],
-  confusion: ["surprised", 0.4, 0.16],
-  curiosity: ["neutral", 1, 0.26],
-  desire: ["happy", 0.5, 0.3],
-  disappointment: ["sad", 0.7, 0.16],
-  disapproval: ["angry", 0.5, 0.2],
-  disgust: ["angry", 0.6, 0.32],
-  embarrassment: ["happy", 0.4, 0.2],
-  excitement: ["happy", 0.9, 0.18],
-  fear: ["surprised", 0.8, 0.2],
-  gratitude: ["happy", 0.7, 0.6],
-  grief: ["sad", 1, 0.1],
-  joy: ["happy", 1, 0.26],
-  love: ["relaxed", 1, 0.5],
-  nervousness: ["sad", 0.5, 0.62],
-  optimism: ["happy", 0.6, 0.4],
-  pride: ["happy", 0.6, 0.28],
-  realization: ["surprised", 0.5, 0.18],
-  relief: ["relaxed", 0.8, 0.32],
-  remorse: ["sad", 0.7, 0.14],
-  sadness: ["sad", 1, 0.34],
-  surprise: ["surprised", 1, 0.2],
-  neutral: ["neutral", 1, 0.36],
+/** The model's own decision threshold per label, from thresholds.json at the pinned revision. A score at twice its
+ *  threshold counts in full, so labels the model rarely fires are not drowned by `neutral`. Each label's emotion
+ *  and how much of it the label carries are the shared AVATAR_FEELING_EMOTIONS. */
+export const GO_EMOTION_THRESHOLDS: Readonly<Record<AvatarFeeling, number>> = {
+  admiration: 0.4,
+  amusement: 0.2,
+  anger: 0.28,
+  annoyance: 0.16,
+  approval: 0.16,
+  caring: 0.28,
+  confusion: 0.16,
+  curiosity: 0.26,
+  desire: 0.3,
+  disappointment: 0.16,
+  disapproval: 0.2,
+  disgust: 0.32,
+  embarrassment: 0.2,
+  excitement: 0.18,
+  fear: 0.2,
+  gratitude: 0.6,
+  grief: 0.1,
+  joy: 0.26,
+  love: 0.5,
+  nervousness: 0.62,
+  optimism: 0.4,
+  pride: 0.28,
+  realization: 0.18,
+  relief: 0.32,
+  remorse: 0.14,
+  sadness: 0.34,
+  surprise: 0.2,
+  neutral: 0.36,
 };
+
+/** The model's labels with a finite score, as known feelings. */
+function modelFeelings(labelScores: Record<string, number>): Array<[AvatarFeeling, number]> {
+  return Object.entries(labelScores).filter(
+    (entry): entry is [AvatarFeeling, number] =>
+      Object.hasOwn(GO_EMOTION_THRESHOLDS, entry[0]) && Number.isFinite(entry[1]),
+  );
+}
 
 export interface AvatarClassifierOptions {
   signal?: AbortSignal;
@@ -214,16 +228,32 @@ function pickBest(scores: Record<AvatarEmotion, number>): AvatarClassification {
 /** Folds the model's 28 label scores into the six avatar emotions (summing to 1). Exported for the regression. */
 export function avatarEmotionScoresFromModel(labelScores: Record<string, number>): Record<AvatarEmotion, number> {
   const scores = Object.fromEntries(AVATAR_EMOTIONS.map((emotion) => [emotion, 0])) as Record<AvatarEmotion, number>;
-  for (const [label, score] of Object.entries(labelScores)) {
-    const mapping = GO_EMOTION_LABELS[label];
-    if (!mapping || !Number.isFinite(score)) continue;
-    const [emotion, weight, threshold] = mapping;
-    scores[emotion] += Math.min(1, Math.max(0, score) / threshold / 2) * weight;
+  for (const [label, score] of modelFeelings(labelScores)) {
+    const { emotion, weight } = AVATAR_FEELING_EMOTIONS[label];
+    scores[emotion] += Math.min(1, Math.max(0, score) / GO_EMOTION_THRESHOLDS[label] / 2) * weight;
   }
   const total = AVATAR_EMOTIONS.reduce((sum, emotion) => sum + scores[emotion], 0);
   if (total <= 0) return { ...scores, neutral: 1 };
   for (const emotion of AVATAR_EMOTIONS) scores[emotion] /= total;
   return scores;
+}
+
+/** The specific feeling the model reads inside `emotion`: that emotion's strongest label for its threshold, when it
+ *  reaches the threshold and is not the emotion's plain label (joy, sadness...). Exported for the regression. */
+export function avatarFeelingFromModel(
+  labelScores: Record<string, number>,
+  emotion: AvatarEmotion,
+): AvatarExtraFeeling | null {
+  let best: AvatarFeeling | null = null;
+  let bestRatio = 0;
+  for (const [label, score] of modelFeelings(labelScores)) {
+    const ratio = score / GO_EMOTION_THRESHOLDS[label];
+    if (AVATAR_FEELING_EMOTIONS[label].emotion === emotion && ratio > bestRatio) {
+      best = label;
+      bestRatio = ratio;
+    }
+  }
+  return bestRatio >= 1 && isAvatarExtraFeeling(best) ? best : null;
 }
 
 /** The local-model answer for one text: the model's emotions, averaged with the keyword tier when a keyword
@@ -286,7 +316,13 @@ export async function classifyAvatarEmotions(
     let answered = true;
     if (model) {
       try {
-        result = blendAvatarEmotion(avatarEmotionScoresFromModel(await model.classify(text)), keywords);
+        const labelScores = await model.classify(text);
+        result = blendAvatarEmotion(avatarEmotionScoresFromModel(labelScores), keywords);
+        // A keyword's feeling is the plainer evidence, when it belongs to the emotion the blend chose.
+        result.feeling =
+          keywords.feeling && AVATAR_FEELING_EMOTIONS[keywords.feeling].emotion === result.emotion
+            ? keywords.feeling
+            : avatarFeelingFromModel(labelScores, result.emotion);
       } catch (err) {
         // Not cached: the next request for this text asks the model again.
         answered = false;
@@ -313,7 +349,9 @@ export async function classifyAvatarEmotions(
     cached,
     tier,
     latencyMs,
-    results.map((result) => `${result.emotion}:${result.weight.toFixed(2)}`).join(" "),
+    results
+      .map((result) => `${result.emotion}${result.feeling ? `/${result.feeling}` : ""}:${result.weight.toFixed(2)}`)
+      .join(" "),
   );
   logger.debug({ texts: request.texts }, "[avatar-classify] Classified texts");
   return { results, tier, model: model ? AVATAR_EMOTION_MODEL_ID : null, latencyMs };

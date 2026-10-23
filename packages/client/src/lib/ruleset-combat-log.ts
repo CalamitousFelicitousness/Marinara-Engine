@@ -108,6 +108,11 @@ export function rulesetCombatNames(
 
 /** A modifier as it is written beside a roll. Signs and digits, never words, so it is the same in
  *  every language and cannot drift from the total the resolver already added up. */
+/** A word of the Engine's own ("first-fall") as a localization key segment takes it: firstFall. */
+function keySegment(word: string): string {
+  return word.replace(/-([a-z])/gu, (_, letter: string) => letter.toUpperCase());
+}
+
 function signed(modifier: number): string {
   return modifier < 0 ? `- ${Math.abs(modifier)}` : `+ ${modifier}`;
 }
@@ -1111,13 +1116,13 @@ export function rulesetCombatEventLine(
       return key("itemsVanished", { actor: names.combatant(event.actorId), label: event.label, count: event.count });
     // Losing heart (1.746), and getting away once broken: what set it off first (re-test 14).
     case "moraleCheck":
-      return key(`moraleCheck.${event.trigger}`, { actor: names.combatant(event.actorId) });
+      return key(`moraleCheck.${keySegment(event.trigger)}`, { actor: names.combatant(event.actorId) });
     // A temperament turning (combat AI T7), and a territorial one keeping its ground (T4).
     case "temperamentShift":
       return key("temperamentShift", {
         actor: names.combatant(event.actorId),
         to: t(`game.combat.ai.adjective.${event.to}`, { defaultValue: event.to }).toLowerCase(),
-        on: key(`temperamentShiftOn.${event.on}`),
+        on: key(`temperamentShiftOn.${keySegment(event.on)}`),
       });
     case "holdsGround":
       return key("holdsGround", { actor: names.combatant(event.actorId) });
@@ -1497,6 +1502,8 @@ export function rulesetCombatEventLine(
           ? [key("moveDragged", { names: event.dragged.map((id) => names.combatant(id)).join(", ") })]
           : []),
       ].join(" ");
+    case "lift":
+      return key(event.up ? "tookOff" : "landed", { actor: names.combatant(event.actorId) });
     case "flew":
       return key(event.to > event.from ? "flewUp" : "flewDown", {
         actor: names.combatant(event.actorId),
@@ -1782,4 +1789,31 @@ export function rulesetCombatLogLines(
     if (text) lines.push({ seq: entry.seq, text });
   }
   return lines;
+}
+
+/** Each foe's one fate when a fight ends, which the end card's count and its names both read: gone
+ *  from the fight (fled, sent away), felled (down when it ended counts, since the fight is over for
+ *  it), or still on its feet. `beaten` is exactly the felled list, so the tally names nobody the
+ *  lines file elsewhere. */
+export type RulesetFoeFate = "endDefeated" | "endGone" | "endStanding";
+export function rulesetFoeFates(view: DirectedRulesetView): {
+  fates: Array<[RulesetFoeFate, DirectedRulesetView["combatants"]]>;
+  beaten: number;
+  total: number;
+} {
+  const foes = view.combatants.filter((combatant) => combatant.side !== "party");
+  const fateOf = (one: (typeof foes)[number]): RulesetFoeFate =>
+    one.away || one.left ? "endGone" : one.defeated || one.down ? "endDefeated" : "endStanding";
+  const by: Record<RulesetFoeFate, DirectedRulesetView["combatants"]> = {
+    endDefeated: [],
+    endGone: [],
+    endStanding: [],
+  };
+  for (const one of foes) by[fateOf(one)].push(one);
+  const order: RulesetFoeFate[] = ["endDefeated", "endGone", "endStanding"];
+  return {
+    fates: order.filter((key) => by[key].length > 0).map((key) => [key, by[key]]),
+    beaten: by.endDefeated.length,
+    total: foes.length,
+  };
 }

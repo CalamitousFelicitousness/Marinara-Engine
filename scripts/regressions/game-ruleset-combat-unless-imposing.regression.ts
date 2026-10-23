@@ -56,15 +56,17 @@ try {
   const fiveE = (edit: (doc: Record<string, any>) => void = () => {}): Record<string, any> => {
     const doc = JSON.parse(fiveEText) as Record<string, any>;
     doc.catalogs.push({ id: "spells", label: "Spells", feeds: ["spells"], entries: [structuredClone(blast)] });
-    doc.catalogs.find((one: { id: string }) => one.id === "creatures").entries[0].creature.actions.push({
-      id: "spray",
-      name: "Acid Spray",
-      budget: "action",
-      toHit: 5,
-      damage: { dice: "3d6", type: "acid" },
-      reach: 5,
-      unlessImposing: ["grappled"],
-    });
+    doc.catalogs
+      .find((one: { id: string }) => one.id === "creatures")
+      .entries[0].creature.actions.push({
+        id: "spray",
+        name: "Acid Spray",
+        budget: "action",
+        toHit: 5,
+        damage: { dice: "3d6", type: "acid" },
+        reach: 5,
+        unlessImposing: ["grappled"],
+      });
     edit(doc);
     return doc;
   };
@@ -83,7 +85,13 @@ try {
   const ankheg = rulesetStatBlockFromCreature(definition, creature)!;
   assert.deepEqual(ankheg.actions.find((one) => one.id === "spray")?.unlessImposing, ["grappled"]);
   const entries = definition.catalogs!.find((one) => one.id === "spells")!.entries! as RulesetCatalogEntry[];
-  const plain = { health: 40, defense: 10, initiativeModifier: 0, speed: 30, actions: [] } as unknown as RulesetStatBlock;
+  const plain = {
+    health: 40,
+    defense: 10,
+    initiativeModifier: 0,
+    speed: 30,
+    actions: [],
+  } as unknown as RulesetStatBlock;
   const fight = (): RulesetEncounterState => {
     const state = createRulesetEncounter({
       definition,

@@ -55,6 +55,10 @@ export const OMNIBAR_SETTINGS_TOGGLE_BINDINGS: Readonly<Record<string, OmnibarSe
     get: (state) => state.achievementsEnabled,
     set: (value) => useUIStore.getState().setAchievementsEnabled(value),
   },
+  "disable-seasonal-themes": {
+    get: (state) => state.seasonalThemesDisabled,
+    set: (value) => useUIStore.getState().setSeasonalThemesDisabled(value),
+  },
   "mini-mari": {
     get: (state) => state.chibiProfessorMariEnabled,
     set: (value) => useUIStore.getState().setChibiProfessorMariEnabled(value),
@@ -102,10 +106,6 @@ export const OMNIBAR_SETTINGS_TOGGLE_BINDINGS: Readonly<Record<string, OmnibarSe
   "convert-latex-symbols": {
     get: (state) => state.convertLatexSymbols,
     set: (value) => useUIStore.getState().setConvertLatexSymbols(value),
-  },
-  "color-inline-names": {
-    get: (state) => state.colorInlineNames ?? false,
-    set: (value) => useUIStore.getState().setColorInlineNames(value),
   },
   "disable-inline-name-gradients": {
     get: (state) => state.disableInlineNameGradients ?? false,

@@ -33,7 +33,8 @@ import { usePresets, usePresetFull, useDefaultPreset } from "../../hooks/use-pre
 import { useCharacterGroups, useCharacters, usePersonas } from "../../hooks/use-characters";
 import { useLorebooks } from "../../hooks/use-lorebooks";
 import { useUpdateChat, useUpdateChatMetadata, useCreateMessage, chatKeys } from "../../hooks/use-chats";
-import { useChatPresets, useApplyChatPreset } from "../../hooks/use-chat-presets";
+import { useChatPresets, useApplyChatPreset, useIsApplyingChatPreset } from "../../hooks/use-chat-presets";
+import { nextWizardApplyHold, type WizardApplyHold } from "../../lib/chat-preset-apply";
 import { useAgentConfigs, useCreateAgent, useUpdateAgent, type AgentConfigRow } from "../../hooks/use-agents";
 import { useCapabilityAgentRegistry } from "../../hooks/use-capability-packages";
 import { useUIStore } from "../../stores/ui.store";
@@ -56,13 +57,11 @@ import { ChoiceSelectionModal } from "../presets/ChoiceSelectionModal";
 import { CharacterOnboardingModal, type OnboardingCardTarget } from "../characters/CharacterOnboardingModal";
 import { ActiveChatBackgroundPicker } from "../panels/settings/BackgroundPicker";
 import {
-  characterOnboardingSchema,
-  type CharacterOnboarding,
-  type OnboardingCardFields,
+  type CardOnboarding,
   hasOnboardingContent,
   canBuildPersona,
   getRelevantCardVariables,
-  withUniqueOnboardingIds,
+  readCardOnboarding,
   CONVERSATION_COMMAND_AGENT_IDS,
   CONVERSATION_COMMAND_KEYS,
   DEFAULT_CONVERSATION_PROMPT,
@@ -936,16 +935,46 @@ function SetupGenerationParametersPanel({
 }
 
 export function ChatSetupWizard({ chat, onFinish }: ChatSetupWizardProps) {
+  const applyingProfile = useIsApplyingChatPreset(chat.id);
+  const [applyHold, setApplyHold] = useState<WizardApplyHold | null>(null);
+  const hold = nextWizardApplyHold(applyHold, chat.id, applyingProfile);
+  if (hold !== applyHold) setApplyHold(hold);
   const chatMode = (chat as unknown as { mode?: string }).mode ?? "roleplay";
   // Game mode has its own wizard in GameSurface — skip the roleplay wizard
   if (chatMode === "game") return null;
+  // A new chat's starred profile is still being applied: start from its settings, not the blank chat's,
+  // or finishing setup would write the blank chat's commands back over the profile's. A profile picked inside the
+  // wizard later doesn't hold it, so the open wizard is never unmounted.
+  if (hold.waiting) return <WizardLoading onClose={onFinish} />;
   return <SavedChatSetupWizard key={chat.id} chat={chat} onFinish={onFinish} />;
+}
+
+function WizardLoading({ onClose }: { onClose: () => void }) {
+  const { t } = useUiTranslation();
+  return (
+    <>
+      <WizardBackdrop onClose={onClose} />
+      <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center p-3">
+        <div
+          role="status"
+          className={cn(NEUTRAL_PANEL_SHELL, "flex items-center gap-2 p-4 text-sm text-[var(--foreground)]")}
+        >
+          <Loader2 size="1rem" className="motion-safe:animate-spin" aria-hidden="true" />
+          {t("navigation.common.loading")}
+        </div>
+      </div>
+    </>
+  );
 }
 
 function SavedChatSetupWizard({ chat, onFinish }: ChatSetupWizardProps) {
   const { t } = useUiTranslation();
   const mode = chat.mode === "conversation" ? "conversation" : "roleplay";
-  const [initial] = useState(() => captureChatWizardDefaults(chat));
+  const queryClient = useQueryClient();
+  // The cached chat already holds a just-applied profile even when this render's prop does not yet.
+  const [initial] = useState(() =>
+    captureChatWizardDefaults(queryClient.getQueryData<Chat>(chatKeys.detail(chat.id)) ?? chat),
+  );
   const saved = useUIStore((state) => state.chatWizardDefaults[mode]);
   const settingsSyncReady = useUIStore((state) => state.settingsSyncReady);
   const [defaultsApplied, setDefaultsApplied] = useState(false);
@@ -955,7 +984,6 @@ function SavedChatSetupWizard({ chat, onFinish }: ChatSetupWizardProps) {
   const initialApplyDone = useRef(false);
   const updateChat = useUpdateChat();
   const updateMeta = useUpdateChatMetadata();
-  const queryClient = useQueryClient();
   const apply = useCallback(
     async (defaults: ChatWizardDefaults, reset = false) => {
       const { metadata, connectionId, promptPresetId, personaId, personaCharacterId, characterIds } = defaults;
@@ -1038,21 +1066,7 @@ function SavedChatSetupWizard({ chat, onFinish }: ChatSetupWizardProps) {
     </button>
   );
 
-  if (!ready)
-    return (
-      <>
-        <WizardBackdrop onClose={onFinish} />
-        <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center p-3">
-          <div
-            role="status"
-            className={cn(NEUTRAL_PANEL_SHELL, "flex items-center gap-2 p-4 text-sm text-[var(--foreground)]")}
-          >
-            <Loader2 size="1rem" className="animate-spin" aria-hidden="true" />
-            {t("navigation.common.loading")}
-          </div>
-        </div>
-      </>
-    );
+  if (!ready) return <WizardLoading onClose={onFinish} />;
   const currentChat = queryClient.getQueryData<Chat>(chatKeys.detail(chat.id)) ?? chat;
   const props = { chat: currentChat, onFinish, defaultsApplied, defaultsAction };
   return mode === "conversation" ? (
@@ -1199,7 +1213,11 @@ function ConversationQuickSetup({ chat, onFinish, defaultsApplied, defaultsActio
     return readChatMetadata(chat);
   }, [chat]);
   const [commandsEnabled, setCommandsEnabled] = useState(
-    () => (defaultsApplied || metadata.conversationSetupComplete === true) && metadata.characterCommands !== false,
+    () =>
+      (defaultsApplied ||
+        metadata.conversationSetupComplete === true ||
+        typeof metadata.appliedChatPresetId === "string") &&
+      metadata.characterCommands !== false,
   );
   const [conversationCommandToggles, setConversationCommandToggles] = useState<
     Partial<Record<ConversationCommandKey, boolean>>
@@ -2634,40 +2652,13 @@ function RoleplaySetupWizard({ chat, onFinish, defaultsApplied, defaultsAction }
   // enabled-but-empty block is filtered out here, so the wizard never offers a
   // window with no questions and no field text behind it.
   const onboardingByCharacterId = useMemo(() => {
-    const byId = new Map<string, { name: string; onboarding: CharacterOnboarding; cardFields: OnboardingCardFields }>();
+    const byId = new Map<string, CardOnboarding>();
     for (const character of characters) {
-      try {
-        const data = typeof character.data === "string" ? JSON.parse(character.data) : character.data;
-        const parsed = characterOnboardingSchema.safeParse(data?.extensions?.onboarding);
-        if (parsed.success && parsed.data.enabled) {
-          // Cards saved before ids were made unique, or via the API, may still repeat one.
-          const onboarding = withUniqueOnboardingIds(parsed.data as CharacterOnboarding);
-          if (!hasOnboardingContent(onboarding)) continue;
-          // The card's own text decides which character questions are asked, so
-          // the wizard has to hand the modal the same fields the prompt reads.
-          // `backstory` and `appearance` live on `extensions`, NOT at the top
-          // level — reading them from `data` silently yields undefined, and a
-          // question is then never asked because nothing appears to read it.
-          const extensions = (data?.extensions ?? {}) as Record<string, unknown>;
-          const extensionText = (key: string) => {
-            const value = extensions[key];
-            return typeof value === "string" ? value : undefined;
-          };
-          byId.set(character.id, {
-            name: String(data?.name ?? ""),
-            onboarding,
-            cardFields: {
-              description: data?.description,
-              personality: data?.personality,
-              backstory: extensionText("backstory"),
-              appearance: extensionText("appearance"),
-              scenario: data?.scenario,
-            },
-          });
-        }
-      } catch {
-        /* unreadable card data: no onboarding */
-      }
+      // One parse for the wizard, the drawer and the server; unreadable card data
+      // comes back as null instead of throwing.
+      const entry = readCardOnboarding(character.data);
+      if (!entry?.onboarding.enabled || !hasOnboardingContent(entry.onboarding)) continue;
+      byId.set(character.id, entry);
     }
     return byId;
   }, [characters]);

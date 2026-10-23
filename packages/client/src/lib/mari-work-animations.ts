@@ -1,3 +1,5 @@
+import type { SeasonalThemeId } from "./seasonal-themes";
+
 export const MARI_STORY_STATES = [
   "thinking",
   "research",
@@ -51,6 +53,12 @@ export interface MariAppearancePack {
   poses: Record<MariPose, string>;
   /** R12: locked until the Activity overview's play time reaches this many hours. */
   unlock?: { playHours: number };
+  /**
+   * Dated pack: shown by itself while this seasonal theme is worn for the user (`seasonalThemeFor` in
+   * lib/seasonal-themes.ts) and hidden everywhere else, so it follows the theme's window, Settings toggle,
+   * greeting "Turn it off" and preview.
+   */
+  season?: SeasonalThemeId;
 }
 
 /**
@@ -134,6 +142,22 @@ export const MARI_APPEARANCE_PACKS: readonly MariAppearancePack[] = [
     stories: packStories("safari"),
     poses: packPoses("safari"),
   },
+  {
+    id: "raccoon",
+    label: "Feral Raccoon Prof. Mari",
+    description: "A raccoon onesie, slightly chewed.",
+    portraits: {
+      idle: sprite("raccoon/portrait-idle.webp"),
+      blink: sprite("raccoon/portrait-blink.webp"),
+      shrug: sprite("raccoon/portrait-shrug.webp"),
+      drag: sprite("raccoon/portrait-drag.webp"),
+      hover: sprite("raccoon/portrait-hover.webp"),
+      pullHeads: sprite("raccoon/pull-heads.webp"),
+    },
+    stories: packStories("raccoon"),
+    poses: packPoses("raccoon"),
+    season: "halloween",
+  },
 ];
 
 /**
@@ -216,15 +240,41 @@ export function isMariPackUnlocked(
 }
 
 /**
- * The pack that renders: the stored choice, or Basic while that choice is locked. The stored id is
- * never rewritten, so a locked pick returns by itself once it unlocks. Locked packs never load.
+ * Packs the chooser lists: every undated pack, and a dated one only while its seasonal theme is worn.
+ * `seasonalThemeId` is `seasonalThemeFor(...).themeId`: null when no theme is worn for the user.
+ */
+export function visibleMariAppearancePacks(seasonalThemeId: SeasonalThemeId | null): MariAppearancePack[] {
+  return MARI_APPEARANCE_PACKS.filter((pack) => !pack.season || pack.season === seasonalThemeId);
+}
+
+/** The dated pack of the seasonal theme worn now, if any. */
+export function activeSeasonalMariPack(seasonalThemeId: SeasonalThemeId | null): MariAppearancePack | undefined {
+  return seasonalThemeId ? MARI_APPEARANCE_PACKS.find((pack) => pack.season === seasonalThemeId) : undefined;
+}
+
+/** One key per window per year, so opting out this year does not opt out next year. */
+export function mariSeasonKey(pack: MariAppearancePack, now: Date = new Date()): string {
+  return `${pack.id}-${now.getFullYear()}`;
+}
+
+/**
+ * The pack that renders: the worn seasonal theme's dated pack unless the user picked another during it
+ * (`seasonOptOut`), else the stored choice, or Basic while that choice is locked or out of season.
+ * The stored id is never rewritten, so a locked pick returns by itself once it unlocks and the
+ * user's own pick returns by itself once the window closes. Locked packs never load.
  */
 export function resolveMariAppearancePack(
   storedId: unknown,
   unlockedIds: readonly string[],
   playHours: number | null = null,
+  seasonOptOut = "",
+  seasonalThemeId: SeasonalThemeId | null = null,
+  now: Date = new Date(),
 ): MariAppearancePack {
+  const seasonal = activeSeasonalMariPack(seasonalThemeId);
+  if (seasonal && seasonOptOut !== mariSeasonKey(seasonal, now)) return seasonal;
   const pack = getMariAppearancePack(storedId);
+  if (pack.season && pack.season !== seasonalThemeId) return MARI_APPEARANCE_PACKS[0]!;
   return isMariPackUnlocked(pack, unlockedIds, playHours) ? pack : MARI_APPEARANCE_PACKS[0]!;
 }
 

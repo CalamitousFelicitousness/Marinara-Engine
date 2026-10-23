@@ -10,6 +10,8 @@ Presets shape the prompt for **Roleplay** and **Game** chats. **Conversation** m
 
 Presets do not need an API key or account. They only describe how a prompt is built. You still need a working connection to send the prompt. See [Connecting to an AI Provider](../connections/connecting-to-a-provider.md).
 
+The built-in **Marinara's Universal Preset** supplies prompt text without assigning generation parameters. Its older saved sampling, reasoning, formatting, and token settings are ignored. Connection settings, chat overrides, and Engine defaults continue to apply. Create an editable copy to customize the preset.
+
 ## Opening the Preset Editor
 
 Prompt presets live in the **Prompts** section of the **Presets** panel on the left side of the app. The other sections in this panel are **Regexes** and **Functions**.
@@ -20,7 +22,7 @@ The panel has three buttons at the top:
 - **Import** (download icon): load a preset from a `.json` file.
 - **Select** (check icon): pick several presets to export or delete at once.
 
-Below the buttons are a **Search presets** box and a sort menu with **A-Z**, **Z-A**, **Newest**, and **Oldest**. A **New Folder** button lets you group presets into folders. Drag a preset onto a folder to move it. Double-click or double-tap a folder to rename it.
+Below the buttons are a **Search presets** box and a sort menu with **Manual order**, **A-Z**, **Z-A**, **Newest**, and **Oldest**. **Manual order** keeps the order you set: drag a preset row up or down, or press Alt+Up or Alt+Down on a focused row. A **New Folder** button lets you group presets into folders. Drag a preset onto a folder to move it. On a touch screen, press and hold a row to pick it up. Double-click or double-tap a folder to rename it.
 
 Each preset row shows its name, wrap format, section count, and author. A **DEFAULT** badge appears if the preset is the starred default. Click a preset row to open it in the **Preset Editor**.
 
@@ -40,13 +42,15 @@ The editor does not save on its own. Your changes are only kept after you click 
 
 To export a preset, open it and click the export button (up-arrow icon) in the top bar. Marinara asks to save first if you have unsaved edits. To delete a preset, use the trash icon in the top bar.
 
-## The Overview, Sections, and Prompts tabs
+## The Preset Editor's five tabs
 
-The **Preset Editor** has three tabs.
+The **Preset Editor** has five tabs.
 
 - **Overview**: the preset name, description, wrap format, and author.
 - **Sections**: the actual prompt structure, built from blocks and markers.
 - **Prompts**: the mode prompts used by Conversation and Game chats.
+- **Parameters**: the starting generation settings for chats that use this preset. See [Generation Parameters](generation-parameters.md).
+- **Regex**: the regex scripts linked to this preset, and the **Scoped regex default**. See [Regex Scripts](../extending/regex-scripts.md).
 
 ### Overview tab
 

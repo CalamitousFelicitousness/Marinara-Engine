@@ -46,7 +46,12 @@ try {
     workspaceTextClaimsHeldChange,
     draftVisibleText,
   } = await import("../../../packages/server/src/services/professor-mari/workspace-agent.service.js");
-  const { assertClosedToolSet } = await import("../../../packages/server/src/services/professor-mari/pi-runtime.js");
+  const { assertClosedToolSet, describeCutReply, outputLimitRepairPrompt, MAX_OUTPUT_LIMIT_REPAIRS } =
+    await import("../../../packages/server/src/services/professor-mari/pi-runtime.js");
+  // These frames test claims and rounds, not the handbook gate (dry-run-enforcement pins that).
+  const { setSkillGateEnabled } =
+    await import("../../../packages/server/src/services/professor-mari/workspace-commands.js");
+  setSkillGateEnabled(false);
   const { createChatsStorage } = await import("../../../packages/server/src/services/storage/chats.storage.js");
   const { createAppSettingsStorage } =
     await import("../../../packages/server/src/services/storage/app-settings.storage.js");
@@ -205,6 +210,185 @@ try {
     const seen = sessionSeen as { active: string[]; closed: boolean };
     assert.deepEqual([...seen.active].sort(), [...allowed.keys()].sort());
     assert.equal(seen.closed, true);
+  }
+
+  // A verified claim survives the watermark as an exact terminal recap, including at the tool round limit.
+  for (const atLimit of [false, true]) {
+    mode = "auto";
+    maxToolRounds = atLimit ? 2 : undefined;
+    const path = `recap-${atLimit}.txt`;
+    const claim = `I wrote ${path}.`;
+    const { chat, events, done } = await start(`pi verified recap ${atLimit}`, [
+      reply("", [{ id: "recap-write", name: "write", args: { path, content: "verified recap", reason: "t" } }]),
+      reply(claim, [{ id: "recap-read", name: "read", args: { path } }]),
+      reply(claim),
+    ]);
+    await done;
+    maxToolRounds = undefined;
+    assert.equal(requests.length, 3, "a verified recap must not trigger another repair round");
+    assert.equal((await lastAssistant(chat.id))?.content.split("\n\n")[0], claim);
+    assert.equal(
+      statusTexts(events).some((text) => /Tool round limit reached/u.test(text)),
+      atLimit,
+    );
+    assert.ok(!statusTexts(events).some((text) => /unsupported completion claim/u.test(text)));
+  }
+
+  // #7879 investigation proof: real Pi tool execution against the real store,
+  // including a key added outside Mari between two runs. The provider is scripted;
+  // this proves persistence when the calls are made, not the reporter's model behavior.
+  {
+    const { createLorebooksStorage } =
+      await import("../../../packages/server/src/services/storage/lorebooks.storage.js");
+    const lorebooks = createLorebooksStorage(db);
+    const lorebookId = "pi-lorebook-7879";
+    const entries = Array.from({ length: 12 }, (_, index) => ({
+      name: index === 0 ? "Duke Gunterlie" : `Entry ${index}`,
+      content: `Lore for entry ${index}`,
+      keys: [`entry-${index}`, "gunterlie"],
+      secondaryKeys: ["gunterlie", `secondary-${index}`],
+    }));
+    const created = await start(
+      "create lorebook 7879",
+      [
+        reply("", [
+          {
+            id: "create-7879",
+            name: "app_data",
+            args: {
+              action: "lorebook.create",
+              lorebookId,
+              data: { name: "Pi lorebook proof", entries },
+              apply: true,
+            },
+          },
+        ]),
+        reply("I created the lorebook with 12 entries.", [
+          { id: "audit-created-7879", name: "app_data", args: { action: "lorebook.entries", lorebookId } },
+        ]),
+        // A fresh read after the creation audit cannot back a new deletion claim in this same run.
+        reply("", [{ id: "recap-created-7879", name: "app_data", args: { action: "lorebook.entries", lorebookId } }]),
+        reply("I deleted Duke Gunterlie."),
+        reply("Duke Gunterlie is still present. No deletion was made."),
+      ],
+      "pi",
+      service,
+      undefined,
+      "Create a lorebook with 12 entries.",
+    );
+    await created.done;
+    assert.equal(requests.length, 5, "the later deletion claim must trigger a repair after the passed creation audit");
+    assert.equal(
+      (await lastAssistant(created.chat.id))?.content,
+      "Duke Gunterlie is still present. No deletion was made.",
+    );
+    const before = await lorebooks.listEntries(lorebookId);
+    assert.equal(before.length, 12, "Pi creates exactly the requested entry count");
+    assert.equal((await lorebooks.countAllEntriesByLorebook())[lorebookId], 12);
+    const duke = before.find((entry) => entry.name === "Duke Gunterlie")!;
+    const keys = [...duke.keys, "wardrobe"];
+    await lorebooks.updateEntry(duke.id, { keys }); // Same store path used by manual editing.
+    const duplicate = await start(
+      "existing wardrobe",
+      [
+        reply("", [
+          {
+            id: "wardrobe-7879",
+            name: "app_data",
+            args: {
+              action: "lorebook.updateEntry",
+              entryId: duke.id,
+              patch: { keys },
+              apply: true,
+            },
+          },
+        ]),
+        reply("The wardrobe key is already present; nothing needed changing."),
+      ],
+      "pi",
+      service,
+      created.chat.id,
+      "Add the wardrobe primary key to Duke Gunterlie.",
+    );
+    await duplicate.done;
+    assert.match(
+      toolMessages(requests[1]!.messages)[0]?.content ?? "",
+      /No changes: every row already has these values/,
+    );
+    assert.deepEqual((await lorebooks.getEntry(duke.id))?.keys, keys);
+    // A read that still shows Duke cannot prove the model's claim that it deleted him.
+    const falseDeletion = await start(
+      "unsupported deletion claim",
+      [
+        reply("", [
+          {
+            id: "read-duke-7879",
+            name: "app_data",
+            args: {
+              action: "lorebook.getEntry",
+              entryId: duke.id,
+            },
+          },
+        ]),
+        reply("I deleted Duke Gunterlie."),
+        reply("Duke Gunterlie is still present. No deletion was made."),
+      ],
+      "pi",
+      service,
+      created.chat.id,
+      "Delete Duke Gunterlie.",
+    );
+    await falseDeletion.done;
+    assert.equal(
+      (await lastAssistant(created.chat.id))?.content,
+      "Duke Gunterlie is still present. No deletion was made.",
+    );
+    assert.ok(await lorebooks.getEntry(duke.id), "a read-only run never deleted the entry");
+    const deleted = await start(
+      "delete Duke and keys",
+      [
+        reply("", [
+          {
+            id: "delete-duke-7879",
+            name: "app_data",
+            args: {
+              action: "lorebook.deleteEntry",
+              entryId: duke.id,
+              apply: true,
+            },
+          },
+          ...before
+            .filter((entry) => entry.id !== duke.id)
+            .map((entry) => ({
+              id: `strip-${entry.id}`,
+              name: "app_data",
+              args: {
+                action: "lorebook.updateEntry",
+                entryId: entry.id,
+                apply: true,
+                patch: {
+                  keys: entry.keys.filter((key) => key !== "gunterlie"),
+                  secondaryKeys: entry.secondaryKeys.filter((key) => key !== "gunterlie"),
+                },
+              },
+            })),
+        ]),
+        reply("Deleted Duke Gunterlie and removed the gunterlie keys from the remaining entries."),
+      ],
+      "pi",
+      service,
+      created.chat.id,
+      "Delete Duke Gunterlie and remove all gunterlie primary and secondary keys.",
+    );
+    await deleted.done;
+    assert.equal(await lorebooks.getEntry(duke.id), null);
+    const remaining = await lorebooks.listEntries(lorebookId);
+    assert.equal(remaining.length, 11);
+    assert.equal((await lorebooks.countAllEntriesByLorebook())[lorebookId], 11);
+    for (const entry of remaining) {
+      assert.equal(entry.keys.includes("gunterlie"), false);
+      assert.equal(entry.secondaryKeys.includes("gunterlie"), false);
+    }
   }
 
   // The boundary check fails closed when an active tool is not Marinara's.
@@ -960,15 +1144,164 @@ try {
       JSON.stringify(names.events.filter((event) => event.type === "suggestions")).includes("Run the chat checkup"),
     );
 
-    const cut = await start("pi cut", [
+    // Output limit: a cut reply runs nothing, and is redone in smaller steps before the run gives up.
+    const lastPrompt = (index: number) => requests[index]!.messages.at(-1)?.content ?? "";
+    const cutWrite = {
+      ...reply("Partial", [{ id: "cut-1", name: "write", args: { path: "cut.txt", content: "x", reason: "t" } }]),
+      finishReason: "length",
+    };
+    const cutAppData = {
+      content: "Writing the onboarding now.",
+      toolCalls: [
+        {
+          id: "cut-2",
+          type: "function" as const,
+          function: {
+            name: "app_data",
+            arguments: '{"action":"character.onboarding.update","characterId":"elara","onb',
+          },
+        },
+      ],
+      finishReason: "length",
+    };
+    const cut = await start("pi cut", [cutAppData, cutWrite, reply("Done, in two smaller steps.")]);
+    await cut.done;
+    assert.equal(requests.length, 3, "two recoveries, then the finished answer");
+    assert.equal(existsSync(join(workspaceDir, "cut.txt")), false, "a cut-off call never runs");
+    assert.match(lastPrompt(1), /^\[Engine note, not from the user\]/u);
+    assert.match(lastPrompt(1), /`app_data` with action `character\.onboarding\.update`/u);
+    assert.match(lastPrompt(1), /about 8192 tokens/u, "the connection's output limit is quoted");
+    assert.match(lastPrompt(2), /cut off again/u);
+    assert.equal(statusTexts(cut.events).filter((text) => /redoing it in smaller steps/u.test(text)).length, 2);
+    assert.ok(!statusTexts(cut.events).some((text) => /kept hitting/u.test(text)));
+    assert.ok(!JSON.stringify(cut.events).includes("Continue the task."), "a recovery offers no continue chip");
+    assert.equal((await lastAssistant(cut.chat.id))?.content, "Done, in two smaller steps.");
+
+    const cutAlways = await start("pi cut always", [cutWrite, cutWrite, cutWrite, reply("never")]);
+    await cutAlways.done;
+    assert.equal(requests.length, MAX_OUTPUT_LIMIT_REPAIRS + 1, "the recovery budget is spent, then the run stops");
+    assert.ok(statusTexts(cutAlways.events).some((text) => /kept hitting this model's output limit/u.test(text)));
+    assert.ok(
+      JSON.stringify(cutAlways.events).includes("Continue the task."),
+      "a cut-off change offers a continue chip",
+    );
+    assert.equal(existsSync(join(workspaceDir, "cut.txt")), false);
+
+    const thinking = await start("pi cut thinking", [
+      { content: "", toolCalls: [], finishReason: "length" },
+      reply("Short answer."),
+    ]);
+    await thinking.done;
+    assert.match(lastPrompt(1), /before you wrote anything/u);
+    assert.doesNotMatch(lastPrompt(1), /previous response was empty/u, "a cut is not an empty reply");
+    assert.equal((await lastAssistant(thinking.chat.id))?.content, "Short answer.");
+
+    // Half-written words that claim the work is done ran nothing: no claim repair is spent on them.
+    const claim = await start("pi cut claim", [
+      { ...reply("I've added the onboarding and it is all done and"), finishReason: "length" },
+      reply("Here is the shorter answer."),
+    ]);
+    await claim.done;
+    assert.match(lastPrompt(1), /Write it again, shorter: at most 12288 characters/u);
+    assert.doesNotMatch(lastPrompt(1), /claimed/u);
+    assert.equal((await lastAssistant(claim.chat.id))?.content, "Here is the shorter answer.");
+
+    // After a dry-run write, a claim draws the dry-run repair; the same claim cut at the limit is redone smaller instead.
+    const dryRunThenClaim = (finishReason: string) => [
+      reply("", [
+        {
+          id: "dry-1",
+          name: "app_data",
+          args: { action: "lorebook.create", data: { name: "Dry run book" }, apply: false, reason: "t" },
+        },
+      ]),
+      { ...reply("I've created the lorebook and it is saved."), finishReason },
+      reply("That was a dry run."),
+    ];
+    const dryClaim = await start("pi dry-run claim", dryRunThenClaim("stop"));
+    await dryClaim.done;
+    assert.match(lastPrompt(2), /was a dry run/u, "control: the uncut claim draws the dry-run repair");
+    const dryCut = await start("pi dry-run cut claim", dryRunThenClaim("length"));
+    await dryCut.done;
+    assert.match(lastPrompt(2), /^\[Engine note, not from the user\]/u);
+    assert.doesNotMatch(lastPrompt(2), /dry run/u, "a cut claim is not sent the dry-run repair");
+
+    // A failed stream is not a limit cut: its words still face the claim audit, and it keeps the old stop.
+    const failed = await start("pi failed stream claim", [
+      { ...reply("I've added the onboarding to Elara, it is saved."), finishReason: "error" },
+      reply("I have not changed anything yet."),
+    ]);
+    await failed.done;
+    assert.equal(requests.length, 2, "the claim audit repairs the failed stream's words");
+    assert.doesNotMatch(lastPrompt(1), /output limit|Engine note/u);
+    assert.ok(!statusTexts(failed.events).some((text) => /redoing it in smaller steps|kept hitting/u.test(text)));
+    const failedPlain = await start("pi failed stream", [
       {
-        ...reply("Partial", [{ id: "cut-1", name: "write", args: { path: "cut.txt", content: "x", reason: "t" } }]),
-        finishReason: "length",
+        ...reply("Partial", [{ id: "fs-1", name: "write", args: { path: "cut.txt", content: "x", reason: "t" } }]),
+        finishReason: "error",
       },
     ]);
-    await cut.done;
+    await failedPlain.done;
+    assert.equal(requests.length, 1);
+    assert.ok(
+      statusTexts(failedPlain.events).some((text) => /hit the model output limit\. Ask her to continue/u.test(text)),
+    );
+    assert.ok(
+      JSON.stringify(failedPlain.events).includes("Continue the task."),
+      "a dropped change still offers the chip",
+    );
     assert.equal(existsSync(join(workspaceDir, "cut.txt")), false);
-    assert.ok(JSON.stringify(cut.events).includes("Continue the task."), "a cut-off change offers a continue chip");
+
+    // Textual: a closed call before cut prose was dropped with the round, so it is the call named.
+    provider = "claude_subscription";
+    const closedCut = await start("pi cut closed textual", [
+      {
+        ...reply(
+          '<tool_call>{"name":"write","arguments":{"path":"cut.txt","content":"x","reason":"t"}}</tool_call> And then I will',
+        ),
+        finishReason: "length",
+      },
+      reply("Here is the next small step."),
+    ]);
+    await closedCut.done;
+    provider = "custom";
+    assert.match(lastPrompt(1), /You were writing `write` \(about \d+ characters\)/u);
+    assert.equal(existsSync(join(workspaceDir, "cut.txt")), false);
+
+    // What is salvaged is names and a size only.
+    assert.deepEqual(describeCutReply(cutAppData, false), {
+      kind: "call",
+      tool: "app_data",
+      action: "character.onboarding.update",
+      chars: cutAppData.toolCalls[0]!.function.arguments.length,
+    });
+    const beforeAction = describeCutReply(
+      {
+        content: 'Sure.<tool_call>{"name":"app_data","arguments":{"charac',
+        toolCalls: [],
+      },
+      true,
+    );
+    assert.equal(beforeAction.tool, "app_data");
+    assert.equal(beforeAction.action, undefined);
+    assert.equal(
+      describeCutReply({ content: '<tool_call>{"name":"ls","arguments":{}}</tool_call> and then', toolCalls: [] }, true)
+        .kind,
+      "prose",
+      "with no dropped call, a closed tag before cut prose is prose",
+    );
+    assert.equal(describeCutReply({ content: null, toolCalls: [] }, false).kind, "thinking");
+    assert.doesNotMatch(
+      outputLimitRepairPrompt(beforeAction, 1),
+      /tokens\)|under about/u,
+      "no limit known, no limit numbers",
+    );
+    assert.match(outputLimitRepairPrompt(beforeAction, 1), /You were writing `app_data` \(about/u);
+    const noArgs = describeCutReply(
+      { content: null, toolCalls: [{ id: "c", type: "function", function: { name: "app_data", arguments: "{}" } }] },
+      false,
+    );
+    assert.match(outputLimitRepairPrompt(noArgs, 1), /You were writing `app_data` when it stopped/u, "no size for {}");
 
     const twice = await start("pi duplicate", [
       reply("", [

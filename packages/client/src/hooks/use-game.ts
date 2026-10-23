@@ -52,6 +52,7 @@ import type {
   WorldInterior,
   WorldTown,
   WorldTownVisit,
+  WorldSeason,
   WorldWalk,
 } from "@marinara-engine/shared";
 import { isJsonRecord } from "@marinara-engine/shared";
@@ -701,8 +702,12 @@ export function useUpdateGameWidgets() {
   const qc = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ chatId, widgets }: { chatId: string; widgets: HudWidget[] }) =>
-      api.put<UpdateGameWidgetsResponse>(`/game/${chatId}/widgets`, { widgets }),
+    // `expected`: the widgets a caller opened (the State Editor); the save is refused when they changed since.
+    mutationFn: ({ chatId, widgets, expected }: { chatId: string; widgets: HudWidget[]; expected?: unknown }) =>
+      api.put<UpdateGameWidgetsResponse>(
+        `/game/${chatId}/widgets`,
+        expected === undefined ? { widgets } : { widgets, expected },
+      ),
     onMutate: (variables) => {
       clearPendingHudWidgetPersist(variables.chatId);
       registerPendingHudWidgetPersistence(variables.chatId, variables.widgets);
@@ -995,6 +1000,8 @@ export interface OverworldState {
   locked?: Record<string, "sealed">;
   /** Sites the story keeps off the overworld until revealed. */
   hidden?: string[];
+  /** The places the story holds at a season whatever the day (1.351), by place id; none: the day's. */
+  seasons?: Record<string, WorldSeason>;
 }
 
 /** The world as the party knows it (the Journal's World tab), read again after each turn (`turnKey`), so

@@ -321,8 +321,8 @@ try {
   });
   const issueAt = (minor: number, doc: unknown, catalogs?: Map<string, unknown>) =>
     getCapabilityPackageInstallIssue(manifest(minor) as never, doc as never, catalogs as never) ?? "";
-  assert.doesNotMatch(issueAt(769, fixture()), gate, "the example asks for nothing new");
-  assert.match(issueAt(769, words), gate);
+  assert.doesNotMatch(issueAt(377, fixture()), gate, "the example asks for nothing new");
+  assert.match(issueAt(377, words), gate);
   assert.doesNotMatch(issueAt(378, words), gate);
   for (const edit of [
     (doc: Record<string, any>) => (doc.sheet.live.pools[1].unit = "hit die"),
@@ -335,12 +335,12 @@ try {
     (doc: Record<string, any>) =>
       (doc.catalogs[0].entries[0].creature.traits = [{ name: "Long", text: "w".repeat(401) }]),
   ]) {
-    assert.match(issueAt(769, fixture(edit)), gate);
+    assert.match(issueAt(377, fixture(edit)), gate);
   }
   // A trait of 400 letters, the old ceiling, still installs below 1.378.
   assert.doesNotMatch(
     issueAt(
-      769,
+      377,
       fixture((doc) => (doc.catalogs[0].entries[0].creature.traits = [{ name: "Long", text: "w".repeat(400) }])),
     ),
     gate,
@@ -348,8 +348,8 @@ try {
   // An item toggle's labels and an item use's title in a catalog file ask for 1.378 as well.
   const items = (item: Record<string, unknown>) =>
     new Map([["catalogs/items.json", { id: "items", entries: [{ id: "lantern", ...item }] }]]);
-  assert.match(issueAt(769, fixture(), items({ toggle: { onLabel: "Raise the hood" } })), gate);
-  assert.match(issueAt(769, fixture(), items({ use: { title: "Scatter ball bearings" } })), gate);
+  assert.match(issueAt(377, fixture(), items({ toggle: { onLabel: "Raise the hood" } })), gate);
+  assert.match(issueAt(377, fixture(), items({ use: { title: "Scatter ball bearings" } })), gate);
   assert.doesNotMatch(issueAt(378, fixture(), items({ use: { title: "Scatter ball bearings" } })), gate);
 
   console.log("Ruleset sheet words: labels, units, list display, hidden text, the picker, tracks, traits, the gate.");

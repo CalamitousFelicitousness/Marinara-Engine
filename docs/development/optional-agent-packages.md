@@ -51,6 +51,115 @@ lore-entry selection, JSON-ish response parsing, and resolved language-model cal
 Connection credentials, provider implementations, database handles, and storage
 objects remain private to Engine.
 
+### Host client namespace
+
+The Engine owns its client state and its libraries, and agent package clients use them instead of bundling copies. A
+copy keeps state of its own: package clients that bundled the UI settings store saved an older version of it over the
+Engine's settings on every load (Pasta-Devs/Marinara-Agents#1478), and each bundled chat store kept the chat that was
+open when the page loaded.
+
+Before the Engine imports the first package client, it defines one global:
+
+```ts
+globalThis.__MARINARA_HOST__ = {
+  version: 1,
+  capabilityApi,
+  stores,
+  services,
+  modules,
+  queryClient,
+  components,
+  data,
+  api,
+};
+```
+
+The property is not writable or configurable, and the namespace and its `stores`, `services`, `modules`, `components`
+and `data` objects are frozen. The package loader (`useCapabilityClientModules`) loads `lib/marinara-host.ts` with
+`import()` and awaits `ensureMarinaraHost()` before it imports any package client, so the namespace is complete when a
+package module is evaluated. An Engine with no package clients never loads it. If it cannot load (a stale chunk after an
+update, for example), each package shows its existing load error and the rest of the Engine keeps working. The
+TypeScript type is `MarinaraHostV1` in `packages/client/src/lib/marinara-host-contract.ts`, together with the lists on
+this page. Package builds declare matching structural types instead of importing Engine source.
+
+| Member              | Value                                                                                                                                                                         |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `version`           | `1`. It changes only when the shape breaks.                                                                                                                                   |
+| `capabilityApi`     | The Engine's `supportedCapabilityApi`, for example `{ major: 1, minor: 341 }`.                                                                                                |
+| `stores`            | The live zustand stores `ui`, `chat`, `agent`, `sidecar`, `dialog`, `gallery`, `encounter`, `gameState` and `backfill`. `chat` includes the pending spatial transition slice. |
+| `services.tts`      | The `lib/tts-service.ts` module (`ttsService`, `playWhenAvailable`, ...).                                                                                                     |
+| `services.dialogs`  | The `lib/app-dialogs.ts` module (`showAlertDialog`, `showConfirmDialog`, `showPromptDialog`, `showChoiceDialog`).                                                             |
+| `modules`           | Library modules, keyed by bare specifier (below).                                                                                                                             |
+| `queryClient`       | The one React Query `QueryClient` the Engine renders with.                                                                                                                    |
+| `components.Modal`  | The Engine's `Modal`, with its overlay order, Escape and back-button handling.                                                                                                |
+| `data.emojiCatalog` | The `lib/emoji-catalog.generated.ts` module.                                                                                                                                  |
+| `api`               | The `lib/api-client.ts` module (`api`, `ApiError`, `getApiErrorMessage`, ...).                                                                                                |
+
+A package reads a member only after checking it, for example
+`const host = globalThis.__MARINARA_HOST__; if (host?.version === 1 && typeof host.stores?.ui?.getState === "function")`.
+The namespace only grows: a new member comes with a capability API minor, and a package that needs it requires that
+minor. Packages built for the namespace require the capability API version that added it, so an older Engine never
+installs them and keeps the version it has. When a member is missing anyway, the package never falls back to a bundled
+copy of a stateful Engine service: the `ui` and `chat` stores become read-only copies that never write, and every other
+member reports that the feature needs a newer Marinara Engine.
+
+**Host modules.** `modules[specifier]` is a complete module namespace, including `default` where the library has one.
+`MARINARA_HOST_MODULE_IMPORTS` in the client contract maps each public slot to the dependency it imports. Most map
+to themselves. The stable `framer-motion` slot maps to `framer-motion-v13` (an exact npm alias of Motion 13.5.1),
+while the opt-in `motion/react` slot maps to the Engine's primary `framer-motion` 14 dependency. Package tooling uses this mapping for both its export inventory and TypeScript paths; public slot names need not be physical dependencies. The specifiers are `react`, `react/jsx-runtime`, `react-dom`,
+`react-dom/client`, `@tanstack/react-query`, `zustand`, `zustand/middleware`, `sonner`, `zod`, `i18next`,
+`react-i18next`, `framer-motion`, `motion/react`, `tailwind-merge` and `clsx`. A package build resolves these specifiers to shims that
+read the namespace, so the package renders with the Engine's one React and shares its React Query cache and toasts.
+
+- Packages never render a `<Toaster>` and never create a `QueryClient`. A `toast` from `sonner` shows at the user's
+  toast position. The Engine's query defaults (30-second `staleTime`, one retry, no refetch on window focus) apply
+  unless a query sets its own options, and a new package-owned query key starts with the package id.
+- A package keeps its own i18next instance from `i18next.createInstance()` inside `<I18nextProvider>`. It never uses
+  `initReactI18next`, `setI18n` or `setDefaults`, which would replace the Engine's instance.
+- `lucide-react`, `chess.js`, `scheduler` and `@marinara-engine/shared` are not host modules; packages bundle what they
+  use of them.
+- Packages are built against these majors: `react` 19, `react-dom` 19, `@tanstack/react-query` 5, `zustand` 5,
+  `sonner` 2, `zod` 3, `i18next` 26, `react-i18next` 17, `framer-motion` 13, `motion` 14 (the `motion/react` slot),
+  `tailwind-merge` 3 and `clsx` 2. Replacing the major behind an existing public slot requires a capability API **major**.
+  Adding a distinct slot is additive: capability API 1.377 adds `motion/react` without changing `framer-motion`.
+  `scripts/regressions/marinara-host-namespace.regression.ts` pins each slot's mapped dependency and major.
+- Existing installed packages keep their full Motion 13 namespace and do not need rebuilding. A package choosing
+  Motion 14 imports `motion/react` through the host shim and declares capability API 1.377 or newer. Older hosts
+  reject that declaration rather than silently substituting Motion 13. Keep each animation tree on one version:
+  `AnimatePresence`, `MotionConfig`, `LayoutGroup`, motion values and their consumers must come from the same slot.
+  The versions have distinct contexts; no context bridge is provided. Package views mount their own React roots,
+  while the host `Modal` uses CSS animations. Do not expect shared layout or presence across the version boundary.
+
+**Store fields packages read.** Published packages read these fields today. The Engine keeps each of them, and
+dropping or renaming one needs a capability API major (`MARINARA_HOST_STORE_FIELDS` pins them with `Pick<>`):
+
+| Store       | Fields                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ui`        | `achievementsEnabled`, `debugMode`, `includeReasoningInExports`, `enableStreaming`, `userStatus`, `enterToSendConvo`, `conversationCallVoiceVolume`, `conversationCallVoiceMuted`, `setConversationCallVoiceVolume`, `setConversationCallVoiceMuted`, `conversationTimeZone`, `noodleNavigation`, `setNoodleNavigation`, `noodleSelectedPersonaId`, `setNoodleSelectedPersonaId`, `reviewImagePromptsBeforeSend`, `musicPlayerEnabled`, `musicPlayerSource`, `sidebarOpen`, `setSidebarOpen`, `chatBackground`, `setChatBackground`, `characterDetailId`, `lorebookDetailId`, `presetDetailId`, `connectionDetailId`, `agentDetailId`, `toolDetailId`, `personaDetailId`, `regexDetailId`, `characterLibraryOpen`, `botBrowserOpen`, `gameAssetsBrowserOpen`, `modal`, `rightPanelOpen`, `closeModal`, `closeRightPanel`, `closeBotBrowser`, `closeAllDetails` |
+| `chat`      | `activeChatId`, `activeChat`, `isStreaming`, `streamingChatId`, `abortControllers`, `reset`, `pendingSpatialTransitions`, `setPendingSpatialTransition`, `clearPendingSpatialTransition`, `setPendingSpatialTransitionStatus`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `agent`     | `setYoutubePlay`, `reset`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `sidecar`   | `modelDownloaded`, `modelDisplayName`, `fetchStatus`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `dialog`    | `dialog`, `openDialog`, `closeDialog`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `gallery`   | `pinImage`, `pinVideo`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `encounter` | `reset`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `gameState` | `current`, `setGameState`, `reset`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `backfill`  | `resetBackfill`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+
+**Engine-owned browser storage.** Packages may read these keys and never write or remove them: `marinara-engine-ui`,
+`marinara-engine-ui:host`, `marinara-active-chat-id`, `marinara-input-drafts` (local and session storage),
+`marinara-pending-spatial-transitions`, `marinara-pinned-gallery-images` and `marinara_sidecar_prompted`. They never
+open the IndexedDB database `marinara-tts-audio-cache`. To change a setting, a package calls the store's action, for
+example `host.stores.ui.getState().setConversationCallVoiceMuted(true)`, and the Engine saves it.
+
+**App dialogs.** The Engine renders its alert, confirm, prompt and choice dialogs on its topmost layer, the command
+bar's, so a dialog a package opens shows above the package's own overlay and takes focus.
+
+**Package builds from before the namespace.** They bundle their own copy of the UI store at version 74 and save over
+`marinara-engine-ui` with only the settings that copy knows. The Engine also saves each write to a host-only
+`marinara-engine-ui:host` copy, and when it loads, it ignores a stored blob older than its own version while that copy
+is at the current version. The Engine still sets `globalThis.React` and `globalThis.ReactDOM` for installed bundles
+that use the classic JSX runtime.
+
 ### Capability API 1.7 chat branches
 
 Capability API 1.7 adds normalized branch metadata to `CapabilityChatRecord`:
@@ -648,7 +757,9 @@ The base keeps the package manager, catalog client, generic agent pipeline contr
 
 The official catalog is a schema-validated, versioned JSON document fetched over HTTPS. Each release entry includes immutable artifact URLs, SHA-256 digests, byte sizes, engine compatibility, permissions, and whether its runtime requires a restart.
 
-At server startup, the host fetches the catalog once when at least one official package is installed, selects only newer versions compatible with the running Engine and capability API, verifies them through the normal installation pipeline, and installs them before package runtimes activate. Failures are isolated per package. Existing files and registry state remain usable when the catalog is offline or verification fails, and server-runtime readiness failures use the previous-version rollback path.
+Updates need the user's consent: apart from one-time migrations that keep an upgraded install's former built-ins (see [Compatibility migration](#compatibility-migration)), startup never downloads or installs a package. `GET /api/capability-packages/updates/pending` lists each installed official package whose catalog version is newer and compatible with the running Engine and capability API, leaving out a version the user already declined. The client shows them in one **Agent updates available** prompt. **Update all** installs each through the normal installation pipeline, pinned to the offered version and artifact SHA-256. **Not now** records the declined versions in `DATA_DIR/capability-packages/update-decisions-v1.json` (`POST /api/capability-packages/updates/decline`), so that version is not offered again, while a newer one is. **Update** stays available in **Download Agents** either way. Failures are isolated per package. Existing files and registry state remain usable when the catalog is offline or verification fails, and server-runtime readiness failures use the previous-version rollback path.
+
+Release notes are published as `notes.json` beside the `catalog.json` they describe, never inside a catalog entry or a manifest: an older Engine drops a catalog entry with a key it does not know. Each pending update carries, as `releaseNotes`, the notes of every version after the installed one up to the offered one, newest first, and `releaseHighlight` is true when any of them is marked as a change the user will notice. Notes are plain text and are never rendered as Markdown or HTML.
 
 The installer must:
 
@@ -673,6 +784,15 @@ The manifest may declare `restartRequired` only when the host cannot safely relo
 
 Turn-game packages are hot-reloadable: installation registers their server engine and manual slash launcher immediately, and uninstallation detaches the runtime without an Engine restart. Per-chat Conversation Commands settings control only whether characters may emit the package's hidden command; they do not gate the user's slash launcher. Current official turn-game manifests retain their conservative legacy restart marker for Engine 2.x compatibility; Engine 3.x recognizes the `turn-game` kind, performs the safe hot activation, and returns the package as active and ready.
 
+### Disk use: runtime copies and kept versions
+
+A package server does not run from `DATA_DIR/capability-packages/versions/<id>/<version>`. Each activation verifies the installed files, copies them into a new folder under `DATA_DIR/capability-runtime-snapshots`, and imports the copy. The copy is deleted when that runtime stops.
+
+- **Runtime copies.** A copy holds every verified manifest file except the client entrypoint. The server never loads it, and the browser gets it from `versions/`. Assets stay, so a server can read files beside its `server.mjs`, as Quartermaster does with `icons/`. The copied files are read-only.
+- **Startup sweep.** A crash or a forced stop skips a copy's cleanup. At every start, before any package activates, the Engine deletes every entry in `capability-runtime-snapshots` except the shared `node_modules` links, because none of them can be in use by the new process. It makes read-only files writable first, which Windows needs, and never follows links. Only the process that holds the storage writer lease reaches this step, so a second Engine started on the same data folder stops when it opens storage and never deletes a running Engine's copies.
+- **Kept versions.** `versions/<id>` keeps the current version and `previousVersion`, which rollback restores when a new server runtime fails to start. Older versions, and a version a failed update was rolled back from, are deleted after an activation or an update succeeds and at startup. A package whose update waits for a restart (`restart-required`), or whose runtime has not started yet (`readiness: "pending"`), keeps every version until it has started.
+- **Never deleted:** package data (folders such as `DATA_DIR/long-term-memory` and the package's tables in `storage`), chats, settings, `installed.json`, update decisions, `.install-*` folders, and `versions/` folders of ids missing from the registry. Uninstall still removes the package's code and keeps its data.
+
 ## Compatibility migration
 
 On the first upgraded launch:
@@ -693,7 +813,7 @@ Every uninstall requires confirmation. Affected chats fall back to their ordinar
 
 ## Catalog interface
 
-The Agents panel contains a `Download Agents` control matching the Card Browser's `Download Cards` affordance. It opens a full-screen responsive library with search, package kinds, compatibility information, install/update state, permissions, storage cost, documentation, and uninstall controls.
+The Agents panel contains a `Download Agents` control matching the `Download` button in the Characters and Personas panels, which opens the Card Browser. It opens a full-screen responsive library with search, package kinds, compatibility information, install/update state, permissions, storage cost, documentation, and uninstall controls.
 
 Desktop uses a browse list with an adjacent detail region. Mobile uses one pane with explicit back navigation and touch-sized actions. Empty, offline, incompatible, corrupt-download, interrupted-install, update, rollback, and restart-required states are first-class.
 
@@ -1069,9 +1189,11 @@ client half is `packages/client/src/features/avatars/contract.ts`. The user guid
 
 There is no new manifest field. An avatar package declares schema version 2 and Capability API 1.73,
 so an Engine without these surfaces refuses the install instead of listing an agent that shows
-nothing. The change that introduced 1.73 shipped these surfaces as inert stubs, so the packages are
-published, even to the preview catalog, only once the Engine's setup, stage and a renderer are on
-`staging`. The 2D agent's generation prompts ship as the `avatarGenerationTemplates` prompt template
+nothing. The change that introduced 1.73 shipped these surfaces as inert stubs; the Engine's setup,
+stage and renderers are now on `staging`, and the two packages are listed in the preview catalog.
+Their referenced artifact URLs must be published before installation works; a catalog entry alone
+is not proof that its downloadable artifact is available.
+The 2D agent's generation prompts ship as the `avatarGenerationTemplates` prompt template
 collection in its `defaultSettings`, with the ids in `AVATAR_PROMPT_TEMPLATE_IDS`; the Agent editor
 merges and resets them like any other built-in template collection.
 
@@ -1109,19 +1231,353 @@ hash-pinned asset.
 world's `snapshot`, the world as it was made (W11): an Engine whose world generator has changed since
 reads the world from it, exactly as it was made, so a pack keeps working across Engine updates. Write
 the files from a game's or library world's **Download** (or `GET /api/game/:chatId/world/file`), which
-include it. A pack file is still at most 2 MB, so a world whose file is larger (a big world's snapshot)
-cannot ship in a pack. With the Experience on, a new game is locked
+include it. A pack file is at most 8 MB, the largest share file the Engine reads (a tile pack keeps its
+own smaller limits), so a world whose file is larger (a very big world's snapshot) cannot ship in a pack. A world whose story sets an `intro`
+needs Capability API 1.339 (see [The intro message](../extending/writing-story-scripts.md#the-intro-message)).
+`tiles` may be an image tile pack (tile pack version 2: PNG sheets on a grid of cells, with sprites of
+several cells), which needs Capability API 1.80; the Engine decodes and checks its sheets once per
+package version. With the Experience on, a new game is locked
 to the pack's kit; if the pack ships worlds, the player picks one of them (story included) and makes
 no other. Turning the
 Experience off gives the player's own choices back. `POST /api/game/create` holds a game to the same
 lock. The game keeps its kit and world like any game, so it plays on if the package is removed, and
 draws its overworld and towns with the pack's tiles while the package is installed.
 
-The Engine reads the files through the verified asset path (declared size at most 2 MB each, hash
+The Engine reads the files through the verified asset path (declared size at most 8 MB each, hash
 re-checked) and checks them as it checks share files. A pack is refused whole, with the reason, when a
 file does not read, when a world was made with another kit or does not fit it, or when its bytes are
 not the ones installed; the Experience then cannot start a game. A ruleset is never part of a map
 pack: an Experience that needs its own rules ships a separate ruleset package.
+
+#### Capability API 1.344: creature packs
+
+`mapPack.creatures` lists up to 8 `.creaturepack.json` files (each a declared asset, read and checked as
+the library reads a creature pack). In a game of the Experience, every fight draws a creature's art from
+these packs first, in their order, and then from the creature pack chosen in the library.
+
+#### Capability API 1.345: music
+
+A package's assets may be audio from 1.345: `.ogg`, `.mp3` or `.wav`, 16 MB each at most. `mapPack.music`
+names the Experience's tracks and when they play:
+
+```json
+"music": {
+  "tracks": [
+    { "id": "valley", "path": "music/valley.ogg", "title": "The Held Valley" },
+    { "id": "town", "path": "music/thrushwick.ogg" },
+    { "id": "fight", "path": "music/fight.ogg" }
+  ],
+  "default": "valley",
+  "combat": "fight",
+  "places": [{ "place": "p3", "track": "town" }]
+}
+```
+
+Each track is also a declared asset, and every track id named is one of `tracks`. A place in `places` is
+a place of one of the pack's worlds, by id. Out of a fight, the game plays the place's track, else the
+track of the nearest place it is inside that has one, else `default`; in a fight, `combat`. A story's
+`music` action (see [Writing Game Mode Story Scripts](../extending/writing-story-scripts.md)) cues one
+of the tracks over all of these until it hands back. With none of these, the Engine's own music plays.
+A player who has picked their own music source (the Music DJ, Spotify) hears that instead: their choice
+always wins.
+
+#### Capability API 1.346: people
+
+`mapPack.people` is a `.people.json` file (a declared asset) that dresses the named people of the pack's
+worlds. People come from the world itself, generated and named or added by hand in its edits (Pixelforge
+or the World tab), so they stand at their places like everyone else; the file says who they are:
+
+```json
+{
+  "peopleVersion": 1,
+  "people": [
+    {
+      "person": "p3-e1",
+      "portrait": "people/maud.png",
+      "expressions": { "happy": "people/maud-happy.png", "angry": "people/maud-angry.png" },
+      "sprite": "maud-walk",
+      "description": "Keeper of Thrushwick's bells, older than she lets on.",
+      "voice": "Slow, warm, and fond of proverbs about weather.",
+      "lore": [{ "keys": ["bells", "bell tower"], "content": "The bells have rung the year out for 200 years." }]
+    }
+  ],
+  "lore": [{ "name": "The Held Autumn", "keys": ["autumn", "harvest"], "content": "The year has not turned." }]
+}
+```
+
+- `person` is a person id of one of the pack's worlds (`<place id>-<n>`, or `-e<n>` for one added by
+  hand), and that person must have a name there.
+- `portrait` and `expressions` (`neutral`, `happy`, `sad` and the other narration expressions) are
+  pictures among the package's assets. The portrait shows in the Journal once the game meets them, and
+  their expressions are used for the lines they speak.
+- `sprite` is a character of the pack's own (image) tiles, which they wear walking on town and place
+  maps instead of one picked for them.
+- `description`, `voice` and `lore` become a lorebook made with each new game of the Experience
+  (_Experience name_: people), active from the first turn: one entry per person, brought in by their
+  name, one per `lore` entry by its own keys, and one per entry of the file's own `lore`.
+
+#### Capability API 1.347: companions
+
+A person may be a companion: someone the party can take in, so a party that lacks healing, scouting or
+a light in the dark is never locked out of what the story asks of it.
+
+```json
+{
+  "person": "p3-4",
+  "portrait": "people/hob.png",
+  "companion": {
+    "role": "Healing and herb lore",
+    "sheets": {
+      "5e-2014": {
+        "v": 1,
+        "level": ["level"],
+        "builds": [
+          { "at": 1, "build": { "abilities": { "wis": 16 }, "fields": { "level": 1, "class": "Cleric" } } },
+          { "at": 3, "build": { "abilities": { "wis": 16 }, "fields": { "level": 3, "class": "Cleric" } } }
+        ]
+      }
+    }
+  }
+}
+```
+
+- `sheets` holds a sheet for each ruleset the companion can join a game of, by the ruleset's id. `v` is
+  the ruleset's sheet version the builds were written for (older ones are migrated as stored sheets are).
+- `level` names the sheet fields that hold a character's level in that ruleset, added up (a multiclass
+  sheet keeps one per class). Each build's level fields must add up to its `at`, and the builds go up.
+- A companion joins with the build for the highest level the party has reached (the lowest while the
+  party is below them all), and after each turn moves up to a higher build once the party reaches it. A
+  sheet the player raised past its build is left alone, and nothing lowers one. Their health, pools and
+  conditions are kept apart from the build, so a rise keeps them. Ship a build for each level the
+  companion should be playable at.
+- The story takes them in and lets them go with `recruit` and `dismiss` actions. The Game Master is
+  told who the companions are, where, and what they bring, and may take only them in (a
+  `[party_change]` naming anyone else is refused); the player's own library characters may still join.
+- A companion joins as any recruit does: they are in the party's list, carry their card and sheet, and
+  fight in tactical combat. In a game on a ruleset they have no sheet for, they join with a blank one.
+
+A people file with companions needs 1.347; without, 1.346. A story that recruits or dismisses someone
+needs 1.347, and each person it names must be a companion in the pack's people file.
+
+#### Capability API 1.350: checking a pack before export
+
+An authoring app (Pixelforge) can have the Engine check a whole map pack before it exports the package,
+exactly as an installed one is read, without installing it:
+
+```
+POST /api/game/experience/check
+{ "mapPack": { ...the manifest's gameSurface.mapPack block },
+  "files": { "map/valley.worldkit.json": { ...parsed JSON }, ... },
+  "assets": [{ "path": "people/maud.png", "bytes": 48213 }, { "path": "music/valley.ogg", "bytes": 3100000 }] }
+```
+
+`files` holds every JSON file the block names (kit, worlds, tiles, creature packs, people), parsed;
+`assets` lists the package's other assets (pictures, audio) by path and size. The answer is
+`{ "ok": true | false, "minor": <n>, "issues": [{ "path": "...", "message": "..." }] }`: `minor` is the
+Capability API minor (1.`minor`) the pack needs, and `issues` names each problem by the block's key
+(`mapPack.music.default`) or the file it is in. The manifest's own rules (declared assets, track ids,
+audio sizes) are all reported; the files' checks stop at the first problem, as an install does.
+
+#### Capability API 1.351: held seasons
+
+A world's story may hold places at a season whatever the date (`seasons`, and the `season` action: see
+[writing story scripts](../extending/writing-story-scripts.md#seasons)), and a world's battlefields may be
+painted with seasons (`seasons` rows and `seasonKeys`). A map pack with either needs 1.351. The overworld
+reads held places as `seasons` (place id to season, `*` for the whole world) from
+`GET /api/game/:chatId/overworld`; a made battlefield carries its tiles' starting seasons as `seasons`,
+keyed `"x,y"`.
+
+#### Capability API 1.355: ruleset overlays
+
+An Experience's map pack may add to the rulesets its games play, while the Experience is on: its own
+creatures, conditions and items, which are not the ruleset package's to ship.
+
+```json
+"mapPack": { "kit": "...", "rulesets": [{ "ruleset": "5e-2014", "overlay": "rules/5e.overlay.json" },
+                                        { "ruleset": "dnd5e", "overlay": "rules/dnd5e.overlay.json" }] }
+```
+
+Each `.overlay.json` (declared as an asset like the pack's other files) is for one ruleset, by its id. A
+ruleset imported from a file (`local/<id>`) or a repository (`<owner>/<id>`) plays the overlay for its bare
+id, unless the pack names its exact id too:
+
+```json
+{ "overlayVersion": 1,
+  "creatureTags": [{ "id": "unreaped", "label": "Unreaped" }],
+  "conditions": [{ "condition": "owed_frost_held", "effects": ["own-attacks-disadvantage"] }],
+  "sheetConditions": [{ "id": "owed_frost_held", "label": "Held by the Frost" }],
+  "creatures": [{ "id": "the-owed", "label": "The Owed", "creature": { ... } }],
+  "catalogs": { "magic_items": [{ "id": "lantern-of-dusk", ... }] } }
+```
+
+`creatureTags` join the ruleset's `combat.creatureTypes.tags`, `conditions` its `combat.conditions`,
+`sheetConditions` its `sheet.live.conditions`, `creatures` its `creatures` catalog, and each list of
+`catalogs` the catalog of that id. A game of that ruleset with the Experience on plays the ruleset with
+all of it merged in (story fights, `give`, the Game Master's own uses), and the ruleset is read again
+whole: an overlay whose entries do not fit it, or that reuses an id the ruleset has, is left out
+whole and the game plays the ruleset as it was. `POST /api/game/experience/check` merges each overlay
+into its ruleset as installed and reports what does not fit.
+
+From Capability API 1.367 an overlay may add sheet tracks too, `"tracks": [{ "id": "owing", "label":
+"Owing", "min": 0, "max": 20, "default": 0 }]`, shaped as the ruleset's `sheet.live.tracks` and joining
+them: a track the overlay declares is shown on the sheet, moved by sheet commands, and kept for what a
+story's Held Ground or a board's light rule marks. A pack with an overlay that adds tracks needs 1.367.
+
+#### Capability API 1.357: dungeon looks and a hand map's own words
+
+An Experience's maps made by hand can be drawn in its own looks, not only the library's cave, crypt,
+temple and station sets, and told to the Game Master in its own words.
+
+```json
+"mapPack": { "kit": "...", "dungeons": ["looks/corn-maze.tilepack.json", "looks/snowfield.tilepack.json"] }
+```
+
+Each is an image tile pack (`tilePackVersion` 2) laid out as a dungeon set: `dn_floor`, `dn_wall`,
+`dn_liquid`, `dn_prop0` to `dn_prop7` (`dn_liquid` may have edge pieces, as a library set's). It must draw
+at least `dn_floor` and `dn_wall`; the rest fall back to plain colours. A hand map (`edits.maps`) whose
+`pack` is one of their ids is drawn with it, before any library pack of that id. No two may share an id.
+
+A hand map may also carry its own words for the Game Master:
+
+```json
+"words": { "floor": "stubbled earth", "wall": "walls of standing corn", "liquid": "a ditch of rainwater",
+           "props": ["a scarecrow", null, "a corn-dolly shrine"] }
+```
+
+`props` is one entry per prop slot, 0 to 7 (`null` for a slot left unsaid). The Game Master is then told
+the map as "A place made by hand (stubbled earth, walls of standing corn), with a ditch of rainwater in it;
+in it: a scarecrow (2), a corn-dolly shrine", in place of saying only that it was made by hand. Both need
+an Experience that declares 1.357.
+
+#### Capability API 1.359: items that cost a story number
+
+An overlay may name items whose use spends (or adds to) one of the Experience's story number flags:
+
+```json
+{
+  "overlayVersion": 1,
+  "storyUses": [{ "item": "magic_items/jar-of-someone-elses-death", "flag": "debts_settled", "add": -2, "atLeast": 2 }]
+}
+```
+
+`item` is `catalog/entry` of the merged ruleset (the overlay's own items count), named once. In a fight,
+using that item (the acting fighter's sheet item) is refused while the flag, with any spends not yet
+recorded, is below `atLeast`: "Jar of Someone Else's Death needs 2 Debts Settled; the party has 1." A use
+the fight takes is kept with the game, and the next story turn records it once (`spend="<id>"`, by the
+Engine), within the flag's `min` and `max`, and tells the Game Master what it cost. Each flag must be a
+number flag of one of the pack's stories. A map pack with `storyUses` needs 1.359.
+
+#### Capability API 1.360: parties beyond six, and companions who never fight
+
+A story fight's variants may be for parties above six, or open-ended (`"party": { "min": 7 }`), and a
+story condition may ask the party's size (`{ "partySize": { "is": ">=", "value": 7 } }`; see
+[writing story scripts](../extending/writing-story-scripts.md#conditions)).
+
+A companion of the people file may never fight:
+
+```json
+{ "person": "p3-7", "companion": { "role": "Keeps the ledger", "noncombatant": true, "sheets": { ... } } }
+```
+
+They travel with the party and are told to the Game Master as never fighting, but are not counted in the
+party's size (for fight variants and `partySize` conditions) and are not put in its fights. A people file
+with one needs 1.360.
+
+### Capability API 1.372: GM setup values
+
+`contributions.gameSurface.setup.defaults` sets what picking the Experience in the Game wizard fills in.
+Pixelforge's Experience tab writes it. Every key is optional, and the player may still change each value:
+
+```json
+"setup": {
+  "defaults": {
+    "name": "The Held Autumn",
+    "genre": ["Fantasy"],
+    "setting": "Sallowmarch, a valley where nothing has died for forty years.",
+    "tone": ["Whimsical", "Dark"],
+    "difficulty": "Normal",
+    "rating": "sfw",
+    "language": "English",
+    "combatStyle": "tactical",
+    "playerGoals": "Find out why the year will not turn.",
+    "preferences": "Quiet dread over gore.",
+    "gameSpecialInstructions": "Keep the valley's names.",
+    "artStylePrompt": "Muted autumn watercolour.",
+    "intro": { "mode": "defined", "text": "The leaves have not fallen in nine years.", "locked": true }
+  }
+}
+```
+
+- `name`: at most 100 characters.
+- `genre` and `tone`: 1 to 12 names each, at most 60 characters, no commas. Joined, each list stays within 200 characters.
+- `difficulty`: `Casual`, `Normal`, `Hard` or `Brutal`.
+- `rating`: `sfw` or `nsfw`.
+- `combatStyle`: `classic` or `tactical`.
+- Text limits: `setting` 4,000 characters, `language` 100, `playerGoals` and `preferences` 2,000, `gameSpecialInstructions` 2,000, `artStylePrompt` 500.
+
+`intro` is the Game Master's intro message (1.339), with the same rules as a story script's `intro`
+(see [Writing story scripts](../extending/writing-story-scripts.md#the-intro-message)). It is the only
+value that locks. A locked intro shows read-only in the wizard, and the game opens with it whatever the
+setup sends. The game keeps the intro as it was when the game began (`chat.metadata.gameExperienceIntro`).
+It is read before the story's own `intro`. A setup-file import keeps its own values, and turning the
+Experience off leaves the filled values as they are.
+
+### Capability API 1.373: Experience files
+
+An Experience that holds only pictures, music and data can travel as one `<id>.experience.json` file
+instead of a package zip. Players import it from the Game wizard's Experiences section with
+**Import an Experience file**; it needs no agents catalog.
+
+Its manifest has `"kind": ["experience"]` and nothing else in `kind`, needs `capabilityApi` 1.373 or newer,
+and carries no code: `entrypoints` is `{}`, `permissions` is empty, there is no `restartRequired` or
+`prepareBeforeStart`, and `contributions.slots` is exactly `["game-surface"]`. Every file in `files` is
+`.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.ogg`, `.mp3`, `.wav` or `.json`. The game surface draws
+nothing of its own; the Experience works through its `gameSurface` contributions (setup, maps, worlds,
+creature packs, music).
+
+The file is JSON with its keys in this order:
+
+```json
+{"format":"marinara-experience","version":1,
+"manifest":{ ... },
+"files":{
+"art/portrait.png":"iVBORw0KGgo...",
+"music/theme.ogg":"T2dnUwAC..."
+}}
+```
+
+- `manifest` is the package manifest as above, at most 1 MB, and comes before any file.
+- `files` maps each path in the manifest's `files` to its bytes in standard base64 (padding only at its end,
+  no whitespace or line breaks inside it). Every listed file appears exactly once, and nothing else does.
+- Paths are written without escapes, so a path with a quote, a backslash, a control character or a lone surrogate is refused.
+
+Before anything is sent, the wizard reads only the start of the file, up to the end of its manifest, and
+shows a review: the name, version and description, the import size, how much of it is pictures, music and
+data, and Import and Don't Import. Import sends the file to `POST /api/capability-packages/experience-file`
+(content type `application/vnd.marinara.experience+json`). The server reads it as it arrives, writes each
+file to a temporary folder, and checks its size and `sha256` against the manifest. A file that does not
+match, a missing or extra file, a cut-off file or an older version than the one installed is refused, and
+nothing it wrote is kept.
+
+Each file must then be what its name says. Pictures pass the signature check character card imports use
+(`isAllowedImageBuffer`) and must be the type their extension names, so a page or an SVG named `.png` is
+refused. They are stored without their metadata: PNG keeps only the chunks that draw it (no `tEXt`, `zTXt`,
+`iTXt`, `eXIf` or `iCCP`), JPEG drops its APP segments but JFIF and Adobe and its comments (so EXIF
+orientation is not kept), GIF drops comments, plain text and application extensions but the loop count,
+and WebP drops its EXIF, XMP and ICC chunks. Music must be well-formed Ogg Vorbis or Opus (every page's
+checksum checked; its comments and cover art are blanked in place), MP3 (its ID3 and APE tags removed) or
+WAV (only its `fmt `, `fact` and `data` chunks kept). Data files must be UTF-8 JSON. Anything after a
+picture's or sound's end is dropped. The installed manifest records the stored files' sizes and hashes. A newer version replaces the installed one, as a catalog update does. An
+Experience file cannot replace a package of another kind with the same id.
+
+An Experience is never accepted as a package zip. An agents catalog lists one only with an artifact URL
+ending in `.experience.json`. The Engine installs that file through the same reader, checks and stripping,
+and refuses it unless its manifest is the one the catalog lists. A catalog entry that is an Experience
+(`kind` `experience`, or the `game-surface` slot) with any other artifact is refused before anything is
+downloaded, and the first-start catalog install skips Experiences. Experiences already installed keep
+working.
+
+Pixelforge 0.45.0 exports an Experience as this file, and only opens Experience files.
 
 ### Capability API 1.18: keep Experience setup in the Game wizard
 
@@ -1302,6 +1758,21 @@ Rules worth knowing:
   conclude exactly as for a Conversation scene.
 
 `scenes` is refused on a manifest that declares a `capabilityApi` older than 1.66.
+
+### Capability API 1.376: Home browser fullscreen
+
+A `home-browser-tab` view receives `capabilityProps.browserFullscreen`:
+
+- `active`: whether this package currently fills the Home browser content area.
+- `setActive(boolean)`: enter or leave fullscreen for this active package.
+- `enterLabel` and `exitLabel`: localized accessible labels for the toggle.
+
+This is in-app fullscreen: Home's tabs, address bar and bookmarks are hidden, while the Engine
+topbar stays available. It does not call the browser Fullscreen API or require browser fullscreen
+support. The state is temporary and resets on navigation away from the package or Home. Keep an
+exit button available on every package screen and use `aria-pressed` to reflect `active`. Prop updates
+must update the button without replacing unfinished forms. Packages depending on this control
+declare capability API 1.376 or newer; older packages can keep their existing layouts.
 
 ### Capability API 1.50: Professor Mari actions
 
@@ -1546,3 +2017,74 @@ Server packages can call `api.runtime.integrations` to use the current Engine's 
 - `speech.transcribe(audio, { filename, mimeType, signal })` sends recorded audio to the speech-to-text server the user set in **Connections → Speech to Text** and resolves the transcript, or `null` while that server is off, so the package keeps its own transcription. It applies the host's URL policy (`STT_LOCAL_URLS_ENABLED`), size and time limits, and never exposes the saved key. `speech` is optional and needs no newer capability API: check `typeof api.runtime.integrations?.speech?.transcribe === "function"` and fall back on older Engines.
 
 Shared request/result types are exported by `@marinara-engine/shared`. Keep package-specific prompt building and orchestration in the package; call these host entrypoints for provider I/O instead of copying Engine service implementations. Pure helpers and types may still be bundled.
+
+### Capability API 1.341: host runtime services and shared server libraries
+
+A package server that bundles its own copy of an Engine service runs a second instance of it, with its own state:
+its own Intiface connection, its own connection admission, its own chat metadata queue and its own service registry.
+Capability API 1.341 adds `api.runtime` members that reach the Engine's live instances instead, and lets package
+servers take a few libraries from the Engine instead of bundling them. Every new member is optional in
+`CapabilityRuntimeHost`, so check that it exists before using it.
+
+- `runtime.services.get(key)` returns a service a package registered with `api.registerService`, or `null` while it is
+  absent or during a shared-room generation. It reads the Engine's own registry, so every package sees it.
+  `agent-runtime:` and `mari-actions:` keys always return `null`; only the Engine reads those.
+- `runtime.commands.parse(content)`, `strip(content)` and `instructions()` read conversation commands with the
+  Engine's grammar and every package's registered tags.
+- `runtime.logger.isLevelEnabled(level)` says whether the Engine logger writes that level now.
+- `runtime.persistence.patchChatMetadata(chatId, patch, { touchUpdatedAt })` is the Engine's queued metadata patch,
+  with one queue per chat shared with the Engine's own writers, the shared-room guard and write ordinals. Keys in the
+  patch replace those keys and every other key stays. `patch` may be a function of the current metadata. Inside
+  `withChatLock` for the same chat it runs within that lock. Like `updateChatMetadata`, it refuses a new reference to
+  a Global Gallery image that no longer exists.
+- `runtime.persistence.appendMessages(chatId, messages)` adds messages, each with its first swipe, in one batch and
+  returns them. `createChatNote` and `createChatInfluence` add a note or a one-time influence from a conversation to
+  its connected roleplay. These four persistence members need `chat-write`.
+- `runtime.persistence.updateCharacterStatus(chatId, characterId, { status, activity, duration })` applies a
+  `[schedule_update]` the way the Engine does after a Conversation reply: a temporary status on the character card,
+  so the character shows it in every chat until it ends. `status` is `online`, `idle`, `dnd` or `offline`, `activity`
+  is at most 500 characters, and one of the two is required. `duration` is written as the command writes it (`2h`,
+  `30m`); without one, or with one it cannot read, the status lasts 60 minutes, and never more than a week. It resolves
+  `{ status, activity, expiresAt }`, or `null` when nothing changed: a status the user set by hand stays in charge,
+  and a shared room keeps its own routines. It rejects an update that is not valid, a chat that is not a Conversation
+  chat and a character that is not in the chat, and it needs `chat-write`. It came to capability API 1.341 after the
+  first Engines that report 1.341, so check `typeof api.runtime.persistence.updateCharacterStatus === "function"`, and
+  skip the status change when it is missing.
+- `runtime.integrations.admission` is the Engine's connection admission, so a package's background work waits for the
+  user's own requests on the same connection. `withProvider(provider, connectionId, mode)` wraps a provider created by
+  the same package's integrations, `run(connectionId, mode, operation)` runs one attempt, `tryBackground(connectionId)`
+  takes the background slot when the connection is idle, and `isFailure(error)` recognizes the Engine's busy and
+  rejected errors. It needs no permission because it only books slots.
+- `runtime.integrations.haptics` (`status`, `connect`, `executeCommand`) uses the Engine's one Intiface Central
+  connection. It needs `network`.
+- `runtime.integrations.spotify` (`commandsAvailable`, `playSong`) uses the Music DJ agent's Spotify account.
+  `playSong` rejects with `ConversationSpotifyCommandError`; the codes `spotify_unavailable` and
+  `missing_playback_scope` mean Spotify is not set up, so drop the command quietly. It needs `network`.
+- `runtime.integrations.speech.transcribeLocal(wav)` transcribes a PCM WAV recording with the Local Whisper model
+  downloaded in **Connections**, and rejects with the Engine's message when it is not downloaded. It needs `network`.
+- `runtime.integrations.images.addToChatGallery(input)` lists an image saved with `images.save` in the chat's
+  gallery, and `images.persistToEntityGalleries(input)` lists it in the galleries of the characters and personas it
+  shows, as Engine-generated images are. Both need `storage`.
+
+**Never a bundled copy.** When one of these members is missing, the package reports the feature as needing a newer
+Marinara Engine. It never falls back to a bundled copy of a stateful Engine service, such as the provider registry,
+the local sidecar, connection admission, haptics, Spotify, the logger, a registry or a storage queue, because a second
+copy splits state the Engine keeps in one place. Pure helpers and types may still be bundled.
+
+**Shared server libraries.** A package server may leave `zod`, `adm-zip`, `dotenv`, `nanoid` and `jsonrepair` out of
+its bundle and import them by name, as it already may for `@huggingface/transformers`, `onnxruntime-node`,
+`onnxruntime-web`, `sharp`, `pino`, `pino-pretty` and `undici`. Node resolves them from the package's runtime copy
+through two links, `<runtime copy>/node_modules` to `DATA_DIR/capability-packages/node_modules` to the Engine's
+`packages/server/node_modules`, so the package gets the very module instance the Engine uses. pnpm keeps only the
+server's direct dependencies there, so only those names resolve; a dependency of a dependency, such as `ws`, does not.
+The Engine keeps the names above as direct production dependencies of `packages/server`, and every install keeps that
+layout: source and launcher installs, Windows (where the data link is a junction), Android and Termux, and both
+Docker images. When it starts or activates a package, the Engine rebuilds a data link that points anywhere else,
+including one left dangling by a data folder moved from another install path. Anything there that is not a link is
+left alone.
+
+**Declaring it.** A package that uses any of this declares `schemaVersion: 2`, `capabilityApi: { major: 1, minor: 341 }`
+and `builtAgainst`, and keeps its `engine` range. A `schemaVersion: 1` manifest is never checked against the
+capability API, so it moves to version 2. The capability API is the gate, not the Engine version: an Engine without
+these members refuses the install or update ("Package requires capability API 1.341; this Engine supports ..."),
+leaves the package out of its update list, and keeps the installed version running.

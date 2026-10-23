@@ -73,6 +73,7 @@ import { logRateLimited } from "./lib/log-rate-limit.js";
 import { genRequestId, registerRequestLogging, RequestLogController } from "./lib/request-logging.js";
 import { startup } from "./lib/startup-timeline.js";
 import { openCodeSessionHook } from "./utils/opencode-session.js";
+import { isApiRequest } from "./utils/api-request.js";
 import { startMessageTrashMaintenance, sweepExpiredMessageTrash } from "./services/storage/message-trash.storage.js";
 
 const isLite = process.env.MARINARA_LITE === "true" || process.env.MARINARA_LITE === "1";
@@ -127,6 +128,9 @@ export async function buildApp(https?: { cert: Buffer; key: Buffer }) {
   app.addHook("onClose", async () => stopFollowingLogLevel());
   // requestId on every line of a request, echoed as x-request-id.
   registerRequestLogging(app, logController);
+
+  // Runs before host validation so its 421 refusals also carry the security headers.
+  app.addHook("onRequest", securityHeadersHook);
 
   // Reject attacker-controlled DNS names before CORS or loopback trust can
   // treat a rebound browser request as same-origin local traffic.
@@ -238,6 +242,15 @@ export async function buildApp(https?: { cert: Buffer; key: Buffer }) {
     app.log.warn(error, "Lorebook folder cleanup did not complete; it will retry next startup");
   }
   try {
+    const removedPresetFolderIds = await startup.phase("migrate.preset-folder-references", () =>
+      createLibraryFoldersStorage(db).pruneMissingPresetItemIds(),
+    );
+    if (removedPresetFolderIds > 0)
+      app.log.info("Removed %d missing preset ID(s) from library folders", removedPresetFolderIds);
+  } catch (error) {
+    app.log.warn(error, "Preset folder cleanup did not complete; it will retry next startup");
+  }
+  try {
     await startup.phase("migrate.tts-audio", () => migrateTtsSettingsToAudioConnection(db));
   } catch (error) {
     app.log.warn(error, "TTS audio-connection migration did not complete; it will retry next startup");
@@ -285,9 +298,6 @@ export async function buildApp(https?: { cert: Buffer; key: Buffer }) {
     runWithGenerationFallbackNotifier(createReplyFallbackNotifier(reply), done);
   });
 
-  // ── Security headers ──
-  app.addHook("onRequest", securityHeadersHook);
-
   // ── IP Allowlist ──
   app.addHook("onRequest", ipAllowlistHook);
 
@@ -297,7 +307,7 @@ export async function buildApp(https?: { cert: Buffer; key: Buffer }) {
   // ── HTTP Basic Auth ──
   app.addHook("onRequest", basicAuthHook);
 
-  // ── CSRF / Origin protection for unsafe API requests ──
+  // ── CSRF / Origin protection for unsafe requests ──
   app.addHook("onRequest", csrfProtectionHook);
 
   // APK-managed Termux installs use a per-install secret so unrelated Android
@@ -310,7 +320,7 @@ export async function buildApp(https?: { cert: Buffer; key: Buffer }) {
   // This caused messages to vanish after generation because the refetch
   // returned a cached response without the newly saved message.
   app.addHook("onSend", async (req, reply, payload) => {
-    if (req.url.startsWith("/api/") && !reply.hasHeader("Cache-Control")) {
+    if (isApiRequest(req) && !reply.hasHeader("Cache-Control")) {
       reply.header("Cache-Control", "no-store");
     }
     return payload;
@@ -393,6 +403,9 @@ export async function buildApp(https?: { cert: Buffer; key: Buffer }) {
 
   // ── Health Check ──
   app.get("/api/health", { config: { rateLimit: HEALTH_RATE_LIMIT } }, async (request) => {
+    // The probe is exempt from sign-in, so a caller who could not open the app itself (this machine,
+    // a trusted network, or a signed-in browser) only learns that the server is up.
+    if (!isBasicAuthSatisfied(request) || !isAndroidLocalAuthSatisfied(request)) return { status: "ok" };
     const commit = getBuildCommit();
     let capabilityPackages: Awaited<ReturnType<typeof capabilityPackageManager.diagnostics>> | null = null;
     try {
@@ -403,15 +416,11 @@ export async function buildApp(https?: { cert: Buffer; key: Buffer }) {
     }
     // A slot service that throws must not take the health endpoint down with it: this
     // response is also the freeze detector's signal and an uptime check's target.
-    // The probe is exempt from sign-in, so local model file names and GPU details only go to callers who could
-    // open the app itself (this machine, a trusted network, or a signed-in browser).
     let sidecars: ReturnType<typeof buildSidecarHealthSection> | null = null;
-    if (isBasicAuthSatisfied(request) && isAndroidLocalAuthSatisfied(request)) {
-      try {
-        sidecars = buildSidecarHealthSection();
-      } catch (error) {
-        logRateLimited("warn", "health.sidecars", error, "Sidecar health diagnostics are unavailable");
-      }
+    try {
+      sidecars = buildSidecarHealthSection();
+    } catch (error) {
+      logRateLimited("warn", "health.sidecars", error, "Sidecar health diagnostics are unavailable");
     }
     return {
       status: "ok",

@@ -938,6 +938,8 @@ export type RulesetCombatantInput =
       live?: unknown;
       /** What is stored in it as the fight starts, for a creature that `stores` (1.508). */
       stored?: RulesetStoredEntry[];
+      /** Its stat block as this fight has it (1.363): a story fight's Legendary Resistance and health. */
+      adjust?: { legendaryResistance?: number; health?: number; calls?: Array<{ action: string; creature: string }> };
     };
 
 /** One thing a combatant may do, with every number already read off the sheet or the stat block.
@@ -2595,6 +2597,10 @@ export interface RulesetCombatant {
   /** What they take for each cell they walk into on these tiles or in these actions' lasting areas
    *  (1.692): Water Susceptibility. */
   harmedEntering?: { terrain: string[]; zones: string[]; harm: RulesetCombatAmount & { damageType?: string } };
+  /** In the air (Capability API 1.354): a flier off the ground, whatever its height. One that only
+   *  flies, or hovers, starts so; one takes off with a step only its flight takes or the "Take off"
+   *  move, and comes down with "Land" or when it can no longer stay up. Its art is its flying art. */
+  airborne?: true;
   /** What is left this turn of each way they move, in CELLS (1.113): every cell moved comes off all
    *  of them, as switching from walking to flying takes what was already walked off the flight.
    *  Absent for somebody who only walks, whose walk is `movementLeft`. */
@@ -3870,6 +3876,8 @@ export type RulesetCombatEvent =
     }
   /** A flier going up or down a level where it stands (1.114), for cells of its allowance. */
   | { type: "flew"; actorId: string; from: number; to: number; cost: number; left: number }
+  /** A flier taking off or landing where it stands (1.354). */
+  | { type: "lift"; actorId: string; up: boolean }
   /** A strike at somebody leaving this combatant's reach. The attack and the damage that follow are
    *  their own events, exactly as they are on a turn. */
   | { type: "opportunity"; actorId: string; targetId: string; label: string; budget: string }

@@ -411,23 +411,23 @@ try {
 // finished text arrives through the rewrite frame instead, so this filter is inert there
 // and no content_replace is expected. That is a property of where the calls sit, so it is
 // pinned where it lives rather than asserted through a scripted rewrite agent.
-const routeSource = readFileSync(
-  new URL("../../packages/server/src/routes/generate.routes.ts", import.meta.url),
+const streamOutputSource = readFileSync(
+  new URL("../../packages/server/src/routes/generate/generation-stream-output.ts", import.meta.url),
   "utf8",
 );
 assert.match(
-  routeSource,
-  /const chanceFiltered = gameChanceStreamFilter\?\.push\(commandFiltered\) \?\? commandFiltered;/,
+  streamOutputSource,
+  /const chanceFiltered = this\.gameChanceFilter\?\.push\(commandFiltered\) \?\? commandFiltered;/,
   "the filter has to sit in the token chain, not beside it",
 );
 assert.match(
-  routeSource,
-  /if \(holdForTextRewrite\) \{\s*\n\s*recordReasoningDuration\(text\);\s*\n\s*\} else \{\s*\n\s*await sendTokenTextChunked\(text\);/,
+  streamOutputSource,
+  /async write\(text: string\) \{\s*\n\s*if \(this\.holdForTextRewrite\) \{\s*\n\s*this\.recordReasoningDuration\(text\);\s*\n\s*\} else \{\s*\n\s*await this\.sendFiltered\(text\);/,
   "a text-rewrite chat streams no tokens at all, which is what makes the filter inert there",
 );
 assert.match(
-  routeSource,
-  /if \(!holdForTextRewrite\) \{\s*\n(?:.*\n)*?\s*const pendingChanceText = gameChanceStreamFilter\?\.flush\(\) \?\? "";/,
+  streamOutputSource,
+  /async flush\(\) \{\s*\n\s*if \(this\.holdForTextRewrite\) return;(?:.*\n)*?\s*const pendingChanceText = this\.gameChanceFilter\?\.flush\(\) \?\? "";/,
   "and the flush is guarded the same way",
 );
 

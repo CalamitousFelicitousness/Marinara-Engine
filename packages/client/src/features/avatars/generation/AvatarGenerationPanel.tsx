@@ -5,12 +5,23 @@
 // The base lane's setup mounts this through AVATAR_GENERATION_PANEL for the chosen character or persona.
 // Results stay in the browser until the user keeps them, so the owner's avatar does not change before that.
 // Faces without a background come from sprite generation (SpriteGenerationModal, as in the character and
-// persona editors): it draws them from the avatar on a plain colour, removes it and saves them as sprites.
+// persona editors): it draws them from the avatar on a plain colour, removes it and saves them as sprites. A saved
+// talking head then shows each new face for its feeling.
 import { Suspense, lazy, useCallback, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
 import { Wand2 } from "lucide-react";
-import { isChatProvider, readImageAppearanceOverride, type Persona } from "@marinara-engine/shared";
+import { toast } from "sonner";
+import {
+  AVATAR_EMOTIONS,
+  AVATAR_EXTRA_FEELINGS,
+  AVATAR_FACE_GROUPS,
+  isChatProvider,
+  readImageAppearanceOverride,
+  type AvatarConfig,
+  type Persona,
+} from "@marinara-engine/shared";
+import { useAvatarModelActions } from "../../../hooks/use-avatar-models";
 import { useConnections } from "../../../hooks/use-connections";
 import {
   spriteKeys,
@@ -25,7 +36,9 @@ import {
   type ImagePromptOverride,
   type ImagePromptReviewItem,
 } from "../../../components/ui/ImagePromptReviewModal";
-import type { AvatarKindSetupPanelProps } from "../contract";
+import { avatarModelKeys, type AvatarKindSetupPanelProps } from "../contract";
+import { errorMessage } from "../renderers/pngtuber/PngtuberSetupPanel";
+import { withGeneratedFaces, type SavedTalkingHeadFace } from "../renderers/pngtuber/pngtuber-layers";
 import { MeshAvatarSection, type ConnectionOption } from "./MeshAvatarSection";
 import { PngtuberVariantsSection } from "./PngtuberVariantsSection";
 import { avatarSourceSprites } from "./SpritePicker";
@@ -35,6 +48,9 @@ type ConnectionRow = ConnectionOption & { defaultForAgents?: boolean | string };
 const SpriteGenerationModal = lazy(() =>
   import("../../../components/ui/SpriteGenerationModal").then((m) => ({ default: m.SpriteGenerationModal })),
 );
+
+/** The six main faces first, so a run cut short already has every face the others fall back to. */
+const TALKING_HEAD_FACES = [...AVATAR_EMOTIONS, ...AVATAR_EXTRA_FEELINGS];
 
 function cardRecord(value: unknown): Record<string, unknown> {
   if (typeof value === "string") {
@@ -73,12 +89,13 @@ function spriteGeneratorSeed(
   };
 }
 
-export function AvatarGenerationPanel({ owner, onChanged }: AvatarKindSetupPanelProps) {
+export function AvatarGenerationPanel({ owner, config, onChanged }: AvatarKindSetupPanelProps) {
   const { t } = useTranslation();
   const { data: spriteList, isLoading } = useCharacterSprites(owner.ownerId);
   const { data: capabilities } = useSpriteCapabilities();
   const { data: connectionList } = useConnections();
   const queryClient = useQueryClient();
+  const { save } = useAvatarModelActions(owner, onChanged);
   const character = useCharacter(owner.ownerType === "character" ? owner.ownerId : null);
   const persona = usePersona(owner.ownerType === "persona" ? owner.ownerId : null);
   const [facesOpen, setFacesOpen] = useState(false);
@@ -123,6 +140,20 @@ export function AvatarGenerationPanel({ owner, onChanged }: AvatarKindSetupPanel
     reviewResolveRef.current = null;
     setReviewItems([]);
   }, []);
+
+  const facesSaved = (saved: readonly SavedTalkingHeadFace[]) => {
+    void queryClient.invalidateQueries({ queryKey: spriteKeys.list(owner.ownerId) });
+    // Without a saved talking head the sprites are the faces, and a face named after a feeling is already its face.
+    // The latest saved setup, in case it changed while the faces were being saved.
+    const latest = queryClient.getQueryData<AvatarConfig | null>(avatarModelKeys.detail(owner));
+    const stored = (latest === undefined ? config : latest)?.kinds.pngtuber;
+    const next = stored && withGeneratedFaces(stored, saved);
+    if (!next || next === stored) return;
+    save.mutate(
+      { kinds: { pngtuber: next } },
+      { onError: (error) => toast.error(t("avatars.pngtuber.saveFailed", { reason: errorMessage(error) })) },
+    );
+  };
 
   const unavailable = capabilities?.imageProcessingAvailable === false;
 
@@ -195,7 +226,8 @@ export function AvatarGenerationPanel({ owner, onChanged }: AvatarKindSetupPanel
           )}
           <PngtuberVariantsSection
             owner={owner}
-            sprites={sprites}
+            config={config}
+            spriteList={spriteList ?? []}
             imageConnectionId={imageConnectionId}
             reviewPrompts={reviewPrompts}
             onChanged={onChanged}
@@ -226,7 +258,12 @@ export function AvatarGenerationPanel({ owner, onChanged }: AvatarKindSetupPanel
             existingExpressionSprites={portraitSprites}
             defaultAppearance={seed.appearance}
             defaultAvatarUrl={seed.avatarUrl}
-            onSpritesGenerated={() => void queryClient.invalidateQueries({ queryKey: spriteKeys.list(owner.ownerId) })}
+            // The six main faces, chosen at first, and the 23 extra feelings that fall back to them, each with open
+            // eyes and a closed mouth for its blink and talk pictures to change.
+            expressionChoices={TALKING_HEAD_FACES}
+            expressionGroups={AVATAR_FACE_GROUPS}
+            talkingHeadFaces
+            onSpritesGenerated={facesSaved}
           />
         ) : null}
       </Suspense>

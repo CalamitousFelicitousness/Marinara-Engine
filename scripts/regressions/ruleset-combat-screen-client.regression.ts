@@ -54,7 +54,9 @@ import {
   rulesetRefusalKey,
   rulesetRefusalText,
   rulesetValueLabel,
+  rulesetFoeFates,
 } from "../../packages/client/src/lib/ruleset-combat-log.js";
+import { rulesetRichLogLines } from "../../packages/client/src/lib/ruleset-combat-log-rich.js";
 import {
   rulesetAimSoFar,
   rulesetAimTake,
@@ -399,6 +401,55 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   );
   assert.equal(line(fiveE, state, { type: "round", round: 1 }), "Round 1.");
   assert.equal(line(fiveE, state, { type: "turn", actorId: "brenna", round: 1 }), "Brenna takes their turn.");
+  {
+    // A new round's line belongs to nobody's turn: the turn before it ended with the round.
+    const [first, second] = state.order;
+    const rich = rulesetRichLogLines(
+      fiveE,
+      viewOf(state, [
+        { type: "turn", actorId: first!, round: 1 },
+        { type: "round", round: 2 },
+        { type: "turn", actorId: second!, round: 2 },
+      ] as DirectedRulesetEvent[]),
+      t as never,
+    );
+    assert.deepEqual(
+      rich.map((one) => [one.round, one.turnOf]),
+      [
+        [1, first],
+        [2, undefined],
+        [2, second],
+      ],
+    );
+  }
+
+  {
+    // The end card's count and its lines read one fate per foe: a fled foe, one sent away and one
+    // down are each named once, and only the felled are counted beaten.
+    const base = viewOf(state);
+    const foe = base.combatants.find((one) => one.side !== "party")!;
+    const foes = (["down", "left", "away"] as const).map((flag, index) => ({
+      ...foe,
+      id: `foe-${flag}`,
+      name: `Foe ${index}`,
+      [flag]: true,
+    }));
+    const ended = rulesetFoeFates({
+      ...base,
+      combatants: [...base.combatants.filter((one) => one.side === "party"), ...foes],
+    });
+    assert.deepEqual(
+      ended.fates.map(([key, list]) => [key, list.map((one) => one.id)]),
+      [
+        ["endDefeated", ["foe-down"]],
+        ["endGone", ["foe-left", "foe-away"]],
+      ],
+    );
+    assert.equal(ended.beaten, 1, "the tally is the felled line's length");
+    assert.equal(ended.total, 3);
+    const fled = rulesetFoeFates({ ...base, combatants: [{ ...foe, left: true }] });
+    assert.equal(fled.beaten, 0, "a fight every foe left alive beats none of them");
+  }
 
   const menu = menuOf(fiveE, state, "brenna");
   const sword = menu.find((option) => option.label === "Longsword")!;
@@ -1062,6 +1113,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ["reformed", say({ type: "reformed", actorId: "brenna", label: "Rod of Lordly Might", form: "Flame tongue" })],
     ["seenThrough", say({ type: "seenThrough", actorId: "brenna", targetId: "lurker", label: "Fire Bolt" })],
     ["storedCast", say({ type: "storedCast", actorId: "brenna", label: "Cure Wounds", targetId: "brenna" })],
+    ["lift", say({ type: "lift", actorId: "lurker", up: true })],
     ["delay", say({ type: "delay", actorId: "corwin", label: "Fireball", outcome: "held", roll: 14, needed: 11 })],
     ["casting", say({ type: "casting", actorId: "corwin", label: "Symbol", outcome: "continued", left: 3 })],
     [

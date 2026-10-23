@@ -16,7 +16,7 @@ import { awaitMariPermissionsModeWrites } from "../../../lib/mari-permissions-wr
 import { describeProfessorMariError } from "../../../lib/professor-mari-errors";
 import { RafThrottle, rafThrottle } from "../../../lib/raf-throttle";
 import { useChatStore } from "../../../stores/chat.store";
-import { useUIStore } from "../../../stores/ui.store";
+import { shownMariAppearancePack, useUIStore } from "../../../stores/ui.store";
 import {
   ProfessorMariRecovery,
   isProfessorMariAbortError,
@@ -104,16 +104,23 @@ export function useMariWorkspaceRun({
 }: MariWorkspaceRunInput) {
   const qc = useQueryClient();
   const failRun = useCallback(
-    (error: unknown, retry: Pick<ProfessorMariRecovery, "text" | "attachments" | "context" | "localMessageId">) => {
+    (
+      error: unknown,
+      retry: Pick<ProfessorMariRecovery, "text" | "attachments" | "context" | "localMessageId">,
+      // The chat this send created or used: the captured `chatId` is still null on a first send.
+      runChatId: string | null = chatId,
+    ) => {
       if (isProfessorMariAbortError(error)) return;
       console.error("[Professor Mari] Run failed", error);
+      void refreshWorkspaceStatus().catch(() => undefined);
       setRecovery({ ...retry, kind: classifyProfessorMariFailure(error), detail: describeProfessorMariError(error) });
       // F15: the server already saved this failure on the message; without a reload the local copy
       // still lacks mariRunError, so an OLDER failure in the same session loses its quiet line until
       // the next full reload.
-      if (chatId) void loadMessages(chatId, { restoreFocus: false });
+      // Returns the reload so the caller can tell whether the server saved the message at all.
+      return runChatId ? loadMessages(runChatId, { restoreFocus: false }).catch(() => undefined) : undefined;
     },
-    [chatId, loadMessages, setRecovery],
+    [chatId, loadMessages, refreshWorkspaceStatus, setRecovery],
   );
 
   const sendWorkspaceMessage = useCallback(
@@ -174,6 +181,7 @@ export function useMariWorkspaceRun({
         document.addEventListener("visibilitychange", recordBackgroundedStream);
         window.addEventListener("pagehide", markPageHidden);
       }
+      const shownPack = shownMariAppearancePack(useUIStore.getState());
       try {
         for await (const event of api.streamEvents(
           "/professor-mari/workspace/prompt",
@@ -185,6 +193,8 @@ export function useMariWorkspaceRun({
             attachments,
             context: context ?? undefined,
             existingUserMessageId,
+            // Flavors her voice only while the dated pack is the one on screen.
+            seasonalPackId: shownPack.season ? shownPack.id : undefined,
           },
           controller.signal,
           // Backgrounding leaves the socket half-open; detach on resume. The

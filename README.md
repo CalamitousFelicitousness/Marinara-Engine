@@ -126,7 +126,7 @@
 
 ## Latest Release
 
-Current stable release: **[v2.5.0](https://github.com/Pasta-Devs/Marinara-Engine/releases/tag/v2.5.0)**.
+Current stable release: **[v2.5.1](https://github.com/Pasta-Devs/Marinara-Engine/releases/tag/v2.5.1)**.
 
 See [CHANGELOG.md](CHANGELOG.md) for detailed release notes. Tagged releases use the `vX.Y.Z` format and are published on the [Releases](https://github.com/Pasta-Devs/Marinara-Engine/releases) page with a Windows installer, Android bootstrap APK, and named versioned source ZIP. Android APKs are Termux bootstrap + WebView shells: they can download Termux from F-Droid, launch Android's installer, start the Termux setup flow after required permission prompts, then open the local Marinara server on the same device. **[Download the latest Android APK directly](https://github.com/Pasta-Devs/Marinara-Engine/releases/latest/download/marinara-engine-android.apk).**
 
@@ -149,7 +149,7 @@ Each guide covers installation, updating, and LAN access for that platform. See 
 
 Upgrading from an older release? See [Upgrading Marinara Engine](docs/UPGRADING.md) for the platform-by-platform upgrade path.
 
-Security defaults are intentionally local-first: loopback access works out of the box, while ordinary LAN and public clients require Basic Auth unless you explicitly opt back in. Direct Tailscale sockets and actual same-host Docker container networks are detected and trusted automatically; unrelated CGNAT, LAN, host-network, and proxy-forwarded traffic still follows normal access control. Set `BYPASS_AUTH_TAILSCALE=true` or `BYPASS_AUTH_DOCKER=true` only when you need the legacy broad compatibility bypass, or `false` when you want matching direct clients to authenticate too. Set `REQUIRE_AUTH_FOR_DOCKER_PROXY=false` only when every upstream client is trusted. `ALLOW_UNAUTHENTICATED_PRIVATE_NETWORK=true` restores unauthenticated access for other trusted private networks; public clients still require `ALLOW_UNAUTHENTICATED_REMOTE=true`. Powerful actions such as backups, bulk import, update apply, sidecar install/download/delete, haptics, and custom tool mutation also require `ADMIN_SECRET`; see [Access Control](docs/CONFIGURATION.md#access-control).
+Security defaults are intentionally local-first: loopback access works out of the box, while ordinary LAN and public clients need a login. Set it in **Settings → Advanced → Access** in a signed-in browser, or type the one-time setup code from the server log on the page that blocks another device. `pnpm reset-login` removes a forgotten app login (in Docker: `docker exec <container> node scripts/reset-login.mjs`). See [Remote Access](docs/REMOTE_ACCESS.md#option-1-login-recommended). Direct Tailscale sockets and actual same-host Docker container networks are detected and trusted automatically, Docker only while no app login, Basic Auth, `IP_ALLOWLIST`, or `TRUSTED_AUTH_PROXY` is set. Other traffic follows normal access control, including visitors that a reverse proxy or tunnel on the same machine forwards to loopback. Powerful actions such as backups, bulk import, update apply, sidecar install/download/delete, haptics, and custom tool mutation also require `ADMIN_SECRET`; see [Access Control](docs/CONFIGURATION.md#access-control) for all access settings.
 
 ---
 
@@ -182,7 +182,7 @@ Agents are optional AI helpers that work alongside your chats: they track the wo
 
 - **Writer Agents** shape the story and clean up the prose: Prose Guardian, Continuity Checker, Narrative Director, Knowledge Retrieval, Knowledge Router, and Card Evolution Auditor.
 - **Tracker Agents** keep track of the world, the cast, and your persona: World State, Expression Engine, Quest Tracker, Background, Character Tracker, Persona Stats, Custom Tracker, Inventory Tracker, Beholder, Memory Nag, World Maps, Quartermaster, and Relationship Tracker.
-- **Misc Agents** add pictures, music, memory, and extras: Illustrator, Storyboard, Music DJ, Long-Term Memory, Lorebook Keeper, Echo Chamber, Combat, CYOA Choices, Immersive HTML, Haptic Feedback, and Calls (audio and video calls in Conversation mode).
+- **Misc Agents** add pictures, music, memory, and extras: Illustrator, Storyboard, Music DJ, Long-Term Memory, Lorebook Keeper, Echo Chamber, Combat, CYOA Choices, Immersive HTML, Haptic Feedback, Calls (audio and video calls in Conversation mode), and 2D Avatars and 3D Avatars (animated characters that talk and change faces with each reply).
 - **Conversation games** let you play against your characters: UNO, Chess, Poker, 8-Ball Pool, Tic-Tac-Toe, and Rock-Paper-Scissors.
 - **Apps** are whole experiences built on your characters, each with its own Home tab: Noodle (a social feed where your characters post), Slurp (a private creator app for your characters), and Gacha Forge (a gacha game built from a world you describe). Modern Life Sim is a preview.
 - **Custom Agents:** build your own with your own prompt, timing, tools, and output type, or copy an official agent and change it. Importing agents made by other people is off by default: turn on **Allow custom Agent imports** in **Settings → Advanced → Danger Zone**, then review the permissions each one asks for.
@@ -199,7 +199,7 @@ Personal Extensions are disabled-by-default drafts authored for you by Professor
 
 ### Connections & Providers
 
-- **Chat models:** OpenAI, Anthropic, Google Gemini, Google Vertex AI, OpenRouter, NanoGPT, Mistral, Cohere, xAI / Grok, Arli AI, Z.AI, and any OpenAI-compatible endpoint, including local servers such as Ollama, LM Studio, and KoboldCpp.
+- **Chat models:** OpenAI, Anthropic, Google Gemini, Google Vertex AI, OpenRouter, NanoGPT, Mistral, Cohere, xAI / Grok, Arli AI, Z.AI, DeepSeek, and any OpenAI-compatible endpoint, including local servers such as Ollama, LM Studio, and KoboldCpp.
 - **Subscription logins:** use your Claude Pro or Max plan, your ChatGPT account (through Codex), or SuperGrok / X Premium+ (through the Grok CLI) instead of an API key. You sign in once on the computer that runs Marinara.
 - **Built-in Local Model:** a small model Marinara downloads and runs on your own machine for helper jobs such as trackers, lorebook search, and call transcription. No API key needed.
 - **Images:** cloud services such as OpenAI, NovelAI, Stability AI, OpenRouter, and fal.ai, your ChatGPT login, free Pollinations and Stable Horde, and local ComfyUI, SD Web UI, SwarmUI, and Draw Things.

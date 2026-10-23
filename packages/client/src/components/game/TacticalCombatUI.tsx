@@ -1,6 +1,6 @@
 import { CombatWeatherSummary } from "./CombatWeatherSummary";
 import { CombatAiControls } from "./CombatAiControls";
-import { CreatureArtFigure, useCreatureFacings, useCreaturePack } from "./CreatureArt";
+import { CreatureArtFigure, findCreatureArtIn, useCreatureFacings, useCreaturePacks } from "./CreatureArt";
 // ──────────────────────────────────────────────
 // Game: Tactical (grid) Combat UI
 //
@@ -78,7 +78,6 @@ import {
   type TacticalCoord,
   type TacticalBattlefieldBrief,
   type TacticalClass,
-  findCreatureArt,
   creatureArtVariant,
   type CreatureFacing,
   type CreaturePack,
@@ -1186,7 +1185,7 @@ export function TacticalCombatUI({
     );
   }, [liveState, animUnits, stagedMove, selectedUnitId, optimisticMove]);
   // Creature art (design-game-creature-art.md): the library's creature pack, and which way each fighter faces.
-  const creaturePack = useCreaturePack();
+  const creaturePacks = useCreaturePacks();
   const facings = useCreatureFacings(
     renderUnits.map(({ unit, x, y }) => ({ id: unit.id, x, y, side: unit.side })),
     String(liveState?.seed ?? ""),
@@ -1219,7 +1218,7 @@ export function TacticalCombatUI({
             onClick={() => {
               launchBattle({ omitBattlefield: true });
             }}
-            className="rounded-lg border border-amber-300/40 bg-amber-300/15 px-4 py-2 text-sm font-semibold text-amber-100 hover:bg-amber-300/25"
+            className="rounded-lg border border-[var(--marinara-app-accent-static)]/40 bg-[var(--marinara-app-accent-static)]/15 px-4 py-2 text-sm font-semibold text-[var(--marinara-app-accent-static)] hover:bg-[var(--marinara-app-accent-static)]/25"
           >
             {localizeUi("ui.game.tacticalcombatui.useGeneratedTerrain")}
           </button>
@@ -1276,6 +1275,7 @@ export function TacticalCombatUI({
       <div
         ref={chromeRef}
         data-game-section="tactical-status"
+        data-chat-window-top-obstacle
         className={cn(GAME_SECTION_CLASS, "z-20 flex shrink-0 flex-col")}
       >
         {/* Top bar: round/phase + controls */}
@@ -1570,7 +1570,7 @@ export function TacticalCombatUI({
               // An enemy with no picture of its own is drawn with its creature art when the pack has it.
               const creature =
                 unit.side === "enemy" && resolveSprite(unit.sprite).kind !== "url"
-                  ? findCreatureArt(creaturePack, { name: unit.name })
+                  ? findCreatureArtIn(creaturePacks, { name: unit.name })
                   : null;
               const isSel = selectedUnitId === unit.id;
               const isTarget = ui.kind === "target" && targetIds.has(unit.id);
@@ -1588,12 +1588,14 @@ export function TacticalCombatUI({
                   unit={unit}
                   hp={hp}
                   art={
-                    creature && creaturePack
+                    creature
                       ? {
-                          pack: creaturePack,
-                          creature,
-                          variant: creatureArtVariant(creature, String(liveState?.seed ?? ""), unit.id),
+                          pack: creature.pack,
+                          creature: creature.creature,
+                          variant: creatureArtVariant(creature.creature, String(liveState?.seed ?? ""), unit.id),
                           facing: facings.get(unit.id) ?? "down",
+                          // A flier is drawn in its flying art (1.352).
+                          flying: unit.movementMode === "fly",
                         }
                       : undefined
                   }
@@ -2160,7 +2162,13 @@ interface UnitTokenProps {
   ariaLabel: string;
   onClick: () => void;
   /** Its creature art, when the creature pack has it (design-game-creature-art.md). */
-  art?: { pack: CreaturePack; creature: CreaturePackCreature; variant: number; facing: CreatureFacing };
+  art?: {
+    pack: CreaturePack;
+    creature: CreaturePackCreature;
+    variant: number;
+    facing: CreatureFacing;
+    flying?: boolean;
+  };
 }
 
 function UnitToken({

@@ -73,7 +73,13 @@ try {
           id: "other",
           name: "Other",
           side: "party",
-          block: { health: 10, defense: 10, initiativeModifier: 0, speed: 30, actions: [] } as unknown as RulesetStatBlock,
+          block: {
+            health: 10,
+            defense: 10,
+            initiativeModifier: 0,
+            speed: 30,
+            actions: [],
+          } as unknown as RulesetStatBlock,
         },
       ],
       board: {

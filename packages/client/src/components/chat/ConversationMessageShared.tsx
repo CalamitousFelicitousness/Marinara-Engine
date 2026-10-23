@@ -14,6 +14,7 @@ import { cn } from "../../lib/utils";
 import { useBackdropDismiss } from "../../hooks/use-backdrop-dismiss";
 import type { ReactionSegmentTarget } from "../../lib/reactions";
 import { applyInlineMarkdown, renderMarkdownBlocks } from "../../lib/markdown";
+import { RemoteImageGate } from "../../lib/remote-image-placeholder";
 import { resolveSelfCardAssets, type ChatGalleryIndex } from "../../lib/card-asset-links";
 import { renderInlineWithCustomEmojis } from "../../lib/custom-emoji-render";
 import { renderWithStickerBlocks } from "../../lib/sticker-render";
@@ -168,7 +169,8 @@ export interface MessageRenderContext {
   onCopy: () => void;
   onTranslate: () => void;
   onStartEdit: () => void;
-  onImageOpen: (url: string, prompt?: string | null) => void;
+  /** `galleryId` is set for generated images saved to the chat gallery, which can be regenerated (#7767). */
+  onImageOpen: (url: string, prompt?: string | null, galleryId?: string | null) => void;
   /** Open the Convo about-me profile popout, anchored to the clicked avatar (undefined when unresolvable). */
   onOpenAboutMe?: (anchor: DOMRect) => void;
   onRemoveAttachment: (index: number) => void;
@@ -430,22 +432,24 @@ export function MessageContent({
   if (IMAGE_URL_RE.test(resolved.trim())) {
     const url = resolved.trim();
     return (
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          onImageOpen(url);
-        }}
-        className="block cursor-zoom-in rounded-lg text-left"
-        title={localizeUi("ui.noodle.noodlepostcard.openImage")}
-      >
-        <img
-          src={url}
-          alt={localizeUi("ui.chat.messagecontent.gif")}
-          className="max-h-48 max-w-full sm:max-w-xs rounded-lg"
-          loading="lazy"
-        />
-      </button>
+      <RemoteImageGate src={url}>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onImageOpen(url);
+          }}
+          className="block cursor-zoom-in rounded-lg text-left"
+          title={localizeUi("ui.noodle.noodlepostcard.openImage")}
+        >
+          <img
+            src={url}
+            alt={localizeUi("ui.chat.messagecontent.gif")}
+            className="max-h-48 max-w-full sm:max-w-xs rounded-lg"
+            loading="lazy"
+          />
+        </button>
+      </RemoteImageGate>
     );
   }
   const compacted = resolved.replace(/\n{3,}/g, "\n\n");
@@ -563,9 +567,11 @@ export function ConversationMessageAttachments({
     name?: string;
     prompt?: string;
     videoId?: string;
+    galleryId?: string;
   }>;
   renderedContent: string;
-  onImageOpen: (url: string, prompt?: string | null) => void;
+  /** `galleryId` is set for generated images saved to the chat gallery, which can be regenerated (#7767). */
+  onImageOpen: (url: string, prompt?: string | null, galleryId?: string | null) => void;
   onRemove: (i: number) => void;
 }) {
   const { t: localizeUi } = useUiTranslation();
@@ -587,7 +593,7 @@ export function ConversationMessageAttachments({
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                onImageOpen(att.url || att.data || "", att.prompt);
+                onImageOpen(att.url || att.data || "", att.prompt, att.galleryId);
               }}
               className="block cursor-zoom-in rounded-lg text-left"
               title={localizeUi("ui.noodle.noodlepostcard.openImage")}
@@ -721,7 +727,7 @@ export function ConversationMessageLightbox({
       </div>
       <button
         onClick={onClose}
-        className="absolute right-4 top-4 rounded-full bg-black/50 p-2 text-white/80 transition-colors hover:bg-black/70 hover:text-white"
+        className="absolute right-[max(1rem,var(--mari-safe-area-inset-right))] top-4 rounded-full bg-black/50 p-2 text-white/80 transition-colors hover:bg-black/70 hover:text-white"
         aria-label={localizeUi("ui.chat.chatimagelightbox.closeImage")}
       >
         <X size="1.125rem" />

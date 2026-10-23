@@ -100,39 +100,50 @@ const generateRouteSource = readSourceText(
   new URL("../../packages/server/src/routes/generate.routes.ts", import.meta.url),
   "utf8",
 );
+// The tool-call rounds live in their own module (#7573).
+const toolRoundsSource = readSourceText(
+  new URL("../../packages/server/src/routes/generate/tool-rounds.ts", import.meta.url),
+  "utf8",
+);
 const useGenerateSource = readSourceText(
   new URL("../../packages/client/src/hooks/use-generate.ts", import.meta.url),
   "utf8",
 );
+// The reasoning clock itself is pinned behaviourally in generation-stream-output.regression.ts;
+// these pin that every reply path routes its text through it.
 assert.match(
   generateRouteSource,
-  /const recordReasoningDuration = \(text: string\) => \{[\s\S]{0,300}text\.trim\(\)[\s\S]{0,300}reasoningDurationMs = Math\.max\(1, Date\.now\(\) - generationStartedAt\);[\s\S]{0,80}\};/u,
-  "The server must capture reasoning duration only when visible output begins",
-);
-assert.match(
-  generateRouteSource,
-  /const writeContentChunked = async \(text: string\) => \{\s*fullResponse \+= text;\s*if \(holdForTextRewrite\) \{\s*recordReasoningDuration\(text\);/u,
+  /const writeContentChunked = async \(text: string\) => \{\s*fullResponse \+= text;\s*await streamOutput\.write\(text\);/u,
   "Buffered text-rewrite responses must still capture reasoning duration",
 );
 assert.match(
-  generateRouteSource,
-  /fullResponse \+= chunk;\s*if \(holdForTextRewrite\) \{\s*recordReasoningDuration\(chunk\);/u,
+  toolRoundsSource,
+  /const onToken = async \(chunk: string\) => \{[\s\S]{0,200}text \+= chunk;[\s\S]{0,200}await stream\.write\(chunk\);/u,
   "Tool-streamed text-rewrite responses must still capture reasoning duration",
 );
 assert.match(
+  toolRoundsSource,
+  /if \(stream\.holdForTextRewrite\) stream\.roleplayCommandFilter\?\.push\(chunk\);\s*await stream\.write\(chunk\);\s*if \(roleplayRollEnabled && stream\.roleplayCommandFilter\?\.rollRequested\)/u,
+  "A held tool-round stream must still feed the command filter so a roll request is detected",
+);
+assert.match(
   generateRouteSource,
-  /const val = result\.value;\s*if \(holdForTextRewrite\) \{\s*recordReasoningDuration\(val\);/u,
+  /fullResponse \+= result\.value;[\s\S]{0,200}await streamOutput\.write\(result\.value\);/u,
   "Generator-streamed text-rewrite responses must still capture reasoning duration",
 );
-const generationInfoPersistenceSource =
-  /const extraUpdate: Record<string, unknown> = \{[\s\S]*?generationInfo: \{[\s\S]*?\n\s*\},\s*\};/u.exec(
-    generateRouteSource,
-  )?.[0];
+const generationInfoPersistenceSource = /const extraUpdate = buildGenerationInfoExtra\(\{[\s\S]*?\n\s*\}\);/u.exec(
+  generateRouteSource,
+)?.[0];
 assert.ok(generationInfoPersistenceSource, "The committed generation metadata block must remain available");
 assert.match(
   generationInfoPersistenceSource,
-  /durationMs,\s*reasoningDurationMs,\s*finishReason: finishReason \?\? null,/u,
+  /durationMs,\s*reasoningDurationMs: streamOutput\.reasoningDurationMs,\s*finishReason,/u,
   "Committed generation metadata must retain the reasoning-only duration",
+);
+assert.match(
+  readSourceText(new URL("../../packages/server/src/routes/generate/saved-message-extra.ts", import.meta.url), "utf8"),
+  /generationInfo: \{[\s\S]*?durationMs,\s*reasoningDurationMs,\s*finishReason: finishReason \?\? null,/u,
+  "The saved generation metadata must store the reasoning-only duration",
 );
 assert.match(
   generateRouteSource,
@@ -141,8 +152,13 @@ assert.match(
 );
 assert.equal(
   (generateRouteSource.match(/moveToActiveAgentRuns\([\s\S]{0,180}lastSavedSwipeIndex/gu) ?? []).length,
-  2,
-  "Both Roleplay reply-release paths must retain the generated message and swipe anchor",
+  1,
+  "All Roleplay reply-release paths share the same generated message and swipe anchor",
+);
+assert.match(
+  generateRouteSource,
+  /const sendAssistantMessageReady = async[\s\S]{0,1300}moveToActiveAgentRuns\(messageId, lastSavedSwipeIndex \?\? readyMessage\.activeSwipeIndex \?\? 0\)/u,
+  "The shared ready event must release its own saved message and swipe, including before agent activation",
 );
 assert.match(
   generateRouteSource,
@@ -928,9 +944,19 @@ assert.match(
   "Roleplay messages should remain editable while ambient rendering stays suspended for background work",
 );
 const earlyTTSReadyIndex = generateRouteSource.indexOf("if (activatedTextRewriteRunAgents.length === 0)");
+const immediateRoleplayTTSReadyIndex = generateRouteSource.indexOf(
+  'if (chatMode === "roleplay" && textRewriteRunAgents.length === 0)',
+);
+const postActivationWaitIndex = generateRouteSource.indexOf(
+  "const inactivePostQuestionIds = await gateActivationQuestions",
+);
 const parallelAgentWaitIndex = generateRouteSource.indexOf("const completedParallelResults = await parallelPromise");
 const textRewritePhaseIndex = generateRouteSource.indexOf("// ── Text rewrite/editing agents:");
 const rewrittenTTSReadyIndex = generateRouteSource.indexOf("if (activatedTextRewriteRunAgents.length > 0)");
+assert.ok(
+  immediateRoleplayTTSReadyIndex > 0 && immediateRoleplayTTSReadyIndex < postActivationWaitIndex,
+  "Roleplay speech without an enabled rewrite agent must also precede unrelated activation model calls",
+);
 assert.ok(
   earlyTTSReadyIndex > 0 && earlyTTSReadyIndex < parallelAgentWaitIndex,
   "TTS-ready text without a rewrite agent must be released before parallel and post-generation agents finish",

@@ -1,8 +1,10 @@
+import { QuickSwitcherModelsToggle } from "../connections/QuickSwitcherModelsToggle";
 // ──────────────────────────────────────────────
 // Quick Switcher Mobile — single chevron opens
 // a tabbed menu with Connections + Personas
 // (with persona group support). Tapping a
-// connection opens its models as a second step.
+// connection switches to it; its arrow opens
+// the connection's models as a second step.
 // ──────────────────────────────────────────────
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import {
@@ -33,7 +35,7 @@ import { cn, getAvatarCropStyle } from "../../lib/utils";
 import { getCharacterTitle, parseCharacterDisplayData } from "../../lib/character-display";
 import { buildCharacterIdentityGroups, type CharacterIdentityChoice } from "../../lib/character-identity-groups";
 import { useTranslation as useUiTranslation } from "react-i18next";
-import { LOCAL_SIDECAR_CONNECTION_ID, type CharacterGroup, type Persona } from "@marinara-engine/shared";
+import type { CharacterGroup, Persona } from "@marinara-engine/shared";
 import type { ProfessorMariContextBudget } from "../../lib/professor-mari-context-budget";
 import { ContextBudgetGauge, ContextBudgetIndicator } from "./ContextBudgetIndicator";
 import { SubscriptionUsageWidget } from "../connections/SubscriptionUsageWidget";
@@ -62,6 +64,7 @@ export function QuickSwitcherMobile({ contextBudget }: { contextBudget?: Profess
   const [expandedCharacterGroups, setExpandedCharacterGroups] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
   /** The connection whose models are shown as the menu's second step; null shows the connection list. */
+  const modelsEnabled = useUIStore((state) => state.quickSwitcherShowModels);
   const [modelsStep, setModelsStep] = useState<string | null>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -133,7 +136,7 @@ export function QuickSwitcherMobile({ contextBudget }: { contextBudget?: Profess
     const parsedGroups: ParsedGroup[] = [];
 
     for (const g of groupRows) {
-      let memberIds: string[] = [];
+      let memberIds: string[];
       try {
         memberIds = JSON.parse(g.personaIds);
       } catch {
@@ -196,17 +199,19 @@ export function QuickSwitcherMobile({ contextBudget }: { contextBudget?: Profess
     (connId: string) => {
       if (!activeChatId) return;
       if (connId !== activeConnectionId) updateChat.mutate({ id: activeChatId, connectionId: connId });
-      // The built-in Local Model has no model list, so it closes the menu as before.
-      if (connId === LOCAL_SIDECAR_CONNECTION_ID) setOpen(false);
-      else setModelsStep(connId);
+      // Tapping a row only switches; the row's arrow opens the model list (picking a model there switches too).
+      setOpen(false);
+      btnRef.current?.focus();
     },
     [activeChatId, activeConnectionId, updateChat],
   );
   useEffect(() => {
-    if (!open) setModelsStep(null);
-  }, [open]);
+    if (!modelsStep || (open && modelsEnabled)) return;
+    setModelsStep(null);
+    if (open && document.activeElement === document.body) btnRef.current?.focus();
+  }, [open, modelsEnabled, modelsStep]);
   const modelsConnection =
-    tab === "connections" && modelsStep && !isRandom
+    modelsEnabled && tab === "connections" && modelsStep && !isRandom
       ? sortedConnections.find(
           (connection) => connection.id === modelsStep && !isLocalSidecarConnectionOption(connection),
         )
@@ -445,6 +450,11 @@ export function QuickSwitcherMobile({ contextBudget }: { contextBudget?: Profess
                 {localizeUi("navigation.topbar.personas")}
               </button>
             </div>
+            {tab === "connections" && !modelsStep && (
+              <div className="flex justify-end border-b border-foreground/10 px-2 py-1">
+                <QuickSwitcherModelsToggle />
+              </div>
+            )}
             {tab === "personas" && (
               <label className="mx-2 mt-2 flex items-center gap-2 rounded-lg border border-foreground/10 bg-foreground/[0.04] px-2.5 py-2 text-foreground/55">
                 <Search size="0.875rem" className="shrink-0" />
@@ -472,7 +482,10 @@ export function QuickSwitcherMobile({ contextBudget }: { contextBudget?: Profess
                   <button
                     type="button"
                     data-model-back
-                    onClick={() => setModelsStep(null)}
+                    onClick={() => {
+                      setModelsStep(null);
+                      btnRef.current?.focus();
+                    }}
                     aria-label={localizeUi("connections.modelPicker.back")}
                     title={localizeUi("connections.modelPicker.back")}
                     className="-my-2 -ml-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-foreground/60 transition-colors hover:bg-foreground/10 hover:text-foreground/85"
@@ -546,16 +559,12 @@ export function QuickSwitcherMobile({ contextBudget }: { contextBudget?: Profess
                         </button>
                       );
                     }
-                    const hasModels = !isLocalSidecarConnectionOption(conn);
+                    const hasModels = modelsEnabled && !isLocalSidecarConnectionOption(conn);
                     return (
-                      <button
+                      <div
                         key={conn.id}
-                        type="button"
-                        data-connection-option={conn.id}
-                        aria-current={isActive ? "true" : undefined}
-                        onClick={() => handleSwitchConnection(conn.id)}
                         className={cn(
-                          "relative flex min-h-11 w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-xs transition-colors hover:bg-foreground/10",
+                          "relative flex min-h-11 w-full items-stretch rounded-lg text-xs",
                           isActive && "bg-foreground/[0.07] text-foreground font-semibold",
                         )}
                       >
@@ -565,21 +574,46 @@ export function QuickSwitcherMobile({ contextBudget }: { contextBudget?: Profess
                             className="pointer-events-none absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-[var(--marinara-chat-chrome-accent)]"
                           />
                         )}
-                        <span className="flex min-w-0 flex-1 flex-col">
-                          <span className="truncate">{conn.name || conn.id}</span>
-                          {isActive && conn.model && (
-                            <span className="truncate text-[0.625rem] font-normal text-foreground/50">
-                              {conn.model}
-                            </span>
+                        <button
+                          type="button"
+                          data-connection-option={conn.id}
+                          aria-current={isActive ? "true" : undefined}
+                          onClick={() => handleSwitchConnection(conn.id)}
+                          className={cn(
+                            "flex min-w-0 flex-1 items-center gap-2 px-3 py-1.5 text-left transition-colors hover:bg-foreground/10",
+                            hasModels ? "rounded-l-lg" : "rounded-lg",
                           )}
-                        </span>
-                        {isActive && (
-                          <Check size="0.75rem" className="shrink-0 text-[var(--marinara-chat-chrome-accent)]" />
-                        )}
+                        >
+                          <span className="flex min-w-0 flex-1 flex-col">
+                            <span className="truncate">{conn.name || conn.id}</span>
+                            {isActive && conn.model && (
+                              <span className="truncate text-[0.625rem] font-normal text-foreground/50">
+                                {conn.model}
+                              </span>
+                            )}
+                          </span>
+                          {isActive && (
+                            <Check size="0.75rem" className="shrink-0 text-[var(--marinara-chat-chrome-accent)]" />
+                          )}
+                        </button>
                         {hasModels && (
-                          <ChevronRight size="0.875rem" className="shrink-0 text-foreground/40" aria-hidden />
+                          <button
+                            type="button"
+                            data-connection-models={conn.id}
+                            onClick={() => setModelsStep(conn.id)}
+                            aria-label={localizeUi("connections.modelPicker.showModels", {
+                              connection: conn.name || conn.id,
+                            })}
+                            title={localizeUi("connections.modelPicker.showModels", {
+                              connection: conn.name || conn.id,
+                            })}
+                            className="relative flex w-12 shrink-0 items-center justify-center rounded-r-lg text-foreground/40 transition-colors hover:bg-foreground/10 hover:text-foreground/70"
+                          >
+                            <span aria-hidden className="absolute inset-y-2.5 left-0 border-l border-foreground/15" />
+                            <ChevronRight size="0.875rem" aria-hidden />
+                          </button>
                         )}
-                      </button>
+                      </div>
                     );
                   })}
                   {sortedConnections.length === 0 && (

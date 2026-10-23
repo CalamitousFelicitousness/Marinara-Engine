@@ -21,7 +21,6 @@ import {
   useCharacter,
   useAllCharacterCatalog,
   useUpdateCharacter,
-  useGenerateCharacterSummary,
   useGenerateCharacterConvoProfile,
   useUploadAvatar,
   useRemoveAvatar,
@@ -62,6 +61,11 @@ import {
   type SpriteInfo,
 } from "../../hooks/use-characters";
 import { ConvoProfileFields } from "./ConvoProfileFields";
+import { CardFieldAlternatives } from "./CardFieldAlternatives";
+import { CardFieldWand } from "./CardFieldWand";
+import { CharacterGreetingWand } from "./CharacterGreetingWand";
+import { useCardFieldGeneration } from "../../hooks/use-card-field-generation";
+import { ONBOARDING_FIELD_COPY } from "./onboarding-field-copy";
 import { CharacterScheduleEditorModal } from "../chat/CharacterScheduleEditorModal";
 import { useUIStore } from "../../stores/ui.store";
 import { lorebookKeys, useLorebook, useUpdateLorebook } from "../../hooks/use-lorebooks";
@@ -137,6 +141,7 @@ import {
   getCardVariableChipNames,
   normalizeAvatarCrop,
   readBakedGreetingImages,
+  hasBakedGreetingImages,
   restoreBakedGreetingImages,
   type WeekSchedule,
 } from "@marinara-engine/shared";
@@ -181,6 +186,10 @@ import {
   withUniqueOnboardingIds,
   validateOnboarding,
   type CharacterCardVersion,
+  normalizeCardFieldAlternatives,
+  unassignCardFieldAlternatives,
+  type CardFieldKey,
+  type CardFieldDraft,
   type CharacterData,
   type CharacterOnboarding,
   type CharacterOnboardingVariable,
@@ -260,46 +269,6 @@ const CHARACTER_ONBOARDING_SECTIONS = [
  * goes through `updateExtension` instead of `updateField`.
  */
 type CardVariableField = "description" | "personality" | "backstory" | "appearance" | "scenario";
-
-/**
- * The onboarding fields reuse the persona editor's Card copy: what the author
- * writes here becomes the player's persona, not part of this character.
- */
-const ONBOARDING_FIELD_COPY: Record<
-  OnboardingPersonaField,
-  { title: string; subtitle: string; placeholder: string; rows: number }
-> = {
-  description: {
-    title: "chat.settings.inlineEditor.fields.description",
-    subtitle: "ui.personas.descriptiontab.yourGeneralDescriptionThisIsSentInEveryPrompt",
-    placeholder: "ui.personas.descriptiontab.describeWhoYouAreYourRoleInTheStory",
-    rows: 12,
-  },
-  personality: {
-    title: "chat.settings.inlineEditor.fields.personality",
-    subtitle: "ui.personas.personacardtab.yourPersonalityTraitsTemperamentAndBehavioralPatterns",
-    placeholder: "ui.personas.personacardtab.calmAndAnalyticalButQuickToActWhenSomeone",
-    rows: 8,
-  },
-  backstory: {
-    title: "chat.settings.inlineEditor.fields.backstory",
-    subtitle: "ui.personas.personacardtab.yourCharacterSHistoryOriginStoryAndFormativeLife",
-    placeholder: "ui.personas.personacardtab.grewUpInAFrontierTownApprenticedUnderA",
-    rows: 12,
-  },
-  appearance: {
-    title: "chat.settings.inlineEditor.fields.appearance",
-    subtitle: "ui.personas.personacardtab.physicalDescriptionHeightBuildHairEyesClothingDistinguishingFeatures",
-    placeholder: "ui.personas.personacardtab.averageHeightDarkHairWornLoosePrefersPracticalClothing",
-    rows: 8,
-  },
-  scenario: {
-    title: "chat.settings.inlineEditor.fields.scenario",
-    subtitle: "ui.personas.personacardtab.yourDefaultSituationOrContextWithinRoleplays",
-    placeholder: "ui.personas.personacardtab.aWanderingAdventurerSeekingAnswersAboutAMysteriousArtifact",
-    rows: 8,
-  },
-};
 
 const ONBOARDING_ISSUE_KEYS: Record<Exclude<OnboardingIssue["code"], "plainIf" | "unknownName">, string> = {
   emptyName: "ui.characters.onboarding.issueEmptyName",
@@ -1002,6 +971,9 @@ export function CharacterEditor() {
         personaVersion: formData.character_version ?? "1.0",
         versioningEnabled: formData.extensions.versioningEnabled !== false,
         creatorNotes: formData.creator_notes ?? "",
+        summary: formData.summary ?? "",
+        mes_example: formData.mes_example ?? "",
+        cardFieldAlternatives: unassignCardFieldAlternatives(formData.extensions.cardFieldAlternatives),
         description: formData.description ?? "",
         personality: formData.personality ?? "",
         scenario: formData.scenario ?? "",
@@ -1114,6 +1086,9 @@ export function CharacterEditor() {
     saveDisabled && "cursor-not-allowed opacity-50",
   );
 
+  const favoriteLabel = formData.extensions.fav
+    ? localizeUi("ui.characters.charactereditor.removeFromFavorites")
+    : localizeUi("ui.characters.charactereditor.addToFavorites");
   const headerActions = (
     <>
       <button
@@ -1143,11 +1118,8 @@ export function CharacterEditor() {
         data-character-favorite-toggle
         data-favorite={formData.extensions.fav ? "true" : "false"}
         className="mari-editor-action mari-editor-action--favorite inline-flex"
-        title={
-          formData.extensions.fav
-            ? localizeUi("ui.characters.charactereditor.removeFromFavorites")
-            : localizeUi("ui.characters.charactereditor.addToFavorites")
-        }
+        title={favoriteLabel}
+        aria-label={favoriteLabel}
       >
         {formData.extensions.fav ? <Star size="1rem" fill="currentColor" /> : <StarOff size="1rem" />}
       </button>
@@ -1157,6 +1129,7 @@ export function CharacterEditor() {
         onClick={() => setExportDialogOpen(true)}
         className={headerActionButtonClass}
         title={localizeUi("ui.characters.charactereditor.exportCharacter")}
+        aria-label={localizeUi("ui.characters.charactereditor.exportCharacter")}
       >
         <svg width="1rem" height="1rem" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path
@@ -1176,6 +1149,7 @@ export function CharacterEditor() {
         disabled={createPersona.isPending || uploadPersonaAvatar.isPending}
         className="mari-editor-action inline-flex disabled:cursor-not-allowed disabled:opacity-50"
         title={localizeUi("ui.characters.charactereditor.importCharacterAsPersona")}
+        aria-label={localizeUi("ui.characters.charactereditor.importCharacterAsPersona")}
       >
         {createPersona.isPending || uploadPersonaAvatar.isPending ? (
           <Loader2 size="1rem" className="animate-spin" />
@@ -1196,6 +1170,7 @@ export function CharacterEditor() {
         }}
         className="mari-editor-action inline-flex"
         title={localizeUi("ui.characters.charactereditor.duplicateCharacter")}
+        aria-label={localizeUi("ui.characters.charactereditor.duplicateCharacter")}
       >
         <Copy size="1rem" />
       </button>
@@ -1205,6 +1180,7 @@ export function CharacterEditor() {
         onClick={handleDelete}
         className="mari-editor-action inline-flex"
         title={localizeUi("ui.characters.charactereditor.deleteCharacter")}
+        aria-label={localizeUi("ui.characters.charactereditor.deleteCharacter")}
       >
         <Trash2 size="1rem" />
       </button>
@@ -1260,13 +1236,15 @@ export function CharacterEditor() {
       />
 
       {/* ── Header ── */}
-      <div className="mari-editor-header mari-editor-header--with-nav">
+      {/* --dense: eleven sections and seven actions make this the most crowded editor header. */}
+      <div className="mari-editor-header mari-editor-header--with-nav mari-editor-header--dense">
         <div className="mari-editor-header-main mari-editor-header-main--identity">
           <button
             type="button"
             onClick={handleClose}
             className="mari-editor-action inline-flex"
             title={localizeUi("ui.noodle.noodlerframe.back")}
+            aria-label={localizeUi("ui.noodle.noodlerframe.back")}
           >
             <ArrowLeft size="1.125rem" />
           </button>
@@ -1321,6 +1299,8 @@ export function CharacterEditor() {
                   if (trimmedName !== formData.name) updateField("name", trimmedName);
                 }}
                 className="mari-editor-title-input"
+                title={formData.name || undefined}
+                aria-label={localizeUi("ui.characters.charactereditor.characterName")}
                 placeholder={localizeUi("ui.characters.charactereditor.characterName")}
                 size={Math.max(1, Math.min(formData.name.length || 14, 80))}
               />
@@ -1550,6 +1530,41 @@ function CharacterCardTab({
   updateFormData: (update: (data: CharacterData) => CharacterData) => void;
 }) {
   const { t: localizeUi } = useUiTranslation();
+  const characterId = useUIStore((state) => state.characterDetailId);
+  const card = {
+    name: formData.name,
+    summary: formData.summary ?? "",
+    description: formData.description,
+    personality: formData.personality,
+    backstory: String(formData.extensions.backstory ?? ""),
+    appearance: String(formData.extensions.appearance ?? ""),
+    scenario: formData.scenario,
+    mes_example: formData.mes_example,
+  };
+  const generation = useCardFieldGeneration("character", characterId, card, (field, text) => {
+    if (field === "backstory" || field === "appearance") updateExtension(field, text);
+    else updateField(field, text);
+  });
+  const wandFor = (field: CardFieldKey) => (
+    <CardFieldWand
+      label={generation.labels[field]}
+      onGenerate={() => void generation.generate(field)}
+      disabled={!characterId || generation.isPending}
+      loading={generation.pendingField === field}
+    />
+  );
+  const alternativesFor = (field: CardFieldKey) => (
+    <CardFieldAlternatives
+      kind="character"
+      entityId={characterId}
+      field={field}
+      label={generation.labels[field]}
+      card={card}
+      alternatives={normalizeCardFieldAlternatives(formData.extensions.cardFieldAlternatives)}
+      onChange={(alternatives) => updateExtension("cardFieldAlternatives", alternatives)}
+    />
+  );
+  const seedHint = localizeUi("ui.cardFields.seedPlaceholder");
   // Read from this tab's own draft: the onboarding block is edited on a sibling
   // tab, and `safeParse` (not `parse`) is what keeps a malformed or null block
   // from throwing during render — the Onboarding tab reads it the same way, so
@@ -1629,13 +1644,24 @@ function CharacterCardTab({
       <EditorSectionJumps items={CHARACTER_CARD_SECTIONS} />
       <div className="space-y-10">
         <EditorSectionAnchor id="character-card-summary">
-          <CharacterSummaryField formData={formData} updateField={updateField} />
+          <CharacterSummaryField
+            formData={formData}
+            updateField={updateField}
+            actions={wandFor("summary")}
+            footer={alternativesFor("summary")}
+          />
         </EditorSectionAnchor>
         <EditorSectionAnchor id="character-card-description">
           <CharacterDescriptionTab
             formData={formData}
             updateField={updateField}
-            descriptionFooter={chipsFor("description")}
+            actions={wandFor("description")}
+            descriptionFooter={
+              <>
+                {chipsFor("description")}
+                {alternativesFor("description")}
+              </>
+            }
             descriptionRef={(element) => {
               fieldRefs.current.description = element;
             }}
@@ -1644,40 +1670,57 @@ function CharacterCardTab({
         </EditorSectionAnchor>
         <EditorSectionAnchor id="character-card-personality">
           <TextareaTab
+            actions={wandFor("personality")}
             title={localizeUi("chat.settings.inlineEditor.fields.personality")}
             subtitle={localizeUi("ui.characters.charactercardtab.aConciseSummaryOfTheCharacterSPersonalityTraits")}
             helpText={CHARACTER_PERSONALITY_HELP}
             value={formData.personality}
             onChange={(v) => updateField("personality", v)}
-            placeholder={localizeUi(
-              "ui.characters.charactercardtab.energeticCuriousAndFiercelyLoyalSpeaksInShortBursts",
-            )}
+            placeholder={
+              localizeUi("ui.characters.charactercardtab.energeticCuriousAndFiercelyLoyalSpeaksInShortBursts") +
+              " " +
+              seedHint
+            }
             rows={8}
             textareaRef={(element) => {
               fieldRefs.current.personality = element;
             }}
             onFocus={() => setActiveField("personality")}
-            footer={chipsFor("personality")}
+            footer={
+              <>
+                {chipsFor("personality")}
+                {alternativesFor("personality")}
+              </>
+            }
           />
         </EditorSectionAnchor>
         <EditorSectionAnchor id="character-card-backstory">
           <TextareaTab
+            actions={wandFor("backstory")}
             title={localizeUi("chat.settings.inlineEditor.fields.backstory")}
             subtitle={localizeUi("ui.characters.charactercardtab.theCharacterSHistoryOriginStoryAndFormativeLife")}
             helpText={CHARACTER_BACKSTORY_HELP}
             value={(formData.extensions.backstory as string) ?? ""}
             onChange={(v) => updateExtension("backstory", v)}
-            placeholder={localizeUi("ui.characters.charactercardtab.bornInASmallVillageOnTheOutskirtsOf")}
+            placeholder={
+              localizeUi("ui.characters.charactercardtab.bornInASmallVillageOnTheOutskirtsOf") + " " + seedHint
+            }
             rows={12}
             textareaRef={(element) => {
               fieldRefs.current.backstory = element;
             }}
             onFocus={() => setActiveField("backstory")}
-            footer={chipsFor("backstory")}
+            footer={
+              <>
+                {chipsFor("backstory")}
+                {alternativesFor("backstory")}
+              </>
+            }
           />
         </EditorSectionAnchor>
         <EditorSectionAnchor id="character-card-appearance">
           <TextareaTab
+            actions={wandFor("appearance")}
             title={localizeUi("chat.settings.inlineEditor.fields.appearance")}
             subtitle={localizeUi(
               "ui.characters.charactercardtab.detailedPhysicalDescriptionHeightBuildHairEyesClothingDistinguishing",
@@ -1685,13 +1728,22 @@ function CharacterCardTab({
             helpText={CHARACTER_APPEARANCE_HELP}
             value={(formData.extensions.appearance as string) ?? ""}
             onChange={(v) => updateExtension("appearance", v)}
-            placeholder={localizeUi("ui.characters.charactercardtab.tallAndWillowyWithSilverStreakedDarkHairWears")}
+            placeholder={
+              localizeUi("ui.characters.charactercardtab.tallAndWillowyWithSilverStreakedDarkHairWears") +
+              " " +
+              seedHint
+            }
             rows={8}
             textareaRef={(element) => {
               fieldRefs.current.appearance = element;
             }}
             onFocus={() => setActiveField("appearance")}
-            footer={chipsFor("appearance")}
+            footer={
+              <>
+                {chipsFor("appearance")}
+                {alternativesFor("appearance")}
+              </>
+            }
           />
           <div className="mt-3">
             <SettingsSwitch
@@ -1722,6 +1774,7 @@ function CharacterCardTab({
         </EditorSectionAnchor>
         <EditorSectionAnchor id="character-card-scenario">
           <TextareaTab
+            actions={wandFor("scenario")}
             title={localizeUi("chat.settings.inlineEditor.fields.scenario")}
             subtitle={localizeUi(
               "ui.characters.charactercardtab.theDefaultSettingOrSituationWhereInteractionsTakePlace",
@@ -1729,17 +1782,31 @@ function CharacterCardTab({
             helpText={CHARACTER_SCENARIO_HELP}
             value={formData.scenario}
             onChange={(v) => updateField("scenario", v)}
-            placeholder={localizeUi("ui.characters.charactercardtab.aBustlingPortCityDuringATradeFestivalThe")}
+            placeholder={
+              localizeUi("ui.characters.charactercardtab.aBustlingPortCityDuringATradeFestivalThe") + " " + seedHint
+            }
             rows={8}
             textareaRef={(element) => {
               fieldRefs.current.scenario = element;
             }}
             onFocus={() => setActiveField("scenario")}
-            footer={chipsFor("scenario")}
+            footer={
+              <>
+                {chipsFor("scenario")}
+                {alternativesFor("scenario")}
+              </>
+            }
           />
         </EditorSectionAnchor>
         <EditorSectionAnchor id="character-card-dialogue">
-          <DialogueTab formData={formData} updateField={updateField} updateFormData={updateFormData} />
+          <DialogueTab
+            formData={formData}
+            updateField={updateField}
+            updateFormData={updateFormData}
+            card={card}
+            exampleActions={wandFor("mes_example")}
+            exampleFooter={alternativesFor("mes_example")}
+          />
         </EditorSectionAnchor>
       </div>
     </div>
@@ -2241,40 +2308,16 @@ function OnboardingTab({
 function CharacterSummaryField({
   formData,
   updateField,
+  actions,
+  footer,
 }: {
   formData: CharacterData;
   updateField: <K extends keyof CharacterData>(key: K, value: CharacterData[K]) => void;
+  actions: ReactNode;
+  footer?: ReactNode;
 }) {
   const { t: localizeUi } = useUiTranslation();
-  const characterId = useUIStore((s) => s.characterDetailId);
-  const generateSummary = useGenerateCharacterSummary();
-  const liveSummaryRef = useRef(formData.summary ?? "");
-  liveSummaryRef.current = formData.summary ?? "";
-  const handleGenerate = async () => {
-    if (!characterId) return;
-    const requestedCharacterId = characterId;
-    const summaryAtRequest = liveSummaryRef.current;
-    try {
-      const result = await generateSummary.mutateAsync({
-        id: requestedCharacterId,
-        draft: {
-          name: formData.name,
-          description: formData.description,
-          personality: formData.personality,
-          scenario: formData.scenario,
-          backstory: formData.extensions?.backstory,
-        },
-      });
-      if (useUIStore.getState().characterDetailId !== requestedCharacterId) return;
-      if (liveSummaryRef.current !== summaryAtRequest) return;
-      updateField("summary", result.summary);
-      toast.success(localizeUi("ui.characters.summary.generated"));
-    } catch (error) {
-      if (useUIStore.getState().characterDetailId !== requestedCharacterId) return;
-      toast.error(error instanceof Error ? error.message : localizeUi("ui.characters.summary.failed"));
-    }
-  };
-
+  const characterId = useUIStore((state) => state.characterDetailId);
   return (
     <div className="mari-editor-panel space-y-3 p-3">
       <div className="flex items-start justify-between gap-3">
@@ -2282,34 +2325,23 @@ function CharacterSummaryField({
           title={localizeUi("ui.characters.summary.label")}
           subtitle={localizeUi("ui.characters.summary.help")}
         />
-        <button
-          type="button"
-          onClick={() => void handleGenerate()}
-          disabled={!characterId || generateSummary.isPending}
-          className="mari-editor-action inline-flex min-h-9 shrink-0 items-center gap-1.5 px-2.5 text-xs disabled:cursor-not-allowed disabled:opacity-50"
-          title={localizeUi("ui.characters.summary.generate")}
-        >
-          {generateSummary.isPending ? <Loader2 size="0.8rem" className="animate-spin" /> : <Wand2 size="0.8rem" />}
-          {generateSummary.isPending
-            ? localizeUi("ui.characters.summary.generating")
-            : localizeUi("ui.characters.summary.generate")}
-        </button>
+        {actions}
       </div>
       <MacroTextarea
         value={formData.summary ?? ""}
-        onChange={(value) => updateField("summary", value.slice(0, 500))}
-        maxLength={500}
+        onChange={(value) => updateField("summary", value)}
         rows={4}
         title={localizeUi("ui.characters.summary.label")}
         ariaLabel={localizeUi("ui.characters.summary.label")}
-        placeholder={localizeUi("ui.characters.summary.placeholder")}
+        placeholder={
+          localizeUi("ui.characters.summary.placeholder") + " " + localizeUi("ui.cardFields.seedPlaceholder")
+        }
         showMarkdownPreview
+        showTokenCount
         selfCharacterId={characterId}
         className="w-full resize-y rounded-xl border border-[var(--border)] bg-[var(--secondary)] p-3 text-sm leading-relaxed outline-none placeholder:text-[var(--muted-foreground)]/40 focus:border-[var(--primary)]/40 focus:ring-1 focus:ring-[var(--primary)]/20"
       />
-      <p className="text-right text-[0.625rem] text-[var(--muted-foreground)]">
-        {String(formData.summary ?? "").length}/500
-      </p>
+      {footer}
     </div>
   );
 }
@@ -2318,6 +2350,7 @@ function CharacterDescriptionTab({
   formData,
   updateField,
   descriptionFooter,
+  actions,
   descriptionRef,
   onDescriptionFocus,
 }: {
@@ -2325,6 +2358,7 @@ function CharacterDescriptionTab({
   updateField: <K extends keyof CharacterData>(key: K, value: CharacterData[K]) => void;
   /** Card-variable chips for this field, empty when the card declares none. */
   descriptionFooter?: ReactNode;
+  actions?: ReactNode;
   descriptionRef?: Ref<HTMLTextAreaElement>;
   onDescriptionFocus?: () => void;
 }) {
@@ -2332,18 +2366,26 @@ function CharacterDescriptionTab({
   const selfCharacterId = useUIStore((s) => s.characterDetailId);
   return (
     <div className="mari-editor-panel space-y-3 p-3">
-      <SectionHeader
-        title={localizeUi("chat.settings.inlineEditor.fields.description")}
-        subtitle={localizeUi("ui.characters.characterdescriptiontab.theCharacterSGeneralDescriptionThisIsSentIn")}
-        helpText={CHARACTER_DESCRIPTION_HELP}
-      />
+      <div className="flex items-start justify-between gap-3">
+        <SectionHeader
+          title={localizeUi("chat.settings.inlineEditor.fields.description")}
+          subtitle={localizeUi("ui.characters.characterdescriptiontab.theCharacterSGeneralDescriptionThisIsSentIn")}
+          helpText={CHARACTER_DESCRIPTION_HELP}
+        />
+        {actions}
+      </div>
       <MacroTextarea
+        ariaLabel={localizeUi("chat.settings.inlineEditor.fields.description")}
         textareaRef={descriptionRef}
         onFocus={onDescriptionFocus}
         showTokenCount
         value={formData.description}
         onChange={(value) => updateField("description", value)}
-        placeholder={localizeUi("ui.characters.characterdescriptiontab.describeWhoThisCharacterIsTheirRoleAndTheir")}
+        placeholder={
+          localizeUi("ui.characters.characterdescriptiontab.describeWhoThisCharacterIsTheirRoleAndTheir") +
+          " " +
+          localizeUi("ui.cardFields.seedPlaceholder")
+        }
         rows={12}
         title={localizeUi("chat.settings.inlineEditor.fields.description")}
         showMarkdownPreview
@@ -2366,6 +2408,7 @@ function TextareaTab({
   textareaRef,
   onFocus,
   footer,
+  actions,
 }: {
   title: string;
   subtitle: string;
@@ -2378,12 +2421,17 @@ function TextareaTab({
   onFocus?: () => void;
   /** Shown under the textarea, inside the panel. */
   footer?: ReactNode;
+  actions?: ReactNode;
 }) {
   const selfCharacterId = useUIStore((s) => s.characterDetailId);
   return (
     <div className="mari-editor-panel space-y-3 p-3">
-      <SectionHeader title={title} subtitle={subtitle} helpText={helpText} />
+      <div className="flex items-start justify-between gap-3">
+        <SectionHeader title={title} subtitle={subtitle} helpText={helpText} />
+        {actions}
+      </div>
       <MacroTextarea
+        ariaLabel={title}
         textareaRef={textareaRef}
         onFocus={onFocus}
         showTokenCount
@@ -2770,7 +2818,7 @@ function MetadataTab({
             <button
               type="button"
               onClick={removeAllTags}
-              className="mari-chrome-accent-surface mari-accent-animated rounded-lg border px-2.5 py-1 text-[0.6875rem] font-medium transition-colors"
+              className="mari-editor-action mari-editor-action--compact px-2.5 py-1 text-[0.6875rem]"
             >
               {localizeUi("ui.characters.metadatatab.removeAll")}
             </button>
@@ -3190,7 +3238,7 @@ function CharacterVersionHistoryPanel({
                     type="button"
                     onClick={() => handleDeleteVersion(version)}
                     disabled={versionMutationPending}
-                    className="mari-editor-action mari-editor-action--compact mari-editor-action--danger inline-flex h-7 w-7 rounded-lg p-0"
+                    className="mari-editor-action mari-editor-action--compact mari-editor-action--accent inline-flex h-7 w-7 rounded-lg p-0"
                     title={localizeUi("ui.characters.characterversionhistorypanel.deleteThisSavedVersion")}
                   >
                     {deleteVersion.isPending && deleteVersion.variables?.versionId === version.id ? (
@@ -3311,8 +3359,14 @@ function DialogueTab({
   formData,
   updateField,
   updateFormData,
+  card,
+  exampleActions,
+  exampleFooter,
 }: {
   formData: CharacterData;
+  card: CardFieldDraft;
+  exampleActions?: ReactNode;
+  exampleFooter?: ReactNode;
   updateField: <K extends keyof CharacterData>(key: K, value: CharacterData[K]) => void;
   updateFormData: (update: (data: CharacterData) => CharacterData) => void;
 }) {
@@ -3321,14 +3375,17 @@ function DialogueTab({
   const greetingKeysRef = useRef<string[]>([]);
   const bakeImages = useBakeCharacterGalleryImages(selfCharacterId ?? "");
   const greetingImageUrls = findGreetingImageUrls(formData);
-  const hasBakedImages = readBakedGreetingImages(formData.extensions).length > 0;
+  const hasBakedImages = hasBakedGreetingImages(formData);
 
   // Only on this explicit click: download the greetings' web images into the
   // gallery, then point the greetings at the saved copies (#7221).
   const saveGreetingImages = async () => {
     const characterId = selfCharacterId;
     if (!characterId || greetingImageUrls.length === 0 || bakeImages.isPending) return;
-    const results = await bakeImages.mutateAsync(greetingImageUrls);
+    const results = await bakeImages.mutateAsync({
+      urls: greetingImageUrls,
+      bakedImages: readBakedGreetingImages(formData.extensions),
+    });
     if (useUIStore.getState().characterDetailId !== characterId) return;
     const saved = results.flatMap((result) => (result.file ? [{ file: result.file, url: result.url }] : []));
     const failed = results.filter((result) => !result.file);
@@ -3446,14 +3503,24 @@ function DialogueTab({
 
       {/* First Message */}
       <div className="block space-y-1.5">
-        <span className="inline-flex items-center gap-1 text-xs font-medium text-[var(--muted-foreground)]">
-          {localizeUi("ui.characters.dialoguetab.firstMessage")}{" "}
-          <HelpTooltip text={localizeUi("ui.characters.dialoguetab.theCharacterSOpeningMessageWhenANewChat")} />
-        </span>
+        <div className="flex items-center justify-between gap-3">
+          <span className="inline-flex items-center gap-1 text-xs font-medium text-[var(--muted-foreground)]">
+            {localizeUi("ui.characters.dialoguetab.firstMessage")}{" "}
+            <HelpTooltip text={localizeUi("ui.characters.dialoguetab.theCharacterSOpeningMessageWhenANewChat")} />
+          </span>
+          <CharacterGreetingWand
+            entityId={selfCharacterId}
+            card={card}
+            value={formData.first_mes}
+            onApply={(text) => updateField("first_mes", text)}
+            label={localizeUi("ui.characters.dialoguetab.firstMessage")}
+          />
+        </div>
         <p className="text-[0.625rem] text-[var(--muted-foreground)]/70">
           {localizeUi("ui.characters.dialoguetab.greetingsRoleplayOnly")}
         </p>
         <MacroTextarea
+          ariaLabel={localizeUi("ui.characters.dialoguetab.firstMessage")}
           showTokenCount
           value={formData.first_mes}
           onChange={(value) => updateField("first_mes", value)}
@@ -3462,7 +3529,11 @@ function DialogueTab({
           showMarkdownPreview
           selfCharacterId={selfCharacterId}
           className="w-full resize-y rounded-xl border border-[var(--border)] bg-[var(--secondary)] p-4 text-sm leading-relaxed outline-none placeholder:text-[var(--muted-foreground)]/40 focus:border-[var(--primary)]/40 focus:ring-1 focus:ring-[var(--primary)]/20"
-          placeholder={localizeUi("ui.characters.dialoguetab.whatIsTheCharacterSFirstMessageWhenA")}
+          placeholder={
+            localizeUi("ui.characters.dialoguetab.whatIsTheCharacterSFirstMessageWhenA") +
+            " " +
+            localizeUi("ui.cardFields.seedPlaceholder")
+          }
         />
       </div>
 
@@ -3479,7 +3550,7 @@ function DialogueTab({
           <button
             type="button"
             onClick={addGreeting}
-            className="mari-editor-action mari-editor-action--accent mari-editor-action--compact inline-flex rounded-lg px-3 py-1 text-xs"
+            className="mari-editor-action mari-editor-action--compact inline-flex rounded-lg px-3 py-1 text-xs"
           >
             {localizeUi("ui.characters.dialoguetab.add")}
           </button>
@@ -3498,6 +3569,13 @@ function DialogueTab({
                 {i + 1}
               </span>
               <div className="flex shrink-0 items-center gap-1">
+                <CharacterGreetingWand
+                  entityId={selfCharacterId}
+                  card={card}
+                  value={g}
+                  onApply={(text) => updateGreeting(i, text)}
+                  label={localizeUi("ui.characters.dialoguetab.alternateGreetingValue1", { value1: i + 1 })}
+                />
                 <button
                   type="button"
                   onClick={() => moveGreeting(i, -1)}
@@ -3523,7 +3601,7 @@ function DialogueTab({
                 <button
                   type="button"
                   onClick={() => removeGreeting(i)}
-                  className={cn(greetingActionButtonClassName, "mari-editor-action--danger")}
+                  className={cn(greetingActionButtonClassName, "mari-editor-action--accent")}
                   aria-label={localizeUi("ui.characters.dialoguetab.removeAlternateGreetingValue1", { value1: i + 1 })}
                   title={localizeUi("ui.characters.dialoguetab.removeGreeting")}
                 >
@@ -3532,6 +3610,7 @@ function DialogueTab({
               </div>
             </div>
             <MacroTextarea
+              ariaLabel={localizeUi("ui.characters.dialoguetab.alternateGreetingValue1", { value1: i + 1 })}
               value={g}
               onChange={(value) => updateGreeting(i, value)}
               rows={3}
@@ -3539,7 +3618,11 @@ function DialogueTab({
               showMarkdownPreview
               selfCharacterId={selfCharacterId}
               className="w-full resize-y rounded-xl border border-[var(--border)] bg-[var(--secondary)] p-3 text-sm outline-none placeholder:text-[var(--muted-foreground)]/40 focus:border-[var(--primary)]/40"
-              placeholder={localizeUi("ui.characters.dialoguetab.greetingValue1", { value1: i + 1 })}
+              placeholder={
+                localizeUi("ui.characters.dialoguetab.greetingValue1", { value1: i + 1 }) +
+                " " +
+                localizeUi("ui.cardFields.seedPlaceholder")
+              }
             />
           </div>
         ))}
@@ -3547,16 +3630,20 @@ function DialogueTab({
 
       {/* Example Messages */}
       <div className="block space-y-1.5">
-        <span className="inline-flex items-center gap-1 text-xs font-medium text-[var(--muted-foreground)]">
-          {localizeUi("chat.settings.inlineEditor.fields.exampleDialogue")}{" "}
-          <HelpTooltip
-            text={localizeUi("ui.characters.dialoguetab.sampleConversationsShowingHowTheCharacterTalksHelpsThe")}
-          />
-        </span>
+        <div className="flex items-start justify-between gap-3">
+          <span className="inline-flex items-center gap-1 text-xs font-medium text-[var(--muted-foreground)]">
+            {localizeUi("chat.settings.inlineEditor.fields.exampleDialogue")}{" "}
+            <HelpTooltip
+              text={localizeUi("ui.characters.dialoguetab.sampleConversationsShowingHowTheCharacterTalksHelpsThe")}
+            />
+          </span>
+          {exampleActions}
+        </div>
         <p className="text-[0.625rem] text-[var(--muted-foreground)]/70">
           {localizeUi("ui.characters.dialoguetab.useStartToSeparateExchangesUseUserAndChar")}
         </p>
         <MacroTextarea
+          ariaLabel={localizeUi("chat.settings.inlineEditor.fields.exampleDialogue")}
           showTokenCount
           value={formData.mes_example}
           onChange={(value) => updateField("mes_example", value)}
@@ -3565,8 +3652,13 @@ function DialogueTab({
           showMarkdownPreview
           selfCharacterId={selfCharacterId}
           className="w-full resize-y rounded-xl border border-[var(--border)] bg-[var(--secondary)] p-4 mari-prompt-font text-xs leading-relaxed outline-none placeholder:text-[var(--muted-foreground)]/40 focus:border-[var(--primary)]/40 focus:ring-1 focus:ring-[var(--primary)]/20"
-          placeholder={localizeUi("ui.characters.dialoguetab.startUserHelloCharWavesExcitedlyHeyThere")}
+          placeholder={
+            localizeUi("ui.characters.dialoguetab.startUserHelloCharWavesExcitedlyHeyThere") +
+            " " +
+            localizeUi("ui.cardFields.seedPlaceholder")
+          }
         />
+        {exampleFooter}
       </div>
     </div>
   );
@@ -3919,7 +4011,7 @@ function CharacterSheetSection({
             <button
               type="button"
               onClick={clearSelection}
-              className="mari-editor-action inline-flex w-full justify-center text-red-500"
+              className="mari-editor-action inline-flex w-full justify-center text-[var(--marinara-app-accent-static)]"
             >
               <X size="0.875rem" />
               {localizeUi("ui.characters.charactersheet.remove")}

@@ -345,6 +345,8 @@ export {
   RULESET_FLY_UP_OPTION,
   RULESET_RELIGHT_OPTION_PREFIX,
   rulesetRelightCells,
+  RULESET_LAND_OPTION,
+  RULESET_TAKE_OFF_OPTION,
   RULESET_FLY_CEILING,
   type RulesetBonusDice,
   type RulesetCombatCost,
@@ -365,4 +367,5 @@ export {
   rulesetEncounterOutcome,
   rulesetEncounterSummary,
   rulesetAtBoardEdge,
+  rulesetAreaGrowth,
 } from "./resolve.js";

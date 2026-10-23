@@ -80,7 +80,7 @@ Marinara also creates an empty settings file at `/app/data/.env` inside the volu
 
 By default, Compose only lets you reach Marinara from the same computer. This is the safe default. If you want to open Marinara on your phone or another computer on your network, you must do two things. Change the port mapping, and turn on a login so strangers cannot reach it.
 
-Basic Auth is a simple username and password prompt that protects the app. Never expose Marinara to your network without it.
+Other devices need a login before they can use Marinara. Never expose Marinara to your network without one.
 
 1. Open `docker-compose.yml` in a text editor.
 
@@ -98,12 +98,10 @@ ports:
   - "${PORT:-7860}:7860"
 ```
 
-4. In the same file, add a login and an admin secret to the `environment:` list. Use your own values:
+4. In the same file, add an admin secret to the `environment:` list. Use your own value:
 
 ```yaml
 environment:
-  - BASIC_AUTH_USER=yourname
-  - BASIC_AUTH_PASS=a-long-random-password
   - ADMIN_SECRET=another-long-random-value
 ```
 
@@ -113,7 +111,9 @@ environment:
 docker compose up -d
 ```
 
-Now other devices on your network can reach Marinara at `http://YOUR_COMPUTER_IP:7860` when `PORT` is unset. If you set `PORT`, replace `7860` with that host port. They must enter the username and password you set. To find good ways to allow only certain devices, and to learn what the admin secret does, read [Remote Access: Basic Auth and IP Allowlist](../REMOTE_ACCESS.md).
+Now other devices on your network can reach Marinara at `http://YOUR_COMPUTER_IP:7860` when `PORT` is unset. If you set `PORT`, replace `7860` with that host port. They see a page that asks for a login. To set it, find the one-time setup code with `docker logs <container> 2>&1 | grep "setup code"`. Type the code on that page with a new username and password. Later, you can change the login in **Settings → Advanced → Access** in a signed-in browser. If you forget the password, run `docker exec <container> node scripts/reset-login.mjs`. This does not change a login from `BASIC_AUTH_USER` and `BASIC_AUTH_PASS`; edit those in the compose file and recreate the container. You can also set a login in the compose file with `BASIC_AUTH_USER` and `BASIC_AUTH_PASS` in the `environment:` list.
+
+On Docker Desktop, OrbStack, and rootless Docker, every device reaches the container from the same address, your own browser included. So once the login is set, this computer asks for it too, and an IP allowlist cannot tell devices apart. Set the login before you remove `127.0.0.1:`. On these runtimes, open Marinara on this computer at `http://localhost:7860` and use **Settings**, or set `BASIC_AUTH_USER` and `BASIC_AUTH_PASS` in the compose file. Never remove `127.0.0.1:` without the login: on these runtimes Marinara cannot tell other devices from this computer. To find good ways to allow only certain devices, and to learn what the admin secret does, read [Remote Access: Login and IP Allowlist](../REMOTE_ACCESS.md).
 
 ## Choosing an image: latest, staging, or lite
 
@@ -142,6 +142,7 @@ The lite image removes the features that need large local files:
 | Local embedding model | No on-device text embeddings. |
 | Memory Recall (semantic search) | Depends on the local embedding model. |
 | Local Whisper voice input | Speech-to-text for Conversation calls is gone. |
+| Avatar mood reader | 2D and 3D Avatars pick faces from a word list instead of the small local emotion model. |
 
 Everything else works the same: chat, roleplay, Game Mode, agents, lorebooks, characters, and connections to remote AI providers. To use any AI features with the lite image, you must connect an external provider (for example OpenRouter, OpenAI, or a self-hosted model). See [Connecting to an AI Provider](../connections/connecting-to-a-provider.md).
 
@@ -155,7 +156,7 @@ Some older lite images can crash on Raspberry Pi 4 and similar ARM computers. Th
 
 ## Updating
 
-Container images do not update themselves. You pull a newer image and restart the container by hand.
+Container images do not update themselves. You pull a newer image and restart the container by hand. Make a backup first, so you can return to exactly where you were. See [Backing Up and Restoring Marinara](../data/backup-and-restore.md).
 
 For Docker Compose, run this one command:
 
@@ -170,6 +171,8 @@ podman compose pull && podman compose up -d
 ```
 
 You can also check your version inside the app. Open **Settings**, go to the **Advanced** tab, and find the **Updates** section. Click **Check for Updates**. For container installs, Marinara detects that it is running in Docker and shows you the release image tag plus the host command to run. It cannot apply the update from inside the browser, so you still run the command above on the host.
+
+To go back to an older release, set its version tag on the `image:` line of `docker-compose.yml`, for example `ghcr.io/pasta-devs/marinara-engine:2.5.0`, then run `docker compose up -d`. Going back to 2.5.0 works and your chats open normally, but 2.5.0 does not know the settings and game data that newer features added. Any chat or connection that 2.5.0 saves loses that data, and updating again does not bring it back. See [Going back to 2.5.0](../UPGRADING.md#going-back-to-250).
 
 ## Podman
 
@@ -240,5 +243,5 @@ For more help, read [Troubleshooting Marinara Engine](../TROUBLESHOOTING.md).
 ## Related guides
 
 - [Server Configuration Reference](../CONFIGURATION.md)
-- [Remote Access: Basic Auth and IP Allowlist](../REMOTE_ACCESS.md)
+- [Remote Access: Login and IP Allowlist](../REMOTE_ACCESS.md)
 - [Troubleshooting Marinara Engine](../TROUBLESHOOTING.md)

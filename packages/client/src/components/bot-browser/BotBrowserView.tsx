@@ -32,6 +32,7 @@ import {
   Unplug,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { unassignCardFieldAlternatives } from "@marinara-engine/shared";
 import { characterKeys } from "../../hooks/use-characters";
 import { lorebookKeys } from "../../hooks/use-lorebooks";
 import { api } from "../../lib/api-client";
@@ -40,12 +41,9 @@ import { useUIStore } from "../../stores/ui.store";
 import { toast } from "sonner";
 import { cn } from "../../lib/utils";
 import { scopeChatMessageCss } from "../../lib/chat-message-css";
-import {
-  containsChatHtml,
-  decodeEncodedChatHtmlTags,
-  extractChatStyleBlocks,
-  sanitizeChatHtml,
-} from "../../lib/chat-html";
+import { handleRemoteImageClick, useRemoteImagePolicy } from "../../lib/remote-image-policy";
+import { HTML_TAG_RE, decodeEncodedChatHtmlTags, extractChatStyleBlocks, sanitizeChatHtml } from "../../lib/chat-html";
+import { protectMarkdownCode } from "../../lib/markdown-code";
 import {
   countLorebookEntries,
   hasLorebookEntries,
@@ -1324,8 +1322,8 @@ const datacatProvider: ProviderConfig = {
     // text-search support, so any user query forces the recent-public path.
     const useFresh = p.sort === "fresh" && tagIds.length === 0 && trimmedQuery.length === 0;
 
-    let list: any[] = [];
-    let totalCount = 0;
+    let list: any[];
+    let totalCount: number;
 
     if (useFresh) {
       const params = new URLSearchParams({
@@ -2068,6 +2066,9 @@ export function BotBrowserView() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name: personaName,
+        summary: typeof cardData.summary === "string" ? cardData.summary : "",
+        mes_example: typeof cardData.mes_example === "string" ? cardData.mes_example : "",
+        cardFieldAlternatives: unassignCardFieldAlternatives(extensions.cardFieldAlternatives),
         description: optionalString(cardData.description) ?? optionalString(cardData.personality) ?? "",
         personality: optionalString(cardData.personality) ?? "",
         scenario: optionalString(cardData.scenario) ?? "",
@@ -3921,14 +3922,17 @@ crc32.table = null as Uint32Array | null;
 function DefSection({ title, content, allowHtml = false }: { title: string; content: string; allowHtml?: boolean }) {
   const sectionId = useId();
   const htmlScopeClass = `mari-bot-notes-${sectionId.replace(/[^a-zA-Z0-9_-]/g, "") || "content"}`;
+  const remoteImages = useRemoteImagePolicy();
   const renderedHtml = useMemo(() => {
-    if (!allowHtml || !containsChatHtml(content)) return null;
-    const decoded = decodeEncodedChatHtmlTags(content);
+    if (!allowHtml) return null;
+    const code = protectMarkdownCode(content);
+    const decoded = decodeEncodedChatHtmlTags(code.text);
+    if (!HTML_TAG_RE.test(decoded)) return null;
     const { html, css } = extractChatStyleBlocks(decoded);
-    const clean = sanitizeChatHtml(html, { allowStyle: true, allowLinks: false });
-    const scopedCss = scopeChatMessageCss(css, `.${htmlScopeClass}`);
+    const clean = sanitizeChatHtml(code.restoreHtml(html), { allowStyle: true, allowLinks: false, remoteImages });
+    const scopedCss = scopeChatMessageCss(css, `.${htmlScopeClass}`, { remoteUrls: remoteImages.loadAll });
     return scopedCss ? `<style>${scopedCss}</style>${clean}` : clean;
-  }, [allowHtml, content, htmlScopeClass]);
+  }, [allowHtml, content, htmlScopeClass, remoteImages]);
 
   return (
     <div>
@@ -3940,6 +3944,7 @@ function DefSection({ title, content, allowHtml = false }: { title: string; cont
             "relative max-h-40 !overflow-x-hidden overflow-y-auto whitespace-pre-wrap !contain-paint rounded-lg bg-[var(--secondary)] p-2.5 text-xs leading-relaxed text-[var(--muted-foreground)]",
             htmlScopeClass,
           )}
+          onClick={handleRemoteImageClick}
           dangerouslySetInnerHTML={{ __html: renderedHtml }}
         />
       ) : (

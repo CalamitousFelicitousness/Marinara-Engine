@@ -10,6 +10,8 @@ import {
   RULESET_MOUNT_OPTION_PREFIX,
   RULESET_FLY_DOWN_OPTION,
   RULESET_FLY_UP_OPTION,
+  RULESET_LAND_OPTION,
+  RULESET_TAKE_OFF_OPTION,
   RULESET_MOVE_OPTION,
   RULESET_CAREFUL_OPTION,
   RULESET_ZONE_CHECK_OPTION_PREFIX,
@@ -46,13 +48,14 @@ export const RULESET_MENU_KINDS = [
 
 export type RulesetMenuKind = (typeof RULESET_MENU_KINDS)[number];
 
-/** A half-made choice: deciding what pays for it, where it walks, who it is pointed at, or where
- *  the shape lands. The board holds this while it draws it, so the menu and the board are never
- *  two steps apart. */
-/** The Engine's own word for each of the two moves a board adds, keyed by the resolver's own id.
+/** The Engine's own word for each move a board adds (walking, standing, flying up or down, taking off
+ *  and landing), keyed by the resolver's own id.
  *  A key segment is built from the WORD and never from the id, which may carry punctuation a
  *  localization key may not. */
-const MOVE_OPTION_WORDS: Record<string, "walk" | "walkCarefully" | "stand" | "climbOut" | "flyUp" | "flyDown"> = {
+const MOVE_OPTION_WORDS: Record<
+  string,
+  "walk" | "walkCarefully" | "stand" | "climbOut" | "flyUp" | "flyDown" | "takeOff" | "land"
+> = {
   [RULESET_MOVE_OPTION]: "walk",
   // A careful walk over caltrops (1.673).
   [RULESET_CAREFUL_OPTION]: "walkCarefully",
@@ -60,8 +63,13 @@ const MOVE_OPTION_WORDS: Record<string, "walk" | "walkCarefully" | "stand" | "cl
   [RULESET_CLIMB_OUT_OPTION]: "climbOut",
   [RULESET_FLY_UP_OPTION]: "flyUp",
   [RULESET_FLY_DOWN_OPTION]: "flyDown",
+  [RULESET_TAKE_OFF_OPTION]: "takeOff",
+  [RULESET_LAND_OPTION]: "land",
 };
 
+/** A half-made choice: deciding what pays for it, where it walks, who it is pointed at, or where
+ *  the shape lands. The board holds this while it draws it, so the menu and the board are never
+ *  two steps apart. */
 export interface RulesetMenuStep {
   stage:
     | "variant"
@@ -512,7 +520,13 @@ export function rulesetOptionNeedsTargets(option: DirectedRulesetOption): boolea
  *  every foe out of reach): the menu folds these into one muted line rather than a row each. */
 export function rulesetOptionOutOfReach(option: DirectedRulesetOption): boolean {
   if (option.targets.side === "self" || option.targets.count === 0) return false;
-  return option.targetIds.length === 0 && !(option.walls?.length ?? 0) && !(option.aim?.length ?? 0);
+  return (
+    option.targetIds.length === 0 &&
+    !(option.walls?.length ?? 0) &&
+    !(option.aim?.length ?? 0) &&
+    !(option.dispels?.length ?? 0) &&
+    !(option.cuts?.length ?? 0)
+  );
 }
 
 /** The targets a player has picked after clicking one more. Only ids the option itself lists can

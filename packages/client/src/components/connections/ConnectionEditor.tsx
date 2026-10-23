@@ -6,6 +6,8 @@ import {
   defaultDecisionStateTokens,
   defaultDecisionTimeoutMs,
   resolveDecisionConnectionTimeoutMs,
+  resolveTtsRequestTimeoutMs,
+  TTS_REQUEST_TIMEOUT_MS,
   type DecisionSource,
   isChatProvider,
 } from "@marinara-engine/shared";
@@ -98,6 +100,7 @@ import {
 } from "../ui/GenerationParametersEditor";
 import {
   PROVIDERS,
+  createConnectionSchema,
   LOCAL_SIDECAR_CONNECTION_ID,
   MODEL_LISTS,
   IMAGE_GENERATION_SOURCES,
@@ -396,8 +399,12 @@ export function ConnectionEditor() {
   const [localDecisionTimeoutMs, setLocalDecisionTimeoutMs] = useState<number>(DECISION_TIMEOUT_MS.systemOne);
   const [localAudioSource, setLocalAudioSource] = useState("elevenlabs");
   const [localAudioVoice, setLocalAudioVoice] = useState("");
+  const [localAudioTimeoutMs, setLocalAudioTimeoutMs] = useState<number>(TTS_REQUEST_TIMEOUT_MS.default);
   const [localAudioSoundEffects, setLocalAudioSoundEffects] = useState(false);
   const [localAudioMusic, setLocalAudioMusic] = useState(false);
+  const [localAudioMusicEndpoint, setLocalAudioMusicEndpoint] = useState("");
+  const [localAudioSoundEffectsEndpoint, setLocalAudioSoundEffectsEndpoint] = useState("");
+  const [localAudioGenerationFormat, setLocalAudioGenerationFormat] = useState<"binary" | "chat_completions">("binary");
   const [localMaxTokensOverride, setLocalMaxTokensOverride] = useState<number | null>(null);
   const [localClaudeFastMode, setLocalClaudeFastMode] = useState(false);
   const [localTreatAsLocalEndpoint, setLocalTreatAsLocalEndpoint] = useState(false);
@@ -537,8 +544,14 @@ export function ConnectionEditor() {
     setLocalDecisionTimeoutMs(resolveDecisionConnectionTimeoutMs(c.decisionTimeoutMs, c.decisionSource as string));
     setLocalAudioSource((c.audioSource as string) || "elevenlabs");
     setLocalAudioVoice((c.audioVoice as string) ?? "");
+    setLocalAudioTimeoutMs(resolveTtsRequestTimeoutMs(c.audioTimeoutMs));
     setLocalAudioSoundEffects(c.audioSoundEffects === "true" || c.audioSoundEffects === true);
     setLocalAudioMusic(c.audioMusic === "true" || c.audioMusic === true);
+    setLocalAudioMusicEndpoint(typeof c.audioMusicEndpoint === "string" ? c.audioMusicEndpoint : "");
+    setLocalAudioSoundEffectsEndpoint(
+      typeof c.audioSoundEffectsEndpoint === "string" ? c.audioSoundEffectsEndpoint : "",
+    );
+    setLocalAudioGenerationFormat(c.audioGenerationFormat === "chat_completions" ? "chat_completions" : "binary");
     setLocalMaxTokensOverride(typeof c.maxTokensOverride === "number" ? (c.maxTokensOverride as number) : null);
     setLocalClaudeFastMode(c.claudeFastMode === "true" || c.claudeFastMode === true);
     setLocalTreatAsLocalEndpoint(c.treatAsLocalEndpoint === "true" || c.treatAsLocalEndpoint === true);
@@ -783,9 +796,9 @@ export function ConnectionEditor() {
   const catalogModelCapabilities = useModelParameterCapabilities(
     connectionDetailId ? { id: connectionDetailId, provider: localProvider, model: localModel } : null,
   );
-  const selectedModelCapabilities =
-    (selectedModelInfo && "capabilities" in selectedModelInfo ? (selectedModelInfo.capabilities ?? null) : null) ??
-    catalogModelCapabilities;
+  const embeddedModelCapabilities =
+    selectedModelInfo && "capabilities" in selectedModelInfo ? selectedModelInfo.capabilities : undefined;
+  const selectedModelCapabilities = embeddedModelCapabilities ?? catalogModelCapabilities;
 
   // Clear remote models when provider changes
   useEffect(() => {
@@ -837,6 +850,16 @@ export function ConnectionEditor() {
     if (baseUrlValidation.error) {
       setSaveError(baseUrlValidation.error);
       throw new Error(baseUrlValidation.error);
+    }
+    if (
+      localProvider === "audio" &&
+      localAudioSource === "openai" &&
+      (!createConnectionSchema.shape.audioMusicEndpoint.safeParse(localAudioMusicEndpoint).success ||
+        !createConnectionSchema.shape.audioSoundEffectsEndpoint.safeParse(localAudioSoundEffectsEndpoint).success)
+    ) {
+      const message = t("connections.gameAudio.invalidEndpoint");
+      setSaveError(message);
+      throw new Error(message);
     }
     const supportsDirectEmbeddings = providerSupportsDirectEmbeddingConfig(localProvider);
     if (supportsDirectEmbeddings && embeddingBaseUrlValidation.error) {
@@ -904,9 +927,17 @@ export function ConnectionEditor() {
           : null,
       audioSource: isAudioProvider ? localAudioSource || null : null,
       audioVoice: isAudioProvider ? localAudioVoice || null : null,
-      // Only ElevenLabs can generate game sound effects / music today.
-      audioSoundEffects: isAudioProvider && localAudioSource === "elevenlabs" ? localAudioSoundEffects : false,
-      audioMusic: isAudioProvider && localAudioSource === "elevenlabs" ? localAudioMusic : false,
+      // The default is stored as null, like the Decision time limit.
+      audioTimeoutMs:
+        isAudioProvider && localAudioTimeoutMs !== TTS_REQUEST_TIMEOUT_MS.default ? localAudioTimeoutMs : null,
+      audioSoundEffects:
+        isAudioProvider && ["elevenlabs", "openai"].includes(localAudioSource) ? localAudioSoundEffects : false,
+      audioMusic: isAudioProvider && ["elevenlabs", "openai"].includes(localAudioSource) ? localAudioMusic : false,
+      audioMusicEndpoint:
+        isAudioProvider && localAudioSource === "openai" ? localAudioMusicEndpoint.trim() || null : null,
+      audioSoundEffectsEndpoint:
+        isAudioProvider && localAudioSource === "openai" ? localAudioSoundEffectsEndpoint.trim() || null : null,
+      audioGenerationFormat: isAudioProvider && localAudioSource === "openai" ? localAudioGenerationFormat : "binary",
     };
     // Only send API key if user typed a new one
     if (isLocalAuthProvider) {
@@ -992,6 +1023,7 @@ export function ConnectionEditor() {
       throw err instanceof Error ? err : new Error(message);
     }
   }, [
+    t,
     connectionDetailId,
     localName,
     localProvider,
@@ -1038,8 +1070,12 @@ export function ConnectionEditor() {
     localDecisionTimeoutMs,
     localAudioSource,
     localAudioVoice,
+    localAudioTimeoutMs,
     localAudioSoundEffects,
     localAudioMusic,
+    localAudioMusicEndpoint,
+    localAudioSoundEffectsEndpoint,
+    localAudioGenerationFormat,
     selectedImageService,
     swarmUiWorkflowError,
     selectedImageDefaultsService,
@@ -1156,8 +1192,16 @@ export function ConnectionEditor() {
       videoService,
       audioSource: isAudioProvider ? localAudioSource || null : null,
       audioVoice: isAudioProvider ? localAudioVoice || null : null,
-      audioSoundEffects: isAudioProvider && localAudioSource === "elevenlabs" ? localAudioSoundEffects : false,
-      audioMusic: isAudioProvider && localAudioSource === "elevenlabs" ? localAudioMusic : false,
+      audioTimeoutMs:
+        isAudioProvider && localAudioTimeoutMs !== TTS_REQUEST_TIMEOUT_MS.default ? localAudioTimeoutMs : null,
+      audioSoundEffects:
+        isAudioProvider && ["elevenlabs", "openai"].includes(localAudioSource) ? localAudioSoundEffects : false,
+      audioMusic: isAudioProvider && ["elevenlabs", "openai"].includes(localAudioSource) ? localAudioMusic : false,
+      audioMusicEndpoint:
+        isAudioProvider && localAudioSource === "openai" ? localAudioMusicEndpoint.trim() || null : null,
+      audioSoundEffectsEndpoint:
+        isAudioProvider && localAudioSource === "openai" ? localAudioSoundEffectsEndpoint.trim() || null : null,
+      audioGenerationFormat: isAudioProvider && localAudioSource === "openai" ? localAudioGenerationFormat : "binary",
       imageEndpointId:
         isImageProvider && selectedImageService === "runpod_comfyui" ? localImageEndpointId || null : null,
       imagePromptInstructions: isImageProvider ? normalizeImagePromptInstructions(localImagePromptInstructions) : null,
@@ -1224,8 +1268,12 @@ export function ConnectionEditor() {
     localizeUi,
     localAudioSource,
     localAudioVoice,
+    localAudioTimeoutMs,
     localAudioSoundEffects,
     localAudioMusic,
+    localAudioMusicEndpoint,
+    localAudioSoundEffectsEndpoint,
+    localAudioGenerationFormat,
   ]);
 
   const handleTestConnection = useCallback(async () => {
@@ -1707,7 +1755,11 @@ export function ConnectionEditor() {
         <div className="flex items-center gap-2 bg-red-500/10 px-4 py-2 text-xs text-red-400">
           <AlertCircle size="0.8125rem" />
           <span className="flex-1">{saveError}</span>
-          <button onClick={() => setSaveError(null)} className="rounded-lg px-2 py-0.5 hover:bg-red-500/20">
+          <button
+            onClick={() => setSaveError(null)}
+            aria-label={localizeUi("editor.save.dismissError")}
+            className="rounded-lg px-2 py-0.5 text-[var(--marinara-app-accent-static)] hover:bg-[var(--marinara-app-accent-static)]/20"
+          >
             <X size="0.75rem" />
           </button>
         </div>
@@ -2546,8 +2598,79 @@ export function ConnectionEditor() {
                   {localizeUi("ui.connections.connectioneditor.voiceIdOrNameUsedWhenNothingMoreSpecific")}
                 </p>
               </label>
-              {localAudioSource === "elevenlabs" ? (
+              <label className="block space-y-1.5">
+                <span className="block text-xs font-medium text-[var(--muted-foreground)]">
+                  {t("tts.requestTimeout")}
+                </span>
+                <DraftNumberInput
+                  ariaLabel={t("tts.requestTimeout")}
+                  min={TTS_REQUEST_TIMEOUT_MS.min / 1000}
+                  max={TTS_REQUEST_TIMEOUT_MS.max / 1000}
+                  value={localAudioTimeoutMs / 1000}
+                  onCommit={(seconds) => {
+                    setLocalAudioTimeoutMs(seconds * 1000);
+                    markDirty();
+                  }}
+                  className="w-32 rounded-xl bg-[var(--secondary)] px-3 py-2.5 text-sm ring-1 ring-[var(--border)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
+                />
+                <p className="text-[0.625rem] leading-relaxed text-[var(--muted-foreground)]">
+                  {t("tts.requestTimeoutHelp")}
+                </p>
+              </label>
+              {["elevenlabs", "openai"].includes(localAudioSource) ? (
                 <div className="space-y-2">
+                  {localAudioSource === "openai" && (
+                    <div className="space-y-3">
+                      <p className="text-xs text-[var(--muted-foreground)]">{t("connections.gameAudio.help")}</p>
+                      <label className="block space-y-1.5">
+                        <span className="text-xs">{t("connections.gameAudio.format")}</span>
+                        <select
+                          value={localAudioGenerationFormat}
+                          onChange={(event) => {
+                            setLocalAudioGenerationFormat(event.target.value as "binary" | "chat_completions");
+                            markDirty();
+                          }}
+                          className="w-full rounded-xl bg-[var(--secondary)] px-3 py-2.5 text-sm ring-1 ring-[var(--border)]"
+                        >
+                          <option value="binary">{t("connections.gameAudio.binary")}</option>
+                          <option value="chat_completions">{t("connections.gameAudio.chatCompletions")}</option>
+                        </select>
+                      </label>
+                      {(
+                        [
+                          ["music", localAudioMusicEndpoint, setLocalAudioMusicEndpoint],
+                          ["sfx", localAudioSoundEffectsEndpoint, setLocalAudioSoundEffectsEndpoint],
+                        ] as const
+                      ).map(([kind, value, setValue]) => (
+                        <label key={kind} className="block space-y-1.5">
+                          <span className="text-xs">
+                            {t(
+                              kind === "music"
+                                ? "connections.gameAudio.musicEndpoint"
+                                : "connections.gameAudio.sfxEndpoint",
+                            )}
+                          </span>
+                          <input
+                            value={value}
+                            onChange={(event) => {
+                              setValue(event.target.value);
+                              markDirty();
+                            }}
+                            placeholder={t("connections.gameAudio.endpointExample", {
+                              path:
+                                localAudioGenerationFormat === "chat_completions"
+                                  ? "chat/completions"
+                                  : "audio/generations",
+                            })}
+                            className="w-full rounded-xl bg-[var(--secondary)] px-3 py-2.5 text-sm ring-1 ring-[var(--border)]"
+                          />
+                        </label>
+                      ))}
+                      <p className="text-xs text-[var(--muted-foreground)]">
+                        {t("connections.gameAudio.endpointHelp")}
+                      </p>
+                    </div>
+                  )}
                   <SettingsSwitch
                     label={localizeUi("ui.connections.connectioneditor.gameSoundEffects")}
                     description={localizeUi(
@@ -2573,9 +2696,7 @@ export function ConnectionEditor() {
                 </div>
               ) : (
                 <p className="rounded-xl bg-[var(--secondary)]/40 px-3 py-2 text-[0.625rem] text-[var(--muted-foreground)] ring-1 ring-[var(--border)]">
-                  {localizeUi(
-                    "ui.connections.connectioneditor.soundEffectAndMusicGenerationCurrentlyRequiresTheElevenlabs",
-                  )}
+                  {t("connections.gameAudio.unavailable")}
                 </p>
               )}
             </FieldGroup>
@@ -2871,7 +2992,7 @@ export function ConnectionEditor() {
                   {comfyWorkflowValidation.charPos !== null ? (
                     <button
                       onClick={handleJumpToJsonError}
-                      className="underline decoration-dotted cursor-pointer text-left hover:text-red-300"
+                      className="underline decoration-dotted cursor-pointer text-left text-[var(--marinara-app-accent-static)] hover:text-[var(--marinara-app-accent-static)]/80"
                     >
                       {comfyWorkflowValidation.label}
                     </button>
@@ -3728,7 +3849,7 @@ export function ConnectionEditor() {
                 <button
                   onClick={handleDiagnoseClaudeSubscription}
                   disabled={diagnoseClaudeSubscription.isPending || !localModel}
-                  className="flex items-center gap-1.5 rounded-xl bg-amber-400/10 px-4 py-2.5 text-xs font-medium text-amber-400 ring-1 ring-amber-400/20 transition-all hover:bg-amber-400/20 active:scale-[0.98] disabled:opacity-50"
+                  className="flex items-center gap-1.5 rounded-xl bg-[var(--marinara-app-accent-static)]/10 px-4 py-2.5 text-xs font-medium text-[var(--marinara-app-accent-static)] ring-1 ring-[var(--marinara-app-accent-static)]/20 transition-all hover:bg-[var(--marinara-app-accent-static)]/20 active:scale-[0.98] disabled:opacity-50"
                   title={localizeUi(
                     "ui.connections.connectioneditor.verifyWhichModelTheSdkActuallyBillsAgainstCatches",
                   )}

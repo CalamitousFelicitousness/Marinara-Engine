@@ -151,6 +151,9 @@ const MAX_LIVE_NUMBER = 1_000_000;
 const MAX_OP_AMOUNT = 100_000;
 
 const liveNumber = z.number().int().min(-MAX_LIVE_NUMBER).max(MAX_LIVE_NUMBER);
+// Built once: reading a stored live state runs for every combatant on every read.
+const liveTextValue = z.string().max(MAX_LIVE_TEXT_LENGTH);
+const liveStateValue = z.string().max(MAX_LIVE_STATE_VALUE_LENGTH);
 
 export const rulesetLivePoolValueSchema = z
   .object({
@@ -223,9 +226,9 @@ export const rulesetLiveStateSchema = z
     pools: boundedRecord(rulesetLivePoolValueSchema, MAX_LIVE_POOLS, "pools").optional(),
     tracks: boundedRecord(liveNumber, MAX_LIVE_TRACKS, "tracks").optional(),
     wounds: boundedRecord(rulesetLiveWoundsSchema, MAX_LIVE_TRACKS, "wound tracks").optional(),
-    text: boundedRecord(z.string().max(MAX_LIVE_TEXT_LENGTH), MAX_LIVE_TEXTS, "text fields").optional(),
+    text: boundedRecord(liveTextValue, MAX_LIVE_TEXTS, "text fields").optional(),
     conditions: z.array(z.string().max(MAX_LIVE_CONDITION_LENGTH)).max(MAX_LIVE_CONDITIONS).optional(),
-    states: boundedRecord(z.string().max(MAX_LIVE_STATE_VALUE_LENGTH), MAX_LIVE_STATES, "states").optional(),
+    states: boundedRecord(liveStateValue, MAX_LIVE_STATES, "states").optional(),
     lowered: boundedRecord(liveNumber, MAX_LIVE_CONDITIONS, "lowered maximums").optional(),
     raised: boundedRecord(liveNumber.min(0), MAX_LIVE_CONDITIONS, "raised maximums").optional(),
     /** Abilities raised for good, by ability id (1.500): onto the score, and onto its most. */
@@ -781,7 +784,7 @@ function readStoredLiveStateAsIs(stored: unknown): RulesetLiveState {
   if (tracks) state.tracks = tracks;
   const wounds = keepValid(source.wounds, rulesetLiveWoundsSchema, MAX_LIVE_TRACKS);
   if (wounds) state.wounds = wounds;
-  const text = keepValid(source.text, z.string().max(MAX_LIVE_TEXT_LENGTH), MAX_LIVE_TEXTS);
+  const text = keepValid(source.text, liveTextValue, MAX_LIVE_TEXTS);
   if (text) state.text = text;
   if (Array.isArray(source.conditions)) {
     const conditions = [
@@ -793,7 +796,7 @@ function readStoredLiveStateAsIs(stored: unknown): RulesetLiveState {
     ].slice(0, MAX_LIVE_CONDITIONS);
     if (conditions.length > 0) state.conditions = conditions;
   }
-  const states = keepValid(source.states, z.string().max(MAX_LIVE_STATE_VALUE_LENGTH), MAX_LIVE_STATES);
+  const states = keepValid(source.states, liveStateValue, MAX_LIVE_STATES);
   if (states) state.states = states;
   const lowered = keepValid(source.lowered, liveNumber, MAX_LIVE_CONDITIONS);
   if (lowered) state.lowered = lowered;
@@ -1236,7 +1239,9 @@ export type RulesetSheetOp =
    *  box, or the next free one above it. Told apart from the pool shape above by naming a track,
    *  which is what `"track" in op` reads. */
   | { op: "damage"; track: string; kind: string; amount: number; box?: number }
-  | { op: "track"; track: string; to?: number; by?: number }
+  /** `upTo` (1.364) stops a `by` move there: it never carries the track past it, and never moves one
+   *  already beyond it. */
+  | { op: "track"; track: string; to?: number; by?: number; upTo?: number }
   | { op: "condition"; condition: string; active: boolean }
   /** Health's maximum raised by `amount` while `condition` is held, and health with it (1.457), in
    *  place of what it raised it by before. */
@@ -1721,7 +1726,16 @@ export function applyRulesetSheetOp(
     if (!Number.isInteger(op.to ?? op.by) || Math.abs(op.to ?? op.by!) > MAX_LIVE_NUMBER) {
       return { ok: false, reason: "bad-amount" };
     }
-    const value = clamp(moved, track.min, track.max);
+    if (op.upTo !== undefined && (!Number.isInteger(op.upTo) || Math.abs(op.upTo) > MAX_LIVE_NUMBER)) {
+      return { ok: false, reason: "bad-amount" };
+    }
+    const stopped =
+      op.upTo === undefined || op.by === undefined
+        ? moved
+        : op.by >= 0
+          ? Math.max(track.value, Math.min(moved, op.upTo))
+          : Math.min(track.value, Math.max(moved, op.upTo));
+    const value = clamp(stopped, track.min, track.max);
     setTrack(track, value);
     return done(`${track.label} ${value}`);
   }

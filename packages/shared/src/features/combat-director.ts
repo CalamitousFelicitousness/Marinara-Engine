@@ -209,6 +209,9 @@ export interface DirectedRulesetCombatant {
   altitude?: number;
   /** How many cells a side it fills (1.194), `x`/`y` the top-left one. Absent for one cell. */
   span?: number;
+  /** Shown in its flying art (1.352): it flies without walking, hovers, is up in the air, or flew this
+   *  turn. Art only. */
+  flying?: true;
 }
 /**
  * What a ruleset fight's log holds: everything the resolver did, plus the few things the DIRECTOR
@@ -346,6 +349,9 @@ export interface DirectedRulesetView {
     readied?: "comes" | "acts";
     /** Who answers it: the same three the fight has everywhere else. */
     controller: "manual" | "ai" | "gm";
+    /** The cells an area being aimed covers, so a board can show who it would catch before anybody
+     *  answers. Present only for a held area on a board. */
+    cells?: Array<{ x: number; y: number }>;
   };
   /** The last 200 events, each with a running number so a client prints only what is new. */
   events: Array<{ seq: number; event: DirectedRulesetEvent }>;

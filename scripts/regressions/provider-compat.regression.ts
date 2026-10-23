@@ -4688,4 +4688,56 @@ try {
   }
 }
 
+// A tool call cut at the output limit still reports "length", streamed or not: its arguments may stop mid-JSON,
+// and a caller that saw "tool_calls" would run it.
+{
+  const cutArguments = '{"action":"lorebook.update","lorebookId":"b';
+  const cutServer = createServer((request, response) => {
+    let body = "";
+    request.on("data", (chunk) => (body += chunk));
+    request.on("end", () => {
+      const call = { index: 0, id: "cut-1", type: "function", function: { name: "app_data", arguments: cutArguments } };
+      if ((JSON.parse(body) as { stream?: boolean }).stream) {
+        response.writeHead(200, { "content-type": "text/event-stream" });
+        response.end(
+          [
+            `data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [call] }, finish_reason: null }] })}`,
+            `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "length" }] })}`,
+            "data: [DONE]",
+            "",
+          ].join("\n\n"),
+        );
+        return;
+      }
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ choices: [{ message: { tool_calls: [call] }, finish_reason: "length" }] }));
+    });
+  });
+  await new Promise<void>((resolve) => cutServer.listen(0, "127.0.0.1", resolve));
+  try {
+    const address = cutServer.address();
+    assert.ok(address && typeof address === "object");
+    const provider = new OpenAIProvider(
+      `http://127.0.0.1:${address.port}/v1`,
+      "test",
+      undefined,
+      undefined,
+      undefined,
+      "custom",
+    );
+    const tools = [{ type: "function" as const, function: { name: "app_data", parameters: { type: "object" } } }];
+    for (const stream of [true, false]) {
+      const result = await provider.chatComplete([{ role: "user", content: "write it" }], {
+        model: "gemma",
+        stream,
+        tools,
+      });
+      assert.equal(result.finishReason, "length", `stream=${stream}: a cut tool call is not reported as tool_calls`);
+      assert.equal(result.toolCalls[0]?.function.arguments, cutArguments);
+    }
+  } finally {
+    await new Promise<void>((resolve) => cutServer.close(() => resolve()));
+  }
+}
+
 process.stdout.write("Provider compatibility regression passed.\n");

@@ -1,7 +1,9 @@
 // Making a 2D avatar from a sprite, end to end against the real server with local image and vision models
 // that hold their answers: Cancel aborts the picture or mesh avatar being made (the model's request closes)
-// and leaves the panel idle with only finished pictures, and a sprite drawn on a flat background is used as
-// it is: nothing is cut out of the blink picture or the saved mesh avatar.
+// and leaves the panel idle with only finished pictures, Try again shows the picture being redone, and a
+// sprite drawn on a flat background is used as it is: nothing is cut out of the blink picture or the saved
+// mesh avatar. An image connection that can't edit pictures draws a new face with its blink and talk
+// pictures in one sheet; they are offered, kept and saved together.
 import { expect, test, type Page } from "@playwright/test";
 import AdmZip from "adm-zip";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
@@ -25,20 +27,32 @@ const LAYOUT = {
   neck: [300, 490],
 };
 
-/** A front-facing bust on a flat white background, 600 x 720. */
-function bust() {
+/** The eyes closed: skin over each eye and a lid line, at sprite scale `scale` from `top`. */
+function closedEyes(scale = 1, top = 0) {
+  return [250, 350]
+    .map(
+      (cx) =>
+        `<ellipse cx="${cx * scale}" cy="${top + 283 * scale}" rx="${36 * scale}" ry="${18 * scale}" fill="#f2c9a8"/>` +
+        `<path d="M${(cx - 30) * scale} ${top + 286 * scale} Q${cx * scale} ${top + 296 * scale} ${(cx + 30) * scale} ${top + 286 * scale}" stroke="#111" stroke-width="${4 * scale}" fill="none"/>`,
+    )
+    .join("");
+}
+
+/** A front-facing bust, 600 x 720, on a flat white background unless `background` is false. */
+function bustSvg({ background = true, eyes = "open", mouth = "closed" } = {}) {
   const eye = (cx: number) =>
     `<ellipse cx="${cx}" cy="285" rx="30" ry="14" fill="#fff"/><circle cx="${cx}" cy="285" r="11" fill="#3b6db3"/><circle cx="${cx}" cy="285" r="5" fill="#111"/>` +
     `<path d="M${cx - 34} 284 Q${cx} 260 ${cx + 34} 284" stroke="#222" stroke-width="4" fill="none"/>`;
-  return sharp(
-    Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="600" height="720"><rect width="600" height="720" fill="#fff"/>
+  return Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="600" height="720">${background ? `<rect width="600" height="720" fill="#fff"/>` : ""}
       <rect x="120" y="540" width="360" height="200" rx="60" fill="#3a5fa0"/><rect x="262" y="440" width="76" height="130" fill="#f2c9a8"/>
       <ellipse cx="300" cy="250" rx="190" ry="210" fill="#5a3a22"/><ellipse cx="300" cy="300" rx="130" ry="160" fill="#f2c9a8"/>
       <rect x="220" y="240" width="62" height="8" rx="4" fill="#4a2f1c"/><rect x="318" y="240" width="62" height="8" rx="4" fill="#4a2f1c"/>
-      ${eye(250)}${eye(350)}<path d="M275 395 Q300 400 325 395" stroke="#a04848" stroke-width="3" fill="none"/></svg>`),
-  )
-    .png()
-    .toBuffer();
+      ${eye(250)}${eye(350)}${eyes === "closed" ? closedEyes() : ""}
+      ${mouth === "open" ? `<ellipse cx="300" cy="400" rx="20" ry="12" fill="#5a1a1a"/>` : `<path d="M275 395 Q300 400 325 395" stroke="#a04848" stroke-width="3" fill="none"/>`}</svg>`);
+}
+
+function bust() {
+  return sharp(bustSvg()).png().toBuffer();
 }
 
 async function alphaAt(png: Buffer, x: number, y: number) {
@@ -61,13 +75,25 @@ function fakeModels() {
       res.end(JSON.stringify({ choices: [{ message: { role: "assistant", content: JSON.stringify(LAYOUT) } }] }));
       return;
     }
-    // An edit that keeps the picture in place on the canvas GPT Image 1 is asked for, with the background
-    // filled in white as most image models do.
+    if (url.endsWith("/images/generations")) {
+      res.end(JSON.stringify({ data: [{ b64_json: (await setSheet(body)).toString("base64") }] }));
+      return;
+    }
+    // An edit that keeps the picture in place on the canvas GPT Image 1 is asked for (a 600x720 sprite sits
+    // 153 pixels down at 1024/600 scale) and closes its eyes, with the background filled in white as most
+    // image models do.
     const start = body.indexOf(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
     const sent = body.subarray(start, body.indexOf(Buffer.from("IEND"), start) + 8);
     const picture = await sharp(sent)
       .resize(1024, 1536, { fit: "cover" })
       .flatten({ background: "#fff" })
+      .composite([
+        {
+          input: Buffer.from(
+            `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1536">${closedEyes(1024 / 600, 153)}</svg>`,
+          ),
+        },
+      ])
       .png()
       .toBuffer();
     res.end(JSON.stringify({ data: [{ b64_json: picture.toString("base64") }] }));
@@ -76,7 +102,7 @@ function fakeModels() {
     const chunks: Buffer[] = [];
     for await (const chunk of req) chunks.push(Buffer.from(chunk));
     const url = req.url ?? "";
-    if (!/\/(?:images\/edits|chat\/completions)$/u.test(url)) {
+    if (!/\/(?:images\/edits|images\/generations|chat\/completions)$/u.test(url)) {
       // Model lists and other lookups the app makes for a connection.
       res.setHeader("content-type", "application/json");
       res.end(JSON.stringify({ data: [] }));
@@ -94,6 +120,26 @@ function fakeModels() {
     await answer(url, body, res);
   });
   return { server, state };
+}
+
+/** A generated set: the face, eyes closed and mouth open side by side on the plain colour the prompt asks for,
+ *  each cell drawn a little differently, as generated sheets are. */
+async function setSheet(body: Buffer) {
+  const hex = /#[0-9a-f]{6}\b/iu.exec(body.toString("utf8"))?.[0] ?? "#00ff00";
+  const cell = async (svg: Buffer, dx: number, dy: number) =>
+    sharp({ create: { width: 512, height: 512, channels: 3, background: hex } })
+      .composite([{ input: await sharp(svg).resize(420, 504).png().toBuffer(), left: 46 + dx, top: 8 + dy }])
+      .png()
+      .toBuffer();
+  const cells = [
+    await cell(bustSvg({ background: false }), 0, 0),
+    await cell(bustSvg({ background: false, eyes: "closed" }), 5, 2),
+    await cell(bustSvg({ background: false, mouth: "open" }), -3, -1),
+  ];
+  return sharp({ create: { width: 1536, height: 512, channels: 3, background: hex } })
+    .composite(cells.map((input, index) => ({ input, left: index * 512, top: 0 })))
+    .png()
+    .toBuffer();
 }
 
 async function mountGenerationPanel(page: Page, ownerId: string) {
@@ -173,7 +219,11 @@ test("Cancel stops the picture being made, and avatars made from a sprite keep i
     await panel.getByLabel("Image connection").selectOption(imageId);
 
     // ── Cancel while a blink picture is being drawn ──
-    await panel.getByRole("group", { name: "Sprites", exact: true }).getByRole("button", { name: "neutral" }).click();
+    // Every feeling shows the one neutral face, so it is the only row, with its blink and talk slots empty.
+    await expect(panel.locator("[data-talking-head-face]")).toHaveCount(1);
+    await expect(panel.locator('[data-talking-head-face="neutral"]')).toContainText(
+      "Neutral, Happy, Angry, Sad, Relaxed, Surprised",
+    );
     await panel.getByRole("button", { name: "Make 2 pictures" }).click();
     await expect.poll(() => models.state.held.length).toBe(1);
     expect(models.state.held[0]!.url).toMatch(/\/images\/edits$/u);
@@ -195,9 +245,10 @@ test("Cancel stops the picture being made, and avatars made from a sprite keep i
       .toEqual([models.state.held[0]!.url]);
 
     // ── The next picture starts at once, the late cancel doesn't stop it, and nothing is cut out of it ──
-    await panel.getByRole("checkbox", { name: "Mouth open" }).uncheck();
-    await panel.getByRole("button", { name: "Make 1 picture" }).click();
+    const blink = panel.getByRole("group", { name: "neutral: Eyes closed", exact: true });
+    await blink.getByRole("button", { name: "Make neutral: Eyes closed", exact: true }).click();
     await expect.poll(() => models.state.held.length).toBe(2);
+    await expect(panel.getByRole("status")).toHaveText("Making picture 1 of 1…");
     await expect.poll(() => cancelDelivered).toBe(true);
     expect(models.state.closed, "the late cancel left the new picture alone").toHaveLength(1);
     await models.state.held[1]!.respond();
@@ -209,6 +260,32 @@ test("Cancel stops the picture being made, and avatars made from a sprite keep i
     expect(await alphaAt(picture, 300, 330), "the face stays").toBe(255);
     await page.screenshot({ path: testInfo.outputPath("pngtuber-picture.png"), animations: "disabled" });
 
+    // ── Try again shows the picture being redone, not a picture that seems done ──
+    const retry = blink.getByRole("button", { name: "Try neutral: Eyes closed again", exact: true });
+    await retry.click();
+    await expect.poll(() => models.state.held.length).toBe(3);
+    await expect(blink).toHaveAttribute("aria-busy", "true");
+    await expect(drawn).toBeVisible();
+    await expect(blink.getByRole("button", { name: "Keep", exact: true })).toHaveCount(0);
+    await expect(retry).toHaveCount(0);
+    await expect(panel.getByRole("status")).toHaveText("Making picture 1 of 1…");
+    await page.screenshot({ path: testInfo.outputPath("pngtuber-redo.png"), animations: "disabled" });
+    await models.state.held[2]!.respond();
+    await expect(blink).toHaveAttribute("aria-busy", "false", { timeout: 30_000 });
+    await expect(retry).toBeVisible();
+    await expect(panel.getByRole("status")).toHaveCount(0);
+
+    // ── A kept picture is stored in the PNGTuber avatar ──
+    await blink.getByRole("button", { name: "Keep", exact: true }).click();
+    await expect(blink.getByRole("button", { name: "Kept", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await panel.getByRole("button", { name: "Save kept pictures (1)" }).click();
+    await expect
+      .poll(async () => {
+        const config = await request.get(`/api/avatar-models/character/${characterId}`);
+        return config.ok() ? (await config.json())?.kinds?.pngtuber?.layers?.neutral?.eyesClosed : undefined;
+      })
+      .toMatchObject({ source: "file", path: expect.stringMatching(/^pngtuber\/.+\.png$/u) });
+
     // ── Cancel while the vision model looks at the sprite for the mesh avatar ──
     await panel.getByLabel("Chat connection that can see pictures").selectOption(visionId);
     // The neutral sprite is picked for a mesh avatar until the user picks another.
@@ -216,8 +293,8 @@ test("Cancel stops the picture being made, and avatars made from a sprite keep i
       panel.getByRole("group", { name: "Sprite to use" }).getByRole("button", { name: "neutral" }),
     ).toHaveAttribute("aria-pressed", "true");
     await panel.getByRole("button", { name: "Make mesh avatar" }).click();
-    await expect.poll(() => models.state.held.length).toBe(3);
-    expect(models.state.held[2]!.url).toMatch(/\/chat\/completions$/u);
+    await expect.poll(() => models.state.held.length).toBe(4);
+    expect(models.state.held[3]!.url).toMatch(/\/chat\/completions$/u);
     await panel.getByRole("button", { name: "Cancel", exact: true }).click();
     await expect.poll(() => models.state.closed.length, { message: "the vision request is aborted" }).toBe(2);
     await expect(panel.getByText("Building the mesh avatar…")).toHaveCount(0);
@@ -231,7 +308,7 @@ test("Cancel stops the picture being made, and avatars made from a sprite keep i
     await expect
       .poll(async () => {
         const config = await request.get(`/api/avatar-models/character/${characterId}`);
-        file = config.ok() ? (((await config.json()).kinds?.["mesh-avatar"]?.file as string | undefined) ?? "") : "";
+        file = config.ok() ? (((await config.json())?.kinds?.["mesh-avatar"]?.file as string | undefined) ?? "") : "";
         return file;
       })
       .toMatch(/^mesh-avatar\/.+\.mavatar$/u);
@@ -244,6 +321,96 @@ test("Cancel stops the picture being made, and avatars made from a sprite keep i
     models.server.closeAllConnections();
     await new Promise<void>((resolve) => models.server.close(() => resolve()));
     for (const id of created) await request.delete(`/api/connections/${id}`);
+    if (characterId) await request.delete(`/api/characters/${characterId}`);
+  }
+});
+
+test("An image connection that can't edit draws a new face with its blink and talk pictures, kept together", async ({
+  page,
+  request,
+}, testInfo) => {
+  test.setTimeout(120_000);
+  const models = fakeModels();
+  models.state.hold = false;
+  const urls: string[] = [];
+  models.server.prependListener("request", (req: IncomingMessage) => urls.push(req.url ?? ""));
+  await new Promise<void>((resolve) => models.server.listen(0, "127.0.0.1", resolve));
+  const baseUrl = `http://127.0.0.1:${(models.server.address() as { port: number }).port}/v1`;
+  let connectionId = "";
+  let characterId = "";
+  try {
+    const character = await request.post("/api/characters", {
+      data: { data: { name: "Set fixture", description: "brown hair, blue eyes, a blue jacket" } },
+    });
+    expect(character.ok(), await character.text()).toBeTruthy();
+    characterId = ((await character.json()) as { id: string }).id;
+    const sprite = await request.post(`/api/sprites/${characterId}`, {
+      data: { expression: "neutral", image: `data:image/png;base64,${(await bust()).toString("base64")}` },
+    });
+    expect(sprite.ok(), await sprite.text()).toBeTruthy();
+    const connection = await request.post("/api/connections", {
+      data: {
+        name: `DALL-E ${testInfo.project.name}`,
+        provider: "image_generation",
+        imageGenerationSource: "openai",
+        imageService: "openai",
+        model: "dall-e-3",
+        apiKey: "fixture",
+        baseUrl,
+      },
+    });
+    expect(connection.ok(), await connection.text()).toBeTruthy();
+    connectionId = ((await connection.json()) as { id: string }).id;
+
+    await page.route("**/api/app-settings/ui", (route) =>
+      route.fulfill({ json: route.request().method() === "GET" ? { value: null } : { success: true } }),
+    );
+    await seedUIState(page, { hasCompletedOnboarding: true, reviewImagePromptsBeforeSend: false });
+    await page.goto("/");
+    const panel = await mountGenerationPanel(page, characterId);
+    await panel.getByLabel("Image connection").selectOption(connectionId);
+    await panel.getByRole("button", { name: "Make 2 pictures" }).click();
+
+    // One sheet makes the new face and both of its pictures.
+    const blink = panel.getByRole("img", { name: "New picture: neutral: Eyes closed" });
+    const talk = panel.getByRole("img", { name: "New picture: neutral: Mouth open" });
+    await expect(blink).toBeVisible({ timeout: 60_000 });
+    await expect(talk).toBeVisible();
+    await expect(panel.getByRole("img", { name: "New picture: neutral: New face" })).toBeVisible();
+    await expect(panel.getByText("can't edit pictures, so it drew a new face")).toBeVisible();
+    await expect(panel.getByRole("status")).toHaveCount(0);
+    expect(
+      urls.filter((url) => url.endsWith("/images/generations")),
+      "one picture is drawn",
+    ).toHaveLength(1);
+    expect(
+      urls.filter((url) => url.endsWith("/images/edits")),
+      "the connection is never asked to edit",
+    ).toEqual([]);
+    await page.screenshot({ path: testInfo.outputPath("new-face-set.png"), animations: "disabled" });
+
+    // Keeping one picture keeps the set; saving makes the new face the face of the feeling.
+    const blinkSlot = panel.getByRole("group", { name: "neutral: Eyes closed", exact: true });
+    const talkSlot = panel.getByRole("group", { name: "neutral: Mouth open", exact: true });
+    await blinkSlot.getByRole("button", { name: "Keep", exact: true }).click();
+    await expect(blinkSlot.getByRole("button", { name: "Kept", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(talkSlot.getByRole("button", { name: "Kept", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await panel.getByRole("button", { name: "Save kept pictures (2)" }).click();
+    await expect
+      .poll(async () => {
+        const config = await request.get(`/api/avatar-models/character/${characterId}`);
+        return config.ok() ? (await config.json())?.kinds?.pngtuber?.layers?.neutral : undefined;
+      })
+      .toMatchObject({
+        base: { source: "file", path: "pngtuber/neutral-base.png" },
+        eyesClosed: { source: "file", path: "pngtuber/neutral-eyes-closed.png" },
+        mouthOpen: { source: "file", path: "pngtuber/neutral-mouth-open.png" },
+      });
+    await expect(panel.getByRole("img", { name: "New picture: neutral: New face" })).toHaveCount(0);
+  } finally {
+    models.server.closeAllConnections();
+    await new Promise<void>((resolve) => models.server.close(() => resolve()));
+    if (connectionId) await request.delete(`/api/connections/${connectionId}`);
     if (characterId) await request.delete(`/api/characters/${characterId}`);
   }
 });

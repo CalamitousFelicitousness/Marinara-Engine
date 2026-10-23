@@ -41,7 +41,7 @@ import { ChatSettingsBubble } from "./ChatSettingsBubble";
 import { ChatWindowWelcomeModal } from "../modals/ChatWindowWelcomeModal";
 import { useGameModeStore } from "../../stores/game-mode.store";
 import { useGenerate } from "../../hooks/use-generate";
-import { useGenerateGallerySelfie } from "../../hooks/use-gallery";
+import { useGenerateGallerySelfie, type ChatImage } from "../../hooks/use-gallery";
 import {
   characterKeys,
   spriteKeys,
@@ -110,10 +110,13 @@ import {
   findLatestTTSAutoplayMessage,
   findSplitReplyEarlierParts,
   getTTSAutoplayRevision,
+  nextTTSAutoplayReadingId,
   shouldAutoplayGeneratedTTS,
   TTS_AUTOPLAY_MESSAGE_READY_EVENT,
+  TTS_AUTOPLAY_VOICE_EVENT,
   type TTSAutoplayMessage,
   type TTSAutoplayMessageReadyDetail,
+  type TTSAutoplayVoiceDetail,
 } from "../../lib/tts-autoplay";
 import { CHAT_SCROLL_TO_BOTTOM_EVENT, type ChatScrollToBottomDetail } from "../../lib/chat-scroll-events";
 import { CHAT_RESOURCE_AGENT_SETUP_EVENT } from "../../lib/chat-resource-drag";
@@ -142,6 +145,9 @@ import {
   saveLocalSpriteVisualSettings,
   type LocalSpriteVisualSettings,
 } from "./local-sprite-visual-settings";
+import type { AvatarLayoutControls } from "./AvatarLayoutSettings";
+import type { AvatarFraming } from "../../features/avatars/contract";
+import { sameStageAvatars, type StageAvatarSummary } from "../../features/avatars/stage/avatar-stage-logic";
 import {
   SPRITE_DISPLAY_OPACITY_MAX,
   SPRITE_DISPLAY_OPACITY_MIN,
@@ -174,6 +180,7 @@ import { useTranslation as useUiTranslation } from "react-i18next";
 import { ChatResourceDropOverlay } from "./ChatResourceDropOverlay";
 import { ChatHelpOverlay } from "./ChatHelpOverlay";
 import { CHAT_SETTINGS_WINDOW_ID, useFloatingWindowStore } from "../../stores/floating-window.store";
+import { useCombatScreenStore } from "../../stores/combat-screen.store";
 import { readChatHelpMode } from "../../lib/chat-help-events";
 
 export type { CharacterMap };
@@ -219,6 +226,11 @@ type RoleplaySceneVideoPromptPreview = {
   aspectRatio: "16:9" | "9:16";
   resolution: string | null;
   maxPromptLength: number | null;
+};
+
+type ConversationVideoPromptPreview = Omit<RoleplaySceneVideoPromptPreview, "galleryImageId"> & {
+  /** The selfie the clip starts from, when First frame makes one. */
+  selfie?: { prompt: string; negativePrompt: string; width: number; height: number } | null;
 };
 
 type GenerateConversationSelfiePayload = {
@@ -577,6 +589,8 @@ export const ChatArea = memo(function ChatArea({
   }, [hostsChatSettings]);
   // The Chat Settings button shows while a chat that hosts Chat Settings is open.
   const chatSettingsHosted = useFloatingWindowStore((state) => (state.hosts[CHAT_SETTINGS_WINDOW_ID] ?? 0) > 0);
+  // A fight on a board takes the whole chat area, so the settings bubble steps aside until it ends.
+  const boardFightOnScreen = useCombatScreenStore((state) => state.round !== null);
   // Windows and popped-out drawers follow the open chat's saved layout.
   useChatWindowLayout(activeChatId ? (chat?.id === activeChatId ? chat : undefined) : null);
   useEffect(() => {
@@ -589,7 +603,7 @@ export const ChatArea = memo(function ChatArea({
       <ChatOpeningState error={error} onRetry={refetch} onBack={() => useChatStore.getState().setActiveChatId(null)} />
     );
   const chatSettingsButton =
-    chat && chatSettingsHosted ? (
+    chat && chatSettingsHosted && !boardFightOnScreen ? (
       <ChatSettingsBubble
         chatId={chat.id}
         mode={readChatMode(chat)}
@@ -1302,14 +1316,33 @@ const LocalChatArea = memo(function LocalChatArea({
     return parseChatMetadata(raw);
   }, [chat]);
 
+  // The latest saved layout, so edits queued before React commits each build on the one before.
+  const localSpriteVisualSettingsRef = useRef({ chatId: chat?.id, settings: localSpriteVisualSettings });
   useEffect(() => {
-    setLocalSpriteVisualSettings(loadLocalSpriteVisualSettings(chat?.id));
+    const settings = loadLocalSpriteVisualSettings(chat?.id);
+    localSpriteVisualSettingsRef.current = { chatId: chat?.id, settings };
+    setLocalSpriteVisualSettings(settings);
   }, [chat?.id]);
 
+  /** Saves a change to this chat's layout on this device, at the time of the edit (never in a state updater).
+   *  A function patch reads the latest layout. An edit from a chat that is no longer open is dropped. */
   const patchLocalSpriteVisualSettings = useCallback(
-    (patch: Partial<LocalSpriteVisualSettings>) => {
-      if (!chat?.id) return;
-      setLocalSpriteVisualSettings((previous) => saveLocalSpriteVisualSettings(chat.id, patch, previous));
+    (
+      patch:
+        | Partial<LocalSpriteVisualSettings>
+        | ((previous: LocalSpriteVisualSettings) => Partial<LocalSpriteVisualSettings>),
+    ) => {
+      const chatId = chat?.id;
+      if (!chatId || useChatStore.getState().activeChatId !== chatId) return;
+      const latest = localSpriteVisualSettingsRef.current;
+      const previous = latest.chatId === chatId ? latest.settings : loadLocalSpriteVisualSettings(chatId);
+      const next = saveLocalSpriteVisualSettings(
+        chatId,
+        typeof patch === "function" ? patch(previous) : patch,
+        previous,
+      );
+      localSpriteVisualSettingsRef.current = { chatId, settings: next };
+      setLocalSpriteVisualSettings(next);
     },
     [chat?.id],
   );
@@ -1450,6 +1483,7 @@ const LocalChatArea = memo(function LocalChatArea({
   const [conversationSelfieReviewItems, setConversationSelfieReviewItems] = useState<ImagePromptReviewItem[]>([]);
   const [conversationSelfieReviewSubmitting, setConversationSelfieReviewSubmitting] = useState(false);
   const roleplaySceneVideoGeneratingRef = useRef(false);
+  const conversationVideoGeneratingRef = useRef(false);
   const roleplayVideoReviewResolveRef = useRef<((overrides: ImagePromptOverride[] | null) => void) | null>(null);
   const conversationSelfieReviewResolveRef = useRef<((overrides: ImagePromptOverride[] | null) => void) | null>(null);
 
@@ -1615,6 +1649,119 @@ const LocalChatArea = memo(function LocalChatArea({
       queryClient,
       localizeUi,
     ],
+  );
+
+  /** A Conversation character sends a video message, or animates a gallery picture under the newest reply. */
+  const handleGenerateConversationVideo = useCallback(
+    async (characterId?: string, galleryImageId?: string) => {
+      if (!activeChatId || chatMode !== "conversation") return;
+      const targetCharacterId =
+        characterId && chatCharIds.includes(characterId)
+          ? characterId
+          : (chatCharIds.find((id) => characterMap.has(id)) ?? chatCharIds[0]);
+      if (!targetCharacterId) throw new Error(localizeUi("ui.chat.chatarea.addACharacterBeforeSendingAVideo"));
+      // One at a time: a second action would find the review window taken, and its cleanup would cancel the first.
+      if (conversationVideoGeneratingRef.current) throw new Error(localizeUi("ui.chat.slash.video.alreadyRunning"));
+      const payload: Record<string, unknown> = {
+        characterId: targetCharacterId,
+        ...(galleryImageId ? { galleryImageId } : {}),
+        queueMediaGenerationRequests: useUIStore.getState().queueImageGenerationRequests,
+        debugMode: useUIStore.getState().debugMode,
+      };
+      try {
+        conversationVideoGeneratingRef.current = true;
+        if (useUIStore.getState().reviewImagePromptsBeforeSend) {
+          let preview: ConversationVideoPromptPreview | undefined;
+          try {
+            preview = await api.post<ConversationVideoPromptPreview>(
+              `/gallery/${activeChatId}/video`,
+              { ...payload, previewOnly: true },
+              { signal: AbortSignal.timeout(MEDIA_PROMPT_PREVIEW_TIMEOUT_MS) },
+            );
+          } catch (error) {
+            if (!isMediaPromptPreviewTimeout(error)) throw error;
+            toast.error(localizeUi("ui.chat.chatarea.videoPromptPreviewTimedOutContinuingWithTheDefault"));
+          }
+          if (preview) {
+            const details = [`${preview.durationSeconds}s`, preview.aspectRatio, preview.resolution].filter(
+              (value): value is string => Boolean(value),
+            );
+            const items: ImagePromptReviewItem[] = [
+              {
+                id: "conversation-video",
+                kind: "video",
+                title: localizeUi(
+                  galleryImageId ? "ui.chat.chatarea.animateSelectedPicture" : "ui.chat.chatarea.videoMessage",
+                ),
+                prompt: preview.prompt,
+                details: details.join(" | "),
+                maxLength: preview.maxPromptLength ?? undefined,
+              },
+            ];
+            // A selfie first frame is reviewed with the clip, as /selfie is reviewed on its own.
+            if (preview.selfie) {
+              items.push({
+                id: "conversation-video-selfie",
+                kind: "portrait",
+                title: localizeUi("ui.chat.chatarea.videoFirstFrameSelfie"),
+                prompt: preview.selfie.prompt,
+                negativePrompt: preview.selfie.negativePrompt || undefined,
+                width: preview.selfie.width,
+                height: preview.selfie.height,
+              });
+            }
+            // Close only the review this call opened (another chat's request may hold the window), and close it as
+            // soon as its prompts are read, not after the minutes-long clip, when a newer review may be showing.
+            const reviewOpened = !roleplayVideoReviewResolveRef.current;
+            const overrides = await openRoleplayVideoPromptReview(items);
+            if (reviewOpened) closeRoleplayVideoPromptReview(null);
+            if (!overrides) return;
+            const reviewedPrompt = overrides.find((item) => item.id === "conversation-video")?.prompt.trim();
+            if (!reviewedPrompt) return;
+            payload.promptOverride = reviewedPrompt;
+            const reviewedSelfie = overrides.find((item) => item.id === "conversation-video-selfie");
+            if (reviewedSelfie?.prompt.trim()) {
+              payload.selfiePromptOverride = reviewedSelfie.prompt.trim();
+              if (reviewedSelfie.negativePrompt !== undefined) {
+                payload.selfieNegativePromptOverride = reviewedSelfie.negativePrompt;
+              }
+            }
+          }
+        }
+        const result = await api.post<{ messageId?: string | null }>(`/gallery/${activeChatId}/video`, payload, {
+          signal: AbortSignal.timeout(SCENE_VIDEO_GENERATION_TIMEOUT_MS),
+        });
+        // Saved but not added to the chat: say where it is, since the Videos tab may not be the one open.
+        if (!result?.messageId) toast(localizeUi("ui.chat.chatarea.videoSavedToGalleryOnly"));
+        void queryClient.invalidateQueries({ queryKey: chatKeys.messages(activeChatId) });
+      } finally {
+        conversationVideoGeneratingRef.current = false;
+        // A selfie or clip can be saved even when the request then failed, so the Gallery always refreshes.
+        void queryClient.invalidateQueries({ queryKey: ["gallery", "scene-videos", activeChatId] });
+        void queryClient.invalidateQueries({ queryKey: ["gallery", activeChatId] });
+      }
+    },
+    [
+      activeChatId,
+      characterMap,
+      chatCharIds,
+      chatMode,
+      closeRoleplayVideoPromptReview,
+      openRoleplayVideoPromptReview,
+      queryClient,
+      localizeUi,
+    ],
+  );
+
+  // Stable, so the Gallery's memoized actions don't change on every render (while a reply streams, too).
+  const handleConversationGalleryVideo = useCallback(
+    (characterId?: string) => handleGenerateConversationVideo(characterId),
+    [handleGenerateConversationVideo],
+  );
+  // Animate sends as the character picked in the Gallery, the same one its Video button uses.
+  const handleConversationAnimateImage = useCallback(
+    (image: ChatImage, characterId?: string) => handleGenerateConversationVideo(characterId, image.id),
+    [handleGenerateConversationVideo],
   );
 
   const handleGenerateConversationSelfie = useCallback(
@@ -1911,6 +2058,100 @@ const LocalChatArea = memo(function LocalChatArea({
     [chat?.id, patchLocalSpriteVisualSettings, spriteCharacterVisualSettings, spritePlacements, spritePosition],
   );
 
+  // ── Avatars: arranged, sized and framed from Chat Settings → Agents → Avatars ──
+  const handleAvatarScaleChange = useCallback(
+    (ownerId: string, scale: number) =>
+      patchLocalSpriteVisualSettings((previous) => {
+        const overrides = normalizeSpriteCharacterVisualSettingsMap(
+          Object.prototype.hasOwnProperty.call(previous, "characterOverrides")
+            ? previous.characterOverrides
+            : chatMeta.spriteCharacterVisualSettings,
+        );
+        return {
+          characterOverrides: { ...overrides, [ownerId]: { ...overrides[ownerId], fullBodySpriteScale: scale } },
+        };
+      }),
+    [chatMeta.spriteCharacterVisualSettings, patchLocalSpriteVisualSettings],
+  );
+  const handleAvatarFramingChange = useCallback(
+    (ownerId: string, framing: AvatarFraming) =>
+      patchLocalSpriteVisualSettings((previous) => ({
+        avatarFramings: { ...previous.avatarFramings, [ownerId]: framing },
+      })),
+    [patchLocalSpriteVisualSettings],
+  );
+  const handleResetAvatarPlacements = useCallback(() => {
+    if (!chat?.id) return;
+    pendingSpritePlacements.current = Object.fromEntries(
+      Object.entries(pendingSpritePlacements.current).filter(([key]) => !key.endsWith(":avatar")),
+    );
+    patchLocalSpriteVisualSettings({ spritePlacements: pendingSpritePlacements.current });
+  }, [chat?.id, patchLocalSpriteVisualSettings]);
+  const toggleSpriteArrange = useCallback(() => setSpriteArrangeMode((previous) => !previous), []);
+  const [stageAvatars, setStageAvatars] = useState<StageAvatarSummary[]>([]);
+  const handleStageAvatarsChange = useCallback(
+    (avatars: StageAvatarSummary[]) =>
+      setStageAvatars((previous) => (sameStageAvatars(previous, avatars) ? previous : avatars)),
+    [],
+  );
+  const gameFullBodySpriteScale = useUIStore((s) => s.gameFullBodySpriteScale);
+  // Game avatars default to Game's full-body sprite size; Roleplay and Visual Novel ones to the chat's.
+  const avatarScale =
+    chatMode === "game"
+      ? (localSpriteVisualSettings.fullBodySpriteScale ?? gameFullBodySpriteScale)
+      : fullBodySpriteScale;
+  const avatarFramings = localSpriteVisualSettings.avatarFramings;
+  const avatarLayout = useMemo<AvatarLayoutControls>(
+    () => ({
+      avatars: stageAvatars,
+      scales: Object.fromEntries(
+        stageAvatars.map(({ ownerId }) => [
+          ownerId,
+          spriteCharacterVisualSettings[ownerId]?.fullBodySpriteScale ?? avatarScale,
+        ]),
+      ),
+      framings: avatarFramings ?? {},
+      hasPlacements: Object.keys(spritePlacements).some((key) => key.endsWith(":avatar")),
+      arranging: spriteArrangeMode,
+      onToggleArrange: toggleSpriteArrange,
+      onScaleChange: handleAvatarScaleChange,
+      onFramingChange: handleAvatarFramingChange,
+      onResetPlacements: handleResetAvatarPlacements,
+    }),
+    [
+      avatarFramings,
+      avatarScale,
+      handleAvatarFramingChange,
+      handleAvatarScaleChange,
+      handleResetAvatarPlacements,
+      spriteArrangeMode,
+      spriteCharacterVisualSettings,
+      spritePlacements,
+      stageAvatars,
+      toggleSpriteArrange,
+    ],
+  );
+  const gameAvatarStage = useMemo(
+    () => ({
+      placements: spritePlacements,
+      characterVisualSettings: spriteCharacterVisualSettings,
+      scale: avatarScale,
+      framings: avatarFramings,
+      editing: spriteArrangeMode,
+      onPlacementChange: handleSpritePlacementChange,
+      onShownChange: handleStageAvatarsChange,
+    }),
+    [
+      avatarFramings,
+      avatarScale,
+      handleSpritePlacementChange,
+      handleStageAvatarsChange,
+      spriteArrangeMode,
+      spriteCharacterVisualSettings,
+      spritePlacements,
+    ],
+  );
+
   // Set of active agent type IDs for this chat.
   const enabledAgentTypes = useMemo(() => {
     const set = new Set<string>();
@@ -1953,8 +2194,10 @@ const LocalChatArea = memo(function LocalChatArea({
       fullBodySpriteOpacity,
       expressionAvatarsEnabled: expressionAvatarsPreferenceEnabled,
       characterOverrides: spriteCharacterVisualSettings,
+      avatarFramings,
     }),
     [
+      avatarFramings,
       expressionAvatarsPreferenceEnabled,
       expressionSpriteOpacity,
       expressionSpriteScale,
@@ -3009,36 +3252,55 @@ const LocalChatArea = memo(function LocalChatArea({
         startedTTSAutoplayRevisionsRef.current.delete(oldest);
       }
 
-      const visualNovel =
-        mode === "roleplay" &&
-        (chatMeta.roleplayDisplayStyle ?? useUIStore.getState().roleplayDisplayStyle) === "visual-novel";
-      const requestsFor = async (message: TTSAutoplayMessage) => {
-        const fallbackSpeaker =
-          message.role === "narrator"
-            ? "Narrator"
-            : message.characterId
-              ? characterMap.get(message.characterId)?.name
-              : undefined;
-        let requests;
-        if (mode === "roleplay" && cfg.roleplaySpeakerExtractorEnabled) {
-          try {
-            const extracted = await extractRoleplayTTSSpeakers({
-              message: filterTTSText(message.content, cfg),
-              group: getChatDisplayName(chat) || characterNames.join(", "),
-              user: personaInfo?.name || "User",
-              characters: characterNames,
-              messageAuthor: message.characterId ? characterMap.get(message.characterId)?.name : undefined,
-              debugMode: useUIStore.getState().debugMode,
-            });
-            requests = buildExtractedRoleplayTTSVoiceRequests(
-              extracted.segments,
-              cfg,
-              fallbackSpeaker,
-              message.characterId,
-              resolveTTSCharacterId,
-            );
-          } catch (error) {
-            console.warn("[TTS] Roleplay speaker extractor failed; using standard autoplay.", error);
+      // Avatars hold their talking and moods for the voice until this reading ends, however it ends.
+      const readingId = nextTTSAutoplayReadingId();
+      const announceVoice = (pending: boolean) =>
+        window.dispatchEvent(
+          new CustomEvent<TTSAutoplayVoiceDetail>(TTS_AUTOPLAY_VOICE_EVENT, {
+            detail: { chatId: targetChatId, messageId: lastMsg.id, readingId, pending },
+          }),
+        );
+      announceVoice(true);
+      try {
+        const visualNovel =
+          mode === "roleplay" &&
+          (chatMeta.roleplayDisplayStyle ?? useUIStore.getState().roleplayDisplayStyle) === "visual-novel";
+        const requestsFor = async (message: TTSAutoplayMessage) => {
+          const fallbackSpeaker =
+            message.role === "narrator"
+              ? "Narrator"
+              : message.characterId
+                ? characterMap.get(message.characterId)?.name
+                : undefined;
+          let requests;
+          if (mode === "roleplay" && cfg.roleplaySpeakerExtractorEnabled) {
+            try {
+              const extracted = await extractRoleplayTTSSpeakers({
+                message: filterTTSText(message.content, cfg),
+                group: getChatDisplayName(chat) || characterNames.join(", "),
+                user: personaInfo?.name || "User",
+                characters: characterNames,
+                messageAuthor: message.characterId ? characterMap.get(message.characterId)?.name : undefined,
+                debugMode: useUIStore.getState().debugMode,
+              });
+              requests = buildExtractedRoleplayTTSVoiceRequests(
+                extracted.segments,
+                cfg,
+                fallbackSpeaker,
+                message.characterId,
+                resolveTTSCharacterId,
+              );
+            } catch (error) {
+              console.warn("[TTS] Roleplay speaker extractor failed; using standard autoplay.", error);
+              requests = buildTTSVoiceRequests(
+                message.content,
+                cfg,
+                fallbackSpeaker,
+                message.characterId,
+                resolveTTSCharacterId,
+              );
+            }
+          } else {
             requests = buildTTSVoiceRequests(
               message.content,
               cfg,
@@ -3047,49 +3309,43 @@ const LocalChatArea = memo(function LocalChatArea({
               resolveTTSCharacterId,
             );
           }
-        } else {
-          requests = buildTTSVoiceRequests(
-            message.content,
-            cfg,
-            fallbackSpeaker,
-            message.characterId,
-            resolveTTSCharacterId,
-          );
-        }
-        return visualNovel ? withRoleplayTTSParagraphs(requests, message.content, cfg) : requests;
-      };
-      // A reply split at scene breaks (#7481) is read part by part, in order, as one sequence. Its parts are
-      // prepared at once so playback doesn't wait one round trip per part.
-      const parts = await Promise.all(
-        [...earlierMessages, lastMsg].map(async (message) => ({ message, requests: await requestsFor(message) })),
-      );
+          return visualNovel ? withRoleplayTTSParagraphs(requests, message.content, cfg) : requests;
+        };
+        // A reply split at scene breaks (#7481) is read part by part, in order, as one sequence. Its parts are
+        // prepared at once so playback doesn't wait one round trip per part.
+        const parts = await Promise.all(
+          [...earlierMessages, lastMsg].map(async (message) => ({ message, requests: await requestsFor(message) })),
+        );
 
-      const currentGeneration = ttsGenerationRef.current;
-      const currentMessage = findLatestTTSAutoplayMessage(messagesRef.current ?? []);
-      if (
-        useChatStore.getState().activeChatId !== targetChatId ||
-        (currentGeneration !== null && currentGeneration !== generationAtStart) ||
-        (currentMessage?.id === lastMsg.id && getTTSAutoplayRevision(currentMessage) !== targetRevision)
-      )
-        return;
-      const chunks = parts.flatMap(({ message, requests }) =>
-        requests.map((_request, index) => ({ messageId: message.id, requests, index })),
-      );
-      if (chunks.length === 0) return;
+        const currentGeneration = ttsGenerationRef.current;
+        const currentMessage = findLatestTTSAutoplayMessage(messagesRef.current ?? []);
+        if (
+          useChatStore.getState().activeChatId !== targetChatId ||
+          (currentGeneration !== null && currentGeneration !== generationAtStart) ||
+          (currentMessage?.id === lastMsg.id && getTTSAutoplayRevision(currentMessage) !== targetRevision)
+        )
+          return;
+        const chunks = parts.flatMap(({ message, requests }) =>
+          requests.map((_request, index) => ({ messageId: message.id, requests, index })),
+        );
+        if (chunks.length === 0) return;
 
-      await ttsService.speakSequence(
-        parts.flatMap(({ message, requests }) => withTTSVoiceRequestCacheKeys(requests, cfg, message.id)),
-        lastMsg.id,
-        {
-          chatId: targetChatId,
-          progressive: cfg.progressivePlayback,
-          volume: ttsLineVolume / 100,
-          onChunkStart: (_request, index) => {
-            const chunk = chunks[index];
-            if (chunk) notifyRoleplayTTSParagraph(targetChatId, chunk.messageId, chunk.requests, chunk.index);
+        await ttsService.speakSequence(
+          parts.flatMap(({ message, requests }) => withTTSVoiceRequestCacheKeys(requests, cfg, message.id)),
+          lastMsg.id,
+          {
+            chatId: targetChatId,
+            progressive: cfg.progressivePlayback,
+            volume: ttsLineVolume / 100,
+            onChunkStart: (_request, index) => {
+              const chunk = chunks[index];
+              if (chunk) notifyRoleplayTTSParagraph(targetChatId, chunk.messageId, chunk.requests, chunk.index);
+            },
           },
-        },
-      );
+        );
+      } finally {
+        announceVoice(false);
+      }
     },
     [
       characterMap,
@@ -3481,6 +3737,7 @@ const LocalChatArea = memo(function LocalChatArea({
             onPeekPrompt={handlePeekPrompt}
             multiSelectMode={multiSelectMode}
             selectedMessageIds={selectedMessageIds}
+            avatarStage={gameAvatarStage}
           />
 
           <ChatCommonOverlays
@@ -3503,6 +3760,7 @@ const LocalChatArea = memo(function LocalChatArea({
               onSpriteSideChange: handleSetSpritePosition,
               spriteVisualSettings: effectiveSpriteVisualSettings,
               onSpriteVisualSettingsChange: patchLocalSpriteVisualSettings,
+              avatarLayout,
             }}
             onCloseSettings={handleCloseSettingsPanel}
             onOpenScheduleEditor={handleOpenScheduleEditor}
@@ -3591,6 +3849,8 @@ const LocalChatArea = memo(function LocalChatArea({
             onIllustrate={handleIllustrate}
             onIllustrateWithAgent={handleIllustrateWithAgent}
             onGenerateSelfie={handleGenerateConversationSelfie}
+            onGenerateVideo={handleConversationGalleryVideo}
+            onAnimateImage={handleConversationAnimateImage}
             onWizardFinish={() => {
               setWizardOpen(false);
               handleOpenSettingsPanel();
@@ -3620,6 +3880,14 @@ const LocalChatArea = memo(function LocalChatArea({
           isSubmitting={conversationSelfieReviewSubmitting}
           onCancel={() => closeConversationSelfiePromptReview(null)}
           onConfirm={confirmConversationSelfiePromptReview}
+        />
+        <ImagePromptReviewModal
+          open={roleplayVideoReviewItems.length > 0}
+          items={roleplayVideoReviewItems}
+          isSubmitting={roleplayVideoReviewSubmitting}
+          mediaType="video"
+          onCancel={() => closeRoleplayVideoPromptReview(null)}
+          onConfirm={confirmRoleplayVideoPromptReview}
         />
         {chatHelpOverlay}
         {pendingNewChatMode && (
@@ -3752,6 +4020,8 @@ const LocalChatArea = memo(function LocalChatArea({
           onExpressionChange={handleExpressionChange}
           onSpritePlacementChange={handleSpritePlacementChange}
           onFinishSpritePlacement={() => setSpriteArrangeMode(false)}
+          avatarLayout={avatarLayout}
+          onAvatarsShown={handleStageAvatarsChange}
           onDeleteConfirm={handleDeleteConfirm}
           onDeleteSwipe={handleDeleteSwipe}
           onDeleteOtherSwipes={handleDeleteOtherSwipes}

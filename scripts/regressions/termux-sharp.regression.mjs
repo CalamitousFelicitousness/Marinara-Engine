@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,7 +11,10 @@ const rootPackage = JSON.parse(readFileSync(join(repositoryRoot, "package.json")
 const serverPackage = JSON.parse(readFileSync(join(repositoryRoot, "packages/server/package.json"), "utf8"));
 const wasmVersion = serverPackage.dependencies["@img/sharp-wasm32"];
 assert(wasmVersion, "the cross-platform WASM fallback must not be pruned with unsupported optional binaries");
-const lock = readFileSync(join(repositoryRoot, "pnpm-lock.yaml"), "utf8");
+const lockSource = readFileSync(join(repositoryRoot, "pnpm-lock.yaml"), "utf8");
+const lock = lockSource.split(/^---[ \t]*$/mu).at(-1);
+const documentBoundary = lockSource.lastIndexOf("\n---\n");
+const packageManagerLock = documentBoundary < 0 ? "" : lockSource.slice(0, documentBoundary + 5);
 const serverLock = lock.split("\n  packages/server:\n")[1]?.split("\n  packages/shared:\n")[0];
 const sharpVersion = serverLock?.match(/\n      sharp:\n        specifier: [^\n]+\n        version: ([^\n]+)/u)?.[1];
 assert(sharpVersion);
@@ -49,13 +52,27 @@ const pnpm = (args, cwd) => {
   assert.equal(result.status, 0, result.stdout + result.stderr + (result.error?.message ?? ""));
   return result.stdout.trim();
 };
-const store = pnpm(["store", "path", "--silent"], repositoryRoot);
+// The store the checkout's install actually filled: an install with --store-dir elsewhere leaves
+// `pnpm store path` pointing at the configured, empty in-checkout store.
+const installedStore = () => {
+  try {
+    return JSON.parse(readFileSync(join(repositoryRoot, "node_modules/.modules.yaml"), "utf8")).storeDir || undefined;
+  } catch {
+    return undefined;
+  }
+};
+const store = installedStore() ?? pnpm(["store", "path", "--silent"], repositoryRoot);
 const fixture = mkdtempSync(join(tmpdir(), "marinara-sharp-frozen-"));
 try {
   writeFileSync(
     join(fixture, "pnpm-workspace.yaml"),
-    "packages: []\nautoInstallPeers: false\nconfirmModulesPurge: false\n",
+    readFileSync(join(repositoryRoot, "pnpm-workspace.yaml"), "utf8")
+      .replace(/packages:\n  - "packages\/\*"/u, "packages: []")
+      // This offline loading fixture reuses bytes already installed under the
+      // real workspace's age policy; it cannot refetch registry age metadata.
+      .replace(/^minimumReleaseAge: \d+$/mu, "minimumReleaseAge: 0"),
   );
+  cpSync(join(repositoryRoot, "patches"), join(fixture, "patches"), { recursive: true });
   const writeFixture = (required) => {
     writeFileSync(
       join(fixture, "package.json"),
@@ -73,10 +90,7 @@ try {
     // Reuse exact package snapshots; do not resolve versions or contact a registry.
     writeFileSync(
       join(fixture, "pnpm-lock.yaml"),
-      `lockfileVersion: '9.0'
-settings:
-  autoInstallPeers: false
-  excludeLinksFromLockfile: false
+      `${packageManagerLock}${lock.slice(0, lock.indexOf("\nimporters:\n")).trimStart()}
 importers:
   .:
     ${required ? "dependencies" : "optionalDependencies"}:

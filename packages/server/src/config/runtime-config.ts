@@ -434,17 +434,22 @@ export function isUnauthenticatedPrivateNetworkAllowed() {
 /**
  * Optional override for the no-auth-lockdown private-network exemption list.
  * Comma-separated IPs / CIDRs. When set, REPLACES the built-in defaults
- * (RFC 1918, CGNAT, link-local, IPv6 ULA). When unset, defaults are used.
+ * (RFC 1918, link-local, IPv6 ULA; not CGNAT). When unset, defaults are used.
  */
 export function getTrustedPrivateNetworksOverride() {
   return normalizeEnvValue(process.env.TRUSTED_PRIVATE_NETWORKS);
+}
+
+/** Comma-separated IPs / CIDRs of forward-auth proxies that already log every visitor in. */
+export function getTrustedAuthProxy() {
+  return normalizeEnvValue(process.env.TRUSTED_AUTH_PROXY);
 }
 
 /**
  * Choose how direct Tailscale traffic may skip the IP allowlist and Basic Auth.
  *
  * Default: automatic. A Tailscale-shaped client is trusted only when its
- * connection also arrived on a local 100.64.0.0/10 address. Set the flag to
+ * connection also arrived on a 100.64.0.0/10 address of a local Tailscale interface. Set the flag to
  * true for the legacy broad range bypass, or false to disable it.
  */
 export function getTailscaleBypassMode(): "auto" | "enabled" | "disabled" {
@@ -475,6 +480,18 @@ export function getDockerBypassMode(): "auto" | "enabled" | "disabled" {
  */
 export function isDockerProxyAuthRequired() {
   return !isDisabledFlag(process.env.REQUIRE_AUTH_FOR_DOCKER_PROXY);
+}
+
+/**
+ * Treat loopback requests that carry reverse-proxy forwarding headers as the
+ * remote clients they represent, so a proxy or tunnel on this machine cannot
+ * pass every visitor off as the local user.
+ *
+ * Default: ON. Set REQUIRE_AUTH_FOR_LOOPBACK_PROXY=false only when the proxy
+ * itself requires a login from every client it forwards.
+ */
+export function isLoopbackProxyAuthRequired() {
+  return !isDisabledFlag(process.env.REQUIRE_AUTH_FOR_LOOPBACK_PROXY);
 }
 
 export function isDebugAgentsEnabled() {
@@ -516,6 +533,10 @@ export function isUpdatesApplyHardDisabled() {
   // .env hot-reload writing UPDATES_APPLY_DISABLED=false must not lift a
   // guard whose whole point is protecting the checkout this process runs from.
   return BOOT_UPDATES_APPLY_HARD_DISABLED || isEnabledFlag(process.env.UPDATES_APPLY_DISABLED);
+}
+
+export function isMarinaraNoticesEnabled() {
+  return !isDisabledFlag(process.env.MARINARA_NOTICES_ENABLED);
 }
 
 export function isUpdatesRemoteApplyAllowed() {

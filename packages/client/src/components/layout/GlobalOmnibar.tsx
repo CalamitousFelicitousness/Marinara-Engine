@@ -1948,7 +1948,7 @@ export function GlobalOmnibarDialog({ onClose }: { onClose: () => void }) {
       data-over-dialog={overDialog ? "true" : undefined}
       data-pane={pane}
       data-mode={pane === "mari" ? "work" : "find"}
-      className="fixed inset-0 z-(--mari-layer-omnibar) flex items-start justify-center bg-black/55 backdrop-blur-sm motion-safe:transition-[padding] motion-safe:duration-300 sm:px-6 sm:pt-[var(--omnibar-top)]"
+      className="fixed inset-0 z-(--mari-layer-omnibar) flex items-start justify-center bg-black/55 backdrop-blur-sm motion-safe:transition-[padding] motion-safe:duration-300 sm:pt-[var(--omnibar-top)] sm:pr-[max(1.5rem,var(--mari-safe-area-inset-right))] sm:pl-[max(1.5rem,var(--mari-safe-area-inset-left))]"
       // An empty bar sits lower, near the middle, so the hint field below it has
       // room; it rides back up as soon as results need the space.
       style={{ "--omnibar-top": idle && !mariSurface ? "26vh" : "10vh" } as React.CSSProperties}
@@ -2065,6 +2065,7 @@ export function GlobalOmnibarDialog({ onClose }: { onClose: () => void }) {
                     value={query}
                     suffix={inlineSuffix}
                     className="text-base font-medium leading-normal"
+                    onAccept={() => setQuery(query + inlineSuffix)}
                   />
                   <input
                     ref={inputRef}

@@ -2,6 +2,7 @@ import { resolveStoredChatOptions, resolveStoredMaxTokens } from "../services/ge
 import { z } from "zod";
 import { resolveGameConnection as resolveEncounterConnection } from "../services/game/connection.service.js";
 import {
+  TTS_SETTINGS_KEY,
   combatAiHintsSchema,
   combatBossSchema,
   combatInterruptFields,
@@ -19,6 +20,12 @@ import {
 } from "@marinara-engine/shared";
 import { loadGameFightItems } from "../services/game/game-inventory.service.js";
 import { loadRulesetCatalogEntries } from "../services/game/ruleset-catalog.service.js";
+import {
+  latestStoryFight,
+  storyFightBlueprintEnemies,
+  storyFightOpponents,
+  storyFightPromptText,
+} from "../services/game/story-fight.service.js";
 import { loadRulesetRegistry, resolveGameRuleset } from "../services/game/ruleset-registry.service.js";
 // ──────────────────────────────────────────────
 // Routes: Combat Encounter (non-streaming JSON)
@@ -27,6 +34,8 @@ import type { FastifyInstance } from "fastify";
 import { createChatsStorage } from "../services/storage/chats.storage.js";
 import { createConnectionsStorage } from "../services/storage/connections.storage.js";
 import { createCharactersStorage } from "../services/storage/characters.storage.js";
+import { createAppSettingsStorage } from "../services/storage/app-settings.storage.js";
+import { gameTtsEmotionIndicatorsEnabled, TTS_EMOTION_CUE_GUIDANCE } from "../services/tts-emotion-guidance.js";
 import { resolveChatUserIdentity } from "../services/chat-user-identity.js";
 import { createGameStateStorage } from "../services/storage/game-state.storage.js";
 import { createLorebooksStorage } from "../services/storage/lorebooks.storage.js";
@@ -120,10 +129,14 @@ function fallbackActionResult(input: EncounterActionRequest): CombatActionResult
 }
 
 /** Build character context from the chat's character IDs. */
-async function buildCharacterContext(chars: ReturnType<typeof createCharactersStorage>, characterIds: string[]) {
+async function buildCharacterContext(
+  chars: ReturnType<typeof createCharactersStorage>,
+  characterIds: string[],
+  chatId?: string,
+) {
   let ctx = "";
   for (const cid of characterIds) {
-    const row = await chars.getById(cid);
+    const row = await chars.getById(cid, chatId);
     if (!row) continue;
     const data = typeof row.data === "string" ? JSON.parse(row.data) : row.data;
     ctx += `<character="${data.name}">\n`;
@@ -156,8 +169,10 @@ async function buildPersonaContext(
   chatPersonaId: string | null,
   chatMode?: string | null,
   personaCharacterId?: string | null,
+  chatId?: string,
 ) {
   const persona = await resolveChatUserIdentity(chars, {
+    id: chatId,
     personaId: chatPersonaId,
     personaCharacterId,
     mode: chatMode,
@@ -578,6 +593,7 @@ export function buildInitPrompt(
   elements?: WorldElementSet,
   /** The setting's own scenes and tile words (worldgen W6d), when its kit names them. */
   battlefields?: WorldBattlefields,
+  ttsEmotionIndicatorsEnabled = false,
 ): ChatMessage[] {
   const msgs: ChatMessage[] = [];
   // What an attack's element may be: one of the setting's own, none in a setting without them.
@@ -704,6 +720,9 @@ export function buildInitPrompt(
     : `- items: the game's ruleset says what its own items do in a fight, so give no itemEffects.\n`;
   inst += `- mechanics: use sparingly. Boss charge attacks should include interval, counterplay, effectType, and a matching dialogueCue with trigger "charge".\n`;
   inst += `- dialogueCues: optional, short, and only for named allies, named enemies, bosses, or important NPCs. Generic unnamed enemies should not get voiced lines.\n`;
+  if (ttsEmotionIndicatorsEnabled) {
+    inst += `- Inside spoken dialogueCues.content strings only: ${TTS_EMOTION_CUE_GUIDANCE} Keep the JSON structure and the speaker, type, expression, and trigger fields unchanged.\n`;
+  }
   inst += `- visuals: set isBossFight true only for bosses/story-significant enemies. backgroundPrompt/illustrationPrompt are optional and only for important fights.\n`;
   inst += `- visuals.encounterTier: classify the whole encounter — "common" for ordinary fights, "miniboss" for elites or named mid-tier threats, "boss" for true bosses, "special" for unique story encounters (rivals, scripted duels, otherworldly events). When unsure, use "common".\n`;
   if (tactical) {
@@ -933,12 +952,13 @@ export async function encounterRoutes(app: FastifyInstance) {
       );
 
       const characterIds: string[] = JSON.parse(chat.characterIds as string);
-      const characterCtx = await buildCharacterContext(chars, characterIds);
+      const characterCtx = await buildCharacterContext(chars, characterIds, chat.id);
       const { personaName, personaCtx } = await buildPersonaContext(
         chars,
         chat.personaId ?? null,
         chat.mode,
         chat.personaCharacterId,
+        chat.id,
       );
       let chatMeta: Record<string, unknown> | null = null;
       if (typeof chat.metadata === "string") {
@@ -980,9 +1000,11 @@ export async function encounterRoutes(app: FastifyInstance) {
       // exactly the blueprint it was asked for before any of this existed.
       let rulesetBrief: EncounterRulesetBrief | null = null;
       const items = { guess: true, ruleset: [] as string[] };
+      let fightRuleset: { definition: RulesetDefinition; packageId: string | null } | null = null;
       if (chatMeta?.gameRuleset != null) {
         const resolved = resolveGameRuleset(chatMeta, await loadRulesetRegistry());
         if (resolved.status === "ok") {
+          fightRuleset = { definition: resolved.definition, packageId: resolved.packageId };
           rulesetBrief = await encounterRulesetBrief(resolved.definition, resolved.packageId);
           items.guess = resolved.definition.items?.native !== false;
           if (resolved.definition.items) {
@@ -1005,7 +1027,18 @@ export async function encounterRoutes(app: FastifyInstance) {
         items,
         gameWorldElementSet(chatMeta),
         gameWorldBattlefields(chatMeta),
+        gameTtsEmotionIndicatorsEnabled(await createAppSettingsStorage(app.db).get(TTS_SETTINGS_KEY)),
       );
+      // A fight the story set (Capability API 1.343): its opponents are the story's, never the model's.
+      // Creatures the ruleset doesn't have are refused (and logged); with none left, the model picks them.
+      const storyFight = await latestStoryFight(app.db, chatId, chatMeta);
+      const storyRoster = storyFight
+        ? await storyFightOpponents(storyFight, fightRuleset?.definition.combat ? fightRuleset : null)
+        : null;
+      const storyOpponents = storyRoster?.opponents.length ? storyRoster.opponents : null;
+      if (storyFight && storyRoster) {
+        prompt.push({ role: "user", content: storyFightPromptText(storyFight, storyRoster.opponents) });
+      }
       debugLog(
         "[debug/game/combat:init] request chatId=%s model=%s historyMessages=%d settings=%s",
         chatId,
@@ -1049,6 +1082,16 @@ export async function encounterRoutes(app: FastifyInstance) {
       if (!aiBlueprint.success)
         return reply.status(502).send({ error: `Invalid combat AI data: ${aiBlueprint.error.issues[0]?.message}` });
       combatState = aiBlueprint.data;
+      if (storyOpponents?.length) {
+        combatState = {
+          ...combatState,
+          enemies: storyFightBlueprintEnemies(
+            storyOpponents,
+            (combatState.enemies as Array<Record<string, unknown>>) ?? [],
+            rulesetBrief !== null,
+          ),
+        };
+      }
       if (combatStyle === "tactical") {
         const tacticalResult = validateTacticalEncounterBlueprint(combatState);
         if (!tacticalResult.ok) {
@@ -1101,12 +1144,13 @@ export async function encounterRoutes(app: FastifyInstance) {
       );
 
       const characterIds: string[] = JSON.parse(chat.characterIds as string);
-      const characterCtx = await buildCharacterContext(chars, characterIds);
+      const characterCtx = await buildCharacterContext(chars, characterIds, chat.id);
       const { personaName, personaCtx } = await buildPersonaContext(
         chars,
         chat.personaId ?? null,
         chat.mode,
         chat.personaCharacterId,
+        chat.id,
       );
       const spellbookCtx = await loadSpellbookContext(spellbookId);
 
@@ -1211,12 +1255,13 @@ export async function encounterRoutes(app: FastifyInstance) {
       );
 
       const characterIds: string[] = JSON.parse(chat.characterIds as string);
-      const characterCtx = await buildCharacterContext(chars, characterIds);
+      const characterCtx = await buildCharacterContext(chars, characterIds, chat.id);
       const { personaName, personaCtx } = await buildPersonaContext(
         chars,
         chat.personaId ?? null,
         chat.mode,
         chat.personaCharacterId,
+        chat.id,
       );
 
       const prompt = buildSummaryPrompt(

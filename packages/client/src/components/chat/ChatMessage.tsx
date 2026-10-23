@@ -7,10 +7,13 @@ import { cn, copyToClipboard, getAvatarCropStyle, isLegacyAvatarCrop } from "../
 import {
   normalizeAvatarCrop,
   getRoleplayWhispers,
+  getRoleplayCommandActivity,
   getRoleplayCommandContentOffset,
   type AvatarCrop,
 } from "@marinara-engine/shared";
 import { applyInlineMarkdown, renderMarkdownBlocks, applyInlineMarkdownHTML } from "../../lib/markdown";
+import { SystemMessage } from "./SystemMessage";
+import { protectMarkdownCode } from "../../lib/markdown-code";
 import { MessageReplyPreview, ReplyToMessageButton } from "./MessageReplyPreview";
 import {
   RoleplayCommandResults,
@@ -107,6 +110,8 @@ import { DIALOGUE_QUOTE_PATTERN_SOURCE, HTML_SAFE_DIALOGUE_QUOTE_PATTERN_SOURCE 
 import { resolveMessageRewriteVersions } from "../../lib/message-rewrite-versions";
 import { convertChatHtmlNewlines } from "../../lib/chat-html-newlines";
 import { scopeChatMessageCss } from "../../lib/chat-message-css";
+import { currentRemoteImagePolicy, handleRemoteImageClick, useRemoteImagePolicy } from "../../lib/remote-image-policy";
+import type { RemoteImagePolicy } from "../../lib/remote-images";
 import {
   HTML_TAG_RE,
   containsChatHtml,
@@ -123,6 +128,7 @@ import {
   MESSAGE_SELECTION_SURFACE_CLASS,
 } from "./message-selection-styles";
 import { GenerationReplayDetailsModal, hasGenerationReplayDetails } from "./GenerationReplayDetailsModal";
+import { GenerationFallbackMarker } from "./GenerationFallbackMarker";
 import type { ChatImage } from "../../hooks/use-gallery";
 import { ChatImageLightbox } from "./ChatImageLightbox";
 import { SwipeJumpControl } from "./SwipeJumpControl";
@@ -161,6 +167,7 @@ interface ChatMessageImageLightboxState {
   alt: string;
   pinEnabled: boolean;
   downloadEnabled: boolean;
+  regenerate?: { messageId?: string };
 }
 
 function readString(value: unknown): string | null {
@@ -1010,6 +1017,8 @@ interface ChatMessageProps {
   isGrouped?: boolean;
   personaInfo?: PersonaInfo;
   groupChatMode?: string;
+  /** This chat's Card Theming switch; undefined falls back to the retired global setting. */
+  colorInlineNames?: boolean;
   chatCharacterIds?: string[];
   /** Active character IDs used for merged Narrator avatar presentation. */
   mergedGroupCharacterIds?: string[];
@@ -1669,6 +1678,7 @@ function renderContent(
   nameColorMap?: Map<string, string> | null,
   textShadow?: string,
   ownDialogueColor = false,
+  remoteImages: RemoteImagePolicy = currentRemoteImagePolicy(),
 ): ReactNode {
   // Portable card://self/gallery refs resolve to the speaking character before
   // any rendering, covering both the markdown branch and the embedded-HTML
@@ -1676,7 +1686,8 @@ function renderContent(
   // chat-wide index lets merged group replies fall back to whichever chat
   // character owns the file when the speaker does not.
   const selfResolved = resolveSelfCardAssets(text, selfCharacterId, galleryIndex);
-  const normalized = decodeEncodedSpeakerTags(decodeEncodedChatHtmlTags(formatTextQuotes(selfResolved, quoteFormat)));
+  const code = protectMarkdownCode(selfResolved);
+  const normalized = decodeEncodedSpeakerTags(decodeEncodedChatHtmlTags(formatTextQuotes(code.text, quoteFormat)));
 
   // Strip speaker tags before HTML detection (they aren't real HTML)
   const withoutSpeakerTags = normalized.replace(/<\/?speaker(?:="[^"]*")?>/g, "");
@@ -1688,7 +1699,7 @@ function renderContent(
   // Name coloring runs AFTER on the React tree so injected spans don't
   // interfere with paragraph splitting or trigger the HTML path.
   if (!isHtmlPath) {
-    const markdownResult = renderMarkdownBlocks(normalized, (seg, _kp) =>
+    const markdownResult = renderMarkdownBlocks(code.restoreSource(normalized), (seg, _kp) =>
       renderWithSpeakerTags(seg, dialogueColor, speakerColorMap, boldDialogue, ownDialogueColor),
     );
     if (nameColorMap && nameColorMap.size > 0) {
@@ -1723,7 +1734,8 @@ function renderContent(
     }),
   );
 
-  const clean = sanitizeChatHtml(withImages, { allowStyle: true });
+  // Images from other sites are held in the final pass below, after the dialogue and Markdown steps.
+  const clean = sanitizeChatHtml(withImages, { allowStyle: true, remoteImages: "keep" });
 
   // Apply dialogue bolding inside sanitised HTML with per-speaker color support.
   const withDialogue = (() => {
@@ -1768,13 +1780,14 @@ function renderContent(
 
   // Apply markdown-style bold/italic in HTML path
   const withMarkdown = applyInlineMarkdownHTML(withDialogue);
-  const finalHtml = sanitizeChatHtml(withMarkdown, { allowStyle: true });
-  const scopedCss = scopeChatMessageCss(rawStyleBlocks, `.${htmlScopeClass}`);
+  const finalHtml = sanitizeChatHtml(code.restoreHtml(withMarkdown), { allowStyle: true, remoteImages });
+  const scopedCss = scopeChatMessageCss(rawStyleBlocks, `.${htmlScopeClass}`, { remoteUrls: remoteImages.loadAll });
   const html = scopedCss ? `<style>${scopedCss}</style>${finalHtml}` : finalHtml;
 
   return (
     <div
       className={cn("mari-html-content relative !overflow-hidden !contain-paint", htmlScopeClass)}
+      onClick={handleRemoteImageClick}
       dangerouslySetInnerHTML={{ __html: html }}
     />
   );
@@ -1805,6 +1818,7 @@ export function RoleplayMessagePreview({
         quoteFormat: state.quoteFormat,
       })),
     );
+  const remoteImages = useRemoteImagePolicy();
   const resolvedDialogueColor = dialogueColor || defaultDialogueColor || getDefaultChatTextColor(theme);
   const htmlScopeClass = `mari-html-greeting-${previewId.replace(/[^a-zA-Z0-9_-]/g, "") || "preview"}`;
   const isHtmlContent = containsChatHtml(content);
@@ -1831,8 +1845,18 @@ export function RoleplayMessagePreview({
         undefined, // nameColorMap
         undefined, // textShadowStr
         !!dialogueColor,
+        remoteImages,
       ),
-    [boldDialogue, content, dialogueColor, htmlScopeClass, quoteFormat, resolvedDialogueColor, selfCharacterId],
+    [
+      boldDialogue,
+      content,
+      dialogueColor,
+      htmlScopeClass,
+      quoteFormat,
+      remoteImages,
+      resolvedDialogueColor,
+      selfCharacterId,
+    ],
   );
 
   return (
@@ -1905,6 +1929,7 @@ export const ChatMessage = memo(function ChatMessage({
   isGrouped,
   personaInfo,
   groupChatMode,
+  colorInlineNames: chatColorInlineNames,
   chatCharacterIds,
   mergedGroupCharacterIds,
   expressionAvatarResolver,
@@ -1947,7 +1972,7 @@ export const ChatMessage = memo(function ChatMessage({
     showTokenUsage,
     showMessageNumbers,
     boldDialogue,
-    colorInlineNames,
+    legacyColorInlineNames,
     disableInlineNameGradients,
     editMessageOnDoubleClick,
     quoteFormat,
@@ -1972,7 +1997,7 @@ export const ChatMessage = memo(function ChatMessage({
       showTokenUsage: s.showTokenUsage,
       showMessageNumbers: s.showMessageNumbers,
       boldDialogue: s.boldDialogue ?? true,
-      colorInlineNames: s.colorInlineNames,
+      legacyColorInlineNames: s.colorInlineNames,
       disableInlineNameGradients: s.disableInlineNameGradients,
       editMessageOnDoubleClick: s.editMessageOnDoubleClick,
       quoteFormat: s.quoteFormat,
@@ -1980,6 +2005,8 @@ export const ChatMessage = memo(function ChatMessage({
       setTTSLineVolume: s.setTTSLineVolume,
     })),
   );
+  const colorInlineNames = chatColorInlineNames ?? legacyColorInlineNames;
+  const remoteImages = useRemoteImagePolicy();
   // Build reusable text style objects (memoized to avoid unnecessary DOM updates)
   const textStrokeStyle = useMemo<React.CSSProperties>(
     () =>
@@ -2057,6 +2084,8 @@ export const ChatMessage = memo(function ChatMessage({
         alt,
         pinEnabled: true,
         downloadEnabled: true,
+        // Only generated images saved to the chat gallery can be regenerated (#7767).
+        ...(readString(attachment.galleryId) ? { regenerate: { messageId: message.id } } : {}),
       });
     },
     [message],
@@ -2081,6 +2110,7 @@ export const ChatMessage = memo(function ChatMessage({
           }),
         pinEnabled: true,
         downloadEnabled: true,
+        regenerate: {},
       });
     },
     [localizeUi, message.chatId],
@@ -2513,6 +2543,8 @@ export const ChatMessage = memo(function ChatMessage({
     }
     return parts.length > 0 ? parts.join(" · ") : null;
   }, [genInfo, showModelName, showTokenUsage, localizeUi]);
+  // Shown with the model name and token usage settings off too (#7697).
+  const fallbackMarker = isUser ? null : <GenerationFallbackMarker fallback={extra.generationInfo?.fallback} />;
   // useLayoutEffect runs after DOM mutation but before browser paint — prevents visible scroll jump
   useLayoutEffect(() => {
     // Restore scroll position saved before the state change
@@ -2987,6 +3019,25 @@ export const ChatMessage = memo(function ChatMessage({
     return `mari-html-message-${suffix || "content"}`;
   }, [message.id]);
 
+  // Images an illustrate command made, by the command's place in this message's activity.
+  const illustrationsByCommand = useMemo(() => {
+    const byCommand = new Map<number, Array<{ attachment: MessageImageAttachmentLike; index: number }>>();
+    // Visual Novel keeps its own media stage, so its illustrations stay there.
+    if (!isRoleplay || isUser || visualNovel || !Array.isArray(extra.attachments)) return byCommand;
+    extra.attachments.forEach((attachment: any, index: number) => {
+      if (
+        typeof attachment?.roleplayCommandIndex !== "number" ||
+        !(attachment.type === "image" || attachment.type?.startsWith?.("image/")) ||
+        !(attachment.url || attachment.data)
+      )
+        return;
+      const images = byCommand.get(attachment.roleplayCommandIndex) ?? [];
+      images.push({ attachment, index });
+      byCommand.set(attachment.roleplayCommandIndex, images);
+    });
+    return byCommand;
+  }, [isRoleplay, isUser, visualNovel, extra.attachments]);
+
   const inlineRoleplayCommands = useMemo(() => {
     const commands = isRoleplay
       ? [
@@ -2996,6 +3047,21 @@ export const ChatMessage = memo(function ChatMessage({
             kind: "whisper" as const,
             offset: getRoleplayCommandContentOffset(fullText, whisper.activity),
           })),
+          // Only commands saved with a place (Render in-line was on) show their images in the text.
+          ...getRoleplayCommandActivity(extra).flatMap((activity, index) => {
+            const images = illustrationsByCommand.get(index);
+            if (
+              activity.command.type !== "illustrate" ||
+              activity.deleted ||
+              typeof activity.contentOffset !== "number" ||
+              !images?.length
+            )
+              return [];
+            // An image between paragraphs opens the next one, so the break above it stays and none is left below.
+            let offset = getRoleplayCommandContentOffset(fullText, activity);
+            while (fullText[offset] === "\n" || fullText[offset] === "\r") offset++;
+            return [{ kind: "illustration" as const, index, images, offset }];
+          }),
         ].sort((a, b) => a.offset - b.offset || a.index - b.index)
       : [];
     let paragraphStart = 0;
@@ -3018,11 +3084,87 @@ export const ChatMessage = memo(function ChatMessage({
         (command) => paragraphStart >= 0 && command.offset >= paragraphStart && command.offset < nextParagraphStart,
       )
       .map((command) => ({ ...command, offset: Math.min(command.offset - paragraphStart, text.length) }));
-  }, [isRoleplay, isUser, fullText, extra, visualNovel, activeVnParagraphIndex, vnParagraphs, text.length]);
+  }, [
+    isRoleplay,
+    isUser,
+    fullText,
+    extra,
+    illustrationsByCommand,
+    visualNovel,
+    activeVnParagraphIndex,
+    vnParagraphs,
+    text.length,
+  ]);
+
+  const inlineIllustrationIndexes = useMemo(
+    () =>
+      new Set(
+        inlineRoleplayCommands.flatMap((command) =>
+          command.kind === "illustration" ? command.images.map(({ index }) => index) : [],
+        ),
+      ),
+    [inlineRoleplayCommands],
+  );
+
+  const renderRoleplayImageAttachment = useCallback(
+    (att: any, i: number, vnTarget: boolean) => (
+      <div
+        key={i}
+        className={cn(
+          "group/att relative",
+          vnTarget
+            ? "pointer-events-auto flex h-full min-h-0 min-w-0 max-w-3xl flex-1 items-end justify-center"
+            : "inline-block",
+        )}
+      >
+        <button
+          type="button"
+          onClick={() => openAttachmentImageLightbox(att, i)}
+          className={vnTarget ? "flex h-full min-h-0 w-full items-end justify-center" : "block"}
+          title={localizeUi("ui.noodle.noodlepostcard.openImage")}
+          aria-label={localizeUi("ui.chat.chatmessage.openValue1", {
+            value1: att.filename || att.name || localizeUi("ui.ui.spritegenerationmodal.image"),
+          })}
+        >
+          <ChatImagePreview
+            src={att.url || att.data}
+            alt={att.filename || att.name || "image"}
+            className={cn(
+              "max-w-full rounded-lg object-contain",
+              vnTarget ? "max-h-full" : "max-h-[70vh] sm:max-h-[32rem]",
+            )}
+            loading="lazy"
+            decoding="async"
+          />
+        </button>
+        {!vnTarget && (
+          <button
+            type="button"
+            onClick={() => handleRemoveAttachment(i)}
+            aria-label={localizeUi("ui.chat.chatmessage.removeImageFromMessage")}
+            title={localizeUi("ui.chat.chatmessage.removeFromMessage")}
+            // Touch screens have no hover, so the remove button stays shown there with a larger target.
+            className="absolute top-1.5 right-1.5 rounded-full bg-black/60 p-1 text-white/80 transition-opacity hover:bg-black/80 hover:text-white/100 pointer-coarse:p-2 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover/att:opacity-100 [@media(hover:hover)]:focus-visible:opacity-100"
+          >
+            <X size="0.875rem" />
+          </button>
+        )}
+      </div>
+    ),
+    [openAttachmentImageLightbox, handleRemoveAttachment, localizeUi],
+  );
 
   const renderInlineRoleplayCommand = useCallback(
     (command: (typeof inlineRoleplayCommands)[number]) =>
-      command.kind === "whisper" ? (
+      command.kind === "illustration" ? (
+        <div
+          key={`illustration-${message.id}-${message.activeSwipeIndex}-${command.index}`}
+          className="mb-4 flex flex-col items-center gap-2 whitespace-normal"
+          data-roleplay-inline-illustration
+        >
+          {command.images.map(({ attachment, index }) => renderRoleplayImageAttachment(attachment, index, false))}
+        </div>
+      ) : command.kind === "whisper" ? (
         <RoleplayWhisper
           // The original command text identifies the whisper, so an open editor never saves over a replacement.
           key={`whisper-${message.id}-${message.activeSwipeIndex}-${command.index}-${personaInfo?.id}-${command.activity.raw}`}
@@ -3054,6 +3196,7 @@ export const ChatMessage = memo(function ChatMessage({
       extra,
       isStreaming,
       isUser,
+      renderRoleplayImageAttachment,
     ],
   );
 
@@ -3071,6 +3214,7 @@ export const ChatMessage = memo(function ChatMessage({
         nameColorMap,
         textShadowStr,
         ownDialogueColor,
+        remoteImages,
       );
     let markerPrefix = "\uE000";
     while (text.includes(markerPrefix)) markerPrefix = "\uE000" + markerPrefix;
@@ -3107,6 +3251,7 @@ export const ChatMessage = memo(function ChatMessage({
     nameColorMap,
     textShadowStr,
     ownDialogueColor,
+    remoteImages,
   ]);
   const renderStreamingText = useCallback(
     (streamText: string) =>
@@ -3122,6 +3267,7 @@ export const ChatMessage = memo(function ChatMessage({
         nameColorMap,
         textShadowStr,
         ownDialogueColor,
+        remoteImages,
       ),
     [
       formatDisplayContent,
@@ -3135,6 +3281,7 @@ export const ChatMessage = memo(function ChatMessage({
       nameColorMap,
       textShadowStr,
       ownDialogueColor,
+      remoteImages,
     ],
   );
 
@@ -3168,6 +3315,7 @@ export const ChatMessage = memo(function ChatMessage({
             nameColorMap,
             textShadowStr,
             ownDialogueColor,
+            remoteImages,
           )
         : null,
     [
@@ -3182,6 +3330,7 @@ export const ChatMessage = memo(function ChatMessage({
       nameColorMap,
       textShadowStr,
       ownDialogueColor,
+      remoteImages,
     ],
   );
   const translationDisplayOnly = useMemo(
@@ -3414,13 +3563,15 @@ export const ChatMessage = memo(function ChatMessage({
   // Text that is an image link already shows that picture; only videos still show below it.
   const textIsImageUrl = IMAGE_URL_RE.test(message.content.trim());
   const skipAttachment = (att: any) => att.roleplaySound === true || isAttachmentHiddenByImageText(att, textIsImageUrl);
+  // Illustrations already shown inside the message text are not repeated below it.
+  const skipRoleplayAttachment = (att: any, i: number) => skipAttachment(att) || inlineIllustrationIndexes.has(i);
   const roleplayAttachments = isRoleplay &&
     !editing &&
     extra.attachments?.length > 0 &&
-    extra.attachments.some((att: any) => !skipAttachment(att)) && (
+    extra.attachments.some((att: any, i: number) => !skipRoleplayAttachment(att, i)) && (
       <div className={hasVnMediaTarget ? "contents" : "mt-1.5 flex flex-col items-center gap-2 px-3 pb-2"}>
         {extra.attachments.map((att: any, i: number) =>
-          skipAttachment(att) ? null : isVideoAttachment(att) && att.url ? (
+          skipRoleplayAttachment(att, i) ? null : isVideoAttachment(att) && att.url ? (
             renderRoleplayImage(
               <ChatVideoAttachment
                 key={att.videoId ?? att.url}
@@ -3432,50 +3583,7 @@ export const ChatMessage = memo(function ChatMessage({
               i,
             )
           ) : att.type === "image" || att.type?.startsWith("image/") ? (
-            renderRoleplayImage(
-              <div
-                key={i}
-                className={cn(
-                  "group/att relative",
-                  hasVnMediaTarget
-                    ? "pointer-events-auto flex h-full min-h-0 min-w-0 max-w-3xl flex-1 items-end justify-center"
-                    : "inline-block",
-                )}
-              >
-                <button
-                  type="button"
-                  onClick={() => openAttachmentImageLightbox(att, i)}
-                  className={hasVnMediaTarget ? "flex h-full min-h-0 w-full items-end justify-center" : "block"}
-                  title={localizeUi("ui.noodle.noodlepostcard.openImage")}
-                  aria-label={localizeUi("ui.chat.chatmessage.openValue1", {
-                    value1: att.filename || att.name || localizeUi("ui.ui.spritegenerationmodal.image"),
-                  })}
-                >
-                  <ChatImagePreview
-                    src={att.url || att.data}
-                    alt={att.filename || att.name || "image"}
-                    className={cn(
-                      "max-w-full rounded-lg object-contain",
-                      hasVnMediaTarget ? "max-h-full" : "max-h-[70vh] sm:max-h-[32rem]",
-                    )}
-                    loading="lazy"
-                    decoding="async"
-                  />
-                </button>
-                {!hasVnMediaTarget && (
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveAttachment(i)}
-                    aria-label={localizeUi("ui.chat.chatmessage.removeImageFromMessage")}
-                    title={localizeUi("ui.chat.chatmessage.removeFromMessage")}
-                    className="absolute top-1.5 right-1.5 rounded-full bg-black/60 p-1 text-white/80 transition-opacity hover:bg-black/80 hover:text-white sm:opacity-0 sm:group-hover/att:opacity-100"
-                  >
-                    <X size="0.875rem" />
-                  </button>
-                )}
-              </div>,
-              i,
-            )
+            renderRoleplayImage(renderRoleplayImageAttachment(att, i, hasVnMediaTarget), i)
           ) : (
             <div
               key={i}
@@ -3639,6 +3747,7 @@ export const ChatMessage = memo(function ChatMessage({
             alt={imageLightbox.alt}
             pinEnabled={imageLightbox.pinEnabled}
             downloadEnabled={imageLightbox.downloadEnabled}
+            regenerate={imageLightbox.regenerate}
             onClose={closeImageLightbox}
           />
         )}
@@ -3649,37 +3758,36 @@ export const ChatMessage = memo(function ChatMessage({
   // ─── System messages (shared across modes) ───
   if (isSystem) {
     return (
-      <div
-        ref={msgRef}
-        className={cn(
-          "mari-system-message group flex justify-center py-2",
-          multiSelectMode && isSelected && cn("rounded-lg", MESSAGE_SELECTION_SURFACE_CLASS),
-        )}
+      <SystemMessage
+        message={message}
+        messageRef={msgRef}
+        editing={editing}
+        copied={copied}
+        showActions={showActions}
+        multiSelectMode={multiSelectMode}
+        isSelected={isSelected}
+        hiddenFromAI={isHiddenFromAI}
+        fontSize={chatFontSize}
         onClick={handleMobileTap}
+        onCopy={handleCopy}
+        onEdit={onEdit ? startEditing : undefined}
+        onBranch={onBranch ? () => onBranch(message.id) : undefined}
+        onToggleHiddenFromAI={onToggleHiddenFromAI ? () => onToggleHiddenFromAI(message.id, isHiddenFromAI) : undefined}
+        onDelete={onDelete ? () => onDelete(message.id) : undefined}
       >
-        <div className="relative">
-          {!multiSelectMode && onDelete && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onDelete(message.id);
-              }}
-              aria-label={localizeUi("chat.delete.dialog.title")}
-              className={cn(
-                "absolute -right-1 -top-1 rounded-md p-1 text-white/20 opacity-0 transition-all hover:bg-foreground/10 hover:text-foreground/70 group-hover:opacity-100",
-                showActions && "opacity-100",
-              )}
-              title={localizeUi("lorebook.editor.batch.delete")}
-            >
-              <Trash2 size="0.75rem" />
-            </button>
-          )}
-          <div className="mari-system-message-content rounded-full bg-[var(--secondary)] px-4 py-1.5 text-[0.6875rem] text-[var(--muted-foreground)]">
-            {message.content}
-          </div>
-        </div>
-      </div>
+        {editing ? (
+          <EditTextarea
+            initialContent={message.content}
+            fontSize={chatFontSize}
+            quoteFormat={quoteFormat}
+            saving={editSavePending}
+            onSave={handleSaveEdit}
+            onCancel={handleCancelEdit}
+          />
+        ) : (
+          <RoleplayMessagePreview content={displayContent} />
+        )}
+      </SystemMessage>
     );
   }
 
@@ -3784,6 +3892,7 @@ export const ChatMessage = memo(function ChatMessage({
               alt={imageLightbox.alt}
               pinEnabled={imageLightbox.pinEnabled}
               downloadEnabled={imageLightbox.downloadEnabled}
+              regenerate={imageLightbox.regenerate}
               onClose={closeImageLightbox}
             />
           )}
@@ -3956,6 +4065,7 @@ export const ChatMessage = memo(function ChatMessage({
                     {genLabel}
                   </span>
                 )}
+                {fallbackMarker}
                 {(showRoleplayAvatarPanel || hideRoleplayAvatars) &&
                   (showActions || showMessageNumbers) &&
                   messageIndex != null && (
@@ -4302,6 +4412,7 @@ export const ChatMessage = memo(function ChatMessage({
             alt={imageLightbox.alt}
             pinEnabled={imageLightbox.pinEnabled}
             downloadEnabled={imageLightbox.downloadEnabled}
+            regenerate={imageLightbox.regenerate}
             onClose={closeImageLightbox}
           />
         )}
@@ -4572,6 +4683,7 @@ export const ChatMessage = memo(function ChatMessage({
                   {genLabel}
                 </span>
               )}
+              {fallbackMarker}
             </div>
           )}
 
@@ -4818,6 +4930,7 @@ export const ChatMessage = memo(function ChatMessage({
           alt={imageLightbox.alt}
           pinEnabled={imageLightbox.pinEnabled}
           downloadEnabled={imageLightbox.downloadEnabled}
+          regenerate={imageLightbox.regenerate}
           onClose={closeImageLightbox}
         />
       )}

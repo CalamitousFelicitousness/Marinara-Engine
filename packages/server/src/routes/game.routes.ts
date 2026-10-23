@@ -8,6 +8,7 @@ import {
 import { rejectGenerationOutput, type GenerationOutput } from "./generate/sse.js";
 import { resolveStoredChatOptions, resolveStoredMaxTokens } from "../services/generation/generation-parameters.js";
 import {
+  TTS_SETTINGS_KEY,
   normalizeGameDifficulty,
   normalizeWeatherType,
   combatWeatherSchema,
@@ -15,15 +16,22 @@ import {
   applyRulesetSheetOp,
   type RulesetLiveStates,
   type RulesetSheetEnvelope,
+  buildChatImageGenerationRecord,
+  type ChatImageGenerationRecord,
 } from "@marinara-engine/shared";
 import {
   checkStoryScript,
   compileGameWorld,
   gameStoryFromMetadata,
   readStoryLedger,
+  storyClocks,
+  experienceTrackHere,
+  storyEndingOf,
   storyObjectives,
   storyScriptSchema,
   gameIntroChoiceSchema,
+  type GameIntro,
+  storyPlaceSeasons,
   storyState,
   type StoryScript,
   worldEditsEmpty,
@@ -44,6 +52,8 @@ import { resolveGameConnection } from "../services/game/connection.service.js";
 import { combatAiHintsSchema, combatTacticsSchema, combatInterruptFields } from "@marinara-engine/shared";
 import { findRulesetCreature, type RulesetCatalogEntriesById } from "@marinara-engine/shared";
 import { loadRulesetCatalogEntries } from "../services/game/ruleset-catalog.service.js";
+import { gameDataEditRequestSchema, type GameDataEditIssue } from "@marinara-engine/shared";
+import { buildGameDataEditPatch, sameGameDataValue } from "../services/game/game-data-edit.service.js";
 // ──────────────────────────────────────────────
 // Routes: Game Mode
 // ──────────────────────────────────────────────
@@ -57,7 +67,21 @@ import { carryGameInventory, rulesetInventedItemRef } from "@marinara-engine/sha
 import { eq } from "../db/file-query.js";
 import { IMPORTED_GAME_ENGINE_ANCHOR_PREFIX } from "../db/file-backed-store.js";
 import { chats as chatsTable } from "../db/schema/index.js";
-import { mapPackLockIssue, readMapPack, type MapPack } from "../services/game/map-pack.service.js";
+import { capabilityPackageManager } from "../services/capability-packages/package-manager.service.js";
+import {
+  checkMapPack,
+  mapPackLockIssue,
+  readMapPack,
+  type MapPack,
+  type MapPackCheckInput,
+} from "../services/game/map-pack.service.js";
+import {
+  companionNames,
+  companionPartyLevel,
+  companionSheetEnvelope,
+  gameCompanionNamed,
+  gameCompanions,
+} from "../services/game/experience-companions.service.js";
 import {
   editsStoryRefusal,
   storyNamesOf,
@@ -196,6 +220,9 @@ import {
   sanitizeGameNpcAvatarUrls,
 } from "../services/game/npc-avatar-utils.js";
 import {
+  buildCheckpointGameMetadataRestore,
+  buildCheckpointWorldEditsRestore,
+  readCheckpointCharacterIds,
   createCheckpointService,
   type CapturedEngineState,
   type CheckpointTrigger,
@@ -294,6 +321,7 @@ import {
   worldTrip,
   worldIsSite,
   worldSettlementOf,
+  worldSeason,
   worldSiteLocks,
   worldWalkFromMetadata,
   worldWalkJoined,
@@ -350,6 +378,11 @@ import {
   TERRAIN_DATA,
   extractLeadingThinkingBlocks,
   gameInventoryNameKey,
+  createLorebookEntrySchema,
+  experiencePeopleLore,
+  experienceDressedNpc,
+  storyPerson,
+  worldPersonNpc,
   type RPGStatsConfig,
 } from "@marinara-engine/shared";
 import {
@@ -468,6 +501,7 @@ import {
   type PromptOverridesStorage,
 } from "../services/storage/prompt-overrides.storage.js";
 import { createAppSettingsStorage } from "../services/storage/app-settings.storage.js";
+import { gameTtsEmotionIndicatorsEnabled } from "../services/tts-emotion-guidance.js";
 import { applyStoryboardAgentSettings } from "../services/game/storyboard-agent-settings.js";
 import {
   STORYBOARD_FALLBACK_BEAT_MAX_CHARS,
@@ -595,6 +629,17 @@ type IllustrationCharacterAssetMaps = {
   charReferenceSourceByName: Map<string, "character-sheet" | "avatar" | "sprite">;
   charAvatarByName: Map<string, string>;
   charDescriptionByName: Map<string, string>;
+  /**
+   * Reference image (base64) or avatar path -> "character:<id>" / "persona:<id>", keyed by the image itself
+   * so a fuzzy name match records whoever owns the image that was actually sent (#7767).
+   */
+  charOwnerByReference: Map<string, ReferenceOwner>;
+};
+
+type ReferenceOwner = {
+  kind: "character" | "persona";
+  id: string;
+  source: "character-sheet" | "avatar" | "sprite";
 };
 
 type IllustrationCharacterAssetDetail = {
@@ -610,6 +655,9 @@ type IllustrationCharacterAssets = {
   referenceDetails: IllustrationCharacterAssetDetail[];
   maxReferenceImages: number;
   requestedNames: string[];
+  referenceCharacterIds: string[];
+  referencePersonaId: string | null;
+  referencePersonaSource: ReferenceOwner["source"] | null;
 };
 
 type StoryboardCharacterContext = IllustrationCharacterAssetMaps & {
@@ -624,7 +672,13 @@ function emptyIllustrationCharacterAssetMaps(): IllustrationCharacterAssetMaps {
     charReferenceSourceByName: new Map<string, "character-sheet" | "avatar" | "sprite">(),
     charAvatarByName: new Map<string, string>(),
     charDescriptionByName: new Map<string, string>(),
+    charOwnerByReference: new Map<string, ReferenceOwner>(),
   };
+}
+
+function addReferenceOwner(maps: IllustrationCharacterAssetMaps, reference: string, owner: ReferenceOwner): void {
+  // First owner wins: two cards sharing one image can't be told apart, and either re-reads the same picture.
+  if (!maps.charOwnerByReference.has(reference)) maps.charOwnerByReference.set(reference, owner);
 }
 
 function addUniqueCharacterName(target: string[], seen: Set<string>, name: unknown): void {
@@ -665,8 +719,16 @@ async function addCharacterRowIllustrationAssets(
     if (preferredReference) {
       addNameLookupEntry(maps.charReferenceByName, name, preferredReference.base64);
       addNameLookupEntry(maps.charReferenceSourceByName, name, preferredReference.source);
+      addReferenceOwner(maps, preferredReference.base64, {
+        kind: "character",
+        id: character.id,
+        source: preferredReference.source,
+      });
     }
-    if (character.avatarPath) addNameLookupEntry(maps.charAvatarByName, name, character.avatarPath);
+    if (character.avatarPath) {
+      addNameLookupEntry(maps.charAvatarByName, name, character.avatarPath);
+      addReferenceOwner(maps, character.avatarPath, { kind: "character", id: character.id, source: "avatar" });
+    }
 
     const appearanceText = extractCharacterAppearanceText(parsed);
     if (appearanceText) addNameLookupEntry(maps.charDescriptionByName, name, appearanceText);
@@ -724,8 +786,16 @@ export async function addPersonaIllustrationAssets(
   if (preferredReference) {
     addNameLookupEntry(maps.charReferenceByName, name, preferredReference.base64);
     addNameLookupEntry(maps.charReferenceSourceByName, name, preferredReference.source);
+    addReferenceOwner(maps, preferredReference.base64, {
+      kind: "persona",
+      id: persona.id,
+      source: preferredReference.source,
+    });
   }
-  if (persona.avatarPath) addNameLookupEntry(maps.charAvatarByName, name, persona.avatarPath);
+  if (persona.avatarPath) {
+    addNameLookupEntry(maps.charAvatarByName, name, persona.avatarPath);
+    addReferenceOwner(maps, persona.avatarPath, { kind: "persona", id: persona.id, source: "avatar" });
+  }
 
   // #7053: the persona row carries the image-prompt override as TOP-LEVEL text
   // columns (no extensions bag), so feed them through the shared helper. Without
@@ -753,13 +823,13 @@ export async function addChatPersonaIllustrationAssets(args: {
   maps: IllustrationCharacterAssetMaps;
   characters: ReturnType<typeof createCharactersStorage>;
   personaGallery: ReturnType<typeof createPersonaGalleryStorage>;
-  chat: { personaId?: string | null } | null | undefined;
+  chat: { id?: string; personaId?: string | null } | null | undefined;
   setupConfig: Record<string, unknown> | null | undefined;
 }): Promise<string | null> {
   const personaId = args.chat?.personaId || readTrimmedString(args.setupConfig?.personaId);
   if (!personaId) return null;
   try {
-    const persona = await args.characters.getPersona(personaId);
+    const persona = await args.characters.getPersona(personaId, args.chat?.id);
     return await addPersonaIllustrationAssets(args.maps, persona, args.personaGallery);
   } catch {
     // An unresolvable persona must not break illustration generation.
@@ -798,7 +868,7 @@ function storyboardTrackedNpcsFromState(latestState: unknown): Array<Record<stri
 
 async function buildStoryboardCharacterContext(args: {
   characters: ReturnType<typeof createCharactersStorage>;
-  chat: { characterIds?: unknown; personaId?: string | null };
+  chat: { id?: string; characterIds?: unknown; personaId?: string | null };
   meta: Record<string, unknown>;
   setupConfig: Record<string, unknown> | null;
   latestState: unknown;
@@ -814,7 +884,7 @@ async function buildStoryboardCharacterContext(args: {
 
   for (const id of libraryCharacterIds) {
     try {
-      const character = await args.characters.getById(id);
+      const character = await args.characters.getById(id, args.chat.id);
       if (!character) continue;
       const name = await addCharacterRowIllustrationAssets(maps, character, args.characterGallery);
       addUniqueCharacterName(allowedCharacterNames, seenAllowedNames, name);
@@ -826,7 +896,7 @@ async function buildStoryboardCharacterContext(args: {
   const personaId = args.chat.personaId || readTrimmedString(args.setupConfig?.personaId);
   if (personaId) {
     try {
-      const persona = await args.characters.getPersona(personaId);
+      const persona = await args.characters.getPersona(personaId, args.chat?.id);
       const name = await addPersonaIllustrationAssets(maps, persona, args.personaGallery);
       personaName = name;
       addUniqueCharacterName(allowedCharacterNames, seenAllowedNames, name);
@@ -869,6 +939,7 @@ function collectIllustrationCharacterAssets(opts: {
   charReferenceSourceByName: Map<string, "character-sheet" | "avatar" | "sprite">;
   charAvatarByName: Map<string, string>;
   charDescriptionByName: Map<string, string>;
+  charOwnerByReference?: Map<string, ReferenceOwner>;
   includeReferenceImages?: boolean;
   includeCharacterDescriptions?: boolean;
   maxReferenceImages?: number;
@@ -905,6 +976,18 @@ function collectIllustrationCharacterAssets(opts: {
   const referenceDetails: IllustrationCharacterAssetDetail[] = [];
   const seen = new Set<string>();
   const described = new Set<string>();
+  const referenceCharacterIds: string[] = [];
+  let referencePersonaId: string | null = null;
+  let referencePersonaSource: ReferenceOwner["source"] | null = null;
+  // Only library characters and the persona can be re-read later; NPC avatars are not recorded.
+  const recordReferenceOwner = (reference: string) => {
+    const owner = opts.charOwnerByReference?.get(reference);
+    if (owner?.kind === "character") referenceCharacterIds.push(owner.id);
+    else if (owner?.kind === "persona" && !referencePersonaId) {
+      referencePersonaId = owner.id;
+      referencePersonaSource = owner.source;
+    }
+  };
   const includeReferenceImages = opts.includeReferenceImages !== false;
   const includeCharacterDescriptions = opts.includeCharacterDescriptions !== false;
   for (const name of uniqueNames) {
@@ -916,6 +999,7 @@ function collectIllustrationCharacterAssets(opts: {
         seen.add(preferredReference);
         references.push(preferredReference);
         referenceAttached = true;
+        recordReferenceOwner(preferredReference);
         const storedReferenceSource = findCharAvatarFuzzy(name, opts.charReferenceSourceByName);
         referenceSource =
           storedReferenceSource === "character-sheet" || storedReferenceSource === "avatar"
@@ -930,6 +1014,7 @@ function collectIllustrationCharacterAssets(opts: {
           references.push(base64);
           referenceAttached = true;
           referenceSource = "avatar";
+          recordReferenceOwner(avatarPath);
         }
       }
     }
@@ -957,6 +1042,9 @@ function collectIllustrationCharacterAssets(opts: {
     referenceDetails,
     maxReferenceImages,
     requestedNames: uniqueNames,
+    referenceCharacterIds: Array.from(new Set(referenceCharacterIds)),
+    referencePersonaId,
+    referencePersonaSource,
   };
 }
 
@@ -1694,6 +1782,8 @@ async function addGeneratedIllustrationToGallery(opts: {
   illustration: SceneIllustrationRequest;
   model: string;
   prompt?: string | null;
+  /** Game NPC portraits are not recorded as references; library characters, persona and location are. */
+  generation?: ChatImageGenerationRecord | null;
 }): Promise<ChatGalleryImageRow | null> {
   const prefix = "backgrounds:illustrations:";
   if (!opts.tag.startsWith(prefix)) return null;
@@ -1723,6 +1813,7 @@ async function addGeneratedIllustrationToGallery(opts: {
       provider: "game_scene_illustration",
       model: opts.model || "unknown",
       ...(dimensions ?? {}),
+      generation: opts.generation ?? null,
     });
   } catch (err) {
     opts.app.log.warn({ err, chatId: opts.chatId, tag: opts.tag }, "Failed to add game illustration to gallery");
@@ -2012,6 +2103,13 @@ const hudWidgetSchema = z.object({
   config: z.record(z.unknown()).default({}),
 });
 
+/**
+ * A combat style: a built-in one or the id of a style a client registered (issue #8109). The server
+ * cannot know a client's registrations, so it checks the shape only; a client plays an id it does not
+ * know as classic, and so does the server's own prompting.
+ */
+const gameCombatStyleIdSchema = z.string().regex(/^[a-z][a-z0-9_-]{0,47}$/);
+
 const gameSetupConfigSchema = z.object({
   genre: z.string().min(1).max(200),
   setting: z.string().min(1),
@@ -2020,7 +2118,7 @@ const gameSetupConfigSchema = z.object({
   gameStyle: z.enum(["classic", "overworld"]).optional(),
   /** The Game Master's intro message (1.339). */
   gameIntro: gameIntroChoiceSchema.optional(),
-  combatStyle: z.enum(["classic", "tactical"]).optional(),
+  combatStyle: gameCombatStyleIdSchema.optional(),
   combatDirector: z.boolean().optional(),
   gmBossControl: z.boolean().optional(),
   gmNamedControl: z.boolean().optional(),
@@ -7036,8 +7134,12 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     // An Experience's map pack (worldgen W9e) locks the game to its kit, and to one of its worlds when
     // it ships any; a pack that does not read keeps the Experience from starting a game, with the reason.
     let mapPack: MapPack | null = null;
+    // The Experience's own intro (1.372), kept with the game as it was when the game began, so its lock
+    // holds whatever the package does later.
+    let experienceIntro: GameIntro | null = null;
     const experienceId = parsedCreateGameInput.setupConfig.gameExperienceId;
     if (experienceId) {
+      experienceIntro = (await capabilityPackageManager.experienceSetupDefaults(experienceId))?.intro ?? null;
       const read = await readMapPack(experienceId);
       if (read && !read.ok) {
         return rejectGenerationOutput(reply, 400, {
@@ -7137,11 +7239,11 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       ...(setupConfig.gameStoryboardsEnabled ? [STORYBOARD_AGENT_ID] : []),
     ];
     const spotifySourceType = setupConfig.spotifySourceType ?? "liked";
-    const gameChatParameters = mergeStoredGenerationParameters(
-      defaultGenerationParameters,
+    const gameChatOverrides = mergeStoredGenerationParameters(
       sessionMeta.chatParameters,
       setupConfig.generationParameters,
     );
+    const gameChatParameters = mergeStoredGenerationParameters(defaultGenerationParameters, gameChatOverrides);
     const snapshotConnection = async (id: string | null | undefined) => {
       if (!id) return null;
       if (id === "random") return { name: "Random connection pool", provider: "random" };
@@ -7159,6 +7261,34 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     if (sentSnapshot) await createGameWorldSnapshotsStorage(app.db).put(sessionChat.id, sentSnapshot);
     else if (gameWorld && setupConfig.worldKit) {
       await saveGameWorldSnapshot(app.db, sessionChat.id, { gameWorld, gameWorldKit: setupConfig.worldKit });
+    }
+    // The Experience's people (1.346): what is known of them, as a lorebook of this game's own that is
+    // active from the first turn. Only the people this world has; their names bring them in.
+    let peopleLorebookId: string | null = null;
+    const peopleWorld =
+      mapPack?.people && gameWorld
+        ? await loadGameWorld(app.db, sessionChat.id, { gameWorld, gameWorldKit: setupConfig.worldKit })
+        : null;
+    if (mapPack?.people && peopleWorld) {
+      const lore = experiencePeopleLore(peopleWorld, mapPack.people);
+      if (lore.length) {
+        const lorebooksStore = createLorebooksStorage(app.db);
+        const book = (await lorebooksStore.create({
+          name: `${mapPack.name}: people`.slice(0, 200),
+          description: "The people and lore of this game's Experience.",
+          category: "world",
+          chatId: sessionChat.id,
+          enabled: true,
+          tags: ["game", "experience"],
+        })) as { id?: string } | null;
+        if (book?.id) {
+          await lorebooksStore.bulkCreateEntries(
+            book.id,
+            lore.map((entry) => createLorebookEntrySchema.omit({ lorebookId: true }).parse(entry)),
+          );
+          peopleLorebookId = book.id;
+        }
+      }
     }
     await chats.updateMetadata(sessionChat.id, {
       ...sessionMeta,
@@ -7212,6 +7342,8 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       // Classic or Overworld, likewise fixed; a setup made before the choice stores none (see
       // `gameStyleFromMetadata`).
       ...(setupConfig.gameStyle ? { gameStyle: setupConfig.gameStyle } : {}),
+      // The Experience's own intro message (1.372), which a locked one keeps over the setup's.
+      ...(experienceIntro ? { gameExperienceIntro: experienceIntro } : {}),
       // Likewise fixed for the game's lifetime. Written only when a ruleset was chosen, so a game
       // on Marinara's own rules carries exactly the metadata it always has.
       ...(gameRuleset ? { gameRuleset } : {}),
@@ -7220,8 +7352,8 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       // The setting kit, likewise only when one was chosen, and the world made in its words.
       ...(setupConfig.worldKit ? { gameWorldKit: setupConfig.worldKit } : {}),
       ...(gameWorld ? { gameWorld } : {}),
-      // The game draws with its map pack's tiles while the Experience is installed.
-      ...(mapPack?.tiles ? { gameMapPack: { packageId: mapPack.packageId } } : {}),
+      // Kept for what the game draws and plays with its pack: its tiles, creature art, music and people.
+      ...(mapPack ? { gameMapPack: { packageId: mapPack.packageId } } : {}),
       ...(gameStory ? { gameStory } : {}),
       gameNpcs: [],
       enableAgents: setupConfig.enableAgents === true,
@@ -7243,7 +7375,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       gameStoryboardImagePromptTemplateId: setupConfig.gameStoryboardImagePromptTemplateId || null,
       gameStoryboardVideoPromptTemplateId: setupConfig.gameStoryboardVideoPromptTemplateId || null,
       gameLastSceneVideoId: null,
-      activeLorebookIds: setupConfig.activeLorebookIds || [],
+      activeLorebookIds: [...(setupConfig.activeLorebookIds || []), ...(peopleLorebookId ? [peopleLorebookId] : [])],
       enableCustomWidgets: setupConfig.enableCustomWidgets !== false,
       ...(customHudWidgets.length > 0 ? { gameWidgetState: customHudWidgets } : {}),
       gameUseMusicDj: setupConfig.enableSpotifyDj === true,
@@ -7262,7 +7394,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
           ? setupConfig.spotifyArtist || null
           : null,
       gameLorebookKeeperEnabled: setupConfig.enableLorebookKeeper === true,
-      ...(gameChatParameters ? { chatParameters: gameChatParameters } : {}),
+      ...(gameChatOverrides ? { chatParameters: gameChatOverrides } : {}),
     });
 
     const updatedSession = await chats.getById(sessionChat.id);
@@ -7316,7 +7448,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
 
     let gmCharacterCard: string | null = null;
     if (setupConfig.gmMode === "character" && setupConfig.gmCharacterId) {
-      const gmChar = await characters.getById(setupConfig.gmCharacterId);
+      const gmChar = await characters.getById(setupConfig.gmCharacterId, chatId);
       if (gmChar) {
         const data = typeof gmChar.data === "string" ? JSON.parse(gmChar.data) : gmChar.data;
         const parts = [`Name: ${data.name}`];
@@ -7335,24 +7467,52 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const setupPersona = currentRoomGeneration()
       ? roomHostIdentity()
       : setupPersonaId
-        ? await characters.getPersona(setupPersonaId)
+        ? await characters.getPersona(setupPersonaId, chatId)
         : null;
 
     // Load persona info so the GM can tailor the experience
     let personaCard: string | null = null;
     const setupPersonaFields = {
+      example: setupPersona
+        ? "mes_example" in setupPersona
+          ? setupPersona.mes_example
+          : (setupPersona.mesExample ?? "")
+        : "",
       description: setupPersona?.description ?? "",
       personality: setupPersona?.personality ?? "",
       backstory: setupPersona?.backstory ?? "",
       appearance: setupPersona?.appearance ?? "",
       scenario: setupPersona?.scenario ?? "",
     };
+    const setupLorebookRequested =
+      (setupConfig.activeLorebookIds?.length ?? 0) > 0 || (setupConfig.activeLorebookEntryIds?.length ?? 0) > 0;
+    const setupPromptMacroContext =
+      setupPersonaFields.example || setupLorebookRequested
+        ? await buildPromptMacroContext({
+            db: app.db,
+            characterIds: setupConfig.partyCharacterIds,
+            personaName: setupPersona?.name ?? "User",
+            personaDescription: setupPersonaFields.description,
+            personaFields: setupPersonaFields,
+            variables: {},
+            chatId,
+            lastGenerationType: "game_setup",
+            idleDuration: "0 seconds",
+          })
+        : null;
     if (setupPersona) {
       const parts = [`Name: ${setupPersona.name}`];
       if (setupPersona.description) parts.push(`Description: ${setupPersona.description}`);
       if (setupPersona.personality) parts.push(`Personality: ${setupPersona.personality}`);
       if (setupPersona.backstory) parts.push(`Backstory: ${setupPersona.backstory}`);
       if (setupPersona.appearance) parts.push(`Appearance: ${setupPersona.appearance}`);
+      if (setupPersonaFields.example && setupPromptMacroContext) {
+        const example = resolveMacrosWithVariableSnapshot(setupPersonaFields.example, setupPromptMacroContext);
+        if (example.content.trim()) {
+          parts.push(`Example dialogue: ${example.content}`);
+          example.commit();
+        } else example.rollback();
+      }
       personaCard = parts.join("\n");
     }
 
@@ -7361,7 +7521,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const partyNames: string[] = [];
     const partyRpgStats: Record<string, RPGStatsConfig> = {};
     for (const pcId of setupConfig.partyCharacterIds) {
-      const pc = await characters.getById(pcId);
+      const pc = await characters.getById(pcId, chatId);
       if (pc) {
         const data = typeof pc.data === "string" ? JSON.parse(pc.data) : pc.data;
         const parts = [data.name];
@@ -7406,18 +7566,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     }
 
     let setupLorebookContext: string | undefined;
-    if ((setupConfig.activeLorebookIds?.length ?? 0) > 0 || (setupConfig.activeLorebookEntryIds?.length ?? 0) > 0) {
-      const setupPromptMacroContext = await buildPromptMacroContext({
-        db: app.db,
-        characterIds: setupConfig.partyCharacterIds,
-        personaName: personaName ?? "User",
-        personaDescription: setupPersonaFields.description,
-        personaFields: setupPersonaFields,
-        variables: {},
-        chatId,
-        lastGenerationType: "game_setup",
-        idleDuration: "0 seconds",
-      });
+    if (setupLorebookRequested && setupPromptMacroContext) {
       const resolveSetupLorebookMacrosForFinal = (
         value: string,
         lorebookEntryCounts?: Readonly<Record<string, number>>,
@@ -9394,7 +9543,11 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         chat.personaId ??
         setupConfig.personaId ??
         null;
-      const persona = currentRoomGeneration() ? null : personaId ? await characters.getPersona(personaId) : null;
+      const persona = currentRoomGeneration()
+        ? null
+        : personaId
+          ? await characters.getPersona(personaId, input.chatId)
+          : null;
       if (persona) {
         targetName = persona.name?.trim() || requestedName;
         targetCharacterCard = buildRecruitCharacterSourceCard({
@@ -9432,7 +9585,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         throw new Error("The selected character is not in the active party");
       }
 
-      const character = await characters.getById(input.characterId);
+      const character = await characters.getById(input.characterId, input.chatId);
       if (character) {
         const data = (typeof character.data === "string" ? JSON.parse(character.data) : character.data) as Record<
           string,
@@ -9683,6 +9836,13 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     } catch {
       chatCharacterIds = [];
     }
+    // An Experience's companions (1.347): one the party takes in joins with their sheet. While the
+    // Experience has companions, only they (and the player's own library characters) may join.
+    const companions = await gameCompanions(app.db, chat.id, meta);
+    const pinnedRuleset = meta.gameRuleset != null ? resolveGameRuleset(meta, await loadRulesetRegistry()) : null;
+    const companion = companions
+      ? gameCompanionNamed(companions, requestedName, pinnedRuleset?.status === "ok" ? pinnedRuleset.definition : null)
+      : null;
     const currentPartyIds = getStoredPartyCharacterIds(meta, setupConfig, chatCharacterIds);
     const gameNpcs = (meta.gameNpcs as GameNpc[]) ?? [];
     const trackedNpc = findGameNpcByName(gameNpcs, requestedName);
@@ -9718,7 +9878,10 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const cardInParty = partyCards.find((candidate) => candidate.lookup === requestedLookup);
     let matches: typeof sameNameCards;
     // Someone of this name already in the party stays the only one, even when a stale choice is answered.
-    if (cardInParty) {
+    // An Experience's companion (1.347) joins as themselves, never as a library card.
+    if (companion) {
+      matches = [];
+    } else if (cardInParty) {
       matches = [cardInParty];
     } else if (trackedNpc && currentPartyIds.includes(buildPartyNpcId(trackedNpc.name))) {
       matches = [];
@@ -9757,8 +9920,19 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       matches = partyMembers.length === 1 ? partyMembers : [];
     }
 
-    let npcRecruit = matches.length === 0 ? trackedNpc : null;
-    const fallbackTrackedNpc = matches.length === 0 && !npcRecruit ? buildFallbackTrackedGameNpc(requestedName) : null;
+    if (companions && !companion && matches.length === 0) {
+      throw new Error(`${requestedName} is not one of this Experience's companions, so cannot join the party.`);
+    }
+
+    let npcRecruit =
+      matches.length === 0 ? (companion ? findGameNpcByName(gameNpcs, companion.name) : trackedNpc) : null;
+    const companionPerson = companion && !npcRecruit ? storyPerson(companions!.world, companion.person) : undefined;
+    const fallbackTrackedNpc =
+      matches.length === 0 && !npcRecruit
+        ? companionPerson
+          ? experienceDressedNpc(worldPersonNpc(companions!.world, companionPerson), companions!.people)
+          : buildFallbackTrackedGameNpc(requestedName)
+        : null;
     if (fallbackTrackedNpc) {
       npcRecruit = fallbackTrackedNpc;
       logger.info(
@@ -9790,14 +9964,20 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const recruitRpgStats = recruit ? extractRecruitCharacterRpgStats(recruit.data) : undefined;
     // In a game on a ruleset a recruit joins the way the party did at setup: with a copy of the
     // library card's starting build, or a blank sheet (an NPC has no library card to copy from).
-    const pinnedRuleset = meta.gameRuleset != null ? resolveGameRuleset(meta, await loadRulesetRegistry()) : null;
+    // A companion joins with their own build for the party's level (1.347).
     const recruitRulesetSheet =
-      pinnedRuleset?.status === "ok"
-        ? copyRulesetSheetForGame(
+      pinnedRuleset?.status === "ok" && companion?.sheet
+        ? companionSheetEnvelope(
             pinnedRuleset.definition,
-            recruit?.data.extensions?.rulesetSheets?.[pinnedRuleset.definition.id],
+            companion.sheet,
+            companionPartyLevel(pinnedRuleset.definition, currentCards, companion.sheet, companionNames(companions!)),
           )
-        : undefined;
+        : pinnedRuleset?.status === "ok"
+          ? copyRulesetSheetForGame(
+              pinnedRuleset.definition,
+              recruit?.data.extensions?.rulesetSheets?.[pinnedRuleset.definition.id],
+            )
+          : undefined;
     const recruitSourceCard = recruit
       ? buildRecruitCharacterSourceCard(recruit.data)
       : buildNpcRecruitCharacterSourceCard(npcRecruit!);
@@ -11195,6 +11375,15 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     return { time: newTime, formatted: formatGameTime(newTime) };
   });
 
+  /** The season where the party is, in a game with a world (1.351): held by its story, else the day's. */
+  const gameSeasonHere = async (chatId: string, mode: string, meta: Record<string, unknown>) => {
+    const world = mode === "game" ? await loadGameWorld(app.db, chatId, meta) : null;
+    if (!world) return null;
+    const day = ((meta.gameTime as GameTime | undefined) ?? createInitialTime()).day;
+    const { here, seasons } = await overworldPlace(chatId, meta, world);
+    return (here ? seasons[here] : undefined) ?? seasons["*"] ?? worldSeason(day);
+  };
+
   // ── POST /game/weather/update ──
   app.post("/weather/update", async (req) => {
     const schema = z.object({
@@ -11204,12 +11393,15 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       season: z.enum(["spring", "summer", "autumn", "winter"]).default("summer"),
       type: z.string().max(100).optional(),
     });
-    const { chatId, action, location, season, type } = schema.parse(req.body);
+    const { chatId, action, location, type } = schema.parse(req.body);
     const chats = createChatsStorage(app.db);
     const chat = await chats.getById(chatId);
     if (!chat) throw new Error("Chat not found");
 
     const meta = parseMeta(chat.metadata);
+    // A game with a world has its own season where the party is: the one the story holds it at (1.351),
+    // else the day's. Without one, the season sent.
+    const season = (await gameSeasonHere(chat.id, chat.mode, meta)) ?? schema.parse(req.body).season;
 
     // "set" action from scene analyzer — apply the exact weather type
     if (action === "set" && type) {
@@ -11394,10 +11586,29 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     );
     // The story's objectives (worldgen W10), as the replies have left its flags.
     const story = gameStoryFromMetadata(meta, world);
+    const storyNow = story ? storyState(story, readStoryLedger(replies.all)) : null;
+    const clocks = story && storyNow ? storyClocks(story, storyNow) : [];
+    // The Experience's own track for here (1.345): the story's cue, else the place's, else its default.
+    const packId = (meta.gameMapPack as { packageId?: unknown } | undefined)?.packageId;
+    const packMusic = typeof packId === "string" ? await capabilityPackageManager.mapPackMusic(packId) : null;
+    const walking = worldWalkFromMetadata(meta);
+    const music = packMusic
+      ? experienceTrackHere(
+          packMusic,
+          world,
+          walking?.to ??
+            (place?.name ? worldPlaceByName(world.world, place.name)?.id : undefined) ??
+            world.world.startId,
+          storyNow?.music,
+        )
+      : undefined;
     return {
       journal: {
         ...worldJournal(world, worldPresent(world, replies.ledger), { name: place?.name }),
-        ...(story ? { story: storyObjectives(story, storyState(story, readStoryLedger(replies.all))) } : {}),
+        ...(story && storyNow ? { story: storyObjectives(story, storyNow) } : {}),
+        ...(clocks.length ? { clocks } : {}),
+        ...(story && storyNow?.ended ? { ending: storyEndingOf(story, storyNow.ended) } : {}),
+        ...(music !== undefined ? { music } : {}),
       },
     };
   });
@@ -11410,9 +11621,14 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const present = worldPresent(world, replies.ledger);
     // The sites the story keeps closed until the Game Master opens them (design-game-overworld-sites.md).
     // Reveals from every session (carried ones first), not only this one's.
-    const locks = worldSiteLocks(world, gameStoryFromMetadata(meta, world), replies.all);
+    const story = gameStoryFromMetadata(meta, world);
+    const locks = worldSiteLocks(world, story, replies.all);
+    // The places the story holds at a season whatever the day (1.351).
+    const seasons = story
+      ? storyPlaceSeasons(story, storyState(story, readStoryLedger(replies.all)).seasons, world)
+      : {};
     const walk = worldWalkFromMetadata(meta);
-    if (walk) return { here: walk.to, walk, present, placeName: undefined, locks };
+    if (walk) return { here: walk.to, walk, present, placeName: undefined, locks, seasons };
     const place = worldPlaceInForce(
       world,
       lastGamePlace(replies.scoped),
@@ -11423,6 +11639,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       walk: null,
       present,
       locks,
+      seasons,
       placeName: place?.name,
     };
   };
@@ -11761,9 +11978,14 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
   });
 
   // PUT /game/:chatId/world/edits: the whole edit layer, checked against the world; an empty one clears it.
+  //
+  // A caller that read the layer first may pass it as `expected`, the "Last write wins" of a maker
+  // screen made safe: the layer is compared with it inside the write itself, so one saved by another
+  // writer meanwhile is refused instead of replaced by this draft (#7743).
   app.put<{ Params: { chatId: string } }>("/:chatId/world/edits", async (req, reply) => {
     const { chatId } = req.params;
-    const parsed = worldEditsSchema.safeParse((req.body as { edits?: unknown } | undefined)?.edits);
+    const body = (req.body ?? {}) as { edits?: unknown; expected?: unknown };
+    const parsed = worldEditsSchema.safeParse(body.edits);
     if (!parsed.success) {
       const issue = parsed.error.issues[0];
       return reply.status(400).send({ error: `The edits do not read: ${issue?.path.join(".")}: ${issue?.message}` });
@@ -11782,6 +12004,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     // The game's story (worldgen W10) names places and people: edits that take one away are refused, as
     // the story stands when the edits are written (one saved meanwhile counts).
     let storyRefusal = null as { error: string; issues: string[] } | null;
+    let stale: { edits: unknown } | null = null;
     let previous: unknown;
     // One save of a chat's edits at a time, so taking back one that failed never undoes another's.
     const updated = await withWorldLock(`edits:${chatId}`, async () => {
@@ -11790,6 +12013,14 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         if (!fresh.gameWorld || typeof fresh.gameWorld !== "object") {
           throw Object.assign(new Error("This game has no world."), { statusCode: 404 });
         }
+        // The baseline, compared where the write happens: a layer saved since is newer than this draft.
+        if ("expected" in body) {
+          const stored = (fresh.gameWorld as { edits?: unknown }).edits ?? null;
+          if (!sameGameDataValue(stored, body.expected)) {
+            stale = { edits: stored };
+            return {};
+          }
+        }
         const now = gameWorldFromMetadata(fresh);
         storyRefusal = now ? editsStoryRefusal(now, edits, gameStoryFromMetadata(fresh, now)) : null;
         if (storyRefusal) return {};
@@ -11797,7 +12028,9 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         const { edits: _old, ...stored } = fresh.gameWorld as Record<string, unknown>;
         return { gameWorld: edits ? { ...stored, edits } : stored };
       });
-      if (!saved || storyRefusal) return saved;
+      // Nothing was written for a stale or refused layer: no snapshot to save, and nothing to take back.
+      // (`previous` is only set on a write, so a failed snapshot here would roll the world back to nothing.)
+      if (!saved || stale || storyRefusal) return saved;
       // The world with its new edits is the snapshot from now on (W11). Edits it could not keep are taken
       // back, so the recipe and the snapshot never disagree.
       try {
@@ -11809,6 +12042,12 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       return saved;
     });
     if (!updated) return reply.status(404).send({ error: "Chat not found" });
+    // Read through a typed local: assigned only inside the updater, so TS would narrow it to null here.
+    const staleEdits = stale as { edits: unknown } | null;
+    if (staleEdits)
+      return reply
+        .status(409)
+        .send({ reason: "stale", error: "The edits were saved by someone else meanwhile.", ...staleEdits });
     if (storyRefusal) return reply.status(400).send(storyRefusal);
     const world = compileGameWorld({ ...game, edits });
     logger.info("[game/world] %s: hand edits %s", chatId, edits ? "saved" : "cleared");
@@ -11868,6 +12107,29 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     return { kit: read.kit, notes: read.notes };
   });
 
+  // POST /game/experience/check (Capability API 1.350): a whole map pack an author is about to export,
+  // checked as an installed one is read, without installing it.
+  app.post("/experience/check", { bodyLimit: 128 * 1024 * 1024 }, async (req, reply) => {
+    const body = req.body as Partial<MapPackCheckInput> | null;
+    if (
+      !body ||
+      typeof body !== "object" ||
+      !body.files ||
+      typeof body.files !== "object" ||
+      Array.isArray(body.files)
+    ) {
+      return reply.status(400).send({ error: "Send the map pack block, its files by path and its assets." });
+    }
+    const assets = Array.isArray(body.assets)
+      ? body.assets.flatMap((asset) =>
+          asset && typeof asset.path === "string" && Number.isFinite(asset.bytes)
+            ? [{ path: asset.path, bytes: Number(asset.bytes) }]
+            : [],
+        )
+      : [];
+    return checkMapPack({ mapPack: body.mapPack, files: body.files as Record<string, unknown>, assets });
+  });
+
   // GET /game/experience-map-pack/:packageId: an installed Experience's map pack (worldgen W9e), checked,
   // for the setup wizard to lock to and a game to draw with; null when it ships none.
   app.get<{ Params: { packageId: string } }>("/experience-map-pack/:packageId", async (req, reply) => {
@@ -11923,7 +12185,10 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     };
   });
 
-  // PUT /game/:chatId/story {story}
+  // PUT /game/:chatId/story {story, expected} — `story: null` takes the story away.
+  //
+  // A caller that read the story first may pass it as `expected`: compared inside the write itself, so a
+  // story saved by another writer meanwhile is refused instead of replaced (#7743).
   app.put<{ Params: { chatId: string } }>("/:chatId/story", async (req, reply) => {
     const { chatId } = req.params;
     const chats = createChatsStorage(app.db);
@@ -11931,11 +12196,21 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     if (!chat) return reply.status(404).send({ error: "Chat not found" });
     const game = chat.mode === "game" ? await loadGameWorld(app.db, chat.id, parseMeta(chat.metadata)) : null;
     if (!game) return reply.status(404).send({ error: "This game has no world." });
-    const input = (req.body as { story?: unknown } | undefined)?.story;
+    const body = (req.body ?? {}) as { story?: unknown; expected?: unknown };
+    const input = body.story;
     // Checked against the world as it is when the story is written: hand edits saved meanwhile count.
     let refusal = null as { error: string; issues: string[] } | null;
+    let stale = null as { story: unknown } | null;
     let story = null as StoryScript | null;
     const updated = await chats.patchMetadata(chatId, (fresh) => {
+      if ("expected" in body) {
+        const stored = fresh.gameStory ?? null;
+        if (!sameGameDataValue(stored, body.expected)) {
+          stale = { story: stored };
+          return {};
+        }
+      }
+      if (input === null) return { gameStory: null };
       // A world from an earlier generator is checked as its snapshot keeps it.
       const now = worldMadeByThisGenerator(game) ? gameWorldFromMetadata(fresh) : game;
       const checked = now ? checkStoryScript(now, input) : null;
@@ -11948,6 +12223,11 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       return { gameStory: checked.story };
     });
     if (!updated) return reply.status(404).send({ error: "Chat not found" });
+    const staleStory = stale as { story: unknown } | null;
+    if (staleStory)
+      return reply
+        .status(409)
+        .send({ reason: "stale", error: "The story was saved by someone else meanwhile.", ...staleStory });
     if (refusal) return reply.status(400).send(refusal);
     logger.info("[game/story] %s: story saved", chatId);
     return { story };
@@ -12111,7 +12391,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const meta = parseMeta(chat.metadata);
     const world = chat.mode === "game" ? await loadGameWorld(app.db, chat.id, meta) : null;
     if (!world) return { overworld: null };
-    const { here, walk, present, locks } = await overworldPlace(req.params.chatId, meta, world);
+    const { here, walk, present, locks, seasons } = await overworldPlace(req.params.chatId, meta, world);
     // A hidden site is never sent: the player does not know it is there.
     const locked = Object.fromEntries([...locks].filter(([, lock]) => lock === "sealed"));
     const hidden = new Set([...locks].filter(([, lock]) => lock === "hidden").map(([id]) => id));
@@ -12123,6 +12403,8 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         // Only when the story keeps a site closed: an overworld without any reads as it always did.
         ...(Object.keys(locked).length ? { locked } : {}),
         ...(hidden.size ? { hidden: [...hidden] } : {}),
+        // Only when the story holds a place at a season (1.351).
+        ...(Object.keys(seasons).length ? { seasons } : {}),
       },
     };
   });
@@ -12938,8 +13220,9 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         const characters = createCharactersStorage(app.db);
         const experienceSetupConfig = (meta.gameSetupConfig as GameSetupConfig | null) ?? null;
         const lorePersonaId = chat.personaId || experienceSetupConfig?.personaId || null;
-        const lorePersona = lorePersonaId ? await characters.getPersona(lorePersonaId) : null;
+        const lorePersona = lorePersonaId ? await characters.getPersona(lorePersonaId, req.params.chatId) : null;
         const lorePersonaFields = {
+          example: lorePersona?.mes_example ?? "",
           description: lorePersona?.description ?? "",
           personality: lorePersona?.personality ?? "",
           backstory: lorePersona?.backstory ?? "",
@@ -13312,17 +13595,28 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
   );
 
   // ── PUT /game/:chatId/widgets ──
-  app.put<{ Params: { chatId: string } }>("/:chatId/widgets", async (req) => {
-    const { widgets: rawWidgets } = z
-      .object({ widgets: z.array(hudWidgetSchema).max(MAX_GAME_HUD_WIDGETS) })
+  // A caller that read the widgets first may pass them as `expected`: compared inside the write itself,
+  // so widgets the game changed meanwhile (a turn's tags move their values) are refused, not replaced (#7743).
+  app.put<{ Params: { chatId: string } }>("/:chatId/widgets", async (req, reply) => {
+    const { widgets: rawWidgets, expected } = z
+      .object({ widgets: z.array(hudWidgetSchema).max(MAX_GAME_HUD_WIDGETS), expected: z.unknown().optional() })
       .parse(req.body);
+    const checksBaseline = "expected" in ((req.body ?? {}) as object);
     const widgets = sanitizeGameHudWidgets(rawWidgets, true);
     const chats = createChatsStorage(app.db);
     const chat = await chats.getById(req.params.chatId);
     if (!chat) throw new Error("Chat not found");
 
     const enableCustomWidgets = widgets.length > 0;
+    let stale: { widgets: unknown } | null = null;
     await chats.patchMetadata(req.params.chatId, (freshMeta) => {
+      if (checksBaseline) {
+        const stored = freshMeta.gameWidgetState ?? null;
+        if (!sameGameDataValue(stored, expected ?? null)) {
+          stale = { widgets: stored };
+          return {};
+        }
+      }
       const setupConfig = (freshMeta.gameSetupConfig as GameSetupConfig | null) ?? null;
       return {
         gameWidgetState: widgets,
@@ -13338,8 +13632,60 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
           : {}),
       };
     });
+    // Read through a typed local: assigned only inside the updater, so TS would narrow it to null here.
+    const staleWidgets = stale as { widgets: unknown } | null;
+    if (staleWidgets) {
+      return reply
+        .status(409)
+        .send({ reason: "stale", error: "The widgets changed in the game meanwhile.", ...staleWidgets });
+    }
 
     return { ok: true };
+  });
+
+  // ── PATCH /game/:chatId/data ──
+  // The State Editor's hand edits of the game's own data (#7743). Only allow-listed keys, each
+  // checked; refused whole when any key changed since the editor opened it. Never the generic
+  // metadata PATCH, which merges any key unchecked and replaces lists like gameNpcs wholesale.
+  app.patch<{ Params: { chatId: string } }>("/:chatId/data", async (req, reply) => {
+    const parsed = gameDataEditRequestSchema.safeParse(req.body);
+    if (!parsed.success) return reply.status(400).send({ error: "Invalid game data edit", issues: [] });
+    const { edits } = parsed.data;
+    if (new Set(edits.map((edit) => edit.key)).size !== edits.length) {
+      return reply.status(400).send({ error: "Each key may be edited once per save", issues: [] });
+    }
+    const chats = createChatsStorage(app.db);
+    const chat = await chats.getById(req.params.chatId);
+    if (!chat) return reply.status(404).send({ error: "Chat not found" });
+    if (chat.mode !== "game") return reply.status(400).send({ error: "Not a game", issues: [] });
+
+    // Party card sheets are read through the game's pinned ruleset, resolved once before the queue.
+    const meta = parseMeta(chat.metadata);
+    const pinned =
+      meta.gameRuleset != null && edits.some((edit) => edit.key === "gameCharacterCards")
+        ? resolveGameRuleset(meta, await loadRulesetRegistry(app.db))
+        : null;
+    const ruleset = pinned?.status === "ok" ? pinned.definition : null;
+
+    let issues: GameDataEditIssue[] = [];
+    const updated = await chats.patchMetadata(req.params.chatId, (fresh) => {
+      const result = buildGameDataEditPatch(fresh, edits, ruleset);
+      if ("issues" in result) {
+        issues = result.issues;
+        return {};
+      }
+      return result.patch;
+    });
+    if (!updated) return reply.status(404).send({ error: "Chat not found" });
+    if (issues.length > 0) {
+      const stale = issues.some((issue) => issue.reason === "stale");
+      return reply.status(stale ? 409 : 400).send({
+        error: stale ? "The game changed this data since the editor opened it" : "Some game data can't be saved",
+        issues,
+      });
+    }
+    logger.info("[game/data] %s: hand edit saved (%s)", req.params.chatId, edits.map((edit) => edit.key).join(", "));
+    return { saved: edits.map((edit) => edit.key) };
   });
 
   // ── POST /game/party-turn ──
@@ -13403,7 +13749,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     }
     for (const charId of partyCharIds) {
       try {
-        const charRow = await chars.getById(charId);
+        const charRow = await chars.getById(charId, input.chatId);
         if (!charRow) continue;
         const charData = typeof charRow.data === "string" ? JSON.parse(charRow.data) : charRow.data;
         const description = typeof charData.description === "string" ? charData.description : "";
@@ -13506,6 +13852,9 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       }
     }
     let systemPrompt = buildPartySystemPrompt({
+      ttsEmotionIndicatorsEnabled: gameTtsEmotionIndicatorsEnabled(
+        await createAppSettingsStorage(app.db).get(TTS_SETTINGS_KEY),
+      ),
       partyCards,
       playerName,
       gameActiveState,
@@ -14725,6 +15074,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
           charReferenceSourceByName,
           charAvatarByName,
           charDescriptionByName,
+          charOwnerByReference: storyboardCharacterContext.charOwnerByReference,
           includeReferenceImages: useAvatarReferences,
           includeCharacterDescriptions: includeCharacterAppearanceAtRender && characterPrompts.length === 0,
           maxReferenceImages: Math.max(0, storyboardReferenceImageLimit - (spatialLocationReferenceImage ? 1 : 0)),
@@ -14923,6 +15273,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
           }
         }
         let sentIllustrationPrompt: string | null = null;
+        let sentIllustrationNegativePrompt = "";
         const promptOverride = storyboardPromptOverrideById.get(`storyboard:${frame.index}`);
         try {
           const tag = await generateSceneIllustration({
@@ -14964,6 +15315,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
             preserveFullScenePrompt: true,
             onCompiledPrompt: (compiled) => {
               sentIllustrationPrompt = compiled.prompt;
+              sentIllustrationNegativePrompt = compiled.negativePrompt;
             },
             signal: backgroundSignal,
           });
@@ -14975,6 +15327,16 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
             illustration,
             model: imgModel,
             prompt: sentIllustrationPrompt,
+            generation: buildChatImageGenerationRecord({
+              prompt: sentIllustrationPrompt,
+              connectionId: imgConn.id,
+              negativePrompt: sentIllustrationNegativePrompt,
+              characterPrompts: illustration.characterPrompts,
+              referenceCharacterIds: illustrationAssets.referenceCharacterIds,
+              referencePersonaId: illustrationAssets.referencePersonaId,
+              referencePersonaSource: illustrationAssets.referencePersonaSource,
+              locationImageId: spatialLocationReferenceImage ? storyboardSpatialProjection?.referenceImageId : null,
+            }),
           });
           if (!galleryImage) throw new Error("Storyboard keyframe image could not be saved to gallery.");
           await storyboards.updateKeyframe(frame.id, { chatImageId: galleryImage.id, status: "image_complete" });
@@ -16241,6 +16603,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
             charReferenceSourceByName,
             charAvatarByName,
             charDescriptionByName,
+            charOwnerByReference: illustrationCharacterAssets.charOwnerByReference,
             includeReferenceImages: useAvatarReferences,
             includeCharacterDescriptions: includeCharacterAppearance,
             maxReferenceImages: Math.max(0, referenceImageLimit - (spatialLocationReferenceImage ? 1 : 0)),
@@ -16266,6 +16629,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
           const generatedTags: string[] = [];
           for (let variantIndex = 0; variantIndex < illustrationCount; variantIndex += 1) {
             let sentIllustrationPrompt: string | null = null;
+            let sentIllustrationNegativePrompt = "";
             const tag = await generateSceneIllustration({
               chatId: input.chatId,
               title: illustration.title,
@@ -16304,6 +16668,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
               preserveFullScenePrompt: true,
               onCompiledPrompt: (compiled) => {
                 sentIllustrationPrompt = compiled.prompt;
+                sentIllustrationNegativePrompt = compiled.negativePrompt;
               },
               signal: assetAbortSignal,
             });
@@ -16316,6 +16681,15 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
               illustration,
               model: imgModel,
               prompt: sentIllustrationPrompt,
+              generation: buildChatImageGenerationRecord({
+                prompt: sentIllustrationPrompt,
+                connectionId: imgConn.id,
+                negativePrompt: sentIllustrationNegativePrompt,
+                referenceCharacterIds: illustrationAssets.referenceCharacterIds,
+                referencePersonaId: illustrationAssets.referencePersonaId,
+                referencePersonaSource: illustrationAssets.referencePersonaSource,
+                locationImageId: spatialLocationReferenceImage ? ownerSpatialProjection?.referenceImageId : null,
+              }),
             });
             generatedTags.push(tag);
           }
@@ -16501,6 +16875,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       "combat_end",
       "location_change",
       "auto_interval",
+      "state_editor_save",
     ]),
   });
 
@@ -16776,11 +17151,77 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       }
     });
 
-    // Restore chat metadata fields from checkpoint
-    if (cp.gameState) {
-      await chats.patchMetadata(input.chatId, () => ({
-        gameActiveState: cp.gameState as GameActiveState,
-      }));
+    // Restore chat metadata fields from checkpoint: the game's own keys it captured (#7742), and the
+    // active state. A checkpoint from before gameMetadataData leaves those keys as they are, as before.
+    const capturedGameMetadata = parseJsonField<Record<string, unknown> | null>(cp.gameMetadataData, null);
+    const restoresGameMetadata =
+      !!capturedGameMetadata && typeof capturedGameMetadata === "object" && !Array.isArray(capturedGameMetadata);
+    // #7783: the world's hand-edits layer comes back in the same queued write, so the story this
+    // load restores and the edits it restores are put back together (a pair captured together
+    // fits). It goes through the checks and the snapshot re-save of PUT /world/edits, never a
+    // direct write to gameWorld; a capture from before the field leaves the layer as it is.
+    const capturedWorldEdits = parseJsonField<unknown>(cp.gameWorldEditsData, null);
+    let worldEditsWrite: { previous: unknown } | null = null;
+    let worldEditsRefusal: string | null = null;
+    const restorePatch = (current: Record<string, unknown>): Record<string, unknown> => {
+      const patch: Record<string, unknown> = {
+        ...(restoresGameMetadata ? buildCheckpointGameMetadataRestore(capturedGameMetadata, current) : {}),
+        ...(cp.gameState ? { gameActiveState: cp.gameState as GameActiveState } : {}),
+      };
+      if (capturedWorldEdits == null) return patch;
+      // Checked against the metadata this load produces, the restored story included.
+      const restored = buildCheckpointWorldEditsRestore(capturedWorldEdits, { ...current, ...patch });
+      if (restored.refusal) {
+        worldEditsRefusal = restored.refusal;
+        return patch;
+      }
+      if (!restored.patch) return patch;
+      worldEditsWrite = { previous: current.gameWorld };
+      return { ...patch, ...restored.patch };
+    };
+    // The chat's characterIds column holds the party's library members, and session start trusts it
+    // over gamePartyCharacterIds. So the load puts back the list it had at the save, in the same
+    // queued write, or a member recruited after the save would come back at the next session.
+    const capturedCharacterIds = parseJsonField<unknown>(cp.chatCharacterIdsData, null);
+    const applyRestore = async (
+      storage: ReturnType<typeof createChatsStorage>,
+      opts: { metadataQueueHeld?: boolean } = {},
+    ) =>
+      restoresGameMetadata && Array.isArray(capturedCharacterIds)
+        ? await storage.patchMetadataWithCharacterIds(
+            input.chatId,
+            (current) => ({
+              metadata: restorePatch(current),
+              characterIds: readCheckpointCharacterIds(capturedCharacterIds),
+            }),
+            opts,
+          )
+        : cp.gameState || restoresGameMetadata || capturedWorldEdits != null
+          ? await storage.patchMetadata(input.chatId, (current) => ({ ...restorePatch(current) }), opts)
+          : null;
+    // One save of a chat's edits at a time, the same lock PUT /world/edits holds — and the metadata
+    // restore and the snapshot it implies are one transaction: a load that fails halfway must not
+    // leave the restored story beside the snapshot of the world it replaced. The metadata queue is
+    // taken before the transaction, the order chats.storage documents, and the patch runs with it
+    // held so the write never waits on a queue the transaction is already serialising.
+    const restoreWorld = () =>
+      withChatMetadataPatchQueue(input.chatId, () =>
+        app.db.transaction(async (tx) => {
+          const saved = await applyRestore(createChatsStorage(tx), { metadataQueueHeld: true });
+          // Assigned only inside the queued updater, so read through a typed local.
+          const worldEditsWritten = worldEditsWrite as { previous: unknown } | null;
+          // The world with its restored layer is the snapshot from now on (W11).
+          if (worldEditsWritten && saved) {
+            await saveGameWorldSnapshot(tx, input.chatId, parseMeta(saved.metadata));
+          }
+          return saved;
+        }),
+      );
+    await (capturedWorldEdits == null ? applyRestore(chats) : withWorldLock(`edits:${input.chatId}`, restoreWorld));
+    const worldEditsSkip = worldEditsRefusal as string | null;
+    if (worldEditsSkip) {
+      // The load still restores everything else; only the layer is left as it is.
+      logger.warn("[game/checkpoint] %s: World Edits not restored: %s", input.chatId, worldEditsSkip);
     }
 
     return { ok: true, messageId: restoreMsg.id };

@@ -1,4 +1,3 @@
-import { CombatAiControls } from "./CombatAiControls";
 import { CombatWeatherSummary } from "./CombatWeatherSummary";
 import { useCallback, useEffect, useMemo, useRef, type ComponentProps } from "react";
 import type {
@@ -10,13 +9,13 @@ import type {
 import { useTranslation } from "react-i18next";
 import { useDirectedCombat } from "../../hooks/use-directed-combat";
 import { GameCombatUI } from "./GameCombatUI";
-import { RulesetCombatBoard } from "./RulesetCombatBoard";
+import { RulesetCombatScreen, RulesetFightEnd } from "./RulesetCombatScreen";
 import { RulesetKindsContext } from "./RulesetKindsContext";
 import { RulesetCombatStatus } from "./RulesetCombatStatus";
-import { useCombatScreenStore } from "../../stores/combat-screen.store";
 import { rulesetValueLabel } from "../../lib/ruleset-combat-log";
 import type { RulesetCellChoice } from "../../lib/ruleset-combat-board";
 import { TacticalCombatUI } from "./TacticalCombatUI";
+import { CombatAiControls } from "./CombatAiControls";
 import { cn } from "../../lib/utils";
 import { GAME_SECTION_CLASS } from "../../lib/chat-widget-colors";
 
@@ -62,13 +61,6 @@ export function DirectedCombatUI(props: Props) {
     itemEffects: props.combatItemEffects,
   });
   const firstChoice = useRef<HTMLButtonElement>(null);
-  // A fight on screen says so, for the sheet and the accent; it clears as the screen goes.
-  const setRound = useCombatScreenStore((state) => state.setRound);
-  const round = s?.round ?? null;
-  useEffect(() => {
-    setRound(round);
-  }, [round, setRound]);
-  useEffect(() => () => setRound(null), [setRound]);
   useEffect(() => {
     if (s?.window?.controller === "manual") firstChoice.current?.focus();
   }, [s?.window?.id, s?.window?.controller]);
@@ -162,6 +154,58 @@ export function DirectedCombatUI(props: Props) {
       ...(alters?.length && heightens ? { heightens } : {}),
     });
   };
+  // A fight on a board is its own screen: the board, the log under it and the combat pane, with
+  // nothing of the bottom strip the other styles keep.
+  if (board && definition) {
+    return (
+      <RulesetKindsContext.Provider value={nameKinds}>
+        <RulesetCombatScreen
+          definition={definition}
+          view={board}
+          units={[...s.party, ...s.enemies]}
+          weather={s.weather}
+          environment={board.grid?.scene ?? props.environmentLike ?? props.environment}
+          busy={busy}
+          budgetLabel={budgetLabel}
+          defenseLabel={defenseLabel}
+          onChoose={choose}
+          onFlee={() => send({ type: "flee" })}
+          onYield={() => send({ type: "yield" })}
+          onControl={(unitId, controller) => send({ type: "control", unitId, controller })}
+          controls={
+            <CombatAiControls
+              // A ruleset fight takes a companion's controller at any time but a decision (the
+              // server refuses that one), so having acted this round locks nothing here.
+              party={s.party.map((member) => ({ ...member, hasActed: false }))}
+              defaultController="ai"
+              locked={busy}
+              onChange={(unitId, controller) => send({ type: "control", unitId, controller })}
+              onOrders={(unitId, orders) => send({ type: "orders", unitId, orders })}
+            />
+          }
+          notice={
+            <>
+              {error && (
+                <div
+                  role="alert"
+                  className="shrink-0 border-b border-[var(--border)] px-3.5 py-2.5 text-sm text-[var(--destructive)]"
+                >
+                  {t("game.combat.director.error")}{" "}
+                  <button className="min-h-9 px-2 underline" onClick={() => void refresh()}>
+                    {t("game.combat.director.retry")}
+                  </button>
+                </div>
+              )}
+              {s.outcome && (
+                <RulesetFightEnd view={board} outcome={s.outcome} loot={s.summary?.loot} onFinish={finish} />
+              )}
+            </>
+          }
+          ended={!!s.outcome}
+        />
+      </RulesetKindsContext.Provider>
+    );
+  }
   return (
     <RulesetKindsContext.Provider value={nameKinds}>
       <div className="flex h-full min-h-0 flex-col">
@@ -194,30 +238,6 @@ export function DirectedCombatUI(props: Props) {
                           : { type: "tactical", action },
                   ),
               }}
-            />
-          ) : board ? (
-            <RulesetCombatBoard
-              view={board}
-              units={[...s.party, ...s.enemies]}
-              budgetLabel={budgetLabel}
-              defenseLabel={defenseLabel}
-              environment={board.grid?.scene ?? props.environmentLike ?? props.environment}
-              busy={busy}
-              onChoose={choose}
-              onFlee={() => send({ type: "flee" })}
-              onYield={() => send({ type: "yield" })}
-              controls={
-                <CombatAiControls
-                  // A ruleset fight takes a companion's controller at any time but a decision (the
-                  // server refuses that one), so having acted this round locks nothing here.
-                  party={s.party.map((member) => ({ ...member, hasActed: false }))}
-                  defaultController="ai"
-                  locked={busy}
-                  onChange={(unitId, controller) => send({ type: "control", unitId, controller })}
-                  onOrders={(unitId, orders) => send({ type: "orders", unitId, orders })}
-                  className={GAME_SECTION_CLASS}
-                />
-              }
             />
           ) : (
             <GameCombatUI

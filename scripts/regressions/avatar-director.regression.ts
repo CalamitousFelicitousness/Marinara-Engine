@@ -7,7 +7,10 @@
  *     150 ms after the last character with a 50 ms attack and an 80 ms release;
  *   - classifier calls go out at most every 1.2 s with a per-sentence cache; faces switch only on a 0.45 score
  *     with a 0.15 lead, hold 2 s, need two neutral sentences, and relax 4 s after the reply unless the Expression
- *     Engine settled them; a reply that arrives whole is classified whole and spoken within 8 s;
+ *     Engine settled them; a reply that arrives whole keeps per-sentence moods and is spoken within 8 s;
+ *   - a more specific feeling inside the same emotion changes on a 0.45 score and holds 2 s on its own clock, so it
+ *     never delays the emotion; an emotion change takes its result's feeling, relaxing clears it, and Expression
+ *     Engine and Game Master labels carry the feeling they name when it belongs to their emotion;
  *   - text-to-speech audio drives the mouth while it plays; Game mode faces and mouths follow the Game Master's
  *     lines (a thought sets the face only) and never call the classifier; states are thinking, talking, listening
  *     and idle;
@@ -15,7 +18,10 @@
  *     the setting, not a guess; Merged group replies are split by name, and a paragraph's dialogue waits for its
  *     speaker's name; an Expression Engine pick for an earlier reply never lands on this one;
  *   - a Roleplay stage asks the server for its local model, again while it answers with keywords, never once the
- *     server cannot run it.
+ *     server cannot run it;
+ *   - with text-to-speech auto-play on, the text moves no mouth and shows no mood: the voice brings both, sentence
+ *     by sentence, the face relaxes after the voice, an Expression Engine pick waits for the reading to end, and a
+ *     reading that never plays replays the text animation once (or, long after the reply, shows its last mood).
  * Runs on the real chat, agent and UI stores with a stubbed classifier; time is the frame time passed in.
  */
 import assert from "node:assert/strict";
@@ -41,7 +47,8 @@ Object.defineProperty(globalThis, "localStorage", {
 const { useChatStore } = await import("../../packages/client/src/stores/chat.store.js");
 const { useAgentStore } = await import("../../packages/client/src/stores/agent.store.js");
 const { useUIStore } = await import("../../packages/client/src/stores/ui.store.js");
-const { TTS_AUTOPLAY_MESSAGE_READY_EVENT } = await import("../../packages/client/src/lib/tts-autoplay.js");
+const { TTS_AUTOPLAY_MESSAGE_READY_EVENT, TTS_AUTOPLAY_VOICE_EVENT } =
+  await import("../../packages/client/src/lib/tts-autoplay.js");
 const director = await import("../../packages/client/src/features/avatars/director/avatar-director.js");
 const { createSpeechClock, followMouthEnvelope } =
   await import("../../packages/client/src/features/avatars/director/speech-clock.js");
@@ -95,6 +102,100 @@ assert.deepEqual(
   Object.fromEntries(replyText.collectReplyDialogue(reply, paragraphs, [alice, bob])),
   { alice: "Hi there! Fine", bob: "Get lost." },
   "dialogue per owner, with [Name]: lines and an open quote",
+);
+for (const dialogue of ["I <3 you. See you tomorrow.", "a < b, as I told you."]) {
+  const text = `Alice smiles. "${dialogue}"`;
+  const attributed = replyText.attributeReplyParagraphs(text, [alice, bob], "alice", "alice");
+  assert.equal(attributed.at(-1)?.end, text.length, "a bare less-than sign never truncates the reply's owner span");
+  assert.deepEqual(
+    Object.fromEntries(replyText.collectReplyDialogue(text, attributed, [alice, bob])),
+    { alice: dialogue },
+    "heart emoticons and comparisons remain in the speaker's dialogue",
+  );
+}
+for (const text of [
+  'Alice smiles. "x<y is true."\n[Bob]: "Hi."',
+  'Alice smiles. "x<y is true." <speaker="Bob">"Hi."</speaker>',
+]) {
+  const attributed = replyText.attributeReplyParagraphs(text, [alice, bob], null, "alice");
+  assert.equal(attributed.at(-1)?.ownerId, "bob", "a partial tag cannot consume a later line or speaker tag");
+  assert.equal(
+    replyText.collectReplyDialogue(text, attributed, [alice, bob]).get("bob"),
+    "Hi.",
+    "a less-than sign in earlier prose never hides a later speaker's dialogue",
+  );
+}
+const laterPartialTag = 'Alice smiles. "x<y is true." <speaker="Bob';
+assert.equal(
+  replyText.attributeReplyParagraphs(laterPartialTag, [alice, bob], null, "alice").at(-1)?.end,
+  laterPartialTag.lastIndexOf("<speaker"),
+  "a later partial tag is trimmed from its own opening bracket",
+);
+for (const ending of ["\n", "\r\n", "\n\n", "\r\n\r\n"]) {
+  const text = `A greeting. "Hello there." <speaker="Bob${ending}`;
+  const attributed = replyText.attributeReplyParagraphs(text, [alice, bob], null, "alice");
+  assert.deepEqual(
+    attributed.map((paragraph) => paragraph.ownerId),
+    ["alice"],
+    "trailing line breaks in a partial tag never assign earlier narration to its unfinished speaker",
+  );
+  assert.deepEqual(
+    Object.fromEntries(replyText.collectReplyDialogue(text, attributed, [alice, bob])),
+    { alice: "Hello there." },
+    "earlier dialogue keeps its fallback speaker when a partial tag ends in line breaks",
+  );
+}
+
+const inlineTagged = 'Alice waits. <speaker="Bob">"This is wonderful!"</speaker> Alice sobs.';
+const inlineParagraphs = replyText.attributeReplyParagraphs(inlineTagged, [alice, bob], null, "alice");
+assert.deepEqual(
+  inlineParagraphs.map((paragraph) => paragraph.ownerId),
+  ["alice", "bob", "alice"],
+  "inline speaker tags give dialogue and its emotion to their named owner, separate from narration",
+);
+for (const text of ['<speaker="Bob">"Hello there', '<speaker="Bob">"Hello there"</spea']) {
+  assert.deepEqual(
+    Object.fromEntries(
+      replyText.collectReplyDialogue(text, replyText.attributeReplyParagraphs(text, [alice, bob], null, "alice"), [
+        alice,
+        bob,
+      ]),
+    ),
+    { bob: "Hello there" },
+    "a streaming speaker tag speaks its body, never the name attribute or a partial closing tag",
+  );
+}
+for (const unknownTagged of ['<speaker="Guard">"Hello there."</speaker>', '[Guard]: "Hello, Alice."']) {
+  for (const people of [[alice, bob], [alice]]) {
+    const attributed = replyText.attributeReplyParagraphs(unknownTagged, people, null, "alice");
+    assert.deepEqual(
+      Object.fromEntries(replyText.collectReplyDialogue(unknownTagged, attributed, people)),
+      {},
+      "an unknown explicit speaker never borrows a character's avatar, even when only one is on stage",
+    );
+    assert.ok(
+      attributed.every((paragraph) => paragraph.ownerId === null),
+      "unknown speaker markup also gives no character its line's emotion",
+    );
+  }
+}
+
+const bracketed = '[Bob] [happy]: "Alice, this is wonderful."';
+assert.deepEqual(
+  replyText.attributeReplyParagraphs(bracketed, [alice, bob], null, "alice").map((paragraph) => paragraph.ownerId),
+  ["bob"],
+  "bracketed speaker formatting wins over a name mentioned in dialogue",
+);
+assert.deepEqual(
+  Object.fromEntries(
+    replyText.collectReplyDialogue(
+      '[Alice Moon]: "Hello there."',
+      replyText.attributeReplyParagraphs('[Alice Moon]: "Hello there."', [alice, bob], "bob", "alice"),
+      [alice, bob],
+    ),
+  ),
+  { bob: "Hello there." },
+  "a known Individual responder owns bracketed dialogue too",
 );
 
 // ── The speech clock ──
@@ -324,7 +425,7 @@ endReply("(final)");
 await step(6_000);
 assert.equal(frames.alice!.emotion, "sad", "a settled face does not relax");
 
-// Streaming off: the reply arrives whole, is classified whole, and its dialogue is spoken within 8 s.
+// Streaming off deliberately uses sentence classifications too; whole-text mixed moods average away.
 useUIStore.setState({ enableStreaming: false });
 store().setAbortController(chatId, new AbortController());
 await step(32);
@@ -335,12 +436,31 @@ store().setAbortController(chatId, null);
 await step(1_000);
 assert.equal(frames.alice!.state, "talking", "a whole reply is spoken");
 await waitFor("the whole-reply request", () => calls.length > wholeCalls, 1_500);
-assert.equal(calls.at(-1)!.texts.length, 1, "a whole reply is classified once, as a whole");
-assert.ok(calls.at(-1)!.texts[0]!.includes("sobs quietly"));
+const wholeTexts = calls.slice(wholeCalls).flatMap((call) => call.texts);
+assert.ok(wholeTexts.includes("Alice sobs quietly by the window."), "a whole reply classifies individual sentences");
+assert.ok(
+  wholeTexts.every((text) => !text.includes("window.\n")),
+  "narration and dialogue are not averaged together",
+);
 await step(6_600);
 assert.equal(frames.alice!.state, "talking", "still speaking just before 8 s");
 await step(600);
 assert.notEqual(frames.alice!.state, "talking", "done speaking by 8 s even though the line is longer");
+store().setAbortController(chatId, new AbortController());
+await step(32);
+messageReady(`Alice beams. "${"This is wonderful! ".repeat(8)}"\n\nAlice sobs. "${"I miss him so much. ".repeat(8)}"`);
+store().setAbortController(chatId, null);
+const mixedFrom = t;
+const mixedFaces = new Map<string, number>();
+await step(8_300, () => {
+  const emotion = frames.alice!.emotion;
+  if ((emotion === "happy" || mixedFaces.has("happy")) && !mixedFaces.has(emotion))
+    mixedFaces.set(emotion, t - mixedFrom);
+});
+assert.ok(mixedFaces.has("happy") && mixedFaces.has("sad"), "a streaming-off reply shows both moods");
+console.info("Streaming-off mood timeline (ms):", Object.fromEntries(mixedFaces));
+assert.ok(mixedFaces.get("sad")! >= mixedFaces.get("happy")! + 2_000, "the second mood respects the two-second dwell");
+assert.ok(mixedFaces.get("sad")! >= 3_000, "the later sentence waits for the speaking timeline");
 useUIStore.setState({ enableStreaming: true });
 
 // Text-to-speech: the voice level drives the mouth while it plays.
@@ -461,6 +581,174 @@ afterNarration.dispose();
 await flush();
 
 // A Game thought (or the player's own input) changes the face, never the mouth: Game voices skip those lines too.
+{
+  const voicedGame = director.createAvatarDirector(
+    { chatId: "game-voice-wait", mode: "game", reducedMotion: false },
+    { classify: async () => assert.fail("Game faces must never use the classifier") },
+  );
+  voicedGame.setParticipants([{ owner: { ownerType: "character", ownerId: "alice" }, name: "Alice" }]);
+  voicedGame.setVoiceAutoplay(true);
+  let time = 120_000;
+  const line = {
+    id: "voiced",
+    speakerName: "Alice",
+    ownerId: "alice",
+    expression: "furious_glare",
+    text: "I am speaking now.",
+    voiceExpected: true,
+    voicePending: true,
+  };
+  voicedGame.pushGameLine(line);
+  const advance = (ms: number) => {
+    let frame = voicedGame.frame("alice", time);
+    const end = time + ms;
+    while (time < end) frame = voicedGame.frame("alice", (time += 16));
+    return frame;
+  };
+  assert.equal(advance(3_000).mouthOpen, 0, "Game waits while eligible voice generation is still pending");
+  voicedGame.pushGameLine({ ...line, voicePending: false });
+  assert.equal(advance(500).mouthOpen, 0, "a ready voice gets time to start");
+  voicedGame.setAudioSource("alice", {
+    ownerId: "alice",
+    level: () => 0.8,
+    isPlaying: () => true,
+    line: () => ({ text: "I am happy.", progress: 1 }),
+  });
+  let frame = advance(200);
+  assert.ok(frame.mouthOpen > 0.7, "Game mouth follows the voice");
+  assert.equal(frame.label, "furious_glare", "the Game Master's face wins over the spoken text's mood");
+  voicedGame.setAudioSource("alice", null);
+  assert.equal(advance(200).mouthOpen, 0, "Game never speaks the same text again after its voice");
+  voicedGame.pushGameLine({ ...line, id: "fast" });
+  voicedGame.setAudioSource("alice", { ownerId: "alice", level: () => 0.8, isPlaying: () => true });
+  voicedGame.setAudioSource("alice", null);
+  voicedGame.pushGameLine({ ...line, id: "fast", voicePending: false });
+  assert.equal(advance(3_000).mouthOpen, 0, "a clip that finishes between frames is not replayed by late readiness");
+  voicedGame.pushGameLine({ ...line, id: "previous" });
+  voicedGame.setAudioSource("alice", { ownerId: "alice", level: () => 0.8, isPlaying: () => true });
+  const nextLine = { ...line, id: "next", voicePending: false };
+  voicedGame.pushGameLine(nextLine);
+  voicedGame.setParticipants([{ owner: { ownerType: "character", ownerId: "alice" }, name: "Alice updated" }]);
+  voicedGame.setAudioSource("alice", null);
+  voicedGame.pushGameLine(nextLine);
+  assert.ok(
+    advance(2_300).mouthOpen > 0,
+    "refreshing a participant does not assign an earlier voice to the next Game line",
+  );
+  voicedGame.pushGameLine({ ...line, id: "missing", voicePending: false });
+  assert.ok(advance(2_300).mouthOpen > 0, "a voice that never starts gets one text fallback after the grace time");
+  assert.equal(advance(9_000).mouthOpen, 0, "the fallback ends instead of repeating");
+  voicedGame.setVoiceAutoplay(false);
+  voicedGame.pushGameLine({ ...line, id: "no-voice", voiceExpected: false, voicePending: false });
+  assert.ok(advance(200).mouthOpen > 0, "a line with no eligible voice never waits for autoplay");
+  voicedGame.setVoiceAutoplay(true);
+  voicedGame.pushGameLine({ ...line, id: "no-voice", voiceExpected: true, voicePending: true });
+  assert.equal(advance(3_000).mouthOpen, 0, "late voice configuration cancels an already queued text mouth");
+  voicedGame.pushGameLine({ ...line, id: "thought", text: "", voiceExpected: false, voicePending: false });
+  assert.notEqual(advance(200).state, "talking", "an unspoken line cancels the old line's text fallback");
+  assert.equal(advance(400).mouthOpen, 0, "the old mouth finishes its normal closing fade");
+  voicedGame.pushGameLine({ ...line, id: "covered" });
+  time += 120_000;
+  assert.equal(advance(2_000).mouthOpen, 0, "a covered stage starts its new voice wait when frames resume");
+  console.info(
+    "Game voice proof: a 3000 ms generation wait stays silent, audio drives the mouth, and an absent voice falls back after its 2000 ms grace",
+  );
+  voicedGame.dispose();
+}
+
+// A previous member's voice can overlap the next displayed Game line. Once that voice has started, it
+// must not repeatedly erase another member's newer unvoiced line or delayed text fallback.
+for (const voiceExpected of [false, true]) {
+  const group = director.createAvatarDirector(
+    { chatId: `game-overlapping-voice-${voiceExpected}`, mode: "game", reducedMotion: false },
+    { classify: async () => assert.fail("Game faces must never use the classifier") },
+  );
+  group.setParticipants([
+    { owner: { ownerType: "character", ownerId: "alice" }, name: "Alice" },
+    { owner: { ownerType: "character", ownerId: "bob" }, name: "Bob" },
+  ]);
+  group.setAudioSource("alice", { ownerId: "alice", level: () => 0.8, isPlaying: () => true });
+  let time = 200_000;
+  group.frame("alice", time);
+  group.frame("bob", time);
+  group.pushGameLine({
+    id: "next-member",
+    ownerId: "bob",
+    speakerName: "Bob",
+    expression: null,
+    text: "I am speaking this next line without a voice clip.",
+    voiceExpected,
+    voicePending: false,
+  });
+  let bobTalking = false;
+  for (let elapsed = 0; elapsed < (voiceExpected ? 2_500 : 500); elapsed += 16) {
+    time += 16;
+    group.frame("alice", time);
+    bobTalking ||= group.frame("bob", time).state === "talking";
+  }
+  assert.ok(bobTalking, "an earlier member's voice does not erase the next Game member's text animation");
+  group.dispose();
+}
+
+// Participant edits are not playback events. New/re-added owners still hydrate, and real source changes still apply.
+{
+  const hydrated = director.createAvatarDirector(
+    { chatId: "game-participant-audio", mode: "game", reducedMotion: false },
+    { classify: async () => assert.fail("Game faces must never use the classifier") },
+  );
+  const participant = { owner: { ownerType: "character" as const, ownerId: "cached-alice" }, name: "Alice" };
+  let playing = true;
+  hydrated.setAudioSource("cached-alice", {
+    ownerId: "cached-alice",
+    level: () => 0.8,
+    isPlaying: () => playing,
+    viseme: () => "oh",
+  });
+  hydrated.setParticipants([participant]);
+  hydrated.frame("cached-alice", 1_000);
+  assert.ok(hydrated.frame("cached-alice", 1_200).mouthOpen > 0.7, "audio published before registration hydrates");
+  hydrated.setParticipants([{ owner: { ownerType: "character", ownerId: "replacement" }, name: "Alice" }]);
+  assert.equal(
+    hydrated.frame("replacement", 1_216).mouthOpen,
+    0,
+    "a replacement with the same name takes no old audio",
+  );
+  hydrated.setParticipants([participant]);
+  hydrated.frame("cached-alice", 1_232);
+  assert.ok(hydrated.frame("cached-alice", 1_432).mouthOpen > 0.7, "a re-added owner hydrates the current source");
+
+  // A registered source without playable audio (for example a failed decode) must not erase a text-only line.
+  playing = false;
+  hydrated.pushGameLine({
+    id: "text-only",
+    ownerId: "cached-alice",
+    speakerName: "Alice",
+    expression: null,
+    text: "Hello there!",
+    voiceExpected: false,
+  });
+  hydrated.frame("cached-alice", 1_448);
+  assert.ok(hydrated.frame("cached-alice", 1_648).mouthOpen > 0, "the text-only line starts its speech clock");
+  hydrated.setParticipants([{ ...participant, name: "Alice updated" }]);
+  assert.ok(hydrated.frame("cached-alice", 1_664).mouthOpen > 0, "a participant edit preserves the speech clock");
+
+  hydrated.setParticipants([]);
+  hydrated.setAudioSource("cached-alice", null);
+  hydrated.setParticipants([participant]);
+  assert.equal(hydrated.frame("cached-alice", 1_680).mouthOpen, 0, "a source withdrawn while absent is not restored");
+  hydrated.setAudioSource("cached-alice", {
+    ownerId: "cached-alice",
+    level: () => 0.8,
+    isPlaying: () => true,
+    viseme: () => "ee",
+  });
+  const replaced = hydrated.frame("cached-alice", 1_880);
+  assert.ok(replaced.mouthOpen > 0.7 && replaced.viseme === "ee", "a new playback source still takes effect");
+  hydrated.setAudioSource("cached-alice", null);
+  assert.equal(hydrated.frame("cached-alice", 1_896).mouthOpen, 0, "withdrawing playback still stops its mouth");
+  hydrated.dispose();
+}
+
 const thoughts = director.createAvatarDirector(
   { chatId: gameChatId, mode: "game", reducedMotion: false },
   { classify: async () => Promise.reject(new Error("unused")), prepareModel },
@@ -542,6 +830,164 @@ const scene = (id: string, names: string[]) => {
   return { scened, texts, talking, last, play, type, ready, start, end };
 };
 
+// Moving to the next Individual member ends the previous member's text animation, including when their
+// response text happens to match. An unrecognized streaming character must not borrow another avatar.
+{
+  const id = "director-individual-switch";
+  useChatStore.setState({ activeChatId: id, streamingCharacterId: "alice" });
+  const group = scene(id, ["Alice", "Bob"]);
+  group.start();
+  const line = '"A wonderful afternoon to sit outside together and enjoy the sunshine."';
+  store().setStreamBuffer(line, id);
+  await group.play(200);
+  assert.equal(group.last.alice!.state, "talking");
+  store().setStreamingCharacterId("bob");
+  await group.play(200);
+  assert.equal(group.last.alice!.mouthOpen, 0, "the previous member stops when the next member responds");
+  assert.equal(group.last.bob!.state, "talking", "identical text from a different member is still a new reply");
+  store().setStreamingCharacterId("removed-member");
+  store().setStreamBuffer('"Nobody else owns this reply."', id);
+  await group.play(200);
+  assert.ok(
+    Object.values(group.last).every((frame) => frame.mouthOpen === 0 && frame.state !== "thinking"),
+    "an unknown current responder moves no other character's avatar",
+  );
+  group.end();
+  group.scened.dispose();
+  store().setStreamingCharacterId(null);
+}
+
+// Merged formatting applies within one paragraph: a name in narration does not steal the tagged speaker's
+// mouth or happy face. Partial opening and closing tags must never speak the attribute containing the name.
+{
+  const id = "director-inline-tagged";
+  useChatStore.setState({ activeChatId: id });
+  const group = scene(id, ["Alice", "Bob"]);
+  group.start();
+  await group.type('Alice waits. <speaker="Bob">"This is wonderful, truly wonderful!"</speaker>');
+  group.end();
+  await group.play(2_000);
+  assert.equal(group.talking.alice, 0, "narration never animates the character it names");
+  assert.ok(group.talking.bob! > 500, "the tagged member speaks while its text streams");
+  assert.equal(group.last.bob!.emotion, "happy", "the tagged member gets its dialogue's emotion");
+  assert.equal(group.last.alice!.emotion, "neutral", "a name in narration gets none of another member's mood");
+  store().setStreamBuffer(
+    'Alice waits. <speaker="Bob">"This is wonderful, truly wonderful!"</speaker> <speaker="Guard">"Hello',
+    id,
+  );
+  await group.play(160);
+  assert.equal(group.last.bob!.mouthOpen, 0, "an unknown tagged speaker stops the previous member's queued mouth");
+  group.scened.dispose();
+}
+
+// Several tags may arrive in one visible-text update: only the last dialogue owner is currently responding.
+{
+  const id = "director-cumulative-tags";
+  useChatStore.setState({ activeChatId: id });
+  const group = scene(id, ["Alice", "Bob"]);
+  group.start();
+  store().setStreamBuffer(
+    '<speaker="Alice">"This is a wonderful afternoon."</speaker> <speaker="Bob">"I miss him so much today."</speaker>',
+    id,
+  );
+  await group.play(160);
+  assert.equal(group.last.alice!.mouthOpen, 0, "an earlier tag's queued syllables do not overlap the latest speaker");
+  assert.equal(group.last.bob!.state, "talking");
+  group.end();
+  group.scened.dispose();
+}
+
+// The current voice takes priority over stale text timing, and each clip's face follows its actual owner.
+{
+  const id = "director-group-audio-switch";
+  useChatStore.setState({ activeChatId: id, streamingCharacterId: "alice" });
+  const group = scene(id, ["Alice", "Bob"]);
+  group.start();
+  store().setStreamBuffer('"A very long reply to keep Alice speaking as the next voice starts."', id);
+  await group.play(160);
+  assert.equal(group.last.alice!.state, "talking");
+  group.scened.setAudioSource("bob", {
+    ownerId: "bob",
+    level: () => 0.8,
+    isPlaying: () => true,
+    line: () => ({ text: "This is wonderful.", progress: 0.8 }),
+  });
+  await group.play(2_000);
+  assert.equal(group.last.alice!.mouthOpen, 0, "another member's voice silences the previous text clock");
+  assert.ok(group.last.bob!.mouthOpen > 0.7, "the actual voice's owner moves");
+  assert.equal(group.last.bob!.emotion, "happy", "the actual voice's owner gets the clip's emotion");
+  group.scened.setAudioSource("bob", null);
+  group.scened.setAudioSource("alice", {
+    ownerId: "alice",
+    level: () => 0.8,
+    isPlaying: () => true,
+    line: () => ({ text: "I miss him so much.", progress: 0.8 }),
+  });
+  await group.play(2_000);
+  assert.equal(group.last.bob!.mouthOpen, 0, "the former voice's owner stops on the audio handoff");
+  assert.ok(group.last.alice!.mouthOpen > 0.7);
+  assert.equal(group.last.alice!.emotion, "sad", "the next voice's emotion follows its next owner");
+  group.scened.setAudioSource("alice", null);
+  group.end();
+  group.scened.dispose();
+  store().setStreamingCharacterId(null);
+}
+
+// With streaming disabled, the formatted Merged reply is animated in reading order, never by every avatar
+// at once. The existing replay reveal gives its explicit speaker spans the same pacing as streamed text.
+for (const format of ["tags", "brackets"]) {
+  useUIStore.setState({ enableStreaming: false });
+  const id = `director-whole-${format}`;
+  useChatStore.setState({ activeChatId: id, activeChat: { id, metadata: { groupChatMode: "merged" } } as never });
+  const group = scene(id, ["Alice", "Bob"]);
+  group.start();
+  const content =
+    format === "tags"
+      ? `<speaker="Alice">"${"Wonderful day. ".repeat(8)}"</speaker> <speaker="Bob">"${"I miss him. ".repeat(8)}"</speaker>`
+      : `[Alice]: "${"Wonderful day. ".repeat(8)}"\n[Bob]: "${"I miss him. ".repeat(8)}"`;
+  store().setStreamBuffer(content, id);
+  await group.play(160);
+  assert.equal(group.talking.alice! + group.talking.bob!, 0, "held whole Merged text waits for message-ready");
+  group.ready(content, "alice");
+  group.end();
+  let simultaneous = false;
+  for (let index = 0; index < 600; index += 1) {
+    await group.play(16);
+    simultaneous ||= group.last.alice!.state === "talking" && group.last.bob!.state === "talking";
+  }
+  assert.ok(group.talking.alice! > 500 && group.talking.bob! > 500, "both members speak their tagged lines");
+  assert.equal(simultaneous, false, "a whole formatted reply never moves both mouths together");
+  group.scened.dispose();
+  useChatStore.setState({ activeChat: null });
+  useUIStore.setState({ enableStreaming: true });
+}
+
+// An unknown speaker at the end of a whole Individual reply does not erase the recognized responder's
+// earlier dialogue, which is scheduled together by speakAll rather than following the newest streamed span.
+{
+  useUIStore.setState({ enableStreaming: false });
+  const id = "director-whole-individual-unknown-tail";
+  useChatStore.setState({ activeChatId: id, activeChat: { id, metadata: { groupChatMode: "individual" } } as never });
+  const group = scene(id, ["Alice", "Bob"]);
+  group.start();
+  await group.play(16);
+  group.ready(
+    'Alice smiles. "A wonderful afternoon to sit outside together and enjoy the sunshine."\n[Guard]: "Halt."',
+    "alice",
+  );
+  group.end();
+  await group.play(800);
+  assert.equal(
+    group.last.alice!.state,
+    "talking",
+    "a trailing unknown speaker does not erase known whole-reply dialogue",
+  );
+  assert.equal(group.last.bob!.mouthOpen, 0, "the unknown line still borrows no other avatar");
+  group.scened.dispose();
+  useChatStore.setState({ activeChat: null });
+  useUIStore.setState({ enableStreaming: true });
+}
+
 // The server says the reply is saved while the typewriter still shows it: the reply goes on until the generation
 // ends, so the classifier gets whole sentences, never one letter per frame.
 {
@@ -614,7 +1060,7 @@ const scene = (id: string, names: string[]) => {
   await merged.play(32);
   merged.ready('Bob slams the mug down. "Get out of my tavern!"\n\nAlice raises an eyebrow. "Fine, fine."', "alice");
   merged.end();
-  await merged.play(4_000);
+  await merged.play(8_000);
   assert.ok(
     merged.talking.bob! > 0 && merged.talking.alice! > 0,
     `both speak their lines ${JSON.stringify(merged.talking)}`,
@@ -696,6 +1142,452 @@ const scene = (id: string, names: string[]) => {
   assert.equal(asks.length, 2, "never again once the server cannot run the model");
   Date.now = realNow;
   keywordTier.dispose();
+}
+
+// ── Specific feelings inside an emotion ──
+{
+  const FEELINGS: Array<[RegExp, AvatarEmotion, number, AvatarClassification["feeling"]]> = [
+    [/giggles/u, "happy", 0.8, "amusement"],
+    [/thanks/u, "happy", 0.7, "gratitude"],
+    [/sobs/u, "sad", 0.7, null],
+    [/frets/u, "sad", 0.4, "nervousness"],
+    [/regrets/u, "sad", 0.7, "remorse"],
+    [/wonders/u, "neutral", 0.9, "curiosity"],
+  ];
+  const feelingAnswer = (text: string): AvatarClassification => {
+    const [, emotion, weight, feeling] = FEELINGS.find(([pattern]) => pattern.test(text)) ?? [
+      null,
+      "neutral",
+      0.6,
+      null,
+    ];
+    const scores = { neutral: 1 - weight, happy: 0, angry: 0, sad: 0, relaxed: 0, surprised: 0, [emotion]: weight };
+    return { emotion, weight, scores, feeling };
+  };
+  const id = "director-feelings";
+  const sent: Array<{ at: number; text: string }> = [];
+  const feelings = director.createAvatarDirector(
+    { chatId: id, mode: "roleplay", reducedMotion: false },
+    {
+      classify: async (request) => {
+        for (const text of request.texts) sent.push({ at: t, text });
+        return { results: request.texts.map(feelingAnswer), tier: "local-model" as const, model: "stub", latencyMs: 1 };
+      },
+      prepareModel,
+    },
+  );
+  feelings.setParticipants([{ owner: { ownerType: "character", ownerId: "alice" }, name: "Alice" }]);
+  let alice = feelings.frame("alice", t);
+  const play = async (ms: number) => {
+    const end = t + ms;
+    while (t < end) {
+      t += 16;
+      alice = feelings.frame("alice", t);
+      await flush();
+    }
+  };
+  const until = async (what: string, test: () => boolean, maxMs = 4_000) => {
+    const deadline = t + maxMs;
+    while (!test()) {
+      assert.ok(t < deadline, `timed out waiting for ${what}`);
+      await play(16);
+    }
+    return t;
+  };
+  let text = "";
+  const tell = (sentence: string) => {
+    text = `${text}${sentence} `;
+    store().setStreamBuffer(text, id);
+  };
+  const begin = () => {
+    text = "";
+    store().setAbortController(id, new AbortController());
+  };
+  const finish = () => {
+    store().clearStreamBuffer(id);
+    store().setAbortController(id, null);
+  };
+
+  begin();
+  tell("Alice giggles.");
+  const amusedAt = await until("happy with amusement", () => alice.emotion === "happy");
+  assert.equal(alice.feeling, "amusement", "a new emotion comes with its result's feeling");
+
+  tell("Alice thanks you.");
+  const gratefulAt = await until("gratitude", () => alice.feeling === "gratitude");
+  const thanksSentAt = sent.find((entry) => entry.text.includes("thanks"))!.at;
+  assert.ok(thanksSentAt < amusedAt + 2_000, "the new feeling was read while the first one was still holding");
+  assert.ok(gratefulAt - amusedAt >= 2_000, "a new feeling waits until the current one has held 2 s");
+  assert.equal(alice.emotion, "happy");
+
+  tell("Alice sobs.");
+  const sadAt = await until("the sad face", () => alice.emotion === "sad");
+  assert.ok(sadAt - gratefulAt < 2_000, "a feeling change never holds the next emotion change");
+  assert.equal(alice.feeling, null, "the new emotion takes its result's feeling, here none");
+
+  tell("Alice frets.");
+  await play(2_500);
+  assert.equal(alice.feeling, null, "a weak feeling is not enough to change it");
+  tell("Alice regrets it.");
+  await until("remorse", () => alice.feeling === "remorse");
+  tell("Alice sobs again.");
+  await play(2_500);
+  assert.deepEqual([alice.emotion, alice.feeling], ["sad", "remorse"], "a result with no feeling keeps the feeling");
+
+  finish();
+  await until("the relaxed face", () => alice.emotion === "neutral", 7_000);
+  assert.equal(alice.feeling, null, "relaxing clears the feeling");
+  await play(2_500);
+
+  begin();
+  tell("Alice wonders.");
+  await until("curiosity", () => alice.feeling === "curiosity");
+  assert.equal(alice.emotion, "neutral", "a calm face can have a feeling too");
+  finish();
+  const calmEnd = t;
+  await until("plain calm", () => alice.feeling === null, 7_000);
+  assert.ok(t - calmEnd >= 4_000, "a calm face with a feeling relaxes like any other, no sooner than 4 s");
+  assert.equal(alice.emotion, "neutral");
+
+  // Expression Engine picks: the label's feeling when it belongs to the label's emotion.
+  feelings.pushExpressionPicks([{ ownerId: "alice", expression: "embarrassed" }]);
+  await play(16);
+  assert.deepEqual(
+    [alice.emotion, alice.label, alice.feeling],
+    ["happy", "embarrassed", "embarrassment"],
+    "a pick names its feeling",
+  );
+  feelings.pushExpressionPicks([{ ownerId: "alice", expression: "kind_of_happy" }]);
+  await play(16);
+  assert.deepEqual(
+    [alice.emotion, alice.feeling],
+    ["happy", null],
+    "a feeling of another emotion (caring) is left out",
+  );
+
+  // A pick from the last reply gives way to a newer feeling of the same emotion, whether the feeling lands at once
+  // or waits out the pick's 2 s hold.
+  const { buildPngtuberLayersFromSprites, pickPngtuberLayerKey } =
+    await import("../../packages/client/src/features/avatars/renderers/pngtuber/pngtuber-layers.js");
+  const head = buildPngtuberLayersFromSprites(
+    ["neutral", "happy", "smirk", "gratitude"].map((expression) => ({ expression })),
+  )!;
+  for (const holdMs of [2_500, 0]) {
+    feelings.pushExpressionPicks([{ ownerId: "alice", expression: "smirk" }]);
+    await play(16);
+    assert.equal(pickPngtuberLayerKey(head, alice), "smirk");
+    await play(holdMs);
+    begin();
+    tell("Alice thanks you.");
+    await until("gratitude after a pick", () => alice.feeling === "gratitude");
+    assert.deepEqual([alice.emotion, alice.label], ["happy", null], "the earlier pick's label gives way");
+    assert.equal(pickPngtuberLayerKey(head, alice), "gratitude", "the talking head shows the new feeling's face");
+    finish();
+    await play(16);
+  }
+  feelings.dispose();
+
+  // Game Master lines: a feeling's own name no longer reads as neutral.
+  const gm = director.createAvatarDirector(
+    { chatId: "director-feelings-game", mode: "game", reducedMotion: false },
+    { classify: async () => Promise.reject(new Error("unused")) },
+  );
+  gm.setParticipants([{ owner: { ownerType: "character", ownerId: "alice" }, name: "Alice" }]);
+  const gmFace = (expression: string) => {
+    gm.pushGameLine({ speakerName: "Alice", ownerId: "alice", expression, text: "Well." });
+    t += 16;
+    const frame = gm.frame("alice", t);
+    return [frame.emotion, frame.feeling];
+  };
+  assert.deepEqual(gmFace("amused"), ["happy", "amusement"]);
+  assert.deepEqual(gmFace("pride"), ["happy", "pride"], "pride is happy, not neutral");
+  assert.deepEqual(gmFace("scared"), ["surprised", "fear"]);
+  assert.deepEqual(gmFace("angry"), ["angry", null]);
+  gm.dispose();
+}
+
+// ── Text-to-speech auto-play: the avatar waits for the voice ──
+// The voice usually starts seconds after the reply has streamed. While it will come, the text moves no mouth and
+// shows no mood; the voice brings both (each sentence as the voice reaches its share of the clip), the face relaxes
+// about 4 s after the voice, and an Expression Engine pick shows once the reading is over. A reading that never
+// plays replays the text animation once if the reply ended moments ago, and otherwise shows its last mood.
+{
+  const id = "director-voice";
+  const sent: string[] = [];
+  const voiced = director.createAvatarDirector(
+    { chatId: id, mode: "roleplay", reducedMotion: false },
+    {
+      classify: async (request) => {
+        sent.push(...request.texts);
+        return answerOf(request);
+      },
+      prepareModel,
+    },
+  );
+  voiced.setParticipants([{ owner: { ownerType: "character", ownerId: "alice" }, name: "Alice" }]);
+  voiced.setVoiceAutoplay(true);
+  let alice = voiced.frame("alice", t);
+  let talkedMs = 0;
+  let maxOpen = 0;
+  const faces = new Set<AvatarEmotion>();
+  const play = async (ms: number) => {
+    const end = t + ms;
+    while (t < end) {
+      t += 16;
+      alice = voiced.frame("alice", t);
+      if (alice.state === "talking") talkedMs += 16;
+      maxOpen = Math.max(maxOpen, alice.mouthOpen);
+      faces.add(alice.emotion);
+      await flush();
+    }
+  };
+  const fresh = () => {
+    talkedMs = 0;
+    maxOpen = 0;
+    faces.clear();
+  };
+  const until = async (what: string, test: () => boolean, maxMs = 6_000) => {
+    const deadline = t + maxMs;
+    while (!test()) {
+      assert.ok(t < deadline, `timed out waiting for ${what}`);
+      await play(16);
+    }
+    return t;
+  };
+  const reading = (messageId: string, pending: boolean, readingId = messageId) =>
+    window.dispatchEvent(
+      new CustomEvent(TTS_AUTOPLAY_VOICE_EVENT, { detail: { chatId: id, messageId, readingId, pending } }),
+    );
+  const begin = () => store().setAbortController(id, new AbortController());
+  const finish = () => {
+    store().clearStreamBuffer(id);
+    store().setAbortController(id, null);
+  };
+  /** Types `text` at about 50 characters a second, like the default typewriter. */
+  const type = async (text: string) => {
+    for (let index = 1; index <= text.length; index += 1) {
+      store().setStreamBuffer(text.slice(0, index), id);
+      await play(20);
+    }
+  };
+  /** A voice clip of `seconds` reading `text` for Alice, as the TTS lane's level source reports it. */
+  const voiceClip = (text: string, seconds: number) => {
+    const from = t;
+    voiced.setAudioSource("alice", {
+      ownerId: "alice",
+      level: () => 0.8,
+      viseme: () => "aa",
+      isPlaying: () => true,
+      line: () => ({ text, progress: Math.min(1, (t - from) / (seconds * 1000)) }),
+    });
+    return from;
+  };
+  const silence = () => voiced.setAudioSource("alice", null);
+
+  // The reply streams: no talking and no mood, though its sentences are read (and cached) as usual.
+  begin();
+  await type('Alice beams at you. "This is wonderful!" Alice sobs into her hands. "I miss him so much."');
+  assert.equal(talkedMs, 0, "with auto-play on, the text moves no mouth");
+  assert.equal(maxOpen, 0);
+  assert.deepEqual([...faces], ["neutral"], "and its moods wait for the voice");
+  assert.ok(sent.includes("Alice beams at you."), "its sentences still reach the classifier");
+  reading("voice-1", true);
+  finish();
+  await play(8_000);
+  assert.deepEqual([talkedMs, alice.emotion], [0, "neutral"], "nothing shows while the voice loads");
+
+  // The voice: it moves the mouth, and each sentence's mood shows as the voice reaches it.
+  const spoken = "Alice beams at you. This is wonderful! Alice sobs into her hands. I miss him so much.";
+  const voiceFrom = voiceClip(spoken, 8);
+  await play(1_000);
+  assert.equal(alice.state, "talking");
+  assert.ok(alice.mouthOpen > 0.5, "the voice moves the mouth");
+  assert.equal(alice.emotion, "happy", "the first sentence's mood shows with the voice");
+  const sadAt = await until("the sad face", () => alice.emotion === "sad");
+  const sadShare = spoken.indexOf(" Alice sobs") / spoken.length;
+  assert.ok(sadAt - voiceFrom >= sadShare * 8_000, "a mood waits for the voice to reach its sentence");
+  voiced.pushExpressionPicks([{ ownerId: "alice", expression: "angry" }]);
+  await play(500);
+  assert.equal(alice.emotion, "sad", "an Expression Engine pick does not interrupt the voice");
+  await play(voiceFrom + 8_000 - t);
+  silence();
+  reading("voice-1", false);
+  await play(32);
+  assert.deepEqual([alice.emotion, alice.label], ["angry", "angry"], "the pick shows once the reading is over");
+  await play(6_000);
+  assert.equal(alice.emotion, "angry", "and stays, as the final face");
+
+  // Clips with a pause between them: the face holds through the pause and relaxes about 4 s after the voice.
+  fresh();
+  begin();
+  await type('Alice beams again. "Wonderful news!"');
+  reading("voice-2", true);
+  finish();
+  await play(3_000);
+  const clipFrom = voiceClip("Alice beams again.", 2);
+  await until("the happy face", () => alice.emotion === "happy", 2_000);
+  await play(clipFrom + 2_000 - t);
+  silence();
+  await play(3_500);
+  assert.equal(alice.emotion, "happy", "a pause between clips does not relax the face");
+  voiceClip("Wonderful news!", 1);
+  await play(1_000);
+  silence();
+  reading("voice-2", false);
+  const voiceEnd = t;
+  const relaxedAt = await until("the relaxed face", () => alice.emotion === "neutral", 7_000);
+  assert.ok(relaxedAt - voiceEnd >= 4_000, "the face relaxes about 4 s after the voice ends, not after the text");
+
+  // The voice fails right after the reply: the text animation plays once.
+  fresh();
+  begin();
+  await type('Alice sobs quietly. "I miss him so much, I really do."');
+  reading("voice-3", true);
+  finish();
+  await play(500);
+  reading("voice-3", false);
+  await play(10_000);
+  assert.ok(talkedMs > 1_000, `a voice that fails at once: the text moves the mouth once (${talkedMs} ms)`);
+  assert.ok(faces.has("sad"), "and its moods show");
+  assert.equal(alice.emotion, "neutral", "then the face relaxes as after any reply");
+
+  // No reading begins at all (auto-play skipped this reply): after 2 s, the same.
+  fresh();
+  begin();
+  await type('Alice beams. "So wonderful to see you!"');
+  finish();
+  await play(1_500);
+  assert.equal(talkedMs, 0, "the avatar waits a moment for a reading to begin");
+  await play(6_000);
+  assert.ok(talkedMs > 500 && faces.has("happy"), "no reading began: the text animation plays once");
+  await play(6_000);
+
+  // The voice fails long after the reply: no late talking; the reply's last mood shows, then relaxes.
+  fresh();
+  begin();
+  await type('Alice sobs. "I miss him."');
+  reading("voice-4", true);
+  finish();
+  await play(7_000);
+  reading("voice-4", false);
+  const failedAt = await until("the held mood", () => alice.emotion === "sad", 500);
+  await until("the relaxed face", () => alice.emotion === "neutral", 7_000);
+  assert.ok(t - failedAt >= 4_000, "it relaxes no sooner than 4 s later");
+  assert.equal(talkedMs, 0, "the text is long gone, so it is not replayed");
+
+  // A regenerated swipe keeps its message id: the end of the reading it replaced does not end the new one's wait.
+  fresh();
+  begin();
+  await type('Alice sobs. "I miss him."');
+  reading("voice-6", true, "voice-6-a");
+  finish();
+  reading("voice-6", true, "voice-6-b");
+  await play(500);
+  reading("voice-6", false, "voice-6-a");
+  await play(6_000);
+  assert.deepEqual([talkedMs, [...faces]], [0, ["neutral"]], "the replaced reading's end does not end the wait");
+  reading("voice-6", false, "voice-6-b");
+  await until("the held mood", () => alice.emotion === "sad", 500);
+  await until("the relaxed face", () => alice.emotion === "neutral", 7_000);
+
+  // An earlier reading still playing while the next reply streams and loads is not this reading's voice: when this
+  // reading fails at once, the text animation still plays.
+  fresh();
+  voiceClip("Alice hums an old tune.", 30);
+  begin();
+  await type('Alice sobs quietly. "I miss him so much, I really do."');
+  reading("voice-7", true);
+  finish();
+  voiced.setParticipants([{ owner: { ownerType: "character", ownerId: "alice" }, name: "Alice updated" }]);
+  await play(500);
+  silence();
+  reading("voice-7", false);
+  fresh();
+  await play(10_000);
+  assert.ok(talkedMs > 1_000, `an earlier voice does not count as this reading's (${talkedMs} ms)`);
+  assert.ok(faces.has("sad"), "and the reply's moods show");
+  assert.equal(alice.emotion, "neutral", "then the face relaxes as after any reply");
+
+  // A reading that stays away (still loading, or blocked until a tap): after 30 s the avatar stops waiting, and a
+  // voice that still comes moves the mouth.
+  fresh();
+  begin();
+  await type('Alice sobs. "I miss him."');
+  reading("voice-5", true);
+  finish();
+  voiced.pushExpressionPicks([{ ownerId: "alice", expression: "crying" }]);
+  await play(29_000);
+  assert.deepEqual([alice.emotion, alice.label], ["neutral", null], "the wait holds the mood and the pick");
+  await play(1_500);
+  assert.deepEqual([alice.emotion, alice.label], ["sad", "crying"], "after 30 s the avatar stops waiting");
+  voiceClip("I miss him.", 1);
+  await play(500);
+  assert.equal(alice.state, "talking", "a voice that comes later still moves the mouth");
+  silence();
+  reading("voice-5", false);
+
+  // Auto-play turned off before a reading began: the text animates again.
+  fresh();
+  begin();
+  voiced.setVoiceAutoplay(false);
+  await type('"Hello there, it is so good to see you again!"');
+  finish();
+  assert.ok(talkedMs > 0, "without auto-play the text moves the mouth");
+  await play(6_000);
+
+  // The Speak button (no auto-play): moods follow its voice too, and relax after it.
+  fresh();
+  const spokeFrom = voiceClip("Alice beams at you.", 2);
+  await until("the happy face", () => alice.emotion === "happy", 2_000);
+  await play(spokeFrom + 2_000 - t);
+  silence();
+  const spokeEnd = t;
+  await until("the relaxed face", () => alice.emotion === "neutral", 7_000);
+  assert.ok(t - spokeEnd >= 4_000, "a spoken message's mood relaxes about 4 s after its voice");
+  voiced.dispose();
+}
+
+// A whole group reply may get audio for only one member. The other's mood fallback starts its own
+// timeline when the reading ends, rather than jumping over every sentence spent waiting for that voice.
+{
+  useUIStore.setState({ enableStreaming: false });
+  const id = "director-unvoiced-member";
+  const group = scene(id, ["Alice", "Bob"]);
+  group.scened.setVoiceAutoplay(true);
+  await group.play(16);
+  group.start();
+  group.scened.pushStreamText({
+    chatId: id,
+    messageId: "group-voice",
+    speakerOwnerId: null,
+    done: true,
+    text: `Alice beams. "Wonderful."\n\nBob beams. "${"This is wonderful. ".repeat(8)}"\n\nBob sobs. "${"I miss him so much. ".repeat(8)}"`,
+  });
+  const announce = (pending: boolean) =>
+    window.dispatchEvent(
+      new CustomEvent(TTS_AUTOPLAY_VOICE_EVENT, {
+        detail: { chatId: id, messageId: "group-voice", readingId: "group-reading", pending },
+      }),
+    );
+  announce(true);
+  group.end();
+  await group.play(3_000);
+  group.scened.setAudioSource("alice", { ownerId: "alice", level: () => 0.8, isPlaying: () => true });
+  await group.play(3_000);
+  group.scened.setAudioSource("alice", null);
+  announce(false);
+  const readingEnded = t;
+  const bobFaces = new Map<string, number>();
+  for (let index = 0; index < 520; index += 1) {
+    await group.play(16);
+    const mood = group.last.bob!.emotion;
+    if (!bobFaces.has(mood)) bobFaces.set(mood, t - readingEnded);
+  }
+  console.info("Unvoiced group-member timeline after reading (ms):", Object.fromEntries(bobFaces));
+  assert.ok(bobFaces.has("happy") && bobFaces.has("sad"), "an unvoiced group member keeps both sentence moods");
+  assert.ok(bobFaces.get("sad")! >= 3_000, "the voice wait is not counted as that member's text speaking time");
+  group.scened.dispose();
+  useUIStore.setState({ enableStreaming: true });
 }
 
 // A swipe in an Individual group gets no group_turn from the server; use-generate names the swiped member as the

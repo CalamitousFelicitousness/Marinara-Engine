@@ -30,6 +30,7 @@ import {
   type VisualTheme,
 } from "../../stores/ui.store";
 import { UILanguageSetting } from "./settings/UILanguageSetting";
+import { LanguagePicker } from "../ui/LanguagePicker";
 import { MultiplayerSettings } from "../../features/multiplayer/MultiplayerSettings";
 import { useLocalizedUiText } from "../../localization/use-localized-ui-text";
 import {
@@ -38,6 +39,8 @@ import {
   SETTINGS_SECTIONS,
   isOmnibarSettingsTarget,
   searchSettings,
+  settingsControlDescription,
+  settingsControlLabel,
   type SettingsSearchResult,
   type SettingsSectionId,
   type SettingsSectionMeta,
@@ -81,6 +84,7 @@ import {
   VIDEO_SCENE_DURATION_MAX,
   VIDEO_SCENE_DURATION_MIN,
   compileImagePrompt,
+  createImageStyleProfileId,
   normalizeImageStyleProfileSettings,
   normalizeVideoGenerationUserSettings,
   createFolderEntry,
@@ -192,6 +196,7 @@ import {
 import { TrackerCardColorSettings } from "./settings/TrackerCardColorSettings";
 import { PromptOverridesEditor } from "./settings/PromptOverridesEditor";
 import { BackgroundPicker } from "./settings/BackgroundPicker";
+import { AccessStatusSettings } from "./settings/AccessStatusSettings";
 import { RequestTimeoutSettings } from "./settings/RequestTimeoutSettings";
 import { FEATURE_SWITCHES_CONTROL_ID, FeatureSwitchesSettings } from "./settings/FeatureSwitchesSettings";
 import { CustomGenerationParametersSettings } from "./settings/CustomGenerationParametersSettings";
@@ -709,6 +714,7 @@ const GAME_ASSET_CATEGORIES = [
 const VIDEO_PROMPT_TEMPLATE_KEYS = [
   "game.video",
   "roleplay.galleryVideoDirector",
+  "conversation.video",
   "conversation.callVideo.idle",
   "conversation.callVideo.talking",
   "conversation.callVideo.laughing",
@@ -866,12 +872,7 @@ function ImageStyleProfilesEditor({
   );
 
   const cloneSelected = useCallback(() => {
-    let suffix = 1;
-    let id = `${selected.id}-custom`;
-    while (settings.profiles.some((profile) => profile.id === id)) {
-      suffix += 1;
-      id = `${selected.id}-custom-${suffix}`;
-    }
+    const id = createImageStyleProfileId(selected.id, settings.profiles);
     const clone = { ...selected, id, name: `${selected.name} Custom`, builtIn: false };
     commit({ ...settings, profiles: [...settings.profiles, clone], defaultProfileId: id });
     setSelectedId(id);
@@ -1518,7 +1519,7 @@ export function SettingsPanel() {
   mountedSettingsTabs.add(settingsTab);
 
   const activeSections = SETTINGS_SECTIONS.filter((section) => section.tab === settingsTab);
-  const searchResults = searchSettings(settingsSearch, localize);
+  const searchResults = searchSettings(settingsSearch, localize, t);
 
   const jumpToSection = useCallback(
     (section: SettingsSectionMeta) => {
@@ -1632,10 +1633,12 @@ export function SettingsPanel() {
                 {searchResults.map((result) => {
                   const section = result.section;
                   const tab = TABS.find((entry) => entry.id === section.tab);
-                  const label = localize(result.type === "control" ? result.control.label : section.label);
-                  const description = localize(
-                    result.type === "control" ? result.control.description : section.description,
-                  );
+                  const label =
+                    result.type === "control" ? settingsControlLabel(result.control, t) : localize(section.label);
+                  const description =
+                    result.type === "control"
+                      ? settingsControlDescription(result.control, t)
+                      : localize(section.description);
                   return (
                     <button
                       key={`${result.type}-${result.type === "control" ? result.control.id : section.id}`}
@@ -2142,24 +2145,18 @@ function DocsLanguageSetting() {
 
   return (
     <div id={getSettingsControlAnchorId("docs-language")} className="flex scroll-mt-3 flex-col gap-1">
-      <label className="flex flex-col gap-1">
-        <span className="inline-flex items-center gap-1 text-xs font-medium">
-          {localizeUi("settings.application.docsLanguage.label")}
-          <HelpTooltip text={localizeUi("settings.application.docsLanguage.help")} />
-        </span>
-        <select
-          value={selection}
-          onChange={(event) => setPickedLanguage(event.target.value)}
-          disabled={statusLoading || setDocsLanguage.isPending}
-          className="rounded-lg bg-[var(--secondary)] px-3 py-2 text-xs outline-none ring-1 ring-transparent transition-shadow focus:ring-[var(--primary)]"
-        >
-          {(options.length > 0 ? options : [{ code: "en", label: "English" }]).map((option) => (
-            <option key={option.code} value={option.code}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      </label>
+      <div className="inline-flex items-center gap-1 text-xs font-medium">
+        <label htmlFor="settings-docs-language-select">{localizeUi("settings.application.docsLanguage.label")}</label>
+        <HelpTooltip text={localizeUi("settings.application.docsLanguage.help")} />
+      </div>
+      <LanguagePicker
+        id="settings-docs-language-select"
+        label={localizeUi("settings.application.docsLanguage.label")}
+        value={selection}
+        onChange={setPickedLanguage}
+        disabled={statusLoading || setDocsLanguage.isPending}
+        options={options.length > 0 ? options : [{ code: "en", label: "English" }]}
+      />
       {activeInfo && active !== "en" ? (
         <p className="text-[0.625rem] text-[var(--muted-foreground)]">
           {localizeUi("settings.application.docsLanguage.active", {
@@ -2278,18 +2275,20 @@ function GeneralSettings() {
   const setChatHelpButtonHidden = useUIStore((s) => s.setChatHelpButtonHidden);
   const achievementsEnabled = useUIStore((s) => s.achievementsEnabled);
   const setAchievementsEnabled = useUIStore((s) => s.setAchievementsEnabled);
+  const seasonalThemesDisabled = useUIStore((s) => s.seasonalThemesDisabled);
+  const setSeasonalThemesDisabled = useUIStore((s) => s.setSeasonalThemesDisabled);
   const messagesPerPage = useUIStore((s) => s.messagesPerPage);
   const setMessagesPerPage = useUIStore((s) => s.setMessagesPerPage);
   const boldDialogue = useUIStore((s) => s.boldDialogue);
   const setBoldDialogue = useUIStore((s) => s.setBoldDialogue);
-  const colorInlineNames = useUIStore((s) => s.colorInlineNames);
-  const setColorInlineNames = useUIStore((s) => s.setColorInlineNames);
   const disableInlineNameGradients = useUIStore((s) => s.disableInlineNameGradients);
   const setDisableInlineNameGradients = useUIStore((s) => s.setDisableInlineNameGradients);
   const quoteFormat = useUIStore((s) => s.quoteFormat);
   const setQuoteFormat = useUIStore((s) => s.setQuoteFormat);
   const convertLatexSymbols = useUIStore((s) => s.convertLatexSymbols);
   const setConvertLatexSymbols = useUIStore((s) => s.setConvertLatexSymbols);
+  const loadRemoteMessageImages = useUIStore((s) => s.loadRemoteMessageImages);
+  const setLoadRemoteMessageImages = useUIStore((s) => s.setLoadRemoteMessageImages);
   const trimIncompleteModelOutput = useUIStore((s) => s.trimIncompleteModelOutput);
   const setTrimIncompleteModelOutput = useUIStore((s) => s.setTrimIncompleteModelOutput);
   const continueAddsNewline = useUIStore((s) => s.continueAddsNewline);
@@ -2343,6 +2342,13 @@ function GeneralSettings() {
             checked={achievementsEnabled}
             onChange={setAchievementsEnabled}
             help={localizeUi("settings.controls.achievements.help")}
+          />
+          <ToggleSetting
+            anchorId={getSettingsControlAnchorId("disable-seasonal-themes")}
+            label={localizeUi("settings.controls.disableSeasonalThemes.label")}
+            checked={seasonalThemesDisabled}
+            onChange={setSeasonalThemesDisabled}
+            help={localizeUi("settings.controls.disableSeasonalThemes.help")}
           />
           <ToggleSetting
             anchorId={getSettingsControlAnchorId("music-player")}
@@ -2604,21 +2610,19 @@ function GeneralSettings() {
             help={localizeUi("ui.panels.generalsettings.turnsCommonModelWrittenLatexCommandsLikeRightarrowNeq")}
           />
           <ToggleSetting
-            anchorId={getSettingsControlAnchorId("color-inline-names")}
-            label={localizeUi("settings.controls.colorInlineNames.label")}
-            checked={colorInlineNames ?? false}
-            onChange={setColorInlineNames}
-            help={localizeUi("settings.controls.colorInlineNames.help")}
+            anchorId={getSettingsControlAnchorId("load-remote-message-images")}
+            label={localizeUi("settings.controls.loadRemoteMessageImages.label")}
+            checked={loadRemoteMessageImages}
+            onChange={setLoadRemoteMessageImages}
+            help={localizeUi("settings.controls.loadRemoteMessageImages.help")}
           />
-          {colorInlineNames && (
-            <ToggleSetting
-              anchorId={getSettingsControlAnchorId("disable-inline-name-gradients")}
-              label={localizeUi("settings.controls.disableInlineNameGradients.label")}
-              checked={disableInlineNameGradients ?? false}
-              onChange={setDisableInlineNameGradients}
-              help={localizeUi("settings.controls.disableInlineNameGradients.help")}
-            />
-          )}
+          <ToggleSetting
+            anchorId={getSettingsControlAnchorId("disable-inline-name-gradients")}
+            label={localizeUi("settings.controls.disableInlineNameGradients.label")}
+            checked={disableInlineNameGradients ?? false}
+            onChange={setDisableInlineNameGradients}
+            help={localizeUi("settings.controls.disableInlineNameGradients.help")}
+          />
           <div
             id={getSettingsControlAnchorId("quote-style")}
             className="flex scroll-mt-3 flex-col gap-1.5 rounded-lg p-1 transition-colors hover:bg-[var(--accent)]/50"
@@ -7415,6 +7419,8 @@ function AdvancedSettings() {
         {localizeUi("ui.panels.advancedsettings.serverMaintenanceMessageUtilitiesBackupsAndDataRemoval")}
       </SettingsIntro>
       <MultiplayerSettings />
+
+      <AccessStatusSettings {...getSettingsSectionAnchorProps("access-status")} />
 
       <SettingsSection
         title={localizeUi("settings.sections.adminAccess.title")}

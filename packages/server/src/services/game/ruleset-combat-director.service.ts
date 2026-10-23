@@ -166,6 +166,8 @@ import {
   type CombatOrders,
   type CombatTactics,
   type RulesetSheetItem,
+  rulesetCombatantFlying,
+  withRulesetSheetEvaluationCache,
 } from "@marinara-engine/shared";
 import { logger } from "../../lib/logger.js";
 import { combatDirectorView, type CombatDirectorState } from "./combat-director.service.js";
@@ -267,6 +269,8 @@ export interface RulesetFightOpponent {
   /** How it fights: the same competence and temperament its choices in the fight are made with,
    *  which is also what fills an invented sheet's open choices. Assigned here when not given. */
   tactics?: Pick<CombatTactics, "proficiency" | "adjective">;
+  /** How a story fight has it (1.363): its Legendary Resistance and health, when it is a bestiary's. */
+  adjust?: { legendaryResistance?: number; maxHp?: number; calls?: Array<{ action: string; creature: string }> };
 }
 
 export interface RulesetFightSeed {
@@ -375,6 +379,17 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
         name: opponent.name,
         side: "enemy",
         creature: { catalogId: found.catalogId, entryId: found.entry.id },
+        ...(opponent.adjust
+          ? {
+              adjust: {
+                ...(opponent.adjust.legendaryResistance !== undefined
+                  ? { legendaryResistance: opponent.adjust.legendaryResistance }
+                  : {}),
+                ...(opponent.adjust.maxHp !== undefined ? { health: opponent.adjust.maxHp } : {}),
+                ...(opponent.adjust.calls?.length ? { calls: opponent.adjust.calls.map((call) => ({ ...call })) } : {}),
+              },
+            }
+          : {}),
       });
       if (found.entry.creature?.loot) lootTables[opponent.id] = found.entry.creature.loot;
       continue;
@@ -925,6 +940,22 @@ function deathTrackOf(definition: RulesetDefinition, combatant: RulesetCombatant
  *  for the fight's own HUD: a player should not have to open the sheet mid-fight to count slots. */
 function spentPoolsOf(definition: RulesetDefinition, combatant: RulesetCombatant) {
   if (combatant.side !== "party" || !combatant.sheet) return undefined;
+  // What one of it is called, for a player paying with it (1.378): "a 2nd-level slot".
+  const unitOf = (id: string) => {
+    const declared = definition.sheet.live.pools.find((pool) => pool.id === id);
+    return declared?.unit ? { unit: declared.unit } : {};
+  };
+  // The ruleset may name them itself, in its own order (1.375).
+  const named = definition.combat?.display?.pools;
+  if (named) {
+    const live = readRulesetLive(definition, combatant.sheet.build, combatant.sheet.live);
+    const pools = named.flatMap((id) =>
+      live.pools
+        .filter((pool) => pool.key === id && !pool.listId && pool.max > 0)
+        .map((pool) => ({ id: pool.key, label: pool.label, value: pool.value, max: pool.max, ...unitOf(pool.key) })),
+    );
+    return pools.length ? pools : undefined;
+  }
   const spent = new Set<string>();
   const groups = new Set<string>();
   for (const action of combatant.actions) {
@@ -938,10 +969,9 @@ function spentPoolsOf(definition: RulesetDefinition, combatant: RulesetCombatant
   const live = readRulesetLive(definition, combatant.sheet.build, combatant.sheet.live);
   const pools = live.pools
     .filter((pool) => !pool.listId && pool.max > 0 && spent.has(pool.key))
-    .map((pool) => ({ id: pool.key, label: pool.label, value: pool.value, max: pool.max }));
+    .map((pool) => ({ id: pool.key, label: pool.label, value: pool.value, max: pool.max, ...unitOf(pool.key) }));
   return pools.length ? pools : undefined;
 }
-
 function projectCombatant(
   definition: RulesetDefinition,
   combatant: RulesetCombatant,
@@ -1019,6 +1049,7 @@ function projectCombatant(
       };
     })(),
     ...(combatant.concentrating ? { concentrating: combatant.concentrating.label } : {}),
+    ...((pools) => (pools ? { pools } : {}))(spentPoolsOf(definition, combatant)),
     ...(combatant.block?.tier ? { tier: combatant.block.tier } : {}),
     ...(combatant.block?.traits?.length ? { traits: combatant.block.traits.map((trait) => ({ ...trait })) } : {}),
     ...(typeof combatant.x === "number" && typeof combatant.y === "number" ? { x: combatant.x, y: combatant.y } : {}),
@@ -1027,6 +1058,8 @@ function projectCombatant(
       : {}),
     ...(combatant.altitude !== undefined ? { altitude: combatant.altitude } : {}),
     ...(combatant.span !== undefined ? { span: combatant.span } : {}),
+    // Drawn in its flying art (1.352): never read by the rules.
+    ...(rulesetCombatantFlying(state.board?.grid, combatant) ? { flying: true as const } : {}),
   };
 }
 
@@ -1077,6 +1110,11 @@ export function rulesetMenu(
       targetIds.length > 1 && option.forecast?.hitChance !== undefined
         ? rulesetHitChances(definition, encounter, actorId, option.id, targetIds)
         : undefined;
+    // The whole forecast for each one it may be pointed at, where there is a choice between them.
+    const forecastFor =
+      targetIds.length > 1 && option.forecast && !option.area
+        ? rulesetForecastsByTarget(definition, encounter, actorId, option.id, targetIds)
+        : undefined;
     // And the chance each fails the save, for one that calls for a save: Hold Person's.
     const saveChances =
       targetIds.length > 0 && action?.save && option.forecast?.hitChance === undefined
@@ -1099,6 +1137,7 @@ export function rulesetMenu(
       ...(payWith ? { payWith, payLabels: rulesetPoolLabels(definition, payWith) } : {}),
       ...(levels ? { levels } : {}),
       targetIds,
+      ...(forecastFor && Object.keys(forecastFor).length > 0 ? { forecastFor } : {}),
       ...(raisesDefense ? { raisesDefense } : {}),
       ...(aim.length > 0 ? { aim } : {}),
       ...(hitChances && Object.keys(hitChances).length > 0 ? { hitChances } : {}),
@@ -1431,7 +1470,16 @@ function rulesetViewOf(definition: RulesetDefinition, state: CombatDirectorState
                   ...(stakes !== undefined ? { stakes } : {}),
                 }))(held.window.trigger, heldHitStakes(definition, encounter, held.window.trigger, held.actorId))
               : {}),
-            ...((what) => (what ? { held: what } : {}))(rulesetHeldUse(definition, encounter, held.window)),
+            // What is held, with whom it would catch and the cells its area covers, laid as it was aimed:
+            // what a board tints while the ones it would catch decide whether to answer.
+            ...((what) =>
+              what
+                ? {
+                    held: what,
+                    ...(what.targetIds ? { targetIds: what.targetIds } : {}),
+                    ...(grid && what.cells ? { cells: what.cells } : {}),
+                  }
+                : {})(rulesetHeldUse(definition, encounter, held.window)),
             controller: held.controller,
           },
           ...(held.controller === "manual" && !state.window
@@ -5579,6 +5627,17 @@ export function commandRulesetCombatDirector(
   state: CombatDirectorState,
   command: DirectedCommand,
   source: "gm" | "ai" | "manual" | "fallback" = "manual",
+): RulesetCommandResult {
+  // The option and picker loops read the same sheets thousands of times in one command, and no build
+  // is written to during it: the fight's creation and the creature-sheet hold run outside it.
+  return withRulesetSheetEvaluationCache(() => runRulesetCommand(definition, state, command, source));
+}
+
+function runRulesetCommand(
+  definition: RulesetDefinition,
+  state: CombatDirectorState,
+  command: DirectedCommand,
+  source: "gm" | "ai" | "manual" | "fallback",
 ): RulesetCommandResult {
   const fight = fightOf(state);
   if (!fight) return refuse("This battle is not resolved by a ruleset.", "ruleset_combat_not_a_ruleset_fight");

@@ -10,7 +10,7 @@ import type {
 } from "./professor-mari-workspace.js";
 import type { GameDicePlaceholderRecord } from "../utils/dice-placeholder.js";
 import type { GenerationGuideSource } from "../utils/generation-guide.js";
-import type { ContextFitSummary } from "./generation-integration.js";
+import type { ContextFitSummary, GenerationFallbackNotice } from "./generation-integration.js";
 import type { HapticFeedbackSensitivity } from "./haptic.js";
 import type { CustomEmojiSelectionPrefs } from "../schemas/custom-emoji.schema.js";
 import type { DiceRollResult, GameDicePoolConsumption, GameDicePoolMismatch } from "./game.js";
@@ -46,6 +46,17 @@ export interface KnowledgeAgentSourceSettings {
   sourceLorebookIds?: string[];
   /** Uploaded file source IDs. Used by Knowledge Retrieval only. */
   sourceFileIds?: string[];
+}
+
+/**
+ * What a Conversation video message starts from: a fresh selfie, the character's avatar (or
+ * sprite), a selfie with the avatar as fallback, or nothing (text-to-video).
+ */
+export const VIDEO_FIRST_FRAMES = ["picture_or_avatar", "picture", "avatar", "prompt_only"] as const;
+export type VideoFirstFrame = (typeof VIDEO_FIRST_FRAMES)[number];
+
+export function normalizeVideoFirstFrame(value: unknown): VideoFirstFrame {
+  return VIDEO_FIRST_FRAMES.includes(value as VideoFirstFrame) ? (value as VideoFirstFrame) : "picture_or_avatar";
 }
 
 export const CONVERSATION_COMMAND_KEYS = [
@@ -364,6 +375,8 @@ export interface ChatMetadata {
   illustratorIncludeCharacterAppearance?: boolean;
   /** Whether Illustrator should send matching character/persona avatar references to image providers. */
   illustratorUseAvatarReferences?: boolean;
+  /** Whether Roleplay video prompts get matched character appearance lines, like images with the setting above. */
+  illustratorVideoIncludeCharacterAppearance?: boolean;
   /** Optional per-chat LLM connection override used only to write Illustrator/selfie image prompts. */
   illustratorPromptConnectionId?: string | null;
   /** Optional per-chat image generation connection override used by Illustrator. */
@@ -381,6 +394,13 @@ export interface ChatMetadata {
   selfieUseAvatarReferences?: boolean;
   /** Whether Conversation selfie commands should append matched character card appearance text to image prompts. */
   selfieIncludeCharacterAppearance?: boolean;
+  /** Conversation video prompts get matched character appearance lines. */
+  selfieVideoIncludeCharacterAppearance?: boolean;
+  /**
+   * A Conversation video with no picture to start from (First frame: prompt only) sends the matched
+   * character's avatar or sprite as its reference image.
+   */
+  selfieVideoUseAvatarReferences?: boolean;
   /** Whether Game Mode scene illustrations should send matching character/persona avatar references. */
   gameImageUseAvatarReferences?: boolean;
   /** Whether Game Mode scene illustrations should append matched character-card appearance fields. */
@@ -446,6 +466,11 @@ export interface ChatMetadata {
    * card styling is opt-in per chat.
    */
   cardCssMode?: "disabled" | "exclusive" | "chat";
+  /**
+   * Color character names and their aliases in their name color inside this
+   * Roleplay chat's messages. Unset falls back to the retired global setting.
+   */
+  colorInlineNames?: boolean;
   /**
    * How character-scoped regex scripts (those with target characters) apply at
    * display time in this chat: "exclusive" (a scoped script only transforms its
@@ -540,6 +565,8 @@ export interface ChatMetadata {
   roleplayDocumentAudience?: RoleplayCommandAudience;
   roleplayWhisperAudience?: RoleplayCommandAudience;
   roleplaySoundConnectionId?: string | null;
+  /** Show each illustrate command's images inside the message, where the command was written. */
+  roleplayIllustrateInline?: boolean;
   /** Chat-scoped Intiface Central WebSocket URL for haptic manual and auto-connect. */
   hapticIntifaceUrl?: string | null;
   /** Haptic response style for any chat mode. Missing = standard. */
@@ -740,8 +767,10 @@ export interface ChatMetadata {
   gameStoryboardUseNovelAiCharacterPrompts?: boolean;
   /** Last generated scene-video record ID for this game. */
   gameLastSceneVideoId?: string | null;
-  /** Connection used for roleplay/gallery scene-video generation. */
+  /** Connection used for roleplay/gallery scene-video generation and Conversation video messages. */
   sceneVideoConnectionId?: string | null;
+  /** First frame of a Conversation video message; see `normalizeVideoFirstFrame`. */
+  sceneVideoFirstFrame?: VideoFirstFrame | null;
   /** Last generated roleplay/gallery scene-video record ID. */
   sceneLastVideoId?: string | null;
   /** Game-mode GM instruction override. Empty/null uses the built-in default prompt. */
@@ -965,6 +994,8 @@ export interface MessageExtra {
   referencedCharacterIds?: string[];
   /** All sprite owners in the completed expression result, including the persona. Empty means none. */
   expressionSpriteIds?: string[];
+  /** An earlier Individual group reply: its `spriteExpressions` hold only its own character, not the whole turn. */
+  expressionTurnPart?: boolean;
   /** Per-swipe CYOA choices from the CYOA Choices agent */
   cyoaChoices?: Array<{ label: string; text: string }> | null;
   /** Presentation-only Game Mode cues retained so completed turns can be replayed without rerunning scene analysis. */
@@ -1112,6 +1143,8 @@ export interface GenerationInfo {
   finishReason: string | null;
   /** What the context fit cut from this prompt, for the "replies got worse" checkup. */
   contextFit?: ContextFitSummary | null;
+  /** Set when the chosen connection failed and the fallback wrote this reply (#7697). */
+  fallback?: GenerationFallbackNotice | null;
 }
 
 /** A swipe (alternate response) for a message. */

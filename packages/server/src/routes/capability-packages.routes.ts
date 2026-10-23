@@ -3,6 +3,8 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import {
   BUILT_IN_AGENT_MANIFESTS,
+  EXPERIENCE_FILE_CONTENT_TYPE,
+  ExperienceFileError,
   type InstalledRuleset,
   type ListedRulesetDefinition,
   type RulesetCatalogEntry,
@@ -10,11 +12,12 @@ import {
   type RulesetDefinition,
 } from "@marinara-engine/shared";
 import { requirePrivilegedAccess } from "../middleware/privileged-gate.js";
-import { PACKAGE_UPDATE_DECLINE_RATE_LIMIT } from "../middleware/rate-limit.js";
+import { EXPERIENCE_FILE_IMPORT_RATE_LIMIT, PACKAGE_UPDATE_DECLINE_RATE_LIMIT } from "../middleware/rate-limit.js";
 import { openRulesetCatalog } from "../services/game/ruleset-catalog.service.js";
 import { readRulesetRegistry } from "../services/game/ruleset-registry.service.js";
 import {
   capabilityPackageManager,
+  CapabilityPackageCompatibilityError,
   CapabilityPackageVersionMismatchError,
 } from "../services/capability-packages/package-manager.service.js";
 import { capabilityModuleRuntime } from "../services/capability-packages/capability-module-runtime.service.js";
@@ -273,7 +276,12 @@ export async function capabilityPackagesRoutes(app: FastifyInstance) {
       try {
         installed = await capabilityPackageManager.install(id, expectedVersion, expectedArtifactSha256);
       } catch (error) {
-        if (error instanceof CapabilityPackageVersionMismatchError) {
+        // A version this Engine refuses says why ("Package requires capability API 1.342; this Engine supports
+        // 1.341"), instead of the error handler's "Internal Server Error".
+        if (
+          error instanceof CapabilityPackageVersionMismatchError ||
+          error instanceof CapabilityPackageCompatibilityError
+        ) {
           return reply.status(409).send({ error: error.message });
         }
         throw error;
@@ -292,6 +300,23 @@ export async function capabilityPackagesRoutes(app: FastifyInstance) {
       }
     },
   );
+  // An Experience file (Capability API 1.373), after the user reviewed it: the body is read as it arrives,
+  // never buffered, so the file may be any size; the manager checks every byte against the manifest.
+  app.addContentTypeParser(EXPERIENCE_FILE_CONTENT_TYPE, (_request, payload, done) => done(null, payload));
+  app.post("/experience-file", { config: { rateLimit: EXPERIENCE_FILE_IMPORT_RATE_LIMIT } }, async (request, reply) => {
+    if (!requirePrivilegedAccess(request, reply, { feature: "Experience import" })) return;
+    const body = request.body as AsyncIterable<Uint8Array> | undefined;
+    if (!body || typeof (body as { [Symbol.asyncIterator]?: unknown })[Symbol.asyncIterator] !== "function") {
+      return reply.status(415).send({ error: `Send the Experience file as ${EXPERIENCE_FILE_CONTENT_TYPE}` });
+    }
+    try {
+      const installed = await capabilityPackageManager.installExperienceFile(body);
+      return { ...installed, usesDecisions: false };
+    } catch (error) {
+      if (error instanceof ExperienceFileError) return reply.status(400).send({ error: error.message });
+      throw error;
+    }
+  });
   app.delete<{ Params: { id: string } }>("/:id", async (request, reply) => {
     if (!requirePrivilegedAccess(request, reply, { feature: "Agent package removal" })) return;
     const { id } = packageParams.parse(request.params);

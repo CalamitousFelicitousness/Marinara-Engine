@@ -3,6 +3,7 @@
 @import "./themes/sillytavern.css";
 @import "./themes/chat-widgets.css";
 @import "./themes/chat-widget-surfaces.css";
+@import "./themes/seasonal-halloween.css";
 
 /* World state & tracker widgets: equal flex sizing on mobile */
 @media (max-width: 767px) {
@@ -214,6 +215,8 @@
 
   /* Theme hooks for shared chat, roleplay, and game chrome. */
   --marinara-topbar-surface: color-mix(in srgb, var(--card) 80%, transparent);
+  /* Home's page is this card wash over --background; Professor Mari's window and page paint the same. */
+  --marinara-home-page-wash: color-mix(in oklab, var(--card) 65%, transparent);
   --marinara-topbar-border: color-mix(in srgb, var(--border) 30%, transparent);
   --marinara-shell-edge-border: color-mix(in srgb, var(--primary) 14%, var(--background) 86%);
   --marinara-music-player-shell-bg: var(--marinara-topbar-surface);
@@ -2397,6 +2400,10 @@
    Used by character, persona, preset, lorebook, connection, and agent editors.
    Custom themes can override --marinara-editor-* without touching component code.
    ───────────────────────────────────────────── */
+:root:where(:not([data-theme="light"], [data-visual-theme])) {
+  --marinara-editor-bg: var(--sidebar);
+}
+
 .mari-editor-shell {
   background: var(--marinara-editor-bg);
   color: var(--marinara-editor-text);
@@ -3238,15 +3245,18 @@ html[data-mari-ios-webkit] :is([data-component="RightPanelMobile"], [data-compon
   }
 
   .mari-editor-action--primary {
-    margin-right: auto;
     padding-inline: 0.75rem;
+  }
+
+  .mari-editor-actions .mari-editor-action--primary {
+    margin-right: auto;
   }
 
   .mari-editor-action--compact {
     min-height: auto;
   }
 
-  .mari-editor-action--compact.mari-editor-action--primary {
+  .mari-editor-actions .mari-editor-action--compact.mari-editor-action--primary {
     margin-right: 0;
   }
 
@@ -3369,6 +3379,72 @@ html[data-mari-ios-webkit] :is([data-component="RightPanelMobile"], [data-compon
 
   .mari-editor-header--with-nav .mari-editor-save-label {
     display: none;
+  }
+}
+
+/* The character editor carries eleven sections and seven actions, so its header
+   compacts earlier than the others: tighter spacing, an icon-only Save until
+   there is room, section icons only on very wide screens, and icon-only
+   sections (named in tooltips) in the narrowest desktop band. */
+@container (min-width: 56rem) and (max-width: 96rem) {
+  .mari-editor-header--dense .mari-editor-actions {
+    gap: 0.25rem;
+  }
+}
+
+@container (min-width: 56rem) and (max-width: 64rem) {
+  .mari-editor-header--dense .mari-editor-tab > svg {
+    display: block;
+  }
+
+  .mari-editor-header--dense .mari-editor-tab-label {
+    display: none;
+  }
+}
+
+@container (min-width: 80.001rem) and (max-width: 96rem) {
+  .mari-editor-header--dense {
+    gap: 0.5rem;
+    padding-inline: 0.75rem;
+  }
+
+  .mari-editor-header--dense .mari-editor-header-main {
+    gap: 0.5rem;
+  }
+
+  .mari-editor-header--dense .mari-editor-save-label {
+    display: none;
+  }
+
+  .mari-editor-header--dense .mari-editor-action--primary {
+    padding-inline: 0.5rem;
+  }
+}
+
+@container (min-width: 96.001rem) and (max-width: 116rem) {
+  .mari-editor-header--dense .mari-editor-tab {
+    gap: 0.125rem;
+    padding-inline: 0.25rem;
+  }
+
+  .mari-editor-header--dense .mari-editor-tab > svg {
+    display: none;
+  }
+}
+
+/* Narrow layouts (phones included): the section menu and every action share one row. */
+@container not (min-width: 56rem) {
+  .mari-editor-header--dense {
+    column-gap: 0.25rem;
+    padding-inline: 0.5rem;
+  }
+
+  .mari-editor-header--dense .mari-editor-navigation {
+    flex-basis: 4rem;
+  }
+
+  .mari-editor-header--dense .mari-editor-actions {
+    gap: 0.25rem;
   }
 }
 
@@ -3856,6 +3932,21 @@ body {
   }
 }
 
+/* The dated costume pack's greeting under "Ask Professor Mari": hand-lettered, slightly crooked, dripping. */
+.mari-home-professor-greeting {
+  margin: 0.4rem 0 0 0.75rem;
+  transform: rotate(-2deg);
+  color: var(--marinara-chat-chrome-button-text-active);
+  font-family: "Chalkduster", "Papyrus", "Comic Sans MS", cursive;
+  font-size: clamp(0.62rem, 2.4cqw, 0.85rem);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-shadow:
+    0 1px 0 color-mix(in oklab, currentColor 70%, transparent),
+    0 3px 2px color-mix(in oklab, currentColor 35%, transparent);
+}
+
 /* Slice 85: the Home Mari widget blinks on a 5.6 s loop. The blink frame sits on top of the idle frame. */
 .mari-home-professor-blink {
   opacity: 0;
@@ -4259,6 +4350,79 @@ strong {
   }
 }
 
+/* Image from another website waiting for "Load image" (lib/remote-image-policy.ts).
+   Every rule is !important so message and card CSS cannot hide, resize or relabel it. */
+.mari-remote-image,
+.mari-remote-image * {
+  all: revert !important;
+}
+.mari-remote-image::before,
+.mari-remote-image::after,
+.mari-remote-image *::before,
+.mari-remote-image *::after {
+  content: none !important;
+}
+.mari-remote-image {
+  display: inline-flex !important;
+  position: static !important;
+  max-width: 100% !important;
+  align-items: center !important;
+  gap: 0.5rem !important;
+  margin: 0.25rem 0 !important;
+  padding: 0.25rem 0.25rem 0.25rem 0.625rem !important;
+  border: 1px dashed var(--marinara-chat-chrome-panel-border) !important;
+  border-radius: 0.5rem !important;
+  background: var(--marinara-chat-chrome-highlight-bg) !important;
+  color: var(--marinara-chat-chrome-panel-text) !important;
+  font-size: 0.75rem !important;
+  font-weight: 500 !important;
+  line-height: 1.25rem !important;
+  letter-spacing: normal !important;
+  word-spacing: normal !important;
+  text-indent: 0 !important;
+  text-transform: none !important;
+  white-space: nowrap !important;
+  vertical-align: middle !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  transform: none !important;
+}
+.mari-remote-image-host {
+  min-width: 0 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+.mari-remote-image-load {
+  flex-shrink: 0 !important;
+  padding: 0 0.5rem !important;
+  border: 1px solid var(--marinara-chat-chrome-button-border) !important;
+  border-radius: 0.375rem !important;
+  background: var(--marinara-chat-chrome-button-bg) !important;
+  color: var(--marinara-chat-chrome-highlight-text) !important;
+  font: inherit !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+  pointer-events: auto !important;
+}
+.mari-remote-image-load:hover {
+  border-color: var(--marinara-chat-chrome-button-border-hover) !important;
+  background: var(--marinara-chat-chrome-button-bg-hover) !important;
+}
+.mari-remote-image-load:focus-visible {
+  outline: 2px solid var(--marinara-chat-chrome-focus-ring) !important;
+  outline-offset: 1px !important;
+}
+.mari-remote-image-load:disabled {
+  cursor: progress !important;
+  opacity: 0.7 !important;
+}
+@media (pointer: coarse) {
+  .mari-remote-image-load {
+    min-height: 2.5rem !important;
+    padding: 0 0.75rem !important;
+  }
+}
+
 /* Markdown heading sizes inside chat messages — mirrors Discord / ST sizing */
 .mari-message-content h1.mari-md-heading,
 .mari-message-content h2.mari-md-heading,
@@ -4380,9 +4544,9 @@ strong {
   margin: 0.5em 0;
   min-width: 0;
   max-width: 100%;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  white-space: pre;
+  overflow-x: hidden;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
   color: #d4d4d4;
   /* Code is LTR even when the document around it is RTL. Lives in CSS, not
      only the renderer's dir attribute, because the chat HTML path strips
@@ -4392,6 +4556,7 @@ strong {
   unicode-bidi: isolate;
 }
 .mari-message-content .mari-md-codeblock code {
+  white-space: inherit;
   background: none;
   border: none;
   padding: 0;
@@ -4402,16 +4567,6 @@ strong {
 @media (max-width: 767px) {
   .mari-message-content .mari-md-inline-code {
     word-break: break-all;
-  }
-
-  .mari-message-content .mari-md-codeblock {
-    overflow-x: hidden;
-    overflow-wrap: anywhere;
-    white-space: pre-wrap;
-  }
-
-  .mari-message-content .mari-md-codeblock code {
-    white-space: inherit;
   }
 }
 
@@ -5022,10 +5177,11 @@ strong {
   }
 }
 
+/* Placed inside the app shell, not the screen: a phone turned sideways keeps its camera strips plain. */
 .y2k-star,
 .y2k-star-md,
 .y2k-star-lg {
-  position: fixed;
+  position: absolute;
   pointer-events: none;
   border-radius: 50%;
   animation: twinkle-glow 4s ease-in-out infinite;
@@ -6720,6 +6876,34 @@ strong {
   }
 }
 
+/* The left and right safe areas: where the camera sits on a phone turned sideways. env() is read here
+   only (mobile-safe-area-inset regression); everything that keeps out of them reads these, so a test
+   can stand in a notch by setting them on <html>. */
+:root {
+  --mari-safe-area-inset-left: env(safe-area-inset-left, 0px);
+  --mari-safe-area-inset-right: env(safe-area-inset-right, 0px);
+  --mari-shell-inset-left: var(--mari-safe-area-inset-left);
+  --mari-shell-inset-right: var(--mari-safe-area-inset-right);
+}
+
+/* iPhone reports symmetric landscape insets. Reserve only the camera edge when its rotation is known. */
+:root[data-mari-camera-side="left"] {
+  --mari-shell-inset-right: 0px;
+}
+
+:root[data-mari-camera-side="right"] {
+  --mari-shell-inset-left: 0px;
+}
+
+/* The background fills the opposite edge, but TopBar controls still clear its rounded corners. */
+:root[data-mari-camera-side="left"] .mari-topbar {
+  padding-right: max(0.75rem, var(--mari-safe-area-inset-right));
+}
+
+:root[data-mari-camera-side="right"] .mari-topbar {
+  padding-left: max(0.75rem, var(--mari-safe-area-inset-left));
+}
+
 /* Touch tablets get the phone shell (MOBILE_SHELL_MEDIA_QUERY in ui.store.ts),
    so they also need its keyboard-aware viewport. */
 @media (max-width: 767px), (max-width: 1440px) and (hover: none) and (any-pointer: coarse) {
@@ -6756,9 +6940,15 @@ strong {
     height: 100%;
     overflow: hidden;
     overscroll-behavior: none;
-    /* Safe-area insets handled by AppShell — only apply sides here */
-    padding-left: env(safe-area-inset-left);
-    padding-right: env(safe-area-inset-right);
+    /* Top and bottom insets are AppShell's; the sides cover anything here that is not fixed. */
+    padding-left: var(--mari-shell-inset-left);
+    padding-right: var(--mari-shell-inset-right);
+  }
+
+  /* The fixed shell stops at the effective side insets, leaving the page backing over the camera. */
+  .mari-app {
+    left: var(--mari-shell-inset-left);
+    right: var(--mari-shell-inset-right);
   }
 
   /* A fixed ancestor lets iOS WebKit pan the whole app when any descendant
@@ -6886,8 +7076,9 @@ strong {
 
   .mari-topbar {
     gap: 0.125rem;
-    padding-left: max(4px, env(safe-area-inset-left)) !important;
-    padding-right: max(4px, env(safe-area-inset-right)) !important;
+    /* Inside the shell, which already keeps out of the side insets. */
+    padding-left: 4px !important;
+    padding-right: 4px !important;
   }
 
   .mari-topbar-left,
@@ -7003,8 +7194,8 @@ strong {
   }
 
   .rpg-chat-messages-mobile {
-    padding-left: max(0.5rem, env(safe-area-inset-left)) !important;
-    padding-right: max(0.5rem, env(safe-area-inset-right)) !important;
+    padding-left: 0.5rem !important;
+    padding-right: 0.5rem !important;
   }
 
   [data-chat-mode]:has([data-roleplay-agent-window="echo"]) .mari-chat-load-more {
@@ -7098,8 +7289,8 @@ strong {
 
 @media (max-width: 479px) {
   .mari-topbar {
-    padding-left: max(2px, env(safe-area-inset-left)) !important;
-    padding-right: max(2px, env(safe-area-inset-right)) !important;
+    padding-left: 2px !important;
+    padding-right: 2px !important;
   }
 
   .mari-topbar-action {
@@ -7157,7 +7348,7 @@ strong {
   input,
   select,
   textarea {
-    font-size: 1rem; /* prevents iOS zoom on focus */
+    font-size: max(1rem, 16px); /* prevents iOS zoom on focus, even at a smaller Font Size setting */
   }
 }
 
@@ -8147,7 +8338,7 @@ html[data-marinara-reduced-effects="true"] .mari-window {
 
 .mari-conversation-call-mini {
   bottom: max(var(--mari-safe-area-inset-bottom, env(safe-area-inset-bottom)), 0.75rem);
-  left: max(env(safe-area-inset-left), 0.75rem);
+  left: max(var(--mari-safe-area-inset-left), 0.75rem);
   transition: bottom 220ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -8409,6 +8600,58 @@ html[data-marinara-reduced-effects="true"] .mari-window {
 }
 
 @import "./omnibar-settings.css";
+
+/* A phone turned sideways has about 400px of height. The TopBar and Home's tab strip get shorter so a
+   package tab keeps that height, and while you type in one they step aside for the keyboard. Touch only
+   (the MOBILE_SHELL_MEDIA_QUERY condition): a short desktop window keeps the full bars. At least 640px wide:
+   every sideways phone is, while an upright Android phone whose keyboard shrinks the page is not. */
+@media (orientation: landscape) and (max-height: 500px) and (min-width: 640px) and (hover: none) and (any-pointer: coarse) {
+  :root {
+    --mari-topbar-height: 2.25rem;
+  }
+
+  .mari-topbar {
+    height: var(--mari-topbar-height);
+  }
+
+  .mari-topbar-action {
+    width: var(--mari-topbar-height);
+    height: var(--mari-topbar-height);
+  }
+
+  .mari-topbar-panel-nav {
+    padding: 0;
+  }
+
+  .mari-topbar-left > * {
+    max-height: var(--mari-topbar-height);
+  }
+
+  .mari-home-browser-tab-row {
+    height: 2rem;
+  }
+
+  .mari-home-browser-tab-row [role="tab"],
+  [data-component="HomeBrowserHub.MobileBookmarksTrigger"] {
+    min-height: 1.875rem;
+    height: 1.875rem;
+  }
+
+  [data-component="HomeBrowserHub.AnimatedLogo"] {
+    width: 1.5rem;
+    height: 1.5rem;
+  }
+
+  /* As on a portrait phone, the logo stands alone so the tabs keep the width. */
+  [data-component="HomeBrowserHub.Brand"] > div {
+    display: none;
+  }
+
+  html[data-mari-software-keyboard-open]:has([data-home-package-view] :focus-within)
+    :is(.mari-topbar, .mari-home-browser-chrome) {
+    display: none;
+  }
+}
 
 /* Short landscape screens need the chat list to share the sidebar's scroll. */
 @media (max-height: 500px) and (orientation: landscape) {

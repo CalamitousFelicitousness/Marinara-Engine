@@ -29,7 +29,7 @@ These commands help you manage the chat and its messages. They work in **Convers
 | Command | Also works as | What it does |
 |---|---|---|
 | `/help` | | Lists every slash command. |
-| `/send [message]` | | Posts a message as your persona without triggering generation. |
+| `/send [message]` | | Posts a message as your persona without triggering generation. It is saved the same way as **Send**, with macros filled in. |
 | `/continue` | `/cont` | Adds more text to the last AI reply, without sending a new message. The **Add a new line before /continue text** option in **Settings → General → Responses** controls whether that text starts after a blank line or directly at the cutoff. |
 | `/goto [number]` | `/jump`, `/scroll` | Scrolls the chat to a message by its number. |
 | `/hide [range] [name (optional)]` | | Hides one or more messages from the AI on future turns. |
@@ -140,6 +140,7 @@ These commands only work in a **Conversation** chat.
 |---|---|
 | `/games` | Opens the installed conversation game picker. `/game` and `/play` do the same. |
 | `/selfie [name (optional)]` | Generates a selfie with the installed Illustrator agent. Add a name to choose a character. |
+| `/video [name (optional)]` | Has a character send you a short video message, using the chat's **Video messages** settings. Add a name to choose a character. See [Video messages](../conversation/selfies.md#video-messages). |
 | `/uno` | Starts a game of UNO with the characters in the chat. |
 | `/chess` | Starts a one-on-one chess game with a character. |
 | `/poker` | Starts a game of Texas Hold'em poker with the characters. |

@@ -46,7 +46,12 @@ import {
   orderConversationRespondersByDelay,
   remainingConversationPresenceDelay,
 } from "../../packages/server/src/routes/generate/conversation-presence-runtime.js";
-import { AGENT_SUITE_TRACKER_SLICES } from "../../packages/client/src/lib/agent-suite-tracker-slices.js";
+import {
+  AGENT_SUITE_TRACKER_SLICES,
+  TRACKER_SLICE_ERROR_KEYS,
+  trackerSliceErrorMessage,
+  type TrackerSliceError,
+} from "../../packages/client/src/lib/agent-suite-tracker-slices.js";
 import type { GameState } from "../../packages/shared/src/types/game-state.js";
 
 const REPOSITORY_ROOT = fileURLToPath(new URL("../../", import.meta.url));
@@ -752,7 +757,7 @@ assert.match(
 );
 assert.match(
   professorMariWorkspaceSource,
-  /updates are patches[\s\S]{0,400}read the entity back[\s\S]{0,300}Claim completion only when every requested value matches/u,
+  /Updates are patches[\s\S]{0,400}Read the entity back[\s\S]{0,300}Claim completion only when every requested value matches/u,
   "Professor Mari must preserve unrelated fields and verify requested character edits before claiming completion",
 );
 const professorMariSeedSource = readFileSync(join(REPOSITORY_ROOT, "packages/server/src/db/seed-mari.ts"), "utf8");
@@ -3875,6 +3880,29 @@ try {
     apply: true,
   });
   assert.equal(ambiguousFolderMoveResult.ok, false, "Duplicate folder names must require an explicit folder ID");
+  assert.match(String(ambiguousFolderMoveResult.error), /send the folderId from character.folder.list/);
+
+  // #7949: a folder miss points to the list and never to a create action, which does not exist.
+  const unknownFolderNameResult = await mariDb.executeAction({
+    action: "character.moveToFolder",
+    characterId,
+    folderName: "Nowhere Folder",
+    apply: true,
+  });
+  assert.equal(unknownFolderNameResult.ok, false);
+  assert.match(
+    String(unknownFolderNameResult.error),
+    /No character folder is named "Nowhere Folder". List folders with character.folder.list; folders are created in the UI only/,
+  );
+  assert.doesNotMatch(String(unknownFolderNameResult.error), /folder.create/);
+  const unknownFolderIdResult = await mariDb.executeAction({
+    action: "character.moveToFolder",
+    characterId,
+    folderId: "character-folder-missing",
+    apply: true,
+  });
+  assert.equal(unknownFolderIdResult.ok, false);
+  assert.match(String(unknownFolderIdResult.error), /No character folder has the id "character-folder-missing"./);
   const duplicateFoldersAfterAmbiguousMove = (await db.select().from(characterGroups)).filter((folder) =>
     folder.id.startsWith("character-folder-duplicate-"),
   );
@@ -5299,7 +5327,7 @@ const rootPackageJson = JSON.parse(readFileSync(new URL("../../package.json", im
 assert.match(serverPackageJson.scripts?.dev ?? "", /--ignore \.\.\/shared\/dist/u);
 assert.match(
   rootPackageJson.scripts?.["dev:server"] ?? "",
-  /^pnpm build:shared && pnpm --filter @marinara-engine\/server dev$/u,
+  /^node \.\/scripts\/pnpm-runner\.mjs build:shared && node \.\/scripts\/pnpm-runner\.mjs --filter @marinara-engine\/server dev$/u,
   "The server-only development command must establish shared build output first",
 );
 assert.equal(resolveDevSharedBuildScript({ DEV_PRESERVE_SHARED_DIST: "true" }), "build:preserve");
@@ -6109,7 +6137,7 @@ assert.match(
   "Individual Conversation lorebook injection should happen separately for each provider generation",
 );
 assert.match(
-  conversationGenerationSource,
+  readFileSync(new URL("../../packages/server/src/routes/generate/reply-text-cleanup.ts", import.meta.url), "utf8"),
   /chatMode === "conversation" && otherNames\.length > 0[\s\S]{0,500}fullResponse = fullResponse\.slice\(0, nextSpeakerMatch\.index\)/u,
   "Individual Conversation generations should discard an extra character turn returned in the same completion",
 );
@@ -6188,6 +6216,12 @@ for (const project of [desktopPlaywrightProject, mobilePlaywrightProject]) {
 for (const project of playwrightConfig.projects ?? []) {
   if (!/chromium/u.test(project.name ?? "")) assert.ok(!project.use?.launchOptions?.args?.length, project.name);
 }
+// WebKit on Linux opens its audio device through GStreamer on the page's main thread (the first tap's audio
+// unlock), and a hung audio stack froze that tap. The config ranks the fake audio sink first for every browser.
+assert.ok(
+  process.env.GST_PLUGIN_FEATURE_RANK?.split(",").includes("fakeaudiosink:MAX"),
+  "WebKit e2e browsers play to GStreamer's fake audio sink",
+);
 const playwrightServerSource = readFileSync(join(REPOSITORY_ROOT, "e2e/start-servers.mjs"), "utf8");
 assert.match(playwrightServerSource, /startProject\("mobile", mobileClientPort, mobileServerPort\)/u);
 assert.match(playwrightServerSource, /startProject\("desktop", desktopClientPort, desktopServerPort\)/u);
@@ -6935,7 +6969,7 @@ assert.match(
 );
 assert.match(
   conversationSelfieRuntimeSource,
-  /selfieResolvedCharacterIds = Array\.from\([\s\S]{0,300}referenceResolution\.characterIds[\s\S]{0,4500}characterIds: selfieResolvedCharacterIds/u,
+  /selfieResolvedCharacterIds = Array\.from\([\s\S]{0,300}referenceResolution\.characterIds[\s\S]{0,5000}characterIds: selfieResolvedCharacterIds/u,
   "Conversation group selfies must be saved to every depicted character gallery",
 );
 assert.match(
@@ -6959,7 +6993,9 @@ const markdownMessageStyles = [...globalStyles.matchAll(/^\.mari-message-content
 const markdownMessageContainerStyles =
   globalStyles.match(/\.mari-message-body,\s*\.mari-message-bubble \{[\s\S]*?\}/u)?.[0] ?? "";
 const markdownCodeBlockStyles =
-  globalStyles.match(/\.mari-message-content \.mari-md-codeblock \{[\s\S]*?\}/u)?.[0] ?? "";
+  globalStyles.match(/^\.mari-message-content \.mari-md-codeblock \{[^{}]*\}/mu)?.[0] ?? "";
+const markdownCodeChildStyles =
+  globalStyles.match(/^\.mari-message-content \.mari-md-codeblock code \{[^{}]*\}/mu)?.[0] ?? "";
 assert.match(markdownMessageStyles, /min-width:\s*0;/u);
 assert.match(markdownMessageStyles, /max-width:\s*100%;/u);
 assert.match(markdownMessageStyles, /overflow-wrap:\s*anywhere;/u);
@@ -6968,11 +7004,13 @@ assert.match(markdownMessageContainerStyles, /max-width:\s*100%;/u);
 assert.match(markdownCodeBlockStyles, /box-sizing:\s*border-box;/u);
 assert.match(markdownCodeBlockStyles, /width:\s*100%;/u);
 assert.match(markdownCodeBlockStyles, /max-width:\s*100%;/u);
-assert.match(markdownCodeBlockStyles, /overflow-x:\s*auto;/u);
-assert.match(
-  globalStyles,
-  /@media \(max-width: 767px\) \{[\s\S]*?\.mari-message-content \.mari-md-codeblock \{[\s\S]*?overflow-x:\s*hidden;[\s\S]*?white-space:\s*pre-wrap;/u,
-);
+assert.match(markdownCodeBlockStyles, /overflow-x:\s*hidden;/u);
+assert.match(markdownCodeBlockStyles, /overflow-wrap:\s*anywhere;/u);
+assert.match(markdownCodeBlockStyles, /white-space:\s*pre-wrap;/u);
+assert.match(markdownCodeChildStyles, /white-space:\s*inherit;/u);
+for (const media of globalStyles.matchAll(/^@media \(max-width: 767px\) \{[\s\S]*?^\}/gmu)) {
+  assert.doesNotMatch(media[0], /\.mari-message-content \.mari-md-codeblock\b/u);
+}
 assert.match(localNotificationsSource, /window\.isSecureContext === false/u);
 assert.match(localNotificationsSource, /NotificationPermission \| "insecure" \| "unsupported"/u);
 const browserNotificationHelpSource =
@@ -7635,8 +7673,6 @@ assert.match(
 const projectionState = {
   ...useUIStore.getState(),
   showHomeBrowserAddressBar: false,
-  showHomeBrowserDesktopBookmarksOnOtherTabs: false,
-  showHomeBrowserMobileBookmarksOnOtherTabs: false,
   enterToSendGame: false,
   enterToSendProfessorMari: false,
   chatHelpSeenModes: ["game"] as ChatMode[],
@@ -7645,16 +7681,6 @@ assert.equal(
   pickSyncedSettings(projectionState).showHomeBrowserAddressBar,
   false,
   "Home URL bar visibility must be saved per installation",
-);
-assert.equal(
-  pickSyncedSettings(projectionState).showHomeBrowserDesktopBookmarksOnOtherTabs,
-  false,
-  "Home desktop bookmark visibility must be saved per installation",
-);
-assert.equal(
-  pickSyncedSettings(projectionState).showHomeBrowserMobileBookmarksOnOtherTabs,
-  false,
-  "Home mobile bookmark visibility must be saved per installation",
 );
 assert.equal(
   pickSyncedSettings(projectionState).enterToSendGame,
@@ -10370,7 +10396,7 @@ assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata m
     "Persona inventory edits must preserve skills, status, and other player stats",
   );
   assert.deepEqual(AGENT_SUITE_TRACKER_SLICES["world-state"]!.buildPatch(gameState, { worldCustomFields: "invalid" }), {
-    error: "World custom fields must be a JSON array",
+    error: { code: "notArray", field: "worldCustomFields" },
   });
   assert.deepEqual(
     AGENT_SUITE_TRACKER_SLICES["persona-stats"]!.buildPatch(gameState, { personaStats: [] }),
@@ -10386,25 +10412,73 @@ assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata m
     currencies: [],
     equipped: [],
     inventory: [{ foo: 1 }],
-  }) as { error?: string };
-  assert.match(
-    String(malformedRows.error),
-    /inventory/iu,
+  });
+  assert.deepEqual(
+    malformedRows,
+    { error: { code: "invalidInventoryRow", group: "inventory", problem: { code: "missingName", index: 0 } } },
     "a row without a name must be reported, naming the group it came from",
   );
-  assert.match(
-    String(
-      (
-        inventorySlice.buildPatch(gameState, {
-          currencies: [],
-          equipped: [],
-          inventory: [{ name: "Rope", qty: 0 }],
-        }) as { error?: string }
-      ).error,
-    ),
-    /qty/iu,
+  assert.deepEqual(
+    inventorySlice.buildPatch(gameState, {
+      currencies: [],
+      equipped: [],
+      inventory: [{ name: "Rope", qty: 0 }],
+    }),
+    { error: { code: "invalidInventoryRow", group: "inventory", problem: { code: "qtyBelowOne", index: 0 } } },
     "a quantity below 1 must be reported rather than silently clamped",
   );
+
+  // #7738: slice errors are codes the UI localizes. Every code must name an English key, and the
+  // English text must read as it did before the errors were localized.
+  const collectKeys = (value: unknown): string[] =>
+    typeof value === "string" ? [value] : Object.values(value as object).flatMap(collectKeys);
+  const trackerErrorKeys = collectKeys(TRACKER_SLICE_ERROR_KEYS);
+  assert.equal(trackerErrorKeys.length, 17, "every tracker slice error code has a key");
+  for (const key of trackerErrorKeys) {
+    assert.equal(typeof englishLocale[key], "string", `${key} must exist in en.json`);
+  }
+  const renderEnglish = (error: TrackerSliceError) =>
+    trackerSliceErrorMessage(error, (key, values) =>
+      englishLocale[key]!.replace(/\{\{(\w+)\}\}/gu, (_, name: string) => {
+        const value = (values as Record<string, unknown> | undefined)?.[name];
+        assert.ok(value !== undefined, `${key} needs {{${name}}}`);
+        return String(value);
+      }),
+    );
+  const sliceError = (slice: string, parsed: unknown) =>
+    (AGENT_SUITE_TRACKER_SLICES[slice]!.buildPatch(gameState, parsed) as { error: TrackerSliceError }).error;
+  const inventoryRows = (inventory: unknown[]) =>
+    sliceError("inventory-tracker", { currencies: [], equipped: [], inventory });
+  for (const [error, english] of [
+    [sliceError("world-state", []), "Scene data must be a JSON object"],
+    [sliceError("world-state", { worldCustomFields: "invalid" }), "World custom fields must be a JSON array"],
+    [sliceError("character-tracker", {}), "Present characters must be a JSON array"],
+    [sliceError("persona-stats", []), "Persona stats data must be a JSON object"],
+    [sliceError("persona-stats", { personaStats: {} }), "Persona stats must be a JSON array"],
+    [sliceError("persona-stats", { inventory: {} }), "Inventory must be a JSON array"],
+    [sliceError("custom-tracker", {}), "Custom tracker fields must be a JSON array"],
+    [sliceError("inventory-tracker", null), "Inventory Tracker data must be a JSON object"],
+    [
+      sliceError("inventory-tracker", { currencies: [] }),
+      "Inventory Tracker data must include currencies, equipped, and inventory arrays",
+    ],
+    [
+      { code: "invalidInventoryRow", group: "currencies", problem: { code: "notArray" } },
+      'Inventory Tracker "currencies": must be an array',
+    ],
+    [inventoryRows(["Rope"]), 'Inventory Tracker "inventory": row 0 must be an object'],
+    [inventoryRows([{ foo: 1 }]), 'Inventory Tracker "inventory": row 0 is missing a string "name"'],
+    [inventoryRows([{ name: "Rope" }, { name: "  " }]), 'Inventory Tracker "inventory": row 1 has an empty "name"'],
+    [
+      inventoryRows([{ name: "Rope", location: 3 }]),
+      'Inventory Tracker "inventory": row 0 has a non-string "location"',
+    ],
+    [inventoryRows([{ name: "Rope", qty: "lots" }]), 'Inventory Tracker "inventory": row 0 has a non-numeric "qty"'],
+    [inventoryRows([{ name: "Rope", qty: 0 }]), 'Inventory Tracker "inventory": row 0 has a "qty" below 1'],
+    [sliceError("quest", {}), "Active quests must be a JSON array"],
+  ] as const) {
+    assert.equal(renderEnglish(error), english);
+  }
 
   // Accepted payloads still get the shared invariants applied.
   const equippedWins = inventorySlice.buildPatch(gameState, {
@@ -10762,5 +10836,11 @@ assert.equal(({} as { tags?: string[] }).tags, undefined, "Background metadata m
     "Lorebook Keeper backfill results retain each target message and swipe anchor",
   );
 }
+
+// A closed story ending (Capability API 1.343) stays closed when the game surface mounts again: the close
+// is kept in this browser by game and ending, and read back before the ending is shown.
+assert.match(gameSurfaceSource, /localStorage\.setItem\(`story-ending-closed:\$\{storyEndingKey\}`, "1"\)/u);
+assert.match(gameSurfaceSource, /readIntroPresentedFlag\(`story-ending-closed:\$\{storyEndingKey\}`\)/u);
+assert.match(gameSurfaceSource, /storyEndingKey !== storyEndingClosed &&\s*!storyEndingClosedBefore &&/u);
 
 console.info("Open-issue regressions passed.");

@@ -8,11 +8,10 @@
 // It looks like the Tactical style's board on purpose, out of the same palettes, textures and token
 // shapes (`lib/tactical-board-look.ts`), because it IS the same battlefield: the same generator,
 // the same terrain and the same deployment. What it does with it is the ruleset's.
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 import { Flag, Skull, Sword, Zap } from "lucide-react";
 import {
   creatureArtVariant,
-  findCreatureArt,
   type Combatant,
   type DirectedRulesetView,
   type RulesetCombatCell,
@@ -28,7 +27,6 @@ import {
   initialsOf,
   resolveSprite,
   resolveTerrainIcon,
-  ringColorFor,
   tileShadow,
   heightWash,
 } from "../../lib/tactical-board-look";
@@ -45,21 +43,24 @@ import {
   rulesetCellSentences,
   rulesetDistanceText,
   rulesetHealthPercent,
+  rulesetHeldCaught,
   rulesetNothingInReach,
   rulesetPathTo,
   type RulesetBoardCell,
 } from "../../lib/ruleset-combat-board";
 import {
+  rulesetOptionForecastText,
   rulesetPickTarget,
   rulesetSendsOnPick,
   rulesetPicksStep,
   type RulesetMenuStep,
 } from "../../lib/ruleset-combat-menu";
-import { RulesetCombatMenu } from "./RulesetCombatMenu";
 import { boardCellArt, boardSliceStyle, useBoardArt } from "../../lib/board-art";
-import { CreatureArtFigure, useCreatureFacings, useCreaturePack } from "./CreatureArt";
+import { CreatureArtFigure, findCreatureArtIn, useCreatureFacings, useCreaturePacks } from "./CreatureArt";
+import { ArtIcon } from "./ArtIcon";
 import { cn } from "../../lib/utils";
-import { GAME_SECTION_CLASS } from "../../lib/chat-widget-colors";
+import { rulesetHealthTone } from "./RulesetTurnOrder";
+import { useMatchMedia } from "../../hooks/use-match-media";
 
 /** The tints lasting areas are drawn in, one for each kind (`rulesetZoneTint`), none of them the blue
  *  of water. */
@@ -74,11 +75,9 @@ const ZONE_TINT_CLASSES = [
 export interface RulesetCombatBoardProps {
   /** A view that carries a grid. Without one the caller keeps the Classic stage. */
   view: DirectedRulesetView;
-  /** The Engine's own combatants, for the portraits only: every number on screen is the view's. */
+  /** The Engine's own combatants, for the portraits and who plays them: every number on screen is the
+   *  view's. */
   units: Combatant[];
-  budgetLabel: (id: string) => string;
-  /** What the ruleset calls its defense. */
-  defenseLabel?: string;
   /** The scene's terrain theme, which is the same string the board was generated from. */
   environment?: string;
   busy: boolean;
@@ -94,49 +93,65 @@ export interface RulesetCombatBoardProps {
     spares?: string[],
     heightens?: string,
   ) => void;
-  onFlee: () => void;
-  onYield?: () => void;
-  /** The per-member manual and automatic toggles, built by the caller so this file stays about the
-   *  board. */
-  controls?: ReactNode;
+  /** The half-made choice, held by the screen so the pane's option list and the board are never two
+   *  steps apart. */
+  step: RulesetMenuStep | null;
+  onStepChange: (step: RulesetMenuStep | null) => void;
+  /** The option list, so Escape from a square can put the keyboard back where the step was opened. */
+  menuRef: RefObject<HTMLDivElement | null>;
+  /** Whose token the pointer or the keyboard is on, so the pane can open their details. */
+  onHover?: (id: string | null) => void;
+  className?: string;
 }
 
 export function RulesetCombatBoard({
   view,
   units,
-  budgetLabel,
-  defenseLabel,
   environment,
   busy,
   onChoose,
-  onFlee,
-  onYield,
-  controls,
+  step,
+  onStepChange: setStep,
+  menuRef: menuRoot,
+  onHover,
+  className,
 }: RulesetCombatBoardProps) {
   const { t } = useTranslation();
   const grid = view.grid!;
-  const [step, setStep] = useState<RulesetMenuStep | null>(null);
   /** The cell the pointer or the keyboard is on, which is what the hint below the board describes. */
   const [reading, setReading] = useState<RulesetCombatCell | null>(null);
-  const menuRoot = useRef<HTMLDivElement>(null);
   const tiles = useRef(new Map<string, HTMLButtonElement>());
   const actor = view.combatants.find((combatant) => combatant.id === view.actorId);
   const cells = useMemo(() => rulesetBoardCells(view, step), [view, step]);
   const byKey = useMemo(() => new Map(cells.map((cell) => [rulesetCellKey(cell), cell])), [cells]);
+  // The walk being read, or the one a first tap picked on a touch screen, still drawn once the finger lifts.
   const path = useMemo(() => {
-    if (!reading) return new Set<string>();
-    return new Set(rulesetPathTo(step, reading).map(rulesetCellKey));
+    const end = reading ?? step?.to;
+    if (!end) return new Set<string>();
+    return new Set(rulesetPathTo(step, end).map(rulesetCellKey));
   }, [step, reading]);
   const aimed = reading && step?.stage === "aim" ? byKey.get(rulesetCellKey(reading))?.aim : undefined;
-  const caught = useMemo(() => new Set(aimed?.targetIds ?? []), [aimed]);
+  // Who an area being aimed would catch: the player's own while they aim, or, while a window holds the
+  // fight open on somebody else's area, whoever that one catches (its cells come with the window).
+  const held = view.window?.moment === "aimed" ? view.window : undefined;
+  const caught = useMemo(
+    () => new Set(aimed?.targetIds ?? (held?.cells ? rulesetHeldCaught(view) : [])),
+    [aimed, held, view],
+  );
+  const heldCells = useMemo(() => new Set((held?.cells ?? []).map(rulesetCellKey)), [held]);
+  const readingId = reading ? byKey.get(rulesetCellKey(reading))?.occupant?.id : undefined;
+  const hoverRef = useRef(onHover);
+  hoverRef.current = onHover;
+  useEffect(() => {
+    hoverRef.current?.(readingId ?? null);
+  }, [readingId]);
   // The shape it would land in, drawn on the board while it is aimed, and who of the caster's own
   // side it would catch, who are marked apart and warned about before the cast.
   const aimedAt = aimed ? reading : null;
-  // Or, while somebody is asked whether to stop a cast (Counterspell), the area it was aimed at.
-  const template = useMemo(() => {
-    const own = rulesetAimTemplate(view, step, aimedAt);
-    return new Set((own.length ? own : (view.window?.held?.cells ?? [])).map(rulesetCellKey));
-  }, [view, step, aimedAt]);
+  const template = useMemo(
+    () => new Set(rulesetAimTemplate(view, step, aimedAt).map(rulesetCellKey)),
+    [view, step, aimedAt],
+  );
   const aimedOption = step?.stage === "aim" ? step.option : undefined;
   const alliesCaught = useMemo(
     () => new Set(rulesetAimCatchesAllies(view, aimed?.targetIds ?? [], aimedOption)),
@@ -168,7 +183,6 @@ export function RulesetCombatBoard({
     setArmed(null);
   }, [step?.stage, step?.option.id, view.actorId, view.round]);
 
-  const holdStep = useCallback((next: RulesetMenuStep | null) => setStep(next), []);
   // Escape is the PLAYER closing the step, so the keyboard goes back to the menu the choice was
   // made on. Not in the handler: the menu only draws the root it lands on once the step is gone,
   // so the move waits for the render that puts it back.
@@ -176,12 +190,12 @@ export function RulesetCombatBoard({
   const leaveStep = useCallback(() => {
     returnFocus.current = true;
     setStep(null);
-  }, []);
+  }, [setStep]);
   useEffect(() => {
     if (step !== null || !returnFocus.current) return;
     returnFocus.current = false;
     menuRoot.current?.focus();
-  }, [step]);
+  }, [step, menuRoot]);
 
   // Opening a step that is finished ON THE BOARD (walking, aiming) takes the keyboard to the board,
   // onto the square of whoever is up. The button that opened the step has just been unmounted, so
@@ -201,11 +215,19 @@ export function RulesetCombatBoard({
     tiles.current.get(rulesetCellKey({ x: clampedX, y: clampedY }))?.focus();
   };
 
+  const touch = useMatchMedia("(pointer: coarse)");
   /** What clicking or pressing Enter on this square does, which is only ever finishing a step the
    *  player opened. A square outside the step is inert: it is information, not a command. */
   const takeCell = (cell: RulesetBoardCell) => {
     if (busy || !step) return;
     if (step.stage === "move" && cell.reach) {
+      // A finger is easily a square off, and a walk cannot be taken back: on a touch screen the
+      // first tap picks the square and a second tap on it walks, as an aim is laid.
+      if (touch && (step.to?.x !== cell.x || step.to?.y !== cell.y)) {
+        setStep({ ...step, to: { x: cell.x, y: cell.y } });
+        setCursor({ x: cell.x, y: cell.y });
+        return;
+      }
       setStep(null);
       onChoose(step.option.id, [], step.payWith, { to: { x: cell.x, y: cell.y } }, step.style, step.mode);
       return;
@@ -331,6 +353,16 @@ export function RulesetCombatBoard({
   const palette = TERRAIN_PALETTES[environment ?? "default"] ?? TERRAIN_PALETTES.default;
   const tintAlpha = environment && TERRAIN_PALETTES[environment] ? TILE_TINT_ALPHA_THEMED : TILE_TINT_ALPHA;
   const sprites = useMemo(() => new Map(units.map((unit) => [unit.id, unit.sprite])), [units]);
+  // Who the AI plays: every party member but the leader, unless the player took them, as the
+  // turn order's Control column says.
+  const played = useMemo(() => {
+    const leader = units.find((unit) => unit.side === "player" && unit.hp > 0)?.id;
+    return new Set(
+      units
+        .filter((unit) => unit.side === "player" && unit.id !== leader && (unit.controller ?? "ai") === "ai")
+        .map((unit) => unit.id),
+    );
+  }, [units]);
   // Board art (1.333): the pack the board names, else its environment's, and the props pack. Without
   // one, every square is drawn as before.
   const boardArt = useBoardArt(grid.pack, grid.scene ?? grid.environment ?? environment);
@@ -346,7 +378,7 @@ export function RulesetCombatBoard({
   );
   const drawn = !!boardArt.board;
   // Creature art (design-game-creature-art.md): the library's creature pack, and which way each fighter faces.
-  const creaturePack = useCreaturePack();
+  const creaturePacks = useCreaturePacks();
   const facings = useCreatureFacings(
     cells.flatMap((cell) =>
       cell.occupant && cell.anchor ? [{ id: cell.occupant.id, x: cell.x, y: cell.y, side: cell.occupant.side }] : [],
@@ -365,7 +397,16 @@ export function RulesetCombatBoard({
   );
   const readingKey = reading ? rulesetCellKey(reading) : undefined;
   const readingHint = readingKey === undefined ? undefined : sentences.get(readingKey);
-  const hint = readingHint ?? (rulesetNothingInReach(view) ? t("game.combat.ruleset.board.nothingInReach") : "");
+  const said =
+    readingHint ??
+    (held?.cells?.length
+      ? t("game.combat.ruleset.screen.areaHint", { label: held.label ?? "" })
+      : rulesetNothingInReach(view)
+        ? t("game.combat.ruleset.board.nothingInReach")
+        : "");
+  // While a step is finished on the board, the line also says how.
+  // A finger has no Enter or Escape to be told about.
+  const hint = [said, boardStage && !touch ? t("game.combat.ruleset.screen.stepHint") : ""].filter(Boolean).join(" ");
   const allyNames = view.combatants.filter((one) => alliesCaught.has(one.id)).map((one) => one.name);
   const warning =
     allyNames.length > 0
@@ -377,43 +418,10 @@ export function RulesetCombatBoard({
         : "";
 
   return (
-    <div className="relative flex h-full min-h-0 flex-col overflow-hidden text-white">
+    <div className={cn("relative flex min-h-0 flex-col text-white", className)}>
       <style>{TACTICAL_BOARD_KEYFRAMES}</style>
-      {/* Radial vignette so the grid reads against the scene art without an opaque fill. */}
-      <div
-        className="pointer-events-none absolute inset-0 z-0"
-        style={{
-          background:
-            "radial-gradient(120% 90% at 50% 40%, rgba(2,6,23,0.15) 0%, rgba(2,6,23,0.45) 60%, rgba(2,6,23,0.78) 100%)",
-        }}
-      />
-
-      <div
-        data-game-section="ruleset-status"
-        className={cn(
-          GAME_SECTION_CLASS,
-          "z-20 flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-[var(--border)] bg-black/40 px-3 py-1.5 text-xs backdrop-blur",
-        )}
-      >
-        <span className="font-semibold text-white/80">
-          {actor
-            ? t("game.combat.ruleset.board.turnOf", { name: actor.name })
-            : t("game.combat.ruleset.menu.waitingAnybody")}
-        </span>
-        {actor && typeof actor.movementLeft === "number" && (
-          <span className="rounded-md bg-[var(--primary)]/20 px-2 py-0.5 font-semibold text-[var(--primary)]">
-            {t("game.combat.ruleset.board.movementLeft", {
-              amount: rulesetDistanceText(actor.movementLeft, grid.distance, t),
-            })}
-          </span>
-        )}
-      </div>
-
-      {controls}
-
-      {/* The board keeps a floor of its own height: the menu and the hint below both bound
-          themselves, so a long menu or a long sentence can never squeeze the squares away. */}
-      <div className="relative z-10 flex min-h-[9rem] flex-1 items-center justify-center overflow-auto p-1.5 [container-type:size] sm:min-h-[12rem] sm:p-3">
+      {/* The board keeps a floor of its own height, and takes whatever the log and the pane leave. */}
+      <div className="relative z-10 flex min-h-[9rem] flex-1 items-start justify-center overflow-hidden px-1.5 pt-1.5 [container-type:size] sm:min-h-[12rem] sm:px-3 sm:pt-3">
         <div
           role="group"
           aria-label={t("game.combat.ruleset.board.title")}
@@ -422,7 +430,7 @@ export function RulesetCombatBoard({
           // width its own shape allows at the full height, whichever is smaller. (A width of 100%
           // with a ceiling on the height does NOT do this: the ceiling clamps the height and the
           // width stays, which stretched every square sideways on a wide screen.)
-          className="relative m-auto shrink-0"
+          className="relative mx-auto mb-auto mt-0 shrink-0 md:m-auto"
           style={{
             aspectRatio: `${grid.width} / ${grid.height}`,
             width: `min(100cqw, calc(100cqh * ${grid.width} / ${grid.height}))`,
@@ -460,6 +468,23 @@ export function RulesetCombatBoard({
                     cell.zones ? t("game.combat.ruleset.board.zones", { zones: cell.zones.join(", ") }) : "",
                     cell.summons ? t("game.combat.ruleset.board.summons", { names: cell.summons.join(", ") }) : "",
                   ].join(" ")}
+                  // Who stands here, said on hover as the token's letters cannot, with the odds against
+                  // them while a target is being picked.
+                  title={
+                    cell.occupant
+                      ? [
+                          cell.occupant.name,
+                          step?.stage === "target" && cell.targetable && step.option.forecastFor?.[cell.occupant.id]
+                            ? rulesetOptionForecastText(
+                                { ...step.option, forecast: step.option.forecastFor[cell.occupant.id] },
+                                t,
+                              )
+                            : "",
+                        ]
+                          .filter(Boolean)
+                          .join(": ")
+                      : undefined
+                  }
                   onPointerDown={(event) => {
                     lastPointer.current = event.pointerType;
                   }}
@@ -574,7 +599,7 @@ export function RulesetCombatBoard({
                         "pointer-events-none absolute inset-0 ring-1 ring-inset",
                         provokes
                           ? "bg-amber-400/35 ring-amber-300/70"
-                          : cn(!art?.reach && "bg-[var(--primary)]/40", "ring-[var(--primary)]/60"),
+                          : cn(!art?.reach && "bg-sky-400/35", "ring-sky-300/70"),
                       )}
                       style={{ animation: "tc-move-range 1.5s ease-in-out infinite" }}
                     />
@@ -721,8 +746,12 @@ export function RulesetCombatBoard({
                       className="pointer-events-none absolute inset-0 bg-orange-500/35 ring-1 ring-inset ring-orange-200/70"
                     />
                   )}
+                  {/* Somebody else's area, held open for an answer: where it lands. */}
+                  {heldCells.has(key) && (
+                    <span className="pointer-events-none absolute inset-0 bg-[#f5c97a]/45 ring-1 ring-inset ring-[#f5c97a]/90" />
+                  )}
                   {isActor && (
-                    <span className="pointer-events-none absolute inset-0 rounded-[3px] border-2 border-dashed border-[var(--primary)]/80" />
+                    <span className="pointer-events-none absolute inset-0 rounded-[3px] border-2 border-dashed border-white/85" />
                   )}
                 </button>
               );
@@ -738,31 +767,42 @@ export function RulesetCombatBoard({
             const span = Math.max(1, combatant.span ?? 1);
             const key = rulesetCellKey(cell);
             const onTurn = combatant.id === view.actorId;
-            const ring = ringColorFor(combatant.id, combatant.side === "party" ? "party" : "enemy");
+            const party = combatant.side === "party";
+            const ai = party && played.has(combatant.id);
             const sprite = resolveSprite(sprites.get(combatant.id));
             // An opponent with no picture of its own is drawn with its creature art when the pack has it.
             const creature =
               combatant.side !== "party" && sprite.kind !== "url"
-                ? findCreatureArt(creaturePack, {
+                ? findCreatureArtIn(creaturePacks, {
                     creature: combatant.creature,
                     rulesetId: view.ruleset.id,
                     name: combatant.name,
                   })
                 : null;
             const percent = rulesetHealthPercent(combatant.health);
-            const bar = percent > 60 ? "bg-emerald-500" : percent > 25 ? "bg-amber-500" : "bg-red-500";
-            // What they are doing first (dodging, hidden), then what the fight put on them; a trait
-            // they hold all fight is never badged, or Lucky would hide Blessed.
-            const badges = [
-              ...(combatant.stances ?? []).map((stance) => ({
-                id: `stance:${stance}`,
-                label: t(`game.combat.ruleset.stance.${stance}`),
-                stance: true,
-              })),
-              ...combatant.conditions
-                .filter((condition) => !condition.trait)
-                .map((condition) => ({ id: condition.id, label: condition.label, stance: false })),
-            ];
+            const bar = rulesetHealthTone(percent);
+            // What they are doing (dodging, hidden), beside what the fight put on them, which the
+            // condition marks show.
+            const stances = (combatant.stances ?? []).map((stance) => ({
+              id: `stance:${stance}`,
+              label: t(`game.combat.ruleset.stance.${stance}`),
+            }));
+            // A trait they hold all fight is never marked, or Lucky would hide Blessed.
+            const marked = combatant.conditions.filter((condition) => !condition.trait);
+            // One ring, the strongest that applies: who is up, who may be picked, who an area catches
+            // (red where it is one of the caster's own side).
+            const glow = onTurn
+              ? "0 0 0 2px #ffffff, 0 0 14px 3px rgba(255,255,255,0.55)"
+              : cell.targetable
+                ? "0 0 0 2px #ff5d73, 0 0 12px 2px rgba(255,93,115,0.6)"
+                : alliesCaught.has(combatant.id)
+                  ? "0 0 0 3px #ef4444, 0 0 12px 2px rgba(239,68,68,0.7)"
+                  : caught.has(combatant.id)
+                    ? "0 0 0 2px #f5c97a, 0 0 12px 2px rgba(245,201,122,0.6)"
+                    : // A prisoner reads at a glance (re-test 16): a white ring as well as its flag.
+                      combatant.surrendered
+                      ? "0 0 0 2px rgba(255,255,255,0.9)"
+                      : undefined;
             return (
               <div
                 key={combatant.id}
@@ -782,40 +822,45 @@ export function RulesetCombatBoard({
                   width: `${(100 / grid.width) * 0.84 * span}%`,
                 }}
               >
+                {/* The party is round and the other side square-cornered, so shape tells the sides
+                    apart and the ring's colour only repeats it. */}
                 <div
                   className={cn(
-                    "relative flex aspect-square w-full items-center justify-center rounded-full border-2 shadow-lg drop-shadow-[0_2px_3px_rgba(0,0,0,0.6)]",
-                    onTurn && "ring-2 ring-[var(--primary)] ring-offset-1 ring-offset-slate-900",
-                    cell.targetable && "ring-2 ring-[var(--destructive)]",
-                    // A prisoner reads at a glance (re-test 16): a white ring as well as its flag.
-                    combatant.surrendered && !cell.targetable && "ring-2 ring-white/90",
-                    caught.has(combatant.id) &&
-                      (alliesCaught.has(combatant.id) ? "ring-4 ring-red-500" : "ring-2 ring-amber-200"),
+                    "relative flex aspect-square w-full items-center justify-center border-2 shadow-lg drop-shadow-[0_2px_3px_rgba(0,0,0,0.6)] @container",
+                    party ? "rounded-full" : "rounded-[24%]",
                   )}
                   style={{
-                    borderColor: ring,
-                    backgroundColor: combatant.side === "party" ? "rgba(30,58,90,0.9)" : "rgba(90,30,40,0.9)",
-                    animation: onTurn ? "tc-ready-glow 1.8s ease-in-out infinite" : undefined,
+                    borderColor: party ? "#9dbdff" : "#ff9aaa",
+                    backgroundColor: party ? "rgba(42,71,120,0.92)" : "rgba(106,33,51,0.92)",
+                    boxShadow: glow,
                   }}
                 >
-                  {creature && creaturePack ? (
+                  {creature ? (
                     // The token is 0.84 of a cell: its art is drawn at the creature's own size, on the cell.
                     <CreatureArtFigure
-                      pack={creaturePack}
-                      creature={creature}
+                      pack={creature.pack}
+                      creature={creature.creature}
                       // Fights of one ruleset share the key: a fighter keeps its look across them.
-                      variant={creatureArtVariant(creature, view.ruleset.id, combatant.id)}
+                      variant={creatureArtVariant(creature.creature, view.ruleset.id, combatant.id)}
                       facing={facings.get(combatant.id) ?? "down"}
+                      flying={combatant.flying}
                       cellFraction={1 / 0.84}
                       label={combatant.name}
                     />
                   ) : sprite.kind === "url" ? (
-                    <img src={sprite.value} alt="" className="h-full w-full rounded-full object-cover" />
+                    <img
+                      src={sprite.value}
+                      alt=""
+                      className={cn("h-full w-full object-cover", party ? "rounded-full" : "rounded-[24%]")}
+                    />
                   ) : sprite.kind === "emoji" ? (
                     <span className="text-[min(4vw,1.5rem)] leading-none">{sprite.value}</span>
                   ) : (
-                    <span className="text-[min(3vw,0.9rem)] font-black text-white/90">
-                      {initialsOf(combatant.name)}
+                    // Sized by the token itself, so the letters stay inside it however small the
+                    // squares are; a token too small for two keeps the first.
+                    <span className="text-[38cqw] font-black leading-none text-white/90">
+                      <span className="hidden @min-[24px]:inline">{initialsOf(combatant.name)}</span>
+                      <span className="@min-[24px]:hidden">{initialsOf(combatant.name).slice(0, 1)}</span>
                     </span>
                   )}
                   {combatant.surrendered ? (
@@ -831,25 +876,22 @@ export function RulesetCombatBoard({
                   {combatant.surprised && !combatant.defeated && !combatant.down && (
                     <Zap className="absolute -top-1.5 left-1/2 h-3 w-3 -translate-x-1/2 text-[var(--primary)] drop-shadow" />
                   )}
-                  {/* What holds them, a letter each (three at most), and a ring for a spell they hold
-                      together. The square's own sentence names them in full. */}
-                  {!combatant.defeated && (badges.length > 0 || combatant.concentrating) && (
-                    <div className="absolute -right-1 -top-1 flex gap-px">
+                  {/* What they are doing (a letter each, three at most) and a ring for a spell they hold
+                      together, down the right side. The square's own sentence names them in full. */}
+                  {!combatant.defeated && (stances.length > 0 || combatant.concentrating) && (
+                    <div className="absolute -right-1.5 top-1/2 flex -translate-y-1/2 flex-col gap-px">
                       {combatant.concentrating && (
                         <span className="flex h-3 w-3 items-center justify-center rounded-full border border-sky-300 bg-sky-500/80 text-[0.45rem] font-black leading-none text-white">
                           C
                         </span>
                       )}
-                      {badges.slice(0, 3).map((badge) => (
+                      {stances.slice(0, 3).map((stance) => (
                         <span
-                          key={badge.id}
-                          title={badge.label}
-                          className={cn(
-                            "flex h-3 w-3 items-center justify-center rounded-full border text-[0.45rem] font-black uppercase leading-none text-white",
-                            badge.stance ? "border-emerald-200 bg-emerald-600/85" : "border-amber-200 bg-amber-600/85",
-                          )}
+                          key={stance.id}
+                          title={stance.label}
+                          className="flex h-3 w-3 items-center justify-center rounded-full border border-emerald-200 bg-emerald-600/85 text-[0.45rem] font-black uppercase leading-none text-white"
                         >
-                          {badge.label.charAt(0)}
+                          {stance.label.charAt(0)}
                         </span>
                       ))}
                     </div>
@@ -857,8 +899,40 @@ export function RulesetCombatBoard({
                   {/* The health bar sits ON the token rather than under it: a bar below the circle
                       is taller than the square it belongs to, and on a small board it laps over the
                       combatant in the next row. */}
-                  <div className="absolute -bottom-1 left-0 right-0 h-1 overflow-hidden rounded-full bg-black/70 ring-1 ring-black/50">
-                    <div className={cn("h-full transition-all duration-300", bar)} style={{ width: `${percent}%` }} />
+                  {ai && (
+                    <span className="absolute -right-1.5 -top-1.5 rounded-[4px] bg-[#9dbdff] px-[3px] text-[0.45rem] font-black leading-tight text-[#140e1c]">
+                      {t("game.combat.ruleset.screen.aiTag")}
+                    </span>
+                  )}
+                  {/* What is on them, by icon where the art pack has one and by the first letters of its
+                      name where it does not: one letter is too many conditions' (Shielded, Stunned). */}
+                  {marked.length > 0 && !combatant.defeated && (
+                    <span className="absolute -left-1.5 -top-1.5 flex items-center gap-px">
+                      {marked.slice(0, 2).map((condition) => (
+                        <ArtIcon
+                          key={condition.id}
+                          ids={condition.icons ?? []}
+                          className="h-3.5 w-3.5 rounded-sm bg-black/70 ring-1 ring-white/60"
+                          fallback={
+                            <span className="rounded-[3px] bg-black/75 px-[2px] text-[0.45rem] font-bold leading-tight text-white ring-1 ring-white/50">
+                              {condition.label.slice(0, 3)}
+                            </span>
+                          }
+                        />
+                      ))}
+                      {marked.length > 2 && (
+                        <span className="rounded-[3px] bg-black/75 px-[2px] text-[0.45rem] font-bold leading-tight text-white">
+                          +{marked.length - 2}
+                        </span>
+                      )}
+                    </span>
+                  )}
+                  {/* Thick enough to read at a glance, and never thinner than a sliver while any health is left. */}
+                  <div className="absolute -bottom-1.5 left-0 right-0 h-1.5 overflow-hidden rounded-full bg-black/75 ring-1 ring-black/60 sm:h-2">
+                    <div
+                      className={cn("h-full transition-all duration-300", bar)}
+                      style={{ width: `${percent > 0 ? Math.max(percent, 8) : 0}%` }}
+                    />
                   </div>
                 </div>
               </div>
@@ -867,16 +941,13 @@ export function RulesetCombatBoard({
         </div>
       </div>
 
-      {/* One line, bounded, right above the menu: what the square under the pointer or the keyboard
-          is, or why an attack is offered nobody. A square being read is hidden from the live region,
-          because the square's own name has just said the same words to a screen reader. */}
+      {/* One line, right under the board: what the square under the pointer or the keyboard is, or
+          why an attack is offered nobody. A square being read is hidden from the live region, because
+          the square's own name has just said the same words to a screen reader. */}
       <p
         aria-live="polite"
         data-game-section="ruleset-hint"
-        className={cn(
-          GAME_SECTION_CLASS,
-          "z-10 min-h-[1.5rem] shrink-0 border-t border-white/10 bg-black/35 px-3 py-1 text-[0.65rem] leading-snug text-white/70 backdrop-blur",
-        )}
+        className="z-10 mx-auto my-1.5 min-h-[1.5rem] max-w-[min(100%,46rem)] shrink-0 rounded-full border border-[var(--border)] bg-[var(--card)] px-3 py-1 text-center text-[0.7rem] leading-snug text-[var(--muted-foreground)] empty:invisible"
       >
         {warning && (
           <span data-warning="" className="mr-1 font-semibold text-red-300">
@@ -885,24 +956,29 @@ export function RulesetCombatBoard({
         )}
         {readingHint === undefined ? hint : <span aria-hidden="true">{hint}</span>}
       </p>
-
-      <div
-        data-game-section="ruleset-actions"
-        className={cn(GAME_SECTION_CLASS, "z-10 shrink-0 border-t border-white/10 bg-black/40 backdrop-blur")}
-      >
-        <RulesetCombatMenu
-          view={view}
-          budgetLabel={budgetLabel}
-          defenseLabel={defenseLabel}
-          busy={busy}
-          onChoose={onChoose}
-          onFlee={onFlee}
-          onYield={onYield}
-          step={step}
-          onStepChange={holdStep}
-          menuRef={menuRoot}
-        />
-      </div>
+      {/* What the board's marks mean, a tap away. */}
+      <details className="z-10 mx-auto mb-1.5 max-w-[min(100%,46rem)] shrink-0 text-[0.68rem] text-[var(--muted-foreground)]">
+        <summary className="cursor-pointer text-center">{t("game.combat.ruleset.legend.title")}</summary>
+        <ul className="m-0 mt-1 grid list-none grid-cols-2 gap-x-3 gap-y-0.5 p-0 sm:grid-cols-3">
+          {(
+            [
+              ["▲", "higher"],
+              ["!", "struck"],
+              ["◯", "turn"],
+              ["◎", "pick"],
+              ["☠", "down"],
+              ["⚡", "surprised"],
+            ] as const
+          ).map(([mark, key]) => (
+            <li key={key} className="flex items-center gap-1.5">
+              <span aria-hidden="true" className="w-3 text-center font-bold text-[var(--foreground)]">
+                {mark}
+              </span>
+              {t(`game.combat.ruleset.legend.${key}`)}
+            </li>
+          ))}
+        </ul>
+      </details>
     </div>
   );
 }

@@ -25,7 +25,39 @@ A **Source** is the service that makes the audio. The four choices are:
 
 The default Source is **OpenAI-compatible**. Marinara keeps a separate saved profile for each Source, including its encrypted API key, endpoint, model, voices, and provider parameters. Switching Sources restores that Source's previous setup; a Source you have not configured yet starts with its defaults.
 
+### Use an Audio connection
+
+If you already set up an **Audio** connection (see [Supported AI Providers](../connections/providers-reference.md#audio)), you don't need to enter its details again here. Your Audio connections are listed in the **Source** dropdown under **Audio connections**, each with its source type in brackets.
+
+1. Open the **Source** dropdown and pick the connection.
+2. Choose its voices and the other settings below as usual.
+
+Marinara then speaks with that connection's base URL, API key, model, and **Request timeout (seconds)**, so the card hides those fields. The key stays in the connection: it is not copied into the card's settings or sent to your browser. Changes you make to the connection, such as a new key, take effect right away.
+
+Voices, speed, and the other speech settings are saved separately for each connection. Two connections of the same type, such as two OpenAI-compatible servers, never share them. Your settings for the four regular Sources stay as they were, so you can switch back at any time. The switch in the card header still turns Text to Speech on and off, and a game's own audio connection still makes that game's sound effects and music.
+
+If the chosen connection is deleted or can't be used, the card shows **Missing Audio connection** and nothing is spoken until you choose another Source. Marinara never switches to a different connection on its own.
+
+When the connection lists its voices, the card names any saved voice that is not on the list, so you can pick one the connection offers.
+
+## Game music and sound effects on a compatible audio server
+
+In **Connections**, create or open an **Audio** connection and choose **OpenAI-compatible**. Use the address, key and model for your music or sound-effect server. Set **Generation API format**, enter the endpoint paths your server provides, and enable **Game music** or **Game sound effects**. A blank path leaves that capability unavailable. Select this Audio connection in Game setup or the game's audio settings. A music-only model is not a speech model; keep your speech connection selected separately in the Text to Speech card.
+
+Endpoint paths are appended to the connection's Base URL: for `http://localhost:8002/v1`, use `chat/completions` to reach `/v1/chat/completions`. No new provider entry is needed. Local HTTP endpoints require `TTS_LOCAL_URLS_ENABLED=true` in `.env`, as other local compatible audio requests do.
+
+Two explicit API contracts are supported:
+
+- **Prompt JSON → MP3 audio** posts `{ "model": "your-model", "prompt": "the requested sound", "duration": 5, "response_format": "mp3" }` and expects MP3 bytes. Game music uses the context track's duration (120 seconds by default); sound effects request 5 seconds. Use an endpoint or adapter that accepts these fields.
+- **Chat Completions → inline audio (ACE-Step compatible)** posts `model`, one user `messages` entry, `stream: false`, and `audio_config` with `duration`, `instrumental: true` and `format: "mp3"`. It accepts inline MP3 audio from `choices[0].message.audio`, either an ACE-Step audio URL array containing a base64 data URL or an object with base64 `data`. See the [ACE-Step compatible API contract](https://github.com/ace-step/ACE-Step-1.5/blob/main/docs/en/Openrouter_API_DOC.md). Remote result URLs and asynchronous job APIs are not supported by these contracts.
+
+Only enable the capabilities your server actually implements. An OpenAI-compatible speech endpoint alone does not imply music or sound-effect support. A provider such as Infermatic must expose one of the contracts above, or supply an adapter; its live music endpoint has not been verified here. ElevenLabs keeps its existing native music and sound-effect requests.
+
+Generated context music is still composed once per area or encounter tier and reused. Repeated sound effects use the audio cache. A generation error leaves the cache available for retry.
+
 ## Step 2: Enter the Base URL, API Key, and Model
+
+Skip this step if you chose an Audio connection as the Source: Marinara uses the connection's own settings.
 
 Each Source needs a web address and, for most sources, an API key. An API key is a secret code from your provider that proves the request is yours.
 
@@ -49,6 +81,14 @@ For **ElevenLabs**, the **Model** field loads the speech-capable models availabl
 PocketTTS is not built into Marinara Engine. Install [the official PocketTTS server](https://github.com/kyutai-labs/pocket-tts) separately, then start it with `uvx pocket-tts serve`. Marinara does not download or manage it for you.
 
 The official server uses `http://localhost:8000` by default. Leave the **Base URL** on that value unless you changed the host or port. Marinara detects the official multipart `/tts` API automatically. Existing custom URLs for the [OpenAI-compatible PocketTTS wrapper](https://github.com/teddybear082/pocket-tts-openai_streaming_server) remain supported.
+
+### Request timeout
+
+By default, Marinara waits up to 60 seconds for each spoken line. A voice server on your own computer, especially a laptop, can need longer for a long line. To wait longer, raise **Request timeout (seconds)** below **Model** in the card. You can set 10 to 3,600 seconds.
+
+An audio connection has its own **Request timeout (seconds)** field, below **Default Voice** in the connection editor. When chats speak through an audio connection, including one chosen as the card's **Source**, they use that connection's limit. The card's limit covers speech from the card's own settings, including its **Preview** button.
+
+If a line takes too long, the error says how many seconds Marinara waited and which setting to raise.
 
 ## Step 3: Choose a voice (Voice Option)
 
@@ -124,9 +164,17 @@ Under the **Auto-play** heading, each toggle tells the app to read one kind of n
 - **Progressive playback**: when a reply has several lines, starts playing the first line right away instead of waiting for the whole reply.
 - **Only read dialogues**: reads only quoted or tagged spoken lines and skips plain narration.
 
+In Roleplay, voice preparation starts as soon as the main response has been saved. Speaker and emotion extraction starts from that text without waiting for unrelated agents. If an enabled agent rewrites the reply, such as Prose Guardian, Marinara waits for the final rewritten text before preparing speech.
+
 Auto-play fires only once, on the newest reply, at the moment it finishes. It does not re-read old messages when you reopen or scroll a chat.
 
 The same playback settings also let you **Skip text inside HTML and custom tags**, **Skip fenced code blocks**, or **Skip text inside square brackets**. Code blocks are skipped by default; the other two filters start off. Tag filtering removes the enclosed text, such as a hidden `<simulation>...</simulation>` block, while preserving speaker tags used to select voices. These filters apply to manual playback and auto-play, including Game narration and Roleplay speaker extraction.
+
+Turn on **Roleplay speaker extractor** to see **Enable emotion indicators**. With emotion indicators on, text in square brackets is kept for the speech service even when **Skip text inside square brackets** is on. This can include notes. To keep bracketed notes out of speech, turn emotion indicators off and leave the skip option on.
+
+Voice directions such as `[Low, steady voice, restrained urgency]` stay whole when a long line is split for speech. Known speaker and scene labels are still removed. The speech model decides how to use each direction.
+
+The **Roleplay speaker extractor** adds directions without changing the original dialogue words. With **Enable TTS**, **Game narration**, and emotion indicators on, Game scene, party, and combat dialogue can include these directions too.
 
 ## Speaking a single message
 
@@ -162,15 +210,18 @@ This override is used only during Conversation audio and video calls. The regula
 
 ## Troubleshooting
 
+- The card shows **Missing Audio connection**: the Audio connection chosen as the Source was deleted or can't be used. Choose another Source. See [Use an Audio connection](#use-an-audio-connection).
 - Nothing speaks: confirm the **Enable TTS** switch is on. Then check the right per-mode **Auto-play** toggle, or use the per-message **Speak** button. The **Speak** button and auto-play options only appear after TTS is enabled.
 - No voices in the dropdown: save the card with TTS enabled and a valid API key, then click **Refresh voices**. The official PocketTTS server uses Marinara's built-in list because it has no voice-list endpoint. For a compatible PocketTTS wrapper, verify that `<Base URL>/v1/voices` responds.
 - ElevenLabs will not speak: make sure you selected a real voice, not the "Select an ElevenLabs voice" placeholder. Also check that the **Model** is a speech model, not a voice-design model whose ID contains `ttv`.
+- A line stops with **No audio after 60 s**: the voice server needs more time. Raise **Request timeout (seconds)** where the message says. See [Request timeout](#request-timeout).
 - A self-hosted TTS server on a local address is blocked: turn on the server setting `TTS_LOCAL_URLS_ENABLED`. It lets the app reach a local or private address for OpenAI-compatible or ElevenLabs-style servers. PocketTTS does not need this setting. See [Server Configuration Reference](../CONFIGURATION.md).
 - Test your setup fast: click the **Preview** button in the card to play a short sample line with your current settings.
 
 ## Related guides
 
 - [Conversation Audio and Video Calls](../conversation/calls.md)
+- [Lip sync with text-to-speech](../agents/avatars.md#lip-sync-with-text-to-speech) for 2D and 3D avatars
 - [Roleplay Mode: Getting Started](../roleplay/getting-started.md)
 - [Game Mode: Getting Started](../game/getting-started.md)
 - [Supported AI Providers](../connections/providers-reference.md)

@@ -1,6 +1,6 @@
 {
   "name": "@marinara-engine/shared",
-  "version": "2.5.0",
+  "version": "2.5.1",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
@@ -22,6 +22,6 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
-    "typescript": "^5.9.3"
+    "typescript": "~6.0.3"
   }
 }

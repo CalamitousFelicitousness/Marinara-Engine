@@ -24,7 +24,7 @@ You theme a card in two places. First you add CSS to the card. Then you turn it 
 4. Open **Chat Settings**, then the **Card Theming** section.
 5. Choose **Exclusive** or **Chat**. The mode starts on **Disabled**.
 
-You should see the character's messages change right away. The **Card Theming** control only appears once an active character in that chat has CSS in its **Creator Notes**. Persona CSS alone does not make the control appear. At least one character in the chat must carry its own `<style>` block. If you do not see the control, check that your `<style>` block saved correctly.
+You should see the character's messages change right away. The **Card Theming** mode buttons (Disabled, Exclusive, Chat) only appear once an active character in that chat has CSS in its **Creator Notes**. In Roleplay chats the section itself is always there, because it also holds the **Color Character Names in Text** switch. Persona CSS alone does not make the buttons appear. At least one character in the chat must carry its own `<style>` block. If you do not see the buttons, check that your `<style>` block saved correctly.
 
 Here is a starter block to paste into **Creator Notes**:
 
@@ -210,7 +210,7 @@ The avatar is a circle by default. You can reshape and ring it with pure CSS. Th
 
 In Conversation mode, clicking an avatar opens a profile popout with the character's or persona's "about me". You can theme it with the same `[data-card-css]` scope. This popout only exists in Conversation mode. It does not exist in roleplay or game. Wrap these rules in `@chat-mode conversation` if you also ship roleplay or game CSS. Both character cards and personas can theme their own popout from their **Creator Notes**.
 
-One caveat for personas: the **Card Theming** control only appears when an active character in the chat has CSS in its **Creator Notes**. Persona-only CSS does not make the control appear. So for a persona's popout theme to work, at least one character in the chat must also carry a `<style>` block.
+One caveat for personas: the **Card Theming** mode buttons only appear when an active character in the chat has CSS in its **Creator Notes**. Persona-only CSS does not make them appear. So for a persona's popout theme to work, at least one character in the chat must also carry a `<style>` block.
 
 | Selector | What it targets |
 | --- | --- |
@@ -228,7 +228,7 @@ One caveat for personas: the **Card Theming** control only appears when an activ
 
 The popout card is the scope element. Target it with `[data-card-css].mari-about-me-popout` (no space, same element). Target its children with a descendant selector, like `[data-card-css] .mari-about-me-name`. In **Chat** mode the whole area is scoped, so you can use `.mari-about-me-name` directly.
 
-Here is a themed "about me" popout. Paste it into a character's or persona's **Creator Notes**, then enable **Card Theming** in **Chat Settings**. If you paste it into a persona, remember the caveat above. A character in the chat must also have CSS in its **Creator Notes**, or the control stays hidden.
+Here is a themed "about me" popout. Paste it into a character's or persona's **Creator Notes**, then enable **Card Theming** in **Chat Settings**. If you paste it into a persona, remember the caveat above. A character in the chat must also have CSS in its **Creator Notes**, or the mode buttons stay hidden.
 
 ```html
 <style>
@@ -276,6 +276,7 @@ The sanitizer strips these for security.
 | `@font-face` with external URLs | Only `data:` font sources are kept. The family name is auto-renamed so it cannot override app fonts. |
 | `@import` | No loading external stylesheets. |
 | `:has()` selectors | Cannot probe elements outside the chat. |
+| Nested rules and selectors that start with `~` or `+` | Dropped, so card CSS cannot reach outside its scope. Write them as ordinary selectors. |
 | HTML in `content:` | Decorative text is allowed, but `<` and `>` are stripped and the text is capped at 200 characters. `attr()` and `counter()` are allowed. |
 | `position: fixed` | Rewritten to `position: absolute`, so no full-screen overlays. |
 | `!important` | Stripped, so card CSS cannot force-override app styles. |

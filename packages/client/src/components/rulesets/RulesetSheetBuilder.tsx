@@ -1356,7 +1356,7 @@ export function RulesetSheetBuilder({
             {ids.map((id) => {
               const ability = definition.sheet.abilities.find((each) => each.id === id)!;
               const increase = increases[id] ?? 0;
-              let control: React.ReactNode = null;
+              let control: React.ReactNode;
               if (method === "pointBuy" && pointBuy) {
                 const score = base[id] ?? pointBuy.costs[0]![0];
                 const costOf = (value: number) => pointBuy.costs.find(([each]) => each === value)?.[1];

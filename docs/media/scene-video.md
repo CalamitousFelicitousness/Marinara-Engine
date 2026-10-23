@@ -4,7 +4,7 @@ This guide explains how Marinara Engine turns a scene illustration into a short 
 
 ## What scene video does
 
-A scene video takes an existing gallery image and animates it into a short MP4 clip. The still image becomes the first frame, and the AI adds motion. Scene videos work in **Roleplay** and **Game Mode** chats.
+A scene video takes an existing gallery image and animates it into a short MP4 clip. The still image becomes the first frame, and the AI adds motion. Scene videos work in **Roleplay** and **Game Mode** chats. Conversation chats send video messages instead; see [Video messages](../conversation/selfies.md#video-messages).
 
 You always need a picture first. Scene video generation cannot run from text alone. You must generate or upload a gallery image before you can animate it.
 
@@ -40,6 +40,10 @@ The **Video Service** picker offers eight choices. Each one fills in a default w
 For **ComfyUI**, use the usual local address `http://127.0.0.1:8188` and paste an API-format video workflow into **ComfyUI Workflow**. The workflow is required. See [ComfyUI Workflow Setup](comfyui.md#comfyui-video-workflows) for placeholders and output-node requirements.
 
 For **SwarmUI**, Marinara fills in the local address `http://127.0.0.1:7801`. Paste an API-format video workflow into **ComfyUI Workflow**. The workflow is required. SwarmUI cannot use the `%reference_image_name%` placeholders, so use `%reference_image%` for the reference image instead. If your SwarmUI server requires an account, paste a Swarm Auth Token into **API Key**. **Fetch Models from API** lists the models on your SwarmUI server.
+
+### Video Prompting Instructions
+
+A Video Generation connection has a **Video Prompting Instructions** box. Use it to tell the AI that writes your video prompts what your video model expects, such as camera moves, prompt length or sound. It guides Roleplay Gallery animations, Conversation video messages and Storyboard's **Image-aware shot planning**. If the AI copies a full sentence of it into the video prompt, Marinara removes that sentence. Game Mode scene videos, call clips and animated expressions create their prompts separately. **Video Prompting Instructions** does not affect them.
 
 ### Make it the default video connection
 

@@ -7,6 +7,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { runInNewContext } from "node:vm";
+import ts from "typescript";
 import {
   FLOATING_WINDOW_LAYOUT_VERSION,
   clampWindowGeometry,
@@ -91,6 +93,31 @@ assert.deepEqual(resizeWindowGeometry(start, "nw", -1000, -1000, bounds, limits)
   height: 544,
 });
 assert.deepEqual(resizeWindowGeometry(start, "e", 5000, 0, bounds, limits), { ...start, width: 1032 });
+
+// #7703: on a computer, windows and buttons reach the bottom beside the message box (x 500–1000, top 800), never over it.
+const desk = { ...bounds, bottom: 792, besideComposer: { left: 492, right: 1008, bottom: 892 } };
+const low = { x: 100, y: 400, width: 320, height: 492 };
+assert.deepEqual(clampWindowGeometry(low, desk, limits), low, "beside the box a window reaches the bottom");
+assert.deepEqual(clampWindowGeometry({ ...low, x: 1100 }, desk, limits), { ...low, x: 1100 }, "on either side");
+assert.deepEqual(
+  clampWindowGeometry({ ...low, x: 300 }, desk, limits),
+  { ...low, x: 300, y: 300 },
+  "over the box it rises above it",
+);
+assert.deepEqual(resizeWindowGeometry({ ...low, height: 300 }, "s", 0, 5000, desk, limits), low);
+assert.deepEqual(
+  resizeWindowGeometry(low, "e", 5000, 0, desk, limits),
+  { ...low, width: 392 },
+  "a low window widens up to the box",
+);
+assert.deepEqual(resizeWindowGeometry({ ...low, x: 1100 }, "w", -5000, 0, desk, limits), {
+  ...low,
+  x: 1008,
+  width: 412,
+});
+assert.deepEqual(clampWindowBubble({ x: 100, y: 5000 }, desk), { x: 100, y: 860 }, "a button reaches the bottom");
+assert.deepEqual(clampWindowBubble({ x: 600, y: 5000 }, desk), { x: 600, y: 760 }, "but stays above the box");
+assert.deepEqual(clampWindowGeometry(low, { ...desk, besideComposer: undefined }, limits), { ...low, y: 300 });
 
 // ── Stored layouts survive old, missing and corrupt values ──
 const valid = { x: 10, y: 20, width: 400, height: 300, pinned: true, locked: false };
@@ -349,6 +376,27 @@ for (const part of ['"mari-drawer"', "mari-drawer__header", "mari-drawer__title"
   assert.ok(drawer.includes(part), `Drawer must render ${part}`);
 }
 for (const attribute of ["data-drawer={id}", "data-detached="]) assert.ok(drawer.includes(attribute));
+// #7788: a popped-out Author's Notes window grows its text box with the window (a phone's whole sheet),
+// and the docked text box can still be resized by hand.
+assert.match(drawer, /sheetClassName=\{cn\(PHONE_SHEET_CLASS, fill && PHONE_FULL_SHEET_CLASS\)\}/u);
+assert.match(
+  drawer,
+  /cn\("mari-drawer", fill && "flex flex-auto flex-col", className\)[\s\S]*?cn\("mari-drawer__body", fill && "flex flex-auto flex-col"/u,
+);
+assert.match(
+  read("packages/client/src/features/chat-settings/ChatSettingsSection.tsx"),
+  /<Drawer\b[^>]*\bfill=\{fill\}/u,
+);
+assert.match(
+  read("packages/client/src/components/chat/ChatSettingsDrawer.tsx"),
+  /help=\{localizeUi\("chat\.settings\.authorNotesHelp"\)\}\s+fill\s*>/u,
+);
+const authorNotesPanel = read("packages/client/src/components/chat/ChatRoleplayPanels.tsx").split(
+  "export function AuthorNotesPanel",
+)[1]!;
+assert.match(authorNotesPanel, /wrapperClassName="mari-author-notes-field flex min-w-0 flex-auto flex-col"/u);
+assert.match(authorNotesPanel, /className="mari-chrome-field !min-h-24 flex-auto /u);
+assert.doesNotMatch(authorNotesPanel, /resize-none/u);
 const variables = [...globals.matchAll(/^\s+(--mari-(?:window|drawer)-[a-z-]+)\s/gmu)].map((match) => match[1]!);
 assert.ok(variables.length >= 30, "globals.css must document the window and drawer variables");
 for (const variable of variables) {
@@ -916,6 +964,144 @@ assert.equal(isEmptyWindowLayoutSnapshot(selectWindowLayoutSnapshot(store.getSta
 // The bubble draws with its theming hooks; the window keeps the header controls in order.
 const floatingWindowSource = read("packages/client/src/components/ui/FloatingWindow.tsx");
 const windowBubbleSource = read("packages/client/src/components/ui/WindowBubble.tsx");
+
+// Run the actual DOM bounds reader/watcher without mounting React. Tactical chrome can mount after
+// its bubbles, wrap on a phone, and disappear without changing the saved positions.
+const boundsSource = ts.createSourceFile("FloatingWindow.tsx", floatingWindowSource, ts.ScriptTarget.Latest, true);
+const boundsCode = boundsSource.statements
+  .filter((statement) =>
+    ts.isFunctionDeclaration(statement)
+      ? ["readFloatingWindowBounds", "observeWindowBounds"].includes(statement.name?.text ?? "")
+      : ts.isVariableStatement(statement) &&
+        statement.declarationList.declarations.some((declaration) =>
+          ["CENTER_CONTENT_SELECTOR", "CHAT_WINDOW_TOP_OBSTACLE_SELECTOR"].includes(
+            declaration.name.getText(boundsSource),
+          ),
+        ),
+  )
+  .map((statement) => statement.getText(boundsSource).replace(/^export /u, ""))
+  .join("\n");
+class BoundsElement {
+  isConnected = true;
+  visibility = "visible";
+  children: BoundsElement[] = [];
+  constructor(
+    public attribute: string,
+    public rect: { left: number; top: number; right: number; bottom: number; width: number; height: number },
+  ) {}
+  getBoundingClientRect() {
+    return this.rect;
+  }
+  matches(selector: string) {
+    return selector.includes(`[${this.attribute}]`);
+  }
+  querySelector(selector: string): BoundsElement | null {
+    return this.children.find((child) => child.matches(selector) || child.querySelector(selector)) ?? null;
+  }
+}
+const center = new BoundsElement("center", { left: 0, top: 48, right: 1440, bottom: 900, width: 1440, height: 852 });
+const topbar = new BoundsElement("topbar", { left: 0, top: 0, right: 1440, bottom: 48, width: 1440, height: 48 });
+const chrome = new BoundsElement("data-chat-window-top-obstacle", {
+  left: 0,
+  top: 48,
+  right: 1440,
+  bottom: 144,
+  width: 1440,
+  height: 96,
+});
+let obstacles: BoundsElement[] = [];
+let resizeCallback = () => {};
+const observed = new Set<BoundsElement>();
+let mutationCallback = (_records: unknown[]) => {};
+let mutationTarget: unknown;
+const domBounds = runInNewContext(
+  `${ts.transpileModule(boundsCode, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText}\n({ readFloatingWindowBounds, observeWindowBounds });`,
+  {
+    WINDOW_MARGIN_PX: 8,
+    Element: BoundsElement,
+    window: { innerWidth: 1440, innerHeight: 900 },
+    getComputedStyle: (element: BoundsElement) => ({ visibility: element.visibility }),
+    document: {
+      querySelector: (selector: string) => (selector.includes("CenterContent") ? center : topbar),
+      querySelectorAll: (selector: string) =>
+        selector.includes("CenterContent")
+          ? [center, topbar, ...obstacles]
+          : selector.includes("data-chat-window-top-obstacle")
+            ? obstacles
+            : [],
+    },
+    ResizeObserver: class {
+      constructor(callback: () => void) {
+        resizeCallback = callback;
+      }
+      observe(element: BoundsElement) {
+        observed.add(element);
+      }
+      unobserve(element: BoundsElement) {
+        observed.delete(element);
+      }
+      disconnect() {
+        observed.clear();
+      }
+    },
+    MutationObserver: class {
+      constructor(callback: typeof mutationCallback) {
+        mutationCallback = callback;
+      }
+      observe(target: unknown) {
+        mutationTarget = target;
+      }
+      disconnect() {
+        mutationTarget = undefined;
+      }
+    },
+  },
+) as { readFloatingWindowBounds: () => typeof bounds; observeWindowBounds: (update: () => void) => () => void };
+assert.equal(domBounds.readFloatingWindowBounds().top, 56, "non-Game bounds remain unchanged");
+let measuredTop = 0;
+let boundsUpdates = 0;
+const stopBounds = domBounds.observeWindowBounds(() => {
+  boundsUpdates += 1;
+  measuredTop = domBounds.readFloatingWindowBounds().top;
+});
+obstacles = [chrome];
+center.children = [chrome];
+mutationCallback([{ addedNodes: [chrome], removedNodes: [] }]);
+assert.equal(measuredTop, 152, "late-mounted wrapped chrome reserves its measured bottom plus the existing gap");
+assert.ok(observed.has(chrome), "the late-mounted chrome is observed for initiative and wrapping changes");
+chrome.rect.bottom = 184;
+chrome.rect.height = 136;
+resizeCallback();
+assert.equal(measuredTop, 192);
+chrome.visibility = "hidden";
+assert.equal(domBounds.readFloatingWindowBounds().top, 56, "a hidden obstacle does not reserve the chat");
+chrome.visibility = "visible";
+chrome.rect.left = 1500;
+assert.equal(domBounds.readFloatingWindowBounds().top, 56, "an offscreen obstacle does not reserve the chat");
+chrome.rect.left = 0;
+const savedBubble = { x: 1300, y: 64 };
+const bubbleEntry = { point: savedBubble, bounds: domBounds.readFloatingWindowBounds(), size: 32 };
+assert.equal(placeWindowBubbles(new Map([["saved", bubbleEntry]])).get("saved")?.y, 192);
+assert.deepEqual(savedBubble, { x: 1300, y: 64 }, "temporary clamping never changes a saved point");
+const updatesBeforeText = boundsUpdates;
+mutationCallback([{ addedNodes: [new BoundsElement("text", chrome.rect)], removedNodes: [] }]);
+assert.equal(boundsUpdates, updatesBeforeText, "streamed text does not schedule bounds work");
+chrome.isConnected = false;
+obstacles = [];
+mutationCallback([{ addedNodes: [], removedNodes: [chrome] }]);
+assert.equal(measuredTop, 56, "removing combat restores the original bounds");
+assert.equal(observed.has(chrome), false, "removed chrome releases its resize observation");
+assert.deepEqual(
+  placeWindowBubbles(new Map([["saved", { ...bubbleEntry, bounds: domBounds.readFloatingWindowBounds() }]])).get(
+    "saved",
+  ),
+  savedBubble,
+  "saved points return after combat",
+);
+stopBounds();
+assert.equal(observed.size, 0);
+assert.equal(mutationTarget, undefined, "unmount disconnects both layout observers");
+
 assert.match(windowBubbleSource, /className="mari-window-bubble fixed"/u);
 assert.match(windowBubbleSource, /data-minimized="true"/u);
 // A banner registers as movable, so placement moves it rather than a neighbour it grew into.
@@ -944,5 +1130,36 @@ assert.match(
 );
 assert.doesNotMatch(floatingWindowSource, /data-window-control="minimize"/u);
 assert.match(read("packages/client/src/styles/globals.css"), /--mari-window-bubble-bg[\s\S]*--mari-window-snap-guide/u);
+
+// #7928: automatic layouts follow resized bounds without overwriting free-position data.
+const freeButtons = new Map([
+  ["one", { point: { x: 200, y: 240 }, bounds, size: 32 }],
+  ["two", { point: { x: 700, y: 300 }, bounds, size: 32 }],
+  ["three", { point: { x: 450, y: 400 }, bounds, size: 32 }],
+]);
+for (const direction of ["horizontal", "vertical"] as const) {
+  for (const right of [1432, 120]) {
+    const narrowed = new Map([...freeButtons].map(([id, value]) => [id, { ...value, bounds: { ...bounds, right } }]));
+    const placed = [...placeWindowBubbles(narrowed, direction).values()];
+    assert.equal(placed.length, 3);
+    for (const [index, point] of placed.entries()) {
+      assert.ok(point.x >= bounds.left && point.x + 32 <= right);
+      assert.ok(point.y >= bounds.top && point.y + 32 <= bounds.bottom);
+      for (const other of placed.slice(index + 1)) {
+        assert.ok(Math.abs(point.x - other.x) >= 32 || Math.abs(point.y - other.y) >= 32);
+      }
+    }
+  }
+}
+assert.deepEqual(placeWindowBubbles(freeButtons).get("one"), { x: 200, y: 240 });
+store.getState().resetView();
+store.getState().setButtonLayout("horizontal");
+const arrangedSnapshot = selectWindowLayoutSnapshot(store.getState());
+assert.equal(isEmptyWindowLayoutSnapshot(arrangedSnapshot), false);
+store.getState().hydrate(JSON.parse(serializeWindowLayoutSnapshot(arrangedSnapshot)));
+assert.equal(store.getState().buttonLayout, "horizontal");
+store.getState().resetView();
+assert.equal(store.getState().buttonLayout, undefined);
+assert.equal(parseWindowLayoutSnapshot({ ...arrangedSnapshot, buttonLayout: "invalid" }).buttonLayout, undefined);
 
 console.log("floating window regression passed");

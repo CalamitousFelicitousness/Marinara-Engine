@@ -237,6 +237,8 @@ import {
   RULESET_FLY_DOWN_OPTION,
   RULESET_FLY_UP_OPTION,
   rulesetRelightCells,
+  RULESET_LAND_OPTION,
+  RULESET_TAKE_OFF_OPTION,
   planRulesetCombatCost,
   rulesetChosenUsesMax,
   rulesetAlterFits,
@@ -7693,6 +7695,11 @@ function applyChoice(
     } else if (option.id === RULESET_DISMOUNT_OPTION) {
       spendRulesetMovement(walking, option.movementCost ?? 0);
       dismount(ctx, walking);
+    } else if (option.id === RULESET_TAKE_OFF_OPTION || option.id === RULESET_LAND_OPTION) {
+      // Into the air or down onto the ground where it stands (1.354), for nothing.
+      if (option.id === RULESET_TAKE_OFF_OPTION) walking.airborne = true;
+      else delete walking.airborne;
+      ctx.events.push({ type: "lift", actorId: walking.id, up: option.id === RULESET_TAKE_OFF_OPTION });
     } else resolveStand(ctx, walking, option);
     const ended = rulesetEncounterOutcome(ctx.state);
     if (ended !== "ongoing") pushOutcome(ctx, ended);
@@ -7884,7 +7891,7 @@ function applyChoice(
   // Targets, checked against the side and the count the option itself declared, or the count the
   // pool it is paid with lets it take (1.171).
   const paidCount = choice.payWith !== undefined ? option.targetsWith?.[choice.payWith] : undefined;
-  const grow = areaGrowth(definition, actor, option.id, choice.payWith);
+  const grow = rulesetAreaGrowth(definition, actor, option.id, choice.payWith);
   // A burst centred on its user (1.282) catches whom it reaches, and is pointed at nobody.
   const around = actor.actions.find((entry) => entry.id === option.id && entry.around);
   // Off a board, an area that leaves a zone may be set down on nobody in particular: the Eversmoking
@@ -12275,7 +12282,7 @@ function positionedArea(state: RulesetEncounterState, actor: RulesetCombatant, o
 }
 
 /** How many cells an area grows by for the higher cost it was paid with (1.267): Confusion. */
-function areaGrowth(
+export function rulesetAreaGrowth(
   definition: RulesetDefinition,
   actor: RulesetCombatant,
   optionId: string,
@@ -12313,8 +12320,10 @@ function resolveFly(ctx: RulesetCombatContext, actor: RulesetCombatant, option: 
   const from = rulesetLevelOf(grid, actor);
   const to = from + (option.id === RULESET_FLY_UP_OPTION ? 1 : -1);
   spendRulesetMovement(actor, cost);
-  if (to > elevationAt(grid, actor.x!, actor.y!)) actor.altitude = to;
-  else delete actor.altitude;
+  if (to > elevationAt(grid, actor.x!, actor.y!)) {
+    actor.altitude = to;
+    actor.airborne = true;
+  } else delete actor.altitude;
   ctx.events.push({ type: "flew", actorId: actor.id, from, to, cost, left: actor.movementLeft ?? 0 });
 }
 
@@ -12325,7 +12334,7 @@ function resolveFly(ctx: RulesetCombatContext, actor: RulesetCombatant, option: 
  */
 function groundFlier(ctx: RulesetCombatContext, flier: RulesetCombatant): void {
   const grid = ctx.state.board?.grid;
-  if (!grid || flier.hover || !rulesetAirborne(grid, flier)) return;
+  if (!grid || flier.hover || !(flier.airborne || rulesetAirborne(grid, flier))) return;
   // Kept up by a condition put on as it was lifted (1.549), before its holder's speeds are synced:
   // Telekinesis.
   if (rulesetActiveConditions(ctx.definition, ctx.combat, flier, ctx.state).some((entry) => entry.hover)) return;
@@ -12336,6 +12345,9 @@ function groundFlier(ctx: RulesetCombatContext, flier: RulesetCombatant): void {
     // Its flight gone with what gave it (1.382).
     !flier.speeds?.fly;
   if (!grounded) return;
+  // Out of the air (1.354); from up above the ground, a fall too.
+  delete flier.airborne;
+  if (!rulesetAirborne(grid, flier)) return;
   const levels = rulesetLevelOf(grid, flier) - elevationAt(grid, flier.x!, flier.y!);
   // Down first, so whatever the fall itself does finds it on the ground.
   delete flier.altitude;
@@ -12661,10 +12673,11 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
     // Through solid ground, and into another's space, as the menu priced them (1.479).
     if (resume.jump) spent += 1;
     else if (grid) {
-      const plain = rulesetThroughSolid(grid, cell.x, cell.y, actor)
-        ? 2
-        : (rulesetMoveStep(grid, at, cell, actor, spent, rulesetSlickCells(ctx.state, actor))?.cost ??
-          rulesetCellEnterCost(grid, cell.x, cell.y));
+      const through = rulesetThroughSolid(grid, cell.x, cell.y, actor);
+      const step = through ? null : rulesetMoveStep(grid, at, cell, actor, spent, rulesetSlickCells(ctx.state, actor));
+      // A step only its flight takes puts it in the air (1.354).
+      if (step?.mode === "fly") actor.airborne = true;
+      const plain = through ? 2 : (step?.cost ?? rulesetCellEnterCost(grid, cell.x, cell.y));
       const slowedStep = rulesetSlowedStep(
         grid,
         cell,
@@ -13090,7 +13103,7 @@ function resumeActionFrom(ctx: RulesetCombatContext, resume: RulesetActionResume
     new Set(
       areaCellsFor(state, actor, action.id, ctx.aimedAt!, {
         ...(resume.also ? { also: resume.also } : {}),
-        grow: areaGrowth(ctx.definition, actor, action.id, resume.payWith),
+        grow: rulesetAreaGrowth(ctx.definition, actor, action.id, resume.payWith),
       }).map((cell) => `${cell.x},${cell.y}`),
     );
   const covered = reaches ? areaOf(ctx.state) : new Set<string>();
@@ -13189,7 +13202,7 @@ function resumeActionFrom(ctx: RulesetCombatContext, resume: RulesetActionResume
       grid,
       areaCellsFor(ctx.state, actor, action.id, at, {
         ...(resume.also ? { also: resume.also } : {}),
-        grow: areaGrowth(ctx.definition, actor, action.id, resume.payWith),
+        grow: rulesetAreaGrowth(ctx.definition, actor, action.id, resume.payWith),
       }),
     );
     ctx.events.push({ type: "growth", actorId: actor.id, label: action.label, cells: cleared, by: "cleared" });
@@ -13198,7 +13211,7 @@ function resumeActionFrom(ctx: RulesetCombatContext, resume: RulesetActionResume
   if (grid && at && action.area && action.ground && !resume.held) {
     const cells = areaCellsFor(ctx.state, actor, action.id, at, {
       ...(resume.also ? { also: resume.also } : {}),
-      grow: areaGrowth(ctx.definition, actor, action.id, resume.payWith),
+      grow: rulesetAreaGrowth(ctx.definition, actor, action.id, resume.payWith),
     });
     const moved = rulesetChangeGround(ctx.state, cells, action.ground, action.ground.occupants);
     ctx.events.push({
@@ -13219,7 +13232,7 @@ function resumeActionFrom(ctx: RulesetCombatContext, resume: RulesetActionResume
       grid && at
         ? areaCellsFor(ctx.state, actor, action.id, at, {
             ...(resume.also ? { also: resume.also } : {}),
-            grow: areaGrowth(ctx.definition, actor, action.id, resume.payWith),
+            grow: rulesetAreaGrowth(ctx.definition, actor, action.id, resume.payWith),
           })
         : undefined,
       action.innate
@@ -13236,7 +13249,7 @@ function resumeActionFrom(ctx: RulesetCombatContext, resume: RulesetActionResume
       [action.damage.type, ...(action.damage.plus ?? []).map((clause) => clause.type)],
       areaCellsFor(ctx.state, actor, action.id, at, {
         ...(resume.also ? { also: resume.also } : {}),
-        grow: areaGrowth(ctx.definition, actor, action.id, resume.payWith),
+        grow: rulesetAreaGrowth(ctx.definition, actor, action.id, resume.payWith),
       }),
     );
   }
@@ -13246,7 +13259,7 @@ function resumeActionFrom(ctx: RulesetCombatContext, resume: RulesetActionResume
       ctx,
       areaCellsFor(ctx.state, actor, action.id, at, {
         ...(resume.also ? { also: resume.also } : {}),
-        grow: areaGrowth(ctx.definition, actor, action.id, resume.payWith),
+        grow: rulesetAreaGrowth(ctx.definition, actor, action.id, resume.payWith),
       }),
       { entry: action.entry },
       actor.id,

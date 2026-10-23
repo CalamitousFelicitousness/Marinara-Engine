@@ -284,6 +284,16 @@ export type MariChangeExcerpt =
       count: { added: number; edited: number; removed: number };
       /** Slice 87: the added and edited entries with their keys and text, for a lorebook. */
       items?: MariChangeListItem[];
+    }
+  | {
+      field: string;
+      kind: "nested";
+      /** The changed keys inside it, in object order (the card shows the first `MARI_RECEIPT_LIMITS.nestedKeys`). */
+      keys: string[];
+      /** How many of its keys changed; `keys` may show fewer. */
+      count: number;
+      /** Interactive onboarding: the state and question counts, said in words on the card. */
+      onboarding?: { enabled: boolean; personaQuestions: number; characterQuestions: number };
     };
 
 export interface MariChangeListItem {
@@ -679,6 +689,11 @@ export interface MariWorkspaceSkillSummary {
   updatedAt: string;
   size: number;
   filePath: string;
+  /**
+   * `builtin` skills ship with the app and are always on and read-only; `user`
+   * skills live in the user's own skills store and can be edited or deleted.
+   */
+  origin: "builtin" | "user";
 }
 
 export interface MariWorkspaceSkillDetail extends MariWorkspaceSkillSummary {
@@ -819,6 +834,8 @@ export interface MariDbCommandResult {
   };
   journalPath?: string | null;
   error?: string;
+  /** #7999: arguments used differently than sent (a lowered limit), when no app_data call collected them. */
+  notes?: string[];
 }
 
 export interface MariDbPendingApproval {
@@ -970,6 +987,8 @@ export interface MariWorkspaceStatus {
   runtimeSelected: MariRuntime;
   /** The runtime the next run actually uses for this connection; "classic" when "pi" cannot run on it. */
   runtimeActive: MariRuntime;
+  /** Consecutive failed Pi runs in this server session; cancellations do not count. */
+  piConsecutiveFailures?: number;
   /** Plain-words reason when runtimeSelected is not runtimeActive. */
   runtimeNote?: string | null;
   /** #5740: latest-round understood-request record (diagnostic only). */

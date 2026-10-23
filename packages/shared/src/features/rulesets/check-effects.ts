@@ -318,6 +318,9 @@ export function rulesetCheckEffects(
   /** Whether the roller adds their whole proficiency to this check's skill (1.413), for a change
    *  narrowed to such checks: Natural Explorer. */
   trained = false,
+  /** What the save is made against, where the Engine knows (1.364): a modifier narrowed with `against`
+   *  applies outside a fight too when it matches. */
+  against?: RulesetSaveAgainst,
 ): RulesetCheckEffects {
   const found: RulesetCheckEffects = { modifiers: [], advantage: [], disadvantage: [], fails: [] };
   const lean = (side: "advantage" | "disadvantage", from: string) => {
@@ -359,7 +362,7 @@ export function rulesetCheckEffects(
             about(modifier.abilities, ability) &&
             // Only a check made for one of its purposes (1.736): climbing or swimming.
             about(modifier.for, target?.purpose);
-      if (!applies || !rulesetSaveAgainstMatches(modifier.against)) continue;
+      if (!applies || !rulesetSaveAgainstMatches(modifier.against, against)) continue;
       if (modifier.proficient && (skill === undefined || !trained)) continue;
       if (modifier.mode) lean(modifier.mode, source.name);
       if (modifier.flat !== undefined || modifier.dice !== undefined || modifier.add !== undefined) {

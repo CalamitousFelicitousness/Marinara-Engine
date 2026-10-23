@@ -353,8 +353,12 @@ export function createConnectionsStorage(db: DB) {
         maxStateTokens: input.maxStateTokens ?? null,
         decisionTimeoutMs: input.decisionTimeoutMs ?? null,
         audioVoice: input.audioVoice ?? null,
+        audioTimeoutMs: input.audioTimeoutMs ?? null,
         audioSoundEffects: String(input.audioSoundEffects ?? false),
         audioMusic: String(input.audioMusic ?? false),
+        audioMusicEndpoint: input.audioMusicEndpoint ?? null,
+        audioSoundEffectsEndpoint: input.audioSoundEffectsEndpoint ?? null,
+        audioGenerationFormat: input.audioGenerationFormat ?? "binary",
         promptPresetId: input.promptPresetId ?? null,
         maxTokensOverride: input.maxTokensOverride ?? null,
         claudeFastMode: String(input.claudeFastMode ?? false),
@@ -578,12 +582,17 @@ export function createConnectionsStorage(db: DB) {
       if (data.audioVoice !== undefined) {
         updateFields.audioVoice = data.audioVoice;
       }
+      if (data.audioTimeoutMs !== undefined) updateFields.audioTimeoutMs = data.audioTimeoutMs;
       if (data.audioSoundEffects !== undefined) {
         updateFields.audioSoundEffects = String(data.audioSoundEffects);
       }
       if (data.audioMusic !== undefined) {
         updateFields.audioMusic = String(data.audioMusic);
       }
+      if (data.audioMusicEndpoint !== undefined) updateFields.audioMusicEndpoint = data.audioMusicEndpoint;
+      if (data.audioSoundEffectsEndpoint !== undefined)
+        updateFields.audioSoundEffectsEndpoint = data.audioSoundEffectsEndpoint;
+      if (data.audioGenerationFormat !== undefined) updateFields.audioGenerationFormat = data.audioGenerationFormat;
       if (data.promptPresetId !== undefined) {
         updateFields.promptPresetId = data.promptPresetId;
       }
@@ -738,8 +747,12 @@ export function createConnectionsStorage(db: DB) {
         maxStateTokens: source.maxStateTokens,
         decisionTimeoutMs: source.decisionTimeoutMs,
         audioVoice: source.audioVoice,
+        audioTimeoutMs: source.audioTimeoutMs,
         audioSoundEffects: source.audioSoundEffects,
         audioMusic: source.audioMusic,
+        audioMusicEndpoint: source.audioMusicEndpoint,
+        audioSoundEffectsEndpoint: source.audioSoundEffectsEndpoint,
+        audioGenerationFormat: source.audioGenerationFormat,
         promptPresetId: source.promptPresetId,
         maxTokensOverride: source.maxTokensOverride,
         maxParallelJobs: source.maxParallelJobs,

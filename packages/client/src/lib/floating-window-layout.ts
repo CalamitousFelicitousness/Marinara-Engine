@@ -10,6 +10,8 @@ import { DRAWER_WINDOW_PREFIX } from "@marinara-engine/shared";
 import { BUBBLE_SNAP_GAP_PX, snapBubble, type BubbleRect, type SnapGuide } from "./window-bubble-snap";
 export { getDrawerWindowId } from "@marinara-engine/shared";
 
+export type ButtonLayout = "horizontal" | "vertical";
+
 export const FLOATING_WINDOW_LAYOUT_VERSION = 1 as const;
 /** Gap kept between a window and the viewport edges. */
 export const WINDOW_MARGIN_PX = 8;
@@ -79,10 +81,8 @@ export function clampWindowBubble(
   size: BubbleSize = WINDOW_BUBBLE_SIZE_PX,
 ): WindowPoint {
   const { width, height } = readBubbleSize(size);
-  return {
-    x: clamp(finiteOr(point.x, bounds.left), bounds.left, bounds.right - width),
-    y: clamp(finiteOr(point.y, bounds.top), bounds.top, bounds.bottom - height),
-  };
+  const x = clamp(finiteOr(point.x, bounds.left), bounds.left, bounds.right - width);
+  return { x, y: clamp(finiteOr(point.y, bounds.top), bounds.top, readBottomLimit(bounds, x, x + width) - height) };
 }
 
 /**
@@ -125,7 +125,7 @@ function findFreeBubblePoint(
         candidate.x >= bounds.left &&
         candidate.x + width <= bounds.right &&
         candidate.y >= bounds.top &&
-        candidate.y + height <= bounds.bottom &&
+        candidate.y + height <= readBottomLimit(bounds, candidate.x, candidate.x + width) &&
         free(candidate),
     );
     if (available) return available;
@@ -155,6 +155,7 @@ export function dropWindowBubble(
 /** Temporary visible positions: a closing sidebar restores the saved points, even for locked buttons. */
 export function placeWindowBubbles(
   bubbles: ReadonlyMap<string, { point: WindowPoint; bounds: WindowBounds; size: BubbleSize }>,
+  direction?: ButtonLayout,
 ): Map<string, WindowPoint> {
   const placed = new Map<string, WindowPoint>();
   const occupied: BubbleRect[] = [];
@@ -167,6 +168,37 @@ export function placeWindowBubbles(
       movable: bubble.point.automatic || point.x !== bubble.point.x || point.y !== bubble.point.y,
     };
   });
+  if (direction) {
+    // Stable rows/columns follow the available chat area; free-position layouts remain untouched.
+    entries.sort((a, b) => a.id.localeCompare(b.id));
+    let across = 0;
+    let down = 0;
+    let lineSize = 0;
+    for (const { id, bounds, size } of entries) {
+      const { width, height } = readBubbleSize(size);
+      if (direction === "horizontal" && across > 0 && across + width > bounds.right - bounds.left) {
+        across = 0;
+        down += lineSize + BUBBLE_SNAP_GAP_PX;
+        lineSize = 0;
+      } else if (direction === "vertical" && down > 0 && down + height > bounds.bottom - bounds.top) {
+        down = 0;
+        across += lineSize + BUBBLE_SNAP_GAP_PX;
+        lineSize = 0;
+      }
+      const point = clampWindowBubble({ x: bounds.right - width - across, y: bounds.top + down }, bounds, size);
+      const next = findFreeBubblePoint(point, occupied, bounds, size);
+      placed.set(id, next);
+      occupied.push({ ...next, width, height });
+      if (direction === "horizontal") {
+        across += width + BUBBLE_SNAP_GAP_PX;
+        lineSize = Math.max(lineSize, height);
+      } else {
+        down += height + BUBBLE_SNAP_GAP_PX;
+        lineSize = Math.max(lineSize, width);
+      }
+    }
+    return placed;
+  }
   // Keep buttons that still fit exactly where they were. Squeezed buttons find nearby free space.
   entries.sort((a, b) => Number(a.movable) - Number(b.movable) || a.id.localeCompare(b.id));
   for (const { id, clamped, bounds, size, movable } of entries) {
@@ -221,6 +253,8 @@ export interface WindowLayoutSnapshot {
   bubbles?: Record<FloatingWindowId, WindowPoint>;
   /** Phone tools menu preferences; old individual bubble positions remain available. */
   phoneMenu?: PhoneMenuLayout;
+  /** Desktop button arrangement; absent keeps the user's free positions. */
+  buttonLayout?: ButtonLayout;
 }
 
 export interface PhoneMenuLayout {
@@ -247,6 +281,17 @@ export interface WindowBounds {
   top: number;
   right: number;
   bottom: number;
+  /**
+   * On a computer, `bottom` is the top of the message box. A window or button wholly left of `left` or right
+   * of `right` (the box's sides) may reach down to `bottom` here instead, beside the box (#7703).
+   */
+  besideComposer?: { left: number; right: number; bottom: number };
+}
+
+/** The lowest a window or button spanning `left` to `right` may reach. */
+function readBottomLimit(bounds: WindowBounds, left: number, right: number) {
+  const beside = bounds.besideComposer;
+  return beside && (right <= beside.left || left >= beside.right) ? beside.bottom : bounds.bottom;
 }
 
 export interface WindowSizeLimits {
@@ -279,15 +324,12 @@ export function clampWindowGeometry(
   limits: WindowSizeLimits,
 ): WindowGeometry {
   const availableWidth = Math.max(0, bounds.right - bounds.left);
-  const availableHeight = Math.max(0, bounds.bottom - bounds.top);
   const width = Math.max(limits.minWidth, Math.min(finiteOr(geometry.width, limits.minWidth), availableWidth));
+  const x = clamp(finiteOr(geometry.x, bounds.left), bounds.left, bounds.right - width);
+  const bottom = readBottomLimit(bounds, x, x + width);
+  const availableHeight = Math.max(0, bottom - bounds.top);
   const height = Math.max(limits.minHeight, Math.min(finiteOr(geometry.height, limits.minHeight), availableHeight));
-  return {
-    x: clamp(finiteOr(geometry.x, bounds.left), bounds.left, bounds.right - width),
-    y: clamp(finiteOr(geometry.y, bounds.top), bounds.top, bounds.bottom - height),
-    width,
-    height,
-  };
+  return { x, y: clamp(finiteOr(geometry.y, bounds.top), bounds.top, bottom - height), width, height };
 }
 
 export function moveWindowGeometry(
@@ -312,13 +354,20 @@ export function resizeWindowGeometry(
   const from = clampWindowGeometry(start, bounds, limits);
   const right = from.x + from.width;
   const bottom = from.y + from.height;
+  // Reaching down beside the message box, a side edge stops at the box instead of covering it.
+  const beside = bottom > bounds.bottom ? bounds.besideComposer : undefined;
   let { x, y, width, height } = from;
-  if (edge.includes("e")) width = clamp(from.width + dx, limits.minWidth, bounds.right - from.x);
+  if (edge.includes("e")) {
+    const limit = beside && right <= beside.left ? beside.left : bounds.right;
+    width = clamp(from.width + dx, limits.minWidth, limit - from.x);
+  }
   if (edge.includes("w")) {
-    x = clamp(from.x + dx, bounds.left, right - limits.minWidth);
+    x = clamp(from.x + dx, beside && from.x >= beside.right ? beside.right : bounds.left, right - limits.minWidth);
     width = right - x;
   }
-  if (edge.includes("s")) height = clamp(from.height + dy, limits.minHeight, bounds.bottom - from.y);
+  if (edge.includes("s")) {
+    height = clamp(from.height + dy, limits.minHeight, readBottomLimit(bounds, x, x + width) - from.y);
+  }
   if (edge.includes("n")) {
     y = clamp(from.y + dy, bounds.top, bottom - limits.minHeight);
     height = bottom - y;
@@ -373,6 +422,7 @@ export function parseWindowLayoutSnapshot(raw: unknown): WindowLayoutSnapshot {
     phoneBubbles?: unknown;
     bubbles?: unknown;
     phoneMenu?: unknown;
+    buttonLayout?: unknown;
   };
   if (source.version !== FLOATING_WINDOW_LAYOUT_VERSION) return empty;
   if (!source.windows || typeof source.windows !== "object" || Array.isArray(source.windows)) return empty;
@@ -395,6 +445,7 @@ export function parseWindowLayoutSnapshot(raw: unknown): WindowLayoutSnapshot {
     readStoredPoints(source.phoneBubbles),
     readStoredPoints(source.bubbles),
     readPhoneMenuLayout(source.phoneMenu),
+    source.buttonLayout === "horizontal" || source.buttonLayout === "vertical" ? source.buttonLayout : undefined,
   );
 }
 
@@ -418,6 +469,7 @@ export function toWindowLayoutSnapshot(
   phoneBubbles: Record<FloatingWindowId, WindowPoint> = {},
   bubbles: Record<FloatingWindowId, WindowPoint> = {},
   phoneMenu?: PhoneMenuLayout,
+  buttonLayout?: ButtonLayout,
 ): WindowLayoutSnapshot {
   const snapshot: WindowLayoutSnapshot = { version: FLOATING_WINDOW_LAYOUT_VERSION, windows };
   if (detached.length > 0) snapshot.detached = detached;
@@ -425,6 +477,7 @@ export function toWindowLayoutSnapshot(
   if (Object.keys(bubbles).length > 0) snapshot.bubbles = bubbles;
   const menu = readPhoneMenuLayout(phoneMenu);
   if (menu) snapshot.phoneMenu = menu;
+  if (buttonLayout) snapshot.buttonLayout = buttonLayout;
   return snapshot;
 }
 
@@ -435,7 +488,8 @@ export function isEmptyWindowLayoutSnapshot(snapshot: WindowLayoutSnapshot): boo
     !snapshot.detached?.length &&
     Object.keys(snapshot.phoneBubbles ?? {}).length === 0 &&
     Object.keys(snapshot.bubbles ?? {}).length === 0 &&
-    !snapshot.phoneMenu
+    !snapshot.phoneMenu &&
+    !snapshot.buttonLayout
   );
 }
 

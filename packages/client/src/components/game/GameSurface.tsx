@@ -13,6 +13,8 @@ import {
   type WorldElementSet,
   gameInventoryBags,
   gameInventoryBagKey,
+  gameInventoryBearerStatus,
+  gameInventoryOverLimit,
   gameInventoryFoldStandIn,
   gameInventoryFightEffects,
   gameFightOffers,
@@ -31,6 +33,7 @@ import {
   type RulesetRestRecovery,
   type RulesetUseRecover,
   type CreaturePack,
+  rulesetCardHolder,
   rulesetCardItems,
   rulesetReadsItems,
   rulesetCombatStyle,
@@ -10954,9 +10957,25 @@ function GameSurfaceComponent({
             inventoryPlayerName,
           )(cardTitle)
         : undefined;
+    // Whether they carry more than they should, for a chip on the sheet: their bag against what they
+    // can carry, as the inventory reads it.
+    const cardNames = cards.flatMap((card) => (typeof card.name === "string" && card.name.trim() ? [card.name.trim()] : []));
+    const bearer =
+      inventoryItemBook?.bearer && gameRuleset.definition.items?.carry
+        ? gameInventoryBearerStatus(
+            inventoryItems,
+            rulesetCardHolder(cardNames, inventoryPlayerName)(cardTitle) ?? undefined,
+            inventoryItemBook,
+          )
+        : undefined;
+    const carrying =
+      bearer && bearer.encumberedAbove !== undefined
+        ? { encumbered: bearer.encumbered, over: gameInventoryOverLimit(bearer) }
+        : undefined;
     return {
       status: "ok",
       definition: gameRuleset.definition,
+      ...(carrying ? { carrying } : {}),
       // What the pin turned on: the names the sheet heads itself with, and the record the catalog
       // picker leaves hidden entries out by.
       layers: gameRuleset.layers,

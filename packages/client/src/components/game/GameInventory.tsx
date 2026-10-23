@@ -33,6 +33,8 @@ import {
   rulesetStartingGearKind,
   rulesetStartingGearTakenBy,
   gameInventoryBearerStatus,
+  gameInventoryOverLimit,
+  gameInventoryWeightText,
   gameInventoryItemId,
   gameInventoryStackLabel,
   rulesetMoreUsesOf,
@@ -709,7 +711,7 @@ export function GameInventory({
 
           {/* What the bag in view carries and wears against what its bearer can; in the shared view with
               several bags, each bag's load. */}
-          {bagStatus && <BearerStatusLine status={bagStatus} bindingLabel={bindingLabel} />}
+          {bagStatus && <BearerStatusLine status={bagStatus} bindingLabel={bindingLabel} unit={itemBook?.weightUnit} />}
           {!bagStatus && activeView.kind === "all" && showBags && itemBook?.bearer && (
             <div className="flex flex-wrap gap-1 border-b border-white/8 px-3 py-1.5">
               {bags.map((bag) => {
@@ -726,7 +728,7 @@ export function GameInventory({
                     {localizeUi("ui.game.gameinventory.bagLoad", {
                       who: bag.name,
                       load: roundLoad(status.load),
-                      max: roundLoad(status.encumberedAbove),
+                      max: gameInventoryWeightText(status.encumberedAbove, itemBook?.weightUnit),
                     })}
                   </span>
                 );
@@ -1343,7 +1345,16 @@ function roundLoad(value: number): string {
 }
 
 /** One bag's load against what its bearer carries, its bound items and the slots its worn items take. */
-function BearerStatusLine({ status, bindingLabel }: { status: GameInventoryBearerStatus; bindingLabel?: string }) {
+function BearerStatusLine({
+  status,
+  bindingLabel,
+  unit,
+}: {
+  status: GameInventoryBearerStatus;
+  bindingLabel?: string;
+  /** What weights are counted in (1.776). */
+  unit?: string;
+}) {
   const { t: localizeUi } = useUiTranslation();
   const chip = "rounded bg-white/8 px-1.5 py-0.5 text-[0.6rem] tabular-nums text-white/70";
   return (
@@ -1353,14 +1364,16 @@ function BearerStatusLine({ status, bindingLabel }: { status: GameInventoryBeare
           {status.limit !== undefined
             ? localizeUi("ui.game.gameinventory.loadWithLimit", {
                 load: roundLoad(status.load),
-                max: roundLoad(status.encumberedAbove),
-                limit: roundLoad(status.limit),
+                max: gameInventoryWeightText(status.encumberedAbove, unit),
+                limit: gameInventoryWeightText(status.limit, unit),
               })
             : localizeUi("ui.game.gameinventory.load", {
                 load: roundLoad(status.load),
-                max: roundLoad(status.encumberedAbove),
+                max: gameInventoryWeightText(status.encumberedAbove, unit),
               })}
           {status.encumbered && ` · ${localizeUi("ui.game.gameinventory.encumbered")}`}
+          {/* Past what they can carry at all (Free edit's heavy starting gear). */}
+          {gameInventoryOverLimit(status) && ` · ${localizeUi("ui.game.gameinventory.overLimit")}`}
         </span>
       )}
       {status.bindingMax !== undefined && (

@@ -12500,6 +12500,10 @@ export function getCapabilityPackageInstallIssue(
   if (!declaresApi(775) && shownCombat?.styles !== undefined) {
     return "A ruleset that names the combat styles its games may play requires schemaVersion 2 and capabilityApi 1.775 or newer";
   }
+  // What a weight is counted in, 1.776.
+  if (!declaresApi(776) && plainRecord(plainRecord(plainRecord(ruleset)?.items)?.carry)?.unit !== undefined) {
+    return "A ruleset that names what its weights are counted in (items.carry.unit) requires schemaVersion 2 and capabilityApi 1.776 or newer";
+  }
   // A ruleset over 256 KB or a catalog file over 1 MB, the ceilings before 1.340.
   if (
     !declaresApi(340) &&

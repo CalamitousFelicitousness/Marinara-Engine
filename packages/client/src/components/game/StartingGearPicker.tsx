@@ -10,6 +10,7 @@ import { useTranslation as useUiTranslation } from "react-i18next";
 import {
   gameInventoryBagKey,
   gameInventoryBearerStatus,
+  gameInventoryWeightText,
   resolveRulesetStartingGear,
   rulesetStartingGearCoinCount,
   rulesetStartingGearCoins,
@@ -160,6 +161,14 @@ export function StartingGearPicker({
         )
       : 0;
   const room = status.limit !== undefined ? status.limit - status.load : undefined;
+  // In what the ruleset counts weights in (1.776).
+  const weightText = (value: number) => gameInventoryWeightText(value, book.weightUnit);
+  // What the items of some lines weigh, a choice's option or a kit's own: nothing where weight means
+  // nothing here or none of them weighs anything.
+  const linesWeight = (lines: readonly RulesetStartingGearLine[]) =>
+    book.bearer
+      ? lines.reduce((total, line) => total + (line.item ? (book.itemOf(line.item)?.weight ?? 0) * line.count : 0), 0)
+      : 0;
   const tooHeavy = room !== undefined && weight > room + 1e-9;
   // With Free edit on, gear past what the bearer can carry still goes in, and they are over their limit.
   const canTake = resolved?.ok === true && (!tooHeavy || freeEdit) && (!replaces || again) && !pending;
@@ -382,6 +391,11 @@ export function StartingGearPicker({
                               className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--primary)]"
                             />
                             <span className="min-w-0 flex-1">{option.label}</span>
+                            {linesWeight(option.lines) > 0 && (
+                              <span className="shrink-0 tabular-nums text-[var(--muted-foreground)]">
+                                {weightText(linesWeight(option.lines))}
+                              </span>
+                            )}
                           </label>
                           {choices[choiceIndex] === optionIndex && (
                             <ul className="ml-6 space-y-1">
@@ -402,6 +416,11 @@ export function StartingGearPicker({
                   {t("game.ruleset.startingGear.dropped", { items: resolved.dropped.join(", ") })}
                 </p>
               )}
+              {resolved?.ok === true && room === undefined && book.bearer && weight > 0 && (
+                <p className="text-[0.6875rem] text-[var(--muted-foreground)]">
+                  {t("game.ruleset.startingGear.weighs", { weight: weightText(weight) })}
+                </p>
+              )}
               {room !== undefined && resolved?.ok === true && (
                 <p
                   className={`text-[0.6875rem] ${tooHeavy ? "text-[var(--destructive)]" : "text-[var(--muted-foreground)]"}`}
@@ -414,8 +433,8 @@ export function StartingGearPicker({
                       : "game.ruleset.startingGear.weight",
                     {
                       who,
-                      weight: Math.round(weight * 100) / 100,
-                      room: Math.max(0, Math.round(room * 100) / 100),
+                      weight: weightText(weight),
+                      room: weightText(Math.max(0, room)),
                     },
                   )}
                 </p>

@@ -10965,9 +10965,15 @@ const itemsSchema = z
      *  class, race, and level requirements on the use of magic items". */
     needsWaivedBy: (rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>).optional(),
     /** Which stat is an item's weight, and what a character carries before they are encumbered and
-     *  at most, read off their sheet. Without it weight means nothing and nobody is encumbered. */
+     *  at most, read off their sheet. Without it weight means nothing and nobody is encumbered. `unit`
+     *  is what a weight is counted in ("lb"), said after it wherever one is shown (Capability API 1.776). */
     carry: z
-      .object({ stat: sheetId, encumberedAbove: rulesetValueRefSchema, limit: rulesetValueRefSchema.optional() })
+      .object({
+        stat: sheetId,
+        encumberedAbove: rulesetValueRefSchema,
+        limit: rulesetValueRefSchema.optional(),
+        unit: promptSafeText(12).optional(),
+      })
       .strict()
       .optional(),
     currencies: z.array(currencyFamilySchema).max(6).optional(),

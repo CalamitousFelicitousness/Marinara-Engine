@@ -1342,6 +1342,7 @@ export function rulesetItemBook(
     ...(definition.items?.carry || definition.items?.binding
       ? { bearer: rulesetItemBearers(definition, options.sheets) }
       : {}),
+    ...(definition.items?.carry?.unit ? { weightUnit: definition.items.carry.unit } : {}),
   };
 }
 

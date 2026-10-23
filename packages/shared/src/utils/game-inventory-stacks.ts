@@ -221,6 +221,8 @@ export interface GameInventoryItemRules {
   slots?: ReadonlyArray<{ id: string; label: string; count: number }>;
   /** What one character can carry and bind (`holder` as a stack has it, absent for the player). */
   bearer?(holder: string | undefined): GameInventoryBearer;
+  /** What a weight is counted in ("lb"), said after one wherever it is shown (1.776). */
+  weightUnit?: string;
   /** Whose change this is. The player's own leave a bound cursed item bound and where it is; the
    *  Game Master can end a curse in the story. */
   actor?: "player" | "game-master";
@@ -1417,6 +1419,18 @@ export function gameInventoryBearerStatus(
     ...(bearer.bindingMax !== undefined ? { bindingMax: bearer.bindingMax } : {}),
     slots: (rules?.slots ?? []).map((slot) => ({ ...slot, used: used[slot.id] ?? 0 })),
   };
+}
+
+/** Whether a bearer carries more than the most they can (only Free edit's starting gear puts them there). */
+export function gameInventoryOverLimit(status: Pick<GameInventoryBearerStatus, "load" | "limit">): boolean {
+  return status.limit !== undefined && status.load > status.limit + LOAD_SLACK;
+}
+
+/** A weight as it is shown: at most two decimals (a quarter of a pound), and what the ruleset counts
+ *  weights in after it where it says (1.776). */
+export function gameInventoryWeightText(value: number, unit?: string): string {
+  const shown = String(Math.round(value * 100) / 100);
+  return unit ? `${shown} ${unit}` : shown;
 }
 
 /** Putting an item on or taking it off, binding or unbinding it. */

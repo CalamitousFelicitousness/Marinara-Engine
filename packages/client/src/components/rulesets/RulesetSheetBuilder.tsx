@@ -286,13 +286,16 @@ export function RulesetSheetBuilder({
     const nameColumn =
       definition.gm.sheetSummary.lists.find((one) => one.list === list.id)?.nameColumn ??
       list.columns.find((column) => column.type === "text")?.id;
-    return list.columns
-      .filter((column) => (column.type === "text" || column.type === "longtext") && column.id !== nameColumn)
-      .flatMap((column) => {
-        const value = first.values[column.id];
-        return typeof value === "string" && value.trim() ? [value.trim()] : [];
-      })
-      .join(" · ");
+    return (
+      list.columns
+        // Short words only: a feature's prose (a race's Speed row, first of every race) is its own Info.
+        .filter((column) => column.type === "text" && column.id !== nameColumn)
+        .flatMap((column) => {
+          const value = first.values[column.id];
+          return typeof value === "string" && value.trim() ? [value.trim()] : [];
+        })
+        .join(" · ")
+    );
   };
   const [rolling, setRolling] = useState(false);
   const [rollFailed, setRollFailed] = useState(false);

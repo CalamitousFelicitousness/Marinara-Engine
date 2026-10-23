@@ -36,6 +36,7 @@ import {
   type RulesetSheetItem,
   rulesetItemAccess,
   workOutRulesetListRow,
+  listRulesetLivePools,
 } from "@marinara-engine/shared";
 import { RulesetCatalogPicker } from "./RulesetCatalogPicker";
 import { RulesetSheetBuilder } from "./RulesetSheetBuilder";
@@ -298,6 +299,11 @@ export function RulesetSheetEditor({
   const evaluated = useMemo(
     () => evaluateRulesetSheetLive(definition, build, live, items),
     [definition, build, live, items],
+  );
+  // The sheet's pools at their most, shown where no game's live state is.
+  const restingPools = useMemo(
+    () => (live === undefined ? listRulesetLivePools(definition, build) : []),
+    [definition, build, live],
   );
   // Which catalog's picker is open. A ruleset that ships none, and a listing that carries none
   // (an older Engine, a stubbed response), simply never offers the button.
@@ -644,6 +650,28 @@ export function RulesetSheetEditor({
             {t("ui.rulesets.sheet.totalOver", over)}
           </p>
         ))}
+
+        {/* What the sheet has to spend (spell slots, ki), at their most: outside a game nothing is
+            spent yet, and a game's own sheet shows where each stands. */}
+        {live === undefined && restingPools.length > 0 && (
+          <div className="space-y-1">
+            <h4 className="text-xs font-semibold text-[var(--foreground)]">{t("ui.rulesets.sheet.pools")}</h4>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {restingPools.map((pool) => (
+                <div key={pool.key} className="flex min-w-0 flex-col gap-1">
+                  <span className={labelClass}>{pool.label}</span>
+                  <span className="rounded-lg border border-dashed border-[var(--border)] px-2 py-1 text-center text-xs font-semibold tabular-nums text-[var(--foreground)]">
+                    {pool.start === "empty" ? t("ui.rulesets.sheet.poolStartsEmpty", { max: pool.max }) : pool.max}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {/* Armor and weapons are a game's items: outside one, armor class counts none worn. */}
+        {items === undefined && (definition.items?.startingGear?.length ?? 0) > 0 && (
+          <p className="text-xs text-[var(--muted-foreground)]">{t("ui.rulesets.sheet.gearInGame")}</p>
+        )}
 
         {itemAccess.length > 0 && (
           <p className="text-xs text-[var(--muted-foreground)]">

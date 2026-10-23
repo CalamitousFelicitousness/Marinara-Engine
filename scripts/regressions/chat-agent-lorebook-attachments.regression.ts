@@ -15,6 +15,7 @@ const { getDB, closeDB } = await import("../../packages/server/src/db/connection
 const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
 const { createAgentsStorage } = await import("../../packages/server/src/services/storage/agents.storage.js");
 const { createConnectionsStorage } = await import("../../packages/server/src/services/storage/connections.storage.js");
+const { createChatPresetsStorage } = await import("../../packages/server/src/services/storage/chat-presets.storage.js");
 const { createLorebooksStorage } = await import("../../packages/server/src/services/storage/lorebooks.storage.js");
 const { chatsRoutes } = await import("../../packages/server/src/routes/chats.routes.js");
 const { generateRoutes } = await import("../../packages/server/src/routes/generate.routes.js");
@@ -142,6 +143,39 @@ try {
   assert.equal(
     (await app.inject({ method: "GET", url: `/api/chats/${otherChat.id}` })).json().metadata.agentLorebookAttachments,
     undefined,
+  );
+  const profiles = createChatPresetsStorage(db);
+  const profileTarget = await chats.create({ name: "Profile target", mode: "roleplay", characterIds: [] });
+  const freshProfileTarget = await chats.create({ name: "Fresh profile target", mode: "roleplay", characterIds: [] });
+  assert(profileTarget && freshProfileTarget);
+  const targetAttachments = { [types[1]!]: { enabled: true, lorebookId: secondBook.id } };
+  await chats.patchMetadata(profileTarget.id, { agentLorebookAttachments: targetAttachments });
+  const emptyProfile = await profiles.create({ name: "Empty profile", mode: "roleplay", settings: {} });
+  assert(emptyProfile);
+  await profiles.applyToChat(emptyProfile.id, profileTarget.id);
+  assert.deepEqual(
+    (await app.inject({ method: "GET", url: `/api/chats/${profileTarget.id}` })).json().metadata
+      .agentLorebookAttachments,
+    targetAttachments,
+    "applying a profile preserves the target chat's own agent attachments",
+  );
+  const capturedProfile = await profiles.create({
+    name: "Captured reference profile",
+    mode: "roleplay",
+    settings: { metadata: loaded.metadata },
+  });
+  assert(capturedProfile);
+  assert.equal(
+    capturedProfile.settings.metadata?.agentLorebookAttachments,
+    undefined,
+    "profile capture excludes the source chat's agent attachments",
+  );
+  await profiles.applyToChat(capturedProfile.id, freshProfileTarget.id);
+  assert.equal(
+    (await app.inject({ method: "GET", url: `/api/chats/${freshProfileTarget.id}` })).json().metadata
+      .agentLorebookAttachments,
+    undefined,
+    "a captured profile cannot copy another chat's agent attachments",
   );
   for (const invalid of [
     [],

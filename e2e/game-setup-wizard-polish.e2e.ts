@@ -14,8 +14,11 @@ const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.u
 const LAST_GOALS = "Break the Ashen Choir's hold on Varrow Hold";
 const LAST_PREFERENCES = "slow-burn mystery";
 
-/** A fresh new-game setup wizard, on its own, opened after a game that kept its goals and preferences. */
-async function mountWizard(page: Page, testInfo: TestInfo): Promise<Locator> {
+/**
+ * A fresh new-game setup wizard, on its own, opened after a game that kept its goals and preferences.
+ * Its (empty) lorebook list answers once `lorebooksAnswered` settles.
+ */
+async function mountWizard(page: Page, testInfo: TestInfo, lorebooksAnswered: Promise<void>): Promise<Locator> {
   await page.route("**/api/app-settings/ui", (route) => route.fulfill({ json: { value: "" } }));
   await page.route("**/api/capability-packages/installed", (route) => route.fulfill({ json: [] }));
   await page.route("**/api/capability-packages/agents", (route) => route.fulfill({ json: [] }));
@@ -26,7 +29,10 @@ async function mountWizard(page: Page, testInfo: TestInfo): Promise<Locator> {
       ],
     }),
   );
-  await page.route("**/api/lorebooks", (route) => route.fulfill({ json: [] }));
+  await page.route("**/api/lorebooks", async (route) => {
+    await lorebooksAnswered;
+    await route.fulfill({ json: [] });
+  });
   await seedUIState(page, {
     hasCompletedOnboarding: true,
     sidebarOpen: false,
@@ -89,7 +95,8 @@ async function stepTo(wizard: Locator, title: string) {
 }
 
 test("goals and preferences kept from the last game say so and can be cleared", async ({ page }, testInfo) => {
-  const wizard = await mountWizard(page, testInfo);
+  let answerLorebooks = () => {};
+  const wizard = await mountWizard(page, testInfo, new Promise((resolve) => (answerLorebooks = resolve)));
   await stepTo(wizard, "Goals");
   const goals = wizard.getByPlaceholder("What do you want to achieve?");
   const preferences = wizard.locator("textarea").nth(1);
@@ -109,8 +116,12 @@ test("goals and preferences kept from the last game say so and can be cleared", 
   await preferences.fill(`${LAST_PREFERENCES}, no romance`);
   await expect(notes).toHaveCount(0);
 
-  // With no lorebooks at all, the list says so instead of "All lorebooks already added".
+  // While the list is still loading it claims nothing; with no lorebooks at all it says so, instead of
+  // "All lorebooks already added".
   await stepTo(wizard, "Lorebooks");
+  await expect(wizard.getByPlaceholder("Search lorebooks…")).toBeVisible();
+  await expect(wizard.getByText("No lorebooks yet", { exact: true })).toHaveCount(0);
+  answerLorebooks();
   await expect(wizard.getByText("No lorebooks yet", { exact: true })).toBeVisible();
   await expect(wizard.getByText("All lorebooks already added.", { exact: true })).toHaveCount(0);
 });

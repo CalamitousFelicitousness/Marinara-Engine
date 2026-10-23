@@ -57,6 +57,11 @@ function manualChunks(id: string) {
   // The ruleset format itself grows with every Capability API minor, so it is its own chunk rather
   // than weight on the world's.
   if (/\/shared\/(?:dist|src)\/schemas\/ruleset\.schema\.(?:js|ts)$/u.test(id)) return "ruleset-schema";
+  // So are a ruleset fight's rules (the encounter, its options, the board and who sees whom), which grow
+  // with every combat key a ruleset can declare. They share the item book's chunk, since each imports
+  // the other and two chunks would load in a cycle.
+  if (/\/shared\/(?:dist|src)\/features\/ruleset-combat\/(?!resolve\.)[^/]+\.(?:js|ts)$/u.test(id))
+    return "ruleset-items";
   // So is the world a game is set in (its kit, places, people, history and story), which grows with
   // every part of worldgen, rather than weight on the game tag parser's chunk.
   if (/\/shared\/(?:dist|src)\/features\/world\//u.test(id)) return "game-world";

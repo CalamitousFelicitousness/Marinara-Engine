@@ -5101,6 +5101,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             gameDiceToolAutoAttached && nativeToolsAvailableForTurn ? GAME_MODE_AUTO_ATTACH_TOOL_NAMES : [],
         });
 
+        let addressMode: "party" | "gm" | undefined;
         if (chatMode === "game") {
           // Resolve once so the cached reference and per-turn guidance use the same ruleset.
           // `loadRulesetRegistry` never throws: a failed read returns an empty registry, and a
@@ -5262,7 +5263,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           // prompt block is only sent when actually relevant.
           const latestUserMsg = [...finalMessages].reverse().find((m) => m.role === "user");
           const latestUserContent = latestUserMsg?.content.trimStart() ?? "";
-          const addressMode = latestUserContent.startsWith("[To the party]")
+          addressMode = latestUserContent.startsWith("[To the party]")
             ? "party"
             : latestUserContent.startsWith("[To the GM]")
               ? "gm"
@@ -9331,7 +9332,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             contentReplaced = true;
           }
           // A Game Master (not the player's own impersonated line) that plans on the page instead ("Opening scene: ... / Plan: ...") keeps it out of the scene.
-          if (chatMode === "game" && !input.impersonate) {
+          if (chatMode === "game" && !input.impersonate && addressMode !== "gm") {
             const writtenPlan = extractLeadingGmPlanning(fullResponse);
             if (writtenPlan.planning) {
               fullThinking = fullThinking ? `${fullThinking}\n\n${writtenPlan.planning}` : writtenPlan.planning;
@@ -9843,10 +9844,12 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 const thinking = extractLeadingThinkingBlocks(narration, customThinkingTags);
                 narration = thinking.content;
                 if (thinking.thinking) fullThinking = [fullThinking, thinking.thinking].filter(Boolean).join("\n\n");
-                const writtenPlan = extractLeadingGmPlanning(narration);
-                narration = writtenPlan.content;
-                if (writtenPlan.planning)
-                  fullThinking = [fullThinking, writtenPlan.planning].filter(Boolean).join("\n\n");
+                if (addressMode !== "gm") {
+                  const writtenPlan = extractLeadingGmPlanning(narration);
+                  narration = writtenPlan.content;
+                  if (writtenPlan.planning)
+                    fullThinking = [fullThinking, writtenPlan.planning].filter(Boolean).join("\n\n");
+                }
               } catch (err) {
                 if (generationSignal.aborted) return null;
                 geminiResponseParts = null;

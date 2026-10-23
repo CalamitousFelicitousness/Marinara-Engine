@@ -51,7 +51,13 @@ try {
     apiKey: "fixture",
   });
   assert(connection);
-  const run = async (label: string, replies: string[], mode: "game" | "roleplay" = "game", impersonate = false) => {
+  const run = async (
+    label: string,
+    replies: string[],
+    mode: "game" | "roleplay" = "game",
+    impersonate = false,
+    userMessage = "Continue the scene.",
+  ) => {
     outputs = replies;
     calls = 0;
     const chat = await chats.create({ name: label, mode, characterIds: [], connectionId: connection.id });
@@ -60,7 +66,7 @@ try {
     const response = await app.inject({
       method: "POST",
       url: "/api/generate/",
-      payload: { chatId: chat.id, userMessage: "Continue the scene.", impersonate },
+      payload: { chatId: chat.id, userMessage, impersonate },
     });
     assert.equal(response.statusCode, 200, response.body);
     assert.equal(calls, replies.length, `${label}: ${response.body}`);
@@ -144,6 +150,25 @@ try {
       const result = await run("non-GM", [text], mode, impersonate);
       assert.equal(result.saved?.content, text);
       assert.equal(result.finalized, text);
+    });
+  for (const [name, replies, expected] of [
+    ["ordinary", ["Plan: Take the north road."], "Plan: Take the north road."],
+    ["tagged", ["<think>Private preparation.</think>Plan: Take the north road."], "Plan: Take the north road."],
+    [
+      "post-roll",
+      ["The die rolls. [dice: 1d1]", "<think>Private preparation.</think>Plan: Take the north road."],
+      "Plan: Take the north road.\n[dice: 1d1 = 1 (1)]",
+    ],
+  ] as const)
+    await test(`explicit GM-directed ${name} answer remains visible while tagged thinking stays private`, async () => {
+      const result = await run("GM-directed", [...replies], "game", false, "[To the GM] What is your plan?");
+      assert.equal(result.saved?.content, expected);
+      assert.equal(result.finalized, expected);
+      assert(!result.events.some((event) => event.type === "error"));
+      if (name !== "ordinary") {
+        const extra = typeof result.saved?.extra === "string" ? JSON.parse(result.saved.extra) : result.saved?.extra;
+        assert.match(extra.thinking, /Private preparation/);
+      }
     });
   if (failures.length) throw new AggregateError(failures, "Final Game planning controls failed");
 } finally {

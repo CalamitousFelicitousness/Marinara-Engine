@@ -3723,6 +3723,11 @@ body {
   background: var(--marinara-app-background-paint);
 }
 
+/* Lazy/data loaders precede the editor shell. Avoid painting translucent custom editor surfaces twice. */
+.mari-detail-editor-surface:not(:has(> .mari-editor-shell)) {
+  background: var(--marinara-editor-bg);
+}
+
 .mari-home-starfield {
   --mari-home-star-core: color-mix(in srgb, var(--foreground) 70%, var(--marinara-app-accent-solid) 30%);
   --mari-home-star-glow: color-mix(in srgb, var(--marinara-app-accent-solid) 48%, transparent);

@@ -1068,6 +1068,50 @@ try {
         `${health} health: ${JSON.stringify(turn)}`,
       );
     }
+    // Nearly dead and standing in the knight's aura, whose next start-of-turn tick would finish it: it
+    // walks out and shoots from the edge rather than staying to claw and die (playtest 2026-10-23: two
+    // cultists that stayed in Spirit Guardians). With health to spare it may stay.
+    {
+      const stays = (health: number) => {
+        const { encounter, state } = wide(
+          { cultist: { x: 3, y: 3 }, knight: { x: 2, y: 3 } },
+          {
+            cultist: {
+              side: "enemy",
+              block: block({ type: "humanoid", mind: "cunning", health, actions: [claw, bow] }),
+            },
+            knight: { side: "party", block: block({ health: 80, actions: [claw] }) },
+          },
+          { cultist: { ...master, temperament: "disciplined" } },
+        );
+        const knight = rulesetCombatant(encounter, "knight")!;
+        const triggers = ["enter", "turn-start"];
+        knight.actions.push({
+          id: "guardians",
+          label: "Guardians",
+          kind: "attack",
+          budget: "action",
+          autoHit: true,
+          targets: { side: "enemy", count: 0 },
+          area: { shape: "burst", size: 2 },
+          damage: { count: 3, sides: 8, flat: 0 },
+          zone: { rounds: 10, triggers, anchor: "caster" },
+        } as never);
+        knight.zones = [{ actionId: "guardians", label: "Guardians", rounds: 10, anchor: "caster", triggers } as never];
+        state.rulesetFight = {
+          encounter,
+          events: [],
+          eventSeq: 0,
+          controllers: { knight: "manual" },
+          bosses: [],
+        } as never;
+        // It walks out first, past the knight's reach (whose reaction the knight's player answers).
+        const picked = pickRulesetChoice(definition, state, encounter, "cultist");
+        const to = picked?.to ?? { x: 3, y: 3 };
+        return Math.max(Math.abs(to.x - 2), Math.abs(to.y - 3)) <= 2;
+      };
+      assert.equal(stays(4), false, "at 4 health it leaves the aura");
+    }
   }
 
   // ── Refused ──

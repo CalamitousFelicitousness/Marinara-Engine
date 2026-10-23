@@ -1670,11 +1670,14 @@ function rulesetCandidates(
   const actor = rulesetCombatant(encounter, actorId);
   const home = rulesetPositionOf(actor);
   const burning = actor && home ? rulesetZoneHarmAt(encounter, actor, home) : 0;
+  // Where staying would likely finish it at its next turn's start, any step out is weighed, whatever
+  // it does from there (playtest 2026-10-23: cultists that stayed in Spirit Guardians to die).
+  const deadly = !!actor && !!home && rulesetZoneKillsAt(definition, encounter, actor, home);
   const cooler = (candidate: CombatAiCandidate<RulesetCandidate>) =>
     burning > 0 &&
     !!actor &&
     !!candidate.action.to &&
-    worth(candidate) >= staying &&
+    (worth(candidate) >= staying || deadly) &&
     rulesetZoneHarmAt(encounter, actor, candidate.action.to) < burning;
   const candidates = [
     ...here,
@@ -1685,6 +1688,16 @@ function rulesetCandidates(
         (roams && worth(candidate) > 0 && candidate.targetId !== undefined && !reachable.has(candidate.targetId)),
     ),
   ];
+  // And where staying would likely finish it, it does not stay when it can get out: the scoring
+  // weighs danger by what is at stake on the turn, which a scratch of a blow makes nearly nothing.
+  if (deadly && actor) {
+    const out = candidates.filter((candidate) =>
+      candidate.action.to
+        ? !rulesetZoneKillsAt(definition, encounter, actor, candidate.action.to)
+        : rulesetDefensiveName(candidate.action.option) === "disengage",
+    );
+    if (out.length) candidates.splice(0, candidates.length, ...out);
+  }
   // Somebody who can hurt an opponent or help a friend does that. The scoring weighs a blow by the
   // share of the target's health it takes, so against a sturdy target a careful creature would score
   // a standard action (dodging, say) above every attack it has and stand there all fight. A standard
@@ -3495,7 +3508,12 @@ function weighCaught(
   // What its conditions are worth on each it catches, read off the ruleset (see `rulesetEffectWorth`).
   const action = actor.actions.find((one) => one.id === option.id);
   caught = rulesetPoolReaches(definition, combat, actor, action, caught, candidate.action.choice.payWith);
-  const foes = caught.filter((target) => target.side !== actor.side && !target.down);
+  // A hazard that strikes only whoever walks into it (caltrops) does nothing as it is laid to the
+  // other side already standing there: they are not walking in (I3 re-test 2026-10-23: caltrops
+  // laid on a wolf's own square).
+  const onEntryOnly =
+    !!action?.zone && action.zone.atCast === false && action.zone.triggers.every((trigger) => trigger === "enter");
+  const foes = onEntryOnly ? [] : caught.filter((target) => target.side !== actor.side && !target.down);
   let friends = caught.filter((target) => target.side === actor.side);
   // A hazard that stays (lamp oil set alight, ball bearings) catches whoever walks into it later, and
   // its own side is who is fighting beside it (re-test 2026-10-23: the party burnt and tripped on
@@ -3508,6 +3526,7 @@ function weighCaught(
   // And the other side's within a step of it, who walk into it on their way (I3: caltrops and ball
   // bearings left in the pack): each counts at half of one caught where it lands.
   let walkers: RulesetCombatant[] = [];
+  let nearOnly = new Set<string>();
   if (
     at &&
     action?.zone &&
@@ -3519,7 +3538,8 @@ function weighCaught(
   ) {
     friendWeight = 2;
     const perCell = definition.combat?.distance?.perCell ?? 1;
-    const reach = Math.ceil((action.area?.size ?? perCell) / perCell) + 1;
+    // An action's area is in cells already, as its range is.
+    const reach = (action.area?.size ?? 1) + 1;
     const near = encounter.combatants.filter(
       (one) =>
         one.side === actor.side &&
@@ -3528,7 +3548,29 @@ function weighCaught(
         !!rulesetPositionOf(one) &&
         rulesetGapFrom(at, 1, one) <= reach,
     );
-    friends = [...friends, ...near];
+    // One beside it only walks in if it walks that way, so it counts at half of one caught where it
+    // lands, as a foe beside it does; and its maker, who knows where it lies, not at all (I3 re-test
+    // 2026-10-23: caltrops in a charging pack's way weighed as if the rogue would tread on them).
+    nearOnly = new Set(near.map((one) => one.id));
+    friends = [...friends, ...near.filter((one) => one.id !== actor.id)];
+    // And those of the other side who would cross it on their way to whoever of its side is nearest,
+    // within a turn's walk (I3 re-test 2026-10-23: caltrops never laid before a charging wolf pack).
+    const standing = encounter.combatants.filter(
+      (one) => one.side === actor.side && rulesetCombatStanding(one) && !!rulesetPositionOf(one),
+    );
+    const onTheirWay = (one: RulesetCombatant) => {
+      const to = standing.reduce<RulesetCombatant | undefined>(
+        (best, friend) => (!best || rulesetGap(one, friend) < rulesetGap(one, best) ? friend : best),
+        undefined,
+      );
+      if (!to) return false;
+      const apart = rulesetGap(one, to);
+      // Already at grips, it walks nowhere.
+      if (apart <= 1) return false;
+      const there = rulesetGapFrom(at, 1, one);
+      const walks = rulesetInCells(one.speed, perCell);
+      return there <= walks && there + rulesetGapFrom(at, 1, to) <= apart;
+    };
     walkers = encounter.combatants.filter(
       (one) =>
         one.side !== actor.side &&
@@ -3537,17 +3579,19 @@ function weighCaught(
         rulesetCombatStanding(one) &&
         !caught.includes(one) &&
         !!rulesetPositionOf(one) &&
-        rulesetGapFrom(at, 1, one) <= reach,
+        (rulesetGapFrom(at, 1, one) <= reach || onTheirWay(one)),
     );
   }
   const worthOn = (target: RulesetCombatant) =>
     rulesetEffectWorth(definition, combat, encounter, actor, action, target);
   const riders = (who: RulesetCombatant[]) => who.reduce((sum, target) => sum + (worthOn(target) ?? 0), 0);
   // What it does to its own side caught in it, weighed as the harm it is.
+  const beside = (target: RulesetCombatant) => (nearOnly.has(target.id) ? 0.5 : 1);
   const harms = (who: RulesetCombatant[]) =>
     friendWeight *
     who.reduce(
-      (sum, target) => sum + (rulesetEffectWorth(definition, combat, encounter, actor, action, target, true) ?? 0),
+      (sum, target) =>
+        sum + beside(target) * (rulesetEffectWorth(definition, combat, encounter, actor, action, target, true) ?? 0),
       0,
     );
   if (option.heals) {
@@ -3592,21 +3636,24 @@ function weighCaught(
       return false;
     const hurt = friends.reduce((total, target) => {
       const health = rulesetCombatHealth(definition, combat, target);
-      return total + ((target.id === actor.id ? 4 : 3) * average) / Math.max(1, health.value + health.temp);
+      return (
+        total + (beside(target) * (target.id === actor.id ? 4 : 3) * average) / Math.max(1, health.value + health.temp)
+      );
     }, 0);
+    // What it puts on those it catches as well, less what it puts on its own (a burst that stuns).
+    const rider = riders(foes) + 0.5 * riders(walkers) - harms(friends);
     // And worth at least twice what it costs its own: a blast that only just outweighs burning a
-    // friend is one no tactician throws.
-    if (hurt > 0 && share < 2 * hurt) return false;
+    // friend is one no tactician throws. A lasting hazard's worth is mostly what it puts on those
+    // who walk in (caltrops that stop them), so that counts beside the harm.
+    if (hurt > 0 && share + (walkers.length ? Math.max(0, rider) : 0) < 2 * hurt) return false;
     candidate.damage = Math.max(0, Math.min(2, share - hurt)) * chance;
-    if (candidate.damage <= 0) return false;
+    if (candidate.damage <= 0 && !(walkers.length && rider > 0)) return false;
     // Whom of the other side it would likely drop, for orders that spare them.
     const dropped = foes.filter((target) => {
       const health = rulesetCombatHealth(definition, combat, target);
       return average >= Math.max(1, health.value + health.temp);
     });
     if (dropped.length) candidate.action.drops = dropped.map((target) => target.id);
-    // What it puts on those it catches as well, less what it puts on its own (a burst that stuns).
-    const rider = riders(foes) + 0.5 * riders(walkers) - harms(friends);
     if (rider > 0) candidate.setup = Math.min(2, rider) * chance;
   } else if (foes.length > 0 || walkers.length > 0) {
     // What it puts on them, less what it puts on its own side: a Hypnotic Pattern over the party

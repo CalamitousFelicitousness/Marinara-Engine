@@ -294,6 +294,46 @@ try {
     );
   }
 
+  // ── A hazard is laid where the other side will walk into it (I3 re-test 2026-10-23) ──
+  {
+    const caltrops = {
+      id: "caltrops",
+      label: "Caltrops",
+      kind: "attack",
+      budget: "action",
+      targets: { side: "enemy", count: 1 },
+      range: { normal: 1 },
+      area: { shape: "box", size: 1 },
+      save: { save: "dex_save", difficulty: 15, onSuccess: "negates" },
+      damage: { count: 0, sides: 0, flat: 1, type: "piercing" },
+      applies: [{ condition: "restrained", duration: "until-dispelled" }],
+      zone: { rounds: 100, triggers: ["enter"], atCast: false },
+    };
+    const laid = (wolves: Array<{ x: number; y: number }>) => {
+      const { encounter, state } = fight({
+        rogue: { side: "enemy", block: block([flick]), at: { x: 2, y: 4 } },
+        friend: { side: "enemy", block: block([poke]), at: { x: 2, y: 5 } },
+        ...Object.fromEntries(
+          wolves.map((at, index) => [
+            `wolf${index}`,
+            { side: "party" as const, block: block([poke], { speed: 40 }), at },
+          ]),
+        ),
+      });
+      rulesetCombatant(encounter, "rogue")!.actions.push(caltrops as never);
+      return pickRulesetChoice(definition, state, encounter, "rogue");
+    };
+    const charging = laid([
+      { x: 9, y: 4 },
+      { x: 10, y: 3 },
+      { x: 10, y: 5 },
+    ]);
+    assert.equal(charging?.option.id, "caltrops", "laid before a charging pack");
+    // Somewhere the pack will cross before it reaches the rogue, never under a wolf already there.
+    assert.ok((charging?.choice.at?.x ?? 99) <= 5, `in its way: ${JSON.stringify(charging?.choice.at)}`);
+    assert.notEqual(laid([{ x: 3, y: 4 }])?.option.id, "caltrops", "not once the pack is at grips");
+  }
+
   // ── Oil is worth throwing only where a fire will follow ──
   {
     combat.conditions = [

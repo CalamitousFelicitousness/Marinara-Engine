@@ -294,6 +294,7 @@ for (const [prose, saved] of [
   ["Brannoc kneels — let me roll initiative.", "Brannoc kneels\n\nIt holds."],
   ["Brannoc kneels — let me roll to see how that goes.", "Brannoc kneels\n\nIt holds."],
   ["Brannoc kneels — let me check and see how that goes.", "Brannoc kneels\n\nIt holds."],
+  ["Brannoc kneels — let me roll the die, and see what it does.", "Brannoc kneels\n\nIt holds."],
 ]) {
   const { ctx, events } = setup(
     [
@@ -340,6 +341,10 @@ for (const [before, after] of [
   ["He rubs his chin — let me check and see how that goes.", "He rubs his chin"],
   ["Time to get to find out.", ""],
   ["Brannoc steadies. Let me check the save and see how it lands.", "Brannoc steadies."],
+  ["Brannoc steadies. Let me check the save, and see how it lands.", "Brannoc steadies."],
+  ["The door groans — let me roll the die and see what it does.", "The door groans"],
+  ["The door groans — let me roll the die, and see what it does.", "The door groans"],
+  ["Brannoc kneels — time to check, and see.", "Brannoc kneels"],
   ["The blade falls — time to get to see what the dice say.", "The blade falls"],
   ["Brannoc steadies. Time to check his Dexterity save.", "Brannoc steadies."],
   // Narration that only sounds like it is left alone.
@@ -359,6 +364,10 @@ for (const [before, after] of [
     "He looks up. Let me check and see who will die tonight.",
   ],
   ["He kneels. Let me check the damage to the wall.", "He kneels. Let me check the damage to the wall."],
+  [
+    "He looks up. Let me roll the die, and see who will die tonight.",
+    "He looks up. Let me roll the die, and see who will die tonight.",
+  ],
   ["He kneels beside the body — let me see the damage.", "He kneels beside the body — let me see the damage."],
   [
     "He kneels beside the body — let me see the damage he took.",

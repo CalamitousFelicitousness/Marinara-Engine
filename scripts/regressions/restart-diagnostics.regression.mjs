@@ -6,6 +6,21 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { Worker } from "node:worker_threads";
 import { startRestartDiagnostics } from "./fixtures/restart-diagnostics.mjs";
 
+// Preserve already-written evidence on cancellation as well as failure. This
+// evaluates the actual upload gates without cancelling shared hosted CI runs.
+for (const [workflow, step] of [
+  ["platform-artifacts.yml", "Retain restart diagnostic evidence"],
+  ["pull-request-checks.yml", "Retain Windows restart diagnostic evidence"],
+]) {
+  const source = readFileSync(new URL(`../../.github/workflows/${workflow}`, import.meta.url), "utf8");
+  const condition = source.match(new RegExp(`- name: ${step}\\r?\\n\\s+if: ([^\\r\\n]+)`, "u"))?.[1];
+  assert.equal(condition, "failure() || cancelled()", `${workflow} must retain both failure and cancellation evidence`);
+  for (const conclusion of ["success", "failure", "cancelled"]) {
+    const uploads = condition.split(" || ").some((status) => status === `${conclusion}()`);
+    assert.equal(uploads, conclusion !== "success", `${workflow}: ${conclusion}`);
+  }
+}
+
 const directory = mkdtempSync(join(tmpdir(), "marinara-restart-diagnostics-"));
 const keys = ["MARINARA_RESTART_DIAGNOSTICS_DIR", "MARINARA_DIAGNOSTIC_SECRET_CANARY", "ImageVersion"];
 const previous = keys.map((key) => process.env[key]);

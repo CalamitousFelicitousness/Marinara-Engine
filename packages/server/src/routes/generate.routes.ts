@@ -579,6 +579,7 @@ import {
   resolveGroupIndividualHistorySpeaker,
   resolveRoleplaySummaryTail,
   resolveCharacterNameMap,
+  resolveChatSpeakerNames,
   resolvePromptCharacterIdsForTarget,
   resolveRegenerationGameStateFallbackMessageIds,
   resolveRegenerationGameStateAnchor,
@@ -635,6 +636,7 @@ import {
   conversationPromptHistoryContent,
   formatConversationGroupOutputFormat,
   appendSentMediaNotes,
+  isSentVideoAttachment,
   resolvePresetModePrompt,
 } from "./generate/conversation-prompt-formatting.js";
 import {
@@ -2336,6 +2338,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           .map((message: any) => message.id),
       );
       const initialLatestUserMessageId = [...chatMessages].reverse().find((message) => message.role === "user")?.id;
+      // Names in a sent clip's prompt ("Alice: …") stay in its history note; read once, on the first note.
+      let chatSpeakerNamesPromise: Promise<string[]> | null = null;
+      const getChatSpeakerNames = () => (chatSpeakerNamesPromise ??= resolveChatSpeakerNames(chars, chat));
       const mapChatHistoryMessageForPrompt = async (
         m: any,
         latestUserMessageId = initialLatestUserMessageId,
@@ -2380,7 +2385,12 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           m.role === "user" && m.id === latestUserMessageId,
         );
         if (m.role === "assistant")
-          content = appendSentMediaNotes(content, attachments, updatedAttachments ?? attachments);
+          content = appendSentMediaNotes(
+            content,
+            attachments,
+            updatedAttachments ?? attachments,
+            chatMode === "conversation" && attachments?.some(isSentVideoAttachment) ? await getChatSpeakerNames() : [],
+          );
         const hiddenFromAICharacterIds = getMessageHiddenFromAICharacterIds(m);
         const conversationStartForCharacterIds = getMessageConversationStartCharacterIds(m);
 

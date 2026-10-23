@@ -23,6 +23,7 @@ const { getDB, closeDB } = await import("../../packages/server/src/db/connection
 const { galleryRoutes } = await import("../../packages/server/src/routes/gallery.routes.js");
 const { chatsRoutes } = await import("../../packages/server/src/routes/chats.routes.js");
 const { agentsRoutes } = await import("../../packages/server/src/routes/agents.routes.js");
+const { generateRoutes } = await import("../../packages/server/src/routes/generate.routes.js");
 const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
 const { createConnectionsStorage } = await import("../../packages/server/src/services/storage/connections.storage.js");
 const { createCharactersStorage } = await import("../../packages/server/src/services/storage/characters.storage.js");
@@ -117,6 +118,7 @@ app.decorate("db", db);
 await app.register(galleryRoutes, { prefix: "/api/gallery" });
 await app.register(chatsRoutes, { prefix: "/api/chats" });
 await app.register(agentsRoutes, { prefix: "/api/agents" });
+await app.register(generateRoutes, { prefix: "/api/generate" });
 
 try {
   await new Promise<void>((resolve) => provider.listen(0, "127.0.0.1", resolve));
@@ -549,6 +551,75 @@ try {
     ]),
     "\n[Ana sent a video message: slow dolly Ana waves Ana: I am home.]",
     "labels inside JSON string values go too",
+  );
+  // A label is judged by its shape, so words outside any list go too; prose and the chat's speakers stay.
+  const shapedPrompt =
+    "Overall: wind rising\nAspect Ratio: 16:9\nWatermark: none\nCamera Shot_2: wide\n" +
+    'The camera: pans left.\nHer tone: flat\nMara to lens: "We have to go."\nAna smiles: late\n' +
+    "ALICE: I am home.\nAna Lee: bye";
+  const shapedNote =
+    '\n[Ana sent a video message: wind rising 16:9 none wide The camera: pans left. Her tone: flat Mara to lens: "We ' +
+    'have to go." Ana smiles: late ALICE: I am home. Ana Lee: bye]';
+  assert.equal(
+    formatSentVideoNotes([{ type: "video", characterName: "Ana", prompt: shapedPrompt }], ["Alice"]),
+    shapedNote,
+  );
+  assert.equal(
+    formatSentVideoNotes(
+      [{ type: "video", characterName: "Ana", prompt: JSON.stringify({ shots: [{ description: shapedPrompt }] }) }],
+      ["Alice"],
+    ),
+    shapedNote,
+    "the same inside a JSON value",
+  );
+  assert.equal(
+    formatSentVideoNotes([{ type: "video", characterName: "Ana", prompt: "Alice: hello" }], ["Alice, the Bold"]),
+    "\n[Ana sent a video message: Alice: hello]",
+    "a name with punctuation still names its speaker",
+  );
+  // The speakers are the chat's characters and persona.
+  const { resolveChatSpeakerNames } = await import("../../packages/server/src/routes/generate/generate-route-utils.js");
+  const speakerStore = createCharactersStorage(db);
+  const alice = await speakerStore.create(characterDataSchema.parse({ name: "Alice" }));
+  const speakerPersona = await speakerStore.createPersona("Bram", "");
+  assert.ok(alice && speakerPersona);
+  const speakerChat = await chats.create({
+    name: "Speakers",
+    mode: "conversation",
+    characterIds: [aster.id, alice.id],
+    connectionId: text.id,
+    personaId: speakerPersona.id,
+  });
+  assert.ok(speakerChat);
+  assert.deepEqual(await resolveChatSpeakerNames(speakerStore, speakerChat), ["Aster", "Alice", "Bram"]);
+  assert.deepEqual(
+    await resolveChatSpeakerNames(speakerStore, { ...speakerChat, characterIds: "not json" }),
+    ["Bram"],
+    "unreadable character ids give no character names",
+  );
+  // Peek Prompt passes the chat's names, so the history note keeps who spoke.
+  await chats.createMessage({ chatId: speakerChat.id, role: "user", characterId: null, content: "Show me" });
+  await chats.createMessage({
+    chatId: speakerChat.id,
+    role: "assistant",
+    characterId: aster.id,
+    content: "Here!",
+    extra: {
+      attachments: [
+        { type: "video", characterName: "Aster", prompt: 'ALICE: hi\nBRAM: hey\nWatermark: none\nGuard: "Stop!"' },
+      ],
+    },
+  });
+  const peek = await app.inject({
+    method: "POST",
+    url: "/api/generate/dryRun",
+    payload: { chatId: speakerChat.id, returnPrompt: true },
+  });
+  assert.equal(peek.statusCode, 200, peek.body);
+  assert.match(
+    JSON.stringify(peek.json().prompt),
+    /\[Aster sent a video message: ALICE: hi BRAM: hey none Guard: \\"Stop!\\"\]/u,
+    "the preview's video note keeps the chat's speakers and quoted dialogue",
   );
   // Nested cues go whole, and a long run of brackets is handled in one pass.
   assert.equal(

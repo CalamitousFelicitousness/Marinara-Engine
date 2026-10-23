@@ -169,6 +169,7 @@ import {
   resolvePromptCharacterIdsForTarget,
   mergedChatSummaryReaders,
   resolveCharacterNameMap,
+  resolveChatSpeakerNames,
   resolveGroupGenerationMode,
   resolveRegenerationGameStateAnchor,
   resolveProviderTopK,
@@ -182,6 +183,7 @@ import {
 import { buildGenerationPromptPresetCandidates, type PromptPresetCandidateSource } from "./prompt-preset-selection.js";
 import {
   appendSentMediaNotes,
+  isSentVideoAttachment,
   CONVERSATION_NO_REPEAT_INSTRUCTION,
   conversationPromptHistoryContent,
 } from "./conversation-prompt-formatting.js";
@@ -832,6 +834,13 @@ export async function registerDryRunRoute(app: FastifyInstance) {
       conn.model,
     );
     const latestReplyUserMessageId = [...chatMessages].reverse().find((message) => message.role === "user")?.id;
+    const chatSpeakerNames =
+      chatMode === "conversation" &&
+      chatMessages.some((m: any) =>
+        (parseExtra(m.extra).attachments as PromptAttachment[] | undefined)?.some(isSentVideoAttachment),
+      )
+        ? await resolveChatSpeakerNames(chars, chat)
+        : [];
     let mappedMessages: DryRunPromptMessage[] = chatMessages.map((m: any) => {
       const extra = parseExtra(m.extra);
       const personaSnapshotName = m.role === "user" ? readPersonaSnapshotName(extra) : null;
@@ -852,7 +861,8 @@ export async function registerDryRunRoute(app: FastifyInstance) {
       return {
         id: typeof m.id === "string" ? m.id : null,
         role: m.role === "narrator" ? ("system" as const) : (m.role as "user" | "assistant" | "system"),
-        content: m.role === "assistant" ? appendSentMediaNotes(content, attachments) : content,
+        content:
+          m.role === "assistant" ? appendSentMediaNotes(content, attachments, attachments, chatSpeakerNames) : content,
         contextKind: "history" as const,
         characterId: typeof m.characterId === "string" && m.characterId ? m.characterId : null,
         ...(personaSnapshotName ? { personaSnapshotName } : {}),

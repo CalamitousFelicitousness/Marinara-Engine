@@ -119,33 +119,47 @@ export function conversationPromptHistoryContent(
 
 const SENT_SELFIE_DESCRIPTION_MAX_CHARS = 600;
 
-// A field label starts a line: a lowercase word ("camera: …", "shot_1: …"), or in any case a word_word
-// ("OVERALL_SOUNDSCAPE: …", "Shot_1: …"), a known field word ("Camera: …", "ACTION: …", "Shot2: …") or a few words
-// ending in one ("Overall Soundscape: …"). A word_word: inside a sentence, a name ("Ana: …", "Ana Lee: …") and a link
-// ("https://…") are left alone: a title-case label outside the list looks exactly like a name.
+// A field label starts a line: one to three words, then a colon ("camera: …", "Shot_1: …", "Aspect Ratio: …",
+// "OVERALL_SOUNDSCAPE: …"). A link ("https://…") is not one.
 const LINE_START_LABEL_RE =
-  /^([ \t]*)((?:[A-Za-z][A-Za-z0-9]* ){0,2}[A-Za-z][A-Za-z0-9]*(?:_[A-Za-z0-9]+)*)[ \t]*:(?!\/\/)/gmu;
+  /^([ \t]*)((?:[A-Za-z][A-Za-z0-9_]* ){0,2}[A-Za-z][A-Za-z0-9_]*)[ \t]*:(?!\/\/)([ \t]*["“]?)/gmu;
 // A negative prompt lists what the clip must not show, so its line goes whole, as its JSON field does.
 const NEGATIVE_PROMPT_LINE_RE = /^[ \t]*negative(?:[ _]prompt)?[ \t]*:.*$/gimu;
-const FIELD_LABEL_WORDS = new Set(
+// Words a label never holds: articles, pronouns, prepositions, conjunctions and auxiliaries mark prose ("The camera:",
+// "Her tone:", "Mara to lens:", "She smiles:").
+const PROSE_WORDS = new Set(
   (
-    "action angle atmosphere audio background camera caption captions character characters cinematography color continuity " +
-    "colors composition description dialogue director direction duration editing effects environment format framing " +
-    "foreground genre lens lighting location mood motion movement music narration notes pacing palette prompt scene " +
-    "setting shot shots sound soundscape sfx style subject subjects text timing title tone transition visual visuals " +
-    "voiceover"
+    "a an the this that these those i me my mine you your yours he him his she her hers it its we us our ours they " +
+    "them their theirs who whom whose which what to of in on at by for with from into onto upon over under about " +
+    "after before as and or but nor so yet if then than not no is are was were be been am do does did has have had " +
+    "will would can could should may might must"
   ).split(" "),
 );
 
-function stripFieldLabels(text: string): string {
+/** "lower", "upper" or "title", read from a word's letters before any `_` or digit. */
+function wordCase(word: string): string {
+  const letters = word.match(/^[A-Za-z]+/u)![0];
+  if (letters === letters.toLowerCase()) return "lower";
+  if (letters.length > 1 && letters === letters.toUpperCase()) return "upper";
+  return "title";
+}
+
+/**
+ * Removes line-start field labels. A label is judged by its shape, not a word list: no prose word, and every word in
+ * one case ("Aspect Ratio", "camera angle"), so a sentence ("Ana smiles:") stays. A speaker stays too: a head with any
+ * word of a chat member's name (`speakerNameParts`: "Ana:", "ALICE:", "Ana Lee:"), or one followed by a quote, is
+ * dialogue, not a label.
+ */
+function stripFieldLabels(text: string, speakerNameParts: ReadonlySet<string>): string {
   return text
     .replace(NEGATIVE_PROMPT_LINE_RE, "")
-    .replace(LINE_START_LABEL_RE, (label, indent: string, words: string) => {
-      const folded = words.toLowerCase();
-      const lastWord = folded.split(" ").at(-1)!;
-      const fieldWord = FIELD_LABEL_WORDS.has(lastWord.replace(/\d+$/u, ""));
-      const isLabel = folded.includes(" ") ? fieldWord : words === folded || folded.includes("_") || fieldWord;
-      return isLabel ? `${indent} ` : label;
+    .replace(LINE_START_LABEL_RE, (label, indent: string, head: string, after: string) => {
+      // Quoted words after the colon are dialogue ('Guard: "Stop!"'), so a speaker outside the chat keeps their name.
+      if (/["“]/u.test(after)) return label;
+      const words = head.split(" ");
+      const folded = words.map((word) => word.toLowerCase());
+      if (folded.some((word) => PROSE_WORDS.has(word) || speakerNameParts.has(word))) return label;
+      return new Set(words.map(wordCase)).size === 1 ? `${indent} ` : label;
     });
 }
 
@@ -175,7 +189,7 @@ function stripBracketedCues(text: string): string {
 }
 
 /** The words of a video prompt in a technical format: no JSON, field labels or bracketed cues. */
-function videoPromptWords(prompt: string): string {
+function videoPromptWords(prompt: string, speakerNameParts: ReadonlySet<string>): string {
   let text = prompt;
   try {
     const parsed = JSON.parse(prompt) as unknown;
@@ -183,7 +197,11 @@ function videoPromptWords(prompt: string): string {
     // prompt lists what the clip must not show, so it is left out.
     const strings = (value: unknown): string[] =>
       typeof value === "string"
-        ? [/^\s*[[{]/u.test(value) ? videoPromptWords(value) : stripFieldLabels(value)]
+        ? [
+            /^\s*[[{]/u.test(value)
+              ? videoPromptWords(value, speakerNameParts)
+              : stripFieldLabels(value, speakerNameParts),
+          ]
         : value && typeof value === "object"
           ? Object.entries(value)
               .filter(([key]) => !/negative/iu.test(key))
@@ -194,23 +212,35 @@ function videoPromptWords(prompt: string): string {
   } catch {
     // Not JSON: plain text, perhaps with field labels.
   }
-  return stripFieldLabels(stripBracketedCues(text));
+  return stripFieldLabels(stripBracketedCues(text), speakerNameParts);
 }
 
 /**
  * History notes for video messages a character sent, so the next reply knows a clip went out and
  * what it shows. Only Conversation video messages name a sender; Roleplay scene clips stay hidden
- * like Illustrator images.
+ * like Illustrator images. `speakerNames` are the chat's characters and persona, so a line such as "Alice: …" in
+ * the prompt keeps its speaker; the sender always counts.
  */
+/** A video message a character sent: it names its sender (Roleplay scene clips don't). */
+export function isSentVideoAttachment(attachment: PromptAttachment): boolean {
+  return attachment.type === "video" && !!attachment.characterName?.trim();
+}
 
-export function formatSentVideoNotes(attachments: PromptAttachment[] | undefined): string {
+export function formatSentVideoNotes(
+  attachments: PromptAttachment[] | undefined,
+  speakerNames: readonly string[] = [],
+): string {
   return (attachments ?? [])
-    .filter((attachment) => attachment.type === "video" && !!attachment.characterName?.trim())
+    .filter(isSentVideoAttachment)
     .map((attachment) => {
       // The video model's prompt may follow a technical format (JSON, "overall_soundscape: …", "[Shot 1] …"); the
       // note keeps only its words, so characters don't copy that format into their own [video] tags.
       // videoPromptWords leaves no bracket, so the note holds exactly one pair.
-      const description = videoPromptWords(attachment.prompt ?? "")
+      const nameParts = new Set(
+        [...speakerNames, attachment.characterName!].flatMap((name) => name.toLowerCase().split(/[^\p{L}\p{N}_]+/u)),
+      );
+      nameParts.delete("");
+      const description = videoPromptWords(attachment.prompt ?? "", nameParts)
         .replace(/\s+/g, " ")
         .trim()
         .slice(0, SENT_SELFIE_DESCRIPTION_MAX_CHARS);
@@ -248,6 +278,7 @@ export function appendSentMediaNotes(
   content: string,
   attachments: PromptAttachment[] | undefined,
   selfieAttachments: PromptAttachment[] | undefined = attachments,
+  speakerNames: readonly string[] = [],
 ): string {
   const userUploadedImages = attachments?.filter((attachment) => attachment.type?.startsWith("image/"));
   if (userUploadedImages?.length) {
@@ -255,7 +286,7 @@ export function appendSentMediaNotes(
     content += `\n[Sent a photo${photoName ? `: ${photoName}` : ""}]`;
   }
   content += formatSentSelfieNotes(selfieAttachments);
-  const videoNotes = formatSentVideoNotes(attachments);
+  const videoNotes = formatSentVideoNotes(attachments, speakerNames);
   // A video-only message has no text of its own; its note then starts the turn without a blank line.
   return videoNotes ? (content.trim() ? content + videoNotes : videoNotes.trimStart()) : content;
 }

@@ -245,6 +245,18 @@ try {
     assert.notEqual(spared?.option.id, "bolt", `no killing bolt: ${JSON.stringify(spared?.choice)}`);
   }
 
+  // ── Spare counts a blow lethal by the most its dice can roll (re-test 2026-10-23) ──
+  {
+    const wounded = (encounter: RulesetEncounterState) => {
+      for (const id of ["orc", "goblin"]) {
+        const one = rulesetCombatant(encounter, id)!;
+        one.health = { ...one.health!, value: 11 };
+      }
+    };
+    const spared = pick(field(), { posture: "hold", spare: true }, [], wounded);
+    assert.notEqual(spared?.option.id, "bolt", `2d6 can roll 12: ${JSON.stringify(spared?.choice)}`);
+  }
+
   // ── A friend down comes first, ordered or not (re-test 2026-10-23) ──
   {
     const downed = (encounter: RulesetEncounterState) => {

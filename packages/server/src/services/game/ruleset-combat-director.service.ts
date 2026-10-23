@@ -92,6 +92,7 @@ import {
   rulesetWalkingDistances,
   rulesetFootprint,
   rulesetFootprintAt,
+  rulesetSees,
   rulesetSpanOf,
   rulesetSqueezeAt,
   rulesetBehaviorAnchor,
@@ -2754,10 +2755,13 @@ function rulesetCandidatesFrom(
         candidate.damage = Math.min(2, (average / weighed) * (1 + others.length + again)) * chance;
         candidate.action.expected = average * chance * (1 + others.length + again);
         if (average >= pool) candidate.finish = chance;
-        // Everybody it would likely drop, the others it spreads to included.
+        // Everybody it could drop, the others it spreads to included: by its average, and by the most
+        // its dice can roll where the blow is not one pulled to knock out (re-test 2026-10-23: a Sacred
+        // Flame of 2d8 on a thug at 11 killed under orders to spare).
+        const most = average * rulesetDamageCeiling(fallingAction?.damage);
         const dropped = [target, ...others].filter((one) => {
           const left = rulesetCombatHealth(definition, combat, one);
-          return average >= Math.max(1, left.value + left.temp);
+          return most >= Math.max(1, left.value + left.temp);
         });
         if (dropped.length) candidate.action.drops = dropped.map((one) => one.id);
         // What it puts on them as well (a stunning blow), and the spell it may break by hurting
@@ -2780,7 +2784,9 @@ function rulesetCandidatesFrom(
         } else {
           // What it does for them, read off what it puts on them: nothing, for what they already have.
           const helps = rulesetEffectWorth(definition, combat, encounter, actor, fallingAction, target);
-          if (helps === 0) continue;
+          // Next to nothing in a fight is not worth a turn's action, nor holding a spell up for
+          // (re-test 2026-10-23: Guidance cast nine times while Spirit Guardians waited).
+          if (helps === 0 || (helps !== undefined && helps < RULESET_TRIFLING_HELP)) continue;
           candidate.support = helps ?? 0.4;
         }
       } else if (
@@ -2816,9 +2822,11 @@ function rulesetCandidatesFrom(
         if (holds === 0) continue;
         candidate.setup = holds ?? 0.4;
       }
-      // Starting another held spell lets go of the one it holds up.
+      // Starting another held spell lets go of the one it holds up: as dear as what that one is worth,
+      // so Guidance or Shield of Faith held does not keep Spirit Guardians in the book (re-test
+      // 2026-10-23).
       if (fallingAction?.concentration && actor.concentrating && actor.concentrating.actionId !== option.id)
-        candidate.cost = (candidate.cost ?? 0) + 0.4;
+        candidate.cost = (candidate.cost ?? 0) + rulesetHeldWorth(definition, combat, encounter, actor);
       candidates.push(candidate);
     }
   }
@@ -3265,10 +3273,23 @@ function weighCaught(
   // A hazard that stays (lamp oil set alight, ball bearings) catches whoever walks into it later, and
   // its own side is who is fighting beside it (re-test 2026-10-23: the party burnt and tripped on
   // its own rogue's): a friend within a step of where it lands counts as caught.
+  // One that leaves its own side out (Spirit Guardians) or goes where its maker goes catches no friend.
+  // A friend's turn in it counts twice what a foe's does: they walk where the fight is, and a turn
+  // of the party's lost is worse than one of theirs (re-test 2026-10-23: Web and ball bearings).
   const at = candidate.action.choice.at;
-  if (at && action?.zone && action.zone.rounds > 0 && action.zone.triggers.length > 0 && !option.heals) {
+  let friendWeight = 1;
+  if (
+    at &&
+    action?.zone &&
+    action.zone.rounds > 0 &&
+    action.zone.triggers.length > 0 &&
+    action.zone.anchor !== "caster" &&
+    action.area?.friendlyFire !== false &&
+    !option.heals
+  ) {
+    friendWeight = 2;
     const perCell = definition.combat?.distance?.perCell ?? 1;
-    const reach = Math.ceil((action.area?.size ?? perCell) / perCell);
+    const reach = Math.ceil((action.area?.size ?? perCell) / perCell) + 1;
     const near = encounter.combatants.filter(
       (one) =>
         one.side === actor.side &&
@@ -3284,6 +3305,7 @@ function weighCaught(
   const riders = (who: RulesetCombatant[]) => who.reduce((sum, target) => sum + (worthOn(target) ?? 0), 0);
   // What it does to its own side caught in it, weighed as the harm it is.
   const harms = (who: RulesetCombatant[]) =>
+    friendWeight *
     who.reduce(
       (sum, target) => sum + (rulesetEffectWorth(definition, combat, encounter, actor, action, target, true) ?? 0),
       0,
@@ -3790,7 +3812,22 @@ function weighChoices(
       if (behavior.role) unit.tactics.role = behavior.role;
     }
   }
-  const orders = unit && actor ? rulesetOrdersFor(definition, encounter, actor, unit) : undefined;
+  const ordered = unit && actor ? rulesetOrdersFor(definition, encounter, actor, unit) : undefined;
+  // Retreating with nobody beside it, it has already got away: it helps from afar as `back` does
+  // rather than dodging nobody (re-test 2026-10-23: two turns of Dodge with foes 4 and 9 squares off).
+  const orders =
+    ordered?.posture === "retreat" &&
+    actor &&
+    !encounter.combatants.some(
+      (foe) =>
+        foe.side !== actor.side &&
+        rulesetCombatStanding(foe) &&
+        !!rulesetPositionOf(foe) &&
+        !!rulesetPositionOf(actor) &&
+        rulesetGap(foe, actor) <= 1,
+    )
+      ? { ...ordered, posture: "back" as const }
+      : ordered;
   let candidates = menu
     ? rulesetCandidatesFrom(definition, encounter, actorId, null, brokenLairMenu(definition, encounter, actorId, menu))
     : rulesetCandidates(definition, encounter, actorId, false, unit?.tactics, orders);
@@ -4078,6 +4115,31 @@ function rulesetConcentrationFails(
 /** How far a companion guarding or protecting somebody strays from them (P7), in squares. */
 const RULESET_LEASH = 3;
 
+/** Whether an actor could shoot somebody of the other side from where it stands: one in range of a
+ *  ranged blow it has and in its sight. Out of sight, staying put is a turn thrown away (re-test
+ *  2026-10-23: a wizard stood three turns behind a wall while her friends bled out). */
+function rulesetHasShot(definition: RulesetDefinition, encounter: RulesetEncounterState, actorId: string): boolean {
+  const actor = rulesetCombatant(encounter, actorId);
+  if (!actor || !rulesetPositionOf(actor)) return false;
+  const reach = Math.max(
+    0,
+    ...actor.actions
+      .filter(
+        (one) => one.range && !one.reach && one.damage && rulesetActionAvailable(actor, one, encounter, definition),
+      )
+      .map((one) => one.range!.long ?? one.range!.normal),
+  );
+  if (reach <= 1) return false;
+  return encounter.combatants.some(
+    (foe) =>
+      foe.side !== actor.side &&
+      rulesetCombatStanding(foe) &&
+      !!rulesetPositionOf(foe) &&
+      rulesetGap(actor, foe) <= reach &&
+      rulesetSees(encounter, actor, foe),
+  );
+}
+
 /** The roles that fight from afar, and so never walk in once somebody is already in their range. */
 const RULESET_KEEPS_RANGE = new Set(["spellcaster", "marksman", "controller", "supporter"]);
 interface RulesetLeash {
@@ -4344,6 +4406,49 @@ function weighRulesetOrders(
         }
     }
   }
+}
+
+/** How far above its average a blow's dice can roll: its most over its average, 1 for a blow of no
+ *  dice (or one the forecast reads some other way). */
+function rulesetDamageCeiling(damage: RulesetCombatAction["damage"] | undefined): number {
+  if (!damage || !("sides" in damage)) return 1;
+  const average = rulesetAverageDamage(damage);
+  if (average <= 0) return 1;
+  const most =
+    damage.count * damage.sides +
+    damage.flat +
+    (damage.plus ?? [])
+      .filter((one) => !one.targetIs && !one.onCritical && one.whileOn === undefined)
+      .reduce((sum, one) => sum + one.count * one.sides + one.flat, 0);
+  return Math.max(1, most / average);
+}
+
+/** Help worth less than this is not worth a turn: an ability check's die in a fight. */
+const RULESET_TRIFLING_HELP = 0.05;
+
+/** What letting go of the spell an actor holds up costs it: what holding it does, up to 0.4 for one
+ *  that harms (a zone, a blow held up) or whose worth cannot be read. */
+function rulesetHeldWorth(
+  definition: RulesetDefinition,
+  combat: NonNullable<RulesetDefinition["combat"]>,
+  encounter: RulesetEncounterState,
+  actor: RulesetCombatant,
+): number {
+  const held = actor.concentrating;
+  if (!held) return 0;
+  const action = actor.actions.find((one) => one.id === held.actionId);
+  if (!action || action.damage || action.zone || action.heal) return 0.4;
+  const on = (held.targets ?? [actor.id])
+    .map((id) => rulesetCombatant(encounter, id))
+    .filter((one): one is RulesetCombatant => !!one && rulesetCombatStanding(one));
+  if (on.length === 0) return 0;
+  // Read as though not yet put on them, so what they hold counts.
+  const puts = new Set((action.applies ?? []).map((applied) => applied.condition));
+  const worth = on.reduce((sum, one) => {
+    const bare: RulesetCombatant = { ...one, tracked: one.tracked.filter((entry) => !puts.has(entry.condition)) };
+    return sum + (rulesetEffectWorth(definition, combat, encounter, actor, action, bare) ?? 0.4);
+  }, 0);
+  return Math.min(0.4, worth);
 }
 
 /** What getting a friend back on their feet is worth over anything else it could do. */
@@ -4994,6 +5099,7 @@ function playRulesetTurn(
         !struckClose &&
         !stays &&
         RULESET_KEEPS_RANGE.has(unit?.tactics?.role ?? "") &&
+        rulesetHasShot(definition, fight.encounter, actorId) &&
         keepRulesetRange(definition, state, fight, actorId, false)
       )
         break;
@@ -5083,6 +5189,12 @@ function rulesetShotFromAfar(
   const actor = rulesetCombatant(encounter, actorId);
   const action = actor?.actions.find((one) => one.id === choice.optionId);
   const target = choice.targetIds[0] ? rulesetCombatant(encounter, choice.targetIds[0]) : undefined;
+  // An area thrown at a spot away from it (a Fireball) is a shot from afar too (re-test 2026-10-23:
+  // read as a blow up close, it walked the wizard in after it).
+  if (actor && action && !target && choice.at && action.range && !action.reach && action.damage) {
+    if (!rulesetPositionOf(actor) || rulesetGapFrom(choice.at, 1, actor) <= 1) return false;
+    return mind === "tactical" || mind === "genius" ? "kite" : "stay";
+  }
   if (!actor || !action || !target || target.side === actor.side) return false;
   // A block (a scout's Multiattack) shoots only when every blow of it does.
   const blows = action.sequence?.length

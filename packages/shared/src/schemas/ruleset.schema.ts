@@ -1214,7 +1214,10 @@ const listSchema = z
     display: z
       .object({
         tab: promptSafeText(24).optional(),
-        by: z.object({ column: sheetId, labels: z.array(promptSafeText(40)).min(1).max(21) }).strict().optional(),
+        by: z
+          .object({ column: sheetId, labels: z.array(promptSafeText(40)).min(1).max(21) })
+          .strict()
+          .optional(),
         mark: sheetId.optional(),
       })
       .strict()

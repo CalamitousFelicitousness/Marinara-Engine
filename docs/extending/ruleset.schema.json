@@ -7658,6 +7658,10 @@
                       }
                     ]
                   },
+                  "signed": {
+                    "type": "boolean",
+                    "const": true
+                  },
                   "op": {
                     "type": "string",
                     "const": "sum"
@@ -7952,6 +7956,10 @@
                         ]
                       }
                     ]
+                  },
+                  "signed": {
+                    "type": "boolean",
+                    "const": true
                   },
                   "op": {
                     "type": "string",
@@ -8262,6 +8270,10 @@
                       }
                     ]
                   },
+                  "signed": {
+                    "type": "boolean",
+                    "const": true
+                  },
                   "op": {
                     "type": "string",
                     "const": "scale"
@@ -8565,6 +8577,10 @@
                       }
                     ]
                   },
+                  "signed": {
+                    "type": "boolean",
+                    "const": true
+                  },
                   "op": {
                     "type": "string",
                     "const": "multiply"
@@ -8859,6 +8875,10 @@
                         ]
                       }
                     ]
+                  },
+                  "signed": {
+                    "type": "boolean",
+                    "const": true
                   },
                   "op": {
                     "type": "string",
@@ -9155,6 +9175,10 @@
                       }
                     ]
                   },
+                  "signed": {
+                    "type": "boolean",
+                    "const": true
+                  },
                   "op": {
                     "type": "string",
                     "const": "max"
@@ -9449,6 +9473,10 @@
                         ]
                       }
                     ]
+                  },
+                  "signed": {
+                    "type": "boolean",
+                    "const": true
                   },
                   "op": {
                     "type": "string",

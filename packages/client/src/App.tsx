@@ -924,7 +924,10 @@ export function App() {
 
       accentAnimationTimer = window.setTimeout(() => {
         accentAnimationTimer = null;
-        if (!accentAnimationEnabled || !canRunAccentAnimation(reducedMotionQuery, reduceAmbientEffects || fightOnScreen)) {
+        if (
+          !accentAnimationEnabled ||
+          !canRunAccentAnimation(reducedMotionQuery, reduceAmbientEffects || fightOnScreen)
+        ) {
           stopAccentAnimation();
           return;
         }

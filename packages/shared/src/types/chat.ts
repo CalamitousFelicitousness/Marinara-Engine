@@ -509,6 +509,11 @@ export interface ChatMetadata {
    */
   cardCssMode?: "disabled" | "exclusive" | "chat";
   /**
+   * Color character names and their aliases in their name color inside this
+   * Roleplay chat's messages. Unset falls back to the retired global setting.
+   */
+  colorInlineNames?: boolean;
+  /**
    * How character-scoped regex scripts (those with target characters) apply at
    * display time in this chat: "exclusive" (a scoped script only transforms its
    * own character's messages) or "chat" (all scoped scripts transform every

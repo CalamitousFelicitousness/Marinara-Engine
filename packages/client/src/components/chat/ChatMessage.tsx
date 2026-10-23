@@ -12,6 +12,8 @@ import {
   type AvatarCrop,
 } from "@marinara-engine/shared";
 import { applyInlineMarkdown, renderMarkdownBlocks, applyInlineMarkdownHTML } from "../../lib/markdown";
+import { SystemMessage } from "./SystemMessage";
+import { protectMarkdownCode } from "../../lib/markdown-code";
 import { MessageReplyPreview, ReplyToMessageButton } from "./MessageReplyPreview";
 import {
   RoleplayCommandResults,
@@ -1015,6 +1017,8 @@ interface ChatMessageProps {
   isGrouped?: boolean;
   personaInfo?: PersonaInfo;
   groupChatMode?: string;
+  /** This chat's Card Theming switch; undefined falls back to the retired global setting. */
+  colorInlineNames?: boolean;
   chatCharacterIds?: string[];
   /** Active character IDs used for merged Narrator avatar presentation. */
   mergedGroupCharacterIds?: string[];
@@ -1682,7 +1686,8 @@ function renderContent(
   // chat-wide index lets merged group replies fall back to whichever chat
   // character owns the file when the speaker does not.
   const selfResolved = resolveSelfCardAssets(text, selfCharacterId, galleryIndex);
-  const normalized = decodeEncodedSpeakerTags(decodeEncodedChatHtmlTags(formatTextQuotes(selfResolved, quoteFormat)));
+  const code = protectMarkdownCode(selfResolved);
+  const normalized = decodeEncodedSpeakerTags(decodeEncodedChatHtmlTags(formatTextQuotes(code.text, quoteFormat)));
 
   // Strip speaker tags before HTML detection (they aren't real HTML)
   const withoutSpeakerTags = normalized.replace(/<\/?speaker(?:="[^"]*")?>/g, "");
@@ -1694,7 +1699,7 @@ function renderContent(
   // Name coloring runs AFTER on the React tree so injected spans don't
   // interfere with paragraph splitting or trigger the HTML path.
   if (!isHtmlPath) {
-    const markdownResult = renderMarkdownBlocks(normalized, (seg, _kp) =>
+    const markdownResult = renderMarkdownBlocks(code.restoreSource(normalized), (seg, _kp) =>
       renderWithSpeakerTags(seg, dialogueColor, speakerColorMap, boldDialogue, ownDialogueColor),
     );
     if (nameColorMap && nameColorMap.size > 0) {
@@ -1775,7 +1780,7 @@ function renderContent(
 
   // Apply markdown-style bold/italic in HTML path
   const withMarkdown = applyInlineMarkdownHTML(withDialogue);
-  const finalHtml = sanitizeChatHtml(withMarkdown, { allowStyle: true, remoteImages });
+  const finalHtml = sanitizeChatHtml(code.restoreHtml(withMarkdown), { allowStyle: true, remoteImages });
   const scopedCss = scopeChatMessageCss(rawStyleBlocks, `.${htmlScopeClass}`, { remoteUrls: remoteImages.loadAll });
   const html = scopedCss ? `<style>${scopedCss}</style>${finalHtml}` : finalHtml;
 
@@ -1924,6 +1929,7 @@ export const ChatMessage = memo(function ChatMessage({
   isGrouped,
   personaInfo,
   groupChatMode,
+  colorInlineNames: chatColorInlineNames,
   chatCharacterIds,
   mergedGroupCharacterIds,
   expressionAvatarResolver,
@@ -1966,7 +1972,7 @@ export const ChatMessage = memo(function ChatMessage({
     showTokenUsage,
     showMessageNumbers,
     boldDialogue,
-    colorInlineNames,
+    legacyColorInlineNames,
     disableInlineNameGradients,
     editMessageOnDoubleClick,
     quoteFormat,
@@ -1991,7 +1997,7 @@ export const ChatMessage = memo(function ChatMessage({
       showTokenUsage: s.showTokenUsage,
       showMessageNumbers: s.showMessageNumbers,
       boldDialogue: s.boldDialogue ?? true,
-      colorInlineNames: s.colorInlineNames,
+      legacyColorInlineNames: s.colorInlineNames,
       disableInlineNameGradients: s.disableInlineNameGradients,
       editMessageOnDoubleClick: s.editMessageOnDoubleClick,
       quoteFormat: s.quoteFormat,
@@ -1999,6 +2005,7 @@ export const ChatMessage = memo(function ChatMessage({
       setTTSLineVolume: s.setTTSLineVolume,
     })),
   );
+  const colorInlineNames = chatColorInlineNames ?? legacyColorInlineNames;
   const remoteImages = useRemoteImagePolicy();
   // Build reusable text style objects (memoized to avoid unnecessary DOM updates)
   const textStrokeStyle = useMemo<React.CSSProperties>(
@@ -3751,37 +3758,36 @@ export const ChatMessage = memo(function ChatMessage({
   // ─── System messages (shared across modes) ───
   if (isSystem) {
     return (
-      <div
-        ref={msgRef}
-        className={cn(
-          "mari-system-message group flex justify-center py-2",
-          multiSelectMode && isSelected && cn("rounded-lg", MESSAGE_SELECTION_SURFACE_CLASS),
-        )}
+      <SystemMessage
+        message={message}
+        messageRef={msgRef}
+        editing={editing}
+        copied={copied}
+        showActions={showActions}
+        multiSelectMode={multiSelectMode}
+        isSelected={isSelected}
+        hiddenFromAI={isHiddenFromAI}
+        fontSize={chatFontSize}
         onClick={handleMobileTap}
+        onCopy={handleCopy}
+        onEdit={onEdit ? startEditing : undefined}
+        onBranch={onBranch ? () => onBranch(message.id) : undefined}
+        onToggleHiddenFromAI={onToggleHiddenFromAI ? () => onToggleHiddenFromAI(message.id, isHiddenFromAI) : undefined}
+        onDelete={onDelete ? () => onDelete(message.id) : undefined}
       >
-        <div className="relative">
-          {!multiSelectMode && onDelete && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onDelete(message.id);
-              }}
-              aria-label={localizeUi("chat.delete.dialog.title")}
-              className={cn(
-                "absolute -right-1 -top-1 rounded-md p-1 text-white/20 opacity-0 transition-all hover:bg-foreground/10 hover:text-foreground/70 group-hover:opacity-100",
-                showActions && "opacity-100",
-              )}
-              title={localizeUi("lorebook.editor.batch.delete")}
-            >
-              <Trash2 size="0.75rem" />
-            </button>
-          )}
-          <div className="mari-system-message-content rounded-full bg-[var(--secondary)] px-4 py-1.5 text-[0.6875rem] text-[var(--muted-foreground)]">
-            {message.content}
-          </div>
-        </div>
-      </div>
+        {editing ? (
+          <EditTextarea
+            initialContent={message.content}
+            fontSize={chatFontSize}
+            quoteFormat={quoteFormat}
+            saving={editSavePending}
+            onSave={handleSaveEdit}
+            onCancel={handleCancelEdit}
+          />
+        ) : (
+          <RoleplayMessagePreview content={displayContent} />
+        )}
+      </SystemMessage>
     );
   }
 

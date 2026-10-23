@@ -33,6 +33,8 @@ export interface RulesetLogLine {
   seq: number;
   /** The round the line happened in, for the column that names each round once. */
   round: number;
+  /** Whose turn the line happened on, for the heading each turn's block of lines gets. */
+  turnOf?: string;
   pieces: RulesetLogPiece[];
   /** The whole line as plain words, for a screen reader and for a key. */
   text: string;
@@ -146,14 +148,20 @@ export function rulesetRichLogLines(
   const firstRound = view.events.find((entry) => entry.event.type === "round")?.event;
   const trimmed = (view.events[0]?.seq ?? 1) > 1;
   let round = firstRound?.type !== "round" ? Math.max(1, view.round) : trimmed ? 0 : Math.max(1, firstRound.round - 1);
+  let turnOf: string | undefined;
   for (const entry of view.events) {
-    if (entry.event.type === "round") round = entry.event.round;
+    // A new round ends the last turn too: its opening line belongs to nobody's turn.
+    if (entry.event.type === "round") {
+      round = entry.event.round;
+      turnOf = undefined;
+    }
+    if (entry.event.type === "turn") turnOf = entry.event.actorId;
     if (entry.event.type === "budget") continue;
     tone = undefined;
     const text = rulesetCombatEventLine(entry.event, names, marked);
     if (!text) continue;
     const pieces = rulesetLogPieces(text, tone);
-    lines.push({ seq: entry.seq, round, pieces, text: text.replace(MARKS, "") });
+    lines.push({ seq: entry.seq, round, ...(turnOf ? { turnOf } : {}), pieces, text: text.replace(MARKS, "") });
   }
   return lines;
 }

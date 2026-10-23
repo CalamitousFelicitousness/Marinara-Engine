@@ -15,6 +15,7 @@ import {
   type RulesetDefinition,
   type RulesetDifficultyLadderStep,
   type RulesetResolution,
+  type RulesetDerivedHideWhen,
   type RulesetHideWhen,
   type RulesetSheetBuild,
   type RulesetSheetEnvelope,
@@ -85,7 +86,14 @@ export function createRulesetSheetEnvelope(
 export function copyRulesetSheetForGame(definition: RulesetDefinition, stored: unknown): RulesetSheetEnvelope {
   const read = readRulesetSheetEnvelope(definition, stored);
   if (!read) return createRulesetSheetEnvelope(definition);
-  return { v: read.v, build: structuredClone(read.build) };
+  // The guided builder's picks go along, so a character built in the library opens in the game as
+  // the builder made it rather than as one typed in by hand.
+  const builder = (read as { builder?: unknown }).builder;
+  return {
+    v: read.v,
+    build: structuredClone(read.build),
+    ...(builder && typeof builder === "object" && !Array.isArray(builder) ? { builder: structuredClone(builder) } : {}),
+  };
 }
 
 // ── Migrations (Capability API 1.77) ──
@@ -737,6 +745,24 @@ export function isRulesetItemHidden(
   if (!hide) return false;
   const value = effectiveFieldValue(definition, build, hide.field);
   if (hide.in) return value !== undefined && hide.in.includes(value);
+  if (hide.notEquals !== undefined) return value !== hide.notEquals;
+  return value === hide.equals;
+}
+
+/** Whether a live text field is off the sheet (Capability API 1.378): by a field, as anything else
+ *  is, or by a derived value, which only a text field may be hidden by. `derived` is what the sheet
+ *  worked out. */
+export function isRulesetTextHidden(
+  entry: { hideWhen?: RulesetHideWhen | RulesetDerivedHideWhen },
+  build: RulesetSheetBuild,
+  definition: RulesetDefinition,
+  derived: Readonly<Record<string, number>>,
+): boolean {
+  const hide = entry.hideWhen;
+  if (!hide) return false;
+  if ("field" in hide) return isRulesetItemHidden({ hideWhen: hide }, build, definition);
+  const value = derived[hide.derived] ?? 0;
+  if (hide.in) return hide.in.includes(value);
   if (hide.notEquals !== undefined) return value !== hide.notEquals;
   return value === hide.equals;
 }

@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useInsertionEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -942,7 +943,7 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
   const achievementsEnabled = useUIStore((state) => state.achievementsEnabled);
   const showHomeBrowserAddressBar = useUIStore((state) => state.showHomeBrowserAddressBar);
   // The phone shell's own signal, not a width breakpoint: a landscape phone is wider than `sm`
-  // but still gets the compact chrome, so the URL bar and the bookmark strip stay desktop-only.
+  // but still gets compact tabs, with the URL bar and bookmark strip kept desktop-only.
   const mobileShell = useMatchMedia(MOBILE_SHELL_MEDIA_QUERY);
   const browserPackages = useMemo(() => selectHomeBrowserPackages(installed.data), [installed.data]);
   const agentWidgetGroups = useMemo(() => {
@@ -1021,6 +1022,29 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
     [browserPackages],
   );
   const [activeTab, setActiveTab] = useState("home");
+  const [fullscreenPackageId, setFullscreenPackageId] = useState<string | null>(null);
+  const activeBrowserPackageId = pageActive && browserPackages.some((item) => item.id === activeTab) ? activeTab : null;
+  const activeBrowserPackageIdRef = useRef(activeBrowserPackageId);
+  const browserFullscreen = activeBrowserPackageId !== null && fullscreenPackageId === activeBrowserPackageId;
+  // CapabilityElement delivers props in a child layout effect. Publish the committed identity
+  // before that delivery, while leaving abandoned renders unable to change the request guard.
+  useInsertionEffect(() => {
+    activeBrowserPackageIdRef.current = activeBrowserPackageId;
+    return () => {
+      activeBrowserPackageIdRef.current = null;
+    };
+  }, [activeBrowserPackageId]);
+  useLayoutEffect(() => {
+    setFullscreenPackageId((current) => (current === activeBrowserPackageId ? current : null));
+  }, [activeBrowserPackageId]);
+  const setBrowserFullscreen = useCallback(
+    (active: boolean) => {
+      // A retained callback cannot change the presentation of a different active package.
+      if (typeof active !== "boolean" || activeBrowserPackageIdRef.current !== activeTab) return;
+      setFullscreenPackageId(active ? activeTab : null);
+    },
+    [activeTab],
+  );
   const [seenNoodleRefreshMarker, setSeenNoodleRefreshMarker] = useState(readSeenNoodleRefreshMarker);
   const [faqOpen, setFaqOpen] = useState(false);
   const [achievementsOpen, setAchievementsOpen] = useState(false);
@@ -1603,9 +1627,18 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
       className="mari-chrome-token-scope relative flex h-full min-h-0 w-full flex-col overflow-hidden bg-[var(--background)]"
       data-component="HomeBrowserHub"
     >
-      <div className="flex h-full min-h-0 w-full flex-col overflow-hidden border border-[var(--border)]/75 bg-[var(--marinara-home-page-wash)] shadow-2xl shadow-black/25 sm:rounded-xl">
-        <header className="mari-home-browser-chrome relative z-40 shrink-0 border-b border-[var(--marinara-topbar-border)] bg-[var(--marinara-topbar-surface)] shadow-[0_8px_28px_-26px_rgba(0,0,0,0.8)] backdrop-blur-sm">
-          <div className="flex h-10 min-w-0 items-end gap-1 border-b border-[var(--border)]/45 px-2 sm:gap-2 sm:px-3">
+      <div
+        className={cn(
+          "flex h-full min-h-0 w-full flex-col overflow-hidden bg-[var(--marinara-home-page-wash)]",
+          !browserFullscreen && "border border-[var(--border)]/75 shadow-2xl shadow-black/25 sm:rounded-xl",
+        )}
+        data-browser-fullscreen={browserFullscreen ? "" : undefined}
+      >
+        <header
+          hidden={browserFullscreen}
+          className="mari-home-browser-chrome relative z-40 shrink-0 border-b border-[var(--marinara-topbar-border)] bg-[var(--marinara-topbar-surface)] shadow-[0_8px_28px_-26px_rgba(0,0,0,0.8)] backdrop-blur-sm"
+        >
+          <div className="mari-home-browser-tab-row flex h-10 min-w-0 items-end gap-1 border-b border-[var(--border)]/45 px-2 sm:gap-2 sm:px-3">
             <div
               className="relative z-10 flex shrink-0 self-center items-center gap-2 pr-1 sm:pr-3"
               data-component="HomeBrowserHub.Brand"
@@ -1646,7 +1679,10 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
               </button>
             ) : null}
             <div
-              className="flex min-w-0 flex-1 items-end gap-0.5 overflow-hidden sm:gap-1 sm:overflow-x-auto"
+              className={cn(
+                "flex min-w-0 flex-1 items-end gap-0.5 overflow-x-auto overflow-y-hidden",
+                !mobileShell && "sm:gap-1",
+              )}
               role="tablist"
               aria-label={t("home.browser.tabsLabel")}
               data-component="HomeBrowserHub.TabList"
@@ -1660,15 +1696,16 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
                 aria-selected={activeTab === "home"}
                 onClick={() => selectTab("home")}
                 className={cn(
-                  "flex min-h-9 min-w-0 items-center justify-center rounded-t-lg border border-b-0 text-[0.65rem] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[oklch(0.79_0.16_205)] sm:min-w-[6.5rem] sm:w-auto sm:flex-none sm:gap-1.5 sm:px-3 sm:text-xs",
-                  activeTab === "home" ? "flex-1 gap-1 px-2" : "w-9 flex-none gap-0 px-0",
+                  "flex min-h-9 min-w-0 items-center justify-center rounded-t-lg border border-b-0 text-[0.65rem] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[oklch(0.79_0.16_205)]",
+                  !mobileShell && "sm:min-w-[6.5rem] sm:w-auto sm:flex-none sm:gap-1.5 sm:px-3 sm:text-xs",
+                  activeTab === "home" ? "min-w-[6.5rem] flex-1 gap-1 px-2" : "w-9 flex-none gap-0 px-0",
                   activeTab === "home"
                     ? "border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]"
                     : "border-transparent text-[var(--muted-foreground)] hover:bg-[var(--accent)]",
                 )}
               >
                 <img src="/home/tab-icons/home.png" alt="" className="h-[1.125rem] w-[1.125rem] object-contain" />
-                <span className={cn("min-w-0 truncate", activeTab === "home" ? "block" : "hidden sm:block")}>
+                <span className={cn("min-w-0 truncate", activeTab === "home" || !mobileShell ? "block" : "hidden")}>
                   {t("home.browser.homeTab")}
                 </span>
               </button>
@@ -1681,8 +1718,9 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
                 aria-selected={activeTab === "professor"}
                 onClick={openProfessor}
                 className={cn(
-                  "flex min-h-9 min-w-0 items-center justify-center rounded-t-lg border border-b-0 text-[0.65rem] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--marinara-chat-chrome-focus-ring)] sm:min-w-[6.5rem] sm:w-auto sm:flex-none sm:gap-1.5 sm:px-3 sm:text-xs",
-                  activeTab === "professor" ? "flex-1 gap-1 px-2" : "w-9 flex-none gap-0 px-0",
+                  "flex min-h-9 min-w-0 items-center justify-center rounded-t-lg border border-b-0 text-[0.65rem] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--marinara-chat-chrome-focus-ring)]",
+                  !mobileShell && "sm:min-w-[6.5rem] sm:w-auto sm:flex-none sm:gap-1.5 sm:px-3 sm:text-xs",
+                  activeTab === "professor" ? "min-w-[6.5rem] flex-1 gap-1 px-2" : "w-9 flex-none gap-0 px-0",
                   activeTab === "professor"
                     ? "border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]"
                     : "border-transparent text-[var(--muted-foreground)] hover:bg-[var(--accent)]",
@@ -1696,7 +1734,9 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
                   alt=""
                   className="h-4 w-4 rounded-sm object-cover"
                 />
-                <span className={cn("min-w-0 truncate", activeTab === "professor" ? "block" : "hidden sm:block")}>
+                <span
+                  className={cn("min-w-0 truncate", activeTab === "professor" || !mobileShell ? "block" : "hidden")}
+                >
                   {t("home.browser.professorTab")}
                 </span>
               </button>
@@ -1717,15 +1757,16 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
                     aria-selected={tabActive}
                     onClick={() => selectTab(item.id)}
                     className={cn(
-                      "relative flex min-h-9 min-w-0 items-center justify-center rounded-t-lg border border-b-0 text-[0.65rem] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--marinara-chat-chrome-focus-ring)] sm:min-w-[6.5rem] sm:w-auto sm:flex-none sm:gap-1.5 sm:px-3 sm:text-xs",
-                      tabActive ? "flex-1 gap-1 px-2" : "w-9 flex-none gap-0 px-0",
+                      "relative flex min-h-9 min-w-0 items-center justify-center rounded-t-lg border border-b-0 text-[0.65rem] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--marinara-chat-chrome-focus-ring)]",
+                      !mobileShell && "sm:min-w-[6.5rem] sm:w-auto sm:flex-none sm:gap-1.5 sm:px-3 sm:text-xs",
+                      tabActive ? "min-w-[6.5rem] flex-1 gap-1 px-2" : "w-9 flex-none gap-0 px-0",
                       tabActive
                         ? "border-[var(--border)] bg-[var(--card)] text-[var(--foreground)]"
                         : "border-transparent text-[var(--muted-foreground)] hover:bg-[var(--accent)]",
                     )}
                   >
                     <BrowserPackageTabIcon packageId={item.id} version={item.version} iconPaths={tab?.iconPaths} />
-                    <span className={cn("min-w-0 truncate", tabActive ? "block" : "hidden sm:block")}>
+                    <span className={cn("min-w-0 truncate", tabActive || !mobileShell ? "block" : "hidden")}>
                       {tab?.label ?? display.name}
                     </span>
                     {hasUnreadRefresh ? (
@@ -1992,6 +2033,7 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
           tabIndex={0}
           className={cn("min-h-0 flex-1", activeTab === "professor" ? "overflow-hidden" : "overflow-y-auto")}
           data-component="HomeBrowserHub.Content"
+          data-home-package-view={activeTab !== "home" && activeTab !== "professor" ? "" : undefined}
         >
           {activeTab !== "home" && activeTab !== "professor" ? (
             <CapabilityElement
@@ -1999,8 +2041,15 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
               packageId={activeTab}
               view="browser"
               className="block h-full min-h-0 w-full"
+              onHostError={() => setFullscreenPackageId(null)}
               capabilityProps={{
                 style: { display: "block", width: "100%", height: "100%" },
+                browserFullscreen: {
+                  active: browserFullscreen,
+                  setActive: setBrowserFullscreen,
+                  enterLabel: t("home.browser.enterFullscreen"),
+                  exitLabel: t("home.browser.exitFullscreen"),
+                },
                 conversationTimeZone,
                 debugMode,
                 onClose: () => selectTab("home"),

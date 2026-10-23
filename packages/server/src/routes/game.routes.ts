@@ -2096,6 +2096,13 @@ const hudWidgetSchema = z.object({
   config: z.record(z.unknown()).default({}),
 });
 
+/**
+ * A combat style: a built-in one or the id of a style a client registered (issue #8109). The server
+ * cannot know a client's registrations, so it checks the shape only; a client plays an id it does not
+ * know as classic, and so does the server's own prompting.
+ */
+const gameCombatStyleIdSchema = z.string().regex(/^[a-z][a-z0-9_-]{0,47}$/);
+
 const gameSetupConfigSchema = z.object({
   genre: z.string().min(1).max(200),
   setting: z.string().min(1),
@@ -2104,7 +2111,7 @@ const gameSetupConfigSchema = z.object({
   gameStyle: z.enum(["classic", "overworld"]).optional(),
   /** The Game Master's intro message (1.339). */
   gameIntro: gameIntroChoiceSchema.optional(),
-  combatStyle: z.enum(["classic", "tactical"]).optional(),
+  combatStyle: gameCombatStyleIdSchema.optional(),
   combatDirector: z.boolean().optional(),
   gmBossControl: z.boolean().optional(),
   tacticalBattlefield: tacticalBattlefieldSetupSchema.optional(),

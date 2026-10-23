@@ -16,6 +16,7 @@ COPY packages/server/package.json packages/server/
 COPY packages/client/package.json packages/client/
 COPY scripts/clean-stale-client-artifacts.mjs scripts/clean-stale-client-artifacts.mjs
 COPY scripts/ensure-native-deps.mjs scripts/ensure-native-deps.mjs
+COPY scripts/pnpm-runner.mjs scripts/pnpm-runner.mjs
 
 # Enable corepack — version is read from the packageManager field in package.json
 RUN corepack enable && corepack install
@@ -62,6 +63,7 @@ COPY packages/server/package.json packages/server/
 COPY packages/client/package.json packages/client/
 COPY scripts/clean-stale-client-artifacts.mjs scripts/clean-stale-client-artifacts.mjs
 COPY scripts/ensure-native-deps.mjs scripts/ensure-native-deps.mjs
+COPY scripts/pnpm-runner.mjs scripts/pnpm-runner.mjs
 
 # Enable corepack — version is read from the packageManager field in package.json
 RUN corepack enable && corepack install
@@ -82,6 +84,8 @@ COPY scripts/install-backgroundremover.mjs scripts/install-backgroundremover.mjs
 # The storage downgrade escape hatch (#4708) — docs/TROUBLESHOOTING.md tells
 # Docker users to run it in a one-off container, so it must ship in the image.
 COPY scripts/protect-launcher-data.mjs scripts/protect-launcher-data.mjs
+# `docker exec <container> node scripts/reset-login.mjs` removes a forgotten app login.
+COPY scripts/reset-login.mjs scripts/read-launcher-env.mjs scripts/
 
 # User guides served by the in-app documentation viewer (/api/docs)
 COPY README.md README.md

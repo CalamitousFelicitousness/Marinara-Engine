@@ -2284,8 +2284,6 @@ function GeneralSettings() {
   const setMessagesPerPage = useUIStore((s) => s.setMessagesPerPage);
   const boldDialogue = useUIStore((s) => s.boldDialogue);
   const setBoldDialogue = useUIStore((s) => s.setBoldDialogue);
-  const colorInlineNames = useUIStore((s) => s.colorInlineNames);
-  const setColorInlineNames = useUIStore((s) => s.setColorInlineNames);
   const disableInlineNameGradients = useUIStore((s) => s.disableInlineNameGradients);
   const setDisableInlineNameGradients = useUIStore((s) => s.setDisableInlineNameGradients);
   const quoteFormat = useUIStore((s) => s.quoteFormat);
@@ -2622,21 +2620,12 @@ function GeneralSettings() {
             help={localizeUi("settings.controls.loadRemoteMessageImages.help")}
           />
           <ToggleSetting
-            anchorId={getSettingsControlAnchorId("color-inline-names")}
-            label={localizeUi("settings.controls.colorInlineNames.label")}
-            checked={colorInlineNames ?? false}
-            onChange={setColorInlineNames}
-            help={localizeUi("settings.controls.colorInlineNames.help")}
+            anchorId={getSettingsControlAnchorId("disable-inline-name-gradients")}
+            label={localizeUi("settings.controls.disableInlineNameGradients.label")}
+            checked={disableInlineNameGradients ?? false}
+            onChange={setDisableInlineNameGradients}
+            help={localizeUi("settings.controls.disableInlineNameGradients.help")}
           />
-          {colorInlineNames && (
-            <ToggleSetting
-              anchorId={getSettingsControlAnchorId("disable-inline-name-gradients")}
-              label={localizeUi("settings.controls.disableInlineNameGradients.label")}
-              checked={disableInlineNameGradients ?? false}
-              onChange={setDisableInlineNameGradients}
-              help={localizeUi("settings.controls.disableInlineNameGradients.help")}
-            />
-          )}
           <div
             id={getSettingsControlAnchorId("quote-style")}
             className="flex scroll-mt-3 flex-col gap-1.5 rounded-lg p-1 transition-colors hover:bg-[var(--accent)]/50"

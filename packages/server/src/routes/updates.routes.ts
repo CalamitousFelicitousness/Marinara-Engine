@@ -65,7 +65,7 @@ const UPDATE_CHANNELS: Record<UpdateChannel, UpdateChannelInfo> = {
   },
 };
 const DEFAULT_PNPM_DESCRIPTOR =
-  "10.34.7+sha512.ba98abc585539933375b5971f4bc6d6c73a1b4b7edc4a879e7d102fe5423d1e02309d67c60a11f04955093a96e521ad9c3b138cdd654ca5be563f378b3ae48bd";
+  "12.15.0+sha512.b3951d6d6ff4a9f13dc7cf56cd28d2b8eb37dbcc9c68e52e1e1191873ea9f82a017287ab50baadc5ccc494f036c67c0e47eb13608c2fa36f47711b61ea128e61";
 const DEFAULT_PNPM_VERSION = DEFAULT_PNPM_DESCRIPTOR.slice(0, DEFAULT_PNPM_DESCRIPTOR.indexOf("+"));
 const PNPM_NONINTERACTIVE_ARGS = ["--config.trustPolicy=off", "--config.confirmModulesPurge=false"];
 /**

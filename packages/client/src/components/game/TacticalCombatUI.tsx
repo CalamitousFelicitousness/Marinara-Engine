@@ -53,6 +53,7 @@ import { audioManager } from "../../lib/game-audio";
 import { useGameAssetManifest } from "../../hooks/use-game-assets";
 import { useTacticalCombatStart, useTacticalCombatAction } from "../../hooks/use-game";
 import { useUpdateChatMetadata } from "../../hooks/use-chats";
+import { useCombatScreenStore } from "../../stores/combat-screen.store";
 import {
   TERRAIN_DATA,
   type TacticalTerrain,
@@ -329,6 +330,12 @@ export function TacticalCombatUI({
   const [logOpen, setLogOpen] = useState(false);
   const [fleeConfirm, setFleeConfirm] = useState(false);
   const [restartConfirm, setRestartConfirm] = useState(false);
+  // The accent holds still while this board is up (see App).
+  const setTacticalShowing = useCombatScreenStore((store) => store.setTacticalShowing);
+  useEffect(() => {
+    setTacticalShowing(true);
+    return () => setTacticalShowing(false);
+  }, [setTacticalShowing]);
 
   // Root element — the drag constraints boundary for the draggable inspect card.
   const rootRef = useRef<HTMLDivElement>(null);
@@ -1684,7 +1691,6 @@ export function TacticalCombatUI({
       {ui.kind === "idle" && (
         <CombatAiControls
           party={liveState.units.filter((u) => u.side === "party")}
-          enemies={liveState.units.filter((u) => u.side === "enemy")}
           defaultController="manual"
           locked={!playerPhase || animating}
           onChange={(unitId, controller) => sendAction({ type: "control", unitId, controller })}

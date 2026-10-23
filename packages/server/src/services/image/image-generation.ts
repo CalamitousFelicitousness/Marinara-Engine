@@ -45,6 +45,7 @@ import {
   runInMediaProviderLane,
   runMediaGenerationRequest,
 } from "./image-generation-queue.js";
+import { runSharedGpuTurn } from "../generation/shared-gpu-turns.js";
 import { generateRunPodComfyUI } from "./runpod-comfyui.service.js";
 import { logger, logDebugOverride } from "../../lib/logger.js";
 import {
@@ -310,8 +311,10 @@ export function imageAdmissionKey(normalizedBaseUrl: string, resolvedSource: str
  * way generateVideo already is, so EVERY image path is capped at this single
  * point — game assets, sprites, avatars, storyboards, Mari images — instead of
  * relying on per-caller wiring. Callers that additionally wrap in
- * runImageGenerationRequest for the per-connection FIFO are safe: the nested
- * acquire re-uses their held permit (AsyncLocalStorage re-entrancy guard). Batch/automatic work
+ * runImageGenerationRequest for the per-connection FIFO pass taskTakesPermit, so
+ * the shared GPU turn is waited for here before any permit is taken. (A wrapper
+ * that does take a permit is still safe from deadlock: the nested acquire re-uses
+ * it through the AsyncLocalStorage re-entrancy guard.) Batch/automatic work
  * (admissionMode "background") never occupies the last permit ahead of
  * interactive requests.
  *
@@ -427,8 +430,10 @@ export async function generateImage(
     // ponytail: image work keys on the endpoint URL while text work keys on the connection
     // id, so the two do not hold each other off on a connection used for both. Unify the
     // key if that overlap ever shows up in practice.
-    // The provider lane comes first and the global permit second, so requests waiting
-    // their turn at one account never hold permits other providers could use.
+    // The provider lane comes first, then the shared GPU turn, then the global permit and the
+    // connection admission, so requests waiting their turn at one account or on a busy shared
+    // GPU never hold permits or admission other providers could use. The turn sits outside the
+    // request deadline, so waiting for it costs no render time.
     const admissionKey = imageAdmissionKey(normalizedBaseUrl, resolvedSource, request.imageEndpointId);
     const primaryResult = await runInMediaProviderLane({
       laneKey: mediaProviderLaneKey(admissionKey, apiKey),
@@ -440,6 +445,7 @@ export async function generateImage(
           queue: false,
           signal: request.signal,
           priority: request.admissionMode?.kind === "background" ? "background" : "foreground",
+          aroundPermit: (work) => runSharedGpuTurn("media", normalizedBaseUrl, work, request.signal),
           task: () => withConnectionAdmission(admissionKey, primaryMode, physicalRequest),
         }),
     });

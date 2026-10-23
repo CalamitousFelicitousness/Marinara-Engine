@@ -206,4 +206,4 @@ The **Open in system folder** button opens the selected asset folder in your com
 - [Music DJ: Spotify, YouTube, and Local Music](../media/music.md)
 - [Supported AI Providers](../connections/providers-reference.md)
 - [Game Mode: Getting Started](getting-started.md)
-- [Remote Access: Basic Auth and IP Allowlist](../REMOTE_ACCESS.md)
+- [Remote Access: Login and IP Allowlist](../REMOTE_ACCESS.md)

@@ -141,6 +141,7 @@ test.describe("The host namespace agent packages use", () => {
           i18next: sample("i18next", "createInstance"),
           "react-i18next": sample("react-i18next", "I18nextProvider"),
           "framer-motion": sample("framer-motion", "motion"),
+          "motion/react": sample("motion/react", "useScopeMotion"),
           "tailwind-merge": sample("tailwind-merge", "twMerge"),
           clsx: sample("clsx", "clsx"),
         },
@@ -179,6 +180,7 @@ test.describe("The host namespace agent packages use", () => {
         "i18next",
         "react-i18next",
         "framer-motion",
+        "motion/react",
         "tailwind-merge",
         "clsx",
       ],
@@ -208,6 +210,7 @@ test.describe("The host namespace agent packages use", () => {
         i18next: "function",
         "react-i18next": "function",
         "framer-motion": "function",
+        "motion/react": "function",
         "tailwind-merge": "function",
         clsx: "function",
       },
@@ -380,4 +383,75 @@ test.describe("The host namespace agent packages use", () => {
       .poll(() => page.evaluate(() => (globalThis as { __e2eDialogAnswer?: boolean }).__e2eDialogAnswer))
       .toBe(true);
   });
+});
+
+test("legacy and opt-in Motion package roots retain separate working animation contexts", async ({ page }) => {
+  await preparePackagePage(page);
+  await seedUIState(page, { hasCompletedOnboarding: true });
+  await installPackageClient(
+    page,
+    "e2e-versioned-motion",
+    `
+const host = globalThis.__MARINARA_HOST__;
+const React = host.modules.react;
+const h = React.createElement;
+const modules = { legacy: host.modules["framer-motion"], modern: host.modules["motion/react"] };
+globalThis.__motionSlotIdentity = {
+  legacyOnly: typeof modules.legacy.observeTimeline === "function",
+  modernOnly: typeof modules.modern.useScopeMotion === "function",
+  noModernSubstitution: modules.legacy.useScopeMotion === undefined,
+  distinctPresence: modules.legacy.PresenceContext !== modules.modern.PresenceContext,
+  distinctConfig: modules.legacy.MotionConfigContext !== modules.modern.MotionConfigContext,
+};
+for (const [name, m] of Object.entries(modules)) {
+  function Probe() {
+    const config = React.useContext(m.MotionConfigContext);
+    return h(m.motion.div, { "data-motion-probe": name, initial: {opacity:0}, animate:{opacity:1}, exit:{opacity:0}, transition:{duration:0.03} }, name + ":" + config.reducedMotion);
+  }
+  function Experience() {
+    const [visible, setVisible] = React.useState(true);
+    const [exits, setExits] = React.useState(0);
+    const [dialog, setDialog] = React.useState(false);
+    return h(m.MotionConfig, { reducedMotion: "always" },
+      h("button", { "data-motion-toggle": name, onClick: () => setVisible(v => !v) }, name + " toggle"),
+      h("button", { "data-motion-dialog": name, onClick: () => setDialog(true) }, name + " dialog"),
+      h("output", { "data-motion-exits": name }, String(exits)),
+      h(m.AnimatePresence, { onExitComplete: () => setExits(n => n+1) }, visible ? h(Probe, {key:"scene"}) : null),
+      h(host.components.Modal, { open:dialog, onClose:()=>setDialog(false), title:name + " Motion dialog" }, dialog ? h(Probe) : null)
+    );
+  }
+  customElements.define("e2e-motion-" + name, class extends HTMLElement {
+    connectedCallback() { this.root = host.modules["react-dom/client"].createRoot(this); this.root.render(h(Experience)); }
+    disconnectedCallback() { this.root.unmount(); }
+  });
+  const element = document.createElement("e2e-motion-" + name);
+  Object.assign(element.style, {position:"fixed",bottom:name === "legacy" ? "100px" : "200px",left:"10px",zIndex:"9999",background:"var(--background)",color:"var(--foreground)",padding:"12px"});
+  document.body.append(element);
+}
+`,
+  );
+  await page.goto("/");
+  await waitForPackageClient(page);
+  expect(await page.evaluate(() => (globalThis as { __motionSlotIdentity?: unknown }).__motionSlotIdentity)).toEqual({
+    legacyOnly: true,
+    modernOnly: true,
+    noModernSubstitution: true,
+    distinctPresence: true,
+    distinctConfig: true,
+  });
+  for (const name of ["legacy", "modern"]) {
+    const probe = page.locator(`[data-motion-probe="${name}"]`);
+    await expect(probe).toHaveText(`${name}:always`);
+    await page.locator(`[data-motion-toggle="${name}"]`).click();
+    await expect(probe).toHaveCount(0);
+    await expect(page.locator(`[data-motion-exits="${name}"]`)).toHaveText("1");
+    await page.locator(`[data-motion-toggle="${name}"]`).click();
+    await expect(probe).toHaveText(`${name}:always`);
+    await page.locator(`[data-motion-dialog="${name}"]`).click();
+    const dialog = page.getByRole("dialog", { name: `${name} Motion dialog` });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.locator(`[data-motion-probe="${name}"]`)).toHaveText(`${name}:always`);
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+  }
 });

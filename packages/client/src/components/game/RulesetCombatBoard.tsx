@@ -47,6 +47,7 @@ import {
   type RulesetBoardCell,
 } from "../../lib/ruleset-combat-board";
 import {
+  rulesetOptionForecastText,
   rulesetPickTarget,
   rulesetSendsOnPick,
   rulesetPicksStep,
@@ -54,6 +55,7 @@ import {
 } from "../../lib/ruleset-combat-menu";
 import { boardCellArt, boardSliceStyle, useBoardArt } from "../../lib/board-art";
 import { CreatureArtFigure, findCreatureArtIn, useCreatureFacings, useCreaturePacks } from "./CreatureArt";
+import { ArtIcon } from "./ArtIcon";
 import { cn } from "../../lib/utils";
 import { rulesetHealthTone } from "./RulesetTurnOrder";
 import { useMatchMedia } from "../../hooks/use-match-media";
@@ -110,9 +112,11 @@ export function RulesetCombatBoard({
   const actor = view.combatants.find((combatant) => combatant.id === view.actorId);
   const cells = useMemo(() => rulesetBoardCells(view, step), [view, step]);
   const byKey = useMemo(() => new Map(cells.map((cell) => [rulesetCellKey(cell), cell])), [cells]);
+  // The walk being read, or the one a first tap picked on a touch screen, still drawn once the finger lifts.
   const path = useMemo(() => {
-    if (!reading) return new Set<string>();
-    return new Set(rulesetPathTo(step, reading).map(rulesetCellKey));
+    const end = reading ?? step?.to;
+    if (!end) return new Set<string>();
+    return new Set(rulesetPathTo(step, end).map(rulesetCellKey));
   }, [step, reading]);
   const aimed = reading && step?.stage === "aim" ? byKey.get(rulesetCellKey(reading))?.aim : undefined;
   // Who an area being aimed would catch: the player's own while they aim, or, while a window holds the
@@ -175,11 +179,19 @@ export function RulesetCombatBoard({
     tiles.current.get(rulesetCellKey({ x: clampedX, y: clampedY }))?.focus();
   };
 
+  const touch = useMatchMedia("(pointer: coarse)");
   /** What clicking or pressing Enter on this square does, which is only ever finishing a step the
    *  player opened. A square outside the step is inert: it is information, not a command. */
   const takeCell = (cell: RulesetBoardCell) => {
     if (busy || !step) return;
     if (step.stage === "move" && cell.reach) {
+      // A finger is easily a square off, and a walk cannot be taken back: on a touch screen the
+      // first tap picks the square and a second tap on it walks, as an aim is laid.
+      if (touch && (step.to?.x !== cell.x || step.to?.y !== cell.y)) {
+        setStep({ ...step, to: { x: cell.x, y: cell.y } });
+        setCursor({ x: cell.x, y: cell.y });
+        return;
+      }
       setStep(null);
       onChoose(step.option.id, [], step.payWith, { to: { x: cell.x, y: cell.y } }, step.style, step.mode);
       return;
@@ -327,7 +339,6 @@ export function RulesetCombatBoard({
         : "");
   // While a step is finished on the board, the line also says how.
   // A finger has no Enter or Escape to be told about.
-  const touch = useMatchMedia("(pointer: coarse)");
   const hint = [said, boardStage && !touch ? t("game.combat.ruleset.screen.stepHint") : ""].filter(Boolean).join(" ");
 
   return (
@@ -380,6 +391,23 @@ export function RulesetCombatBoard({
                     sentences.get(key) ?? "",
                     cell.zones ? t("game.combat.ruleset.board.zones", { zones: cell.zones.join(", ") }) : "",
                   ].join(" ")}
+                  // Who stands here, said on hover as the token's letters cannot, with the odds against
+                  // them while a target is being picked.
+                  title={
+                    cell.occupant
+                      ? [
+                          cell.occupant.name,
+                          step?.stage === "target" && cell.targetable && step.option.forecastFor?.[cell.occupant.id]
+                            ? rulesetOptionForecastText(
+                                { ...step.option, forecast: step.option.forecastFor[cell.occupant.id] },
+                                t,
+                              )
+                            : "",
+                        ]
+                          .filter(Boolean)
+                          .join(": ")
+                      : undefined
+                  }
                   onClick={() => takeCell(cell)}
                   onKeyDown={(event) => onKeyDown(event, cell)}
                   onFocus={() => {
@@ -673,7 +701,7 @@ export function RulesetCombatBoard({
                     apart and the ring's colour only repeats it. */}
                 <div
                   className={cn(
-                    "relative flex aspect-square w-full items-center justify-center border-2 shadow-lg drop-shadow-[0_2px_3px_rgba(0,0,0,0.6)]",
+                    "relative flex aspect-square w-full items-center justify-center border-2 shadow-lg drop-shadow-[0_2px_3px_rgba(0,0,0,0.6)] @container",
                     party ? "rounded-full" : "rounded-[24%]",
                   )}
                   style={{
@@ -703,8 +731,11 @@ export function RulesetCombatBoard({
                   ) : sprite.kind === "emoji" ? (
                     <span className="text-[min(4vw,1.5rem)] leading-none">{sprite.value}</span>
                   ) : (
-                    <span className="text-[min(3vw,0.9rem)] font-black text-white/90">
-                      {initialsOf(combatant.name)}
+                    // Sized by the token itself, so the letters stay inside it however small the
+                    // squares are; a token too small for two keeps the first.
+                    <span className="text-[38cqw] font-black leading-none text-white/90">
+                      <span className="hidden @min-[24px]:inline">{initialsOf(combatant.name)}</span>
+                      <span className="@min-[24px]:hidden">{initialsOf(combatant.name).slice(0, 1)}</span>
                     </span>
                   )}
                   {(combatant.defeated || combatant.down) && (
@@ -722,8 +753,35 @@ export function RulesetCombatBoard({
                       {t("game.combat.ruleset.screen.aiTag")}
                     </span>
                   )}
-                  <div className="absolute -bottom-1 left-0 right-0 h-1 overflow-hidden rounded-full bg-black/70 ring-1 ring-black/50">
-                    <div className={cn("h-full transition-all duration-300", bar)} style={{ width: `${percent}%` }} />
+                  {/* What is on them, by icon where the art pack has one and by the first letters of its
+                      name where it does not: one letter is too many conditions' (Shielded, Stunned). */}
+                  {combatant.conditions.length > 0 && !combatant.defeated && (
+                    <span className="absolute -left-1.5 -top-1.5 flex items-center gap-px">
+                      {combatant.conditions.slice(0, 2).map((condition) => (
+                        <ArtIcon
+                          key={condition.id}
+                          ids={condition.icons ?? []}
+                          className="h-3.5 w-3.5 rounded-sm bg-black/70 ring-1 ring-white/60"
+                          fallback={
+                            <span className="rounded-[3px] bg-black/75 px-[2px] text-[0.45rem] font-bold leading-tight text-white ring-1 ring-white/50">
+                              {condition.label.slice(0, 3)}
+                            </span>
+                          }
+                        />
+                      ))}
+                      {combatant.conditions.length > 2 && (
+                        <span className="rounded-[3px] bg-black/75 px-[2px] text-[0.45rem] font-bold leading-tight text-white">
+                          +{combatant.conditions.length - 2}
+                        </span>
+                      )}
+                    </span>
+                  )}
+                  {/* Thick enough to read at a glance, and never thinner than a sliver while any health is left. */}
+                  <div className="absolute -bottom-1.5 left-0 right-0 h-1.5 overflow-hidden rounded-full bg-black/75 ring-1 ring-black/60 sm:h-2">
+                    <div
+                      className={cn("h-full transition-all duration-300", bar)}
+                      style={{ width: `${percent > 0 ? Math.max(percent, 8) : 0}%` }}
+                    />
                   </div>
                 </div>
               </div>
@@ -742,6 +800,29 @@ export function RulesetCombatBoard({
       >
         {readingHint === undefined ? hint : <span aria-hidden="true">{hint}</span>}
       </p>
+      {/* What the board's marks mean, a tap away. */}
+      <details className="z-10 mx-auto mb-1.5 max-w-[min(100%,46rem)] shrink-0 text-[0.68rem] text-[var(--muted-foreground)]">
+        <summary className="cursor-pointer text-center">{t("game.combat.ruleset.legend.title")}</summary>
+        <ul className="m-0 mt-1 grid list-none grid-cols-2 gap-x-3 gap-y-0.5 p-0 sm:grid-cols-3">
+          {(
+            [
+              ["▲", "higher"],
+              ["!", "struck"],
+              ["◯", "turn"],
+              ["◎", "pick"],
+              ["☠", "down"],
+              ["⚡", "surprised"],
+            ] as const
+          ).map(([mark, key]) => (
+            <li key={key} className="flex items-center gap-1.5">
+              <span aria-hidden="true" className="w-3 text-center font-bold text-[var(--foreground)]">
+                {mark}
+              </span>
+              {t(`game.combat.ruleset.legend.${key}`)}
+            </li>
+          ))}
+        </ul>
+      </details>
     </div>
   );
 }

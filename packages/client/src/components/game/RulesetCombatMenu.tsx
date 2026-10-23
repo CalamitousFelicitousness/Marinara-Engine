@@ -1264,7 +1264,16 @@ export function RulesetCombatMenu({
       const stepping = moments.some((option) => option.id === openId);
       return (
         <li key={ready.optionId}>
-          <details open={stepping || undefined} className="group/ready">
+          <details
+            open={stepping || foldsOpen[`ready:${ready.optionId}`] === true}
+            onToggle={(event) => {
+              if (stepping) return;
+              const key = `ready:${ready.optionId}`;
+              const open = event.currentTarget.open;
+              setFoldsOpen((folds) => (folds[key] === open ? folds : { ...folds, [key]: open }));
+            }}
+            className="group/ready"
+          >
             <summary
               onClick={(event) => {
                 if (stepping) event.preventDefault();

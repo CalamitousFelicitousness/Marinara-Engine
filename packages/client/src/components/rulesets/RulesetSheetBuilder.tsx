@@ -641,9 +641,11 @@ export function RulesetSheetBuilder({
                       aria-pressed={on}
                       disabled={!stored && (full || !!reason)}
                       onClick={() => toggle(entry.id)}
-                      aria-label={t(stored ? "ui.rulesets.builder.unpick" : "ui.rulesets.builder.pick", {
-                        name: entry.label,
-                      })}
+                      aria-label={
+                        !on && known
+                          ? `${entry.label}: ${t("ui.rulesets.builder.alreadyKnown")}`
+                          : t(stored ? "ui.rulesets.builder.unpick" : "ui.rulesets.builder.pick", { name: entry.label })
+                      }
                       className={`${chipClass} ${on ? chipOn : chipOff}`}
                     >
                       {on ? (

@@ -39,9 +39,18 @@ function closeOpenJsonContainers(raw: string): string | null {
  * Models often write dialogue in plain quotes inside a JSON string ("firstMessage": ""Hi," she says.",). When each
  * property sits on its own line, every quote between a string value's opening and closing quote belongs to the text,
  * so it is escaped. Only a `"key": "value"` line that isn't valid on its own is touched, so a valid line is never
- * merged into one value; a broken line holding several properties is split at each `, "key": "` (the key quoted,
- * single-quoted or bare, as models mix them) and each value is escaped on its own.
+ * merged into one value; a broken line holding several properties is split at each `, "key":` and each value is
+ * escaped on its own. A split at a single-quoted or bare key (`, key: "`, as models mix them) is used only when every
+ * piece is a whole `key: "value"` property, since prose such as `She said, softly: "Come here."` has that shape too.
  */
+const PROPERTY_RE = /^(\s*(?:"[^"\n]+"|'[^'\n]+'|[A-Za-z_$][\w$]*)\s*:\s*")(.*)("\s*,?\s*)$/u;
+
+/** A line split at every `, key: "`, quoted or not; null when a piece isn't a whole `key: "value"` property. */
+function anyKeyProperties(line: string): string[] | null {
+  const pieces = line.split(/,(?=\s*(?:"[^"\n]+"\s*:|(?:'[^'\n]+'|[A-Za-z_$][\w$]*)\s*:\s*["']))/u);
+  return pieces.every((piece) => PROPERTY_RE.test(piece)) ? pieces : null;
+}
+
 function escapeQuotesInsideLineValues(raw: string): string {
   const validProperties = (line: string) => {
     try {
@@ -53,25 +62,21 @@ function escapeQuotesInsideLineValues(raw: string): string {
   };
   const escapeValue = (property: string) =>
     property.replace(
-      /^(\s*(?:"[^"\n]+"|'[^'\n]+'|[A-Za-z_$][\w$]*)\s*:\s*")(.*)("\s*,?\s*)$/u,
+      PROPERTY_RE,
       (_: string, open: string, value: string, close: string) => `${open}${value.replace(/(?<!\\)"/gu, '\\"')}${close}`,
     );
+  const escapeLine = (line: string) =>
+    (anyKeyProperties(line) ?? line.split(/,(?=\s*"[^"\n]+"\s*:)/u)).map(escapeValue).join(",");
   return raw
     .split("\n")
-    .map((line) =>
-      validProperties(line)
-        ? line
-        : line
-            .split(/,(?=\s*(?:"[^"\n]+"\s*:|(?:'[^'\n]+'|[A-Za-z_$][\w$]*)\s*:\s*["']))/u)
-            .map(escapeValue)
-            .join(","),
-    )
+    .map((line) => (validProperties(line) ? line : escapeLine(line)))
     .join("\n");
 }
 
 /**
  * Every key the model wrote in `text`: quoted (`"key":`, decoded as JSON reads it), single-quoted (`'key':`) or bare
- * (`key:` at the start of a line or after `{` or `,`), as models often mix them.
+ * (`key:` at the start of a line or after `{`, or after `,` on a line made of whole properties), as models often mix
+ * them. A bare `, softly:` inside dialogue is not a key.
  */
 function writtenKeysIn(text: string): Set<string> {
   const keys = new Set<string>();
@@ -83,7 +88,13 @@ function writtenKeysIn(text: string): Set<string> {
     }
   }
   for (const match of text.matchAll(/'((?:[^'\\\n]|\\.)*)'\s*:/gu)) keys.add(match[1]!.replace(/\\(.)/gu, "$1"));
-  for (const match of text.matchAll(/(?:^|[{,])\s*([A-Za-z_$][\w$]*)\s*:/gmu)) keys.add(match[1]!);
+  for (const match of text.matchAll(/(?:^|\{)\s*([A-Za-z_$][\w$]*)\s*:/gmu)) keys.add(match[1]!);
+  for (const line of text.split("\n")) {
+    for (const piece of anyKeyProperties(line) ?? []) {
+      const bare = piece.match(/^\s*([A-Za-z_$][\w$]*)\s*:/u)?.[1];
+      if (bare) keys.add(bare);
+    }
+  }
   return keys;
 }
 

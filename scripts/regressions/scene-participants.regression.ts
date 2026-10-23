@@ -176,6 +176,11 @@ try {
     tryParseJsonRecord('{\n  "name": "Scene: Rain", \'firstMessage\': "You\'re late.", She turns. "Again."\n}'),
     { name: "Scene: Rain", firstMessage: 'You\'re late.", She turns. "Again.' },
   );
+  // Prose shaped like a bare key (", softly: "") stays inside its value.
+  assert.deepEqual(tryParseJsonRecord('{\n  "firstMessage": "She said, softly: "Come here."",\n  "name": "x"\n}'), {
+    firstMessage: 'She said, softly: "Come here."',
+    name: "x",
+  });
   assert.deepEqual(tryParseJsonRecord('{\n  "name": "Scene: X", "firstMessage": "Hi there"\n}'), {
     name: "Scene: X",
     firstMessage: "Hi there",

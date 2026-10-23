@@ -6173,14 +6173,38 @@ const cases: RegressionCase[] = [
         "She stops and holds as the room tone settles.",
       );
       assert.equal(resolveRoleplayVideoDirection('{"wrongField":"do not send raw JSON"}', 3_800), "");
+      // A JSON shape the video connection's instructions ask for is the prompt itself.
+      assert.equal(
+        resolveRoleplayVideoDirection(
+          '```json\n{"shot":"Mira draws the blade","soundscape":"steel rings"}\n```',
+          3_800,
+          "Answer as JSON with shot and soundscape fields.",
+        ),
+        '{"shot":"Mira draws the blade","soundscape":"steel rings"}',
+      );
+      assert.equal(
+        resolveRoleplayVideoDirection('[{"shot":"Mira bows"}]', 3_800, "Answer as a JSON list of shots."),
+        '[{"shot":"Mira bows"}]',
+      );
+      // Instructions that ask for no JSON make a stray object (an error payload) no prompt at all.
+      assert.equal(
+        resolveRoleplayVideoDirection('{"error":"rate limited"}', 3_800, "Write one cinematic paragraph."),
+        "",
+      );
 
       const galleryRouteSource = readFileSync(
         new URL("../../packages/server/src/routes/gallery.routes.ts", import.meta.url),
         "utf8",
       );
       assert.match(galleryRouteSource, /!promptDraft && chat\.mode === "roleplay"/u);
-      assert.match(galleryRouteSource, /resolveIllustratorPromptRuntime/u);
-      assert.match(galleryRouteSource, /buildRoleplayVideoDirectionMessages\(promptOverridesStorage/u);
+      // Roleplay planning goes through the shared clip writer, which uses the Prompt Model and the director messages.
+      assert.match(galleryRouteSource, /writeRoleplayClipDirection\(app\.db/u);
+      const clipWriterSource = readFileSync(
+        new URL("../../packages/server/src/services/video/roleplay-clip-writer.ts", import.meta.url),
+        "utf8",
+      );
+      assert.match(clipWriterSource, /resolveIllustratorPromptRuntime/u);
+      assert.match(clipWriterSource, /buildRoleplayVideoDirectionMessages\(createPromptOverridesStorage\(db\)/u);
       assert.match(galleryRouteSource, /input\.promptOverride\?\.trim\(\) \?\? ""/u);
       assert.doesNotMatch(galleryRouteSource, /chat\.mode === "roleplay"[\s\S]{0,400}gameStoryboard/u);
     },

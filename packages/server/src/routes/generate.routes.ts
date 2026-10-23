@@ -1,7 +1,9 @@
 import {
   applyClockCommandTags,
+  normalizeVideoGenerationUserSettings,
   TTS_SETTINGS_KEY,
   isStockMarinaraUniversalPreset,
+  VIDEO_GENERATION_SETTINGS_KEY,
   type RulesetClocks,
 } from "@marinara-engine/shared";
 import {
@@ -167,6 +169,8 @@ import {
   isOpenAIGpt6Model,
   LOCAL_SIDECAR_CONNECTION_ID,
   normalizeImagePromptInstructions,
+  normalizeVideoPromptInstructions,
+  normalizeIllustratorVideoMode,
   normalizeTextForMatch,
   parseGroupedSpeakerSegments,
   stripLeadingMessageTimestamps,
@@ -780,6 +784,7 @@ import {
 } from "../services/generation/provider-generation-runtime.js";
 import { applyContextMessageLimitWithPins, supportsNativeToolCalls } from "@marinara-engine/shared";
 import { planGameToolCalls } from "../services/generation/game-tool-planning.js";
+import { extractLeadingGmPlanning } from "../services/game/gm-planning.js";
 import {
   countProfessorMariCommands,
   handleProfessorMariCommand,
@@ -796,6 +801,19 @@ import { handleConversationScheduleCommand } from "../services/generation/conver
 import { handleConversationCrossPostCommand } from "../services/generation/conversation-cross-post-command-runtime.js";
 import { handleHapticCommand } from "../services/generation/haptic-command-runtime.js";
 import { handleConversationSelfieCommand } from "../services/generation/conversation-selfie-command-runtime.js";
+import { startConversationVideoCommand } from "../services/generation/conversation-video-runtime.js";
+import { createRoleplayClipTools, resolveIllustratorVideoOffer } from "../services/video/roleplay-illustrator-clips.js";
+import {
+  animateGalleryImage,
+  generateRoleplayClip,
+  hasChatVideoConnection,
+  roleplayVideoFirstFrame,
+} from "../services/video/chat-video-generation.js";
+import {
+  attachVideoToMessage,
+  buildChatVideoAttachment,
+  resolveSceneVideoConnectionId,
+} from "../services/video/chat-video-messages.js";
 import {
   CONTINUE_ASSISTANT_MESSAGE_PROMPT,
   CONTINUE_ASSISTANT_MESSAGE_DIRECT_PROMPT,
@@ -952,6 +970,10 @@ import { mergeConversationCharacterMemories } from "../services/generation/conve
 import { injectMemoryRecallContext } from "../services/generation/memory-recall-context.js";
 import {
   applyIllustratorChatRunInterval,
+  automaticVideoAllowed,
+  claimAutomaticVideoRun,
+  type AutomaticVideoRunClaim,
+  loadVideoRunInterval,
   shouldSkipAgentByMessageInterval,
 } from "../services/generation/agent-cadence.js";
 import {
@@ -4262,6 +4284,17 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             db: app.db,
             wrapFormat,
             resolvePromptMacros,
+            // Counted over the whole chat, as the check before making the clip is, not the trimmed context. Without a
+            // working video connection [video] isn't offered, as [selfie] isn't without an image connection.
+            videoCommandAllowed:
+              automaticVideoAllowed(
+                allChatMessages.filter((message) => message.id !== input.regenerateMessageId),
+                chatMeta,
+                await loadVideoRunInterval(agentsStore, chatMeta),
+                true,
+                input.regenerateMessageId,
+              ) &&
+              (chatMode !== "conversation" || (await hasChatVideoConnection(app.db, chatMeta))),
           });
 
           // ── Home Professor Mari: inject assistant knowledge & commands ──
@@ -4776,6 +4809,97 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         }
 
         const charInfo = await loadCharacterPromptInfo({ chars, characterIds, chatMode, chatId: input.chatId });
+        // Who Illustrator can show: the chat's characters (and a character used as the user's identity)
+        // and the user's persona, with their appearance and avatars. Pictures and clips match names against it.
+        const illustratorCast = () => ({
+          chatCharacters: [
+            ...charInfo.map((character) => ({
+              id: character.id,
+              name: character.name,
+              avatarPath: character.avatarPath,
+              appearance: character.appearance,
+              appearanceOverride: character.imageAppearanceOverride ?? null,
+            })),
+            ...(identity?.source === "character" && !charInfo.some((character) => character.id === identity.id)
+              ? [
+                  {
+                    id: identity.id,
+                    name: identity.name,
+                    avatarPath: identity.avatarPath,
+                    appearance: identity.appearance,
+                    // #7053: mirror the charInfo entries above so a
+                    // character used as the user identity keeps its
+                    // image-prompt override.
+                    appearanceOverride: identity.imageAppearanceOverride || null,
+                  },
+                ]
+              : []),
+          ],
+          persona:
+            identity?.source === "persona" && persona
+              ? {
+                  id: personaId,
+                  name: personaName,
+                  avatarPath: persona.avatarPath as string | null,
+                  appearance: personaFields.appearance,
+                  // #7053: identity-source persona, so the override
+                  // is already resolved as a string.
+                  appearanceOverride: persona.imageAppearanceOverride || null,
+                  characterSheetImageId:
+                    typeof persona.characterSheetImageId === "string" ? persona.characterSheetImageId : null,
+                  useCharacterSheetAsReference: persona.useCharacterSheetAsReference,
+                }
+              : null,
+        });
+        // Who a clip shows and its video prompt, shared with re-running Illustrator from a message.
+        const { resolveClipCast, writeClipPrompt } = createRoleplayClipTools({
+          db: app.db,
+          chat,
+          chatMeta,
+          chatId: input.chatId,
+          characterNames: charInfo.map((character) => character.name),
+          cast: illustratorCast,
+          charactersStore: chars,
+          characterGallery,
+          personaGallery,
+          debugMode: input.debugMode,
+          signal: agentSignal,
+        });
+        // A Roleplay clip, automatic or asked for with [illustrate], starts only once the Video Run Interval has passed
+        // (checked and recorded in one step, given back if the clip fails), and at most Videos per reply of them join
+        // one reply. Null when it may not start.
+        let roleplayClipLimit: Promise<number> | undefined;
+        let roleplayClipsStarted = 0;
+        const claimRoleplayClip = async (messageId: string) => {
+          roleplayClipLimit ??= appSettings
+            .get(VIDEO_GENERATION_SETTINGS_KEY)
+            .then((raw) => normalizeVideoGenerationUserSettings(raw).maxCharacterVideosPerReply);
+          if (roleplayClipsStarted >= (await roleplayClipLimit)) return null;
+          roleplayClipsStarted += 1;
+          const claim = await claimAutomaticVideoRun(chats, input.chatId, messageId, async (current) =>
+            automaticVideoAllowed(
+              await chats.listMessages(input.chatId),
+              current,
+              await loadVideoRunInterval(agentsStore, current),
+              false,
+              messageId,
+            ),
+          );
+          if (!claim) {
+            roleplayClipsStarted -= 1;
+            return null;
+          }
+          // A clip that fails gives its place in the reply back, as it gives back the interval.
+          let settled = false;
+          return {
+            settle: async (made: boolean) => {
+              if (settled) return;
+              settled = true;
+              if (!made) roleplayClipsStarted -= 1;
+              await claim.settle(made);
+            },
+          };
+        };
         const roleplayRollParticipants = identity
           ? [
               ...charInfo.filter((character) => character.id !== identity.id),
@@ -4983,6 +5107,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             gameDiceToolAutoAttached && nativeToolsAvailableForTurn ? GAME_MODE_AUTO_ATTACH_TOOL_NAMES : [],
         });
 
+        let addressMode: "party" | "gm" | undefined;
         if (chatMode === "game") {
           // Resolve once so the cached reference and per-turn guidance use the same ruleset.
           // `loadRulesetRegistry` never throws: a failed read returns an empty registry, and a
@@ -5014,6 +5139,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               selectedGameStateSnapshotPromise,
               mappedMessages,
               personaName,
+              hasPlayerIdentity: persona != null,
               resolvePromptMacros,
             });
           canonicalGamePartyNames = gmCtx.partyNames;
@@ -5143,7 +5269,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           // prompt block is only sent when actually relevant.
           const latestUserMsg = [...finalMessages].reverse().find((m) => m.role === "user");
           const latestUserContent = latestUserMsg?.content.trimStart() ?? "";
-          const addressMode = latestUserContent.startsWith("[To the party]")
+          addressMode = latestUserContent.startsWith("[To the party]")
             ? "party"
             : latestUserContent.startsWith("[To the GM]")
               ? "gm"
@@ -5463,6 +5589,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               map: gameMap,
               partyNames: gmCtx.partyNames,
               playerName: gmCtx.playerName,
+              playerIsParty: gmCtx.playerIsParty,
               characterSprites: gmCtx.characterSprites,
               language: gmCtx.language,
               rating: gmCtx.rating,
@@ -5868,25 +5995,36 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   message.role === "user" && (!advancedAgentSourceIds || advancedAgentSourceIds.has(message.id)),
               )?.content ?? "")
           : undefined;
-        const customAgentsWithLorebookTriggers = resolvedAgents.filter(
-          (agent) => !builtInAgentTypes.has(agent.type) && agent.settings.triggerLorebooksForAgentCalls === true,
+        const agentsWithLorebookTriggers = resolvedAgents.filter(
+          (agent) =>
+            agent.settings.chatLorebookAttachmentEnabled === true ||
+            (!builtInAgentTypes.has(agent.type) && agent.settings.triggerLorebooksForAgentCalls === true),
         );
         const resolveTriggeredLorebookEntriesByAgentId = createAgentLorebookTriggerResolver({
-          agents: customAgentsWithLorebookTriggers.map((agent) => {
-            const { sourceLorebookIds, source } = resolveKnowledgeSourceLorebookIds({
-              settings: agent.settings,
-              chatActiveLorebookIds,
-            });
+          agents: agentsWithLorebookTriggers.map((agent) => {
+            const { sourceLorebookIds, source } =
+              !builtInAgentTypes.has(agent.type) && agent.settings.triggerLorebooksForAgentCalls === true
+                ? resolveKnowledgeSourceLorebookIds({ settings: agent.settings, chatActiveLorebookIds })
+                : { sourceLorebookIds: [], source: "none" as const };
             return {
               id: agent.id,
               contextSize: normalizeAgentContextSize(agent.settings.contextSize),
               sourceLorebookIds,
               source,
+              additionalManualLorebookIds:
+                agent.settings.chatLorebookAttachmentEnabled === true &&
+                typeof agent.settings.chatAttachedLorebookId === "string"
+                  ? [agent.settings.chatAttachedLorebookId]
+                  : [],
             };
           }),
           activeCharacterIds: promptCharacterIds,
           activeCharacterTags: Array.from(
-            new Set(charInfo.flatMap((character) => (Array.isArray(character.tags) ? character.tags : []))),
+            new Set(
+              charInfo
+                .filter((character) => promptCharacterIds.includes(character.id))
+                .flatMap((character) => (Array.isArray(character.tags) ? character.tags : [])),
+            ),
           ),
           embeddingSource: memoryRecallEmbeddingSource,
           entryStateOverrides:
@@ -7027,6 +7165,20 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           imageConnection ??= await connections.getDefaultForImageGeneration();
           const imagePromptInstructions = normalizeImagePromptInstructions(imageConnection?.imagePromptInstructions);
           if (imagePromptInstructions) memory._imagePromptInstructions = imagePromptInstructions;
+          // Offer the generateVideo/videoPrompt fields, guided by the video connection's instructions.
+          delete memory._generatedVideos;
+          // Offered only once the Video Run Interval has passed, counted over the whole chat as the check before making
+          // the clip is, not the trimmed context. Re-runs from a message are asked for, so they are not gated.
+          const videoOffer = automaticVideoAllowed(
+            allChatMessages.filter((message) => message.id !== input.regenerateMessageId),
+            chatMeta,
+            await loadVideoRunInterval(agentsStore, chatMeta),
+            true,
+            input.regenerateMessageId,
+          )
+            ? await resolveIllustratorVideoOffer(chatMode, chatMeta, connections)
+            : null;
+          if (videoOffer) memory._generatedVideos = videoOffer;
           return { ...trackerContext, memory };
         };
         // Decision statements in agent prompt templates (#6569), planned from the agents
@@ -8650,6 +8802,29 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           const responderToolsAttached = toolsAttached && Boolean(responderToolDefs?.length);
           if (chatMode === "roleplay") appendLocalEndpointTools(preparedMessagesForGen, responderToolDefs);
           let roleplayPersonalContext = "";
+          // [video] is offered only while a clip may be made now: a video connection, and the Video Run Interval passed.
+          let roleplayVideoOffer: { instructions: string } | null = null;
+          if (
+            chatMode === "roleplay" &&
+            !input.impersonate &&
+            isRoleplayCommandEnabled(chatMeta, "video") &&
+            // Counted over the whole chat, as the check before making the clip is, not the trimmed context.
+            automaticVideoAllowed(
+              allChatMessages.filter((message) => message.id !== input.regenerateMessageId),
+              chatMeta,
+              await loadVideoRunInterval(agentsStore, chatMeta),
+              true,
+              input.regenerateMessageId,
+            )
+          ) {
+            const videoConnectionId = await resolveSceneVideoConnectionId(chatMeta, connections);
+            const videoConnection = videoConnectionId ? await connections.getWithKey(videoConnectionId) : null;
+            if (videoConnection?.provider === "video_generation") {
+              roleplayVideoOffer = {
+                instructions: normalizeVideoPromptInstructions(videoConnection.videoPromptInstructions) ?? "",
+              };
+            }
+          }
           if (chatMode === "roleplay" && !input.impersonate) {
             const personalCharacters = [...(await getGroupHistoryCharacterNamesById())].map(([id, name]) => ({
               id,
@@ -8674,6 +8849,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 characterNames: charInfo.map((character) => character.name),
                 characterId: roleplayCallerId,
                 interruptAvailable: Boolean(roleplayInterruptionTarget),
+                video: roleplayVideoOffer,
               }),
               wrapFormat,
             );
@@ -9196,6 +9372,15 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             fullResponse = inlineThinking.content;
             contentReplaced = true;
           }
+          // A Game Master (not the player's own impersonated line) that plans on the page instead ("Opening scene: ... / Plan: ...") keeps it out of the scene.
+          if (chatMode === "game" && !input.impersonate && addressMode !== "gm") {
+            const writtenPlan = extractLeadingGmPlanning(fullResponse);
+            if (writtenPlan.planning) {
+              fullThinking = fullThinking ? `${fullThinking}\n\n${writtenPlan.planning}` : writtenPlan.planning;
+              fullResponse = writtenPlan.content;
+              contentReplaced = true;
+            }
+          }
 
           // ── LOG_LEVEL=debug or Settings -> Advanced -> Debug mode: log full response + usage to server console ──
           if (isDebug || requestDebug) {
@@ -9290,7 +9475,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               }
               if (command.type === "document") activity.documentStyle = Math.floor(Math.random() * 3);
               const requiredAgent =
-                command.type === "illustrate"
+                command.type === "illustrate" || command.type === "video"
                   ? "illustrator"
                   : command.type === "combat"
                     ? "combat"
@@ -9307,6 +9492,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               roleplayActivityPlaces.set(activity, parsed.content.slice(0, parsed.positions.get(activity)));
               if (
                 command.type === "illustrate" ||
+                command.type === "video" ||
                 command.type === "combat" ||
                 command.type === "music" ||
                 command.type === "sound"
@@ -9644,17 +9830,35 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               // outcomes in context, including on providers without a tools API.
               const records = [...fullResponse.matchAll(createGameRollTagRegex())].map((match) => match[0]);
               const checks = [...(rolled.results ?? []), ...generalRolls.checkResults];
+              const paidCheckCosts = (rolled.results ?? []).flatMap(({ who, spent }) =>
+                spent ? [{ who: who ?? null, ...spent }] : [],
+              );
               const resolvedSummary = [
-                ...checks.map(formatSkillCheckResultSummary),
-                ...toolDiceRollResults.map((result) => `🎲 ${result.notation} = ${result.total}`),
+                // Each line names its roller, so the sheet commands asked for below land on the right member.
+                ...checks.map((check) => `${check.who ? `${check.who}: ` : ""}${formatSkillCheckResultSummary(check)}`),
+                ...toolDiceRollResults.map(
+                  (result) => `🎲 ${result.label ? `${result.label}: ` : ""}${result.notation} = ${result.total}`,
+                ),
               ].join("\n");
+              // A prompt that ended on an assistant prefill already holds the start of the draft's
+              // turn. Sent as a second assistant message after it, the two turns no longer alternate,
+              // which strict Anthropic-format endpoints refuse; the draft takes the prefill's place.
+              const prefillTurn = narratorMessages.at(-1);
+              const endsOnPrefill = prefillTurn?.role === "assistant" && !prefillTurn.tool_calls?.length;
+              const draftTurn: ChatMessage = {
+                role: "assistant",
+                content:
+                  endsOnPrefill && !gameDraftWithCommands.startsWith(prefillTurn.content)
+                    ? prefillTurn.content + gameDraftWithCommands
+                    : gameDraftWithCommands,
+              };
               const continuationMessages = await fitPromptForSend(
                 [
-                  ...narratorMessages,
-                  { role: "assistant", content: gameDraftWithCommands },
+                  ...(endsOnPrefill ? narratorMessages.slice(0, -1) : narratorMessages),
+                  draftTurn,
                   {
                     role: "user",
-                    content: `${resolvedSummary ? `The engine has now rolled the requested dice:\n${resolvedSummary}` : "The engine has now read the requested checks:\nNo dice were rolled."}${generalRolls.unresolved.length ? `\nUnresolved requests:\n${generalRolls.unresolved.join("\n")}` : ""}${rolled.sparse - (rolled.untrained ?? 0) > 0 ? "\nSome checks could not be rolled and remain unresolved." : ""}${rolled.untrained ? "\nSome checks were not rolled because the character has no training in them: narrate that they could not attempt them." : ""}\nRewrite your entire last narration using these real results, correcting any contradictory outcome before or after a check. Narrate the consequences now. Do not repeat this player's action, invent numbers, request more rolls, or include dice/check tags: the engine keeps their records. For unresolved requests, leave the outcome open and explain what the player needs to clarify in supported notation. Re-emit every original movement or package command still justified by these outcomes; omit commands invalidated by them. Only commands in your revised output will execute. Return only the complete revised GM narration in the game's language.`,
+                    content: `${resolvedSummary ? `The engine has now rolled the requested dice:\n${resolvedSummary}` : "The engine has now read the requested checks:\nNo dice were rolled."}${paidCheckCosts.length ? `\nReported check-purchase payments (other check-entry costs may also have been paid): ${JSON.stringify(paidCheckCosts)}` : ""}${generalRolls.unresolved.length ? `\nUnresolved requests:\n${generalRolls.unresolved.join("\n")}` : ""}${rolled.sparse - (rolled.untrained ?? 0) > 0 ? "\nSome checks could not be rolled and remain unresolved." : ""}${rolled.untrained ? "\nSome checks were not rolled because the character has no training in them: narrate that they could not attempt them." : ""}\n${addressMode === "gm" ? "Rewrite your entire last out-of-character answer using these real results, correcting any contradictory outcome before or after a check. Answer the player's question now." : "Rewrite your entire last narration using these real results, correcting any contradictory outcome before or after a check. Narrate the consequences now."} Do not repeat this player's action, invent numbers, request more rolls, or include dice/check tags: the engine keeps their records. For unresolved requests, leave the outcome open and explain what the player needs to clarify in supported notation. Re-emit every original movement or package command still justified by these outcomes; omit commands invalidated by them.${chatMeta.gameRuleset != null ? " The check pass has already applied any accepted purchases and check-entry costs to the sheets: do not re-emit already-applied check-pass sheet effects or charge those costs again. Write sheet commands for new harm, healing and genuinely additional resource costs these results decide, using the rolled totals: narration alone applies none of these new consequences." : ""} Apart from the already-applied check costs, only commands in your revised output will execute. ${addressMode === "gm" ? "Return only the complete revised out-of-character answer in the game's language, starting directly with the answer" : "Return only the complete revised GM narration in the game's language, starting directly with the scene"}: any planning goes inside one <think>...</think> block at the very start, never in the narration.`,
                   },
                 ],
                 { tools: undefined },
@@ -9685,6 +9889,12 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 const thinking = extractLeadingThinkingBlocks(narration, customThinkingTags);
                 narration = thinking.content;
                 if (thinking.thinking) fullThinking = [fullThinking, thinking.thinking].filter(Boolean).join("\n\n");
+                if (addressMode !== "gm") {
+                  const writtenPlan = extractLeadingGmPlanning(narration);
+                  narration = writtenPlan.content;
+                  if (writtenPlan.planning)
+                    fullThinking = [fullThinking, writtenPlan.planning].filter(Boolean).join("\n\n");
+                }
               } catch (err) {
                 if (generationSignal.aborted) return null;
                 geminiResponseParts = null;
@@ -11031,6 +11241,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               }
             }
             extraUpdate.generationReplay = buildGenerationReplay(input);
+            // Every group reply retains this request's intent, even after other replies or system notes follow it.
+            extraUpdate.lorebookGenerationTriggers = [...lorebookGenerationTriggers];
             extraUpdate.startsNewAssistantBubble = startsNewAssistantBubble;
             if (chatMode === "game") {
               const previousExtra = input.continueMessageId ? parseExtra(savedMsg.extra) : {};
@@ -11105,7 +11317,12 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               ];
               const pick = (keys: string[]) =>
                 Object.fromEntries(keys.filter((key) => key in extraUpdate).map((key) => [key, extraUpdate[key]]));
-              const everyPart = pick(["contextInjections", "generationReplay", "referencedCharacterIds"]);
+              const everyPart = pick([
+                "contextInjections",
+                "generationReplay",
+                "lorebookGenerationTriggers",
+                "referencedCharacterIds",
+              ]);
               // Every fallback-written part keeps its identity, without duplicating the turn's usage.
               if (generationProviderOrigin.fallback) everyPart.generationInfo = generationProviderOrigin;
               for (const [index, part] of replyParts.slice(0, -1).entries()) {
@@ -12142,7 +12359,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               logger.warn(error, "[advanced-memory] Could not attach scene check to post-processing trackers");
             }
           }
-          if (customAgentsWithLorebookTriggers.some((agent) => agent.phase === "post_processing")) {
+          if (agentsWithLorebookTriggers.some((agent) => agent.phase === "post_processing")) {
             agentContext.triggeredLorebookEntriesByAgentId = await resolveTriggeredLorebookEntriesByAgentId([
               ...recentMsgs,
               {
@@ -12515,12 +12732,18 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               );
               continue;
             }
-            if (command.type !== "illustrate" && command.type !== "music" && command.type !== "combat") continue;
+            if (
+              command.type !== "illustrate" &&
+              command.type !== "video" &&
+              command.type !== "music" &&
+              command.type !== "combat"
+            )
+              continue;
             if (command.type === "combat" && combatRequested) continue;
+            const pictureCommand = command.type === "illustrate" || command.type === "video";
             const agent = resolvedAgents.find(
               (candidate) =>
-                candidate.type ===
-                (command.type === "illustrate" ? "illustrator" : command.type === "combat" ? "combat" : "spotify"),
+                candidate.type === (pictureCommand ? "illustrator" : command.type === "combat" ? "combat" : "spotify"),
             );
             if (!agent) {
               sendSseEvent(reply, {
@@ -12529,20 +12752,117 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               });
               continue;
             }
+            // A [video] whose First frame is the avatar or no picture skips Illustrator's picture.
+            if (command.type === "video") {
+              const imageConnectionId = resolveIllustratorImageConnectionId(
+                chatMode,
+                chatMeta,
+                agent.settings.imageConnectionId,
+              );
+              const firstFrame = roleplayVideoFirstFrame(
+                chatMeta,
+                Boolean(imageConnectionId || (await connections.getDefaultForImageGeneration())),
+              );
+              if (firstFrame !== "picture") {
+                pendingRoleplayMedia.push(
+                  (async () => {
+                    let videoRun: AutomaticVideoRunClaim | null = null;
+                    try {
+                      // Re-checked here, as the clip starts: another clip may have started since [video] was offered,
+                      // or the reply may already have its Videos per reply clips.
+                      videoRun = await claimRoleplayClip(request.messageId);
+                      if (!videoRun) {
+                        logger.info(
+                          "[roleplay/commands] Skipped a [video]: the Video Run Interval has not passed or the reply has its clips",
+                        );
+                        return;
+                      }
+                      // The stream now waits on a clip, not text, so the client can let the next message start.
+                      sendSseEvent(reply, { type: "video_started", data: { messageId: request.messageId } });
+                      // The storyteller's subject and motion are the request; the Clip Director writes the clip to
+                      // the video connection's instructions.
+                      const prompt = await writeClipPrompt({
+                        messageId: request.messageId,
+                        request: [command.subject, command.motion].filter(Boolean).join("\n"),
+                        withoutPicture: true,
+                      });
+                      const cast = await resolveClipCast(
+                        command.characters ?? [],
+                        [command.subject, prompt].filter(Boolean).join("\n"),
+                        firstFrame !== "none",
+                      );
+                      const video = await generateRoleplayClip(app.db, {
+                        chatId: input.chatId,
+                        chatMeta,
+                        prompt,
+                        firstFrame,
+                        avatar: cast.avatar,
+                        characterIds: cast.characterIds,
+                        appearanceBlock:
+                          chatMeta.illustratorVideoIncludeCharacterAppearance === true ? cast.appearanceBlock : null,
+                        queue: true,
+                        signal: agentSignal,
+                        debugMode: input.debugMode,
+                      });
+                      // The clip is saved by now, so it counts as made: failing to add it to the reply only logs,
+                      // and the Video Run Interval counts from this reply either way.
+                      await videoRun.settle(true);
+                      let attachedTo: string | null = null;
+                      try {
+                        const attached = await attachVideoToMessage(
+                          chats,
+                          { messageId: request.messageId, swipeIndex: request.swipeIndex },
+                          buildChatVideoAttachment(video),
+                        );
+                        // Reported on the reply only when the clip landed (the reply may have been deleted meanwhile).
+                        if (attached) attachedTo = request.messageId;
+                      } catch (attachErr) {
+                        logger.warn(attachErr, "[roleplay/commands] Saved clip %s but could not attach it", video.id);
+                      }
+                      sendSseEvent(reply, {
+                        type: "video",
+                        data: {
+                          messageId: attachedTo,
+                          videoUrl: video.url,
+                          videoId: video.id,
+                          characterName: cast.avatar?.name || agent.name,
+                        },
+                      });
+                    } catch (error) {
+                      await videoRun?.settle(false);
+                      if (agentSignal.aborted) return;
+                      logger.warn(error, "[roleplay/commands] Video request failed");
+                      sendSseEvent(reply, {
+                        type: "video_error",
+                        data: { error: error instanceof Error ? error.message : "Video generation failed" },
+                      });
+                    }
+                  })(),
+                );
+                continue;
+              }
+            }
             const sourceMessage = await chats.getMessage(request.messageId);
             const sourceName = sourceMessage?.characterId
               ? (await getGroupHistoryCharacterNamesById()).get(sourceMessage.characterId)
               : undefined;
             const context = await resolveAgentContext(agent, {
               ...postAgentContext,
-              mainResponse: `${sourceName ? `${sourceName}: ` : ""}${sourceMessage ? roleplayAgentText(sourceMessage.content, sourceMessage, agentWhisperNames) : agentCompletedResponse}\n\nExplicit scene request: ${command.type === "illustrate" ? `${command.subject}${command.characters?.length ? `\nInvolved characters: ${command.characters.join(", ")}. Depict these participants.` : ""}` : command.type === "combat" ? "Combat starts now. Establish and track the encounter from the current scene." : command.mood}`,
+              mainResponse: `${sourceName ? `${sourceName}: ` : ""}${sourceMessage ? roleplayAgentText(sourceMessage.content, sourceMessage, agentWhisperNames) : agentCompletedResponse}\n\nExplicit scene request: ${pictureCommand ? `${command.subject}${command.characters?.length ? `\nInvolved characters: ${command.characters.join(", ")}. Depict these participants.` : ""}` : command.type === "combat" ? "Combat starts now. Establish and track the encounter from the current scene." : command.mood}`,
             });
             try {
               let result: AgentResult;
-              if (command.type === "illustrate") {
+              if (pictureCommand) {
+                // Generated Videos offered this turn: Illustrator may turn a requested picture into a clip.
+                const offeredVideo = context.memory._generatedVideos as
+                  { instructions?: unknown; clipsOnly?: unknown } | undefined;
                 const plan = await writeManualIllustratorPromptPlan({
                   illustratorAgent: agent,
                   context,
+                  videoOffer:
+                    command.type === "illustrate" && offeredVideo && offeredVideo.clipsOnly !== true
+                      ? offeredVideo
+                      : null,
                   request: `${command.subject}${command.characters?.length ? `\nInvolved characters: ${command.characters.join(", ")}` : ""}`,
                   imagePromptInstructions:
                     typeof context.memory._imagePromptInstructions === "string"
@@ -12572,6 +12892,10 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                     ...(command.characters?.length ? { characters: command.characters } : {}),
                     shouldGenerate: true,
                     generateBackground: false,
+                    // [video]: the picture is the clip's first frame, animated with the storyteller's motion.
+                    ...(command.type === "video"
+                      ? { generateVideo: true, videoRequested: true, videoPrompt: command.motion || command.subject }
+                      : {}),
                   },
                   success: true,
                   error: null,
@@ -13729,6 +14053,35 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               const fallbackIllustratorAgent = resolvedAgents.find((agent) => agent.type === "illustrator");
               const imagePromptAgent =
                 resultAgent ?? (result.agentType === "illustrator" ? fallbackIllustratorAgent : undefined);
+              // A saved clip counts as made: failing to add it to the reply only logs, so the clip stays in the
+              // Gallery and no error or stand-in picture is shown for it.
+              const attachClipToReply = async (
+                video: Parameters<typeof buildChatVideoAttachment>[0],
+                clipMessageId: string,
+                swipeIndex: number,
+              ) => {
+                let attachedTo: string | null = null;
+                try {
+                  const attached = await attachVideoToMessage(
+                    chats,
+                    { messageId: clipMessageId, swipeIndex },
+                    buildChatVideoAttachment(video),
+                  );
+                  // Reported on the reply only when the clip landed (the reply may have been deleted meanwhile).
+                  if (attached) attachedTo = clipMessageId;
+                } catch (attachErr) {
+                  logger.warn(attachErr, "[illustrator] Saved clip %s but could not attach it", video.id);
+                }
+                sendSseEvent(reply, {
+                  type: "video",
+                  data: {
+                    messageId: attachedTo,
+                    videoUrl: video.url,
+                    videoId: video.id,
+                    characterName: imagePromptAgent?.name ?? "Illustrator",
+                  },
+                });
+              };
               const usesChatIllustratorSettings =
                 resultAgent?.type === "illustrator" || (!resultAgent && result.agentType === "illustrator");
               const illustratorBackgroundAgent =
@@ -13892,7 +14245,72 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   );
                 }
                 imgConnFull ??= await connections.getDefaultForImageGeneration();
-                if (imgConnFull) {
+                // Clips only needs a working video connection, as the agent was told; without one it makes pictures.
+                const clipsOnlyUsable =
+                  (await resolveIllustratorVideoOffer(requestChatMode, chatMeta, connections))?.clipsOnly === true;
+                // Clips only, starting from the avatar or from no picture: no picture is drawn at all. A storyteller's
+                // [video] that reaches here draws its picture as the clip's first frame (below).
+                const clipOnlyFrame =
+                  clipsOnlyUsable && illData.videoRequested !== true
+                    ? roleplayVideoFirstFrame(chatMeta, Boolean(imgConnFull))
+                    : "picture";
+                // The model writes [illustrate] itself, so its clips are paced like Illustrator's own; a refused one
+                // shows its picture instead.
+                const clipOnlyRun =
+                  clipOnlyFrame !== "picture" && messageId ? await claimRoleplayClip(messageId) : null;
+                const clipOnlyRefused = clipOnlyFrame !== "picture" && !!messageId && !clipOnlyRun;
+                if (clipOnlyRefused) {
+                  logger.info(
+                    "[illustrator] Skipped a clip: the Video Run Interval has not passed or the reply has its clips",
+                  );
+                }
+                if (clipOnlyRun && messageId && clipOnlyFrame !== "picture") {
+                  const videoRun = clipOnlyRun;
+                  // The stream now waits on a clip, not text, so the client can let the next message start.
+                  sendSseEvent(reply, { type: "video_started", data: { messageId } });
+                  pendingRoleplayMedia.push(
+                    (async () => {
+                      try {
+                        const motion = typeof illData.videoPrompt === "string" ? illData.videoPrompt.trim() : "";
+                        // No picture shows this moment, so the Clip Director writes the whole clip (scene and motion)
+                        // to the video connection's instructions.
+                        const prompt = await writeClipPrompt({
+                          messageId,
+                          request: [imagePrompt, motion].filter(Boolean).join("\n"),
+                          withoutPicture: true,
+                        });
+                        const cast = await resolveClipCast(illCharacters, prompt, clipOnlyFrame !== "none");
+                        const video = await generateRoleplayClip(app.db, {
+                          chatId: input.chatId,
+                          chatMeta,
+                          prompt,
+                          firstFrame: clipOnlyFrame,
+                          avatar: cast.avatar,
+                          characterIds: cast.characterIds,
+                          appearanceBlock:
+                            chatMeta.illustratorVideoIncludeCharacterAppearance === true ? cast.appearanceBlock : null,
+                          queue: true,
+                          signal: agentSignal,
+                          debugMode: input.debugMode,
+                        });
+                        await videoRun.settle(true);
+                        await attachClipToReply(video, messageId, targetSwipeIndex);
+                      } catch (videoErr) {
+                        await videoRun.settle(false);
+                        logger.warn(videoErr, "[illustrator] Clip failed");
+                        // A clip the user stopped is no failure to report.
+                        if (!agentSignal.aborted) {
+                          sendSseEvent(reply, {
+                            type: "video_error",
+                            data: { error: videoErr instanceof Error ? videoErr.message : String(videoErr) },
+                          });
+                        }
+                      }
+                    })(),
+                  );
+                } else if (clipOnlyRefused && !commandTarget) {
+                  // Illustrator's own clip waits for the Video Run Interval; Clips only draws no picture meanwhile.
+                } else if (imgConnFull) {
                   const resolvedImageConnection = imgConnFull;
                   sendSseEvent(reply, {
                     type: "illustration_queued",
@@ -13903,6 +14321,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   // Keep earlier images alive when automatic and command requests share a turn.
                   if (pendingIllustration) pendingRoleplayMedia.push(pendingIllustration);
                   pendingIllustration = (async () => {
+                    // Clips only holds back saved pictures for the clip; a later failure still shows them.
+                    const pictureShows: Array<() => Promise<void>> = [];
                     try {
                       const imgConnFull = resolvedImageConnection;
                       const { generateImage, saveImageToDisk } = await import("../services/image/image-generation.js");
@@ -13999,47 +14419,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                         charactersStore: chars,
                         characterGallery,
                         personaGallery,
-                        chatCharacters: [
-                          ...charInfo.map((character) => ({
-                            id: character.id,
-                            name: character.name,
-                            avatarPath: character.avatarPath,
-                            appearance: character.appearance,
-                            appearanceOverride: character.imageAppearanceOverride ?? null,
-                          })),
-                          ...(identity?.source === "character" &&
-                          !charInfo.some((character) => character.id === identity.id)
-                            ? [
-                                {
-                                  id: identity.id,
-                                  name: identity.name,
-                                  avatarPath: identity.avatarPath,
-                                  appearance: identity.appearance,
-                                  // #7053: mirror the charInfo entries above so a
-                                  // character used as the user identity keeps its
-                                  // image-prompt override.
-                                  appearanceOverride: identity.imageAppearanceOverride || null,
-                                },
-                              ]
-                            : []),
-                        ],
-                        persona:
-                          identity?.source === "persona" && persona
-                            ? {
-                                id: personaId,
-                                name: personaName,
-                                avatarPath: persona.avatarPath as string | null,
-                                appearance: personaFields.appearance,
-                                // #7053: identity-source persona, so the override
-                                // is already resolved as a string.
-                                appearanceOverride: persona.imageAppearanceOverride || null,
-                                characterSheetImageId:
-                                  typeof persona.characterSheetImageId === "string"
-                                    ? persona.characterSheetImageId
-                                    : null,
-                                useCharacterSheetAsReference: persona.useCharacterSheetAsReference,
-                              }
-                            : null,
+                        ...illustratorCast(),
                         requestedNames: illCharacters.filter((name): name is string => typeof name === "string"),
                         promptText: [
                           currentUserInputContent() ?? "",
@@ -14190,6 +14570,11 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                           logger.warn(error, "[illustrator] Image variant %d failed", index + 1),
                       });
 
+                      // Clips only, or a [video] drawn as its first frame: the picture is the clip's first frame,
+                      // shown only if the clip fails.
+                      const clipsOnly = clipsOnlyUsable;
+                      const pictureIsFirstFrame = clipsOnly || illData.videoRequested === true;
+                      let firstGalleryImageId: string | null = null;
                       for (const [variantIndex, imageResult] of imageResults.entries()) {
                         const renderedPrompt = imageResult.effectivePrompt ?? fullPrompt;
                         // Save to disk
@@ -14224,6 +14609,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                               : null,
                           }),
                         });
+                        firstGalleryImageId ??= (galleryEntry as { id?: string } | null)?.id ?? null;
                         await persistGeneratedImageToEntityGalleries({
                           enabled: imageSettings.autoSaveToGalleries,
                           sourceFilePath: filePath,
@@ -14242,50 +14628,167 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                         // Attach to the assistant message + its specific swipe row
                         const filename = filePath.split("/").pop()!;
                         const imageUrl = `/api/gallery/file/${input.chatId}/${encodeURIComponent(filename)}`;
-                        if (messageId) {
-                          const attachment = {
-                            type: "image",
-                            url: imageUrl,
-                            filename: `illustration_${variantIndex + 1}.${imageResult.ext}`,
-                            prompt: renderedPrompt,
-                            galleryId: (galleryEntry as any)?.id,
-                            ...(commandTarget?.command.type === "illustrate" &&
-                            typeof commandTarget.activityIndex === "number"
-                              ? { roleplayCommandIndex: commandTarget.activityIndex }
-                              : {}),
-                          };
+                        const showPicture = async () => {
+                          if (messageId) {
+                            const attachment = {
+                              type: "image",
+                              url: imageUrl,
+                              filename: `illustration_${variantIndex + 1}.${imageResult.ext}`,
+                              prompt: renderedPrompt,
+                              galleryId: (galleryEntry as any)?.id,
+                              ...(commandTarget?.command.type === "illustrate" &&
+                              typeof commandTarget.activityIndex === "number"
+                                ? { roleplayCommandIndex: commandTarget.activityIndex }
+                                : {}),
+                            };
 
-                          // Always persist to the swipe row so the attachment survives
-                          // swipe switches even if the user has already navigated away.
-                          await chats.appendSwipeAttachment(messageId, targetSwipeIndex, attachment);
+                            // Always persist to the swipe row so the attachment survives
+                            // swipe switches even if the user has already navigated away.
+                            await chats.appendSwipeAttachment(messageId, targetSwipeIndex, attachment);
 
-                          // Also update the live message row if this swipe is still active,
-                          // so the SSE illustration event is immediately visible.
-                          const msgRow = await chats.getMessage(messageId);
-                          if (msgRow && (msgRow.activeSwipeIndex ?? 0) === targetSwipeIndex) {
-                            await chats.appendMessageAttachment(messageId, attachment);
+                            // Also update the live message row if this swipe is still active,
+                            // so the SSE illustration event is immediately visible.
+                            const msgRow = await chats.getMessage(messageId);
+                            if (msgRow && (msgRow.activeSwipeIndex ?? 0) === targetSwipeIndex) {
+                              await chats.appendMessageAttachment(messageId, attachment);
+                            }
                           }
-                        }
 
-                        // Notify client
-                        sendSseEvent(reply, {
-                          type: "illustration",
-                          data: {
-                            messageId,
-                            imageUrl,
-                            prompt: renderedPrompt,
-                            reason: illData.reason,
-                            galleryId: (galleryEntry as any)?.id,
-                          },
-                        });
+                          // Notify client
+                          sendSseEvent(reply, {
+                            type: "illustration",
+                            data: {
+                              messageId,
+                              imageUrl,
+                              prompt: renderedPrompt,
+                              reason: illData.reason,
+                              galleryId: (galleryEntry as any)?.id,
+                            },
+                          });
+                        };
+                        if (pictureIsFirstFrame) pictureShows.push(showPicture);
+                        else await showPicture();
                       }
                       logger.info(
                         "[illustrator] Generated %d illustration(s): %s...",
                         imageResults.length,
                         (illData.reason as string)?.slice(0, 80) ?? imagePrompt.slice(0, 80),
                       );
+
+                      // Generated Videos: Illustrator chose to animate its picture, the chat makes clips only, or
+                      // the storyteller asked for a [video]. The clip joins the same message when it is ready.
+                      const videoMode = normalizeIllustratorVideoMode(chatMeta.illustratorVideoMode);
+                      const videoRequested = illData.videoRequested === true;
+                      const writtenMotion = typeof illData.videoPrompt === "string" ? illData.videoPrompt.trim() : "";
+                      // A clip the writer chose without saying how it moves is skipped: with Pictures and clips the
+                      // clip is optional, and a paid clip with nothing to direct it shows nothing of the moment.
+                      // Clips only and the storyteller's [video] always make one.
+                      const wantsVideo =
+                        videoRequested ||
+                        clipsOnly ||
+                        (videoMode === "pictures_and_clips" && illData.generateVideo === true && !!writtenMotion);
+                      // Every clip starts from the chat's First frame, except a [video] whose picture was drawn as it.
+                      const videoFirstFrame = videoRequested
+                        ? "picture"
+                        : roleplayVideoFirstFrame(chatMeta, true, true);
+                      const showPicturesInstead = async () => {
+                        // One picture that can't be added doesn't hold back the others.
+                        for (const show of pictureShows.splice(0)) {
+                          await show().catch((err) => logger.warn(err, "[illustrator] Could not show a picture"));
+                        }
+                      };
+                      // Re-checked here, as the clip starts: another clip may have started since the agent was offered
+                      // one. A clip [illustrate] asked for is paced the same way; a refused one shows its picture.
+                      const videoRun =
+                        wantsVideo && firstGalleryImageId && messageId && chatMode === "roleplay"
+                          ? await claimRoleplayClip(messageId)
+                          : null;
+                      if (wantsVideo && !videoRun) {
+                        logger.info(
+                          "[illustrator] Skipped a clip: the Video Run Interval has not passed or the reply has its clips",
+                        );
+                      }
+                      // The stream now waits on a clip, not text, so the client can let the next message start.
+                      if (videoRun) sendSseEvent(reply, { type: "video_started", data: { messageId } });
+                      if (videoRun && firstGalleryImageId && messageId) {
+                        try {
+                          const appearanceBlock =
+                            chatMeta.illustratorVideoIncludeCharacterAppearance === true
+                              ? referenceResolution.appearanceBlock
+                              : null;
+                          const video =
+                            videoFirstFrame === "picture"
+                              ? await animateGalleryImage(app.db, {
+                                  chatId: input.chatId,
+                                  chatMeta,
+                                  galleryImageId: firstGalleryImageId,
+                                  // Illustrator's videoPrompt was written to the video connection's instructions. A
+                                  // storyteller's [video] motion, or a required clip without one, goes through the
+                                  // Gallery animation director, which writes it to those instructions.
+                                  motionPrompt:
+                                    writtenMotion && !videoRequested
+                                      ? writtenMotion
+                                      : await writeClipPrompt({
+                                          messageId,
+                                          request: videoRequested ? writtenMotion : "",
+                                          withoutPicture: false,
+                                          referenceImagePrompt: imagePrompt,
+                                        }),
+                                  // Filed under the people the picture shows (and the persona), as the picture is.
+                                  characterIds: referenceResolution.personaId
+                                    ? [...referenceResolution.characterIds, referenceResolution.personaId]
+                                    : referenceResolution.characterIds,
+                                  appearanceBlock,
+                                  queue: true,
+                                  signal: agentSignal,
+                                  debugMode: input.debugMode,
+                                })
+                              : await generateRoleplayClip(app.db, {
+                                  chatId: input.chatId,
+                                  chatMeta,
+                                  // No picture starts this clip, so the Clip Director writes the scene and motion to the
+                                  // video connection's instructions.
+                                  prompt: await writeClipPrompt({
+                                    messageId,
+                                    request: [typeof illData.prompt === "string" ? illData.prompt : "", writtenMotion]
+                                      .filter(Boolean)
+                                      .join("\n"),
+                                    withoutPicture: true,
+                                  }),
+                                  firstFrame: videoFirstFrame,
+                                  // The same characters (and persona) the picture showed; its appearance lines too.
+                                  avatar:
+                                    videoFirstFrame === "none"
+                                      ? null
+                                      : (await resolveClipCast(illCharacters, imagePrompt, true)).avatar,
+                                  characterIds: referenceResolution.personaId
+                                    ? [...referenceResolution.characterIds, referenceResolution.personaId]
+                                    : referenceResolution.characterIds,
+                                  appearanceBlock,
+                                  queue: true,
+                                  signal: agentSignal,
+                                  debugMode: input.debugMode,
+                                });
+                          await videoRun.settle(true);
+                          await attachClipToReply(video, messageId, targetSwipeIndex);
+                        } catch (videoErr) {
+                          await videoRun.settle(false);
+                          logger.warn(videoErr, "[illustrator] Generated video failed");
+                          if (!agentSignal.aborted) {
+                            sendSseEvent(reply, {
+                              type: "video_error",
+                              data: { error: videoErr instanceof Error ? videoErr.message : String(videoErr) },
+                            });
+                          }
+                          // Clips only: a failed clip still leaves its picture in the reply.
+                          await showPicturesInstead();
+                        }
+                      } else {
+                        await showPicturesInstead();
+                      }
                     } catch (illErr) {
                       logger.error(illErr, "[illustrator] Image generation failed");
+                      for (const show of pictureShows.splice(0)) await show().catch(() => undefined);
                       sendSseEvent(reply, {
                         type: "agent_error",
                         data: {
@@ -14587,6 +15090,22 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             return members;
           };
           try {
+            // Up to the Videos per reply setting (Settings, Generations, Video), one per character, once the Video
+            // Run Interval has passed. A group turn is one reply, so this is what lets several characters each send one.
+            // ponytail: clips past the limit are dropped (logged). Upgrade path: a button on each reply whose clip was
+            // skipped that makes it on request and attaches it to that reply.
+            const automaticVideoAllowedNow = automaticVideoAllowed(
+              await chats.listMessages(input.chatId),
+              chatMeta,
+              await loadVideoRunInterval(agentsStore, chatMeta),
+              false,
+              input.regenerateMessageId,
+            );
+            let videosLeft = automaticVideoAllowedNow
+              ? normalizeVideoGenerationUserSettings(await appSettings.get(VIDEO_GENERATION_SETTINGS_KEY))
+                  .maxCharacterVideosPerReply
+              : 0;
+            const videoCharacterIds = new Set<string>();
             for (const { command, characterId, messageId, swipeIndex } of collectedCommands) {
               if (
                 !roomConversationCommandAllowed(command.type) ||
@@ -14652,6 +15171,64 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                     sendSseEvent(reply, payload);
                   },
                 });
+
+                // A clip takes minutes; it finishes after "done" while the stream stays open for media.
+                const videoAllowed = videosLeft > 0 && !(characterId && videoCharacterIds.has(characterId));
+                if (command.type === "video" && !videoAllowed) {
+                  logger.info(
+                    "[commands] Skipped a video from %s: %s",
+                    charInfo.find((character) => character.id === characterId)?.name ?? "a character",
+                    !automaticVideoAllowedNow
+                      ? "the Video Run Interval has not passed"
+                      : videosLeft > 0
+                        ? "one video per character per reply"
+                        : "the reply's video limit was reached",
+                  );
+                }
+                const videoMessage = !videoAllowed
+                  ? null
+                  : startConversationVideoCommand({
+                      command,
+                      // Who the user is: the persona, or a character played as the user who is not one of the chat's
+                      // characters (the cast lists that character after the chat's own).
+                      persona: (() => {
+                        const cast = illustratorCast();
+                        return (
+                          cast.persona ??
+                          cast.chatCharacters.find(
+                            (entry) => !charInfo.some((character) => character.id === entry.id),
+                          ) ??
+                          null
+                        );
+                      })(),
+                      characterId,
+                      chatId: input.chatId,
+                      messageId,
+                      swipeIndex,
+                      chatMeta,
+                      charInfo,
+                      promptConnection: conn,
+                      promptConnectionId: conn.id,
+                      debugMode: input.debugMode,
+                      serviceTier,
+                      db: app.db,
+                      signal: agentSignal,
+                      sendEvent: (payload) => {
+                        sendSseEvent(reply, payload);
+                      },
+                    });
+                if (videoMessage) {
+                  // The slot is held while the clip is made, and given back if it isn't, as Roleplay clips do.
+                  videosLeft -= 1;
+                  if (characterId) videoCharacterIds.add(characterId);
+                  pendingRoleplayMedia.push(
+                    videoMessage.then((made) => {
+                      if (made) return;
+                      videosLeft += 1;
+                      if (characterId) videoCharacterIds.delete(characterId);
+                    }),
+                  );
+                }
 
                 await handleConversationCallCommand({
                   command,

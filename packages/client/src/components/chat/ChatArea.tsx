@@ -370,6 +370,8 @@ type IllustratorPromptReviewRequest = {
   chatId: string;
   illustratorMessageRange?: [string, string];
   subjectOnly?: boolean;
+  /** Roleplay /video's first frame: drawn without a clip, then animated once. */
+  illustratorStillOnly?: boolean;
   item: ImagePromptReviewItem;
   resultData: Record<string, unknown>;
 };
@@ -655,6 +657,7 @@ const LocalChatArea = memo(function LocalChatArea({
   const isPageActive = usePageActivity();
   const regenerateMessageId = useChatStore((s) => s.regenerateMessageId);
   const chatBackground = useUIStore((s) => s.chatBackground);
+  const pendingNewChatSetupId = useChatStore((s) => s.pendingNewChatSetups[activeChatId ?? ""]?.id ?? null);
   const chatWindowIntroDismissed = useUIStore((s) => s.chatWindowIntroDismissed);
   const gameSetupActive = useGameModeStore((state) => state.isSetupActive);
   const weatherEffects = useUIStore((s) => s.weatherEffects);
@@ -1002,6 +1005,7 @@ const LocalChatArea = memo(function LocalChatArea({
       const override = overrides.find((entry) => entry.id === illustratorPromptReview.item.id);
       if (!override?.prompt.trim()) return;
       setIllustratorPromptReviewSubmitting(true);
+      let drawnGalleryImageId: string | null = null;
       const success = await retryAgents(illustratorPromptReview.chatId, ["illustrator"], {
         illustratorMessageRange: illustratorPromptReview.illustratorMessageRange,
         illustratorPromptReviewOverride: {
@@ -1011,9 +1015,26 @@ const LocalChatArea = memo(function LocalChatArea({
           ...(override.negativePrompt ? { negativePrompt: override.negativePrompt } : {}),
         },
         illustratorRetryTargets: [illustratorPromptReview.item.kind === "background" ? "background" : "illustration"],
+        ...(illustratorPromptReview.illustratorStillOnly
+          ? {
+              illustratorStillOnly: true,
+              onIllustration: (galleryImageId: string) => {
+                drawnGalleryImageId ??= galleryImageId;
+              },
+            }
+          : {}),
       });
       setIllustratorPromptReviewSubmitting(false);
       if (success) setIllustratorPromptReview(null);
+      // The animate call works on the open chat, so a picture drawn after the user moved to another chat stays a
+      // picture.
+      if (
+        success &&
+        illustratorPromptReview.illustratorStillOnly &&
+        useChatStore.getState().activeChatId === illustratorPromptReview.chatId
+      ) {
+        await animateDrawnPictureRef.current?.(drawnGalleryImageId);
+      }
     },
     [illustratorPromptReview, illustratorPromptReviewSubmitting, retryAgents],
   );
@@ -1484,6 +1505,9 @@ const LocalChatArea = memo(function LocalChatArea({
   const [conversationSelfieReviewSubmitting, setConversationSelfieReviewSubmitting] = useState(false);
   const roleplaySceneVideoGeneratingRef = useRef(false);
   const conversationVideoGeneratingRef = useRef(false);
+  const roleplayVideoGeneratingRef = useRef(false);
+  // Roleplay /video animates the first frame it drew (after its review, too); the handler is declared further down.
+  const animateDrawnPictureRef = useRef<((galleryImageId: string | null) => Promise<void>) | null>(null);
   const roleplayVideoReviewResolveRef = useRef<((overrides: ImagePromptOverride[] | null) => void) | null>(null);
   const conversationSelfieReviewResolveRef = useRef<((overrides: ImagePromptOverride[] | null) => void) | null>(null);
 
@@ -1648,6 +1672,118 @@ const LocalChatArea = memo(function LocalChatArea({
       openRoleplayVideoPromptReview,
       queryClient,
       localizeUi,
+    ],
+  );
+
+  // The picture the retry drew, by its Gallery id: "the latest" could be another reply's picture.
+  const animateDrawnPicture = useCallback(
+    async (galleryImageId: string | null) => {
+      if (galleryImageId) await handleGenerateRoleplaySceneVideo({ galleryImageId });
+      else toast.error(localizeUi("ui.chat.chatarea.roleplayVideoNoFirstFrame"));
+    },
+    [handleGenerateRoleplaySceneVideo, localizeUi],
+  );
+  useEffect(() => {
+    animateDrawnPictureRef.current = animateDrawnPicture;
+  }, [animateDrawnPicture]);
+
+  // Roleplay /video: the server makes a clip of the latest reply (or the description) from the avatar or no
+  // picture. With a picture first frame, /illustrate draws it first and the Gallery animates the newest picture.
+  const handleRoleplayVideo = useCallback(
+    async (description?: string) => {
+      if (!activeChatId || chatMode !== "roleplay") return;
+      // One at a time, through drawing a picture first: a second request would pay for a second clip.
+      if (roleplayVideoGeneratingRef.current) throw new Error(localizeUi("ui.chat.slash.video.alreadyRunning"));
+      try {
+        roleplayVideoGeneratingRef.current = true;
+        const payload: Record<string, unknown> = {
+          ...(description ? { description } : {}),
+          debugMode: useUIStore.getState().debugMode,
+        };
+        const url = `/gallery/${activeChatId}/roleplay-video`;
+        type RoleplayVideoReply = { needsPicture?: boolean } & Partial<RoleplaySceneVideoPromptPreview>;
+        let needsPicture = false;
+        if (useUIStore.getState().reviewImagePromptsBeforeSend) {
+          let preview: RoleplayVideoReply | undefined;
+          try {
+            preview = await api.post<RoleplayVideoReply>(
+              url,
+              { ...payload, previewOnly: true },
+              { signal: AbortSignal.timeout(MEDIA_PROMPT_PREVIEW_TIMEOUT_MS) },
+            );
+          } catch (error) {
+            if (!isMediaPromptPreviewTimeout(error)) throw error;
+            toast.error(localizeUi("ui.chat.chatarea.videoPromptPreviewTimedOutContinuingWithTheDefault"));
+          }
+          needsPicture = preview?.needsPicture === true;
+          if (preview?.prompt && !needsPicture) {
+            const details = [`${preview.durationSeconds}s`, preview.aspectRatio, preview.resolution].filter(
+              (value): value is string => Boolean(value),
+            );
+            // Close only the review this call opened (another chat's request may hold the window), and close it as
+            // soon as its prompt is read, not after the minutes-long clip, when a newer review may be showing.
+            const reviewOpened = !roleplayVideoReviewResolveRef.current;
+            const overrides = await openRoleplayVideoPromptReview([
+              {
+                id: "roleplay-video",
+                kind: "video",
+                title: localizeUi("ui.chat.chatarea.roleplayVideo"),
+                prompt: preview.prompt,
+                details: details.join(" | "),
+                maxLength: preview.maxPromptLength ?? undefined,
+              },
+            ]);
+            if (reviewOpened) closeRoleplayVideoPromptReview(null);
+            const reviewedPrompt = overrides?.[0]?.prompt.trim();
+            if (!reviewedPrompt) return;
+            payload.promptOverride = reviewedPrompt;
+          }
+        }
+        if (!needsPicture) {
+          const result = await api.post<RoleplayVideoReply>(url, payload, {
+            signal: AbortSignal.timeout(SCENE_VIDEO_GENERATION_TIMEOUT_MS),
+          });
+          needsPicture = result?.needsPicture === true;
+        }
+        if (needsPicture) {
+          // Still only: the retry must not make a clip of its own (Clips only, or Pictures and clips choosing one),
+          // or this one action would pay for two.
+          let drawnGalleryImageId: string | null = null;
+          const drawn = await retryAgents(activeChatId, ["illustrator"], {
+            illustratorRetryTargets: ["illustration"],
+            illustratorStillOnly: true,
+            onIllustration: (galleryImageId) => {
+              drawnGalleryImageId ??= galleryImageId;
+            },
+            ...(description
+              ? {
+                  illustratorPromptReviewOverride: {
+                    prompt: description,
+                    subjectOnly: true,
+                    resultData: { prompt: description, characters: [] },
+                  },
+                }
+              : {}),
+          });
+          if (drawn) await animateDrawnPicture(drawnGalleryImageId);
+          return;
+        }
+        void queryClient.invalidateQueries({ queryKey: chatKeys.messages(activeChatId) });
+        void queryClient.invalidateQueries({ queryKey: ["gallery", "scene-videos", activeChatId] });
+        toast.success(localizeUi("ui.chat.chatarea.sceneVideoGenerated"), { duration: 1800 });
+      } finally {
+        roleplayVideoGeneratingRef.current = false;
+      }
+    },
+    [
+      activeChatId,
+      chatMode,
+      closeRoleplayVideoPromptReview,
+      animateDrawnPicture,
+      localizeUi,
+      openRoleplayVideoPromptReview,
+      queryClient,
+      retryAgents,
     ],
   );
 
@@ -1876,16 +2012,22 @@ const LocalChatArea = memo(function LocalChatArea({
   // only set on truthy values, leaving the global chatBackground stale when
   // switching to a chat whose metadata has been cleared, which made a removed
   // background re-appear after a chat switch round-trip.
-  const restoredChatBackgroundRef = useRef<{ chatId: string | null; url: string | null; isSyncing: boolean }>({
+  const restoredChatBackgroundRef = useRef<{
+    chatId: string | null;
+    url: string | null;
+    isSyncing: boolean;
+    changed: boolean;
+  }>({
     chatId: null,
     url: null,
     isSyncing: false,
+    changed: false,
   });
   useEffect(() => {
     if (!chat?.id) return;
     const savedUrl = chatBackgroundMetadataToUrl(chatMeta.background);
     const restoredUrl = savedUrl ?? (chat.mode === "roleplay" ? useUIStore.getState().defaultRoleplayBackground : null);
-    restoredChatBackgroundRef.current = { chatId: chat.id, url: restoredUrl, isSyncing: true };
+    restoredChatBackgroundRef.current = { chatId: chat.id, url: restoredUrl, isSyncing: true, changed: false };
     useUIStore.getState().setChatBackground(restoredUrl);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chat?.id]);
@@ -1913,12 +2055,16 @@ const LocalChatArea = memo(function LocalChatArea({
     }
 
     const nextBackground = chatBackgroundUrlToMetadata(chatBackground);
+    // Merely showing the default backdrop is not a user edit to an untouched new draft.
+    // Once changed, returning to the entry background is a real reset and must also persist.
+    if (chatBackground !== restoredBackground.url) restoredBackground.changed = true;
+    if (pendingNewChatSetupId === chat.id && !restoredBackground.changed) return;
     if (nextBackground === savedBackground) return;
     // A selection is a discrete action, not typing: save immediately so leaving
     // the chat cannot cancel a pending background change.
     updateMeta.mutate({ id: chat.id, background: nextBackground });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chatBackground, chat?.id]);
+  }, [chatBackground, chat?.id, pendingNewChatSetupId]);
 
   const expressionSaveTimer = useRef<ReturnType<typeof setTimeout>>(null);
   const pendingExpressions = useRef<Record<string, string>>(spriteExpressions);
@@ -3026,6 +3172,7 @@ const LocalChatArea = memo(function LocalChatArea({
   // Reset stagger animation flag when switching chats
   useEffect(() => {
     hasAnimatedRef.current = false;
+    setWizardOpen(false);
   }, [activeChatId]);
 
   // Auto-open settings drawer for newly created chats
@@ -3764,9 +3911,9 @@ const LocalChatArea = memo(function LocalChatArea({
             }}
             onCloseSettings={handleCloseSettingsPanel}
             onOpenScheduleEditor={handleOpenScheduleEditor}
-            onWizardFinish={() => {
+            onWizardFinish={(discarded) => {
               setWizardOpen(false);
-              handleOpenSettingsPanel();
+              if (!discarded) handleOpenSettingsPanel();
             }}
             onClosePeekPrompt={() => setPeekPromptData(null)}
             onDeleteConfirm={handleDeleteConfirm}
@@ -3851,9 +3998,9 @@ const LocalChatArea = memo(function LocalChatArea({
             onGenerateSelfie={handleGenerateConversationSelfie}
             onGenerateVideo={handleConversationGalleryVideo}
             onAnimateImage={handleConversationAnimateImage}
-            onWizardFinish={() => {
+            onWizardFinish={(discarded) => {
               setWizardOpen(false);
-              handleOpenSettingsPanel();
+              if (!discarded) handleOpenSettingsPanel();
             }}
             onClosePeekPrompt={() => setPeekPromptData(null)}
             onResetSpritePlacements={handleResetSpritePlacements}
@@ -4004,11 +4151,14 @@ const LocalChatArea = memo(function LocalChatArea({
           onIllustrate={handleIllustrate}
           onIllustrateWithAgent={handleIllustrateWithAgent}
           onGenerateBackground={handleGenerateRoleplayBackground}
-          onGenerateVideo={() => handleGenerateRoleplaySceneVideo()}
+          // The Gallery's Video button makes a clip of the latest reply, like /video. The Gallery waits for it (its
+          // busy state blocks a second click) and shows any error.
+          onGenerateVideo={() => handleRoleplayVideo()}
+          onRoleplayVideo={handleRoleplayVideo}
           onAnimateImage={(image) => handleGenerateRoleplaySceneVideo({ galleryImageId: image.id })}
-          onWizardFinish={() => {
+          onWizardFinish={(discarded) => {
             setWizardOpen(false);
-            handleOpenSettingsPanel();
+            if (!discarded) handleOpenSettingsPanel();
           }}
           onClosePeekPrompt={() => setPeekPromptData(null)}
           onResetSpritePlacements={handleResetSpritePlacements}

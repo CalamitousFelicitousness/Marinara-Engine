@@ -30,6 +30,7 @@ import {
   type CreaturePack,
   rulesetCardItems,
   rulesetReadsItems,
+  rulesetCombatStyle,
   gameDungeonMapFromMetadata,
 } from "@marinara-engine/shared";
 // ──────────────────────────────────────────────
@@ -40,6 +41,7 @@ import { ExperiencePeopleSpritesContext } from "../../hooks/use-overworld-view";
 import {
   getCombatStyle,
   isBuiltInCombatStyle,
+  listCombatStyles,
   offerCombatStart,
   resolveCombatStyle,
   styleOwnedFightFromSnapshot,
@@ -71,6 +73,7 @@ import {
   type GameAssetManifest,
 } from "../../hooks/use-game-assets";
 import { cleanNpcAvatarDisplayName, normalizeNpcAvatarName } from "../../lib/game-npc-avatar";
+import { useDiscardNewChatSetup } from "../../hooks/use-discard-new-chat-setup";
 import { useChatStore } from "../../stores/chat.store";
 import { useUIStore } from "../../stores/ui.store";
 import { useCombatScreenStore } from "../../stores/combat-screen.store";
@@ -130,7 +133,6 @@ import {
   guardServerChatSnapshot,
   useBranchChat,
   useCreateMessage,
-  useDeleteChat,
   useUpdateChat,
   useUpdateChatMetadata,
   useUpdateMessage,
@@ -7284,7 +7286,7 @@ function GameSurfaceComponent({
   const updateCampaignProgression = useUpdateCampaignProgression();
   const startSession = useStartSession();
   const generateMap = useGenerateMap();
-  const deleteChat = useDeleteChat();
+  const discardNewChatSetup = useDiscardNewChatSetup();
   const updateChatMetadata = useUpdateChatMetadata();
   const uploadCharacterAvatar = useUploadAvatar();
   const uploadPersonaAvatar = useUploadPersonaAvatar();
@@ -8970,10 +8972,16 @@ function GameSurfaceComponent({
   // (settings drawer) ?? wizard setup choice ?? legacy default "classic". An id
   // this client has not registered plays as classic (#8109).
   const combatSetupConfig = chatMeta.gameSetupConfig as Record<string, unknown> | undefined;
+  // A style the game's ruleset leaves out (`combat.styles`, 1.379) plays as the first it lists; a fight
+  // already pinned keeps its own.
   const effectiveCombatStyle: GameCombatStyle = resolveCombatStyle(
     combatPinnedStyle ??
-      (chatMeta.gameCombatStyle as GameCombatStyle | undefined) ??
-      (combatSetupConfig?.combatStyle as GameCombatStyle | undefined),
+      rulesetCombatStyle(
+        gameRuleset.status === "ok" ? gameRuleset.definition : null,
+        (chatMeta.gameCombatStyle as GameCombatStyle | undefined) ??
+          (combatSetupConfig?.combatStyle as GameCombatStyle | undefined),
+        listCombatStyles(),
+      ),
   );
   const combatStyleSurface = getCombatStyle(effectiveCombatStyle);
   // A style that keeps its own state (#8109) counts as an active fight while it says so.
@@ -12105,7 +12113,6 @@ function GameSurfaceComponent({
     [chat.characterIds],
   );
   const setupWizardDismissed = dismissedSetupWizardChatId === activeChatId;
-  const canAutoDeleteEmptySetupChat = needsCreation && !isMessagesLoading && messages.length === 0;
   const shouldShowSetupWizard =
     isSetupActive || (!setupWizardDismissed && (needsCreation || sessionStatus === "setup"));
 
@@ -12129,7 +12136,7 @@ function GameSurfaceComponent({
   if (shouldShowSetupWizard) {
     // Shared with an experience's own setup, so closing either one behaves identically.
     /** Closes setup from either wizard: no-op while a launch is pending, and drops an empty chat. */
-    const dismissSetupWizard = () => {
+    const dismissSetupWizard = async () => {
       if (
         createGame.isPending ||
         gameSetup.isPending ||
@@ -12140,10 +12147,10 @@ function GameSurfaceComponent({
       )
         return;
       useGameModeStore.getState().setSetupActive(false);
-      if (canAutoDeleteEmptySetupChat) {
-        deleteChat.mutate(activeChatId, {
-          onSuccess: () => useChatStore.getState().setActiveChatId(null),
-        });
+      try {
+        if (await discardNewChatSetup(activeChatId)) return;
+      } catch {
+        toast.error(localizeUi("chat.wizard.cancelFailed"));
         return;
       }
       setDismissedSetupWizardChatId(activeChatId);

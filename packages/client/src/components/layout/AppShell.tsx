@@ -21,6 +21,7 @@ import {
   TRACKER_PANEL_DEFAULT_BACKGROUND_COLOR,
   useUIStore,
 } from "../../stores/ui.store";
+import { useDiscardNewChatSetup } from "../../hooks/use-discard-new-chat-setup";
 import { useChatStore } from "../../stores/chat.store";
 import { useDialogStore } from "../../stores/dialog.store";
 import { useBackgroundAutonomousPolling } from "../../hooks/use-background-autonomous";
@@ -638,6 +639,17 @@ export function AppShell({
   const gameAssetsBrowserOpen = useUIStore((s) => s.gameAssetsBrowserOpen);
   const hasCompletedOnboarding = useUIStore((s) => s.hasCompletedOnboarding);
   const activeChatId = useChatStore((s) => s.activeChatId);
+  const discardNewChatSetup = useDiscardNewChatSetup();
+  useEffect(
+    () => () => {
+      // Watch above the lazy wizard: navigation may happen before its first mount.
+      // StrictMode probes and editor remounts leave the active id unchanged.
+      if (activeChatId && useChatStore.getState().activeChatId !== activeChatId) {
+        void discardNewChatSetup(activeChatId).catch(() => toast.error(localizeUi("chat.wizard.cancelFailed")));
+      }
+    },
+    [activeChatId, discardNewChatSetup, localizeUi],
+  );
   const activeChat = useChatStore((s) => s.activeChat);
   const clearUnread = useChatStore((s) => s.clearUnread);
   const { mutate: clearAutonomousUnread, isPending: isClearingAutonomousUnread } = useClearAutonomousUnread();
@@ -1478,7 +1490,7 @@ export function AppShell({
                 aria-label={localizeUi("ui.layout.appshell.detailEditor")}
                 tabIndex={-1}
                 className={cn(
-                  "mari-app-background-paint flex min-h-0 flex-1 flex-col overflow-hidden",
+                  "mari-detail-editor-surface mari-app-background-paint flex min-h-0 flex-1 flex-col overflow-hidden",
                   shellOverlayMode &&
                     cn(
                       "mari-mobile-detail-sheet !fixed bottom-0 z-50 bg-[var(--background)]/95 shadow-2xl backdrop-blur-xl",

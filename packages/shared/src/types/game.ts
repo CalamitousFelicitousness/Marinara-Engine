@@ -40,6 +40,10 @@ export type BuiltInGameCombatStyle = (typeof BUILT_IN_GAME_COMBAT_STYLES)[number
  */
 export type GameCombatStyle = BuiltInGameCombatStyle | (string & {});
 
+/** The shape of a combat style id, built-in or registered: what a game's setup and a ruleset's
+ *  `combat.styles` (Capability API 1.379) may name. */
+export const GAME_COMBAT_STYLE_ID_PATTERN = /^[a-z][a-z0-9_-]{0,47}$/;
+
 /** Status of a game session. */
 export type GameSessionStatus = "setup" | "active" | "concluded";
 
@@ -456,6 +460,9 @@ export interface DiceRollResult {
   total: number;
   /** Optional difficulty class declared before the roll. */
   dc?: number;
+  /** Who rolled, or who and why, as the roll was asked for: a `[dice:]` tag's `who=`, or a tool
+   *  roll's reason. Absent on rolls that named nobody. */
+  label?: string;
 }
 
 /** Result of a skill check resolution. */

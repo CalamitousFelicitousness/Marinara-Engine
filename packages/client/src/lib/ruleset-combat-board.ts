@@ -306,18 +306,22 @@ export function rulesetBoardCells(view: DirectedRulesetView, step: RulesetMenuSt
   const grid = view.grid;
   if (!grid) return [];
   const standing = new Map<string, DirectedRulesetCombatant>();
+  const fallen = (combatant: DirectedRulesetCombatant) => (combatant.defeated ? 2 : combatant.down ? 1 : 0);
   for (const combatant of view.combatants) {
     if (typeof combatant.x !== "number" || typeof combatant.y !== "number") continue;
     // Sent away (1.236): not on the board at all. One that gave itself up stays where it did, a
     // prisoner beside its captor (re-test 14).
     if (combatant.away && !combatant.surrendered) continue;
-    // Every cell they fill (1.194).
+    // Every cell they fill (1.194). A creature still up is drawn over one down, and one down over a
+    // body, so whoever walks onto a fallen creature's square stays on the board.
     const span = Math.max(1, combatant.span ?? 1);
     for (let dy = 0; dy < span; dy++) {
       for (let dx = 0; dx < span; dx++) {
         const key = rulesetCellKey({ x: combatant.x + dx, y: combatant.y + dy });
         // A prisoner never hides whoever has since walked onto its square.
         if (combatant.away && standing.has(key)) continue;
+        const there = standing.get(key);
+        if (there && !there.away && fallen(there) < fallen(combatant)) continue;
         standing.set(key, combatant);
       }
     }

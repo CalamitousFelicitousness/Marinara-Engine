@@ -157,8 +157,8 @@ export function RulesetCombatBoard({
     () => new Set(rulesetAimCatchesAllies(view, aimed?.targetIds ?? [], aimedOption)),
     [view, aimed, aimedOption],
   );
-  // A cast that catches allies, or any aim tapped on a touch screen, is armed by the first pick of
-  // its square and cast by the second: the first only shows what it would do.
+  // An aim clicked or tapped, and by the keyboard one that catches allies, is armed by the first pick
+  // of its square and cast by the second: the first only shows what it would do.
   const [armed, setArmed] = useState<string | null>(null);
   // Used with one that spares its user's side (Sculpt Spells), who is spared is picked next, so
   // catching them is nothing to stop the cast for.
@@ -236,7 +236,7 @@ export function RulesetCombatBoard({
     if (step.stage === "aim" && (cell.aim || rulesetAimTurning(step.option, step.lay))) {
       const key = rulesetCellKey(cell);
       const friendly = !sparing && rulesetAimCatchesAllies(view, cell.aim?.targetIds ?? [], step.option).length > 0;
-      if ((friendly || lastPointer.current === "touch") && armed !== key) {
+      if ((friendly || lastPointer.current !== "keyboard") && armed !== key) {
         setArmed(key);
         setReading({ x: cell.x, y: cell.y });
         return;

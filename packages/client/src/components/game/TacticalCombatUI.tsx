@@ -1684,7 +1684,6 @@ export function TacticalCombatUI({
       {ui.kind === "idle" && (
         <CombatAiControls
           party={liveState.units.filter((u) => u.side === "party")}
-          enemies={liveState.units.filter((u) => u.side === "enemy")}
           defaultController="manual"
           locked={!playerPhase || animating}
           onChange={(unitId, controller) => sendAction({ type: "control", unitId, controller })}

@@ -47,6 +47,9 @@ import {
   rulesetCombatConditions,
   rulesetZoneConditions,
   rulesetCombatHealth,
+  rulesetDefenseAgainst,
+  rulesetForecastsByTarget,
+  rulesetConditionIcons,
   rulesetCombatHide,
   rulesetCombatOptions,
   rulesetCostSteps,
@@ -649,7 +652,7 @@ function conditionsOf(
   definition: RulesetDefinition,
   combatant: RulesetCombatant,
   state?: RulesetEncounterState,
-): Array<{ id: string; label: string; rounds?: number }> {
+): Array<{ id: string; label: string; rounds?: number; icons?: string[] }> {
   const declared = new Map(definition.sheet.live.conditions.map((entry) => [entry.id, entry.label]));
   const tracked = new Map(combatant.tracked.map((entry) => [entry.condition, entry.rounds]));
   // And what a zone they stand in puts on them while they stay (1.179).
@@ -659,10 +662,12 @@ function conditionsOf(
   ]);
   return [...ids].map((id) => {
     const rounds = tracked.get(id);
+    const icons = rulesetConditionIcons(definition, id);
     return {
       id,
       label: declared.get(id) ?? id,
       ...(typeof rounds === "number" ? { rounds } : {}),
+      ...(icons.length ? { icons } : {}),
     };
   });
 }
@@ -764,7 +769,9 @@ function projectCombatant(
     ...(combatant.creature ? { creature: { ...combatant.creature } } : {}),
     initiative: combatant.initiative,
     health,
-    defense: combatant.defense,
+    // What an attack is rolled against now, with what its conditions add (a Shield's +5) and what a
+    // dropped shield took away: the number the log will say, not the sheet's.
+    defense: rulesetDefenseAgainst(definition, combat, state, combatant, undefined).defense,
     conditions: conditionsOf(definition, combatant, state),
     hides: rulesetCombatHide(definition, combatant, state),
     damageModifiers: active.flatMap((source) => {
@@ -839,9 +846,16 @@ export function rulesetMenu(
       inWindow && encounter.window?.trigger.kind === "falls" && option.targets.count > 1 && actor && action
         ? rulesetFallTargets(definition, encounter, actor, action)
         : undefined;
+    const targetIds = fallers ?? rulesetOptionTargets(definition, encounter, actorId, option);
+    // Odds for each one it may be pointed at, where there is a choice to make between them.
+    const forecastFor =
+      targetIds.length > 1 && option.forecast && !option.area
+        ? rulesetForecastsByTarget(definition, encounter, actorId, option.id, targetIds)
+        : undefined;
     return {
       ...option,
-      targetIds: fallers ?? rulesetOptionTargets(definition, encounter, actorId, option),
+      targetIds,
+      ...(forecastFor && Object.keys(forecastFor).length > 0 ? { forecastFor } : {}),
       ...(aim.length > 0 ? { aim } : {}),
     };
   });

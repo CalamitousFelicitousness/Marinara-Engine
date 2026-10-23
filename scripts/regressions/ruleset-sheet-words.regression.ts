@@ -17,6 +17,7 @@ import {
   rowsFromCatalogEntry,
   rulesetBuilderEntryHeld,
   rulesetCombatOptions,
+  rulesetForecastsByTarget,
   rulesetSheetBuildSchema,
   supportedCapabilityApi,
   type RulesetCatalogEntry,
@@ -195,6 +196,47 @@ try {
   assert.equal(shown[first]!.labelKey, "game.combat.ruleset.group.listedSplit");
   assert.equal(shown[first]!.labelValues?.tab, "Spells");
   assert.ok(!shown.some((group) => group.key === "ability" && group.options.some((one) => one.label === "Bolt")));
+
+  // ── Odds against each target ──
+  {
+    const ruleset = parse(fixture());
+    const foe = (id: string, defense: number) => ({
+      id,
+      name: id,
+      side: "enemy" as const,
+      block: { health: 30, defense, initiativeModifier: -5, speed: 30, actions: [] } as unknown as RulesetStatBlock,
+    });
+    const state = createRulesetEncounter({
+      definition: ruleset,
+      seed: 1,
+      roller: () => 10,
+      combatants: [
+        {
+          id: "fighter",
+          name: "Fighter",
+          side: "party",
+          build: rulesetSheetBuildSchema.parse({
+            abilities: { str: 16, dex: 10, con: 14, int: 8, wis: 10, cha: 10 },
+            fields: { level: 3, ac: 16, speed: 30, hp_max: 28 },
+            lists: {
+              attacks: [
+                { name: "Longsword", ability: "str", proficient: true, damage: "1d8", damage_type: "slashing" },
+              ],
+            },
+          }),
+          live: {},
+        },
+        foe("soft", 8),
+        foe("hard", 20),
+      ],
+    });
+    const sword = rulesetCombatOptions(ruleset, state, "fighter").find((option) => option.label === "Longsword");
+    assert.ok(sword?.forecast?.hitChance !== undefined, "the sword is forecast");
+    const odds = rulesetForecastsByTarget(ruleset, state, "fighter", sword!.id, ["soft", "hard", "nobody"]);
+    assert.deepEqual(Object.keys(odds).sort(), ["hard", "soft"]);
+    assert.ok(odds.soft!.hitChance! > odds.hard!.hitChance!, "an easier target is likelier hit");
+    assert.deepEqual(rulesetForecastsByTarget(ruleset, state, "fighter", "no-such-option", ["soft"]), {});
+  }
 
   // ── What the builder offers as already known ──
   const tongue = {

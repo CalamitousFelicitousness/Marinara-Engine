@@ -76,6 +76,8 @@ export interface RulesetMenuStep {
   spared?: string[];
   /** Who it could heighten, while that is picked (1.255). */
   heighten?: { ids: string[] };
+  /** Where a walk on a touch screen would end, tapped once and waiting for a second tap to go. */
+  to?: { x: number; y: number };
 }
 
 /** A shape half laid on the board: the cell it was first set down on, further copies of it, and for
@@ -374,6 +376,13 @@ export function rulesetOptionNeedsTargets(option: DirectedRulesetOption): boolea
   if (option.targets.side === "self") return false;
   // A wall's section it may strike instead counts (1.200).
   return option.targets.count > 0 && (option.targetIds.length > 0 || (option.walls?.length ?? 0) > 0);
+}
+
+/** Whether an option is pointed at somebody and has nobody to point it at right now (a sword with
+ *  every foe out of reach): the menu folds these into one muted line rather than a row each. */
+export function rulesetOptionOutOfReach(option: DirectedRulesetOption): boolean {
+  if (option.targets.side === "self" || option.targets.count === 0) return false;
+  return option.targetIds.length === 0 && !(option.walls?.length ?? 0) && !(option.aim?.length ?? 0);
 }
 
 /** The targets a player has picked after clicking one more. Only ids the option itself lists can

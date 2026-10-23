@@ -28,6 +28,7 @@ import {
   planRulesetCombatCost,
   rowsFromCatalogEntry,
   RULESET_MOVE_OPTION,
+  rulesetActiveConditions,
   rulesetCombatant,
   rulesetCombatRoller,
   rulesetCombatStanding,
@@ -1565,7 +1566,7 @@ console.log(
     } as unknown as RulesetCatalogEntry;
     const shieldRows = rowsFromCatalogEntry("spells", shield).map((row) => row.row);
     const guarded = { ...base, lists: { ...base.lists, spells: [...(base.lists?.spells ?? []), ...shieldRows] } };
-    const hits = { opened: 0, deflected: 0, letGo: 0 };
+    const hits = { opened: 0, deflected: 0, letGo: 0, shownRaised: 0 };
     for (let seed = 1; seed <= 40; seed++) {
       const state = started({
         definition: shielding,
@@ -1583,6 +1584,17 @@ console.log(
         const before = state.rulesetFight!.events.length;
         assert.ok(commandRulesetCombatDirector(shielding, state, { type: "continue" }).ok);
         assert.equal(state.rulesetFight!.encounter.window, undefined, `seed ${seed}: a held hit left open`);
+        // The screen shows the defense an attack is rolled against now: Shield's +5 while it holds.
+        {
+          const encounter = state.rulesetFight!.encounter;
+          const corwin = encounter.combatants.find((one) => one.id === "corwin")!;
+          const up = rulesetActiveConditions(shielding, shielding.combat!, corwin, encounter).some(
+            (source) => source.condition === "shielded",
+          );
+          const shown = view(shielding, state).combatants.find((one) => one.id === "corwin")!.defense;
+          assert.equal(shown, corwin.defense + (up ? 5 : 0), `seed ${seed}: the defense the screen shows`);
+          if (up) hits.shownRaised++;
+        }
         const events = state.rulesetFight!.events.slice(before).map((entry) => entry.event);
         assert.ok(!events.some((event) => event.type === "refused"), `seed ${seed}: an answer the rules refused`);
         for (const [index, event] of events.entries()) {
@@ -1608,6 +1620,7 @@ console.log(
     assert.ok(hits.opened > 0, "hits on a Shield holder the Engine plays were held");
     assert.ok(hits.deflected > 0, "the Engine raised it when it turned the hit aside");
     assert.ok(hits.letGo > 0, "and let a blow it could not stop land");
+    assert.ok(hits.shownRaised > 0, "and the screen showed the raised defense while Shield held");
   }
 
   assert.ok(moments.opened > 0, "being hurt opened windows for a party member the Engine plays");

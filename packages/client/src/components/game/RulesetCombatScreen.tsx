@@ -656,6 +656,15 @@ export function RulesetFightEnd({
   const party = view.combatants.filter((combatant) => combatant.side === "party" && !combatant.left);
   const foes = view.combatants.filter((combatant) => combatant.side !== "party");
   const beaten = foes.filter((combatant) => combatant.defeated || combatant.down || combatant.left).length;
+  // Each foe's fate by name: the ones felled, the ones gone from the fight (fled, sent away), and any
+  // still on their feet when it ended.
+  const fates = (
+    [
+      ["endDefeated", foes.filter((one) => !one.away && !one.left && (one.defeated || one.down))],
+      ["endGone", foes.filter((one) => one.away || one.left)],
+      ["endStanding", foes.filter((one) => !one.away && !one.left && !one.defeated && !one.down)],
+    ] as const
+  ).filter(([, list]) => list.length > 0);
   return (
     <section
       aria-label={t("game.combat.ruleset.screen.endTitle")}
@@ -671,12 +680,26 @@ export function RulesetFightEnd({
           {foes.length > 0 && <> · {t("game.combat.ruleset.screen.endFoes", { beaten, total: foes.length })}</>}
         </p>
       </div>
+      {fates.length > 0 && (
+        <ul className="m-0 list-none space-y-0.5 p-0 text-xs text-[var(--muted-foreground)]">
+          {fates.map(([key, list]) => (
+            <li key={key}>
+              {t(`game.combat.ruleset.screen.${key}`, { names: list.map((one) => one.name).join(", ") })}
+            </li>
+          ))}
+        </ul>
+      )}
       <ul className="m-0 list-none space-y-1.5 p-0">
         {party.map((combatant) => {
           const state = rulesetStateWord(combatant, t);
           const percent = rulesetHealthPercent(combatant.health);
+          // What the fight cost them, pool by pool: only what was spent.
+          const spent = (combatant.pools ?? []).filter((pool) => pool.value < pool.max);
           return (
-            <li key={combatant.id} className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 text-sm">
+            <li
+              key={combatant.id}
+              className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-0.5 text-sm"
+            >
               <RulesetSideBadge combatant={combatant} />
               <span className="truncate">{combatant.name}</span>
               <span className="flex items-center gap-2 text-xs text-[var(--muted-foreground)]">
@@ -699,6 +722,15 @@ export function RulesetFightEnd({
                   </>
                 )}
               </span>
+              {spent.length > 0 && (
+                <span className="col-start-2 col-end-4 text-xs text-[var(--muted-foreground)]">
+                  {spent
+                    .map((pool) =>
+                      t("game.combat.ruleset.screen.endPool", { label: pool.label, value: pool.value, max: pool.max }),
+                    )
+                    .join(" · ")}
+                </span>
+              )}
             </li>
           );
         })}

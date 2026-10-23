@@ -136,7 +136,8 @@ export interface DirectedRulesetCombatant {
   /** What an attack is rolled against. Sent for both sides: every option's forecast already carries
    *  the chance it would land against this combatant, so the number is not a secret to keep. */
   defense: number;
-  conditions: Array<{ id: string; label: string; rounds?: number }>;
+  /** `icons`: the art icons it may be drawn with (1.338), first found first, for a token's badge. */
+  conditions: Array<{ id: string; label: string; rounds?: number; icons?: string[] }>;
   /** All active typed defenses, including exceptions (Capability API 1.132). */
   hides?: Pick<RulesetCheckSource, "resist" | "vulnerable" | "immune" | "conditionImmunities">;
   /** Active damage dealt/taken sources (Capability API 1.133), also read by the Game Master. */
@@ -192,6 +193,9 @@ export type DirectedRulesetEvent =
 /** One option of the legal menu, with the combatants it may be pointed at right now. */
 export interface DirectedRulesetOption extends RulesetCombatOption {
   targetIds: string[];
+  /** What it is expected to do against each of `targetIds`, where there is more than one to
+   *  choose between: the target step shows each one's odds. */
+  forecastFor?: Record<string, { hitChance?: number; averageDamage?: number }>;
   /** For an option that lands as a shape: the cells it may be aimed at, and who each aim would
    *  catch, so a board can draw the template before the choice is confirmed. */
   aim?: Array<{ x: number; y: number; targetIds: string[] }>;

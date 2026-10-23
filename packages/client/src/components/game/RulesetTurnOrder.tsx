@@ -271,9 +271,11 @@ function RulesetCombatantDetail({
 }) {
   const { t } = useTranslation();
   const hides = combatant.hides ? rulesetHideLines(definition, [combatant.hides], t) : [];
-  const profile = unit?.tactics
-    ? `${t(`game.combat.ai.adjective.${unit.tactics.adjective}`)} ${t(`game.combat.ai.role.${unit.tactics.role}`)}`
-    : "";
+  // How the Engine plays a companion is the player's to know; how it plays a foe is the foe's secret.
+  const profile =
+    unit?.tactics && combatant.side === "party"
+      ? `${t(`game.combat.ai.adjective.${unit.tactics.adjective}`)} ${t(`game.combat.ai.role.${unit.tactics.role}`)}`
+      : "";
   const empty =
     combatant.conditions.length === 0 &&
     hides.length === 0 &&

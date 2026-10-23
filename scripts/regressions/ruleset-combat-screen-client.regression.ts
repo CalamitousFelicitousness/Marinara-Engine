@@ -1157,7 +1157,8 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   assert.equal(printed.get("move"), "Brenna moves to 4, 2 for 3 and has 3 left.");
   assert.equal(printed.get("opportunity"), "Thorn Lurker strikes at Brenna with Barbed claw as they move away.");
   assert.equal(printed.get("cover"), "Thorn Lurker is under cover, which adds 2 for a defense of 15.");
-  assert.equal(printed.get("area"), "Corwin aims Fireball at 5, 3, covering 3 cells.");
+  // Who it catches is said by the lines that follow; squares and cell counts read like the Engine's own notes.
+  assert.equal(printed.get("area"), "Corwin aims Fireball.");
   assert.equal(
     printed.get("contest"),
     "Brenna tries Grapple on Thorn Lurker: 14 + 7 = 21 with Athletics against 9 + 2 = 11 with Acrobatics, and wins.",

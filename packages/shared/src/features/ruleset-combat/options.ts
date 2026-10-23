@@ -1949,6 +1949,8 @@ function forecastFor(
   state: RulesetEncounterState,
   actor: RulesetCombatant,
   action: RulesetCombatAction,
+  /** The one it is pointed at, where the caller knows; the first it may be pointed at otherwise. */
+  pointedAt?: RulesetCombatant,
 ): RulesetCombatOption["forecast"] | undefined {
   const forecast: NonNullable<RulesetCombatOption["forecast"]> = {};
   if (action.sequence) {
@@ -1998,7 +2000,7 @@ function forecastFor(
     if (total > 0) forecast.averageDamage = Math.round(total * 100) / 100;
     return forecast.averageDamage === undefined ? undefined : forecast;
   }
-  const target = firstTarget(definition, state, actor, action) ?? firstAreaTarget(state, actor, action);
+  const target = pointedAt ?? firstTarget(definition, state, actor, action) ?? firstAreaTarget(state, actor, action);
   // A contest's chance is the share it would WIN against the first one it may be taken against.
   if (action.contest) {
     const chance = target ? rulesetContestChance(definition, combat, actor, target, action.contest, state) : null;
@@ -2082,6 +2084,30 @@ function forecastFor(
       ) / 100;
   }
   return forecast.hitChance !== undefined || forecast.averageDamage !== undefined ? forecast : undefined;
+}
+
+/** What one option is expected to do against each of the ones it may be pointed at, by their ids:
+ *  the same numbers the menu shows for the first, worked out for each, so a player choosing between
+ *  targets can compare them. Nothing for a sequence, whose parts each pick their own, nor for an
+ *  option this actor does not have. */
+export function rulesetForecastsByTarget(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  actorId: string,
+  optionId: string,
+  targetIds: readonly string[],
+): Record<string, NonNullable<RulesetCombatOption["forecast"]>> {
+  const combat = definition.combat;
+  const actor = state.combatants.find((one) => one.id === actorId);
+  const action = actor?.actions.find((one) => one.id === optionId);
+  if (!combat || !actor || !action || action.sequence) return {};
+  const forecasts: Record<string, NonNullable<RulesetCombatOption["forecast"]>> = {};
+  for (const id of targetIds) {
+    const target = state.combatants.find((one) => one.id === id);
+    const forecast = target ? forecastFor(definition, combat, state, actor, action, target) : undefined;
+    if (forecast) forecasts[id] = forecast;
+  }
+  return forecasts;
 }
 
 /** Modifiers that belong to THIS attack hit (Capability API 1.133). Rows and held weapons are

@@ -33,6 +33,7 @@ import {
   rulesetModeText,
   rulesetOptionForecastText,
   rulesetOptionLabel,
+  rulesetOptionOutOfReach,
   rulesetOptionNeedsTargets,
   rulesetPickTarget,
   rulesetSendsOnPick,
@@ -162,6 +163,9 @@ export function rulesetWindowPrompt(view: DirectedRulesetView, defenseLabel: str
   );
 }
 
+/** Kinds the sidebar menu folds into a line of their own rather than listing: ending the turn is
+ *  the footer's, and the standard actions and contests are the moves a turn takes least. */
+const FOLDED_KINDS: ReadonlySet<string> = new Set(["end-turn", "standard", "contest"]);
 export function RulesetCombatMenu({
   view,
   budgetLabel,
@@ -848,7 +852,12 @@ export function RulesetCombatMenu({
                     ? "game.combat.ruleset.board.aimPrompt"
                     : "game.combat.ruleset.board.aimNobody";
       // On a touch screen there is no Enter or Escape to name: the same ask, worded for a tap.
-      const touchWords = touch && TOUCH_PROMPTS.has(prompt) ? `${prompt}Touch` : prompt;
+      const touchWords =
+        touch && step.stage === "move" && step.to
+          ? "game.combat.ruleset.board.movePromptConfirm"
+          : touch && TOUCH_PROMPTS.has(prompt)
+            ? `${prompt}Touch`
+            : prompt;
       return (
         <div className="flex flex-col gap-2 p-3">
           <p className={`text-xs ${ink.ask}`}>
@@ -1009,6 +1018,12 @@ export function RulesetCombatMenu({
                       max: combatant.health.max,
                     })}
                   </span>
+                  {/* Its odds against this one, as the server worked them out, so targets compare. */}
+                  {option.forecastFor?.[combatant.id] && (
+                    <span className={`mt-0.5 block text-[0.65rem] tabular-nums ${ink.body}`}>
+                      {rulesetOptionForecastText({ ...option, forecast: option.forecastFor[combatant.id] }, t)}
+                    </span>
+                  )}
                   {times > 1 && (
                     <span className={`mt-0.5 block text-[0.65rem] font-semibold tabular-nums ${ink.body}`}>
                       {t("game.combat.ruleset.target.times", { count: times })}
@@ -1172,14 +1187,24 @@ export function RulesetCombatMenu({
     }
     // Ending the turn is the footer's; the standard actions fold into one row of their own, and so
     // does every readied option, which would otherwise bury the turn under one "Ready …" per action.
+    // An option with nobody to point it at folds into one line under the rest, so the ones that can
+    // be taken are the ones a player reads first.
+    const unreachable = groups
+      .filter((group) => !FOLDED_KINDS.has(group.kind))
+      .flatMap((group) => group.options.filter((option) => !option.ready && rulesetOptionOutOfReach(option)));
     const listed = groups
-      .filter((group) => group.kind !== "end-turn" && group.kind !== "standard")
-      .map((group) => ({ ...group, options: group.options.filter((option) => !option.ready) }))
+      .filter((group) => !FOLDED_KINDS.has(group.kind))
+      .map((group) => ({
+        ...group,
+        options: group.options.filter((option) => !option.ready && !rulesetOptionOutOfReach(option)),
+      }))
       .filter((group) => group.options.length > 0);
     const readied = groups.flatMap((group) =>
       group.kind === "end-turn" || group.kind === "standard" ? [] : group.options.filter((option) => option.ready),
     );
     const standard = groups.find((group) => group.kind === "standard");
+    // Grabs and shoves are the moves a turn takes least, so they fold as the standard actions do.
+    const contests = groups.find((group) => group.kind === "contest");
     const fold = (labelKey: string, options: typeof readied, summary: string) => {
       const stepping = options.some((option) => option.id === openId);
       return (
@@ -1217,11 +1242,27 @@ export function RulesetCombatMenu({
             <ul className="m-0 grid list-none gap-px p-0">{group.options.map((option) => row(option))}</ul>
           </section>
         ))}
+        {unreachable.length > 0 &&
+          fold(
+            "game.combat.ruleset.screen.outOfReachFold",
+            unreachable,
+            unreachable.map((option) => rulesetOptionLabel(option, t)).join(", "),
+          )}
         {readied.length > 0 &&
           fold(
             "game.combat.ruleset.screen.readyFold",
             readied,
             t("game.combat.ruleset.screen.readyCount", { count: readied.length }),
+          )}
+        {contests &&
+          contests.options.some((option) => !option.ready) &&
+          fold(
+            contests.labelKey,
+            contests.options.filter((option) => !option.ready),
+            contests.options
+              .filter((option) => !option.ready)
+              .map((option) => rulesetOptionLabel(option, t))
+              .join(", "),
           )}
         {standard &&
           fold(

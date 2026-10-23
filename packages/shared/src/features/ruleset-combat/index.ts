@@ -231,6 +231,7 @@ export {
   rulesetCriticalFromAdjacent,
   rulesetCoverBonus,
   rulesetDefenseAgainst,
+  rulesetForecastsByTarget,
   rulesetForbiddenTargets,
   rulesetFreeStrike,
   rulesetGrantedStandard,

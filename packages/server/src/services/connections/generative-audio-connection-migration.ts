@@ -35,6 +35,13 @@ export async function migrateGenerativeAudioConnections(db: DB): Promise<void> {
         row.profileImportReviewRequired !== "true" &&
         row.fallbackForAgents === "true",
     );
+    const hasLegacyFallback = rows.some(
+      (row) =>
+        row.provider === "audio" &&
+        row.profileImportReviewRequired !== "true" &&
+        row.fallbackForAgents === "true" &&
+        (audioConnectionSupportsGeneration(row, "music") || audioConnectionSupportsGeneration(row, "sfx")),
+    );
     for (const row of rows) {
       if (row.provider !== "audio" || row.profileImportReviewRequired === "true") continue;
       const music = audioConnectionSupportsGeneration(row, "music");
@@ -56,7 +63,7 @@ export async function migrateGenerativeAudioConnections(db: DB): Promise<void> {
         const baseUrl = row.baseUrl || (connectionProfile ? defaultBase : sourceProfile?.baseUrl || defaultBase);
         const becomesDefault = !hasDefault && (chosenId ? row.id === chosenId : row.defaultForAgents === "true");
         const becomesFallback =
-          !hasFallback && !becomesDefault && (row.fallbackForAgents === "true" || !hasDefault);
+          !hasFallback && !becomesDefault && (row.fallbackForAgents === "true" || (!hasDefault && !hasLegacyFallback));
         await tx.insert(apiConnections).values({
           ...row,
           id: newId(),

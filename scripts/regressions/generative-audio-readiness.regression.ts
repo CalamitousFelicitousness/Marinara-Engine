@@ -70,12 +70,16 @@ try {
       audioGenerationSource: "custom",
       baseUrl: "https://8.8.8.8/v1",
       audioMusic: true,
-      audioSoundEffects: false,
+      audioSoundEffects: true,
     }),
   );
   assert.equal((await probe(custom.id)).music, false, "a compatible source still requires its music endpoint");
+  assert.equal((await probe(custom.id)).soundEffects, false, "a compatible source also requires its SFX endpoint");
   await connections.update(custom.id, { audioMusicEndpoint: "music" });
   assert.equal((await probe(custom.id)).music, true, "a compatible source may intentionally have no key");
+  assert.equal((await probe(custom.id)).soundEffects, false, "enabling the music endpoint does not enable SFX");
+  await connections.update(custom.id, { audioSoundEffectsEndpoint: "sfx" });
+  assert.equal((await probe(custom.id)).soundEffects, true);
   assert.equal(fetches, 0, "checking prerequisites submits no request or paid composition");
   console.info("PASS: independent music/SFX readiness, shared Suno public-HTTPS callback validation, keys, compatible endpoints and no provider I/O");
 } finally {

@@ -100,6 +100,16 @@ try {
   assert.equal(otherSplit.fallbackForAgents, "true");
 
   await reset();
+  const disabled = await speech("selected-speech-only", { audioMusic: false });
+  await speech("unmarked-earlier");
+  const marked = await speech("marked-later", { fallbackForAgents: true });
+  await storeConfig({ connectionId: disabled.id });
+  await migrateGenerativeAudioConnections(db);
+  const markedSplit = await connections.getAudioGenerationForLegacyConnection(marked.id);
+  assert(markedSplit);
+  assert.equal((await resolveGenerativeAudioConfig(db)).id, markedSplit.id, "an explicit fallback wins over earlier unmarked rows");
+
+  await reset();
   await storeConfig();
   await migrateGenerativeAudioConnections(db);
   assert.equal((await generationRows()).length, 1, "settings-only generation survives while speech is disabled");

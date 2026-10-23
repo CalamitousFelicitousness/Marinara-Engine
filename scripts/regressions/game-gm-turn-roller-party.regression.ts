@@ -117,6 +117,10 @@ const party = ["Isolde", "Hessa", "Brannoc", "Pip"];
     /Narration alone changes no sheet\. Every harm, healing or spent resource you narrate needs its command/,
   );
   assert.match(rules, /a fall, a burn or a poison included/);
+  assert.match(
+    rules,
+    /Its who is the one the narration says it happens to, by that name, never whoever acted or spoke last\./,
+  );
   for (const reminder of [rules, withPersona]) {
     assert.match(reminder, /Never skip a check the action calls for\./);
     assert.match(reminder, /Name who rolls with who="Name"/);

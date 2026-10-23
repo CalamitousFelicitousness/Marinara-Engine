@@ -1465,7 +1465,7 @@ function renderRulesetSheetSection(
       : []),
     `Leave out who for the player; who="party" applies to every member. Use the pool, track, field and condition names shown on the sheets. Never write result, reason or now yourself: the Engine adds them. A refused command did not happen, so do not narrate it as if it had.`,
     // Prose alone changes no number: a fall or a burn told without its command never reached the sheet.
-    `Narration alone changes no sheet. Every harm, healing or spent resource you narrate needs its command in the same reply, a fall, a burn or a poison included.${
+    `Narration alone changes no sheet. Every harm, healing or spent resource you narrate needs its command in the same reply, a fall, a burn or a poison included. Its who is the one the narration says it happens to, by that name, never whoever acted or spoke last.${
       oneRequestDice
         ? // A turn that finishes itself never gets a total back, so the roll goes where the number is needed.
           ` When the amount is still to be rolled, write the roll as a placeholder in the command's amount and the engine fills it in before applying it: [sheet: who="Name" op="damage" pool="Pool" amount="[[roll: 1d6]]"].`

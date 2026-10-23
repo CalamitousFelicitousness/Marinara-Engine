@@ -24,6 +24,7 @@ import {
 import { normalizeCharacterLookupName } from "../../utils/character-lookup-name.js";
 import {
   gameInventoryBagKey,
+  gameInventoryFoldStandIn,
   gameInventoryCoinRef,
   gameInventoryNameKey,
   type GameInventoryStack,
@@ -1472,7 +1473,28 @@ export function rulesetCardItems(
   playerName?: string | null,
 ): (cardName: string) => RulesetSheetItem[] {
   const holderOf = rulesetCardHolder(cardNames, playerName);
-  return (cardName) => rulesetSheetItems(book, stacks, holderOf(cardName) ?? undefined);
+  const key = normalizeCharacterLookupName;
+  // No card is the player's own (a game with no persona): the first card stands in for the player
+  // and reads the player's bag, but what the Game Master puts in its own name is its too.
+  const standIn = !playerName || !cardNames.some((name) => key(name) === key(playerName));
+  return (cardName) => {
+    const holder = holderOf(cardName);
+    if (holder !== null || !standIn || !stacks.some((stack) => stack.holder && key(stack.holder) === key(cardName)))
+      return rulesetSheetItems(book, stacks, holder ?? undefined);
+    // One list, so a binding that needs another item worn sees both bags.
+    const own = gameInventoryBagKey(cardName);
+    const moved = new Map(
+      stacks.flatMap((stack) =>
+        stack.holder && gameInventoryBagKey(stack.holder) === own ? [[stack.id, stack.holder] as const] : [],
+      ),
+    );
+    const read = rulesetSheetItems(book, gameInventoryFoldStandIn(stacks, cardName), undefined);
+    // Each still says whose bag it is in, for whatever changes it.
+    return read.map((held) => {
+      const holder = held.stack ? moved.get(held.stack.id) : undefined;
+      return holder && held.stack ? { ...held, stack: { ...held.stack, holder } } : held;
+    });
+  };
 }
 
 /** Whose bag a party card's items are in (1.705): the card read for the player (the one named for

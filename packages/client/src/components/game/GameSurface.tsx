@@ -13,6 +13,7 @@ import {
   type WorldElementSet,
   gameInventoryBags,
   gameInventoryBagKey,
+  gameInventoryFoldStandIn,
   gameInventoryFightEffects,
   gameFightOffers,
   gameInventoryNameKey,
@@ -8871,17 +8872,26 @@ function GameSurfaceComponent({
 
   /** Whose bags the inventory screen shows: the player first (no holder), then the party in order,
    *  then anybody who has left the party but still carries something. */
+  // A ruleset game with no persona plays its first character card as the player, as the server
+  // and the fight do, so the player's own bag is that character's and is named after them rather
+  // than standing beside their bag as a second one called "Player".
+  const inventoryStandIn = useMemo(() => {
+    const player = partyMembers.find((member) => member.id.startsWith("persona:"));
+    if (gameRuleset.status !== "ok" || player?.id !== "persona:default") return undefined;
+    const first = (Array.isArray(chatMeta.gameCharacterCards) ? chatMeta.gameCharacterCards : [])[0] as
+      { name?: unknown } | undefined;
+    return typeof first?.name === "string" && first.name.trim() ? first.name.trim() : undefined;
+  }, [partyMembers, gameRuleset.status, chatMeta.gameCharacterCards]);
+  // What a Game Master put in that card's own name before it was read as the player's is the
+  // player's bag too, so the window shows one bag for them.
+  const inventoryShown = useMemo(() => {
+    if (!inventoryStandIn) return inventoryItems;
+    return gameInventoryFoldStandIn(inventoryItems, inventoryStandIn);
+  }, [inventoryItems, inventoryStandIn]);
+
   const inventoryBags = useMemo(() => {
     const player = partyMembers.find((member) => member.id.startsWith("persona:"));
-    // A ruleset game with no persona plays its first character card as the player, as the server
-    // and the fight do, so the player's own bag is that character's and is named after them rather
-    // than standing beside their bag as a second one called "Player".
-    const firstCardName = (() => {
-      if (gameRuleset.status !== "ok" || player?.id !== "persona:default") return undefined;
-      const first = (Array.isArray(chatMeta.gameCharacterCards) ? chatMeta.gameCharacterCards : [])[0] as
-        { name?: unknown } | undefined;
-      return typeof first?.name === "string" && first.name.trim() ? first.name.trim() : undefined;
-    })();
+    const firstCardName = inventoryStandIn;
     const bags: Array<{ holder?: string; name: string }> = [
       { name: firstCardName ?? player?.name ?? localizeUi("ui.game.gameinventory.you") },
     ];
@@ -8895,9 +8905,9 @@ function GameSurfaceComponent({
     const playsAs = firstCardName ? gameInventoryBagKey(firstCardName) : "";
     for (const member of partyMembers)
       if (!member.id.startsWith("persona:") && gameInventoryBagKey(member.name) !== playsAs) addBag(member.name);
-    for (const stack of inventoryItems) if (stack.holder) addBag(stack.holder);
+    for (const stack of inventoryShown) if (stack.holder) addBag(stack.holder);
     return bags;
-  }, [partyMembers, inventoryItems, localizeUi, gameRuleset.status, chatMeta.gameCharacterCards]);
+  }, [partyMembers, inventoryShown, localizeUi, inventoryStandIn]);
 
   const combatAvatarCandidates = useMemo(() => {
     const candidatesByName = new Map<string, GamePartyMemberInfo>();
@@ -14180,7 +14190,7 @@ function GameSurfaceComponent({
 
                 {/* Inventory overlay */}
                 <GameInventory
-                  items={inventoryItems}
+                  items={inventoryShown}
                   bags={inventoryBags}
                   open={inventoryOpen}
                   onClose={() => setInventoryOpen(false)}

@@ -753,7 +753,7 @@ try {
     const block = text.slice(at, text.indexOf("\n\n", at));
     assert.match(
       block,
-      /- User \(load 12 of 6, most 12, encumbered; Body 1 of 1, Hands 2 of 2; no coins\): Leather coat \(1 worn\) \[[^\]]*\]; Arrows ×5 \[[^\]]*\]; Hunting bow ×2 \(1 worn\)/,
+      /- Ada \(load 12 of 6, most 12, encumbered; Body 1 of 1, Hands 2 of 2; no coins\): Leather coat \(1 worn\) \[[^\]]*\]; Arrows ×5 \[[^\]]*\]; Hunting bow ×2 \(1 worn\)/,
     );
     assert.match(block, /- Bram \(load 12 of 9, most 12, encumbered; Body 0 of 1, Hands 0 of 2; no coins\): /);
     // Through the route too: with money in the game an empty purse is said, and so is anyone left out.

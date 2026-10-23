@@ -310,6 +310,7 @@ import {
   type GameInventoryMarket,
   createInventoryTagRegex,
   gameInventoryBags,
+  gameInventoryFoldStandIn,
   gameInventoryTellingStart,
   readGameInventoryTurn,
   rulesetInventedItemsHeld,
@@ -3061,6 +3062,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
       // The pinned ruleset follows the same rule: the resolution the reminder was rendered with is
       // the one the turn's sheet commands are checked against. Undefined until a game turn resolves it.
       let turnGameRuleset: ResolvedGameRuleset | null | undefined;
+      // A ruleset game with no persona plays its first character card as the player (as the sheet, the
+      // fight and the inventory window do), so that card's own bag is the player's.
+      let gameStandIn: string | undefined;
       let turnRulesetCatalogs: RulesetCatalogEntriesById | undefined;
       // The prompt and commands share one snapshot, including an older reply being continued.
       let turnStartSnapshotPromise: typeof selectedGameStateSnapshotPromise | null = null;
@@ -4992,6 +4996,16 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           const pinnedGameRuleset =
             chatMeta.gameRuleset != null ? resolveGameRuleset(chatMeta, await loadRulesetRegistry()) : null;
           turnGameRuleset = pinnedGameRuleset;
+          const firstGameCard = Array.isArray(chatMeta.gameCharacterCards)
+            ? (chatMeta.gameCharacterCards as Array<{ name?: unknown }>)[0]?.name
+            : undefined;
+          gameStandIn =
+            persona == null &&
+            pinnedGameRuleset?.status === "ok" &&
+            typeof firstGameCard === "string" &&
+            firstGameCard.trim()
+              ? firstGameCard.trim()
+              : undefined;
           const selectedGamePrompt =
             resolvedPreset && presetId
               ? resolvePresetModePrompt(resolvedPreset as Record<string, unknown>, "game")
@@ -5543,7 +5557,11 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 const inv = gameInventoryTotals(promptInventoryStacks, promptCharges);
                 return inv.length > 0 ? inv : undefined;
               })(),
-              partyInventory: gameInventoryBags(promptInventoryStacks, promptCharges),
+              partyInventory: gameInventoryBags(
+                gameInventoryFoldStandIn(promptInventoryStacks, gameStandIn),
+                promptCharges,
+              ),
+              ...(gameStandIn ? { playerBagName: gameStandIn } : {}),
               ...(promptItemFacts ? { inventoryItemFacts: promptItemFacts } : {}),
               ...(promptFakeNames && Object.keys(promptFakeNames).length > 0
                 ? { inventoryFakeNames: promptFakeNames }
@@ -10037,7 +10055,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             (tellsInventory || retellsInventoryTurn || turnRests.length > 0)
           ) {
             try {
-              const party = { player: personaName || undefined, members: canonicalGamePartyNames };
+              const party = { player: gameStandIn ?? (personaName || undefined), members: canonicalGamePartyNames };
               const retoldId = input.regenerateMessageId ?? input.continueMessageId ?? null;
               const retold = retoldId ? await chats.getMessage(retoldId) : null;
               const telling = retold

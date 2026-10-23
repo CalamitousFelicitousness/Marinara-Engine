@@ -126,6 +126,9 @@ export interface GmPromptContext {
   }>;
   /** Each bag's totals, the player's first (no `holder`). Read instead of `playerInventory` once
    *  anybody but the player carries something, so the Game Master knows who holds what. */
+  /** Whose name the player's own bag goes by when it is not the player's (1.773 playtest): the first
+   *  character card of a game with no persona, which plays as the player. */
+  playerBagName?: string;
   partyInventory?: Array<{
     holder?: string;
     items: Array<{
@@ -1625,6 +1628,7 @@ export function buildGmFormatReminder(
     | "map"
     | "partyNames"
     | "playerName"
+    | "playerBagName"
     | "playerIsParty"
     | "characterSprites"
     | "playerInventory"
@@ -2186,7 +2190,7 @@ export function buildGmFormatReminder(
   // Inventory context. Skipped when an experience owns items: an older save can still carry a stale
   // built-in list, which would contradict the inventory the player has on screen.
   if (!experienceOwnsInventory && carriedByOthers) {
-    const playerLabel = normalizePromptText(ctx.playerName) || "Player";
+    const playerLabel = normalizePromptText(ctx.playerBagName ?? ctx.playerName) || "Player";
     const bags =
       withMoney && !partyBags.some((bag) => !bag.holder)
         ? [{ holder: "", items: [], note: bearerFor(undefined) }, ...partyBags]

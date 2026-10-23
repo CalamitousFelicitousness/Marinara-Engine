@@ -875,6 +875,22 @@ export function gameInventoryFightEffects<T extends { name: string }>(
   ];
 }
 
+/** The stacks with one party member's own bag folded into the player's (none of theirs keeps a
+ *  holder): the first character card of a game with no persona, which plays as the player, so what
+ *  was put in its own name and what is in the player's bag are one bag. Unchanged without one. */
+export function gameInventoryFoldStandIn(
+  stacks: readonly GameInventoryStack[],
+  standIn: string | undefined,
+): GameInventoryStack[] {
+  const key = standIn ? gameInventoryBagKey(standIn) : "";
+  if (!key || !stacks.some((stack) => stack.holder && gameInventoryBagKey(stack.holder) === key)) return [...stacks];
+  return stacks.map((stack): GameInventoryStack => {
+    if (!stack.holder || gameInventoryBagKey(stack.holder) !== key) return stack;
+    const { holder: _holder, ...rest } = stack;
+    return rest;
+  });
+}
+
 /** Each bag's own totals, the player's first and then in the order a holder first appears. Only bags
  *  that hold something are listed. */
 export function gameInventoryBags(

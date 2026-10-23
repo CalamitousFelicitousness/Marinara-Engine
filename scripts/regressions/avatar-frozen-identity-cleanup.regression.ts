@@ -121,6 +121,17 @@ try {
     "an unflushed identity insertion must preserve its avatar",
   );
 
+  // Once every candidate is protected, unrelated cold history must not prolong the write gate.
+  const readResidentRows = db._fileStore.getResidentLazyRows;
+  let laterTableReads = 0;
+  db._fileStore.getResidentLazyRows = (table) => {
+    if (table !== "messages") laterTableReads++;
+    return readResidentRows(table);
+  };
+  assert.equal(await unlinkAvatarFilesIfUnreferenced({ db, avatarRoot, avatarPaths: [urlFor("new.png")] }), 0);
+  db._fileStore.getResidentLazyRows = readResidentRows;
+  assert.equal(laterTableReads, 0, "finding every candidate must stop before scanning later history tables");
+
   // A temporary deletion in another transaction is not a committed release.
   let transactionStarted!: () => void;
   const started = new Promise<void>((resolve) => {

@@ -151,7 +151,12 @@ async function referencedAvatarFiles(db: DB, avatarRoot: string): Promise<Set<st
  * and prevents another request's temporary deletion from hiding a reference before rollback.
  * An unreadable shard/metadata makes cleanup inconclusive, so retain every candidate file.
  */
-async function frozenIdentityAvatarFiles(db: DB, avatarRoot: string): Promise<Set<string> | null> {
+async function frozenIdentityAvatarFiles(
+  db: DB,
+  avatarRoot: string,
+  candidates: ReadonlySet<string>,
+): Promise<Set<string> | null> {
+  const startedAt = performance.now();
   const files = new Set<string>();
   const record = (value: unknown): Record<string, unknown> => {
     if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid identity metadata");
@@ -164,7 +169,7 @@ async function frozenIdentityAvatarFiles(db: DB, avatarRoot: string): Promise<Se
     if (avatarUrl == null) return;
     if (typeof avatarUrl !== "string") throw new Error("Invalid frozen avatar URL");
     const filePath = resolveStoredAvatarFile(avatarUrl, avatarRoot);
-    if (filePath) files.add(filePath);
+    if (filePath && candidates.has(filePath)) files.add(filePath);
   };
   const readRow = (table: string, value: unknown) => {
     const row = record(value);
@@ -202,15 +207,27 @@ async function frozenIdentityAvatarFiles(db: DB, avatarRoot: string): Promise<Se
           const path = join(shardDir, name);
           const rows = JSON.parse(await readFile(entries.includes(name) ? path : `${path}.bak`, "utf8")) as unknown;
           if (!Array.isArray(rows)) throw new Error("Invalid identity history shard");
-          for (const row of rows) readRow(table, row);
+          for (const row of rows) {
+            readRow(table, row);
+            if (files.size === candidates.size) return files;
+          }
         }
       }
-      for (const row of store.getResidentLazyRows(table)) readRow(table, row);
+      for (const row of store.getResidentLazyRows(table)) {
+        readRow(table, row);
+        if (files.size === candidates.size) return files;
+      }
     }
     return files;
   } catch (error) {
     logger.warn(error, "Could not inspect frozen identity history; retaining avatar files");
     return null;
+  } finally {
+    logger.debug(
+      "Inspected %d frozen avatar candidates in %d ms",
+      candidates.size,
+      Math.round(performance.now() - startedAt),
+    );
   }
 }
 
@@ -220,7 +237,7 @@ async function excludeFrozenAvatarFiles(
   files: AbandonedAvatarFile[],
 ): Promise<AbandonedAvatarFile[]> {
   if (files.length === 0) return files;
-  const frozen = await frozenIdentityAvatarFiles(db, avatarRoot);
+  const frozen = await frozenIdentityAvatarFiles(db, avatarRoot, new Set(files.map((file) => file.filePath)));
   return frozen === null ? [] : files.filter((file) => !frozen.has(file.filePath));
 }
 
@@ -340,7 +357,7 @@ async function unlinkAvatarFilesIfUnreferencedUnlocked(input: {
     }
 
     if (candidates.size === 0) return 0;
-    const frozen = await frozenIdentityAvatarFiles(input.db, avatarRoot);
+    const frozen = await frozenIdentityAvatarFiles(input.db, avatarRoot, candidates);
     if (frozen === null) return 0;
     let deleted = 0;
     for (const filePath of candidates) {

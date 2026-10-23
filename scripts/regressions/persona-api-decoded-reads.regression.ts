@@ -514,11 +514,14 @@ try {
       payload: { scope: "all" },
     }),
   );
-  await Promise.race([
-    snapshotWritten,
-    reassignment.then(() => assert.fail("reassignment ended before snapshot write")),
-  ]);
-  db.update = update;
+  try {
+    await Promise.race([
+      snapshotWritten,
+      reassignment.then(() => assert.fail("reassignment ended before snapshot write")),
+    ]);
+  } finally {
+    db.update = update;
+  }
   let cleanupSettled = false;
   const pendingCleanup = unlinkAvatarFilesIfUnreferenced({ db, avatarPaths: [String(frozenAvatar.avatarPath)] }).then(
     (count) => {

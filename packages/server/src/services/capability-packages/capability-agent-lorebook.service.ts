@@ -14,6 +14,7 @@ import { resolveChatUserIdentity } from "../chat-user-identity.js";
 import { createAgentLorebookTriggerResolver } from "../generation/agent-lorebook-triggers.js";
 import {
   buildLorebookScanMessagesWithGenerationGuide,
+  normalizeStoredLorebookGenerationTriggers,
   resolveLorebookGenerationTriggers,
   resolveLorebookTokenBudget,
 } from "../generation/lorebook-generation-runtime.js";
@@ -90,18 +91,7 @@ export async function resolvePackageAgentLorebookEntries(
   agentMessages.reverse();
   const replay = normalizeGenerationReplay(parseExtra(lastTurn?.extra).generationReplay);
   const storedTriggers: unknown = parseExtra(lastTurn?.extra).lorebookGenerationTriggers;
-  // Accept only complete shapes emitted by the shared resolver for this mode; old transcripts keep their fallback.
-  const savedTriggers = Array.isArray(storedTriggers)
-    ? [
-        resolveLorebookGenerationTriggers({ userMessage: "input" }, chat.mode),
-        resolveLorebookGenerationTriggers({}, chat.mode),
-        resolveLorebookGenerationTriggers({ impersonate: true }, chat.mode),
-        resolveLorebookGenerationTriggers({ regenerateMessageId: "message" }, chat.mode),
-      ].find(
-        (triggers) =>
-          triggers.length === storedTriggers.length && triggers.every((value) => storedTriggers.includes(value)),
-      )
-    : undefined;
+  const savedTriggers = normalizeStoredLorebookGenerationTriggers(storedTriggers, chat.mode);
   // Legacy group replies and continuations can have identical rows. Older input supplies macros,
   // not proof of this turn's intent; retain the adjacent-turn fallback for that history.
   const generationTriggers =

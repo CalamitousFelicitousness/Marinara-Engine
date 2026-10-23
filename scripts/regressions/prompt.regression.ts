@@ -6188,8 +6188,14 @@ const cases: RegressionCase[] = [
         "utf8",
       );
       assert.match(galleryRouteSource, /!promptDraft && chat\.mode === "roleplay"/u);
-      assert.match(galleryRouteSource, /resolveIllustratorPromptRuntime/u);
-      assert.match(galleryRouteSource, /buildRoleplayVideoDirectionMessages\(promptOverridesStorage/u);
+      // Roleplay planning goes through the shared clip writer, which uses the Prompt Model and the director messages.
+      assert.match(galleryRouteSource, /writeRoleplayClipDirection\(app\.db/u);
+      const clipWriterSource = readFileSync(
+        new URL("../../packages/server/src/services/video/roleplay-clip-writer.ts", import.meta.url),
+        "utf8",
+      );
+      assert.match(clipWriterSource, /resolveIllustratorPromptRuntime/u);
+      assert.match(clipWriterSource, /buildRoleplayVideoDirectionMessages\(createPromptOverridesStorage\(db\)/u);
       assert.match(galleryRouteSource, /input\.promptOverride\?\.trim\(\) \?\? ""/u);
       assert.doesNotMatch(galleryRouteSource, /chat\.mode === "roleplay"[\s\S]{0,400}gameStoryboard/u);
     },

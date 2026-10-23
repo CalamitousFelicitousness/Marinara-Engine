@@ -1,7 +1,9 @@
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import type { Chat } from "@marinara-engine/shared";
 import { useChat, useUpdateChatMetadata } from "../../hooks/use-chats";
 import { useLorebooks } from "../../hooks/use-lorebooks";
+import { readChatMetadata } from "../../lib/chat-wizard-defaults";
 import { AgentSettingsToggle } from "./AgentSettingsControls";
 
 export function AgentLorebookAttachment({ chatId, agentType }: { chatId: string; agentType: string }) {
@@ -9,7 +11,8 @@ export function AgentLorebookAttachment({ chatId, agentType }: { chatId: string;
   const { data: chat } = useChat(chatId);
   const { data: lorebooks = [], isLoading, isError } = useLorebooks(undefined, { includeHidden: true });
   const updateMetadata = useUpdateChatMetadata({ serialize: true });
-  const attachment = chat?.metadata.agentLorebookAttachments?.[agentType];
+  const metadata = chat ? (readChatMetadata(chat) as Chat["metadata"]) : undefined;
+  const attachment = metadata?.agentLorebookAttachments?.[agentType];
   const enabled = attachment?.enabled === true;
   const selectedId = attachment?.lorebookId ?? "";
   const selectedBook = lorebooks.find((book) => book.id === selectedId);

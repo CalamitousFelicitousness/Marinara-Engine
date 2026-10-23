@@ -111,7 +111,9 @@ export function parseManualIllustratorPromptPlan(value: unknown): ManualIllustra
     reason: readTrimmedString(record.reason).slice(0, 500),
     characterPrompts: Array.isArray(record.characterPrompts) ? record.characterPrompts.slice(0, 32) : [],
     ...(record.generateVideo === true ? { generateVideo: true } : {}),
-    ...(readTrimmedString(record.videoPrompt) ? { videoPrompt: readTrimmedString(record.videoPrompt) } : {}),
+    ...(readTrimmedString(record.videoPrompt)
+      ? { videoPrompt: readTrimmedString(record.videoPrompt).slice(0, 2_000) }
+      : {}),
   };
 }
 

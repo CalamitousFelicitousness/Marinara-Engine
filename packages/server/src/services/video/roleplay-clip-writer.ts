@@ -44,10 +44,9 @@ export async function writeRoleplayClipDirection(
   args: {
     chat: RoleplayClipChat;
     meta: Record<string, unknown>;
-    setup: Pick<
-      Awaited<ReturnType<typeof resolveChatVideoSetup>>,
-      "videoConn" | "runtime" | "durationSeconds" | "aspectRatio"
-    >;
+    setup: Pick<Awaited<ReturnType<typeof resolveChatVideoSetup>>, "runtime" | "durationSeconds" | "aspectRatio"> & {
+      videoConn: { videoPromptInstructions?: string | null };
+    };
     /** The recent messages (and any requested clip) the clip shows. */
     sourceExchange: string;
     /** The picture the clip starts from, when there is one. */

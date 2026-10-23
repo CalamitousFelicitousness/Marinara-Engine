@@ -212,7 +212,8 @@ function looksLikeClaudeModel(model: string | undefined): boolean {
  * Reshape Chat Completions messages for an endpoint that hands them to Anthropic's Messages API. Anthropic takes a
  * thinking block back only with the signature it was issued with, so unsigned reasoning is dropped; and it refuses an
  * assistant tool-call turn that keeps neither text nor signed thinking, so such a round is retold as text: its calls
- * go, and its results become one user message. Rounds with text or signed thinking stay native.
+ * go, and its results become one user message. Other empty unsigned assistant rows are omitted. Rounds with text or
+ * signed thinking stay native.
  */
 function anthropicSafeWireMessages(messages: ChatCompletionsWireMessage[]): ChatCompletionsWireMessage[] {
   const signed = (detail: unknown) =>
@@ -266,6 +267,7 @@ function anthropicSafeWireMessages(messages: ChatCompletionsWireMessage[]): Chat
       }
       continue;
     }
+    if (!hasText && !kept.length) continue;
     result.push(kept.length ? { ...rest, reasoning_details: kept } : rest);
   }
   tell();
@@ -876,6 +878,11 @@ export class OpenAIProvider extends BaseLLMProvider {
         logger.warn(
           "[OpenAI] %s refused a request Anthropic could not take; retrying once without unsigned reasoning",
           this.chatCompletionsErrorLabel(),
+        );
+        logDebugOverride(
+          options.debugMode === true || isDebugAgentsEnabled(),
+          "[debug/openai] Anthropic-compatible retry messages:\n%j",
+          messages,
         );
         body.messages = messages;
         response = await send();

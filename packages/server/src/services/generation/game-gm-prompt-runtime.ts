@@ -7,6 +7,7 @@ import {
   normalizeAgentPromptTemplateOptions,
   normalizeTextForMatch,
   resolveGameSetupArtStylePrompt,
+  rulesetCombatStyle,
   summarizeTacticalBattlefield,
   type GameActiveState,
   type GameCampaignPlan,
@@ -334,7 +335,11 @@ export async function injectGameGmPromptRuntime(args: {
   const resolvedCombatStyle =
     pinnedCombatStyle ??
     legacyTacticalCombatStyle ??
-    ((args.chatMetadata.gameCombatStyle as string) || (setupConfig?.combatStyle as string) || "classic");
+    // A style the game's ruleset leaves out plays as the first one it lists (1.379).
+    rulesetCombatStyle(
+      args.ruleset,
+      (args.chatMetadata.gameCombatStyle as string) || (setupConfig?.combatStyle as string) || "classic",
+    );
 
   const lastMapPos = args.chatMetadata.lastMapPosition as string | { x: number; y: number } | undefined;
   const currentMapPos = gameMap?.partyPosition;

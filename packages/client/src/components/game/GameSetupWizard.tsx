@@ -58,6 +58,8 @@ import {
   type GameSpotifySourceType,
   normalizeSpotifySourceType,
   resolveGameSpatialMapDraftOptions,
+  rulesetCombatStyle,
+  rulesetCombatStyles,
   type GenerationParameters,
   type SpatialMapGroundingMode,
   type SpatialMapDraftSize,
@@ -96,7 +98,7 @@ import { useConnections, useModelParameterCapabilities } from "../../hooks/use-c
 import { useDefaultPreset, usePresets } from "../../hooks/use-presets";
 import { useCharacterGroups, usePersonas } from "../../hooks/use-characters";
 import { GameSetupRulesChooser, GameSetupRulesetSheetStatus } from "./GameSetupRulesChooser";
-import { resolveCombatStyle } from "./combat-styles";
+import { listCombatStyles, resolveCombatStyle } from "./combat-styles";
 import { GameSetupWorldKitChooser, MapPackLock } from "./GameSetupWorldKitChooser";
 import { useExperienceMapPack } from "../../hooks/use-map-pack";
 import { useOverworldGamesEnabled } from "../../hooks/use-world-library";
@@ -626,7 +628,11 @@ export function GameSetupWizard({
   const [tones, setTones] = useState<string[]>(["Heroic"]);
   const [customTone, setCustomTone] = useState("");
   const [difficulty, setDifficulty] = useState("Normal");
-  const [combatStyle, setCombatStyle] = useState<GameCombatStyle>("classic");
+  const [pickedCombatStyle, setCombatStyle] = useState<GameCombatStyle>("classic");
+  // The chosen ruleset may name the styles its games play (1.379): only those are offered, and a pick it
+  // leaves out is shown and sent as the first it lists. The pick itself is kept for another ruleset.
+  const combatStyles = rulesetCombatStyles(activeRuleset?.definition);
+  const combatStyle = rulesetCombatStyle(activeRuleset?.definition, pickedCombatStyle, listCombatStyles());
   const [gmBossControl, setGmBossControl] = useState(true);
   const [tacticalBattlefieldSize, setTacticalBattlefieldSize] = useState<"auto" | TacticalBattlefieldSize>("auto");
   const [gmMode, setGmMode] = useState<GameGmMode>("standalone");
@@ -2255,41 +2261,52 @@ export function GameSetupWizard({
                         {localizeUi("ui.game.gamesetupwizard.combatPreference")}
                       </label>
                       <div className="flex gap-2">
-                        <button
-                          onClick={() => setCombatStyle("classic")}
-                          aria-pressed={combatStyle === "classic"}
-                          className={cn(
-                            "flex-1 rounded-lg p-3 text-left text-xs transition-colors ring-1",
-                            combatStyle === "classic"
-                              ? "bg-[var(--primary)]/10 ring-[var(--primary)]/40"
-                              : "bg-[var(--secondary)] ring-[var(--border)] hover:ring-[var(--primary)]/20",
-                          )}
-                        >
-                          <div className="font-medium text-[var(--foreground)]">
-                            {localizeUi("ui.game.gamesetupwizard.classic")}
-                          </div>
-                          <div className="mt-1 text-[var(--muted-foreground)]">
-                            {localizeUi("game.combat.preference.classicDescription")}
-                          </div>
-                        </button>
-                        <button
-                          onClick={() => setCombatStyle("tactical")}
-                          aria-pressed={combatStyle === "tactical"}
-                          className={cn(
-                            "flex-1 rounded-lg p-3 text-left text-xs transition-colors ring-1",
-                            combatStyle === "tactical"
-                              ? "bg-[var(--primary)]/10 ring-[var(--primary)]/40"
-                              : "bg-[var(--secondary)] ring-[var(--border)] hover:ring-[var(--primary)]/20",
-                          )}
-                        >
-                          <div className="font-medium text-[var(--foreground)]">
-                            {localizeUi("ui.game.gamesetupwizard.tactical")}
-                          </div>
-                          <div className="mt-1 text-[var(--muted-foreground)]">
-                            {localizeUi("game.combat.preference.tacticalDescription")}
-                          </div>
-                        </button>
+                        {(!combatStyles || combatStyles.includes("classic")) && (
+                          <button
+                            onClick={() => setCombatStyle("classic")}
+                            aria-pressed={combatStyle === "classic"}
+                            className={cn(
+                              "flex-1 rounded-lg p-3 text-left text-xs transition-colors ring-1",
+                              combatStyle === "classic"
+                                ? "bg-[var(--primary)]/10 ring-[var(--primary)]/40"
+                                : "bg-[var(--secondary)] ring-[var(--border)] hover:ring-[var(--primary)]/20",
+                            )}
+                          >
+                            <div className="font-medium text-[var(--foreground)]">
+                              {localizeUi("ui.game.gamesetupwizard.classic")}
+                            </div>
+                            <div className="mt-1 text-[var(--muted-foreground)]">
+                              {localizeUi("game.combat.preference.classicDescription")}
+                            </div>
+                          </button>
+                        )}
+                        {(!combatStyles || combatStyles.includes("tactical")) && (
+                          <button
+                            onClick={() => setCombatStyle("tactical")}
+                            aria-pressed={combatStyle === "tactical"}
+                            className={cn(
+                              "flex-1 rounded-lg p-3 text-left text-xs transition-colors ring-1",
+                              combatStyle === "tactical"
+                                ? "bg-[var(--primary)]/10 ring-[var(--primary)]/40"
+                                : "bg-[var(--secondary)] ring-[var(--border)] hover:ring-[var(--primary)]/20",
+                            )}
+                          >
+                            <div className="font-medium text-[var(--foreground)]">
+                              {localizeUi("ui.game.gamesetupwizard.tactical")}
+                            </div>
+                            <div className="mt-1 text-[var(--muted-foreground)]">
+                              {localizeUi("game.combat.preference.tacticalDescription")}
+                            </div>
+                          </button>
+                        )}
                       </div>
+                      {combatStyles && activeRuleset && (
+                        <p className="mt-1.5 text-xs text-[var(--muted-foreground)]">
+                          {localizeUi("game.ruleset.setup.combatStylesLimited", {
+                            name: activeRuleset.definition.name,
+                          })}
+                        </p>
+                      )}
                       <label className="mt-3 flex cursor-pointer items-start gap-3 rounded-lg border border-[var(--border)] p-3 text-sm text-[var(--foreground)]">
                         <input
                           type="checkbox"

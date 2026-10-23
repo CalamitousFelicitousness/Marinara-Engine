@@ -2381,6 +2381,7 @@ function optionFrom(
             ...(action.switchLabels ? { switchLabels: action.switchLabels } : {}),
           }
         : {}),
+    ...(action.menuGroup ? { menuGroup: action.menuGroup } : {}),
     ...(action.restore ? { restores: action.restore.pool } : {}),
     ...(action.again ? { again: true as const } : {}),
   };

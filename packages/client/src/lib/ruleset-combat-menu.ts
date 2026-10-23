@@ -89,8 +89,12 @@ export interface RulesetAimLay {
 
 export interface RulesetMenuGroup {
   kind: RulesetMenuKind;
+  /** Which group it is among those of one kind: the kind itself, or a heading a ruleset named. */
+  key: string;
   /** The heading key for this group, so a caller never builds one by hand. */
   labelKey: string;
+  /** What a ruleset-named heading fills in (1.377): its list's tab, and the row's place in it. */
+  labelValues?: { tab: string; sub?: string };
   options: DirectedRulesetOption[];
 }
 
@@ -101,11 +105,43 @@ export function rulesetMenuGroups(options: DirectedRulesetOption[] | undefined):
   for (const kind of RULESET_MENU_KINDS) {
     const found = (options ?? []).filter((option) => option.kind === kind);
     if (found.length === 0) continue;
-    groups.push({
-      kind,
-      labelKey: `game.combat.ruleset.group.${kind === "end-turn" ? "endTurn" : kind}`,
-      options: found,
-    });
+    const own = found.filter((option) => !option.menuGroup);
+    if (own.length)
+      groups.push({
+        kind,
+        key: kind,
+        labelKey: `game.combat.ruleset.group.${kind === "end-turn" ? "endTurn" : kind}`,
+        options: own,
+      });
+    // What a ruleset's list gives sits under the list's own heading (1.377), "Spells", split by
+    // the row's place in it, "Spells: 1st level", in its order.
+    const named = new Map<string, { order: number; group: RulesetMenuGroup }>();
+    for (const option of found) {
+      const menuGroup = option.menuGroup;
+      if (!menuGroup) continue;
+      const key = `${kind}:${menuGroup.label}:${menuGroup.sub?.label ?? ""}`;
+      const entry = named.get(key);
+      if (entry) entry.group.options.push(option);
+      else
+        named.set(key, {
+          order: menuGroup.sub?.order ?? -1,
+          group: {
+            kind,
+            key,
+            labelKey: menuGroup.sub ? "game.combat.ruleset.group.listedSplit" : "game.combat.ruleset.group.listed",
+            labelValues: { tab: menuGroup.label, ...(menuGroup.sub ? { sub: menuGroup.sub.label } : {}) },
+            options: [option],
+          },
+        });
+    }
+    groups.push(
+      ...[...named.values()]
+        .sort(
+          (left, right) =>
+            left.group.labelValues!.tab.localeCompare(right.group.labelValues!.tab) || left.order - right.order,
+        )
+        .map((entry) => entry.group),
+    );
   }
   return groups;
 }

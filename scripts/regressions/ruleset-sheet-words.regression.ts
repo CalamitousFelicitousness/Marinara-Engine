@@ -8,14 +8,21 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  createRulesetEncounter,
   defaultRulesetSheetBuild,
   isRulesetTextHidden,
   parseRulesetDefinition,
   rulesetItemEffectFacts,
   rulesetItemEffectText,
+  rowsFromCatalogEntry,
+  rulesetCombatOptions,
+  rulesetSheetBuildSchema,
   supportedCapabilityApi,
+  type RulesetCatalogEntry,
   type RulesetDefinition,
+  type RulesetStatBlock,
 } from "../../packages/shared/src/index.js";
+import { rulesetMenuGroups } from "../../packages/client/src/lib/ruleset-combat-menu.js";
 
 const dataDir = mkdtempSync(join(tmpdir(), "marinara-sheet-words-"));
 const previous = { DATA_DIR: process.env.DATA_DIR, MARINARA_DATA_DIR: process.env.MARINARA_DATA_DIR };
@@ -100,6 +107,92 @@ try {
     ),
     "a trait over 1200 letters",
   );
+
+  // ── Spells under the list's own heading on the combat menu ──
+  const spell = (id: string, label: string, level: number) => ({
+    id,
+    label,
+    rows: [{ list: "spells", values: { name: label, level, prepared: true } }],
+    mechanics: {
+      kind: "attack",
+      autoHit: true,
+      damageType: "fire",
+      range: 60,
+      amount: { flat: 3 },
+      ...(level > 0 ? { cost: [{ pool: `slots_${level}`, amount: 1 }] } : {}),
+    },
+  });
+  const spells = [
+    spell("bolt", "Bolt", 1),
+    spell("spark", "Spark", 0),
+    spell("flare", "Flare", 1),
+  ] as unknown as RulesetCatalogEntry[];
+  const caster = (display: boolean) => {
+    const doc = fixture((doc) => {
+      doc.catalogs.push({ id: "spells", label: "Spells", feeds: ["spells"], entries: structuredClone(spells) });
+      if (display)
+        list(doc, "spells").display = { tab: "Spells", by: { column: "level", labels: ["Cantrips", "1st level"] } };
+    });
+    const ruleset = parse(doc);
+    const state = createRulesetEncounter({
+      definition: ruleset,
+      seed: 1,
+      roller: () => 10,
+      combatants: [
+        {
+          id: "mage",
+          name: "Mage",
+          side: "party",
+          build: rulesetSheetBuildSchema.parse({
+            abilities: { str: 8, dex: 10, con: 14, int: 16, wis: 10, cha: 10 },
+            fields: { level: 3, ac: 12, speed: 30, hp_max: 20, spellcasting_ability: "int", slots_max_1: 4 },
+            lists: {
+              spells: spells.flatMap((entry) =>
+                rowsFromCatalogEntry("spells", entry).flatMap((one) => (one.list === "spells" ? [one.row] : [])),
+              ),
+            },
+          }),
+          live: {},
+          catalogs: { spells },
+        },
+        {
+          id: "foe",
+          name: "Foe",
+          side: "enemy",
+          block: {
+            health: 30,
+            defense: 5,
+            initiativeModifier: -5,
+            speed: 30,
+            actions: [],
+          } as unknown as RulesetStatBlock,
+        },
+      ],
+    });
+    return rulesetMenuGroups(rulesetCombatOptions(ruleset, state, "mage") as never);
+  };
+  const plain = caster(false);
+  assert.ok(
+    plain.some((group) => group.key === "ability" && group.options.some((option) => option.label === "Bolt")),
+    "with no display a spell sits under its kind's own heading",
+  );
+  const shown = caster(true);
+  const headings = shown.map((group) => [
+    group.labelKey,
+    group.labelValues?.sub,
+    group.options.map((one) => one.label),
+  ]);
+  const cantrips = shown.findIndex((group) => group.labelValues?.sub === "Cantrips");
+  const first = shown.findIndex((group) => group.labelValues?.sub === "1st level");
+  assert.ok(cantrips >= 0 && first > cantrips, JSON.stringify(headings));
+  assert.deepEqual(
+    shown[cantrips]!.options.map((one) => one.label),
+    ["Spark"],
+  );
+  assert.deepEqual(shown[first]!.options.map((one) => one.label).sort(), ["Bolt", "Flare"]);
+  assert.equal(shown[first]!.labelKey, "game.combat.ruleset.group.listedSplit");
+  assert.equal(shown[first]!.labelValues?.tab, "Spells");
+  assert.ok(!shown.some((group) => group.key === "ability" && group.options.some((one) => one.label === "Bolt")));
 
   // ── The gate ──
   const gate = /capabilityApi 1\.377 or newer/;

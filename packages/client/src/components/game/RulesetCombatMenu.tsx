@@ -1210,9 +1210,9 @@ export function RulesetCombatMenu({
     return (
       <div ref={root} tabIndex={-1} className="flex flex-col gap-2 px-2 py-2 outline-none">
         {listed.map((group) => (
-          <section key={group.kind} aria-label={t(group.labelKey)}>
+          <section key={group.key} aria-label={t(group.labelKey, group.labelValues)}>
             <h4 className="px-2 pb-0.5 text-[0.6rem] font-semibold uppercase tracking-[0.08em] text-[var(--muted-foreground)]">
-              {t(group.labelKey)}
+              {t(group.labelKey, group.labelValues)}
             </h4>
             <ul className="m-0 grid list-none gap-px p-0">{group.options.map((option) => row(option))}</ul>
           </section>
@@ -1260,12 +1260,12 @@ export function RulesetCombatMenu({
       <div className="flex flex-row flex-wrap items-start gap-2 sm:gap-x-6 sm:gap-y-3">
         {groups.map((group) => (
           <section
-            key={group.kind}
-            aria-label={t(group.labelKey)}
+            key={group.key}
+            aria-label={t(group.labelKey, group.labelValues)}
             className="contents sm:flex sm:min-w-0 sm:flex-col sm:gap-1.5"
           >
             <h4 className={`hidden text-[0.6rem] font-semibold uppercase tracking-wide ${ink.faint} sm:block`}>
-              {t(group.labelKey)}
+              {t(group.labelKey, group.labelValues)}
             </h4>
             <div className="contents sm:flex sm:flex-wrap sm:gap-2">
               {group.options.map((option) => {

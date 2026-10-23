@@ -2303,6 +2303,8 @@
   "game.combat.ruleset.group.contest": "Contests",
   "game.combat.ruleset.group.endTurn": "End of turn",
   "game.combat.ruleset.group.item": "Items",
+  "game.combat.ruleset.group.listed": "{{tab}}",
+  "game.combat.ruleset.group.listedSplit": "{{tab}}: {{sub}}",
   "game.combat.ruleset.group.move": "Movement",
   "game.combat.ruleset.group.reload": "Reload",
   "game.combat.ruleset.group.standard": "Standard actions",

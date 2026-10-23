@@ -27,6 +27,13 @@ export type RulesetCombatRoller = (sides: number) => number;
 export type RulesetCombatSide = "party" | "enemy";
 
 /** Dice plus a flat adjustment, as a fight rolls them. */
+/** A menu heading a ruleset names for abilities from one of its lists (1.377): the list's tab, and
+ *  the heading of the row's place in it, with that place's number to order by. */
+export interface RulesetCombatMenuGroup {
+  label: string;
+  sub?: { label: string; order: number };
+}
+
 export interface RulesetCombatAmount {
   count: number;
   sides: number;
@@ -943,6 +950,9 @@ export interface RulesetCombatAction {
   switches?: { item: number } | { carried: true } | { conjured: string };
   /** What turning it on and off is called (1.377): a hooded lantern's "Raise the hood". */
   switchLabels?: { on?: string; off?: string };
+  /** The menu heading it sits under, from its list's `display` (1.377): "Spells", and the row's
+   *  split under it, "1st level". */
+  menuGroup?: RulesetCombatMenuGroup;
   /** Other ways to make this attack, chosen with it like an initiative style. */
   modes?: RulesetCombatMode[];
   /** How many one attack shoots when a mode says so, in place of its ammunition's own. */
@@ -2834,6 +2844,8 @@ export interface RulesetCombatOption {
   on?: boolean;
   /** What turning it on and off is called (1.377), where the ruleset names the two. */
   switchLabels?: { on?: string; off?: string };
+  /** The menu heading it sits under in place of the kind's own (1.377). */
+  menuGroup?: RulesetCombatMenuGroup;
   /** Putting away a weapon put in hand (1.308), named by `label`. */
   dismiss?: true;
   /** A concentration entry's effect made again (1.310), named by `label`. */

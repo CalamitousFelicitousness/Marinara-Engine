@@ -5131,6 +5131,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               selectedGameStateSnapshotPromise,
               mappedMessages,
               personaName,
+              hasPlayerIdentity: persona != null,
               resolvePromptMacros,
             });
           canonicalGamePartyNames = gmCtx.partyNames;
@@ -5580,6 +5581,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               map: gameMap,
               partyNames: gmCtx.partyNames,
               playerName: gmCtx.playerName,
+              playerIsParty: gmCtx.playerIsParty,
               characterSprites: gmCtx.characterSprites,
               language: gmCtx.language,
               rating: gmCtx.rating,
@@ -9783,16 +9785,31 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               const records = [...fullResponse.matchAll(createGameRollTagRegex())].map((match) => match[0]);
               const checks = [...(rolled.results ?? []), ...generalRolls.checkResults];
               const resolvedSummary = [
-                ...checks.map(formatSkillCheckResultSummary),
-                ...toolDiceRollResults.map((result) => `🎲 ${result.notation} = ${result.total}`),
+                // Each line names its roller, so the sheet commands asked for below land on the right member.
+                ...checks.map((check) => `${check.who ? `${check.who}: ` : ""}${formatSkillCheckResultSummary(check)}`),
+                ...toolDiceRollResults.map(
+                  (result) => `🎲 ${result.label ? `${result.label}: ` : ""}${result.notation} = ${result.total}`,
+                ),
               ].join("\n");
+              // A prompt that ended on an assistant prefill already holds the start of the draft's
+              // turn. Sent as a second assistant message after it, the two turns no longer alternate,
+              // which strict Anthropic-format endpoints refuse; the draft takes the prefill's place.
+              const prefillTurn = narratorMessages.at(-1);
+              const endsOnPrefill = prefillTurn?.role === "assistant" && !prefillTurn.tool_calls?.length;
+              const draftTurn: ChatMessage = {
+                role: "assistant",
+                content:
+                  endsOnPrefill && !gameDraftWithCommands.startsWith(prefillTurn.content)
+                    ? prefillTurn.content + gameDraftWithCommands
+                    : gameDraftWithCommands,
+              };
               const continuationMessages = await fitPromptForSend(
                 [
-                  ...narratorMessages,
-                  { role: "assistant", content: gameDraftWithCommands },
+                  ...(endsOnPrefill ? narratorMessages.slice(0, -1) : narratorMessages),
+                  draftTurn,
                   {
                     role: "user",
-                    content: `${resolvedSummary ? `The engine has now rolled the requested dice:\n${resolvedSummary}` : "The engine has now read the requested checks:\nNo dice were rolled."}${generalRolls.unresolved.length ? `\nUnresolved requests:\n${generalRolls.unresolved.join("\n")}` : ""}${rolled.sparse - (rolled.untrained ?? 0) > 0 ? "\nSome checks could not be rolled and remain unresolved." : ""}${rolled.untrained ? "\nSome checks were not rolled because the character has no training in them: narrate that they could not attempt them." : ""}\nRewrite your entire last narration using these real results, correcting any contradictory outcome before or after a check. Narrate the consequences now. Do not repeat this player's action, invent numbers, request more rolls, or include dice/check tags: the engine keeps their records. For unresolved requests, leave the outcome open and explain what the player needs to clarify in supported notation. Re-emit every original movement or package command still justified by these outcomes; omit commands invalidated by them. Only commands in your revised output will execute. Return only the complete revised GM narration in the game's language.`,
+                    content: `${resolvedSummary ? `The engine has now rolled the requested dice:\n${resolvedSummary}` : "The engine has now read the requested checks:\nNo dice were rolled."}${generalRolls.unresolved.length ? `\nUnresolved requests:\n${generalRolls.unresolved.join("\n")}` : ""}${rolled.sparse - (rolled.untrained ?? 0) > 0 ? "\nSome checks could not be rolled and remain unresolved." : ""}${rolled.untrained ? "\nSome checks were not rolled because the character has no training in them: narrate that they could not attempt them." : ""}\nRewrite your entire last narration using these real results, correcting any contradictory outcome before or after a check. Narrate the consequences now. Do not repeat this player's action, invent numbers, request more rolls, or include dice/check tags: the engine keeps their records. For unresolved requests, leave the outcome open and explain what the player needs to clarify in supported notation. Re-emit every original movement or package command still justified by these outcomes; omit commands invalidated by them.${chatMeta.gameRuleset != null ? " Write a sheet command for every harm, healing or spent resource these results decide, using the rolled totals: narration alone changes no sheet." : ""} Only commands in your revised output will execute. Return only the complete revised GM narration in the game's language, starting directly with the scene: any planning goes inside one <think>...</think> block at the very start, never in the narration.`,
                   },
                 ],
                 { tools: undefined },

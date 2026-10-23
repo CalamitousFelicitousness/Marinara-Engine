@@ -9894,6 +9894,7 @@
   "ui.dice.diceglyph.d2": "d2",
   "ui.dice.diceglyph.dValue1": "d{{value1}}",
   "ui.dice.diceglyph.dValue1ShowingValue2": "d{{value1}} showing {{value2}}",
+  "ui.dice.rolledBy": "{{name}} · ",
   "ui.faq.answers": "answers",
   "ui.faq.beforeBug": "Before You Post A Bug",
   "ui.faq.chatSettings.answer": "Open Chat Settings with the sliders button inside your chat. It starts at the top right, below the app’s top bar. Gallery, Active Context and the other chat tools are sections inside it.",

@@ -5,6 +5,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+// The trusted dispatcher runs on Ubuntu; native Windows does not require its Bash/jq tools.
+if (process.platform === "win32") {
+  console.log(
+    "Skipping POSIX Dottore dispatcher execution on Windows; exercise it on Ubuntu or macOS with Bash and jq.",
+  );
+  process.exit(0);
+}
+
 // Optional paths also exercise a repository's mirrored dispatcher and pinned trusted reviewer.
 const workflow =
   process.argv[2] ?? fileURLToPath(new URL("../../.github/workflows/dottore-review-auto.yml", import.meta.url));

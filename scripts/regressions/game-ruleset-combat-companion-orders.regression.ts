@@ -300,6 +300,26 @@ try {
     const picked = pick(scene, undefined, [landed]);
     assert.equal(picked?.targetId, "mage", `the one throwing them: ${JSON.stringify(picked?.choice)}`);
     assert.equal(pick(field([bolt]))?.targetId, "orc", "with nobody throwing them, the one on the leader");
+    // Out of its reach, it steps up to where it can reach them (re-test round 3: the mage stood
+    // twelve squares back and nobody went near it).
+    const spark = { ...bolt, id: "spark", name: "Spark", range: { normal: 30 } };
+    const { state } = fight(
+      {
+        ada: { side: "party", block: block([smash]), at: { x: 8, y: 2 } },
+        mira: { side: "party", block: block([spark]), at: { x: 5, y: 5 } },
+        orc: { side: "enemy", block: block([smash]), at: { x: 9, y: 2 } },
+        mage: { side: "enemy", block: block([blast]), at: { x: 15, y: 5 } },
+      },
+      [landed],
+    );
+    const seen = state.rulesetFight!.eventSeq;
+    assert.ok(commandRulesetCombatDirector(definition, state, { type: "continue" }).ok);
+    const turn = state.rulesetFight!.events.filter((entry) => entry.seq > seen).map((entry) => entry.event);
+    const mira = rulesetCombatant(state.rulesetFight!.encounter, "mira")!;
+    assert.ok(
+      turn.some((event) => event.type === "attack" && event.actorId === "mira" && event.targetId === "mage"),
+      `Mira goes at the mage from ${mira.x},${mira.y}: ${JSON.stringify(turn.filter((event) => "actorId" in event && event.actorId === "mira"))}`,
+    );
   }
 
   // ── A friend down comes first, ordered or not (re-test 2026-10-23) ──

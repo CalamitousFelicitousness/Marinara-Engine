@@ -3647,6 +3647,8 @@ export function rulesetClosingMove(
   /** Guarding or protecting somebody (P7): only cells within `within` of them, and back toward them
    *  first when it has strayed further. */
   leash?: RulesetLeash,
+  /** Toward this opponent only, not the nearest. */
+  toward?: string,
 ): RulesetCandidate | null {
   const actor = rulesetCombatant(encounter, actorId);
   const from = rulesetPositionOf(actor);
@@ -3672,7 +3674,12 @@ export function rulesetClosingMove(
   const foes = strayed
     ? rulesetFootprint(leash!.charge)
     : encounter.combatants
-        .filter((combatant) => combatant.side !== actor.side && rulesetCombatStanding(combatant))
+        .filter(
+          (combatant) =>
+            combatant.side !== actor.side &&
+            rulesetCombatStanding(combatant) &&
+            (toward === undefined || combatant.id === toward),
+        )
         // Every cell an opponent fills (1.194).
         .flatMap((combatant) => rulesetFootprint(combatant));
   if (foes.length === 0) return null;
@@ -5137,6 +5144,8 @@ function playRulesetTurn(
   const seqBefore = fight.eventSeq;
   // A caster or archer caught beside an opponent gets clear before it shoots (re-test 9).
   if (!stays) getClearToShoot(definition, state, fight, actorId);
+  // A companion steps up to where it can reach whoever is dropping areas on the party.
+  const pressing = !stays && pressRulesetBlaster(definition, state, fight, actorId, orders);
   // Picked up where it was left when a window it opened was answered by a person.
   const earlier =
     fight.turnSoFar?.actorId === actorId &&
@@ -5184,7 +5193,10 @@ function playRulesetTurn(
         keepRulesetRange(definition, state, fight, actorId, false)
       )
         break;
-      if (defended || stays || aloof || feeding || !walkTowardsTrouble(definition, state, fight, actorId, leash)) break;
+      if (defended || stays || aloof || feeding) break;
+      // Nothing to do yet with the one dropping areas on the party out of reach: it heads for them.
+      if (pressing && walkTowardsTrouble(definition, state, fight, actorId, undefined, pressing)) continue;
+      if (!walkTowardsTrouble(definition, state, fight, actorId, leash)) break;
       continue;
     }
     if (picked.defensive) defended = true;
@@ -5351,6 +5363,84 @@ function rulesetShootsFromHere(
  * one of them, by a teleport another budget pays for (Misty Step). Walking off would be struck on the
  * way, and shooting from there is at a disadvantage in most rulesets. True when it moved.
  */
+/**
+ * A companion out of reach of an opponent who has dropped an area on the party steps up to where it
+ * can reach them (re-test round 3: a cult mage twelve squares back in the dusk threw a Fireball every
+ * round and took no companion's blow in two lost fights): before it acts, to the safest cell this
+ * turn's walk reaches from which it sees them within its longest blow's range. Returns whom it is
+ * after while they are still out of its reach, for its idle turn to walk toward. Never under orders
+ * that keep it at somebody's side (protect, or follow before the leader strikes), to hold or retreat.
+ */
+function pressRulesetBlaster(
+  definition: RulesetDefinition,
+  state: CombatDirectorState,
+  fight: RulesetFightState,
+  actorId: string,
+  orders: CombatOrders | undefined,
+): string | undefined {
+  const encounter = fight.encounter;
+  const actor = rulesetCombatant(encounter, actorId);
+  const home = rulesetPositionOf(actor);
+  if (!actor || !home || actor.side !== "party" || !encounter.board?.grid) return undefined;
+  if (
+    orders?.posture === "protect" ||
+    (orders?.posture === "follow" && rulesetChargeOf(state, encounter, actor, orders))
+  )
+    return undefined;
+  const landed = new Set<string>();
+  for (const { event } of fight.events) if (event.type === "area") landed.add(event.actorId);
+  const blasters = encounter.combatants.filter(
+    (foe) => foe.side !== actor.side && landed.has(foe.id) && rulesetCombatStanding(foe) && !!rulesetPositionOf(foe),
+  );
+  if (blasters.length === 0) return undefined;
+  const options = rulesetCombatOptions(definition, encounter, actorId);
+  const blows = options.flatMap((option) => {
+    const action = actor.actions.find((one) => one.id === option.id);
+    return action?.damage && !action.area && option.targets.side !== "ally" && option.targets.count > 0
+      ? [{ option, action }]
+      : [];
+  });
+  if (blows.length === 0) return undefined;
+  // Already able to strike one of them from here.
+  if (
+    blows.some(({ option }) =>
+      blasters.some((foe) => rulesetOptionTargets(definition, encounter, actorId, option).includes(foe.id)),
+    )
+  )
+    return undefined;
+  const reach = Math.max(1, ...blows.map(({ action }) => (action.reach ? 1 : (action.range?.normal ?? 1))));
+  const span = rulesetSpanOf(actor);
+  const blaster = blasters.reduce((best, foe) => (rulesetGap(actor, foe) < rulesetGap(actor, best) ? foe : best));
+  let best: { cell: { x: number; y: number }; provokes: number; danger: number; cost: number } | null = null;
+  for (const cell of rulesetWalkableCells(definition, encounter, actorId)) {
+    if (rulesetGapFrom(cell, span, blaster) > reach) continue;
+    if (!rulesetSees(encounter, { ...actor, x: cell.x, y: cell.y } as RulesetCombatant, blaster)) continue;
+    const entry = {
+      cell,
+      provokes: cell.provokes.length,
+      danger: rulesetDangerAt(definition, encounter, actor, cell),
+      cost: cell.cost,
+    };
+    if (
+      !best ||
+      entry.provokes < best.provokes ||
+      (entry.provokes === best.provokes &&
+        (entry.danger < best.danger || (entry.danger === best.danger && entry.cost < best.cost)))
+    )
+      best = entry;
+  }
+  if (best) {
+    applyChoice(definition, state, fight, {
+      actorId,
+      optionId: RULESET_MOVE_OPTION,
+      targetIds: [],
+      to: { x: best.cell.x, y: best.cell.y },
+    });
+    return undefined;
+  }
+  return blaster.id;
+}
+
 function getClearToShoot(
   definition: RulesetDefinition,
   state: CombatDirectorState,
@@ -5803,11 +5893,13 @@ function walkTowardsTrouble(
   fight: RulesetFightState,
   actorId: string,
   leash?: RulesetLeash,
+  /** Toward this one only, not the nearest opponent. */
+  toward?: string,
 ): boolean {
   if (!fight.encounter.board?.grid) return false;
   const actor = rulesetCombatant(fight.encounter, actorId);
   if (!actor || (actor.movementLeft ?? 0) < 1) return false;
-  const closing = rulesetClosingMove(definition, fight.encounter, actorId, leash);
+  const closing = rulesetClosingMove(definition, fight.encounter, actorId, leash, toward);
   if (!closing) return false;
   // A walk that stops with movement to spare (at the end of a guard's leash, or already beside the
   // opponent) gains nothing from a sprint, which would only be the turn's action thrown away.
@@ -5823,7 +5915,7 @@ function walkTowardsTrouble(
     });
     // A sprint the rules refused costs nothing: the walk below happens either way.
     if (!sprinted.refused) {
-      const again = rulesetClosingMove(definition, fight.encounter, actorId, leash);
+      const again = rulesetClosingMove(definition, fight.encounter, actorId, leash, toward);
       return !!again && !applyChoice(definition, state, fight, again.choice).refused;
     }
   }

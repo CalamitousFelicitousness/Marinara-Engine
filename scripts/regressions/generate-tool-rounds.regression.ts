@@ -284,6 +284,34 @@ for (const lead of ["He reads the result.", " He reads the result."]) {
     : "Brannoc kneels.\n\nHe reads the result.";
   assert.equal((await runToolRounds(ctx, "")).fullResponse, `${separated}\n\nIt holds.`);
 }
+for (const [prose, saved] of [
+  // A round's own look-alike stays whole; a whole announcement goes, with one break before the next round.
+  [
+    "He kneels. Time to check the cellar before the light goes.",
+    "He kneels. Time to check the cellar before the light goes.\n\nIt holds.",
+  ],
+  ["Brannoc kneels in the lamplight — time to find out.", "Brannoc kneels in the lamplight\n\nIt holds."],
+]) {
+  const { ctx, events } = setup(
+    [
+      async (_messages, options) => {
+        await options.onToken!(prose!);
+        return { content: prose!, toolCalls: [rollCall], finishReason: "tool_calls" };
+      },
+      async (_messages, options) => {
+        await options.onToken!("It holds.");
+        return { content: "It holds.", toolCalls: [], finishReason: "stop" };
+      },
+    ],
+    { chatMode: "game" },
+  );
+  assert.equal((await runToolRounds(ctx, "")).fullResponse, saved);
+  assert.equal(
+    events.filter((event) => event.type === "content_replace").length,
+    saved!.startsWith(prose!) ? 0 : 1,
+    prose,
+  );
+}
 for (const [before, after] of [
   ["Brannoc kneels — let me get the number.", "Brannoc kneels"],
   ["Brannoc kneels. Let me roll for the healing.", "Brannoc kneels."],
@@ -293,6 +321,10 @@ for (const [before, after] of [
   ["Brannoc kneels. Time to roll 2d8+3 for the healing.", "Brannoc kneels."],
   ["The door groans — let me roll the die.", "The door groans"],
   ["Brannoc kneels -- time to see how much it heals.", "Brannoc kneels"],
+  ["Brannoc kneels in the lamplight — time to find out.", "Brannoc kneels in the lamplight"],
+  ["The blade falls — let me see what the dice say.", "The blade falls"],
+  ["Brannoc swings. Let me roll.", "Brannoc swings."],
+  ["Brannoc steadies. Time to check his Dexterity save.", "Brannoc steadies."],
   // Narration that only sounds like it is left alone.
   ['Brannoc kneels. "Let me check the wound."', 'Brannoc kneels. "Let me check the wound."'],
   ["Let me roll it, he says. Brannoc kneels.", "Let me roll it, he says. Brannoc kneels."],
@@ -305,6 +337,16 @@ for (const [before, after] of [
   ["She shoulders the door. Time to roll the barrels.", "She shoulders the door. Time to roll the barrels."],
   ["He looks up. Let me see who will die tonight.", "He looks up. Let me see who will die tonight."],
   ["He kneels. Let me check the damage to the wall.", "He kneels. Let me check the damage to the wall."],
+  ["He kneels beside the body — let me see the damage.", "He kneels beside the body — let me see the damage."],
+  [
+    "He kneels beside the body — let me see the damage he took.",
+    "He kneels beside the body — let me see the damage he took.",
+  ],
+  ["Time to check the damage.", "Time to check the damage."],
+  [
+    "He kneels. I'll check the cellar before the light goes.",
+    "He kneels. I'll check the cellar before the light goes.",
+  ],
   [
     "He rubs his chin. — Let me see the wound, he says, crouching.",
     "He rubs his chin. — Let me see the wound, he says, crouching.",

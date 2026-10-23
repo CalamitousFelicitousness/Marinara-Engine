@@ -41,20 +41,25 @@ export function extractLeadingGmPlanning(text: string): LeadingPlanningExtractio
 /**
  * A Game Master that calls a tool mid-reply often announces it first ("... in the lamplight — let me get the
  * number."). The announcement is the model talking to itself, not the scene, so it is cut off the end of the text
- * written before the call. Only a final sentence or dash-led clause that says the writer is about to roll dice or
- * get a die's number is cut; anything before it stays. Rolling must be "roll it", "roll for ..." or roll something
- * dice-shaped, and any other verb must name the number it is after (the number, the save, the damage, how much it
- * heals), so a line that only sounds like it ("Time to check the cellar before the light goes.") is left alone.
+ * written before the call. Only a final sentence or dash-led clause that is wholly that announcement is cut, and its
+ * object has to be the roll itself or the result it waits on: "roll it", "roll for the healing", "roll the die",
+ * "get the number", "check the Dexterity save", "see what the dice say", "see how much it heals", or nothing at all
+ * ("time to find out."). Any other object or continuation ("see the damage", "check the cellar before the light
+ * goes") is scene content and stays.
  */
-const ANNOUNCEMENT_WORD = String.raw`[ \t]+[^\s.!?,;:"“”—–]+`;
-const DICE_WORD = String.raw`(?:numbers?|results?|rolls?|dice|d\d+|\d*d\d+(?:[+-]\d+)?|totals?|damage|heal(?:s|ing)?|saves?|saving throws?|checks?|outcomes?|odds|dc|modifiers?|bonus|initiative)`;
-const DICE_OBJECT = String.raw`(?:${ANNOUNCEMENT_WORD}){0,4}?[ \t]+${DICE_WORD}(?=[\s.!?:…]|$)(?:[ \t]+(?:for|on|against)(?:${ANNOUNCEMENT_WORD}){1,3})?`;
+const FOR_TAIL = String.raw`(?:[ \t]+for(?:[ \t]+[^\s.!?,;:"“”—–]+){1,5})?`;
+const DETERMINER = String.raw`(?:(?:the|a|an|my|your|his|her|their|its|this|that|our|some)[ \t]+)?`;
+const ROLL_NOUN = String.raw`(?:dice|die|rolls?|\d*d\d+(?:[+-]\d+)?)`;
+const RESULT_NOUN = String.raw`(?:numbers?|results?|totals?|outcomes?)`;
+const ROLL_KIND = String.raw`(?:[^\s.!?,;:"“”—–]+[ \t]+)?(?:save|saving throw|check|roll)s?`;
+const OUTCOME = String.raw`(?:what[ \t]+the[ \t]+(?:dice|die)[ \t]+says?|how[ \t]+(?:much[ \t]+)?(?:it|that|this|they)[ \t]+(?:lands|goes|plays out|turns out|heals|hurts|does)|if[ \t]+(?:it|that|this|they)[ \t]+(?:lands|hits|works|succeeds|holds))`;
 const TOOL_ANNOUNCEMENT = new RegExp(
   String.raw`(?:^|(?<=[.!?…"'”’*_)\]])\s+|\s*[—–]\s*|\s+-{1,2}\s+)` +
     String.raw`(?:(?:okay|ok|alright|right|now|first|so),?\s+)*` +
     String.raw`(?:let(?:'s|’s| me| us)|i(?:'ll|’ll| will| need to| have to|'m going to|’m going to| am going to)|time to)\s+` +
-    String.raw`(?:(?:roll|re-?roll|throw)(?:${DICE_OBJECT}|[ \t]+(?:the|a)[ \t]+die|(?:[ \t]+(?:it|them|that|this))?(?:[ \t]+for(?:${ANNOUNCEMENT_WORD}){1,5})?)` +
-    String.raw`|(?:get|check|see|find out|call|look up|determine|work out|figure out)${DICE_OBJECT})` +
+    String.raw`(?:(?:roll|re-?roll|throw)(?:[ \t]+(?:it|them|that|this)|[ \t]+${DETERMINER}${ROLL_NOUN})?${FOR_TAIL}` +
+    String.raw`|(?:get|check|see|find out|call|look up|determine|work out|figure out)[ \t]+(?:${DETERMINER}(?:${RESULT_NOUN}|${ROLL_NOUN})${FOR_TAIL}|${DETERMINER}${ROLL_KIND}|${OUTCOME})` +
+    String.raw`|(?:find out|see))` +
     String.raw`[ \t]*[.!?:…]*\s*$`,
   "i",
 );

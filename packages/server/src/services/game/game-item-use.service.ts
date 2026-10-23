@@ -26,6 +26,8 @@ import {
   rulesetRestRecoveries,
   type RulesetRestRecovery,
   type RulesetUseRecover,
+  setGameInventoryStackQuantity,
+  type RulesetMaterialTaken,
 } from "@marinara-engine/shared";
 import type { DB } from "../../db/connection.js";
 import { resolveVisibleGameStateAnchor } from "../../routes/generate/generate-route-utils.js";
@@ -96,6 +98,20 @@ export function gameInventoryRestRecharge(
         rest,
         roll,
       }).stacks;
+    }
+    return current;
+  };
+}
+
+/** The priced materials a turn's casts used up (1.774), taken off the stacks they came out of. */
+export function gameInventoryMaterialsTaken(
+  materials: ReadonlyArray<RulesetMaterialTaken>,
+): (stacks: GameInventoryStack[]) => GameInventoryStack[] {
+  return (stacks) => {
+    let current = stacks;
+    for (const one of materials.flatMap((material) => material.stacks)) {
+      const stack = current.find((each) => each.id === one.id);
+      if (stack) current = setGameInventoryStackQuantity(current, one.id, Math.max(0, stack.quantity - one.count));
     }
     return current;
   };

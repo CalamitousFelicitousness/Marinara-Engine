@@ -332,6 +332,7 @@ import {
   type RulesetDefinition,
   type RulesetItemBook,
   type RulesetLiveStates,
+  type RulesetMaterialTaken,
 } from "@marinara-engine/shared";
 import {
   isRoleplayRollEnabled,
@@ -380,7 +381,11 @@ import {
   type GameRulesetSheetContext,
   type GameRulesetSheetTurn,
 } from "../services/game/ruleset-sheet-turn.service.js";
-import { gameInventoryItemUser, gameInventoryRestRecharge } from "../services/game/game-item-use.service.js";
+import {
+  gameInventoryItemUser,
+  gameInventoryMaterialsTaken,
+  gameInventoryRestRecharge,
+} from "../services/game/game-item-use.service.js";
 import { gameLootTagRoller } from "../services/game/game-loot.service.js";
 import {
   gameMarketDayFor,
@@ -9873,6 +9878,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               seed: number;
               /** The rests the turn's sheet commands took, whose charges come back to what is carried. */
               rests: Array<{ who: string; rest: string }>;
+              /** The priced materials the turn's casts used up (1.774), taken off what is carried. */
+              materials: RulesetMaterialTaken[];
             };
             /** What a `[loot:]` rolls: the ruleset its tables are in, and the dice's seed. */
             loot?: { definition: RulesetDefinition; seed: number };
@@ -10054,13 +10061,15 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           const tellsInventory = /\[(?:inventory|loot):/i.test(fullResponse);
           // A rest the sheet commands took may bring charges back to what the rested carry.
           const turnRests = rulesetSheetTurn?.rests ?? [];
+          // A priced material a cast used up (1.774) comes out of the bag.
+          const turnMaterials = rulesetSheetTurn?.materials ?? [];
           const retellsInventoryTurn =
             !!input.regenerateMessageId &&
             readGameInventoryTurn(chatMeta.gameInventoryTurn)?.messageId === input.regenerateMessageId;
           if (
             chatMode === "game" &&
             !input.impersonate &&
-            (tellsInventory || retellsInventoryTurn || turnRests.length > 0)
+            (tellsInventory || retellsInventoryTurn || turnRests.length > 0 || turnMaterials.length > 0)
           ) {
             try {
               const party = { player: gameStandIn ?? (personaName || undefined), members: canonicalGamePartyNames };
@@ -10086,7 +10095,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               );
               const requested = fullResponse;
               const rules =
-                tellsInventory || turnRests.length > 0
+                tellsInventory || turnRests.length > 0 || turnMaterials.length > 0
                   ? await loadGameInventoryItemBook(
                       app.db,
                       { metadata: currentMeta, resolved: turnGameRuleset, playerName: personaName || null },
@@ -10100,6 +10109,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                       live: rulesetSheetTurn.live,
                       seed: randomInt(0, 2 ** 31 - 1),
                       rests: turnRests,
+                      materials: turnMaterials,
                     }
                   : undefined;
               const loot =
@@ -10608,6 +10618,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   inventoryTurn.uses.context = turnSheetContext;
                   inventoryTurn.uses.live = rulesetSheetTurn.live;
                   inventoryTurn.uses.rests = rulesetSheetTurn.rests;
+                  inventoryTurn.uses.materials = rulesetSheetTurn.materials;
                 }
                 const before = fullResponse;
                 fullResponse = rulesetSheetTurn.content;
@@ -10687,6 +10698,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                       pending.uses.rests,
                       pending.uses.seed,
                     )(outcome.stacks);
+                  }
+                  if (pending.uses?.materials.length) {
+                    outcome.stacks = gameInventoryMaterialsTaken(pending.uses.materials)(outcome.stacks);
                   }
                   const turnRecord = recordGameInventoryTelling(
                     pending.messageId ?? savedMsg.id,

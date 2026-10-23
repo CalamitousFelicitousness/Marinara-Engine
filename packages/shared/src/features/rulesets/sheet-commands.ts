@@ -13,6 +13,7 @@ import {
   type RulesetSheetBuild,
 } from "../../schemas/ruleset.schema.js";
 import { defaultRulesetSheetBuild, type RulesetSheetItem } from "./sheet-math.js";
+import { rulesetMaterialFor } from "./material.js";
 import { normalizeCharacterLookupName } from "../../utils/character-lookup-name.js";
 import {
   createSheetCommandTagRegex,
@@ -33,6 +34,12 @@ import {
   type RulesetSheetOpResult,
   rulesetUseHealOutsideFight,
 } from "./live-state.js";
+
+/** A priced material a cast used up (1.774): whose, and how many out of which of their stacks. */
+export interface RulesetMaterialTaken {
+  who: string;
+  stacks: Array<{ id: string; count: number }>;
+}
 
 export interface SheetCommandCard {
   name: string;
@@ -90,6 +97,8 @@ export function applySheetCommandTags(
   builds: Record<string, RulesetSheetBuild>;
   /** Each rest a character took, by card name: what a rest does to the items they carry follows it. */
   rests: Array<{ who: string; rest: string }>;
+  /** The priced materials a cast used up (1.774), by card name and the stacks they came out of. */
+  materials: RulesetMaterialTaken[];
 } {
   const builds: Record<string, RulesetSheetBuild> = {};
   const partyDefinition = rulesetPartyDefinition(ctx.definition);
@@ -101,6 +110,9 @@ export function applySheetCommandTags(
   const live: RulesetLiveStates = { ...ctx.live };
   const outcomes: SheetCommandOutcome[] = [];
   const rests: Array<{ who: string; rest: string }> = [];
+  const materials: RulesetMaterialTaken[] = [];
+  /** What each card's casts have used up this reply, by place in its items. */
+  const usedUp = new Map<string, Record<string, number>>();
   let changed = false;
   let seen = 0;
 
@@ -151,6 +163,10 @@ export function applySheetCommandTags(
   const useOn = (card: SheetCommandCard, key: string, op: Extract<RulesetSheetOp, { op: "use" }>) => {
     const plan = planRulesetUse(ctx.definition, card.build, live[key], ctx.catalogs ?? {}, op);
     if (!plan.ok) return { ok: false, reason: plan.reason } as const;
+    // A priced material (1.774) carried, and taken only once everything else is paid.
+    const used = usedUp.get(key) ?? {};
+    const material = plan.material ? rulesetMaterialFor(ctx.definition, plan.material, card.items, used) : undefined;
+    if (material === null) return { ok: false, reason: `no-material: ${plan.material!.label}` } as const;
     let state = live[key] as RulesetLiveState | undefined;
     const paid: string[] = [];
     for (const step of plan.steps) {
@@ -174,9 +190,21 @@ export function applySheetCommandTags(
       state = healed.live;
       paid.push(`${plan.label} ${healed.now}`);
     }
+    if (material && plan.material?.consumed) {
+      const stacks = material.flatMap(({ index, count }) => {
+        const stack = card.items?.[index]?.stack;
+        used[index] = (used[index] ?? 0) + count;
+        return stack ? [{ id: stack.id, count }] : [];
+      });
+      usedUp.set(key, used);
+      materials.push({ who: card.name, stacks });
+      paid.push(`${plan.material.label} used up`);
+    }
     // An ability that costs nothing, such as a cantrip or a passive feature, is fine and changes
     // nothing: it is the Game Master saying what happened, not asking to spend.
-    if (!state || paid.length === 0) return { ok: true, live: {}, now: `${plan.label}: no cost` } as const;
+    if (paid.length === 0) return { ok: true, live: {}, now: `${plan.label}: no cost` } as const;
+    // Only a material used up, on a sheet with nothing live yet.
+    if (!state) return { ok: true, live: {}, now: paid.join(", ") } as const;
     store(key, state);
     return { ok: true, live: state, now: paid.join(", ") } as const;
   };
@@ -301,5 +329,5 @@ export function applySheetCommandTags(
     );
   });
 
-  return { content: rewritten, live, changed, outcomes, rests, builds };
+  return { content: rewritten, live, changed, outcomes, rests, materials, builds };
 }

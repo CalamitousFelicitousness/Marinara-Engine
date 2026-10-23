@@ -39,6 +39,7 @@ import {
   type RulesetSheetOp,
 } from "../rulesets/live-state.js";
 import { resolveRulesetValueRef, rulesetAbilityModifier } from "../rulesets/sheet-math.js";
+import { rulesetMaterialFor } from "../rulesets/material.js";
 import {
   RULESET_PICK_UP_OPTION_PREFIX,
   RULESET_AVERT_OPTION_PREFIX,
@@ -6995,6 +6996,11 @@ function spendAvailability(ctx: RulesetCombatContext, actor: RulesetCombatant, a
     !!use?.charges?.overuse && !use.consumes && !use.ownUses && rulesetItemUseLeft(actor, use) < use.charges.cost;
   const shot = spendRulesetShots(actor, action, action.itemUse ? (ctx.moreCharges ?? 0) : 0);
   if (shot) ctx.events.push(shot);
+  // A priced material the cast consumes (1.774), out of the bag as the fight left it.
+  if (action.material?.consumed) {
+    const taken = rulesetMaterialFor(ctx.definition, action.material, actor.sheet?.items, actor.itemsUsed) ?? [];
+    for (const { index, count } of taken) (actor.itemsUsed ??= {})[index] = (actor.itemsUsed[index] ?? 0) + count;
+  }
   if (overusing) overuseItem(ctx, actor, action);
   // Used again before its user rested (1.728): a Ring of X-ray Vision's exhaustion.
   if (use?.againBeforeRest && !ctx.tore) usedAgainBeforeRest(ctx, actor, action);

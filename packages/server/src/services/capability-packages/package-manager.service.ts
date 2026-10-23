@@ -2951,6 +2951,16 @@ function carriesAsks771(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesAsks771(one, depth + 1));
 }
 
+/** A priced material an entry needs (1.774): a `material` with a `worth`. */
+function carriesMaterial774(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesMaterial774(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (plainRecord(record.material)?.worth !== undefined) return true;
+  return featureValues(record).some((one) => carriesMaterial774(one, depth + 1));
+}
+
 /** A feature a rest offers (1.773): a `recovers` with `atRest`. */
 function carriesRestRecovery773(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -9615,6 +9625,13 @@ export function getCapabilityPackageInstallIssue(
       return typeof id === "string" ? [id] : [];
     }),
   );
+  // A priced material, 1.774.
+  if (
+    !declaresApi(774) &&
+    (carriesMaterial774(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesMaterial774(document)))
+  )
+    return "A ruleset with an entry needing a priced material (material) requires schemaVersion 2 and capabilityApi 1.774 or newer";
   // A feature a rest offers, 1.773.
   if (
     !declaresApi(773) &&

@@ -39769,6 +39769,67 @@
                       "minItems": 1,
                       "maxItems": 6
                     },
+                    "material": {
+                      "type": "object",
+                      "properties": {
+                        "label": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 120
+                        },
+                        "worth": {
+                          "type": "object",
+                          "properties": {
+                            "amount": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 1000000000
+                            },
+                            "unit": {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "amount",
+                            "unit"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 81,
+                            "pattern": "^[a-z][a-z0-9_]{0,39}\\/[a-z0-9]+(?:-[a-z0-9]+)*$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 12
+                        },
+                        "tags": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          "minItems": 1,
+                          "maxItems": 8
+                        },
+                        "consumed": {
+                          "type": "boolean",
+                          "const": true
+                        },
+                        "$comment": {}
+                      },
+                      "required": [
+                        "label",
+                        "worth"
+                      ],
+                      "additionalProperties": false
+                    },
                     "usableWhen": {
                       "type": "object",
                       "properties": {
@@ -131687,6 +131748,67 @@
                           "minItems": 1,
                           "maxItems": 6
                         },
+                        "material": {
+                          "type": "object",
+                          "properties": {
+                            "label": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 120
+                            },
+                            "worth": {
+                              "type": "object",
+                              "properties": {
+                                "amount": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 1000000000
+                                },
+                                "unit": {
+                                  "type": "string",
+                                  "maxLength": 40,
+                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                },
+                                "$comment": {}
+                              },
+                              "required": [
+                                "amount",
+                                "unit"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "items": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 81,
+                                "pattern": "^[a-z][a-z0-9_]{0,39}\\/[a-z0-9]+(?:-[a-z0-9]+)*$"
+                              },
+                              "minItems": 1,
+                              "maxItems": 12
+                            },
+                            "tags": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              "minItems": 1,
+                              "maxItems": 8
+                            },
+                            "consumed": {
+                              "type": "boolean",
+                              "const": true
+                            },
+                            "$comment": {}
+                          },
+                          "required": [
+                            "label",
+                            "worth"
+                          ],
+                          "additionalProperties": false
+                        },
                         "usableWhen": {
                           "type": "object",
                           "properties": {
@@ -158374,6 +158496,67 @@
                                 },
                                 "minItems": 1,
                                 "maxItems": 6
+                              },
+                              "material": {
+                                "type": "object",
+                                "properties": {
+                                  "label": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 120
+                                  },
+                                  "worth": {
+                                    "type": "object",
+                                    "properties": {
+                                      "amount": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 1000000000
+                                      },
+                                      "unit": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "required": [
+                                      "amount",
+                                      "unit"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  "items": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 81,
+                                      "pattern": "^[a-z][a-z0-9_]{0,39}\\/[a-z0-9]+(?:-[a-z0-9]+)*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 12
+                                  },
+                                  "tags": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 8
+                                  },
+                                  "consumed": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "label",
+                                  "worth"
+                                ],
+                                "additionalProperties": false
                               },
                               "usableWhen": {
                                 "type": "object",
@@ -185068,6 +185251,67 @@
                                 },
                                 "minItems": 1,
                                 "maxItems": 6
+                              },
+                              "material": {
+                                "type": "object",
+                                "properties": {
+                                  "label": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 120
+                                  },
+                                  "worth": {
+                                    "type": "object",
+                                    "properties": {
+                                      "amount": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 1000000000
+                                      },
+                                      "unit": {
+                                        "type": "string",
+                                        "maxLength": 40,
+                                        "pattern": "^[a-z][a-z0-9_]*$"
+                                      },
+                                      "$comment": {}
+                                    },
+                                    "required": [
+                                      "amount",
+                                      "unit"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  "items": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 81,
+                                      "pattern": "^[a-z][a-z0-9_]{0,39}\\/[a-z0-9]+(?:-[a-z0-9]+)*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 12
+                                  },
+                                  "tags": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    "minItems": 1,
+                                    "maxItems": 8
+                                  },
+                                  "consumed": {
+                                    "type": "boolean",
+                                    "const": true
+                                  },
+                                  "$comment": {}
+                                },
+                                "required": [
+                                  "label",
+                                  "worth"
+                                ],
+                                "additionalProperties": false
                               },
                               "usableWhen": {
                                 "type": "object",

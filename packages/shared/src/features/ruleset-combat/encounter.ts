@@ -3770,7 +3770,7 @@ function abilityAction(
   const values = resolveRulesetAbilityValues(definition, build, source, row, evaluated);
   const rolled = refTarget(definition, build, values.toHitRef);
   const ability = rolled?.type === "ability" ? rolled.id : rolled?.ability;
-  return mechanicsAction(definition, mechanics, {
+  const action = mechanicsAction(definition, mechanics, {
     id: `ability:${sourceIndex}:${rowIndex}`,
     ...(ability ? { ability } : {}),
     kind: "ability",
@@ -3783,6 +3783,10 @@ function abilityAction(
     evaluated,
     perCell,
   });
+  // A priced material (1.774), cast from the sheet's own row: never through an item, a creature or
+  // another entry that casts it for nothing.
+  if (action && mechanics.material) action.material = structuredClone(mechanics.material);
+  return action;
 }
 
 /** Whether an action is cast by praying (1.770): one of the ruleset's divine `entries`, or a sheet row

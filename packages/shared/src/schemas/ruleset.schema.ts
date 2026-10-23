@@ -7026,6 +7026,33 @@ const catalogMechanicsObject = z
     /** What using it needs, by the ids of `combat.components` (Capability API 1.179): a 5e spell's
      *  verbal and somatic components, which Silence or a gag can take away. */
     components: componentIdsSchema.optional(),
+    /** A priced material its user must carry to use it (Capability API 1.774): items of one of
+     *  `items` or carrying one of `tags`, worth `worth` between them by their cost. Nothing else
+     *  stands in for it, a focus or a component pouch included. `consumed` uses it up: what is
+     *  worth the least while still enough, else the dearest first until enough is taken. 5e's
+     *  Identify, a pearl worth 100 gp that stays; Revivify, diamonds worth 300 gp, consumed. */
+    material: z
+      .object({
+        label: promptSafeText(120),
+        worth: z.object({ amount: z.number().int().min(1).max(1_000_000_000), unit: sheetId }).strict(),
+        items: z
+          .array(
+            z
+              .string()
+              .max(81)
+              .regex(/^[a-z][a-z0-9_]{0,39}\/[a-z0-9]+(?:-[a-z0-9]+)*$/, "An item is named as <catalog>/<entry>"),
+          )
+          .min(1)
+          .max(12)
+          .optional(),
+        tags: uniqueIds(8).optional(),
+        consumed: z.literal(true).optional(),
+      })
+      .strict()
+      .refine((material) => material.items || material.tags, {
+        message: 'Say what counts: "items", "tags" or both',
+      })
+      .optional(),
     /** Offered in a fight only while a value off its holder's sheet, live state and items stands
      *  within these bounds (Capability API 1.166): 5e's Protection, which needs a shield in hand. */
     usableWhen: catalogUsableWhenSchema.optional(),
@@ -11851,6 +11878,8 @@ export const rulesetItemUseSchema = catalogMechanicsObject
     if (use.recovers?.atRest !== undefined) {
       issue("recovers", "atRest is for a feature a rest offers, not an item's use");
     }
+    // A priced material (1.774) is what a cast from a sheet needs; an item's use is the item.
+    if (use.material) issue("material", "material is for an entry cast from a sheet, not an item's use");
     // As is raising an ability (1.500), and only its own user's.
     if (use.raises && (use.kind !== "buff" || use.targets !== "self")) {
       issue("raises", 'Raising an ability is a "buff" on its user, targets "self"');
@@ -24541,6 +24570,17 @@ export function rulesetCatalogEntryIssues(
       reducesMaxIssues(definition, mechanics.reducesMax, [index, "mechanics", "reducesMax"], add);
     targetHoldsIssues(definition, mechanics?.targetHolds, [index, "mechanics", "targetHolds"], add);
     // What it recovers (1.394): a pool group the sheet has, and a budget its sheet reads.
+    // A priced material's worth (1.774) is in one of the ruleset's coins.
+    if (
+      mechanics?.material &&
+      !(definition.items?.currencies ?? []).some((family) =>
+        family.units.some((unit) => unit.id === mechanics.material!.worth.unit),
+      )
+    )
+      add(
+        [index, "mechanics", "material", "worth", "unit"],
+        `Unknown currency unit "${mechanics.material.worth.unit}"`,
+      );
     if (mechanics?.recovers) {
       if (!definition.sheet.live.pools.some((pool) => pool.group === mechanics.recovers!.group))
         add([index, "mechanics", "recovers", "group"], `Unknown pool group "${mechanics.recovers.group}"`);

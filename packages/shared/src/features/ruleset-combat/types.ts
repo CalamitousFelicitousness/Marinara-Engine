@@ -6,6 +6,7 @@
 
 import type {
   RulesetCatalogItem,
+  RulesetCatalogMechanics,
   RulesetCatalogEntriesById,
   RulesetCatalogZone,
   RulesetCreatureGround,
@@ -1008,6 +1009,8 @@ export interface RulesetCombatAction {
   seen?: true;
   /** What using it needs, by the ids of `combat.components` (1.179). */
   components?: string[];
+  /** A priced material its user must carry (1.774), taken from what they carry where it is consumed. */
+  material?: NonNullable<RulesetCatalogMechanics["material"]>;
   /** Offered only while this reads within its bounds off the holder's sheet (Capability API 1.166). */
   usableWhen?: RulesetSheetBounds;
   /** It works only on a roll (1.425), paid for either way; a failure spends `failUses` instead. */

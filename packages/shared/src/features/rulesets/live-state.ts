@@ -21,6 +21,7 @@ import {
   RULESET_WOUND_LEVELS_MAX,
   type RulesetCatalogEntriesById,
   type RulesetCatalogEntry,
+  type RulesetCatalogMechanics,
   type RulesetDefinition,
   type RulesetList,
   type RulesetLiveTrack,
@@ -1298,6 +1299,8 @@ export type RulesetSheetRefusal =
   | "insufficient"
   | "bad-amount"
   | `bad-amount: ${string}`
+  /** A priced material (1.774) its user does not carry, by what the entry says it is. */
+  | `no-material: ${string}`
   | "advancement-disabled"
   | "save-failed"
   | "not-allowed"
@@ -2280,7 +2283,14 @@ export function rulesetEntryNamed(
 }
 
 export type RulesetUsePlan =
-  { ok: true; label: string; steps: RulesetUseStep[] } | { ok: false; reason: RulesetSheetRefusal };
+  | {
+      ok: true;
+      label: string;
+      steps: RulesetUseStep[];
+      /** A priced material the entry needs its user to carry (1.774), for the caller to look for. */
+      material?: NonNullable<RulesetCatalogMechanics["material"]>;
+    }
+  | { ok: false; reason: RulesetSheetRefusal };
 
 /** The column a Game Master sees a row of this list under: what the sheet block prints it as, then
  *  the name a row pool is keyed by, then the first text column the list has. */
@@ -2519,7 +2529,12 @@ export function planRulesetUse(
       return { ok: false, reason: `bad-amount: ${entry.label} recovers ${recovers.count} at most, not ${total}` };
     }
   }
-  return { ok: true, label: entry.label, steps };
+  return {
+    ok: true,
+    label: entry.label,
+    steps,
+    ...(entry.mechanics?.material ? { material: structuredClone(entry.mechanics.material) } : {}),
+  };
 }
 
 /** What an item's `recovers` gives back by itself (1.640): one at a time, the highest-level spent

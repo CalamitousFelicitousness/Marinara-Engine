@@ -28,6 +28,7 @@ import {
   type RulesetLiveStates,
   type SheetCommandCard,
   type SheetCommandOutcome,
+  type RulesetMaterialTaken,
   rulesetCardItems,
   normalizeGameInventoryStacks,
   rulesetReadsItems,
@@ -286,6 +287,8 @@ export interface GameRulesetSheetTurn {
   outcomes: SheetCommandOutcome[];
   /** Each rest a character took this turn, by card name. */
   rests: Array<{ who: string; rest: string }>;
+  /** The priced materials this turn's casts used up (1.774), out of the stacks they came from. */
+  materials: RulesetMaterialTaken[];
 }
 
 /** Apply a reply's sheet commands on top of the live state the turn started with. Never throws:
@@ -316,6 +319,7 @@ export function applyGameRulesetSheetTurn(
       live: applied.live,
       outcomes: applied.outcomes,
       rests: applied.rests,
+      materials: applied.materials,
       builds: applied.builds,
       baseBuilds: Object.fromEntries([
         ...context.cards.map((card) => [normalizeCharacterLookupName(card.name), card.build]).reverse(),
@@ -324,7 +328,7 @@ export function applyGameRulesetSheetTurn(
     };
   } catch (error) {
     logger.error(error, "[game/sheet] Could not apply sheet commands; the reply is saved as written");
-    return { content, live: baseLive ?? {}, outcomes: [], rests: [], builds: {}, baseBuilds: {} };
+    return { content, live: baseLive ?? {}, outcomes: [], rests: [], materials: [], builds: {}, baseBuilds: {} };
   }
 }
 

@@ -44,6 +44,7 @@ import {
   RULESET_ITEM_SLOT_PREFIX,
 } from "./ammo.js";
 import { resolveRulesetValueRef, rulesetAbilityModifier, rulesetHeldItemDoes } from "../rulesets/sheet-math.js";
+import { rulesetMaterialFor } from "../rulesets/material.js";
 import { normalizeCharacterLookupName } from "../../utils/character-lookup-name.js";
 import { parseRulesetCombatDice, rulesetAverageDamage } from "./dice.js";
 import {
@@ -3066,6 +3067,12 @@ export function rulesetActionAvailable(
     if (rulesetNeededComponents(definition, actor, action, state).some((component) => stopped.includes(component)))
       return false;
   }
+  // A priced material its user carries (1.774): Identify's pearl, Revivify's diamonds.
+  if (
+    action.material &&
+    (!definition || !rulesetMaterialFor(definition, action.material, actor.sheet?.items, actor.itemsUsed))
+  )
+    return false;
   // Casting from a catalog, or anything needing concentration, a condition stops (1.422): Rage.
   if (definition?.combat && ((action.catalog ?? action.casts) !== undefined || action.concentration)) {
     const cast = action.catalog ?? action.casts;

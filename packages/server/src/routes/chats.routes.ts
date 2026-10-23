@@ -62,7 +62,8 @@ import {
   MESSAGE_MARK_EXTRA_KEYS,
   MAX_PINNED_CONTEXT_MESSAGES,
   semanticSummaryRetrievalSettingsSchema,
-  agentLorebookAttachmentsSchema,
+  agentLorebookAttachmentPatchesSchema,
+  mergeAgentLorebookAttachments,
   DEFAULT_GENERATION_PARAMS,
   isStockMarinaraUniversalPreset,
   omitChatMetadataLocalDestinations,
@@ -1640,10 +1641,12 @@ export async function chatsRoutes(app: FastifyInstance) {
     const chat = await storage.getById(req.params.id);
     if (!chat) return reply.status(404).send({ error: "Chat not found" });
     const incoming = req.body as Record<string, unknown>;
+    let attachmentPatch: Parameters<typeof mergeAgentLorebookAttachments>[1] | undefined;
     if (Object.prototype.hasOwnProperty.call(incoming, "agentLorebookAttachments")) {
-      const parsed = agentLorebookAttachmentsSchema.safeParse(incoming.agentLorebookAttachments);
+      const parsed = agentLorebookAttachmentPatchesSchema.safeParse(incoming.agentLorebookAttachments);
       if (!parsed.success) return reply.status(400).send({ error: "Invalid agent lorebook attachments" });
       incoming.agentLorebookAttachments = parsed.data;
+      attachmentPatch = parsed.data;
     }
     const summaryRetrievalFieldSchemas = {
       semanticSummaryRecentCount: semanticSummaryRetrievalSettingsSchema.shape.semanticSummaryRecentCount,
@@ -1821,12 +1824,12 @@ export async function chatsRoutes(app: FastifyInstance) {
       };
       const mergeIncoming = (freshMeta: Record<string, unknown>) => ({
         ...incoming,
-        ...(incoming.agentLorebookAttachments
+        ...(attachmentPatch
           ? {
-              agentLorebookAttachments: {
-                ...(freshMeta.agentLorebookAttachments as Record<string, unknown> | undefined),
-                ...(incoming.agentLorebookAttachments as Record<string, unknown>),
-              },
+              agentLorebookAttachments: mergeAgentLorebookAttachments(
+                freshMeta.agentLorebookAttachments,
+                attachmentPatch,
+              ),
             }
           : {}),
       });

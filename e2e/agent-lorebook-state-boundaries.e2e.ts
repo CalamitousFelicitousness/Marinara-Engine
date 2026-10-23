@@ -138,7 +138,7 @@ for (const theme of ["dark", "light"] as const) {
       await attachment.getByText("Attach lorebook for the specific agent", { exact: true }).click();
       await expect.poll(() => writes.length).toBe(1);
       expect(writes[0]!.agentLorebookAttachments).toEqual({
-        "prose-guardian": { enabled: false, lorebookId: book.id },
+        "prose-guardian": { enabled: false },
       });
       const metadata = async () => (await (await page.request.get(`/api/chats/${chat.id}`)).json()).metadata;
       await expect
@@ -169,8 +169,8 @@ for (const theme of ["dark", "light"] as const) {
         const before = writes.length;
         await attachment.getByText("Attach lorebook for the specific agent", { exact: true }).click();
         await expect.poll(() => writes.length).toBe(before + 1);
-        const expected = { enabled: !checked, lorebookId: checked ? book.id : null };
-        expect(writes.at(-1)!.agentLorebookAttachments).toEqual({ "prose-guardian": expected });
+        const expected = { enabled: !checked, lorebookId: book.id };
+        expect(writes.at(-1)!.agentLorebookAttachments).toEqual({ "prose-guardian": { enabled: !checked } });
         await expect.poll(async () => (await metadata()).agentLorebookAttachments["prose-guardian"]).toEqual(expected);
         const saved = (await metadata()).agentLorebookAttachments;
         expect(saved["0"]).toBeUndefined();

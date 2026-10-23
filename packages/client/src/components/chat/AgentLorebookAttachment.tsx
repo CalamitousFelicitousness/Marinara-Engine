@@ -23,7 +23,7 @@ export function AgentLorebookAttachment({ chatId, agentType }: { chatId: string;
       .mutateAsync({
         id: chatId,
         agentLorebookAttachments: {
-          [agentType]: { enabled, lorebookId: selectedId || null, ...patch },
+          [agentType]: patch,
         },
       })
       .catch(() => toast.error(t("chat.agentLorebook.saveError")));

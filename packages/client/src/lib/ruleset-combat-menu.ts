@@ -150,10 +150,14 @@ export function rulesetOptionLabel(option: DirectedRulesetOption, t: TFunction):
   // A concentration entry made again (1.310): Vampiric Touch's later touches.
   if (option.again) return t("game.combat.ruleset.menu.again", { label: option.label });
   // A switch says which way it turns the item, which is the Engine's own word too.
-  if (option.kind === "switch")
+  if (option.kind === "switch") {
+    // In the ruleset's own words for the two, where it gives them (1.377): "Lower the hood".
+    const named = option.on ? option.switchLabels?.off : option.switchLabels?.on;
+    if (named) return named;
     return t(option.on ? "game.combat.ruleset.menu.switchOff" : "game.combat.ruleset.menu.switchOn", {
       item: option.label,
     });
+  }
   // Picking up what was dropped (1.266) is the Engine's own move too.
   if (option.pickUp) return t("game.combat.ruleset.menu.pickUp", { item: option.label });
   // Averting the eyes from a gaze (1.268), and looking again.
@@ -206,7 +210,12 @@ export function rulesetOptionCostText(
     );
   }
   for (const cost of option.cost ?? []) {
-    parts.push(t("game.combat.ruleset.option.cost", { amount: cost.amount, pool: cost.label }));
+    // Paid out of a pool of its own name (Action Surge on Action Surge's card) says nothing the
+    // button does not.
+    if (cost.amount === 1 && cost.label.trim().toLowerCase() === option.label.trim().toLowerCase()) continue;
+    // In the pool's own words for one and for more than one (1.377), "1 3rd-level slot".
+    const pool = (cost.amount === 1 ? cost.unit : cost.units) ?? cost.label;
+    parts.push(t("game.combat.ruleset.option.cost", { amount: cost.amount, pool }));
   }
   if (option.signature) {
     parts.push(
@@ -236,6 +245,44 @@ export function rulesetModeText(
   return [expected, aimed].filter(Boolean).join(" · ");
 }
 
+/** Paying for it as it is, in a player's words: what it spends, and how many it is aimed at where
+ *  paying more aims it at more (a Magic Missile's 3 darts at 1st level, 4 at 2nd). */
+export function rulesetUpcastOwnText(
+  option: DirectedRulesetOption,
+  budgetLabel: (id: string) => string,
+  t: TFunction,
+  distance?: RulesetBoardDistance,
+): string {
+  const spent = (option.cost ?? []).map((cost) =>
+    t("game.combat.ruleset.option.cost", {
+      amount: cost.amount,
+      pool: (cost.amount === 1 ? cost.unit : cost.units) ?? cost.label,
+    }),
+  );
+  const text = spent.length
+    ? t("game.combat.ruleset.upcast.use", { cost: spent.join(", ") })
+    : t("game.combat.ruleset.upcast.own", { cost: rulesetOptionCostText(option, budgetLabel, t, distance) });
+  return option.targetsWith && Object.keys(option.targetsWith).length
+    ? t("game.combat.ruleset.upcast.withTargets", { text, count: option.targets.count })
+    : text;
+}
+
+/** Paying for it out of another pool of its family: one of what that pool holds, where the ruleset
+ *  names one ("Use 1 2nd-level slot"), and how many it is then aimed at. */
+export function rulesetUpcastPoolText(
+  option: DirectedRulesetOption,
+  pool: string,
+  name: string,
+  isUnit: boolean,
+  t: TFunction,
+): string {
+  const text = isUnit
+    ? t("game.combat.ruleset.upcast.use", { cost: t("game.combat.ruleset.option.cost", { amount: 1, pool: name }) })
+    : t("game.combat.ruleset.upcast.pool", { pool: name });
+  const count = option.targetsWith?.[pool];
+  return count ? t("game.combat.ruleset.upcast.withTargets", { text, count }) : text;
+}
+
 /** What the option is expected to do, in words. The server computed both numbers; a screen that
  *  worked out its own chance to hit could disagree with the fight it is describing. */
 export function rulesetOptionForecastText(option: DirectedRulesetOption, t: TFunction): string {
@@ -254,7 +301,8 @@ export function rulesetOptionForecastText(option: DirectedRulesetOption, t: TFun
   }
   // An attack made in a style does what its style does, which the style step says: the weapon's
   // own damage is neither what a taking style takes nor what a spending one throws.
-  if (typeof forecast?.averageDamage === "number" && !option.styles?.length) {
+  // "About 0 damage" (an Unarmed Strike with no Strength to speak of) says nothing worth reading.
+  if (typeof forecast?.averageDamage === "number" && Math.round(forecast.averageDamage) > 0 && !option.styles?.length) {
     parts.push(
       t(option.heals ? "game.combat.ruleset.option.forecastHeal" : "game.combat.ruleset.option.forecastDamage", {
         amount: Math.round(forecast.averageDamage),
@@ -277,7 +325,7 @@ export function rulesetStyleForecastText(
   }
   if (typeof forecast?.shift === "number") {
     parts.push(t("game.combat.ruleset.option.forecastShift", { amount: Math.round(forecast.shift) }));
-  } else if (typeof forecast?.averageDamage === "number") {
+  } else if (typeof forecast?.averageDamage === "number" && Math.round(forecast.averageDamage) > 0) {
     parts.push(t("game.combat.ruleset.option.forecastDamage", { amount: Math.round(forecast.averageDamage) }));
   }
   return parts.join(", ");

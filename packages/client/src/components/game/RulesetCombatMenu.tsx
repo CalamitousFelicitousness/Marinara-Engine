@@ -37,6 +37,8 @@ import {
   rulesetPickTarget,
   rulesetSendsOnPick,
   rulesetStyleForecastText,
+  rulesetUpcastOwnText,
+  rulesetUpcastPoolText,
   type RulesetMenuStep,
 } from "../../lib/ruleset-combat-menu";
 import { cn } from "../../lib/utils";
@@ -212,10 +214,11 @@ export function RulesetCombatMenu({
   const actorName = nameOf(view.actorId);
   const groups = useMemo(() => rulesetMenuGroups(view.options), [view.options]);
   // A pool by its own name where the fight sent it (the party's pools), else by its id.
-  const poolLabel = (id: string) =>
+  const poolOf = (id: string) =>
     view.combatants
       .find((combatant) => combatant.id === (view.window?.actorId ?? view.actorId))
-      ?.pools?.find((pool) => pool.id === id)?.label ?? id;
+      ?.pools?.find((pool) => pool.id === id);
+  const poolLabel = (id: string) => poolOf(id)?.label ?? id;
   // A fresh menu is a fresh choice: the turn moved on, so a half-finished pick from the last one
   // must never be sent against it.
   // A menu that mounts while its owner holds a step (a phone moving the step to the bar under the
@@ -781,7 +784,7 @@ export function RulesetCombatMenu({
                 onClick={() => paid(undefined)}
                 className={cn(buttonClass, `${ink.border} ${ink.fill} ${ink.body} ${ink.hover}`)}
               >
-                {t("game.combat.ruleset.upcast.own", { cost: rulesetOptionCostText(option, budgetLabel, t, distance) })}
+                {rulesetUpcastOwnText(option, budgetLabel, t, distance)}
               </button>
             )}
             {pools.map((pool, index) => (
@@ -798,7 +801,7 @@ export function RulesetCombatMenu({
                   ? t("game.combat.ruleset.upcast.charges", {
                       count: Number(pool.slice(RULESET_CHARGE_STEP_PREFIX.length)),
                     })
-                  : t("game.combat.ruleset.upcast.pool", { pool: poolLabel(pool) })}
+                  : rulesetUpcastPoolText(option, pool, poolOf(pool)?.unit ?? poolLabel(pool), !!poolOf(pool)?.unit, t)}
               </button>
             ))}
           </div>

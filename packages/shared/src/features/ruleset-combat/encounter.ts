@@ -1674,7 +1674,8 @@ function itemUseActions(
       held.name ??
       definition.items?.categories.find((category) => category.id === item.category)?.label ??
       item.category;
-    const label = named ? `${name}: ${named}` : name;
+    // Called what the ruleset calls it in place of the item's name (1.377): "Scatter ball bearings".
+    const label = use.title ?? (named ? `${name}: ${named}` : name);
     const action = itemUseMechanics(definition, item, use, { id, label }, build, evaluated, perCell, pooled);
     if (!action) return;
     // A fake (1.79) is offered as what it passes for, aimed, timed and spent as that is, so nothing on
@@ -2000,6 +2001,14 @@ function itemSwitchActions(items: readonly RulesetSheetItem[] | undefined): Rule
         budget: toggle.budget,
         targets: { side: "self", count: 0 },
         switches: { item: index },
+        ...(toggle.onLabel || toggle.offLabel
+          ? {
+              switchLabels: {
+                ...(toggle.onLabel ? { on: toggle.onLabel } : {}),
+                ...(toggle.offLabel ? { off: toggle.offLabel } : {}),
+              },
+            }
+          : {}),
       },
     ];
   });

@@ -260,6 +260,10 @@ const roundingSchema = z.enum(["down", "up", "nearest"]);
  *  1.188, which 5e's own list outgrew, and 160 until 1.269, which its monsters' traits outgrew. */
 export const RULESET_CONDITIONS_MAX = 320;
 
+/** How long one creature trait's words may run: 400 until Capability API 1.377, which 5e's Vampire
+ *  Weaknesses and Hag Coven outgrew. */
+export const RULESET_CREATURE_TRAIT_TEXT_MAX = 1200;
+
 const hideWhenValue = z.union([z.string().max(80), z.number().finite(), z.boolean()]);
 const HIDE_WHEN_COMPARISONS = ["equals", "notEquals", "in"] as const;
 /** Off the sheet while a field holds one value, holds anything but one value, or holds one of a
@@ -282,6 +286,27 @@ const hideWhenSchema = z
   });
 
 export type RulesetHideWhen = z.infer<typeof hideWhenSchema>;
+
+/** Off the sheet while a derived value is one value, anything but it, or one of a few (Capability API
+ *  1.377), for a live text field only: nothing the sheet works out reads one, so hiding it never
+ *  changes a number. 5e's "Concentrating on" while the character knows no concentration spell. */
+const derivedHideWhenSchema = z
+  .object({
+    derived: sheetId,
+    equals: z.number().finite().optional(),
+    notEquals: z.number().finite().optional(),
+    in: z.array(z.number().finite()).min(1).max(24).optional(),
+  })
+  .strict()
+  .superRefine((hide, ctx) => {
+    if (HIDE_WHEN_COMPARISONS.filter((key) => hide[key] !== undefined).length !== 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `hideWhen names exactly one of: ${HIDE_WHEN_COMPARISONS.join(", ")}`,
+      });
+    }
+  });
+export type RulesetDerivedHideWhen = z.infer<typeof derivedHideWhenSchema>;
 
 /** Every value a `hideWhen` compares against, whichever comparison it makes. */
 export function rulesetHideWhenValues(hide: RulesetHideWhen): Array<string | number | boolean> {
@@ -1175,6 +1200,18 @@ const listSchema = z
       .object({ nameColumn: sheetId, maxColumn: sheetId, rechargeColumn: sheetId.optional() })
       .strict()
       .optional(),
+    /** How a player reads the list (Capability API 1.377): the sheet's tab it shows on, the number
+     *  column its rows are split by with a heading for each value from 0 up ("Cantrips", "1st
+     *  level"), and a yes-or-no column shown as a tick ("Prepared"). Abilities a fight gives from its
+     *  rows sit under the same tab's name on the combat menu, split the same way. */
+    display: z
+      .object({
+        tab: promptSafeText(24).optional(),
+        by: z.object({ column: sheetId, labels: z.array(promptSafeText(40)).min(1).max(21) }).strict().optional(),
+        mark: sheetId.optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -1199,6 +1236,10 @@ const livePoolSchema = z
      *  POW, Fate Points at Refresh. Held to 0..max; a value that reads 0 or less starts it empty. */
     startFrom: (rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>).optional(),
     hideWhen: hideWhenSchema.optional(),
+    /** What one of it is called, and more than one, where a cost counts it (Capability API 1.377):
+     *  "1 3rd-level slot", "2 3rd-level slots". The pool's label when left out. */
+    unit: label.optional(),
+    units: label.optional(),
   })
   .strict();
 
@@ -1277,6 +1318,9 @@ const liveTrackSchema = z
     extra: z.object({ list: sheetId, countColumn: sheetId, penaltyColumn: sheetId }).strict().optional(),
     /** Printed in the sheet block even at its default, for a rating that matters every turn. */
     alwaysShow: z.boolean().optional(),
+    /** Off the sheet while it stands where it starts (Capability API 1.377), shown once play or the
+     *  Game Master moves it: 5e's penalty for coming back from the dead. Never on a wound track. */
+    showWhenSet: z.literal(true).optional(),
     /** Off the sheet while a field says so, as a pool can be. Never on a wound track, which rolls
      *  and fights read whatever the sheet shows. */
     hideWhen: hideWhenSchema.optional(),
@@ -1328,11 +1372,32 @@ const liveSchema = z
     pools: z.array(livePoolSchema).max(60).default([]),
     tracks: z.array(liveTrackSchema).max(30).default([]),
     text: z
-      .array(z.object({ id: sheetId, label, maxLength: z.number().int().min(1).max(500) }).strict())
+      .array(
+        z
+          .object({
+            id: sheetId,
+            label,
+            maxLength: z.number().int().min(1).max(500),
+            /** Off the sheet while a field or a derived value says so (Capability API 1.377). */
+            hideWhen: z.union([hideWhenSchema, derivedHideWhenSchema]).optional(),
+          })
+          .strict(),
+      )
       .max(12)
       .default([]),
     conditions: z
-      .array(z.object({ id: sheetId, label, icon: artIconRef.optional() }).strict())
+      .array(
+        z
+          .object({
+            id: sheetId,
+            label,
+            icon: artIconRef.optional(),
+            /** Left out of the sheet's "Add condition" picker (Capability API 1.377): a spell's or an
+             *  item's own state, which play and commands still put on and take off. */
+            pickable: z.literal(false).optional(),
+          })
+          .strict(),
+      )
       .max(RULESET_CONDITIONS_MAX)
       .default([]),
     states: z.array(liveStateSchema).max(RULESET_LIVE_STATES_MAX).default([]),
@@ -6096,7 +6161,7 @@ const creatureFields = {
   /** Short lines the Game Master is shown and the Engine never resolves: a trait is fiction here,
    *  not a rule, so anything with numbers in it belongs in an action. */
   traits: z
-    .array(z.object({ name: promptSafeText(60), text: promptSafeText(400) }).strict())
+    .array(z.object({ name: promptSafeText(60), text: promptSafeText(RULESET_CREATURE_TRAIT_TEXT_MAX) }).strict())
     .max(8)
     .optional(),
   /** Points given back at the start of its own turn, spent on `signature` actions. */
@@ -7250,6 +7315,9 @@ export const rulesetItemUseSchema = catalogMechanicsObject
     /** What the menu calls it beside the item's name (Capability API 1.271), as a `moreUses` label
      *  is: a staff's first spell. */
     label: promptSafeText(60).optional(),
+    /** What the menu calls it in place of the item's name (Capability API 1.377): "Scatter ball
+     *  bearings". Its count left still shows beside it. */
+    title: promptSafeText(60).optional(),
     /** More charges its user may spend on it (Capability API 1.269), up to `max` beyond `charges`:
      *  each adds `amount` and `targets`, and counts as one step of a higher cost (a Staff of Power's
      *  spell cast at a higher level, a Staff of Striking's 1d6 force a charge). */
@@ -7452,6 +7520,10 @@ const catalogItemObjectSchema = z
         /** The light it sheds while switched off (Capability API 1.296), in place of its effect's:
          *  a hooded lantern with its hood down, dim light 5 feet. */
         offLight: lightRadiusSchema.optional(),
+        /** What turning it on and off is called on the menu (Capability API 1.377), in place of the
+         *  Engine's "Turn on" and the item's name: "Raise the hood", "Lower the hood". */
+        onLabel: promptSafeText(40).optional(),
+        offLabel: promptSafeText(40).optional(),
       })
       .strict()
       .optional(),
@@ -8124,6 +8196,9 @@ const combatModifierSchema = z
      *  its most could make up the difference, and the condition it came from is spent (Capability
      *  API 1.249): 5e's Bardic Inspiration, Guidance and Resistance, added after seeing the roll. */
     rescue: z.literal(true).optional(),
+    /** What a card says it does, in place of the phrase the Engine composes from the rest (Capability
+     *  API 1.377): 5e's Fey Ancestry, "advantage on saves against being charmed". */
+    label: promptSafeText(120).optional(),
   })
   .strict()
   .superRefine((modifier, ctx) => {
@@ -11305,6 +11380,14 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
     });
     checkSection(list.section, path);
     checkHideWhen(list.hideWhen, path);
+    if (list.display?.by) {
+      const by = list.columns.find((column) => column.id === list.display!.by!.column);
+      if (by?.type !== "number") issue([...path, "display", "by", "column"], "Must name a number column");
+    }
+    if (list.display?.mark) {
+      const mark = list.columns.find((column) => column.id === list.display!.mark);
+      if (mark?.type !== "boolean") issue([...path, "display", "mark"], "Must name a yes-or-no column");
+    }
     if (list.pools) {
       const typeOf = (id: string) => list.columns.find((column) => column.id === id)?.type;
       if (typeOf(list.pools.nameColumn) !== "text") issue([...path, "pools", "nameColumn"], "Must name a text column");
@@ -11384,9 +11467,18 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       if (!abilityIds.has(id)) issue([...path, "abilities", abilityIndex], `Unknown ability "${id}"`);
     });
   });
+  sheet.live.text.forEach((entry, index) => {
+    const path = ["sheet", "live", "text", index];
+    if (!entry.hideWhen) return;
+    if ("field" in entry.hideWhen) return checkHideWhen(entry.hideWhen, path);
+    if (!derivedIds.has(entry.hideWhen.derived))
+      issue([...path, "hideWhen", "derived"], `Unknown derived value "${entry.hideWhen.derived}"`);
+  });
   sheet.live.tracks.forEach((track, index) => {
     const path = ["sheet", "live", "tracks", index];
     checkHideWhen(track.hideWhen, path);
+    if (track.showWhenSet && (track.levels || track.boxes))
+      issue([...path, "showWhenSet"], "A wound track is read by rolls and fights, so it cannot be hidden");
     if (track.startFrom) {
       if (track.levels || track.boxes) issue([...path, "startFrom"], "A wound track starts unmarked");
       else checkRef(track.startFrom, [...path, "startFrom"], derivedIds, false);

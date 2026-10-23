@@ -687,6 +687,11 @@ function deathTrackOf(definition: RulesetDefinition, combatant: RulesetCombatant
  *  for the fight's own HUD: a player should not have to open the sheet mid-fight to count slots. */
 function spentPoolsOf(definition: RulesetDefinition, combatant: RulesetCombatant) {
   if (combatant.side !== "party" || !combatant.sheet) return undefined;
+  // What one of it is called, for a player paying with it (1.377): "a 2nd-level slot".
+  const unitOf = (id: string) => {
+    const declared = definition.sheet.live.pools.find((pool) => pool.id === id);
+    return declared?.unit ? { unit: declared.unit } : {};
+  };
   // The ruleset may name them itself, in its own order (1.375).
   const named = definition.combat?.display?.pools;
   if (named) {
@@ -694,7 +699,7 @@ function spentPoolsOf(definition: RulesetDefinition, combatant: RulesetCombatant
     const pools = named.flatMap((id) =>
       live.pools
         .filter((pool) => pool.key === id && !pool.listId && pool.max > 0)
-        .map((pool) => ({ id: pool.key, label: pool.label, value: pool.value, max: pool.max })),
+        .map((pool) => ({ id: pool.key, label: pool.label, value: pool.value, max: pool.max, ...unitOf(pool.key) })),
     );
     return pools.length ? pools : undefined;
   }
@@ -711,7 +716,7 @@ function spentPoolsOf(definition: RulesetDefinition, combatant: RulesetCombatant
   const live = readRulesetLive(definition, combatant.sheet.build, combatant.sheet.live);
   const pools = live.pools
     .filter((pool) => !pool.listId && pool.max > 0 && spent.has(pool.key))
-    .map((pool) => ({ id: pool.key, label: pool.label, value: pool.value, max: pool.max }));
+    .map((pool) => ({ id: pool.key, label: pool.label, value: pool.value, max: pool.max, ...unitOf(pool.key) }));
   return pools.length ? pools : undefined;
 }
 

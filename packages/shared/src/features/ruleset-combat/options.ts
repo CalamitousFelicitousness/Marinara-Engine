@@ -1005,7 +1005,7 @@ export interface RulesetCombatCost {
   steps: Array<{ op: RulesetSheetOp; label: string }>;
   /** The live state the price leaves behind, or null when there was nothing on a sheet to pay. */
   live: RulesetLiveState | null;
-  cost: Array<{ pool: string; label: string; amount: number }>;
+  cost: Array<{ pool: string; label: string; amount: number; unit?: string; units?: string }>;
 }
 
 /**
@@ -1050,7 +1050,17 @@ export function planRulesetCombatCost(
     const result = applyRulesetSheetOp(definition, build, live, step.op);
     if (!result.ok) return null;
     live = result.live;
-    if (step.op.op === "spend") cost.push({ pool: step.op.pool, label: step.label, amount: step.op.amount });
+    if (step.op.op === "spend") {
+      // What one of it is called, and more than one (1.377): "1 3rd-level slot".
+      const declared = definition.sheet.live.pools.find((pool) => pool.id === (step.op as { pool: string }).pool);
+      cost.push({
+        pool: step.op.pool,
+        label: step.label,
+        amount: step.op.amount,
+        ...(declared?.unit ? { unit: declared.unit } : {}),
+        ...(declared?.units ? { units: declared.units } : {}),
+      });
+    }
   }
   // A pool the ruleset limits per turn or round cannot pay past what is left of that limit, however
   // much is in it.
@@ -2366,7 +2376,10 @@ function optionFrom(
     ...(action.switches && "conjured" in action.switches
       ? { dismiss: true as const }
       : action.switches
-        ? { on: "item" in action.switches ? rulesetItemOn(actor, action.switches.item) : !actor.doused }
+        ? {
+            on: "item" in action.switches ? rulesetItemOn(actor, action.switches.item) : !actor.doused,
+            ...(action.switchLabels ? { switchLabels: action.switchLabels } : {}),
+          }
         : {}),
     ...(action.restore ? { restores: action.restore.pool } : {}),
     ...(action.again ? { again: true as const } : {}),

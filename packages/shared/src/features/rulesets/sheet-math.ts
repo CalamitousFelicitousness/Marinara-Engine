@@ -15,6 +15,7 @@ import {
   type RulesetDefinition,
   type RulesetDifficultyLadderStep,
   type RulesetResolution,
+  type RulesetDerivedHideWhen,
   type RulesetHideWhen,
   type RulesetSheetBuild,
   type RulesetSheetEnvelope,
@@ -737,6 +738,24 @@ export function isRulesetItemHidden(
   if (!hide) return false;
   const value = effectiveFieldValue(definition, build, hide.field);
   if (hide.in) return value !== undefined && hide.in.includes(value);
+  if (hide.notEquals !== undefined) return value !== hide.notEquals;
+  return value === hide.equals;
+}
+
+/** Whether a live text field is off the sheet (Capability API 1.377): by a field, as anything else
+ *  is, or by a derived value, which only a text field may be hidden by. `derived` is what the sheet
+ *  worked out. */
+export function isRulesetTextHidden(
+  entry: { hideWhen?: RulesetHideWhen | RulesetDerivedHideWhen },
+  build: RulesetSheetBuild,
+  definition: RulesetDefinition,
+  derived: Readonly<Record<string, number>>,
+): boolean {
+  const hide = entry.hideWhen;
+  if (!hide) return false;
+  if ("field" in hide) return isRulesetItemHidden({ hideWhen: hide }, build, definition);
+  const value = derived[hide.derived] ?? 0;
+  if (hide.in) return hide.in.includes(value);
   if (hide.notEquals !== undefined) return value !== hide.notEquals;
   return value === hide.equals;
 }

@@ -2098,6 +2098,54 @@ function carriesSaveDifficulty(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesSaveDifficulty(one, depth + 1));
 }
 
+/** How a sheet, a menu or a card reads, in the ruleset's own words (1.377): a modifier's own label,
+ *  a creature trait over the old 400 letters, a text field hidden by a value, a condition left out
+ *  of the picker, a track shown once moved, a pool's unit, a list's display, an item toggle's labels,
+ *  and an item use's own title. */
+function carriesSheetWords(value: unknown, depth = 0): boolean {
+  if (depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesSheetWords(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (
+    typeof record.to === "string" &&
+    (RULESET_COMBAT_MODIFIER_TARGETS as readonly string[]).includes(record.to) &&
+    record.label !== undefined
+  )
+    return true;
+  if (
+    Array.isArray(record.traits) &&
+    record.traits.some((trait) => {
+      const text = plainRecord(trait)?.text;
+      return typeof text === "string" && text.length > 400;
+    })
+  )
+    return true;
+  if (
+    record.pickable !== undefined ||
+    record.showWhenSet !== undefined ||
+    record.onLabel !== undefined ||
+    record.offLabel !== undefined
+  )
+    return true;
+  if (plainRecord(record.use)?.title !== undefined) return true;
+  return featureValues(record).some((one) => carriesSheetWords(one, depth + 1));
+}
+
+/** The 1.377 keys only the ruleset's own sheet carries: a text field's `hideWhen`, a pool's `unit`
+ *  and `units`, and a list's `display`. */
+function rulesetCarriesSheetDisplay(ruleset: unknown): boolean {
+  const sheet = plainRecord(plainRecord(ruleset)?.sheet);
+  const live = plainRecord(sheet?.live);
+  const some = (list: unknown, test: (one: Record<string, unknown>) => boolean) =>
+    Array.isArray(list) && list.some((one) => !!plainRecord(one) && test(plainRecord(one)!));
+  return (
+    some(live?.text, (one) => one.hideWhen !== undefined) ||
+    some(live?.pools, (one) => one.unit !== undefined || one.units !== undefined) ||
+    some(sheet?.lists, (one) => one.display !== undefined)
+  );
+}
+
 /** Whether a catalog entry or a condition names its icon (1.338). */
 function carriesArtIcon(value: unknown, depth = 0): boolean {
   if (depth > 40) return false;
@@ -5184,6 +5232,15 @@ export function getCapabilityPackageInstallIssue(
         )))
   ) {
     return "A ruleset that says how the fight screen shows its budgets, defense or pools requires schemaVersion 2 and capabilityApi 1.375 or newer";
+  }
+  // The ruleset's own words on its sheet, menu and cards, 1.377.
+  if (
+    !declaresApi(377) &&
+    (rulesetCarriesSheetDisplay(ruleset) ||
+      carriesSheetWords(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesSheetWords(document)))
+  ) {
+    return "A ruleset that names its own words for modifiers, toggles or item uses, gives pools units, lists a display, hides text by a derived value, leaves conditions out of the picker, shows a track once moved, or has a creature trait over 400 letters requires schemaVersion 2 and capabilityApi 1.377 or newer";
   }
   // A ruleset over 256 KB or a catalog file over 1 MB, the ceilings before 1.340.
   if (

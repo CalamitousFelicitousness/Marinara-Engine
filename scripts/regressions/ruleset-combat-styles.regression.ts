@@ -57,6 +57,13 @@ try {
   );
   assert.notEqual(issuesOf(fixture(new Array(9).fill(0).map((_, index) => `style-${index}`))), "", "at most 8");
 
+  // The published JSON Schema says what the refinement does: each style once, one of them built in.
+  const published = readSource("docs/extending/ruleset.schema.json");
+  assert.match(
+    published,
+    /"maxItems": 8,\s+"uniqueItems": true,\s+"contains": \{\s+"enum": \[\s+"classic",\s+"tactical"\s+\]/,
+  );
+
   // ── The helpers ──
   assert.equal(rulesetCombatStyles(open), null, "no list allows every style");
   assert.equal(rulesetCombatStyles(null), null);

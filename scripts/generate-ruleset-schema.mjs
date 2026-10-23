@@ -235,6 +235,18 @@ function uniqueConditionEndings(node) {
   }
 }
 
+// A combat block names each of its styles once, and one of them built in (1.379).
+function checkedCombatStyles(node) {
+  if (Array.isArray(node)) return node.forEach(checkedCombatStyles);
+  if (!node || typeof node !== "object") return;
+  Object.values(node).forEach(checkedCombatStyles);
+  const styles = node.properties?.styles;
+  if (node.properties?.distance && styles?.type === "array") {
+    styles.uniqueItems = true;
+    styles.contains = { enum: ["classic", "tactical"] };
+  }
+}
+
 // A condition that lasts until a save needs the save that ends it, or nothing would ever take it
 // off. That is a refinement too, so the editor is told here. The node is found by its shape.
 function requireSaveEndsUntilSave(node) {
@@ -773,6 +785,7 @@ requireCatalogFeeds(schema);
 requireSaveEndsUntilSave(schema);
 uniqueConditionEndings(schema);
 uniqueCombatSenses(schema);
+checkedCombatStyles(schema);
 widthOnlyOnALine(schema);
 cancelOnlyWhenAimed(schema);
 modifierSaysSomething(schema);

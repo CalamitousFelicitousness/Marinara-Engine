@@ -1471,7 +1471,8 @@ const capabilityPackageManifestBaseSchema = z
 // 1.379: which combat styles a ruleset's games may play (`combat.styles`): the New Game wizard and the
 //        game's settings offer only those, and a game saved on another plays the first one listed.
 // 1.380: package-bound per-chat agent reference lorebook trigger resolution.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 380 } as const);
+// 1.381: independent browser audio players, shared manifest fetch and default music selection.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 381 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

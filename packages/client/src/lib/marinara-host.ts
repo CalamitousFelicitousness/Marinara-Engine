@@ -32,6 +32,7 @@ import { useGameStateStore } from "../stores/game-state.store";
 import { useSidecarStore } from "../stores/sidecar.store";
 import { useUIStore } from "../stores/ui.store";
 import * as api from "./api-client";
+import * as audio from "./audio-service";
 import * as dialogs from "./app-dialogs";
 import * as emojiCatalog from "./emoji-catalog.generated";
 import {
@@ -90,7 +91,7 @@ function defineMarinaraHost(): MarinaraHostV1 {
     version: MARINARA_HOST_VERSION,
     capabilityApi: supportedCapabilityApi,
     stores,
-    services: Object.freeze({ tts, dialogs }),
+    services: Object.freeze({ tts, dialogs, audio }),
     modules,
     queryClient,
     components: Object.freeze({ Modal }),

@@ -26,6 +26,7 @@ export const apiConnections = fileTable("api_connections", {
       "custom",
       "image_generation",
       "video_generation",
+      "audio_generation",
       "audio",
       "decision",
     ],
@@ -99,6 +100,10 @@ export const apiConnections = fileTable("api_connections", {
   videoPromptInstructions: text("video_prompt_instructions"),
   /** Audio backend for audio connections (openai | elevenlabs | pockettts | xai). */
   audioSource: text("audio_source"),
+  audioGenerationSource: text("audio_generation_source"),
+  audioGenerationCallbackUrl: text("audio_generation_callback_url"),
+  audioSoundEffectsModel: text("audio_sound_effects_model"),
+  audioGenerationLegacyConnectionId: text("audio_generation_legacy_connection_id"),
   decisionSource: text("decision_source"),
   credentialsFromConnectionId: text("credentials_from_connection_id"),
   maxStateTokens: integer("max_state_tokens"),

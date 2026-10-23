@@ -157,6 +157,7 @@ import { forwardPromptPreview } from "./generate/prompt-preview.js";
 import { wrapContent } from "../services/prompt/format-engine.js";
 import { chatSummaryFingerprintMatches, fingerprintChatSummary } from "../services/prompt/chat-summary-fingerprint.js";
 import { newId } from "../utils/id-generator.js";
+import { readChatBranchGraph } from "../services/chat-branch-graph.js";
 import {
   isStoryTranscriptMessage,
   renderTranscriptHtml,
@@ -1331,6 +1332,17 @@ export async function chatsRoutes(app: FastifyInstance) {
   app.get<{ Params: { groupId: string } }>("/group/:groupId", async (req) => {
     const chats = await storage.listByGroup(req.params.groupId);
     return chats.filter((chat) => !shouldHideProfessorMariChat(chat)).map(normalizeChatForResponse);
+  });
+
+  // The branch graph (#8157): where each chat in the group forked and the roles of its own messages.
+  app.get<{ Params: { groupId: string } }>("/group/:groupId/branch-graph", async (req) => {
+    const chats = await storage.listByGroup(req.params.groupId);
+    return readChatBranchGraph(
+      storage,
+      chats
+        .filter((chat) => !shouldHideProfessorMariChat(chat))
+        .map((chat) => ({ id: chat.id, metadata: parseChatMetadata(chat.metadata) })),
+    );
   });
 
   // Get single chat

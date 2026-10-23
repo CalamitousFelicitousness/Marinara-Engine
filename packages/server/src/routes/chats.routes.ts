@@ -65,6 +65,8 @@ import {
   DEFAULT_GENERATION_PARAMS,
   isStockMarinaraUniversalPreset,
   omitChatMetadataLocalDestinations,
+  rulesetAllowsCombatStyle,
+  rulesetCombatStyles,
 } from "@marinara-engine/shared";
 import type {
   CharacterData,
@@ -140,6 +142,7 @@ import { createSpatialContextStorage } from "../services/storage/spatial-context
 import { restoreBranchHudLists, trimJournalForBranch } from "../services/game/branch-state.js";
 import { removeGameInventoryTelling, switchGameInventoryTelling } from "../services/game/game-inventory.service.js";
 import { applyAllSegmentEdits, applyMessageSegmentEdits } from "../services/game/segment-edits.js";
+import { loadRulesetRegistry, resolveGameRuleset } from "../services/game/ruleset-registry.service.js";
 import type { Journal } from "../services/game/journal.service.js";
 import { createRegexScriptsStorage } from "../services/storage/regex-scripts.storage.js";
 import { filterRelevantLorebooks, processLorebooks } from "../services/lorebook/index.js";
@@ -1735,6 +1738,20 @@ export async function chatsRoutes(app: FastifyInstance) {
         return reply.status(400).send({ error: `A chat cannot hold more than ${MAX_CHAT_VARIABLES} variables` });
       }
       return updated ? normalizeChatForResponse(updated) : updated;
+    }
+    if (typeof incoming.gameCombatStyle === "string") {
+      // A game's ruleset may name the combat styles its games play (1.379): one it leaves out is
+      // refused here, as it is when the game is made.
+      const chatMetadata = parseChatMetadata(chat.metadata);
+      if (chatMetadata.gameRuleset != null) {
+        const resolved = resolveGameRuleset(chatMetadata, await loadRulesetRegistry(app.db));
+        if (resolved.status === "ok" && !rulesetAllowsCombatStyle(resolved.definition, incoming.gameCombatStyle)) {
+          return reply.status(400).send({
+            error: `This game's ruleset plays battles only as ${rulesetCombatStyles(resolved.definition)!.join(", ")}.`,
+            code: "combat_style_not_allowed",
+          });
+        }
+      }
     }
     if (Object.prototype.hasOwnProperty.call(incoming, "groupChatMode")) {
       // Store only a mode generation understands, so the drawer and the prompt never read it differently.

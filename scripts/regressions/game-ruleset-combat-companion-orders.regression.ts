@@ -322,6 +322,22 @@ try {
     assert.ok(mira.x >= 5, `Mira heads for Bram and the orc: ${mira.x},${mira.y}`);
   }
 
+  // ── A caster with somebody in range does not drift in to its leader's melee (re-test 2026-10-23) ──
+  {
+    const { state } = fight({
+      ada: { side: "party", block: block([smash]), at: { x: 8, y: 2 } },
+      mira: { side: "party", block: block([bolt, mend]), at: { x: 2, y: 5 } },
+      orc: { side: "enemy", block: block([smash]), at: { x: 9, y: 2 } },
+    });
+    const ada = rulesetCombatant(state.rulesetFight!.encounter, "ada")!;
+    ada.health = { ...ada.health!, value: 20 };
+    const mira = state.party.find((one) => one.id === "mira")!;
+    mira.orders = { heal: true };
+    assert.ok(commandRulesetCombatDirector(definition, state, { type: "continue" }).ok);
+    const after = rulesetCombatant(state.rulesetFight!.encounter, "mira")!;
+    assert.deepEqual([after.x, after.y], [2, 5], `she stays where she can shoot from: ${after.x},${after.y}`);
+  }
+
   // ── Conserve ──
   {
     const one = {

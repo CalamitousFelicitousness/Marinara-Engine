@@ -4077,6 +4077,9 @@ function rulesetConcentrationFails(
 
 /** How far a companion guarding or protecting somebody strays from them (P7), in squares. */
 const RULESET_LEASH = 3;
+
+/** The roles that fight from afar, and so never walk in once somebody is already in their range. */
+const RULESET_KEEPS_RANGE = new Set(["spellcaster", "marksman", "controller", "supporter"]);
 interface RulesetLeash {
   charge: RulesetCombatant;
   within: number;
@@ -4984,6 +4987,16 @@ function playRulesetTurn(
       if (!stays && keepAloft(definition, state, fight, actorId)) continue;
       if (shotFromAfar && !stays && keepRulesetRange(definition, state, fight, actorId, shotFromAfar === "kite")) break;
       if (struckClose && !shotFromAfar && !defended && !stays && hitAndRun(definition, state, fight, actorId)) break;
+      // A caster or archer with somebody already in its range stays where it can shoot from rather
+      // than walking in to a melee (re-test 2026-10-23: a wizard on guard drifted up to her fighter
+      // after casting and was clubbed down).
+      if (
+        !struckClose &&
+        !stays &&
+        RULESET_KEEPS_RANGE.has(unit?.tactics?.role ?? "") &&
+        keepRulesetRange(definition, state, fight, actorId, false)
+      )
+        break;
       if (defended || stays || aloof || feeding || !walkTowardsTrouble(definition, state, fight, actorId, leash)) break;
       continue;
     }

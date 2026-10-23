@@ -27,7 +27,11 @@ import { isMessageHidden } from "../lib/message-visibility";
 import { copyLocalSpriteVisualSettings } from "../components/chat/local-sprite-visual-settings";
 import { lorebookKeys } from "./use-lorebooks";
 import { achievementKeys, trackAchievementEvent } from "./use-achievements";
-import { normalizeAdvancedMemorySettings } from "@marinara-engine/shared";
+import {
+  agentLorebookAttachmentPatchesSchema,
+  mergeAgentLorebookAttachments,
+  normalizeAdvancedMemorySettings,
+} from "@marinara-engine/shared";
 import type {
   AdvancedMemoryStatus,
   Chat,
@@ -982,6 +986,13 @@ export function useUpdateChatMetadata(options?: { serialize?: boolean }) {
       const previous = qc.getQueryData<Chat>(chatKeys.detail(id));
       const fallback = useChatStore.getState().activeChat?.id === id ? useChatStore.getState().activeChat : null;
       const base = previous ?? fallback;
+      const attachmentPatch = agentLorebookAttachmentPatchesSchema.safeParse(metadata.agentLorebookAttachments);
+      if (attachmentPatch.success) {
+        metadata.agentLorebookAttachments = mergeAgentLorebookAttachments(
+          normalizeChatMetadataValue(base?.metadata).agentLorebookAttachments,
+          attachmentPatch.data,
+        );
+      }
       const previousAdvancedStatus = enablesBasicRecall
         ? qc.getQueryData<AdvancedMemoryStatus>(["advanced-memory", id])
         : undefined;

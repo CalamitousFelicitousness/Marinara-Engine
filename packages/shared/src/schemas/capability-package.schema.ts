@@ -1470,7 +1470,8 @@ const capabilityPackageManifestBaseSchema = z
 //        and creature traits to 1200.
 // 1.379: which combat styles a ruleset's games may play (`combat.styles`): the New Game wizard and the
 //        game's settings offer only those, and a game saved on another plays the first one listed.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 379 } as const);
+// 1.380: package-bound per-chat agent reference lorebook trigger resolution.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 380 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

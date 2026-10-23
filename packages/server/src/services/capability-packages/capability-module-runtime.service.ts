@@ -46,6 +46,7 @@ import { createCapabilityAchievementHost } from "./capability-achievement-host.s
 import { registerCapabilityAchievements } from "./capability-achievement-registry.service.js";
 import { createCapabilityPersistenceHost } from "./capability-persistence.service.js";
 import { createCapabilityResourceHost } from "./capability-resources.service.js";
+import { resolvePackageAgentLorebookEntries } from "./capability-agent-lorebook.service.js";
 import {
   registerCapabilityPrivilegedRoutes,
   runCapabilityInternalRoute,
@@ -107,6 +108,7 @@ async function createCapabilityRuntimeHost(
   packageId: string,
   permissions: readonly string[],
 ): Promise<CapabilityRuntimeHost> {
+  const canReadAgentLorebooks = permissions.includes("agent-runtime") && permissions.includes("chat-read");
   const agents = app.db ? createAgentsStorage(app.db) : null;
   const config = await agents?.getByType(packageId);
   const embeddings = app.db
@@ -123,6 +125,15 @@ async function createCapabilityRuntimeHost(
     async getAgentConfig() {
       const config = await agents?.getByType(packageId);
       return config ? { connectionId: config.connectionId, settings: parseAgentSettingsRecord(config.settings) } : null;
+    },
+    async resolveAgentLorebookEntries(options: { chatId: string; signal?: AbortSignal }) {
+      if (!canReadAgentLorebooks) {
+        throw new Error("Resolving an agent reference lorebook requires agent-runtime and chat-read permissions.");
+      }
+      return resolvePackageAgentLorebookEntries(app.db, packageId, {
+        chatId: options.chatId,
+        signal: options.signal,
+      });
     },
     isDebugAgentsEnabled,
     json: Object.freeze({ parseJsonish: parseGameJsonish }),

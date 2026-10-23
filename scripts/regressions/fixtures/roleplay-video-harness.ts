@@ -39,6 +39,8 @@ export async function startRoleplayVideoHarness(name: string) {
     const { chatsRoutes } = await import("../../../packages/server/src/routes/chats.routes.js");
     const { galleryRoutes } = await import("../../../packages/server/src/routes/gallery.routes.js");
     const { agentsRoutes } = await import("../../../packages/server/src/routes/agents.routes.js");
+    const { charactersRoutes } = await import("../../../packages/server/src/routes/characters.routes.js");
+    const { connectionsRoutes } = await import("../../../packages/server/src/routes/connections.routes.js");
     const { createChatsStorage } = await import("../../../packages/server/src/services/storage/chats.storage.js");
     const { createAgentsStorage } = await import("../../../packages/server/src/services/storage/agents.storage.js");
     const { createConnectionsStorage } =
@@ -87,6 +89,8 @@ export async function startRoleplayVideoHarness(name: string) {
       comfy: [] as string[],
       images: 0,
     };
+    // beforeVideo runs once when the next clip reaches the video service (after the reply is saved).
+    const hooks: { beforeVideo: (() => Promise<void>) | null } = { beforeVideo: null };
     const provider = createServer(async (request, response) => {
       const chunks: Buffer[] = [];
       for await (const chunk of request) chunks.push(Buffer.from(chunk));
@@ -98,6 +102,9 @@ export async function startRoleplayVideoHarness(name: string) {
       };
       if (url.endsWith("/prompt")) {
         requests.comfy.push(body);
+        const hook = hooks.beforeVideo;
+        hooks.beforeVideo = null;
+        if (hook) await hook();
         return json({ prompt_id: "job" });
       }
       if (url.includes("/history/")) {
@@ -159,6 +166,8 @@ export async function startRoleplayVideoHarness(name: string) {
     await app.register(chatsRoutes, { prefix: "/api/chats" });
     await app.register(galleryRoutes, { prefix: "/api/gallery" });
     await app.register(agentsRoutes, { prefix: "/api/agents" });
+    await app.register(charactersRoutes, { prefix: "/api/characters" });
+    await app.register(connectionsRoutes, { prefix: "/api/connections" });
     const chats = createChatsStorage(db);
     const characters = createCharactersStorage(db);
 
@@ -240,6 +249,7 @@ export async function startRoleplayVideoHarness(name: string) {
       characters,
       replies,
       requests,
+      hooks,
       png,
       avatarPng,
       text,

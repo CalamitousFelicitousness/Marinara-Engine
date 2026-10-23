@@ -986,6 +986,8 @@ async function buildRetryAgentContext(args: {
   forceIllustratorImageGeneration: boolean;
   /** Snapshot button (#4682): tell retried custom image agents the user explicitly requested an image. */
   forceCustomImageGeneration: boolean;
+  /** Draw a picture only: no clip is offered or made (the caller animates the picture itself). */
+  illustratorStillOnly?: boolean;
   /**
    * When retrying agents for a specific assistant message (e.g. refreshing cached prompt injections),
    * use the game-state snapshot committed for that message+swipe — not the latest chat snapshot.
@@ -1387,7 +1389,9 @@ async function buildRetryAgentContext(args: {
   if (previousBeholderState) agentContext.memory._beholderState = previousBeholderState;
   // A re-run Illustrator (or custom image agent) is offered clips exactly as on a fresh reply: Illustrator makes and a
   // working video connection. Only agents that make images are shown the offer.
-  const videoOffer = await resolveIllustratorVideoOffer(chat.mode, chatMeta, createConnectionsStorage(db));
+  const videoOffer = args.illustratorStillOnly
+    ? null
+    : await resolveIllustratorVideoOffer(chat.mode, chatMeta, createConnectionsStorage(db));
   if (videoOffer) agentContext.memory._generatedVideos = videoOffer;
 
   const gameImageStylePrompt = getGameImageStylePrompt(chat, chatMeta);
@@ -3096,6 +3100,7 @@ async function applyRetryResultEffects(args: {
   reviewImagePromptsBeforeSend: boolean;
   illustratorPromptReviewOverride: IllustratorPromptReviewOverride | null;
   illustratorRetryTargets: IllustratorRetryTarget[] | undefined;
+  illustratorStillOnly: boolean;
   forceImageGeneration: boolean;
   debugMode: boolean;
   secretPlotRerollMode?: "full" | "turn_only";
@@ -3121,6 +3126,7 @@ async function applyRetryResultEffects(args: {
     reviewImagePromptsBeforeSend,
     illustratorPromptReviewOverride,
     illustratorRetryTargets,
+    illustratorStillOnly,
     forceImageGeneration,
     debugMode,
     secretPlotRerollMode,
@@ -3843,7 +3849,11 @@ async function applyRetryResultEffects(args: {
           imgConnFull ??= await conns.getDefaultForImageGeneration();
           assertRetryActive();
           // Generated Videos: a re-run follows Illustrator makes and First frame, as a fresh reply does.
-          const videoOffer = retryMessageId ? await resolveIllustratorVideoOffer(chat.mode, chatMeta, conns) : null;
+          // A still-only re-run draws the first frame for a clip its caller makes, so it never makes one of its own.
+          const videoOffer =
+            retryMessageId && !illustratorStillOnly
+              ? await resolveIllustratorVideoOffer(chat.mode, chatMeta, conns)
+              : null;
           assertRetryActive();
           const writtenMotion = typeof illData.videoPrompt === "string" ? illData.videoPrompt.trim() : "";
           const clipsOnly = videoOffer?.clipsOnly === true;
@@ -4788,6 +4798,8 @@ export async function registerRetryAgentsRoute(
       illustratorPromptReviewOverride?: unknown;
       /** Limit an Illustrator retry to visual jobs that failed in the original run. */
       illustratorRetryTargets?: unknown;
+      /** Draw the Illustrator picture only, never a clip: Roleplay /video animates it afterwards. */
+      illustratorStillOnly?: boolean;
       /** Inclusive stored-message IDs selected by /illustrate range=N-M. */
       illustratorMessageRange?: unknown;
       /** Force image generation for retried custom image agents' results (snapshot button, #4682). */
@@ -4822,6 +4834,7 @@ export async function registerRetryAgentsRoute(
       agentPromptTemplateIds,
       illustratorPromptReviewOverride: rawIllustratorPromptReviewOverride,
       illustratorRetryTargets: rawIllustratorRetryTargets,
+      illustratorStillOnly = false,
       illustratorMessageRange,
       forceImageGeneration = false,
       lorebookKeeperBackfill = false,
@@ -4847,6 +4860,9 @@ export async function registerRetryAgentsRoute(
     }
     if (illustratorRetryTargets && !agentTypes.includes("illustrator")) {
       return reply.status(400).send({ error: "Illustrator retry targets require an Illustrator retry" });
+    }
+    if (typeof illustratorStillOnly !== "boolean" || (illustratorStillOnly && !agentTypes.includes("illustrator"))) {
+      return reply.status(400).send({ error: "illustratorStillOnly requires an Illustrator retry" });
     }
     // Trimmed and bounded once, here, so neither call site has to remember to.
     const sanitisedDirective =
@@ -5136,6 +5152,7 @@ export async function registerRetryAgentsRoute(
         forceIllustratorBackgroundGeneration: isManualIllustratorBackgroundRequest,
         forceIllustratorImageGeneration: isManualIllustratorImageRequest,
         forceCustomImageGeneration: forceImageGeneration === true,
+        illustratorStillOnly,
         historicalGameStateAnchor,
         useLatestGameStateFallback: !illustratorMessageRange,
       };
@@ -5212,6 +5229,7 @@ export async function registerRetryAgentsRoute(
                 forceIllustratorBackgroundGeneration: isManualIllustratorBackgroundRequest,
                 forceIllustratorImageGeneration: isManualIllustratorImageRequest,
                 forceCustomImageGeneration: forceImageGeneration === true,
+                illustratorStillOnly,
                 historicalGameStateAnchor: preGenerationGameStateAnchor,
                 useLatestGameStateFallback: false,
               }),
@@ -5970,6 +5988,7 @@ export async function registerRetryAgentsRoute(
         reviewImagePromptsBeforeSend,
         illustratorPromptReviewOverride,
         illustratorRetryTargets,
+        illustratorStillOnly,
         forceImageGeneration: forceImageGeneration === true,
         debugMode,
         secretPlotRerollMode,

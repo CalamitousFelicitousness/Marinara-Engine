@@ -20,8 +20,8 @@ export interface LeadingPlanningExtraction {
 /**
  * Lift the plan a Game Master wrote out before its scene ("Opening scene: ... / Location: ... / Plan: ...") off the
  * reply, so it goes with the turn's thinking instead of opening the narration. The leading run of paragraphs that
- * each open with a plan's label is lifted whole, only when one of them names itself a plan and only when something
- * follows the run; the first paragraph that opens otherwise ends the run and stays with everything behind it.
+ * each open with a plan's label is lifted whole when one of them names itself a plan. A reply with no narration
+ * leaves empty content for the caller's normal no-output handling; the first non-plan paragraph stays behind.
  */
 export function extractLeadingGmPlanning(text: string): LeadingPlanningExtraction {
   const paragraphs = text.trimStart().split(/(\n\s*\n)/);
@@ -34,6 +34,6 @@ export function extractLeadingGmPlanning(text: string): LeadingPlanningExtractio
     .join("")
     .trim();
   const content = paragraphs.slice(planned).join("").trimStart();
-  if (!content || !PLAN_ONLY_LABEL.test(planning)) return { content: text, planning: "" };
+  if (!PLAN_ONLY_LABEL.test(planning)) return { content: text, planning: "" };
   return { content, planning };
 }

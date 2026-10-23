@@ -17,7 +17,11 @@ import { migrateGenerativeAudioConnections } from "../connections/generative-aud
 import { buildAssetManifest, GAME_ASSETS_DIR } from "../game/asset-manifest.service.js";
 import { createAppSettingsStorage } from "../storage/app-settings.storage.js";
 import { createConnectionsStorage } from "../storage/connections.storage.js";
-import { generateAudioBytes, type GenerativeAudioProviderConfig } from "./generative-audio-providers.js";
+import {
+  generateAudioBytes,
+  validateSunoMusicCallback,
+  type GenerativeAudioProviderConfig,
+} from "./generative-audio-providers.js";
 
 export type GeneratedAudioContext =
   { axis: "area" | "tier"; key: string; lengthMs?: number } | { scope: string; key: string; lengthMs?: number };
@@ -118,6 +122,23 @@ export async function resolveGenerativeAudioConfig(db: DB, requestedId?: string 
 }
 
 const locks = new Map<string, Promise<GeneratedAudioAsset>>();
+
+/** Report each usable capability independently; checking readiness never calls a provider. */
+export async function resolveGenerativeAudioReadiness(db: DB, requestedId?: string | null) {
+  const config = await resolveGenerativeAudioConfig(db, requestedId);
+  const authorized = config.source === "custom" || Boolean(config.apiKey);
+  let music = config.music && authorized;
+  const soundEffects = config.soundEffects && authorized;
+  if (music && config.source === "sunoapi") {
+    try {
+      await validateSunoMusicCallback(config.callbackUrl);
+    } catch {
+      music = false;
+    }
+  }
+  return { connectionId: config.id, configured: music || soundEffects, music, soundEffects, source: config.source };
+}
+
 const AUDIO_FILE_PATTERN = /\.(mp3|wav|ogg|m4a|flac|aac|webm)$/i;
 let manifestTimer: ReturnType<typeof setTimeout> | undefined;
 function scheduleManifestRebuild() {

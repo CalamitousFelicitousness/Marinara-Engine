@@ -55,7 +55,8 @@ export async function migrateGenerativeAudioConnections(db: DB): Promise<void> {
         const defaultBase = source === "openai" ? "https://api.openai.com/v1" : "https://api.elevenlabs.io";
         const baseUrl = row.baseUrl || (connectionProfile ? defaultBase : sourceProfile?.baseUrl || defaultBase);
         const becomesDefault = !hasDefault && (chosenId ? row.id === chosenId : row.defaultForAgents === "true");
-        const becomesFallback = !hasFallback && !chosenId && row.fallbackForAgents === "true";
+        const becomesFallback =
+          !hasFallback && !becomesDefault && (row.fallbackForAgents === "true" || !hasDefault);
         await tx.insert(apiConnections).values({
           ...row,
           id: newId(),

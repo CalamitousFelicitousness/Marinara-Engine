@@ -253,9 +253,13 @@ export async function buildApp(https?: { cert: Buffer; key: Buffer }) {
   }
   try {
     await startup.phase("migrate.tts-audio", () => migrateTtsSettingsToAudioConnection(db));
-    await startup.phase("migrate.generative-audio", () => migrateGenerativeAudioConnections(db));
   } catch (error) {
     app.log.warn(error, "TTS audio-connection migration did not complete; it will retry next startup");
+  }
+  try {
+    await startup.phase("migrate.generative-audio", () => migrateGenerativeAudioConnections(db));
+  } catch (error) {
+    app.log.warn(error, "Generative audio-connection migration did not complete; it will retry next startup");
   }
   try {
     await startup.phase("migrate.tripo-key", () => migrateTripoConnectionsToApiKey(db));

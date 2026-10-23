@@ -4,7 +4,7 @@ import { logger } from "../lib/logger.js";
 import {
   AudioGenerationConfigurationError,
   generateAudioAsset,
-  resolveGenerativeAudioConfig,
+  resolveGenerativeAudioReadiness,
 } from "../services/audio/generative-audio.service.js";
 
 const key = z
@@ -33,14 +33,7 @@ export async function audioRoutes(app: FastifyInstance) {
       .object({ audioConnectionId: z.string().trim().max(200).optional() })
       .parse(req.query);
     try {
-      const config = await resolveGenerativeAudioConfig(app.db, audioConnectionId);
-      return {
-        connectionId: config.id,
-        configured: (config.music || config.soundEffects) && (config.source === "custom" || Boolean(config.apiKey)),
-        music: config.music,
-        soundEffects: config.soundEffects,
-        source: config.source,
-      };
+      return await resolveGenerativeAudioReadiness(app.db, audioConnectionId);
     } catch (error) {
       if (!(error instanceof AudioGenerationConfigurationError)) throw error;
       if (error.statusCode === 409) return reply.status(409).send({ error: error.message });

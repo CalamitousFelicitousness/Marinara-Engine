@@ -1,4 +1,4 @@
-// Capability API 1.380: packages reuse Engine playback and asset selection.
+// Capability API 1.381: packages reuse Engine playback and asset selection.
 import { scoreMusic, type MusicScoreInput } from "@marinara-engine/shared";
 import type { GameAssetManifest } from "../hooks/use-game-assets";
 
@@ -26,7 +26,8 @@ export async function getAssetManifest(): Promise<GameAssetManifest> {
 
 /** Choose an existing state-library track, keeping a fitting current track stable.
  * Game area/tier and generated package-context tracks are deliberately excluded.
- * Several cues can share a stock track; this never generates or fetches music.
+ * Several cues can share a stock track; an absent cue state returns null.
+ * This never generates or fetches music.
  */
 export function selectDefaultMusic(
   cue: AudioMusicCue,
@@ -43,5 +44,5 @@ export function selectDefaultMusic(
     availableMusic,
     currentMusic: options.currentTag,
   };
-  return scoreMusic(input) ?? scoreMusic({ ...input, state: "exploration" });
+  return scoreMusic(input);
 }

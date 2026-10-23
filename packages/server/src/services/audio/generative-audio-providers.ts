@@ -27,6 +27,15 @@ const MAX_AUDIO_BYTES = 60 * 1024 * 1024;
 const DEADLINE_MS = 300_000;
 const PUBLIC_HTTPS = { allowLocal: false, allowLoopback: false, allowMdns: false, allowedProtocols: ["https:"] };
 
+/** Match the provider's music prerequisite without submitting a composition. */
+export async function validateSunoMusicCallback(callbackUrl?: string | null): Promise<void> {
+  if (!callbackUrl) throw new Error("SunoAPI music requires a public HTTPS callback URL, even when polling");
+  const callback = new URL(callbackUrl);
+  if (callback.username || callback.password)
+    throw new Error("Use a SunoAPI callback URL without embedded credentials");
+  await validateOutboundUrl(callbackUrl, PUBLIC_HTTPS);
+}
+
 function providerUrl(config: GenerativeAudioProviderConfig, path: string): URL {
   const base = new URL(config.baseUrl);
   if (base.username || base.password || base.search || base.hash)
@@ -148,11 +157,7 @@ export async function generateAudioBytes(
       ? { customMode: true, instrumental: true, style: prompt, model: model || "V6" }
       : { prompt, model: model || "V6", soundLoop: false };
   if (kind === "music") {
-    if (!config.callbackUrl) throw new Error("SunoAPI music requires a public HTTPS callback URL, even when polling");
-    const callback = new URL(config.callbackUrl);
-    if (callback.username || callback.password)
-      throw new Error("Use a SunoAPI callback URL without embedded credentials");
-    await validateOutboundUrl(config.callbackUrl, PUBLIC_HTTPS);
+    await validateSunoMusicCallback(config.callbackUrl);
     body.callBackUrl = config.callbackUrl;
     if (options.lengthMs !== undefined) {
       if (options.lengthMs < 10_000 || options.lengthMs > 360_000)

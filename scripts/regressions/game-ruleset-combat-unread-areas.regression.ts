@@ -138,7 +138,9 @@ try {
       ...Object.fromEntries(
         friends.map((at, index) => [`ally${index}`, { side: "enemy" as const, block: block([]), at }]),
       ),
-      ...(foe ? { hero: { side: "party" as const, block: block([]), at: foe } } : { hero: { side: "party" as const, block: block([]), at: { x: 13, y: 7 } } }),
+      ...(foe
+        ? { hero: { side: "party" as const, block: block([]), at: foe } }
+        : { hero: { side: "party" as const, block: block([]), at: { x: 13, y: 7 } } }),
     });
   const aims = (picked: ReturnType<typeof pickRulesetChoice>) =>
     picked?.option.id === "volley" ? (picked.choice.at ?? picked.choice.targetIds) : null;

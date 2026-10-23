@@ -337,7 +337,22 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
   const builds = rulesetSheetBuildsByName(definition, input.cards, input.playerName);
   const creatures = rulesetCardCreaturesByName(input.cards);
   const combatants: RulesetCombatantInput[] = [];
-  for (const member of input.party) {
+  // With no persona the first character card plays as the player: a member the setup named for a
+  // player with no sheet ("User") is that card, where the party does not already hold it.
+  const named = new Set(input.party.map((member) => normalizeCharacterLookupName(member.name)));
+  const firstCard = input.playerName
+    ? undefined
+    : (Array.isArray(input.cards) ? (input.cards as Array<{ name?: unknown }>) : [])
+        .map((card) => (typeof card.name === "string" ? card.name.trim() : ""))
+        .find((name) => name && builds.has(normalizeCharacterLookupName(name)));
+  let standIn = firstCard && !named.has(normalizeCharacterLookupName(firstCard)) ? firstCard : undefined;
+  for (const listed of input.party) {
+    let member = listed;
+    if (standIn && !builds.has(normalizeCharacterLookupName(member.name)) && !creatures.has(normalizeCharacterLookupName(member.name))) {
+      adjustments.push(`${member.name} fights as ${standIn}, the character the player plays.`);
+      member = { ...member, name: standIn };
+      standIn = undefined;
+    }
     const key = normalizeCharacterLookupName(member.name);
     const build = builds.get(key);
     // A member who is a bestiary creature (a copy of one, 5e's Simulacrum) fights as that creature.

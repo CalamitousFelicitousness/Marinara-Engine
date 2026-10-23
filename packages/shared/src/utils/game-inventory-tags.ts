@@ -35,6 +35,7 @@ import {
   createLootTagRegex,
   parseInventoryTagBody,
   parseLootTagBody,
+  readResolvedInventoryTags,
   serializeInventoryTag,
   serializeLootTag,
   type InventoryTagOutcome,
@@ -374,6 +375,7 @@ export function applyGameInventoryTags(
           const lines: string[] = [];
           let refused: string | undefined;
           let revealed: string | undefined;
+          let lastUsed: string | undefined;
           for (let done = 0; done < request.count; done++) {
             let used = false;
             for (const stack of current.filter(mine)) {
@@ -386,6 +388,7 @@ export function applyGameInventoryTags(
               journal.push(...outcome.journal);
               lines.push(outcome.line);
               revealed ??= outcome.revealed;
+              lastUsed = stack.id;
               used = true;
               break;
             }
@@ -394,9 +397,18 @@ export function applyGameInventoryTags(
             if (!used || revealed) break;
           }
           if (lines.length === 0) return serializeInventoryTag(shown, { ok: false, reason: refused ?? "none-held" });
+          const revealedItems = (stacks: readonly GameInventoryStack[], id: string | undefined) => {
+            const left = revealed && id ? stacks.find((stack) => stack.id === id) : undefined;
+            return left ? new Set([gameInventoryItemId(left)]) : undefined;
+          };
           return serializeInventoryTag(
             { ...shown, ...(revealed ? { revealed } : {}) },
-            { ok: true, count: lines.length, now: gameInventoryCountItems(current, items, who.bag ?? {}) },
+            {
+              ok: true,
+              count: lines.length,
+              // A fake found out is counted as what it really is, as its line says ("1 left").
+              now: gameInventoryCountItems(current, revealedItems(current, lastUsed) ?? items, who.bag ?? {}),
+            },
             lines.join(" "),
           );
         }
@@ -510,67 +522,96 @@ export function applyGameInventoryTags(
           // A seller here pays for it in its own coins, up to what the place pays out in a day: it
           // leaves the seller's bag and the coins come in, largest first, or nothing happens (#6934).
           if (!market?.sale) return serializeInventoryTag(shown, { ok: false, reason: "no-market" });
-          const asked = { ...shown, ...(request.seller ? { seller: request.seller } : {}) };
-          // The stack the name finds: a fake is offered for what it seems, which an honest buyer sees
-          // through (1.79).
-          const offered = gameInventoryStackNamed(current, item, who.bag ?? {});
-          const sale = market.sale({
-            item,
-            count: request.count,
-            ...(request.seller ? { seller: request.seller } : {}),
-            ...(request.who ? { who: request.who } : {}),
-            stacks: current,
-            ...(offered?.truly ? { truly: offered.truly } : {}),
-          });
-          // Seen through, it is what it truly is from now on, sold or not.
-          if (sale.revealed && offered) current = revealGameInventoryFake(current, offered.id, rules);
-          const seen = sale.revealed ? { revealed: sale.revealed.name } : {};
-          if (!sale.ok) return serializeInventoryTag({ ...asked, ...seen }, { ok: false, reason: sale.reason });
-          const answered = { ...asked, item: sale.name, ...(sale.seller ? { seller: sale.seller } : {}), ...seen };
-          const holder = who.bag?.holder;
-          // Only stacks of the kind the sale was priced by: a fake is never sold with the real thing it
-          // passes for, nor the real thing with a fake (1.79).
-          const sold = offered && current.find((stack) => stack.id === offered.id);
-          const kind = sold ? gameInventoryStackKind(sold) : undefined;
-          const taken = applyGameInventoryOps(
-            current,
-            [
-              {
-                op: "take",
-                name: sale.name,
-                count: request.count,
-                from: who.bag ?? {},
-                as: "sold",
-                ...(kind ? { kind } : {}),
-              },
-            ],
-            newId,
-            rules,
-          );
-          const [took] = taken.results;
-          if (!took?.ok) return serializeInventoryTag(answered, outcomeOf(took));
-          if (took.count !== request.count) return serializeInventoryTag(answered, { ok: false, reason: "none-held" });
-          let left = sale.worth;
-          const coinOps: GameInventoryOp[] = [];
-          for (const coin of sale.family) {
-            const count = Math.floor(left / coin.value);
-            if (count < 1) continue;
-            left -= count * coin.value;
-            coinOps.push({ op: "add", name: coin.name, item: coin.item, count, holder, log: true });
+          // One sale of `count` of the kind `offered` is: a fake is offered for what it seems, which an
+          // honest buyer sees through (1.79).
+          const sellOnce = (count: number, offered: GameInventoryStack | undefined): string => {
+            const asked = { ...shown, count, ...(request.seller ? { seller: request.seller } : {}) };
+            const sale = market.sale!({
+              item,
+              count,
+              ...(request.seller ? { seller: request.seller } : {}),
+              ...(request.who ? { who: request.who } : {}),
+              stacks: current,
+              ...(offered?.truly ? { truly: offered.truly } : {}),
+            });
+            // Seen through, it is what it truly is from now on, sold or not.
+            if (sale.revealed && offered) current = revealGameInventoryFake(current, offered.id, rules);
+            const seen = sale.revealed ? { revealed: sale.revealed.name } : {};
+            if (!sale.ok) return serializeInventoryTag({ ...asked, ...seen }, { ok: false, reason: sale.reason });
+            const answered = { ...asked, item: sale.name, ...(sale.seller ? { seller: sale.seller } : {}), ...seen };
+            const holder = who.bag?.holder;
+            // Only stacks of the kind the sale was priced by: a fake is never sold with the real thing it
+            // passes for, nor the real thing with a fake (1.79).
+            const sold = offered && current.find((stack) => stack.id === offered.id);
+            const kind = sold ? gameInventoryStackKind(sold) : undefined;
+            const taken = applyGameInventoryOps(
+              current,
+              [
+                {
+                  op: "take",
+                  name: sale.name,
+                  count,
+                  from: who.bag ?? {},
+                  as: "sold",
+                  ...(kind ? { kind } : {}),
+                },
+              ],
+              newId,
+              rules,
+            );
+            const [took] = taken.results;
+            if (!took?.ok) return serializeInventoryTag(answered, outcomeOf(took));
+            if (took.count !== count) return serializeInventoryTag(answered, { ok: false, reason: "none-held" });
+            let left = sale.worth;
+            const coinOps: GameInventoryOp[] = [];
+            for (const coin of sale.family) {
+              const count = Math.floor(left / coin.value);
+              if (count < 1) continue;
+              left -= count * coin.value;
+              coinOps.push({ op: "add", name: coin.name, item: coin.item, count, holder, log: true });
+            }
+            // Never pay less than the purse is charged.
+            if (left > 0) return serializeInventoryTag(answered, { ok: false, reason: "not-for-sale" });
+            const paid = applyGameInventoryOps(taken.stacks, coinOps, newId, rules);
+            if (paid.results.some((result) => !result.ok || (result.left ?? 0) > 0)) {
+              return serializeInventoryTag(answered, { ok: false, reason: "too-heavy" });
+            }
+            current = paid.stacks;
+            journal.push(...taken.journal, ...paid.journal);
+            market.record?.({ sell: { familyId: sale.familyId, worth: sale.worth } });
+            return serializeInventoryTag({ ...answered, price: sale.price }, { ok: true, count, now: took.now ?? 0 });
+          };
+          // The stack the name finds, and the kinds of it in that bag. A count past what the first kind
+          // holds, where the bag holds another kind of it too (four real Dust and a fake), is sold kind
+          // by kind, each priced on its own.
+          const first = gameInventoryStackNamed(current, item, who.bag ?? {});
+          const ids = gameInventoryItemsNamed(current, item, who.bag ?? {});
+          const kinds = new Map<string, { stack: GameInventoryStack; held: number }>();
+          for (const stack of current) {
+            if (!ids.has(gameInventoryItemId(stack))) continue;
+            if (gameInventoryBagKey(stack.holder) !== gameInventoryBagKey(who.bag?.holder)) continue;
+            const kind = gameInventoryStackKind(stack);
+            const had = kinds.get(kind);
+            if (had) had.held += stack.quantity;
+            else kinds.set(kind, { stack, held: stack.quantity });
           }
-          // Never pay less than the purse is charged.
-          if (left > 0) return serializeInventoryTag(answered, { ok: false, reason: "not-for-sale" });
-          const paid = applyGameInventoryOps(taken.stacks, coinOps, newId, rules);
-          if (paid.results.some((result) => !result.ok || (result.left ?? 0) > 0)) {
-            return serializeInventoryTag(answered, { ok: false, reason: "too-heavy" });
+          const firstKind = first ? kinds.get(gameInventoryStackKind(first)) : undefined;
+          if (!first || !firstKind || firstKind.held >= request.count || kinds.size < 2)
+            return sellOnce(request.count, first);
+          const total = [...kinds.values()].reduce((sum, kind) => sum + kind.held, 0);
+          if (total < request.count) return sellOnce(request.count, first);
+          const parts: string[] = [];
+          let remaining = request.count;
+          for (const kind of [firstKind, ...[...kinds.values()].filter((each) => each !== firstKind)]) {
+            if (remaining <= 0) break;
+            const count = Math.min(remaining, kind.held);
+            const said = sellOnce(count, current.find((stack) => stack.id === kind.stack.id) ?? kind.stack);
+            parts.push(said);
+            // The first refusal ends it: what was sold stays sold, and the refusal says why the rest was not.
+            if (!readResolvedInventoryTags(said)[0]?.ok) break;
+            remaining -= count;
           }
-          current = paid.stacks;
-          journal.push(...taken.journal, ...paid.journal);
-          market.record?.({ sell: { familyId: sale.familyId, worth: sale.worth } });
-          return serializeInventoryTag(
-            { ...answered, price: sale.price },
-            { ok: true, count: request.count, now: took.now ?? 0 },
-          );
+          return parts.join(" ");
         }
         if (request.action === "reveal") {
           // A fake shown for what it truly is (1.79): the stack the name finds in who's bag becomes its

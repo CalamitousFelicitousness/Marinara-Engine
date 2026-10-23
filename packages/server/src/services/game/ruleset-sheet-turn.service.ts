@@ -34,6 +34,10 @@ import {
   type GameInventoryStack,
   type RulesetItemBook,
   readRulesetPartySheet,
+  applyGameInventoryTags,
+  createInventoryTagRegex,
+  parseInventoryTagBody,
+  type GameInventoryParty,
 } from "@marinara-engine/shared";
 import type { DB } from "../../db/connection.js";
 import { logger } from "../../lib/logger.js";
@@ -159,6 +163,10 @@ export async function loadGameRulesetSheetContext(
    *  Master was never shown. Omitted, the pin is resolved here. */
   resolved?: ResolvedGameRuleset | null,
   regenerateMessageId?: string | null,
+  /** The reply whose sheet commands the context is for, with the party its inventory tags name: what
+   *  it puts on or takes off counts on the sheets its commands read (an Amulet of Health put on, then
+   *  a heal to the new maximum, in one reply). */
+  reply?: { content: string; party: GameInventoryParty },
 ): Promise<GameRulesetSheetContext | null> {
   const chat = await createChatsStorage(db).getById(chatId);
   if (!chat) return null;
@@ -185,9 +193,11 @@ export async function loadGameRulesetSheetContext(
     const { loadGameInventoryItemBook } = await import("./game-inventory.service.js");
     const book = await loadGameInventoryItemBook(db, { metadata: meta, resolved: pinned, playerName }, "game-master");
     if (book) {
+      const worn = reply ? replyWearTags(reply.content) : "";
+      const wearing = worn ? applyGameInventoryTags(worn, stacks, reply!.party, undefined, book).stacks : stacks;
       const itemsOf = rulesetCardItems(
         book,
-        stacks,
+        wearing,
         built.map((card) => card.name),
         playerName,
       );
@@ -206,6 +216,19 @@ export async function loadGameRulesetSheetContext(
       )?.build ?? null,
     playerName,
   };
+}
+
+/** The reply's inventory tags that put something on or take it off, and nothing else, as one text. */
+function replyWearTags(content: string): string {
+  if (!content.includes("[")) return "";
+  const wear = new Set(["equip", "unequip", "bind", "unbind"]);
+  return [...content.matchAll(createInventoryTagRegex())]
+    .filter((match) => {
+      const action = parseInventoryTagBody(match[1] ?? "")?.action;
+      return action !== undefined && wear.has(action);
+    })
+    .map((match) => match[0])
+    .join(" ");
 }
 
 /** Whether this reply asks to use something out of a catalog. Every other command is answered from

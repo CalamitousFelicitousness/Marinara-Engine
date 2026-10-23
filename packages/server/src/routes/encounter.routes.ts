@@ -160,6 +160,35 @@ async function buildCharacterContext(
   return ctx;
 }
 
+/** A ruleset game with no persona plays its first character card as the player, as its sheets, bags
+ *  and fights do: a fight is set up and told around that character, never a "User" with no sheet. */
+function withStandIn(
+  identity: { personaName: string; personaCtx: string; found: boolean },
+  chatMeta: Record<string, unknown> | null,
+): { personaName: string; personaCtx: string } {
+  const firstCard = Array.isArray(chatMeta?.gameCharacterCards)
+    ? (chatMeta.gameCharacterCards as Array<{ name?: unknown }>)[0]?.name
+    : undefined;
+  const standIn =
+    !identity.found && chatMeta?.gameRuleset != null && typeof firstCard === "string" && firstCard.trim()
+      ? firstCard.trim()
+      : undefined;
+  if (!standIn) return { personaName: identity.personaName, personaCtx: identity.personaCtx };
+  return {
+    personaName: standIn,
+    personaCtx: `Name: ${standIn}\nThe player has no persona of their own: they direct the whole party, which ${standIn} leads.`,
+  };
+}
+
+function readChatMeta(raw: unknown): Record<string, unknown> | null {
+  if (typeof raw !== "string") return (raw as Record<string, unknown> | null) ?? null;
+  try {
+    return JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Build context from the chat's selected Persona or character identity.
  * Chats without an explicit identity remain Persona-less in combat prompts.
@@ -177,7 +206,7 @@ async function buildPersonaContext(
     personaCharacterId,
     mode: chatMode,
   });
-  if (!persona) return { personaName: "User", personaCtx: "No persona information available." };
+  if (!persona) return { personaName: "User", personaCtx: "No persona information available.", found: false };
   let ctx = `Name: ${persona.name}\n`;
   const description = cardPromptText(persona.description);
   const personality = cardPromptText(persona.personality);
@@ -227,7 +256,7 @@ async function buildPersonaContext(
       ctx += `- Attributes: ${personaRpg.attributes.map((a) => `${a.name} ${a.value}`).join(", ")}\n`;
     }
   }
-  return { personaName: persona.name, personaCtx: ctx };
+  return { personaName: persona.name, personaCtx: ctx, found: true };
 }
 
 /** Get the latest game state context string for the chat. */
@@ -953,7 +982,7 @@ export async function encounterRoutes(app: FastifyInstance) {
 
       const characterIds: string[] = JSON.parse(chat.characterIds as string);
       const characterCtx = await buildCharacterContext(chars, characterIds, chat.id);
-      const { personaName, personaCtx } = await buildPersonaContext(
+      const identity = await buildPersonaContext(
         chars,
         chat.personaId ?? null,
         chat.mode,
@@ -970,6 +999,7 @@ export async function encounterRoutes(app: FastifyInstance) {
       } else {
         chatMeta = (chat.metadata as Record<string, unknown> | null) ?? null;
       }
+      const { personaName, personaCtx } = withStandIn(identity, chatMeta);
       const combatStyle =
         (chatMeta?.gameCombatStyle as string | undefined) ??
         ((chatMeta?.gameSetupConfig as Record<string, unknown> | undefined)?.combatStyle as string | undefined) ??
@@ -1145,12 +1175,9 @@ export async function encounterRoutes(app: FastifyInstance) {
 
       const characterIds: string[] = JSON.parse(chat.characterIds as string);
       const characterCtx = await buildCharacterContext(chars, characterIds, chat.id);
-      const { personaName, personaCtx } = await buildPersonaContext(
-        chars,
-        chat.personaId ?? null,
-        chat.mode,
-        chat.personaCharacterId,
-        chat.id,
+      const { personaName, personaCtx } = withStandIn(
+        await buildPersonaContext(chars, chat.personaId ?? null, chat.mode, chat.personaCharacterId, chat.id),
+        readChatMeta(chat.metadata),
       );
       const spellbookCtx = await loadSpellbookContext(spellbookId);
 
@@ -1256,12 +1283,9 @@ export async function encounterRoutes(app: FastifyInstance) {
 
       const characterIds: string[] = JSON.parse(chat.characterIds as string);
       const characterCtx = await buildCharacterContext(chars, characterIds, chat.id);
-      const { personaName, personaCtx } = await buildPersonaContext(
-        chars,
-        chat.personaId ?? null,
-        chat.mode,
-        chat.personaCharacterId,
-        chat.id,
+      const { personaName, personaCtx } = withStandIn(
+        await buildPersonaContext(chars, chat.personaId ?? null, chat.mode, chat.personaCharacterId, chat.id),
+        readChatMeta(chat.metadata),
       );
 
       const prompt = buildSummaryPrompt(

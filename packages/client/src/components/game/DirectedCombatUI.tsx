@@ -86,6 +86,16 @@ export function DirectedCombatUI(props: Props) {
             {t("game.combat.director.retry")}
           </button>
         )}
+        {/* A battle that cannot be read is no dead end (2026-10-23 playtest): the party walks out of
+            it, nothing changed, and the story goes on. */}
+        {error && (
+          <button
+            onClick={() => props.onCombatEnd("flee", { outcome: "flee", rounds: 0, party: [], enemies: [] })}
+            className="ml-3 min-h-11 px-3"
+          >
+            {t("game.combat.director.leave")}
+          </button>
+        )}
       </div>
     );
   const name = (id?: string) => [...s.party, ...s.enemies].find((u) => u.id === id)?.name ?? "";

@@ -66,6 +66,7 @@ import {
   type RulesetLayerOptions,
   type RulesetSheetBuild,
   type RulesetBuilderRatingTarget,
+  rulesetListRollNotation,
   workOutRulesetListRow,
 } from "@marinara-engine/shared";
 import { rulesetCatalogQuery } from "../../hooks/use-capability-packages";
@@ -74,6 +75,7 @@ import { visibleCatalogEntries } from "../../lib/ruleset-catalog";
 import { rulesetCheckValueText } from "../../lib/ruleset-resolution";
 import { DraftNumberInput } from "../ui/DraftNumberInput";
 import { clamp, inputClass, labelClass, TypedInput } from "./RulesetTypedInput";
+import { RollCellButton, rollRulesetCell } from "./RulesetRollCellButton";
 
 /** A bonus with its sign, as a sheet prints one. */
 const signed = (value: number) => (value > 0 ? `+${value}` : String(value));
@@ -278,6 +280,9 @@ export function RulesetSheetBuilder({
   const builder = definition.sheet.builder!;
   const [stepId, setStepId] = useState(builder.steps[0]!.id);
   const [freeEdit, setFreeEdit] = useState(false);
+  // A rows step's "roll all" (hit point rolls) while its throws are out, and whether one failed.
+  const [allRolling, setAllRolling] = useState(false);
+  const [rollAllFailed, setRollAllFailed] = useState(false);
   const [openInfo, setOpenInfo] = useState<string | null>(null);
   /** What a long catalog step is narrowed to, by name: a wizard's spells. */
   const [searches, setSearches] = useState<Record<string, string>>({});
@@ -1072,6 +1077,14 @@ export function RulesetSheetBuilder({
       onApply(applied.build, applied.state);
     };
     const blank = (cell: unknown) => cell === undefined || cell === "";
+    // The player's own rows' rolled cells still empty that know what to throw (a hit point roll).
+    const rollable = own.flatMap(({ row, index }) =>
+      columns.flatMap((column) => {
+        if (column.type !== "number" || !column.roll || !blank(row[column.id])) return [];
+        const notation = rulesetListRollNotation(definition, build, column, row, evaluated);
+        return notation ? [{ index, column: column.id, notation, min: column.min, max: column.max }] : [];
+      }),
+    );
     const complete = own.filter(({ row }) => !(current.required ?? []).some((id) => blank(row[id]))).length;
     // A catalog to copy rows from (1.159): each copy is the player's own row, priced on its own.
     const copies = current.from
@@ -1142,6 +1155,25 @@ export function RulesetSheetBuilder({
                       ariaLabel={`${list.label} ${position + 1}: ${column.label}`}
                       disabled={column.type === "number" && !!column.sum}
                     />
+                    {/* A rolled cell (1.85) is thrown with the Engine's dice here as on All fields. */}
+                    {column.type === "number" && column.roll && (
+                      <RollCellButton
+                        notation={rulesetListRollNotation(definition, build, column, row, evaluated)}
+                        ariaLabel={`${list.label} ${position + 1}: ${column.label}`}
+                        onRolled={(total) =>
+                          write(
+                            rawRows.map((each, i) =>
+                              i === index
+                                ? workOutRulesetListRow(list, {
+                                    ...each,
+                                    [column.id]: clamp(total, column.min, column.max),
+                                  })
+                                : each,
+                            ),
+                          )
+                        }
+                      />
+                    )}
                   </label>
                 );
               })}
@@ -1182,6 +1214,38 @@ export function RulesetSheetBuilder({
           <Plus size={12} aria-hidden="true" />
           {t("ui.rulesets.sheet.addRow")}
         </button>
+        {rollable.length > 1 && (
+          <button
+            type="button"
+            disabled={allRolling}
+            onClick={() => {
+              setAllRolling(true);
+              setRollAllFailed(false);
+              // Every empty rolled cell at once, written together, so no throw overwrites another.
+              void Promise.all(rollable.map((cell) => rollRulesetCell(cell.notation)))
+                .then((totals) => {
+                  const next = [...rawRows];
+                  rollable.forEach((cell, n) => {
+                    next[cell.index] = workOutRulesetListRow(list, {
+                      ...next[cell.index],
+                      [cell.column]: clamp(totals[n]!, cell.min, cell.max),
+                    });
+                  });
+                  write(next);
+                })
+                .catch(() => setRollAllFailed(true))
+                .finally(() => setAllRolling(false));
+            }}
+            className={`${buttonClass} ml-2`}
+          >
+            {t("ui.rulesets.builder.rollAll", { count: rollable.length })}
+          </button>
+        )}
+        {rollAllFailed && (
+          <span role="status" className="ml-2 text-[0.625rem] text-[var(--marinara-app-accent-static)]">
+            {t("ui.rulesets.sheet.rollFailed")}
+          </span>
+        )}
         {copies.length > 0 && (
           <select
             value=""

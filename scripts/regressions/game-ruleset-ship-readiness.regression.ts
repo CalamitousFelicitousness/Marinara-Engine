@@ -127,6 +127,7 @@ const example = () => JSON.parse(readSource("docs/development/ruleset-5e-2014.ex
     "game.ruleset.sheet.restDice",
     "game.ruleset.sheet.restDiceAria",
     "game.ruleset.sheet.stateNotReady",
+    "ui.rulesets.builder.rollAll",
   ])
     assert.ok(messages[key], `en.json is missing ${key}`);
 }
@@ -195,6 +196,14 @@ const example = () => JSON.parse(readSource("docs/development/ruleset-5e-2014.ex
   const builder = readSource("packages/client/src/components/rulesets/RulesetSheetBuilder.tsx");
   assert.match(builder, /!current\.field &&\s+rulesetBuilderEntryHeld/u);
   assert.match(builder, /\/\^\[a-z0-9_-\]\+\$\/u\.test\(value\)/u);
+  // A rows step throws its rolled cells (hit point rolls) as All fields does, one or all at once.
+  assert.match(
+    builder,
+    /<RollCellButton\s+notation=\{rulesetListRollNotation\(definition, build, column, row, evaluated\)\}/u,
+  );
+  assert.match(builder, /Promise\.all\(rollable\.map\(\(cell\) => rollRulesetCell\(cell\.notation\)\)\)/u);
+  const editorSource = readSource("packages/client/src/components/rulesets/RulesetSheetEditor.tsx");
+  assert.match(editorSource, /import \{ RollCellButton \} from "\.\/RulesetRollCellButton";/u);
 }
 
 // ── The sheet's saves, and the setup's cards ──

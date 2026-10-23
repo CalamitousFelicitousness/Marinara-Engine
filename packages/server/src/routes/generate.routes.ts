@@ -9789,6 +9789,11 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 input.chatId,
                 turnGameRuleset,
                 input.regenerateMessageId,
+                // What the reply puts on counts on the sheets its commands read.
+                {
+                  content: fullResponse,
+                  party: { player: gameStandIn ?? (personaName || undefined), members: canonicalGamePartyNames },
+                },
               );
               turnSheetContext = sheetContext;
               if (sheetContext) {

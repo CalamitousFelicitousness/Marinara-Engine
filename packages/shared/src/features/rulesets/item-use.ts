@@ -82,7 +82,7 @@ export type RulesetItemUseRefusal =
 
 /** One thing a use did to its user's sheet. */
 export interface RulesetItemUsePart {
-  kind: "heal" | "temporary" | "restore" | "condition" | "raise";
+  kind: "heal" | "temporary" | "restore" | "condition" | "raise" | "harm";
   /** What was rolled and added up, for everything but a condition. */
   amount?: number;
   rolls?: number[];
@@ -90,6 +90,8 @@ export interface RulesetItemUsePart {
   label?: string;
   /** The sheet's own words for where it now stands ("Grit 6/11"). */
   now?: string;
+  /** Harm's save, as said ("Constitution save 9 against 13, failed"). */
+  save?: string;
 }
 
 export interface RulesetItemUseSaid {
@@ -198,9 +200,11 @@ export function useRulesetItemOutsideFight(input: {
   if (gate === undefined) return { ok: false, reason: "no-use" };
   const works = gate?.success !== false;
 
-  // What it does to its user: a heal or a buff not aimed at the other side. Anything else is for
-  // somebody else, and outside a fight that is the story's to tell.
+  // What it does to its user: a heal or a buff not aimed at the other side, or harm aimed at the
+  // user itself (a Potion of Poison drunk). Anything else is for somebody else, and outside a fight
+  // that is the story's to tell.
   const onUser = works && (use.kind === "heal" || use.kind === "buff") && use.targets !== "enemy";
+  const harmsUser = works && use.kind === "attack" && use.targets === "self";
   let live = user.live;
   const parts: RulesetItemUsePart[] = [];
   const sheetValue = (ref: Parameters<typeof resolveRulesetValueRef>[2]) =>
@@ -348,6 +352,77 @@ export function useRulesetItemOutsideFight(input: {
     }
   }
 
+  // Harm on its user (2026-10-23 playtest): its save against its difficulty, then its damage (none or
+  // half on a made save) and, failed, what it applies. A Potion of Poison's 3d6 and DC 13.
+  if (harmsUser) {
+    const health = definition.combat?.health ?? definition.battle?.health;
+    let saved = false;
+    let saveSaid: string | undefined;
+    if (use.save && use.saveDifficulty !== undefined) {
+      const held = rulesetSheetItems({ itemOf: input.itemOf }, stacks, stack.holder);
+      const evaluated = evaluateRulesetSheetLive(definition, user.build, live, held);
+      const save = definition.sheet.saves.find((one) => one.id === use.save!.save);
+      const target = save
+        ? { type: "save" as const, id: save.id, label: save.label, ...(save.ability ? { ability: save.ability } : {}) }
+        : null;
+      const modifier =
+        Math.trunc(rulesetCheckModifier(evaluated, target)) +
+        rulesetCheckAdjust(definition, user.build, evaluated, target);
+      const thrown = rollGateOutsideFight(
+        definition,
+        { build: user.build, live },
+        held,
+        {
+          target,
+          modifier,
+          difficulty:
+            typeof use.saveDifficulty === "number"
+              ? use.saveDifficulty
+              : resolveRulesetValueRef(definition, user.build, use.saveDifficulty, evaluated),
+        },
+        roll,
+      );
+      saved = thrown.success;
+      const named = save?.label ?? use.save.save;
+      saveSaid = `${/\bsave$/iu.test(named) ? named : `${named} save`} ${thrown.total} against ${thrown.difficulty}, ${saved ? "made" : "failed"}`;
+    }
+    const dealt = rolled(use.amount);
+    const amount = dealt
+      ? saved
+        ? use.save?.onSuccess === "half"
+          ? Math.floor(dealt.total / 2)
+          : 0
+        : dealt.total
+      : 0;
+    if (dealt && health && amount > 0) {
+      const now =
+        "track" in health
+          ? write({ op: "damage", track: health.track, kind: "", amount: 1 })
+          : write({ op: "damage", pool: health.pool, amount });
+      if (now !== undefined) {
+        const pool = "pool" in health ? health.pool : health.track;
+        const label = definition.sheet.live.pools.find((entry) => entry.id === pool)?.label ?? pool;
+        parts.push({
+          kind: "harm",
+          amount,
+          rolls: dealt.rolls,
+          ...(use.damageType ? { label: use.damageType } : {}),
+          now: "pool" in health ? `${label} ${now}` : now,
+          ...(saveSaid ? { save: saveSaid } : {}),
+        });
+      }
+    } else if (saveSaid) parts.push({ kind: "harm", amount: 0, rolls: dealt?.rolls ?? [], save: saveSaid });
+    if (!saved)
+      for (const applies of use.applies ?? []) {
+        if (applies.when && !sheetWithin(applies.when)) continue;
+        if (!write({ op: "condition", condition: applies.condition, active: true })) continue;
+        const label =
+          definition.sheet.live.conditions.find((condition) => condition.id === applies.condition)?.label ??
+          applies.condition;
+        parts.push({ kind: "condition", label });
+      }
+  }
+
   // Used again before its user rested (1.728): past the first such use, its save, failed costing them.
   const again = use.againBeforeRest;
   const usedBefore = again ? Math.min(100, stack.usesLeft?.a ?? 0) : 0;
@@ -450,7 +525,7 @@ export function useRulesetItemOutsideFight(input: {
   // Charges spent write no journal line of their own, so the use is said as one.
   const journal =
     spent.journal.length > 0 ? spent.journal : [{ item: stack.name, action: "used" as const, quantity: 1 }];
-  const aimed = works && !onUser && facts ? rulesetItemUseDoes(facts).join(", ") : undefined;
+  const aimed = works && !onUser && !harmsUser && facts ? rulesetItemUseDoes(facts).join(", ") : undefined;
   return {
     ok: true,
     stacks: spent.stacks,
@@ -626,6 +701,8 @@ export function rulesetItemUseLine(said: RulesetItemUseSaid): string {
     if (part.kind === "temporary") return `${part.amount} temporary points${now}`;
     if (part.kind === "restore") return `restores ${part.amount} ${part.label}${now}`;
     if (part.kind === "raise") return `raises ${part.label} by ${part.amount} for good${now}`;
+    if (part.kind === "harm")
+      return `${part.save ? `${part.save}, ` : ""}${part.amount ? `takes ${part.amount}${part.label ? ` ${part.label}` : ""}${now}` : "takes nothing"}`;
     return `${part.label}`;
   });
   const gate = said.gate

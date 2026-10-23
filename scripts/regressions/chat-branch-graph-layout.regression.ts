@@ -83,6 +83,34 @@ const allOpen = layout([root, branch, nested], entries, "all");
 assert.equal(allOpen.gaps.length, 0);
 assert.equal(allOpen.columns.length, 300);
 
+// Given the window's room, the shortest runs unfold first, as many as fit, and the dots spread out.
+const fitted = (width: number) =>
+  layoutChatBranchGraph(
+    buildChatBranchRows([root, branch, nested]),
+    new Map(entries.map((item) => [item.chatId, item])),
+    [],
+    { width, height: 200 },
+  );
+assert.deepEqual(fitted(300).gaps, collapsed.gaps, "a narrow window folds what it always did, and scrolls");
+assert.equal(fitted(300).width, collapsed.width);
+assert.deepEqual(fitted(3000).gaps, [{ from: 4, to: 146 }], "the 128-message run opens before the 143 one");
+const wide = fitted(3000);
+assert.ok(wide.width * wide.scale <= 3000);
+assert.ok((wide.xOf(170) - wide.xOf(169)) * wide.scale > 16, "left-over room spreads the dots");
+assert.equal(fitted(6000).gaps.length, 0);
+assert.equal(wide.laneHeight, 48, "lanes grow with the window, up to a limit");
+assert.equal(fitted(300).scale, 1, "a graph that doesn't fit is never zoomed out");
+const roomy = layoutChatBranchGraph(
+  buildChatBranchRows([root, branch]),
+  new Map([entry("root", 5, null), entry("branch", 5, 4)].map((item) => [item.chatId, item])),
+  [],
+  { width: 1000, height: 400 },
+);
+assert.equal(roomy.scale, 2, "a small graph zooms in, up to twice its size");
+assert.equal(roomy.xOf(1) - roomy.xOf(0), 48, "then its dots spread out, up to a limit");
+assert.equal(roomy.laneHeight, 48);
+assert.ok(roomy.width * roomy.scale <= 1000 && roomy.height * roomy.scale <= 400);
+
 // A fork inside history its parent copied is drawn from the lane that actually holds the message.
 const early = chat("early", "2026-10-05T00:00:00.000Z", "branch");
 const withEarly = layout(

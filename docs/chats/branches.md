@@ -51,7 +51,7 @@ The branch graph shows where each branch split off, which the list cannot.
 1. Open the **Chat Branches** section.
 2. Click the tree button in the section's header, next to the **?** help button. In a popped-out Chat Branches window, it sits in the title bar. Click it again to close the graph.
 
-The graph opens in its own window, which you can move and resize. On a phone, it opens as a sheet.
+The graph opens in its own window, which you can move and resize. On a phone, it opens as a sheet. The graph fills the window: a bigger window folds fewer stretches, and a graph with room to spare zooms in and spreads out.
 
 - Each chat in the group gets one row, in the same tree order as the chat list. Messages run left to right, one dot per message. Grey dots are your messages, accent-coloured dots are character replies, and hollow rings are narrator or system messages.
 - A branch draws only its own messages. A line joins it to the message it was branched from, so you can see exactly where it split off.

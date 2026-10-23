@@ -161,6 +161,8 @@ export async function injectGameGmPromptRuntime(args: {
   selectedGameStateSnapshotPromise: Promise<any | null>;
   mappedMessages: Array<{ role: string }>;
   personaName: string;
+  /** Whether the chat has a persona or a character playing the player. Absent counts as having one. */
+  hasPlayerIdentity?: boolean;
   resolvePromptMacros(value: string): string;
 }): Promise<GameGmPromptRuntime> {
   const setupConfig =
@@ -395,6 +397,7 @@ export async function injectGameGmPromptRuntime(args: {
     partyCards,
     playerName: args.personaName,
     playerCard,
+    playerIsParty: !playerCard && args.hasPlayerIdentity === false && partyNames.length > 0,
     gmCharacterCard,
     difficulty: (setupConfig?.difficulty as string) || "normal",
     // An active encounter keeps the style it started with. Legacy snapshots did

@@ -205,6 +205,95 @@ class StreamProgress(unittest.TestCase):
                 outcome, finding, _, _ = reviewer.judge(NS(anchorable={}), moved, verdict)
             self.assertEqual((outcome, finding.fix_hint, finding.repair_contract), ("confirmed", "fix", contract))
 
+    def test_confirmed_carried_finding_survives_incremental_publication(self):
+        full = {"f.py": {"RIGHT": {10, 20}, "LEFT": set()}}
+        incremental = {"f.py": {"RIGHT": {20}, "LEFT": set()}}
+        candidate = reviewer.Finding("low", "f.py", 10, "Carried defect", "Still broken.", "Fix it", segment="carried")
+        with patch.object(reviewer, "evidence_grounded", return_value=True):
+            outcome, finding, _, _ = reviewer.judge(NS(anchorable=full), candidate, {"verdict": "confirmed"})
+        self.assertEqual((outcome, finding.outside_diff), ("confirmed", False))
+        report = {
+            "mode": "incremental", "base_ref": "staging", "review_base": "previous", "head_sha": "a" * 40,
+            "findings": [reviewer.dataclasses.asdict(finding)],
+            "nitpicks": [{"path": "f.py", "line": 10, "title": "Old note", "body": "Not newly changed."}],
+        }
+        with tempfile.TemporaryDirectory() as tree, \
+                patch.object(reviewer, "git_out", return_value="full-pr"), \
+                patch.object(reviewer, "touched_lines", side_effect=lambda base: full if base == "full-pr" else incremental):
+            # New, unverified finder output and nitpicks remain limited to this increment.
+            fresh, _, invalid = reviewer.validate_review_items(report, "previous")
+            self.assertEqual(fresh, [])
+            self.assertTrue(invalid)
+            previous_dir = reviewer.os.getcwd()
+            try:
+                reviewer.os.chdir(tree)
+                pathlib.Path("review.json").write_text(reviewer.json.dumps(report))
+                reviewer.render_review(NS(review_json="review.json", base=None, mode=None))
+                published = reviewer.json.loads(pathlib.Path("review.json").read_text())["published"]
+                inline = reviewer.json.loads(pathlib.Path("inline-comments.json").read_text())
+                self.assertEqual(published, {"defects": 1, "notes": 0, "verdict": "Repair Required"})
+                self.assertEqual([(item["path"], item["line"]) for item in inline], [("f.py", 10)])
+                self.assertIn("Carried defect", pathlib.Path("review.md").read_text())
+            finally:
+                reviewer.os.chdir(previous_dir)
+
+    def test_failed_finder_settles_active_work_and_cancels_queued_work(self):
+        active = threading.Event()
+        release = threading.Event()
+        shutdown = threading.Event()
+        returned = threading.Event()
+        completed = threading.Event()
+        calls = []
+        futures = []
+        errors = []
+        lock = threading.Lock()
+        class TrackedPool(ThreadPoolExecutor):
+            def submit(self, *args, **kwargs):
+                future = super().submit(*args, **kwargs)
+                futures.append(future)
+                return future
+            def shutdown(self, *args, **kwargs):
+                shutdown.set()
+                return super().shutdown(*args, **kwargs)
+        deadline = reviewer.time.monotonic() + 600
+        def finder(*args, **kwargs):
+            with lock:
+                index = len(calls)
+                calls.append(kwargs["deadline"])
+            if index == 0:
+                if not active.wait(3): raise RuntimeError("Fixture worker did not start")
+                raise RuntimeError("First finder failed")
+            active.set()
+            if not release.wait(3): raise RuntimeError("Fixture worker was not released")
+            completed.set()
+            return {"findings": []}
+        def run():
+            try:
+                reviewer.run_finders(NS(packets=["packet"], system="system", deadline=deadline, cache_key="key"))
+            except Exception as error:
+                errors.append(str(error))
+            finally:
+                returned.set()
+        with patch.object(reviewer, "ThreadPoolExecutor", TrackedPool), \
+                patch.object(reviewer, "MAX_CONCURRENCY", 2), patch.object(reviewer, "CACHE_STAGGER_SECONDS", 0), \
+                patch.object(reviewer, "run_agent", finder), patch.object(reviewer, "finder_count", return_value=4), \
+                patch.object(reviewer, "finder_instructions", return_value="find"):
+            thread = threading.Thread(target=run)
+            thread.start()
+            try:
+                self.assertTrue(shutdown.wait(3))
+                self.assertFalse(returned.wait(0.05), "failure escaped while a finder was still active")
+                self.assertFalse(completed.is_set())
+            finally:
+                release.set()
+                thread.join(3)
+            self.assertFalse(thread.is_alive())
+        self.assertEqual(errors, ["First finder failed"])
+        self.assertTrue(completed.is_set())
+        self.assertTrue(any(future.cancelled() for future in futures))
+        self.assertTrue(all(future.done() for future in futures))
+        self.assertTrue(all(value == deadline - reviewer.CHECKER_RESERVE_SECONDS for value in calls))
+
     def test_carried_entries_mark_a_cut_body_and_fit_their_budget(self):
         contract = {key: ["y" * 400] * 5 for key in ("invariant", "related_failure_paths", "adjacent_traps", "acceptable_fix_shapes", "expected_proof")}
         candidates = [reviewer.Finding("low", "f.py", n, "T", "x" * 700, "fix", contract) for n in range(1, reviewer.MAX_VERIFIED_CANDIDATES + 1)]

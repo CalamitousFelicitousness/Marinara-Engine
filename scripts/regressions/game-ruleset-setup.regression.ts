@@ -47,6 +47,12 @@ const installed: InstalledRuleset = { packageId: "ruleset-5e-2014", definition: 
   // No sheet, or something that is not one: a blank default, never invented numbers.
   assert.deepEqual(copyRulesetSheetForGame(fiveE, undefined), createRulesetSheetEnvelope(fiveE));
   assert.deepEqual(copyRulesetSheetForGame(fiveE, "garbage"), createRulesetSheetEnvelope(fiveE));
+  // The guided builder's picks go along with the build, so the game's copy opens as built.
+  const built = { ...stored, builder: { picks: { race: ["elf"] } } };
+  const builtCopy = copyRulesetSheetForGame(fiveE, built) as typeof built;
+  assert.deepEqual(builtCopy.builder, { picks: { race: ["elf"] } });
+  builtCopy.builder.picks.race.push("dwarf");
+  assert.deepEqual(built.builder.picks.race, ["elf"], "the copy's picks are its own");
   // A sheet saved under an older sheet version is carried forward to the current one.
   assert.equal(copyRulesetSheetForGame({ ...fiveE, sheet: { ...fiveE.sheet, version: 4 } }, stored).v, 4);
 }

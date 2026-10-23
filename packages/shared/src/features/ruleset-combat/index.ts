@@ -114,6 +114,7 @@ export {
 export {
   createRulesetEncounter,
   currentRulesetActor,
+  rulesetIsAttack,
   refreshRulesetMovement,
   rulesetActiveConditions,
   rulesetWardsOn,
@@ -230,6 +231,7 @@ export {
   rulesetCriticalFromAdjacent,
   rulesetCoverBonus,
   rulesetDefenseAgainst,
+  rulesetForecastsByTarget,
   rulesetForbiddenTargets,
   rulesetFreeStrike,
   rulesetGrantedStandard,

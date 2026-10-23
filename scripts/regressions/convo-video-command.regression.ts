@@ -530,11 +530,13 @@ try {
         prompt:
           "Camera: slow dolly\nCAMERA: static\nShot_1: close-up\nAction: Ana waves\nShot2: wide\nAna: I am home.\n" +
           "Director: slow pan\nTitle: dusk over the pier\nText: on-screen caption\n" +
+          "Continuity: her coat stays red\nOverall Soundscape: wind, gulls\nAna Lee: see you.\n" +
+          "Negative prompt: blurry, extra fingers\n" +
           "She smiles: it is late.\nhttps://example.com/clip",
       },
     ]),
     "\n[Ana sent a video message: slow dolly static close-up Ana waves wide Ana: I am home. slow pan dusk over the pier " +
-      "on-screen caption She smiles: it is late. " +
+      "on-screen caption her coat stays red wind, gulls Ana Lee: see you. She smiles: it is late. " +
       "https://example.com/clip]",
   );
   assert.equal(

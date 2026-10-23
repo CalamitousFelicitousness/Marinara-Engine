@@ -120,12 +120,16 @@ export function conversationPromptHistoryContent(
 const SENT_SELFIE_DESCRIPTION_MAX_CHARS = 600;
 
 // A field label starts a line: a lowercase word ("camera: …", "shot_1: …"), or in any case a word_word
-// ("OVERALL_SOUNDSCAPE: …", "Shot_1: …") or a known field word ("Camera: …", "ACTION: …", "Shot2: …"). A word_word:
-// inside a sentence, a name ("Ana: …") and a link ("https://…") are left alone.
-const LINE_START_LABEL_RE = /^([ \t]*)([A-Za-z][A-Za-z0-9]*(?:_[A-Za-z0-9]+)*)[ \t]*:(?!\/\/)/gmu;
+// ("OVERALL_SOUNDSCAPE: …", "Shot_1: …"), a known field word ("Camera: …", "ACTION: …", "Shot2: …") or a few words
+// ending in one ("Overall Soundscape: …"). A word_word: inside a sentence, a name ("Ana: …", "Ana Lee: …") and a link
+// ("https://…") are left alone: a title-case label outside the list looks exactly like a name.
+const LINE_START_LABEL_RE =
+  /^([ \t]*)((?:[A-Za-z][A-Za-z0-9]* ){0,2}[A-Za-z][A-Za-z0-9]*(?:_[A-Za-z0-9]+)*)[ \t]*:(?!\/\/)/gmu;
+// A negative prompt lists what the clip must not show, so its line goes whole, as its JSON field does.
+const NEGATIVE_PROMPT_LINE_RE = /^[ \t]*negative(?:[ _]prompt)?[ \t]*:.*$/gimu;
 const FIELD_LABEL_WORDS = new Set(
   (
-    "action angle atmosphere audio background camera caption captions character characters cinematography color " +
+    "action angle atmosphere audio background camera caption captions character characters cinematography color continuity " +
     "colors composition description dialogue director direction duration editing effects environment format framing " +
     "foreground genre lens lighting location mood motion movement music narration notes pacing palette prompt scene " +
     "setting shot shots sound soundscape sfx style subject subjects text timing title tone transition visual visuals " +
@@ -134,11 +138,15 @@ const FIELD_LABEL_WORDS = new Set(
 );
 
 function stripFieldLabels(text: string): string {
-  return text.replace(LINE_START_LABEL_RE, (label, indent: string, word: string) => {
-    const folded = word.toLowerCase();
-    const isLabel = word === folded || folded.includes("_") || FIELD_LABEL_WORDS.has(folded.replace(/\d+$/u, ""));
-    return isLabel ? `${indent} ` : label;
-  });
+  return text
+    .replace(NEGATIVE_PROMPT_LINE_RE, "")
+    .replace(LINE_START_LABEL_RE, (label, indent: string, words: string) => {
+      const folded = words.toLowerCase();
+      const lastWord = folded.split(" ").at(-1)!;
+      const fieldWord = FIELD_LABEL_WORDS.has(lastWord.replace(/\d+$/u, ""));
+      const isLabel = folded.includes(" ") ? fieldWord : words === folded || folded.includes("_") || fieldWord;
+      return isLabel ? `${indent} ` : label;
+    });
 }
 
 /**

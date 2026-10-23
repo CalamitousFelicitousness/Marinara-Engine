@@ -9843,6 +9843,10 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 const thinking = extractLeadingThinkingBlocks(narration, customThinkingTags);
                 narration = thinking.content;
                 if (thinking.thinking) fullThinking = [fullThinking, thinking.thinking].filter(Boolean).join("\n\n");
+                const writtenPlan = extractLeadingGmPlanning(narration);
+                narration = writtenPlan.content;
+                if (writtenPlan.planning)
+                  fullThinking = [fullThinking, writtenPlan.planning].filter(Boolean).join("\n\n");
               } catch (err) {
                 if (generationSignal.aborted) return null;
                 geminiResponseParts = null;

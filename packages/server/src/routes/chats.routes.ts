@@ -1739,20 +1739,6 @@ export async function chatsRoutes(app: FastifyInstance) {
       }
       return updated ? normalizeChatForResponse(updated) : updated;
     }
-    if (typeof incoming.gameCombatStyle === "string") {
-      // A game's ruleset may name the combat styles its games play (1.379): one it leaves out is
-      // refused here, as it is when the game is made.
-      const chatMetadata = parseChatMetadata(chat.metadata);
-      if (chatMetadata.gameRuleset != null) {
-        const resolved = resolveGameRuleset(chatMetadata, await loadRulesetRegistry(app.db));
-        if (resolved.status === "ok" && !rulesetAllowsCombatStyle(resolved.definition, incoming.gameCombatStyle)) {
-          return reply.status(400).send({
-            error: `This game's ruleset plays battles only as ${rulesetCombatStyles(resolved.definition)!.join(", ")}.`,
-            code: "combat_style_not_allowed",
-          });
-        }
-      }
-    }
     if (Object.prototype.hasOwnProperty.call(incoming, "groupChatMode")) {
       // Store only a mode generation understands, so the drawer and the prompt never read it differently.
       incoming.groupChatMode = normalizeGroupChatMode(incoming.groupChatMode);
@@ -1788,39 +1774,59 @@ export async function chatsRoutes(app: FastifyInstance) {
     ) {
       return reply.status(400).send({ error: "slurp2ActivityContextEnabled must be a boolean" });
     }
-    const cancelReplacedAdvancedMemory = (previous: Record<string, unknown>, saved: Record<string, unknown>) => {
-      if (
-        incoming.enableMemoryRecall === true &&
-        !normalizeAdvancedMemorySettings(saved.advancedMemory).enabled &&
-        normalizeAdvancedMemorySettings(previous.advancedMemory).enabled
-      ) {
-        createAdvancedMemoryService(app.db).cancelActiveOperation(req.params.id);
+    return withChatMetadataPatchQueue(req.params.id, async () => {
+      // Check the pair this patch will actually save, after earlier queued changes have landed.
+      // A ruleset-only change must also agree with the saved style (classic when unspecified).
+      if (Object.hasOwn(incoming, "gameRuleset") || Object.hasOwn(incoming, "gameCombatStyle")) {
+        const freshChat = await storage.getById(req.params.id);
+        if (!freshChat) return reply.status(404).send({ error: "Chat not found" });
+        const next = { ...parseChatMetadata(freshChat.metadata), ...incoming };
+        const resolved = resolveGameRuleset(next, await loadRulesetRegistry(app.db));
+        if (
+          resolved.status === "ok" &&
+          !rulesetAllowsCombatStyle(resolved.definition, next.gameCombatStyle as string | null | undefined)
+        ) {
+          return reply.status(400).send({
+            error: `This game's ruleset plays battles only as ${rulesetCombatStyles(resolved.definition)!.join(", ")}.`,
+            code: "combat_style_not_allowed",
+          });
+        }
       }
-    };
-    if (
-      Object.prototype.hasOwnProperty.call(incoming, "hideSummarisedMessages") &&
-      typeof incoming.hideSummarisedMessages === "boolean"
-    ) {
-      const updated = await storage.patchMetadata(
-        req.params.id,
-        async (freshMeta) => ({
-          ...incoming,
-          ...(await summaryHidingPatch(storage, req.params.id, freshMeta, { ...freshMeta, ...incoming })),
-        }),
-        { afterWrite: cancelReplacedAdvancedMemory },
-      );
+      const cancelReplacedAdvancedMemory = (previous: Record<string, unknown>, saved: Record<string, unknown>) => {
+        if (
+          incoming.enableMemoryRecall === true &&
+          !normalizeAdvancedMemorySettings(saved.advancedMemory).enabled &&
+          normalizeAdvancedMemorySettings(previous.advancedMemory).enabled
+        ) {
+          createAdvancedMemoryService(app.db).cancelActiveOperation(req.params.id);
+        }
+      };
+      if (
+        Object.prototype.hasOwnProperty.call(incoming, "hideSummarisedMessages") &&
+        typeof incoming.hideSummarisedMessages === "boolean"
+      ) {
+        const updated = await storage.patchMetadata(
+          req.params.id,
+          async (freshMeta) => ({
+            ...incoming,
+            ...(await summaryHidingPatch(storage, req.params.id, freshMeta, { ...freshMeta, ...incoming })),
+          }),
+          { metadataQueueHeld: true, afterWrite: cancelReplacedAdvancedMemory },
+        );
+        return updated ? normalizeChatForResponse(updated) : updated;
+      }
+      // Rearranging windows or dismissing their hint is a view preference, not new chat activity.
+      const changedKeys = Object.keys(incoming);
+      const viewOnly =
+        changedKeys.length > 0 &&
+        changedKeys.every((key) => key === "windowLayout" || key === "chatSettingsHintDismissed");
+      const updated = await storage.patchMetadata(req.params.id, incoming, {
+        metadataQueueHeld: true,
+        touchUpdatedAt: !viewOnly,
+        afterWrite: cancelReplacedAdvancedMemory,
+      });
       return updated ? normalizeChatForResponse(updated) : updated;
-    }
-    // Rearranging windows or dismissing their hint is a view preference, not new chat activity.
-    const changedKeys = Object.keys(incoming);
-    const viewOnly =
-      changedKeys.length > 0 &&
-      changedKeys.every((key) => key === "windowLayout" || key === "chatSettingsHintDismissed");
-    const updated = await storage.patchMetadata(req.params.id, incoming, {
-      touchUpdatedAt: !viewOnly,
-      afterWrite: cancelReplacedAdvancedMemory,
     });
-    return updated ? normalizeChatForResponse(updated) : updated;
   });
 
   // Mark a chat as having autonomous messages the user has not viewed yet.

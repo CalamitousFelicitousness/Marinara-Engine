@@ -154,7 +154,8 @@ function BranchGraph({ chatId, groupId, compact }: { chatId: string; groupId: st
   }, [groupChats, graph.data, expanded, fit]);
 
   // The graph fills its window: measure the timeline's room, and again whenever the window is resized.
-  const drawn = !!layout && layout.lanes.length >= 2;
+  // The timeline is mounted only when the body draws the graph; an error keeps the last layout but hides it.
+  const drawn = !!layout && !graph.isError && !groupFailed && layout.lanes.length >= 2;
   useLayoutEffect(() => {
     const scroller = scrollRef.current;
     const timeline = timelineRef.current;

@@ -41,11 +41,23 @@ export function extractLeadingGmPlanning(text: string): LeadingPlanningExtractio
 /**
  * A Game Master that calls a tool mid-reply often announces it first ("... in the lamplight — let me get the
  * number."). The announcement is the model talking to itself, not the scene, so it is cut off the end of the text
- * written before the call. Only a final sentence or dash-led clause that says the writer is about to roll, check or
- * look something up is cut; anything before it stays.
+ * written before the call. Only a final sentence or dash-led clause that says the writer is about to roll dice or
+ * get a die's number is cut; anything before it stays. Rolling must be "roll it", "roll for ..." or roll something
+ * dice-shaped, and any other verb must name the number it is after (the number, the save, the damage, how much it
+ * heals), so a line that only sounds like it ("Time to check the cellar before the light goes.") is left alone.
  */
-const TOOL_ANNOUNCEMENT =
-  /(?:^|(?<=[.!?…"'”’*_)\]])\s+|\s*[—–]\s*|\s+-{1,2}\s+)(?:(?:okay|ok|alright|right|now|first|so),?\s+)*(?:let(?:'s|’s| me| us)|i(?:'ll|’ll| will| need to| have to|'m going to|’m going to| am going to)|time to)\s+(?:roll|re-?roll|get|check|see|find out|throw|call|look up|determine|work out|figure out)\b(?:[ \t]+[^\s.!?,;:"“”—–]+){0,10}[ \t]*[.!?:…]*\s*$/i;
+const ANNOUNCEMENT_WORD = String.raw`[ \t]+[^\s.!?,;:"“”—–]+`;
+const DICE_WORD = String.raw`(?:numbers?|results?|rolls?|dice|d\d+|\d*d\d+(?:[+-]\d+)?|totals?|damage|heal(?:s|ing)?|saves?|saving throws?|checks?|outcomes?|odds|dc|modifiers?|bonus|initiative)`;
+const DICE_OBJECT = String.raw`(?:${ANNOUNCEMENT_WORD}){0,4}?[ \t]+${DICE_WORD}(?=[\s.!?:…]|$)(?:[ \t]+(?:for|on|against)(?:${ANNOUNCEMENT_WORD}){1,3})?`;
+const TOOL_ANNOUNCEMENT = new RegExp(
+  String.raw`(?:^|(?<=[.!?…"'”’*_)\]])\s+|\s*[—–]\s*|\s+-{1,2}\s+)` +
+    String.raw`(?:(?:okay|ok|alright|right|now|first|so),?\s+)*` +
+    String.raw`(?:let(?:'s|’s| me| us)|i(?:'ll|’ll| will| need to| have to|'m going to|’m going to| am going to)|time to)\s+` +
+    String.raw`(?:(?:roll|re-?roll|throw)(?:${DICE_OBJECT}|[ \t]+(?:the|a)[ \t]+die|(?:[ \t]+(?:it|them|that|this))?(?:[ \t]+for(?:${ANNOUNCEMENT_WORD}){1,5})?)` +
+    String.raw`|(?:get|check|see|find out|call|look up|determine|work out|figure out)${DICE_OBJECT})` +
+    String.raw`[ \t]*[.!?:…]*\s*$`,
+  "i",
+);
 
 export function stripTrailingToolAnnouncement(text: string): string {
   const match = TOOL_ANNOUNCEMENT.exec(text);

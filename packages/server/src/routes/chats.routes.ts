@@ -4653,6 +4653,7 @@ export async function chatsRoutes(app: FastifyInstance) {
     "geminiParts",
     "generationInfo",
     "generationReplay",
+    "lorebookGenerationTriggers",
     "lorebookScan",
   ]);
 

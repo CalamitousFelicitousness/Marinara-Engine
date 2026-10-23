@@ -27,7 +27,7 @@ const { OpenAIProvider } = await import("../../packages/server/src/services/llm/
 const { replaceBuiltInAgentDefinitions } = await import("../../packages/shared/dist/index.js");
 const { applyAgentLorebookChatSettings } =
   await import("../../packages/server/src/services/generation/agent-lorebook-triggers.js");
-const { captureChatWizardDefaults, wizardDefaultsMetadataPatch } =
+const { captureChatWizardDefaults, reusableChatWizardDefaults, wizardDefaultsMetadataPatch } =
   await import("../../packages/client/src/lib/chat-wizard-defaults.js");
 
 const manifests = ["writer", "tracker"].map((category) => ({
@@ -243,6 +243,24 @@ try {
     undefined,
     "a captured profile cannot copy another chat's agent attachments",
   );
+  await patch(resetChat.id, { disabledSource: { enabled: false, lorebookId: firstBook.id } });
+  const legacyWizardDefaults = captureChatWizardDefaults((await chats.getById(resetChat.id))!);
+  const sourceDefaultsBefore = structuredClone(legacyWizardDefaults);
+  for (const target of [profileTarget, freshProfileTarget]) {
+    const before = (await chats.getById(target.id))!.metadata;
+    const response = await app.inject({
+      method: "PATCH",
+      url: `/api/chats/${target.id}/metadata`,
+      payload: reusableChatWizardDefaults(legacyWizardDefaults).metadata,
+    });
+    assert.equal(response.statusCode, 200, response.body);
+    assert.deepEqual(
+      response.json().metadata.agentLorebookAttachments,
+      JSON.parse(before as string).agentLorebookAttachments,
+      "applying legacy shared wizard defaults preserves only the target chat's existing bindings",
+    );
+  }
+  assert.deepEqual(legacyWizardDefaults, sourceDefaultsBefore, "source/reset snapshot bindings remain intact");
   for (const invalid of [
     [],
     { broken: { enabled: "yes", lorebookId: firstBook.id } },

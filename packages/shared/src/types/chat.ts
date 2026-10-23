@@ -1113,6 +1113,8 @@ export interface MessageExtra {
     impersonateBlockAgents?: boolean;
     impersonatePromptTemplate?: string | null;
   } | null;
+  /** Internal trigger intent captured from the request that generated this message or swipe. */
+  lorebookGenerationTriggers?: string[];
 }
 
 /**

@@ -72,6 +72,7 @@ export async function resolvePackageAgentLorebookEntries(
   const contextSize = normalizeAgentContextSize(parseExtra(config?.settings).contextSize);
   const agentMessages: typeof allMessages = [];
   let last: (typeof allMessages)[number] | undefined;
+  let lastTurn: (typeof allMessages)[number] | undefined;
   let prior: (typeof allMessages)[number] | undefined;
   let lastInput: string | undefined;
   for (let index = allMessages.length - 1; index >= 0; index--) {
@@ -79,6 +80,7 @@ export async function resolvePackageAgentLorebookEntries(
     if (chat.mode === "game" || !isMessageHiddenFromAI(message)) {
       if (!last) last = message;
       else if (!prior && (message.role === "user" || message.role === "assistant")) prior = message;
+      if (!lastTurn && (message.role === "user" || message.role === "assistant")) lastTurn = message;
       if (lastInput === undefined && message.role === "user") lastInput = message.content;
       if (agentMessages.length < contextSize) agentMessages.push(message);
     }
@@ -86,16 +88,31 @@ export async function resolvePackageAgentLorebookEntries(
     if (agentMessages.length === contextSize && lastInput !== undefined && prior) break;
   }
   agentMessages.reverse();
-  const replay = normalizeGenerationReplay(parseExtra(last?.extra).generationReplay);
-  const generationTriggers = resolveLorebookGenerationTriggers(
-    {
-      ...replay,
-      userMessage:
-        replay?.userMessage ?? (last?.role === "user" ? last.content : prior?.role === "user" ? prior.content : null),
-      regenerateMessageId: last?.role === "assistant" && (last.activeSwipeIndex ?? 0) > 0 ? last.id : null,
-    },
-    chat.mode,
-  );
+  const replay = normalizeGenerationReplay(parseExtra(lastTurn?.extra).generationReplay);
+  const storedTriggers: unknown = parseExtra(lastTurn?.extra).lorebookGenerationTriggers;
+  // Accept only complete shapes emitted by the shared resolver for this mode; old transcripts keep their fallback.
+  const savedTriggers = Array.isArray(storedTriggers)
+    ? [
+        resolveLorebookGenerationTriggers({ userMessage: "input" }, chat.mode),
+        resolveLorebookGenerationTriggers({}, chat.mode),
+        resolveLorebookGenerationTriggers({ impersonate: true }, chat.mode),
+        resolveLorebookGenerationTriggers({ regenerateMessageId: "message" }, chat.mode),
+      ].find(
+        (triggers) =>
+          triggers.length === storedTriggers.length && triggers.every((value) => storedTriggers.includes(value)),
+      )
+    : undefined;
+  const generationTriggers =
+    savedTriggers ??
+    resolveLorebookGenerationTriggers(
+      {
+        ...replay,
+        userMessage:
+          replay?.userMessage ?? (last?.role === "user" ? last.content : prior?.role === "user" ? prior.content : null),
+        regenerateMessageId: last?.role === "assistant" && (last.activeSwipeIndex ?? 0) > 0 ? last.id : null,
+      },
+      chat.mode,
+    );
   const books = createLorebooksStorage(db);
   const sourceEntries = (await books.listEntriesByLorebooks([
     selected.lorebookId.trim(),

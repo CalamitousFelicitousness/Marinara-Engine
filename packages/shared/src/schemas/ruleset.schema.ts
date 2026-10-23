@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { GAME_COMBAT_STYLE_ID_PATTERN } from "../types/game.js";
 import { GAME_INVENTORY_MAX_NEW_STACKS, GAME_INVENTORY_MAX_QUANTITY } from "../utils/game-inventory-stacks.js";
 
 // Game Mode rulesets. A ruleset is validated DATA: it parameterises one of a closed set of
@@ -9657,6 +9658,12 @@ const combatObjectSchema = z
       })
       .strict()
       .optional(),
+    /** The combat styles a game on this ruleset may play (Capability API 1.379), by id: `classic`,
+     *  `tactical`, or a style a client registered. The New Game wizard and the game's settings offer
+     *  only these, and a game whose saved style is not among them plays the first one listed. Left out,
+     *  every style is offered. A ruleset whose rules need a board (areas, reach, cover) lists
+     *  `["tactical"]`. */
+    styles: z.array(z.string().regex(GAME_COMBAT_STYLE_ID_PATTERN)).min(1).max(8).optional(),
     /** What one cell of a board is worth in this system's own distance, and what that distance is
      *  called. Declaring it is what makes a fight positionable at all: without it every fight stays
      *  theatre of the mind, and everything below is refused. */
@@ -11533,6 +11540,11 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
           : `Unknown pool "${id}"`,
       );
     } else if (named.indexOf(id) !== index) issue(path, `Duplicate pool "${id}"`);
+  });
+
+  // Each combat style once (1.379).
+  def.combat?.styles?.forEach((id, index, named) => {
+    if (named.indexOf(id) !== index) issue(["combat", "styles", index], `Duplicate combat style "${id}"`);
   });
 
   def.rests.forEach((rest, restIndex) => {

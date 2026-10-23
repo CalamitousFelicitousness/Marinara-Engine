@@ -19,7 +19,7 @@ All five are described in full under [Resolution kinds](#resolution-kinds).
 
 A mechanic that does not fit these shapes cannot be written in a ruleset file. Opposed pools are one example. Each of those needs a new resolution kind inside the Engine, which is a code contribution with tests, not a JSON file. If your system needs one, open a feature request on the Engine repository and describe the mechanic with a few worked rolls. Those worked rolls become the tests.
 
-Game Mode can resolve a fight using Marinara's own combat or your ruleset's rules. An optional `battle` block lends Marinara's combat the numbers on your character sheets: see [Battles](#battles-lending-the-sheet-to-marinaras-combat). An optional `combat` block instead defines how the ruleset resolves the fight: see [Combat](#combat-a-fight-your-own-rules-resolve). The Engine plays those rules today. The game's Combat Preference selects the Classic presentation or, when the ruleset defines distance, a Tactical battlefield.
+Game Mode can resolve a fight using Marinara's own combat or your ruleset's rules. An optional `battle` block lends Marinara's combat the numbers on your character sheets: see [Battles](#battles-lending-the-sheet-to-marinaras-combat). An optional `combat` block instead defines how the ruleset resolves the fight: see [Combat](#combat-a-fight-your-own-rules-resolve). The Engine plays those rules today. The game's Combat Preference selects the Classic presentation or, when the ruleset defines distance, a Tactical battlefield. A ruleset may limit which of these its games play with `combat.styles` (see [Which styles a game may play](#combat-a-fight-your-own-rules-resolve)).
 
 ## Quickstart
 
@@ -3946,6 +3946,26 @@ has no such distance.
 player's game is set to the Tactical combat style. With the Classic style, or on a ruleset without
 `distance`, the fight is theatre of the mind exactly as it was: anybody can be pointed at anybody,
 and nothing below is read at all.
+
+**Which styles a game may play.** `combat.styles` names the combat styles a game on your ruleset may
+play, by id: `classic`, `tactical`, or a style a client registered (up to 8, each once). Left out,
+every style is offered, as before. A ruleset whose rules need a board (areas, reach, cover, flanking)
+says `"styles": ["tactical"]`: the New Game wizard and the game's settings then offer only Tactical,
+and so its fights always have positions. A game already saved on a style you do not list plays the
+first one you do (the first this client can draw, for a registered style), and a game cannot be
+made, or switched in its settings, to a style you leave out. A fight already under way keeps the
+style it began on. The list holds whether or not the combat director is on, so it also narrows
+Marinara's own Classic and Tactical battles on your ruleset. List a built-in style after a
+registered one: a client without that style plays the built-in one. A ruleset using `styles` needs
+Capability API 1.379.
+
+```json
+"combat": {
+  "kind": "attack-vs-defense",
+  "styles": ["tactical"],
+  "distance": { "label": "feet", "perCell": 5 }
+}
+```
 
 **What the player sees.** The board is drawn, with the tactical style's own terrain. Every square is
 a button, reachable with the pointer or the arrow keys, and says what it is, who is on it and what

@@ -4,6 +4,8 @@
  *   - A paralysing hold goes on the most dangerous opponent, never on one already held or one that
  *     cannot be held; a condition worth nothing is not cast at all.
  *   - Healing is worth what is missing: no Second Wind at 35 of 44.
+ *   - Healing a friend waits for a wound worth a turn.
+ *   - A weakness is used, an immunity not wasted on, a regeneration stopped.
  *   - Oil that makes fire hurt more is thrown only where a fire will follow.
  *   - A Counterspell is worth what it stops: a blast at the party far more than a flick.
  */
@@ -176,6 +178,64 @@ try {
     };
     assert.equal(at(35), "smash", "at 35 of 44 it fights");
     assert.equal(at(8), "mend", "at 8 of 44 it mends");
+  }
+
+  // ── Mending a friend waits for a wound worth a turn (I2): never at 85% ──
+  {
+    const cure = {
+      id: "cure",
+      name: "Cure",
+      budget: "action",
+      targets: "ally",
+      range: { normal: 30 },
+      heal: { count: 2, sides: 8, flat: 3 },
+    };
+    const at = (value: number) => {
+      const { encounter, state } = fight({
+        priest: { side: "enemy", block: block([flick, cure]), at: { x: 2, y: 4 } },
+        knight: { side: "enemy", block: block([poke]), at: { x: 3, y: 4 } },
+        foe: { side: "party", block: block([poke]), at: { x: 10, y: 4 } },
+      });
+      const knight = rulesetCombatant(encounter, "knight")!;
+      knight.health = { ...knight.health!, value };
+      return pickRulesetChoice(definition, state, encounter, "priest");
+    };
+    assert.notEqual(at(51)?.option.id, "cure", "at 51 of 60 the friend is left be");
+    const hurt = at(15);
+    assert.equal(hurt?.option.id, "cure", "at 15 of 60 it mends");
+    assert.equal(hurt?.targetId, "knight");
+  }
+
+  // ── A weakness is used, an immunity not wasted on, a regeneration stopped (I1) ──
+  {
+    const burn = {
+      id: "burn",
+      name: "Burn",
+      budget: "action",
+      toHit: 6,
+      range: { normal: 90 },
+      damage: { count: 1, sides: 10, flat: 0, type: "fire" },
+    };
+    const chill = {
+      id: "chill",
+      name: "Chill",
+      budget: "action",
+      toHit: 6,
+      range: { normal: 90 },
+      damage: { count: 1, sides: 10, flat: 1, type: "cold" },
+    };
+    const pick = (extra: Record<string, unknown>) => {
+      const { encounter, state } = fight({
+        mage: { side: "enemy", block: block([burn, chill]), at: { x: 2, y: 4 } },
+        beast: { side: "party", block: block([poke], extra), at: { x: 10, y: 4 } },
+      });
+      return pickRulesetChoice(definition, state, encounter, "mage")?.option.id;
+    };
+    assert.equal(pick({}), "chill", "the harder blow, all else alike");
+    assert.equal(pick({ vulnerable: ["fire"] }), "burn", "fire where fire hurts double");
+    assert.equal(pick({ resist: ["cold"] }), "burn", "not cold where cold is halved");
+    assert.equal(pick({ immune: ["cold"] }), "burn", "never cold where it does nothing");
+    assert.equal(pick({ regenerates: { flat: 10, stoppedBy: ["fire"] } }), "burn", "fire where it stops regrowth");
   }
 
   // ── Oil is worth throwing only where a fire will follow ──

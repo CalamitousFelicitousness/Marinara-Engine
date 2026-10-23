@@ -13,6 +13,7 @@
 
 import {
   rulesetActionAvailable,
+  parseRulesetCombatDice,
   advanceRulesetTurn,
   applyRulesetCombatChoice,
   assignCombatTactics,
@@ -2733,11 +2734,17 @@ function rulesetCandidatesFrom(
           : 1;
       // A Multiattack is worth only the parts that reach this one: a captain's scimitars do nothing
       // to somebody it could only throw a dagger at.
-      const average =
+      const forecast =
         (sequenced
           ? rulesetSequenceForecastAgainst(definition, encounter, actorId, option.id, targetId)
           : option.forecast
         )?.averageDamage ?? 0;
+      // As the target's own hide takes it, on the other side only: a weakness found, a regeneration
+      // stopped, an immunity not wasted on (I1).
+      const average =
+        !ally && !sequenced && fallingAction?.damage
+          ? rulesetAverageAgainst(definition, combat, encounter, target, fallingAction.damage, forecast)
+          : forecast;
       const candidate: CombatAiCandidate<RulesetCandidate> = {
         action: {
           choice: { actorId, optionId: option.id, targetIds: lands ? [] : [targetId], ...paying(way) },
@@ -2949,6 +2956,57 @@ function rulesetBlowsBeforeTurn(
     if (one && one.side === actor.side && rulesetCombatStanding(one)) friends++;
   }
   return Math.min(1, friends * 0.5);
+}
+
+/**
+ * A blow's average as its target's own hide takes it (I1), part by part: nothing to a type it is
+ * immune to, half to one it resists, double to one it is vulnerable to. And where one of the blow's
+ * types stops it regenerating, what it would have regained besides: holy water on a fiend, fire on
+ * a troll, whatever the ruleset calls them. The menu's forecast leaves a target's hide out (it cannot
+ * promise what the player has not found out); the Engine's own side reads it.
+ */
+function rulesetAverageAgainst(
+  definition: RulesetDefinition,
+  combat: NonNullable<RulesetDefinition["combat"]>,
+  encounter: RulesetEncounterState,
+  target: RulesetCombatant,
+  damage: RulesetCombatAction["damage"],
+  average: number,
+): number {
+  if (!damage || average <= 0 || rulesetCombatIsPool(combat)) return average;
+  const parts = [
+    { type: damage.type, average: rulesetSafeAverage({ ...damage, plus: undefined }) },
+    ...(damage.plus ?? []).map((clause) => ({
+      type: clause.type ?? damage.type,
+      average: rulesetSafeAverage({ count: clause.count, sides: clause.sides, flat: clause.flat }),
+    })),
+  ].filter((part) => part.average > 0);
+  const whole = parts.reduce((sum, part) => sum + part.average, 0);
+  if (whole <= 0) return average;
+  const hide = rulesetCombatHide(definition, target, encounter);
+  const listed = (list: ReadonlyArray<string | { type: string; except: string[] }>, type: string) =>
+    list.some((entry) => (typeof entry === "string" ? entry : entry.type).trim().toLowerCase() === type);
+  let taken = 0;
+  const types = new Set<string>();
+  for (const part of parts) {
+    const type = part.type?.trim().toLowerCase();
+    if (!type) {
+      taken += part.average;
+      continue;
+    }
+    types.add(type);
+    const resists = listed(hide.resist, type);
+    const vulnerable = listed(hide.vulnerable, type);
+    taken +=
+      part.average * (listed(hide.immune, type) ? 0 : resists && !vulnerable ? 0.5 : vulnerable && !resists ? 2 : 1);
+  }
+  let worth = average * (taken / whole);
+  const regenerates = target.block?.regenerates;
+  if (worth > 0 && regenerates?.stoppedBy?.some((type) => types.has(type.trim().toLowerCase()))) {
+    const dice = regenerates.dice ? parseRulesetCombatDice(regenerates.dice) : null;
+    worth += (regenerates.flat ?? 0) + (dice ? rulesetSafeAverage(dice) : 0);
+  }
+  return worth;
 }
 
 /** An amount's average, nothing for one that has none or is written loosely. */
@@ -3229,6 +3287,8 @@ function rulesetStoppedLevel(definition: RulesetDefinition, encounter: RulesetEn
 function rulesetHealingWorth(average: number, health: { value: number; max: number }): number {
   const max = Math.max(1, health.max);
   const missing = Math.max(0, health.max - health.value);
+  // A scratch is no reason to spend a turn or a potion on mending (I2: healing given at 85%).
+  if (missing < max * 0.25) return 0;
   return (Math.min(average, missing) / max) * Math.min(1, (2 * missing) / max);
 }
 
@@ -3372,6 +3432,9 @@ function weighCaught(
   // of the party's lost is worse than one of theirs (re-test 2026-10-23: Web and ball bearings).
   const at = candidate.action.choice.at;
   let friendWeight = 1;
+  // And the other side's within a step of it, who walk into it on their way (I3: caltrops and ball
+  // bearings left in the pack): each counts at half of one caught where it lands.
+  let walkers: RulesetCombatant[] = [];
   if (
     at &&
     action?.zone &&
@@ -3393,6 +3456,16 @@ function weighCaught(
         rulesetGapFrom(at, 1, one) <= reach,
     );
     friends = [...friends, ...near];
+    walkers = encounter.combatants.filter(
+      (one) =>
+        one.side !== actor.side &&
+        !one.object &&
+        !one.down &&
+        rulesetCombatStanding(one) &&
+        !caught.includes(one) &&
+        !!rulesetPositionOf(one) &&
+        rulesetGapFrom(at, 1, one) <= reach,
+    );
   }
   const worthOn = (target: RulesetCombatant) =>
     rulesetEffectWorth(definition, combat, encounter, actor, action, target);
@@ -3415,7 +3488,7 @@ function weighCaught(
       return total + rulesetHealingWorth(average, health) + (target.down ? 1 : 0);
     }, 0);
   } else if (average > 0) {
-    if (foes.length === 0) return false;
+    if (foes.length === 0 && walkers.length === 0) return false;
     // Never a blast that could kill its own maker: a mage's Fireball at its own feet.
     if (caught.some((target) => target.id === actor.id)) {
       const own = rulesetCombatHealth(definition, combat, actor);
@@ -3423,14 +3496,14 @@ function weighCaught(
     }
     // Each foe counts for at most what dropping it is worth, weighed against what its side stands up
     // with as a blow is: a cleric at 3 health is not worth a Fireball over its own two mages.
-    const share = foes.reduce((total, target) => {
+    const share = [...foes, ...walkers].reduce((total, target) => {
       const health = rulesetCombatHealth(definition, combat, target);
       const pool = Math.max(
         1,
         health.value + health.temp,
         0.75 * rulesetSideHealthMean(definition, combat, encounter, target.side),
       );
-      return total + Math.min(1, average / pool);
+      return total + (walkers.includes(target) ? 0.5 : 1) * Math.min(1, average / pool);
     }, 0);
     // Never one that would likely drop somebody of its own side either: a mage's Fireball over the
     // other mage. A friend it only grazes counts against it three times over, and its own hide four times.
@@ -3460,13 +3533,13 @@ function weighCaught(
     });
     if (dropped.length) candidate.action.drops = dropped.map((target) => target.id);
     // What it puts on those it catches as well, less what it puts on its own (a burst that stuns).
-    const rider = riders(foes) - harms(friends);
+    const rider = riders(foes) + 0.5 * riders(walkers) - harms(friends);
     if (rider > 0) candidate.setup = Math.min(2, rider) * chance;
-  } else if (foes.length > 0) {
+  } else if (foes.length > 0 || walkers.length > 0) {
     // What it puts on them, less what it puts on its own side: a Hypnotic Pattern over the party
     // and not over its own.
-    const read = foes.some((target) => worthOn(target) !== undefined);
-    const worth = riders(foes) - harms(friends);
+    const read = [...foes, ...walkers].some((target) => worthOn(target) !== undefined);
+    const worth = riders(foes) + 0.5 * riders(walkers) - harms(friends);
     if (read && worth <= 0) return false;
     candidate.setup = read ? Math.min(2, worth) : 0.4;
   } else {

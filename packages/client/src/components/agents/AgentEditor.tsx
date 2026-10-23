@@ -896,6 +896,7 @@ export function AgentEditor() {
   useEffect(() => () => setActiveEditorField(null), [agentDetailId, setActiveEditorField]);
   const reportField = (id: string, label: string) => () => setActiveEditorField({ id, label });
   const [showUnsavedWarning, setShowUnsavedWarning] = useState(false);
+  const [showCustomAgentNotice, setShowCustomAgentNotice] = useState(true);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savedFlash, setSavedFlash] = useState(false);
 
@@ -1113,6 +1114,7 @@ export function AgentEditor() {
       setLocalPrompt("");
     } else {
       // Brand new custom agent — start empty
+      setShowCustomAgentNotice(true);
       setLocalName("New Agent");
       setLocalHomeWidgets([]);
       setLocalDescription("");
@@ -2224,6 +2226,23 @@ export function AgentEditor() {
       {/* ── Body ── */}
       <div className="mari-editor-content min-w-0 max-w-full overflow-x-hidden max-md:p-4">
         <div className="mari-editor-content-inner mari-editor-content-inner--wide w-full min-w-0 max-w-full space-y-6">
+          {isNewCustomAgent && showCustomAgentNotice && (
+            <div
+              role="note"
+              className="flex items-start gap-2 rounded-xl bg-[var(--marinara-app-accent-static)]/10 p-3 text-xs leading-relaxed text-[color-mix(in_oklab,var(--marinara-app-accent-static)_65%,var(--foreground))] ring-1 ring-[var(--marinara-app-accent-static)]/30"
+            >
+              <Info size="1rem" className="mt-0.5 shrink-0" aria-hidden="true" />
+              <p className="min-w-0 flex-1">{localizeUi("ui.agents.agenteditor.customAgentLimitations")}</p>
+              <button
+                type="button"
+                onClick={() => setShowCustomAgentNotice(false)}
+                className="mari-editor-action shrink-0"
+                aria-label={localizeUi("ui.agents.agenteditor.dismissCustomAgentInformation")}
+              >
+                <X size="0.875rem" aria-hidden="true" />
+              </button>
+            </div>
+          )}
           {/* ── Description ── */}
           <FieldGroup
             label={localizeUi("chat.settings.inlineEditor.fields.description")}

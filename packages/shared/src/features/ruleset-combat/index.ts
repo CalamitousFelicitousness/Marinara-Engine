@@ -114,6 +114,7 @@ export {
 export {
   createRulesetEncounter,
   currentRulesetActor,
+  rulesetIsAttack,
   refreshRulesetMovement,
   rulesetActiveConditions,
   rulesetWardsOn,

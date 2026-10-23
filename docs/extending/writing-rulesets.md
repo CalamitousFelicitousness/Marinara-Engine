@@ -1216,6 +1216,7 @@ Your own words on the sheet, the menu and the cards (Capability API 1.377). Each
 - An item toggle may name its two moves, `"toggle": {"onLabel": "Lower the hood", "offLabel": "Raise the hood"}`, which the menu says in place of "Turn on" and the item's name.
 - An item use may name itself, `"use": {"title": "Scatter ball bearings"}`, said on the menu in place of the item's name, with its count left still beside it.
 - A combat modifier may say what it does, `"label": "advantage on saves against being charmed"`, which a card prints in place of the phrase the Engine composes from the rest.
+- A derived value that is a bonus may say `"signed": true`, and the sheet shows it with its sign: a spell attack of "+7", where it would read "7".
 - A creature trait's text may run to 1200 letters, where it was 400.
 
 A ruleset using any of these, or a creature trait over 400 letters, needs Capability API 1.377.

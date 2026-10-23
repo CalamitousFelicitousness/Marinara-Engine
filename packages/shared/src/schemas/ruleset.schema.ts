@@ -1044,7 +1044,14 @@ const skillSchema = z
   .strict();
 const saveSchema = skillSchema;
 
-const derivedBase = { id: sheetId, label, section: sheetId.optional(), hideWhen: hideWhenSchema.optional() };
+const derivedBase = {
+  id: sheetId,
+  label,
+  section: sheetId.optional(),
+  hideWhen: hideWhenSchema.optional(),
+  /** A bonus, shown with its sign on the sheet (Capability API 1.377): a spell attack of "+7". */
+  signed: z.literal(true).optional(),
+};
 /** The most derived values a sheet may have: 400 since Capability API 1.111 (240 since 1.88,
  *  120 since 1.84), which a package exceeding the corresponding older limit declares. */
 export const RULESET_DERIVED_MAX = 400;

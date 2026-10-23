@@ -2133,7 +2133,7 @@ function carriesSheetWords(value: unknown, depth = 0): boolean {
 }
 
 /** The 1.377 keys only the ruleset's own sheet carries: a text field's `hideWhen`, a pool's `unit`
- *  and `units`, and a list's `display`. */
+ *  and `units`, a list's `display`, and a derived value's `signed`. */
 function rulesetCarriesSheetDisplay(ruleset: unknown): boolean {
   const sheet = plainRecord(plainRecord(ruleset)?.sheet);
   const live = plainRecord(sheet?.live);
@@ -2142,7 +2142,8 @@ function rulesetCarriesSheetDisplay(ruleset: unknown): boolean {
   return (
     some(live?.text, (one) => one.hideWhen !== undefined) ||
     some(live?.pools, (one) => one.unit !== undefined || one.units !== undefined) ||
-    some(sheet?.lists, (one) => one.display !== undefined)
+    some(sheet?.lists, (one) => one.display !== undefined) ||
+    some(sheet?.derived, (one) => one.signed !== undefined)
   );
 }
 
@@ -5240,7 +5241,7 @@ export function getCapabilityPackageInstallIssue(
       carriesSheetWords(ruleset) ||
       [...(catalogDocuments?.values() ?? [])].some((document) => carriesSheetWords(document)))
   ) {
-    return "A ruleset that names its own words for modifiers, toggles or item uses, gives pools units, lists a display, hides text by a derived value, leaves conditions out of the picker, shows a track once moved, or has a creature trait over 400 letters requires schemaVersion 2 and capabilityApi 1.377 or newer";
+    return "A ruleset that names its own words for modifiers, toggles or item uses, gives pools units, lists a display, signs a derived value, hides text by a derived value, leaves conditions out of the picker, shows a track once moved, or has a creature trait over 400 letters requires schemaVersion 2 and capabilityApi 1.377 or newer";
   }
   // A ruleset over 256 KB or a catalog file over 1 MB, the ceilings before 1.340.
   if (

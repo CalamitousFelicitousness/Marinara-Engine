@@ -86,7 +86,14 @@ export function createRulesetSheetEnvelope(
 export function copyRulesetSheetForGame(definition: RulesetDefinition, stored: unknown): RulesetSheetEnvelope {
   const read = readRulesetSheetEnvelope(definition, stored);
   if (!read) return createRulesetSheetEnvelope(definition);
-  return { v: read.v, build: structuredClone(read.build) };
+  // The guided builder's picks go along, so a character built in the library opens in the game as
+  // the builder made it rather than as one typed in by hand.
+  const builder = (read as { builder?: unknown }).builder;
+  return {
+    v: read.v,
+    build: structuredClone(read.build),
+    ...(builder && typeof builder === "object" && !Array.isArray(builder) ? { builder: structuredClone(builder) } : {}),
+  };
 }
 
 // ── Migrations (Capability API 1.77) ──

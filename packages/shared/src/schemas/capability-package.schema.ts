@@ -1464,7 +1464,8 @@ const capabilityPackageManifestBaseSchema = z
 // 1.377: a ruleset's own words on the sheet, menu and cards: a combat modifier's `label`, a pool's `unit`
 //        and `units`, a list's `display` (tab, rows split by a number column, a tick column), a text
 //        field's `hideWhen` by a derived value, a condition's `pickable: false`, a track's `showWhenSet`,
-//        an item toggle's `onLabel` and `offLabel`, an item use's `title`, and creature traits to 1200.
+//        an item toggle's `onLabel` and `offLabel`, an item use's `title`, a derived value's `signed`,
+//        and creature traits to 1200.
 export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 377 } as const);
 
 const capabilityApiVersionSchema = z

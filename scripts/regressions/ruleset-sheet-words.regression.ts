@@ -15,6 +15,7 @@ import {
   rulesetItemEffectFacts,
   rulesetItemEffectText,
   rowsFromCatalogEntry,
+  rulesetBuilderEntryHeld,
   rulesetCombatOptions,
   rulesetSheetBuildSchema,
   supportedCapabilityApi,
@@ -62,6 +63,7 @@ try {
     doc.sheet.live.text[0].hideWhen = { derived: "spell_save_dc", equals: 0 };
     doc.sheet.live.conditions[1].pickable = false;
     doc.sheet.live.tracks[2].showWhenSet = true;
+    doc.sheet.derived[4].signed = true;
     doc.combat.conditions[13].modifiers[0].label = "advantage on saves against being charmed";
     doc.catalogs[0].entries[0].creature.traits = [{ name: "Weaknesses", text: "w".repeat(1100) }];
   });
@@ -194,6 +196,29 @@ try {
   assert.equal(shown[first]!.labelValues?.tab, "Spells");
   assert.ok(!shown.some((group) => group.key === "ability" && group.options.some((one) => one.label === "Bolt")));
 
+  // ── What the builder offers as already known ──
+  const tongue = {
+    id: "dwarvish",
+    label: "Dwarvish",
+    rows: [{ list: "proficiencies", values: { name: "Dwarvish" } }],
+  } as unknown as RulesetCatalogEntry;
+  const held = (rows: unknown[]) =>
+    rulesetBuilderEntryHeld(
+      definition,
+      rulesetSheetBuildSchema.parse({ lists: { proficiencies: rows } }),
+      "languages",
+      tongue,
+    );
+  assert.equal(held([]), false);
+  assert.equal(held([{ name: " dwarvish " }]), true, "written by the race, matched by name");
+  assert.equal(held([{ name: "Elvish", _catalog: "languages/dwarvish" }]), true, "or by the entry's own mark");
+  assert.equal(held([{ name: "Elvish" }]), false);
+  assert.equal(
+    rulesetBuilderEntryHeld(definition, build, "languages", { id: "none", label: "None" } as RulesetCatalogEntry),
+    false,
+    "an entry that writes nothing is never held",
+  );
+
   // ── The gate ──
   const gate = /capabilityApi 1\.377 or newer/;
   const manifest = (minor: number) => ({
@@ -220,6 +245,7 @@ try {
     (doc: Record<string, any>) => (doc.sheet.live.text[0].hideWhen = { derived: "spell_save_dc", equals: 0 }),
     (doc: Record<string, any>) => (doc.sheet.live.conditions[1].pickable = false),
     (doc: Record<string, any>) => (doc.sheet.live.tracks[2].showWhenSet = true),
+    (doc: Record<string, any>) => (doc.sheet.derived[4].signed = true),
     (doc: Record<string, any>) => (doc.combat.conditions[13].modifiers[0].label = "says so"),
     (doc: Record<string, any>) =>
       (doc.catalogs[0].entries[0].creature.traits = [{ name: "Long", text: "w".repeat(401) }]),

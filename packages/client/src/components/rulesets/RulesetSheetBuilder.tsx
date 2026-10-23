@@ -40,6 +40,7 @@ import {
   rulesetBuilderTrainedSlots,
   rulesetBuilderMethod,
   rulesetSheetBuildIsBlank,
+  rulesetBuilderEntryHeld,
   defaultRulesetSheetBuild,
   isRulesetItemHidden,
   evaluateRulesetSheet,
@@ -52,6 +53,7 @@ import {
   type RulesetBuilderState,
   type RulesetBuilderStep,
   type RulesetBuilderEntrySlot,
+  type RulesetCatalogEntry,
   type RulesetBuilderTrainedSlot,
   type RulesetCatalogEntriesById,
   type RulesetCatalogPayload,
@@ -125,6 +127,7 @@ function ChoiceSlot({
   labelOf,
   onChange,
   atCap,
+  held,
   filterLabelOf = (id) => id,
 }: {
   title: string;
@@ -133,6 +136,8 @@ function ChoiceSlot({
   onChange: (chosen: string[]) => void;
   /** Whether an option already stands at the choice's cap (1.96), so it takes no more. */
   atCap?: (id: string) => boolean;
+  /** Whether the sheet already has it from somewhere else (a dwarf's Dwarvish), so it is no pick. */
+  held?: (id: string) => boolean;
   filterLabelOf?: (id: string) => string;
 }) {
   const { t } = useUiTranslation();
@@ -208,20 +213,24 @@ function ChoiceSlot({
               </span>
             );
           }
+          const known = !on && !!held?.(id);
           return (
             <button
               key={id}
               type="button"
               aria-pressed={on}
-              disabled={!on && (full || !!atCap?.(id) || !!slot.disabled?.[id])}
+              disabled={!on && (full || known || !!atCap?.(id) || !!slot.disabled?.[id])}
               onClick={() =>
                 onChange(on ? stored.filter((each) => each !== id) : [...stored.filter((each) => each !== id), id])
               }
               className={`${chipClass} ${on ? chipOn : chipOff}`}
             >
               {labelOf(id)}
-              {!on && slot.disabled?.[id] && (
-                <span className="block font-normal">{t(reasonKey[slot.disabled[id]!])}</span>
+              {known ? (
+                <span className="block font-normal">{t("ui.rulesets.builder.alreadyKnown")}</span>
+              ) : (
+                !on &&
+                slot.disabled?.[id] && <span className="block font-normal">{t(reasonKey[slot.disabled[id]!])}</span>
               )}
             </button>
           );
@@ -252,6 +261,26 @@ export function RulesetSheetBuilder({
   const [stepId, setStepId] = useState(builder.steps[0]!.id);
   const [freeEdit, setFreeEdit] = useState(false);
   const [openInfo, setOpenInfo] = useState<string | null>(null);
+  // The steps the player asked to take more than one in (a second class).
+  const [moreWanted, setMoreWanted] = useState<ReadonlySet<string>>(() => new Set());
+  /** An entry's facts in one line before its description: what its row says in words besides its
+   *  name (a spell's school, casting time, range and components). */
+  const entryStatLine = (entry: RulesetCatalogEntry): string => {
+    const first = entry.rows?.[0];
+    if (!first) return "";
+    const list = definition.sheet.lists.find((one) => one.id === first.list);
+    if (!list) return "";
+    const nameColumn =
+      definition.gm.sheetSummary.lists.find((one) => one.list === list.id)?.nameColumn ??
+      list.columns.find((column) => column.type === "text")?.id;
+    return list.columns
+      .filter((column) => (column.type === "text" || column.type === "longtext") && column.id !== nameColumn)
+      .flatMap((column) => {
+        const value = first.values[column.id];
+        return typeof value === "string" && value.trim() ? [value.trim()] : [];
+      })
+      .join(" · ");
+  };
   const [rolling, setRolling] = useState(false);
   const [rollFailed, setRollFailed] = useState(false);
 
@@ -423,6 +452,10 @@ export function RulesetSheetBuilder({
                 ?.filters?.find((filter) => filter.id === id)?.label ?? id
             }
             labelOf={(id) => (catalogs[slot.catalog] ?? []).find((entry) => entry.id === id)?.label ?? id}
+            held={(id) => {
+              const entry = (catalogs[slot.catalog] ?? []).find((one) => one.id === id);
+              return !!entry && rulesetBuilderEntryHeld(definition, build, slot.catalog, entry);
+            }}
             onChange={(chosen) => update({ ...state, entryChoices: { ...state.entryChoices, [slot.key]: chosen } })}
           />
         ))}
@@ -476,8 +509,12 @@ export function RulesetSheetBuilder({
       const next = on ? stored.filter((each) => each !== id) : rulesetBuilderPickAdded(current, stored, id, catalogs);
       update({ ...state, picks: { ...state.picks, [current.id]: next } });
     };
-    // A count read off the sheet (1.90) moves with the character; the step's own max otherwise.
-    const most = rulesetBuilderStepCount(definition, current, build).max;
+    // A count read off the sheet (1.90) moves with the character; the step's own max otherwise. A
+    // step that takes one and may take more (a class, then a second) offers one until the player
+    // asks for another, so nobody multiclasses by accident.
+    const counted = rulesetBuilderStepCount(definition, current, build);
+    const oneFirst = counted.max > 1 && counted.min <= 1 && picked.length <= 1 && !moreWanted.has(current.id);
+    const most = oneFirst ? 1 : counted.max;
     if (options.length === 0 && inactive.length === 0) {
       return (
         <p className="text-xs text-[var(--muted-foreground)]">
@@ -520,7 +557,17 @@ export function RulesetSheetBuilder({
             ? t("ui.rulesets.builder.pickNoneYet", { picked: picked.length })
             : t("ui.rulesets.builder.pickCount", { count: most, picked: picked.length })}
         </p>
-        <ul className="grid gap-1.5 sm:grid-cols-2">
+        {oneFirst && picked.length === 1 && (
+          <button
+            type="button"
+            className={buttonClass}
+            onClick={() => setMoreWanted(new Set([...moreWanted, current.id]))}
+          >
+            {t("ui.rulesets.builder.addAnother", { step: current.label })}
+          </button>
+        )}
+        {/* Each card keeps its own height, so one opened for its Info never stretches its neighbour. */}
+        <ul className="grid items-start gap-1.5 sm:grid-cols-2">
           {options.map((entry) => {
             const on = picked.includes(entry.id);
             const stored = (state.picks?.[current.id] ?? []).includes(entry.id);
@@ -532,8 +579,16 @@ export function RulesetSheetBuilder({
             const replaces =
               !!entry.exclusive &&
               options.some((other) => other.exclusive === entry.exclusive && picked.includes(other.id));
+            // Already on the sheet from somewhere else (a domain spell a later step grants): no pick.
+            const known =
+              !on &&
+              !stored &&
+              takenAt === undefined &&
+              rulesetBuilderEntryHeld(definition, build, current.catalog, entry);
             const full =
-              (!on && !replaces && (current.max > 1 || most === 0) && picked.length >= most) || takenAt !== undefined;
+              (!on && !replaces && (counted.max > 1 || most === 0) && picked.length >= most) ||
+              takenAt !== undefined ||
+              known;
             const infoId = `${current.id}:${entry.id}`;
             const infoDomId = `${infoBaseId}-${current.id}-${entry.id}`;
             return (
@@ -575,6 +630,8 @@ export function RulesetSheetBuilder({
                     >
                       {on ? (
                         <Check size={12} aria-hidden="true" />
+                      ) : known ? (
+                        t("ui.rulesets.builder.alreadyKnown")
                       ) : stored ? (
                         t("ui.rulesets.builder.removeInactive", { name: entry.label })
                       ) : (
@@ -590,9 +647,10 @@ export function RulesetSheetBuilder({
                   </p>
                 )}
                 {openInfo === infoId && entry.summary && (
-                  <p id={infoDomId} className="text-[0.6875rem] text-[var(--muted-foreground)]">
-                    {entry.summary}
-                  </p>
+                  <div id={infoDomId} className="space-y-1 text-[0.6875rem] text-[var(--muted-foreground)]">
+                    {entryStatLine(entry) && <p className="text-[var(--foreground)]">{entryStatLine(entry)}</p>}
+                    <p>{entry.summary}</p>
+                  </div>
                 )}
               </li>
             );
@@ -1701,15 +1759,19 @@ export function RulesetSheetBuilder({
     const entry = definition.sheet.derived.find((each) => each.id === id);
     const value = evaluated.derived[id];
     if (!entry || value === undefined || isRulesetItemHidden(entry, build, definition)) return [];
-    return [{ id, label: entry.label, text: String(value) }];
+    // A bonus the ruleset marks as one (1.377) reads with its sign: a spell attack of "+5".
+    return [{ id, label: entry.label, text: entry.signed && value > 0 ? `+${value}` : String(value) }];
   });
 
   return (
     <div className="space-y-3">
       <nav aria-label={t("ui.rulesets.builder.steps")}>
         <ol className="flex flex-wrap gap-1.5">
-          {steps.map((each) => {
+          {steps.map((each, index) => {
             const left = remaining[each.id] ?? 0;
+            // A step is said to be done only once every step before it is: one that has nothing to
+            // choose yet because its choices come from a class not picked is waiting, not finished.
+            const waiting = steps.slice(0, index).some((before) => (remaining[before.id] ?? 0) > 0);
             return (
               <li key={each.id}>
                 <button
@@ -1729,6 +1791,8 @@ export function RulesetSheetBuilder({
                       </span>
                       <span className="sr-only">{t("ui.rulesets.builder.remaining", { count: left })}</span>
                     </>
+                  ) : ready && waiting ? (
+                    <span className="sr-only">{t("ui.rulesets.builder.waiting")}</span>
                   ) : ready ? (
                     <>
                       <Check size={12} aria-hidden="true" />
@@ -1759,6 +1823,20 @@ export function RulesetSheetBuilder({
             {t("ui.rulesets.builder.describingDone")}
           </button>
         </div>
+      )}
+      {ready && !rulesetSheetBuildIsBlank(definition, rawBuild) && (
+        <button
+          type="button"
+          onClick={() => {
+            // Everything typed and picked goes, so it is asked first.
+            if (!window.confirm(t("ui.rulesets.builder.startOverConfirm"))) return;
+            setMoreWanted(new Set());
+            onApply(defaultRulesetSheetBuild(definition), {});
+          }}
+          className={buttonClass}
+        >
+          {t("ui.rulesets.builder.startOver")}
+        </button>
       )}
       <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_14rem]">
         <section aria-label={steps.length ? step.label : t("ui.rulesets.builder.steps")} className="min-w-0 space-y-2">
@@ -1834,8 +1912,8 @@ export function RulesetSheetBuilder({
             <dl className="space-y-0.5 text-[0.6875rem]">
               {shownFields.map((entry) => (
                 <div key={entry.id} className="flex justify-between gap-2">
-                  <dt className="text-[var(--muted-foreground)]">{entry.label}</dt>
-                  <dd className="truncate text-right text-[var(--foreground)]">{entry.text}</dd>
+                  <dt className="min-w-0 break-words text-[var(--muted-foreground)]">{entry.label}</dt>
+                  <dd className="min-w-0 break-words text-right text-[var(--foreground)]">{entry.text}</dd>
                 </div>
               ))}
             </dl>
@@ -1859,7 +1937,9 @@ export function RulesetSheetBuilder({
             <dl className="grid grid-cols-2 gap-1 text-[0.6875rem]">
               {shownDerived.map((entry) => (
                 <div key={entry.id} className="rounded border border-[var(--border)] px-1.5 py-0.5">
-                  <dt className="truncate text-[0.625rem] text-[var(--muted-foreground)]">{entry.label}</dt>
+                  <dt className="break-words text-[0.625rem] leading-tight text-[var(--muted-foreground)]">
+                    {entry.label}
+                  </dt>
                   <dd className="text-xs font-semibold tabular-nums text-[var(--foreground)]">{entry.text}</dd>
                 </div>
               ))}

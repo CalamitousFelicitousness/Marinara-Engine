@@ -185,6 +185,8 @@ async function frozenIdentityAvatarFiles(
 
   try {
     const store = db._fileStore;
+    // transaction() keeps activeTransactionCount > 0 across awaits; maybeEvictUnits refuses
+    // eviction while it is active, so skipped shards remain represented by resident rows below.
     const residentNames = new Set([...store.getResidentChatUnits()].map((key) => `${encodeShardKey(key)}.json`));
     const fullyResident = store.getFullyResidentLazyTables();
     for (const table of ["messages", "message_swipes", "message_trash"]) {
@@ -291,6 +293,9 @@ export async function scanAbandonedAvatarFiles(input: {
   /** Test-only age override. */
   minimumAgeMs?: number;
 }): Promise<AbandonedAvatarFileSummary> {
+  // ponytail: an accurate scan holds the write gate across all cold history, so large profiles can delay writes.
+  // Keep the committed view and eviction guard; upgrade to a persisted avatar-reference index
+  // when cleanup needs bounded work per transaction.
   return withAvatarFileLifecycleLock(() =>
     input.db.transaction(async () => {
       const avatarRoot = input.avatarRoot ?? join(DATA_DIR, "avatars");

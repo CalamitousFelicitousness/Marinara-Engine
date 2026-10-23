@@ -27,6 +27,8 @@ const { OpenAIProvider } = await import("../../packages/server/src/services/llm/
 const { replaceBuiltInAgentDefinitions } = await import("../../packages/shared/dist/index.js");
 const { applyAgentLorebookChatSettings } =
   await import("../../packages/server/src/services/generation/agent-lorebook-triggers.js");
+const { captureChatWizardDefaults, wizardDefaultsMetadataPatch } =
+  await import("../../packages/client/src/lib/chat-wizard-defaults.js");
 
 const manifests = ["writer", "tracker"].map((category) => ({
   id: `reference-${category}`,
@@ -146,6 +148,68 @@ try {
     (await app.inject({ method: "GET", url: `/api/chats/${otherChat.id}` })).json().metadata.agentLorebookAttachments,
     undefined,
   );
+  const resetChat = await chats.create({ name: "Wizard reset", mode: "roleplay", characterIds: [] });
+  assert(resetChat);
+  const initialAttachments = {
+    [types[0]!]: { enabled: true, lorebookId: firstBook.id },
+    [types[1]!]: { enabled: true, lorebookId: secondBook.id },
+  };
+  assert.equal((await patch(resetChat.id, initialAttachments)).statusCode, 200);
+  await chats.patchMetadata(resetChat.id, { characterCommands: true });
+  const resetSnapshot = captureChatWizardDefaults((await chats.getById(resetChat.id))!);
+  const emptySnapshot = captureChatWizardDefaults({ ...(await chats.getById(resetChat.id))!, metadata: {} });
+  assert.equal((await patch(resetChat.id, {})).statusCode, 200);
+  assert.deepEqual(
+    (await app.inject({ method: "GET", url: `/api/chats/${resetChat.id}` })).json().metadata.agentLorebookAttachments,
+    initialAttachments,
+    "an empty attachment map merges without clearing existing selections",
+  );
+  const concurrentAttachment = { enabled: true, lorebookId: firstBook.id };
+  assert.equal((await patch(resetChat.id, { concurrent: concurrentAttachment })).statusCode, 200);
+  const resetResponse = await app.inject({
+    method: "PATCH",
+    url: `/api/chats/${resetChat.id}/metadata`,
+    payload: wizardDefaultsMetadataPatch(resetSnapshot, emptySnapshot),
+  });
+  assert.equal(
+    resetResponse.statusCode,
+    200,
+    `Wizard reset must pass the actual metadata route: ${resetResponse.body}`,
+  );
+  const resetMetadata = resetResponse.json().metadata;
+  assert.deepEqual(resetMetadata.agentLorebookAttachments, {
+    [types[0]!]: { enabled: false, lorebookId: null },
+    [types[1]!]: { enabled: false, lorebookId: null },
+    concurrent: concurrentAttachment,
+  });
+  assert.equal(resetMetadata.characterCommands, null, "other wizard reset fields reach storage in the same request");
+  assert.equal(
+    (await patch(resetChat.id, { [types[0]!]: { enabled: true, lorebookId: secondBook.id } })).statusCode,
+    200,
+  );
+  const changedSnapshot = captureChatWizardDefaults((await chats.getById(resetChat.id))!);
+  const targetSnapshot = captureChatWizardDefaults({
+    ...(await chats.getById(resetChat.id))!,
+    metadata: {
+      agentLorebookAttachments: { [types[0]!]: initialAttachments[types[0]!] },
+      characterCommands: true,
+    },
+  });
+  const laterAttachment = { enabled: true, lorebookId: secondBook.id };
+  assert.equal((await patch(resetChat.id, { later: laterAttachment })).statusCode, 200);
+  const restoreResponse = await app.inject({
+    method: "PATCH",
+    url: `/api/chats/${resetChat.id}/metadata`,
+    payload: wizardDefaultsMetadataPatch(changedSnapshot, targetSnapshot),
+  });
+  assert.equal(restoreResponse.statusCode, 200, restoreResponse.body);
+  assert.deepEqual(restoreResponse.json().metadata.agentLorebookAttachments, {
+    [types[0]!]: initialAttachments[types[0]!],
+    [types[1]!]: { enabled: false, lorebookId: null },
+    concurrent: { enabled: false, lorebookId: null },
+    later: laterAttachment,
+  });
+  assert.equal(restoreResponse.json().metadata.characterCommands, true);
   const profiles = createChatPresetsStorage(db);
   const profileTarget = await chats.create({ name: "Profile target", mode: "roleplay", characterIds: [] });
   const freshProfileTarget = await chats.create({ name: "Fresh profile target", mode: "roleplay", characterIds: [] });

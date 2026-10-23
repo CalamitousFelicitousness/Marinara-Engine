@@ -1,5 +1,6 @@
 import {
   CHAT_PRESET_EXCLUDED_METADATA_KEYS,
+  agentLorebookAttachmentsSchema,
   normalizeAdvancedMemorySettings,
   type Chat,
 } from "@marinara-engine/shared";
@@ -54,5 +55,23 @@ export function readChatMetadata(chat: Chat): Record<string, unknown> {
 }
 
 export function wizardDefaultsMetadataPatch(current: ChatWizardDefaults, target: ChatWizardDefaults) {
-  return { ...Object.fromEntries(Object.keys(current.metadata).map((key) => [key, null])), ...target.metadata };
+  const patch = { ...Object.fromEntries(Object.keys(current.metadata).map((key) => [key, null])), ...target.metadata };
+  if (
+    Object.hasOwn(current.metadata, "agentLorebookAttachments") ||
+    Object.hasOwn(target.metadata, "agentLorebookAttachments")
+  ) {
+    const currentAttachments = agentLorebookAttachmentsSchema.safeParse(current.metadata.agentLorebookAttachments);
+    const targetAttachments = agentLorebookAttachmentsSchema.safeParse(target.metadata.agentLorebookAttachments);
+    // The route merges maps: explicitly disable reset entries, leaving concurrently added agents untouched.
+    patch.agentLorebookAttachments = {
+      ...Object.fromEntries(
+        Object.keys(currentAttachments.success ? currentAttachments.data : {}).map((id) => [
+          id,
+          { enabled: false, lorebookId: null },
+        ]),
+      ),
+      ...(targetAttachments.success ? targetAttachments.data : {}),
+    };
+  }
+  return patch;
 }

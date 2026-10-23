@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { agentLorebookAttachmentsSchema } from "../../packages/shared/src/schemas/chat.schema.js";
 import type { Chat } from "../../packages/shared/src/types/chat.js";
 import { normalizeTranslatorSettings } from "../../packages/shared/src/utils/translator-defaults.js";
 import {
@@ -53,7 +54,16 @@ const initial = captureChatWizardDefaults({ ...chat, name: "Fresh", metadata: {}
 const reset = wizardDefaultsMetadataPatch(saved, initial);
 assert.equal(reset.autonomousMessages, null);
 assert.equal(reset.activeLorebookIds, null);
-assert.equal(reset.agentLorebookAttachments, null);
+assert.deepEqual(reset.agentLorebookAttachments, { writer: { enabled: false, lorebookId: null } });
+assert(agentLorebookAttachmentsSchema.safeParse(reset.agentLorebookAttachments).success);
+const restored = wizardDefaultsMetadataPatch(saved, {
+  ...initial,
+  metadata: { agentLorebookAttachments: { writer: { enabled: true, lorebookId: "original-reference" } } },
+});
+assert.deepEqual(restored.agentLorebookAttachments, {
+  writer: { enabled: true, lorebookId: "original-reference" },
+});
+assert.equal(Object.hasOwn(wizardDefaultsMetadataPatch(initial, initial), "agentLorebookAttachments"), false);
 for (const raw of ["{broken", "null", "[]", "42"]) {
   const invalid = captureChatWizardDefaults({ ...chat, metadata: raw, characterIds: raw } as unknown as Chat);
   assert.deepEqual(invalid.metadata, {});

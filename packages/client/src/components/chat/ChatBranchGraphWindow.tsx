@@ -276,8 +276,9 @@ function BranchGraph({ chatId, groupId, compact }: { chatId: string; groupId: st
                   style={{
                     height: layout.laneHeight * layout.scale,
                     paddingLeft: `${0.5 + Math.min(lane.depth, 6) * 0.5}rem`,
-                    // Names grow a little with a zoomed-in graph, not as much: they would soon stop fitting.
-                    fontSize: `${0.6875 * Math.min(layout.scale, 1.4)}rem`,
+                    // Names grow a little with a zoomed-in graph, not as much: they would soon stop fitting. They
+                    // never shrink with it, or they would be too small to read.
+                    fontSize: `${0.6875 * Math.min(Math.max(layout.scale, 1), 1.4)}rem`,
                   }}
                   onClick={() => setActiveChatId(lane.chat.id)}
                 >

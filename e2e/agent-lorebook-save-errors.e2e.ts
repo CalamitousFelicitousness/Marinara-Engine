@@ -154,10 +154,10 @@ for (const theme of ["dark", "light"] as const) {
         });
       await expect.soft(errorToast).toBeVisible();
       expect(writes.map((write) => write.agentLorebookAttachments["prose-guardian"])).toEqual([
-        { enabled: false, lorebookId: first.id },
-        { enabled: true, lorebookId: second.id },
-        { enabled: false, lorebookId: first.id },
-        { enabled: true, lorebookId: first.id },
+        { enabled: false },
+        { lorebookId: second.id },
+        { enabled: false },
+        { enabled: true },
       ]);
       expect(pageErrors).toEqual([]);
     } finally {

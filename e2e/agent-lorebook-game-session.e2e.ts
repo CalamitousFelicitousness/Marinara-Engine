@@ -184,7 +184,7 @@ for (const theme of ["dark", "light"] as const) {
         );
         await attachment.getByText("Attach lorebook for the specific agent", { exact: true }).click();
         expect((await saved).postDataJSON().agentLorebookAttachments).toEqual({
-          "hierarchical-maps": { enabled: false, lorebookId: bookId },
+          "hierarchical-maps": { enabled: false },
         });
         await expect
           .poll(

@@ -153,6 +153,10 @@ const ALLOWED_CALL_VIDEO_CLIP_UPLOAD_EXTS = new Set([".mp4"]);
 const renameCardVersionSchema = z.object({ version: z.string().trim().min(1).max(100) });
 const bakeGreetingImagesSchema = z.object({
   urls: z.array(z.string()).min(1).max(GREETING_IMAGE_BAKE_MAX_PER_REQUEST),
+  bakedImages: z
+    .array(z.object({ url: z.string(), file: z.string().min(1).max(255) }))
+    .max(GREETING_IMAGE_BAKE_MAX_PER_REQUEST)
+    .default([]),
 });
 type UploadedMultipartFile = NonNullable<Awaited<ReturnType<FastifyRequest["file"]>>>;
 
@@ -2147,7 +2151,7 @@ export async function charactersRoutes(app: FastifyInstance) {
     "/:id/gallery/bake",
     { config: { rateLimit: GREETING_IMAGE_BAKE_RATE_LIMIT } },
     async (req, reply) => {
-      const { urls } = bakeGreetingImagesSchema.parse(req.body ?? {});
+      const { urls, bakedImages } = bakeGreetingImagesSchema.parse(req.body ?? {});
       const char = await storage.getById(req.params.id);
       if (!char) return reply.status(404).send({ error: "Character not found" });
       // Paths use the stored id, never the raw route parameter.
@@ -2155,7 +2159,17 @@ export async function charactersRoutes(app: FastifyInstance) {
 
       const dir = await ensureCharacterGalleryDir(id);
       const results: Array<{ url: string; file?: string; error?: string }> = [];
+      const gallery = bakedImages.length ? await characterGallery.listByCharacterId(id) : [];
       for (const url of new Set(urls)) {
+        const cached = bakedImages.find((entry) => entry.url === url);
+        const row = cached ? findGalleryRowByFilename(gallery, cached.file) : null;
+        const stored = row ? resolveStoredGalleryFile(row.filePath) : null;
+        const validCopy = stored ? await validateImageAssetFile(stored.absolutePath, stored.filename) : null;
+        if (stored && validCopy) {
+          await validCopy.handle.close();
+          results.push({ url, file: stored.filename });
+          continue;
+        }
         let image: Awaited<ReturnType<typeof downloadGreetingImage>>;
         try {
           image = await downloadGreetingImage(url);
@@ -2849,6 +2863,16 @@ export async function charactersRoutes(app: FastifyInstance) {
       await removeUnattachedAvatarFile({ avatarPath });
       throw error;
     }
+  });
+
+  app.delete<{ Params: { id: string } }>("/personas/:id/avatar", async (req, reply) => {
+    // ponytail: clear the card reference and retain files for frozen chat identities.
+    // Reclaim them only after checking current, historical and trashed references.
+    const updated = await enqueueUpdate(personaUpdateQueues, req.params.id, () =>
+      storage.updatePersona(req.params.id, { avatarPath: null, avatarCrop: "" }, { versionReason: "Avatar removal" }),
+    );
+    if (!updated) return reply.status(404).send({ error: "Persona not found" });
+    return projectPersona(updated);
   });
 
   app.put("/personas/:id/activate", async (_req, reply) =>

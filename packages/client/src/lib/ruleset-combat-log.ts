@@ -1282,3 +1282,30 @@ export function rulesetCombatLogLines(
   }
   return lines;
 }
+
+/** Each foe's one fate when a fight ends, which the end card's count and its names both read: gone
+ *  from the fight (fled, sent away), felled (down when it ended counts, since the fight is over for
+ *  it), or still on its feet. `beaten` is exactly the felled list, so the tally names nobody the
+ *  lines file elsewhere. */
+export type RulesetFoeFate = "endDefeated" | "endGone" | "endStanding";
+export function rulesetFoeFates(view: DirectedRulesetView): {
+  fates: Array<[RulesetFoeFate, DirectedRulesetView["combatants"]]>;
+  beaten: number;
+  total: number;
+} {
+  const foes = view.combatants.filter((combatant) => combatant.side !== "party");
+  const fateOf = (one: (typeof foes)[number]): RulesetFoeFate =>
+    one.away || one.left ? "endGone" : one.defeated || one.down ? "endDefeated" : "endStanding";
+  const by: Record<RulesetFoeFate, DirectedRulesetView["combatants"]> = {
+    endDefeated: [],
+    endGone: [],
+    endStanding: [],
+  };
+  for (const one of foes) by[fateOf(one)].push(one);
+  const order: RulesetFoeFate[] = ["endDefeated", "endGone", "endStanding"];
+  return {
+    fates: order.filter((key) => by[key].length > 0).map((key) => [key, by[key]]),
+    beaten: by.endDefeated.length,
+    total: foes.length,
+  };
+}

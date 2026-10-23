@@ -143,14 +143,15 @@ function refuseNoSizeStep(node) {
   }
 }
 
-// A sheet item's `hideWhen` compares its field exactly one way too: equals, notEquals or in. Found
-// by its shape: `field` beside all three.
+// A sheet item's `hideWhen` compares its field or derived value exactly one way too: equals,
+// notEquals or in. Found by its shape: `field` or `derived` beside all three.
 function requireOneHideWhenComparison(node) {
   if (Array.isArray(node)) return node.forEach(requireOneHideWhenComparison);
   if (!node || typeof node !== "object") return;
   Object.values(node).forEach(requireOneHideWhenComparison);
   const keys = ["equals", "notEquals", "in"];
-  if (node.type === "object" && node.properties?.field && keys.every((key) => node.properties[key])) {
+  const subject = node.properties?.field ?? node.properties?.derived;
+  if (node.type === "object" && subject && keys.every((key) => node.properties[key])) {
     node.oneOf = keys.map((key) => ({ required: [key] }));
   }
 }

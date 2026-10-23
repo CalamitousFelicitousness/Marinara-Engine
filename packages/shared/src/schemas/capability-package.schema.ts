@@ -1461,7 +1461,14 @@ const capabilityPackageManifestBaseSchema = z
 //        its manifest declares 1.374 or newer.
 // 1.375: how the fight screen shows a ruleset: a budget's `short` letters and `tone`, and `combat.display`
 //        (the defense column's `short` and `hide`, and which pools show under a turn).
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 375 } as const);
+// 1.376: Home package browser fullscreen controls.
+// 1.377: explicit Motion 14 host slot (motion/react); the existing framer-motion slot stays on Motion 13.
+// 1.378: a ruleset's own words on the sheet, menu and cards: a combat modifier's `label`, a pool's `unit`
+//        and `units`, a list's `display` (tab, rows split by a number column, a tick column), a text
+//        field's `hideWhen` by a derived value, a condition's `pickable: false`, a track's `showWhenSet`,
+//        an item toggle's `onLabel` and `offLabel`, an item use's `title`, a derived value's `signed`,
+//        and creature traits to 1200.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 378 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

@@ -77,22 +77,31 @@ export function RulesetCombatLog({
         )}
         <ol aria-live="polite" className="m-0 list-none p-0 text-[0.78rem] leading-relaxed">
           {newestFirst.map((line, index) => {
-            // A round is named once, at the top of its own block: its newest line.
+            // A round is named once, at the top of its own block: its newest line. Each turn inside
+            // it is a block of its own under its taker's name, so "what did they just do" reads as one.
             const newer = newestFirst[index - 1];
             const firstOfRound = line.round > 0 && newer?.round !== line.round;
+            const firstOfTurn = !!line.turnOf && (firstOfRound || newer?.turnOf !== line.turnOf);
+            const taker = firstOfTurn ? view.combatants.find((one) => one.id === line.turnOf)?.name : undefined;
             return (
               <li
                 key={line.seq}
                 className={cn(
                   "grid grid-cols-[4.25rem_minmax(0,1fr)] gap-2 rounded px-1 py-0.5",
                   line.seq === asking && "bg-amber-400/15",
+                  index > 0 && firstOfTurn && "mt-1 border-t border-[var(--border)] pt-1",
                 )}
               >
                 <span
                   aria-hidden="true"
-                  className="pt-0.5 text-[0.6rem] font-bold uppercase tracking-[0.08em] text-amber-700 dark:text-amber-300"
+                  className="flex flex-col pt-0.5 text-[0.6rem] font-bold uppercase tracking-[0.08em] text-amber-700 dark:text-amber-300"
                 >
                   {firstOfRound ? t("game.combat.ruleset.status.round", { round: line.round }) : ""}
+                  {taker && (
+                    <span className="truncate font-semibold normal-case tracking-normal text-[var(--muted-foreground)]">
+                      {taker}
+                    </span>
+                  )}
                 </span>
                 <span className="min-w-0 text-[var(--muted-foreground)]">
                   {line.pieces.map((piece, n) => (

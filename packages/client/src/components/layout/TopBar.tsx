@@ -470,10 +470,6 @@ export function TopBar({ mobileTopbarNavigation }: { mobileTopbarNavigation: boo
           className="mari-topbar-edge-glow"
         />
       ) : null}
-      {/* The line above is decorative - this is the only signal screen readers get for her state. */}
-      <span aria-live="polite" className="sr-only">
-        {mariEdgeGlow ? localize(MARI_EDGE_GLOW_LABEL[mariEdgeGlow]) : ""}
-      </span>
 
       {/* Left section: window controls + chat info */}
       <div className="mari-topbar-left flex min-w-0 flex-1 items-center gap-2">
@@ -603,6 +599,11 @@ export function TopBar({ mobileTopbarNavigation }: { mobileTopbarNavigation: boo
         )}
       />
       {header}
+      {/* The edge glow is decorative - this is the only signal screen readers get for her state. It sits outside
+          the bar, which a sideways phone hides while you type in a package tab. */}
+      <span aria-live="polite" className="sr-only">
+        {mariEdgeGlow ? localize(MARI_EDGE_GLOW_LABEL[mariEdgeGlow]) : ""}
+      </span>
       {/* Phones pull with a finger, desktop drags with the mouse from empty bar space (M18). */}
       <OmnibarPullDrop visuals={pull.visuals} edgeGlow={mariEdgeGlow} />
     </>
@@ -756,7 +757,7 @@ function TopbarMoreMenu({
         backgroundColor: "var(--background)",
         backgroundImage: "linear-gradient(var(--card), var(--card))",
       }}
-      className="mari-chrome-token-scope fixed right-[max(0.5rem,env(safe-area-inset-right))] z-[9000] w-[min(16.5rem,calc(100vw-1rem))] overflow-y-auto overscroll-contain rounded-xl border border-[var(--marinara-chat-chrome-panel-border)] p-1.5 text-[var(--foreground)] shadow-2xl"
+      className="mari-chrome-token-scope fixed right-[max(0.5rem,var(--mari-safe-area-inset-right))] z-[9000] w-[min(16.5rem,calc(100vw-1rem))] overflow-y-auto overscroll-contain rounded-xl border border-[var(--marinara-chat-chrome-panel-border)] p-1.5 text-[var(--foreground)] shadow-2xl"
     >
       {items.map((item) => (
         <button

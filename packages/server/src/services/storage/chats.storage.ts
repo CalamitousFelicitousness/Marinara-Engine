@@ -2975,75 +2975,37 @@ export function createChatsStorage(db: DB) {
     ): Promise<string[]> {
       if (messageIds.length === 0) return [];
       const uniqueIds = Array.from(new Set(messageIds));
-      const scopedRows: { id: string; extra: string | null }[] = [];
-      const CHUNK = 500;
-      for (let i = 0; i < uniqueIds.length; i += CHUNK) {
-        const batch = uniqueIds.slice(i, i + CHUNK);
-        const batchRows = await db
-          .select({ id: messages.id, extra: messages.extra })
-          .from(messages)
-          .where(and(eq(messages.chatId, chatId), inArray(messages.id, batch)));
-        scopedRows.push(...batchRows);
-      }
-
-      const seen = new Set<string>();
-      const flipped: string[] = [];
-      try {
-        for (const row of scopedRows) {
-          if (seen.has(row.id)) continue;
-          seen.add(row.id);
-          // State read immediately before the write — the moment-of-mutation truth
-          // that decides whether THIS call flips the message into the target state.
-          let wasHidden = false;
-          try {
-            const parsed = typeof row.extra === "string" ? JSON.parse(row.extra) : (row.extra ?? {});
-            wasHidden = (parsed as { hiddenFromAI?: unknown } | null)?.hiddenFromAI === true;
-          } catch {
-            wasHidden = false;
-          }
-          await this.updateMessageExtra(row.id, { ...extra, hiddenFromAI: hidden });
-          // Mirror what the single-message /extra route does: propagate the flag to
-          // all swipe rows so setActiveSwipe() cannot clobber it. Done for every
-          // scoped row (idempotent when already in the target state) so swipe
-          // consistency never depends on whether the main row happened to flip.
-          const swipes = await this.getSwipes(row.id);
-          for (const swipe of swipes) {
-            await this.updateSwipeExtra(row.id, swipe.index, { ...extra, hiddenFromAI: hidden });
-          }
-          if (wasHidden !== hidden) flipped.push(row.id);
-        }
-      } catch (err) {
-        // A write failed partway through. The rows we did not reach are untouched,
-        // and rows already in the target state were never flipped, so the only
-        // partial state is the `flipped` set. Undo exactly those so the call is
-        // all-or-nothing and a caller never records ownership of a half-applied
-        // batch. (db.transaction() is intentionally avoided in this store — see the
-        // bounded bulk-insert path above — so this
-        // compensating undo is the atomicity mechanism.) A clean undo preserves
-        // the original error. A failed undo is surfaced as a compound failure so
-        // callers never mistake a partially restored batch for a clean rollback.
-        const undoErrors: unknown[] = [];
-        for (const id of flipped) {
-          try {
-            await this.updateMessageExtra(id, { hiddenFromAI: !hidden });
-            const swipes = await this.getSwipes(id);
-            for (const swipe of swipes) {
-              await this.updateSwipeExtra(id, swipe.index, { hiddenFromAI: !hidden });
+      // Match ordinary message writers: acquire queues before opening the transaction.
+      // Read inside it and write directly, avoiding reentrant queue acquisition and
+      // restoring exact extras (including absent keys) if any message or swipe fails.
+      return withPatchQueues(messageExtraPatchQueues, uniqueIds, () =>
+        db.transaction(async (tx) => {
+          const flipped: string[] = [];
+          const CHUNK = 500;
+          for (let i = 0; i < uniqueIds.length; i += CHUNK) {
+            const rows = await tx
+              .select({ id: messages.id, extra: messages.extra })
+              .from(messages)
+              .where(and(eq(messages.chatId, chatId), inArray(messages.id, uniqueIds.slice(i, i + CHUNK))));
+            for (const row of rows) {
+              const previous = parseExtraRecord(row.extra);
+              await tx
+                .update(messages)
+                .set({ extra: JSON.stringify({ ...previous, ...extra, hiddenFromAI: hidden }) })
+                .where(eq(messages.id, row.id));
+              const swipes = await tx.select().from(messageSwipes).where(eq(messageSwipes.messageId, row.id));
+              for (const swipe of swipes) {
+                await tx
+                  .update(messageSwipes)
+                  .set({ extra: JSON.stringify({ ...parseExtraRecord(swipe.extra), ...extra, hiddenFromAI: hidden }) })
+                  .where(eq(messageSwipes.id, swipe.id));
+              }
+              if ((previous.hiddenFromAI === true) !== hidden) flipped.push(row.id);
             }
-          } catch (undoErr) {
-            undoErrors.push(undoErr);
-            logger.error(undoErr, "bulkSetHiddenFromAI: failed to undo partial hide for message %s", id);
           }
-        }
-        if (undoErrors.length > 0) {
-          throw new AggregateError(
-            [err, ...undoErrors],
-            `bulkSetHiddenFromAI failed and rollback failed for ${undoErrors.length} of ${flipped.length} flipped messages`,
-          );
-        }
-        throw err;
-      }
-      return flipped;
+          return flipped;
+        }),
+      );
     },
 
     /**

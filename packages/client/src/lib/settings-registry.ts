@@ -643,16 +643,6 @@ export const SETTINGS_SEARCHABLE_CONTROLS: readonly SettingsSearchableControlMet
     kind: "Button group",
   },
   {
-    id: "color-inline-names",
-    sectionId: "text-rules",
-    labelKey: "settings.controls.colorInlineNames.label",
-    label: "Color Character Names in Text",
-    description: "Color character names and aliases inline in message text.",
-    descriptionKey: "settings.search.colorInlineNames.description",
-    aliases: ["names", "aliases", "color", "gradient", "characters"],
-    kind: "Toggle",
-  },
-  {
     id: "disable-inline-name-gradients",
     sectionId: "text-rules",
     labelKey: "settings.controls.disableInlineNameGradients.label",

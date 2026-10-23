@@ -1,5 +1,9 @@
 import type { DB } from "../../db/connection.js";
-import { buildChatImageGenerationRecord, readImageAppearanceOverride } from "@marinara-engine/shared";
+import {
+  buildChatImageGenerationRecord,
+  extractLeadingThinkingBlocks,
+  readImageAppearanceOverride,
+} from "@marinara-engine/shared";
 import { isDebugAgentsEnabled } from "../../config/runtime-config.js";
 import { logger, logDebugOverride } from "../../lib/logger.js";
 import {
@@ -273,15 +277,26 @@ async function generateSelfie(
       },
     );
 
+    // Some local models put their reasoning inline; an unclosed block means it never got to the answer.
+    const answer = extractLeadingThinkingBlocks(promptResult.content ?? "").content.trim();
     // The writer follows the style, the connection's instructions and the card's image habits; a
     // sentence of them it copied word for word is not image-model text (#7357).
-    imagePrompt = removeCopiedPromptGuidance((promptResult.content ?? "").trim(), [
-      styleGuidance,
-      imgConnFull.imagePromptInstructions,
-      characterImageInstructions,
-    ]);
+    imagePrompt = /^<(?:think|thinking|reasoning)\b/iu.test(answer)
+      ? ""
+      : removeCopiedPromptGuidance(answer, [
+          styleGuidance,
+          imgConnFull.imagePromptInstructions,
+          characterImageInstructions,
+        ]);
+    // An empty prompt used to end the selfie without a word; say why instead.
+    if (!imagePrompt) {
+      throw new Error(
+        promptResult.finishReason === "length"
+          ? "The Prompt Model used its whole response budget before writing the selfie prompt. Try a model that thinks less."
+          : "The Prompt Model returned an empty selfie prompt.",
+      );
+    }
   }
-  if (!imagePrompt) return;
 
   const imageFallback = await resolveImageConnectionFallback(args.connections, imgConnFull.id);
   const suppressReferencePromptLine = suppressesReferencePromptLine(
@@ -401,6 +416,9 @@ async function generateSelfie(
             connectionKey: imgConnFull.id?.trim() || `${serviceHint || imgSource}:${imgBaseUrl}:${imgModel}`,
             queue: args.queue,
             signal: args.signal,
+            // generateImage waits for a shared GPU turn before its own permit; a permit taken here would be held
+            // through that wait.
+            taskTakesPermit: true,
             task: drawSelfie,
           }),
     onVariantError: (error, index) =>

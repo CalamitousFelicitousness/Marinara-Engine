@@ -1674,7 +1674,8 @@ function itemUseActions(
       held.name ??
       definition.items?.categories.find((category) => category.id === item.category)?.label ??
       item.category;
-    const label = named ? `${name}: ${named}` : name;
+    // Called what the ruleset calls it in place of the item's name (1.378): "Scatter ball bearings".
+    const label = use.title ?? (named ? `${name}: ${named}` : name);
     const action = itemUseMechanics(definition, item, use, { id, label }, build, evaluated, perCell, pooled);
     if (!action) return;
     // A fake (1.79) is offered as what it passes for, aimed, timed and spent as that is, so nothing on
@@ -2000,6 +2001,14 @@ function itemSwitchActions(items: readonly RulesetSheetItem[] | undefined): Rule
         budget: toggle.budget,
         targets: { side: "self", count: 0 },
         switches: { item: index },
+        ...(toggle.onLabel || toggle.offLabel
+          ? {
+              switchLabels: {
+                ...(toggle.onLabel ? { on: toggle.onLabel } : {}),
+                ...(toggle.offLabel ? { off: toggle.offLabel } : {}),
+              },
+            }
+          : {}),
       },
     ];
   });
@@ -3021,6 +3030,8 @@ function abilityActions(
   const rows = build.lists?.[source.list];
   if (!Array.isArray(rows)) return { actions: [], riders: [] };
   const byRef = rulesetCatalogEntriesByRef(catalogs);
+  // Where the menu shows what the list gives (1.378): under the list's own tab, split as it is.
+  const display = definition.sheet.lists.find((list) => list.id === source.list)?.display;
   /** A catalog states what its own `range` and `area.size` numbers mean; one that does not is read
    *  in the combat block's own unit. */
   const perCellOf = (ref: string) => {
@@ -3076,6 +3087,12 @@ function abilityActions(
     // entries reads.
     action.catalog = ref.slice(0, ref.indexOf("/"));
     action.entry = ref;
+    if (display?.tab) {
+      const place = display.by ? columnValue(row, display.by.column) : undefined;
+      const order = typeof place === "number" && Number.isInteger(place) ? place : undefined;
+      const sub = order !== undefined ? display.by!.labels[order] : undefined;
+      action.menuGroup = { label: display.tab, ...(sub !== undefined ? { sub: { label: sub, order: order! } } : {}) };
+    }
     seen.add(ref);
     actions.push(action);
   });

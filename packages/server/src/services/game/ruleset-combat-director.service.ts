@@ -47,6 +47,9 @@ import {
   rulesetCombatConditions,
   rulesetZoneConditions,
   rulesetCombatHealth,
+  rulesetDefenseAgainst,
+  rulesetForecastsByTarget,
+  rulesetConditionIcons,
   rulesetCombatHide,
   rulesetCombatOptions,
   rulesetCostSteps,
@@ -86,6 +89,7 @@ import {
   rulesetAreaCells,
   rulesetZoneCatches,
   rulesetZoneCells,
+  RULESET_LAIR_OPTION_PREFIX,
   RULESET_MOVE_OPTION,
   RULESET_ZONE_OPTION_PREFIX,
   RULESET_ZONE_TURN_OPTION_PREFIX,
@@ -649,7 +653,7 @@ function conditionsOf(
   definition: RulesetDefinition,
   combatant: RulesetCombatant,
   state?: RulesetEncounterState,
-): Array<{ id: string; label: string; rounds?: number }> {
+): Array<{ id: string; label: string; rounds?: number; icons?: string[] }> {
   const declared = new Map(definition.sheet.live.conditions.map((entry) => [entry.id, entry.label]));
   const tracked = new Map(combatant.tracked.map((entry) => [entry.condition, entry.rounds]));
   // And what a zone they stand in puts on them while they stay (1.179).
@@ -659,10 +663,12 @@ function conditionsOf(
   ]);
   return [...ids].map((id) => {
     const rounds = tracked.get(id);
+    const icons = rulesetConditionIcons(definition, id);
     return {
       id,
       label: declared.get(id) ?? id,
       ...(typeof rounds === "number" ? { rounds } : {}),
+      ...(icons.length ? { icons } : {}),
     };
   });
 }
@@ -687,6 +693,11 @@ function deathTrackOf(definition: RulesetDefinition, combatant: RulesetCombatant
  *  for the fight's own HUD: a player should not have to open the sheet mid-fight to count slots. */
 function spentPoolsOf(definition: RulesetDefinition, combatant: RulesetCombatant) {
   if (combatant.side !== "party" || !combatant.sheet) return undefined;
+  // What one of it is called, for a player paying with it (1.378): "a 2nd-level slot".
+  const unitOf = (id: string) => {
+    const declared = definition.sheet.live.pools.find((pool) => pool.id === id);
+    return declared?.unit ? { unit: declared.unit } : {};
+  };
   // The ruleset may name them itself, in its own order (1.375).
   const named = definition.combat?.display?.pools;
   if (named) {
@@ -694,7 +705,7 @@ function spentPoolsOf(definition: RulesetDefinition, combatant: RulesetCombatant
     const pools = named.flatMap((id) =>
       live.pools
         .filter((pool) => pool.key === id && !pool.listId && pool.max > 0)
-        .map((pool) => ({ id: pool.key, label: pool.label, value: pool.value, max: pool.max })),
+        .map((pool) => ({ id: pool.key, label: pool.label, value: pool.value, max: pool.max, ...unitOf(pool.key) })),
     );
     return pools.length ? pools : undefined;
   }
@@ -711,7 +722,7 @@ function spentPoolsOf(definition: RulesetDefinition, combatant: RulesetCombatant
   const live = readRulesetLive(definition, combatant.sheet.build, combatant.sheet.live);
   const pools = live.pools
     .filter((pool) => !pool.listId && pool.max > 0 && spent.has(pool.key))
-    .map((pool) => ({ id: pool.key, label: pool.label, value: pool.value, max: pool.max }));
+    .map((pool) => ({ id: pool.key, label: pool.label, value: pool.value, max: pool.max, ...unitOf(pool.key) }));
   return pools.length ? pools : undefined;
 }
 
@@ -741,6 +752,8 @@ function projectCombatant(
   definition: RulesetDefinition,
   combatant: RulesetCombatant,
   state: RulesetEncounterState,
+  /** Whose turn it is, when one is taking it. */
+  attacker: RulesetCombatant | undefined,
 ): DirectedRulesetCombatant {
   const combat = definition.combat!;
   const health = rulesetCombatHealth(definition, combat, combatant);
@@ -759,7 +772,17 @@ function projectCombatant(
     ...(combatant.creature ? { creature: { ...combatant.creature } } : {}),
     initiative: combatant.initiative,
     health,
-    defense: combatant.defense,
+    // What an attack is rolled against now, with what its conditions add (a Shield's +5), what a
+    // dropped shield took away and the cover of the ground it stands on. Against a foe whose turn it
+    // is, the cover and high ground between them too: the number the log will say. With no such foe,
+    // only what holds against a blow from anywhere.
+    defense: rulesetDefenseAgainst(
+      definition,
+      combat,
+      state,
+      combatant,
+      attacker && attacker.side !== combatant.side ? attacker : undefined,
+    ).defense,
     conditions: conditionsOf(definition, combatant, state),
     hides: rulesetCombatHide(definition, combatant, state),
     damageModifiers: active.flatMap((source) => {
@@ -834,12 +857,79 @@ export function rulesetMenu(
       inWindow && encounter.window?.trigger.kind === "falls" && option.targets.count > 1 && actor && action
         ? rulesetFallTargets(definition, encounter, actor, action)
         : undefined;
+    const targetIds = fallers ?? rulesetOptionTargets(definition, encounter, actorId, option);
+    // Odds for each one it may be pointed at, where there is a choice to make between them.
+    const forecastFor =
+      targetIds.length > 1 && option.forecast && !option.area
+        ? rulesetForecastsByTarget(definition, encounter, actorId, option.id, targetIds)
+        : undefined;
+    const raisesDefense =
+      inWindow && encounter.window?.trigger.kind === "hit" && option.kind !== "end-turn"
+        ? heldHitAnswer(definition, encounter, actorId, option, targetIds, encounter.window.trigger)
+        : undefined;
     return {
       ...option,
-      targetIds: fallers ?? rulesetOptionTargets(definition, encounter, actorId, option),
+      targetIds,
+      ...(forecastFor && Object.keys(forecastFor).length > 0 ? { forecastFor } : {}),
+      ...(raisesDefense ? { raisesDefense } : {}),
       ...(aim.length > 0 ? { aim } : {}),
     };
   });
+}
+
+type HeldHit = Extract<NonNullable<RulesetEncounterState["window"]>["trigger"], { kind: "hit" }>;
+
+/** What taking one answer to a held hit does to the defense it is checked against: the answer is
+ *  taken on a copy of the fight with every die at its middle, and the defense read again. Nothing
+ *  when it does not raise it (a counter-strike, or a reaction aimed elsewhere). */
+function heldHitAnswer(
+  definition: RulesetDefinition,
+  encounter: RulesetEncounterState,
+  actorId: string,
+  option: RulesetCombatOption,
+  targetIds: string[],
+  hit: HeldHit,
+): { to: number; misses?: true } | undefined {
+  const combat = definition.combat;
+  if (!combat) return undefined;
+  const struckId = hit.targetIds?.[0] ?? actorId;
+  // The one struck leads, when the answer may go to them: a reaction shielding an ally.
+  const aimed = targetIds.includes(struckId) ? [struckId, ...targetIds.filter((id) => id !== struckId)] : targetIds;
+  try {
+    const step = applyRulesetCombatChoice(
+      definition,
+      encounter,
+      { actorId, optionId: option.id, targetIds: aimed.slice(0, Math.max(0, option.targets.count)) },
+      (sides) => Math.ceil(sides / 2),
+    );
+    const struck = rulesetCombatant(step.state, struckId);
+    const source = rulesetCombatant(step.state, hit.sourceId);
+    if (!struck) return undefined;
+    const heldId = hit.optionId.startsWith(RULESET_LAIR_OPTION_PREFIX)
+      ? hit.optionId.slice(RULESET_LAIR_OPTION_PREFIX.length)
+      : hit.optionId;
+    const action = source?.actions.find((one) => one.id === heldId);
+    const to = rulesetDefenseAgainst(definition, combat, step.state, struck, source, action).defense;
+    if (to <= hit.defense) return undefined;
+    return { to, ...(hit.total < to ? { misses: true as const } : {}) };
+  } catch (error) {
+    logger.debug(error, "[game/combat:ruleset] could not preview %s's answer %s to a held hit", actorId, option.id);
+    return undefined;
+  }
+}
+
+/** About how much a held hit's damage comes to against the one it hit. */
+function heldHitStakes(
+  definition: RulesetDefinition,
+  encounter: RulesetEncounterState,
+  hit: HeldHit,
+  /** The one being asked, who was hit where the hit names nobody else. */
+  askedId: string,
+): number | undefined {
+  const struckId = hit.targetIds?.[0] ?? askedId;
+  const damage = rulesetForecastsByTarget(definition, encounter, hit.sourceId, hit.optionId, [struckId])[struckId]
+    ?.averageDamage;
+  return damage !== undefined && Math.round(damage) > 0 ? Math.round(damage) : undefined;
 }
 
 /** The fight as a screen reads it. A projection: no sheet build, no live blob and no catalogs. */
@@ -918,7 +1008,9 @@ export function directedRulesetView(
       : {}),
     ...(actor && !over ? { actorId: actor.id } : {}),
     controller,
-    combatants: encounter.combatants.map((combatant) => projectCombatant(definition, combatant, encounter)),
+    combatants: encounter.combatants.map((combatant) =>
+      projectCombatant(definition, combatant, encounter, actor && !over ? actor : undefined),
+    ),
     // The areas spells left standing (1.172), drawn on the board and listed beside it.
     ...(rulesetZonesShown(encounter).length > 0 ? { zones: rulesetZonesShown(encounter) } : {}),
     // What stands on the board that may be broken (1.316), broken ones too.
@@ -949,7 +1041,11 @@ export function directedRulesetView(
             ...(rulesetWindowMoment(held.window.trigger) ? { moment: rulesetWindowMoment(held.window.trigger)! } : {}),
             ...("label" in held.window.trigger ? { label: held.window.trigger.label } : {}),
             ...(held.window.trigger.kind === "hit"
-              ? { total: held.window.trigger.total, defense: held.window.trigger.defense }
+              ? ((hit, stakes) => ({
+                  total: hit.total,
+                  defense: hit.defense,
+                  ...(stakes !== undefined ? { stakes } : {}),
+                }))(held.window.trigger, heldHitStakes(definition, encounter, held.window.trigger, held.actorId))
               : {}),
             controller: held.controller,
             ...((cells) => (cells ? { cells } : {}))(

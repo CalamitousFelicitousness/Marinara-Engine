@@ -7,7 +7,8 @@
 // its first package client, so an Engine without packages never loads it and startup does not wait for it.
 import * as tanstackReactQuery from "@tanstack/react-query";
 import * as clsx from "clsx";
-import * as framerMotion from "framer-motion";
+import * as motion14 from "framer-motion";
+import * as framerMotion from "framer-motion-v13";
 import * as i18next from "i18next";
 import * as react from "react";
 import * as reactJsxRuntime from "react/jsx-runtime";
@@ -61,7 +62,7 @@ function defineMarinaraHost(): MarinaraHostV1 {
     gameState: useGameStateStore,
     backfill: useRollingBackfillStore,
   });
-  // Each value is exactly what `import * as m from "<specifier>"` gives the Engine's own code, so a package shares the
+  // Each value is the namespace of its MARINARA_HOST_MODULE_IMPORTS dependency, so a package shares the
   // Engine's one React, React Query, zustand and toast state.
   const modules = Object.freeze({
     react,
@@ -76,6 +77,7 @@ function defineMarinaraHost(): MarinaraHostV1 {
     i18next,
     "react-i18next": reactI18next,
     "framer-motion": framerMotion,
+    "motion/react": motion14,
     "tailwind-merge": tailwindMerge,
     clsx,
   });

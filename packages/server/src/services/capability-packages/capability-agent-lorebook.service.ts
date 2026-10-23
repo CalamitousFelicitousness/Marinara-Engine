@@ -78,6 +78,9 @@ export async function resolvePackageAgentLorebookEntries(
   const visible = allMessages
     .slice(boundary)
     .filter((message) => chat.mode === "game" || !isMessageHiddenFromAI(message));
+  const config = await createAgentsStorage(db).getByType(packageId);
+  const contextSize = normalizeAgentContextSize(parseExtra(config?.settings).contextSize);
+  const agentMessages = visible.slice(-contextSize);
   const last = visible.at(-1);
   const prior = visible
     .slice(0, -1)
@@ -115,7 +118,7 @@ export async function resolvePackageAgentLorebookEntries(
     variables: {},
     localVariables: { ...normalizeChatMacroVariables(metadata.macroVariables) },
     lastInput: [...visible].reverse().find((message) => message.role === "user")?.content,
-    macroSources: [...visible.map((message) => message.content), ...sourceEntries.map((entry) => entry.content)],
+    macroSources: [...agentMessages.map((message) => message.content), ...sourceEntries.map((entry) => entry.content)],
   });
   const profiles = await resolveCharacterMacroData(db, characterIds, chatId);
   const whisperNames = roleplayAgentsSeeWhispers(chat.mode, metadata)
@@ -125,7 +128,7 @@ export async function resolvePackageAgentLorebookEntries(
       ])
     : null;
   const messages = resolvePromptMessageMacros(
-    visible.map((message) => ({
+    agentMessages.map((message) => ({
       ...message,
       characterId: message.characterId ?? undefined,
       content: roleplayAgentText(message.content, message, whisperNames),
@@ -146,8 +149,6 @@ export async function resolvePackageAgentLorebookEntries(
     replay ?? {},
     (value) => resolveMacros(value, macros, { trimResult: false }),
   );
-  const config = await createAgentsStorage(db).getByType(packageId);
-  const settings = parseExtra(config?.settings);
   let embeddingSource: Awaited<ReturnType<typeof resolveMemoryRecallEmbeddingSource>> | null = null;
   let vectorizerAvailable = false;
   try {
@@ -167,7 +168,7 @@ export async function resolvePackageAgentLorebookEntries(
     agents: [
       {
         id: packageId,
-        contextSize: normalizeAgentContextSize(settings.contextSize),
+        contextSize,
         source: "manual",
         sourceLorebookIds: [selected.lorebookId.trim()],
       },

@@ -12,7 +12,7 @@ process.env.MARINARA_LITE = "true";
 process.env.LOG_LEVEL = "silent";
 const require = createRequire(new URL("../../packages/server/package.json", import.meta.url));
 const { getDB, closeDB } = await import("../../packages/server/src/db/connection.js");
-const { chats: chatRows } = await import("../../packages/server/src/db/schema/index.js");
+const { chats: chatRows, lorebookEntries: entryRows } = await import("../../packages/server/src/db/schema/index.js");
 const { eq } = await import("../../packages/server/src/db/file-query.js");
 const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
 const { createAgentsStorage } = await import("../../packages/server/src/services/storage/agents.storage.js");
@@ -413,6 +413,81 @@ try {
     prompts.every((prompt) => !prompt.includes("WRITER_BOOK_SECRET")),
     "an assistant-only continuation does not activate chat-only entries",
   );
+  const windowChat = await chats.create({ name: "Bounded package history", mode: "roleplay", characterIds: [] });
+  const windowBook = await books.create({ name: "Window reference" });
+  assert(windowChat && windowBook);
+  await agents.update(configs[0]!.id, { settings: { contextSize: 2 } });
+  await books.createEntry({
+    lorebookId: windowBook.id,
+    keys: ["inside-window"],
+    content: "RECENT_WINDOW_REFERENCE for {{user}}",
+  });
+  await books.createEntry({
+    lorebookId: windowBook.id,
+    keys: ["outside-window"],
+    content: "DISCARDED_MACRO_REFERENCE",
+  });
+  await chats.patchMetadata(windowChat.id, {
+    agentLorebookAttachments: { [types[0]!]: { enabled: true, lorebookId: windowBook.id } },
+    macroVariables: { windowKey: "inside-window" },
+  });
+  for (let index = 0; index < 32; index++)
+    await chats.createMessage({
+      chatId: windowChat.id,
+      role: "assistant",
+      content: `{{setvar::windowKey::outside-window}} {{lorebooksize::${windowBook.id}}}`,
+    });
+  await chats.createMessage({ chatId: windowChat.id, role: "user", content: "Read the current window." });
+  await chats.createMessage({ chatId: windowChat.id, role: "assistant", content: "{{getvar::windowKey}}" });
+  const cleanWindowChat = await chats.create({ name: "Only the retained window", mode: "roleplay", characterIds: [] });
+  assert(cleanWindowChat);
+  await chats.patchMetadata(cleanWindowChat.id, {
+    agentLorebookAttachments: { [types[0]!]: { enabled: true, lorebookId: windowBook.id } },
+    macroVariables: { windowKey: "inside-window" },
+  });
+  await chats.createMessage({ chatId: cleanWindowChat.id, role: "user", content: "Read the current window." });
+  await chats.createMessage({ chatId: cleanWindowChat.id, role: "assistant", content: "{{getvar::windowKey}}" });
+  let entryCountQueries = 0;
+  const originalSelect = db.select;
+  db.select = ((projection?: Record<string, unknown>) => {
+    if (projection && Object.keys(projection).length === 1 && projection.lorebookId === entryRows.lorebookId)
+      entryCountQueries++;
+    return originalSelect(projection as never);
+  }) as typeof db.select;
+  try {
+    await resolvePackageAgentLorebookEntries(db, types[0]!, { chatId: cleanWindowChat.id });
+    const baselineCountQueries = entryCountQueries;
+    entryCountQueries = 0;
+    const windowEntries = await resolvePackageAgentLorebookEntries(db, types[0]!, { chatId: windowChat.id });
+    assert.equal(
+      entryCountQueries,
+      baselineCountQueries,
+      `discarded history must not load macro dependencies: ${JSON.stringify(windowEntries)}`,
+    );
+    assert.deepEqual(
+      windowEntries.map((entry) => entry.content),
+      ["RECENT_WINDOW_REFERENCE for User"],
+      "discarded variable writes cannot change the retained history's triggers",
+    );
+    await chats.createMessage({
+      chatId: windowChat.id,
+      role: "assistant",
+      content: `{{lorebooksize::${windowBook.id}}} {{getvar::windowKey}}`,
+    });
+    entryCountQueries = 0;
+    const retainedEntries = await resolvePackageAgentLorebookEntries(db, types[0]!, { chatId: windowChat.id });
+    assert.equal(
+      entryCountQueries,
+      baselineCountQueries + 1,
+      "a macro in the retained window still loads its dependencies",
+    );
+    assert.deepEqual(
+      retainedEntries.map((entry) => entry.content),
+      ["RECENT_WINDOW_REFERENCE for User"],
+    );
+  } finally {
+    db.select = originalSelect;
+  }
   for (const config of configs)
     assert(
       !JSON.parse((await agents.getById(config!.id))!.settings as string).chatLorebookAttachmentEnabled,

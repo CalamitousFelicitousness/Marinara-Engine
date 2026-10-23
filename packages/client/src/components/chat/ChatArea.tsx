@@ -75,6 +75,7 @@ import { Check, X } from "lucide-react";
 import {
   PROFESSOR_MARI_ID,
   buildGuidedGenerationInstructionMessage,
+  getDrawerWindowId,
   normalizeAvatarCrop,
   normalizeAdvancedMemorySettings,
   normalizeGroupChatMode,
@@ -783,6 +784,14 @@ const LocalChatArea = memo(function LocalChatArea({
     const openMemorySettings = (event: Event) => {
       const chatId = (event as CustomEvent<{ chatId?: string }>).detail?.chatId;
       if (chatId !== useChatStore.getState().activeChatId) return;
+      useUIStore.getState().setChatSettingsSectionExpanded("roleplay-memory-recall", true);
+      const windows = useFloatingWindowStore.getState();
+      const memoryWindowId = getDrawerWindowId(CHAT_SETTINGS_WINDOW_ID, "roleplay-memory-recall");
+      if (windows.detached[memoryWindowId]) {
+        void preloadChatSettingsDrawer();
+        windows.openWindow(memoryWindowId);
+        return;
+      }
       handleOpenSettingsPanel(undefined, { initialSection: "memory-recall" });
     };
     window.addEventListener(ADVANCED_MEMORY_SETTINGS_EVENT, openMemorySettings);

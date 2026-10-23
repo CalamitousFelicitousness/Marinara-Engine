@@ -104,7 +104,7 @@ for (const detached of [false, true]) {
         await expect(page.locator("textarea[data-chat-composer]")).toBeVisible();
         const notice = page
           .locator("[data-sonner-toast]")
-          .filter({ hasText: "Advanced Memory found problems in 1 scene." });
+          .filter({ hasText: "Advanced Memory found a problem in 1 scene." });
         await expect(notice).toBeVisible();
         if (entry === "notice") await notice.getByRole("button", { name: "Fix", exact: true }).click();
         else {
@@ -112,15 +112,27 @@ for (const detached of [false, true]) {
             window.dispatchEvent(new CustomEvent("marinara:advanced-memory-settings", { detail: { chatId } }));
           }, chat.id);
         }
-        const window = page.locator(`.mari-window[data-window="${detached ? memoryWindowId : "chat-settings"}"]`);
-        const memory = window.locator('[data-chat-settings-section="roleplay-memory-recall"]');
-        await expect(window).toBeVisible();
+        const owner = page.locator(`.mari-window[data-window="${detached ? memoryWindowId : "chat-settings"}"]`);
+        const memory = owner.locator('[data-chat-settings-section="roleplay-memory-recall"]');
+        await expect(owner).toBeVisible();
+        if (detached) await expect(page.locator('.mari-window[data-window="chat-settings"]')).not.toBeVisible();
         await expect(memory.getByText("Advanced Memory Recall", { exact: true })).toBeVisible();
         await expect(memory).toBeInViewport();
         if (entry === "notice") {
           await expect.poll(() => fixRequests).toEqual([expect.objectContaining({ fixAll: true })]);
           await expect(memory.locator('[data-component="AdvancedMemoryProgress"]')).toContainText("Summarizing scenes");
-        } else expect(fixRequests).toEqual([]);
+        } else {
+          expect(fixRequests).toEqual([]);
+          if (!detached) {
+            await memory.locator(":scope > .mari-drawer__header [data-drawer-toggle]").click();
+            await expect(memory.getByText("Advanced Memory Recall", { exact: true })).toHaveCount(0);
+            await page.evaluate((chatId) => {
+              window.dispatchEvent(new CustomEvent("marinara:advanced-memory-settings", { detail: { chatId } }));
+            }, chat.id);
+            await expect(memory.getByText("Advanced Memory Recall", { exact: true })).toBeVisible();
+            await expect(memory.getByText("Enable Memory Recall", { exact: true })).toBeInViewport({ ratio: 1 });
+          }
+        }
         for (const theme of ["dark", "light"] as const) {
           await page.evaluate(async (theme) => {
             const { useUIStore } = await import("/src/stores/ui.store.ts" as string);

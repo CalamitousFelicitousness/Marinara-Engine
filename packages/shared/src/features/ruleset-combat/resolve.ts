@@ -1747,7 +1747,12 @@ function spendSymbols(
   const whom = (on: "attacker" | "target" | "attacker-ally" | "target-ally") =>
     rulesetSymbolSpendHolder(ctx.state, actor, target, on);
   const apply = (picks: RulesetSymbolSpendPick[], chooser: RulesetCombatant) => {
-    for (const { spend, times } of picks) {
+    for (const pick of picks) {
+      const { spend } = pick;
+      // What landed before it may leave it less to do (two spends on one holder), so it is asked
+      // again as it is spent, and a spend that would do nothing now is not spent at all.
+      const times = Math.min(pick.times, usable(spend));
+      if (times <= 0) continue;
       const dice = spend.boost ?? spend.setback;
       const diceOn = dice ? whom(dice.on) : undefined;
       ctx.events.push({

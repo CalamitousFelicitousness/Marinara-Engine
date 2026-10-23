@@ -12778,14 +12778,14 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
           return group === undefined ? `condition:${id}` : `kind:${group}`;
         };
         const twin = spend.condition
-          ? combat
-              .symbols!.spends!.slice(0, index)
-              .find(
-                (one) =>
-                  one.condition &&
-                  one.condition.on === spend.condition!.on &&
-                  kindOf(one.condition.id) === kindOf(spend.condition!.id),
-              )
+          ? combat.symbols!.spends!.slice(0, index).find(
+              (one) =>
+                one.condition &&
+                one.condition.on === spend.condition!.on &&
+                // Bought on the same throw: a hit's spend and a miss's never are.
+                (one.when === "any" || spend.when === "any" || one.when === spend.when) &&
+                kindOf(one.condition.id) === kindOf(spend.condition!.id),
+            )
           : undefined;
         if (twin) {
           issue(

@@ -250,6 +250,20 @@ try {
       /already puts that condition, or one of its kind, on the same one/,
       "two spends putting one condition on one holder",
     );
+    // A hit's spend and a miss's are never bought on one throw, so they may both name it.
+    parsedOrThrow(
+      doc((document) => {
+        document.combat.symbols.spends.push({
+          id: "graze",
+          label: "Graze",
+          by: "attacker",
+          symbol: "a",
+          cost: 3,
+          when: "miss",
+          condition: { id: "wounded", on: "target" },
+        });
+      }),
+    );
     refuses(
       (document) => (document.resolution.pool.build = "sum"),
       /has no upgraded dice to throw/,
@@ -531,9 +545,27 @@ try {
     const brute = rulesetCombatant(already, "brute")!;
     const usable = rulesetSymbolSpendUsable(kinded, already, ada, brute);
     const telling = kinded.combat!.symbols!.spends!.find((spend) => spend.id === "telling")!;
-    assert.equal(usable(telling), false, "a second wound of the kind would not go on");
+    assert.equal(usable(telling), 0, "a second wound of the kind would not go on");
     const fresh = (id: string) => rulesetCombatant(adaAgain, id)!;
-    assert.equal(rulesetSymbolSpendUsable(kinded, adaAgain, fresh("ada"), fresh("brute"))(telling), true);
+    assert.equal(rulesetSymbolSpendUsable(kinded, adaAgain, fresh("ada"), fresh("brute"))(telling), 1);
+    // A track with no room left that way is not moved, so Overreach is not bought on a Brute whose
+    // heat is full, and buys no more than the room there is.
+    const overreach = kinded.combat!.symbols!.spends!.find((spend) => spend.id === "overreach")!;
+    const hot = structuredClone(adaAgain);
+    rulesetCombatant(hot, "brute")!.tracks = { heat: 5 };
+    const swinging = rulesetSymbolSpendUsable(
+      kinded,
+      hot,
+      rulesetCombatant(hot, "brute")!,
+      rulesetCombatant(hot, "ada")!,
+    );
+    assert.equal(swinging(overreach), 0, "heat is full");
+    rulesetCombatant(hot, "brute")!.tracks = { heat: 4 };
+    assert.equal(swinging(overreach), 1);
+    assert.deepEqual(
+      pickRulesetSymbolSpends(kinded.combat!, { h: 2 }, false, "target", () => 0),
+      [],
+    );
     assert.deepEqual(pickRulesetSymbolSpends(kinded.combat!, { t: 1 }, true, "attacker", usable), []);
     const cleaver = rulesetCombatOptions(kinded, already, "ada").find((entry) => entry.label === "Cleaver")!;
     const declined = applyRulesetCombatChoice(

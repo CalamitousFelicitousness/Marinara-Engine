@@ -1226,33 +1226,56 @@ export function rulesetSymbolSpendHolder(
   return undefined;
 }
 
-/** Whether a symbol spend can be bought on this attack (1.382): everybody it names is there, and a
- *  condition it gives would go on (not kept off, not sealed apart from whoever puts it on, not one of
- *  a kind its holder already has). The fight and its forecast both ask, so the AI never prices what
- *  the Engine would leave unbought, and no symbol is charged for a condition that does not land. */
+/** How many times a symbol spend can land on this attack (1.382), none where it cannot: everybody it
+ *  names is there and standing, a condition it gives would go on (not kept off, not sealed apart from
+ *  whoever puts it on, not one of a kind its holder already has), and a track it moves has room to
+ *  move that way. The fight and its forecast both ask, so the AI never prices what the Engine leaves
+ *  unbought, and no symbol is spent on something that does not happen. */
 export function rulesetSymbolSpendUsable(
   definition: RulesetDefinition,
   state: RulesetEncounterState,
   actor: RulesetCombatant,
   target: RulesetCombatant,
-): (spend: RulesetSymbolSpend) => boolean {
+): (spend: RulesetSymbolSpend) => number {
   return (spend) => {
     const named = [spend.condition?.on, spend.track?.on, spend.boost?.on, spend.setback?.on];
-    if (!named.every((on) => on === undefined || !!rulesetSymbolSpendHolder(state, actor, target, on))) return false;
-    if (!spend.condition) return true;
-    const holder = rulesetSymbolSpendHolder(state, actor, target, spend.condition.on)!;
+    for (const on of named) {
+      if (on === undefined) continue;
+      const holder = rulesetSymbolSpendHolder(state, actor, target, on);
+      if (!holder || holder.defeated) return 0;
+    }
+    let times = spend.max;
     const putter = spend.by === "attacker" ? actor : target;
-    const condition = spend.condition.id;
-    if (rulesetImmuneToCondition(holder, condition, definition, state, putter)) return false;
-    if (rulesetSealedApart(definition, state, putter, holder)) return false;
-    const conditions = definition.combat?.conditions;
-    const group = conditions?.find((one) => one.condition === condition)?.oneAtATime;
-    return (
-      group === undefined ||
-      !holder.tracked.some(
+    if (spend.condition) {
+      const holder = rulesetSymbolSpendHolder(state, actor, target, spend.condition.on)!;
+      const condition = spend.condition.id;
+      if (rulesetImmuneToCondition(holder, condition, definition, state, putter)) return 0;
+      if (rulesetSealedApart(definition, state, putter, holder)) return 0;
+      const conditions = definition.combat?.conditions;
+      const group = conditions?.find((one) => one.condition === condition)?.oneAtATime;
+      const held = holder.tracked.some(
         (entry) => conditions?.find((one) => one.condition === entry.condition)?.oneAtATime === group,
-      )
-    );
+      );
+      if (group !== undefined && held) return 0;
+      times = Math.min(times, 1);
+    }
+    if (spend.track) {
+      const holder = rulesetSymbolSpendHolder(state, actor, target, spend.track.on)!;
+      const declared = definition.sheet.live.tracks.find((entry) => entry.id === spend.track!.id);
+      if (!declared || declared.kinds) return 0;
+      const by = spend.track.by;
+      if (by > 0 && rulesetImmuneToCondition(holder, declared.id, definition)) return 0;
+      const live = holder.sheet
+        ? readRulesetLive(definition, holder.sheet.build, holder.sheet.live).tracks.find(
+            (entry) => entry.id === declared.id,
+          )
+        : undefined;
+      const from = live ? live.value : (holder.tracks?.[declared.id] ?? declared.default ?? declared.min);
+      const top = live ? live.max : typeof declared.max === "number" ? declared.max : 1000;
+      const space = by > 0 ? top - from : from - declared.min;
+      times = Math.min(times, Math.max(0, Math.ceil(space / Math.abs(by))));
+    }
+    return times;
   };
 }
 

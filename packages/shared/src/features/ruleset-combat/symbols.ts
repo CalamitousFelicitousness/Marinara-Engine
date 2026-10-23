@@ -280,13 +280,19 @@ export function pickRulesetSymbolSpends(
   symbols: Readonly<Record<string, number>>,
   hit: boolean,
   by: RulesetSymbolSpend["by"],
-  /** Whether a spend can land at all here: one whose ally there is nobody to be is not bought. */
-  usable: (spend: RulesetSymbolSpend) => boolean = () => true,
+  /** Whether a spend can land here, or how many times it can: one whose ally there is nobody to be,
+   *  or whose condition or track would not move, is not bought, and never more often than it lands. */
+  usable: (spend: RulesetSymbolSpend) => boolean | number = () => true,
 ): RulesetSymbolSpendPick[] {
+  const room = new Map<RulesetSymbolSpend, number>();
+  for (const spend of combat.symbols?.spends ?? []) {
+    const lands = usable(spend);
+    room.set(spend, lands === true ? spend.max : lands === false ? 0 : Math.max(0, Math.min(spend.max, lands)));
+  }
   const spends = (combat.symbols?.spends ?? []).filter(
     (spend) =>
       spend.by === by &&
-      usable(spend) &&
+      room.get(spend)! > 0 &&
       (symbols[spend.symbol] ?? 0) >= spend.cost &&
       (hit ? spend.when !== "miss" : spend.when !== "hit") &&
       rulesetSymbolSpendWorth(spend) > 0,
@@ -297,7 +303,7 @@ export function pickRulesetSymbolSpends(
     // One item per time a spend may be bought, so a bounded knapsack is a plain one.
     const items = spends
       .filter((spend) => spend.symbol === symbol)
-      .flatMap((spend) => Array.from({ length: spend.max }, () => spend));
+      .flatMap((spend) => Array.from({ length: room.get(spend)! }, () => spend));
     const best = Array.from({ length: capacity + 1 }, () => ({ worth: 0, used: 0, items: [] as number[] }));
     items.forEach((item, index) => {
       const worth = rulesetSymbolSpendWorth(item);
@@ -350,8 +356,8 @@ export function rulesetSymbolAttackForecast(
   /** The blow's own harm on a hit, on average. */
   base: number,
   soak: number,
-  /** Which spends can be bought in this fight; every one, where the caller doesn't say. */
-  usable: (spend: RulesetSymbolSpend) => boolean = () => true,
+  /** Which spends can be bought in this fight, and how often; every one, where the caller doesn't say. */
+  usable: (spend: RulesetSymbolSpend) => boolean | number = () => true,
 ): { hitChance: number; averageDamage: number; worth: number } {
   const success = rulesetSymbolSuccess(definition);
   const needed = rulesetSymbolNeeded(definition);

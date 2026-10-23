@@ -3392,8 +3392,9 @@ What the symbols do is the `symbols` block:
 - `spends`: up to 16 things a symbol left over on an attack's roll buys. `cost` of `symbol` buys it
   once, and `max` (one) says how many times one roll may buy it; a spend that gives a `condition` or
   a `critical` lands once, so its `max` stays one, and no two spends put one condition (or two of
-  one `oneAtATime` kind) on the same one. A condition spend is left unbought when its condition
-  would not go on: kept off, or one of its kind already held. `by` says which side chooses it: the
+  one `oneAtATime` kind) on the same one on the same throw. A spend is left unbought when it would
+  do nothing: its condition would not go on (kept off, or one of its kind already held), or its track
+  has no room to move that way. `by` says which side chooses it: the
   attacker spends the symbols that favour them (advantage, triumph), the target the ones that favour
   the target (threat, despair). One side spends a given symbol, and a spend never buys with the
   successes, which already land the blow and add to its harm.

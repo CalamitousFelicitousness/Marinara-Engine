@@ -841,6 +841,34 @@ function resolveLive(
   };
 }
 
+/**
+ * A live track read as health (1.383): what it has LEFT out of its length. A wound track's left is
+ * its levels still clear; a plain track fills from its floor up to its maximum, so its left is the
+ * room still above its value, and a full one is a combatant with nothing left. Neither carries a
+ * buffer, so `temp` is always 0.
+ */
+export function rulesetTrackHealth(track: ResolvedRulesetLive["tracks"][number]): {
+  value: number;
+  max: number;
+  temp: number;
+} {
+  if (track.wound)
+    return { value: track.wound.levels.length - track.wound.filled, max: track.wound.levels.length, temp: 0 };
+  return { value: Math.max(0, track.max - track.value), max: Math.max(0, track.max - track.min), temp: 0 };
+}
+
+/** The sheet op that moves a health track by `delta` levels LEFT (1.383): fewer left is harm. A
+ *  plain track moves by the number, the other way round; a wound track is marked with `kind`, or has
+ *  one mark cleared per level given back, which names no kind. */
+export function rulesetTrackHealthOp(track: RulesetLiveTrack, delta: number, kind: string): RulesetSheetOp | null {
+  const amount = Math.round(Math.abs(delta));
+  if (!Number.isFinite(delta) || amount < 1) return null;
+  if (!isRulesetWoundTrack(track)) return { op: "track", track: track.id, by: delta < 0 ? amount : -amount };
+  return delta < 0
+    ? { op: "damage", track: track.id, kind, amount }
+    : { op: "damage", track: track.id, kind: "", amount: -amount };
+}
+
 /** Where a live state starts, and where a rest's `to: "default"` puts it back. */
 export function rulesetStateDefault(state: { values: readonly string[]; default?: string }): string {
   return state.default !== undefined && state.values.includes(state.default) ? state.default : state.values[0]!;

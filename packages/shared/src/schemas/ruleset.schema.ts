@@ -12555,19 +12555,31 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
     return list;
   };
 
-  /** A health block: one declared live POOL that counts down, or one WOUND TRACK that is marked.
-   *  Returns the track id when it named one, so the rules that only make sense for a track can be
-   *  checked against it. Shared by `battle` and `combat`, which mean the same thing by health. */
+  /** A health block: one declared live POOL that counts down, one WOUND TRACK that is marked, or
+   *  one plain TRACK that fills up to its maximum (1.383). Returns the track id when it named a wound
+   *  track, so the rules that only make sense for one can be checked against it. Shared by `battle`
+   *  and `combat`, which mean the same thing by health. */
   const checkHealth = (health: { pool: string } | { track: string }, path: (string | number)[]): string | null => {
     if ("track" in health) {
       if (!tracks.has(health.track)) {
         issue([...path, "track"], `Unknown track "${health.track}"`);
         return null;
       }
-      // A plain track is a bounded integer with no levels to fill, so "out of it" would be a number
-      // the fight picked rather than one the ruleset declared.
+      // A plain track fills from its floor up to its maximum (1.383), and a full one is out of it.
+      // Its maximum is the ruleset's, so one that starts there puts every fresh character into
+      // their first fight already down.
       if (!woundTracks.has(health.track)) {
-        issue([...path, "track"], `"${health.track}" has no levels, so a fight has nothing to mark on it`);
+        const track = sheet.live.tracks.find((entry) => entry.id === health.track)!;
+        if (typeof track.max === "number" && track.max <= track.min) {
+          issue([...path, "track"], `"${health.track}" has no room above its floor, so it cannot be the health track`);
+        } else if (
+          typeof track.max === "number" &&
+          !track.startFrom &&
+          track.default !== undefined &&
+          track.default >= track.max
+        ) {
+          issue([...path, "track"], `"${health.track}" starts full, so it cannot be the health track`);
+        }
         return null;
       }
       return health.track;
@@ -13278,7 +13290,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       if (entry.temporary && "track" in combat.health) {
         issue(
           [...path, "temporary"],
-          `Health is the wound track "${combat.health.track}", which carries no buffer for temporary points`,
+          `Health is the track "${combat.health.track}", which carries no buffer for temporary points`,
         );
       }
       if (entry.unseen) sightIssues(def, entry.unseen.pierced, [...path, "unseen"], issue);
@@ -13593,6 +13605,11 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
           }
         }
       }
+    } else if ("track" in combat.health && combat.damageKinds && tracks.has(combat.health.track)) {
+      issue(
+        at("damageKinds"),
+        `Health is the plain track "${combat.health.track}", which fills by points and keeps no kinds: give the track levels or boxes and kinds if what KIND a wound was still matters after the blow`,
+      );
     } else if ("pool" in combat.health && combat.damageKinds) {
       // Only when health really IS a pool. `checkHealth` also answers null for a track it could not
       // read at all, and that file has already been told what is wrong with the track; telling its
@@ -15408,8 +15425,8 @@ function useIssues(
     add([...at, "kindChoice"], "This ruleset has no creature types to choose from");
   if (use.teleport && !definition.combat?.distance)
     add([...at, "teleport"], '"teleport" is measured in cells, so the combat block declares "distance" too');
-  if (use.temporary && (track?.levels?.length || track?.boxes)) {
-    add([...at, "temporary"], `Health is the wound track "${track.id}", which carries no buffer for temporary points`);
+  if (use.temporary && track) {
+    add([...at, "temporary"], `Health is the track "${track.id}", which carries no buffer for temporary points`);
   }
   // Where the ruleset has no fight, the rest is read by nothing.
   const combat = definition.combat;
@@ -16759,19 +16776,19 @@ export function rulesetCatalogEntryIssues(
     // mark that clears itself?) a ruleset whose fights are fought on a track is refused the key.
     // Either block may point health at one: `battle` lends the Engine's own fights the sheet's
     // numbers and reads a track as the levels still clear, with no buffer either.
-    // Only a track this sheet really declares WITH levels: health pointed at a name the sheet does
-    // not have, or at a plain bounded number, is a broken file that has already been told so, and
-    // calling it a wound track here would send its author looking in the wrong place.
-    const woundTrack = (health: { pool: string } | { track: string } | undefined) => {
+    // A plain track that fills up (1.383) has no buffer either. Only a track this sheet really
+    // declares: health pointed at a name the sheet does not have is a broken file that has already
+    // been told so, and calling it a track here would send its author looking in the wrong place.
+    const healthTrack = (health: { pool: string } | { track: string } | undefined) => {
       if (!health || !("track" in health)) return null;
       const declared = definition.sheet.live.tracks.find((track) => track.id === health.track);
-      return declared?.levels?.length || declared?.boxes ? health.track : null;
+      return declared ? health.track : null;
     };
-    const trackHealth = woundTrack(definition.combat?.health) ?? woundTrack(definition.battle?.health);
+    const trackHealth = healthTrack(definition.combat?.health) ?? healthTrack(definition.battle?.health);
     if (mechanics?.temporary && trackHealth) {
       add(
         [index, "mechanics", "temporary"],
-        `Health is the wound track "${trackHealth}", which carries no buffer for temporary points`,
+        `Health is the track "${trackHealth}", which carries no buffer for temporary points`,
       );
     }
     if (mechanics?.alters) {

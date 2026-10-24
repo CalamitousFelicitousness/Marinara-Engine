@@ -1478,7 +1478,10 @@ const capabilityPackageManifestBaseSchema = z
 //        spends leftover symbols buy (harm, a critical, a condition, a track, boost or setback dice
 //        on the next roll), picked by the Engine and the AI for whichever side spends that symbol.
 //        A creature action's `upgrades` names its upgraded to-hit dice.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 382 } as const);
+// 1.383: fight health on a plain track that fills up to its maximum (`combat.health` or
+//        `battle.health` naming a track with neither levels nor boxes): Genesys's Wounds, read as the
+//        room left above its value, damage adding points and a heal taking them off.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 383 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

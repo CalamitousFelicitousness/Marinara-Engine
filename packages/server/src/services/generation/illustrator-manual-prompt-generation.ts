@@ -13,6 +13,7 @@ import {
 import { logger } from "../../lib/logger.js";
 import {
   agentRequestOptions,
+  buildAgentCurrentLocationBlock,
   buildAgentReferenceContextBlock,
   gateAgentTemperature,
   normalizeAgentContextSize,
@@ -239,8 +240,9 @@ export function buildManualIllustratorPromptMessages(args: {
   // Custom prompts may mix visual instructions with schemas or generation conditions.
   // Preserve them intact; the manual contract below overrides only when/how to return the prompt.
   const promptModeInstruction = args.selectedPromptTemplate?.trim();
-  // Lorebook entries, summary and author notes follow the Illustrator's Context Sources,
-  // exactly as in an automatic Illustrator run (#8246).
+  // The current location, lorebook entries, summary and author notes follow the Illustrator's
+  // Context Sources, exactly as in an automatic Illustrator run (#8246, #8251).
+  const currentLocation = buildAgentCurrentLocationBlock(args.context, args.contextSources);
   const referenceContext = buildAgentReferenceContextBlock(args.context, args.contextSources);
   const systemPrompt = [
     promptModeInstruction
@@ -257,6 +259,7 @@ export function buildManualIllustratorPromptMessages(args: {
       : "No visual style profile is selected. Infer only the visual treatment supported by the scene context.",
     args.characterPromptInstruction?.trim() ?? "",
     buildCharacterPersonaContext(args.context),
+    ...(currentLocation ? [currentLocation] : []),
     ...(referenceContext ? [referenceContext] : []),
   ].join("\n\n");
   const messages: ChatMessage[] = [

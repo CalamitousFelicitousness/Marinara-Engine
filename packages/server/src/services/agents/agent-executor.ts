@@ -3094,6 +3094,29 @@ function buildLoreBlock(context: AgentContext, sources: CustomAgentContextSource
   return parts.join("\n");
 }
 
+const MAX_CURRENT_LOCATION_DESCRIPTION_CHARS = 1_500;
+
+/**
+ * The story's current Maps location for image prompts, gated by "Tracker data". The
+ * prompt writer never sees the location's reference image, and image models without
+ * reference support drop it, so the text is what sets the background (#8251).
+ */
+export function buildAgentCurrentLocationBlock(
+  context: AgentContext,
+  sources: CustomAgentContextSources = ALL_AGENT_CONTEXT_SOURCES,
+): string {
+  const location = context.currentLocation;
+  if (!sources.trackerData || !location?.path) return "";
+  const description = location.description.slice(0, MAX_CURRENT_LOCATION_DESCRIPTION_CHARS);
+  return [
+    "<current_location>",
+    "The story's current location, from the chat's map. Use it for the image's setting and background. If it contradicts the scene, the scene wins: treat it as outdated and ignore it.",
+    `Path: ${location.path}`,
+    ...(description ? [`Description: ${description}`] : []),
+    "</current_location>",
+  ].join("\n");
+}
+
 /**
  * The reference blocks an agent's Context Sources gate: activated lorebook entries,
  * chat summary and author notes. Shared with the manual Illustrator prompt writer so
@@ -3266,6 +3289,11 @@ function buildAgentExtras(
     parts.push(`<current_game_state>`);
     parts.push(JSON.stringify(compactGameStateForAgentContext(context.gameState, agentTypes)));
     parts.push(`</current_game_state>`);
+  }
+
+  if (imageCapable) {
+    const currentLocation = buildAgentCurrentLocationBlock(context, sources);
+    if (currentLocation) parts.push(currentLocation);
   }
 
   if (

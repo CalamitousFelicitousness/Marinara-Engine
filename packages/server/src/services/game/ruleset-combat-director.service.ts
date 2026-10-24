@@ -1884,8 +1884,23 @@ function rulesetDangerAt(
     let worst = 0;
     for (const action of foe.actions) {
       // Only what it could use: a Sunbeam's line while it holds the spell, not before.
-      if (!action.damage || !rulesetActionAvailable(foe, action, encounter, definition)) continue;
-      const reach = action.range ? (action.range.long ?? action.range.normal) : (action.reach ?? 1);
+      if (!rulesetActionAvailable(foe, action, encounter, definition)) continue;
+      // A block of blows (a Multiattack) as every blow of it lands, from as close as its shortest
+      // reach (I1b re-test 2026-10-23: two trolls read as one claw each, so a thrower walked up to
+      // them and was felled before its next turn).
+      const blows = action.sequence?.length
+        ? action.sequence.flatMap((step) => {
+            const blow = foe.actions.find((one) => one.id === step.actionId);
+            return blow?.damage ? [{ blow, times: step.times ?? 1 }] : [];
+          })
+        : action.damage
+          ? [{ blow: action, times: 1 }]
+          : [];
+      if (blows.length === 0) continue;
+      const average = blows.reduce((sum, { blow, times }) => sum + rulesetSafeAverage(blow.damage!) * times, 0);
+      const reach = Math.min(
+        ...blows.map(({ blow }) => (blow.range ? (blow.range.long ?? blow.range.normal) : (blow.reach ?? 1))),
+      );
       // One a walk away comes on its own turn all the same, so standing a square off it is
       // nearly as dangerous as standing beside it; only the far end of its walk is much safer, to
       // one getting away. To one staying to fight there, anywhere it can walk to and strike is as
@@ -1895,7 +1910,7 @@ function rulesetDangerAt(
       const out = (gap - reach) / Math.max(1, walks);
       const at =
         gap <= reach ? 1 : gap > reach + walks ? 0 : fights ? 1 - 0.1 * out ** 2 : Math.max(0, 1 - 1.1 * out ** 3);
-      worst = Math.max(worst, rulesetSafeAverage(action.damage) * at);
+      worst = Math.max(worst, average * at);
     }
     harm += worst;
   }

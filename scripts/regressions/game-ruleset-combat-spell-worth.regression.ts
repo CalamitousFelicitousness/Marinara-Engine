@@ -8,6 +8,7 @@
  *   - A weakness is used, an immunity not wasted on, a regeneration stopped: by what a flask deals
  *     only to what its target is, and by the burning it leaves.
  *   - Oil that makes fire hurt more is thrown only where a fire will follow.
+ *   - Walking up to throw is as dangerous as every blow the foes there make, a Multiattack whole.
  *   - A Counterspell is worth what it stops: a blast at the party far more than a flick.
  */
 import assert from "node:assert/strict";
@@ -30,7 +31,7 @@ const dataDir = mkdtempSync(join(tmpdir(), "marinara-spell-worth-"));
 process.env.DATA_DIR = dataDir;
 process.env.FILE_STORAGE_DIR = join(dataDir, "storage");
 const { createCombatDirector } = await import("../../packages/server/src/services/game/combat-director.service.js");
-const { pickRulesetChoice, rulesetEffectWorth, rulesetStoppedWorth } =
+const { pickRulesetChoice, rankRulesetChoices, rulesetEffectWorth, rulesetStoppedWorth } =
   await import("../../packages/server/src/services/game/ruleset-combat-director.service.js");
 
 try {
@@ -292,6 +293,71 @@ try {
       "flask",
       "a burning that stops regrowth",
     );
+  }
+
+  // ── A short throw is not worth walking into reach of a pack's whole Multiattack (I1b) ──
+  {
+    const fire = {
+      id: "fire",
+      name: "Fire",
+      budget: "action",
+      toHit: 5,
+      range: { normal: 20 },
+      damage: { count: 1, sides: 4, flat: 0, type: "fire" },
+    };
+    const bow = {
+      id: "bow",
+      name: "Bow",
+      budget: "action",
+      toHit: 5,
+      range: { normal: 80, long: 320 },
+      damage: { count: 1, sides: 6, flat: 3, type: "piercing" },
+    };
+    const bite = {
+      id: "bite",
+      name: "Bite",
+      budget: "action",
+      toHit: 7,
+      reach: 1,
+      damage: { count: 1, sides: 6, flat: 4 },
+    };
+    const claw = {
+      id: "claw",
+      name: "Claw",
+      budget: "action",
+      toHit: 7,
+      reach: 1,
+      damage: { count: 2, sides: 6, flat: 4 },
+    };
+    const multiattack = {
+      id: "multiattack",
+      name: "Multiattack",
+      budget: "action",
+      sequence: [
+        { action: "bite", times: 1 },
+        { action: "claw", times: 2 },
+      ],
+    };
+    const troll = (at: { x: number; y: number }, actions: unknown[]) => ({
+      side: "party" as const,
+      block: block(actions, { health: 84, regenerates: { flat: 10, stoppedBy: ["acid", "fire"] } }),
+      at,
+    });
+    // The danger of walking up to throw, as the trolls would strike there: each with all it has.
+    const walkUp = (actions: unknown[]) => {
+      const { encounter, state } = fight({
+        thrower: { side: "enemy", block: block([fire, bow], { health: 38 }), at: { x: 1, y: 4 } },
+        troll0: troll({ x: 11, y: 3 }, actions),
+        troll1: troll({ x: 11, y: 5 }, actions),
+      });
+      const ranked = rankRulesetChoices(definition, state, encounter, "thrower", 400);
+      return Math.max(
+        ...ranked.filter((one) => one.candidate.action.option.id === "fire").map((one) => one.candidate.risk ?? 0),
+      );
+    };
+    const blows = walkUp([bite, claw, multiattack]);
+    const one = walkUp([bite, claw]);
+    assert.ok(blows > one * 2, `a Multiattack counts every blow of it: ${blows} against ${one}`);
   }
 
   // ── A hazard is laid where the other side will walk into it (I3 re-test 2026-10-23) ──

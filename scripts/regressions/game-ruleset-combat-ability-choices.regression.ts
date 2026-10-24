@@ -128,8 +128,11 @@ assert.match(refusal(withChoices({ finesse: ["str", "str"] })), /An ability is n
         restartRequired: false,
         contributions: { assets: { paths: ["ruleset.json"] } },
       }) as never;
-    const ruleset = { combat: { attacks: [{ list: "attacks", abilityChoices: { finesse: ["str", "dex"] } }] } } as never;
-    const issue = /choose the best of several abilities \(abilityChoices\) requires schemaVersion 2 and capabilityApi 1\.782/;
+    const ruleset = {
+      combat: { attacks: [{ list: "attacks", abilityChoices: { finesse: ["str", "dex"] } }] },
+    } as never;
+    const issue =
+      /choose the best of several abilities \(abilityChoices\) requires schemaVersion 2 and capabilityApi 1\.782/;
     assert.match(getCapabilityPackageInstallIssue(manifest(781), ruleset) ?? "", issue);
     assert.doesNotMatch(getCapabilityPackageInstallIssue(manifest(782), ruleset) ?? "", issue);
   } finally {

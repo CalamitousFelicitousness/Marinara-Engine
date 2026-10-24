@@ -305,6 +305,7 @@ const WINDOW_LINES = {
   falls: "windowFalls",
   "turn-start": "windowTurnStart",
   used: "windowUsed",
+  spend: "windowSpend",
 } as const;
 
 /**
@@ -1113,7 +1114,9 @@ export function rulesetCombatEventLine(
       return key(
         event.targetIds?.some((id) => id !== event.waiting[0]) && (event.moment === "aimed" || event.moment === "hit")
           ? "windowBystander"
-          : WINDOW_LINES[event.moment ?? (event.kind === "signature" ? "between" : "leaving")],
+          : WINDOW_LINES[
+              event.moment ?? (event.kind === "signature" ? "between" : event.kind === "spend" ? "spend" : "leaving")
+            ],
         {
           actor: names.combatant(event.waiting[0] ?? ""),
           others: Math.max(0, event.waiting.length - 1),

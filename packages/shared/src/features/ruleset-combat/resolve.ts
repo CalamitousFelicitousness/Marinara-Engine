@@ -43,6 +43,7 @@ import {
 } from "./pool.js";
 import {
   pickRulesetSymbolSpends,
+  rulesetChosenSymbolSpends,
   rulesetCombatIsSymbol,
   rulesetSymbolNeeded,
   rulesetSymbolSuccessHarm,
@@ -79,6 +80,7 @@ import {
   rulesetCombatStanding,
   rulesetSymbolSpendHolder,
   rulesetSymbolSpendBudget,
+  rulesetSymbolSpendStanding,
   rulesetDamageInEffect,
   rulesetCheckMode,
   rulesetInitiativeModifierNow,
@@ -1742,6 +1744,8 @@ function spendSymbols(
   target: RulesetCombatant,
   symbols: Readonly<Record<string, number>>,
   hit: boolean,
+  /** What a side that chose for itself (1.382) chose. The Engine picks for a side not here. */
+  chosen: NonNullable<RulesetHeldAttack["roll"]["spends"]> = {},
 ): { damage: number; critical: boolean } {
   const out = { damage: 0, critical: false };
   const whom = (on: "attacker" | "target" | "attacker-ally" | "target-ally") =>
@@ -1800,9 +1804,54 @@ function spendSymbols(
   // One budget for the throw, the attacker buying first: a spend that would not land, or whose room
   // an earlier one took, goes unbought, and its symbols stay on the roll. The forecast buys the same.
   const budget = rulesetSymbolSpendBudget(ctx.definition, ctx.state, actor, target);
-  apply(pickRulesetSymbolSpends(ctx.combat, symbols, hit, "attacker", budget), actor);
-  if (!target.defeated) apply(pickRulesetSymbolSpends(ctx.combat, symbols, hit, "target", budget), target);
+  const pick = (by: "attacker" | "target") =>
+    chosen[by]
+      ? rulesetChosenSymbolSpends(ctx.combat, symbols, hit, by, chosen[by], budget)
+      : pickRulesetSymbolSpends(ctx.combat, symbols, hit, by, budget);
+  apply(pick("attacker"), actor);
+  if (!target.defeated) apply(pick("target"), target);
   return out;
+}
+
+/** Which side of a symbol throw is asked what it buys (1.382), if either: one whose chooser picks
+ *  their own spends, has not been asked about this throw yet, and has something to buy. The
+ *  attacker is asked first, as their spends are bought first. Nobody is asked inside another window,
+ *  where a throw cannot be held, or once the fight is over. */
+function spendAsked(
+  ctx: RulesetCombatContext,
+  actor: RulesetCombatant,
+  target: RulesetCombatant,
+  symbols: Readonly<Record<string, number>>,
+  hit: boolean,
+  chosen: NonNullable<RulesetHeldAttack["roll"]["spends"]>,
+): "attacker" | "target" | undefined {
+  const asking = ctx.state.askSpends;
+  if (!asking?.length || (ctx.state.window && !ctx.nestHit) || hasFallingAnswer(ctx)) return undefined;
+  if (rulesetEncounterOutcome(ctx.state) !== "ongoing") return undefined;
+  const held: RulesetHeldAttack = {
+    targetId: target.id,
+    rest: [],
+    roll: {
+      mode: "normal",
+      total: 0,
+      defense: 0,
+      critical: false,
+      natural: false,
+      symbols: { ...symbols },
+      spends: chosen,
+    },
+    mine: [],
+    hurt: [],
+  };
+  for (const [by, chooser] of [
+    ["attacker", actor],
+    ["target", target],
+  ] as const) {
+    if (chosen[by] || !asking.includes(chooser.id) || chooser.defeated) continue;
+    const standing = rulesetSymbolSpendStanding(ctx.definition, ctx.state, held, actor.id, by, hit);
+    if (standing && standing.choices.length > 0) return by;
+  }
+  return undefined;
 }
 
 /** What conditions add to one roll, each rolled now: a flat number as it is, dice thrown (and taken
@@ -5597,6 +5646,9 @@ function applyInWindow(
 
   const option = rulesetWindowOptions(definition, state, actor.id).find((entry) => entry.id === choice.optionId);
   if (!option) return refusal(state, choice.actorId, "unknown-option", choice.optionId);
+  if (window.kind === "spend" && option.symbolSpend) {
+    return chooseSymbolSpend(definition, combat, state, actor, option.symbolSpend, roller);
+  }
   // A lair action (1.315), resolved as its maker's own turn would resolve it.
   if (window.kind === "signature" && option.lairOf) {
     return takeLairAction(definition, combat, state, window, actor, option.lairOf, choice, roller);
@@ -5632,6 +5684,41 @@ function applyInWindow(
   // it would be on a turn; the only thing the moment adds is whom it is aimed at, and whether
   // taking it calls off what the window was holding.
   return takeReaction(definition, combat, state, window, actor, choice, roller);
+}
+
+/** One choice of what a symbol throw buys (1.382): one more of a spend, asked again while there is
+ *  more to buy, or the Engine's pick for the rest, which ends the asking. Nothing is spent until the
+ *  window closes: the throw is then spent as it was chosen, exactly as the Engine's pick would be. */
+function chooseSymbolSpend(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  state: RulesetEncounterState,
+  actor: RulesetCombatant,
+  choice: NonNullable<RulesetCombatOption["symbolSpend"]>,
+  roller: RulesetCombatRoller,
+): RulesetCombatStep {
+  const { ctx, finish } = begin(definition, combat, state, roller);
+  const open = ctx.state.window!;
+  const held = open.resume?.kind === "action" ? open.resume.held : undefined;
+  if (open.trigger.kind !== "spend" || !held) return refusal(state, actor.id, "unknown-option", RULESET_PASS_OPTION);
+  const list = ((held.roll.spends ??= {})[open.trigger.by] ??= []);
+  const add = (spend: string, times: number) => {
+    const known = list.find((one) => one.spend === spend);
+    if (known) known.times += times;
+    else list.push({ spend, times });
+  };
+  if (choice.engine) {
+    for (const pick of choice.picks ?? []) add(pick.spend, pick.times);
+  } else if (choice.spend) {
+    add(choice.spend, 1);
+    if (rulesetWindowOptions(definition, ctx.state, actor.id).some((one) => one.symbolSpend?.spend)) {
+      noteOutcome(ctx);
+      return finish();
+    }
+  }
+  goOn(definition, combat, ctx);
+  noteOutcome(ctx);
+  return finish();
 }
 
 /** One reaction, taken at the moment it waits for. */
@@ -7258,8 +7345,27 @@ function openHitWindow(
   hold: RulesetHitHold,
   hurt: string[],
 ): void {
-  const { label, optionId, catalog, entry, blow, ...held } = hold;
+  const { label, optionId, catalog, entry, blow, asks, hit, ...held } = hold;
   const { held: _previous, ...base } = resume;
+  // Held for somebody to choose their spends (1.382): they alone are asked, and the throw is spent
+  // as they chose once they are done.
+  if (asks) {
+    openWindow(ctx, {
+      kind: "spend",
+      trigger: {
+        kind: "spend",
+        targetIds: [held.targetId],
+        sourceId: actor.id,
+        optionId,
+        label,
+        by: asks,
+        hit: !!hit,
+      },
+      waiting: [asks === "attacker" ? actor.id : held.targetId],
+      resume: { ...base, held: { ...held, hurt } },
+    });
+    return;
+  }
   const striking = actor.actions.find((one) => one.id === optionId) ?? action;
   openWindow(ctx, {
     kind: "reaction",
@@ -8748,7 +8854,8 @@ function resolveActionBody(
           ? landsAt
           : "miss";
       if (pooled && outcome !== "miss") extraDice = roll.total - needed;
-      if (needed !== roll.defense || roll.lowered) {
+      // Picked up after its maker chose their spends (1.382), it was checked already.
+      if ((needed !== roll.defense || roll.lowered) && !roll.spends) {
         ctx.events.push({
           type: "recheck",
           actorId: actor.id,
@@ -8771,7 +8878,22 @@ function resolveActionBody(
       landed = outcome !== "miss";
       critical = outcome === "critical";
       if (symbolic && roll.symbols) {
-        const bought = spendSymbols(ctx, actor, target, roll.symbols, landed);
+        // Held again for whoever picks their own spends and has not yet (1.382).
+        const asks = spendAsked(ctx, actor, target, roll.symbols, landed, roll.spends ?? {});
+        if (asks) {
+          return {
+            ...held,
+            roll: { ...roll, spends: { ...roll.spends, [asks]: [] } },
+            label: action.label,
+            optionId: action.id,
+            ...(action.catalog ? { catalog: action.catalog } : {}),
+            ...(action.entry ? { entry: action.entry } : {}),
+            blow: rulesetBlowKind(ctx.state, actor, target, action),
+            asks,
+            hit: landed,
+          };
+        }
+        const bought = spendSymbols(ctx, actor, target, roll.symbols, landed, roll.spends);
         if (landed) symbolHarm = rulesetSymbolSuccessHarm(ctx.definition, ctx.combat, roll.total) + bought.damage;
         if (landed && bought.critical) critical = true;
       }
@@ -8856,6 +8978,32 @@ function resolveActionBody(
             ...(action.catalog ? { catalog: action.catalog } : {}),
             ...(action.entry ? { entry: action.entry } : {}),
             blow: rulesetBlowKind(ctx.state, actor, target, action),
+          };
+        }
+        // Held for whoever picks their own spends (1.382), before anything is spent.
+        const asks = spendAsked(ctx, actor, target, thrown.symbols, landed, {});
+        if (asks) {
+          return {
+            targetId: target.id,
+            rest: targets.slice(targets.indexOf(target) + 1).map((one) => one.id),
+            roll: {
+              mode,
+              total: thrown.successes,
+              defense: thrown.difficulty,
+              critical: false,
+              natural: false,
+              symbols: { ...thrown.symbols },
+              spends: { [asks]: [] },
+            },
+            mine: used.mine.map((entry) => entry.condition),
+            hurt: [],
+            label: action.label,
+            optionId: action.id,
+            ...(action.catalog ? { catalog: action.catalog } : {}),
+            ...(action.entry ? { entry: action.entry } : {}),
+            blow: rulesetBlowKind(ctx.state, actor, target, action),
+            asks,
+            hit: landed,
           };
         }
         const bought = spendSymbols(ctx, actor, target, thrown.symbols, landed);
@@ -9833,6 +9981,10 @@ type RulesetHitHold = RulesetHeldAttack & {
   catalog?: string;
   entry?: string;
   blow?: RulesetBlowKind;
+  /** Held for a side to choose what its symbols buy (1.382) rather than for answers to the hit. */
+  asks?: "attacker" | "target";
+  /** Whether that throw landed. */
+  hit?: boolean;
 };
 
 // ── Between turns ──

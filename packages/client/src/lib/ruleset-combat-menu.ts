@@ -23,6 +23,7 @@ import { rulesetDistanceText, type RulesetBoardDistance, type RulesetCellChoice 
  *  Walking comes first because a turn on a board usually starts with it, and it may be taken again
  *  after an action. */
 export const RULESET_MENU_KINDS = [
+  "spend",
   "move",
   "attack",
   "reload",
@@ -167,6 +168,8 @@ export function rulesetOptionLabel(option: DirectedRulesetOption, t: TFunction):
       name: option.lifts.name,
     });
   if (option.kind === "end-turn") return t("game.combat.ruleset.menu.endTurn", { defaultValue: option.label });
+  // The Engine's own pick for what is left of a symbol throw (1.382), named by what it buys.
+  if (option.symbolSpend?.engine) return t("game.combat.ruleset.menu.engineSpends", { spends: option.label });
   // Walking and getting back up are the board's own two moves, named by this Engine for the same
   // reason the standard actions are: the closed list is the Engine's vocabulary, not the file's.
   // Which is which comes off the two exported ids, never off the spelling of one: the ids belong to

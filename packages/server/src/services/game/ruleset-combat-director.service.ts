@@ -14,6 +14,7 @@
 import {
   advanceRulesetTurn,
   applyRulesetCombatChoice,
+  rulesetCombatIsSymbol,
   assignCombatTactics,
   chooseRankedCombatCandidate,
   clampRulesetStatBlock,
@@ -150,6 +151,9 @@ export interface RulesetFightState {
   events: Array<{ seq: number; event: DirectedRulesetEvent }>;
   /** Who plays each party member. An opponent is never in here. */
   controllers: Record<string, "manual" | "ai">;
+  /** The player chooses what their own symbol throws buy (1.382): every party member they play is
+   *  asked, and the Engine picks for everybody else. */
+  chooseSpends?: boolean;
   /** The opponents the client marked as bosses, which is what routes a turn to the Game Master. */
   bosses: string[];
   /** Every clamp and every fallback the opponents were built with, in plain words. */
@@ -180,6 +184,17 @@ export function rulesetDirectorStage(state: CombatDirectorState): CombatDirector
  *  what keeps the Engine's `party`, `enemies` and `CombatSummary` in step with the fight, and a
  *  fight that has ended has no decision open and nobody on turn. */
 function settled(state: CombatDirectorState): RulesetCommandResult {
+  const fight = fightOf(state);
+  if (fight) {
+    // Who picks their own spends follows who the player plays, as that changes.
+    const asked = fight.chooseSpends
+      ? fight.encounter.combatants
+          .filter((combatant) => combatant.side === "party" && rulesetController(state, fight, combatant) === "manual")
+          .map((combatant) => combatant.id)
+      : [];
+    if (asked.length > 0) fight.encounter.askSpends = asked;
+    else delete fight.encounter.askSpends;
+  }
   combatDirectorView(state);
   if (state.outcome) {
     state.window = undefined;
@@ -1046,6 +1061,9 @@ export function directedRulesetView(
           window: {
             id: held.window.id,
             kind: held.window.kind,
+            ...(held.window.trigger.kind === "spend"
+              ? { spend: { by: held.window.trigger.by, hit: held.window.trigger.hit } }
+              : {}),
             actorId: held.actorId,
             waiting: Math.max(0, held.window.waiting.length - 1),
             ...(held.window.trigger.kind === "leaves-reach" ? { moverId: held.window.trigger.moverId } : {}),
@@ -1072,6 +1090,7 @@ export function directedRulesetView(
       : actor && !over && controller === "manual" && !state.window
         ? { options: rulesetMenu(definition, encounter, actor.id) }
         : {}),
+    ...(rulesetCombatIsSymbol(definition.combat) ? { spends: { choose: !!fight.chooseSpends } } : {}),
     events: fight.events.map((entry) => ({ seq: entry.seq, event: entry.event })),
     ...(over ? { summary: rulesetEncounterSummary(definition, encounter) } : {}),
     adjustments: [...fight.adjustments],
@@ -2715,6 +2734,16 @@ function runRulesetCommand(
   if (command.type === "flee") {
     state.outcome = "flee";
     fight.encounter = settleRulesetFledFight(definition, fight.encounter, rollerFor(fight)).state;
+    return settled(state);
+  }
+
+  if (command.type === "spends") {
+    if (!rulesetCombatIsSymbol(definition.combat)) {
+      return refuse("Only a fight in symbol dice has spends to choose.", "ruleset_combat_no_spends");
+    }
+    if (state.window) return refuse("Resolve the open decision first.", "ruleset_combat_decision_open");
+    if (command.choose) fight.chooseSpends = true;
+    else delete fight.chooseSpends;
     return settled(state);
   }
 

@@ -3413,8 +3413,12 @@ What the symbols do is the `symbols` block:
   when it lowers a track or adds boost there. A spend worth nothing to its chooser is never bought.
 
 The Engine buys, for each side, the spends worth the most for the symbols it has, for players and
-opponents alike, and says each one in the log. Symbols nobody spends stay on the roll for the Game
-Master to narrate. The menu's forecast counts every way the throw may come out: the chance to hit,
+opponents alike, and says each one in the log. A player may choose their own instead: with "Choose
+my own symbol spends" ticked on the fight screen, a throw that leaves a party member they play
+something to buy waits while they pick spends one at a time, take the Engine's pick for the rest,
+or spend nothing more. Their choice is held to the same rules as the Engine's (cost, `max`, `when`
+and what would land), and the Engine still picks for everybody else. A ruleset needs nothing for
+this. Symbols nobody spends stay on the roll for the Game Master to narrate. The menu's forecast counts every way the throw may come out: the chance to hit,
 and the harm a hit does with its successes and spends, after soak. The AI weighs each attack by
 that, with what the other side's spends would cost it taken off.
 

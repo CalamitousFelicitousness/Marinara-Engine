@@ -64,7 +64,7 @@ test.describe("The host namespace agent packages use", () => {
         version: number;
         capabilityApi: { major: number; minor: number };
         stores: Record<string, unknown>;
-        services: { tts: Record<string, unknown>; dialogs: Record<string, unknown> };
+        services: { tts: Record<string, unknown>; dialogs: Record<string, unknown>; audio: Record<string, unknown> };
         modules: Record<string, Record<string, unknown>>;
         queryClient: { getQueryCache(): { getAll(): unknown[] } };
         components: { Modal: unknown };
@@ -86,13 +86,14 @@ test.describe("The host namespace agent packages use", () => {
           "backfill.store.ts",
         ].map((file) => load<Record<string, unknown>>(`/src/stores/${file}`)),
       );
-      const [queryClientModule, tts, dialogs, api, emojiCatalog, modal] = await Promise.all([
+      const [queryClientModule, tts, dialogs, api, emojiCatalog, modal, audio] = await Promise.all([
         load<{ queryClient: unknown }>("/src/lib/query-client.ts"),
         load<Record<string, unknown>>("/src/lib/tts-service.ts"),
         load<Record<string, unknown>>("/src/lib/app-dialogs.ts"),
         load<Record<string, unknown>>("/src/lib/api-client.ts"),
         load<Record<string, unknown>>("/src/lib/emoji-catalog.generated.ts"),
         load<{ Modal: unknown }>("/src/components/ui/Modal.tsx"),
+        load<Record<string, unknown>>("/src/lib/audio-service.ts"),
       ]);
       const descriptor = Object.getOwnPropertyDescriptor(globalThis, "__MARINARA_HOST__");
       try {
@@ -122,6 +123,9 @@ test.describe("The host namespace agent packages use", () => {
         hostModules: {
           tts: host.services.tts.ttsService === tts.ttsService,
           dialogs: host.services.dialogs.showConfirmDialog === dialogs.showConfirmDialog,
+          audio:
+            host.services.audio.createPlayer === audio.createPlayer &&
+            host.services.audio.selectDefaultMusic === audio.selectDefaultMusic,
           api: host.api.api === api.api && host.api.ApiError === api.ApiError,
           emojiCatalog: host.data.emojiCatalog.EMOJI_CATEGORIES === emojiCatalog.EMOJI_CATEGORIES,
           Modal: host.components.Modal === modal.Modal,
@@ -195,7 +199,7 @@ test.describe("The host namespace agent packages use", () => {
         gameState: true,
         backfill: true,
       },
-      hostModules: { tts: true, dialogs: true, api: true, emojiCatalog: true, Modal: true },
+      hostModules: { tts: true, dialogs: true, audio: true, api: true, emojiCatalog: true, Modal: true },
       appQueryClient: true,
       samples: {
         react: "function",
@@ -218,6 +222,49 @@ test.describe("The host namespace agent packages use", () => {
       unchanged: true,
       frozen: true,
     });
+  });
+
+  test("a package fetches the shared audio manifest and keeps fitting stock music", async ({ page }) => {
+    await openPackagePage(page);
+    const tag = "music:dialogue:slice_of_life:calm:town";
+    const entry = {
+      tag,
+      category: "music",
+      subcategory: "dialogue",
+      name: "town",
+      path: "music/town.mp3",
+      ext: ".mp3",
+    };
+    const manifest = { scannedAt: "fixture", count: 1, assets: { [tag]: entry }, byCategory: { music: [entry] } };
+    let fetched = 0;
+    await page.route("**/api/game-assets/manifest", async (route) => {
+      fetched++;
+      await route.fulfill({ json: manifest });
+    });
+    await page.goto("/");
+    await waitForPackageClient(page);
+    const result = await page.evaluate(async () => {
+      const host = (
+        globalThis as {
+          __MARINARA_HOST__?: {
+            services: {
+              audio: typeof import("../packages/client/src/lib/audio-service");
+            };
+          };
+        }
+      ).__MARINARA_HOST__!;
+      const audio = host.services.audio;
+      const manifest = await audio.getAssetManifest();
+      const tag = audio.selectDefaultMusic("home", manifest);
+      const player = audio.createPlayer();
+      player.setVolumes({ music: 0.2, sfx: 0.3 });
+      player.setMuted(true);
+      player.dispose();
+      player.dispose();
+      return { manifest, tag, stable: audio.selectDefaultMusic("home", manifest, { currentTag: tag }) };
+    });
+    expect(fetched).toBeGreaterThan(0);
+    expect(result).toEqual({ manifest, tag, stable: tag });
   });
 
   test("a package reading the chat store follows the open chat and the reply stream", async ({ page, request }) => {

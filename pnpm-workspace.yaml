@@ -22,6 +22,16 @@ patchedDependencies:
   onnxruntime-node@1.30.0: patches/onnxruntime-node@1.30.0.patch
   # Upstream READY-handshake fix (pinojs/thread-stream#246, #251). Drop once a release after 4.2.0 ships it.
   thread-stream@4.2.0: patches/thread-stream@4.2.0.patch
+  # GHSA-mrhx-c7xc-m3w5: preserve the installed-agent Zod 3 API with the upstream
+  # bounded-collection fix backported to both bundled parsers. See patch notes.
+  zod@3.25.76: patches/zod@3.25.76.patch
+
+# The advisory matches versions, so it cannot recognize the security backport.
+# The security regression verifies the patch is installed and pins this exception
+# to exactly 3.25.76; remove both when the native Zod 4 migration (#8221) ships.
+audit:
+  ignore:
+    - GHSA-mrhx-c7xc-m3w5
 
 # Native/build dependencies permitted to run install scripts. Explicitly deny the
 # known no-op so noninteractive installs never need to edit this tracked policy.
@@ -42,11 +52,12 @@ virtualStoreDirMaxLength: 80
 overrides:
   "@babel/core": "7.29.7"
   "@babel/plugin-transform-modules-systemjs": "7.29.8"
+  "@earendil-works/pi-coding-agent>undici@>=8 <8.12.2": "8.12.3"
   "@fastify/busboy@<3.2.3": "3.2.3"
   "@hono/node-server": "2.1.5"
   "@modelcontextprotocol/sdk": "1.32.1"
   "adm-zip@<0.6.1": "0.6.1"
-  "body-parser": "2.3.0"
+  "body-parser": "2.4.0"
   "brace-expansion@>=2 <2.1.7": "2.1.7"
   "brace-expansion@>=5 <5.0.12": "5.0.12"
   "browserslist": "4.29.4"
@@ -62,5 +73,6 @@ overrides:
   "proxy-addr@<2.0.8": "2.0.8"
   "qs": "6.16.1"
   "sharp@0.34.5": "0.35.5"
+  "serialize-javascript@>=7 <7.1.3": "7.1.3"
   "source-map-js@<1.2.2": "1.2.2"
   "ws": "8.22.0"

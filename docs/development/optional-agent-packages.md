@@ -88,6 +88,7 @@ this page. Package builds declare matching structural types instead of importing
 | `capabilityApi`     | The Engine's `supportedCapabilityApi`, for example `{ major: 1, minor: 341 }`.                                                                                                |
 | `stores`            | The live zustand stores `ui`, `chat`, `agent`, `sidecar`, `dialog`, `gallery`, `encounter`, `gameState` and `backfill`. `chat` includes the pending spatial transition slice. |
 | `services.tts`      | The `lib/tts-service.ts` module (`ttsService`, `playWhenAvailable`, ...).                                                                                                     |
+| `services.audio`    | From capability API 1.381, the `lib/audio-service.ts` module: independent music/SFX players, the shared asset manifest and default music selection. See [Package audio](#package-audio). |
 | `services.dialogs`  | The `lib/app-dialogs.ts` module (`showAlertDialog`, `showConfirmDialog`, `showPromptDialog`, `showChoiceDialog`).                                                             |
 | `modules`           | Library modules, keyed by bare specifier (below).                                                                                                                             |
 | `queryClient`       | The one React Query `QueryClient` the Engine renders with.                                                                                                                    |
@@ -2017,6 +2018,44 @@ Server packages can call `api.runtime.integrations` to use the current Engine's 
 - `speech.transcribe(audio, { filename, mimeType, signal })` sends recorded audio to the speech-to-text server the user set in **Connections → Speech to Text** and resolves the transcript, or `null` while that server is off, so the package keeps its own transcription. It applies the host's URL policy (`STT_LOCAL_URLS_ENABLED`), size and time limits, and never exposes the saved key. `speech` is optional and needs no newer capability API: check `typeof api.runtime.integrations?.speech?.transcribe === "function"` and fall back on older Engines.
 
 Shared request/result types are exported by `@marinara-engine/shared`. Keep package-specific prompt building and orchestration in the package; call these host entrypoints for provider I/O instead of copying Engine service implementations. Pure helpers and types may still be bundled.
+
+### Package audio
+
+From capability API **1.381**, `__MARINARA_HOST__.services.audio` provides Engine-owned playback and
+asset selection. Declare that minor in the package manifest, and update the Engine alongside the package.
+Speech remains in `services.tts`; music and sound effects use `services.audio`.
+`services.tts.ttsService.speakSequence(requests, id?, options?)` accepts `options.audioConnectionId`
+from 1.381, applying that selected speech connection to every chunk while retaining each request's
+voice. Leave it undefined for the normal default, or pass `""` to explicitly use legacy TTS settings.
+An unknown, deleted, quarantined or non-speech `audioConnectionId` is ignored and normal speech
+resolution runs: the saved speech selection, then the default/fallback connection, then legacy settings.
+If the saved speech selection itself is unavailable, playback refuses rather than borrowing another
+connection. Packages that require a particular connection should validate the saved ID before playback.
+
+- `createPlayer()` returns an independent player with `unlock()`, `playMusic(tag, assets?)`,
+  `stopMusic(immediate?)`, `playSfx(tag, assets?, loopCount?)`, `setVolumes({ music, sfx })`,
+  `setMuted(boolean)` and `dispose()`. Volumes range from 0 to 1. `assets` is a record keyed by tag,
+  whose entries have `{ path: string, url?: string }`; paths use the existing Game asset server, while
+  `url` can address a package-owned asset. Playback reuses the Engine's crossfade, autoplay retry and
+  SFX pool. Call `unlock()` directly in a user gesture when starting audio; browser autoplay rules still apply.
+- Keep one player for the mounted package surface and call `dispose()` on unmount. Disposal permanently
+  stops that player's audio, releases its context and gesture listeners, and makes later calls inert.
+  It does not stop Game or another package's player. Create a new player when the surface mounts again.
+- `getAssetManifest()` fetches `/api/game-assets/manifest` through the Engine API client and returns
+  `{ scannedAt, count, assets, byCategory }`. Each asset has `tag`, `category`, `subcategory`, `name`,
+  `path` and `ext`. Pass `manifest.assets` to playback; refetch after adding generated assets if needed.
+- `selectDefaultMusic(cue, manifest, { currentTag?, genre? }?)` returns an existing music tag or `null`.
+  Cues are `home`, `combat`, `boss`, `happy`, `tense`, `sad` and `bond`. It reuses the Game music scorer
+  and only the state-based library; another Game's area/tier tracks and generated package-context
+  tracks are excluded. Pass the current tag to keep fitting music stable. Choose again when the cue
+  changes, rather than on volume changes. Stock cues can share a track: this helper does not generate
+  music or promise a distinct composition for each mood.
+
+For a generated `{ tag, path }` returned by the Engine, play it with
+`player.playMusic(tag, { [tag]: { path } })`. Generation/provider selection stays server-side; packages
+must not duplicate provider requests or access saved credentials. Use the Engine's generation endpoint
+for opt-in generated music and effects, and keep generated context keys separate for each package world
+and cue. A failed or unavailable generated track can fall back to `selectDefaultMusic`.
 
 ### Capability API 1.341: host runtime services and shared server libraries
 

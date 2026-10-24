@@ -450,6 +450,10 @@ interface GameNarrationProps {
   combatStarting?: boolean;
   /** Whether combat state generation failed for the current combat beat. */
   combatGenerationFailed?: boolean;
+  /** The failed setup was cut off before it finished, rather than refused or malformed. */
+  combatGenerationCutOff?: boolean;
+  /** What the failed setup said went wrong, shown beside the failure. */
+  combatGenerationReason?: string | null;
   /** Retry combat state generation. */
   onRetryCombatGeneration?: () => void;
   /** Open the standard delete-message flow for a backing chat message. */
@@ -717,6 +721,7 @@ function hashVoiceKey(value: string): string {
 function buildVoiceConfigSignature(config?: TTSConfig | null): string {
   if (!config) return "tts:none";
   return [
+    config.connectionId,
     config.source,
     config.baseUrl,
     config.model,
@@ -748,6 +753,7 @@ function buildVoiceLineTextCacheKey(
   job: Omit<GameVoiceAudioJob, "cacheKey" | "textCacheKey">,
 ): string {
   const rawKey = [
+    config.connectionId,
     config.source,
     config.baseUrl,
     config.model,
@@ -1187,6 +1193,8 @@ export function GameNarration({
   onRequestCombatStart,
   combatStarting,
   combatGenerationFailed,
+  combatGenerationCutOff,
+  combatGenerationReason,
   onRetryCombatGeneration,
   onDeleteMessage,
   onPeekPrompt,
@@ -4128,7 +4136,13 @@ export function GameNarration({
           <span>
             {combatStarting
               ? localizeUi("ui.game.gamenarration.combatStartingPleaseWait")
-              : localizeUi("ui.game.gamenarration.combatGenerationFailed")}
+              : combatGenerationCutOff
+                ? localizeUi("ui.game.gamenarration.combatGenerationCutOff")
+                : combatGenerationReason?.trim()
+                  ? localizeUi("ui.game.gamenarration.combatGenerationFailedWithReason", {
+                      value1: combatGenerationReason.trim(),
+                    })
+                  : localizeUi("ui.game.gamenarration.combatGenerationFailed")}
           </span>
         </span>
         {combatGenerationFailed && onRetryCombatGeneration && (

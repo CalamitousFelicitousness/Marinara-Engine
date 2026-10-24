@@ -14,8 +14,9 @@
 import {
   advanceRulesetTurn,
   applyRulesetCombatChoice,
+  rulesetCombatIsSymbol,
   assignCombatTactics,
-  chooseCombatCandidate,
+  chooseRankedCombatCandidate,
   clampRulesetStatBlock,
   createRulesetEncounter,
   currentRulesetActor,
@@ -94,11 +95,15 @@ import {
   RULESET_ZONE_OPTION_PREFIX,
   RULESET_ZONE_TURN_OPTION_PREFIX,
   RULESET_PASS_OPTION,
+  RULESET_ENGINE_SPENDS_OPTION,
   RULESET_STAND_OPTION,
   type CombatAiCandidate,
+  type CombatAiScoreParts,
   type Combatant,
   type CombatDecisionOption,
   type DirectedCommand,
+  type DirectedRulesetEvent,
+  type DirectedRulesetReason,
   type DirectedRulesetCombatant,
   type DirectedRulesetOption,
   type DirectedRulesetView,
@@ -144,9 +149,12 @@ export interface RulesetFightState {
   encounter: RulesetEncounterState;
   /** One per event ever produced, so a client prints only what it has not seen. */
   eventSeq: number;
-  events: Array<{ seq: number; event: RulesetCombatEvent }>;
+  events: Array<{ seq: number; event: DirectedRulesetEvent }>;
   /** Who plays each party member. An opponent is never in here. */
   controllers: Record<string, "manual" | "ai">;
+  /** The player chooses what their own symbol throws buy (1.382): every party member they play is
+   *  asked, and the Engine picks for everybody else. */
+  chooseSpends?: boolean;
   /** The opponents the client marked as bosses, which is what routes a turn to the Game Master. */
   bosses: string[];
   /** Every clamp and every fallback the opponents were built with, in plain words. */
@@ -177,6 +185,17 @@ export function rulesetDirectorStage(state: CombatDirectorState): CombatDirector
  *  what keeps the Engine's `party`, `enemies` and `CombatSummary` in step with the fight, and a
  *  fight that has ended has no decision open and nobody on turn. */
 function settled(state: CombatDirectorState): RulesetCommandResult {
+  const fight = fightOf(state);
+  if (fight) {
+    // Who picks their own spends follows who the player plays, as that changes.
+    const asked = fight.chooseSpends
+      ? fight.encounter.combatants
+          .filter((combatant) => combatant.side === "party" && rulesetController(state, fight, combatant) === "manual")
+          .map((combatant) => combatant.id)
+      : [];
+    if (asked.length > 0) fight.encounter.askSpends = asked;
+    else delete fight.encounter.askSpends;
+  }
   combatDirectorView(state);
   if (state.outcome) {
     state.window = undefined;
@@ -574,11 +593,21 @@ export function rulesetBoardLightFor(
 const fightOf = (state: CombatDirectorState): RulesetFightState | null =>
   state.style === "ruleset" ? (state.rulesetFight ?? null) : null;
 
-function record(fight: RulesetFightState, events: readonly RulesetCombatEvent[]): void {
+function record(fight: RulesetFightState, events: readonly DirectedRulesetEvent[]): void {
   for (const event of events) fight.events.push({ seq: ++fight.eventSeq, event });
-  if (fight.events.length > RULESET_COMBAT_EVENT_LIMIT) {
-    fight.events = fight.events.slice(-RULESET_COMBAT_EVENT_LIMIT);
-  }
+  fight.events = trimRulesetFightEvents(fight.events);
+}
+
+/**
+ * The fight's events cut back to `RULESET_COMBAT_EVENT_LIMIT`. The AI's reasons (only ever shown
+ * with Debug on) go first, oldest first, so they never cost a player an event of the fight itself:
+ * the fight's own events keep the whole window, and only once they fill it does the oldest go.
+ */
+export function trimRulesetFightEvents<T extends { event: { type: string } }>(events: T[]): T[] {
+  let over = events.length - RULESET_COMBAT_EVENT_LIMIT;
+  if (over <= 0) return events;
+  const kept = events.filter((entry) => !(entry.event.type === "reasoning" && over-- > 0));
+  return over > 0 ? kept.slice(over) : kept;
 }
 
 /** Who plays this combatant: the player, the Engine's own picker, or the Game Master. */
@@ -1033,6 +1062,9 @@ export function directedRulesetView(
           window: {
             id: held.window.id,
             kind: held.window.kind,
+            ...(held.window.trigger.kind === "spend"
+              ? { spend: { by: held.window.trigger.by, hit: held.window.trigger.hit } }
+              : {}),
             actorId: held.actorId,
             waiting: Math.max(0, held.window.waiting.length - 1),
             ...(held.window.trigger.kind === "leaves-reach" ? { moverId: held.window.trigger.moverId } : {}),
@@ -1059,6 +1091,7 @@ export function directedRulesetView(
       : actor && !over && controller === "manual" && !state.window
         ? { options: rulesetMenu(definition, encounter, actor.id) }
         : {}),
+    ...(rulesetCombatIsSymbol(definition.combat) ? { spends: { choose: !!fight.chooseSpends } } : {}),
     events: fight.events.map((entry) => ({ seq: entry.seq, event: entry.event })),
     ...(over ? { summary: rulesetEncounterSummary(definition, encounter) } : {}),
     adjustments: [...fight.adjustments],
@@ -1598,8 +1631,15 @@ function rulesetCandidatesFrom(
       const ally = target.side === actor.side;
       const health = rulesetCombatHealth(definition, combat, target);
       const pool = Math.max(1, health.value + health.temp);
-      const chance = option.forecast?.hitChance ?? 1;
-      const average = option.forecast?.averageDamage ?? 0;
+      // A symbol fight's forecast hangs on who is aimed at (1.382): their soak, their side's allies,
+      // the conditions they already have. Every other fight's menu number holds for each target.
+      const aimed =
+        option.forecast?.worth !== undefined
+          ? (rulesetForecastsByTarget(definition, encounter, actorId, option.id, [targetId])[targetId] ??
+            option.forecast)
+          : option.forecast;
+      const chance = aimed?.hitChance ?? 1;
+      const average = aimed?.averageDamage ?? 0;
       const candidate: CombatAiCandidate<RulesetCandidate> = {
         action: {
           choice: { actorId, optionId: option.id, targetIds: lands ? [] : [targetId], ...paying(way) },
@@ -1652,7 +1692,9 @@ function rulesetCandidatesFrom(
             ...others.map((other) => other.id),
             ...Array.from({ length: again }, () => targetId),
           ];
-        candidate.damage = Math.min(2, (average / pool) * (1 + others.length + again)) * chance;
+        // A symbol fight's hit is weighed with what either side's spends buy (1.382).
+        const worth = aimed?.worth ?? average;
+        candidate.damage = Math.min(2, (worth / pool) * (1 + others.length + again)) * chance;
         if (average >= pool) candidate.finish = chance;
       } else if (ally) {
         // Giving back a pool that is already full, or one somebody without a sheet does not have,
@@ -2083,14 +2125,65 @@ function pickRulesetChoice(
   /** A window's own menu, when the pick is an answer to one rather than a turn. */
   menu?: RulesetCombatOption[],
 ): RulesetCandidate | null {
+  return pickRulesetRanked(definition, state, encounter, actorId, menu)?.candidate.action ?? null;
+}
+
+/** The pick with how it was scored, for the reasons the debug log gives after it. */
+function pickRulesetRanked(
+  definition: RulesetDefinition,
+  state: CombatDirectorState,
+  encounter: RulesetEncounterState,
+  actorId: string,
+  menu?: RulesetCombatOption[],
+): { candidate: CombatAiCandidate<RulesetCandidate>; parts: CombatAiScoreParts } | null {
   const candidates = menu
     ? rulesetCandidatesFrom(definition, encounter, actorId, null, brokenLairMenu(definition, encounter, actorId, menu))
     : rulesetCandidates(definition, encounter, actorId);
   if (candidates.length === 0) return null;
   const unit = [...state.party, ...state.enemies].find((entry) => entry.id === actorId);
-  if (!unit) return candidates[0]!.action;
+  if (!unit) return { candidate: candidates[0]!, parts: {} };
   unit.tactics ??= assignCombatTactics(unit, state.seed);
-  return chooseCombatCandidate(unit, candidates, encounter.round, normalizeGameDifficulty(state.difficulty));
+  return chooseRankedCombatCandidate(unit, candidates, encounter.round, normalizeGameDifficulty(state.difficulty));
+}
+
+/** How small a part of a pick's score is too small to give as a reason. */
+const RULESET_REASON_FLOOR = 0.05;
+
+/**
+ * Why a pick was made, read back from its own scoring (debug log): the parts that weighed most,
+ * largest first, at most three, then the walk it took to get where it acted from. Nothing here is
+ * asked of a model, and nothing names a ruleset's own spells or attacks.
+ */
+function rulesetPickReasons(
+  candidate: CombatAiCandidate<RulesetCandidate>,
+  parts: CombatAiScoreParts,
+  walked?: number,
+): DirectedRulesetReason[] {
+  const targetId = candidate.targetId;
+  const reasons = (Object.entries(parts) as Array<[keyof CombatAiScoreParts, number]>)
+    .filter(([, part]) => Math.abs(part) >= RULESET_REASON_FLOOR)
+    .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
+    .slice(0, 3)
+    .map(([why]): DirectedRulesetReason => {
+      if (why === "damage") {
+        const damage = candidate.damage ?? 0;
+        return {
+          why,
+          ...(targetId ? { targetId } : {}),
+          strength: damage >= 0.5 ? "heavy" : damage >= 0.2 ? "solid" : "some",
+        };
+      }
+      if (why === "risk" || why === "cost") return { why };
+      return { why, ...(targetId ? { targetId } : {}) };
+    });
+  if (walked) reasons.push({ why: "walked", cells: walked });
+  if (reasons.length === 0 && candidate.action.option.kind === "end-turn") reasons.push({ why: "nothingWorth" });
+  return reasons;
+}
+
+/** The reasons for a step just taken, on the log after it. Nothing when there is nothing to say. */
+function recordReasons(fight: RulesetFightState, actorId: string, reasons: DirectedRulesetReason[]): void {
+  if (reasons.length) record(fight, [{ type: "reasoning", actorId, reasons }]);
 }
 
 /**
@@ -2203,15 +2296,29 @@ function answerRulesetWindows(
     const combatant = rulesetCombatant(fight.encounter, asking);
     const controller = rulesetController(state, fight, combatant);
     if (controller === "manual") return;
+    // A chooser of their own spends handed to the Engine mid-throw (1.382) gets the Engine's pick.
+    if (window.kind === "spend") {
+      const engine = rulesetWindowOptions(definition, fight.encounter, asking).some(
+        (option) => option.id === RULESET_ENGINE_SPENDS_OPTION,
+      );
+      applyChoiceOnly(definition, state, fight, {
+        actorId: asking,
+        optionId: engine ? RULESET_ENGINE_SPENDS_OPTION : RULESET_PASS_OPTION,
+        targetIds: [],
+        window: window.id,
+      });
+      continue;
+    }
     if (controller === "gm" && openRulesetWindowDecision(definition, state, fight, asking)) return;
     const menu = rulesetWindowOptions(definition, fight.encounter, asking);
     // Somebody hidden from it, and a Detect to look for them with (1.287).
     const looking = searchOption(definition, fight.encounter, asking, menu, false);
-    const picked = looking
+    const ranked = looking
       ? null
       : menu.length > 0
-        ? pickRulesetChoice(definition, state, fight.encounter, asking, menu)
+        ? pickRulesetRanked(definition, state, fight.encounter, asking, menu)
         : null;
+    const picked = ranked?.candidate.action;
     const choice: RulesetCombatChoice = looking
       ? { actorId: asking, optionId: looking.id, targetIds: [], window: window.id }
       : picked?.choice
@@ -2233,6 +2340,8 @@ function answerRulesetWindows(
         targetIds: [],
         window: window.id,
       });
+    } else if (ranked && choice.optionId !== RULESET_PASS_OPTION) {
+      recordReasons(fight, asking, rulesetPickReasons(ranked.candidate, ranked.parts));
     }
   }
 }
@@ -2287,8 +2396,10 @@ function playRulesetTurn(
   }
   // Driven away or toward somebody (1.264), the walk comes first, sprinting where it may.
   const actor = rulesetCombatant(fight.encounter, actorId);
-  if (actor && rulesetDrivenFrom(definition, fight.encounter, actor))
-    walkTowardsTrouble(definition, state, fight, actorId);
+  if (actor && rulesetDrivenFrom(definition, fight.encounter, actor)) {
+    if (walkTowardsTrouble(definition, state, fight, actorId, false))
+      recordReasons(fight, actorId, [{ why: "driven" }]);
+  }
   // Everybody it could fight is hidden from it (1.287): it looks for them first.
   const looking = searchOption(
     definition,
@@ -2300,10 +2411,16 @@ function playRulesetTurn(
   if (looking) applyChoice(definition, state, fight, { actorId, optionId: looking.id, targetIds: [] });
   for (let action = 0; action < RULESET_TURN_ACTION_LIMIT; action++) {
     if (rulesetEncounterOutcome(fight.encounter) !== "ongoing") break;
-    const picked = pickRulesetChoice(definition, state, fight.encounter, actorId);
+    const ranked = pickRulesetRanked(definition, state, fight.encounter, actorId);
+    const picked = ranked?.candidate.action ?? null;
     const idle = !picked || picked.option.kind === "end-turn";
     if (idle) {
-      if (!walkTowardsTrouble(definition, state, fight, actorId)) break;
+      if (!walkTowardsTrouble(definition, state, fight, actorId)) {
+        // Ending a turn it did nothing with says why; ending one it already spent says nothing new.
+        if (ranked && picked && action === 0)
+          recordReasons(fight, actorId, rulesetPickReasons(ranked.candidate, ranked.parts));
+        break;
+      }
       continue;
     }
     // A standard action is only ever picked when nothing it has can hurt or help anybody from
@@ -2311,10 +2428,14 @@ function playRulesetTurn(
     // more as a sprint towards the fight than as a dodge nobody is swinging at; the standard is
     // what is left once there is nowhere better to stand.
     if (picked.option.kind === "standard" && walkTowardsTrouble(definition, state, fight, actorId)) continue;
+    const from = rulesetPositionOf(rulesetCombatant(fight.encounter, actorId));
     if (picked.to && !stepBefore(definition, state, fight, actorId, picked.to)) break;
+    const walked =
+      picked.to && from ? Math.max(Math.abs(picked.to.x - from.x), Math.abs(picked.to.y - from.y)) : undefined;
     // A refusal here would be an Engine bug rather than a player's mistake, so the turn ends
     // instead of asking again with the same state and looping.
     if (applyChoice(definition, state, fight, picked.choice).refused) break;
+    recordReasons(fight, actorId, rulesetPickReasons(ranked!.candidate, ranked!.parts, walked));
   }
   advanceTurn(definition, state, fight);
 }
@@ -2366,12 +2487,24 @@ function walkTowardsTrouble(
   state: CombatDirectorState,
   fight: RulesetFightState,
   actorId: string,
+  /** Whether to say why on the debug log: it closed on the nearest opponent. */
+  explain = true,
 ): boolean {
   if (!fight.encounter.board?.grid) return false;
   const actor = rulesetCombatant(fight.encounter, actorId);
   if (!actor || (actor.movementLeft ?? 0) < 1) return false;
   const closing = rulesetClosingMove(definition, fight.encounter, actorId);
   if (!closing) return false;
+  const walked = (sprinted: boolean): boolean => {
+    if (explain) {
+      const after = rulesetCombatant(fight.encounter, actorId);
+      const nearest = after ? rulesetApproachedOpponent(fight.encounter, after) : undefined;
+      recordReasons(fight, actorId, [
+        { why: "approach", ...(nearest ? { targetId: nearest.id } : {}), ...(sprinted ? { sprinted: true } : {}) },
+      ]);
+    }
+    return true;
+  };
   const sprint = (definition.combat?.standard ?? []).includes("dash") && !actor.flags.dashed;
   if (sprint) {
     const sprinted = applyChoice(definition, state, fight, {
@@ -2382,10 +2515,32 @@ function walkTowardsTrouble(
     // A sprint the rules refused costs nothing: the walk below happens either way.
     if (!sprinted.refused) {
       const again = rulesetClosingMove(definition, fight.encounter, actorId);
-      return !!again && !applyChoice(definition, state, fight, again.choice).refused;
+      return !!again && !applyChoice(definition, state, fight, again.choice).refused && walked(true);
     }
   }
-  return !applyChoice(definition, state, fight, closing.choice).refused;
+  return !applyChoice(definition, state, fight, closing.choice).refused && walked(false);
+}
+
+/**
+ * The opponent its walk closed on, for a reason that names whom it walked toward: the one nearest by
+ * the walk still left to reach any cell they fill, which is how the closing move chose its cell, so a
+ * wall between them or a big foe's reach counts as it did there.
+ */
+function rulesetApproachedOpponent(
+  encounter: RulesetEncounterState,
+  actor: RulesetCombatant,
+): RulesetCombatant | undefined {
+  const grid = encounter.board?.grid;
+  if (!grid || !rulesetPositionOf(actor)) return undefined;
+  const mine = rulesetFootprint(actor);
+  let best: { one: RulesetCombatant; gap: number } | undefined;
+  for (const one of encounter.combatants) {
+    if (one.side === actor.side || !rulesetPositionOf(one) || !rulesetCombatStanding(one)) continue;
+    const walking = rulesetWalkingDistances(grid, rulesetFootprint(one), actor);
+    const gap = Math.min(...mine.map((cell) => walking.get(`${cell.x},${cell.y}`) ?? Infinity));
+    if (gap < (best?.gap ?? Infinity)) best = { one, gap };
+  }
+  return best?.one;
 }
 
 // ── The Game Master's window ──
@@ -2593,6 +2748,16 @@ function runRulesetCommand(
   if (command.type === "flee") {
     state.outcome = "flee";
     fight.encounter = settleRulesetFledFight(definition, fight.encounter, rollerFor(fight)).state;
+    return settled(state);
+  }
+
+  if (command.type === "spends") {
+    if (!rulesetCombatIsSymbol(definition.combat)) {
+      return refuse("Only a fight in symbol dice has spends to choose.", "ruleset_combat_no_spends");
+    }
+    if (state.window) return refuse("Resolve the open decision first.", "ruleset_combat_decision_open");
+    if (command.choose) fight.chooseSpends = true;
+    else delete fight.chooseSpends;
     return settled(state);
   }
 

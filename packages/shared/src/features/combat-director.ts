@@ -37,6 +37,27 @@ export const combatInterruptFields = {
   slotLevel: z.number().int().min(1).max(9).optional(),
   legendaryCost: z.number().int().min(1).max(6).optional(),
 };
+/** A whole number a model writes for an ability, held to its bounds: one out of range (a self
+ *  ability's `range: 0`) is pulled to the nearest bound rather than refusing the whole fight's
+ *  setup over it (playtest 2026-10-23), and anything that is not a number is left out. */
+const boundedAbilityInt = (min: number, max: number) =>
+  z
+    .preprocess(
+      (value) =>
+        typeof value === "number" && Number.isFinite(value) ? Math.min(max, Math.max(min, Math.round(value))) : value,
+      z.number().int().min(min).max(max),
+    )
+    .optional()
+    .catch(undefined);
+/** The same fields as a model's fight setup reads them. Only the setup is lenient: a turn or a
+ *  replayed save still refuses an ability out of bounds. */
+export const lenientCombatInterruptFields = {
+  ...combatInterruptFields,
+  areaRadius: boundedAbilityInt(0, 3),
+  range: boundedAbilityInt(1, 12),
+  slotLevel: boundedAbilityInt(1, 9),
+  legendaryCost: boundedAbilityInt(1, 6),
+};
 export type DirectedCommand =
   | { type: "begin"; unitId: string }
   | { type: "classic"; action: CombatPlayerAction }
@@ -78,6 +99,8 @@ export type DirectedCommand =
   | { type: "continue" }
   | { type: "fallback" }
   | { type: "control"; unitId: string; controller: "manual" | "ai" }
+  /** Whether the player chooses what their own symbol throws buy (1.382) rather than the Engine. */
+  | { type: "spends"; choose: boolean }
   | { type: "flee" };
 export interface CombatDecisionOption {
   id: string;
@@ -189,7 +212,34 @@ export interface DirectedRulesetCombatant {
 export type DirectedRulesetEvent =
   | RulesetCombatEvent
   /** The fight could not go on: its ruleset is gone, or the game is on another version of it. */
-  | { type: "director"; reason: "ruleset-unavailable"; text: string };
+  | { type: "director"; reason: "ruleset-unavailable"; text: string }
+  /** Why the Engine played a combatant's step the way it did, right after the step: read back from
+   *  its own scoring, never from a model. Shown only with Debug on. */
+  | { type: "reasoning"; actorId: string; reasons: DirectedRulesetReason[] };
+
+/**
+ * One reason the Engine's AI gives for what a combatant just did, in no ruleset's words: the parts of
+ * its scoring that weighed most, largest first, or why it walked where it did.
+ *
+ *   - `damage`: the harm it expects to do, `heavy`, `solid` or `some` against the side's health.
+ *   - `finish`: likely to take its target out of the fight.
+ *   - `healing`, `support`: what it gives a friend back, or helps them with.
+ *   - `setup`: a condition, a broken hold on a spell, a better position for what comes next.
+ *   - `protection`, `coordination`: standing up for a friend, joining its side's attack.
+ *   - `risk`, `cost`: what it was willing to pay: danger to itself, or a limited use spent.
+ *   - `walked`: it walked so many cells first, to where it could do it from.
+ *   - `approach`: nothing in reach, so it closed on the nearest opponent (`sprinted` with a sprint).
+ *   - `driven`: a condition drove it toward or away from somebody.
+ *   - `nothingWorth`: nothing it could do was worth its price, so it ended its turn.
+ */
+export type DirectedRulesetReason =
+  | { why: "damage"; targetId?: string; strength: "heavy" | "solid" | "some" }
+  | { why: "finish" | "healing" | "support" | "setup" | "protection" | "coordination"; targetId?: string }
+  | { why: "risk" | "cost" }
+  | { why: "walked"; cells: number }
+  | { why: "approach"; targetId?: string; sprinted?: true }
+  | { why: "driven" }
+  | { why: "nothingWorth" };
 /** One option of the legal menu, with the combatants it may be pointed at right now. */
 export interface DirectedRulesetOption extends RulesetCombatOption {
   targetIds: string[];
@@ -269,7 +319,9 @@ export interface DirectedRulesetView {
    *  is theirs rather than the actor's, and letting the moment go by is one of the answers. */
   window?: {
     id: string;
-    kind: "reaction" | "signature";
+    kind: "reaction" | "signature" | "spend";
+    /** For a `spend` window (1.382): the side being asked spends for, and whether the throw landed. */
+    spend?: { by: "attacker" | "target"; hit: boolean };
     /** Which moment, for the ones a reaction waits for, and what is happening at it. */
     moment?: "aimed" | "hit" | "harmed" | "used" | "falls" | "turn-start";
     targetIds?: string[];
@@ -295,6 +347,8 @@ export interface DirectedRulesetView {
      *  answers. Present only for a held area on a board. */
     cells?: Array<{ x: number; y: number }>;
   };
+  /** A fight in symbol dice (1.382): whether the player chooses their own spends. */
+  spends?: { choose: boolean };
   /** The last 200 events, each with a running number so a client prints only what is new. */
   events: Array<{ seq: number; event: DirectedRulesetEvent }>;
   summary?: RulesetEncounterSummary;

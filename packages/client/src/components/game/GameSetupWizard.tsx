@@ -137,6 +137,7 @@ import {
 import { downloadJsonFile, sanitizeExportFilenamePart } from "../../lib/download-json";
 import {
   filterAudioGenerationConnections,
+  matchesAudioGenerationConnectionId,
   filterLanguageGenerationConnections,
   isConnectionFlagTrue,
 } from "../../lib/connection-filters";
@@ -226,6 +227,8 @@ interface WizardConnection {
   imageService?: string | null;
   videoService?: string | null;
   audioSource?: string | null;
+  audioGenerationSource?: string | null;
+  audioGenerationLegacyConnectionId?: string | null;
   audioSoundEffects?: boolean | string;
   audioMusic?: boolean | string;
   audioMusicEndpoint?: string | null;
@@ -417,6 +420,19 @@ function filterLearnedOptions(options: string[] | undefined, excluded: string[])
 function filterCustomLearnedValues(values: string[], builtIns: string[]) {
   const excluded = new Set([...builtIns, "Surprise me, go wild!"].map(optionKey));
   return values.map((value) => value.trim()).filter((value) => value && !excluded.has(optionKey(value)));
+}
+
+/** Says a field still holds the text kept from the last game set up, with a way to empty it. */
+function RememberedTextNote({ onClear }: { onClear: () => void }) {
+  const { t: localizeUi } = useUiTranslation();
+  return (
+    <div className="mt-1 flex items-center gap-2 text-[0.625rem] text-[var(--muted-foreground)]">
+      <span>{localizeUi("ui.game.gamesetupwizard.fromYourLastGame")}</span>
+      <button type="button" onClick={onClear} className="underline transition-colors hover:text-[var(--primary)]">
+        {localizeUi("ui.game.gamesetupwizard.clearRememberedText")}
+      </button>
+    </div>
+  );
 }
 
 function LearnedOptionChips({
@@ -644,12 +660,13 @@ export function GameSetupWizard({
   const [partyCharacterIds, setPartyCharacterIds] = useState<string[]>(() =>
     Array.from(new Set(initialPartyCharacterIds.filter((id) => characters.some((character) => character.id === id)))),
   );
-  const [playerGoals, setPlayerGoals] = useState(
-    () => useUIStore.getState().rememberedGameSetupText?.playerGoals ?? "",
-  );
-  const [preferences, setPreferences] = useState(
-    () => useUIStore.getState().rememberedGameSetupText?.preferences ?? "",
-  );
+  // Goals and preferences start as the last game's; a note says so while the text is unchanged.
+  const [rememberedSetupText] = useState(() => ({
+    playerGoals: useUIStore.getState().rememberedGameSetupText?.playerGoals ?? "",
+    preferences: useUIStore.getState().rememberedGameSetupText?.preferences ?? "",
+  }));
+  const [playerGoals, setPlayerGoals] = useState(rememberedSetupText.playerGoals);
+  const [preferences, setPreferences] = useState(rememberedSetupText.preferences);
   const [gmSearch, setGmSearch] = useState("");
   const [partySearch, setPartySearch] = useState("");
   const [partyFolderId, setPartyFolderId] = useState("");
@@ -872,8 +889,9 @@ export function GameSetupWizard({
   const preferredAudioConnectionId = audioCategoryDefaultId ?? audioConnections[0]?.id ?? null;
   const resolvedAudioConnection = useMemo(
     () =>
-      audioConnections.find((connection) => connection.id === (audioConnectionId ?? preferredAudioConnectionId)) ??
-      null,
+      audioConnections.find((connection) =>
+        matchesAudioGenerationConnectionId(connection, audioConnectionId ?? preferredAudioConnectionId),
+      ) ?? null,
     [audioConnections, audioConnectionId, preferredAudioConnectionId],
   );
   const audioConnectionSupportsSfx =
@@ -1635,7 +1653,11 @@ export function GameSetupWizard({
 
   const snapshotConnection = (id: string | null | undefined, service: "image" | "video" | "audio" | null = null) => {
     if (!id) return null;
-    const connection = connections.find((candidate) => candidate.id === id);
+    const connection = connections.find((candidate) =>
+      service === "audio"
+        ? candidate.provider === "audio_generation" && matchesAudioGenerationConnectionId(candidate, id)
+        : candidate.id === id,
+    );
     if (!connection) return null;
     return {
       name: connection.name,
@@ -1647,7 +1669,7 @@ export function GameSetupWizard({
           : service === "video"
             ? connection.videoService
             : service === "audio"
-              ? (connection.audioSource ?? null)
+              ? (connection.audioGenerationSource ?? null)
               : null,
     };
   };
@@ -3296,20 +3318,29 @@ export function GameSetupWizard({
                             {localizeUi("ui.game.gamesetupwizard.gameAudio")}
                           </span>
                           <span className="block text-[0.575rem] text-[var(--muted-foreground)]">
-                            {localizeUi("ui.game.gamesetupwizard.generateSoundEffectsAndMusicForScenesUsingAn")}
+                            {localizeUi("connections.audioGeneration.setupHelp")}
                           </span>
                         </div>
                       </div>
                       <div className="mt-2">
-                        <label className="mb-1 block text-[0.625rem] font-medium text-[var(--muted-foreground)]">
-                          {localizeUi("ui.game.gamesetupwizard.audioConnection")}
+                        <label
+                          htmlFor={`${activeChatId}:game-audio-connection`}
+                          className="mb-1 block text-[0.625rem] font-medium text-[var(--muted-foreground)]"
+                        >
+                          {localizeUi("connections.audioGeneration.connection")}
                         </label>
                         <select
-                          value={audioConnectionId ?? ""}
+                          id={`${activeChatId}:game-audio-connection`}
+                          value={audioConnectionId ? (resolvedAudioConnection?.id ?? audioConnectionId) : ""}
                           onChange={(e) => setAudioConnectionId(e.target.value || null)}
                           className="w-full rounded-lg border border-[var(--border)] bg-[var(--secondary)] px-2.5 py-1.5 text-xs text-[var(--foreground)]"
                         >
-                          <option value="">{localizeUi("ui.game.gamesetupwizard.useTheDefaultAudioConnection")}</option>
+                          <option value="">{localizeUi("connections.audioGeneration.defaultChoice")}</option>
+                          {audioConnectionId && !resolvedAudioConnection && (
+                            <option value={audioConnectionId}>
+                              {localizeUi("connections.audioGeneration.unavailableSelection")}
+                            </option>
+                          )}
                           {audioConnections.map((c) => (
                             <option key={c.id} value={c.id}>
                               {c.name}
@@ -3319,7 +3350,7 @@ export function GameSetupWizard({
                         </select>
                         {audioConnections.length === 0 && (
                           <p className="mt-1 text-[0.55rem] text-amber-700 dark:text-amber-400/80">
-                            {localizeUi("ui.game.gamesetupwizard.noAudioConnectionsFoundAddOneInSettings")}
+                            {localizeUi("connections.audioGeneration.setupEmpty")}
                           </p>
                         )}
                       </div>
@@ -3473,6 +3504,9 @@ export function GameSetupWizard({
                         rows={3}
                         className="w-full resize-none rounded-lg bg-[var(--secondary)] px-3 py-2 text-xs text-[var(--foreground)] outline-none ring-1 ring-transparent transition-all placeholder:text-[var(--muted-foreground)] focus:ring-[var(--primary)]/40"
                       />
+                      {rememberedSetupText.playerGoals && playerGoals === rememberedSetupText.playerGoals && (
+                        <RememberedTextNote onClear={() => setPlayerGoals("")} />
+                      )}
                       <div className="mt-1.5 flex flex-wrap gap-1">
                         {goalSuggestions.map((s) => (
                           <button
@@ -3506,6 +3540,9 @@ export function GameSetupWizard({
                         rows={3}
                         className="w-full resize-none rounded-lg bg-[var(--secondary)] px-3 py-2 text-xs text-[var(--foreground)] outline-none ring-1 ring-transparent transition-all placeholder:text-[var(--muted-foreground)] focus:ring-[var(--primary)]/40"
                       />
+                      {rememberedSetupText.preferences && preferences === rememberedSetupText.preferences && (
+                        <RememberedTextNote onClear={() => setPreferences("")} />
+                      )}
                       <div className="mt-1.5 flex flex-wrap gap-1">
                         {PREFERENCE_SUGGESTIONS.map((s) => (
                           <button
@@ -3589,11 +3626,13 @@ export function GameSetupWizard({
                               <Plus size={12} className="text-[var(--muted-foreground)]" />
                             </button>
                           ))}
-                          {availableLorebooks.length === 0 && (
+                          {availableLorebooks.length === 0 && lorebooksList !== undefined && (
                             <p className="px-3 py-2 text-[0.625rem] text-[var(--muted-foreground)]">
-                              {lorebooks.filter((lb) => !activeLorebookIds.includes(lb.id)).length === 0
-                                ? localizeUi("ui.game.gamesetupwizard.allLorebooksAlreadyAdded")
-                                : localizeUi("ui.lorebooks.linkedresourcepicker.noMatches")}
+                              {lorebooks.length === 0
+                                ? localizeUi("ui.panels.lorebookspanel.noLorebooksYet")
+                                : lorebooks.filter((lb) => !activeLorebookIds.includes(lb.id)).length === 0
+                                  ? localizeUi("ui.game.gamesetupwizard.allLorebooksAlreadyAdded")
+                                  : localizeUi("ui.lorebooks.linkedresourcepicker.noMatches")}
                             </p>
                           )}
                         </div>
@@ -4349,7 +4388,7 @@ export function GameSetupWizard({
                         <>
                           <Wand2 size={14} />
                           {localizeUi(
-                            multiplayerPlayers ? "multiplayer.game.review" : "ui.game.gamesurfacecomponent.startGame",
+                            multiplayerPlayers ? "multiplayer.game.review" : "ui.game.gamesetupwizard.createWorld",
                           )}
                         </>
                       )}

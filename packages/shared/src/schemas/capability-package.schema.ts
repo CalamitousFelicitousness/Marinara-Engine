@@ -1471,7 +1471,17 @@ const capabilityPackageManifestBaseSchema = z
 // 1.379: which combat styles a ruleset's games may play (`combat.styles`): the New Game wizard and the
 //        game's settings offer only those, and a game saved on another plays the first one listed.
 // 1.380: package-bound per-chat agent reference lorebook trigger resolution.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 380 } as const);
+// 1.381: independent browser audio players, shared manifest fetch and default music selection.
+// 1.382: fights for a symbol-pool ruleset (`combat.kind: "symbol-pool"`): attacks, saves, checks,
+//        contests and initiative thrown in the ruleset's own symbol dice, a defense read as the
+//        difficulty dice, `combat.symbols` for the harm each net success adds, flat soak and the
+//        spends leftover symbols buy (harm, a critical, a condition, a track, boost or setback dice
+//        on the next roll), picked by the Engine and the AI for whichever side spends that symbol.
+//        A creature action's `upgrades` names its upgraded to-hit dice.
+// 1.383: fight health on a plain track that fills up to its maximum (`combat.health` or
+//        `battle.health` naming a track with neither levels nor boxes): Genesys's Wounds, read as the
+//        room left above its value, damage adding points and a heal taking them off.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 383 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

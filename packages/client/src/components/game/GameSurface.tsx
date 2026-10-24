@@ -163,6 +163,12 @@ import { createInputMacroResolverForChat, expandMessageIncludes, VARIABLE_WRITE_
 import { parseChatMetadata } from "../../lib/chat-display";
 import { lorebookKeys } from "../../hooks/use-lorebooks";
 import { api, ApiError, getJsonRepairRequest, type JsonRepairRequest } from "../../lib/api-client";
+import {
+  forgetCombatSetupFailure,
+  isDroppedRequest,
+  recalledCombatSetupFailure,
+  rememberCombatSetupFailure,
+} from "../../lib/combat-setup-failures";
 import { useRenderTimer } from "../../lib/perf-diagnostics";
 import { isGenerationSendBlocked } from "../../lib/generation-stream-policy";
 import { showChoiceDialog, showConfirmDialog } from "../../lib/app-dialogs";
@@ -174,6 +180,7 @@ import { StoryClockStrip, useStoryJournal } from "./StoryClockDial";
 import { ExperienceCreaturePacksContext } from "./CreatureArt";
 import {
   filterAudioGenerationConnections,
+  matchesAudioGenerationConnectionId,
   filterLanguageGenerationConnections,
   isConnectionFlagTrue,
 } from "../../lib/connection-filters";
@@ -204,7 +211,6 @@ import {
   type RulesetCombatSeeds,
 } from "../../lib/ruleset-combat-bridge";
 import { useSceneAnalysis } from "../../hooks/use-scene-analysis";
-import { useTTSConfig } from "../../hooks/use-tts";
 import { useSidecarStore } from "../../stores/sidecar.store";
 import { parsePartyDialogue } from "../../lib/party-dialogue-parser";
 import { dispatchSpotifySceneTrackChange } from "../../lib/spotify-playback-events";
@@ -2099,6 +2105,7 @@ import {
   Loader2,
   Map as MapIcon,
   PanelsTopLeft,
+  Pencil,
   Play,
   Plug,
   RefreshCw,
@@ -2521,42 +2528,28 @@ function GameSurfaceComponent({
   const useCustomGameMusic = gameMusicDjEnabled && musicPlayerSource === "custom";
   const useJsonMusicDjGameMusic = useYoutubeGameMusic || useCustomGameMusic;
   const useMusicDjPlayerMusic = useSpotifyGameMusic || useJsonMusicDjGameMusic;
-  const { data: ttsConfig } = useTTSConfig();
   const activeGameMetaId = typeof chatMeta.gameId === "string" ? chatMeta.gameId : "";
   const sceneRuntimeScopeKey = `${activeChatId}:${activeGameMetaId}`;
   const { data: connectionsList } = useConnections();
-  // Game audio capability: the game's audio connection (explicit pick, else the
-  // one chosen as the Text to Speech Source, else the category default, else
-  // the fallback) wins; the legacy TTS settings blob still gates setups that
-  // predate audio connections. Mirrors the server's resolveAudioConfig order.
-  const ttsChosenConnectionId = ttsConfig?.connectionId ?? "";
+  // Music/SFX resolve independently of speech, including explicit legacy picks migrated by the host.
   const gameAudioConnection = useMemo(() => {
-    // Quarantined (review-required) imports are refused by the server's
-    // resolution (getWithKey/getDefaultForAudio return null for them), so
-    // they must not drive capability gating here either.
     const rows = filterAudioGenerationConnections((connectionsList ?? []) as Record<string, unknown>[]);
     const explicitId = typeof chatMeta.gameAudioConnectionId === "string" ? chatMeta.gameAudioConnectionId : "";
-    const explicit = explicitId ? rows.find((connection) => connection.id === explicitId) : undefined;
-    if (explicit) return explicit;
-    // A missing chosen connection is refused by the server, never swapped for the default.
-    if (ttsChosenConnectionId) return rows.find((connection) => connection.id === ttsChosenConnectionId) ?? null;
+    if (explicitId)
+      return rows.find((connection) => matchesAudioGenerationConnectionId(connection, explicitId)) ?? null;
     return (
       rows.find((connection) => isConnectionFlagTrue(connection.defaultForAgents)) ??
       rows.find((connection) => isConnectionFlagTrue(connection.fallbackForAgents)) ??
       null
     );
-  }, [connectionsList, chatMeta.gameAudioConnectionId, ttsChosenConnectionId]);
-  // The card's own ElevenLabs switches count only while no Audio connection is its Source.
-  const ttsSettingsElevenLabs = ttsConfig?.source === "elevenlabs" && !ttsChosenConnectionId;
+  }, [connectionsList, chatMeta.gameAudioConnectionId]);
   const generateGameSoundEffects =
-    (gameAudioConnection
-      ? audioConnectionSupportsGeneration(gameAudioConnection, "sfx")
-      : ttsSettingsElevenLabs && ttsConfig?.elevenLabsGameSoundEffects === true) &&
+    !!gameAudioConnection &&
+    audioConnectionSupportsGeneration(gameAudioConnection, "sfx") &&
     chatMeta.gameAudioSoundEffectsEnabled !== false;
   const generateGameMusic =
-    (gameAudioConnection
-      ? audioConnectionSupportsGeneration(gameAudioConnection, "music")
-      : ttsSettingsElevenLabs && ttsConfig?.elevenLabsGameMusic === true) &&
+    !!gameAudioConnection &&
+    audioConnectionSupportsGeneration(gameAudioConnection, "music") &&
     chatMeta.gameAudioMusicEnabled !== false &&
     !useMusicDjPlayerMusic;
   const sceneVideosQuery = useQuery({
@@ -3029,6 +3022,8 @@ function GameSurfaceComponent({
   const [preparedCombatState, setPreparedCombatState] = useState<PreparedCombatState | null>(null);
   const [combatGenerationPending, setCombatGenerationPending] = useState(false);
   const [combatGenerationError, setCombatGenerationError] = useState<string | null>(null);
+  /** The last failed setup stopped part way: the model ran out of room to answer (B1). */
+  const [combatGenerationCutOff, setCombatGenerationCutOff] = useState(false);
   /** Synchronous in-flight flag beside the async combatGenerationPending state: same-frame double
    *  requests all read the stale state, the ref does not. Declared early so the turn-retry handler,
    *  which must abandon an in-flight generation, can reach it. #5094. */
@@ -9785,6 +9780,7 @@ function GameSurfaceComponent({
           const blueprintTerrainBriefError = (response.combatState as { battlefield?: { terrainBriefError?: unknown } })
             .battlefield?.terrainBriefError;
 
+          forgetCombatSetupFailure(requestChatId, messageId);
           setPreparedCombatState({
             messageId,
             party: combatants.party,
@@ -9808,6 +9804,15 @@ function GameSurfaceComponent({
           if (combatGenerationRequestIdRef.current !== requestId || activeChatIdRef.current !== requestChatId) return; // superseded; don't set stale error
           const message = err instanceof Error ? err.message : "Combat generation failed.";
           console.warn("[game-combat] Failed to generate combat state", err);
+          const cutOff =
+            err instanceof ApiError &&
+            !!err.payload &&
+            typeof err.payload === "object" &&
+            (err.payload as { reason?: unknown }).reason === "cut-off";
+          // Remembered, so opening this chat again waits for Retry Combat rather than asking again. A request
+          // the browser dropped (a reload mid-setup) is not: the server may have finished it.
+          if (!isDroppedRequest(err)) rememberCombatSetupFailure(requestChatId, messageId, { message, cutOff });
+          setCombatGenerationCutOff(cutOff);
           setCombatGenerationError(message);
           // Only the Engine paths (manual button, retry, auto-queue) toast. An Experience/package
           // request passes notify=false and renders its own feedback from combatError, so a failed
@@ -9857,6 +9862,13 @@ function GameSurfaceComponent({
     if (pendingEncounter || combatUiActive || combatGenerationPending || combatGenerationError) return;
     if (preparedCombatState?.messageId === queuedCombatGeneration.messageId) return;
     if (isStreaming || scenePreparing || assetGenerationBlocksScene) return;
+    // This turn's setup already failed: it waits for Retry Combat instead of a new model call.
+    const failed = activeChatId ? recalledCombatSetupFailure(activeChatId, queuedCombatGeneration.messageId) : null;
+    if (failed) {
+      setCombatGenerationCutOff(failed.cutOff);
+      setCombatGenerationError(failed.message);
+      return;
+    }
 
     generateCombatStateForMessage(queuedCombatGeneration.messageId, queuedCombatGeneration.notify);
   }, [
@@ -10012,11 +10024,18 @@ function GameSurfaceComponent({
       toast.error(localizeUi("ui.game.gamesurfacecomponent.noCurrentTurnIsAvailableForCombatGeneration"));
       return;
     }
+    if (activeChatId) forgetCombatSetupFailure(activeChatId, messageId);
     setQueuedCombatGeneration({ messageId, notify: true });
     setPreparedCombatState(null);
     setCombatGenerationError(null);
     generateCombatStateForMessage(messageId, true);
-  }, [generateCombatStateForMessage, latestAssistantMsg?.id, queuedCombatGeneration?.messageId, localizeUi]);
+  }, [
+    activeChatId,
+    generateCombatStateForMessage,
+    latestAssistantMsg?.id,
+    queuedCombatGeneration?.messageId,
+    localizeUi,
+  ]);
 
   /** Keeps the identity-stable combat seam pointing at the CURRENT generator
    *  (whose own identity tracks its render-state deps). */
@@ -11897,15 +11916,6 @@ function GameSurfaceComponent({
     });
   }, [hudWidgets]);
 
-  const handleStartGameRequest = useCallback(() => {
-    if (experienceStartupBlocked || startGame.isPending || startGameRequested || startGameGuardRef.current) return;
-    if (normalizedWidgets.length > 0) {
-      setPrepareInitialWidgetsOpen(true);
-      return;
-    }
-    handleStartGameNow();
-  }, [experienceStartupBlocked, handleStartGameNow, normalizedWidgets.length, startGame.isPending, startGameRequested]);
-
   useEffect(() => {
     if (combatUiActive || normalizedWidgets.length === 0) {
       // Reset to the same width heuristic the state initializes with, NOT a
@@ -12531,18 +12541,32 @@ function GameSurfaceComponent({
                     </button>
                   )}
                 </div>
-              ) : (
-                <button
-                  onClick={() => {
-                    audioManager.unlock();
-                    handleStartGameRequest();
-                  }}
-                  disabled={experienceStartupBlocked || startGame.isPending || startGameRequested}
-                  className="group flex items-center gap-2 rounded-lg bg-zinc-900 px-6 py-3 text-sm font-semibold text-zinc-100 ring-1 ring-zinc-700/80 transition-all hover:scale-105 hover:bg-zinc-800 hover:shadow-lg hover:shadow-black/25 disabled:opacity-50 disabled:hover:scale-100"
-                >
-                  <Play size={18} className="transition-transform group-hover:scale-110" />
-                  {localizeUi("ui.game.gamesurfacecomponent.startGame")}
-                </button>
+              ) : prepareInitialWidgetsOpen ? null : (
+                // Start Game starts the game: the setup wizard already asked once. The starting widgets
+                // sheet is there for whoever wants it, and has its own Start Game, so this one waits.
+                <div className="flex flex-col items-center gap-2">
+                  <button
+                    onClick={() => {
+                      audioManager.unlock();
+                      handleStartGameNow();
+                    }}
+                    disabled={experienceStartupBlocked || startGame.isPending || startGameRequested}
+                    className="group flex items-center gap-2 rounded-lg bg-zinc-900 px-6 py-3 text-sm font-semibold text-zinc-100 ring-1 ring-zinc-700/80 transition-all hover:scale-105 hover:bg-zinc-800 hover:shadow-lg hover:shadow-black/25 disabled:opacity-50 disabled:hover:scale-100"
+                  >
+                    <Play size={18} className="transition-transform group-hover:scale-110" />
+                    {localizeUi("ui.game.gamesurfacecomponent.startGame")}
+                  </button>
+                  {normalizedWidgets.length > 0 && (
+                    <button
+                      onClick={() => setPrepareInitialWidgetsOpen(true)}
+                      disabled={experienceStartupBlocked || startGame.isPending || startGameRequested}
+                      className={cn(SURFACE_BTN, "disabled:opacity-50")}
+                    >
+                      <Pencil size={12} />
+                      {localizeUi("ui.game.gamesurfacecomponent.reviewStartingWidgets")}
+                    </button>
+                  )}
+                </div>
               )}
             </div>
           </div>
@@ -13186,6 +13210,7 @@ function GameSurfaceComponent({
                         spatialContextLoading={activeSpatialContextLoading}
                         chatId={activeChatId}
                         constraintsRef={hudSurfaceRef}
+                        inFight={combatUiActive}
                       />
                     </div>
 
@@ -13638,6 +13663,8 @@ function GameSurfaceComponent({
                             onRequestCombatStart={classicCombatStarter}
                             combatStarting={combatStarting}
                             combatGenerationFailed={combatGenerationFailedAtGate}
+                            combatGenerationCutOff={combatGenerationCutOff}
+                            combatGenerationReason={combatGenerationError}
                             onRetryCombatGeneration={retryCombatGeneration}
                             onDeleteMessage={onDeleteMessage}
                             onPeekPrompt={onPeekPrompt}
@@ -13737,6 +13764,8 @@ function GameSurfaceComponent({
                         onRequestCombatStart={classicCombatStarter}
                         combatStarting={combatStarting}
                         combatGenerationFailed={combatGenerationFailedAtGate}
+                        combatGenerationCutOff={combatGenerationCutOff}
+                        combatGenerationReason={combatGenerationError}
                         onRetryCombatGeneration={retryCombatGeneration}
                         onDeleteMessage={onDeleteMessage}
                         onPeekPrompt={onPeekPrompt}

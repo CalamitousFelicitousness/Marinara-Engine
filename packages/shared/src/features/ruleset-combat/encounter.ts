@@ -30,12 +30,22 @@ import {
   type RulesetValueRef,
 } from "../../schemas/ruleset.schema.js";
 import type { TacticalGrid, TacticalGroundCell } from "../tactical-combat/types.js";
+import {
+  pickRulesetSymbolSpends,
+  rulesetChosenSymbolSpends,
+  rulesetSymbolSpendChoices,
+  rulesetSymbolsLeft,
+  type RulesetSymbolSpend,
+  type RulesetSymbolSpendBudget,
+  type RulesetSymbolSpendPick,
+} from "./symbols.js";
 import { BOARD_PROP_ART } from "../world/board-pack.js";
 import { rulesetBoardEvents, rulesetRunBoardEvents, type RulesetBoardEventInput } from "./board-events.js";
 import {
   applyRulesetSheetOp,
   evaluateRulesetSheetLive,
   readRulesetLive,
+  rulesetTrackHealth,
   type RulesetLiveState,
   type RulesetSheetOp,
 } from "../rulesets/live-state.js";
@@ -107,6 +117,7 @@ import type {
   RulesetCombatSoak,
   RulesetCombatZone,
   RulesetEncounterState,
+  RulesetHeldAttack,
   RulesetStatBlockAction,
   RulesetStatBlock,
   RulesetTeleport,
@@ -244,10 +255,11 @@ export interface RulesetCombatHealth {
  * rather than copied into the encounter, and a reload mid-fight is exact.
  *
  * A WOUND TRACK is reported as the levels it has LEFT: `value` is how many boxes are still clear
- * and `max` is the track's length. That is deliberate and it is what keeps the rest of the fight
- * written in its own words: "down" is a combatant at zero, and a full track is a combatant with no
- * boxes left, so `dropToZero`, the dying rules, the recap and the screen all keep asking the one
- * question they already ask. A track carries no buffer, so `temp` is always 0 on one.
+ * and `max` is the track's length. A plain track that fills up (1.383) is read the same way: the
+ * room left above its value, out of its length from floor to maximum. That is deliberate and it
+ * is what keeps the rest of the fight written in its own words: "down" is a combatant at zero,
+ * and a full track is a combatant with no boxes left, so `dropToZero`, the dying rules, the recap
+ * and the screen all keep asking the one question they already ask. A track carries no buffer, so `temp` is always 0 on one.
  */
 export function rulesetCombatHealth(
   definition: RulesetDefinition,
@@ -264,8 +276,7 @@ export function rulesetCombatHealth(
   const health = combat.health;
   if ("track" in health) {
     const track = live.tracks.find((entry) => entry.id === health.track);
-    if (!track?.wound) return { value: 0, max: 0, temp: 0 };
-    return { value: track.wound.levels.length - track.wound.filled, max: track.wound.levels.length, temp: 0 };
+    return track ? rulesetTrackHealth(track) : { value: 0, max: 0, temp: 0 };
   }
   const pool = live.pools.find((entry) => !entry.listId && entry.key === health.pool);
   return pool
@@ -1205,6 +1216,149 @@ export function rulesetCombatStanding(combatant: RulesetCombatant): boolean {
   return !combatant.defeated && !combatant.down;
 }
 
+/** Who a symbol spend lands on (1.382): the attacker, their target, or the next of either side to
+ *  take a turn after the one now, standing and neither of the two. Nobody when that side has nobody
+ *  else. */
+export function rulesetSymbolSpendHolder(
+  state: RulesetEncounterState,
+  actor: RulesetCombatant,
+  target: RulesetCombatant,
+  on: RulesetSymbolSpend["by"] | "attacker-ally" | "target-ally",
+): RulesetCombatant | undefined {
+  if (on === "attacker") return actor;
+  if (on === "target") return target;
+  const [of, but] = on === "attacker-ally" ? [actor, target] : [target, actor];
+  const order = state.order;
+  for (let step = 1; step <= order.length; step++) {
+    const one = rulesetCombatant(state, order[(state.turn + step) % order.length]!);
+    if (one && one.side === of.side && one.id !== of.id && one.id !== but.id && rulesetCombatStanding(one)) return one;
+  }
+  return undefined;
+}
+
+/** What one attack's symbol spends can do (1.382), kept as they are bought: everybody a spend names
+ *  must be there and standing; a condition goes on once per holder and kind on a throw, and not at
+ *  all where it is kept off, sealed apart from whoever puts it on, or one of a kind already held; a
+ *  track moves only as many whole steps as it has room for that way, room the throw's earlier spends
+ *  have used. The fight and its forecast both buy against one of these per throw, so the AI never
+ *  prices what the Engine leaves unbought, and no symbol is spent on something that does not land. */
+export function rulesetSymbolSpendBudget(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  actor: RulesetCombatant,
+  target: RulesetCombatant,
+): RulesetSymbolSpendBudget {
+  const conditions = definition.combat?.conditions;
+  const kindOf = (condition: string) => {
+    const group = conditions?.find((one) => one.condition === condition)?.oneAtATime;
+    return group === undefined ? { key: `condition:${condition}`, group } : { key: `kind:${group}`, group };
+  };
+  const putOn = new Set<string>();
+  const tracks = new Map<string, { value: number; min: number; top: number }>();
+  const trackOf = (holder: RulesetCombatant, id: string) => {
+    const key = `${holder.id}|${id}`;
+    const known = tracks.get(key);
+    if (known) return known;
+    const declared = definition.sheet.live.tracks.find((entry) => entry.id === id)!;
+    const live = holder.sheet
+      ? readRulesetLive(definition, holder.sheet.build, holder.sheet.live).tracks.find((entry) => entry.id === id)
+      : undefined;
+    const made = {
+      value: live ? live.value : (holder.tracks?.[id] ?? declared.default ?? declared.min),
+      min: declared.min,
+      top: live ? live.max : typeof declared.max === "number" ? declared.max : 1000,
+    };
+    tracks.set(key, made);
+    return made;
+  };
+  const copies = (spend: RulesetSymbolSpend): number => {
+    for (const on of [spend.condition?.on, spend.track?.on, spend.boost?.on, spend.setback?.on]) {
+      if (on === undefined) continue;
+      const holder = rulesetSymbolSpendHolder(state, actor, target, on);
+      if (!holder || holder.defeated) return 0;
+    }
+    let times = spend.max;
+    if (spend.condition) {
+      const holder = rulesetSymbolSpendHolder(state, actor, target, spend.condition.on)!;
+      const putter = spend.by === "attacker" ? actor : target;
+      const condition = spend.condition.id;
+      const kind = kindOf(condition);
+      if (putOn.has(`${holder.id}|${kind.key}`)) return 0;
+      if (rulesetImmuneToCondition(holder, condition, definition, state, putter)) return 0;
+      if (rulesetSealedApart(definition, state, putter, holder)) return 0;
+      const held = holder.tracked.some(
+        (entry) => conditions?.find((one) => one.condition === entry.condition)?.oneAtATime === kind.group,
+      );
+      if (kind.group !== undefined && held) return 0;
+      times = Math.min(times, 1);
+    }
+    if (spend.track) {
+      const holder = rulesetSymbolSpendHolder(state, actor, target, spend.track.on)!;
+      const declared = definition.sheet.live.tracks.find((entry) => entry.id === spend.track!.id);
+      if (!declared || declared.kinds) return 0;
+      const by = spend.track.by;
+      if (by > 0 && rulesetImmuneToCondition(holder, declared.id, definition)) return 0;
+      const track = trackOf(holder, declared.id);
+      const space = by > 0 ? track.top - track.value : track.value - track.min;
+      // Whole steps only: a last step the track has no full room for is not bought.
+      times = Math.min(times, Math.max(0, Math.floor(space / Math.abs(by))));
+    }
+    return times;
+  };
+  return {
+    copies,
+    take(spend, times) {
+      if (times <= 0) return;
+      if (spend.condition) {
+        const holder = rulesetSymbolSpendHolder(state, actor, target, spend.condition.on);
+        if (holder) putOn.add(`${holder.id}|${kindOf(spend.condition.id).key}`);
+      }
+      if (spend.track) {
+        const holder = rulesetSymbolSpendHolder(state, actor, target, spend.track.on);
+        if (holder) {
+          const track = trackOf(holder, spend.track.id);
+          track.value = Math.min(track.top, Math.max(track.min, track.value + spend.track.by * times));
+        }
+      }
+    },
+  };
+}
+
+/** Where a held symbol throw (1.382) stands for the side `by` choosing its own spends: what it has
+ *  chosen so far, what it may still buy one more of, and the Engine's own pick for what it has not
+ *  spent. Read from the fight as it stands, the attacker's spends bought first, exactly as the throw
+ *  will be spent once the window closes. */
+export function rulesetSymbolSpendStanding(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  held: RulesetHeldAttack,
+  rollerId: string,
+  by: RulesetSymbolSpend["by"],
+  hit: boolean,
+): { chosen: RulesetSymbolSpendPick[]; choices: RulesetSymbolSpend[]; engine: RulesetSymbolSpendPick[] } | undefined {
+  const combat = definition.combat;
+  const symbols = held.roll.symbols;
+  const actor = rulesetCombatant(state, rollerId);
+  const target = rulesetCombatant(state, held.targetId);
+  if (!combat || !symbols || !actor || !target) return undefined;
+  const budget = rulesetSymbolSpendBudget(definition, state, actor, target);
+  const spends = held.roll.spends ?? {};
+  if (by === "target") {
+    if (spends.attacker) rulesetChosenSymbolSpends(combat, symbols, hit, "attacker", spends.attacker, budget);
+    else pickRulesetSymbolSpends(combat, symbols, hit, "attacker", budget);
+  }
+  const chosen = rulesetChosenSymbolSpends(combat, symbols, hit, by, spends[by] ?? [], budget);
+  const choices = rulesetSymbolSpendChoices(combat, symbols, hit, by, chosen, budget);
+  // The Engine buys the rest as it would have bought all of it, under each spend's `max` less what
+  // was already chosen of it.
+  const times = (spend: RulesetSymbolSpend) => chosen.find((pick) => pick.spend === spend)?.times ?? 0;
+  const engine = pickRulesetSymbolSpends(combat, rulesetSymbolsLeft(symbols, chosen), hit, by, {
+    copies: (spend) => Math.min(budget.copies(spend), spend.max - times(spend)),
+    take: (spend, count) => budget.take(spend, count),
+  });
+  return { chosen, choices, engine };
+}
+
 // ── Building what a combatant can do ──
 
 const ABILITY_COLUMN_MISS = 0;
@@ -1311,6 +1465,27 @@ function rowAbilityAndSkill(
 
 /** What an attack adds to hit from one skill and one ability, each an id or anything else, which
  *  names nothing: see `rowAbilityAndSkill`. */
+/** In a `symbol-pool` fight (1.382) a to-hit number off a sheet is an ability and a skill's ranks
+ *  together. The larger of the two is the dice and the smaller how many of them are upgraded, as the
+ *  ruleset's own checks build a pool; an action that names no ability keeps its number as plain dice. */
+function splitSymbolDice(
+  definition: RulesetDefinition,
+  evaluated: EvaluatedRulesetSheet,
+  actions: RulesetCombatAction[],
+): void {
+  const resolution = definition.resolution;
+  if (definition.combat?.kind !== "symbol-pool" || resolution.kind !== "symbol-pool") return;
+  if (resolution.pool.build === "sum" || !resolution.pool.upgrade) return;
+  for (const action of actions) {
+    if (action.toHit === undefined || action.upgrades !== undefined || !action.ability) continue;
+    const ability = evaluated.abilityMods[action.ability];
+    if (ability === undefined || !Number.isFinite(ability)) continue;
+    const rest = action.toHit - ability;
+    action.toHit = Math.max(ability, rest);
+    action.upgrades = Math.max(0, Math.min(ability, rest));
+  }
+}
+
 function abilityAndSkill(
   definition: RulesetDefinition,
   build: RulesetSheetBuild,
@@ -3324,6 +3499,7 @@ function blockActions(
               : Math.max(1, action.targetCount ?? 1),
           },
     ...(action.toHit !== undefined ? { toHit: action.toHit } : {}),
+    ...(action.upgrades ? { upgrades: action.upgrades } : {}),
     ...(action.autoHit ? { autoHit: true } : {}),
     ...(action.needs ? { needs: [...action.needs] } : {}),
     ...(action.needs && action.needsAny ? { needsAny: true as const } : {}),
@@ -3598,11 +3774,18 @@ function sheetCombatant(
     const { when: _when, wielding: _wielding, ...grant } = structuredClone(mechanics.grantsStrike);
     return [grant];
   });
+  // A weapon both written on the sheet's attacks list and held is one weapon: the held item's attack,
+  // which reads all it may be swung with (a finesse blade's better of two), is the one offered, and
+  // the row of the same name is left out rather than shown beside it with its one column's ability.
+  const heldAttacks = itemAttackActions(definition, combat, input.items, build, evaluated, perCell, rowRules);
+  const heldNames = new Set(heldAttacks.map((action) => action.label.trim().toLowerCase()));
   const actions = [
     ...(combat.attacks ?? []).flatMap((source, index) =>
-      attackActions(definition, combat, source, index, build, evaluated, perCell, rowRules),
+      attackActions(definition, combat, source, index, build, evaluated, perCell, rowRules).filter(
+        (action) => !heldNames.has(action.label.trim().toLowerCase()),
+      ),
     ),
-    ...itemAttackActions(definition, combat, input.items, build, evaluated, perCell, rowRules),
+    ...heldAttacks,
     ...itemSwitchActions(input.items),
     ...carriedSwitchActions(combat),
     ...itemUseActions(definition, combat, input.items, build, evaluated, perCell),
@@ -3723,6 +3906,8 @@ function sheetCombatant(
   };
   amendAll(actions);
   for (const made of Object.values(conjurable)) amendAll(made.actions);
+  splitSymbolDice(definition, evaluated, actions);
+  for (const made of Object.values(conjurable)) splitSymbolDice(definition, evaluated, made.actions);
   const riders = abilities.flatMap((entry) => entry.riders);
   // What an item becomes on its last charge (1.272), read now with what it would do then.
   const becomes: NonNullable<RulesetCombatant["becomes"]> = {};
@@ -3738,12 +3923,13 @@ function sheetCombatant(
       ...itemSwitchActions(items),
       ...itemUseActions(definition, combat, items, build, evaluated, perCell),
     ].filter((action) => rulesetActionItemIndex(action) === index);
+    splitSymbolDice(definition, evaluated, made);
     becomes[index] = { ref, name: other.label, item: other.item, actions: made };
   });
   // What they soak and what they may spend, read once like their defense.
   const read = (ref: RulesetValueRef) =>
     Math.max(0, Math.round(resolveRulesetValueRef(definition, build, ref, evaluated)));
-  const soakRule = combat.pool?.soak;
+  const soakRule = combat.pool?.soak ?? combat.symbols?.soak;
   const soak: RulesetCombatSoak | undefined = soakRule
     ? {
         ...(soakRule.all ? { all: read(soakRule.all) } : {}),
@@ -4348,7 +4534,7 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
         ...(combat.checks?.length
           ? { checks: Object.fromEntries(combat.checks.map((check) => [check.id, block.checks?.[check.id] ?? 0])) }
           : {}),
-        ...(block.soak && rulesetCombatIsPool(combat)
+        ...(block.soak && (rulesetCombatIsPool(combat) || combat.kind === "symbol-pool")
           ? {
               soak: {
                 ...(block.soak.all !== undefined ? { all: block.soak.all } : {}),

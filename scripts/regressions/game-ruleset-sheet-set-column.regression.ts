@@ -10,7 +10,11 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { migrateRulesetSheetBuild, parseRulesetDefinition, type RulesetDefinition } from "../../packages/shared/src/index.js";
+import {
+  migrateRulesetSheetBuild,
+  parseRulesetDefinition,
+  type RulesetDefinition,
+} from "../../packages/shared/src/index.js";
 
 const dataDir = mkdtempSync(join(tmpdir(), "marinara-set-column-"));
 process.env.DATA_DIR = dataDir;
@@ -45,7 +49,10 @@ try {
   };
   const refused = (doc: unknown, message: RegExp) => {
     const result = parseRulesetDefinition(doc);
-    assert.ok(!result.ok && result.issues.some((issue) => message.test(issue)), result.ok ? "accepted" : result.issues.join("; "));
+    assert.ok(
+      !result.ok && result.issues.some((issue) => message.test(issue)),
+      result.ok ? "accepted" : result.issues.join("; "),
+    );
   };
   const definition = parsed(document());
   const build = {
@@ -69,17 +76,32 @@ try {
     [true, true, undefined, false],
     "set on the rows both columns match, ignoring case and spaces at the ends, overwriting what was there",
   );
-  assert.equal((build as { lists: { attacks: Record<string, unknown>[] } }).lists.attacks[0]!.finesse, false, "the stored build is untouched");
+  assert.equal(
+    (build as { lists: { attacks: Record<string, unknown>[] } }).lists.attacks[0]!.finesse,
+    false,
+    "the stored build is untouched",
+  );
   // Already on the new layout: nothing runs.
   assert.equal(migrateRulesetSheetBuild(definition, build, 2), build);
 
-  refused(document((doc) => (doc.sheet.migrations[0].steps[0] = { setColumn: { ...step.setColumn, list: "nope" } })), /Unknown list "nope"/);
-  refused(document((doc) => (doc.sheet.migrations[0].steps[0] = { setColumn: { ...step.setColumn, column: "nope" } })), /Unknown column "nope"/);
   refused(
-    document((doc) => (doc.sheet.migrations[0].steps[0] = { setColumn: { ...step.setColumn, where: { nope: ["x"] } } })),
+    document((doc) => (doc.sheet.migrations[0].steps[0] = { setColumn: { ...step.setColumn, list: "nope" } })),
+    /Unknown list "nope"/,
+  );
+  refused(
+    document((doc) => (doc.sheet.migrations[0].steps[0] = { setColumn: { ...step.setColumn, column: "nope" } })),
     /Unknown column "nope"/,
   );
-  refused(document((doc) => (doc.sheet.migrations[0].steps[0] = { setColumn: { ...step.setColumn, where: {} } })), /1 and 8 columns/);
+  refused(
+    document(
+      (doc) => (doc.sheet.migrations[0].steps[0] = { setColumn: { ...step.setColumn, where: { nope: ["x"] } } }),
+    ),
+    /Unknown column "nope"/,
+  );
+  refused(
+    document((doc) => (doc.sheet.migrations[0].steps[0] = { setColumn: { ...step.setColumn, where: {} } })),
+    /1 and 8 columns/,
+  );
 
   // Installing one needs 1.783.
   const issue = (minor: number) =>
@@ -98,7 +120,9 @@ try {
   assert.match(issue(782) ?? "", /setColumn.*1\.783/);
   assert.doesNotMatch(issue(783) ?? "", /setColumn/);
 
-  console.log("Sheet migrations set a column: on the rows they match, ignoring case, refused for a list or column the sheet lacks, gated at 1.783.");
+  console.log(
+    "Sheet migrations set a column: on the rows they match, ignoring case, refused for a list or column the sheet lacks, gated at 1.783.",
+  );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

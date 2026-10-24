@@ -481,11 +481,8 @@ export class AnthropicProvider extends BaseLLMProvider {
 
     const url = `${this.baseUrl}/messages`;
 
-    // Stream the tools round whenever the caller wired a token sink and did not opt out. The
-    // gate is deliberately narrower than the base `options.stream ?? !!options.onToken`
-    // formula: a caller that sets `stream: true` without a sink (the agent tool loop) keeps
-    // the buffered path it uses today.
-    const useStream = !!options.onToken && options.stream !== false;
+    // Internal streaming also keeps quiet tool rounds alive without a UI token sink.
+    const useStream = options.stream ?? !!options.onToken;
     const { systemMessages, chatMessages } = splitAnthropicSystemMessages(messages, options.model);
     const enableCaching = options.enableCaching ?? false;
     const cacheControl = buildAnthropicCacheControl(options);

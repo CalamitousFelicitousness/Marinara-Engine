@@ -5686,6 +5686,7 @@
   "ui.agents.agentcatalogview.uninstallingValue1Value2": "Uninstalling {{value1}}/{{value2}}",
   "ui.agents.agentcatalogview.uninstallValue1": "Uninstall {{value1}}?",
   "ui.agents.agentcatalogview.update": "Update",
+  "ui.agents.agentcatalogview.updateAgent": "Update {{name}}",
   "ui.agents.agentcatalogview.updated": "updated",
   "ui.agents.agentcatalogview.value1AgentsInstalledAndReadyToUse": "{{value1}} agents installed and ready to use.",
   "ui.agents.agentcatalogview.value1AgentsInstalledRestartMarinaraEngineToFinishSetup": "{{value1}} agents installed. Restart Marinara Engine to finish setup.",

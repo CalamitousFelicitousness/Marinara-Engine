@@ -616,6 +616,7 @@ import {
   resolveGroupIndividualHistorySpeaker,
   resolveRoleplaySummaryTail,
   resolveCharacterNameMap,
+  resolveChatSpeakerNames,
   resolvePromptCharacterIdsForTarget,
   resolveRegenerationGameStateFallbackMessageIds,
   resolveRegenerationGameStateAnchor,
@@ -671,8 +672,8 @@ import {
   CONVERSATION_NO_REPEAT_INSTRUCTION,
   conversationPromptHistoryContent,
   formatConversationGroupOutputFormat,
-  formatSentSelfieNotes,
-  formatSentVideoNotes,
+  appendSentMediaNotes,
+  isSentVideoAttachment,
   resolvePresetModePrompt,
 } from "./generate/conversation-prompt-formatting.js";
 import {
@@ -2497,6 +2498,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           .map((message: any) => message.id),
       );
       const initialLatestUserMessageId = [...chatMessages].reverse().find((message) => message.role === "user")?.id;
+      // Names in a sent clip's prompt ("Alice: …") stay in its history note; read once, on the first note.
+      let chatSpeakerNamesPromise: Promise<string[]> | null = null;
+      const getChatSpeakerNames = () => (chatSpeakerNamesPromise ??= resolveChatSpeakerNames(chars, chat));
       const mapChatHistoryMessageForPrompt = async (
         m: any,
         latestUserMessageId = initialLatestUserMessageId,
@@ -2540,17 +2544,13 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           extra.replyTo,
           m.role === "user" && m.id === latestUserMessageId,
         );
-        const userUploadedImages = attachments?.filter((a) => a.type?.startsWith("image/"));
-        if (m.role === "assistant" && userUploadedImages?.length) {
-          const photoName = userUploadedImages[0]?.filename ?? userUploadedImages[0]?.name;
-          content += `\n[Sent a photo${photoName ? `: ${photoName}` : ""}]`;
-        }
-        if (m.role === "assistant") {
-          content += formatSentSelfieNotes(updatedAttachments ?? attachments);
-          const videoNotes = formatSentVideoNotes(attachments);
-          // A video-only message has no text of its own; its note then starts the turn without a blank line.
-          if (videoNotes) content = content.trim() ? content + videoNotes : videoNotes.trimStart();
-        }
+        if (m.role === "assistant")
+          content = appendSentMediaNotes(
+            content,
+            attachments,
+            updatedAttachments ?? attachments,
+            chatMode === "conversation" && attachments?.some(isSentVideoAttachment) ? await getChatSpeakerNames() : [],
+          );
         const hiddenFromAICharacterIds = getMessageHiddenFromAICharacterIds(m);
         const conversationStartForCharacterIds = getMessageConversationStartCharacterIds(m);
 

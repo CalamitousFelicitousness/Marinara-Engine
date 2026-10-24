@@ -3476,7 +3476,7 @@ Capability API 1.79 lets an item be risky or a fake, and a seller be dishonest.
 
 The same `use` works outside a fight (Capability API 1.60 for `restore`; the rest needs nothing new). The inventory's **Use** button, on one of your items with a `use`, and the Game Master's `[inventory: action="use" item="Poultice" who="Juno"]` both do what the item does to whoever carries it, with the Engine's dice:
 
-- A heal gives back health: the amount on a health pool, or one mark cleared on a wound track, as a heal in a fight does. `temporary` points go on a health pool, `restore` gives back its pool, and each condition it `applies` is put on, until something takes it off.
+- A heal gives back health: the amount on a health pool or a plain health track, or one mark cleared on a wound track, as a heal in a fight does. `temporary` points go on a health pool, `restore` gives back its pool, and each condition it `applies` is put on, until something takes it off.
 - A use that harms, or is aimed at the other side (`kind` `attack` or `debuff`, or `targets` `enemy`), lands on nobody: outside a fight there is nobody on the board to hit. The item is still used, and the Game Master is told what it does, to narrate.
 - It takes one off the stack or spends its charges exactly as a fight does, and one with none left, or one that takes a slot or binds and is not worn, is refused and changes nothing. The sheet and the bag are written together.
 - A `gate` is rolled first, as a check is: the ruleset's own dice with the sheet's number, the user's wound penalty and what their conditions and worn or carried items do to that check. A failed one uses the item up for nothing, and the line says so ("Ada uses Page of the vigil litany: Ward check 1 against 2, failed; it is used up for nothing. 1 left.").
@@ -3653,7 +3653,13 @@ same keys for a d20 system:
   Every key below means the same under each, read the way that kind reads numbers.
 - `health`: required. What a fight takes away. Either `{ "pool": "grit" }`, a live pool it counts
   down, whose temporary buffer if it has one is what damage drains first; or `{ "track": "harm" }`,
-  a wound track it MARKS. A track needs `damageKinds` beside it, and grants no temporary points.
+  a wound track it MARKS. A wound track needs `damageKinds` beside it. Or `{ "track": "wounds" }`
+  naming a plain track (no `levels` or `boxes`) that FILLS UP from its `min` to its `max` (Capability
+  API 1.781): damage adds the points, a heal takes them off, and a track at its `max` is out of the
+  fight, as a pool at zero is. Genesys's Wounds is one, with the Wound Threshold as its `max`; a
+  system where you go down only PAST the threshold makes the `max` one more than it. A plain health
+  track starts at its `default` (not a `startFrom`), may not start at its `max`, and takes no
+  `damageKinds`. A `max` the sheet works out is each character's own, as a pool's maximum is. No track grants temporary points.
 - `defense`: required, a value reference. A field the player enters, or a derived value you compute.
 - `initiative`: required. The dice rolled once at the start, and an optional modifier reference. A
   tie goes to the higher modifier, and then to the order the fight was set up in. `"each": "round"`

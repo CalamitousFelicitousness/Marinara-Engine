@@ -25,6 +25,8 @@ import { readRulesetSheetEnvelope } from "./sheet-math.js";
 import {
   applyRulesetSheetOp,
   readRulesetLive,
+  rulesetTrackHealth,
+  rulesetTrackHealthOp,
   type RulesetLiveState,
   type RulesetSheetOp,
   type RulesetSheetRefusal,
@@ -132,8 +134,8 @@ function livePool(live: ReturnType<typeof readRulesetLive>, id: string) {
 /**
  * The health a `battle` block names, on whichever shape the ruleset gave it.
  *
- * A pool is its value out of its maximum. A WOUND TRACK is the levels it has LEFT out of its
- * length, which is the only reading that keeps the share honest: a share of a track is a fraction
+ * A pool is its value out of its maximum. A WOUND TRACK, or a plain track that fills up (1.781),
+ * is the levels it has LEFT out of its length, which is the only reading that keeps the share honest: a share of a track is a fraction
  * of its length, a full track is zero, and an unmarked one is the whole of it. That is also exactly
  * what `rulesetCombatHealth` reports, so the two seams cannot come to different answers about
  * whether somebody is still standing.
@@ -144,8 +146,7 @@ function liveHealth(
 ): { value: number; max: number; temp: number } | undefined {
   if (!("track" in health)) return livePool(live, health.pool);
   const track = live.tracks.find((entry) => entry.id === health.track);
-  if (!track?.wound) return undefined;
-  return { value: track.wound.levels.length - track.wound.filled, max: track.wound.levels.length, temp: 0 };
+  return track ? rulesetTrackHealth(track) : undefined;
 }
 
 /**
@@ -410,16 +411,14 @@ function healthOp(
   delta: number,
 ): RulesetSheetOp | null {
   if (!("track" in health)) return poolOp(health.pool, delta, "damage");
-  const amount = Math.round(Math.abs(delta));
-  if (!Number.isFinite(delta) || amount < 1) return null;
   const declared = definition.sheet.live.tracks.find((entry) => entry.id === health.track);
-  const lightest = [...(declared?.kinds ?? [])].sort((a, b) => a.severity - b.severity)[0];
-  if (!lightest) return null;
+  if (!declared) return null;
+  // A plain track that fills up (1.781) has no kinds and moves by the number.
+  const lightest = [...(declared.kinds ?? [])].sort((a, b) => a.severity - b.severity)[0];
+  if (declared.kinds && !lightest) return null;
   // Fewer levels left is harm, so the sign turns over on the way to a number of marks. A heal names
   // no kind: one that did would clear only marks of that kind, and a fight's healing is any harm.
-  return delta < 0
-    ? { op: "damage", track: health.track, kind: lightest.id, amount }
-    : { op: "damage", track: health.track, kind: "", amount: -amount };
+  return rulesetTrackHealthOp(declared, delta, lightest?.id ?? "");
 }
 
 /**

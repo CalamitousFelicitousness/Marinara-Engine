@@ -300,6 +300,7 @@ export function RulesetCombatScreen({
         </div>
       )}
       {!ended && !deploy && actor && <CurrentTurn actor={actor} marks={marks} distance={distance} t={t} />}
+      {!ended && ownTurn && <CalloutHints view={view} byId={byId} t={t} />}
       <div ref={optionsBox} className="min-h-0 flex-1 overflow-y-auto border-t border-[var(--border)]">
         {ended ? null : deploy ? (
           <DeployPane
@@ -580,6 +581,40 @@ function BudgetPips({
         ));
       })}
     </span>
+  );
+}
+
+/** What the party's companions set up that the player can follow through on (Alyssa 2026-10-24): a
+ *  held foe to strike from beside it, an open one to attack. Nothing when there is none. */
+function CalloutHints({
+  view,
+  byId,
+  t,
+}: {
+  view: DirectedRulesetView;
+  byId: Map<string, DirectedRulesetCombatant>;
+  t: TFunction;
+}) {
+  const callouts = (view.callouts ?? []).filter((one) => byId.has(one.targetId));
+  if (callouts.length === 0) return null;
+  return (
+    <section
+      aria-label={t("game.combat.ruleset.screen.callouts")}
+      data-game-section="ruleset-callouts"
+      className="shrink-0 space-y-1 border-t border-[var(--border)] px-3.5 py-2 text-xs"
+    >
+      <h3 className="font-semibold text-[var(--muted-foreground)]">{t("game.combat.ruleset.screen.callouts")}</h3>
+      <ul className="space-y-0.5">
+        {callouts.map((one) => (
+          <li key={`${one.targetId}:${one.way}`}>
+            {t(`game.combat.ruleset.screen.callout.${one.way}`, {
+              by: byId.get(one.by)?.name ?? "",
+              target: byId.get(one.targetId)?.name ?? "",
+            })}
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

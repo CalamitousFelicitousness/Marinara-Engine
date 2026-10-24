@@ -887,7 +887,9 @@ try {
     assert.deepEqual(far?.targetIds, ["mage"]);
     assert.equal(prepares("genius", 20)?.optionId, "veil");
     assert.equal(prepares("cunning", 20)?.optionId, "spark", "a cunning one just shoots");
-    assert.equal(prepares("tactical", 6)?.optionId, "spark", "with the knight a walk away, it shoots");
+    // With the knight a walk away the ward is worth the blows it turns aside before long (class pass
+    // 2026-10-24: Shield of Faith never cast), more than a 1d6 chip shot.
+    assert.equal(prepares("tactical", 6)?.optionId, "veil", "with the knight a walk away, it wards itself");
 
     // Keeping its distance: a tactician shoots and steps back out of the knight's walk; a cunning one
     // walks in after its shot.

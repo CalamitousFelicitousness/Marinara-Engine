@@ -256,7 +256,22 @@ export type DirectedRulesetEvent =
   | { type: "director"; reason: "ruleset-unavailable"; text: string }
   /** Why the Engine played a combatant's step the way it did, right after the step: read back from
    *  its own scoring, never from a model. Shown only with Debug on. */
-  | { type: "reasoning"; actorId: string; reasons: DirectedRulesetReason[] };
+  | { type: "reasoning"; actorId: string; reasons: DirectedRulesetReason[] }
+  /** A companion the Engine plays says what it just set up for its side (Alyssa 2026-10-24): an
+   *  opponent whose every blow from beside it is a critical, or one open to attack. Always shown. */
+  | { type: "callout"; actorId: string; targetId: string; way: DirectedRulesetCalloutWay };
+
+/** What a call-out tells the rest of the side: blows from beside the target land as criticals, or
+ *  attacks against it have advantage. */
+export type DirectedRulesetCalloutWay = "critical" | "advantage";
+
+/** A set-up its side can still use, for the player's turn to show as a follow-up: who set it up,
+ *  on whom, and what it opens. */
+export interface DirectedRulesetCallout {
+  by: string;
+  targetId: string;
+  way: DirectedRulesetCalloutWay;
+}
 
 /**
  * One reason the Engine's AI gives for what a combatant just did, in no ruleset's words: the parts of
@@ -281,6 +296,8 @@ export type DirectedRulesetEvent =
  *   - `routed`: its morale broke, so its turn is getting away off the field.
  *   - `liesInWait`: it keeps still, hidden where it can, until its prey comes to it.
  *   - `stops`: an answer that stops what `targetId` was about to do (a Counterspell).
+ *   - `takesTurn`: it keeps `targetId` from acting, taking its turns away (a stun, a hold).
+ *   - `letGo`: in a window, nothing it could answer with was worth its price, so it let it go by.
  *   - `wards`: an answer that turns aside what was coming at it (a Shield, an Uncanny Dodge).
  *   - `spread`: it stopped apart from its own side rather than nearest, out of an opponent's blast.
  *   - `pressCaster`: nothing to do yet, so it closed on the one dropping areas on its side from out
@@ -296,7 +313,16 @@ export type DirectedRulesetReason =
       edge?: { way: "vulnerable" | "stops" | "suits"; damageType: string };
     }
   | {
-      why: "finish" | "healing" | "support" | "setup" | "protection" | "coordination" | "focus" | "mostInNeed";
+      why:
+        | "finish"
+        | "healing"
+        | "support"
+        | "setup"
+        | "protection"
+        | "coordination"
+        | "focus"
+        | "mostInNeed"
+        | "takesTurn";
       targetId?: string;
     }
   | { why: "pressCaster"; targetId: string }
@@ -307,7 +333,16 @@ export type DirectedRulesetReason =
   | { why: "driven" }
   | {
       why:
-        "nothingWorth" | "noWay" | "holding" | "leavesHarm" | "spread" | "routed" | "cornered" | "liesInWait" | "wards";
+        | "nothingWorth"
+        | "noWay"
+        | "holding"
+        | "leavesHarm"
+        | "spread"
+        | "routed"
+        | "cornered"
+        | "liesInWait"
+        | "wards"
+        | "letGo";
     }
   | { why: "keptBack"; label: string; targetId?: string };
 /** One option of the legal menu, with the combatants it may be pointed at right now. */
@@ -378,6 +413,9 @@ export interface DirectedRulesetView {
   actorId?: string;
   /** Who plays the actor whose turn it is. */
   controller: "manual" | "ai" | "gm";
+  /** The set-ups the party's companions called out that still stand (Alyssa 2026-10-24), for the
+   *  player's turn to offer as follow-ups. Absent when there are none. */
+  callouts?: DirectedRulesetCallout[];
   combatants: DirectedRulesetCombatant[];
   /** What spells called up that strike from a square of their own (Spiritual Weapon): whose, what,
    *  and where it is. Only on a board. */

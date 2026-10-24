@@ -304,6 +304,7 @@ import {
   rulesetReactionTarget,
   rulesetRedirectTargets,
   rulesetHitItem,
+  rulesetWindowCause,
   rulesetFallTargets,
   rulesetReactionsAt,
   rulesetSequenceCanHappen,
@@ -10706,24 +10707,14 @@ function takeReaction(
   // caused the moment, or, for something its holder does to THEMSELVES, at its holder. Bracing
   // yourself is not aimed at anybody, and pointing it at whoever hurt you would hand them what it
   // gives. A falling moment always points at the faller, even when the entry otherwise asks.
-  const about = rulesetReactionTarget(state, actor, declared, trigger.kind, trigger.sourceId, {
-    ...("targetIds" in trigger ? { targetIds: trigger.targetIds } : {}),
-    ...("catalog" in trigger ? { catalog: trigger.catalog } : {}),
-    ...("entry" in trigger ? { entry: trigger.entry } : {}),
-    ...("optionId" in trigger &&
-    rulesetCombatant(state, trigger.sourceId)?.block &&
-    !("catalog" in trigger && trigger.catalog)
-      ? { action: trigger.label }
-      : {}),
-    ...(trigger.kind === "hit" || trigger.kind === "aimed" ? { blow: trigger.blow } : {}),
-    ...(trigger.kind === "hit" && trigger.weapon ? { weapon: true } : {}),
-    ...(trigger.kind === "hit" && !trigger.catalog ? { attack: trigger.label } : {}),
-    ...(trigger.kind === "hit" && trigger.budget ? { budget: trigger.budget } : {}),
-    ...(trigger.kind === "hit" ? rulesetHitItem(trigger.optionId) : {}),
-    ...(trigger.kind === "attacked"
-      ? { missedIds: trigger.missedIds, blows: trigger.blows, attackOption: trigger.optionId }
-      : {}),
-  });
+  const about = rulesetReactionTarget(
+    state,
+    actor,
+    declared,
+    trigger.kind,
+    trigger.sourceId,
+    rulesetWindowCause(state, trigger),
+  );
   const source = rulesetCombatant(state, declared.reaction?.at === "target" ? (about ?? actor.id) : trigger.sourceId);
   let targets: RulesetCombatant[] | RulesetCombatRefusal;
   // Sent to the one its holder picks (1.406): Stand Against the Tide.
@@ -12171,8 +12162,21 @@ export function rulesetStandingAtStart(
     }
     // The mode it is done in (1.471), by id or name, or the kind it names.
     const lower = (text: string) => text.trim().toLowerCase();
+    // Or by the creature it calls or the form it takes, without its count or its kind (class pass
+    // 2026-10-24: "Imp" for "Imp ×1", "Warhorse" for "Warhorse, Celestial"), the first such way.
+    const bare = (text: string) =>
+      lower(text)
+        .replace(/\s*×\s*\S+$/, "")
+        .replace(/^.*:\s*/, "")
+        .split(",")[0]!
+        .trim();
     const picked = one.mode
-      ? action.modes?.find((entry) => entry.id === one.mode || lower(entry.label) === lower(one.mode!))
+      ? (action.modes?.find((entry) => entry.id === one.mode || lower(entry.label) === lower(one.mode!)) ??
+        action.modes?.find((entry) =>
+          [entry.label, entry.call?.name, entry.form?.name].some(
+            (name) => name !== undefined && bare(name) === bare(one.mode!),
+          ),
+        ))
       : undefined;
     if (one.mode && !picked) {
       skipped.push(`${caster.name}'s ${action.label} has no "${one.mode}", so it is not done.`);

@@ -196,6 +196,7 @@ export {
   type RulesetEncounterInput,
   type RulesetBoardPropInput,
   rulesetBoardProps,
+  rulesetAttackNamed,
 } from "./encounter.js";
 export {
   rulesetAreaCells,
@@ -323,6 +324,9 @@ export {
   rulesetWithinSpendLimits,
   rulesetReactionPointsAtSource,
   rulesetReactionTarget,
+  rulesetSheetWithin,
+  rulesetWeaponBlow,
+  rulesetWindowCause,
   rulesetFallTargets,
   rulesetReactionsAt,
   rulesetWindowMoment,

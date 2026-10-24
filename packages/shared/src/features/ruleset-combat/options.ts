@@ -6398,29 +6398,7 @@ function windowOptions(
   if (!moment) return [];
   const source = "sourceId" in window.trigger ? window.trigger.sourceId : "";
   const trigger = window.trigger;
-  // What the action behind it carries (1.548): Rock Catching's rock.
-  const qualities = rulesetActionQualities(
-    "optionId" in trigger
-      ? rulesetCombatant(state, source)?.actions.find((one) => one.id === trigger.optionId)
-      : undefined,
-  );
-  const cause: RulesetMomentCause = {
-    ...("targetIds" in trigger ? { targetIds: trigger.targetIds } : {}),
-    ...(qualities.length ? { qualities } : {}),
-    ...("optionId" in trigger && rulesetCombatant(state, source)?.block && !("catalog" in trigger && trigger.catalog)
-      ? { action: trigger.label }
-      : {}),
-    ...("catalog" in trigger && trigger.catalog ? { catalog: trigger.catalog } : {}),
-    ...("entry" in trigger && trigger.entry ? { entry: trigger.entry } : {}),
-    ...((trigger.kind === "hit" || trigger.kind === "aimed") && trigger.blow ? { blow: trigger.blow } : {}),
-    ...(trigger.kind === "hit" && trigger.weapon ? { weapon: true } : {}),
-    ...(trigger.kind === "hit" && !trigger.catalog ? { attack: trigger.label } : {}),
-    ...(trigger.kind === "hit" && trigger.budget ? { budget: trigger.budget } : {}),
-    ...(trigger.kind === "hit" ? rulesetHitItem(trigger.optionId) : {}),
-    ...(trigger.kind === "attacked"
-      ? { missedIds: trigger.missedIds, blows: trigger.blows, attackOption: trigger.optionId }
-      : {}),
-  };
+  const cause = rulesetWindowCause(state, trigger);
   // A hit's maker answers it once with each thing they hold (1.241).
   const taken = trigger.kind === "hit" && actorId === source ? (window.taken ?? []) : [];
   return rulesetReactionsAt(definition, combat, state, actor, moment, source, cause)
@@ -6596,6 +6574,36 @@ function rulesetAgainstMatches(
     (entry !== undefined && (against.entries ?? []).includes(entry)) ||
     (action !== undefined && (against.actions ?? []).some((name) => name.toLowerCase() === action.toLowerCase()))
   );
+}
+
+/** What a moment's cause carries, read off its trigger, for what answers it to be matched against
+ *  (the blow, a weapon's, the budget it was paid from, the item struck with): the same for the menu,
+ *  the rules and the picker, so all three agree on whom an answer lands on. */
+export function rulesetWindowCause(state: RulesetEncounterState, trigger: RulesetWindowTrigger): RulesetMomentCause {
+  const source = "sourceId" in trigger ? trigger.sourceId : "";
+  // What the action behind it carries (1.548): Rock Catching's rock.
+  const qualities = rulesetActionQualities(
+    "optionId" in trigger
+      ? rulesetCombatant(state, source)?.actions.find((one) => one.id === trigger.optionId)
+      : undefined,
+  );
+  return {
+    ...("targetIds" in trigger ? { targetIds: trigger.targetIds } : {}),
+    ...(qualities.length ? { qualities } : {}),
+    ...("optionId" in trigger && rulesetCombatant(state, source)?.block && !("catalog" in trigger && trigger.catalog)
+      ? { action: trigger.label }
+      : {}),
+    ...("catalog" in trigger && trigger.catalog ? { catalog: trigger.catalog } : {}),
+    ...("entry" in trigger && trigger.entry ? { entry: trigger.entry } : {}),
+    ...((trigger.kind === "hit" || trigger.kind === "aimed") && trigger.blow ? { blow: trigger.blow } : {}),
+    ...(trigger.kind === "hit" && trigger.weapon ? { weapon: true } : {}),
+    ...(trigger.kind === "hit" && !trigger.catalog ? { attack: trigger.label } : {}),
+    ...(trigger.kind === "hit" && trigger.budget ? { budget: trigger.budget } : {}),
+    ...(trigger.kind === "hit" ? rulesetHitItem(trigger.optionId) : {}),
+    ...(trigger.kind === "attacked"
+      ? { missedIds: trigger.missedIds, blows: trigger.blows, attackOption: trigger.optionId }
+      : {}),
+  };
 }
 
 /** The creature an aimed or hit moment is about, including a nearby ally (1.131). */

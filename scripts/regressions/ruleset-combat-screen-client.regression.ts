@@ -635,7 +635,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   });
   const say = (event: DirectedRulesetEvent) => line(fiveE, state, event);
 
-  const table: Array<[RulesetCombatEvent["type"] | "director" | "reasoning", string | null]> = [
+  const table: Array<[RulesetCombatEvent["type"] | "director" | "reasoning" | "callout", string | null]> = [
     ["initiative", say({ type: "initiative", entries: [{ actorId: "brenna", roll: [12], modifier: 2, total: 14 }] })],
     ["round", say({ type: "round", round: 3 })],
     ["turn", say({ type: "turn", actorId: "brenna", round: 3 })],
@@ -824,6 +824,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ["outcome", say({ type: "outcome", outcome: "victory" })],
     ["refused", say({ type: "refused", actorId: "brenna", optionId: "sword", reason: "no-budget" })],
     ["director", say({ type: "director", reason: "ruleset-unavailable", text: "The rules are gone." })],
+    ["callout", say({ type: "callout", actorId: "corwin", targetId: "lurker", way: "critical" })],
     [
       "reasoning",
       say({
@@ -1549,6 +1550,14 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   assert.equal(printed.get("outcome"), "The fight is won.");
   assert.equal(printed.get("refused"), "Brenna could not do that: They have nothing left to spend on it this turn.");
   assert.equal(printed.get("director"), "The fight stopped here: The rules are gone.");
+  assert.equal(
+    printed.get("callout"),
+    "Corwin calls out: Thorn Lurker can't defend itself, so every blow from beside it is a critical hit!",
+  );
+  assert.equal(
+    say({ type: "callout", actorId: "corwin", targetId: "lurker", way: "advantage" }),
+    "Corwin calls out: Thorn Lurker is wide open, so attack it now!",
+  );
   assert.equal(
     printed.get("reasoning"),
     "Why Thorn Lurker did that: likely takes Brenna out of the fight; heavy damage to Brenna; walked 2 first to act from there.",

@@ -12360,7 +12360,13 @@ function GameSurfaceComponent({
   // Why the last Start Game did not finish, kept on screen over the wizard until the next try:
   // the game is already made by then, and a toast that fades leaves a player looking at a wizard
   // that seems to have done nothing.
-  const [setupFailure, setSetupFailure] = useState<{ chatId: string; message: string } | null>(null);
+  const [setupFailure, setSetupFailure] = useState<{
+    chatId: string;
+    message: string;
+    /** Refused because a setup for this game is still running (409), so trying again or another
+     *  connection is no help: only its own reason is shown. */
+    running?: boolean;
+  } | null>(null);
   useEffect(() => {
     leaveDropsChat.current =
       canAutoDeleteEmptySetupChat && !createGame.isPending && !gameSetup.isPending ? activeChatId : null;
@@ -12492,6 +12498,11 @@ function GameSurfaceComponent({
                       setSetupFailure({
                         chatId,
                         message: error instanceof Error && error.message.trim() ? error.message.trim() : "",
+                        ...(error instanceof ApiError &&
+                        (error.status === 409 ||
+                          (error.payload as { code?: unknown } | undefined)?.code === "setup_running")
+                          ? { running: true }
+                          : {}),
                       });
                     },
                   },
@@ -12580,9 +12591,11 @@ function GameSurfaceComponent({
               className="fixed left-1/2 top-3 z-[10002] flex w-[min(36rem,calc(100vw-2rem))] -translate-x-1/2 items-start gap-3 rounded-lg border border-red-400/40 bg-red-950/90 px-4 py-3 text-sm text-red-100 shadow-xl backdrop-blur"
             >
               <p className="flex-1">
-                {localizeUi("ui.game.gamesurfacecomponent.setupDidNotFinish", {
-                  reason: setupFailure.message || localizeUi("ui.game.gamesurfacecomponent.setupNoReason"),
-                })}
+                {setupFailure.running && setupFailure.message
+                  ? setupFailure.message
+                  : localizeUi("ui.game.gamesurfacecomponent.setupDidNotFinish", {
+                      reason: setupFailure.message || localizeUi("ui.game.gamesurfacecomponent.setupNoReason"),
+                    })}
               </p>
               <button
                 type="button"

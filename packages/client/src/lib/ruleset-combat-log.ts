@@ -1804,6 +1804,11 @@ export function rulesetCombatEventLine(
       });
     case "director":
       return key("unavailable", { reason: event.text });
+    case "callout":
+      return key(`callout.${event.way}`, {
+        actor: names.combatant(event.actorId),
+        target: names.combatant(event.targetId),
+      });
     case "reasoning":
       return event.reasons.length
         ? key("reasoning", {
@@ -1842,6 +1847,7 @@ function rulesetReasonText(reason: DirectedRulesetReason, names: RulesetCombatNa
     case "mostInNeed":
     case "pressCaster":
     case "stops":
+    case "takesTurn":
       return say(reason.why, { target: target(reason.targetId) });
     case "walked":
       return say("walked", { distance: names.distance(reason.cells) });

@@ -141,6 +141,19 @@ export function RoleplayCommandsSettings({
                           <option value="all">{t("roleplay.commands.audience.all")}</option>
                           <option value="narrator">{t("roleplay.commands.audience.narrator")}</option>
                         </select>
+                        {showAudienceWarning && (
+                          <span
+                            id={`${chat.id}:${key}-audience-status`}
+                            className="text-[0.6875rem] text-[var(--muted-foreground)]"
+                            role="status"
+                          >
+                            {t(
+                              !privateAvailable
+                                ? "roleplay.commands.narrator.individualRequired"
+                                : "roleplay.commands.narrator.required",
+                            )}
+                          </span>
+                        )}
                         {key === "roll" && (
                           <>
                             <label htmlFor={`${chat.id}:roll-outcome-tone`}>
@@ -161,19 +174,6 @@ export function RoleplayCommandsSettings({
                               </option>
                             </select>
                           </>
-                        )}
-                        {showAudienceWarning && (
-                          <span
-                            id={`${chat.id}:${key}-audience-status`}
-                            className="text-[0.6875rem] text-[var(--muted-foreground)]"
-                            role="status"
-                          >
-                            {t(
-                              !privateAvailable
-                                ? "roleplay.commands.narrator.individualRequired"
-                                : "roleplay.commands.narrator.required",
-                            )}
-                          </span>
                         )}
                       </div>
                     )}

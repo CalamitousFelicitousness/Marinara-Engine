@@ -1656,7 +1656,9 @@ export function ConnectionEditor() {
         (typeof status === "number" && Number.isInteger(status) && status >= 100 && status <= 599
           ? typeof payload?.reason === "string" && payload.reason
             ? t("connections.audioGeneration.testMusicProviderError", { status, reason: payload.reason.slice(0, 300) })
-            : t("connections.audioGeneration.testMusicHttpError", { status })
+            : payload?.providerCode === "invalid_api_key" || payload?.providerCode === "unauthorized"
+              ? t("connections.audioGeneration.testMusicAuthError")
+              : t("connections.audioGeneration.testMusicHttpError", { status })
           : error instanceof Error
             ? error.message.slice(0, 300)
             : t("connections.audioGeneration.testMusicFailed"));

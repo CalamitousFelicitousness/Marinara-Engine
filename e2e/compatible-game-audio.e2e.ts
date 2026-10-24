@@ -60,7 +60,9 @@ for (const theme of ["dark", "light"] as const) {
     expect(created.ok()).toBeTruthy();
     const { id } = await created.json();
     const sent: Record<string, unknown>[] = [];
-    let mode: "success" | "error" | "invalid-audio" | "hold" = "success";
+    let mode:
+      "success" | "error" | "invalid-audio" | "invalid_api_key" | "unauthorized" | "auth-reason" | "input" | "hold" =
+      "success";
     let release: (() => void) | undefined;
     let heldSettled = false;
     // Reuse a bundled MP3 to verify real decoding/playback without a paid provider call.
@@ -98,6 +100,26 @@ for (const theme of ["dark", "light"] as const) {
         await route.fulfill({
           status: 502,
           json: { error: "Audio generation failed", detail: "private raw provider text", failureCode: "invalid_audio" },
+        });
+        return;
+      }
+      if (mode === "invalid_api_key" || mode === "unauthorized" || mode === "auth-reason") {
+        await route.fulfill({
+          status: 502,
+          json: {
+            error: "Audio generation failed",
+            detail: "private raw provider text",
+            providerStatus: 401,
+            providerCode: mode === "auth-reason" ? "invalid_api_key" : mode,
+            ...(mode === "auth-reason" ? { reason: "This API key is missing the music-generation permission." } : {}),
+          },
+        });
+        return;
+      }
+      if (mode === "input") {
+        await route.fulfill({
+          status: 502,
+          json: { error: "Audio generation failed", detail: "private endpoint settings", failureCode: "invalid_input" },
         });
         return;
       }
@@ -160,6 +182,28 @@ for (const theme of ["dark", "light"] as const) {
         "The test track could not be played. Check the connection’s audio response format.",
       );
       expect(sent).toHaveLength(3);
+      for (const code of ["invalid_api_key", "unauthorized"] as const) {
+        mode = code;
+        await generate.click();
+        await expect(editor.getByRole("alert")).toHaveText(
+          "The music service rejected the API key. Check the key and its music-generation permissions.",
+        );
+      }
+      expect(sent).toHaveLength(5);
+      await capture(page, info, `music-test-auth-error-${theme}`, editor.getByRole("alert"));
+      mode = "auth-reason";
+      await generate.click();
+      await expect(editor.getByRole("alert")).toHaveText(
+        "Music service returned HTTP 401: This API key is missing the music-generation permission.",
+      );
+      expect(sent).toHaveLength(6);
+      mode = "input";
+      await generate.click();
+      await expect(editor.getByRole("alert")).toHaveText(
+        "The test input or connection configuration is invalid. Check the track length, selected model, and endpoint settings.",
+      );
+      expect(sent).toHaveLength(7);
+      await capture(page, info, `music-test-input-error-${theme}`, editor.getByRole("alert"));
       mode = "hold";
       await generate.click();
       await expect.poll(() => !!release).toBe(true);
@@ -173,7 +217,7 @@ for (const theme of ["dark", "light"] as const) {
       );
       await expect(player).toHaveCount(0);
       await expect(editor.getByRole("alert")).toHaveCount(0);
-      expect(sent).toHaveLength(4);
+      expect(sent).toHaveLength(8);
     } finally {
       release?.();
       await request.delete(`/api/connections/${id}`);

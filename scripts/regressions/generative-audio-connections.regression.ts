@@ -1,6 +1,15 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
@@ -328,6 +337,24 @@ try {
     [sample2.path.split("/").at(-1), "my-track.ogg"].sort(),
   );
   assert.equal(readFileSync(sampleReplacement, "utf8"), "user owned audio");
+  // POSIX directory permissions reproduce a listing failure after a successful atomic publication.
+  if (process.platform !== "win32" && process.getuid?.() !== 0) {
+    const absoluteSampleDirectory = join(data, "game-assets", sampleDirectory);
+    const beforeCleanupFailure = calls.length;
+    let publishedSample;
+    try {
+      chmodSync(absoluteSampleDirectory, 0o300);
+      assert.throws(() => readdirSync(absoluteSampleDirectory), { code: "EACCES" });
+      publishedSample = await generate(row.id, sampleInput);
+    } finally {
+      chmodSync(absoluteSampleDirectory, 0o700);
+    }
+    assert.equal(publishedSample.statusCode, 200, publishedSample.body);
+    assert.equal(publishedSample.json().cached, false);
+    assert.equal(calls.length, beforeCleanupFailure + 1);
+    assert.deepEqual(readFileSync(join(data, "game-assets", publishedSample.json().path)), mp3);
+    assert.equal(readFileSync(sampleReplacement, "utf8"), "user owned audio");
+  }
   assert.equal(
     readFileSync(join(replacement, "my-track.ogg"), "utf8"),
     "user owned audio",

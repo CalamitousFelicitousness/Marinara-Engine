@@ -6,7 +6,7 @@ import {
   TTS_SETTINGS_KEY,
   combatAiHintsSchema,
   combatBossSchema,
-  combatInterruptFields,
+  lenientCombatInterruptFields,
   gameInventoryFightLines,
   normalizeGameInventoryStacks,
   rulesetCombatStyle,
@@ -358,7 +358,7 @@ export const encounterBlueprintSchema = z
             .array(
               z
                 .object({
-                  ...combatInterruptFields,
+                  ...lenientCombatInterruptFields,
                   kind: z.enum(["attack", "heal", "buff", "debuff"]).optional(),
                   mpCost: z.number().min(0).max(10000).optional(),
                 })
@@ -392,7 +392,7 @@ export const encounterBlueprintSchema = z
             .array(
               z
                 .object({
-                  ...combatInterruptFields,
+                  ...lenientCombatInterruptFields,
                   kind: z.enum(["attack", "heal", "buff", "debuff"]).optional(),
                   mpCost: z.number().min(0).max(10000).optional(),
                 })
@@ -691,7 +691,7 @@ export function buildInitPrompt(
   inst += `- For each party member and enemy, include aiHints: {category: "beast|monstrosity|other|unknown", proficiency: "novice|trained|veteran|master", temperament: "mindless|reckless|cautious|opportunistic|protective|supportive|disciplined|cowardly|patient|methodical|coordinated"}. Use established identity and training, not HP or appearance. Omit temperament when personality is unknown; do not mistake negated traits for positive evidence. Every Beast and Monstrosity is Mindless. These values are protocol enums and must not be translated.\n`;
   inst += `- For every attack include kind: "attack|heal|buff|debuff" and a nonnegative mpCost. For every enemy include numeric mp and maxMp, preserving established resources. Otherwise give a finite pool appropriate to its skills. Class hints (fighter|knight|rogue|archer|mage|healer) may be supplied in either combat mode. Do not invent abilities to fit a temperament.\n`;
   inst += `- Explicitly identify each actual boss enemy with boss: {points: 3, anticipation: true, attackCost: 1, defendCost: 1, moveCost: 1}; omit boss for ordinary enemies and elites. This also applies to a solo boss. Do not infer boss status from HP alone. Boss skills may have legendaryCost: 1..3 when they are appropriate additional actions.\n`;
-  inst += `- Mark actual spellcasting abilities with spell: true. For an established area attack, supply areaRadius: 1..3 and friendlyFire: true/false for Tactical; targetScope: "all-enemies" supplies explicit non-spatial group damage in Classic. Omit these for single-target spells. Only when the established kit includes one, represent an interrupting spell with reaction: "counterspell", spell: true, range: 3, and its real mpCost/cooldown. A defensive ward/interception can use reaction: "guard" with its real cost/range. Reaction-only abilities are not ordinary turn attacks. Do not give every caster Counterspell. You may supply range: 1..12 tiles for Tactical abilities. Spell slots may be supplied as spellSlots: {"3": 2} and slotLevel: 3 ONLY when established; otherwise use finite MP and omit slot fields. These are generic Engine rules, not a claim of 5e compliance.\n`;
+  inst += `- Mark actual spellcasting abilities with spell: true. For an established area attack, supply areaRadius: 1..3 and friendlyFire: true/false for Tactical; targetScope: "all-enemies" supplies explicit non-spatial group damage in Classic. Omit these for single-target spells. Only when the established kit includes one, represent an interrupting spell with reaction: "counterspell", spell: true, range: 3, and its real mpCost/cooldown. A defensive ward/interception can use reaction: "guard" with its real cost/range. Reaction-only abilities are not ordinary turn attacks. Do not give every caster Counterspell. You may supply range: 1..12 tiles for Tactical abilities; an ability used on oneself takes range: 1 or none. Spell slots may be supplied as spellSlots: {"3": 2} and slotLevel: 3 ONLY when established; otherwise use finite MP and omit slot fields. These are generic Engine rules, not a claim of 5e compliance.\n`;
   inst += `- battlefield.terrainBrief.exposure: exposed only when the actual combat site is open to outdoor weather; sheltered for enclosed/covered sites; unknown if context cannot establish either. Apply this in both Classic and Tactical. Do not invent current weather.\n`;
   inst += `- On each combatant, projectile and requiresSight are optional boolean traits of their BASIC attack. On each attack/skill, supply its own projectile/requiresSight booleans when grounded in its actual mechanics (arrows are projectiles; sight-aimed attacks require sight). These flags control weather penalties. Do not infer traits from translated names or grant weather immunity. Omitted flags receive no weather accuracy modifier.\n`;
   inst += `- Describe the environment at THIS encounter's current location, using current scene details. Do not reuse a world-creation terrain template.\n`;
@@ -952,13 +952,19 @@ export async function encounterRoutes(app: FastifyInstance) {
       logDebugOverride(debugMode === true, message, ...args);
     };
 
+    // Every refusal is logged with its reason: a setup that fails is otherwise silent on the server,
+    // and the screen shows only that it failed.
+    const refuse = (body: { error: string; reason?: string }, status = 502, err?: unknown) => {
+      logger.warn(err ?? {}, "[game/combat:init] chatId=%s refused: %s", chatId || "(none)", body.error);
+      return reply.status(status).send(body);
+    };
     if (!chatId || !settings) {
-      return reply.status(400).send({ error: "Missing required fields: chatId, settings" });
+      return refuse({ error: "Missing required fields: chatId, settings" }, 400);
     }
 
     try {
       const chat = await chats.getById(chatId);
-      if (!chat) return reply.status(404).send({ error: "Chat not found" });
+      if (!chat) return refuse({ error: "Chat not found" }, 404);
 
       const { conn, baseUrl } = await resolveEncounterConnection(connections, connectionId, chat.connectionId);
       const provider = createLLMProvider(
@@ -1009,9 +1015,10 @@ export async function encounterRoutes(app: FastifyInstance) {
           : null;
       if (tacticalBattlefieldResult && !tacticalBattlefieldResult.success) {
         const issue = tacticalBattlefieldResult.error.issues[0];
-        return reply.status(400).send({
-          error: `Stored tactical battlefield settings are invalid: ${issue?.message ?? "invalid settings"}`,
-        });
+        return refuse(
+          { error: `Stored tactical battlefield settings are invalid: ${issue?.message ?? "invalid settings"}` },
+          400,
+        );
       }
       const gameStateCtx = await buildGameStateContext(gsStorage, chatId, personaName, chatMeta);
       const spellbookCtx = await loadSpellbookContext(spellbookId);
@@ -1129,7 +1136,7 @@ export async function encounterRoutes(app: FastifyInstance) {
         result.content ?? "",
       );
       if (asked.cutOff) {
-        return reply.status(502).send({
+        return refuse({
           error:
             "The fight's setup was cut off before it finished: the model ran out of room to answer. Retry, or raise this connection's Max tokens.",
           reason: "cut-off",
@@ -1137,22 +1144,22 @@ export async function encounterRoutes(app: FastifyInstance) {
       }
 
       if (!result.content) {
-        return reply.status(502).send({ error: "No response from AI" });
+        return refuse({ error: "No response from AI" });
       }
 
       let combatState: Record<string, unknown>;
       try {
         combatState = parseJSON(result.content) as Record<string, unknown>;
       } catch {
-        return reply.status(502).send({ error: "AI returned invalid JSON" });
+        return refuse({ error: "AI returned invalid JSON" });
       }
 
       if (!combatState?.party || !combatState?.enemies) {
-        return reply.status(502).send({ error: "Invalid combat data returned by AI" });
+        return refuse({ error: "Invalid combat data returned by AI" });
       }
       const aiBlueprint = encounterBlueprintSchema.safeParse(combatState);
       if (!aiBlueprint.success)
-        return reply.status(502).send({ error: `Invalid combat AI data: ${aiBlueprint.error.issues[0]?.message}` });
+        return refuse({ error: `Invalid combat AI data: ${aiBlueprint.error.issues[0]?.message}` });
       combatState = aiBlueprint.data;
       if (storyOpponents?.length) {
         combatState = {
@@ -1167,7 +1174,7 @@ export async function encounterRoutes(app: FastifyInstance) {
       if (combatStyle === "tactical") {
         const tacticalResult = validateTacticalEncounterBlueprint(combatState);
         if (!tacticalResult.ok) {
-          return reply.status(502).send({ error: `AI returned invalid tactical combat data: ${tacticalResult.error}` });
+          return refuse({ error: `AI returned invalid tactical combat data: ${tacticalResult.error}` });
         }
         combatState = tacticalResult.blueprint as Record<string, unknown>;
       }
@@ -1178,14 +1185,19 @@ export async function encounterRoutes(app: FastifyInstance) {
         combatState = { ...combatState, itemEffects: (await loadGameFightItems(app.db, chatMeta, guessed)).effects };
       }
       debugLog("[debug/game/combat:init] parsed response:\n%s", JSON.stringify(combatState, null, 2));
+      logger.info(
+        "[game/combat:init] chatId=%s ready: party=%d enemies=%d",
+        chatId,
+        Array.isArray(combatState.party) ? combatState.party.length : 0,
+        Array.isArray(combatState.enemies) ? combatState.enemies.length : 0,
+      );
 
       await chats.patchMetadata(chatId, { encounterActive: true }, { touchUpdatedAt: false });
 
       return { combatState };
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
-      logger.warn(err, "[game/combat:init] Encounter init failed");
-      return reply.status(500).send({ error: `Encounter init failed: ${message}` });
+      return refuse({ error: `Encounter init failed: ${message}` }, 500, err);
     }
   }
 

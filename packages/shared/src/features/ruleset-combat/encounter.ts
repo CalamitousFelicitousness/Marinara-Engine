@@ -2659,8 +2659,17 @@ function attackActions(
           },
     };
     const dealtWith = columnValue(row, source.damage.ability?.column);
+    // A row whose ability its ruleset cannot read (a card made on a later version: 5e's "finesse" in a
+    // game pinned before it) is read the same to hit and to damage where both read that one column, so
+    // a rule's better ability adds to both (laptop playtest 2026-10-24: a monk's shortsword +7, 1d6).
+    const unread =
+      ability === undefined &&
+      dealtWith !== undefined &&
+      dealtWith === namedAbility &&
+      source.damage.ability?.column === source.toHit.ability?.column;
     const adds = (ability: string | undefined) =>
-      dealtWith === ability || (ability === undefined && dealtWith === undefined && !!source.damage.ability);
+      dealtWith === ability ||
+      (ability === undefined && ((dealtWith === undefined && !!source.damage.ability) || unread));
     if (action.ability !== undefined && adds(action.ability)) action.damageAddsAbility = true;
     if (rules.length) applyAttackRowRules(definition, build, evaluated, dice, action, rules, pooled, adds);
     actions.push(action);

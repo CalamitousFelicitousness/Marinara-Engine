@@ -19,8 +19,10 @@ export type { GameCombatStyle } from "../../types/game.js";
 export type { TacticalTerrain } from "./environments.js";
 import type { TacticalTerrain, TacticalEnvironment } from "./environments.js";
 
-/** Fixed board sizes for procedural tactical encounters. */
-export type TacticalBattlefieldSize = "small" | "medium" | "large";
+/** Fixed board sizes for procedural tactical encounters, smallest first: 12x8, 13x9, 14x10, and
+ *  (2026-10-24) 24x16 for a great hall, 40x26 for a lair, 64x40 for a war's battlefield. */
+export const TACTICAL_BATTLEFIELD_SIZES = ["small", "medium", "large", "huge", "vast", "colossal"] as const;
+export type TacticalBattlefieldSize = (typeof TACTICAL_BATTLEFIELD_SIZES)[number];
 
 /** Setup-owned preferences for newly-created tactical encounters. */
 export interface TacticalBattlefieldSetup {

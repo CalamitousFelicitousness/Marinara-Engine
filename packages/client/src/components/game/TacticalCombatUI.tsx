@@ -221,6 +221,9 @@ function movementLabelKey(mode: TacticalUnit["movementMode"]): string {
 function battlefieldSizeLabelKey(size: string): string {
   if (size === "small") return "ui.game.tacticalcombatui.sizeSmall";
   if (size === "large") return "ui.game.tacticalcombatui.sizeLarge";
+  if (size === "huge") return "ui.game.tacticalcombatui.sizeHuge";
+  if (size === "vast") return "ui.game.tacticalcombatui.sizeVast";
+  if (size === "colossal") return "ui.game.tacticalcombatui.sizeColossal";
   return "ui.game.tacticalcombatui.sizeMedium";
 }
 
@@ -1419,14 +1422,27 @@ export function TacticalCombatUI({
       </div>
 
       {/* Battlefield */}
-      <div className="relative z-10 flex min-h-0 flex-1 items-center justify-center overflow-auto p-2 sm:p-4">
+      {/* A board bigger than the large one keeps squares a finger can pick and scrolls (2026-10-24). */}
+      <div
+        className={cn(
+          "relative z-10 flex min-h-0 flex-1 overflow-auto p-2 sm:p-4",
+          gridW > 14 || gridH > 10 ? "items-start" : "items-center justify-center",
+        )}
+      >
         <div
-          className="relative"
-          style={{
-            aspectRatio: `${gridW} / ${gridH}`,
-            width: "min(100%, calc((100vh - 14rem) * " + gridW + " / " + gridH + "))",
-            maxWidth: "100%",
-          }}
+          className="relative m-auto shrink-0"
+          style={
+            gridW > 14 || gridH > 10
+              ? {
+                  aspectRatio: `${gridW} / ${gridH}`,
+                  width: `max(${gridW} * 1.75rem, min(100%, calc((100vh - 14rem) * ${gridW} / ${gridH})))`,
+                }
+              : {
+                  aspectRatio: `${gridW} / ${gridH}`,
+                  width: "min(100%, calc((100vh - 14rem) * " + gridW + " / " + gridH + "))",
+                  maxWidth: "100%",
+                }
+          }
         >
           {/* Tile grid */}
           <div

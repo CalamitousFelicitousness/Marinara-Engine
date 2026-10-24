@@ -28,6 +28,9 @@ import {
   findRulesetCreature,
   fillRulesetSheetChoices,
   generateTacticalBattlefield,
+  validateTacticalBattlefieldBrief,
+  defaultBattlefieldSize,
+  TACTICAL_BATTLEFIELD_SIZES,
   madeTacticalBattlefield,
   foothillElevation,
   holdRulesetCombatant,
@@ -112,6 +115,7 @@ import {
   rulesetCombatantRole,
   rulesetActionIsSpell,
   rulesetCombatantMind,
+  rulesetCombatantForesees,
   rulesetAirborne,
   RULESET_FLY_UP_OPTION,
   shiftCombatTemperament,
@@ -560,11 +564,12 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
       ...(input.heldGround ? { heldGround: input.heldGround } : {}),
     });
   let encounter = encounterOn(board);
-  // A side facing a blast deploys spread by its size (combat AI S1a): the same board, laid again.
+  // One facing a blast that thinks ahead deploys apart by its size (combat AI S1a): the same board,
+  // laid again.
   const spread = board ? rulesetDeploySpread(definition, encounter) : {};
-  if (spread.party || spread.enemy) {
-    const spaced = buildRulesetBoard(input, combatants, spread);
-    if (spaced && !("error" in spaced)) encounter = encounterOn(spaced);
+  if (Object.keys(spread).length > 0) {
+    const spaced = rulesetSpacedBoard(input, combatants, spread);
+    if (spaced) encounter = encounterOn(spaced);
   }
   for (const [id, tier] of heldToTier) {
     const built = rulesetCombatant(encounter, id);
@@ -660,32 +665,73 @@ function rulesetThinkersOf(
 }
 
 /**
- * How far apart each side deploys (combat AI S1a): one past the size of the largest area that harms
- * the other side holds at the start, as the crowding term reads it (a burst all around its centre, a
- * cone or a line a third of its length), so its opening blast catches one or two of them, not the
- * whole block. Nothing for a side the other holds no such area against, nor for one with nobody in it
- * that thinks about the fight (S1b re-test: a wolf pack and a horde of zombies deployed spread).
+ * The board laid again with those that think ahead kept apart (combat AI S1a), and where the fight's
+ * board was left to the Engine and the one its head count gives has no room for the gaps, the next
+ * size up that has, up to the vast one (2026-10-24, Alyssa: a fireball took up most of the board).
+ * A size the Game Master or the player named, or a board made by hand, stays as it is.
+ */
+function rulesetSpacedBoard(
+  input: RulesetFightSeed,
+  combatants: readonly RulesetCombatantInput[],
+  spread: Record<string, number>,
+) {
+  const brief = validateTacticalBattlefieldBrief(input.battlefield);
+  const lay = (battlefield: RulesetFightSeed["battlefield"]) => {
+    const board = buildRulesetBoard({ ...input, battlefield }, combatants, spread);
+    return board && !("error" in board) ? board : null;
+  };
+  const fits = (board: NonNullable<ReturnType<typeof lay>>) =>
+    combatants.every((one, i) =>
+      combatants.slice(i + 1).every((other) => {
+        const needs = Math.max(spread[one.id] ?? 0, spread[other.id] ?? 0);
+        const a = board.placements[one.id];
+        const b = board.placements[other.id];
+        return (
+          one.side !== other.side ||
+          needs < 2 ||
+          !a ||
+          !b ||
+          Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y)) >= needs
+        );
+      }),
+    );
+  const first = lay(input.battlefield);
+  if (input.made || !brief.ok || brief.brief?.size || !first || fits(first)) return first;
+  const from = TACTICAL_BATTLEFIELD_SIZES.indexOf(defaultBattlefieldSize(combatants.length));
+  for (const size of TACTICAL_BATTLEFIELD_SIZES.slice(from + 1, TACTICAL_BATTLEFIELD_SIZES.indexOf("vast") + 1)) {
+    const bigger = lay({ ...(brief.brief ?? {}), size });
+    if (bigger && fits(bigger)) return bigger;
+  }
+  return first;
+}
+
+/**
+ * How far from the rest of its side each one deploys, by id (combat AI S1a): one past the size of the
+ * largest area that harms the other side holds at the start, as the crowding term reads it (a burst
+ * all around its centre, a cone or a line a third of its length), so an opening blast at it catches
+ * it alone, and exactly that far, no farther. Only one that thinks ahead (2026-10-24, Alyssa: a
+ * zombie stays bunched beside the cultist who spreads, a goblin only sometimes thinks of it); none
+ * where the other side holds no such area.
  */
 export function rulesetDeploySpread(
   definition: RulesetDefinition,
   encounter: RulesetEncounterState,
-): { party?: number; enemy?: number } {
-  const spread: { party?: number; enemy?: number } = {};
-  const thinks = (side: "party" | "enemy") =>
-    encounter.combatants.some((one) => {
-      if (one.side !== side || one.object) return false;
-      const mind = rulesetCombatantMind(definition, one);
-      return mind !== "mindless" && mind !== "instinct";
-    });
+): Record<string, number> {
+  const blast: { party?: number; enemy?: number } = {};
   for (const foe of encounter.combatants) {
     const facing = foe.side === "party" ? "enemy" : "party";
-    if (!thinks(facing)) continue;
     for (const action of foe.actions) {
       if (!action.area || !action.damage || rulesetSafeAverage(action.damage) <= 0) continue;
       if (!rulesetActionAvailable(foe, action, encounter, definition)) continue;
       const across = action.area.shape === "burst" ? action.area.size : Math.max(1, Math.floor(action.area.size / 3));
-      spread[facing] = Math.max(spread[facing] ?? 0, across + 1);
+      blast[facing] = Math.max(blast[facing] ?? 0, across + 1);
     }
+  }
+  const spread: Record<string, number> = {};
+  for (const one of encounter.combatants) {
+    const gap = blast[one.side];
+    if (!gap || one.object || !rulesetCombatantForesees(definition, one, encounter.seed)) continue;
+    spread[one.id] = gap;
   }
   return spread;
 }
@@ -705,7 +751,7 @@ export function rulesetDeploySpread(
 function buildRulesetBoard(
   input: RulesetFightSeed,
   combatants: readonly RulesetCombatantInput[],
-  spread: { party?: number; enemy?: number } = {},
+  spread: Record<string, number> = {},
 ):
   | {
       grid: TacticalGrid;
@@ -726,6 +772,7 @@ function buildRulesetBoard(
     id: entry.id,
     side: entry.side,
     ...(bosses.has(entry.id) ? { isBoss: true } : {}),
+    ...(spread[entry.id] ? { spread: spread[entry.id] } : {}),
     x: 0,
     y: 0,
   }));
@@ -750,7 +797,6 @@ function buildRulesetBoard(
       rng,
       generated.protectedTiles,
       true,
-      spread,
     )
   )
     return { error: "Battlefield features prevent a connected deployment." };
@@ -2062,7 +2108,8 @@ function rulesetThrowsFrom(
  * (S1): an area is worth more to its maker the more it catches, so each friend within its size of the
  * cell makes it likelier to land there, a share of its average for each, up to all of it. Any area
  * that harms, whatever the ruleset calls it: a dragon's breath, a fireball, a grenade. Only to one
- * that thinks about the fight (S1b): a wolf or a zombie closes in as it would anyway.
+ * that thinks ahead (S1b, `rulesetCombatantForesees`): a wolf or a zombie closes in as it would
+ * anyway, and a goblin only in a fight it thinks of it.
  */
 function rulesetCrowdHarmAt(
   definition: RulesetDefinition,
@@ -2070,8 +2117,7 @@ function rulesetCrowdHarmAt(
   actor: RulesetCombatant,
   cell: { x: number; y: number },
 ): number {
-  const mind = rulesetCombatantMind(definition, actor);
-  if (mind === "mindless" || mind === "instinct") return 0;
+  if (!rulesetCombatantForesees(definition, actor, encounter.seed)) return 0;
   const perCell = definition.combat?.distance?.perCell;
   const span = rulesetSpanOf(actor);
   const friends = encounter.combatants.filter(
@@ -4512,19 +4558,21 @@ function rulesetPickReasons(
  * An answer that harms nobody itself, to something about to happen or a hit about to land, is worth
  * what it stops, which the score reads as the harm or the healing kept: said as what it is (laptop
  * playtest 2026-10-23: a Shield logged as healing its target, a Counterspell as some damage to the
- * caster). One aimed at the answerer itself (a Shield, an Uncanny Dodge) wards it off; one aimed at
- * the source (a Counterspell) stops it. What it risked or spent is still said.
+ * caster). One that stops what opened the window (a Counterspell, its reaction `cancels`) says so;
+ * any other (a Shield, an Uncanny Dodge) wards it off (re-test 2026-10-24: a Counterspell, aimed at
+ * its own caster in the SRD, said it warded). What it risked or spent is still said.
  */
 export function rulesetWindowReasons(
   trigger: RulesetWindowTrigger,
   candidate: CombatAiCandidate<RulesetCandidate>,
   reasons: DirectedRulesetReason[],
+  cancels = false,
 ): DirectedRulesetReason[] {
   if (trigger.kind !== "aimed" && trigger.kind !== "used" && trigger.kind !== "hit") return reasons;
   const option = candidate.action.option;
   if ((option.forecast?.averageDamage ?? 0) > 0 || option.heals) return reasons;
   const kept = reasons.filter((reason) => reason.why === "risk" || reason.why === "cost");
-  const wards = trigger.kind === "hit" || option.targets.side === "self";
+  const wards = trigger.kind === "hit" || !cancels;
   return [...kept, wards ? { why: "wards" } : { why: "stops", targetId: trigger.sourceId }];
 }
 
@@ -5829,6 +5877,8 @@ function answerRulesetWindows(
           window.trigger,
           ranked.candidate,
           rulesetPickReasons(ranked.candidate, ranked.parts, undefined, fight.encounter),
+          rulesetCombatant(fight.encounter, asking)?.actions.find((one) => one.id === choice.optionId)?.reaction
+            ?.cancels === true,
         ),
       );
     }

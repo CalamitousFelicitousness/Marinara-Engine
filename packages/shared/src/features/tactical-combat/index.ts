@@ -52,6 +52,8 @@ export {
   foothillElevation,
   tacticalMadeBoardIssues,
   placeSpawns,
+  defaultBattlefieldSize,
+  tacticalArena,
   validateTacticalBattlefieldBrief,
   type GenerateTacticalBattlefieldResult,
   type TacticalBattlefieldBriefValidation,

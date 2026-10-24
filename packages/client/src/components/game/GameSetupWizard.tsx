@@ -323,6 +323,9 @@ const TACTICAL_BATTLEFIELD_SIZE_OPTIONS: Array<{
   { value: "small", labelKey: "ui.game.gamesetupwizard.small" },
   { value: "medium", labelKey: "ui.game.gamesetupwizard.medium" },
   { value: "large", labelKey: "ui.game.gamesetupwizard.large" },
+  { value: "huge", labelKey: "ui.game.gamesetupwizard.battlefieldHuge" },
+  { value: "vast", labelKey: "ui.game.gamesetupwizard.battlefieldVast" },
+  { value: "colossal", labelKey: "ui.game.gamesetupwizard.battlefieldColossal" },
 ];
 
 function normalizeSpatialMapTargetLocationCount(value: string): number | null {

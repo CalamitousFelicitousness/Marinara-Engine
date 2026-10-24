@@ -6,6 +6,9 @@
  *   - Against opponents with none it still starts together.
  *   - The same for the other side: `placeSpawns` spreads whichever side it is asked to, never nearer
  *     the other.
+ *   - Each one by its own mind (2026-10-24, Alyssa): a tactical one keeps exactly the blast's size
+ *     off, a cunning one only sometimes (a third of them, the same in a replay), a wolf or a zombie
+ *     never; a zombie stays bunched beside the cultist who keeps clear of them.
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -134,12 +137,12 @@ try {
     // Only a side with somebody in it that thinks about the fight (S1b re-test): a wolf pack or a
     // horde of zombies facing the same blast comes on bunched as it always does.
     const definition = withMage([slam]);
-    const sides = (mind: string) =>
+    const sides = (mind: string | ((i: number) => string), count = 3, seed = 1) =>
       rulesetDeploySpread(
         definition,
         createRulesetEncounter({
           definition,
-          seed: 1,
+          seed,
           board: {
             grid: {
               width: 16,
@@ -148,9 +151,9 @@ try {
             } as never,
             placements: {
               caster: { x: 0, y: 5 },
-              pack0: { x: 15, y: 4 },
-              pack1: { x: 15, y: 5 },
-              pack2: { x: 15, y: 6 },
+              ...Object.fromEntries(
+                Array.from({ length: count }, (_, i) => [`pack${i}`, { x: 15 - Math.floor(i / 12), y: i % 12 }]),
+              ),
             },
           },
           combatants: [
@@ -166,18 +169,41 @@ try {
                 actions: [{ ...blast, damage: { count: 8, sides: 6, flat: 0 } }],
               } as never,
             },
-            ...[0, 1, 2].map((i) => ({
+            ...Array.from({ length: count }, (_, i) => ({
               id: `pack${i}`,
               name: `Pack ${i}`,
               side: "enemy" as const,
-              block: { health: 11, defense: 13, initiativeModifier: 0, speed: 40, mind, actions: [slam] } as never,
+              block: {
+                health: 11,
+                defense: 13,
+                initiativeModifier: 0,
+                speed: 40,
+                mind: typeof mind === "string" ? mind : mind(i),
+                actions: [slam],
+              } as never,
             })),
           ],
         }),
       );
     assert.deepEqual(sides("instinct"), {}, "a wolf pack does not spread");
     assert.deepEqual(sides("mindless"), {}, "nor a horde of zombies");
-    assert.deepEqual(sides("cunning"), { enemy: 3 }, `a cunning band does: ${JSON.stringify(sides("cunning"))}`);
+    assert.deepEqual(
+      sides("tactical"),
+      { pack0: 3, pack1: 3, pack2: 3 },
+      "a tactical band keeps exactly a 2-cell burst's size and one more apart",
+    );
+    assert.deepEqual(sides("genius"), sides("tactical"), "a genius no farther: exactly as far as needed");
+    // A cunning one only sometimes: about a third of a big band, the same ones every time for one seed.
+    const cunning = Object.keys(sides("cunning", 30));
+    assert.ok(cunning.length >= 5 && cunning.length <= 15, `about a third think of it: ${cunning.length} of 30`);
+    assert.deepEqual(Object.keys(sides("cunning", 30)), cunning, "the same ones in a replay");
+    assert.notDeepEqual(Object.keys(sides("cunning", 30, 2)), cunning, "other ones in another fight");
+    // Zombies beside a cultist: only the cultist keeps clear.
+    assert.deepEqual(
+      sides((i) => (i === 1 ? "tactical" : "mindless")),
+      { pack1: 3 },
+      "the cultist spreads, the zombies beside it do not",
+    );
   }
 
   {
@@ -191,10 +217,14 @@ try {
       ...[0, 1].map((i) => ({ id: `p${i}`, side: "party" as const, x: 0, y: 0 })),
       ...[0, 1, 2, 3].map((i) => ({ id: `e${i}`, side: "enemy" as const, x: 0, y: 0 })),
     ];
+    const asked = (gaps: number[]) =>
+      units().map((one) =>
+        one.side === "enemy" && gaps[Number(one.id.slice(1))] ? { ...one, spread: gaps[Number(one.id.slice(1))] } : one,
+      );
     const plain = units();
     assert.ok(placeSpawns(open(), plain, "skirmish", () => 0.5, new Set(), true));
-    const spaced = units();
-    assert.ok(placeSpawns(open(), spaced, "skirmish", () => 0.5, new Set(), true, { enemy: 3 }));
+    const spaced = asked([3, 3, 3, 3]);
+    assert.ok(placeSpawns(open(), spaced, "skirmish", () => 0.5, new Set(), true));
     const enemies = (list: typeof plain) => list.filter((one) => one.side === "enemy");
     assert.ok(closest(enemies(plain)) < 3, `a skirmish bunches them: ${JSON.stringify(enemies(plain))}`);
     assert.ok(closest(enemies(spaced)) >= 3, `spread three apart: ${JSON.stringify(enemies(spaced))}`);
@@ -204,6 +234,16 @@ try {
         ...enemies(list).flatMap((foe) => list.filter((one) => one.side === "party").map((one) => gap(one, foe))),
       );
     assert.ok(nearest(spaced) >= nearest(plain) - 1, `none of them nearer the party: ${JSON.stringify(party)}`);
+    // One cultist among three zombies: it keeps three off each, they stay bunched.
+    const mixed = asked([0, 3, 0, 0]);
+    assert.ok(placeSpawns(open(), mixed, "skirmish", () => 0.5, new Set(), true));
+    const zombies = enemies(mixed).filter((one) => one.id !== "e1");
+    const cultist = enemies(mixed).find((one) => one.id === "e1")!;
+    assert.ok(closest(zombies) < 3, `the zombies stay bunched: ${JSON.stringify(zombies)}`);
+    assert.ok(
+      zombies.every((one) => gap(one, cultist) >= 3),
+      `the cultist keeps clear of them: ${JSON.stringify(enemies(mixed))}`,
+    );
   }
 
   console.log(

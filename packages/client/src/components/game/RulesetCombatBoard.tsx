@@ -177,6 +177,23 @@ export function RulesetCombatBoard({
   useEffect(() => {
     if (typeof actor?.x === "number" && typeof actor?.y === "number") setCursor({ x: actor.x, y: actor.y });
   }, [actor?.x, actor?.y]);
+  // A board too big for its room scrolls (2026-10-24: a lair, a war's battlefield): its squares keep
+  // a size a finger can pick, and the room brings whoever is up into the middle of it.
+  const scrolls = grid.width > 14 || grid.height > 10;
+  const room = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!scrolls || typeof actor?.x !== "number" || typeof actor?.y !== "number") return;
+    const box = room.current;
+    const tile = tiles.current.get(rulesetCellKey({ x: actor.x, y: actor.y }));
+    if (!box || !tile) return;
+    const at = tile.getBoundingClientRect();
+    const frame = box.getBoundingClientRect();
+    box.scrollTo({
+      left: box.scrollLeft + at.left - frame.left - (box.clientWidth - at.width) / 2,
+      top: box.scrollTop + at.top - frame.top - (box.clientHeight - at.height) / 2,
+      behavior: "smooth",
+    });
+  }, [scrolls, actor?.x, actor?.y]);
   // A step that ends, or a turn that moves on, leaves nothing half-described under the board.
   useEffect(() => {
     setReading(null);
@@ -421,7 +438,13 @@ export function RulesetCombatBoard({
     <div className={cn("relative flex min-h-0 flex-col text-white", className)}>
       <style>{TACTICAL_BOARD_KEYFRAMES}</style>
       {/* The board keeps a floor of its own height, and takes whatever the log and the pane leave. */}
-      <div className="relative z-10 flex min-h-[9rem] flex-1 items-start justify-center overflow-hidden px-1.5 pt-1.5 [container-type:size] sm:min-h-[12rem] sm:px-3 sm:pt-3">
+      <div
+        ref={room}
+        className={cn(
+          "relative z-10 flex min-h-[9rem] flex-1 items-start px-1.5 pt-1.5 [container-type:size] sm:min-h-[12rem] sm:px-3 sm:pt-3",
+          scrolls ? "overflow-auto pb-1.5 sm:pb-3" : "justify-center overflow-hidden",
+        )}
+      >
         <div
           role="group"
           aria-label={t("game.combat.ruleset.board.title")}
@@ -433,7 +456,9 @@ export function RulesetCombatBoard({
           className="relative mx-auto mb-auto mt-0 shrink-0 md:m-auto"
           style={{
             aspectRatio: `${grid.width} / ${grid.height}`,
-            width: `min(100cqw, calc(100cqh * ${grid.width} / ${grid.height}))`,
+            width: scrolls
+              ? `max(${grid.width} * 1.75rem, min(100cqw, calc(100cqh * ${grid.width} / ${grid.height})))`
+              : `min(100cqw, calc(100cqh * ${grid.width} / ${grid.height}))`,
           }}
         >
           <div

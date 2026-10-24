@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  TACTICAL_BATTLEFIELD_SIZES,
   validateTacticalBattlefieldBrief,
   type TacticalBattlefieldBrief,
   type TacticalBattlefieldSetup,
@@ -19,7 +20,7 @@ export const tacticalBattlefieldSeedSchema = z
 export const tacticalBattlefieldSetupSchema = z
   .object({
     seed: tacticalBattlefieldSeedSchema.optional(),
-    size: z.enum(["small", "medium", "large"]).optional(),
+    size: z.enum(TACTICAL_BATTLEFIELD_SIZES).optional(),
     instructions: z.string().trim().max(4000).optional(),
   })
   .strict();

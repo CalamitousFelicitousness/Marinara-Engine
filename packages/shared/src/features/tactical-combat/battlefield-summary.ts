@@ -3,9 +3,9 @@ import {
   TACTICAL_BATTLEFIELD_GENERATOR_VERSION,
   validateTacticalBattlefieldBrief,
 } from "./grid-gen.js";
-import { TERRAIN_DATA, type TacticalBattlefieldSize } from "./types.js";
+import { TACTICAL_BATTLEFIELD_SIZES, TERRAIN_DATA, type TacticalBattlefieldSize } from "./types.js";
 
-const BATTLEFIELD_SIZES = new Set(["small", "medium", "large"]);
+const BATTLEFIELD_SIZES = new Set<string>(TACTICAL_BATTLEFIELD_SIZES);
 const MAX_SUMMARY_LENGTH = 1000;
 
 function isRecord(value: unknown): value is Record<string, unknown> {

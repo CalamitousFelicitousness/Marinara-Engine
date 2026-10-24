@@ -63,14 +63,22 @@ export function foothillElevation(grid: TacticalGrid): number[][] | undefined {
 export interface TacticalPlaceable {
   side: TacticalUnit["side"];
   isBoss?: boolean;
+  /** How far it keeps from the rest of its side, where it can (combat AI S1a): past the size of a
+   *  blast the other side holds, for one that thinks ahead about it. */
+  spread?: number;
   x: number;
   y: number;
 }
 
+/** The larger three (2026-10-24, Alyssa): a great hall or a big blast's room to spread out, a lair
+ *  (a dragon's castle ruins), a war's battlefield. 64 across is the most a board may be. */
 const BATTLEFIELD_SIZES: Record<TacticalBattlefieldSize, { width: number; height: number }> = {
   small: { width: 12, height: 8 },
   medium: { width: 13, height: 9 },
   large: { width: 14, height: 10 },
+  huge: { width: 24, height: 16 },
+  vast: { width: 40, height: 26 },
+  colossal: { width: 64, height: 40 },
 };
 
 const FEATURE_PLACEMENTS = ["center", "north", "south", "east", "west"] as const;
@@ -201,11 +209,12 @@ function pickTerrain(weights: EnvProfile["weights"], rng: () => number): Tactica
   return "forest";
 }
 
-function defaultBattlefieldSize(unitCount: number): TacticalBattlefieldSize {
-  return unitCount > 8 ? "large" : unitCount > 5 ? "medium" : "small";
+export function defaultBattlefieldSize(unitCount: number): TacticalBattlefieldSize {
+  return unitCount > 20 ? "huge" : unitCount > 8 ? "large" : unitCount > 5 ? "medium" : "small";
 }
 
-/** Grid dimensions scale with the number of combatants. Default 12x8, cap 14x10. */
+/** Grid dimensions scale with the number of combatants. Default 12x8; past 20 fighters, 24x16. The
+ *  vast and colossal boards only when asked for. */
 export function gridDimensions(unitCount: number, size?: TacticalBattlefieldSize): { width: number; height: number } {
   return { ...BATTLEFIELD_SIZES[size ?? defaultBattlefieldSize(unitCount)] };
 }
@@ -221,8 +230,35 @@ function inBounds(grid: TacticalGrid, x: number, y: number): boolean {
   return x >= 0 && y >= 0 && x < grid.width && y < grid.height;
 }
 
-function inSpawnZone(grid: TacticalGrid, x: number): boolean {
-  return x < SPAWN_COLS || x >= grid.width - SPAWN_COLS;
+/**
+ * Where the fighting starts on a board (2026-10-24): all of a board up to the huge one's 24 by 16; on
+ * a larger one, the middle of it, half of it each way and never less than that, so the sides do not
+ * start a whole battlefield apart and there is ground behind each to fall back on or come round by.
+ */
+export function tacticalArena(grid: Pick<TacticalGrid, "width" | "height">): {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+} {
+  const width = Math.min(grid.width, Math.max(24, Math.round(grid.width / 2)));
+  const height = Math.min(grid.height, Math.max(16, Math.round(grid.height / 2)));
+  return { x: Math.floor((grid.width - width) / 2), y: Math.floor((grid.height - height) / 2), width, height };
+}
+
+/** The two columns at each side of the arena, along its rows: where the sides line up. */
+function inSpawnZone(grid: TacticalGrid, x: number, y: number): boolean {
+  const arena = tacticalArena(grid);
+  if (y < arena.y || y >= arena.y + arena.height) return false;
+  const at = x - arena.x;
+  return (at >= 0 && at < SPAWN_COLS) || (at >= arena.width - SPAWN_COLS && at < arena.width);
+}
+
+/** The middle of the arena's two strips, the party's and the other side's. */
+function spawnAnchors(grid: TacticalGrid): { party: TacticalCoord; enemy: TacticalCoord } {
+  const arena = tacticalArena(grid);
+  const y = arena.y + Math.floor(arena.height / 2);
+  return { party: { x: arena.x + SPAWN_COLS - 1, y }, enemy: { x: arena.x + arena.width - SPAWN_COLS, y } };
 }
 
 /** Grow a blob of `terrain` around a center via a bounded random walk. */
@@ -237,7 +273,7 @@ function growBlob(
   let x = cx;
   let y = cy;
   for (let i = 0; i < size; i++) {
-    if (!inSpawnZone(grid, x)) set(grid, x, y, terrain);
+    if (!inSpawnZone(grid, x, y)) set(grid, x, y, terrain);
     const dir = Math.floor(rng() * 4);
     if (dir === 0) x += 1;
     else if (dir === 1) x -= 1;
@@ -304,25 +340,25 @@ export function generateGrid(
   const profile = envProfile(environment);
 
   // Terrain clusters over the contested middle band, themed + densitied by environment.
-  const blobCount = Math.round((profile.density * (width * height)) / 14) + Math.floor(rng() * 3);
+  // On a big board fewer, larger clusters, the same share of it covered (2026-10-24).
+  const scale = boardScale(grid);
+  const blobCount = Math.round((profile.density * (width * height)) / 14 / scale ** 2) + Math.floor(rng() * 3);
   for (let i = 0; i < blobCount; i++) {
     const cx = SPAWN_COLS + Math.floor(rng() * Math.max(1, width - SPAWN_COLS * 2));
     const cy = Math.floor(rng() * height);
-    const size = 3 + Math.floor(rng() * 5);
+    const size = (3 + Math.floor(rng() * 5)) * scale ** 2;
     growBlob(grid, cx, cy, size, pickTerrain(profile.weights, rng), rng);
   }
 
   // Spawn strips stay plains so units always have clean footing.
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      if (inSpawnZone(grid, x)) set(grid, x, y, "plains");
+      if (inSpawnZone(grid, x, y)) set(grid, x, y, "plains");
     }
   }
 
   // Guarantee a passable route between the spawn strips.
-  const midY = Math.floor(height / 2);
-  const partyAnchor = { x: SPAWN_COLS - 1, y: midY };
-  const enemyAnchor = { x: width - SPAWN_COLS, y: midY };
+  const { party: partyAnchor, enemy: enemyAnchor } = spawnAnchors(grid);
   if (!reachable(grid, partyAnchor, enemyAnchor)) {
     carveCorridor(grid, partyAnchor, enemyAnchor);
   }
@@ -342,13 +378,15 @@ function featureAnchor(grid: TacticalGrid, placement: TacticalBattlefieldFeature
   const center = { x: Math.floor(grid.width / 2), y: Math.floor(grid.height / 2) };
   switch (placement) {
     case "north":
-      return { x: center.x, y: 1 };
-    case "south":
-      return { x: center.x, y: grid.height - 2 };
+      return { x: center.x, y: tacticalArena(grid).y + 1 };
+    case "south": {
+      const arena = tacticalArena(grid);
+      return { x: center.x, y: arena.y + arena.height - 2 };
+    }
     case "east":
-      return { x: grid.width - SPAWN_COLS - 1, y: center.y };
+      return { x: spawnAnchors(grid).enemy.x - 1, y: center.y };
     case "west":
-      return { x: SPAWN_COLS, y: center.y };
+      return { x: spawnAnchors(grid).party.x + 1, y: center.y };
     default:
       return center;
   }
@@ -383,9 +421,23 @@ function featureTiles(grid: TacticalGrid, feature: TacticalBattlefieldFeature): 
             [0, 1],
             [1, 0],
           ];
-  return offsets
-    .map(([dx, dy]) => ({ x: anchor.x + dx, y: anchor.y + dy }))
-    .filter((tile) => inBounds(grid, tile.x, tile.y) && !inSpawnZone(grid, tile.x));
+  // Each tile of the shape a block as wide as the board's scale, so a wall stays a wall on a big one.
+  const scale = boardScale(grid);
+  const lead = Math.floor(scale / 2);
+  const tiles = new Map<string, TacticalCoord>();
+  for (const [dx, dy] of offsets)
+    for (let j = 0; j < scale; j++)
+      for (let i = 0; i < scale; i++) {
+        const tile = { x: anchor.x + dx * scale + i - lead, y: anchor.y + dy * scale + j - lead };
+        tiles.set(tileKey(tile.x, tile.y), tile);
+      }
+  return [...tiles.values()].filter((tile) => inBounds(grid, tile.x, tile.y) && !inSpawnZone(grid, tile.x, tile.y));
+}
+
+/** How many times a standard board's size a board is, each way (2026-10-24): 1 up to the huge one,
+ *  2 on the vast, 4 on the colossal. Terrain grows with it, so a big board is not speckled. */
+function boardScale(grid: Pick<TacticalGrid, "width" | "height">): number {
+  return Math.max(1, Math.floor(Math.sqrt((grid.width * grid.height) / 140)));
 }
 
 function carveCorridorWithoutProtectedTiles(
@@ -458,9 +510,7 @@ export function generateTacticalBattlefield(
     }
   }
 
-  const midY = Math.floor(grid.height / 2);
-  const partyAnchor = { x: SPAWN_COLS - 1, y: midY };
-  const enemyAnchor = { x: grid.width - SPAWN_COLS, y: midY };
+  const { party: partyAnchor, enemy: enemyAnchor } = spawnAnchors(grid);
   if (
     !reachable(grid, partyAnchor, enemyAnchor) &&
     !carveCorridorWithoutProtectedTiles(grid, partyAnchor, enemyAnchor, protectedTiles)
@@ -514,8 +564,13 @@ export function tacticalMadeBoardIssues(size: TacticalBattlefieldSize, grid: Tac
     return ["The battlefield's heights are one a tile, from 0 to 3."];
   }
   const issues: string[] = [];
-  if (grid.tiles.some((row) => row.some((terrain, x) => inSpawnZone(grid, x) && terrain !== "plains"))) {
-    issues.push("The two columns at each side are where the sides line up: they must be plains.");
+  if (grid.tiles.some((row, y) => row.some((terrain, x) => inSpawnZone(grid, x, y) && terrain !== "plains"))) {
+    const arena = tacticalArena(grid);
+    issues.push(
+      arena.width === grid.width && arena.height === grid.height
+        ? "The two columns at each side are where the sides line up: they must be plains."
+        : `The two columns at each side of the middle ${arena.width} by ${arena.height} (columns ${arena.x + 1} to ${arena.x + arena.width}, rows ${arena.y + 1} to ${arena.y + arena.height}) are where the sides line up: they must be plains.`,
+    );
   }
   // Every open tile, flooded from ONE open tile of the first column: the column's tiles must reach each
   // other too, which a cliff round some of them would prevent (combat C6b).
@@ -709,6 +764,20 @@ function formationTargets(
   rng: () => number,
   partyTogether = false,
 ): FormationTargets {
+  // On a board larger than the huge one, the formations are laid on its arena (2026-10-24).
+  const arena = tacticalArena(grid);
+  if (arena.width < grid.width || arena.height < grid.height) {
+    const view: TacticalGrid = {
+      ...grid,
+      width: arena.width,
+      height: arena.height,
+      tiles: grid.tiles.slice(arena.y, arena.y + arena.height).map((row) => row.slice(arena.x, arena.x + arena.width)),
+    };
+    delete view.elevation;
+    const laid = formationTargets(view, formation, partyCount, enemyCount, rng, partyTogether);
+    const back = (cell: TacticalCoord) => ({ x: cell.x + arena.x, y: cell.y + arena.y });
+    return { party: laid.party.map(back), enemies: laid.enemies.map(back) };
+  }
   const W = grid.width;
   const H = grid.height;
   const cx = Math.floor(W / 2);
@@ -869,34 +938,39 @@ function ensureConnectivity(
 }
 
 /**
- * Targets moved apart so that no two of one side's stand within `gap` of each other where they can
- * (combat AI S1a): a side facing a blast deploys spread by its size, not in a block it catches whole.
- * A target too close to one kept before it moves to the nearest open cell clear of all of them, a
- * step toward the other side counting double and never more than `gap` nearer it. Where the board
- * has no room for that gap, the widest one it has room for.
+ * Targets moved apart where they can (combat AI S1a): each one's `gaps` entry is how far it keeps from
+ * the rest of its side, so a pair stands at least the larger of their two gaps apart and a pair that
+ * keeps none stays together (a zombie beside a zombie, while the cultist among them keeps clear of
+ * both). A target too close to one kept before it moves to the nearest open cell clear of all of
+ * them, a step toward the other side counting double and never more than half the gap nearer it.
+ * Where the board has no room for the gaps, the widest it has room for.
  */
 function spreadTargets(
   grid: TacticalGrid,
   targets: readonly TacticalCoord[],
-  gap: number,
+  gaps: readonly number[],
   others: readonly TacticalCoord[],
 ): TacticalCoord[] {
+  const gap = Math.max(0, ...gaps);
   if (gap < 2 || targets.length < 2) return [...targets];
   const apart = (a: TacticalCoord, b: TacticalCoord) => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
   const fromOthers = (at: TacticalCoord) =>
     others.length > 0 ? Math.min(...others.map((one) => apart(at, one))) : Number.POSITIVE_INFINITY;
-  const lay = (width: number) => {
+  // `packed`: those that keep apart start from the top of their column instead, so a column holds as
+  // many as its height allows, not two either side of its middle.
+  const lay = (width: number, packed = false) => {
     const kept: TacticalCoord[] = [];
     let fits = true;
-    for (const target of targets) {
+    targets.forEach((target, index) => {
       const at = {
         x: clamp(Math.round(target.x), 0, grid.width - 1),
-        y: clamp(Math.round(target.y), 0, grid.height - 1),
+        y: packed && (gaps[index] ?? 0) >= 2 ? 0 : clamp(Math.round(target.y), 0, grid.height - 1),
       };
-      const clear = (cell: TacticalCoord) => kept.every((one) => apart(cell, one) >= width);
+      const needs = (other: number) => Math.min(width, Math.max(gaps[index] ?? 0, gaps[other] ?? 0));
+      const clear = (cell: TacticalCoord) => kept.every((one, other) => apart(cell, one) >= needs(other));
       if (clear(at)) {
         kept.push(at);
-        continue;
+        return;
       }
       const from = fromOthers(at);
       let best: TacticalCoord | undefined;
@@ -916,12 +990,14 @@ function spreadTargets(
       }
       if (!best) fits = false;
       kept.push(best ?? at);
-    }
+    });
     return { kept, fits };
   };
   for (let width = gap; width > 2; width--) {
     const laid = lay(width);
     if (laid.fits) return laid.kept;
+    const packed = lay(width, true);
+    if (packed.fits) return packed.kept;
   }
   return lay(2).kept;
 }
@@ -944,9 +1020,6 @@ export function placeSpawns(
   /** The party starts together around its strip's middle, not spread to its corners (a ruleset
    *  fight's, re-test 2026-10-23: a rogue's first turn spent dashing nine squares to the leader). */
   partyTogether = false,
-  /** How far apart each side stands, where it can (combat AI S1a): past the size of a blast the
-   *  other side holds. */
-  spread: { party?: number; enemy?: number } = {},
 ): boolean {
   const occupied = new Set<string>();
   const party = units.filter((u) => u.side === "party");
@@ -964,13 +1037,13 @@ export function placeSpawns(
   const partyTargets = spreadTargets(
     grid,
     party.map((_, i) => targets.party[i] ?? lastPartyTarget),
-    spread.party ?? 0,
+    party.map((u) => u.spread ?? 0),
     targets.enemies,
   );
   const enemyTargets = spreadTargets(
     grid,
     bossFirst.map((_, i) => targets.enemies[i] ?? lastEnemyTarget),
-    spread.enemy ?? 0,
+    bossFirst.map((u) => u.spread ?? 0),
     partyTargets,
   );
   party.forEach((u, i) => {

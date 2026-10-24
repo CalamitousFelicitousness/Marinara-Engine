@@ -1250,6 +1250,58 @@ try {
         `the one on its own side of the oil: ${JSON.stringify(picked)}`,
       );
     }
+    // Nor steps into it to strike the one beyond it (re-test 2026-10-24: a rogue at 7 health that
+    // stepped into his own burning oil to stab an ogre, and again to scatter caltrops).
+    {
+      const stab = {
+        id: "stab",
+        name: "Stab",
+        budget: "action",
+        toHit: 5,
+        reach: 1,
+        damage: { count: 1, sides: 6, flat: 3 },
+      };
+      const { encounter, state } = wide(
+        { pip: { x: 3, y: 4 }, beyond: { x: 6, y: 4 } },
+        {
+          pip: { side: "enemy", block: block({ type: "humanoid", mind: "cunning", health: 30, actions: [stab] }) },
+          beyond: { side: "party", block: block({ health: 24, actions: [claw] }) },
+        },
+        { pip: { ...master, temperament: "disciplined" } },
+      );
+      const pip = rulesetCombatant(encounter, "pip")!;
+      pip.actions.push({
+        id: "oil",
+        label: "Oil",
+        kind: "attack",
+        budget: "action",
+        autoHit: true,
+        targets: { side: "enemy", count: 0 },
+        area: { shape: "box", size: 1 },
+        damage: { count: 0, sides: 0, flat: 5, type: "fire" },
+        zone: { rounds: 10, triggers: ["enter"], anchor: "point" },
+      } as never);
+      pip.zones = [
+        {
+          actionId: "oil",
+          label: "Oil",
+          rounds: 10,
+          anchor: "point",
+          triggers: ["enter"],
+          at: { x: 5, y: 4 },
+          cells: Array.from({ length: 20 }, (_, y) => ({ x: 5, y })),
+        } as never,
+      ];
+      state.rulesetFight = {
+        encounter,
+        events: [],
+        eventSeq: 0,
+        controllers: { beyond: "manual" },
+        bosses: [],
+      } as never;
+      const picked = pickRulesetChoice(definition, state, encounter, "pip");
+      assert.ok(!picked?.to || picked.to.x < 5, `it stays out of its own oil: ${JSON.stringify(picked)}`);
+    }
     // Nor sprints through it, or its caltrops, to close on somebody far off: it stops short of them
     // (AI pass 2026-10-24: a rogue dashed through his own burning oil and caltrops).
     {

@@ -2417,8 +2417,21 @@ export function rulesetWalkableCells(
     if (!squeezes.has(key)) squeezes.set(key, rulesetSqueezeAt(definition, encounter, actor, cell) ? 1 : 0);
     return squeezes.get(key)!;
   };
+  // Never through a lasting area its own side laid that harms whoever enters it, nor into one, for
+  // anything it would do from there (re-test 2026-10-24: a rogue that stepped into his own burning
+  // oil to scatter caltrops, or to stab an ogre, at 7 health). One already standing in one may still
+  // walk out of it.
+  const from = rulesetPositionOf(actor);
+  const inOwn = !!from && rulesetZoneHarmAt(encounter, actor, from, true) > 0;
+  const open = inOwn
+    ? cells
+    : cells.filter(
+        (cell) =>
+          rulesetPathZoneHarm(encounter, actor, cell.path, true) === 0 &&
+          rulesetZoneHarmAt(encounter, actor, cell, true) === 0,
+      );
   // A stable sort over an already deterministic list, so the same fight always picks the same cell.
-  return [...cells].sort(
+  return [...open].sort(
     (left, right) => away(left) - away(right) || squeezed(left) - squeezed(right) || left.cost - right.cost,
   );
 }

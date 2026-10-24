@@ -86,6 +86,7 @@ import {
   rulesetProposedCreatureSchema,
   rulesetEncounterOutcome,
   rulesetEncounterSummary,
+  rulesetOpportunityAttack,
   rulesetOptionTargets,
   rulesetAroundTargets,
   rulesetReactionPointsAtSource,
@@ -2058,12 +2059,15 @@ function rulesetZoneHarmAt(
   encounter: RulesetEncounterState,
   actor: RulesetCombatant,
   cell: { x: number; y: number },
+  /** Only the areas its own side made. */
+  ownSide = false,
 ): number {
   const filled = rulesetFootprintAt(cell, rulesetSpanOf(actor));
   const from = rulesetPositionOf(actor);
   const standsOn = from ? rulesetFootprintAt(from, rulesetSpanOf(actor)) : [];
   let harm = 0;
   for (const caster of encounter.combatants) {
+    if (ownSide && caster.side !== actor.side) continue;
     for (const zone of caster.zones ?? []) {
       const action = caster.actions.find((entry) => entry.id === zone.actionId);
       if (!action?.damage) continue;
@@ -2091,6 +2095,8 @@ function rulesetPathZoneHarm(
   encounter: RulesetEncounterState,
   actor: RulesetCombatant,
   path: ReadonlyArray<{ x: number; y: number }>,
+  /** Only the areas its own side made. */
+  ownSide = false,
 ): number {
   const from = rulesetPositionOf(actor);
   if (!from || path.length < 2) return 0;
@@ -2099,6 +2105,7 @@ function rulesetPathZoneHarm(
   const footprints = (cell: { x: number; y: number }) => rulesetFootprintAt(cell, span);
   let harm = 0;
   for (const caster of encounter.combatants) {
+    if (ownSide && caster.side !== actor.side) continue;
     for (const zone of caster.zones ?? []) {
       if (!zone.triggers.includes("enter")) continue;
       const action = caster.actions.find((entry) => entry.id === zone.actionId);
@@ -3905,8 +3912,11 @@ function weighCaught(
     // What it does that the Engine cannot weigh (a withering blow's initiative, a pool's points) it
     // does to a friend as much as to a foe (K5: Exalted's withering areas over the thrower's own): each
     // friend caught takes off what a foe adds.
-    const own = friends.filter((target) => target.id !== actor.id && !target.down).length;
-    const unread = foes.length + 0.5 * walkers.length - friendWeight * own;
+    // Its maker caught counts as a friend caught, and each friend caught twice what a foe does: a
+    // withering volley over its own archer, or a soldier of its own beside two foes, takes from its
+    // own side what it gives it (AI pass 2026-10-24: Exalted fire-arrow volleys, 8 in 64 over their own).
+    const own = friends.filter((target) => !target.down).length;
+    const unread = foes.length + 0.5 * walkers.length - 2 * friendWeight * own;
     const worth = read
       ? riders(foes) + 0.5 * riders(walkers) - harms(friends)
       : unread / Math.max(1, foes.length + walkers.length);
@@ -4212,6 +4222,14 @@ export function rulesetClosingMove(
     const closer = nearest(cell);
     if (closer >= already) continue;
     if (leash && !strayed && rulesetGapFrom(cell, span, leash.charge) > leash.within) continue;
+    // Never through a lasting area its own side laid that harms whoever enters it, nor into one, just
+    // to get closer: whoever is beyond it comes through it instead (AI pass 2026-10-24: a rogue
+    // sprinted through his own burning oil and caltrops). An opponent's it may still brave.
+    if (
+      rulesetPathZoneHarm(encounter, actor, cell.path, true) > 0 ||
+      rulesetZoneHarmAt(encounter, actor, cell, true) > 0
+    )
+      continue;
     const away = closer + crowded(cell);
     const better =
       !best ||
@@ -6239,6 +6257,10 @@ function getClearToShoot(
   );
   const span = rulesetSpanOf(actor);
   if (foes.every((foe) => rulesetGapFrom(home, span, foe) > 1)) return false;
+  // Clear of every reach, not only of the cells beside them: a dragon's bite reaches two squares,
+  // so a Misty Step to the second was a step still in its reach, and the walk on was struck (AI pass
+  // 2026-10-24).
+  const reachOf = (foe: RulesetCombatant) => Math.max(1, rulesetOpportunityAttack(foe)?.reach ?? 1);
   const options = rulesetCombatOptions(definition, encounter, actorId);
   const blows = options.flatMap((option) => {
     const action = actor.actions.find((one) => one.id === option.id);
@@ -6253,7 +6275,7 @@ function getClearToShoot(
   const shots = ranged.filter((blow) => blow.average > close);
   if (shots.length === 0) return false;
   const clear = (cell: { x: number; y: number }) =>
-    foes.every((foe) => rulesetGapFrom(cell, span, foe) > 1) &&
+    foes.every((foe) => rulesetGapFrom(cell, span, foe) > reachOf(foe)) &&
     shots.some((shot) => foes.some((foe) => rulesetGapFrom(cell, span, foe) <= shot.action.range!.normal));
   for (const option of options) {
     if (!option.teleport?.cells.length || option.targets.side === "enemy") continue;

@@ -10410,7 +10410,9 @@ export function liftRulesetFightEffects(
     if (!combatant.tracked.some((entry) => entry.condition === condition) && reason === "linked") return;
     combatant.tracked = combatant.tracked.filter((entry) => entry.condition !== condition);
     if (combatant.sheet) writeRulesetSheet(definition, combatant, { op: "condition", condition, active: false });
-    events.push({ type: "condition", targetId: combatant.id, condition, active: false, reason });
+    // Taken off the fallen too, but not told: a body does not recover from being dazed.
+    if (!combatant.defeated || combatant.away)
+      events.push({ type: "condition", targetId: combatant.id, condition, active: false, reason });
     // What was put on to last only as long as it goes with it (1.202), clock or none.
     for (const entry of [...combatant.tracked])
       if (entry.endsWith === condition) lift(combatant, entry.condition, "linked");
@@ -17869,7 +17871,8 @@ function resolveActionBodyIn(
     }
     // One hit, including its clauses, never accumulated wounds from previous hits.
     const levels = ctx.combat.damageKinds?.marks === "per-blow" ? Math.min(1, dealt) : dealt;
-    if (before && daze && dazeOver !== undefined && levels > 0 && levels > dazeOver) {
+    // Nobody felled by the hit is dazed by it.
+    if (before && daze && dazeOver !== undefined && levels > 0 && levels > dazeOver && !target.defeated) {
       // A second hit before the skipped turn adds no second skip, so it is not told again.
       const newlyDazed = target.dazed === undefined;
       target.dazed ??= {};

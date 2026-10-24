@@ -23,6 +23,7 @@ import {
   applyRulesetCombatChoice,
   createRulesetEncounter,
   currentRulesetActor,
+  liftRulesetFightEffects,
   parseRulesetDefinition,
   rulesetBonusDice,
   rulesetCombatant,
@@ -661,6 +662,13 @@ try {
       assert.ok(rulesetCombatant(killed.state, "rag")!.defeated, "the brand kills it");
       assert.deepEqual(conditionsOf(killed.state, "rag"), [], "and leaves no mark on the body");
       assert.ok(!eventsOf(killed.events, "condition").some((event) => event.targetId === "rag"));
+      // And what was on it before it fell comes off with the fight's end, untold (AI pass 2026-10-24:
+      // "dazed expired" on a body as the fight ended).
+      const body = rulesetCombatant(killed.state, "rag")!;
+      body.tracked.push({ condition: "marked", rounds: 2, source: "snag" } as never);
+      const lifted = liftRulesetFightEffects(fiveE, killed.state);
+      assert.ok(!lifted.some((event) => "targetId" in event && event.targetId === "rag"), JSON.stringify(lifted));
+      assert.deepEqual(body.tracked, []);
     }
 
     // Her own next save spends Steadied, whatever it was for.

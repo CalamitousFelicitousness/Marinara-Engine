@@ -179,7 +179,14 @@ try {
     const picked = pickRulesetChoice(definition, state, encounter, "archer");
     assert.notEqual(picked?.option.id, "volley", `over friends alone: ${JSON.stringify(picked?.choice)}`);
   }
-  console.info("Unread areas: thrown at a foe, kept off friends, never over friends alone.");
+  // A foe in the corner beside it: every aim that catches the foe catches the archer too, which
+  // counts as a friend caught (AI pass 2026-10-24: Exalted fire-arrow volleys over their own archer).
+  {
+    const { encounter, state } = scene([], { x: 0, y: 0 });
+    const picked = pickRulesetChoice(definition, state, encounter, "archer");
+    assert.notEqual(picked?.option.id, "volley", `not over itself: ${JSON.stringify(picked?.choice)}`);
+  }
+  console.info("Unread areas: thrown at a foe, kept off friends and its maker, never over friends alone.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

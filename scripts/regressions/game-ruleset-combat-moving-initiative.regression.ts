@@ -641,9 +641,9 @@ try {
     const last = swing(bare, state, "bram", "Spade", "rats", "telling", 8, 2, 3, 4, 6, 2, 2);
     assert.equal(firstOf(last.events, "outcome").outcome, "victory");
     const lifted = eventsOf(last.events, "condition").filter((event) => event.condition === "reeling");
+    // The fallen rats' comes off untold (AI pass 2026-10-24: "crashed recovered" on the dead).
     assert.deepEqual(lifted.map((event) => [event.targetId, event.active, event.reason]).sort(), [
       ["ada", false, "recovered"],
-      ["rats", false, "recovered"],
     ]);
     assert.equal(reeling(bare, last.state, "ada"), false);
     assert.ok(!JSON.stringify(rulesetCombatant(last.state, "ada")!.sheet!.live).includes("reeling"));

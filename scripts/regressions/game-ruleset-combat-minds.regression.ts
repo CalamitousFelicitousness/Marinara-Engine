@@ -1218,6 +1218,58 @@ try {
         `the one on its own side of the oil: ${JSON.stringify(picked)}`,
       );
     }
+    // Nor sprints through it, or its caltrops, to close on somebody far off: it stops short of them
+    // (AI pass 2026-10-24: a rogue dashed through his own burning oil and caltrops).
+    {
+      const stab = {
+        id: "stab",
+        name: "Stab",
+        budget: "action",
+        toHit: 5,
+        reach: 1,
+        damage: { count: 1, sides: 6, flat: 3 },
+      };
+      const { encounter, state } = wide(
+        { pip: { x: 2, y: 4 }, far: { x: 20, y: 4 } },
+        {
+          pip: { side: "enemy", block: block({ type: "humanoid", mind: "cunning", health: 30, actions: [stab] }) },
+          far: { side: "party", block: block({ health: 24, actions: [claw] }) },
+        },
+        { pip: { ...master, temperament: "disciplined" } },
+      );
+      const pip = rulesetCombatant(encounter, "pip")!;
+      pip.actions.push({
+        id: "oil",
+        label: "Oil",
+        kind: "attack",
+        budget: "action",
+        autoHit: true,
+        targets: { side: "enemy", count: 0 },
+        area: { shape: "box", size: 1 },
+        damage: { count: 0, sides: 0, flat: 5, type: "fire" },
+        zone: { rounds: 10, triggers: ["enter"], anchor: "point" },
+      } as never);
+      pip.zones = [
+        {
+          actionId: "oil",
+          label: "Oil",
+          rounds: 10,
+          anchor: "point",
+          triggers: ["enter"],
+          at: { x: 6, y: 4 },
+          cells: Array.from({ length: 8 }, (_, y) => ({ x: 6, y })),
+        } as never,
+      ];
+      state.rulesetFight = { encounter, events: [], eventSeq: 0, controllers: { far: "manual" }, bosses: [] } as never;
+      assert.ok(commandRulesetCombatDirector(definition, state, { type: "continue" }).ok);
+      const turn = state.rulesetFight!.events.map((entry) => entry.event);
+      const after = rulesetCombatant(state.rulesetFight!.encounter, "pip")!;
+      assert.ok(after.x! < 6, `it stays on its own side of the oil: ${after.x},${after.y} ${JSON.stringify(turn)}`);
+      assert.ok(
+        !turn.some((event) => event.type === "damage" && event.targetId === "pip"),
+        `and is not burned: ${JSON.stringify(turn)}`,
+      );
+    }
     // Nor poured beside a friend at grips with somebody, who steps where the fight goes and into it
     // (re-test 2026-10-24: burning oil a cell from the fighter brawling the ghouls).
     {

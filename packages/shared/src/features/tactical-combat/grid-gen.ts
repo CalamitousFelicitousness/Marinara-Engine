@@ -264,17 +264,34 @@ export function tacticalArena(grid: Pick<TacticalGrid, "width" | "height">): {
   return { x: Math.floor((grid.width - width) / 2), y: Math.floor((grid.height - height) / 2), width, height };
 }
 
-/** The two columns at each side of the arena, along its rows: where the sides line up. */
-function inSpawnZone(grid: TacticalGrid, x: number, y: number): boolean {
+/**
+ * Where the sides line up on the arena (re-test B1, 2026-10-24): as far apart across as on a large
+ * board, 14 wide, in its middle, however wide the board. On a vast one they had started 21 squares
+ * apart, and casters fired freely the three rounds a sword took to reach them; a board taken for a
+ * blast's room gives that room along the sides and round them, not between them.
+ */
+export function tacticalEngagement(grid: Pick<TacticalGrid, "width" | "height">): {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+} {
   const arena = tacticalArena(grid);
+  const width = Math.min(arena.width, 14);
+  return { ...arena, x: arena.x + Math.floor((arena.width - width) / 2), width };
+}
+
+/** The two columns at each side of where the sides engage, along its rows: where they line up. */
+function inSpawnZone(grid: TacticalGrid, x: number, y: number): boolean {
+  const arena = tacticalEngagement(grid);
   if (y < arena.y || y >= arena.y + arena.height) return false;
   const at = x - arena.x;
   return (at >= 0 && at < SPAWN_COLS) || (at >= arena.width - SPAWN_COLS && at < arena.width);
 }
 
-/** The middle of the arena's two strips, the party's and the other side's. */
+/** The middle of the two strips where the sides engage, the party's and the other side's. */
 function spawnAnchors(grid: TacticalGrid): { party: TacticalCoord; enemy: TacticalCoord } {
-  const arena = tacticalArena(grid);
+  const arena = tacticalEngagement(grid);
   const y = arena.y + Math.floor(arena.height / 2);
   return { party: { x: arena.x + SPAWN_COLS - 1, y }, enemy: { x: arena.x + arena.width - SPAWN_COLS, y } };
 }
@@ -602,7 +619,7 @@ export function tacticalMadeBoardIssues(size: TacticalBattlefieldSize, grid: Tac
   }
   const issues: string[] = [];
   if (grid.tiles.some((row, y) => row.some((terrain, x) => inSpawnZone(grid, x, y) && terrain !== "plains"))) {
-    const arena = tacticalArena(grid);
+    const arena = tacticalEngagement(grid);
     issues.push(
       arena.width === grid.width && arena.height === grid.height
         ? "The two columns at each side are where the sides line up: they must be plains."
@@ -805,8 +822,8 @@ function formationTargets(
   rng: () => number,
   partyTogether = false,
 ): FormationTargets {
-  // On a board larger than the huge one, the formations are laid on its arena (2026-10-24).
-  const arena = tacticalArena(grid);
+  // On a board wider than a large one, the formations are laid on where the sides engage (B1).
+  const arena = tacticalEngagement(grid);
   if (arena.width < grid.width || arena.height < grid.height) {
     const view: TacticalGrid = {
       ...grid,

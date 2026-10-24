@@ -39,6 +39,7 @@ import {
   generateTacticalBattlefield,
   placeSpawns,
   tacticalArena,
+  tacticalEngagement,
   validateTacticalBattlefieldBrief,
 } from "../../packages/shared/src/features/tactical-combat/grid-gen.js";
 import { deterministicRng } from "../../packages/shared/src/features/tactical-combat/rng.js";
@@ -62,8 +63,8 @@ try {
     assert.ok(made.ok, made.ok ? "" : made.error);
     assert.equal(made.grid.width, width, `${size} is ${width} across`);
     assert.equal(made.grid.height, height, `${size} is ${height} down`);
-    const arena = tacticalArena(made.grid);
-    // The strips the sides line up on: plains, at the arena's two sides.
+    const arena = tacticalEngagement(made.grid);
+    // The strips the sides line up on: plains, at the two sides of where they engage.
     for (let y = arena.y; y < arena.y + arena.height; y++)
       for (const x of [arena.x, arena.x + 1, arena.x + arena.width - 2, arena.x + arena.width - 1])
         assert.equal(made.grid.tiles[y]![x], "plains", `${size}: the strip at ${x},${y} is plains`);
@@ -81,10 +82,14 @@ try {
     const across =
       Math.min(...units.filter((u) => u.side === "enemy").map((u) => u.x)) -
       Math.max(...units.filter((u) => u.side === "party").map((u) => u.x));
-    assert.ok(across <= 30, `${size}: the sides start ${across} apart, not a whole battlefield`);
+    // No farther apart than on a large board, whatever the size (re-test B1).
+    assert.ok(across <= 12, `${size}: the sides start ${across} apart, as on a large board`);
   }
   assert.deepEqual(tacticalArena({ width: 14, height: 10 }), { x: 0, y: 0, width: 14, height: 10 });
   assert.deepEqual(tacticalArena({ width: 64, height: 40 }), { x: 16, y: 10, width: 32, height: 20 });
+  assert.deepEqual(tacticalEngagement({ width: 64, height: 40 }), { x: 25, y: 10, width: 14, height: 20 });
+  assert.deepEqual(tacticalEngagement({ width: 24, height: 16 }), { x: 5, y: 0, width: 14, height: 16 });
+  assert.deepEqual(tacticalEngagement({ width: 12, height: 8 }), { x: 0, y: 0, width: 12, height: 8 });
   assert.equal(defaultBattlefieldSize(21), "huge", "past 20 fighters, the huge board");
   assert.equal(defaultBattlefieldSize(9), "large");
   // A wall on the colossal board is a wall, not three squares of it.
@@ -119,7 +124,7 @@ try {
         const off = grid.outside!.flat().filter(Boolean).length;
         assert.ok(off > 0, `${where}: some of it is off the map`);
         assert.ok(off < grid.width * grid.height * 0.6, `${where}: most of it is on the map (${off} off)`);
-        const arena = tacticalArena(grid);
+        const arena = tacticalEngagement(grid);
         for (let y = arena.y; y < arena.y + arena.height; y++)
           for (const x of [arena.x, arena.x + 1, arena.x + arena.width - 2, arena.x + arena.width - 1])
             assert.ok(!grid.outside![y]![x] && grid.tiles[y]![x] === "plains", `${where}: the strip at ${x},${y}`);

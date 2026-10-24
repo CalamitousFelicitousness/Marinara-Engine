@@ -33,7 +33,10 @@ const { createCombatDirector } = await import("../../packages/server/src/service
 
 try {
   const doc = JSON.parse(
-    readFileSync(fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)), "utf8"),
+    readFileSync(
+      fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
+      "utf8",
+    ),
   );
   const parsed = parseRulesetDefinition(doc);
   assert.ok(parsed.ok, parsed.ok ? "" : parsed.issues.join("; "));
@@ -45,7 +48,12 @@ try {
   const gap = (a: { x: number; y: number }, b: { x: number; y: number }) =>
     Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
 
-  const begin = (opts: { deploy?: boolean; ai?: boolean; adaStart?: "front"; foeStarts?: Array<"behind" | "among"> }) => {
+  const begin = (opts: {
+    deploy?: boolean;
+    ai?: boolean;
+    adaStart?: "front";
+    foeStarts?: Array<"behind" | "among">;
+  }) => {
     const foes = opts.foeStarts ?? [undefined, undefined];
     const built = createRulesetFight({
       definition,
@@ -57,7 +65,12 @@ try {
         name,
         ...(name === "Ada" && opts.adaStart ? { start: opts.adaStart } : {}),
       })),
-      enemies: foes.map((start, i) => ({ id: `foe${i}`, name: `Foe ${i}`, creature: lurker, ...(start ? { start } : {}) })),
+      enemies: foes.map((start, i) => ({
+        id: `foe${i}`,
+        name: `Foe ${i}`,
+        creature: lurker,
+        ...(start ? { start } : {}),
+      })),
       cards: names.map((name) => ({ name, rulesetSheet: { v: 1, build: defaultRulesetSheetBuild(definition) } })),
       playerName: null,
       live: {},
@@ -115,7 +128,10 @@ try {
     assert.ok(view.deploy!.cells.length > 0, "there are squares to choose");
     const foes = ["foe0", "foe1"].map((id) => at(state, id));
     for (const cell of view.deploy!.cells)
-      assert.ok(foes.every((foe) => gap(foe, cell) > 2), `no lit square beside an opponent: ${JSON.stringify(cell)}`);
+      assert.ok(
+        foes.every((foe) => gap(foe, cell) > 2),
+        `no lit square beside an opponent: ${JSON.stringify(cell)}`,
+      );
     // Ada stands nearer the foes than the rest of the party.
     const foeCentre = centre(foes);
     const toFoes = (id: string) => Math.hypot(at(state, id).x - foeCentre.x, at(state, id).y - foeCentre.y);
@@ -163,7 +179,9 @@ try {
     for (const id of ["ada", "bram"])
       assert.ok(commandRulesetCombatDirector(definition, state, { type: "control", unitId: id, controller: "ai" }).ok);
     assert.equal(state.stage, "deploy");
-    assert.ok(commandRulesetCombatDirector(definition, state, { type: "control", unitId: "cora", controller: "ai" }).ok);
+    assert.ok(
+      commandRulesetCombatDirector(definition, state, { type: "control", unitId: "cora", controller: "ai" }).ok,
+    );
     assert.equal(state.rulesetFight!.deploy, undefined, "with nobody left to set down, the fight begins");
   }
 

@@ -200,6 +200,73 @@ export function RulesetCombatBoard({
       behavior: "smooth",
     });
   }, [scrolls, actor?.x, actor?.y]);
+  // Opponents past the room's edge on a board that scrolls (re-test 2026-10-24: on a phone nothing
+  // said where the rest of the fight was): a mark on that edge counts them, and takes the room to
+  // the nearest.
+  const foes = useMemo(
+    () =>
+      view.combatants.flatMap((one) =>
+        one.side === "enemy" && !one.defeated && typeof one.x === "number" && typeof one.y === "number"
+          ? [{ id: one.id, x: one.x, y: one.y }]
+          : [],
+      ),
+    [view.combatants],
+  );
+  const [away, setAway] = useState<Record<"left" | "right" | "up" | "down", Array<{ x: number; y: number }>>>({
+    left: [],
+    right: [],
+    up: [],
+    down: [],
+  });
+  useEffect(() => {
+    const box = room.current;
+    if (!scrolls || !box) return;
+    const measure = () => {
+      const frame = box.getBoundingClientRect();
+      const next: Record<"left" | "right" | "up" | "down", Array<{ x: number; y: number }>> = {
+        left: [],
+        right: [],
+        up: [],
+        down: [],
+      };
+      for (const foe of foes) {
+        const tile = tiles.current.get(rulesetCellKey(foe));
+        if (!tile) continue;
+        const at = tile.getBoundingClientRect();
+        const edge =
+          at.right <= frame.left
+            ? "left"
+            : at.left >= frame.right
+              ? "right"
+              : at.bottom <= frame.top
+                ? "up"
+                : at.top >= frame.bottom
+                  ? "down"
+                  : null;
+        if (edge) next[edge].push({ x: foe.x, y: foe.y });
+      }
+      setAway((before) => (JSON.stringify(before) === JSON.stringify(next) ? before : next));
+    };
+    measure();
+    box.addEventListener("scroll", measure, { passive: true });
+    window.addEventListener("resize", measure);
+    return () => {
+      box.removeEventListener("scroll", measure);
+      window.removeEventListener("resize", measure);
+    };
+  }, [scrolls, foes]);
+  const bring = (cell: { x: number; y: number }) => {
+    const box = room.current;
+    const tile = tiles.current.get(rulesetCellKey(cell));
+    if (!box || !tile) return;
+    const at = tile.getBoundingClientRect();
+    const frame = box.getBoundingClientRect();
+    box.scrollTo({
+      left: box.scrollLeft + at.left - frame.left - (box.clientWidth - at.width) / 2,
+      top: box.scrollTop + at.top - frame.top - (box.clientHeight - at.height) / 2,
+      behavior: "smooth",
+    });
+  };
   // A step that ends, or a turn that moves on, leaves nothing half-described under the board.
   useEffect(() => {
     setReading(null);
@@ -450,6 +517,28 @@ export function RulesetCombatBoard({
   return (
     <div className={cn("relative flex min-h-0 flex-col text-white", className)}>
       <style>{TACTICAL_BOARD_KEYFRAMES}</style>
+      {scrolls &&
+        (["left", "right", "up", "down"] as const).map((edge) =>
+          away[edge].length > 0 ? (
+            <button
+              key={edge}
+              type="button"
+              aria-label={t("game.combat.ruleset.board.foesAway", { count: away[edge].length })}
+              title={t("game.combat.ruleset.board.foesAway", { count: away[edge].length })}
+              onClick={() => bring(away[edge][0]!)}
+              className={cn(
+                "absolute z-20 inline-flex min-h-8 min-w-8 items-center justify-center gap-1 rounded-full border border-rose-300/70 bg-black/75 px-2 text-xs font-bold text-rose-100 shadow focus-visible:outline-2 focus-visible:outline-white",
+                edge === "left" && "left-1 top-1/2 -translate-y-1/2",
+                edge === "right" && "right-1 top-1/2 -translate-y-1/2",
+                edge === "up" && "left-1/2 top-1 -translate-x-1/2",
+                edge === "down" && "bottom-1 left-1/2 -translate-x-1/2",
+              )}
+            >
+              <span aria-hidden="true">{{ left: "◀", right: "▶", up: "▲", down: "▼" }[edge]}</span>
+              {away[edge].length}
+            </button>
+          ) : null,
+        )}
       {/* The board keeps a floor of its own height, and takes whatever the log and the pane leave. */}
       <div
         ref={room}

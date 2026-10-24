@@ -108,7 +108,9 @@ export function rulesetStartPlacements(
   };
   let flank = 1;
   const move = (one: Stand, target: Cell) => {
-    const held = new Set(stands.filter((other) => other.id !== one.id && out[other.id]).map((other) => key(out[other.id]!)));
+    const held = new Set(
+      stands.filter((other) => other.id !== one.id && out[other.id]).map((other) => key(out[other.id]!)),
+    );
     const cell = nearestOpen(target, open, held);
     if (cell) out[one.id] = cell;
   };
@@ -139,16 +141,27 @@ export function rulesetStartPlacements(
         const cover = [...open].flatMap((cellKey) => {
           const [x, y] = cellKey.split(",").map(Number) as [number, number];
           const terrain = grid.tiles[y]?.[x];
-          return (terrain === "forest" || terrain === "ruin") && Math.hypot(x - own.x, y - own.y) <= 6 ? [{ x, y }] : [];
+          return (terrain === "forest" || terrain === "ruin") && Math.hypot(x - own.x, y - own.y) <= 6
+            ? [{ x, y }]
+            : [];
         });
-        if (cover.length) move(one, cover.sort((a, b) => Math.hypot(a.x - own.x, a.y - own.y) - Math.hypot(b.x - own.x, b.y - own.y))[0]!);
+        if (cover.length)
+          move(
+            one,
+            cover.sort((a, b) => Math.hypot(a.x - own.x, a.y - own.y) - Math.hypot(b.x - own.x, b.y - own.y))[0]!,
+          );
       }
       continue;
     }
     const role = roles[one.id];
     const from = out[one.id];
     if (!role || !from) continue;
-    const by = role === "marksman" || role === "spellcaster" || role === "supporter" || role === "controller" ? -2 : role === "bruiser" || role === "bulwark" ? 1 : 0;
+    const by =
+      role === "marksman" || role === "spellcaster" || role === "supporter" || role === "controller"
+        ? -2
+        : role === "bruiser" || role === "bulwark"
+          ? 1
+          : 0;
     if (by !== 0) move(one, { x: from.x + d.x * by, y: from.y + d.y * by });
   }
   return out;

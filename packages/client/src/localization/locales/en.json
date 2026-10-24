@@ -2099,6 +2099,7 @@
   "game.combat.ruleset.board.flyDown": "Fly down",
   "game.combat.ruleset.board.flying": "Flying at height {{height}}.",
   "game.combat.ruleset.board.flyUp": "Fly up",
+  "game.combat.ruleset.board.foesAway": "Opponents out of view that way: {{count}}. Show the nearest",
   "game.combat.ruleset.board.fog.heavy": "Heavily obscured.",
   "game.combat.ruleset.board.fog.light": "Lightly obscured.",
   "game.combat.ruleset.board.growth": "Growth: hard going, lightly obscured.",

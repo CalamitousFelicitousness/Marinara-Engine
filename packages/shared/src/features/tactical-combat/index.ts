@@ -55,6 +55,7 @@ export {
   placeSpawns,
   defaultBattlefieldSize,
   tacticalArena,
+  tacticalEngagement,
   validateTacticalBattlefieldBrief,
   type GenerateTacticalBattlefieldResult,
   type TacticalBattlefieldBriefValidation,

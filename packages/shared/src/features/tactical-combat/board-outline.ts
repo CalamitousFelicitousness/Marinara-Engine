@@ -64,8 +64,7 @@ export function tacticalOutlineCells(
       for (let y = 0; y < height; y++)
         for (let x = 0; x < width; x++) {
           let open = 0;
-          for (let dy = -1; dy <= 1; dy++)
-            for (let dx = -1; dx <= 1; dx++) if (before[y + dy]?.[x + dx]) open += 1;
+          for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (before[y + dy]?.[x + dx]) open += 1;
           inside[y]![x] = open >= 5;
         }
     }
@@ -130,8 +129,7 @@ export function tacticalOutlineCells(
     }
     piece = joined(start);
   }
-  for (let y = 0; y < height; y++)
-    for (let x = 0; x < width; x++) if (!piece.has(`${x},${y}`)) inside[y]![x] = false;
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) if (!piece.has(`${x},${y}`)) inside[y]![x] = false;
   return inside;
 }
 

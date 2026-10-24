@@ -626,8 +626,11 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
         .filter((one) => one.side === "party" && !one.object && !places[one.id])
         .map((one) => [one.id, rulesetCombatantRole(one, definition, encounter)]),
     );
+    // One already spaced against a blast stands where that put it, not back or forward by its role,
+    // which closed the gap the blast needs (re-test D5: the party began 3 apart against a 5).
+    const nudged = Object.fromEntries(Object.entries(roles).filter(([id]) => spread[id] === undefined));
     const stands = combatants.map((one) => ({ id: one.id, side: one.side }));
-    const placements = rulesetStartPlacements(laid.grid, laid.placements, stands, places, roles);
+    const placements = rulesetStartPlacements(laid.grid, laid.placements, stands, places, nudged);
     if (JSON.stringify(placements) !== JSON.stringify(laid.placements))
       encounter = encounterOn((laid = { ...laid, placements }));
     const deployers = Object.keys(roles);
@@ -1713,7 +1716,9 @@ function rulesetViewOf(definition: RulesetDefinition, state: CombatDirectorState
           },
         }
       : {}),
-    ...(actor && !over ? { actorId: actor.id } : {}),
+    // Nobody is on turn while the party is set down (re-test 2026-10-24: the turn order marked the
+    // first in initiative "On turn" before Begin).
+    ...(actor && !over && !fight.deploy ? { actorId: actor.id } : {}),
     // Who the player sets down before the first turn, and where they may (2026-10-24).
     ...(fight.deploy && !over
       ? {
@@ -2471,6 +2476,15 @@ function weighRulesetTeam(
         // Hiding is worth something only out of an opponent's reach: next to one, it is seen.
         const seen = foes.some((foe) => near(actor, foe));
         candidate.risk = danger(cell) * (defensive === "dodge" ? 0.7 : defensive === "hide" && !seen ? 0.6 : 1);
+        // Walking in among its own side under a blast it kept clear of, to strike or cast, is as bad
+        // as taking a full blow (re-test 2026-10-24: Elara walked to 3 from Pip to cast a Fire Bolt
+        // with the mage's Fireball unspent). Standing where it already is costs nothing more.
+        if (
+          candidate.action.to &&
+          rulesetTooCloseUnderBlast(definition, encounter, actor, cell) &&
+          !rulesetTooCloseUnderBlast(definition, encounter, actor, home)
+        )
+          candidate.risk += 1;
         // And what it walks through to get there: burning oil on the way is harm all the same. A walk
         // carries the cells it crosses (from `rulesetWalkableCells`).
         const path = (candidate.action.to as { path?: Array<{ x: number; y: number }> } | undefined)?.path;

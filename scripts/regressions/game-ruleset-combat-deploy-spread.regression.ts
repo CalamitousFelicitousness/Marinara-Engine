@@ -122,7 +122,8 @@ try {
     const together = deploy(withMage([slam]));
     assert.equal(closest(together), 1, `against a slam the party starts together: ${JSON.stringify(together)}`);
     const spread = deploy(withMage([slam, blast]));
-    assert.ok(closest(spread) >= 2, `against a blast it starts spread: ${JSON.stringify(spread)}`);
+    // The blast's size and one more, not closed back up by where each one's role stands it (D5).
+    assert.ok(closest(spread) >= 3, `against a blast it starts spread: ${JSON.stringify(spread)}`);
     assert.ok(
       mostCaught(spread, 2) < mostCaught(together, 2),
       `a 10-foot blast catches fewer of them: ${JSON.stringify(spread)} against ${JSON.stringify(together)}`,

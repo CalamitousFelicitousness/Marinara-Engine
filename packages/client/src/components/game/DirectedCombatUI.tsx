@@ -8,12 +8,14 @@ import type {
   TacticalTerrain,
 } from "@marinara-engine/shared";
 import { useTranslation } from "react-i18next";
-import { useDirectedCombat } from "../../hooks/use-directed-combat";
+import { isRulesetRefusal, useDirectedCombat } from "../../hooks/use-directed-combat";
 import { GameCombatUI } from "./GameCombatUI";
 import { RulesetCombatScreen, RulesetFightEnd } from "./RulesetCombatScreen";
 import { RulesetKindsContext } from "./RulesetKindsContext";
 import { RulesetCombatStatus } from "./RulesetCombatStatus";
+import { readSpendChoice, writeSpendChoice } from "./RulesetSpendToggle";
 import { rulesetValueLabel } from "../../lib/ruleset-combat-log";
+import { rulesetSpendCarry, runRulesetSpendCarry, type RulesetSpendCarried } from "../../lib/ruleset-combat-menu";
 import type { RulesetCellChoice } from "../../lib/ruleset-combat-board";
 import { TacticalCombatUI } from "./TacticalCombatUI";
 import { CombatAiControls } from "./CombatAiControls";
@@ -47,6 +49,7 @@ export function DirectedCombatUI(props: Props) {
     busy,
     send,
     refresh,
+    viewedAt,
   } = useDirectedCombat({
     chatId: props.chatId,
     anchor: props.anchor,
@@ -80,6 +83,35 @@ export function DirectedCombatUI(props: Props) {
   }, []);
   // Leaving ends the fight for good, so it asks once more first, as the menu's own Leave does.
   const [leaving, setLeaving] = useState(false);
+  // Whether the player picks their own symbol spends (1.382) is this browser's, carried into each new
+  // fight once, as it opens: the fight starts with the Engine picking.
+  const spendsCarried = useRef<RulesetSpendCarried | null>(null);
+  const [preferSpends, setPreferSpends] = useState(readSpendChoice);
+  const carry = rulesetSpendCarry(
+    s?.style === "ruleset" ? s : undefined,
+    viewedAt,
+    busy,
+    spendsCarried.current,
+    preferSpends,
+  );
+  const carryKey = carry?.key;
+  const carrySends = !!carry?.send;
+  const carryRevision = carry?.revision;
+  const carryView = carry?.view;
+  useEffect(() => {
+    if (carryKey === undefined || carryRevision === undefined || carryView === undefined) return;
+    runRulesetSpendCarry(
+      { key: carryKey, send: carrySends, revision: carryRevision, view: carryView },
+      spendsCarried,
+      send,
+      isRulesetRefusal,
+    );
+  }, [carryKey, carrySends, carryRevision, carryView, send]);
+  const chooseSpends = (choose: boolean) => {
+    writeSpendChoice(choose);
+    setPreferSpends(choose);
+    send({ type: "spends", choose });
+  };
   if (loading || !s)
     return (
       <div className="flex h-full items-center justify-center p-4 text-[var(--foreground)]" role="status">
@@ -193,6 +225,7 @@ export function DirectedCombatUI(props: Props) {
           onFlee={() => send({ type: "flee" })}
           onYield={() => send({ type: "yield" })}
           onControl={(unitId, controller) => send({ type: "control", unitId, controller })}
+          onSpends={chooseSpends}
           controls={
             <CombatAiControls
               // A ruleset fight takes a companion's controller at any time but a decision (the
@@ -285,6 +318,7 @@ export function DirectedCombatUI(props: Props) {
                         onChoose: choose,
                         onFlee: () => send({ type: "flee" }),
                         onYield: () => send({ type: "yield" }),
+                        onSpends: chooseSpends,
                       },
                     }
                   : {}),

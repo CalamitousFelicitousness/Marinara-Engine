@@ -16,6 +16,7 @@ import {
 } from "@marinara-engine/shared";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
+import { RulesetSpendToggle } from "./RulesetSpendToggle";
 import { ArtIcon } from "./ArtIcon";
 import { rulesetEffectPhrase } from "./RulesetItemPicker";
 import { rulesetCombatNames, type RulesetCombatNames } from "../../lib/ruleset-combat-log";
@@ -93,6 +94,7 @@ export function RulesetTurnOrder({
   selectedId,
   onSelect,
   onControl,
+  onSpends,
   locked,
 }: {
   definition: RulesetDefinition;
@@ -102,6 +104,8 @@ export function RulesetTurnOrder({
   selectedId: string | null;
   onSelect: (id: string | null) => void;
   onControl: (id: string, controller: CombatController) => void;
+  /** Whether the player picks their own symbol spends (1.382), in a fight that has them. */
+  onSpends?: (choose: boolean) => void;
   locked: boolean;
 }) {
   const { t } = useTranslation();
@@ -131,6 +135,9 @@ export function RulesetTurnOrder({
           {t("game.combat.ruleset.status.round", { round: view.round })}
         </span>
       </div>
+      {view.spends && onSpends && (
+        <RulesetSpendToggle choose={view.spends.choose} locked={locked} onChange={onSpends} className="px-3.5 pb-1.5" />
+      )}
       <div
         aria-hidden="true"
         className={cn(

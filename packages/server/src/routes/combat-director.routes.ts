@@ -293,6 +293,7 @@ const command = z.discriminatedUnion("type", [
   z.object({ type: z.literal("yield") }),
   z.object({ type: z.literal("control"), unitId: key, controller: z.enum(["manual", "ai"]) }),
   z.object({ type: z.literal("orders"), unitId: key, orders: combatOrdersSchema.nullable() }),
+  z.object({ type: z.literal("spends"), choose: z.boolean() }),
 ]);
 const queues = new Map<string, Promise<unknown>>();
 async function serialized<T>(key: string, fn: () => Promise<T>): Promise<T> {

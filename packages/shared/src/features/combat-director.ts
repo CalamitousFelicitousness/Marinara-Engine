@@ -117,6 +117,8 @@ export type DirectedCommand =
   | { type: "control"; unitId: string; controller: "manual" | "ai" }
   /** A companion's standing orders, or none to go back to its default. */
   | { type: "orders"; unitId: string; orders: CombatOrders | null }
+  /** Whether the player chooses what their own symbol throws buy (1.382) rather than the Engine. */
+  | { type: "spends"; choose: boolean }
   | { type: "flee" }
   /** The party gives itself up to opponents who are all honourable (combat AI T6): a ruleset fight's. */
   | { type: "yield" };
@@ -393,7 +395,9 @@ export interface DirectedRulesetView {
    *  is theirs rather than the actor's, and letting the moment go by is one of the answers. */
   window?: {
     id: string;
-    kind: "reaction" | "signature";
+    kind: "reaction" | "signature" | "spend";
+    /** For a `spend` window (1.382): the side being asked spends for, and whether the throw landed. */
+    spend?: { by: "attacker" | "target"; hit: boolean };
     /** Which moment, for the ones a reaction waits for, and what is happening at it. */
     moment?: "aimed" | "hit" | "harmed" | "used" | "falls" | "turn-start" | "caught" | "attacked";
     targetIds?: string[];
@@ -427,6 +431,8 @@ export interface DirectedRulesetView {
      *  answers. Present only for a held area on a board. */
     cells?: Array<{ x: number; y: number }>;
   };
+  /** A fight in symbol dice (1.382): whether the player chooses their own spends. */
+  spends?: { choose: boolean };
   /** The last 200 events, each with a running number so a client prints only what is new. */
   events: Array<{ seq: number; event: DirectedRulesetEvent }>;
   summary?: RulesetEncounterSummary;

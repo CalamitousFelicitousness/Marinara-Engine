@@ -16,6 +16,7 @@ import {
   parseRulesetCombatDice,
   advanceRulesetTurn,
   applyRulesetCombatChoice,
+  rulesetCombatIsSymbol,
   assignCombatTactics,
   combatMindWithHint,
   chooseRankedCombatCandidate,
@@ -137,6 +138,7 @@ import {
   RULESET_ZONE_OPTION_PREFIX,
   RULESET_ZONE_TURN_OPTION_PREFIX,
   RULESET_PASS_OPTION,
+  RULESET_ENGINE_SPENDS_OPTION,
   RULESET_STAND_OPTION,
   RULESET_CLIMB_OUT_OPTION,
   type CombatAiCandidate,
@@ -203,6 +205,9 @@ export interface RulesetFightState {
   events: Array<{ seq: number; event: DirectedRulesetEvent }>;
   /** Who plays each party member. An opponent is never in here. */
   controllers: Record<string, "manual" | "ai">;
+  /** The player chooses what their own symbol throws buy (1.382): every party member they play is
+   *  asked, and the Engine picks for everybody else. */
+  chooseSpends?: boolean;
   /** The opponents the client marked as bosses, which is what routes a turn to the Game Master. */
   bosses: string[];
   /** The named and the brilliant opponents (combat AI P9), whose turns go to the Game Master too in a
@@ -250,6 +255,17 @@ export function rulesetDirectorStage(state: CombatDirectorState): CombatDirector
  *  what keeps the Engine's `party`, `enemies` and `CombatSummary` in step with the fight, and a
  *  fight that has ended has no decision open and nobody on turn. */
 function settled(state: CombatDirectorState): RulesetCommandResult {
+  const fight = fightOf(state);
+  if (fight) {
+    // Who picks their own spends follows who the player plays, as that changes.
+    const asked = fight.chooseSpends
+      ? fight.encounter.combatants
+          .filter((combatant) => combatant.side === "party" && rulesetController(state, fight, combatant) === "manual")
+          .map((combatant) => combatant.id)
+      : [];
+    if (asked.length > 0) fight.encounter.askSpends = asked;
+    else delete fight.encounter.askSpends;
+  }
   combatDirectorView(state);
   if (state.outcome) {
     state.window = undefined;
@@ -1566,6 +1582,9 @@ function rulesetViewOf(definition: RulesetDefinition, state: CombatDirectorState
           window: {
             id: held.window.id,
             kind: held.window.kind,
+            ...(held.window.trigger.kind === "spend"
+              ? { spend: { by: held.window.trigger.by, hit: held.window.trigger.hit } }
+              : {}),
             actorId: held.actorId,
             waiting: Math.max(0, held.window.waiting.length - 1),
             ...(held.window.trigger.kind === "leaves-reach" ? { moverId: held.window.trigger.moverId } : {}),
@@ -1608,6 +1627,7 @@ function rulesetViewOf(definition: RulesetDefinition, state: CombatDirectorState
       : actor && !over && controller === "manual" && !state.window
         ? { options: rulesetMenu(definition, encounter, actor.id) }
         : {}),
+    ...(rulesetCombatIsSymbol(definition.combat) ? { spends: { choose: !!fight.chooseSpends } } : {}),
     events: fight.events.map((entry) => ({ seq: entry.seq, event: entry.event })),
     ...(over ? { summary: rulesetEncounterSummary(definition, encounter) } : {}),
     adjustments: [...fight.adjustments],
@@ -5547,6 +5567,19 @@ function answerRulesetWindows(
       });
       continue;
     }
+    // A chooser of their own spends handed to the Engine mid-throw (1.382) gets the Engine's pick.
+    if (window.kind === "spend") {
+      const engine = rulesetWindowOptions(definition, fight.encounter, asking).some(
+        (option) => option.id === RULESET_ENGINE_SPENDS_OPTION,
+      );
+      applyChoiceOnly(definition, state, fight, {
+        actorId: asking,
+        optionId: engine ? RULESET_ENGINE_SPENDS_OPTION : RULESET_PASS_OPTION,
+        targetIds: [],
+        window: window.id,
+      });
+      continue;
+    }
     if (controller === "gm" && openRulesetWindowDecision(definition, state, fight, asking)) return;
     const menu = rulesetWindowOptions(definition, fight.encounter, asking);
     // Somebody hidden from it, and a Detect to look for them with (1.287).
@@ -6994,6 +7027,16 @@ function runRulesetCommand(
     state.yielded = true;
     // Said in the fight's own log, so a surrender never reads as a wipe (re-test 14).
     record(fight, [{ type: "outcome", outcome: "defeat", yielded: true }]);
+    return settled(state);
+  }
+
+  if (command.type === "spends") {
+    if (!rulesetCombatIsSymbol(definition.combat)) {
+      return refuse("Only a fight in symbol dice has spends to choose.", "ruleset_combat_no_spends");
+    }
+    if (state.window) return refuse("Resolve the open decision first.", "ruleset_combat_decision_open");
+    if (command.choose) fight.chooseSpends = true;
+    else delete fight.chooseSpends;
     return settled(state);
   }
 

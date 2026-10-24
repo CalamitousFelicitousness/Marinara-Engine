@@ -88,7 +88,11 @@ import {
   rulesetHeightenPick,
   rulesetPicksStep,
   rulesetSparePick,
+  rulesetSpendCarry,
+  RULESET_SPEND_CARRY_TRIES,
+  runRulesetSpendCarry,
   type RulesetMenuStep,
+  type RulesetSpendCarried,
 } from "../../packages/client/src/lib/ruleset-combat-menu.js";
 import {
   isRulesetCombatFight,
@@ -2868,12 +2872,108 @@ function drawn(...rows: string[]): TacticalGrid {
   assert.equal(rulesetAimSoFar(undefined), null);
 }
 
-// ── The menu groups, the movement group first ──
+// ── The menu groups, the movement group first on a turn ──
 {
+  // A symbol throw's spends (1.382) are only ever asked in a window of their own, so they lead it.
   assert.deepEqual(
     [...RULESET_MENU_KINDS],
-    ["move", "attack", "reload", "ability", "item", "switch", "block", "contest", "standard", "end-turn"],
+    ["spend", "move", "attack", "reload", "ability", "item", "switch", "block", "contest", "standard", "end-turn"],
   );
+  assert.ok(messages["game.combat.ruleset.group.spend"], "en.json is missing the spend heading");
+  const engine = {
+    id: "engine-spends",
+    kind: "spend",
+    label: "Cut deeper, Rally",
+    targets: { side: "self", count: 0 },
+    targetIds: [],
+    symbolSpend: { engine: true, picks: [] },
+  } as never;
+  assert.equal(rulesetOptionLabel(engine, t), "Let the Engine choose: Cut deeper, Rally");
+  // The browser's choice is carried into a symbol fight once, and never while a decision is open.
+  const fightView = (choose: boolean, extra: Record<string, unknown> = {}) =>
+    ({ id: "fight", instanceId: "row-1", revision: 4, ruleset: { spends: { choose } }, ...extra }) as never;
+  const sends = { key: "fight|row-1", send: true, revision: 4, view: 100 };
+  const carriedOnce = { key: "fight|row-1", lost: 0 };
+  assert.deepEqual(rulesetSpendCarry(fightView(false), 100, false, null, true), sends);
+  assert.deepEqual(rulesetSpendCarry(fightView(false), 100, false, null, false), { ...sends, send: false });
+  assert.deepEqual(rulesetSpendCarry(fightView(true), 100, false, null, true), { ...sends, send: false });
+  assert.equal(rulesetSpendCarry(fightView(false), 100, false, carriedOnce, true), null, "carried once");
+  assert.equal(rulesetSpendCarry(fightView(false, { window: { id: "w" } }), 100, false, null, true), null, "waits");
+  assert.equal(rulesetSpendCarry(fightView(false), 100, true, null, true), null, "waits for a step in flight");
+  assert.equal(
+    rulesetSpendCarry({ id: "fight", revision: 1 } as never, 100, false, null, true),
+    null,
+    "no symbol fight",
+  );
+  assert.equal(
+    rulesetSpendCarry(fightView(false, { outcome: "victory" }), 100, false, null, true),
+    null,
+    "a fight over",
+  );
+  assert.deepEqual(
+    rulesetSpendCarry(fightView(false, { instanceId: "row-2" }), 100, false, carriedOnce, true),
+    { ...sends, key: "fight|row-2" },
+    "a restored checkpoint is another fight",
+  );
+  // One the rules refused waits for the fight to move; one lost on the way waits for a fresh view,
+  // up to its tries, and a refusal never counts against them.
+  const refusedAt = { key: "fight|row-1", lost: 0, failed: { refused: true as const, at: 4 } };
+  assert.equal(rulesetSpendCarry(fightView(false), 100, false, refusedAt, true), null, "not again at that revision");
+  assert.deepEqual(rulesetSpendCarry(fightView(false, { revision: 5 }), 100, false, refusedAt, true), {
+    ...sends,
+    revision: 5,
+  });
+  const lost = (count: number) => ({ key: "fight|row-1", lost: count, failed: { refused: false as const, view: 100 } });
+  assert.equal(rulesetSpendCarry(fightView(false), 100, false, lost(1), true), null, "lost: not from the same view");
+  assert.deepEqual(
+    rulesetSpendCarry(fightView(false), 101, false, lost(1), true),
+    { ...sends, view: 101 },
+    "a fresh one",
+  );
+  assert.equal(
+    rulesetSpendCarry(fightView(false), 101, false, lost(RULESET_SPEND_CARRY_TRIES), true),
+    null,
+    "its tries",
+  );
+  // The carry itself: one command however often it runs, and a failure marked by how it failed.
+  {
+    const carried: { current: RulesetSpendCarried | null } = { current: null };
+    const sent: Array<(error: unknown) => void> = [];
+    const send = (_command: unknown, options: { onError: (error: unknown) => void }) => sent.push(options.onError);
+    const refused = (error: unknown) => error === "refused";
+    /** One render of the screen: the gate, then the effect, as DirectedCombatUI runs them. */
+    const render = (view: number, revision = 4) =>
+      runRulesetSpendCarry(
+        rulesetSpendCarry(fightView(false, { revision }), view, false, carried.current, true),
+        carried,
+        send,
+        refused,
+      );
+    render(100);
+    render(100);
+    assert.equal(sent.length, 1, "run twice by one closure, one command leaves");
+    assert.deepEqual(carried.current, carriedOnce);
+    sent[0]!("refused");
+    assert.deepEqual(carried.current, refusedAt, "a refusal is marked at its revision, and not counted");
+    render(100);
+    assert.equal(sent.length, 1, "and not sent again there");
+    render(100, 5);
+    assert.equal(sent.length, 2, "but once the fight has moved");
+    sent[1]!(new Error("network"));
+    assert.deepEqual(carried.current, { key: "fight|row-1", lost: 1, failed: { refused: false, view: 100 } });
+    render(100, 5);
+    render(100, 5);
+    assert.equal(sent.length, 2, "a lost one is not resent in a burst from the view it failed on");
+    render(101, 5);
+    assert.equal(sent.length, 3, "only once a fresh view comes in");
+    sent[2]!(new Error("network"));
+    render(102, 5);
+    sent[3]!(new Error("network"));
+    render(103, 5);
+    assert.equal(sent.length, RULESET_SPEND_CARRY_TRIES + 1, "three losses in all, after the refusal, then it stops");
+    runRulesetSpendCarry({ ...sends, send: false }, { current: null }, send, refused);
+    assert.equal(sent.length, RULESET_SPEND_CARRY_TRIES + 1, "nothing to send is nothing sent");
+  }
   const grid = drawn(".....", ".....");
   const state = createRulesetEncounter({
     definition: fiveE,

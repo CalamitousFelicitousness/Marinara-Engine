@@ -2690,6 +2690,10 @@ export interface RulesetEncounterState {
   /** One up per window ever opened in this fight, so no two windows share an id and an answer
    *  written for a closed one is refused rather than spent on the one that replaced it. */
   windows?: number;
+  /** Who picks the spends of their own symbol throws (1.382) rather than leaving it to the Engine:
+   *  a throw that leaves them something to buy holds the fight in a `spend` window until they have
+   *  chosen. The Engine's pick is what everybody else gets. */
+  askSpends?: string[];
   /** Remaining uses shared by a coven, keyed by coven id and spell entry (1.123). */
   covenUses?: Record<string, number>;
   /** Held Ground (1.323): nobody here dies at no health; they are felled. */
@@ -2741,8 +2745,9 @@ export interface RulesetCombatWindow {
 }
 
 /** What a window is for. `reaction` is somebody spending a budget out of turn; `signature` is a
- *  block buying one of its own actions with its points between two turns. */
-export type RulesetWindowKind = "reaction" | "signature";
+ *  block buying one of its own actions with its points between two turns; `spend` is somebody
+ *  choosing what a symbol throw's leftover symbols buy (1.382). */
+export type RulesetWindowKind = "reaction" | "signature" | "spend";
 
 /** What opened the window. The fight reads it to build the menu, and a caller reads it to say why
  *  somebody is being asked. */
@@ -2824,7 +2829,18 @@ export type RulesetWindowTrigger =
     }
   /** What somebody readied waits for has happened (1.288): `sourceId` came where it can be reached
    *  (`comes`, before the rest of their walk) or has just used something (`acts`). */
-  | { kind: "readied"; sourceId: string; on: RulesetReadyOn };
+  | { kind: "readied"; sourceId: string; on: RulesetReadyOn }
+  /** A symbol throw (1.382) has left the one being asked symbols they may spend: `by` is the side
+   *  they spend for, `hit` whether the throw landed. `sourceId` made the throw at `targetIds`. */
+  | {
+      kind: "spend";
+      targetIds: string[];
+      sourceId: string;
+      optionId: string;
+      label: string;
+      by: "attacker" | "target";
+      hit: boolean;
+    };
 
 /** The moments the Engine notices, and opens a window for. `aimed` is before something lands on
  *  the holder, `used` is before somebody on the other side uses something, `hit` is after an attack
@@ -3013,6 +3029,12 @@ export interface RulesetHeldAddition {
   drain?: number;
 }
 
+/** One spend somebody chose for a symbol throw (1.382), by the ruleset's spend id. */
+export interface RulesetSymbolSpendChoice {
+  spend: string;
+  times: number;
+}
+
 /** An attack held after its roll hit, while the one it hit is asked. It picks up exactly here: the
  *  same roll against that target, then the rest of this action's targets, then the rest of its parts
  *  when it is one part of an action made of others. */
@@ -3034,6 +3056,9 @@ export interface RulesetHeldAttack {
     lowered?: number;
     /** A symbol fight's throw (1.780): the symbols it left, spent once it is known to land. */
     symbols?: Record<string, number>;
+    /** What each side asked has chosen to buy with them so far, by spend id. A side that is here was
+     *  asked, and is never asked again for this throw; one that is not gets the Engine's pick. */
+    spends?: { attacker?: RulesetSymbolSpendChoice[]; target?: RulesetSymbolSpendChoice[] };
   };
   /** The attacker's one-use conditions the roll used, spent once the blow is over. */
   mine: string[];
@@ -4408,7 +4433,18 @@ export interface RulesetCombatOption {
   icons?: string[];
   /** `move` is the one a positioned fight adds: walking, and getting back up. `reload` fills a
    *  weapon's clip. */
-  kind: "attack" | "ability" | "block" | "contest" | "standard" | "end-turn" | "move" | "reload" | "item" | "switch";
+  kind:
+    | "attack"
+    | "ability"
+    | "block"
+    | "contest"
+    | "standard"
+    | "end-turn"
+    | "move"
+    | "reload"
+    | "item"
+    | "switch"
+    | "spend";
   label: string;
   /** Absent on "end turn", which spends nothing, and on anything that costs no budget: something
    *  the entry called free, or a strike taken out of what a spend already bought. */
@@ -4489,6 +4525,9 @@ export interface RulesetCombatOption {
   ready?: { optionId: string; label: string; on: RulesetReadyOn };
   /** What its holder readied, offered when it happens (1.288). */
   readied?: true;
+  /** In a `spend` window (1.382): one more of this spend, bought with `cost`, or `engine`, the
+   *  Engine's own pick for whatever is still unspent (`picks`). */
+  symbolSpend?: { spend?: string; engine?: true; picks?: RulesetSymbolSpendChoice[] };
   /** A legendary action that moves after what it does (1.285): `cells` are where it may then go,
    *  and going nowhere is a choice too. */
   moveAfter?: true;

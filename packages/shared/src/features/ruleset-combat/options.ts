@@ -10,6 +10,7 @@ import {
   rulesetSymbolChance,
   rulesetSymbolDice,
   rulesetSymbolSuccessDistribution,
+  type RulesetSymbolSpend,
   type RulesetSymbolDice,
 } from "./symbols.js";
 import { rulesetEntryIcons } from "../rulesets/art-icons.js";
@@ -94,6 +95,7 @@ import {
   rulesetAllyBeside,
   rulesetCombatHurt,
   rulesetSymbolSpendBudget,
+  rulesetSymbolSpendStanding,
   rulesetAbilityNarrowing,
   rulesetCheckAbility,
   rulesetCheckMode,
@@ -196,6 +198,7 @@ import type {
   RulesetCombatAlterOffer,
   RulesetCombatCell,
   RulesetCombatOption,
+  RulesetCombatWindow,
   RulesetCombatRollMode,
   RulesetCombatContest,
   RulesetCombatant,
@@ -6266,6 +6269,57 @@ function rulesetSignatureCasts(
  *  takes, so passing is a choice the fight records rather than a timeout. */
 export const RULESET_PASS_OPTION = "pass";
 
+/** In a `spend` window (1.382): the Engine's own pick for whatever symbols are still unspent. A
+ *  spend's own option is `RULESET_SPEND_OPTION_PREFIX` and its id. */
+export const RULESET_ENGINE_SPENDS_OPTION = "engine-spends";
+export const RULESET_SPEND_OPTION_PREFIX = "spend:";
+
+/** What somebody choosing their own symbol spends (1.382) may take now: one more of each spend they
+ *  can still buy, and the Engine's pick for the rest when it would buy anything. Passing keeps what
+ *  they have chosen and spends nothing more. */
+function spendWindowOptions(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  window: RulesetCombatWindow,
+): RulesetCombatOption[] {
+  const trigger = window.trigger;
+  const held = window.resume?.kind === "action" ? window.resume.held : undefined;
+  if (trigger.kind !== "spend" || !held) return [];
+  const standing = rulesetSymbolSpendStanding(definition, state, held, trigger.sourceId, trigger.by, trigger.hit);
+  if (!standing) return [];
+  const symbols = definition.resolution.kind === "symbol-pool" ? definition.resolution.symbols : [];
+  const costOf = (spend: RulesetSymbolSpend) => [
+    {
+      pool: spend.symbol,
+      label: symbols.find((one) => one.id === spend.symbol)?.label ?? spend.symbol,
+      amount: spend.cost,
+    },
+  ];
+  const options: RulesetCombatOption[] = standing.choices.map((spend) => ({
+    id: `${RULESET_SPEND_OPTION_PREFIX}${spend.id}`,
+    kind: "spend",
+    label: spend.label,
+    targets: { side: "self", count: 0 },
+    cost: costOf(spend),
+    symbolSpend: { spend: spend.id },
+  }));
+  if (standing.engine.length > 0) {
+    options.unshift({
+      id: RULESET_ENGINE_SPENDS_OPTION,
+      kind: "spend",
+      label: standing.engine
+        .map(({ spend, times }) => (times > 1 ? `${spend.label} x${times}` : spend.label))
+        .join(", "),
+      targets: { side: "self", count: 0 },
+      symbolSpend: {
+        engine: true,
+        picks: standing.engine.map(({ spend, times }) => ({ spend: spend.id, times })),
+      },
+    });
+  }
+  return options;
+}
+
 /**
  * The menu of the one combatant a window is asking. Everybody else gets nothing, because a window
  * asks one at a time: the answer spends a budget or points, and two answers at once would spend
@@ -6293,6 +6347,7 @@ function windowOptions(
   if (!combat || !window || window.waiting[0] !== actorId) return [];
   // Points, not a budget, and priced and checked where every other signature option is.
   if (window.kind === "signature") return rulesetSignatureOptions(definition, state, actorId);
+  if (window.kind === "spend") return spendWindowOptions(definition, state, window);
 
   const actor = rulesetCombatant(state, actorId);
   if (!actor) return [];

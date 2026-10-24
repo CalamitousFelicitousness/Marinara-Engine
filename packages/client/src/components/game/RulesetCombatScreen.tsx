@@ -46,6 +46,8 @@ export interface RulesetCombatScreenProps {
   onControl: (id: string, controller: CombatController) => void;
   /** The companions' standing orders, under the turn order. */
   controls?: ReactNode;
+  /** Whether the player picks their own symbol spends (1.382). */
+  onSpends?: (choose: boolean) => void;
   /** An error, or the fight's end, put at the top of the pane by the caller. */
   notice?: ReactNode;
   /** The fight is over: the pane holds only the notice (the caller's end of the fight), no turn. */
@@ -66,6 +68,7 @@ export function RulesetCombatScreen({
   onYield,
   onControl,
   controls,
+  onSpends,
   notice,
   ended,
 }: RulesetCombatScreenProps) {
@@ -229,6 +232,7 @@ export function RulesetCombatScreen({
             selectedId={hovered ?? selected}
             onSelect={setSelected}
             onControl={onControl}
+            onSpends={onSpends}
             locked={busy}
           />
           {controls}
@@ -395,6 +399,7 @@ export function RulesetCombatScreen({
               selectedId={selected}
               onSelect={setSelected}
               onControl={onControl}
+              onSpends={onSpends}
               locked={busy}
             />
             {controls}

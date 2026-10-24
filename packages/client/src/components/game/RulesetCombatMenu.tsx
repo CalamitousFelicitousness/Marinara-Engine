@@ -147,6 +147,7 @@ const WINDOW_PROMPTS = {
   attacked: "Attacked",
   signature: "Between",
   reaction: "Leaving",
+  spend: "Spend",
 } as const;
 
 /** What the window holding the fight open is asking, in one sentence: "Mage uses Cone of Cold on
@@ -265,6 +266,9 @@ export function RulesetCombatMenu({
   const distance = view.grid?.distance;
   const nameOf = (id: string | undefined) => view.combatants.find((combatant) => combatant.id === id)?.name ?? "";
   const actorName = nameOf(view.actorId);
+  // Letting a spend window go by keeps what was chosen and buys nothing more (1.382).
+  const passKey = (otherwise: string) =>
+    view.window?.kind === "spend" ? "game.combat.ruleset.menu.spendDone" : otherwise;
   const groups = useMemo(() => rulesetMenuGroups(view.options), [view.options]);
   // A pool by its own name where the fight sent it (the party's pools), else by its id.
   const poolOf = (id: string) =>
@@ -1726,7 +1730,7 @@ export function RulesetCombatMenu({
             }}
             className="mt-1.5 flex min-h-9 w-full items-center justify-between rounded-md border border-[var(--border)] px-3 text-left text-xs text-[var(--foreground)] hover:bg-[var(--foreground)]/[0.05] focus-visible:outline-2 focus-visible:outline-[var(--primary)] disabled:opacity-50"
           >
-            {t("game.combat.ruleset.screen.letItGo")}
+            {t(passKey("game.combat.ruleset.screen.letItGo"))}
             {!touch && (
               <kbd className="rounded border border-[var(--border)] px-1 font-mono text-[0.6rem] text-[var(--muted-foreground)]">
                 {t("game.combat.ruleset.screen.escKey")}
@@ -2017,7 +2021,7 @@ export function RulesetCombatMenu({
                 `${ink.border} ${ink.fill} ${ink.body} ${ink.hoverBorder} ${ink.hover} ${ink.hoverText}`,
               )}
             >
-              {t("game.combat.ruleset.menu.pass")}
+              {t(passKey("game.combat.ruleset.menu.pass"))}
             </button>
           )}
           {/* Never on a question asked between turns: answering a reaction is not the moment to run. */}

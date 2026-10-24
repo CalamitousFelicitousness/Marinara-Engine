@@ -45,6 +45,7 @@ import {
   applyRulesetSheetOp,
   evaluateRulesetSheetLive,
   readRulesetLive,
+  rulesetTrackHealth,
   type RulesetLiveState,
   type RulesetSheetOp,
 } from "../rulesets/live-state.js";
@@ -254,10 +255,11 @@ export interface RulesetCombatHealth {
  * rather than copied into the encounter, and a reload mid-fight is exact.
  *
  * A WOUND TRACK is reported as the levels it has LEFT: `value` is how many boxes are still clear
- * and `max` is the track's length. That is deliberate and it is what keeps the rest of the fight
- * written in its own words: "down" is a combatant at zero, and a full track is a combatant with no
- * boxes left, so `dropToZero`, the dying rules, the recap and the screen all keep asking the one
- * question they already ask. A track carries no buffer, so `temp` is always 0 on one.
+ * and `max` is the track's length. A plain track that fills up (1.383) is read the same way: the
+ * room left above its value, out of its length from floor to maximum. That is deliberate and it
+ * is what keeps the rest of the fight written in its own words: "down" is a combatant at zero,
+ * and a full track is a combatant with no boxes left, so `dropToZero`, the dying rules, the recap
+ * and the screen all keep asking the one question they already ask. A track carries no buffer, so `temp` is always 0 on one.
  */
 export function rulesetCombatHealth(
   definition: RulesetDefinition,
@@ -274,8 +276,7 @@ export function rulesetCombatHealth(
   const health = combat.health;
   if ("track" in health) {
     const track = live.tracks.find((entry) => entry.id === health.track);
-    if (!track?.wound) return { value: 0, max: 0, temp: 0 };
-    return { value: track.wound.levels.length - track.wound.filled, max: track.wound.levels.length, temp: 0 };
+    return track ? rulesetTrackHealth(track) : { value: 0, max: 0, temp: 0 };
   }
   const pool = live.pools.find((entry) => !entry.listId && entry.key === health.pool);
   return pool

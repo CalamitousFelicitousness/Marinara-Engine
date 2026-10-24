@@ -824,10 +824,17 @@ function writeHealthLoss(
     });
     return;
   }
+  // A plain track that fills up (1.383) takes the points, held at its maximum.
+  const declared = ctx.definition.sheet.live.tracks.find((track) => track.id === health.track);
+  if (!declared?.kinds) {
+    const by = Math.floor(dealt);
+    if (by > 0) writeRulesetSheet(ctx.definition, target, { op: "track", track: health.track, by });
+    return;
+  }
   // On an indexed track a blow names the box it lands on rather than how many it fills: its damage
   // under `per-point`, the first box under `per-blow`.
   const perPoint = ctx.combat.damageKinds?.marks === "per-point" ? Math.max(1, Math.floor(dealt)) : 1;
-  const indexed = ctx.definition.sheet.live.tracks.find((track) => track.id === health.track)?.fill === "indexed";
+  const indexed = declared.fill === "indexed";
   markWound(ctx, target, {
     op: "damage",
     track: health.track,
@@ -842,8 +849,8 @@ function markWound(ctx: RulesetCombatContext, target: RulesetCombatant, op: Rule
   if (!writeRulesetSheet(ctx.definition, target, op)) ctx.overwhelmed.add(target.id);
 }
 
-/** And the other way: a pool gets the points back, a wound track has ONE mark cleared, lightest
- *  first, by the same rule the player's own sheet clears one. It names no kind, because a heal that
+/** And the other way: a pool gets the points back, as does a plain track that fills up (1.383), a
+ *  wound track has ONE mark cleared, lightest first, by the same rule the player's own sheet clears one. It names no kind, because a heal that
  *  named one would clear only that kind. */
 function writeHealthGain(
   ctx: RulesetCombatContext,
@@ -864,6 +871,11 @@ function writeHealthGain(
         magical: true,
       });
     }
+    return;
+  }
+  // A plain track that fills up (1.383) gives the points back, never below its floor.
+  if (!ctx.definition.sheet.live.tracks.find((track) => track.id === health.track)?.kinds) {
+    writeRulesetSheet(ctx.definition, target, { op: "track", track: health.track, by: -amount });
     return;
   }
   writeRulesetSheet(ctx.definition, target, {

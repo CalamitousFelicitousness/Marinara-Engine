@@ -12567,6 +12567,16 @@ export function getCapabilityPackageInstallIssue(
   if (!declaresApi(781) && healthOnPlainTrack(ruleset)) {
     return "A ruleset whose fight health is a plain track that fills up requires schemaVersion 2 and capabilityApi 1.781 or newer";
   }
+  // An attack row's ability column standing for the best of several abilities, 1.782.
+  if (
+    !declaresApi(782) &&
+    (() => {
+      const attacks = plainRecord(plainRecord(ruleset)?.combat)?.attacks;
+      return Array.isArray(attacks) && attacks.some((source) => plainRecord(source)?.abilityChoices !== undefined);
+    })()
+  ) {
+    return "A ruleset whose attack rows choose the best of several abilities (abilityChoices) requires schemaVersion 2 and capabilityApi 1.782 or newer";
+  }
   // A ruleset over 256 KB or a catalog file over 1 MB, the ceilings before 1.340.
   if (
     !declaresApi(340) &&

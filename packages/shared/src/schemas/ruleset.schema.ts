@@ -12714,6 +12714,16 @@ const combatAttackSourceSchema = z
      *  shares one count, which is right for swords and wrong for a crossbow. Meaningless without
      *  `strikes`, and refused there, because a list that buys one strike already caps every row. */
     strikesCappedBy: combatColumnSchema.optional(),
+    /** Values of the row's ability columns that stand for the best of several abilities (1.782): a
+     *  row that reads one swings with whichever of them adds the most to hit, and deals its damage
+     *  with that one too. SRD 5.1, Finesse: "you can use your choice of your Strength or Dexterity
+     *  modifier for the attack and damage rolls. You must use the same modifier for both rolls." */
+    abilityChoices: z
+      .record(z.string().trim().min(1).max(40), z.array(sheetId).min(2).max(6))
+      .refine((values) => Object.keys(values).length >= 1 && Object.keys(values).length <= 10, {
+        message: "A list names 1 to 10 ability choices",
+      })
+      .optional(),
     toHit: z
       .object({
         /** An enum column holding an ability id. Another value adds nothing, exactly as
@@ -19935,6 +19945,28 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       column(source.damage.dice.column, "dice", [...path, "damage", "dice", "column"]);
       column(source.damage.ability?.column, "enum", [...path, "damage", "ability", "column"]);
       column(source.damage.bonus?.column, "number", [...path, "damage", "bonus", "column"]);
+      // A choice of abilities (1.782) is a value an ability column may hold, standing for abilities
+      // the sheet has, and never one of them itself.
+      if (source.abilityChoices) {
+        const where = [...path, "abilityChoices"];
+        const columns = [source.toHit.ability?.column, source.damage.ability?.column].flatMap((id) => {
+          const found = id === undefined ? undefined : list.columns.find((one) => one.id === id);
+          return found ? [found] : [];
+        });
+        if (!columns.length) issue(where, "Ability choices are values of an ability column, and this list names none");
+        const abilityIds = new Set(sheet.abilities.map((ability) => ability.id));
+        for (const [value, abilities] of Object.entries(source.abilityChoices)) {
+          if (abilityIds.has(value)) issue([...where, value], `"${value}" is an ability, not a choice of them`);
+          const offered = columns.some(
+            (one) => one.type !== "enum" || !("values" in one) || !one.values || one.values.includes(value),
+          );
+          if (columns.length && !offered) issue([...where, value], `No ability column of this list offers "${value}"`);
+          abilities.forEach((ability, n) => {
+            if (!abilityIds.has(ability)) issue([...where, value, n], `Unknown ability "${ability}"`);
+          });
+          if (new Set(abilities).size !== abilities.length) issue([...where, value], "An ability is named twice");
+        }
+      }
       // A distance is a number, wherever it is read from: one column of this list, or the same
       // number on every row of it.
       const distance = (source: RulesetCombatDistanceSource | undefined, where: (string | number)[]) => {

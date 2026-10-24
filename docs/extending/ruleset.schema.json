@@ -222194,6 +222194,26 @@
                 ],
                 "additionalProperties": false
               },
+              "abilityChoices": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "maxLength": 40,
+                    "pattern": "^[a-z][a-z0-9_]*$"
+                  },
+                  "minItems": 2,
+                  "maxItems": 6
+                },
+                "propertyNames": {
+                  "minLength": 1,
+                  "maxLength": 40
+                },
+                "properties": {
+                  "$comment": {}
+                }
+              },
               "toHit": {
                 "type": "object",
                 "properties": {

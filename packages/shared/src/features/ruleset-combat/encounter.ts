@@ -2365,6 +2365,39 @@ function rowAbilityAndSkill(
   );
 }
 
+/** One attack row with a choice of abilities (1.782) in its ability columns read as the one of them
+ *  that adds the most to hit, with the row's skill: a finesse blade swung with the better of
+ *  Strength and Dexterity, for its damage too. Any other row is returned as it is. */
+function rowAbilityChosen(
+  definition: RulesetDefinition,
+  build: RulesetSheetBuild,
+  evaluated: EvaluatedRulesetSheet,
+  source: RulesetCombatAttackSource,
+  row: Record<string, unknown>,
+): Record<string, unknown> {
+  const choices = source.abilityChoices;
+  if (!choices) return row;
+  const columns = [source.toHit.ability?.column, source.damage.ability?.column].filter((column): column is string => {
+    const value = columnValue(row, column);
+    return typeof value === "string" && Object.prototype.hasOwnProperty.call(choices, value);
+  });
+  if (!columns.length) return row;
+  const skill = columnValue(row, source.toHit.skill?.column);
+  const chosen = new Map<string, string>();
+  for (const column of columns) {
+    const value = row[column] as string;
+    if (chosen.has(value)) continue;
+    const best = choices[value]!.reduce((best, one) =>
+      abilityAndSkill(definition, build, evaluated, skill, one) >
+      abilityAndSkill(definition, build, evaluated, skill, best)
+        ? one
+        : best,
+    );
+    chosen.set(value, best);
+  }
+  return { ...row, ...Object.fromEntries(columns.map((column) => [column, chosen.get(row[column] as string)!])) };
+}
+
 /** What an attack adds to hit from one skill and one ability, each an id or anything else, which
  *  names nothing: see `rowAbilityAndSkill`. */
 /** In a `symbol-pool` fight (1.780) a to-hit number off a sheet is an ability and a skill's ranks
@@ -2566,7 +2599,7 @@ function attackActions(
   const actions: RulesetCombatAction[] = [];
   rows.forEach((raw, rowIndex) => {
     if (!raw || typeof raw !== "object") return;
-    const row = raw as Record<string, unknown>;
+    const row = rowAbilityChosen(definition, build, evaluated, source, raw as Record<string, unknown>);
     const name = textFromColumn(row, source.name);
     const parsed = parseRulesetCombatDice(columnValue(row, source.damage.dice.column));
     // A pool fight counts a damage column's dice, of its own die, and an ability's rating on top: a

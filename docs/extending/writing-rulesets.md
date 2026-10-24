@@ -3693,6 +3693,11 @@ same keys for a d20 system:
   `toHit.skill` names an `enum` column holding one of your skill ids: the row adds what a check of
   that skill adds, with the row's own `ability` in place of the skill's when it names one, exactly as
   a check's `with=` swaps it (Capability API 1.47).
+  `abilityChoices` maps a value of the row's ability column to two or more of your ability ids
+  (Capability API 1.782): a row that reads it swings with whichever adds the most to hit and deals
+  its damage with that same one. SRD 5.1's Finesse is the sentence it exists for, written
+  `{ "finesse": ["str", "dex"] }` with `finesse` among the column's values. The value is refused
+  where it is itself an ability, names one your sheet lacks, or is not offered by an ability column.
   `strikes` is an optional value reference saying how many strikes ONE spend of this list's budget
   buys: taking a row with none in hand spends the budget and puts the rest in hand, and while any
   are in hand every row that declares `strikes` costs no budget at all, so a different weapon, a

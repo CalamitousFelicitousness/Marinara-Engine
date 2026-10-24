@@ -4,7 +4,7 @@
 // each one lists exactly who it may be pointed at. Nothing here decides legality or does any
 // arithmetic; it groups what arrived, spells what an option spends out of the words the option
 // carries, and keeps a player's picking inside the option's own list and count.
-import type { DirectedRulesetOption, DirectedRulesetView } from "@marinara-engine/shared";
+import type { DirectedCombatView, DirectedRulesetOption, DirectedRulesetView } from "@marinara-engine/shared";
 import {
   RULESET_FLY_DOWN_OPTION,
   RULESET_FLY_UP_OPTION,
@@ -18,11 +18,13 @@ import {
 import type { TFunction } from "i18next";
 import { rulesetDistanceText, type RulesetBoardDistance, type RulesetCellChoice } from "./ruleset-combat-board";
 
-/** The order a menu reads in: where you go, what you swing, what you cast, what a stat block can
- *  do, the contests it may start, the moves the kind implements, and finally ending the turn.
- *  Walking comes first because a turn on a board usually starts with it, and it may be taken again
- *  after an action. */
+/** The order a menu reads in: what a symbol throw's leftovers buy (1.382), then where you go, what
+ *  you swing, what you cast, what a stat block can do, the contests it may start, the moves the kind
+ *  implements, and finally ending the turn. Spends are only ever asked in a window of their own, so
+ *  on a turn walking comes first: a turn on a board usually starts with it, and it may be taken
+ *  again after an action. */
 export const RULESET_MENU_KINDS = [
+  "spend",
   "move",
   "attack",
   "reload",
@@ -167,6 +169,8 @@ export function rulesetOptionLabel(option: DirectedRulesetOption, t: TFunction):
       name: option.lifts.name,
     });
   if (option.kind === "end-turn") return t("game.combat.ruleset.menu.endTurn", { defaultValue: option.label });
+  // The Engine's own pick for what is left of a symbol throw (1.382), named by what it buys.
+  if (option.symbolSpend?.engine) return t("game.combat.ruleset.menu.engineSpends", { spends: option.label });
   // Walking and getting back up are the board's own two moves, named by this Engine for the same
   // reason the standard actions are: the closed list is the Engine's vocabulary, not the file's.
   // Which is which comes off the two exported ids, never off the spelling of one: the ids belong to
@@ -514,4 +518,74 @@ export function rulesetDefaultTargets(option: DirectedRulesetOption): string[] {
  *  anything that may take several is confirmed, so a second target is still reachable. */
 export function rulesetSendsOnPick(option: DirectedRulesetOption): boolean {
   return option.targets.count === 1;
+}
+
+/** The fight a spend carry was sent into, how many times it was lost on the way, and, while it has
+ *  not landed, how it failed: refused by the rules at a revision, or lost while one view stood. */
+export interface RulesetSpendCarried {
+  key: string;
+  lost: number;
+  failed?: { refused: true; at: number } | { refused: false; view: number };
+}
+
+/** A carry lost on the way is sent this many times in all, so a server that is down is not asked
+ *  for ever. A refusal is not counted: the rules answered it, and it waits for the fight to move. */
+export const RULESET_SPEND_CARRY_TRIES = 3;
+
+/** Whether this browser's choice of picking its own symbol spends (1.382) is carried into the fight
+ *  on screen now. Null while it waits: no fight in symbol dice, a fight already over, a step in
+ *  flight, a decision standing open (which would refuse the command), or this fight already carried.
+ *  One the rules refused is tried again once the fight has moved past that revision; one lost on
+ *  the way, once a fresh view has come in (`view` is when the one on screen arrived), up to its
+ *  tries. Otherwise the fight's key, whether the command needs sending at all, and the revision and
+ *  view it goes at. A fight is its id and its instance, since a restored checkpoint is another. */
+export function rulesetSpendCarry(
+  session:
+    | (Pick<DirectedCombatView, "id" | "instanceId" | "revision" | "window" | "outcome"> & {
+        ruleset?: Pick<DirectedRulesetView, "spends">;
+      })
+    | undefined,
+  view: number,
+  busy: boolean,
+  carried: RulesetSpendCarried | null,
+  preferred: boolean,
+): { key: string; send: boolean; revision: number; view: number } | null {
+  const spends = session?.ruleset?.spends;
+  if (!session || !spends || session.outcome || busy || session.window) return null;
+  const key = `${session.id}|${session.instanceId ?? ""}`;
+  if (carried?.key === key) {
+    const failed = carried.failed;
+    if (!failed) return null;
+    if (failed.refused && failed.at === session.revision) return null;
+    if (!failed.refused && (failed.view === view || carried.lost >= RULESET_SPEND_CARRY_TRIES)) return null;
+  }
+  return { key, send: preferred && !spends.choose, revision: session.revision, view };
+}
+
+/** The carry itself: at most one command per fight while it is in flight or landed, however often
+ *  this runs, and one that does not come back accepted is marked with how it failed. */
+export function runRulesetSpendCarry(
+  carry: ReturnType<typeof rulesetSpendCarry>,
+  carried: { current: RulesetSpendCarried | null },
+  send: (command: { type: "spends"; choose: true }, options: { onError: (error: unknown) => void }) => void,
+  /** Whether an error is the rules saying no, rather than the command being lost. */
+  refused: (error: unknown) => boolean,
+): void {
+  if (!carry) return;
+  const at = carried.current?.key === carry.key ? carried.current : null;
+  if (at && !at.failed) return;
+  const lost = at?.lost ?? 0;
+  carried.current = { key: carry.key, lost };
+  if (!carry.send) return;
+  send(
+    { type: "spends", choose: true },
+    {
+      onError: (error) => {
+        if (carried.current?.key !== carry.key) return;
+        carried.current = refused(error)
+          ? { key: carry.key, lost, failed: { refused: true, at: carry.revision } }
+          : { key: carry.key, lost: lost + 1, failed: { refused: false, view: carry.view } };
+      },
+    },
+  );
 }

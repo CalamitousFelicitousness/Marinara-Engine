@@ -30,7 +30,15 @@ import {
   type RulesetValueRef,
 } from "../../schemas/ruleset.schema.js";
 import type { TacticalGrid, TacticalGroundCell } from "../tactical-combat/types.js";
-import type { RulesetSymbolSpend, RulesetSymbolSpendBudget } from "./symbols.js";
+import {
+  pickRulesetSymbolSpends,
+  rulesetChosenSymbolSpends,
+  rulesetSymbolSpendChoices,
+  rulesetSymbolsLeft,
+  type RulesetSymbolSpend,
+  type RulesetSymbolSpendBudget,
+  type RulesetSymbolSpendPick,
+} from "./symbols.js";
 import { BOARD_PROP_ART } from "../world/board-pack.js";
 import { rulesetBoardEvents, rulesetRunBoardEvents, type RulesetBoardEventInput } from "./board-events.js";
 import {
@@ -108,6 +116,7 @@ import type {
   RulesetCombatSoak,
   RulesetCombatZone,
   RulesetEncounterState,
+  RulesetHeldAttack,
   RulesetStatBlockAction,
   RulesetStatBlock,
   RulesetTeleport,
@@ -1312,6 +1321,41 @@ export function rulesetSymbolSpendBudget(
       }
     },
   };
+}
+
+/** Where a held symbol throw (1.382) stands for the side `by` choosing its own spends: what it has
+ *  chosen so far, what it may still buy one more of, and the Engine's own pick for what it has not
+ *  spent. Read from the fight as it stands, the attacker's spends bought first, exactly as the throw
+ *  will be spent once the window closes. */
+export function rulesetSymbolSpendStanding(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  held: RulesetHeldAttack,
+  rollerId: string,
+  by: RulesetSymbolSpend["by"],
+  hit: boolean,
+): { chosen: RulesetSymbolSpendPick[]; choices: RulesetSymbolSpend[]; engine: RulesetSymbolSpendPick[] } | undefined {
+  const combat = definition.combat;
+  const symbols = held.roll.symbols;
+  const actor = rulesetCombatant(state, rollerId);
+  const target = rulesetCombatant(state, held.targetId);
+  if (!combat || !symbols || !actor || !target) return undefined;
+  const budget = rulesetSymbolSpendBudget(definition, state, actor, target);
+  const spends = held.roll.spends ?? {};
+  if (by === "target") {
+    if (spends.attacker) rulesetChosenSymbolSpends(combat, symbols, hit, "attacker", spends.attacker, budget);
+    else pickRulesetSymbolSpends(combat, symbols, hit, "attacker", budget);
+  }
+  const chosen = rulesetChosenSymbolSpends(combat, symbols, hit, by, spends[by] ?? [], budget);
+  const choices = rulesetSymbolSpendChoices(combat, symbols, hit, by, chosen, budget);
+  // The Engine buys the rest as it would have bought all of it, under each spend's `max` less what
+  // was already chosen of it.
+  const times = (spend: RulesetSymbolSpend) => chosen.find((pick) => pick.spend === spend)?.times ?? 0;
+  const engine = pickRulesetSymbolSpends(combat, rulesetSymbolsLeft(symbols, chosen), hit, by, {
+    copies: (spend) => Math.min(budget.copies(spend), spend.max - times(spend)),
+    take: (spend, count) => budget.take(spend, count),
+  });
+  return { chosen, choices, engine };
 }
 
 // ── Building what a combatant can do ──

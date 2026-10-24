@@ -37,6 +37,9 @@ import {
   rulesetSymbolDice,
   rulesetSymbolSpendBudget,
   rulesetSymbolOutcomes,
+  rulesetWindowOptions,
+  RULESET_ENGINE_SPENDS_OPTION,
+  RULESET_PASS_OPTION,
   type RulesetCombatEvent,
   type RulesetCombatRoller,
   type RulesetCombatantInput,
@@ -677,6 +680,199 @@ try {
       assert.match(getCapabilityPackageInstallIssue(manifest(381), ruleset as never) ?? "", issue, what);
       assert.equal(getCapabilityPackageInstallIssue(manifest(382), ruleset as never), null, what);
     }
+  }
+
+  // ── Choosing your own spends: the throw is held until its chooser has picked ──
+  {
+    const asked = (state: RulesetEncounterState, ids: string[]) => ({ ...structuredClone(state), askSpends: ids });
+    const answer = (state: RulesetEncounterState, actorId: string, optionId: string, ...faces: number[]) =>
+      applyRulesetCombatChoice(definition, state, { actorId, optionId, targetIds: [] }, dice(...faces));
+    const held = swing(asked(opened, ["ada"]), "ada", "brute", 4, 10, 8, 1, 4);
+    const window = held.state.window!;
+    assert.equal(window.kind, "spend");
+    assert.deepEqual(window.waiting, ["ada"]);
+    assert.equal(window.trigger.kind === "spend" && window.trigger.by, "attacker");
+    assert.equal(eventsOf(held.events, "damage").length, 0, "nothing lands while she chooses");
+    assert.equal(eventsOf(held.events, "symbol-spend").length, 0);
+    const menu = rulesetWindowOptions(definition, held.state, "ada");
+    assert.deepEqual(
+      menu.map((option) => [option.id, option.label, option.cost?.[0]?.amount ?? null]),
+      [
+        [RULESET_ENGINE_SPENDS_OPTION, "Cut deeper, Rally", null],
+        ["spend:cut", "Cut deeper", 2],
+        ["spend:rally", "Rally", 1],
+      ],
+    );
+    assert.deepEqual(rulesetWindowOptions(definition, held.state, "bo"), [], "only the chooser is asked");
+    assert.equal(firstOf(answer(held.state, "bo", "spend:rally").events, "refused").reason, "window-open");
+
+    // Rally, then Cut deeper with the two advantage left: nothing is left to buy, so it lands.
+    const rallied = answer(held.state, "ada", "spend:rally");
+    assert.equal(rallied.state.window?.id, window.id, "asked again while there is more to buy");
+    assert.deepEqual(
+      rulesetWindowOptions(definition, rallied.state, "ada").map((option) => option.id),
+      [RULESET_ENGINE_SPENDS_OPTION, "spend:cut"],
+      "Rally is bought once",
+    );
+    const cut = answer(rallied.state, "ada", "spend:cut", 4);
+    assert.equal(cut.state.window, undefined);
+    assert.deepEqual(
+      eventsOf(cut.events, "symbol-spend").map((spend) => [spend.spendId, spend.times]),
+      [
+        ["rally", 1],
+        ["cut", 1],
+      ],
+    );
+    assert.equal(firstOf(cut.events, "damage").amount, 9, "the same blow as the Engine's pick");
+
+    // Passing keeps what was chosen, here nothing: the advantage stays on the roll.
+    const passed = answer(held.state, "ada", RULESET_PASS_OPTION, 4);
+    assert.equal(passed.state.window, undefined);
+    assert.equal(eventsOf(passed.events, "symbol-spend").length, 0);
+    assert.equal(firstOf(passed.events, "damage").amount, 8);
+
+    // A spend Ada chose and then the Engine's pick for the rest.
+    const onlyRally = answer(held.state, "ada", "spend:rally");
+    const rest = rulesetWindowOptions(definition, onlyRally.state, "ada").find(
+      (option) => option.id === RULESET_ENGINE_SPENDS_OPTION,
+    )!;
+    assert.equal(rest.label, "Cut deeper");
+    const engine = answer(onlyRally.state, "ada", RULESET_ENGINE_SPENDS_OPTION, 4);
+    assert.deepEqual(
+      eventsOf(engine.events, "symbol-spend").map((spend) => spend.spendId),
+      ["rally", "cut"],
+    );
+    assert.equal(rulesetCombatant(engine.state, "bo")!.symbolDice?.boost, 1);
+
+    // The target's side: the Brute's miss leaves Ada three threat, and she spends only Slip.
+    const bruteHeld = swing(asked(bruteTurn, ["ada"]), "brute", "ada", 2, 1, 7, 8);
+    const spending = bruteHeld.state.window!;
+    assert.equal(spending.trigger.kind === "spend" && spending.trigger.by, "target");
+    assert.equal(spending.trigger.kind === "spend" && spending.trigger.hit, false);
+    assert.deepEqual(spending.waiting, ["ada"]);
+    const slipped = answer(bruteHeld.state, "ada", "spend:slip");
+    assert.ok(slipped.state.window, "two threat still buy Overreach");
+    const done = answer(slipped.state, "ada", RULESET_PASS_OPTION);
+    assert.equal(done.state.window, undefined);
+    assert.deepEqual(
+      eventsOf(done.events, "symbol-spend").map((spend) => [spend.actorId, spend.spendId]),
+      [["ada", "slip"]],
+    );
+    assert.equal(rulesetCombatant(done.state, "brute")!.tracks?.heat, undefined, "Overreach was left");
+
+    // Somebody who does not choose for themselves is never asked: the Brute's own spends are the
+    // Engine's, and a throw with nothing to buy holds nothing.
+    const notAsked = swing(asked(bruteTurn, ["brute"]), "brute", "ada", 2, 1, 7, 8);
+    assert.equal(notAsked.state.window, undefined);
+    const blank = swing(asked(opened, ["ada"]), "ada", "brute", 1, 1, 1, 1, 1, 1);
+    assert.equal(blank.state.window, undefined, "nothing to buy, nothing to ask");
+  }
+
+  // ── The director: the player turns choosing on for whoever they play, and answers the window ──
+  {
+    const [{ createCombatDirector }, director] = await Promise.all([
+      import("../../packages/server/src/services/game/combat-director.service.js"),
+      import("../../packages/server/src/services/game/ruleset-combat-director.service.js"),
+    ]);
+    const unit = (id: string, side: "player" | "enemy") => ({
+      id,
+      name: id[0]!.toUpperCase() + id.slice(1),
+      side,
+      hp: 12,
+      maxHp: 12,
+      attack: 5,
+      defense: 5,
+      speed: 5,
+      level: 1,
+      skills: [],
+    });
+    const state = createCombatDirector({
+      id: "spends",
+      anchor: "anchor",
+      style: "ruleset",
+      party: [unit("ada", "player"), unit("bo", "player")],
+      enemies: [unit("brute", "enemy")],
+      gm: false,
+      difficulty: "normal",
+      seed: 1,
+    } as never);
+    state.rulesetFight = {
+      encounter: structuredClone(opened),
+      eventSeq: 0,
+      events: [],
+      controllers: { bo: "ai" },
+      bosses: [],
+      adjustments: [],
+    };
+    director.syncRulesetCombatants(definition, state);
+    state.stage = director.rulesetDirectorStage(state);
+    const fight = state.rulesetFight!;
+    assert.deepEqual(director.directedRulesetView(definition, state)?.spends, { choose: false });
+    assert.ok(director.commandRulesetCombatDirector(definition, state, { type: "spends", choose: true }, "manual").ok);
+    assert.deepEqual(fight.encounter.askSpends, ["ada"], "only whoever the player plays is asked");
+    assert.deepEqual(director.directedRulesetView(definition, state)?.spends, { choose: true });
+    assert.ok(
+      director.commandRulesetCombatDirector(
+        definition,
+        state,
+        { type: "control", unitId: "bo", controller: "manual" },
+        "manual",
+      ).ok,
+    );
+    assert.deepEqual(fight.encounter.askSpends, ["ada", "bo"], "and follows who they take over");
+
+    // Ada's swing is held for her; the view carries the spend window and its menu.
+    fight.encounter = swing(fight.encounter, "ada", "brute", 4, 10, 8, 1, 4).state;
+    state.stage = director.rulesetDirectorStage(state);
+    assert.equal(state.stage, "action");
+    const view = director.directedRulesetView(definition, state)!;
+    assert.equal(view.window?.kind, "spend");
+    assert.deepEqual(view.window?.spend, { by: "attacker", hit: true });
+    assert.deepEqual(
+      view.options?.map((option) => option.id),
+      [RULESET_ENGINE_SPENDS_OPTION, "spend:cut", "spend:rally"],
+    );
+    // Handed to the Engine while she is asked, she gets the Engine's pick.
+    const handed = structuredClone(state);
+    assert.ok(
+      director.commandRulesetCombatDirector(
+        definition,
+        handed,
+        { type: "control", unitId: "ada", controller: "ai" },
+        "manual",
+      ).ok,
+    );
+    assert.deepEqual(handed.rulesetFight!.encounter.askSpends, ["bo"]);
+    assert.ok(director.commandRulesetCombatDirector(definition, handed, { type: "continue" }, "manual").ok);
+    assert.deepEqual(
+      handed
+        .rulesetFight!.events.flatMap(({ event }) => (event.type === "symbol-spend" ? [event.spendId] : []))
+        .slice(0, 2),
+      ["cut", "rally"],
+    );
+    assert.ok(
+      director.commandRulesetCombatDirector(
+        definition,
+        state,
+        { type: "ruleset", optionId: RULESET_ENGINE_SPENDS_OPTION, targetIds: [] },
+        "manual",
+      ).ok,
+    );
+    assert.equal(fight.encounter.window, undefined);
+    assert.ok(fight.events.some(({ event }) => event.type === "symbol-spend" && event.spendId === "cut"));
+
+    assert.ok(director.commandRulesetCombatDirector(definition, state, { type: "spends", choose: false }, "manual").ok);
+    assert.equal(fight.encounter.askSpends, undefined);
+    // A fight thrown in summed dice has nothing to choose.
+    const summed = parseRulesetDefinition(ember);
+    assert.ok(summed.ok);
+    const refused = director.commandRulesetCombatDirector(
+      summed.definition,
+      state,
+      { type: "spends", choose: true },
+      "manual",
+    );
+    assert.ok(!refused.ok && refused.code === "ruleset_combat_no_spends");
   }
 
   console.info("game ruleset combat symbol pool regressions passed.");

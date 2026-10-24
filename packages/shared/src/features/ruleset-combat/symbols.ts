@@ -12,7 +12,7 @@
  */
 import type { RulesetCombat, RulesetDefinition } from "../../schemas/ruleset.schema.js";
 import { rollSymbolPoolCheck } from "../rulesets/sheet-math.js";
-import type { RulesetCombatRoller, RulesetCombatRollMode } from "./types.js";
+import type { RulesetCombatRoller, RulesetCombatRollMode, RulesetSymbolSpendChoice } from "./types.js";
 
 /** Whether this fight throws the ruleset's symbol dice. */
 export function rulesetCombatIsSymbol(combat: RulesetCombat): boolean {
@@ -368,6 +368,69 @@ export function pickRulesetSymbolSpends(
   const picks: RulesetSymbolSpendPick[] = [...bought].map(([spend, times]) => ({ spend, times }));
   return picks.sort(
     (a, b) => (combat.symbols?.spends ?? []).indexOf(a.spend) - (combat.symbols?.spends ?? []).indexOf(b.spend),
+  );
+}
+
+/** What a side still holds of a throw's symbols once its own `chosen` spends are paid for. */
+export function rulesetSymbolsLeft(
+  symbols: Readonly<Record<string, number>>,
+  chosen: readonly RulesetSymbolSpendPick[],
+): Record<string, number> {
+  const left: Record<string, number> = { ...symbols };
+  for (const { spend, times } of chosen) left[spend.symbol] = (left[spend.symbol] ?? 0) - spend.cost * times;
+  return left;
+}
+
+/** The spends somebody choosing for themselves (1.382) is held to: what they named, in the order
+ *  they named it, each bought only as often as the symbols pay for it, its `max` allows and `budget`
+ *  says it lands. Taken from `budget` as it goes, exactly as the Engine's own pick is. */
+export function rulesetChosenSymbolSpends(
+  combat: RulesetCombat,
+  symbols: Readonly<Record<string, number>>,
+  hit: boolean,
+  by: RulesetSymbolSpend["by"],
+  chosen: readonly RulesetSymbolSpendChoice[],
+  budget: RulesetSymbolSpendBudget = RULESET_SYMBOL_SPEND_UNLIMITED,
+): RulesetSymbolSpendPick[] {
+  const left: Record<string, number> = { ...symbols };
+  const bought = new Map<RulesetSymbolSpend, number>();
+  for (const choice of chosen) {
+    const spend = (combat.symbols?.spends ?? []).find((one) => one.id === choice.spend && one.by === by);
+    if (!spend || (hit ? spend.when === "miss" : spend.when === "hit")) continue;
+    const count = Math.min(
+      Math.floor(choice.times),
+      spend.max - (bought.get(spend) ?? 0),
+      budget.copies(spend),
+      Math.floor((left[spend.symbol] ?? 0) / spend.cost),
+    );
+    if (count <= 0) continue;
+    budget.take(spend, count);
+    bought.set(spend, (bought.get(spend) ?? 0) + count);
+    left[spend.symbol] = (left[spend.symbol] ?? 0) - count * spend.cost;
+  }
+  return [...bought].map(([spend, times]) => ({ spend, times }));
+}
+
+/** The spends a side choosing for itself may buy one more of (1.382), after `chosen`: its own, for
+ *  this outcome, paid for by what is left, under its `max`, and landing by `budget` as it stands once
+ *  `chosen` has been taken from it. A spend worth nothing to the Engine may still be chosen. */
+export function rulesetSymbolSpendChoices(
+  combat: RulesetCombat,
+  symbols: Readonly<Record<string, number>>,
+  hit: boolean,
+  by: RulesetSymbolSpend["by"],
+  chosen: readonly RulesetSymbolSpendPick[],
+  budget: RulesetSymbolSpendBudget = RULESET_SYMBOL_SPEND_UNLIMITED,
+): RulesetSymbolSpend[] {
+  const left = rulesetSymbolsLeft(symbols, chosen);
+  const times = (spend: RulesetSymbolSpend) => chosen.find((pick) => pick.spend === spend)?.times ?? 0;
+  return (combat.symbols?.spends ?? []).filter(
+    (spend) =>
+      spend.by === by &&
+      (hit ? spend.when !== "miss" : spend.when !== "hit") &&
+      (left[spend.symbol] ?? 0) >= spend.cost &&
+      times(spend) < spend.max &&
+      budget.copies(spend) > 0,
   );
 }
 

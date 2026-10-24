@@ -1841,6 +1841,7 @@ function rulesetReasonText(reason: DirectedRulesetReason, names: RulesetCombatNa
     case "focus":
     case "mostInNeed":
     case "pressCaster":
+    case "stops":
       return say(reason.why, { target: target(reason.targetId) });
     case "walked":
       return say("walked", { distance: names.distance(reason.cells) });

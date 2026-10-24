@@ -274,6 +274,8 @@ export type DirectedRulesetEvent =
  *   - `keptBack`: an item's healing it weighed and kept for later (`label`, for `targetId`).
  *   - `routed`: its morale broke, so its turn is getting away off the field.
  *   - `liesInWait`: it keeps still, hidden where it can, until its prey comes to it.
+ *   - `stops`: an answer that stops what `targetId` was about to do (a Counterspell).
+ *   - `wards`: an answer that turns aside what was coming at it (a Shield, an Uncanny Dodge).
  *   - `spread`: it stopped apart from its own side rather than nearest, out of an opponent's blast.
  *   - `pressCaster`: nothing to do yet, so it closed on the one dropping areas on its side from out
  *     of reach.
@@ -292,11 +294,12 @@ export type DirectedRulesetReason =
       targetId?: string;
     }
   | { why: "pressCaster"; targetId: string }
+  | { why: "stops"; targetId?: string }
   | { why: "risk" | "cost" }
   | { why: "walked"; cells: number }
   | { why: "approach"; targetId?: string; sprinted?: true }
   | { why: "driven" }
-  | { why: "nothingWorth" | "noWay" | "holding" | "leavesHarm" | "spread" | "routed" | "liesInWait" }
+  | { why: "nothingWorth" | "noWay" | "holding" | "leavesHarm" | "spread" | "routed" | "liesInWait" | "wards" }
   | { why: "keptBack"; label: string; targetId?: string };
 /** One option of the legal menu, with the combatants it may be pointed at right now. */
 export interface DirectedRulesetOption extends RulesetCombatOption {

@@ -158,6 +158,7 @@ import {
   type RulesetCombatAction,
   type RulesetCombatApplies,
   type RulesetCombatChoice,
+  type RulesetWindowTrigger,
   type RulesetCombatEvent,
   type RulesetCombatOption,
   type RulesetCombatant,
@@ -4504,6 +4505,26 @@ function rulesetPickReasons(
   return reasons;
 }
 
+/**
+ * An answer that harms nobody itself, to something about to happen or a hit about to land, is worth
+ * what it stops, which the score reads as the harm or the healing kept: said as what it is (laptop
+ * playtest 2026-10-23: a Shield logged as healing its target, a Counterspell as some damage to the
+ * caster). One aimed at the answerer itself (a Shield, an Uncanny Dodge) wards it off; one aimed at
+ * the source (a Counterspell) stops it. What it risked or spent is still said.
+ */
+export function rulesetWindowReasons(
+  trigger: RulesetWindowTrigger,
+  candidate: CombatAiCandidate<RulesetCandidate>,
+  reasons: DirectedRulesetReason[],
+): DirectedRulesetReason[] {
+  if (trigger.kind !== "aimed" && trigger.kind !== "used" && trigger.kind !== "hit") return reasons;
+  const option = candidate.action.option;
+  if ((option.forecast?.averageDamage ?? 0) > 0 || option.heals) return reasons;
+  const kept = reasons.filter((reason) => reason.why === "risk" || reason.why === "cost");
+  const wards = trigger.kind === "hit" || option.targets.side === "self";
+  return [...kept, wards ? { why: "wards" } : { why: "stops", targetId: trigger.sourceId }];
+}
+
 /** The reasons for a step just taken, on the log after it. Nothing when there is nothing to say. */
 function recordReasons(fight: RulesetFightState, actorId: string, reasons: DirectedRulesetReason[]): void {
   if (reasons.length) record(fight, [{ type: "reasoning", actorId, reasons }]);
@@ -5798,7 +5819,15 @@ function answerRulesetWindows(
         window: window.id,
       });
     } else if (ranked && choice.optionId !== RULESET_PASS_OPTION) {
-      recordReasons(fight, asking, rulesetPickReasons(ranked.candidate, ranked.parts, undefined, fight.encounter));
+      recordReasons(
+        fight,
+        asking,
+        rulesetWindowReasons(
+          window.trigger,
+          ranked.candidate,
+          rulesetPickReasons(ranked.candidate, ranked.parts, undefined, fight.encounter),
+        ),
+      );
     }
   }
 }

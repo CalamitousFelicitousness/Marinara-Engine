@@ -7436,7 +7436,25 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
   app.post("/create", (req, reply) => executeCreateGame(req.body as CreateGameRequest, reply));
 
   // ── POST /game/setup ──
+  // One world created at a time for a game (laptop playtest 2026-10-24): its setup open in two browser
+  // tabs could press Create world in both, and the second is refused while the first runs.
+  const setupsRunning = new Set<string>();
   const executeSetupGame = async (input: SetupGameRequest, reply: GenerationOutput, signal?: AbortSignal) => {
+    const chatId = (input as { chatId?: unknown } | null)?.chatId;
+    if (typeof chatId !== "string") return runSetupGame(input, reply, signal);
+    if (setupsRunning.has(chatId))
+      return rejectGenerationOutput(reply, 409, {
+        error: "This game's world is already being created, perhaps in another tab. Wait for it to finish.",
+        code: "setup_running",
+      });
+    setupsRunning.add(chatId);
+    try {
+      return await runSetupGame(input, reply, signal);
+    } finally {
+      setupsRunning.delete(chatId);
+    }
+  };
+  const runSetupGame = async (input: SetupGameRequest, reply: GenerationOutput, signal?: AbortSignal) => {
     logger.info("[game/setup] Received request");
     const { chatId, connectionId, preferences, streaming, debugMode, promptPresetId } = setupSchema.parse(input);
     const requestDebug = debugMode === true;

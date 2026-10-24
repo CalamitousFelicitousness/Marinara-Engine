@@ -1,7 +1,8 @@
 /**
  * Why an answer out of turn was taken (laptop playtest 2026-10-23): one that harms nobody itself is
- * worth what it stops, which the score reads as harm or healing kept. A Counterspell says it stops
- * what its caster was about to do, a Shield that it turns the hit aside, and neither says it heals
+ * worth what it stops, which the score reads as harm or healing kept. A Counterspell (one that cancels,
+ * whomever it is aimed at) says it stops what its caster was about to do, a Shield that it turns the
+ * hit aside, and neither says it heals
  * or harms. One that harms (a Hellish Rebuke, a blow when somebody walks off) keeps its own reasons.
  */
 import assert from "node:assert/strict";
@@ -24,8 +25,29 @@ try {
     { kind: "used", sourceId: "mage", optionId: "fireball", label: "Fireball" },
     candidate({}),
     [{ why: "risk" }, { why: "damage", targetId: "mage", strength: "some" }],
+    true,
   );
   assert.deepEqual(counter, [{ why: "risk" }, { why: "stops", targetId: "mage" }], "a Counterspell stops the cast");
+  // The SRD's Counterspell is aimed at its own caster: what it does, not whom it names, says it stops.
+  assert.deepEqual(
+    rulesetWindowReasons(
+      { kind: "used", sourceId: "mage", optionId: "fireball", label: "Fireball" },
+      candidate({ targets: { side: "self", count: 0 } }),
+      [{ why: "cost" }],
+      true,
+    ),
+    [{ why: "cost" }, { why: "stops", targetId: "mage" }],
+    "a Counterspell aimed at its own caster still stops the cast",
+  );
+  assert.deepEqual(
+    rulesetWindowReasons(
+      { kind: "aimed", sourceId: "mage", optionId: "missile", label: "Magic Missile", targetIds: ["ada"] },
+      candidate({ targets: { side: "self", count: 0 } }),
+      [{ why: "healing", targetId: "ada" }],
+    ),
+    [{ why: "wards" }],
+    "a Shield against a Magic Missile wards it off",
+  );
   const shield = rulesetWindowReasons(
     { kind: "hit", sourceId: "orc", optionId: "axe", label: "Axe", total: 15, defense: 13 },
     candidate({ targets: { side: "self", count: 0 } }),

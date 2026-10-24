@@ -39,6 +39,28 @@ export function rulesetCombatantMind(
 }
 
 /**
+ * Whether it thinks ahead about an opponent's blast (combat AI S1, 2026-10-24): keeping as far from
+ * its own side as the blast reaches, no farther, when it deploys and as it closes in. A tactical or a
+ * genius one always does, and one nothing gives a mind as it always did; a cunning one only
+ * sometimes, about one in three, fixed for the fight by its seed and the combatant's id, so a replay
+ * plays the same; an animal or a thing that never thinks never does.
+ */
+export function rulesetCombatantForesees(
+  definition: RulesetDefinition,
+  combatant: RulesetCombatant,
+  seed: number,
+): boolean {
+  const mind = rulesetCombatantMind(definition, combatant);
+  if (mind === "mindless" || mind === "instinct") return false;
+  if (mind !== "cunning") return true;
+  // FNV-1a over the seed and the id: the same goblin in the same fight always decides the same.
+  let hash = 0x811c9dc5 ^ (seed >>> 0);
+  for (const char of combatant.id) hash = Math.imul(hash ^ char.charCodeAt(0), 0x01000193);
+  hash = Math.imul(hash ^ (hash >>> 15), 0x2c1b3c6d);
+  return ((hash ^ (hash >>> 12)) >>> 0) % 3 === 0;
+}
+
+/**
  * How a combatant goes about a fight (Capability API 1.747), as its own data says: the ruleset's
  * `combat.behavior`, its type's over that, and its stat block's over both, each key on its own.
  * Undefined when nothing says.

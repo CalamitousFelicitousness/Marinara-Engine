@@ -12,6 +12,7 @@ import {
   createRulesetEncounter,
   parseRulesetDefinition,
   rulesetCombatant,
+  rulesetCombatantForesees,
   rulesetGap,
   rulesetSheetBuildSchema,
   type RulesetDefinition,
@@ -53,10 +54,10 @@ try {
   const club = { id: "club", name: "Club", budget: "action", toHit: 5, damage: { count: 1, sides: 4, flat: 0 } };
   const grid = (): TacticalGrid =>
     ({ width: 20, height: 14, tiles: Array.from({ length: 14 }, () => Array(20).fill("plains")) }) as TacticalGrid;
-  const fight = (actions: unknown[], hero?: RulesetStatBlock) => {
+  const fight = (actions: unknown[], hero?: RulesetStatBlock, seed = 1) => {
     const state = createRulesetEncounter({
       definition,
-      seed: 1,
+      seed,
       roller: () => 10,
       combatants: [
         hero
@@ -130,9 +131,24 @@ try {
     mind: "cunning",
     actions: [club],
   } as unknown as RulesetStatBlock;
-  assert.ok(walk(fight([club, blast], cunning)).friend > 4, "a cunning one still spreads");
+  // A cunning one only sometimes thinks to (2026-10-24, Alyssa): in the fights its seed says it does,
+  // it keeps apart as a tactician would; in the rest it closes in as a wolf does.
+  const thinks = (seed: number) =>
+    rulesetCombatantForesees(definition, who(fight([club], cunning, seed), "hero"), seed);
+  const seeds = Array.from({ length: 30 }, (_, i) => i + 1);
+  const yes = seeds.find(thinks);
+  const no = seeds.find((seed) => !thinks(seed));
+  assert.ok(yes !== undefined && no !== undefined, "some fights it thinks of it, some it does not");
+  const share = seeds.filter(thinks).length;
+  assert.ok(share >= 5 && share <= 15, `about a third of them: ${share} of 30`);
+  assert.ok(walk(fight([club, blast], cunning, yes)).friend > 4, "a cunning one that thinks of it spreads");
+  assert.deepEqual(
+    walk(fight([club, blast], cunning, no)).to,
+    walk(fight([club], cunning, no)).to,
+    "one that does not ignores the blast",
+  );
   console.info(
-    "Spread under a blast: a walk closes in as near, out of the blast's size of a friend; a beast or a mindless thing does not think to.",
+    "Spread under a blast: a walk closes in as near, out of the blast's size of a friend; a beast or a mindless thing does not think to, a cunning one only sometimes.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

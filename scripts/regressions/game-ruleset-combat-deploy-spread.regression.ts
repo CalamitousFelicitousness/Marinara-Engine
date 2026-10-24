@@ -91,6 +91,31 @@ try {
     Math.max(...cells.map((centre) => cells.filter((one) => gap(one, centre) <= radius).length));
 
   {
+    // Nobody on the party's side is refused in words (Kenhito prep K3).
+    const definition = withMage([slam]);
+    const empty = createRulesetFight({
+      definition,
+      seed: 5,
+      positioned: true,
+      party: [],
+      enemies: [
+        {
+          id: "mage",
+          name: "Mage",
+          creature: `${(definition.catalogs ?? []).find((one) => one.holds === "creatures")!.id}/mage`,
+        },
+      ],
+      cards: [],
+      playerName: null,
+      live: {},
+      items: () => [],
+      partyCatalogs: {},
+      bestiary: {},
+    } as never);
+    assert.deepEqual(empty, { ok: false, error: "This fight has nobody on the party's side." });
+  }
+
+  {
     const together = deploy(withMage([slam]));
     assert.equal(closest(together), 1, `against a slam the party starts together: ${JSON.stringify(together)}`);
     const spread = deploy(withMage([slam, blast]));

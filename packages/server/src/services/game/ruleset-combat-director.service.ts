@@ -411,7 +411,10 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
       ...(input.holders ? { holder: input.holders(member.name) } : {}),
     });
   }
-  if (input.party.length > 0 && !combatants.some((one) => one.side === "party")) {
+  // A fight with nobody on the party's side has nobody to play it for (Kenhito prep K3: it failed
+  // later on a raw validation error), so it is refused here, in words.
+  if (input.party.length === 0) return { ok: false, error: "This fight has nobody on the party's side." };
+  if (!combatants.some((one) => one.side === "party")) {
     return { ok: false, error: "Nobody in this party has a ruleset sheet, so this fight cannot read their numbers." };
   }
 

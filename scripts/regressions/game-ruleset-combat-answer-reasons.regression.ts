@@ -52,7 +52,9 @@ try {
     walkOff,
     "a blow at one walking off keeps its reasons",
   );
-  console.log("Answer reasons: a Counterspell stops the cast, a Shield turns the hit aside, a harming answer keeps its own.");
+  console.log(
+    "Answer reasons: a Counterspell stops the cast, a Shield turns the hit aside, a harming answer keeps its own.",
+  );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

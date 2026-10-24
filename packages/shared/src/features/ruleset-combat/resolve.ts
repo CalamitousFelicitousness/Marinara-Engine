@@ -13160,18 +13160,22 @@ function walkOn(ctx: RulesetCombatContext, actor: RulesetCombatant, resume: Rule
     if (legendary.kept.modeLeft === undefined) delete actor.modeLeft;
     else actor.modeLeft = legendary.kept.modeLeft;
   }
-  ctx.events.push({
-    type: "move",
-    actorId: actor.id,
-    from: resume.from,
-    to: { ...at },
-    path: walked,
-    cost: spent,
-    left: actor.movementLeft ?? 0,
-    ...(stopped ? { stopped: true } : {}),
-    ...(resume.jump ? { jumped: true as const } : {}),
-    ...(broughtAlong.length ? { dragged: broughtAlong } : {}),
-  });
+  // Slain before its first step (an opportunity attack as it set off): no walk of nothing to tell
+  // (re-test 2026-10-24: a zombie slain by Pip's rapier "moved" from its square to its square). One
+  // only knocked down is still told it stopped where it was struck.
+  if (walked.length > 0 || !actor.defeated)
+    ctx.events.push({
+      type: "move",
+      actorId: actor.id,
+      from: resume.from,
+      to: { ...at },
+      path: walked,
+      cost: spent,
+      left: actor.movementLeft ?? 0,
+      ...(stopped ? { stopped: true } : {}),
+      ...(resume.jump ? { jumped: true as const } : {}),
+      ...(broughtAlong.length ? { dragged: broughtAlong } : {}),
+    });
   if (ashore) ctx.events.push({ type: "ashore", actorId: actor.id, to: { ...ashore } });
   // Landed on hard going (1.483): the check, or its condition. 5e's DC 10 Acrobatics, or prone.
   const landing = ctx.combat.jumping?.hardLanding;
@@ -18875,6 +18879,9 @@ function rollAtTurnStart(ctx: RulesetCombatContext, actor: RulesetCombatant): vo
  */
 function moraleTurn(ctx: RulesetCombatContext, actor: RulesetCombatant): boolean {
   if (!actor.block || actor.calledBy !== undefined || actor.object || actor.defeated) return false;
+  // The party's own nerve is its players' to play, whoever runs a turn of theirs (Kenhito AI K4: a
+  // player's own fighter rolled morale, and so did the companions beside him).
+  if (actor.side === "party") return false;
   if (!rulesetCombatStanding(actor)) return false;
   if (actor.routed) {
     if (!rulesetAtBoardEdge(ctx.state, actor)) return false;

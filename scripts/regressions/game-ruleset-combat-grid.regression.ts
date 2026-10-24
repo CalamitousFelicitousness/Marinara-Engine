@@ -1748,6 +1748,29 @@ const cellsOf = (cells: Array<{ x: number; y: number }>) =>
   assert.deepEqual(moved.to, { x: 1, y: 1 }, "they never left the cell they were struck in");
   assert.deepEqual(moved.path, []);
   assert.equal(moved.cost, 0, "and none of the allowance was spent");
+  // Slain there instead, it tells of no walk at all (re-test 2026-10-24: a zombie "moved" from its
+  // square to its square).
+  {
+    const imp: RulesetCombatantInput = {
+      id: "imp",
+      name: "Imp",
+      side: "enemy",
+      block: { health: 1, defense: 10, initiativeModifier: 0, speed: 30, actions: [] } as never,
+    };
+    const slayer = { ...snag(), side: "party" as const };
+    const slain = walkThrough(
+      fiveE,
+      fight(fiveE, [imp, slayer], [18, 9], {
+        grid: open(6, 3),
+        placements: { imp: { x: 1, y: 1 }, snag: { x: 0, y: 1 } },
+      }),
+      { actorId: "imp", optionId: RULESET_MOVE_OPTION, targetIds: [], to: { x: 5, y: 1 } },
+      18,
+      6,
+    );
+    assert.ok(who(slain.state, "imp").defeated, "the imp is slain as it sets off");
+    assert.equal(eventsOf(slain.events, "move").length, 0, "and walks nowhere");
+  }
   assert.equal(who(step.state, "glass").down, true);
   assert.equal(who(step.state, "glass").x, 1);
   // Said once. The window path can end a fight in more than one place, and a log that printed two

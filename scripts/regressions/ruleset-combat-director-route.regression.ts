@@ -263,6 +263,12 @@ try {
       unit("hound", "Cinder Hound", "enemy"),
     ],
   };
+  // Nobody on the party's side, or nobody to fight, is refused in plain words (Kenhito prep K3).
+  const empty = await post("/combat/start", { ...body, party: [] });
+  assert.equal(empty.statusCode, 400);
+  assert.equal(empty.json().error, "This fight has nobody on the party's side.");
+  const none = await post("/combat/start", { ...body, enemies: [] });
+  assert.equal(none.json().error, "This fight has nobody to fight.");
   const start = await post("/combat/start", body);
   assert.equal(start.statusCode, 200, start.body);
   let s = start.json().session as DirectedCombatView;

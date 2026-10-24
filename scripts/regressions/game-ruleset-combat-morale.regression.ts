@@ -325,6 +325,12 @@ try {
         JSON.stringify(extra),
       );
     }
+    // One of the party's own never loses heart on its own, whoever plays it (Kenhito AI K4).
+    const hurt = () => fight(definition, { gob: { block: block(), at: { x: 2, y: 1 }, health: 6 } });
+    assert.ok(morale(endTurn(definition, hurt(), 1).events).length > 0, "a hurt goblin of theirs is asked");
+    const ours = hurt();
+    rulesetCombatant(ours, "gob")!.side = "party";
+    assert.equal(morale(endTurn(definition, ours, 1).events).length, 0, "one of the party's never is");
   }
 
   // ── The director runs a broken creature for the edge ──

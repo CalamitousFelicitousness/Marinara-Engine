@@ -3749,6 +3749,9 @@ function applyConditionId(
   } = {},
 ): void {
   const putter = extra.sourceId ? rulesetCombatant(ctx.state, extra.sourceId) : undefined;
+  // Nothing anybody does puts a condition on the fallen: a body is not chilled. One only sent away
+  // (banished, hurled) is still somebody.
+  if (target.defeated && !target.away && putter && putter.id !== target.id) return;
   // Only on a roll (1.630): Wish lost, 33 in 100.
   if (applies.chance !== undefined && ctx.roll(100) > applies.chance) return;
   // Put on by an action that never hinders them (1.688): a web's restraint, on a spider.
@@ -5015,7 +5018,9 @@ function tickConditionsNow(ctx: RulesetCombatContext, actor: RulesetCombatant, a
   if (at === "turn-start") unheardSources(ctx, actor);
   // What this one put on others that runs on their turns.
   for (const holder of ctx.state.combatants) {
-    if (holder.id === actor.id) continue;
+    // The fallen are left as they fell: what is on them neither harms, is saved against nor runs out.
+    // One only sent away still counts the time until it comes back.
+    if (holder.id === actor.id || (holder.defeated && !holder.away)) continue;
     // Held out of time (1.631): nothing else on them runs, but what holds them there.
     const stasis = rulesetStasis(ctx.definition, holder, ctx.state);
     for (const entry of [...holder.tracked]) {

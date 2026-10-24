@@ -22,6 +22,7 @@ import { fileURLToPath } from "node:url";
 import {
   applyRulesetCombatChoice,
   createRulesetEncounter,
+  currentRulesetActor,
   parseRulesetDefinition,
   rulesetBonusDice,
   rulesetCombatant,
@@ -646,6 +647,21 @@ try {
       { condition: "marked", rounds: 2, endsAfter: "attacked", source: "snag", action: ["brand", "Brand"] },
       "the new one, with its whole clock",
     );
+
+    // A blow that kills marks nothing: a body gains no condition, and one already on it never runs
+    // out (playtest 2026-10-23: Chilled put on a dead foe, then logged as ending).
+    {
+      const caster = { ...snag(), side: "party" } as RulesetCombatantInput;
+      const frail = { ...snag(), id: "rag", name: "Rag" } as RulesetCombatantInput & { block: RulesetStatBlock };
+      frail.block = { ...frail.block, health: 2 };
+      let state = fight(fiveE, [caster, frail, brenna()]);
+      while (currentRulesetActor(state)?.id !== "snag")
+        state = endTurn(fiveE, state, currentRulesetActor(state)!.id).state;
+      const killed = act(fiveE, state, { actorId: "snag", optionId: "brand", targetIds: ["rag"] }, 17, 4);
+      assert.ok(rulesetCombatant(killed.state, "rag")!.defeated, "the brand kills it");
+      assert.deepEqual(conditionsOf(killed.state, "rag"), [], "and leaves no mark on the body");
+      assert.ok(!eventsOf(killed.events, "condition").some((event) => event.targetId === "rag"));
+    }
 
     // Her own next save spends Steadied, whatever it was for.
     const jinx = act(fiveE, snagTurn, { actorId: "snag", optionId: "jinx", targetIds: ["brenna"] }, 5);

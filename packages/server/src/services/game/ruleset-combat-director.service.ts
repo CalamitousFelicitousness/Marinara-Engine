@@ -3765,7 +3765,9 @@ function rulesetCandidatesFrom(
     for (const candidate of candidates) {
       const id = candidate.action.option.id;
       const holds = actor.actions.find((one) => one.id === id)?.concentration;
-      if (holds && id !== actor.concentrating.actionId) candidate.cost = (candidate.cost ?? 0) + letGo;
+      // Weighed as the harm it gives up, not as a price: a caster's prices count for less than
+      // what it does, and eight creatures went for a Hold Person (cloud class re-test round 2).
+      if (holds && id !== actor.concentrating.actionId) candidate.damage = (candidate.damage ?? 0) - letGo;
     }
   }
   // A legendary action that moves after what it does (1.285): on to where a teleport would go, or
@@ -4158,7 +4160,10 @@ export function rulesetEffectWorth(
       }
     }
     if (rulesetBreaksOnHarm(rule)) each *= 0.6;
-    worth += Math.min(1.2, each) * rulesetDurationWorth(applied.duration);
+    // Ended by its holder's next attack (a Potion of Invisibility): one turn of it, whatever it says
+    // (cloud class re-test round 2: drunk on the first turn beside its foes).
+    const once = !foe && !!applied.endsWhenHolder?.attacks;
+    worth += Math.min(1.2, each) * rulesetDurationWorth(once ? { rounds: 1 } : applied.duration);
   }
   if (worth === undefined) return undefined;
   const lands = action.save && foe ? rulesetFailChance(definition, combat, target, action.save) : 1;
@@ -4482,8 +4487,8 @@ function rulesetBoostWorth(
     // disadvantage, for as long as it holds; once only, where its next attack ends it.
     const once = !!applied.endsWhenHolder?.attacks;
     if (rule.unseen) {
-      adds += 0.2 * own * (once ? 0.5 : 1);
-      keeps += 0.2 * struck * (once ? 0.5 : 1);
+      adds += 0.2 * own;
+      keeps += 0.2 * struck;
     }
     if (effects.includes("own-attacks-advantage")) adds += 0.2 * own;
     if (effects.includes("attacks-against-disadvantage")) keeps += 0.2 * struck;
@@ -4498,7 +4503,9 @@ function rulesetBoostWorth(
       );
       if (dealt) keeps += 0.5 * struck;
     }
-    const turns = rulesetTurnsHeld(applied.duration);
+    // Ended by their next attack (a Potion of Invisibility), it lasts their one blow and the foes'
+    // turns before it, whatever it says (cloud class re-test round 2: drunk on the first turn).
+    const turns = once ? 1 : rulesetTurnsHeld(applied.duration);
     // Kept off only once a foe can get at them: a turn of it goes by first with none in a walk.
     const kept = Math.max(0, turns - (near ? 0 : 1));
     worth += (turns * adds) / Math.max(1, foeMean) + (kept * keeps) / Math.max(1, ownMean);

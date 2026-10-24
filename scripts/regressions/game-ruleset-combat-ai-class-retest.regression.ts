@@ -11,7 +11,8 @@
  *   - A self-buff whose condition leaves a level of a track as it ends (Frenzy's exhaustion) costs more
  *     than the same one without.
  *   - An area that lowers its holders' defense is never cast over its own side as support (Slow).
- *   - A summons held is not let go for a lesser held spell.
+ *   - A summons held is not let go for a lesser held spell, nor for a held blow worth less than it.
+ *   - A potion that ends on its drinker's next attack is worth one blow, not an hour of them.
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -121,6 +122,7 @@ try {
     { id: "warded", label: "Warded" },
     { id: "frenzied", label: "Frenzied" },
     { id: "fierce", label: "Fierce" },
+    { id: "unseen", label: "Unseen" },
   );
   doc.combat.conditions.push(
     {
@@ -138,6 +140,8 @@ try {
       onEnd: { tracks: [{ track: "exhaustion", by: 1 }] },
     },
     { condition: "fierce", effects: [], modifiers: [{ to: "damage", flat: 4 }] },
+    // 5e's invisible as the SRD data writes it: not seen.
+    { condition: "unseen", unseen: {} },
   );
   const parsed = parseRulesetDefinition(doc);
   assert.ok(parsed.ok, parsed.ok ? "" : parsed.issues.join("; "));
@@ -436,10 +440,50 @@ try {
       rulesetCombatOptions(definition, next, "mira").some((one) => one.id === "ward"),
       "the ward was on offer",
     );
+    // Nor for a held blow worth less than the wolves, though more than the price a caster's
+    // weights put on a spell (cloud class re-test round 2: eight creatures for a Hold Person).
+    const storm = {
+      id: "storm",
+      label: "Storm",
+      kind: "attack",
+      budget: "action",
+      concentration: true,
+      autoHit: true,
+      targets: { side: "enemy", count: 1 },
+      range: 120,
+      damage: { count: 0, sides: 0, flat: 18, type: "lightning" },
+    } as unknown as RulesetCombatAction;
+    rulesetCombatant(next, "mira")!.actions.push(storm);
+    assert.notEqual(
+      pickRulesetChoice(definition, scene.state, next, "mira")?.option.id,
+      "storm",
+      "the wolves are kept",
+    );
+  }
+
+  // ── A potion that ends on the next attack: worth one blow, so a fighter beside its foe strikes ──
+  {
+    const potion = {
+      id: "potion",
+      label: "Potion of Invisibility",
+      kind: "buff",
+      budget: "action",
+      targets: { side: "self", count: 0 },
+      applies: [{ condition: "unseen", duration: { rounds: 600 }, endsWhenHolder: { attacks: true } }],
+      itemUse: { consumes: true },
+    } as unknown as RulesetCombatAction;
+    const scene = fight([
+      { id: "pip", name: "pip", side: "party", block: block([smash]), at: { x: 4, y: 5 } },
+      { id: "orc", name: "orc", side: "enemy", block: block([smash]), at: { x: 5, y: 5 } },
+      { id: "orc2", name: "orc2", side: "enemy", block: block([smash]), at: { x: 5, y: 6 } },
+    ]);
+    rulesetCombatant(scene.encounter, "pip")!.actions.push(potion);
+    const pick = pickRulesetChoice(definition, scene.state, scene.encounter, "pip");
+    assert.notEqual(pick?.option.id, "potion", "the potion is not drunk for one blow at advantage");
   }
 
   console.info(
-    "AI class re-test: turning by kind, chosen-use heals, granted dodges, twinned, exhaustion priced, no Slow as support, held summons kept.",
+    "AI class re-test: turning by kind, chosen-use heals, granted dodges, twinned, exhaustion priced, no Slow as support, held summons kept, a one-blow potion kept.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

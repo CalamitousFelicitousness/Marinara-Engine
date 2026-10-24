@@ -83,10 +83,7 @@ export async function addGamePartyCards(db: DB, chatId: string, characterIds: re
     if (!name) continue;
     joining.push({
       ...buildFallbackGameCharacterCard(data, name),
-      rulesetSheet: copyRulesetSheetForGame(
-        pinned.definition,
-        data.extensions?.rulesetSheets?.[pinned.definition.id],
-      ),
+      rulesetSheet: copyRulesetSheetForGame(pinned.definition, data.extensions?.rulesetSheets?.[pinned.definition.id]),
     });
   }
   if (joining.length === 0) return false;

@@ -60,7 +60,9 @@ try {
     });
     assert.ok(made);
     await chats.patchMetadata(made.id, {
-      ...(ruleset ? { gameRuleset: { id: "local/ember-roads", version: ember.version, packageId: null, options: {} } } : {}),
+      ...(ruleset
+        ? { gameRuleset: { id: "local/ember-roads", version: ember.version, packageId: null, options: {} } }
+        : {}),
       gameCharacterCards: [{ name: "Bram", class: "Ranger", rulesetSheet: { v: 1, build: {} } }],
     });
     return made;

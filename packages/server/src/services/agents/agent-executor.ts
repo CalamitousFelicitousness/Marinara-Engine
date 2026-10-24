@@ -57,7 +57,6 @@ import {
 import {
   AGENT_MAX_TOOL_ROUNDS,
   LOREBOOK_BACKFILL_MAX_TOOL_ROUNDS,
-  getAgentCallTimeoutMs,
   getMaxToolRounds,
   isDebugAgentsEnabled,
 } from "../../config/runtime-config.js";
@@ -94,7 +93,6 @@ const EXPRESSION_AGENT_RECENT_CONTEXT_MESSAGES = 2;
 const EXPRESSION_AGENT_CONTEXT_CHAR_LIMIT = 1200;
 const EXPRESSION_AGENT_RESPONSE_CHAR_LIMIT = 6000;
 const DEFAULT_AGENT_TEMPERATURE = 0.7;
-const ILLUSTRATOR_AGENT_CALL_TIMEOUT_MS = 30 * 60_000;
 const AGENT_BATCH_FALLBACK_MAX_CONCURRENT = 4;
 
 /** Strip HTML/XML-style tags (e.g. <div style="..."> <br> <speaker>) from text to save tokens. */
@@ -708,32 +706,6 @@ function agentBatchRequestSignature(config: AgentExecConfig): string {
   });
 }
 
-function combineAbortSignals(signals: AbortSignal[]): AbortSignal {
-  const activeSignals = signals.filter((signal) => !signal.aborted);
-  const abortedSignal = signals.find((signal) => signal.aborted);
-  if (abortedSignal) return abortedSignal;
-  if (activeSignals.length === 1) return activeSignals[0]!;
-  if (typeof AbortSignal.any === "function") return AbortSignal.any(activeSignals);
-
-  const controller = new AbortController();
-  const abort = () => controller.abort();
-  for (const signal of activeSignals) {
-    signal.addEventListener("abort", abort, { once: true });
-  }
-  return controller.signal;
-}
-
-function agentCallSignal(parentSignal?: AbortSignal, agentType?: "illustrator"): AbortSignal {
-  // AGENT_CALL_TIMEOUT_MS caps the TOTAL duration of one agent LLM call, even
-  // while streaming; slow local models need a raised value (#3958). The
-  // illustrator keeps at least its generous image-generation budget.
-  const configuredMs = getAgentCallTimeoutMs();
-  const timeoutMs =
-    agentType === "illustrator" ? Math.max(ILLUSTRATOR_AGENT_CALL_TIMEOUT_MS, configuredMs) : configuredMs;
-  const timeoutSignal = AbortSignal.timeout(timeoutMs);
-  return parentSignal ? combineAbortSignals([parentSignal, timeoutSignal]) : timeoutSignal;
-}
-
 function applyProviderMaxTokensOverride(provider: BaseLLMProvider, maxTokens: number): number {
   return provider.maxTokensOverrideValue !== null ? Math.min(maxTokens, provider.maxTokensOverrideValue) : maxTokens;
 }
@@ -965,7 +937,7 @@ export async function executeAgent(
             responseText += chunk;
           }
         : undefined,
-      signal: agentCallSignal(context.signal, config.type === "illustrator" ? "illustrator" : undefined),
+      signal: context.signal,
     });
 
     if (!responseText && result.content) responseText = result.content;
@@ -1014,7 +986,7 @@ export async function executeAgent(
               retryResponseText += chunk;
             }
           : undefined,
-        signal: agentCallSignal(context.signal, config.type === "illustrator" ? "illustrator" : undefined),
+        signal: context.signal,
       });
       totalTokens += retryResult.usage?.totalTokens ?? 0;
       if (!retryResponseText && retryResult.content) retryResponseText = retryResult.content;
@@ -1100,9 +1072,8 @@ async function executeBeholderLanePasses(args: {
 
   logger.info(`[agent] ${config.type} (${config.name}) — ${model} — ${BEHOLDER_PASS_LANES.length} passes`);
 
-  // Bounded dispatch, not Promise.all: each lane's timeout budget starts when
-  // agentCallSignal builds it, so launching all five at once would let a lane
-  // queued behind a rate limit burn its budget before the provider starts work.
+  // Keep provider dispatch bounded so queued lanes do not spend their inactivity
+  // budget waiting behind other calls.
   const settled = await settleAgentJobsWithConcurrencyLimit(
     [...BEHOLDER_PASS_LANES],
     AGENT_BATCH_FALLBACK_MAX_CONCURRENT,
@@ -1135,7 +1106,7 @@ async function executeBeholderLanePasses(args: {
               laneText += chunk;
             }
           : undefined,
-        signal: agentCallSignal(context.signal),
+        signal: context.signal,
       });
       if (!laneText && result.content) laneText = result.content;
       laneText = laneText.trim();
@@ -1216,7 +1187,7 @@ async function executeBeholderLanePasses(args: {
         cachingAtDepth: config.cachingAtDepth,
         ...args.requestOptions,
         stream: false,
-        signal: agentCallSignal(context.signal),
+        signal: context.signal,
       });
       totalTokens += repair.usage?.totalTokens ?? 0;
       const repairData = parseAgentResponse(config, (repair.content ?? "").trim()).data;
@@ -1279,11 +1250,6 @@ async function executeAgentWithTools(
   let totalTokens = 0;
   const debugAgentsEnabled = isDebugAgentsEnabled() && logger.isLevelEnabled("debug");
   const responseFormatOverride = jsonAgentResponseFormatOverride(config, model);
-  // Fresh per-call so AGENT_CALL_TIMEOUT_MS caps each LLM call, not the whole
-  // tool loop; earlier rounds must not eat a later round's budget.
-  const nextCallSignal = () =>
-    agentCallSignal(context.signal, config.type === "illustrator" ? "illustrator" : undefined);
-
   for (let round = 0; round < maxToolRounds; round++) {
     const roundStartedAt = Date.now();
     const providerMessages = prepareAgentProviderMessages(loopMessages);
@@ -1308,7 +1274,7 @@ async function executeAgentWithTools(
       // no-tools round below carries it instead.
       stream: streamResponses,
       tools: toolContext.tools,
-      signal: nextCallSignal(),
+      signal: context.signal,
     });
 
     totalTokens += result.usage?.totalTokens ?? 0;
@@ -1405,7 +1371,7 @@ async function executeAgentWithTools(
     ...requestOptions,
     ...responseFormatOverride,
     stream: streamResponses,
-    signal: nextCallSignal(),
+    signal: context.signal,
   });
   totalTokens += finalResult.usage?.totalTokens ?? 0;
   const responseText = finalResult.content?.trim() ?? "";
@@ -1647,10 +1613,7 @@ export async function executeAgentBatch(
               responseText += chunk;
             }
           : undefined,
-        signal: agentCallSignal(
-          context.signal,
-          configs.some((config) => config.type === "illustrator") ? "illustrator" : undefined,
-        ),
+        signal: context.signal,
       }),
     );
 

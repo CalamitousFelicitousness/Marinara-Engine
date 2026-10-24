@@ -7,6 +7,7 @@ import {
   ASSISTANT_CONTINUATION_PROMPT,
   llmFetch,
   llmHttpErrorFromResponse,
+  LLMHttpError,
   sanitizeApiError,
   toolCallFinishReason,
   type ChatMessage,
@@ -55,6 +56,8 @@ import {
  */
 const RESPONSES_ONLY_PREFIXES = ["gpt-5.6", "gpt-5.5", "gpt-5.4", "codex-"];
 const RESPONSES_ONLY_SUFFIXES = ["-codex", "-codex-max", "-codex-mini"];
+
+class StreamingUnsupportedError extends LLMHttpError {}
 
 type ChatCompletionsUsagePayload = {
   prompt_tokens?: number;
@@ -830,6 +833,30 @@ export class OpenAIProvider extends BaseLLMProvider {
     return `${this.chatCompletionsErrorLabel()} error ${status}: ${detail}${streamingHint}`;
   }
 
+  private completionHttpError(
+    message: string,
+    response: Response,
+    upstreamBody: string,
+    stream: boolean,
+  ): LLMHttpError {
+    const error = llmHttpErrorFromResponse(message, response);
+    if (!stream || (response.status !== 400 && response.status !== 422)) return error;
+    let detail = upstreamBody;
+    try {
+      const parsed = JSON.parse(upstreamBody) as Record<string, unknown>;
+      if (parsed && typeof parsed === "object") detail = OpenAIProvider.extractProviderErrorMessage(parsed) || detail;
+    } catch {
+      // Some compatible endpoints return a plain-text error body.
+    }
+    detail = detail.replace(/["'`]/gu, "").replace(/\s+/gu, " ");
+    // Only the upstream rejection can authorize a retry; our generic custom-endpoint hint cannot.
+    const rejected =
+      /\b(?:stream(?:ing)?(?: requests?| parameter| mode)?\s+(?:(?:is|are)\s+)?(?:not supported|unsupported|not allowed|disabled)|(?:does not|doesnt|do not|dont)\s+support\s+(?:token\s+)?stream(?:ing)?|(?:unsupported|disabled)\s+(?:token\s+)?stream(?:ing)?|stream\s+(?:must|can only)\s+be\s+(?:set to\s+)?false|stream\s+(?:does not|doesnt)\s+support\s+true|(?:set|use)\s+stream\s*[:=]\s*false)\b/iu.test(
+        detail,
+      );
+    return rejected ? new StreamingUnsupportedError(error.message, error) : error;
+  }
+
   /**
    * POST a Chat Completions body and throw on an HTTP error. A strict chat template's rejection of consecutive
    * same-role messages is retried once with them merged, so endpoints that accept the original request never see a
@@ -921,9 +948,11 @@ export class OpenAIProvider extends BaseLLMProvider {
       );
     }
     const hint = ROLE_ALTERNATION_ERROR.test(errorText) ? ROLE_ALTERNATION_HINT : "";
-    throw llmHttpErrorFromResponse(
+    throw this.completionHttpError(
       `${this.formatChatCompletionsHttpError(response.status, errorText, stream)}${hint}`,
       response,
+      errorText,
+      stream && body.stream === true,
     );
   }
 
@@ -1913,6 +1942,41 @@ export class OpenAIProvider extends BaseLLMProvider {
 
   /** Non-streaming completion with tool-call support */
   async chatComplete(messages: ChatMessage[], options: ChatOptions): Promise<ChatCompletionResult> {
+    if (options.stream !== true) return this.chatCompleteOnce(messages, options);
+    let emitted = false;
+    const tracked: ChatOptions = {
+      ...options,
+      ...(options.onToken
+        ? {
+            onToken: (chunk: string) => {
+              if (chunk) emitted = true;
+              return options.onToken!(chunk);
+            },
+          }
+        : {}),
+      ...(options.onThinking
+        ? {
+            onThinking: (chunk: string) => {
+              if (chunk) emitted = true;
+              options.onThinking!(chunk);
+            },
+          }
+        : {}),
+    };
+    try {
+      return await this.chatCompleteOnce(messages, tracked);
+    } catch (error) {
+      if (!(error instanceof StreamingUnsupportedError) || emitted || this.isOpenAIChatGPTProvider()) throw error;
+      options.signal?.throwIfAborted();
+      const result = await this.chatCompleteOnce(messages, { ...options, stream: false });
+      options.signal?.throwIfAborted();
+      if (result.content && options.onToken) await options.onToken(result.content);
+      options.signal?.throwIfAborted();
+      return result;
+    }
+  }
+
+  private async chatCompleteOnce(messages: ChatMessage[], options: ChatOptions): Promise<ChatCompletionResult> {
     const suppressModelParameters = this.shouldSuppressModelParameters(options);
     const configuredMaxTokens = this.applyMaxTokensCap(options.maxTokens ?? 4096);
     const contextFit = this.fitMessagesToContext(messages, { ...options, maxTokens: configuredMaxTokens });
@@ -2055,8 +2119,10 @@ export class OpenAIProvider extends BaseLLMProvider {
     const response = await this.postChatCompletions(url, body, useStream, options);
     const prefixEcho = createPrefixEchoFilter(mistralPrefixText(body));
 
-    if (!useStream) {
-      // Non-streaming path (no onToken callback)
+    const receivedJson =
+      response.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() === "application/json";
+    if (!useStream || receivedJson) {
+      // Compatible endpoints may ignore stream:true and return the completed JSON response.
       const json = await OpenAIProvider.parseJsonBody<Record<string, unknown>>(
         response,
         "OpenAI chatComplete() non-stream response",
@@ -2070,6 +2136,7 @@ export class OpenAIProvider extends BaseLLMProvider {
         finish_reason?: string;
       }>(json, "OpenAI chatComplete() non-stream response");
 
+      if (useStream) options.signal?.throwIfAborted();
       const choice = choices[0];
       const reasoningMetadata = OpenAIProvider.extractReasoningMetadata(choice?.message);
       this.emitChatCompletionsReasoning(options, reasoningMetadata);
@@ -2097,6 +2164,11 @@ export class OpenAIProvider extends BaseLLMProvider {
       if (toolCalls.length === 0 && resolvedContent && options.tools?.length) {
         toolCalls = parseTextualToolCalls(resolvedContent, options.tools);
         if (toolCalls.length > 0) resolvedContent = stripTextualToolCalls(resolvedContent, options.tools) || null;
+      }
+      if (useStream) {
+        options.signal?.throwIfAborted();
+        if (resolvedContent && options.onToken) await options.onToken(resolvedContent);
+        options.signal?.throwIfAborted();
       }
       return {
         content: resolvedContent,
@@ -2939,30 +3011,43 @@ export class OpenAIProvider extends BaseLLMProvider {
         });
         if (!response.ok) {
           const retryError = await response.text();
-          throw llmHttpErrorFromResponse(
+          throw this.completionHttpError(
             `OpenAI Responses API error ${response.status}: ${sanitizeApiError(retryError)}`,
             response,
+            retryError,
+            useStream && body.stream === true,
           );
         }
       } else {
-        throw llmHttpErrorFromResponse(
+        throw this.completionHttpError(
           `OpenAI Responses API error ${response.status}: ${sanitizeApiError(errorText)}`,
           response,
+          errorText,
+          useStream && body.stream === true,
         );
       }
     }
 
-    if (!useStream) {
+    const receivedJson =
+      response.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() === "application/json";
+    if (!useStream || receivedJson) {
       // Non-streaming: parse the full response
       const json = await OpenAIProvider.parseJsonBody<Record<string, unknown>>(
         response,
         "OpenAI chatCompleteResponses() non-stream response",
       );
       OpenAIProvider.assertResponsesSucceeded(json, "OpenAI chatCompleteResponses() non-stream response");
+      if (useStream) options.signal?.throwIfAborted();
       this.emitMissingResponsesReasoningSummary(json, options, "");
       // Emit encrypted reasoning items for multi-turn context
       this.emitEncryptedReasoning(json, options);
-      return this.parseResponsesResult(json);
+      const result = this.parseResponsesResult(json);
+      if (useStream) {
+        options.signal?.throwIfAborted();
+        if (result.content && options.onToken) await options.onToken(result.content);
+        options.signal?.throwIfAborted();
+      }
+      return result;
     }
 
     // Streaming path: stream text tokens, accumulate function calls

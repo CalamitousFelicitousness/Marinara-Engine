@@ -8078,6 +8078,9 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         // The tellings of one of the previous session's turns: the stacks carry over, the record
         // of how that turn was told does not.
         gameInventoryTurn: _previousInventoryTurn,
+        // Advanced Memory's progress points at the previous session's messages. Its settings
+        // (advancedMemory) carry over; the new session builds its own archive from its own story.
+        advancedMemoryState: _previousAdvancedMemoryState,
         ...carryMeta
       } = prevMeta;
 

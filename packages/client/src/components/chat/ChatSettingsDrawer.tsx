@@ -4006,9 +4006,11 @@ export function ChatSettingsDrawer({
   const [showSummariesModal, setShowSummariesModal] = useState(false);
   const [showAgentSuiteModal, setShowAgentSuiteModal] = useState(false);
   const [memoryView, setMemoryView] = useState<"advanced" | "standard" | null>(null);
-  const advancedMemoryStatus = useAdvancedMemoryStatus(chat.id, open && isRoleplayMode);
+  // Game chats keep their memory with the GM as its only reader.
+  const advancedMemoryAvailable = isRoleplayMode || isGame;
+  const advancedMemoryStatus = useAdvancedMemoryStatus(chat.id, open && advancedMemoryAvailable);
   const advancedMemoryEnabled =
-    isRoleplayMode &&
+    advancedMemoryAvailable &&
     (advancedMemoryStatus.data?.settings ?? normalizeAdvancedMemorySettings(metadata.advancedMemory)).enabled;
   useEffect(() => setMemoryView(null), [advancedMemoryEnabled, chat.id]);
   // A scene number in the Fix box (or a notice) opens Access memories at that scene.
@@ -5018,11 +5020,12 @@ export function ChatSettingsDrawer({
           )}
           labelClassName="text-[0.6875rem] font-medium"
         />
-        {isRoleplayMode && (
+        {advancedMemoryAvailable && (
           <AdvancedMemorySettings
             chatId={chat.id}
             metadataSettings={metadata.advancedMemory}
-            individual={groupChatMode === "individual"}
+            gameMode={isGame}
+            individual={!isGame && groupChatMode === "individual"}
             characters={chatCharIds.map((id) => ({ id, name: charNameMap.get(id) ?? id }))}
             connections={textConnectionsList}
             hasHistory={!!chat.lastMessageAt}
@@ -5058,7 +5061,7 @@ export function ChatSettingsDrawer({
         {advancedMemoryEnabled && memoryView === "advanced" && (
           <AdvancedMemoryInspector
             chatId={chat.id}
-            individual={groupChatMode === "individual"}
+            individual={!isGame && groupChatMode === "individual"}
             characters={chatCharIds.map((id) => ({ id, name: charNameMap.get(id) ?? id }))}
           />
         )}

@@ -12367,6 +12367,22 @@ function GameSurfaceComponent({
      *  connection is no help: only its own reason is shown. */
     running?: boolean;
   } | null>(null);
+  // Refused because another tab is creating this game's world: this tab reads the game again until
+  // that setup is done, then leaves the wizard for the game it made (laptop playtest 2026-10-24: the
+  // second tab stayed on the GM step).
+  const waitingOnOtherSetup = setupFailure?.running === true && setupFailure.chatId === activeChatId;
+  useEffect(() => {
+    if (!waitingOnOtherSetup) return;
+    if (sessionStatus !== "setup") {
+      useGameModeStore.getState().setSetupActive(false);
+      setSetupFailure(null);
+      return;
+    }
+    const timer = window.setInterval(() => {
+      void queryClient.invalidateQueries({ queryKey: chatKeys.detail(activeChatId) });
+    }, 4000);
+    return () => window.clearInterval(timer);
+  }, [activeChatId, queryClient, sessionStatus, waitingOnOtherSetup]);
   useEffect(() => {
     leaveDropsChat.current =
       canAutoDeleteEmptySetupChat && !createGame.isPending && !gameSetup.isPending ? activeChatId : null;

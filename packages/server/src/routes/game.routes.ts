@@ -6623,6 +6623,9 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     chatPersonaId: string | null,
     meta: Record<string, unknown>,
     setupConfig: GameSetupConfig | null,
+    /** The chat's own members, which may hold some the setup's party never named: one added from
+     *  the Characters panel before the world was created (laptop playtest 2026-10-24). */
+    chatCharacterIds: readonly string[] = [],
   ): Promise<{ definition: RulesetDefinition; stored: Map<string, unknown>; names: Map<string, string> } | null> => {
     if (meta.gameRuleset == null) return null;
     // loadRulesetRegistry never throws (a failed read is an empty registry) and resolving is pure,
@@ -6637,16 +6640,21 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const stored = new Map<string, unknown>();
     // Each sheet's character as named, so one the setup left out can still be given a card.
     const names = new Map<string, string>();
-    for (const pcId of setupConfig?.partyCharacterIds ?? []) {
+    const members = new Set([
+      ...(setupConfig?.partyCharacterIds ?? []),
+      ...chatCharacterIds.filter((id) => !id.startsWith("npc:")),
+    ]);
+    for (const pcId of members) {
       const pc = await characters.getById(pcId);
       if (!pc) continue;
       try {
         const data = typeof pc.data === "string" ? JSON.parse(pc.data) : pc.data;
         const sheet = data?.extensions?.rulesetSheets?.[rulesetId];
-        if (sheet && typeof data.name === "string") {
-          stored.set(normalizeCharacterLookupName(data.name), sheet);
-          names.set(normalizeCharacterLookupName(data.name), data.name);
-        }
+        if (typeof data?.name !== "string" || !data.name.trim()) continue;
+        // Every member is named, so one the setup left out still gets a card, on a blank sheet
+        // where they have none of their own.
+        names.set(normalizeCharacterLookupName(data.name), data.name);
+        if (sheet) stored.set(normalizeCharacterLookupName(data.name), sheet);
       } catch {
         /* an unreadable card simply has no sheet to copy */
       }
@@ -6807,8 +6815,10 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     }
 
     const setupSheets =
-      meta.gameRuleset != null ? await loadSetupRulesetSheets(chatId, args.chatPersonaId, meta, setupConfig) : null;
-    if ((setupData.characterCards && Array.isArray(setupData.characterCards)) || (setupSheets?.stored.size ?? 0) > 0) {
+      meta.gameRuleset != null
+        ? await loadSetupRulesetSheets(chatId, args.chatPersonaId, meta, setupConfig, args.chatCharacterIds)
+        : null;
+    if ((setupData.characterCards && Array.isArray(setupData.characterCards)) || (setupSheets?.names.size ?? 0) > 0) {
       const rulesetSheets = setupSheets;
       const generated = Array.isArray(setupData.characterCards)
         ? (setupData.characterCards as Array<Record<string, unknown>>)

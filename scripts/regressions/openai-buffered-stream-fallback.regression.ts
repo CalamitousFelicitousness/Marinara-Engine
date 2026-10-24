@@ -214,6 +214,28 @@ try {
   {
     const before = calls.length;
     const controller = new AbortController();
+    const reason = new Error("User stopped during buffered fallback text callback");
+    let callbacks = 0;
+    await assert.rejects(
+      custom().chatComplete(messages, {
+        model: "buffered-400",
+        stream: true,
+        signal: controller.signal,
+        onToken: async (chunk) => {
+          assert.equal(chunk, "Answer");
+          callbacks++;
+          await Promise.resolve();
+          controller.abort(reason);
+        },
+      }),
+      (error) => error === reason,
+    );
+    assert.equal(callbacks, 1);
+    assert.deepEqual(since(before), [true, false], "cancellation during buffered delivery cannot replay a generation");
+  }
+  {
+    const before = calls.length;
+    const controller = new AbortController();
     const reason = new Error("User stopped before buffered text delivery");
     let reasoning = 0;
     await assert.rejects(

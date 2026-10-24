@@ -1971,6 +1971,7 @@ export class OpenAIProvider extends BaseLLMProvider {
       const result = await this.chatCompleteOnce(messages, { ...options, stream: false });
       options.signal?.throwIfAborted();
       if (result.content && options.onToken) await options.onToken(result.content);
+      options.signal?.throwIfAborted();
       return result;
     }
   }
@@ -2118,8 +2119,10 @@ export class OpenAIProvider extends BaseLLMProvider {
     const response = await this.postChatCompletions(url, body, useStream, options);
     const prefixEcho = createPrefixEchoFilter(mistralPrefixText(body));
 
-    if (!useStream) {
-      // Non-streaming path (no onToken callback)
+    const receivedJson =
+      response.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() === "application/json";
+    if (!useStream || receivedJson) {
+      // Compatible endpoints may ignore stream:true and return the completed JSON response.
       const json = await OpenAIProvider.parseJsonBody<Record<string, unknown>>(
         response,
         "OpenAI chatComplete() non-stream response",
@@ -2133,6 +2136,7 @@ export class OpenAIProvider extends BaseLLMProvider {
         finish_reason?: string;
       }>(json, "OpenAI chatComplete() non-stream response");
 
+      if (useStream) options.signal?.throwIfAborted();
       const choice = choices[0];
       const reasoningMetadata = OpenAIProvider.extractReasoningMetadata(choice?.message);
       this.emitChatCompletionsReasoning(options, reasoningMetadata);
@@ -2160,6 +2164,11 @@ export class OpenAIProvider extends BaseLLMProvider {
       if (toolCalls.length === 0 && resolvedContent && options.tools?.length) {
         toolCalls = parseTextualToolCalls(resolvedContent, options.tools);
         if (toolCalls.length > 0) resolvedContent = stripTextualToolCalls(resolvedContent, options.tools) || null;
+      }
+      if (useStream) {
+        options.signal?.throwIfAborted();
+        if (resolvedContent && options.onToken) await options.onToken(resolvedContent);
+        options.signal?.throwIfAborted();
       }
       return {
         content: resolvedContent,
@@ -3019,17 +3028,26 @@ export class OpenAIProvider extends BaseLLMProvider {
       }
     }
 
-    if (!useStream) {
+    const receivedJson =
+      response.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() === "application/json";
+    if (!useStream || receivedJson) {
       // Non-streaming: parse the full response
       const json = await OpenAIProvider.parseJsonBody<Record<string, unknown>>(
         response,
         "OpenAI chatCompleteResponses() non-stream response",
       );
       OpenAIProvider.assertResponsesSucceeded(json, "OpenAI chatCompleteResponses() non-stream response");
+      if (useStream) options.signal?.throwIfAborted();
       this.emitMissingResponsesReasoningSummary(json, options, "");
       // Emit encrypted reasoning items for multi-turn context
       this.emitEncryptedReasoning(json, options);
-      return this.parseResponsesResult(json);
+      const result = this.parseResponsesResult(json);
+      if (useStream) {
+        options.signal?.throwIfAborted();
+        if (result.content && options.onToken) await options.onToken(result.content);
+        options.signal?.throwIfAborted();
+      }
+      return result;
     }
 
     // Streaming path: stream text tokens, accumulate function calls

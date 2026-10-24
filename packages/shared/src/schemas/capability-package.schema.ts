@@ -1472,7 +1472,13 @@ const capabilityPackageManifestBaseSchema = z
 //        game's settings offer only those, and a game saved on another plays the first one listed.
 // 1.380: package-bound per-chat agent reference lorebook trigger resolution.
 // 1.381: independent browser audio players, shared manifest fetch and default music selection.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 381 } as const);
+// 1.382: fights for a symbol-pool ruleset (`combat.kind: "symbol-pool"`): attacks, saves, checks,
+//        contests and initiative thrown in the ruleset's own symbol dice, a defense read as the
+//        difficulty dice, `combat.symbols` for the harm each net success adds, flat soak and the
+//        spends leftover symbols buy (harm, a critical, a condition, a track, boost or setback dice
+//        on the next roll), picked by the Engine and the AI for whichever side spends that symbol.
+//        A creature action's `upgrades` names its upgraded to-hit dice.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 382 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

@@ -13,7 +13,7 @@ A ruleset can only fill in the blanks of a mechanic the Engine already knows. To
 
 - **`dice-highest`**: throw a pool and read its highest die, or add its highest few. That covers Blades in the Dark and Trophy Dark.
 - **`roll-against`**: roll at or under (or over) the sheet's number. That covers percentile skills and GURPS checks.
-- **`symbol-pool`**: build and upgrade narrative dice, then cancel opposing symbols. That covers Genesys checks.
+- **`symbol-pool`**: build and upgrade narrative dice, then cancel opposing symbols. That covers Genesys checks, and its fights since Capability API 1.382.
 
 All five are described in full under [Resolution kinds](#resolution-kinds).
 
@@ -294,7 +294,7 @@ Genesys builds a pool from a characteristic and a skill rank, then adds opposing
 - `boost` and `setback`: optional dice added by `bonus="+N"` and `bonus="-N"`, respectively, up to each `max` (default 3, ceiling 6). Signed adjustments combine before this limit is applied. Capability API **1.150** also accepts `setback="N"` independently: `bonus="2" setback="1"` throws both sides. A negative bonus adds to `setback`, with the combined setback count held to `setback.max`; boost dice stay bounded by `boost.max`.
 - `allowOwnUpgrade`: optional, false when absent. With `true`, `upgradeOwn="N"` upgrades N more character dice to `pool.upgrade` (which must be declared), after sheet upgrades and purchased dice. When all existing dice are upgraded, each extra upgrade adds one upgraded die, still bounded by `pool.max`. This also works with `pool.build: "sum"`. Declaring this key, even as `false`, requires capabilityApi **1.150**. Attribute names use camel case, like `zeroDice`; `upgradeOwn` affects the roller and `upgrade` still affects only difficulty dice. Both `setback` and `upgradeOwn` take nonnegative integers and are ignored outside symbol pools; `upgradeOwn` is ignored unless enabled.
 - `success`: needs this many of its symbol after cancellation, one by default. Critical success and failure mark any occurrence of their named symbol, even if its added success or failure cancels. Both markers may occur together, and neither changes whether the net successes passed the check.
-- `outcomes` can read the net success count (`total`) or `net successes - needed + 1` (`margin`). Bands still decide success in their usual way; the original critical symbols remain marked. `spend` buys only extra base character dice within `pool.max`. Combat is left out, as for `dice-highest`.
+- `outcomes` can read the net success count (`total`) or `net successes - needed + 1` (`margin`). Bands still decide success in their usual way; the original critical symbols remain marked. `spend` buys only extra base character dice within `pool.max`. Its fights are a `symbol-pool` fight (Capability API 1.382, see A fight thrown in symbol dice, below); any other combat kind is refused beside it.
 - The record keeps `resolution="sum"`, with `symbols="2s 1a 1t"`, `thrown=` identifying each die, and `rolls=` holding its 1-based face. Encoded `symbolDetails` preserves labels, face symbols and both critical markers. `setback` records the independent setback dice actually added after the shared setback limit, and `upgradeOwn` records additional upgrades actually applied; ignored or zero additions are omitted. The card and summary name the net symbols, including an empty result, rather than adding face numbers. Overrides can change this kind's rules, but cannot replace `symbols` or `dice`.
 
 #### What is out of scope, and why
@@ -2771,9 +2771,11 @@ follow your system's rules.
 The `battle` block above lends a fight the sheet's numbers while the arithmetic stays Marinara's.
 The optional `combat` block is the other thing: it says how a fight is RESOLVED by your rules. It
 parameterises a combat kind the Engine owns, exactly as `resolution` parameterises a check kind, and
-every name in it is yours. There are two kinds: `attack-vs-defense`, where dice are added up and
-compared with a number, and `dice-pool`, where a fight throws your `dice-pool` ruleset's own pools
-and counts successes (see A fight thrown in pools, below).
+every name in it is yours. There are three kinds: `attack-vs-defense`, where dice are added up and
+compared with a number, `dice-pool`, where a fight throws your `dice-pool` ruleset's own pools
+and counts successes (see A fight thrown in pools, below), and `symbol-pool`, where a fight throws
+your `symbol-pool` ruleset's narrative dice and spends what is left over (see A fight thrown in
+symbol dice, below).
 
 **A game whose ruleset declares `combat` fights by your block.** The party's numbers are read off
 their own sheets, the opponents come out of your bestiary or off your threat scale, every turn is
@@ -2847,9 +2849,9 @@ same keys for a d20 system:
 
 ### Every key
 
-- `kind`: `"attack-vs-defense"` (one side rolls dice against the other's defense; a hit does damage)
-  or `"dice-pool"` (see A fight thrown in pools). Every key below means the same under both, read
-  the way that kind reads numbers.
+- `kind`: `"attack-vs-defense"` (one side rolls dice against the other's defense; a hit does damage),
+  `"dice-pool"` (see A fight thrown in pools) or `"symbol-pool"` (see A fight thrown in symbol dice).
+  Every key below means the same under each, read the way that kind reads numbers.
 - `health`: required. What a fight takes away. Either `{ "pool": "grit" }`, a live pool it counts
   down, whose temporary buffer if it has one is what damage drains first; or `{ "track": "harm" }`,
   a wound track it MARKS. A track needs `damageKinds` beside it, and grants no temporary points.
@@ -3340,6 +3342,86 @@ no tears at all, may spend one point of Resolve a turn, and throw initiative aga
 **Declaring in reverse order is not built.** Some systems have everybody declare their action before
 anybody acts, slowest first. In a fight where each combatant picks one action when their turn comes,
 declaring first changes nothing any rule reads, so there is nothing for a key to say.
+
+### A fight thrown in symbol dice: `symbol-pool` (Capability API 1.382)
+
+A `symbol-pool` ruleset reads symbols rather than numbers, and its fights can too, so the Engine runs
+the whole fight without asking the Game Master what an advantage bought. `"kind": "symbol-pool"`
+needs `resolution.kind` to be `"symbol-pool"`, and it reads the sheet the way your symbol checks
+already do:
+
+- A to-hit number is the attacker's dice. Off a sheet, an attack row's number is its ability and its
+  skill's ranks together: the larger is how many dice are thrown and the smaller how many of them are
+  upgraded, as `pool.build: "larger-upgraded"` builds a check. A creature action says it as `toHit`
+  (its dice) and `upgrades` (how many of them are upgraded), which needs a pool with an `upgrade` die
+  that isn't built by `sum`.
+- `defense` is how many difficulty dice are thrown against the attacker's. A creature's `defense` is
+  its own number of them. Cover and a condition's modifier to `defense` add difficulty dice.
+- A condition's modifier to attacks, saves or checks, and the wound penalty your `penaltyFrom` names,
+  are boost dice when they help and setback dice when they hinder, so they are `flat` numbers: a rolled
+  modifier (`dice`) is refused. A roll that leans (long range, a condition's disadvantage) throws one
+  more setback die, or one more boost die when it leans the other way.
+- Net successes (your `success.needed` of them) land a blow. A save's number is its dice and its
+  difficulty the dice against them; a contest throws each side's dice and the more net successes
+  wins. Initiative may be thrown as a pool (`initiative.pool`): its net successes are the number.
+- Damage is added up as in an `attack-vs-defense` fight. Each net success adds `damage.perSuccess`
+  (one) to a hit, every success (`"counts": "all"`) or only those past the ones a hit needs
+  (`"beyond"`), and the target's soak comes off the whole blow, never below none.
+- Nothing botches and nothing doubles a damage roll. A critical is something a spend buys.
+
+What the symbols do is the `symbols` block:
+
+```json
+"symbols": {
+  "damage": { "perSuccess": 1, "counts": "all" },
+  "soak": { "all": { "derived": "soak" } },
+  "spends": [
+    { "id": "boost", "label": "Boost an ally", "by": "attacker", "symbol": "a", "cost": 1, "boost": { "dice": 1, "on": "attacker-ally" } },
+    { "id": "crit", "label": "Critical", "by": "attacker", "symbol": "a", "cost": 2, "when": "hit", "critical": true, "condition": { "id": "injured", "on": "target", "rounds": 3 } },
+    { "id": "triumph", "label": "Triumphant blow", "by": "attacker", "symbol": "t", "cost": 1, "when": "hit", "critical": true, "damage": 2 },
+    { "id": "strain", "label": "Overextend", "by": "target", "symbol": "h", "cost": 2, "track": { "id": "strain", "by": 1, "on": "attacker" } },
+    { "id": "setback", "label": "Opening", "by": "target", "symbol": "h", "cost": 1, "setback": { "dice": 1, "on": "attacker" } },
+    { "id": "despair", "label": "Weapon slips", "by": "target", "symbol": "d", "cost": 1, "condition": { "id": "disarmed", "on": "attacker" } }
+  ]
+}
+```
+
+- `soak`: what a target takes off each hit, read off their sheet. `all` is a value reference for any
+  kind of harm and `byKind` one per kind of your health track, which wins over `all` for its kind. A
+  creature gives its own as `soak: { "all": 2 }`, which needs this `soak` to be declared.
+- `spends`: up to 16 things a symbol left over on an attack's roll buys. `cost` of `symbol` buys it
+  once, and `max` (one) says how many times one roll may buy it; a spend that gives a `condition` or
+  a `critical` lands once, so its `max` stays one, and no two spends put one condition (or two of
+  one `oneAtATime` kind) on the same one on the same throw. A spend is left unbought when it would
+  do nothing: its condition would not go on (kept off, or one of its kind already held), or its track
+  has no room for a whole step that way (room an earlier spend on the same throw may have used). `by` says which side chooses it: the
+  attacker spends the symbols that favour them (advantage, triumph), the target the ones that favour
+  the target (threat, despair). One side spends a given symbol, and a spend never buys with the
+  successes, which already land the blow and add to its harm.
+- `when`: bought only on a `hit`, only on a `miss`, or on either (`any`, the default). `damage` (harm
+  added to the hit, before soak) and `critical` (the hit is a critical one, so a clause that says
+  `onCritical` lands and the log says so) need `"when": "hit"` and `"by": "attacker"`.
+- What a spend does, any of: `condition` puts one of your conditions on somebody, for `rounds` or
+  until something ends it; `track` moves a plain live track by `by` (strain, stress), never the
+  health track; `boost` and `setback` add that many dice to the next roll whoever it lands on makes
+  in this fight, which that roll uses up. `on` is `attacker`, `target`, `attacker-ally` or
+  `target-ally`; an ally is the next of that side to take a turn, and a spend whose ally there is
+  nobody to be is not bought.
+- `worth`: optional, what the AI weighs the spend at in points of harm. Without it the Engine works
+  it out from the effects: harm is its points, a condition is worth two, a die on the next roll a
+  little over half, a step of a track a half, against the other side, or for the chooser's own side
+  when it lowers a track or adds boost there. A spend worth nothing to its chooser is never bought.
+
+The Engine buys, for each side, the spends worth the most for the symbols it has, for players and
+opponents alike, and says each one in the log. Symbols nobody spends stay on the roll for the Game
+Master to narrate. The menu's forecast counts every way the throw may come out: the chance to hit,
+and the harm a hit does with its successes and spends, after soak. The AI weighs each attack by
+that, with what the other side's spends would cost it taken off.
+
+**What stays with the Game Master.** A spend's cost is the ruleset's, not each weapon's, so a weapon
+with its own critical rating is written as a spend the ruleset shares; a critical's own table is the
+Game Master's to roll. Advantage on a save, a check or a contest buys nothing: only an attack's roll is
+spent. Upgrading the difficulty dice in a fight is not built.
 
 ### Minimum damage dice (Capability API 1.146)
 

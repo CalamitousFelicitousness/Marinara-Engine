@@ -50,6 +50,8 @@ export interface RulesetCombatNames {
   distance: (cells: number) => string;
   /** A drop of so many levels of the board in the ruleset's own distance (combat C6b): "10 ft". */
   height: (levels: number) => string;
+  /** One of a symbol pool's symbols (1.382), by id. */
+  symbol?: (id: string) => string;
 }
 
 function lookup(entries: Array<{ id: string; label: string }> | undefined) {
@@ -104,6 +106,7 @@ export function rulesetCombatNames(
     tier: lookup(definition.combat?.threat?.tiers),
     style: lookup(definition.combat?.initiative.resource?.styles),
     defense: rulesetValueLabel(definition, definition.combat?.defense),
+    symbol: lookup(definition.resolution.kind === "symbol-pool" ? definition.resolution.symbols : []),
   };
 }
 
@@ -176,7 +179,9 @@ export function rulesetPoolRollText(
   },
   t: TFunction,
   bonusName: (bonus: RulesetConditionBonus) => string = (bonus) => bonus.condition,
+  symbolName: (id: string) => string = (id) => id,
 ): string {
+  if (roll.pool.symbols) return rulesetSymbolRollText({ ...roll, pool: roll.pool }, t, bonusName, symbolName);
   const parts = [
     ...(roll.bonuses ?? []).map((bonus) =>
       t("game.combat.ruleset.roll.bonus", { value: signed(bonus.value), name: bonusName(bonus) }),
@@ -198,6 +203,40 @@ export function rulesetPoolRollText(
   else if (roll.mode === "disadvantage") text = t("game.combat.ruleset.roll.poolDisadvantage", { roll: text });
   if (roll.pool.botch) text = t("game.combat.ruleset.roll.poolBotch", { roll: text });
   return text;
+}
+
+/** The symbols a throw left, as the ruleset names them: "2 Success, 1 Advantage". */
+function symbolsText(symbols: Record<string, number>, t: TFunction, symbolName: (id: string) => string): string {
+  const named = Object.entries(symbols)
+    .filter(([, count]) => count > 0)
+    .map(([id, count]) => `${count} ${symbolName(id)}`);
+  return named.length > 0 ? named.join(", ") : (t("game.combat.ruleset.roll.noSymbols") as string);
+}
+
+/** A symbol throw (1.382), for a `symbol-pool` fight: the symbols left after cancelling, from how
+ *  many of the thrower's own dice (how many upgraded, the boost and setback dice, and what made them
+ *  up). What it was thrown against is the line's to say. */
+export function rulesetSymbolRollText(
+  roll: { modifier: number; bonuses?: RulesetConditionBonus[]; pool: RulesetCombatPoolRoll },
+  t: TFunction,
+  bonusName: (bonus: RulesetConditionBonus) => string = (bonus) => bonus.condition,
+  symbolName: (id: string) => string = (id) => id,
+): string {
+  const pool = roll.pool;
+  const parts = [
+    ...(pool.upgrades ? [t("game.combat.ruleset.roll.upgraded", { count: pool.upgrades })] : []),
+    ...(pool.boost ? [t("game.combat.ruleset.roll.boost", { count: pool.boost })] : []),
+    ...(pool.setback ? [t("game.combat.ruleset.roll.setback", { count: pool.setback })] : []),
+    ...(roll.bonuses ?? []).map((bonus) =>
+      t("game.combat.ruleset.roll.bonus", { value: signed(bonus.value), name: bonusName(bonus) }),
+    ),
+    ...(pool.penalty ? [t("game.combat.ruleset.roll.penalty", { value: signed(pool.penalty) })] : []),
+  ];
+  const dice = t("game.combat.ruleset.roll.dice", { count: pool.dice });
+  return t("game.combat.ruleset.roll.symbols", {
+    symbols: symbolsText(pool.symbols ?? {}, t, symbolName),
+    dice: parts.length > 0 ? t("game.combat.ruleset.roll.poolFrom", { dice, parts: parts.join(", ") }) : dice,
+  }) as string;
 }
 
 /** A defense in the ruleset's own word for it, when the file gave it one. */
@@ -242,7 +281,7 @@ export function rulesetRefusalText(code: string | undefined, serverText: string,
 /** A check thrown on its own (1.287), as one side of a contest is written. */
 function checkRollText(roll: RulesetContestSide, names: RulesetCombatNames, t: TFunction): string {
   return roll.pool
-    ? rulesetPoolRollText({ ...roll, pool: roll.pool }, t, bonusNamer(names, t))
+    ? rulesetPoolRollText({ ...roll, pool: roll.pool }, t, bonusNamer(names, t), names.symbol)
     : rulesetRollText(
         {
           ...roll,
@@ -322,6 +361,16 @@ export function rulesetCombatEventLine(
       return key("turn", { actor: names.combatant(event.actorId) });
     case "attack": {
       const named = bonusNamer(names, t);
+      // A symbol throw carries its difficulty dice with it (1.382).
+      if (event.pool?.symbols) {
+        return key(event.outcome === "miss" ? "attackSymbolMiss" : "attackSymbolHit", {
+          actor: names.combatant(event.actorId),
+          target: names.combatant(event.targetId),
+          label: event.label,
+          roll: rulesetSymbolRollText({ ...event, pool: event.pool }, t, named, names.symbol),
+          difficulty: t("game.combat.ruleset.roll.difficultyDice", { count: event.pool.difficulty ?? event.defense }),
+        });
+      }
       // The ruleset's own word for what it was rolled against, when the file gave it one, and what
       // the target's conditions added to it. A pool says how many successes it needed instead.
       const pool = event.pool;
@@ -363,6 +412,16 @@ export function rulesetCombatEventLine(
         return key(event.success ? "saveAutomaticSuccess" : "saveAutomatic", {
           actor: names.combatant(event.actorId),
           save: names.save(event.save),
+        });
+      }
+      if (event.pool?.symbols) {
+        return key(event.success ? "saveSymbolSuccess" : "saveSymbolFailure", {
+          actor: names.combatant(event.actorId),
+          save: names.save(event.save),
+          roll: rulesetSymbolRollText({ ...event, pool: event.pool }, t, bonusNamer(names, t), names.symbol),
+          difficulty: t("game.combat.ruleset.roll.difficultyDice", {
+            count: event.pool.difficulty ?? event.difficulty,
+          }),
         });
       }
       if (event.pool) {
@@ -830,6 +889,17 @@ export function rulesetCombatEventLine(
     case "fake":
       return key(event.dud ? "fakeDud" : "fake", { label: event.label, truly: event.truly });
     case "gate":
+      if (event.pool?.symbols) {
+        return key(event.success ? "gateSymbolSuccess" : "gateSymbolFailure", {
+          actor: names.combatant(event.actorId),
+          check: event.check,
+          label: event.label,
+          roll: rulesetSymbolRollText({ ...event, pool: event.pool }, t, bonusNamer(names, t), names.symbol),
+          difficulty: t("game.combat.ruleset.roll.difficultyDice", {
+            count: event.pool.difficulty ?? event.difficulty,
+          }),
+        });
+      }
       if (event.pool) {
         return key(event.success ? "gatePoolSuccess" : "gatePoolFailure", {
           actor: names.combatant(event.actorId),
@@ -1119,6 +1189,22 @@ export function rulesetCombatEventLine(
       return key(event.on ? "switchOn" : "switchOff", { actor: names.combatant(event.actorId), label: event.label });
     case "recovered":
       return key("recovered", { actor: names.combatant(event.actorId), label: event.label, count: event.count });
+    case "symbol-spend": {
+      const symbol = names.symbol?.(event.symbol) ?? event.symbol;
+      const line = key(event.times > 1 ? "symbolSpendTimes" : "symbolSpend", {
+        actor: names.combatant(event.actorId),
+        symbols: `${event.cost * event.times} ${symbol}`,
+        label: event.label,
+        times: event.times,
+      });
+      const dice = event.boost ?? event.setback;
+      if (!dice || !event.onId) return line;
+      return key(event.boost ? "symbolSpendBoost" : "symbolSpendSetback", {
+        line,
+        target: names.combatant(event.onId),
+        dice: t("game.combat.ruleset.roll.dice", { count: dice }),
+      });
+    }
     case "hardness":
       return key("hardness", {
         actor: names.combatant(event.sourceId),

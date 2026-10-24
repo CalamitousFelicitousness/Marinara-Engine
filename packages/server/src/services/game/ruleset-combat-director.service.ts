@@ -2059,6 +2059,35 @@ function rulesetZoneHarmAt(
   return harm;
 }
 
+/** What the lasting areas it would walk INTO on its way strike it for (I3 re-test 2026-10-24: a rogue
+ *  that walked through his own burning oil to reach a ghoul): each area once, leaving out one it
+ *  already stands in and one it ends in, which `rulesetZoneHarmAt` counts where it lands. */
+function rulesetPathZoneHarm(
+  encounter: RulesetEncounterState,
+  actor: RulesetCombatant,
+  path: ReadonlyArray<{ x: number; y: number }>,
+): number {
+  const from = rulesetPositionOf(actor);
+  if (!from || path.length < 2) return 0;
+  const span = rulesetSpanOf(actor);
+  const end = path[path.length - 1]!;
+  const footprints = (cell: { x: number; y: number }) => rulesetFootprintAt(cell, span);
+  let harm = 0;
+  for (const caster of encounter.combatants) {
+    for (const zone of caster.zones ?? []) {
+      if (!zone.triggers.includes("enter")) continue;
+      const action = caster.actions.find((entry) => entry.id === zone.actionId);
+      if (!action?.damage || !rulesetZoneCatches(caster, zone, action, actor)) continue;
+      const cells = rulesetZoneCells(encounter, caster, zone);
+      const covers = (cell: { x: number; y: number }) =>
+        footprints(cell).some((one) => cells.some((there) => there.x === one.x && there.y === one.y));
+      if (covers(from) || covers(end)) continue;
+      if (path.slice(0, -1).some(covers)) harm += rulesetSafeAverage(action.damage);
+    }
+  }
+  return harm;
+}
+
 /** Whether a lasting area or aura there would likely finish it (playtest: a mage at 4 health that Misty
  *  Stepped into Spirit Guardians): no cell to step or teleport to, whatever it would gain there. */
 function rulesetZoneKillsAt(
@@ -2185,6 +2214,16 @@ function weighRulesetTeam(
         // Hiding is worth something only out of an opponent's reach: next to one, it is seen.
         const seen = foes.some((foe) => near(actor, foe));
         candidate.risk = danger(cell) * (defensive === "dodge" ? 0.7 : defensive === "hide" && !seen ? 0.6 : 1);
+        // And what it walks through to get there: burning oil on the way is harm all the same. A walk
+        // carries the cells it crosses (from `rulesetWalkableCells`).
+        const path = (candidate.action.to as { path?: Array<{ x: number; y: number }> } | undefined)?.path;
+        if (path?.length) {
+          const crossed = rulesetPathZoneHarm(encounter, actor, path);
+          if (crossed > 0) {
+            const own = rulesetCombatHealth(definition, combat, actor);
+            candidate.risk += Math.min(3, crossed / Math.max(1, own.value + own.temp));
+          }
+        }
         // A throw or a shot made from inside an opponent's reach (I1b re-test 2026-10-24: a thrower
         // that threw 10 of 12 times from within a troll's reach): there it strikes without spending
         // its walk, and stepping away later draws its blow, so the same throw from out of reach is

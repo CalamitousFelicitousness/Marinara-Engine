@@ -1158,6 +1158,66 @@ try {
         "and says why",
       );
     }
+    // It does not walk through its own burning oil to reach whoever it goes for when another is as
+    // near on its own side of it (I3 re-test 2026-10-24: a rogue that walked through his own oil to
+    // reach a ghoul).
+    {
+      const stab = {
+        id: "stab",
+        name: "Stab",
+        budget: "action",
+        toHit: 5,
+        reach: 1,
+        damage: { count: 1, sides: 6, flat: 3 },
+      };
+      const oil = {
+        id: "oil",
+        label: "Oil",
+        kind: "attack",
+        budget: "action",
+        autoHit: true,
+        targets: { side: "enemy", count: 0 },
+        area: { shape: "box", size: 1 },
+        damage: { count: 0, sides: 0, flat: 5, type: "fire" },
+        zone: { rounds: 10, triggers: ["enter"], anchor: "point" },
+      };
+      const { encounter, state } = wide(
+        { pip: { x: 4, y: 4 }, beyond: { x: 7, y: 4 }, before: { x: 1, y: 4 } },
+        {
+          pip: { side: "enemy", block: block({ type: "humanoid", mind: "cunning", health: 30, actions: [stab] }) },
+          beyond: { side: "party", block: block({ health: 24, actions: [claw] }) },
+          before: { side: "party", block: block({ health: 24, actions: [claw] }) },
+        },
+        { pip: { ...master, temperament: "disciplined" } },
+      );
+      const pip = rulesetCombatant(encounter, "pip")!;
+      pip.actions.push(oil as never);
+      const cells = Array.from({ length: 8 }, (_, y) => ({ x: 5, y }));
+      pip.zones = [
+        {
+          actionId: "oil",
+          label: "Oil",
+          rounds: 10,
+          anchor: "point",
+          triggers: ["enter"],
+          at: { x: 5, y: 4 },
+          cells,
+        } as never,
+      ];
+      state.rulesetFight = {
+        encounter,
+        events: [],
+        eventSeq: 0,
+        controllers: { beyond: "manual", before: "manual" },
+        bosses: [],
+      } as never;
+      const picked = pickRulesetChoice(definition, state, encounter, "pip");
+      assert.equal(
+        picked?.choice.targetIds[0],
+        "before",
+        `the one on its own side of the oil: ${JSON.stringify(picked)}`,
+      );
+    }
     // A blow worth little against a sturdy target still says why it was struck (re-test 2026-10-24:
     // a zombie's slam on the fighter with no reason given).
     {

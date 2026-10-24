@@ -1510,6 +1510,12 @@ function renderRulesetSheetSection(
     ...(ruleset.catalogs?.some((catalog) => catalog.holds === "rows")
       ? [
           `- [sheet: who="Name" op="use" name="Name on the sheet"] - pays what that ability costs. Add pool="Pool" to pay from a higher pool of the same group.`,
+          // A call that stays (1.787): a familiar, kept on its caller's sheet until it is lost.
+          ...(ruleset.combat
+            ? [
+                `- For an ability used outside a fight that calls a creature to stay with them, add as="Creature" (and its creature type after a comma where they pick one, as="Name, Type"). It stays on their sheet ("With them") and joins every fight they are in. [sheet: who="Name" op="dismiss" name="Ability or creature"] when it is sent away or killed outside a fight.`,
+              ]
+            : []),
         ]
       : []),
     // What a use gives back that its user picks (1.394): Arcane Recovery's slots.

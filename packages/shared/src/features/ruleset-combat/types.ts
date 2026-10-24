@@ -2222,6 +2222,9 @@ export interface RulesetCombatant {
   calledFrom?: string;
   /** The action that called them (1.381), whose concentration ending sends them away. */
   calledWith?: string;
+  /** Kept on their caller's sheet (1.787), by the entry's name there: `gone` once their caller
+   *  dismissed them, so the sheet drops them as the fight ends, as it does once they are killed. */
+  calledKept?: { entry: string; gone?: true };
   /** The round, at their caller's turn, they leave in (1.381). */
   calledUntil?: number;
   /** They leave as soon as their caller is out (1.430), or down or unable to act (1.717). */

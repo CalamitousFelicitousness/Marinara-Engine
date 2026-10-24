@@ -54,7 +54,14 @@ try {
         { list: "features", values: { name: "Lay on Hands" } },
         { list: "counters", values: { name: "Lay on Hands", max: 25, recharge: "long" } },
       ],
-      mechanics: { kind: "heal", targets: "ally", range: 0, amount: { flat: 1 }, usesOf: "Lay on Hands", usesChosen: true },
+      mechanics: {
+        kind: "heal",
+        targets: "ally",
+        range: 0,
+        amount: { flat: 1 },
+        usesOf: "Lay on Hands",
+        usesChosen: true,
+      },
     },
     {
       id: "ki",
@@ -77,7 +84,12 @@ try {
       id: "twinned",
       label: "Twinned Spell",
       rows: [{ list: "features", values: { name: "Twinned Spell" } }],
-      mechanics: { kind: "utility", usesOf: "Sorcery Points", usesSpentByLevel: true, alters: { catalogs: ["spells"], twins: true } },
+      mechanics: {
+        kind: "utility",
+        usesOf: "Sorcery Points",
+        usesSpentByLevel: true,
+        alters: { catalogs: ["spells"], twins: true },
+      },
     },
   ] as unknown as RulesetCatalogEntry[];
   const spells = [
@@ -111,7 +123,12 @@ try {
     { id: "fierce", label: "Fierce" },
   );
   doc.combat.conditions.push(
-    { condition: "turned", effects: ["cannot-react"], behavior: { only: ["move", "dash"], moves: "away" }, endsWhen: ["damaged"] },
+    {
+      condition: "turned",
+      effects: ["cannot-react"],
+      behavior: { only: ["move", "dash"], moves: "away" },
+      endsWhen: ["damaged"],
+    },
     { condition: "slowed", effects: [], modifiers: [{ to: "defense", flat: -2 }] },
     { condition: "warded", effects: [], modifiers: [{ to: "defense", flat: 1 }] },
     {
@@ -138,8 +155,22 @@ try {
       actions,
       ...extra,
     }) as unknown as RulesetStatBlock;
-  const smash = { id: "smash", name: "Smash", budget: "action", toHit: 6, reach: 5, damage: { count: 2, sides: 8, flat: 4 } };
-  const poke = { id: "poke", name: "Poke", budget: "action", toHit: 4, reach: 5, damage: { count: 1, sides: 4, flat: 0 } };
+  const smash = {
+    id: "smash",
+    name: "Smash",
+    budget: "action",
+    toHit: 6,
+    reach: 5,
+    damage: { count: 2, sides: 8, flat: 4 },
+  };
+  const poke = {
+    id: "poke",
+    name: "Poke",
+    budget: "action",
+    toHit: 4,
+    reach: 5,
+    damage: { count: 1, sides: 4, flat: 0 },
+  };
   const unit = (id: string, side: "player" | "enemy") => ({
     id,
     name: id,
@@ -360,9 +391,12 @@ try {
       concentration: true,
       targets: { side: "self", count: 0 },
       calls: {
-        block: block([{ id: "bite", name: "Bite", budget: "action", toHit: 6, reach: 5, damage: { count: 0, sides: 0, flat: 7 } }], {
-          health: 15,
-        }),
+        block: block(
+          [{ id: "bite", name: "Bite", budget: "action", toHit: 6, reach: 5, damage: { count: 0, sides: 0, flat: 7 } }],
+          {
+            health: 15,
+          },
+        ),
         name: "Wolf",
         creature: { catalogId: "creatures", entryId: "wolf" },
         count: { count: 0, sides: 0, flat: 4 },
@@ -398,7 +432,10 @@ try {
     (scene.state.rulesetFight as { encounter: RulesetEncounterState }).encounter = next;
     const choice = pickRulesetChoice(definition, scene.state, next, "mira");
     assert.notEqual(choice?.option.id, "ward", "the wolves are kept");
-    assert.ok(rulesetCombatOptions(definition, next, "mira").some((one) => one.id === "ward"), "the ward was on offer");
+    assert.ok(
+      rulesetCombatOptions(definition, next, "mira").some((one) => one.id === "ward"),
+      "the ward was on offer",
+    );
   }
 
   console.info(

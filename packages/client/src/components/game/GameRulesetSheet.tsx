@@ -27,6 +27,7 @@ import {
   defaultRulesetSheetBuild,
   evaluateRulesetSheet,
   readRulesetLive,
+  rulesetKeptCalls,
   resolveRulesetValueRef,
   rulesetCheckEffects,
   rulesetCheckSources,
@@ -573,6 +574,8 @@ export function GameRulesetSheet({
 
   const build = useMemo(() => envelope?.build ?? defaultRulesetSheetBuild(definition), [definition, envelope]);
   const resolved = useMemo(() => readRulesetLive(definition, build, live, items), [definition, build, live, items]);
+  // What a use outside a fight called and keeps (1.787): a familiar, until it is dismissed or killed.
+  const keptCalls = useMemo(() => rulesetKeptCalls(live), [live]);
   // Against the live state as it stands, so a value that reads a track or a pool shows what it is now,
   // and against what the character holds, so one that reads their items does too.
   const evaluated = useMemo(
@@ -1120,6 +1123,36 @@ export function GameRulesetSheet({
                 cardName={cardName}
                 onToggle={(condition, active) => apply({ op: "condition", condition, active })}
               />
+
+              {keptCalls.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className={labelClass}>{localizeUi("game.ruleset.sheet.keptCalls")}</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {keptCalls.map((call) => (
+                      <span
+                        key={call.entry}
+                        title={call.entry}
+                        className={`${chipClass} inline-flex items-center gap-1 border-[var(--border)] text-[var(--foreground)]`}
+                      >
+                        {call.as || call.entry}
+                        {!settled && !readOnly && (
+                          <button
+                            type="button"
+                            onClick={() => apply({ op: "dismiss", name: call.entry })}
+                            aria-label={localizeUi("game.ruleset.sheet.dismissKeptAria", {
+                              name: call.as || call.entry,
+                              who: cardName,
+                            })}
+                            className="-mr-1 rounded-full p-0.5 text-[var(--muted-foreground)] hover:bg-[var(--secondary)] hover:text-[var(--foreground)]"
+                          >
+                            <X size={10} aria-hidden="true" />
+                          </button>
+                        )}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {hideLines.map((line) => (
                 <p key={line} className="break-words text-xs text-[var(--muted-foreground)]">

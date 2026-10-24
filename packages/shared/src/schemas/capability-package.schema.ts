@@ -1500,7 +1500,9 @@ const capabilityPackageManifestBaseSchema = z
 //        typed in freely (a ranger's favored enemies).
 // 1.786: a text field's or list column's `pick`: how many of its `suggestions` its holder picks, read
 //        off the sheet (a ranger's favored enemies by level), shown as "choose N".
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 786 } as const);
+// 1.787: a `beforeFight` entry that calls a creature, used outside a fight, keeps it on its user's
+//        sheet, and it joins every fight they are in until it is dismissed or killed (Find Familiar).
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 787 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

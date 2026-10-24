@@ -198,10 +198,24 @@ export function parseSheetCommandTagBody(body: string): ParsedSheetCommandTag {
     const rawRecover = values.get("recover");
     const recover = rawRecover === undefined ? [] : readRecover(rawRecover);
     if (recover === null) return parsed;
+    // The creature it calls (1.787): `as="Owl"`, for a call that stays once the use is done.
+    const as = values.get("as")?.trim();
     return {
       ...parsed,
-      op: { op: "use", name: entry, ...(pool ? { pool } : {}), ...(recover.length ? { recover } : {}) },
+      op: {
+        op: "use",
+        name: entry,
+        ...(pool ? { pool } : {}),
+        ...(recover.length ? { recover } : {}),
+        ...(as ? { as } : {}),
+      },
     };
+  }
+  if (name === "dismiss") {
+    // What a use outside a fight called and kept (1.787), by the entry's name or the creature's.
+    const entry = values.get("name")?.trim();
+    if (!entry) return parsed;
+    return { ...parsed, op: { op: "dismiss", name: entry } };
   }
   const rest = values.get("rest")?.trim();
   if (!rest) return parsed;
@@ -331,6 +345,9 @@ export function serializeSheetCommandTag(
       if (op.pool) attribute("pool", op.pool);
       if (op.recover?.length)
         attribute("recover", op.recover.map((entry) => `${entry.pool}:${entry.count}`).join(", "));
+      if (op.as) attribute("as", op.as);
+    } else if (op.op === "dismiss") {
+      attribute("name", op.name);
     } else if (op.op === "pass") {
       attribute("days", op.days);
       if (op.resting) attribute("resting", "yes");

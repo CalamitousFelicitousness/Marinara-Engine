@@ -143,6 +143,7 @@ import {
   rulesetBoardShading,
   rulesetOpenLairWindow,
   rulesetStandingAtStart,
+  rulesetKeptCalls,
   type RulesetStandingZone,
   rulesetWindowOptions,
   rulesetAreaCells,
@@ -694,9 +695,31 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
     if (!built) continue;
     for (const line of holdRulesetCombatant(definition, built, tier)) adjustments.push(`${built.name}: ${line}`);
   }
+  // What a member's sheet keeps from a use outside a fight comes along on its own, paid for then
+  // (1.787): their familiar. The Game Master's own listing of the same entry is left out for it.
+  const kept = encounter.combatants.flatMap((one) =>
+    one.side === "party" && one.sheet
+      ? rulesetKeptCalls(input.live?.[normalizeCharacterLookupName(one.name)]).map((call) => ({
+          casterId: one.id,
+          entry: call.entry,
+          ...(call.as ? { mode: call.as } : {}),
+          kept: call.entry,
+        }))
+      : [],
+  );
+  const standing = [
+    ...(input.standing ?? []).filter(
+      (one) =>
+        !kept.some(
+          (call) =>
+            call.casterId === one.casterId && call.entry.trim().toLowerCase() === one.entry.trim().toLowerCase(),
+        ),
+    ),
+    ...kept,
+  ];
   // What was set up before it stands as it begins (1.446).
-  if (input.standing?.length) {
-    const stood = rulesetStandingAtStart(definition, encounter, input.standing);
+  if (standing.length) {
+    const stood = rulesetStandingAtStart(definition, encounter, standing);
     encounter = stood.state;
     adjustments.push(...stood.skipped);
   }
@@ -1094,7 +1117,24 @@ export function rulesetFightLiveStates(fight: RulesetFightState): RulesetLiveSta
       continue;
     }
     if (!combatant.sheet) continue;
-    live[normalizeCharacterLookupName(combatant.name)] = combatant.sheet.live as RulesetLiveState;
+    let state = combatant.sheet.live as RulesetLiveState;
+    // A kept call killed or dismissed in the fight is gone from its caller's sheet (1.787).
+    if (state?.called) {
+      const lost = Object.keys(state.called).filter((entry) =>
+        fight.encounter.combatants.some(
+          (one) =>
+            one.calledBy === combatant.id &&
+            one.calledKept?.entry === entry &&
+            (one.calledKept.gone || (one.defeated && !one.dismissed)),
+        ),
+      );
+      if (lost.length) {
+        const called = Object.fromEntries(Object.entries(state.called).filter(([entry]) => !lost.includes(entry)));
+        state = { ...state, called };
+        if (!Object.keys(called).length) delete state.called;
+      }
+    }
+    live[normalizeCharacterLookupName(combatant.name)] = state;
   }
   return live;
 }

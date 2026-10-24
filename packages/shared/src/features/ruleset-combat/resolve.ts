@@ -12016,6 +12016,8 @@ function dismissCalled(
   if (!going.length) return;
   for (const one of going) {
     if (one.concentrating) endConcentration(ctx, one, "spent");
+    // Sent away by its caller's choice, a kept call is gone from their sheet too (1.787).
+    if (one.calledKept && reason === "dismissed") one.calledKept.gone = true;
     one.dismissed = true;
     one.defeated = true;
     delete one.x;
@@ -12104,6 +12106,9 @@ export interface RulesetStandingZone {
   /** The kinds a zone strikes (1.737), creature types or tags by id or name, as its caster named
    *  them: Forbiddance's. */
   kinds?: string[];
+  /** Kept on its caster's sheet from a use outside a fight (1.787), by the entry's name there: paid
+   *  for then, so not again, and what it calls is marked as kept for the fight's write-back. */
+  kept?: string;
 }
 
 /** Where a zone set up before a fight is set down (1.446), on a board. */
@@ -12137,7 +12142,9 @@ export function rulesetStandingAtStart(
   if (!combat || !standing?.length) return { state, skipped: [] };
   const { ctx, finish } = begin(definition, combat, state, rulesetCombatRoller(state.seed, state.cursor));
   const skipped: string[] = [];
-  const pay = (caster: RulesetCombatant, action: RulesetCombatAction): boolean => {
+  const pay = (caster: RulesetCombatant, action: RulesetCombatAction, kept?: string): boolean => {
+    // Paid for when it was used outside the fight (1.787).
+    if (kept !== undefined) return true;
     const price = planRulesetCombatCost(definition, caster, action);
     if (!price) return false;
     if (price.live && caster.sheet) caster.sheet.live = price.live;
@@ -12172,6 +12179,8 @@ export function rulesetStandingAtStart(
         .trim();
     const picked = one.mode
       ? (action.modes?.find((entry) => entry.id === one.mode || lower(entry.label) === lower(one.mode!)) ??
+        // Its creature and type without its count (1.787): "Owl, Fey" for "Owl ×1, Fey".
+        action.modes?.find((entry) => lower(entry.label).replace(/\s*×\s*[^,\s]+/, "") === lower(one.mode!)) ??
         action.modes?.find((entry) =>
           [entry.label, entry.call?.name, entry.form?.name].some(
             (name) => name !== undefined && bare(name) === bare(one.mode!),
@@ -12270,12 +12279,17 @@ export function rulesetStandingAtStart(
         continue;
       }
       const before = caster.sheet?.live;
-      if (!pay(caster, action)) {
+      if (!pay(caster, action, one.kept)) {
         if (caster.sheet && before !== undefined) caster.sheet.live = before;
         skipped.push(`${caster.name} has nothing left to pay for ${action.label} with, so it is not done.`);
         continue;
       }
+      const there = new Set(ctx.state.combatants.map((other) => other.id));
       resolveAction(ctx, caster, done, targets);
+      // What it called is the one their sheet keeps (1.787), told apart for the write-back.
+      if (one.kept !== undefined)
+        for (const other of ctx.state.combatants)
+          if (!there.has(other.id) && other.calledBy === caster.id) other.calledKept = { entry: one.kept };
       continue;
     }
     // The kind it works on (1.450), as a mode.

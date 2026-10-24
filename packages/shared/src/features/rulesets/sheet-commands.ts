@@ -32,6 +32,7 @@ import {
   type RulesetSheetOp,
   type RulesetSheetOpResult,
   rulesetUseHealOutsideFight,
+  rulesetUseKeptCall,
   rulesetPoolNowText,
 } from "./live-state.js";
 
@@ -163,6 +164,9 @@ export function applySheetCommandTags(
   const useOn = (card: SheetCommandCard, key: string, op: Extract<RulesetSheetOp, { op: "use" }>) => {
     const plan = planRulesetUse(ctx.definition, card.build, live[key], ctx.catalogs ?? {}, op);
     if (!plan.ok) return { ok: false, reason: plan.reason } as const;
+    // The creature a call that stays calls (1.787), named before anything is paid for it.
+    const kept = rulesetUseKeptCall(ctx.definition, card.build, ctx.catalogs ?? {}, op);
+    if (kept && !kept.ok) return kept;
     // A priced material (1.774) carried, and taken only once everything else is paid.
     const used = usedUp.get(key) ?? {};
     const material = plan.material ? rulesetMaterialFor(ctx.definition, plan.material, card.items, used) : undefined;
@@ -199,6 +203,13 @@ export function applySheetCommandTags(
       usedUp.set(key, used);
       materials.push({ who: card.name, stacks });
       paid.push(`${plan.material.label} used up`);
+    }
+    // Kept on the sheet (1.787), in place of whatever it called before: it joins every fight its
+    // user is in until it is dismissed or killed.
+    if (kept) {
+      const before = (state ?? live[key] ?? {}) as RulesetLiveState;
+      state = { ...before, called: { ...before.called, [kept.entry]: kept.as } };
+      paid.push(`${kept.as || plan.label} called, and stays`);
     }
     // An ability that costs nothing, such as a cantrip or a passive feature, is fine and changes
     // nothing: it is the Game Master saying what happened, not asking to spend.

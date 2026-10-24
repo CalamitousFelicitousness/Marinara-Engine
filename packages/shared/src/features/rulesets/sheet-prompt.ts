@@ -18,7 +18,7 @@ import {
 } from "../../schemas/ruleset.schema.js";
 import { rulesetCheckSources, rulesetHideLines } from "./check-effects.js";
 import { rulesetItemEffectFacts, rulesetItemEffectText } from "./item-book.js";
-import { readRulesetLive } from "./live-state.js";
+import { readRulesetLive, rulesetKeptCalls } from "./live-state.js";
 import { rulesetCatalogEntriesByRef } from "./scaled-rows.js";
 import { rulesetItemAccess } from "./sheet-builder.js";
 import {
@@ -213,6 +213,11 @@ export function renderRulesetSheetBlock(
 
   const conditions = live.conditions.flatMap((condition) => (condition.active ? [condition.label] : []));
   if (conditions.length > 0) push(`Conditions: ${conditions.join(", ")}`);
+  // What a use outside a fight called and keeps (1.787), which comes into every fight with them.
+  const kept = rulesetKeptCalls(stored).map((call) =>
+    call.as ? `${safeValue(call.as)} (${safeValue(call.entry)})` : safeValue(call.entry),
+  );
+  if (kept.length > 0) push(`With them: ${kept.join(", ")}`);
   for (const source of rulesetCheckSources(definition, build, stored, items)) {
     const modifiers = source.modifiers?.filter((one) => one.to === "damage");
     if (modifiers?.length)

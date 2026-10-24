@@ -258,22 +258,42 @@ export async function loadTurnRulesetCatalogs(
   if (!declared?.length || !(options?.force || replyUsesCatalogEntry(content))) return {};
   const wanted = new Set(context.cards.flatMap((card) => rulesetCatalogIdsForBuild(context.definition, card.build)));
   const catalogs: RulesetCatalogEntriesById = {};
-  for (const catalog of declared) {
-    if (!wanted.has(catalog.id)) continue;
-    try {
-      const read = await loadRulesetCatalogEntries(context.packageId, context.definition, catalog);
-      if (read.ok) catalogs[catalog.id] = read.entries;
-      else {
-        logger.warn(
-          "[game/sheet] Catalog %s of %s could not be read for this turn: %s",
-          catalog.id,
-          context.definition.id,
-          read.issues.slice(0, 3).join("; "),
-        );
+  // And the ones the party's calls kept outside a fight call from (1.787), to name the creature.
+  for (const pass of [0, 1]) {
+    if (pass === 1) {
+      const used = new Set(
+        [...content.matchAll(createSheetCommandTagRegex())].flatMap((match) => {
+          const op = parseSheetCommandTagBody(match[1] ?? "").op;
+          return op?.op === "use" ? [op.name.trim().toLowerCase()] : [];
+        }),
+      );
+      const calledFrom = Object.values(catalogs).flatMap((entries) =>
+        entries.flatMap((entry) =>
+          entry.mechanics?.beforeFight && entry.mechanics.calls?.from && used.has(entry.label.trim().toLowerCase())
+            ? [entry.mechanics.calls.from.catalog]
+            : [],
+        ),
+      );
+      wanted.clear();
+      for (const id of calledFrom) if (!catalogs[id]) wanted.add(id);
+    }
+    for (const catalog of declared) {
+      if (!wanted.has(catalog.id)) continue;
+      try {
+        const read = await loadRulesetCatalogEntries(context.packageId, context.definition, catalog);
+        if (read.ok) catalogs[catalog.id] = read.entries;
+        else {
+          logger.warn(
+            "[game/sheet] Catalog %s of %s could not be read for this turn: %s",
+            catalog.id,
+            context.definition.id,
+            read.issues.slice(0, 3).join("; "),
+          );
+        }
+      } catch (error) {
+        // A turn is never lost to a catalog file.
+        logger.warn(error, "[game/sheet] Could not read catalog %s of %s", catalog.id, context.definition.id);
       }
-    } catch (error) {
-      // A turn is never lost to a catalog file.
-      logger.warn(error, "[game/sheet] Could not read catalog %s of %s", catalog.id, context.definition.id);
     }
   }
   return catalogs;

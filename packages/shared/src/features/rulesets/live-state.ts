@@ -107,6 +107,10 @@ export interface RulesetLiveState {
   /** The one entry or creature action each condition wards its holder off (1.742), keyed by
    *  condition, as it was picked: Wish's. */
   wardsOff?: Record<string, string>;
+  /** What each entry used outside a fight called and keeps (1.787), keyed by the entry's name: the
+   *  creature it called, as it was named ("" for its only one). It joins every fight its caller is
+   *  in until it is dismissed or killed: Find Familiar's familiar. */
+  called?: Record<string, string>;
 }
 
 /** A save a held condition is made against as days pass (Capability API 1.510). */
@@ -199,6 +203,9 @@ const liveAbilityRaiseSchema = z
 const liveDayClock = z.number().int().min(1).max(3650);
 const liveDayRest = z.number().int().min(2).max(7);
 const liveStackId = z.string().min(1).max(MAX_LIVE_KEY_LENGTH);
+/** The creature a kept call called (1.787), by name: "" for an entry that calls only one. */
+const liveCalledValue = z.string().max(MAX_LIVE_KEY_LENGTH);
+const MAX_LIVE_CALLED = 20;
 
 const liveDaySaveSchema = z
   .object({
@@ -241,6 +248,7 @@ export const rulesetLiveStateSchema = z
     dayRests: boundedRecord(liveDayRest, MAX_LIVE_CONDITIONS, "days resting counts as").optional(),
     wornFrom: boundedRecord(liveStackId, MAX_LIVE_CONDITIONS, "conditions worn items keep on").optional(),
     wardsOff: boundedRecord(liveStackId, MAX_LIVE_CONDITIONS, "what conditions ward off").optional(),
+    called: boundedRecord(liveCalledValue, MAX_LIVE_CALLED, "kept calls").optional(),
   })
   .strip();
 
@@ -828,6 +836,8 @@ function readStoredLiveStateAsIs(stored: unknown): RulesetLiveState {
   if (wornFrom) state.wornFrom = wornFrom;
   const wardsOff = keepValid(source.wardsOff, liveStackId, MAX_LIVE_CONDITIONS);
   if (wardsOff) state.wardsOff = wardsOff;
+  const called = keepValid(source.called, liveCalledValue, MAX_LIVE_CALLED);
+  if (called) state.called = called;
   return state;
 }
 
@@ -866,6 +876,8 @@ function normalizeLiveState(state: RulesetLiveState): RulesetLiveState {
   // And what one wards off (1.742).
   const wardsOff = Object.entries(state.wardsOff ?? {}).filter(([condition]) => held.has(condition));
   if (wardsOff.length > 0) normalized.wardsOff = Object.fromEntries(wardsOff);
+  // What a kept call called (1.787) stays until it is dismissed or killed.
+  if (state.called && Object.keys(state.called).length > 0) normalized.called = state.called;
   return normalized;
 }
 
@@ -1313,7 +1325,17 @@ export type RulesetSheetOp =
   | { op: "pass"; days: number; resting?: true }
   /** Uses something the character picked from a catalog, paying everything it costs. Resolved by
    *  `planRulesetUse` before it reaches `applyRulesetSheetOp`, because it needs the catalogs. */
-  | { op: "use"; name: string; pool?: string; recover?: RulesetUseRecover[] };
+  | {
+      op: "use";
+      name: string;
+      pool?: string;
+      recover?: RulesetUseRecover[];
+      /** The creature it calls (1.787), by name, for an entry used outside a fight whose call stays. */
+      as?: string;
+    }
+  /** Sends away what an entry used outside a fight called and kept (1.787), by the entry's name or
+   *  the creature's: a familiar dismissed or lost. */
+  | { op: "dismiss"; name: string };
 
 /** A pool a use gives back (1.394) and how many of it: one of the spell slots Arcane Recovery picks. */
 export interface RulesetUseRecover {
@@ -1377,6 +1399,7 @@ export const RULESET_SHEET_OP_NAMES = Object.freeze([
   "use",
   "pass",
   "advance",
+  "dismiss",
 ] as const);
 
 /** How long a `now` summary may get before the tag layer would cut it anyway. */
@@ -1854,6 +1877,18 @@ export function applyRulesetSheetOp(
     if (value === undefined) return { ok: false, reason: "unknown-value" };
     setState(entry, value);
     return done(`${entry.label} ${own(entry.valueLabels, value) ?? value}`);
+  }
+
+  // What a kept call called (1.787), sent away by the entry's name or the creature's.
+  if (op.op === "dismiss") {
+    const wanted = typeof op.name === "string" ? op.name.trim() : "";
+    const key = Object.keys(next.called ?? {}).find(
+      (entry) => sameName(entry, wanted) || (!!next.called![entry] && sameName(next.called![entry]!, wanted)),
+    );
+    if (!wanted || key === undefined) return { ok: false, reason: "unknown-entry" };
+    const creature = next.called![key];
+    delete next.called![key];
+    return done(`${creature || key} dismissed`);
   }
 
   if (op.op === "note") {
@@ -2386,6 +2421,71 @@ export function rulesetUseHealOutsideFight(
   const total = Math.max(0, Math.floor(amount));
   if (total === 0) return null;
   return applyRulesetSheetOp(definition, build, stored, { op: "restore", pool, amount: total }, roll, items);
+}
+
+/** How many creature names a refusal lists, so its reason stays a line long. */
+const MAX_KEPT_CALL_NAMES = 6;
+
+/**
+ * The call a Game Master's `use` of an entry outside a fight keeps (1.787): an entry set up before a
+ * fight (`beforeFight`) that calls somebody, whose creature stays on its user's sheet and joins every
+ * fight they are in until it is dismissed or killed. Find Familiar's familiar. Null for an entry that
+ * keeps none. The creature is the one `as` names, checked against what it calls where the catalog it
+ * calls from is among `catalogs`, with a creature type after a comma where it lets one be picked
+ * ("Owl, Fey"); one it calls alone needs no name.
+ */
+export function rulesetUseKeptCall(
+  definition: RulesetDefinition,
+  build: RulesetSheetBuild,
+  catalogs: RulesetCatalogEntriesById,
+  op: Extract<RulesetSheetOp, { op: "use" }>,
+): { ok: true; entry: string; as: string } | { ok: false; reason: RulesetSheetRefusal } | null {
+  const found = rulesetEntryNamed(definition, build, catalogs, op.name.trim());
+  const mechanics = found.ok ? found.entry.mechanics : undefined;
+  const calls = mechanics?.calls;
+  if (!found.ok || !mechanics?.beforeFight || !calls || definition.combat === undefined) return null;
+  const entry = found.entry.label;
+  const plain = (value: string | number) => String(value).trim().toLowerCase();
+  const holds = (value: unknown, want: unknown) => {
+    if (value === undefined) return false;
+    const have = (Array.isArray(value) ? value : [value]).map((one) => plain(one as string));
+    return (Array.isArray(want) ? want : [want]).some((one) => have.includes(plain(one as string)));
+  };
+  // What it can call, by name, where that can be read: its catalog's matches, or its one creature.
+  const from = calls.from;
+  const names = from
+    ? catalogs[from.catalog]
+        ?.filter(
+          (one) =>
+            Object.entries(from.filters ?? {}).every(([id, want]) => holds(one.filters?.[id], want)) &&
+            !Object.entries(from.notFilters ?? {}).some(([id, want]) => holds(one.filters?.[id], want)),
+        )
+        .map((one) => one.label)
+    : undefined;
+  const alone = !!calls.creature || names?.length === 1;
+  const types = (calls.asTypes ?? []).map((id) => ({
+    id,
+    label: definition.combat?.creatureTypes?.types.find((one) => one.id === id)?.label ?? id,
+  }));
+  const wanted = op.as?.trim() ?? "";
+  if (!wanted) {
+    if (alone) return { ok: true, entry, as: names?.[0] ?? "" };
+    const listed = names?.length
+      ? ` from ${names.slice(0, MAX_KEPT_CALL_NAMES).join(", ")}${names.length > MAX_KEPT_CALL_NAMES ? ", ..." : ""}`
+      : "";
+    return { ok: false, reason: `bad-amount: name the creature ${entry} calls, as as="Name"${listed}` };
+  }
+  const [base = "", typed] = wanted.split(",").map((part) => part.trim());
+  const named = names ? names.find((one) => sameName(one, base)) : base;
+  if (named === undefined || !named) return { ok: false, reason: `bad-amount: ${entry} cannot call "${base}"` };
+  const type = typed ? types.find((one) => sameName(one.id, typed) || sameName(one.label, typed)) : undefined;
+  if (typed && !type) return { ok: false, reason: `bad-amount: ${entry} cannot call a "${typed}"` };
+  return { ok: true, entry, as: type ? `${named}, ${type.label}` : named };
+}
+
+/** What each entry used outside a fight called and keeps (1.787), as the sheet stores it. */
+export function rulesetKeptCalls(stored: unknown): Array<{ entry: string; as: string }> {
+  return Object.entries(readStoredLiveStateAsIs(stored).called ?? {}).map(([entry, as]) => ({ entry, as }));
 }
 
 /**

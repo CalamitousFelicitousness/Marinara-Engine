@@ -88,6 +88,7 @@ import {
   rulesetChangedAbilityScores,
   rulesetFormedItem,
   rulesetHeldItemDoes,
+  defaultRulesetSheetBuild,
 } from "../rulesets/sheet-math.js";
 import {
   findRulesetCreatureEntry,
@@ -6326,6 +6327,65 @@ function contestActions(
 }
 
 /** What an action still has left of itself, before anything is spent on it. */
+/** What an opponent has on it (1.784), as the fight keeps it for what is left of it at the end. */
+function carriedRecord(
+  items: ReadonlyArray<{ held: RulesetSheetItem; ref: string }>,
+): NonNullable<RulesetCombatant["carried"]> {
+  return items.map(({ held, ref }) => ({ ref, name: held.name ?? held.item.category, count: held.quantity }));
+}
+
+/**
+ * What a stat block with no sheet can use of what it has on it (1.784): each item whose first use is
+ * used up in the using and asks nothing of its user's own numbers (a potion, an oil), as many times as
+ * it has them. One that rolls to hit, reads its user's stats for its save, has a gate or charges, or
+ * asks something of its user needs a sheet to read them off, and is only carried.
+ */
+function carriedBlockActions(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  items: readonly RulesetSheetItem[],
+  perCell: number | undefined,
+): RulesetCombatAction[] {
+  const build = defaultRulesetSheetBuild(definition);
+  const evaluated = evaluateRulesetSheetLive(definition, build, {}, []);
+  const pooled = rulesetCombatIsPool(combat);
+  return items.flatMap((held, index) => {
+    const { item } = held;
+    const use = item.use;
+    if (
+      !use ||
+      !use.consumes ||
+      use.raises ||
+      use.toHit ||
+      use.sheetDifficulty ||
+      use.gate ||
+      use.charges !== undefined
+    )
+      return [];
+    if (item.userNeeds || item.userNeedsAny || held.quantity < 1) return [];
+    const wearable = Object.values(item.slots ?? {}).some((count) => count > 0) || !!item.binds;
+    if (wearable) return [];
+    const name =
+      held.name ??
+      definition.items?.categories.find((category) => category.id === item.category)?.label ??
+      item.category;
+    const key = `carried:${index}`;
+    const action = itemUseMechanics(
+      definition,
+      item,
+      use,
+      { id: key, label: use.title ?? (use.label ? `${name}: ${use.label}` : name) },
+      build,
+      evaluated,
+      perCell,
+      pooled,
+    );
+    if (!action) return [];
+    delete action.itemUse;
+    return [{ ...action, uses: { per: "encounter" as const, count: held.quantity } }];
+  });
+}
+
 function startingUses(actions: readonly RulesetCombatAction[]): Record<string, number> {
   const uses: Record<string, number> = {};
   for (const action of actions)
@@ -7049,6 +7109,8 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
         continue;
       }
       const initiativeRoll = throwInitiativeDice(combat, roll);
+      const carriedIn = "carried" in entry && entry.carried?.length ? entry.carried : undefined;
+      const carried = carriedIn?.map((one) => one.held);
       if (block.sheet) {
         // Described in the ruleset's own terms, so built exactly as a party member is: its health,
         // defense, saves, speed, initiative and the abilities on its lists all come from what the
@@ -7066,7 +7128,10 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
           live: "creature" in entry && entry.live !== undefined ? readStoredLive(entry.live) : {},
           catalogs: input.bestiary ?? {},
           perCell,
+          // What it has on it (1.784), used as a party member's are.
+          ...(carried ? { items: carried } : {}),
         });
+        if (carriedIn) combatant.carried = carriedRecord(carriedIn);
         combatant.actions = [
           ...combatant.actions,
           ...blockActions(definition, block, perCell),
@@ -7135,11 +7200,13 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
           input.bestiary ?? {},
           perCell,
         ),
+        ...(carried ? carriedBlockActions(definition, combat, carried, perCell) : []),
       ];
       state.combatants.push({
         id: entry.id,
         name: entry.name,
         side: entry.side,
+        ...(carriedIn ? { carried: carriedRecord(carriedIn) } : {}),
         ...("creature" in entry ? { creature: creatureRef(definition, entry.creature) } : {}),
         initiativeRoll: initiative.roll,
         initiativeModifier: initiative.modifier,

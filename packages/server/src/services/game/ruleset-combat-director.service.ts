@@ -185,6 +185,11 @@ import {
   type CombatOrders,
   type CombatTactics,
   type RulesetSheetItem,
+  type RulesetCarriedInput,
+  type RulesetCreature,
+  type RulesetItemBook,
+  rollRulesetCreatureInventory,
+  rulesetCarriedLeft,
   rulesetCombatantFlying,
   withRulesetSheetEvaluationCache,
 } from "@marinara-engine/shared";
@@ -341,6 +346,9 @@ export interface RulesetFightOpponent {
   tactics?: Pick<CombatTactics, "proficiency" | "adjective">;
   /** How a story fight has it (1.363): its Legendary Resistance and health, when it is a bestiary's. */
   adjust?: { legendaryResistance?: number; maxHp?: number; calls?: Array<{ action: string; creature: string }> };
+  /** What the Game Master gave it to have on it (1.784), one line an item by its name or reference:
+   *  in place of what its bestiary entry rolls for, and none at all when empty. */
+  items?: string[];
 }
 
 export interface RulesetFightSeed {
@@ -373,6 +381,8 @@ export interface RulesetFightSeed {
   items?: (name: string) => RulesetSheetItem[];
   /** Whose bag each party member's items are in, by name (1.705): null for the player's own. */
   holders?: (name: string) => string | null;
+  /** The ruleset's items (1.784), for what its opponents have on them: none read without it. */
+  itemBook?: Pick<RulesetItemBook, "entries" | "coins" | "itemOf">;
   /** The catalogs the party's own rows came from, so the fight knows what an ability costs. */
   partyCatalogs: RulesetCatalogEntriesById;
   /** Every catalog of this ruleset that holds creatures. */
@@ -406,6 +416,8 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
 
   const adjustments: string[] = [];
   const lootTables: Record<string, string> = {};
+  /** What each bestiary opponent may have on it (1.784), by combatant id. */
+  const inventories = new Map<string, NonNullable<RulesetCreature["inventory"]>>();
   /** Invented opponents written as sheets, and the tier each is held to once it is built. */
   const heldToTier = new Map<string, NonNullable<typeof combat.threat>["tiers"][number]>();
   const builds = rulesetSheetBuildsByName(definition, input.cards, input.playerName);
@@ -494,6 +506,7 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
           : {}),
       });
       if (found.entry.creature?.loot) lootTables[opponent.id] = found.entry.creature.loot;
+      if (found.entry.creature?.inventory) inventories.set(opponent.id, found.entry.creature.inventory);
       continue;
     }
     const proposed =
@@ -591,6 +604,31 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
     combatants.push({ id: opponent.id, name: opponent.name, side: "enemy", block: built.block });
   }
 
+  // What each opponent has on it as it begins (1.784): what the Game Master gave it, else what its
+  // bestiary entry rolls for, by the fight's own seed so the same fight has the same.
+  if (input.itemBook) {
+    const book = input.itemBook;
+    input.enemies.forEach((opponent, index) => {
+      const entry = combatants.find((one) => one.id === opponent.id);
+      if (!entry || "build" in entry) return;
+      const rng = deterministicRng(input.seed >>> 0, RULESET_CARRIED_CURSOR + index);
+      const roll = (sides: number) => 1 + Math.floor(rng() * sides);
+      const lines = inventories.get(opponent.id);
+      const had = opponent.items
+        ? rulesetGivenItems(book, opponent.items, (name) =>
+            adjustments.push(`${opponent.name}: the ruleset has no item called "${name}", so it was not given.`),
+          )
+        : lines
+          ? rollRulesetCreatureInventory(definition, book, lines, roll)
+          : [];
+      const carried = had.flatMap((drop) => {
+        const item = book.itemOf(drop.item)?.entry.item;
+        return item ? [{ held: { item, quantity: drop.count, worn: false, name: drop.name }, ref: drop.item }] : [];
+      });
+      if (carried.length > 0) (entry as { carried?: RulesetCarriedInput[] }).carried = carried;
+    });
+  }
+
   const board = buildRulesetBoard(input, combatants);
   if (board && "error" in board) return { ok: false, error: board.error };
   const encounterOn = (on: typeof board) =>
@@ -673,6 +711,34 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
   record(fight, deploy ? encounter.opening.filter((event) => event.type !== "turn") : encounter.opening);
   for (const line of fight.adjustments) logger.info("[game/combat:ruleset] %s", line);
   return { ok: true, fight };
+}
+
+/** Where the dice for what opponents have on them (1.784) start, apart from the board's and the fight's. */
+const RULESET_CARRIED_CURSOR = 17840;
+
+/** The items the Game Master gave an opponent (1.784), each line one of the ruleset's by its reference
+ *  or its name, any case: lines naming one item are added together, and one naming none is told. */
+function rulesetGivenItems(
+  book: Pick<RulesetItemBook, "entries">,
+  lines: readonly string[],
+  unknown: (name: string) => void,
+): Array<{ item: string; name: string; count: number }> {
+  const had = new Map<string, { item: string; name: string; count: number }>();
+  for (const line of lines) {
+    const wanted = line.trim();
+    if (!wanted) continue;
+    const key = wanted.toLowerCase();
+    const found =
+      book.entries.find((entry) => entry.item === wanted) ??
+      book.entries.find((entry) => !entry.coin && entry.name.trim().toLowerCase() === key);
+    if (!found) {
+      unknown(wanted);
+      continue;
+    }
+    const before = had.get(found.item);
+    had.set(found.item, { item: found.item, name: found.name, count: (before?.count ?? 0) + 1 });
+  }
+  return [...had.values()];
 }
 
 /**
@@ -1297,6 +1363,9 @@ function projectCombatant(
     ...(combatant.away?.surrendered ? { surrendered: true as const } : {}),
     ...(combatant.away?.left ? { left: true as const } : {}),
     ...(combatant.surprised ? { surprised: true as const } : {}),
+    ...(combatant.carried?.length
+      ? { carrying: rulesetCarriedLeft(combatant).map((one) => ({ name: one.name, count: one.count })) }
+      : {}),
     ...(deathTrack ? { deathTrack } : {}),
     ...((pools) => (pools ? { pools } : {}))(spentPoolsOf(definition, combatant)),
     ...(saveModifiers.length ? { saveModifiers } : {}),

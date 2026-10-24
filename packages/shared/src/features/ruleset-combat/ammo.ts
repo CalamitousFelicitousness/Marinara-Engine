@@ -436,6 +436,23 @@ export interface RulesetFightItemChange {
 }
 
 /**
+ * What is left of what an opponent had on it as the fight began (1.784), each with how many it still
+ * has: a sheet's items as it used them up, a plain block's by the uses its actions have left. What
+ * it never had a way to use is all still there. Nothing for one that carried nothing.
+ */
+export function rulesetCarriedLeft(combatant: RulesetCombatant): Array<{ ref: string; name: string; count: number }> {
+  return (combatant.carried ?? []).flatMap((one, index) => {
+    const used = combatant.sheet
+      ? (combatant.itemsUsed?.[index] ?? 0)
+      : `carried:${index}` in (combatant.uses ?? {})
+        ? one.count - (combatant.uses[`carried:${index}`] ?? one.count)
+        : 0;
+    const count = Math.max(0, one.count - used);
+    return count > 0 ? [{ ...one, count }] : [];
+  });
+}
+
+/**
  * What changed of the party's inventory between two states of one fight, stack by stack: every shot,
  * load and share won back since `before`, which is nothing at all when the fight is new. An item the
  * fight was handed without a stack (a test's, or one read from nowhere) is never written anywhere.

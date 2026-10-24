@@ -4,7 +4,7 @@
 //
 // Presentational, as the board and the menu are. The half-made choice lives here only because both
 // the board and the pane's option list draw it; every number is the view's.
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import type {
   CombatController,
   CombatWeather,
@@ -55,6 +55,37 @@ export interface RulesetCombatScreenProps {
   /** Before the first turn (2026-10-24): one of the party set down on a square, and the fight begun. */
   onDeploy?: (unitId: string, to: { x: number; y: number }) => void;
   onDeployed?: () => void;
+}
+
+/** How far the game's top-left float (`data-game-float="map-and-party"`) reaches down into `column`
+ *  where the two overlap, in pixels, kept up as either changes size: none when it lies beside it. */
+function useTopFloatClearance(column: RefObject<HTMLDivElement | null>, active: boolean): number {
+  const [clear, setClear] = useState(0);
+  useEffect(() => {
+    const own = column.current;
+    if (!active || !own || typeof ResizeObserver === "undefined") {
+      setClear(0);
+      return;
+    }
+    const float = document.querySelector<HTMLElement>('[data-game-float="map-and-party"]');
+    if (!float) return;
+    const measure = () => {
+      const at = own.getBoundingClientRect();
+      const over = float.getBoundingClientRect();
+      const overlaps = over.height > 0 && over.left < at.right && over.right > at.left && over.top < at.bottom;
+      setClear(overlaps ? Math.max(0, Math.ceil(over.bottom + 6 - at.top)) : 0);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(float);
+    observer.observe(own);
+    window.addEventListener("resize", measure);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [column, active]);
+  return clear;
 }
 
 export function RulesetCombatScreen({
@@ -136,6 +167,8 @@ export function RulesetCombatScreen({
   // or a new question chooses again: a question and the player's own turn go to the options,
   // somebody else's turn goes to the board. Nothing switches while a step is open.
   const narrow = useMatchMedia("(max-width: 767px)");
+  const boardColumnRef = useRef<HTMLDivElement>(null);
+  const floatClear = useTopFloatClearance(boardColumnRef, !narrow);
   const [phoneTab, setPhoneTab] = useState<"board" | "pane" | "order" | "log">("pane");
   const [orderOpen, setOrderOpen] = useState(false);
   const [leaving, setLeaving] = useState(false);
@@ -313,7 +346,13 @@ export function RulesetCombatScreen({
     </>
   );
   const boardColumn = (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+    <div
+      ref={boardColumnRef}
+      className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+      // Below the game's top-left float (the folded map pill and the portraits) on a wide screen, so
+      // it lies over none of the board's squares (playtest 2026-10-24).
+      style={floatClear > 0 ? { paddingTop: floatClear } : undefined}
+    >
       <RulesetCombatBoard
         className="min-h-0 flex-1"
         view={view}

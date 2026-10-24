@@ -363,7 +363,15 @@ function RulesetCombatantDetail({
           <span className="font-semibold text-[var(--foreground)]">{trait.name}.</span> {trait.text}
         </p>
       ))}
-      {empty && <p className="m-0">{t("game.combat.ruleset.screen.nothingSpecial")}</p>}
+      {combatant.carrying?.length ? (
+        <p className="m-0">
+          <span className="font-semibold text-[var(--foreground)]">{t("game.combat.ruleset.screen.carrying")}</span>{" "}
+          {combatant.carrying
+            .map((one) => (one.count > 1 ? t("game.combat.ruleset.screen.carriedCount", one) : one.name))
+            .join(", ")}
+        </p>
+      ) : null}
+      {empty && !combatant.carrying?.length && <p className="m-0">{t("game.combat.ruleset.screen.nothingSpecial")}</p>}
     </div>
   );
 }

@@ -4577,6 +4577,7 @@ as a `sheet`, takes `health`, `defense`, `initiativeModifier`, `speed`, `abiliti
   own conditions, or a track your `combat.levels` read (Capability API 1.115).
 - `tier`: which rung of `combat.threat` it belongs to.
 - `loot` (Capability API 1.63): the id of the loot table a won fight rolls for it (see Loot, above).
+- `inventory` (Capability API 1.784): what it may have on it as a fight begins, up to 16 lines. Each line names one of your items (`item`, as `<catalog>/<entry>`) or one of your loot tables (`table`), with `chance` (in a hundred, default 100) and `count` (a number or dice, default 1; a table is rolled that many times). It uses what it can in the fight: a creature with a `sheet` uses its items as a party member does, and a plain stat block uses an item whose `use` is used up in the using and reads nothing of its user (a potion, an oil). What it has left drops when it is beaten, beside its `loot`; one that runs off takes it along. The Game Master may give an opponent its own instead (`carrying` in the encounter), which takes the place of these lines.
 - `traits`: short name and text pairs the Game Master is shown. They are never resolved, so
   anything with numbers in it belongs in an action.
 - `signaturePoints`: points given back at the start of its own turn, spent on `signature` actions.

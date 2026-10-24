@@ -12,6 +12,7 @@ import {
   gameInventoryUsableStack,
   normalizeGameInventoryStacks,
   rulesetFightItemChanges,
+  rulesetCarriedLeft,
   gameWorldElementSet,
   worldElementSetSchema,
   WORLD_DEFAULT_BATTLEFIELDS,
@@ -197,6 +198,9 @@ const rulesetOpponentSchema = directedCombatantFields
     /** A stat block in the shared creature form. Checked when the fight is built, so a malformed
      *  one costs its opponent its proposal rather than costing the whole battle. */
     proposed: z.unknown().optional(),
+    /** What the Game Master gave it to have on it (1.784): the ruleset's items, one a line, by name
+     *  or reference; read when the fight is built, and one it has no such item of is told. */
+    carrying: z.array(z.string().min(1).max(200)).max(16).optional(),
   })
   .refine(resourcePools, "Invalid resource pool.");
 const coord = z.object({ x: z.number().int().min(0).max(63), y: z.number().int().min(0).max(63) });
@@ -695,6 +699,12 @@ export async function combatDirectorRoutes(
             tables: fallen.flatMap((enemy) => s.rulesetFight?.lootTables?.[enemy.id] ?? []),
             defeated: fallen.length,
             difficulty: s.difficulty,
+            // What the beaten still had on them (1.784); one that ran took its along.
+            carried: (encounter?.combatants ?? []).flatMap((combatant) =>
+              combatant.side === "enemy" && combatant.defeated && !combatant.away?.left
+                ? rulesetCarriedLeft(combatant)
+                : [],
+            ),
           },
           rollDieSecurely,
         )
@@ -1027,12 +1037,15 @@ export async function combatDirectorRoutes(
               ...(enemy.aiHints?.mind ? { mind: enemy.aiHints.mind } : {}),
               ...(enemy.aiHints?.leader ? { leader: true } : {}),
               ...(enemy.start ? { start: enemy.start } : {}),
+              ...(enemy.carrying ? { items: enemy.carrying } : {}),
             })),
             cards,
             playerName: persona?.name ?? null,
             live: parseStoredRulesetLive(liveRow?.rulesetLive),
             // What each member holds as the fight starts, when the ruleset's sheet reads items.
             ...(fightItems ? { items: fightItems, holders: rulesetCardHolder(cardNames, persona?.name ?? null) } : {}),
+            // The ruleset's items, for what its opponents have on them (1.784).
+            ...(itemBook ? { itemBook } : {}),
             partyCatalogs: await loadFightCatalogs(resolved.packageId, definition, (c) => partyLists.has(c.id)),
             bestiary: await loadBestiary(resolved.packageId, definition, proposedSheetLists(definition, input.enemies)),
             // Who the scene caught unaware (1.237).

@@ -10623,6 +10623,29 @@ export type RulesetProposedCreature = z.infer<typeof rulesetProposedCreatureBase
 export const rulesetProposedCreatureSchema: z.ZodType<RulesetProposedCreature, z.ZodTypeDef, unknown> =
   rulesetProposedCreatureBaseSchema;
 
+/** One line of what a creature may have on it as a fight begins (1.784): one of the ruleset's items, or
+ *  a loot table's picks, with the chance in a hundred that it has them and how many. */
+const creatureInventoryLineSchema = z
+  .object({
+    item: z
+      .string()
+      .max(81)
+      .regex(/^[a-z][a-z0-9_]{0,39}\/[a-z0-9]+(?:-[a-z0-9]+)*$/, "An item is named as <catalog>/<entry>")
+      .optional(),
+    table: sheetId.optional(),
+    chance: z.number().int().min(1).max(100).default(100),
+    count: z.union([z.number().int().min(1).max(99), catalogDice]).default(1),
+  })
+  .strict()
+  .superRefine((line, ctx) => {
+    if ((line.item === undefined) === (line.table === undefined)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "A line of what a creature has on it names an item or a loot table, one of them",
+      });
+    }
+  });
+
 /** A creature a bestiary ships: the plain block, or a `sheet` in the ruleset's own terms. With a
  *  sheet it is built the way a party member is, so the numbers the sheet gives are not also given
  *  here, and there is one place each of them comes from. */
@@ -10637,6 +10660,10 @@ const rulesetCreatureBaseSchema = z
     sheet: creatureSheetSchema.optional(),
     /** The loot table a won fight rolls for it, by the id `items.lootTables` gives it. */
     loot: sheetId.optional(),
+    /** What it may have on it as a fight begins (1.784), each line rolled for once: an item of the
+     *  ruleset's, or a loot table's picks, `chance` in a hundred. It uses what it can in the fight,
+     *  and what it has left drops when it is beaten. */
+    inventory: z.array(creatureInventoryLineSchema).min(1).max(16).optional(),
   })
   .strict()
   .superRefine((creature, ctx) => {
@@ -21985,6 +22012,10 @@ function creatureIssues(
   if (creature.loot !== undefined && !definition.items?.lootTables?.some((table) => table.id === creature.loot)) {
     add([...at, "loot"], `Unknown loot table "${creature.loot}"`);
   }
+  creature.inventory?.forEach((line, lineIndex) => {
+    if (line.table !== undefined && !definition.items?.lootTables?.some((table) => table.id === line.table))
+      add([...at, "inventory", lineIndex, "table"], `Unknown loot table "${line.table}"`);
+  });
   const budgets = new Set(combat.economy.budgets.map((budget) => budget.id));
   const saves = new Set(definition.sheet.saves.map((save) => save.id));
   const abilities = new Set(definition.sheet.abilities.map((ability) => ability.id));

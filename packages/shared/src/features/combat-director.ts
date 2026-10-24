@@ -211,6 +211,8 @@ export interface DirectedRulesetCombatant {
   left?: true;
   /** Caught unaware (1.237): their first turn is only ended, and they answer nothing until then. */
   surprised?: true;
+  /** What an opponent still has on it of what it began the fight with (1.784), by name. */
+  carrying?: Array<{ name: string; count: number }>;
   /** The two counts of the ruleset's dying rule, for a member the fight is still rolling for. */
   deathTrack?: { successes: number; failures: number; successesMax: number; failuresMax: number };
   /** What this combatant is holding together, when the ruleset has concentration. */

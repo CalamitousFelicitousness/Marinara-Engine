@@ -938,6 +938,8 @@ export type RulesetCombatantInput =
       block: RulesetStatBlock;
       /** What is stored in it as the fight starts, for a block that `stores` (1.508). */
       stored?: RulesetStoredEntry[];
+      /** What it has on it as the fight starts (1.784), each by its item reference. */
+      carried?: ReadonlyArray<RulesetCarriedInput>;
     }
   /** A creature out of a bestiary, looked up in the catalogs the encounter was handed. */
   | {
@@ -955,7 +957,16 @@ export type RulesetCombatantInput =
       stored?: RulesetStoredEntry[];
       /** Its stat block as this fight has it (1.363): a story fight's Legendary Resistance and health. */
       adjust?: { legendaryResistance?: number; health?: number; calls?: Array<{ action: string; creature: string }> };
+      /** What it has on it as the fight starts (1.784), each by its item reference. */
+      carried?: ReadonlyArray<RulesetCarriedInput>;
     };
+
+/** One item an opponent has on it as a fight starts (1.784), and the reference it drops as. Never
+ *  anybody's stack: nothing it uses is written to a bag. */
+export interface RulesetCarriedInput {
+  held: RulesetSheetItem;
+  ref: string;
+}
 
 /** One thing a combatant may do, with every number already read off the sheet or the stat block.
  *  Resolved once, when the fight begins: armour and bonuses do not change mid-fight in this kind. */
@@ -2571,6 +2582,9 @@ export interface RulesetCombatant {
   };
   /** An opponent's block, and the health the encounter keeps for it. */
   block?: RulesetStatBlock;
+  /** What it had on it as the fight began (1.784), in order: what is left of each is
+   *  `rulesetCarriedLeft`'s, and drops when it is beaten. */
+  carried?: Array<{ ref: string; name: string; count: number }>;
   /** `sealed` is what only a rest gives back (1.193), which no heal lifts it past. */
   health?: { value: number; max: number; temp: number; sealed?: number };
   /** Where they stand. Present only in a positioned fight, and then on everybody at once. */

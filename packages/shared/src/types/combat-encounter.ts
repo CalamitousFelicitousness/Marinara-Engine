@@ -176,6 +176,9 @@ export interface RulesetEncounterBlueprint {
   inLair?: boolean;
   /** Where the Game Master starts it on the board (2026-10-24); a ruleset fight reads it. */
   start?: CombatStartPlace;
+  /** What the Game Master gave it to have on it (1.784), the ruleset's items by name, one a line; a
+   *  ruleset fight reads it in place of what its bestiary entry rolls for. */
+  carrying?: string[];
   creature?: string;
   tier?: string;
   proposed?: unknown;

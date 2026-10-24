@@ -3077,6 +3077,23 @@ function carriesSoloRole760(value: unknown, depth = 0): boolean {
 }
 
 /** Losing heart (1.746): `combat.morale`, or a stat block's `morale` score or `leader`. */
+/** What a creature has on it as a fight begins (1.784): a creature's `inventory` of item or table lines. */
+function carriesCreatureInventory784(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesCreatureInventory784(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (
+    Array.isArray(record.inventory) &&
+    record.inventory.some((line) => {
+      const one = plainRecord(line);
+      return !!one && (typeof one.item === "string" || typeof one.table === "string");
+    })
+  )
+    return true;
+  return featureValues(record).some((one) => carriesCreatureInventory784(one, depth + 1));
+}
+
 function carriesMorale746(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
   if (Array.isArray(value)) return value.some((one) => carriesMorale746(one, depth + 1));
@@ -12592,6 +12609,14 @@ export function getCapabilityPackageInstallIssue(
     })()
   ) {
     return "A ruleset whose sheet migrations set a column on list rows (setColumn) requires schemaVersion 2 and capabilityApi 1.783 or newer";
+  }
+  // What a creature has on it as a fight begins, 1.784.
+  if (
+    !declaresApi(784) &&
+    (carriesCreatureInventory784(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesCreatureInventory784(document)))
+  ) {
+    return "A ruleset whose creatures have things on them as a fight begins (a creature's inventory) requires schemaVersion 2 and capabilityApi 1.784 or newer";
   }
   // A ruleset over 256 KB or a catalog file over 1 MB, the ceilings before 1.340.
   if (

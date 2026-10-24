@@ -1491,7 +1491,12 @@ const capabilityPackageManifestBaseSchema = z
 //        best of several abilities, for its damage too (5e's Finesse, the better of STR and DEX).
 // 1.783: a sheet migration's `setColumn`: one column set on every list row its `where` columns match,
 //        as attack rows made before a weapon's ability choice existed.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 783 } as const);
+// 1.784: a bestiary creature's `inventory`: what it has on it as a fight begins, each line an item of
+//        the ruleset's or a loot table's picks, `chance` in a hundred and `count` of it. It uses what it
+//        can (a sheet-backed one as a party member does; a plain stat block what is used up in the using
+//        and reads nothing of its user), and what it has left drops when it is beaten. The Game Master
+//        may give an opponent its own instead (`carrying`).
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 784 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

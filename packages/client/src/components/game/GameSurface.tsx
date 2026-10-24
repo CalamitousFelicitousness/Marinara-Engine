@@ -1215,6 +1215,7 @@ export function generatedEnemyToCombatant(enemy: CombatEnemy, index: number, fal
     ...(enemy.surprised === true ? { surprised: true } : {}),
     ...(enemy.inLair === true ? { inLair: true } : {}),
     ...(enemy.start ? { start: enemy.start } : {}),
+    ...(Array.isArray(enemy.carrying) ? { carrying: enemy.carrying } : {}),
     ...(Array.isArray(enemy.standing) && enemy.standing.length ? { standing: enemy.standing } : {}),
   };
 }
@@ -9170,22 +9171,6 @@ function GameSurfaceComponent({
     setCombatGenerationError(null);
   }, [activeChatId]);
   const combatOwnsTopChrome = combatUiActive && !!combatStyleSurface.ownsTopChrome;
-  // How far down the top-left float (folded map pill and portraits) reaches, for a fight board to start
-  // below it on a wide screen (playtest 2026-10-24: the pill lay over the board's top squares).
-  const mapAndPartyFloatRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const float = mapAndPartyFloatRef.current;
-    if (!combatUiActive || !float || typeof ResizeObserver === "undefined") return;
-    const root = document.documentElement;
-    const write = () => root.style.setProperty("--game-top-float-bottom", `${float.offsetTop + float.offsetHeight}px`);
-    write();
-    const observer = new ResizeObserver(write);
-    observer.observe(float);
-    return () => {
-      observer.disconnect();
-      root.style.removeProperty("--game-top-float-bottom");
-    };
-  }, [combatUiActive]);
   const topOverlayOffsetClass = "top-3";
   const queuedCombatMatchesLatest =
     !!queuedCombatGeneration?.messageId &&
@@ -13507,7 +13492,6 @@ function GameSurfaceComponent({
 
                   {/* Top-left: Map + Party portraits side by side, clear of a phone's row of control bubbles */}
                   <div
-                    ref={mapAndPartyFloatRef}
                     data-game-float="map-and-party"
                     className={cn(
                       // On a phone it stops short of the control-button rows in the right half of the chat.

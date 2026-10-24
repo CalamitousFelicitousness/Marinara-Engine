@@ -63,24 +63,26 @@ function getBranchGraphDefaultLayout(bounds: WindowBounds): WindowLayout {
   };
 }
 
-/** The tree button in the Chat Branches header; it opens (or closes) the graph window. */
+/** The long button over the Chat Branches section's other buttons; it opens (or closes) the graph window. */
 export function ChatBranchGraphButton() {
   const { t: localizeUi } = useUiTranslation();
   const open = useFloatingWindowStore((state) => state.open[CHAT_BRANCH_GRAPH_WINDOW_ID] === true);
-  const label = localizeUi("chat.settings.branchGraphOpen");
   return (
     <button
       type="button"
       data-chat-branch-graph-button
-      aria-label={label}
       aria-pressed={open}
-      title={label}
-      className="mari-window__control"
+      title={localizeUi("chat.settings.branchGraphOpen")}
+      className={cn(
+        "flex w-full items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-[0.6875rem] font-medium text-[var(--foreground)] ring-1 ring-[var(--border)] transition-colors hover:bg-[var(--accent)]",
+        open ? "bg-[var(--accent)]" : "bg-[var(--secondary)]",
+      )}
       onClick={(event) =>
         useFloatingWindowStore.getState().toggleWindow(CHAT_BRANCH_GRAPH_WINDOW_ID, event.currentTarget)
       }
     >
-      <GitGraph size="0.875rem" />
+      <GitGraph size="0.75rem" />
+      {localizeUi("chat.settings.branchGraph")}
     </button>
   );
 }

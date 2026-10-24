@@ -18,10 +18,11 @@ import {
 import type { TFunction } from "i18next";
 import { rulesetDistanceText, type RulesetBoardDistance, type RulesetCellChoice } from "./ruleset-combat-board";
 
-/** The order a menu reads in: where you go, what you swing, what you cast, what a stat block can
- *  do, the contests it may start, the moves the kind implements, and finally ending the turn.
- *  Walking comes first because a turn on a board usually starts with it, and it may be taken again
- *  after an action. */
+/** The order a menu reads in: what a symbol throw's leftovers buy (1.382), then where you go, what
+ *  you swing, what you cast, what a stat block can do, the contests it may start, the moves the kind
+ *  implements, and finally ending the turn. Spends are only ever asked in a window of their own, so
+ *  on a turn walking comes first: a turn on a board usually starts with it, and it may be taken
+ *  again after an action. */
 export const RULESET_MENU_KINDS = [
   "spend",
   "move",
@@ -517,4 +518,23 @@ export function rulesetDefaultTargets(option: DirectedRulesetOption): string[] {
  *  anything that may take several is confirmed, so a second target is still reachable. */
 export function rulesetSendsOnPick(option: DirectedRulesetOption): boolean {
   return option.targets.count === 1;
+}
+
+/** Whether this browser's choice of picking its own symbol spends (1.382) is carried into the fight
+ *  on screen now. Null while it waits: no fight in symbol dice, a step in flight, a decision standing
+ *  open (which would refuse the command), or this fight already carried. Otherwise the fight's key
+ *  to remember as carried, and whether the command needs sending at all. A fight is its id and its
+ *  instance, since a restored checkpoint is another fight under the same id. */
+export function rulesetSpendCarry(
+  session:
+    { id: string; instanceId?: string; window?: unknown; ruleset?: { spends?: { choose: boolean } } } | undefined,
+  busy: boolean,
+  carried: string | null,
+  preferred: boolean,
+): { key: string; send: boolean } | null {
+  const spends = session?.ruleset?.spends;
+  if (!session || !spends || busy || session.window) return null;
+  const key = `${session.id}|${session.instanceId ?? ""}`;
+  if (carried === key) return null;
+  return { key, send: preferred && !spends.choose };
 }

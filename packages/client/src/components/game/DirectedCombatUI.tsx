@@ -13,6 +13,7 @@ import { RulesetCombatScreen, RulesetFightEnd } from "./RulesetCombatScreen";
 import { RulesetCombatStatus } from "./RulesetCombatStatus";
 import { readSpendChoice, writeSpendChoice } from "./RulesetSpendToggle";
 import { rulesetValueLabel } from "../../lib/ruleset-combat-log";
+import { rulesetSpendCarry } from "../../lib/ruleset-combat-menu";
 import type { RulesetCellChoice } from "../../lib/ruleset-combat-board";
 import { TacticalCombatUI } from "./TacticalCombatUI";
 import { cn } from "../../lib/utils";
@@ -72,14 +73,20 @@ export function DirectedCombatUI(props: Props) {
   const defenseLabel = definition ? rulesetValueLabel(definition, definition.combat?.defense) : "";
   // Whether the player picks their own symbol spends (1.382) is this browser's, carried into each new
   // fight once, as it opens: the fight starts with the Engine picking.
-  const spends = s?.style === "ruleset" ? s.ruleset?.spends : undefined;
-  const fightId = s?.id;
   const spendsCarried = useRef<string | null>(null);
+  const carry = rulesetSpendCarry(
+    s?.style === "ruleset" ? s : undefined,
+    busy,
+    spendsCarried.current,
+    readSpendChoice(),
+  );
+  const carryKey = carry?.key;
+  const carrySends = !!carry?.send;
   useEffect(() => {
-    if (!spends || !fightId || busy || spendsCarried.current === fightId) return;
-    spendsCarried.current = fightId;
-    if (readSpendChoice() && !spends.choose) send({ type: "spends", choose: true });
-  }, [spends, fightId, busy, send]);
+    if (!carryKey) return;
+    spendsCarried.current = carryKey;
+    if (carrySends) send({ type: "spends", choose: true });
+  }, [carryKey, carrySends, send]);
   const chooseSpends = (choose: boolean) => {
     writeSpendChoice(choose);
     send({ type: "spends", choose });

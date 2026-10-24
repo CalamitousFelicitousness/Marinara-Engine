@@ -86,6 +86,7 @@ import {
   rulesetHeightenPick,
   rulesetPicksStep,
   rulesetSparePick,
+  rulesetSpendCarry,
   type RulesetMenuStep,
 } from "../../packages/client/src/lib/ruleset-combat-menu.js";
 import {
@@ -2442,6 +2443,25 @@ function drawn(...rows: string[]): TacticalGrid {
     symbolSpend: { engine: true, picks: [] },
   } as never;
   assert.equal(rulesetOptionLabel(engine, t), "Let the Engine choose: Cut deeper, Rally");
+  // The browser's choice is carried into a symbol fight once, and never while a decision is open.
+  const fightView = (choose: boolean, extra: Record<string, unknown> = {}) => ({
+    id: "fight",
+    instanceId: "row-1",
+    ruleset: { spends: { choose } },
+    ...extra,
+  });
+  assert.deepEqual(rulesetSpendCarry(fightView(false), false, null, true), { key: "fight|row-1", send: true });
+  assert.deepEqual(rulesetSpendCarry(fightView(false), false, null, false), { key: "fight|row-1", send: false });
+  assert.deepEqual(rulesetSpendCarry(fightView(true), false, null, true), { key: "fight|row-1", send: false });
+  assert.equal(rulesetSpendCarry(fightView(false), false, "fight|row-1", true), null, "carried once");
+  assert.equal(rulesetSpendCarry(fightView(false, { window: { id: "w" } }), false, null, true), null, "waits");
+  assert.equal(rulesetSpendCarry(fightView(false), true, null, true), null, "waits for a step in flight");
+  assert.equal(rulesetSpendCarry({ id: "fight" }, false, null, true), null, "no symbol fight");
+  assert.deepEqual(
+    rulesetSpendCarry(fightView(false, { instanceId: "row-2" }), false, "fight|row-1", true),
+    { key: "fight|row-2", send: true },
+    "a restored checkpoint is another fight",
+  );
   const grid = drawn(".....", ".....");
   const state = createRulesetEncounter({
     definition: fiveE,

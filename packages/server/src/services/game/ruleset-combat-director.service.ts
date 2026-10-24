@@ -3069,7 +3069,11 @@ function rulesetCandidatesFrom(
         // its dice can roll where the blow is not one pulled to knock out (re-test 2026-10-23: a Sacred
         // Flame of 2d8 on a thug at 11 killed under orders to spare), every dart it takes counted
         // (round 2: three Magic Missile darts on a captain at 10).
-        const most = average * rulesetDamageCeiling(fallingAction?.damage);
+        // In a dice pool the most is every die a success, as the ruleset throws it (K7: a ghoul under
+        // orders to spare shot a 4-dice pistol at one with 4 health left).
+        const most = rulesetCombatIsPool(combat)
+          ? Math.max(average, rulesetPoolDamageMost(fallingAction?.damage))
+          : average * rulesetDamageCeiling(fallingAction?.damage);
         const dropped = [target, ...others].filter((one) => {
           const left = rulesetCombatHealth(definition, combat, one);
           return most * (one === target ? 1 + again : 1) >= Math.max(1, left.value + left.temp);
@@ -5099,6 +5103,19 @@ function rulesetDamageCeiling(damage: RulesetCombatAction["damage"] | undefined)
       .filter((one) => !one.targetIs && !one.onCritical && one.whileOn === undefined)
       .reduce((sum, one) => sum + one.count * one.sides + one.flat, 0);
   return Math.max(1, most / average);
+}
+
+/** The most a blow's harm comes to in a `dice-pool` fight: each of its dice a success, its flat part
+ *  as the automatic successes it is, and its clauses dealt to anyone the same way. */
+function rulesetPoolDamageMost(damage: RulesetCombatAction["damage"] | undefined): number {
+  if (!damage || !("sides" in damage)) return 0;
+  return (
+    damage.count +
+    damage.flat +
+    (damage.plus ?? [])
+      .filter((one) => !one.targetIs && !one.onCritical && one.whileOn === undefined)
+      .reduce((sum, one) => sum + one.count + one.flat, 0)
+  );
 }
 
 /** Help worth less than this is not worth a turn: an ability check's die in a fight. */

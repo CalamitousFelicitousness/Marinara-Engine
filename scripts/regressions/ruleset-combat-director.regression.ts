@@ -1781,6 +1781,32 @@ console.log(
   assert.ok(seen.soaked > 0, "and soaked by kind");
   assert.ok(seen.rethrown > 0, "initiative was thrown again as rounds began");
   assert.equal(seen.overspent, 0, "nobody spent past the limit");
+
+  // A blow counts as dropping whoever its dice could drop with every die a success (K7: a ghoul under
+  // orders to spare shot a 4-dice pistol at one with 4 health left).
+  {
+    const state = started({
+      definition: gravewatch,
+      cards: [card("Ada", warden(3, 2)), card("Bram", warden(2, 3))],
+      partyCatalogs: { charms },
+      party,
+      enemies: [{ id: "hollow", name: "Hollow warden", creature: "night/hollow-warden" }],
+      seed: 1,
+    });
+    for (const member of party)
+      commandRulesetCombatDirector(gravewatch, state, { type: "control", unitId: member.id, controller: "manual" });
+    for (let guard = 0; guard < 6 && currentRulesetActor(state.rulesetFight!.encounter)?.id !== "ada"; guard++)
+      commandRulesetCombatDirector(gravewatch, state, { type: "continue" });
+    const encounter = state.rulesetFight!.encounter;
+    assert.equal(currentRulesetActor(encounter)?.id, "ada");
+    const hollow = encounter.combatants.find((one) => one.id === "hollow")!;
+    hollow.health = { ...hollow.health!, value: 2 };
+    const spade = rankRulesetChoices(gravewatch, state, encounter, "ada", 20).find(
+      (one) => one.candidate.targetId === "hollow" && one.candidate.action.option.label === "Spade",
+    );
+    assert.ok(spade, "the spade is weighed");
+    assert.deepEqual(spade!.candidate.action.drops, ["hollow"], "two dice, two successes: it can drop one at 2");
+  }
 }
 
 // ── Initiative as a number attacks move, played out by the Engine on both sides ──

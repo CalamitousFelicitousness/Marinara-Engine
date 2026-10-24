@@ -186,6 +186,9 @@ export interface DirectedRulesetCombatant {
   /** What an attack is rolled against. Sent for both sides: every option's forecast already carries
    *  the chance it would land against this combatant, so the number is not a secret to keep. */
   defense: number;
+  /** How much of `defense` is the cover it stands in (laptop playtest 2026-10-24: a War-Chief's 21
+   *  with nothing to say 2 of it was cover); left out with none. */
+  cover?: number;
   /** `trait` marks one only what they are or carry keeps on them for the whole fight (a halfling's
    *  Lucky, a worn ring's): it is listed, never badged, so it does not hide what the fight did.
    *  `icons`: the art icons it may be drawn with (1.338), first found first, for a token's badge. */
@@ -302,6 +305,9 @@ export interface DirectedRulesetCallout {
  *   - `spread`: it stopped apart from its own side rather than nearest, out of an opponent's blast.
  *   - `pressCaster`: nothing to do yet, so it closed on the one dropping areas on its side from out
  *     of reach.
+ *   - `guarding`: nothing in reach, and it stays beside `targetId`, whom its orders keep it near.
+ *   - `gmPick`: the Game Master chose it for an opponent it plays, `rank` the Engine's suggestion it
+ *     took, if it took one.
  */
 export type DirectedRulesetReason =
   | {
@@ -326,6 +332,7 @@ export type DirectedRulesetReason =
       targetId?: string;
     }
   | { why: "pressCaster"; targetId: string }
+  | { why: "guarding"; targetId: string }
   | { why: "stops"; targetId?: string }
   | { why: "risk" | "cost" }
   | { why: "walked"; cells: number }
@@ -344,7 +351,8 @@ export type DirectedRulesetReason =
         | "wards"
         | "letGo";
     }
-  | { why: "keptBack"; label: string; targetId?: string };
+  | { why: "keptBack"; label: string; targetId?: string }
+  | { why: "gmPick"; rank?: number };
 /** One option of the legal menu, with the combatants it may be pointed at right now. */
 export interface DirectedRulesetOption extends RulesetCombatOption {
   targetIds: string[];

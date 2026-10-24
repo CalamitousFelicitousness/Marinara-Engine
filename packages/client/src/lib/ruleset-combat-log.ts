@@ -1845,6 +1845,7 @@ function rulesetReasonText(reason: DirectedRulesetReason, names: RulesetCombatNa
     case "coordination":
     case "focus":
     case "mostInNeed":
+    case "guarding":
     case "pressCaster":
     case "stops":
     case "takesTurn":
@@ -1858,6 +1859,8 @@ function rulesetReasonText(reason: DirectedRulesetReason, names: RulesetCombatNa
       });
     case "approach":
       return say(reason.sprinted ? "approachSprint" : "approach", { target: target(reason.targetId) });
+    case "gmPick":
+      return reason.rank ? say("gmPickSuggested", { rank: reason.rank }) : say("gmPick");
     default:
       return say(reason.why);
   }

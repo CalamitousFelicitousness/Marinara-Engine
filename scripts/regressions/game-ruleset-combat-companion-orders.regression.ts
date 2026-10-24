@@ -436,6 +436,21 @@ try {
     assert.ok(rulesetCombatant(state.rulesetFight!.encounter, "mira")!.x <= 2 + 3, "and she stays by Ada");
   }
 
+  // ── Already at the end of its leash, a turn it spends nowhere says whom it stays beside (laptop
+  //    playtest 2026-10-24: "nothing it could do was worth the price") ──
+  {
+    const { state } = fight({
+      ada: { side: "party", block: block([smash]), at: { x: 2, y: 5 } },
+      mira: { side: "party", block: block([smash]), at: { x: 5, y: 5 } },
+      orc: { side: "enemy", block: block([smash]), at: { x: 15, y: 5 } },
+    });
+    const seen = state.rulesetFight!.eventSeq;
+    assert.ok(commandRulesetCombatDirector(definition, state, { type: "continue" }).ok);
+    const turn = state.rulesetFight!.events.filter((entry) => entry.seq > seen).map((entry) => entry.event);
+    const why = turn.flatMap((event) => (event.type === "reasoning" && event.actorId === "mira" ? event.reasons : []));
+    assert.deepEqual(why, [{ why: "guarding", targetId: "ada" }], JSON.stringify(turn));
+  }
+
   // ── Guarding a leader who hangs back, it goes to the friend fighting alone (re-test 9) ──
   {
     const { state } = fight({

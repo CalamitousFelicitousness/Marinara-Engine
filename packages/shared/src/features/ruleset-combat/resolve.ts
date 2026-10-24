@@ -12561,6 +12561,15 @@ function readiedReaches(ctx: RulesetCombatContext, holder: RulesetCombatant, mov
   return rulesetOptionTargets(ctx.definition, view, holder.id, option).includes(mover.id);
 }
 
+/** Whether what `holder` readied for an opponent acting could be taken now: a walk always can, and
+ *  anything else at somebody it reaches (a readied heal is for a friend). Asking one who could take it at nobody
+ *  only logs them letting the moment go, on every action an opponent takes (laptop playtest
+ *  2026-10-24: "Goblin Blade 6 may take what they readied" on each of a companion's actions). */
+function readiedHasTarget(ctx: RulesetCombatContext, holder: RulesetCombatant): boolean {
+  if (holder.readied!.optionId === RULESET_MOVE_OPTION) return true;
+  return ctx.state.combatants.some((one) => rulesetCombatStanding(one) && readiedReaches(ctx, holder, one));
+}
+
 /**
  * After a step in which somebody used something (1.288): everybody who readied something for an
  * opponent acting, and saw this one do it, is asked whether they take it now.
@@ -12580,7 +12589,8 @@ function readiedActs(ctx: RulesetCombatContext): void {
           !heldInTime(ctx, one) &&
           rulesetCombatStanding(one) &&
           (one.budgets[ctx.combat.readying!.budget] ?? 0) >= 1 &&
-          rulesetCanSee(ctx.definition, ctx.state, one, source),
+          rulesetCanSee(ctx.definition, ctx.state, one, source) &&
+          readiedHasTarget(ctx, one),
       )
       .map((one) => one.id);
     if (waiting.length === 0) continue;

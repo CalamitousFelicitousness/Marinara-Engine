@@ -33,6 +33,7 @@ import {
   rulesetCombatant,
   rulesetCombatRoller,
   rulesetCombatStanding,
+  rulesetDefenseAgainst,
   rulesetReachableCells,
   rulesetSheetBuildSchema,
   rulesetWindowOptions,
@@ -1010,6 +1011,100 @@ for (const setup of [
   // The live sheet state the route writes back is keyed the way the game stores it.
   const live = rulesetFightLiveStates(state.rulesetFight!);
   assert.deepEqual(Object.keys(live).sort(), ["brenna", "corwin"]);
+}
+
+// ── A Game Master's boss with nobody in reach walks toward the fight before it is asked (laptop
+//    playtest 2026-10-24: a war-chief offered only readying, hiding and dodging readied three rounds
+//    running), and what the Game Master chose says so on the debug log ──
+{
+  const state = started({
+    definition: fiveE,
+    cards: fiveECards,
+    partyCatalogs: spellCatalogs,
+    party: fiveEParty,
+    enemies: [{ id: "lurker", name: "Thorn Lurker", boss: true }],
+    positioned: true,
+    gm: true,
+  });
+  const encounter = state.rulesetFight!.encounter;
+  const width = encounter.board!.grid!.width;
+  const lurker = rulesetCombatant(encounter, "lurker")!;
+  // Far off at the board's other end, out of reach even after a full walk.
+  for (const one of encounter.combatants) {
+    one.x = one.side === "party" ? 0 : width - 1;
+    one.y = one.side === "party" ? (one.id === "brenna" ? 0 : 1) : 0;
+  }
+  const startX = lurker.x!;
+  const seq = state.rulesetFight!.eventSeq;
+  // The party stays where it is: each of its turns is ended as it comes.
+  for (let guard = 0; guard < 8 && !state.window; guard++) {
+    const now = state.rulesetFight!.encounter;
+    const on = now.order[now.turn]!;
+    if (on === "lurker" && rulesetCombatant(now, "lurker")!.x !== startX) break;
+    const command =
+      on === "lurker"
+        ? ({ type: "continue" } as const)
+        : ({ type: "ruleset", optionId: "end-turn", targetIds: [] } as const);
+    assert.ok(commandRulesetCombatDirector(fiveE, state, command).ok);
+  }
+  const after = state.rulesetFight!.events.filter((entry) => entry.seq > seq).map((entry) => entry.event);
+  assert.ok(rulesetCombatant(state.rulesetFight!.encounter, "lurker")!.x! < startX, JSON.stringify(after));
+  assert.ok(
+    after.some(
+      (event) =>
+        event.type === "reasoning" && event.actorId === "lurker" && event.reasons.some((one) => one.why === "approach"),
+    ),
+    JSON.stringify(after),
+  );
+  // Asked from there, what the Game Master picks says the Game Master picked it.
+  // Its next turn, close enough to strike, is asked of the Game Master.
+  for (let guard = 0; guard < 8 && !state.window; guard++) {
+    const now = state.rulesetFight!.encounter;
+    const on = now.order[now.turn]!;
+    const command =
+      on === "lurker"
+        ? ({ type: "continue" } as const)
+        : ({ type: "ruleset", optionId: "end-turn", targetIds: [] } as const);
+    assert.ok(commandRulesetCombatDirector(fiveE, state, command).ok);
+  }
+  assert.equal(state.window?.actorId, "lurker", "and is asked what to do from there");
+  // The defense its targets show says how much of it is the cover they stand in: the number the
+  // rules check a blow of the boss's against, with the cover apart.
+  {
+    const now = state.rulesetFight!.encounter;
+    const tiles = structuredClone(now.board!.grid!.tiles);
+    const shown = () => view(fiveE, state).combatants.find((one) => one.id === "brenna")!;
+    const rules = () =>
+      rulesetDefenseAgainst(
+        fiveE,
+        fiveE.combat!,
+        now,
+        rulesetCombatant(now, "brenna")!,
+        rulesetCombatant(now, "lurker")!,
+      );
+    for (const ground of ["plains", "ruin"] as const) {
+      now.board!.grid!.tiles = tiles.map((row) => row.map(() => ground));
+      const against = rules();
+      assert.equal(shown().defense, against.defense, ground);
+      assert.equal(shown().cover, against.cover > 0 ? against.cover : undefined, ground);
+    }
+    assert.equal(shown().cover, 2, "standing in ruins is cover");
+    now.board!.grid!.tiles = tiles;
+  }
+  {
+    const pick = state.window!.options.find((option) => option.suggested?.rank === 1) ?? state.window!.options[0]!;
+    const before = state.rulesetFight!.eventSeq;
+    assert.ok(commandRulesetCombatDirector(fiveE, state, { type: "choose", candidateId: pick.id }).ok);
+    assert.ok(
+      state.rulesetFight!.events.some(
+        (entry) =>
+          entry.seq > before &&
+          entry.event.type === "reasoning" &&
+          entry.event.reasons.some((one) => one.why === "gmPick"),
+      ),
+      "the Game Master's pick has its why",
+    );
+  }
 }
 
 // ── A fight on a board, from the same path the tactical style takes ──
@@ -2018,8 +2113,9 @@ console.log(
     "keptBack",
     "pressCaster",
     "leavesHarm",
+    "guarding",
   ]);
-  const idle = new Set(["nothingWorth", "noWay", "holding"]);
+  const idle = new Set(["nothingWorth", "noWay", "holding", "guarding"]);
   const played = (definition: RulesetDefinition, state: CombatDirectorState, party: Array<{ id: string }>) => {
     for (const member of party)
       assert.ok(

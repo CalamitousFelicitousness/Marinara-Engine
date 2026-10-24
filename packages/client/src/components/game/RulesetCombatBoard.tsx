@@ -200,6 +200,38 @@ export function RulesetCombatBoard({
       behavior: "smooth",
     });
   }, [scrolls, actor?.x, actor?.y]);
+  // Setting the party down, the room opens on the squares they may stand on (laptop playtest
+  // 2026-10-24: a 40 by 26 board opened at its top, the party's rows off below it): once, at the
+  // middle of them, and the player scrolls from there.
+  const placed = useRef(false);
+  useEffect(() => {
+    if (!placing?.size) {
+      placed.current = false;
+      return;
+    }
+    if (!scrolls || placed.current) return;
+    const cells = [...placing].map((key) => {
+      const [x, y] = key.split(",").map(Number);
+      return { x: x!, y: y! };
+    });
+    const mid = {
+      x: cells.reduce((sum, cell) => sum + cell.x, 0) / cells.length,
+      y: cells.reduce((sum, cell) => sum + cell.y, 0) / cells.length,
+    };
+    const near = cells.reduce((best, cell) =>
+      Math.hypot(cell.x - mid.x, cell.y - mid.y) < Math.hypot(best.x - mid.x, best.y - mid.y) ? cell : best,
+    );
+    const box = room.current;
+    const tile = tiles.current.get(rulesetCellKey(near));
+    if (!box || !tile) return;
+    placed.current = true;
+    const at = tile.getBoundingClientRect();
+    const frame = box.getBoundingClientRect();
+    box.scrollTo({
+      left: box.scrollLeft + at.left - frame.left - (box.clientWidth - at.width) / 2,
+      top: box.scrollTop + at.top - frame.top - (box.clientHeight - at.height) / 2,
+    });
+  }, [scrolls, placing]);
   // Opponents past the room's edge on a board that scrolls (re-test 2026-10-24: on a phone nothing
   // said where the rest of the fight was): a mark on that edge counts them, and takes the room to
   // the nearest.

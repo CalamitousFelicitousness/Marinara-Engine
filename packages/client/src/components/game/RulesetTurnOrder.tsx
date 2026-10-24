@@ -232,8 +232,20 @@ export function RulesetTurnOrder({
                   </span>
                 </span>
                 {showDefense && (
-                  <span className="text-center text-xs font-semibold tabular-nums text-[var(--foreground)]">
-                    {combatant.defense}
+                  <span
+                    className="text-center text-xs font-semibold tabular-nums text-[var(--foreground)]"
+                    title={
+                      combatant.cover
+                        ? t("game.combat.ruleset.screen.defenseCover", { amount: combatant.cover })
+                        : undefined
+                    }
+                  >
+                    {combatant.defense - (combatant.cover ?? 0)}
+                    {combatant.cover ? (
+                      <span className="ml-0.5 text-[0.625rem] font-normal text-[var(--muted-foreground)]">
+                        +{combatant.cover}
+                      </span>
+                    ) : null}
                   </span>
                 )}
                 {party && !isLeader ? (

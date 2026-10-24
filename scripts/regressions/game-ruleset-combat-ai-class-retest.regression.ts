@@ -13,6 +13,8 @@
  *   - An area that lowers its holders' defense is never cast over its own side as support (Slow).
  *   - A summons held is not let go for a lesser held spell, nor for a held blow worth less than it.
  *   - A potion that ends on its drinker's next attack is worth one blow, not an hour of them.
+ *   - A spell that grows with its slot is cast from the lowest slot that drops its target, and an
+ *     aura that harms the foes in it is not let go for a buff (laptop playtest 2026-10-24).
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -459,6 +461,131 @@ try {
       "storm",
       "the wolves are kept",
     );
+  }
+
+  // ── A spell that grows with its slot is cast from the lowest slot that drops its target (laptop
+  //    playtest 2026-10-24: a Guiding Bolt from a 3rd-level slot at a wolf, four 1st-level slots free) ──
+  {
+    const lance = {
+      id: "lance",
+      label: "Lance",
+      rows: [{ list: "spells", values: { name: "Lance", level: 1, prepared: true } }],
+      mechanics: {
+        kind: "attack",
+        autoHit: true,
+        range: 120,
+        amount: { dice: "4d6" },
+        damageType: "radiant",
+        cost: [{ pool: "slots_1", amount: 1 }],
+        perCostStep: { dice: "1d6" },
+      },
+    } as unknown as RulesetCatalogEntry;
+    const build = rulesetSheetBuildSchema.parse({
+      abilities: { str: 10, dex: 10, con: 14, int: 10, wis: 16, cha: 10 },
+      fields: {
+        level: 5,
+        ac: 16,
+        speed: 30,
+        hp_max: 38,
+        spellcasting_ability: "wis",
+        slots_max_1: 4,
+        slots_max_2: 3,
+        slots_max_3: 2,
+      },
+      lists: { spells: rowsFromCatalogEntry("spells", lance).map((one) => one.row) },
+    });
+    const paid = (health: number) => {
+      const scene = fight([
+        {
+          id: "hessa",
+          name: "hessa",
+          side: "party",
+          build,
+          live: {},
+          catalogs: { spells: [lance] },
+          at: { x: 2, y: 5 },
+        },
+        { id: "wolf", name: "wolf", side: "enemy", block: block([poke], { health }), at: { x: 8, y: 5 } },
+        { id: "wolf2", name: "wolf2", side: "enemy", block: block([poke], { health: 11 }), at: { x: 9, y: 2 } },
+      ]);
+      const choice = pickRulesetChoice(definition, scene.state, scene.encounter, "hessa");
+      assert.ok(choice?.option.label.startsWith("Lance"), JSON.stringify(choice));
+      return choice!.choice.payWith ?? "slots_1";
+    };
+    assert.equal(paid(11), "slots_1", "4d6 drops a wolf at 11: the 1st-level slot");
+  }
+
+  // ── An aura held that harms the foes in it, not let go for a buff (laptop playtest 2026-10-24:
+  //    Spirit Guardians around the goblins dropped for a Bless) ──
+  {
+    const triggers = ["enter", "turn-start"];
+    const guardians = {
+      id: "guardians",
+      label: "Guardians",
+      kind: "attack",
+      budget: "action",
+      concentration: true,
+      autoHit: true,
+      targets: { side: "enemy", count: 0 },
+      area: { shape: "burst", size: 15 },
+      damage: { count: 3, sides: 8, flat: 0 },
+      zone: { rounds: 100, triggers, anchor: "caster" },
+    } as unknown as RulesetCombatAction;
+    const rally = {
+      id: "rally",
+      label: "Rally",
+      kind: "ability",
+      budget: "action",
+      concentration: true,
+      targets: { side: "ally", count: 3 },
+      range: 30,
+      applies: [{ condition: "fierce", duration: { rounds: 10 } }],
+    } as unknown as RulesetCombatAction;
+    const orc = (id: string, at: { x: number; y: number }): Placed => ({
+      id,
+      name: id,
+      side: "enemy",
+      block: block([poke], { health: 20 }),
+      at,
+    });
+    const scene = fight([
+      { id: "mira", name: "mira", side: "party", block: block([poke]), at: { x: 5, y: 5 } },
+      { id: "ada", name: "ada", side: "party", block: block([smash]), at: { x: 4, y: 4 } },
+      { id: "bram", name: "bram", side: "party", block: block([smash]), at: { x: 4, y: 6 } },
+      { id: "cid", name: "cid", side: "party", block: block([smash]), at: { x: 4, y: 5 } },
+      orc("o1", { x: 6, y: 5 }),
+      orc("o2", { x: 6, y: 4 }),
+      orc("o3", { x: 6, y: 6 }),
+    ]);
+    const mira = rulesetCombatant(scene.encounter, "mira")!;
+    mira.actions.push(guardians, rally);
+    mira.concentrating = { actionId: "guardians", label: "Guardians" } as never;
+    mira.zones = [{ actionId: "guardians", label: "Guardians", rounds: 100, anchor: "caster", triggers } as never];
+    assert.ok(
+      rulesetCombatOptions(definition, scene.encounter, "mira").some((one) => one.id === "rally"),
+      "the rally is on offer",
+    );
+    assert.notEqual(
+      pickRulesetChoice(definition, scene.state, scene.encounter, "mira")?.option.id,
+      "rally",
+      "the aura is kept",
+    );
+    // With nobody in it, the old price stands: a strong enough buff may still take its place.
+    for (const id of ["o1", "o2", "o3"]) rulesetCombatant(scene.encounter, id)!.x = 15;
+    const empty = ranked(scene, "mira").find((one) => one.candidate.action.option.id === "rally");
+    const full = (() => {
+      for (const [id, y] of [
+        ["o1", 5],
+        ["o2", 4],
+        ["o3", 6],
+      ] as const) {
+        const one = rulesetCombatant(scene.encounter, id)!;
+        one.x = 6;
+        one.y = y;
+      }
+      return ranked(scene, "mira").find((one) => one.candidate.action.option.id === "rally");
+    })();
+    assert.ok(empty && full && full.score < empty.score, "dearer to let go of with foes in it");
   }
 
   // ── A potion that ends on the next attack: worth one blow, so a fighter beside its foe strikes ──

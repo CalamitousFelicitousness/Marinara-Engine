@@ -1389,13 +1389,15 @@ function projectCombatant(
     // dropped shield took away and the cover of the ground it stands on. Against a foe whose turn it
     // is, the cover and high ground between them too: the number the log will say. With no such foe,
     // only what holds against a blow from anywhere.
-    defense: rulesetDefenseAgainst(
-      definition,
-      combat,
-      state,
-      combatant,
-      attacker && attacker.side !== combatant.side ? attacker : undefined,
-    ).defense,
+    ...((against) => ({ defense: against.defense, ...(against.cover > 0 ? { cover: against.cover } : {}) }))(
+      rulesetDefenseAgainst(
+        definition,
+        combat,
+        state,
+        combatant,
+        attacker && attacker.side !== combatant.side ? attacker : undefined,
+      ),
+    ),
     conditions: conditionsOf(definition, combatant, state),
     ...(stances ? { stances } : {}),
     hides: rulesetCombatHide(definition, combatant, state),
@@ -3589,8 +3591,11 @@ function rulesetCandidatesFrom(
         // of its side's mean.
         const mean = rulesetSideHealthMean(definition, combat, encounter, target.side);
         const weighed = average >= pool ? Math.max(pool, mean * 0.75) : mean;
-        // A symbol fight's hit is weighed with what either side's spends buy (1.780).
-        const worth = aimed?.worth ?? average;
+        // A symbol fight's hit is weighed with what either side's spends buy (1.780). Harm past what
+        // drops them, with a margin for a low roll, is spent for nothing (laptop playtest 2026-10-24:
+        // a Guiding Bolt cast from a 3rd-level slot at a wolf the 1st-level one would drop, four
+        // 1st-level slots still free).
+        const worth = aimed?.worth ?? Math.min(average, Math.max(pool * 1.25, mean * 0.75));
         // A limited use (a flask, a slot, a use a day) thrown at worse than even odds is weighed
         // against keeping it for a fair throw: below even, its chance counts twice over (re-test
         // 2026-10-24: flasks thrown at disadvantage from beside a troll, 5 of 16 landing).
@@ -6428,6 +6433,26 @@ function rulesetHeldWorth(
     return 2 * (1 - Math.exp(-(2 * harm) / Math.max(1, foeMean) / 2));
   }
   const action = actor.actions.find((one) => one.id === held.actionId);
+  // A lasting area of its own that harms, by the harm it does each round to those it catches now
+  // (laptop playtest 2026-10-24: Spirit Guardians around three goblins let go for a Bless), as a
+  // summons is; never less than the 0.4 it was, since those not in it yet may walk in.
+  const zones = (actor.zones ?? []).filter((zone) => zone.actionId === held.actionId);
+  if (action?.damage && zones.length > 0) {
+    const foes = encounter.combatants.filter(
+      (one) => one.side !== actor.side && rulesetCombatStanding(one) && !!rulesetPositionOf(one),
+    );
+    if (foes.length === 0) return 0;
+    let harm = 0;
+    for (const zone of zones) {
+      const cells = new Set(rulesetZoneCells(encounter, actor, zone).map((cell) => `${cell.x},${cell.y}`));
+      for (const foe of foes) {
+        const inside = rulesetFootprint(foe).some((cell) => cells.has(`${cell.x},${cell.y}`));
+        if (inside && rulesetZoneCatches(actor, zone, action, foe)) harm += rulesetSafeAverage(action.damage);
+      }
+    }
+    const foeMean = rulesetSideHealthMean(definition, combat, encounter, foes[0]!.side);
+    return Math.max(0.4, 2 * (1 - Math.exp(-harm / Math.max(1, foeMean))));
+  }
   if (!action || action.damage || action.zone || action.heal) return 0.4;
   const on = (held.targets ?? [actor.id])
     .map((id) => rulesetCombatant(encounter, id))
@@ -7249,7 +7274,17 @@ function playRulesetTurn(
       if (pressing && walkTowardsTrouble(definition, state, fight, actorId, undefined, pressing)) continue;
       if (!walkTowardsTrouble(definition, state, fight, actorId, leash)) {
         // Ending a turn it did nothing with says why; ending one it already spent says nothing new.
-        if (ranked && picked && action === 0)
+        // Held back by whom it stays beside, it says so, not that nothing was worth it (laptop
+        // playtest 2026-10-24: a guarding fighter's "nothing worth the price" with the fight eleven
+        // squares off and his leader behind him).
+        if (
+          action === 0 &&
+          ordered &&
+          (!picked || picked.option.kind === "end-turn") &&
+          rulesetClosingMove(definition, fight.encounter, actorId)
+        )
+          recordReasons(fight, actorId, [{ why: "guarding", targetId: ordered.charge.id }]);
+        else if (ranked && picked && action === 0)
           recordReasons(fight, actorId, rulesetPickReasons(ranked.candidate, ranked.parts, undefined, fight.encounter));
         break;
       }
@@ -7346,7 +7381,15 @@ function playRulesetTurn(
   // Keeping to its ground with nobody on it (combat AI T4): said, so it is no frozen token (re-test 14).
   if (silent && territory) record(fight, [{ type: "holdsGround", actorId }]);
   else if (silent && rulesetCombatStanding(rulesetCombatant(fight.encounter, actorId)!))
-    recordReasons(fight, actorId, [{ why: tried.size > 0 ? "noWay" : stays ? "holding" : "nothingWorth" }]);
+    recordReasons(fight, actorId, [
+      tried.size > 0
+        ? { why: "noWay" }
+        : stays
+          ? { why: "holding" }
+          : ordered && rulesetClosingMove(definition, fight.encounter, actorId)
+            ? { why: "guarding", targetId: ordered.charge.id }
+            : { why: "nothingWorth" },
+    ]);
   advanceTurn(definition, state, fight);
 }
 
@@ -8210,6 +8253,8 @@ function windowOptions(
   actorId: string,
   /** A window's own menu, when the decision is an answer to one rather than a whole turn. */
   menu?: RulesetCombatOption[],
+  /** Told whether anything on the list is worth doing this turn (see below). */
+  worthy?: (any: boolean) => void,
 ): CombatDecisionOption[] {
   const candidates = menu
     ? rulesetCandidatesFrom(definition, encounter, actorId, null, menu)
@@ -8221,6 +8266,13 @@ function windowOptions(
     .filter((candidate) => candidate.action.option.kind !== "end-turn")
     .sort((a, b) => worth(b) - worth(a))
     .slice(0, Math.max(0, RULESET_WINDOW_CANDIDATE_LIMIT - ending.length));
+  // Readying, hiding or dodging is no reason not to walk toward the fight: only a blow, a spell or
+  // anything else of its own that does somebody some good from where it can get to this turn.
+  worthy?.(
+    candidates.some(
+      (candidate) => worth(candidate) > 0 && !["standard", "move", "end-turn"].includes(candidate.action.option.kind),
+    ),
+  );
   return [...rest, ...ending].map((candidate, index) => decisionOptionOf(candidate, actorId, String(index)));
 }
 
@@ -8391,8 +8443,32 @@ function openRulesetWindow(
   state: CombatDirectorState,
   fight: RulesetFightState,
   actorId: string,
+  /** The first decision of its turn, before it has done anything: told whether it walked first, and
+   *  then its turn is settled here when there is nothing left to ask. */
+  turnStart?: { walked?: boolean },
 ): boolean {
-  const shortlist = windowOptions(definition, fight.encounter, actorId);
+  const seen = { worthy: true };
+  let shortlist = windowOptions(definition, fight.encounter, actorId, undefined, (worthy) => (seen.worthy = worthy));
+  // Nobody in its reach and nothing it could do from anywhere it can walk to: it closes on the
+  // nearest opponent first, sprinting if the walk needs it, as the Engine's own opponents do, and is
+  // asked what to do from there (laptop playtest 2026-10-24: a war-chief offered only readying,
+  // hiding and dodging readied three rounds running against a party seven squares off).
+  if (turnStart && !seen.worthy) {
+    const actor = rulesetCombatant(fight.encounter, actorId);
+    const unit = state.enemies.find((one) => one.id === actorId);
+    const leash = actor && unit ? rulesetTerritoryLeash(definition, fight.encounter, actor, unit) : undefined;
+    if (walkTowardsTrouble(definition, state, fight, actorId, leash)) {
+      turnStart.walked = true;
+      if (rulesetEncounterOutcome(fight.encounter) !== "ongoing" || fight.encounter.window) return false;
+      if (currentRulesetActor(fight.encounter)?.id !== actorId) return false;
+      shortlist = windowOptions(definition, fight.encounter, actorId);
+      // The walk was all it had left: its turn ends there.
+      if (shortlist.length <= 1) {
+        advanceTurn(definition, state, fight);
+        return false;
+      }
+    }
+  }
   // Nothing but the end of the turn left: there is no decision worth a model call.
   if (shortlist.length <= 1) return false;
   const options = suggestRulesetOptions(definition, state, fight.encounter, actorId, shortlist);
@@ -8647,6 +8723,11 @@ function runRulesetCommand(
     }
     const actorId = open.actorId;
     closeWindow(state);
+    // Its debug log says the Game Master chose, and which of the Engine's suggestions it took, so a
+    // turn it played is not one with no why (laptop playtest 2026-10-24).
+    const gmPick: DirectedRulesetReason[] = chosen
+      ? [{ why: "gmPick", ...(chosen.suggested ? { rank: chosen.suggested.rank } : {}) }]
+      : [];
     // A decision opened over a ruleset WINDOW is answered into that window, not onto a turn: the
     // one being asked is not the one acting, and there is no turn of theirs to go on with.
     const held = fight.encounter.window;
@@ -8675,6 +8756,7 @@ function runRulesetCommand(
       if (!answer || applyChoiceOnly(definition, state, fight, { ...answer, window: held.id }).refused) {
         applyChoiceOnly(definition, state, fight, letGo);
       }
+      recordReasons(fight, actorId, gmPick);
       answerRulesetWindows(definition, state, fight);
       return settled(state);
     }
@@ -8705,6 +8787,7 @@ function runRulesetCommand(
     // again would reopen the same window with the same list, and the fight would stand on this actor
     // for as long as the answer stayed the same.
     if (!choice || choice.optionId === "end-turn") {
+      recordReasons(fight, actorId, gmPick);
       if (currentRulesetActor(fight.encounter)?.id === actorId) advanceTurn(definition, state, fight);
       return settled(state);
     }
@@ -8718,6 +8801,7 @@ function runRulesetCommand(
       if (currentRulesetActor(fight.encounter)?.id === actorId) advanceTurn(definition, state, fight);
       return settled(state);
     }
+    recordReasons(fight, actorId, gmPick);
     continueBossTurn(definition, state, fight, actorId);
     return settled(state);
   }
@@ -8732,7 +8816,12 @@ function runRulesetCommand(
     return settled(state);
   }
   if (controller === "manual") return settled(state);
-  if (controller === "gm" && openRulesetWindow(definition, state, fight, actor.id)) return { ok: true };
+  if (controller === "gm") {
+    const start: { walked?: boolean } = {};
+    if (openRulesetWindow(definition, state, fight, actor.id, start)) return { ok: true };
+    // It walked toward the fight and then had nothing to ask about, or the walk ended its turn.
+    if (start.walked) return settled(state);
+  }
   playRulesetTurn(definition, state, fight, actor.id);
   return settled(state);
 }

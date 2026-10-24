@@ -867,7 +867,7 @@ import {
 import { createAgentLorebookTriggerResolver } from "../services/generation/agent-lorebook-triggers.js";
 import { addInventoryEntry, addLocationEntry, upsertQuest, addNpcEntry } from "../services/game/journal.service.js";
 import { updateJournal } from "../services/generation/game-journal-runtime.js";
-import { buildGmFormatReminder } from "../services/game/gm-prompts.js";
+import { buildGmFormatReminder, buildGmSceneState } from "../services/game/gm-prompts.js";
 import {
   createGameRollTagRegex,
   parseRollDiceToolResult,
@@ -5579,6 +5579,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             : undefined;
           const formatReminder = resolvePromptMacros(
             buildGmFormatReminder({
+              sceneState: buildGmSceneState(gmCtx),
               ttsEmotionIndicatorsEnabled: gameTtsEmotionIndicatorsEnabled(await appSettings.get(TTS_SETTINGS_KEY)),
               hasSceneModel,
               hudWidgets: gmCtx.hudWidgets,

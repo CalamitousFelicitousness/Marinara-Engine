@@ -1470,6 +1470,10 @@ const liveSchema = z
  * - `routeLive`: one live pool's or track's value to the one of `cases` the migrated sheet shows (a
  *   maximum above 0), else to `else`. Live state has no version, so this runs on every read: the old
  *   key always goes, and the value moves only while the new key is not there yet.
+ * - `setColumn` (Capability API 1.783): one column of a list's rows set to `to`, on every row whose
+ *   `where` columns each hold one of the values listed (text ignoring case and spaces at its ends),
+ *   as the attack rows a weapon's new ability choice now reads. The one step that overwrites: what
+ *   it sets is a fix to rows made before the ruleset knew better.
  */
 const sheetMigrationWordsSchema = z.array(z.string().trim().min(1).max(40)).min(1).max(8);
 const sheetMigrationStepSchema = z.union([
@@ -1492,6 +1496,28 @@ const sheetMigrationStepSchema = z.union([
       from: sheetId,
       cases: z.array(sheetId).min(1).max(32),
       else: sheetId,
+    })
+    .strict(),
+  z
+    .object({
+      setColumn: z
+        .object({
+          list: sheetId,
+          where: z
+            .record(
+              sheetId,
+              z
+                .array(z.union([z.number().finite(), z.string().trim().min(1).max(200)]))
+                .min(1)
+                .max(32),
+            )
+            .refine((where) => Object.keys(where).length >= 1 && Object.keys(where).length <= 8, {
+              message: "Name between 1 and 8 columns to match rows by",
+            }),
+          column: sheetId,
+          to: z.union([z.number().finite(), z.string().max(200), z.boolean()]),
+        })
+        .strict(),
     })
     .strict(),
 ]);
@@ -17295,6 +17321,18 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
           if (!["number", "text", "longtext"].includes(field.type) || !empty) {
             issue(where, `"${end}" is a number or text field with no default, or a default of 0 or empty`);
           }
+        }
+      } else if ("setColumn" in step) {
+        const { list: listId, where, column } = step.setColumn;
+        const list = sheet.lists.find((entry) => entry.id === listId);
+        if (!list) {
+          issue([...path, "setColumn", "list"], `Unknown list "${listId}"`);
+          return;
+        }
+        const columns = new Set(list.columns.map((entry) => entry.id));
+        if (!columns.has(column)) issue([...path, "setColumn", "column"], `Unknown column "${column}" of "${listId}"`);
+        for (const id of Object.keys(where)) {
+          if (!columns.has(id)) issue([...path, "setColumn", "where", id], `Unknown column "${id}" of "${listId}"`);
         }
       } else {
         const kind = step.routeLive;

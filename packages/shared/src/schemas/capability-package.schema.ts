@@ -1489,7 +1489,9 @@ const capabilityPackageManifestBaseSchema = z
 //        room left above its value, damage adding points and a heal taking them off. Upstream's 1.383.
 // 1.782: an attack list's `abilityChoices`: a value of a row's ability column that stands for the
 //        best of several abilities, for its damage too (5e's Finesse, the better of STR and DEX).
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 782 } as const);
+// 1.783: a sheet migration's `setColumn`: one column set on every list row its `where` columns match,
+//        as attack rows made before a weapon's ability choice existed.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 783 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

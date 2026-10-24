@@ -12577,6 +12577,22 @@ export function getCapabilityPackageInstallIssue(
   ) {
     return "A ruleset whose attack rows choose the best of several abilities (abilityChoices) requires schemaVersion 2 and capabilityApi 1.782 or newer";
   }
+  // A sheet migration that sets a column on the list rows it matches, 1.783.
+  if (
+    !declaresApi(783) &&
+    (() => {
+      const migrations = plainRecord(plainRecord(ruleset)?.sheet)?.migrations;
+      return (
+        Array.isArray(migrations) &&
+        migrations.some((hop) => {
+          const steps = plainRecord(hop)?.steps;
+          return Array.isArray(steps) && steps.some((step) => plainRecord(step)?.setColumn !== undefined);
+        })
+      );
+    })()
+  ) {
+    return "A ruleset whose sheet migrations set a column on list rows (setColumn) requires schemaVersion 2 and capabilityApi 1.783 or newer";
+  }
   // A ruleset over 256 KB or a catalog file over 1 MB, the ceilings before 1.340.
   if (
     !declaresApi(340) &&

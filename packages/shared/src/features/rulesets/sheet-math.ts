@@ -160,6 +160,21 @@ export function migrateRulesetSheetBuild(
       // since one number cannot be split between them without asking.
       const target = named.size === 1 ? [...named][0]! : step.else;
       if (!own(next.fields, target)) next.fields[target] = value;
+    } else if ("setColumn" in step) {
+      // The one step that overwrites (1.783): a fix to rows made before the ruleset knew better.
+      const { list, where, column, to } = step.setColumn;
+      const rows = next.lists?.[list];
+      if (!Array.isArray(rows)) continue;
+      const same = (cell: unknown, value: string | number) =>
+        typeof value === "number"
+          ? cell === value
+          : typeof cell === "string" && cell.trim().toLowerCase() === value.trim().toLowerCase();
+      for (const row of rows) {
+        if (!row || typeof row !== "object") continue;
+        const cells = row as Record<string, unknown>;
+        if (Object.entries(where).every(([id, values]) => values.some((value) => same(cells[id], value))))
+          cells[column] = to;
+      }
     }
   }
   return next;

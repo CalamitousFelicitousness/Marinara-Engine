@@ -558,11 +558,14 @@ try {
     'Dialogue: "I\'m leaving."\nCamera: "slow pan"\nAspect Ratio: "16:9"\n' +
     'The camera: pans left.\nHer tone: flat\nMara to lens: "We have to go."\nAna smiles: late\n' +
     'ALICE: I am home.\nAna Lee: bye\nAna: "Wait."\n' +
-    'Guard: "Stop!"\nOld Guard: "Halt."\nVoiceover: "It was late."\nVoice_Over: "Go."\nLighting: "warm"';
+    'Guard: "Stop!"\nOld Guard: "Halt."\nVoiceover: "It was late."\nVoice_Over: "Go."\nLighting: "warm"\n' +
+    'Guard: "Wait"\nOld Guard: "No entry"\nScene: "A rainy street at night."\nCamera: "Slow pan left."\n' +
+    'Action: "She turns."\nshot_1: "Close-up."\noverall_soundscape: "Rain and distant thunder."\nFrame Rate: "24 fps"';
   const shapedNote =
     '\n[Ana sent a video message: wind rising 16:9 none wide "I\'m leaving." "slow pan" "16:9" The camera: pans left. ' +
     'Her tone: flat Mara to lens: "We have to go." Ana smiles: late ALICE: I am home. Ana Lee: bye Ana: "Wait." Guard: "Stop!" ' +
-    'Old Guard: "Halt." "It was late." "Go." "warm"]';
+    'Old Guard: "Halt." "It was late." "Go." "warm" Guard: "Wait" Old Guard: "No entry" "A rainy street at night." ' +
+    '"Slow pan left." "She turns." "Close-up." "Rain and distant thunder." "24 fps"]';
   assert.equal(
     formatSentVideoNotes([{ type: "video", characterName: "Ana", prompt: shapedPrompt }], ["Alice"]),
     shapedNote,

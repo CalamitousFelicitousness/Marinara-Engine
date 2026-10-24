@@ -134,11 +134,19 @@ const PROSE_WORDS = new Set(
     "will would can could should may might must"
   ).split(" "),
 );
-// A quoted sentence after the colon ('Guard: "Stop!"') is speech, so its head is a speaker, unless the head names the
-// spoken words themselves ('Dialogue: "I\'m leaving."'). A quoted setting ('Camera: "slow pan"') isn't a sentence.
-const QUOTED_SENTENCE_RE = /^["“][^"”\n]*[.!?…]["”]/u;
-const SPOKEN_WORD_LABELS = new Set(
-  "dialogue dialog line lines speech voice voiceover vo subtitle subtitles caption captions text quote".split(" "),
+// Before a quoted value, a head shaped like a name ("Guard", "Old Guard", "GUARD": capitalised plain words) is a
+// speaker outside the chat ('Guard: "Wait"'), unless a word in it names a prompt field ('Scene: "A rainy street."').
+// Lowercase, numbered or underscored heads ("camera", "shot_1", "overall_soundscape") are never names.
+const NAME_WORD_RE = /^[A-Z][A-Za-z]*$/u;
+const FIELD_WORDS = new Set(
+  (
+    "action ambience angle aspect atmosphere audio background camera caption captions character characters " +
+    "cinematography color colors composition continuity description dialog dialogue direction director duration " +
+    "editing effects environment exposure focus format fps frame framing foreground genre lens lighting line " +
+    "lines location mood motion movement music narration notes overall pacing palette prompt quote rate ratio " +
+    "resolution scene setting shot shots sound soundscape sfx speech style subject subjects subtitle subtitles " +
+    "text time timing title tone transition visual visuals voice voiceover vo weather"
+  ).split(" "),
 );
 
 /** "lower", "upper" or "title", read from a word's letters before any `_` or digit. */
@@ -152,8 +160,8 @@ function wordCase(word: string): string {
 /**
  * Removes line-start field labels. A label is judged by its shape, not a word list: no prose word, and every word in
  * one case ("Aspect Ratio", "camera angle"), so a sentence ("Ana smiles:") stays. A speaker stays too: a head with any
- * word of a chat member's name (`speakerNameParts`: "Ana:", "ALICE:", "Ana Lee:"), or one followed by a quoted
- * sentence (a speaker outside the chat: 'Guard: "Stop!"'), is dialogue, not a label.
+ * word of a chat member's name (`speakerNameParts`: "Ana:", "ALICE:", "Ana Lee:"), or a name-shaped head before a
+ * quote (a speaker outside the chat: 'Guard: "Wait"'), is dialogue, not a label.
  */
 function stripFieldLabels(text: string, speakerNameParts: ReadonlySet<string>): string {
   return text
@@ -162,11 +170,9 @@ function stripFieldLabels(text: string, speakerNameParts: ReadonlySet<string>): 
       const words = head.split(" ");
       const folded = words.map((word) => word.toLowerCase());
       if (folded.some((word) => PROSE_WORDS.has(word) || speakerNameParts.has(word))) return label;
-      const speech = QUOTED_SENTENCE_RE.test(all.slice(offset + label.length));
-      const namesSpokenWords = folded.some((word) =>
-        word.split(/[_\d]+/u).some((part) => SPOKEN_WORD_LABELS.has(part)),
-      );
-      if (speech && !namesSpokenWords) return label;
+      const quoted = /^["“]/u.test(all.slice(offset + label.length));
+      if (quoted && words.every((word) => NAME_WORD_RE.test(word)) && !folded.some((word) => FIELD_WORDS.has(word)))
+        return label;
       return new Set(words.map(wordCase)).size === 1 ? `${indent} ` : label;
     });
 }

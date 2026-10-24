@@ -174,6 +174,16 @@ import {
 import { createGameStateStorage } from "../../services/storage/game-state.storage.js";
 import { normalizeCharacterRpgStats } from "../../services/generation/character-prompt-context.js";
 import { createLorebooksStorage } from "../../services/storage/lorebooks.storage.js";
+import { normalizeGenerationReplay } from "./generation-replay.js";
+import { createAgentLorebookTriggerResolver } from "../../services/generation/agent-lorebook-triggers.js";
+import {
+  normalizeStoredLorebookGenerationTriggers,
+  resolveLorebookGenerationTriggers,
+  resolveLorebookTokenBudget,
+} from "../../services/generation/lorebook-generation-runtime.js";
+import type { Lorebook, LorebookEntry } from "@marinara-engine/shared";
+import type { GameStateForScanning } from "../../services/lorebook/keyword-scanner.js";
+import { filterRelevantLorebooks } from "../../services/lorebook/index.js";
 import { storedContentForTextlessScanEntries } from "../../services/lorebook/lorebook-scan-compaction.js";
 import { createCustomToolsStorage } from "../../services/storage/custom-tools.storage.js";
 import { syncGameMapMetaPartyPosition } from "../../services/game/map-position.service.js";
@@ -203,6 +213,7 @@ import {
   resolveBaseUrl,
   resolveRoleplayChatSummaryForPrompt,
   resolveVisibleGameStateAnchor,
+  resolveKnowledgeSourceLorebookIds,
 } from "./generate-route-utils.js";
 import { shouldAttachSummariesToAgents } from "../../services/generation/roleplay-summary-retrieval.js";
 import { roleplayAgentsSeeWhispers, roleplayAgentText } from "../../services/generation/roleplay-commands.js";
@@ -877,11 +888,46 @@ export function resolveLorebookKeeperRetryAnchor(target: { id: string; activeSwi
   return { messageId: target.id, swipeIndex: target.activeSwipeIndex ?? 0 };
 }
 
+function resolveRetryLorebookGenerationTriggers(
+  messages: Array<{ id: string; role?: unknown; content?: string }>,
+  target: { id: string; extra?: unknown; activeSwipeIndex?: number | null } | null | undefined,
+  chatMode: string,
+): string[] {
+  const targetExtra = parseExtra(target?.extra);
+  const saved = normalizeStoredLorebookGenerationTriggers(targetExtra.lorebookGenerationTriggers, chatMode);
+  if (saved) return saved;
+  const targetIndex = target ? messages.findIndex((message) => message.id === target.id) : messages.length;
+  const previous = messages
+    .slice(0, targetIndex < 0 ? messages.length : targetIndex)
+    .filter((message) => message.role === "user" || message.role === "assistant")
+    .at(-1);
+  const replay = normalizeGenerationReplay(targetExtra.generationReplay);
+  return resolveLorebookGenerationTriggers(
+    {
+      ...replay,
+      userMessage: replay?.userMessage ?? (previous?.role === "user" ? previous.content : null),
+      regenerateMessageId: target && (target.activeSwipeIndex ?? 0) > 0 ? target.id : null,
+    },
+    chatMode,
+  );
+}
+
 type RetryAgentPhaseToolInputs = {
   requestBody: Record<string, unknown>;
   promptCharacterIds: string[];
   agentContext: AgentContext;
 };
+
+function resolveRetryTargetCharacterId(
+  activeCharacterIds: string[],
+  selectedTargetMessage: { role?: unknown; characterId?: unknown } | null | undefined,
+): string | null {
+  return selectedTargetMessage?.role === "assistant" &&
+    typeof selectedTargetMessage.characterId === "string" &&
+    activeCharacterIds.includes(selectedTargetMessage.characterId)
+    ? selectedTargetMessage.characterId
+    : null;
+}
 
 export function resolveRetryAgentPhaseToolInputs(args: {
   requestBody: Record<string, unknown>;
@@ -894,12 +940,7 @@ export function resolveRetryAgentPhaseToolInputs(args: {
 } {
   const resolveForContext = (agentContext: AgentContext): RetryAgentPhaseToolInputs => {
     const activeCharacterIds = agentContext.characters.map((character) => character.id);
-    const targetCharacterId =
-      args.selectedTargetMessage?.role === "assistant" &&
-      typeof args.selectedTargetMessage.characterId === "string" &&
-      activeCharacterIds.includes(args.selectedTargetMessage.characterId)
-        ? args.selectedTargetMessage.characterId
-        : null;
+    const targetCharacterId = resolveRetryTargetCharacterId(activeCharacterIds, args.selectedTargetMessage);
     const requestBody = { ...args.requestBody };
     if (targetCharacterId) {
       requestBody.forCharacterId = targetCharacterId;
@@ -919,6 +960,9 @@ export function resolveRetryAgentPhaseToolInputs(args: {
 }
 
 async function buildRetryAgentContext(args: {
+  selectedTargetMessage: { role?: unknown; characterId?: unknown } | null | undefined;
+  signal: AbortSignal;
+  lorebookGenerationTriggers: string[];
   cyoaAgentWillRun: boolean;
   chatId: string;
   /** Prose Beholder should read instead of the chat, when the operator typed a correction. */
@@ -942,6 +986,8 @@ async function buildRetryAgentContext(args: {
   forceIllustratorImageGeneration: boolean;
   /** Snapshot button (#4682): tell retried custom image agents the user explicitly requested an image. */
   forceCustomImageGeneration: boolean;
+  /** Draw a picture only: no clip is offered or made (the caller animates the picture itself). */
+  illustratorStillOnly?: boolean;
   /**
    * When retrying agents for a specific assistant message (e.g. refreshing cached prompt injections),
    * use the game-state snapshot committed for that message+swipe — not the latest chat snapshot.
@@ -984,10 +1030,15 @@ async function buildRetryAgentContext(args: {
     ? (chatMeta.activeLorebookIds as string[])
     : [];
   const charInfo: AgentContext["characters"] = [];
+  const characterTagsById = new Map<string, string[]>();
   for (const cid of characterIds) {
     const charRow = await chars.getById(cid, chatId);
     if (!charRow) continue;
     const charData = parseJsonIfString<Record<string, unknown>>(charRow.data as string);
+    characterTagsById.set(
+      cid,
+      Array.isArray(charData.tags) ? charData.tags.filter((tag): tag is string => typeof tag === "string") : [],
+    );
     const extensions =
       charData.extensions && typeof charData.extensions === "object" && !Array.isArray(charData.extensions)
         ? (charData.extensions as Record<string, unknown>)
@@ -1011,6 +1062,11 @@ async function buildRetryAgentContext(args: {
       rpgStats: normalizeCharacterRpgStats(extensions.rpgStats),
     });
   }
+
+  const availableCharacterIds = charInfo.map((character) => character.id);
+  const targetCharacterId = resolveRetryTargetCharacterId(availableCharacterIds, args.selectedTargetMessage);
+  const promptCharacterIds = targetCharacterId ? [targetCharacterId] : availableCharacterIds;
+  const attachmentCharacterTags = new Set(promptCharacterIds.flatMap((id) => characterTagsById.get(id) ?? []));
 
   const lorebookCharacterIds =
     personaContext.identitySource === "character" &&
@@ -1171,14 +1227,23 @@ async function buildRetryAgentContext(args: {
   let recalledAgentVectorMemories: string[] = [];
   let embeddingSource: Awaited<ReturnType<typeof resolveMemoryRecallEmbeddingSource>> | null = null;
   let summaryVectorizerAvailable = false;
-  if (customAgentVectorAccessEnabled || chatMeta.semanticSummaryRetrievalEnabled === true) {
+  const agentsWithLorebookTriggers = resolvedAgents.filter(
+    (agent) =>
+      agent.settings.chatLorebookAttachmentEnabled === true ||
+      (!isBuiltInAgentType(agent.type) && agent.settings.triggerLorebooksForAgentCalls === true),
+  );
+  if (
+    customAgentVectorAccessEnabled ||
+    chatMeta.semanticSummaryRetrievalEnabled === true ||
+    agentsWithLorebookTriggers.length > 0
+  ) {
     try {
       const connectionId = typeof chat.connectionId === "string" ? chat.connectionId : null;
       embeddingSource = await resolveMemoryRecallEmbeddingSource(db, {
         chatMetadata: chatMeta,
         connectionId,
       });
-      if (chatMeta.semanticSummaryRetrievalEnabled === true) {
+      if (chatMeta.semanticSummaryRetrievalEnabled === true || agentsWithLorebookTriggers.length > 0) {
         summaryVectorizerAvailable =
           embeddingSource !== null ||
           (await isMemoryRecallVectorizerAvailable(db, {
@@ -1324,7 +1389,9 @@ async function buildRetryAgentContext(args: {
   if (previousBeholderState) agentContext.memory._beholderState = previousBeholderState;
   // A re-run Illustrator (or custom image agent) is offered clips exactly as on a fresh reply: Illustrator makes and a
   // working video connection. Only agents that make images are shown the offer.
-  const videoOffer = await resolveIllustratorVideoOffer(chat.mode, chatMeta, createConnectionsStorage(db));
+  const videoOffer = args.illustratorStillOnly
+    ? null
+    : await resolveIllustratorVideoOffer(chat.mode, chatMeta, createConnectionsStorage(db));
   if (videoOffer) agentContext.memory._generatedVideos = videoOffer;
 
   const gameImageStylePrompt = getGameImageStylePrompt(chat, chatMeta);
@@ -1618,6 +1685,52 @@ async function buildRetryAgentContext(args: {
     };
   }
 
+  if (agentsWithLorebookTriggers.length > 0) {
+    const lorebookScopeExclusions = resolveLorebookScopeExclusions(chat.mode, chatMeta);
+    const scopedLorebookIds = new Set(
+      filterRelevantLorebooks((await lorebooksStore.list()) as unknown as Lorebook[], {
+        chatId,
+        characterIds: [
+          ...promptCharacterIds,
+          ...(personaContext.identitySource === "character" && personaContext.identityId
+            ? [personaContext.identityId]
+            : []),
+        ],
+        personaId: personaContext.personaId,
+        activeLorebookIds,
+        ...lorebookScopeExclusions,
+      }).map((book) => book.id),
+    );
+    agentContext.triggeredLorebookEntriesByAgentId = await createAgentLorebookTriggerResolver({
+      agents: agentsWithLorebookTriggers.map((agent) => ({
+        id: agent.id,
+        contextSize: normalizeAgentContextSize(agent.settings.contextSize),
+        ...(!isBuiltInAgentType(agent.type) && agent.settings.triggerLorebooksForAgentCalls === true
+          ? resolveKnowledgeSourceLorebookIds({ settings: agent.settings, chatActiveLorebookIds: activeLorebookIds })
+          : { sourceLorebookIds: [], source: "none" as const }),
+        additionalManualLorebookIds:
+          agent.settings.chatLorebookAttachmentEnabled === true &&
+          typeof agent.settings.chatAttachedLorebookId === "string"
+            ? [agent.settings.chatAttachedLorebookId]
+            : [],
+      })),
+      activeCharacterIds: promptCharacterIds,
+      activeCharacterTags: [...attachmentCharacterTags],
+      embeddingSource,
+      entryStateOverrides:
+        (chatMeta.entryStateOverrides as Record<string, { enabled?: boolean; ephemeral?: number | null }>) ?? {},
+      filterSourceLorebookIds: async (ids, source) =>
+        source === "chat_active" ? ids.filter((id) => scopedLorebookIds.has(id)) : ids,
+      gameState: agentContext.gameState as GameStateForScanning | null,
+      generationTriggers: args.lorebookGenerationTriggers,
+      listEntriesByLorebookIds: async (ids) => (await lorebooksStore.listEntriesByLorebooks(ids)) as LorebookEntry[],
+      listLorebooks: async () => (await lorebooksStore.list()) as unknown as Lorebook[],
+      resolveContent: (value) => resolveMacros(value, promptMacroContext, { trimResult: false }),
+      tokenBudget: resolveLorebookTokenBudget(chatMeta),
+      vectorizerAvailable: summaryVectorizerAvailable,
+      signal: args.signal,
+    })(agentContext.recentMessages);
+  }
   return { agentContext, initialMacroVariables, macroVariables: retryMacroVariables, agentWhisperNames };
 }
 
@@ -2842,6 +2955,12 @@ async function executeLorebookKeeperRetries(args: {
   chatId: string;
   chatName: string | null | undefined;
   requireApproval: boolean;
+  buildHistoricalContext: (
+    base: AgentContext,
+    messages: any[],
+    targetId: string,
+    entries: ResolvedRetryAgent[],
+  ) => Promise<AgentContext | null>;
 }): Promise<Array<{ messageId: string; swipeIndex: number; result: AgentResult }>> {
   const {
     lorebookKeeperAgent,
@@ -2854,6 +2973,7 @@ async function executeLorebookKeeperRetries(args: {
     chatId,
     chatName,
     requireApproval,
+    buildHistoricalContext,
   } = args;
 
   const eligibleTargets = getLorebookKeeperBackfillTargets(messages, readBehindMessages, lastProcessedMessageId);
@@ -2870,7 +2990,7 @@ async function executeLorebookKeeperRetries(args: {
     if (baseContext.signal?.aborted) return results;
     const startedAt = Date.now();
     try {
-      const retryContext = buildHistoricalLorebookKeeperContext(baseContext, messages, target.id);
+      const retryContext = await buildHistoricalContext(baseContext, messages, target.id, [lorebookKeeperAgent]);
       if (!retryContext) continue;
 
       if (preferredTargetLorebookId) {
@@ -2980,6 +3100,7 @@ async function applyRetryResultEffects(args: {
   reviewImagePromptsBeforeSend: boolean;
   illustratorPromptReviewOverride: IllustratorPromptReviewOverride | null;
   illustratorRetryTargets: IllustratorRetryTarget[] | undefined;
+  illustratorStillOnly: boolean;
   forceImageGeneration: boolean;
   debugMode: boolean;
   secretPlotRerollMode?: "full" | "turn_only";
@@ -3005,6 +3126,7 @@ async function applyRetryResultEffects(args: {
     reviewImagePromptsBeforeSend,
     illustratorPromptReviewOverride,
     illustratorRetryTargets,
+    illustratorStillOnly,
     forceImageGeneration,
     debugMode,
     secretPlotRerollMode,
@@ -3727,7 +3849,11 @@ async function applyRetryResultEffects(args: {
           imgConnFull ??= await conns.getDefaultForImageGeneration();
           assertRetryActive();
           // Generated Videos: a re-run follows Illustrator makes and First frame, as a fresh reply does.
-          const videoOffer = retryMessageId ? await resolveIllustratorVideoOffer(chat.mode, chatMeta, conns) : null;
+          // A still-only re-run draws the first frame for a clip its caller makes, so it never makes one of its own.
+          const videoOffer =
+            retryMessageId && !illustratorStillOnly
+              ? await resolveIllustratorVideoOffer(chat.mode, chatMeta, conns)
+              : null;
           assertRetryActive();
           const writtenMotion = typeof illData.videoPrompt === "string" ? illData.videoPrompt.trim() : "";
           const clipsOnly = videoOffer?.clipsOnly === true;
@@ -4672,6 +4798,8 @@ export async function registerRetryAgentsRoute(
       illustratorPromptReviewOverride?: unknown;
       /** Limit an Illustrator retry to visual jobs that failed in the original run. */
       illustratorRetryTargets?: unknown;
+      /** Draw the Illustrator picture only, never a clip: Roleplay /video animates it afterwards. */
+      illustratorStillOnly?: boolean;
       /** Inclusive stored-message IDs selected by /illustrate range=N-M. */
       illustratorMessageRange?: unknown;
       /** Force image generation for retried custom image agents' results (snapshot button, #4682). */
@@ -4706,6 +4834,7 @@ export async function registerRetryAgentsRoute(
       agentPromptTemplateIds,
       illustratorPromptReviewOverride: rawIllustratorPromptReviewOverride,
       illustratorRetryTargets: rawIllustratorRetryTargets,
+      illustratorStillOnly = false,
       illustratorMessageRange,
       forceImageGeneration = false,
       lorebookKeeperBackfill = false,
@@ -4731,6 +4860,9 @@ export async function registerRetryAgentsRoute(
     }
     if (illustratorRetryTargets && !agentTypes.includes("illustrator")) {
       return reply.status(400).send({ error: "Illustrator retry targets require an Illustrator retry" });
+    }
+    if (typeof illustratorStillOnly !== "boolean" || (illustratorStillOnly && !agentTypes.includes("illustrator"))) {
+      return reply.status(400).send({ error: "illustratorStillOnly requires an Illustrator retry" });
     }
     // Trimmed and bounded once, here, so neither call site has to remember to.
     const sanitisedDirective =
@@ -4971,6 +5103,11 @@ export async function registerRetryAgentsRoute(
           ...resolveLorebookKeeperRetryAnchor(chunk.target),
         };
       }
+      const lorebookGenerationTriggers = resolveRetryLorebookGenerationTriggers(
+        recentMessages,
+        rangeTarget ?? lastAssistant,
+        chat.mode,
+      );
       const chatMode = ((chat as { mode?: ChatMode }).mode ?? "conversation") as ChatMode;
       const retryWrapFormat = await runRetrySetupPhase(abortController.signal, () =>
         resolveRetryAgentWrapFormat({
@@ -4989,34 +5126,39 @@ export async function registerRetryAgentsRoute(
       const retryPersonaContext = await runRetrySetupPhase(abortController.signal, () =>
         resolvePersonaContext(chars, chat),
       );
-      const agentContextResult = await runRetrySetupPhase(abortController.signal, () =>
-        buildRetryAgentContext({
-          cyoaAgentWillRun,
-          chatId,
-          beholderDirective: sanitisedDirective,
-          historicalAnchorId: rangeTarget?.id ?? forMessageId ?? null,
-          db: app.db,
-          chat,
-          chatMeta: illustratorMessageRange
-            ? { ...chatMeta, attachSummariesToAgents: false, semanticSummaryRetrievalEnabled: false }
-            : chatMeta,
-          currentBackground,
-          recentMessages,
-          resolvedAgents: resolvedAgents.map((entry) => entry.resolved),
-          lastAssistant,
-          chars,
-          personaContext: retryPersonaContext,
-          gameStateStore,
-          lorebooksStore,
-          streaming,
-          wrapFormat: retryWrapFormat,
-          forceIllustratorBackgroundGeneration: isManualIllustratorBackgroundRequest,
-          forceIllustratorImageGeneration: isManualIllustratorImageRequest,
-          forceCustomImageGeneration: forceImageGeneration === true,
-          historicalGameStateAnchor,
-          useLatestGameStateFallback: !illustratorMessageRange,
-        }),
-      );
+      const retryContextArgs: Parameters<typeof buildRetryAgentContext>[0] = {
+        selectedTargetMessage: rangeTarget ?? lastAssistant,
+        signal: abortController.signal,
+        lorebookGenerationTriggers,
+        cyoaAgentWillRun,
+        chatId,
+        beholderDirective: sanitisedDirective,
+        historicalAnchorId: rangeTarget?.id ?? forMessageId ?? null,
+        db: app.db,
+        chat,
+        chatMeta: illustratorMessageRange
+          ? { ...chatMeta, attachSummariesToAgents: false, semanticSummaryRetrievalEnabled: false }
+          : chatMeta,
+        currentBackground,
+        recentMessages,
+        resolvedAgents: resolvedAgents.map((entry) => entry.resolved),
+        lastAssistant,
+        chars,
+        personaContext: retryPersonaContext,
+        gameStateStore,
+        lorebooksStore,
+        streaming,
+        wrapFormat: retryWrapFormat,
+        forceIllustratorBackgroundGeneration: isManualIllustratorBackgroundRequest,
+        forceIllustratorImageGeneration: isManualIllustratorImageRequest,
+        forceCustomImageGeneration: forceImageGeneration === true,
+        illustratorStillOnly,
+        historicalGameStateAnchor,
+        useLatestGameStateFallback: !illustratorMessageRange,
+      };
+      const buildContext = (overrides: Partial<typeof retryContextArgs> = {}) =>
+        runRetrySetupPhase(abortController.signal, () => buildRetryAgentContext({ ...retryContextArgs, ...overrides }));
+      const agentContextResult = await buildContext();
       const agentContext = agentContextResult.agentContext;
       agentContext.signal = abortController.signal;
       // Lorebook Keeper and read-behind runs read whispers too (#7430).
@@ -5027,11 +5169,47 @@ export async function registerRetryAgentsRoute(
             content: roleplayAgentText(message.content, message, agentWhisperNames),
           }))
         : recentMessages;
+      const buildHistoricalContext = async (
+        baseContext: AgentContext,
+        messages: any[],
+        targetId: string,
+        entries: ResolvedRetryAgent[],
+      ): Promise<AgentContext | null> => {
+        const context = buildHistoricalLorebookKeeperContext(baseContext, messages, targetId);
+        const referenceAgents = entries.filter(
+          (entry) =>
+            entry.resolved.settings.chatLorebookAttachmentEnabled === true ||
+            (!isBuiltInAgentType(entry.resolved.type) &&
+              entry.resolved.settings.triggerLorebooksForAgentCalls === true),
+        );
+        if (!context || referenceAgents.length === 0 || targetId === (rangeTarget ?? lastAssistant)?.id) return context;
+        const targetIndex = recentMessages.findIndex((message: any) => message.id === targetId);
+        if (targetIndex < 0) throw new Error("Historical reference target is outside the retry history");
+        const target = recentMessages[targetIndex]!;
+        // Reuse historical identity/macros/state and scanning; keep the established tools/effects/memory context.
+        // The returned local macro variables are intentionally not persisted a second time.
+        const prepared = await buildContext({
+          selectedTargetMessage: target,
+          lorebookGenerationTriggers: resolveRetryLorebookGenerationTriggers(recentMessages, target, chat.mode),
+          recentMessages: recentMessages.slice(0, targetIndex + 1),
+          resolvedAgents: referenceAgents.map((entry) => entry.resolved),
+          lastAssistant: target,
+          historicalAnchorId: target.id,
+          historicalGameStateAnchor: resolveLorebookKeeperRetryAnchor(target),
+          useLatestGameStateFallback: false,
+          cyoaAgentWillRun: false,
+        });
+        context.triggeredLorebookEntriesByAgentId = prepared.agentContext.triggeredLorebookEntriesByAgentId;
+        return context;
+      };
       const hasPreGenerationRetries = resolvedAgents.some((entry) => entry.resolved.phase === "pre_generation");
       const preGenerationAgentContextResult =
         hasPreGenerationRetries && preGenerationRecentMessages
           ? await runRetrySetupPhase(abortController.signal, () =>
               buildRetryAgentContext({
+                selectedTargetMessage: rangeTarget ?? lastAssistant,
+                signal: abortController.signal,
+                lorebookGenerationTriggers,
                 cyoaAgentWillRun: false,
                 beholderDirective: sanitisedDirective,
                 chatId,
@@ -5051,6 +5229,7 @@ export async function registerRetryAgentsRoute(
                 forceIllustratorBackgroundGeneration: isManualIllustratorBackgroundRequest,
                 forceIllustratorImageGeneration: isManualIllustratorImageRequest,
                 forceCustomImageGeneration: forceImageGeneration === true,
+                illustratorStillOnly,
                 historicalGameStateAnchor: preGenerationGameStateAnchor,
                 useLatestGameStateFallback: false,
               }),
@@ -5453,40 +5632,45 @@ export async function registerRetryAgentsRoute(
         string,
         { context: AgentContext; messageId: string; swipeIndex: number }
       >();
-      const nonLorebookAgents = resolvedAgents.filter((entry) => {
-        if (entry.resolved.type === "lorebook-keeper") return false;
+      const nonLorebookAgents: ResolvedRetryAgent[] = [];
+      for (const entry of resolvedAgents) {
+        if (entry.resolved.type === "lorebook-keeper") continue;
         if (customLorebookBackfillTarget) {
-          const context = buildHistoricalLorebookKeeperContext(
+          if (entry.resolved.id !== customLorebookBackfillTarget.agentConfigId) continue;
+          const context = await buildHistoricalContext(
             agentContext,
             agentHistory,
             customLorebookBackfillTarget.messageId,
+            [entry],
           );
-          if (!context || entry.resolved.id !== customLorebookBackfillTarget.agentConfigId) return false;
+          if (!context) continue;
           customLorebookReadBehindTargets.set(entry.resolved.id, {
             context,
             messageId: customLorebookBackfillTarget.messageId,
             swipeIndex: customLorebookBackfillTarget.swipeIndex,
           });
-          return true;
+          nonLorebookAgents.push(entry);
+          continue;
         }
         const readBehindMessages = getCustomLorebookReadBehindMessages(entry.resolved.settings);
-        const usesCustomLorebookReadBehind = customAgentUsesLorebookReadBehind(entry.resolved);
-        if (!usesCustomLorebookReadBehind) return true;
-
+        if (!customAgentUsesLorebookReadBehind(entry.resolved)) {
+          nonLorebookAgents.push(entry);
+          continue;
+        }
         const target = getLorebookKeeperBackfillTargets(recentMessages, readBehindMessages, null).at(-1);
-        if (!target) return false;
-        const context = buildHistoricalLorebookKeeperContext(agentContext, agentHistory, target.id);
-        if (!context) return false;
+        if (!target) continue;
         const runKey = customLorebookReadBehindRunKey(chatId, entry.resolved.id, target.id);
-        if (!tryClaimCustomLorebookReadBehindRun(activeCustomLorebookReadBehindRuns, runKey)) return false;
+        if (!tryClaimCustomLorebookReadBehindRun(activeCustomLorebookReadBehindRuns, runKey)) continue;
         customLorebookReadBehindRunKeys.add(runKey);
+        const context = await buildHistoricalContext(agentContext, agentHistory, target.id, [entry]);
+        if (!context) continue;
         entry.resolved.batchContextKey = `message:${target.id}`;
         customLorebookReadBehindTargets.set(entry.resolved.id, {
           context,
           ...resolveLorebookKeeperRetryAnchor(target),
         });
-        return true;
-      });
+        nonLorebookAgents.push(entry);
+      }
       if (
         (illustratorPromptReviewOverride || isManualIllustratorBackgroundRequest || isManualIllustratorImageRequest) &&
         (nonLorebookAgents.length !== 1 || nonLorebookAgents[0]?.resolved.type !== "illustrator")
@@ -5603,6 +5787,7 @@ export async function registerRetryAgentsRoute(
             lastProcessedMessageId:
               (await agentsStore.getLastSuccessfulRunByType("lorebook-keeper", chatId))?.messageId ?? null,
             backfillUnprocessed: lorebookKeeperBackfill,
+            buildHistoricalContext,
             lorebooksStore,
             chatId,
             chatName: (chat as any).name,
@@ -5803,6 +5988,7 @@ export async function registerRetryAgentsRoute(
         reviewImagePromptsBeforeSend,
         illustratorPromptReviewOverride,
         illustratorRetryTargets,
+        illustratorStillOnly,
         forceImageGeneration: forceImageGeneration === true,
         debugMode,
         secretPlotRerollMode,

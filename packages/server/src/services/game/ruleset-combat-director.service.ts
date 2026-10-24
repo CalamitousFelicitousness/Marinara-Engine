@@ -20,7 +20,6 @@ import {
   combatMindWithHint,
   chooseRankedCombatCandidate,
   rankCombatCandidates,
-  type CombatAiScoreParts,
   clampRulesetStatBlock,
   createRulesetEncounter,
   currentRulesetActor,
@@ -141,6 +140,7 @@ import {
   RULESET_STAND_OPTION,
   RULESET_CLIMB_OUT_OPTION,
   type CombatAiCandidate,
+  type CombatAiScoreParts,
   type Combatant,
   type CombatDecisionOption,
   type DirectedCommand,
@@ -2804,21 +2804,32 @@ function rulesetCandidatesFrom(
       if (rulesetPoolReaches(definition, combat, actor, fallingAction, [target], way.payWith).length === 0) continue;
       const health = rulesetCombatHealth(definition, combat, target);
       const pool = Math.max(1, health.value + health.temp);
+      // A symbol fight's forecast hangs on who is aimed at (1.780): their soak, their side's allies,
+      // the conditions they already have.
+      const aimed =
+        !sequenced && option.forecast?.worth !== undefined
+          ? (rulesetForecastsByTarget(definition, encounter, actorId, option.id, [targetId])[targetId] ??
+            option.forecast)
+          : undefined;
       // As likely to land on this one as it is: a dagger thrown far, at disadvantage, against the
       // one beside it. A Multiattack counts each part's own chance in what it is worth, below. A
       // mode or a style has its own forecast, which is kept.
-      const chance = sequenced
-        ? 1
-        : option.forecast?.hitChance !== undefined && way.mode === undefined && way.style === undefined
-          ? (rulesetHitChances(definition, encounter, actorId, option.id, [targetId])[targetId] ??
-            option.forecast.hitChance)
-          : 1;
+      const chance = aimed
+        ? (aimed.hitChance ?? 1)
+        : sequenced
+          ? 1
+          : option.forecast?.hitChance !== undefined && way.mode === undefined && way.style === undefined
+            ? (rulesetHitChances(definition, encounter, actorId, option.id, [targetId])[targetId] ??
+              option.forecast.hitChance)
+            : 1;
       // A Multiattack is worth only the parts that reach this one: a captain's scimitars do nothing
       // to somebody it could only throw a dagger at.
       const forecast =
-        (sequenced
-          ? rulesetSequenceForecastAgainst(definition, encounter, actorId, option.id, targetId)
-          : option.forecast
+        (
+          aimed ??
+          (sequenced
+            ? rulesetSequenceForecastAgainst(definition, encounter, actorId, option.id, targetId)
+            : option.forecast)
         )?.averageDamage ?? 0;
       // As the target's own hide takes it, on the other side only: a weakness found, a regeneration
       // stopped, an immunity not wasted on (I1).
@@ -2903,7 +2914,9 @@ function rulesetCandidatesFrom(
         // of its side's mean.
         const mean = rulesetSideHealthMean(definition, combat, encounter, target.side);
         const weighed = average >= pool ? Math.max(pool, mean * 0.75) : mean;
-        candidate.damage = Math.min(2, (average / weighed) * (1 + others.length + again)) * chance;
+        // A symbol fight's hit is weighed with what either side's spends buy (1.780).
+        const worth = aimed?.worth ?? average;
+        candidate.damage = Math.min(2, (worth / weighed) * (1 + others.length + again)) * chance;
         candidate.action.expected = average * chance * (1 + others.length + again);
         if (average >= pool) candidate.finish = chance;
         // Everybody it could drop, the others it spreads to included: by its average, and by the most

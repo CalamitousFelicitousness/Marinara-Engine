@@ -1476,7 +1476,15 @@ const capabilityPackageManifestBaseSchema = z
 // 1.776: what a ruleset's weights are counted in (`items.carry.unit`), said after every weight shown.
 // 1.777: a damage change only on a blow carrying given damage types (`onTypes`), and one that spends
 //        its condition once it adds (`spentOnUse`).
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 777 } as const);
+// 1.778: package-bound per-chat agent reference lorebook trigger resolution.
+// 1.779: independent browser audio players, shared manifest fetch and default music selection.
+// 1.780: fights for a symbol-pool ruleset (`combat.kind: "symbol-pool"`): attacks, saves, checks,
+//        contests and initiative thrown in the ruleset's own symbol dice, a defense read as the
+//        difficulty dice, `combat.symbols` for the harm each net success adds, flat soak and the
+//        spends leftover symbols buy (harm, a critical, a condition, a track, boost or setback dice
+//        on the next roll), picked by the Engine and the AI for whichever side spends that symbol.
+//        A creature action's `upgrades` names its upgraded to-hit dice.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 780 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

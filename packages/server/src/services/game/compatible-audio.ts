@@ -12,6 +12,7 @@ export async function generateCompatibleGameAudio(input: {
   allowLocal: boolean;
   timeoutMs: number;
   maxBytes: number;
+  signal?: AbortSignal;
 }): Promise<Uint8Array> {
   const base = new URL(`${input.baseUrl.replace(/\/+$/, "")}/`);
   // Paths are relative to the configured API base, retaining e.g. /v1.
@@ -41,7 +42,9 @@ export async function generateCompatibleGameAudio(input: {
             response_format: "mp3",
           },
     ),
-    signal: AbortSignal.timeout(input.timeoutMs),
+    signal: input.signal
+      ? AbortSignal.any([input.signal, AbortSignal.timeout(input.timeoutMs)])
+      : AbortSignal.timeout(input.timeoutMs),
     policy: { allowLocal: input.allowLocal, allowedProtocols: input.allowLocal ? ["http:", "https:"] : ["https:"] },
     maxResponseBytes: chat ? Math.ceil((input.maxBytes * 4) / 3) + 64_000 : input.maxBytes,
     decodeCompressedResponse: true,

@@ -9031,6 +9031,9 @@ const creatureActionFullSchema = z
     components: componentIdsSchema.optional(),
     budget: sheetId,
     toHit: z.number().int().min(-50).max(100).optional(),
+    /** In a `symbol-pool` fight, how many of its `toHit` dice are upgraded ones (Capability API
+     *  1.780): a skill's ranks under a larger ability. */
+    upgrades: z.number().int().min(0).max(12).optional(),
     /** The amount simply lands: no roll to make. */
     autoHit: z.boolean().optional(),
     damage: creatureDamageSchema.optional(),
@@ -15903,6 +15906,74 @@ const combatInitiativeResourceSchema = z
   })
   .strict();
 
+/** Whom one symbol spend lands on (Capability API 1.780): either side of the attack, or the next
+ *  one of that side's allies to act. */
+const symbolSpendOnSchema = z.enum(["attacker", "target", "attacker-ally", "target-ally"]);
+
+/** One thing a symbol left over on an attack buys (Capability API 1.780): `cost` of `symbol` buys it,
+ *  up to `max` times on one roll. `by` is the side that chooses it, so an attacker's advantage is
+ *  theirs to spend and their threat their target's. The Engine and the AI pick spends without the
+ *  Game Master; what is left unspent stays on the roll for the story. */
+const combatSymbolSpendSchema = z
+  .object({
+    id: sheetId,
+    label,
+    by: z.enum(["attacker", "target"]),
+    symbol: sheetId,
+    cost: z.number().int().min(1).max(10),
+    /** Bought only on a hit, only on a miss, or on either. Harm and a critical need `hit`. */
+    when: z.enum(["hit", "miss", "any"]).default("any"),
+    max: z.number().int().min(1).max(10).default(1),
+    /** Harm added to the hit, before soak. */
+    damage: z.number().int().min(1).max(50).optional(),
+    /** The hit is a critical one: the log says so for the story, and what a critical adds is the
+     *  ruleset's other effects here. */
+    critical: z.literal(true).optional(),
+    condition: z
+      .object({ id: sheetId, on: symbolSpendOnSchema, rounds: z.number().int().min(1).max(10).optional() })
+      .strict()
+      .optional(),
+    /** A live track moved, as strain or stress is (never the health track: harm is `damage`). */
+    track: z
+      .object({ id: sheetId, by: z.number().int().min(-20).max(20), on: symbolSpendOnSchema })
+      .strict()
+      .optional(),
+    /** Dice added to the next roll whoever it lands on makes in this fight. */
+    boost: z
+      .object({ dice: z.number().int().min(1).max(6), on: symbolSpendOnSchema })
+      .strict()
+      .optional(),
+    setback: z
+      .object({ dice: z.number().int().min(1).max(6), on: symbolSpendOnSchema })
+      .strict()
+      .optional(),
+    /** What the AI weighs it at, in points of harm, in place of what it works out from the effects. */
+    worth: z.number().min(0).max(100).optional(),
+    text: promptSafeText(200).optional(),
+  })
+  .strict();
+
+const combatSymbolsSchema = z
+  .object({
+    /** Harm each net success adds to a hit: every one (`all`), or only those past the ones a hit
+     *  needs (`beyond`). */
+    damage: z
+      .object({
+        perSuccess: z.number().int().min(0).max(10).default(1),
+        counts: z.enum(["all", "beyond"]).default("all"),
+      })
+      .strict()
+      .default({}),
+    /** What a target takes off each hit's harm, off their sheet: `byKind` names kinds of the health
+     *  track and wins over `all` for its kind. A creature gives its own numbers. Never below none. */
+    soak: z
+      .object({ all: rulesetValueRefSchema.optional(), byKind: z.record(rulesetValueRefSchema).optional() })
+      .strict()
+      .optional(),
+    spends: z.array(combatSymbolSpendSchema).min(1).max(16).optional(),
+  })
+  .strict();
+
 /** Optional, and absent rather than empty, for the same reason as `catalogs`: a ruleset that says
  *  nothing about combat is read exactly as it was before this block existed. A ruleset may carry
  *  both `combat` and `battle`; the bridge simply never runs for one whose fights follow its own
@@ -15912,8 +15983,11 @@ const combatObjectSchema = z
     /** The closed registry of combat kinds. Adding one is an Engine PR with regressions.
      *  `attack-vs-defense` adds dice up and compares them with a number; `dice-pool` throws the
      *  ruleset's own pools and counts successes, so every number a roll adds is dice and every number
-     *  it meets is successes, exactly as the ruleset's `dice-pool` checks read the sheet. */
-    kind: z.enum(["attack-vs-defense", "dice-pool"]),
+     *  it meets is successes, exactly as the ruleset's `dice-pool` checks read the sheet.
+     *  `symbol-pool` (Capability API 1.780) throws the ruleset's own symbol dice: a to-hit number is
+     *  the attacker's dice, a defense the difficulty dice against them, and `symbols` says what the
+     *  symbols left over buy. */
+    kind: z.enum(["attack-vs-defense", "dice-pool", "symbol-pool"]),
     health: combatHealthSchema,
     /** What an attack is rolled against: a total to reach, or under `dice-pool` the successes an
      *  attack needs, never fewer than one. */
@@ -15986,6 +16060,9 @@ const combatObjectSchema = z
       .strict()
       .describe("Required when kind is dice-pool, and refused when it is attack-vs-defense.")
       .optional(),
+    /** What a `symbol-pool` fight's symbols do (Capability API 1.780). Required there, and refused
+     *  under the other kinds. */
+    symbols: combatSymbolsSchema.optional(),
     /** A pool's least damage dice after soak, read off the attacker (1.146). */
     damage: z.object({ minimum: rulesetValueRefSchema.optional() }).strict().optional(),
     /** One hit above the target's number costs their next turn (1.147). */
@@ -19232,7 +19309,9 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       issue(at("initiative", "plus"), "plus is added to a pool's successes, and initiative is not a pool");
     }
     if (combat.kind !== "dice-pool") {
-      if (initiative.pool) issue(at("initiative", "pool"), 'Initiative thrown as a pool is for a "dice-pool" fight');
+      // A symbol pool's initiative is its successes (1.780), so it may be thrown as a pool too.
+      if (initiative.pool && combat.kind !== "symbol-pool")
+        issue(at("initiative", "pool"), 'Initiative thrown as a pool is for a "dice-pool" or "symbol-pool" fight');
       if (initiative.resource)
         issue(at("initiative", "resource"), 'Initiative that attacks move is for a "dice-pool" fight');
     }
@@ -19278,9 +19357,114 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
     // Each kind rolls with its own block and never the other's: an attack total needs attack dice,
     // and a pool fight throws the ruleset's own pools, so it has nothing to say about a total.
     // A keep-the-highest ruleset (1.138) has no fight of its own: its checks read one die, which no
-    // attack, save or damage roll of a fight is written in. Fights stay with the Game Master.
-    if (resolution.kind === "dice-highest" || resolution.kind === "symbol-pool") {
+    // attack, save or damage roll of a fight is written in. Fights stay with the Game Master. A
+    // symbol pool fights only as a `symbol-pool` fight (1.780), which throws its own dice.
+    if (resolution.kind === "dice-highest") {
       issue(at("kind"), `A ${resolution.kind} ruleset has no fight of its own, so leave combat out`);
+    }
+    const symbolic = combat.kind === "symbol-pool";
+    if (resolution.kind === "symbol-pool" && !symbolic) {
+      issue(at("kind"), 'A symbol-pool ruleset fights as a "symbol-pool" fight, which throws its own dice');
+    }
+    if (symbolic) {
+      if (resolution.kind !== "symbol-pool") {
+        issue(
+          at("kind"),
+          'A "symbol-pool" fight throws the ruleset\'s symbol dice, so resolution.kind is "symbol-pool" too',
+        );
+      }
+      if (combat.attackRoll)
+        issue(at("attackRoll"), 'A "symbol-pool" fight throws symbol dice, so it rolls no attack dice');
+      if (combat.pool)
+        issue(at("pool"), '"pool" is for a "dice-pool" fight; a "symbol-pool" fight says its own in "symbols"');
+      if (!combat.symbols) issue(at("symbols"), 'A "symbol-pool" fight says what its symbols do in "symbols"');
+    } else if (combat.symbols) issue(at("symbols"), '"symbols" is for a "symbol-pool" fight');
+    if (symbolic && combat.symbols && resolution.kind === "symbol-pool") {
+      const symbolIds = new Set(resolution.symbols.map((symbol) => symbol.id));
+      const soak = combat.symbols.soak;
+      if (soak?.all) checkRef(soak.all, at("symbols", "soak", "all"), derivedIds);
+      if (soak?.byKind) {
+        const health = combat.health;
+        const kinds =
+          "track" in health ? sheet.live.tracks.find((track) => track.id === health.track)?.kinds : undefined;
+        for (const [kind, ref] of Object.entries(soak.byKind)) {
+          checkRef(ref, at("symbols", "soak", "byKind", kind), derivedIds);
+          if (!kinds)
+            issue(at("symbols", "soak", "byKind", kind), "Soak by kind needs health to be a wound track with kinds");
+          else if (!kinds.some((entry) => entry.id === kind)) {
+            issue(at("symbols", "soak", "byKind", kind), `"${kind}" is not a kind of the health track`);
+          }
+        }
+      }
+      if (soak && !soak.all && !soak.byKind) issue(at("symbols", "soak"), "Soak soaks something: all, byKind or both");
+      const healthTrackId = "track" in combat.health ? combat.health.track : undefined;
+      unique(combat.symbols.spends ?? [], at("symbols", "spends"), "spend");
+      combat.symbols.spends?.forEach((spend, index) => {
+        const path = (...rest: (string | number)[]) => at("symbols", "spends", index, ...rest);
+        if (!symbolIds.has(spend.symbol)) issue(path("symbol"), `Unknown symbol "${spend.symbol}"`);
+        // Successes are what land a hit and what its harm counts; a spend buys with the others.
+        else if (spend.symbol === resolution.success.symbol) {
+          issue(path("symbol"), "Successes land the hit and add its harm, so a spend buys with another symbol");
+        }
+        if ((spend.damage !== undefined || spend.critical) && spend.when !== "hit") {
+          issue(path("when"), 'Harm and a critical land with a hit, so the spend is bought "when": "hit"');
+        }
+        if ((spend.damage !== undefined || spend.critical) && spend.by !== "attacker") {
+          issue(path("by"), "Harm and a critical are the attacker's to add, so the spend is theirs");
+        }
+        // One side spends a symbol, so the two never reach for the same one.
+        const other = combat.symbols!.spends!.find((one) => one.symbol === spend.symbol && one.by !== spend.by);
+        if (other) issue(path("by"), `"${spend.symbol}" is spent by the ${other.by} too; one side spends a symbol`);
+        if (spend.condition && !conditions.has(spend.condition.id)) {
+          issue(path("condition", "id"), `Unknown condition "${spend.condition.id}"`);
+        }
+        if (spend.track) {
+          const declared = sheet.live.tracks.find((track) => track.id === spend.track!.id);
+          if (!declared) issue(path("track", "id"), `Unknown track "${spend.track.id}"`);
+          else if (declared.kinds || declared.id === healthTrackId) {
+            issue(path("track", "id"), "Harm is a spend's damage; the track it moves is a plain one");
+          }
+          if (spend.track.by === 0) issue(path("track", "by"), "A track a spend moves moves by something");
+        }
+        if (
+          spend.damage === undefined &&
+          !spend.critical &&
+          !spend.condition &&
+          !spend.track &&
+          !spend.boost &&
+          !spend.setback
+        ) {
+          issue(path(), "A spend buys something: damage, critical, condition, track, boost or setback");
+        }
+        // One condition of a kind goes on one holder per throw, so no two spends reach for it.
+        const kindOf = (id: string) => {
+          const group = combat.conditions?.find((one) => one.condition === id)?.oneAtATime;
+          return group === undefined ? `condition:${id}` : `kind:${group}`;
+        };
+        const twin = spend.condition
+          ? combat.symbols!.spends!.slice(0, index).find(
+              (one) =>
+                one.condition &&
+                one.condition.on === spend.condition!.on &&
+                // Bought on the same throw: a hit's spend and a miss's never are.
+                (one.when === "any" || spend.when === "any" || one.when === spend.when) &&
+                kindOf(one.condition.id) === kindOf(spend.condition!.id),
+            )
+          : undefined;
+        if (twin) {
+          issue(
+            path("condition"),
+            `"${twin.id}" already puts that condition, or one of its kind, on the same one; one throw lands one`,
+          );
+        }
+        // A condition and a critical land once however many copies are bought, so one is all a throw buys.
+        if ((spend.condition || spend.critical) && spend.max > 1) {
+          issue(path("max"), "A condition or a critical lands once, so a spend that gives one is bought at most once");
+        }
+        if (spend.boost && !resolution.boost) issue(path("boost"), "The ruleset's symbol pool has no boost dice");
+        if (spend.setback && !resolution.setback)
+          issue(path("setback"), "The ruleset's symbol pool has no setback dice");
+      });
     }
     const pooled = combat.kind === "dice-pool";
     if (pooled) {
@@ -19289,7 +19473,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       }
       if (combat.attackRoll) issue(at("attackRoll"), 'A "dice-pool" fight throws pools, so it rolls no attack dice');
       if (!combat.pool) issue(at("pool"), 'A "dice-pool" fight says how it rolls damage in "pool"');
-    } else {
+    } else if (!symbolic) {
       if (!combat.attackRoll) issue(at("attackRoll"), 'An "attack-vs-defense" fight says what an attack rolls');
       if (combat.pool) issue(at("pool"), '"pool" is for a "dice-pool" fight');
     }
@@ -19393,8 +19577,9 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       });
     }
     // A pool fight adds dice to a pool, so a condition's rolled number would be a number of dice
-    // nobody could throw. Said per modifier, on conditions and on levels alike.
-    if (pooled) {
+    // nobody could throw; a symbol fight's flat number is boost or setback dice (1.780). Said per
+    // modifier, on conditions and on levels alike.
+    if (pooled || symbolic) {
       const diceModifiers = (
         entries: ReadonlyArray<{ modifiers?: Array<{ to: string; dice?: string }> }> | undefined,
         key: "conditions" | "levels",
@@ -19404,7 +19589,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
             if (modifier.dice !== undefined) {
               issue(
                 at(key, index, "modifiers", modifierIndex, "dice"),
-                'A "dice-pool" fight adds dice to a pool, so a modifier gives a flat number of dice',
+                `A "${combat.kind}" fight adds dice to a pool, so a modifier gives a flat number of dice`,
               );
             }
           }),
@@ -21680,8 +21865,8 @@ function escapeDcIssues(
     )
   ) {
     add([...at, "escapeDc"], `No contest breaks free of "${applies.condition}" for an escape DC to be rolled against`);
-  } else if (combat.kind === "dice-pool") {
-    add([...at, "escapeDc"], 'A "dice-pool" fight counts successes, so it has no escape DC to meet');
+  } else if (combat.kind === "dice-pool" || combat.kind === "symbol-pool") {
+    add([...at, "escapeDc"], `A "${combat.kind}" fight counts successes, so it has no escape DC to meet`);
   }
 }
 
@@ -21846,7 +22031,11 @@ function creatureIssues(
   }
   // Soak is a pool fight's, by the health track's own kinds.
   if (creature.soak) {
-    if (combat.kind !== "dice-pool") add([...at, "soak"], 'Soak is for a "dice-pool" fight');
+    if (combat.kind === "symbol-pool") {
+      // A symbol fight takes soak off the harm (1.780), where its `symbols` says it does.
+      if (!combat.symbols?.soak)
+        add([...at, "soak"], 'This fight\'s "symbols" says nothing about soak, so there is no way to take it');
+    } else if (combat.kind !== "dice-pool") add([...at, "soak"], 'Soak is for a "dice-pool" or "symbol-pool" fight');
     // How soak is taken, thrown or off the dice, is the ruleset's to say, never the Engine's guess.
     else if (!combat.pool?.soak)
       add([...at, "soak"], 'This fight\'s "pool" says nothing about soak, so there is no way to take it');
@@ -22133,12 +22322,25 @@ function creatureIssues(
     if (action.reaction?.cancelSave && !saves.has(action.reaction.cancelSave.save))
       add([...path, "reaction", "cancelSave", "save"], `Unknown save "${action.reaction.cancelSave.save}"`);
     if (action.reaction) reactionAgainstIssues(catalogIds, action.reaction, [...path, "reaction"], add);
+    // Upgraded dice are some of a symbol fight's to-hit dice (1.780).
+    if (action.upgrades !== undefined) {
+      if (combat.kind !== "symbol-pool") add([...path, "upgrades"], 'Upgraded dice are for a "symbol-pool" fight');
+      else if (
+        definition.resolution.kind === "symbol-pool" &&
+        (definition.resolution.pool.build === "sum" || !definition.resolution.pool.upgrade)
+      ) {
+        add([...path, "upgrades"], "The ruleset's symbol pool has no upgraded dice to throw");
+      } else if (action.toHit === undefined) add([...path, "upgrades"], "Upgraded dice are some of its toHit dice");
+      else if (action.upgrades > Math.max(0, action.toHit)) {
+        add([...path, "upgrades"], `Only its ${Math.max(0, action.toHit)} toHit dice can be upgraded`);
+      }
+    }
     // A creature has no sheet to read a check off, so its own number is written down (1.116).
     if (action.reaction?.above) {
-      if (combat.kind === "dice-pool") {
+      if (combat.kind === "dice-pool" || combat.kind === "symbol-pool") {
         add(
           [...path, "reaction", "above"],
-          'A "dice-pool" fight counts successes, so it has no DC for a check to meet',
+          `A "${combat.kind}" fight counts successes, so it has no DC for a check to meet`,
         );
       }
       if (!creature.sheet && action.reaction.above.check.const === undefined) {
@@ -22815,12 +23017,13 @@ function itemHideIssues(
 ): void {
   // A pool fight adds dice to a pool, so a rolled number on an attack would be a number of dice
   // nobody could throw, as it is for a condition's.
-  if (definition.combat?.kind === "dice-pool") {
+  if (definition.combat?.kind === "dice-pool" || definition.combat?.kind === "symbol-pool") {
+    const kind = definition.combat.kind;
     effect.modifiers?.forEach((modifier, index) => {
       if (modifier.to === "attacks" && modifier.dice !== undefined) {
         add(
           [...at, "modifiers", index, "dice"],
-          'A "dice-pool" fight adds dice to a pool, so a modifier gives a flat number of dice',
+          `A "${kind}" fight adds dice to a pool, so a modifier gives a flat number of dice`,
         );
       }
     });
@@ -25328,8 +25531,8 @@ export function rulesetCatalogEntryIssues(
     }
     if (mechanics?.reaction && typeof mechanics.reaction === "object" && mechanics.reaction.above) {
       const where = [index, "mechanics", "reaction", "above"];
-      if (definition.combat?.kind === "dice-pool") {
-        add(where, 'A "dice-pool" fight counts successes, so it has no DC for a check to meet');
+      if (definition.combat?.kind === "dice-pool" || definition.combat?.kind === "symbol-pool") {
+        add(where, `A "${definition.combat.kind}" fight counts successes, so it has no DC for a check to meet`);
       }
       for (const refIssue of rulesetValueRefIssues(mechanics.reaction.above.check, names, names.derived, false)) {
         add([...where, "check", refIssue.key], refIssue.message);

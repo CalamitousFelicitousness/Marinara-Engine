@@ -32,6 +32,7 @@
     "nanogpt-usage-meter-gate.regression.ts",
     "game-inventory-refusal-client.regression.ts",
     "game-audio-experience-music.regression.ts",
+    "package-audio-player.regression.ts",
     "onboarding-preview-highlight.regression.ts",
     "state-editor.regression.ts",
     "marinara-host-namespace.regression.ts"

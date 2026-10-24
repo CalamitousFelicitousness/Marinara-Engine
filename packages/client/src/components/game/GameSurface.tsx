@@ -79,6 +79,7 @@ import {
   type GameAssetManifest,
 } from "../../hooks/use-game-assets";
 import { cleanNpcAvatarDisplayName, normalizeNpcAvatarName } from "../../lib/game-npc-avatar";
+import { useDiscardNewChatSetup } from "../../hooks/use-discard-new-chat-setup";
 import { useChatStore } from "../../stores/chat.store";
 import { useUIStore } from "../../stores/ui.store";
 import { useCombatScreenStore } from "../../stores/combat-screen.store";
@@ -138,7 +139,6 @@ import {
   guardServerChatSnapshot,
   useBranchChat,
   useCreateMessage,
-  useDeleteChat,
   useUpdateChat,
   useUpdateChatMetadata,
   useUpdateMessage,
@@ -187,6 +187,7 @@ import { StoryClockStrip, useStoryJournal } from "./StoryClockDial";
 import { ExperienceCreaturePacksContext } from "./CreatureArt";
 import {
   filterAudioGenerationConnections,
+  matchesAudioGenerationConnectionId,
   filterLanguageGenerationConnections,
   isConnectionFlagTrue,
 } from "../../lib/connection-filters";
@@ -217,7 +218,6 @@ import {
   type RulesetCombatSeeds,
 } from "../../lib/ruleset-combat-bridge";
 import { useSceneAnalysis } from "../../hooks/use-scene-analysis";
-import { useTTSConfig } from "../../hooks/use-tts";
 import { useSidecarStore } from "../../stores/sidecar.store";
 import { parsePartyDialogue } from "../../lib/party-dialogue-parser";
 import { dispatchSpotifySceneTrackChange } from "../../lib/spotify-playback-events";
@@ -2559,42 +2559,28 @@ function GameSurfaceComponent({
   const useCustomGameMusic = gameMusicDjEnabled && musicPlayerSource === "custom";
   const useJsonMusicDjGameMusic = useYoutubeGameMusic || useCustomGameMusic;
   const useMusicDjPlayerMusic = useSpotifyGameMusic || useJsonMusicDjGameMusic;
-  const { data: ttsConfig } = useTTSConfig();
   const activeGameMetaId = typeof chatMeta.gameId === "string" ? chatMeta.gameId : "";
   const sceneRuntimeScopeKey = `${activeChatId}:${activeGameMetaId}`;
   const { data: connectionsList } = useConnections();
-  // Game audio capability: the game's audio connection (explicit pick, else the
-  // one chosen as the Text to Speech Source, else the category default, else
-  // the fallback) wins; the legacy TTS settings blob still gates setups that
-  // predate audio connections. Mirrors the server's resolveAudioConfig order.
-  const ttsChosenConnectionId = ttsConfig?.connectionId ?? "";
+  // Music/SFX resolve independently of speech, including explicit legacy picks migrated by the host.
   const gameAudioConnection = useMemo(() => {
-    // Quarantined (review-required) imports are refused by the server's
-    // resolution (getWithKey/getDefaultForAudio return null for them), so
-    // they must not drive capability gating here either.
     const rows = filterAudioGenerationConnections((connectionsList ?? []) as Record<string, unknown>[]);
     const explicitId = typeof chatMeta.gameAudioConnectionId === "string" ? chatMeta.gameAudioConnectionId : "";
-    const explicit = explicitId ? rows.find((connection) => connection.id === explicitId) : undefined;
-    if (explicit) return explicit;
-    // A missing chosen connection is refused by the server, never swapped for the default.
-    if (ttsChosenConnectionId) return rows.find((connection) => connection.id === ttsChosenConnectionId) ?? null;
+    if (explicitId)
+      return rows.find((connection) => matchesAudioGenerationConnectionId(connection, explicitId)) ?? null;
     return (
       rows.find((connection) => isConnectionFlagTrue(connection.defaultForAgents)) ??
       rows.find((connection) => isConnectionFlagTrue(connection.fallbackForAgents)) ??
       null
     );
-  }, [connectionsList, chatMeta.gameAudioConnectionId, ttsChosenConnectionId]);
-  // The card's own ElevenLabs switches count only while no Audio connection is its Source.
-  const ttsSettingsElevenLabs = ttsConfig?.source === "elevenlabs" && !ttsChosenConnectionId;
+  }, [connectionsList, chatMeta.gameAudioConnectionId]);
   const generateGameSoundEffects =
-    (gameAudioConnection
-      ? audioConnectionSupportsGeneration(gameAudioConnection, "sfx")
-      : ttsSettingsElevenLabs && ttsConfig?.elevenLabsGameSoundEffects === true) &&
+    !!gameAudioConnection &&
+    audioConnectionSupportsGeneration(gameAudioConnection, "sfx") &&
     chatMeta.gameAudioSoundEffectsEnabled !== false;
   const generateGameMusic =
-    (gameAudioConnection
-      ? audioConnectionSupportsGeneration(gameAudioConnection, "music")
-      : ttsSettingsElevenLabs && ttsConfig?.elevenLabsGameMusic === true) &&
+    !!gameAudioConnection &&
+    audioConnectionSupportsGeneration(gameAudioConnection, "music") &&
     chatMeta.gameAudioMusicEnabled !== false &&
     !useMusicDjPlayerMusic;
   const sceneVideosQuery = useQuery({
@@ -7333,7 +7319,7 @@ function GameSurfaceComponent({
   const updateCampaignProgression = useUpdateCampaignProgression();
   const startSession = useStartSession();
   const generateMap = useGenerateMap();
-  const deleteChat = useDeleteChat();
+  const discardNewChatSetup = useDiscardNewChatSetup();
   const updateChatMetadata = useUpdateChatMetadata();
   const uploadCharacterAvatar = useUploadAvatar();
   const uploadPersonaAvatar = useUploadPersonaAvatar();
@@ -12416,7 +12402,7 @@ function GameSurfaceComponent({
   if (shouldShowSetupWizard) {
     // Shared with an experience's own setup, so closing either one behaves identically.
     /** Closes setup from either wizard: no-op while a launch is pending, and drops an empty chat. */
-    const dismissSetupWizard = () => {
+    const dismissSetupWizard = async () => {
       if (
         createGame.isPending ||
         gameSetup.isPending ||
@@ -12427,10 +12413,10 @@ function GameSurfaceComponent({
       )
         return;
       useGameModeStore.getState().setSetupActive(false);
-      if (canAutoDeleteEmptySetupChat) {
-        deleteChat.mutate(activeChatId, {
-          onSuccess: () => useChatStore.getState().setActiveChatId(null),
-        });
+      try {
+        if (await discardNewChatSetup(activeChatId)) return;
+      } catch {
+        toast.error(localizeUi("chat.wizard.cancelFailed"));
         return;
       }
       setDismissedSetupWizardChatId(activeChatId);

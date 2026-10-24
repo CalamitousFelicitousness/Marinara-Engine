@@ -4,6 +4,14 @@
 
 import { rulesetStepAverageTimes } from "./creatures.js";
 import { withOwnRulesetPlanMemo, withRulesetPlanMemo } from "../rulesets/plan-memo.js";
+import {
+  rulesetCombatIsSymbol,
+  rulesetSymbolAttackForecast,
+  rulesetSymbolChance,
+  rulesetSymbolDice,
+  rulesetSymbolSuccessDistribution,
+  type RulesetSymbolDice,
+} from "./symbols.js";
 import { rulesetEntryIcons } from "../rulesets/art-icons.js";
 import type {
   RulesetCombat,
@@ -85,6 +93,7 @@ import {
   rulesetCombatStanding,
   rulesetAllyBeside,
   rulesetCombatHurt,
+  rulesetSymbolSpendBudget,
   rulesetAbilityNarrowing,
   rulesetCheckAbility,
   rulesetCheckMode,
@@ -2081,6 +2090,20 @@ function contestTotals(
     ability,
   );
   const mode = rulesetCheckMode(definition, combat, combatant, state, undefined, ability);
+  if (rulesetCombatIsSymbol(combat)) {
+    // A side's dice are its check, and what its conditions and wounds add boost or setback (1.780).
+    const bonus = rulesetBonusDice(modifiers);
+    return rulesetSymbolSuccessDistribution(
+      definition,
+      rulesetSymbolDice(definition, {
+        dice: check.modifier,
+        bonus: bonus.flat + rulesetCombatPenalty(definition, combatant),
+        boost: combatant.symbolDice?.boost,
+        setback: combatant.symbolDice?.setback,
+        mode,
+      }),
+    );
+  }
   if (rulesetCombatIsPool(combat)) {
     // A side's pool is its check, what its conditions add as dice, and its wound penalty.
     const bonus = rulesetBonusDice(modifiers);
@@ -3203,6 +3226,9 @@ function forecastFor(
   const forecast: NonNullable<RulesetCombatOption["forecast"]> = {};
   // As the conditions its maker holds make it now (1.485).
   action = rulesetWeaponNow(definition, state, actor, action);
+  // A symbol fight's attack (1.780): the dice it throws, and at whom, for its harm to read.
+  let symbolDice: RulesetSymbolDice | undefined;
+  let symbolTarget: RulesetCombatant | undefined;
   if (action.sequence) {
     const byId = new Map(actor.actions.map((entry) => [entry.id, entry]));
     // A part that has no use left, or is waiting for its dice, will not happen, so it is not
@@ -3266,6 +3292,11 @@ function forecastFor(
     return chance === null ? undefined : { hitChance: Math.round(chance * 1000) / 1000 };
   }
   if (action.toHit !== undefined && target) {
+    if (rulesetCombatIsSymbol(combat)) {
+      // What a hit is worth in a symbol fight is worked out with its harm, below, from these dice.
+      symbolDice = symbolDiceAgainst(definition, combat, state, actor, action, target);
+      symbolTarget = target;
+    }
     const chance = hitChanceAgainst(definition, combat, state, actor, action, target);
     if (chance !== null) forecast.hitChance = Math.round(chance * 1000) / 1000;
   }
@@ -3283,6 +3314,24 @@ function forecastFor(
       rulesetDamageMinimum(definition, actor, damage),
     );
     forecast.averageDamage = Math.round(average * 100) / 100;
+    if (symbolDice && symbolTarget) {
+      // Over every way the throw may come out (1.780): what its successes add, what each side's
+      // spends buy, and the target's soak. `worth` is what the AI weighs a hit at.
+      const expected = rulesetSymbolAttackForecast(
+        definition,
+        combat,
+        symbolDice,
+        average,
+        rulesetSoakOf(
+          symbolTarget,
+          rulesetTargetDamageKind(definition, combat, symbolTarget, damage.type, damage.qualities).kind,
+        ),
+        // What the fight leaves unbought, its forecast prices at nothing.
+        () => rulesetSymbolSpendBudget(definition, state, actor, symbolTarget!),
+      );
+      forecast.averageDamage = Math.round(expected.averageDamage * 100) / 100;
+      forecast.worth = Math.round(expected.worth * 100) / 100;
+    }
   } else if (action.heal) forecast.averageDamage = Math.round(rulesetAverageDamage(action.heal) * 100) / 100;
   if (action.innate && action.use?.perCostStep && forecast.averageDamage !== undefined) {
     const steps = Math.max(0, action.innate.level - action.innate.baseLevel);
@@ -4375,6 +4424,57 @@ export function rulesetAttackStyles(
   return resource.styles.filter((style) => !style.spends || (!action.sequence && actor.initiative > line));
 }
 
+/** What an attack's roll against this target is made of: its defense, roll mode, bonus dice and to-hit. */
+function attackRollAgainst(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  state: RulesetEncounterState,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction & { toHit: number },
+  target: RulesetCombatant,
+) {
+  const defense = rulesetDefenseAgainst(definition, combat, state, target, actor, action).defense;
+  const mode = rulesetAttackMode(definition, combat, actor, target, { state, optionId: action.id, action });
+  const bonus = rulesetBonusDice(
+    rulesetConditionModifiers(definition, combat, actor, "attacks", state, undefined, undefined, action.ability).filter(
+      ({ modifier }) => rulesetAttackModifierReaches(modifier, state, actor, target, action, definition),
+    ),
+  );
+  // What the weapon adds against what the target is (1.187), as the roll will.
+  const toHit = action.toHit + rulesetToHitAgainst(definition, action, target, actor);
+  return { defense, mode, bonus, toHit };
+}
+
+/** A symbol fight's attack (1.780): the attacker's dice against the target's difficulty dice, exactly
+ *  as the throw will be made. None outside a symbol fight, or for anything not rolled to hit. */
+function symbolDiceAgainst(
+  definition: RulesetDefinition,
+  combat: RulesetCombat,
+  state: RulesetEncounterState,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  target: RulesetCombatant,
+): RulesetSymbolDice | undefined {
+  if (action.toHit === undefined || !rulesetCombatIsSymbol(combat)) return undefined;
+  const { defense, mode, bonus, toHit } = attackRollAgainst(
+    definition,
+    combat,
+    state,
+    actor,
+    { ...action, toHit: action.toHit },
+    target,
+  );
+  return rulesetSymbolDice(definition, {
+    dice: toHit,
+    upgrades: action.upgrades,
+    difficulty: defense,
+    bonus: bonus.flat + rulesetCombatPenalty(definition, actor),
+    boost: actor.symbolDice?.boost,
+    setback: actor.symbolDice?.setback,
+    mode,
+  });
+}
+
 /** The chance an attack lands on this target: the same number the roll will be made against (the
  *  target's own defense plus whatever the ground they stand on is worth) and the same roll mode. */
 function hitChanceAgainst(
@@ -4386,15 +4486,16 @@ function hitChanceAgainst(
   target: RulesetCombatant,
 ): number | null {
   if (action.toHit === undefined) return null;
-  const defense = rulesetDefenseAgainst(definition, combat, state, target, actor, action).defense;
-  const mode = rulesetAttackMode(definition, combat, actor, target, { state, optionId: action.id, action });
-  const bonus = rulesetBonusDice(
-    rulesetConditionModifiers(definition, combat, actor, "attacks", state, undefined, undefined, action.ability).filter(
-      ({ modifier }) => rulesetAttackModifierReaches(modifier, state, actor, target, action, definition),
-    ),
+  const symbol = symbolDiceAgainst(definition, combat, state, actor, action, target);
+  if (symbol) return rulesetSymbolChance(definition, symbol);
+  const { defense, mode, bonus, toHit } = attackRollAgainst(
+    definition,
+    combat,
+    state,
+    actor,
+    { ...action, toHit: action.toHit },
+    target,
   );
-  // What the weapon adds against what the target is (1.187), as the roll will.
-  const toHit = action.toHit + rulesetToHitAgainst(definition, action, target, actor);
   return rulesetCombatIsPool(combat)
     ? rulesetPoolChance(
         definition,

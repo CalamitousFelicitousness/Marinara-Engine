@@ -98,7 +98,7 @@ import { useConnections, useModelParameterCapabilities } from "../../hooks/use-c
 import { useDefaultPreset, usePresets } from "../../hooks/use-presets";
 import { useCharacterGroups, usePersonas } from "../../hooks/use-characters";
 import { GameSetupRulesChooser, GameSetupRulesetSheetStatus } from "./GameSetupRulesChooser";
-import { listCombatStyles, resolveCombatStyle } from "./combat-styles";
+import { getCombatStyle, isBuiltInCombatStyle, listCombatStyles, resolveCombatStyle } from "./combat-styles";
 import { GameSetupWorldKitChooser, MapPackLock } from "./GameSetupWorldKitChooser";
 import { useExperienceMapPack } from "../../hooks/use-map-pack";
 import { useOverworldGamesEnabled } from "../../hooks/use-world-library";
@@ -140,6 +140,7 @@ import {
 import { downloadJsonFile, sanitizeExportFilenamePart } from "../../lib/download-json";
 import {
   filterAudioGenerationConnections,
+  matchesAudioGenerationConnectionId,
   filterLanguageGenerationConnections,
   isConnectionFlagTrue,
 } from "../../lib/connection-filters";
@@ -231,6 +232,8 @@ interface WizardConnection {
   imageService?: string | null;
   videoService?: string | null;
   audioSource?: string | null;
+  audioGenerationSource?: string | null;
+  audioGenerationLegacyConnectionId?: string | null;
   audioSoundEffects?: boolean | string;
   audioMusic?: boolean | string;
   audioMusicEndpoint?: string | null;
@@ -896,8 +899,9 @@ export function GameSetupWizard({
   const preferredAudioConnectionId = audioCategoryDefaultId ?? audioConnections[0]?.id ?? null;
   const resolvedAudioConnection = useMemo(
     () =>
-      audioConnections.find((connection) => connection.id === (audioConnectionId ?? preferredAudioConnectionId)) ??
-      null,
+      audioConnections.find((connection) =>
+        matchesAudioGenerationConnectionId(connection, audioConnectionId ?? preferredAudioConnectionId),
+      ) ?? null,
     [audioConnections, audioConnectionId, preferredAudioConnectionId],
   );
   const audioConnectionSupportsSfx =
@@ -1701,7 +1705,11 @@ export function GameSetupWizard({
 
   const snapshotConnection = (id: string | null | undefined, service: "image" | "video" | "audio" | null = null) => {
     if (!id) return null;
-    const connection = connections.find((candidate) => candidate.id === id);
+    const connection = connections.find((candidate) =>
+      service === "audio"
+        ? candidate.provider === "audio_generation" && matchesAudioGenerationConnectionId(candidate, id)
+        : candidate.id === id,
+    );
     if (!connection) return null;
     return {
       name: connection.name,
@@ -1713,7 +1721,7 @@ export function GameSetupWizard({
           : service === "video"
             ? connection.videoService
             : service === "audio"
-              ? (connection.audioSource ?? null)
+              ? (connection.audioGenerationSource ?? null)
               : null,
     };
   };
@@ -2326,13 +2334,13 @@ export function GameSetupWizard({
                       <label className="mb-1.5 block text-xs font-medium text-[var(--foreground)]">
                         {localizeUi("ui.game.gamesetupwizard.combatPreference")}
                       </label>
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2">
                         {(!combatStyles || combatStyles.includes("classic")) && (
                           <button
                             onClick={() => setCombatStyle("classic")}
                             aria-pressed={combatStyle === "classic"}
                             className={cn(
-                              "flex-1 rounded-lg p-3 text-left text-xs transition-colors ring-1",
+                              "min-w-0 flex-1 basis-36 rounded-lg p-3 text-left text-xs break-words transition-colors ring-1",
                               combatStyle === "classic"
                                 ? "bg-[var(--primary)]/10 ring-[var(--primary)]/40"
                                 : "bg-[var(--secondary)] ring-[var(--border)] hover:ring-[var(--primary)]/20",
@@ -2351,7 +2359,7 @@ export function GameSetupWizard({
                             onClick={() => setCombatStyle("tactical")}
                             aria-pressed={combatStyle === "tactical"}
                             className={cn(
-                              "flex-1 rounded-lg p-3 text-left text-xs transition-colors ring-1",
+                              "min-w-0 flex-1 basis-36 rounded-lg p-3 text-left text-xs break-words transition-colors ring-1",
                               combatStyle === "tactical"
                                 ? "bg-[var(--primary)]/10 ring-[var(--primary)]/40"
                                 : "bg-[var(--secondary)] ring-[var(--border)] hover:ring-[var(--primary)]/20",
@@ -2365,6 +2373,26 @@ export function GameSetupWizard({
                             </div>
                           </button>
                         )}
+                        {listCombatStyles()
+                          .filter((id) => !isBuiltInCombatStyle(id) && (!combatStyles || combatStyles.includes(id)))
+                          .map((id) => (
+                            <button
+                              key={id}
+                              type="button"
+                              onClick={() => setCombatStyle(id)}
+                              aria-pressed={combatStyle === id}
+                              className={cn(
+                                "min-w-0 flex-1 basis-36 rounded-lg p-3 text-left text-xs break-words transition-colors ring-1",
+                                combatStyle === id
+                                  ? "bg-[var(--primary)]/10 ring-[var(--primary)]/40"
+                                  : "bg-[var(--secondary)] ring-[var(--border)] hover:ring-[var(--primary)]/20",
+                              )}
+                            >
+                              <span className="font-medium text-[var(--foreground)]">
+                                {getCombatStyle(id).label ?? id}
+                              </span>
+                            </button>
+                          ))}
                       </div>
                       {combatStyles && activeRuleset && (
                         <p className="mt-1.5 text-xs text-[var(--muted-foreground)]">
@@ -3372,20 +3400,29 @@ export function GameSetupWizard({
                             {localizeUi("ui.game.gamesetupwizard.gameAudio")}
                           </span>
                           <span className="block text-[0.575rem] text-[var(--muted-foreground)]">
-                            {localizeUi("ui.game.gamesetupwizard.generateSoundEffectsAndMusicForScenesUsingAn")}
+                            {localizeUi("connections.audioGeneration.setupHelp")}
                           </span>
                         </div>
                       </div>
                       <div className="mt-2">
-                        <label className="mb-1 block text-[0.625rem] font-medium text-[var(--muted-foreground)]">
-                          {localizeUi("ui.game.gamesetupwizard.audioConnection")}
+                        <label
+                          htmlFor={`${activeChatId}:game-audio-connection`}
+                          className="mb-1 block text-[0.625rem] font-medium text-[var(--muted-foreground)]"
+                        >
+                          {localizeUi("connections.audioGeneration.connection")}
                         </label>
                         <select
-                          value={audioConnectionId ?? ""}
+                          id={`${activeChatId}:game-audio-connection`}
+                          value={audioConnectionId ? (resolvedAudioConnection?.id ?? audioConnectionId) : ""}
                           onChange={(e) => setAudioConnectionId(e.target.value || null)}
                           className="w-full rounded-lg border border-[var(--border)] bg-[var(--secondary)] px-2.5 py-1.5 text-xs text-[var(--foreground)]"
                         >
-                          <option value="">{localizeUi("ui.game.gamesetupwizard.useTheDefaultAudioConnection")}</option>
+                          <option value="">{localizeUi("connections.audioGeneration.defaultChoice")}</option>
+                          {audioConnectionId && !resolvedAudioConnection && (
+                            <option value={audioConnectionId}>
+                              {localizeUi("connections.audioGeneration.unavailableSelection")}
+                            </option>
+                          )}
                           {audioConnections.map((c) => (
                             <option key={c.id} value={c.id}>
                               {c.name}
@@ -3395,7 +3432,7 @@ export function GameSetupWizard({
                         </select>
                         {audioConnections.length === 0 && (
                           <p className="mt-1 text-[0.55rem] text-amber-700 dark:text-amber-400/80">
-                            {localizeUi("ui.game.gamesetupwizard.noAudioConnectionsFoundAddOneInSettings")}
+                            {localizeUi("connections.audioGeneration.setupEmpty")}
                           </p>
                         )}
                       </div>

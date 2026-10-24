@@ -48,6 +48,7 @@
 //     picks from, which is what the enemy's own turn will read.
 
 export * from "./types.js";
+export * from "./symbols.js";
 export * from "./zones.js";
 export * from "./board-events.js";
 export * from "./calls.js";
@@ -153,6 +154,8 @@ export {
   rulesetCombatHealth,
   rulesetCombatHide,
   rulesetCombatStanding,
+  rulesetSymbolSpendHolder,
+  rulesetSymbolSpendBudget,
   rulesetConditionModifiers,
   rulesetDamageInEffect,
   rulesetSizeRank,

@@ -81,7 +81,7 @@ When **Attach Card Appearance** is on, any card or persona that also has **Image
 In a Roleplay chat, **Chat Settings**, **Agents**, **Illustrator** has an **Illustrator makes** setting:
 
 - **Pictures** (the default): pictures only, as before.
-- **Pictures and clips**: Illustrator may also turn a picture it just made into a short clip when motion is the point of the moment, such as action, violence, a chase or something breaking. It writes the motion itself, following the video connection's **Video Prompting Instructions**. The picture appears first, and the clip joins the same message when it is ready.
+- **Pictures and clips**: Illustrator may also turn a picture it just made into a short clip when motion is the point of the moment, such as action, violence, a chase or something breaking. This includes pictures the storyteller asked for with `[illustrate]`. It writes the motion itself, following the video connection's **Video Prompting Instructions**. The picture appears first, and the clip joins the same message when it is ready.
 - **Clips only**: every time Illustrator would show a picture, it shows a short clip instead. The picture it draws is the clip's starting frame and goes to the Gallery, not the reply. If the clip fails, the picture is shown instead.
 
 Clips use the **Video Connection** under **Scene Videos**, and each one is a video request. Without a working video connection, Illustrator makes pictures instead, even with **Clips only**. Custom agents that create images follow the same setting.
@@ -95,11 +95,11 @@ Clips use the **Video Connection** under **Scene Videos**, and each one is a vid
 - **Manual clips**: you can still animate a picture from the Gallery. With **Clips only**, a message's **Illustrate** button makes a clip.
 - **Swipes**: swiping a reply that got a clip counts as a new reply. The new swipe can get its own clip, and the earlier swipe keeps its clip.
 
-**First frame**, shown once Illustrator makes clips, decides what every clip Illustrator makes starts from: a new Illustrator picture, the named character's avatar or sprite, the picture with the avatar as fallback, or no picture at all. It is the same setting Conversation chats use for video messages.
+**First frame**, in the same section, decides what every Roleplay clip starts from: Illustrator's own clips, `/video` and the Gallery's **Video** button. The choices are a new Illustrator picture, the named character's avatar or sprite, the picture with the avatar as fallback, or no picture at all. It is the same setting Conversation chats use for video messages.
 
 - **Clips only** with the avatar or no picture: no picture is drawn at all. The clip is made from Illustrator's scene and motion.
 - **Pictures and clips**: the picture is still shown, and only the clip starts from the avatar or nothing.
-- No first frame chosen: a clip never draws a picture just for itself. **Pictures and clips** animates the picture Illustrator just made, and **Clips only** makes the clip from the scene alone.
+- No first frame chosen: a clip never draws a picture just for itself. **Pictures and clips** animates the picture Illustrator just made, while **Clips only**, `/video` and the Gallery's **Video** button make the clip from the scene alone.
 
 A clip with no picture of its own describes everyone it names, your persona included. The avatar first frame starts from whoever is named first.
 

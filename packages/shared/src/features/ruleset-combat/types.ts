@@ -324,6 +324,14 @@ export interface RulesetCombatPoolRoll {
   /** Dice the wound penalty took off, as a negative number. Absent when it took none. */
   penalty?: number;
   botch?: boolean;
+  /** A `symbol-pool` fight's throw (1.780): the symbols left after cancelling, by id, and the dice
+   *  that went in. `dice` is then the thrower's own dice, `upgrades` how many were upgraded, and
+   *  `difficulty` the dice thrown against them. */
+  symbols?: Record<string, number>;
+  upgrades?: number;
+  difficulty?: number;
+  boost?: number;
+  setback?: number;
 }
 
 /** What one condition (or a level of a track or a derived value) added to, or took from, one roll or
@@ -525,6 +533,8 @@ export interface RulesetStatBlockAction {
   name: string;
   budget: string;
   toHit?: number;
+  /** In a `symbol-pool` fight, how many of the `toHit` dice are upgraded ones (1.780). */
+  upgrades?: number;
   autoHit?: boolean;
   /** Senses a target must have for this to affect it (Capability API 1.127). */
   needs?: string[];
@@ -993,6 +1003,8 @@ export interface RulesetCombatAction {
    *  ankheg's Acid Spray, not while grappling. */
   unlessImposing?: string[];
   toHit?: number;
+  /** In a `symbol-pool` fight, how many of the `toHit` dice are upgraded ones (1.780). */
+  upgrades?: number;
   /** The per-die target a pool fight throws this attack against, where the ruleset lets it move: a
    *  weapon's own. Without one the attack is thrown against the pool's usual target. */
   target?: number;
@@ -2240,6 +2252,8 @@ export interface RulesetCombatant {
   strikesLeft?: number;
   /** One pending skipped turn. A named condition is owned only if this daze put it on. */
   dazed?: { condition?: string };
+  /** Boost and setback dice a symbol spend left for the next roll they make (1.780), spent by it. */
+  symbolDice?: { boost?: number; setback?: number };
   /** Strikes the entries their rows came from let them buy with another budget (1.242). */
   strikeGrants?: RulesetStrikeGrant[];
   /** What this combatant adds to a qualifying hit without anybody choosing it. */
@@ -3018,6 +3032,8 @@ export interface RulesetHeldAttack {
     natural: boolean;
     /** What answers took off it after it hit (1.250): Cutting Words. */
     lowered?: number;
+    /** A symbol fight's throw (1.780): the symbols it left, spent once it is known to land. */
+    symbols?: Record<string, number>;
   };
   /** The attacker's one-use conditions the roll used, spent once the blow is over. */
   mine: string[];
@@ -4224,6 +4240,24 @@ export type RulesetCombatEvent =
   | { type: "cover"; targetId: string; bonus: number; defense?: number; save?: string }
   /** A spending blow whose dice were below the target's hardness: it landed and did nothing. */
   | { type: "hardness"; targetId: string; sourceId: string; label: string; hardness: number; dice: number }
+  /** Symbols left over on an attack's roll bought something (1.780): `actorId` chose it, for `times`
+   *  of `cost` `symbol` each, on the roll `rollerId` made at `targetId`. What it did follows as its
+   *  own events; boost and setback dice wait on `onId`'s next roll. */
+  | {
+      type: "symbol-spend";
+      actorId: string;
+      rollerId: string;
+      targetId: string;
+      spendId: string;
+      label: string;
+      symbol: string;
+      cost: number;
+      times: number;
+      onId?: string;
+      boost?: number;
+      setback?: number;
+      critical?: true;
+    }
   /** A weapon was fired: what it has loaded now (`of` its clip), or, without a clip, how many of
    *  what it shoots its holder still carries. */
   | { type: "shot"; actorId: string; optionId: string; label: string; left: number; of?: number }
@@ -4506,7 +4540,9 @@ export interface RulesetCombatOption {
    *  `hitChance` the share of rolls that would land against the first legal target. A sequence
    *  forecasts the sum of its parts' damage and no single chance to hit, because its parts each
    *  roll their own. */
-  forecast?: { hitChance?: number; averageDamage?: number };
+  /** `worth` (1.780): in a symbol fight, what a hit is worth in harm with what either side's spends
+   *  buy folded in, the misses' share included, so the chance times it is the attack's whole worth. */
+  forecast?: { hitChance?: number; averageDamage?: number; worth?: number };
   /** The initiative styles this attack may be made in, each with what it is expected to do: a style
    *  that takes says how much of the target's number it would take (`shift`), one that spends says
    *  the harm its dice would do. Present only where initiative is a number attacks move. */

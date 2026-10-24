@@ -614,6 +614,7 @@ function hashCombatVoiceKey(value: string): string {
 function buildCombatVoiceConfigSignature(config?: TTSConfig | null): string {
   if (!config) return "combat-tts:none";
   return [
+    config.connectionId,
     config.source,
     config.baseUrl,
     config.model,

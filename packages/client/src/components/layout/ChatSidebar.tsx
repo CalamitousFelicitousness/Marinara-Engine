@@ -775,9 +775,11 @@ export function ChatSidebar() {
             useChatStore.getState().setShouldOpenSettings(true);
             useChatStore.getState().setShouldOpenWizard(true);
             if (starred) {
-              void applyChatPreset.mutateAsync({ presetId: starred.id, chatId: chat.id }).catch(() => {
-                /* non-fatal — chat still opens with system defaults */
-              });
+              void applyChatPreset
+                .mutateAsync({ presetId: starred.id, chatId: chat.id, initialSetupProfile: starred })
+                .catch(() => {
+                  /* non-fatal — chat still opens with system defaults */
+                });
             }
           },
         },

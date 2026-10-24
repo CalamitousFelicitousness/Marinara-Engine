@@ -1,3 +1,4 @@
+import { matchesAudioGenerationConnectionId } from "../../lib/connection-filters";
 import { Puzzle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
@@ -20,7 +21,7 @@ export function RoleplayCommandsSettings({
   chat: Chat;
   characters: Array<{ id: string; name: string }>;
   installedAgentIds: ReadonlySet<string>;
-  audioConnections: Array<{ id: string; name: string }>;
+  audioConnections: Array<{ id: string; name: string; audioGenerationLegacyConnectionId?: string | null }>;
 }) {
   const { t } = useTranslation();
   const update = useUpdateChatMetadata({ serialize: true });
@@ -57,7 +58,7 @@ export function RoleplayCommandsSettings({
             <div className="grid gap-2 @lg:grid-cols-2">
               {ROLEPLAY_COMMAND_KEYS.map((key) => {
                 const available =
-                  key === "illustrate"
+                  key === "illustrate" || key === "video"
                     ? installedAgentIds.has("illustrator") && metadata.activeAgentIds?.includes("illustrator") === true
                     : key === "combat"
                       ? installedAgentIds.has("combat") && metadata.activeAgentIds?.includes("combat") === true
@@ -87,7 +88,7 @@ export function RoleplayCommandsSettings({
                           ? t(
                               key === "notes" || key === "memory" || key === "whisper"
                                 ? "roleplay.commands.individualRequired"
-                                : key === "illustrate"
+                                : key === "illustrate" || key === "video"
                                   ? "roleplay.commands.agentAttachedRequired"
                                   : `roleplay.commands.${key}.agentRequired`,
                             )
@@ -199,13 +200,27 @@ export function RoleplayCommandsSettings({
                 <select
                   id={`${chat.id}:command-sound-connection`}
                   aria-describedby={`${chat.id}:command-sound-description`}
-                  value={metadata.roleplaySoundConnectionId ?? ""}
+                  value={
+                    audioConnections.find((connection) =>
+                      matchesAudioGenerationConnectionId(connection, metadata.roleplaySoundConnectionId),
+                    )?.id ??
+                    metadata.roleplaySoundConnectionId ??
+                    ""
+                  }
                   onChange={(event) =>
                     update.mutate({ id: chat.id, roleplaySoundConnectionId: event.target.value || null })
                   }
                   className="min-h-11 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-2.5 py-2 focus-visible:outline focus-visible:outline-[var(--primary)]"
                 >
                   <option value="">{t("roleplay.commands.sound.defaultConnection")}</option>
+                  {metadata.roleplaySoundConnectionId &&
+                    !audioConnections.some((connection) =>
+                      matchesAudioGenerationConnectionId(connection, metadata.roleplaySoundConnectionId),
+                    ) && (
+                      <option value={metadata.roleplaySoundConnectionId}>
+                        {t("connections.audioGeneration.unavailableSelection")}
+                      </option>
+                    )}
                   {audioConnections.map((connection) => (
                     <option key={connection.id} value={connection.id}>
                       {connection.name}

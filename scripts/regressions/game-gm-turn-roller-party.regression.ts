@@ -331,7 +331,6 @@ const party = ["Isolde", "Hessa", "Brannoc", "Pip"];
     "Checks: a DC 15 Athletics roll to cross the gap.\n\nThe gap yawns.",
     "Notes: Pip still carries the key.\n\nThe gap yawns.",
     '[Cudge Vantry] [main] [neutral]: "Notes: the bell rang twice."',
-    "Plan: only a plan, nothing after it.",
     "Approach: I'll bribe the gate guard.\n\nThe gate stands.",
     "Outline: the north road, then the ford.\n\nThe gate stands.",
     "Beats: the bell, then the gate.\n\nThe gate stands.",
@@ -339,6 +338,12 @@ const party = ["Isolde", "Hessa", "Brannoc", "Pip"];
   ]) {
     assert.deepEqual(extractLeadingGmPlanning(narration), { content: narration, planning: "" }, narration);
   }
+  // Actual generation-route proof (#8185) shows that restoring a planning-only reply saves private preparation.
+  // Leave no narration so the existing no-output path reports the missing scene instead.
+  assert.deepEqual(extractLeadingGmPlanning("Plan: only a plan, nothing after it."), {
+    content: "",
+    planning: "Plan: only a plan, nothing after it.",
+  });
 }
 
 // ── A rolled harm reaches the sheet in a turn that finishes itself ──

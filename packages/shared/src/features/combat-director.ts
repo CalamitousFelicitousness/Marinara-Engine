@@ -272,6 +272,8 @@ export type DirectedRulesetEvent =
  *   - `focus`: its target is the one its side most wants down (one dropping areas on it).
  *   - `mostInNeed`: the friend it picked is the one of its side most in need of it.
  *   - `keptBack`: an item's healing it weighed and kept for later (`label`, for `targetId`).
+ *   - `routed`: its morale broke, so its turn is getting away off the field.
+ *   - `liesInWait`: it keeps still, hidden where it can, until its prey comes to it.
  *   - `spread`: it stopped apart from its own side rather than nearest, out of an opponent's blast.
  *   - `pressCaster`: nothing to do yet, so it closed on the one dropping areas on its side from out
  *     of reach.
@@ -294,7 +296,7 @@ export type DirectedRulesetReason =
   | { why: "walked"; cells: number }
   | { why: "approach"; targetId?: string; sprinted?: true }
   | { why: "driven" }
-  | { why: "nothingWorth" | "noWay" | "holding" | "leavesHarm" | "spread" }
+  | { why: "nothingWorth" | "noWay" | "holding" | "leavesHarm" | "spread" | "routed" | "liesInWait" }
   | { why: "keptBack"; label: string; targetId?: string };
 /** One option of the legal menu, with the combatants it may be pointed at right now. */
 export interface DirectedRulesetOption extends RulesetCombatOption {

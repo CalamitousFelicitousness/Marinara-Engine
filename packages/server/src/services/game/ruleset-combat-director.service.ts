@@ -5930,6 +5930,8 @@ function playRulesetTurn(
   if (turned) record(fight, [{ type: "temperamentShift", actorId, ...turned }]);
   // Broken (1.746): its whole turn is getting away.
   if (actor?.routed) {
+    // Its why before it runs, so the getaway reads as the broken morale it is (D4).
+    recordReasons(fight, actorId, [{ why: "routed" }]);
     runForTheEdge(definition, state, fight, actorId);
     advanceTurn(definition, state, fight);
     return;
@@ -5940,6 +5942,7 @@ function playRulesetTurn(
       (option) => option.kind === "standard" && rulesetStandardName(option.id) === "hide",
     );
     if (hide && !actor.hiding) applyChoice(definition, state, fight, { actorId, optionId: hide.id, targetIds: [] });
+    recordReasons(fight, actorId, [{ why: "liesInWait" }]);
     advanceTurn(definition, state, fight);
     return;
   }

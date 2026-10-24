@@ -410,6 +410,13 @@ try {
     const away = events.findIndex((event) => event.type === "standard" && event.actorId === "lurker");
     assert.ok(away >= 0, `it got away from Ada first: ${JSON.stringify(types)}`);
     assert.ok(
+      events.some(
+        (event) =>
+          event.type === "reasoning" && event.actorId === "lurker" && event.reasons.some((one) => one.why === "routed"),
+      ),
+      `and said why (D4): ${JSON.stringify(types)}`,
+    );
+    assert.ok(
       events.some((event) => event.type === "fled" && event.actorId === "lurker"),
       `and ran off the board: ${JSON.stringify(types)}`,
     );

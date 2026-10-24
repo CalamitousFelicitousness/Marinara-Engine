@@ -495,13 +495,14 @@ export function gameAdvancedMemorySource<T extends { id: string; role: string; c
 /**
  * A new Game session's metadata, copied from the previous session's: the Advanced Memory settings stay, its
  * progress and its own continuity entries (which recap the previous session's messages) are left behind.
- * Summary entries the player wrote stay.
+ * Other summary entries, the player's own and a Chat Summary agent's, stay.
  */
 export function withoutSessionAdvancedMemory(metadata: Record<string, unknown>): Record<string, unknown> {
   const { advancedMemoryState: _state, ...rest } = metadata;
   if (!Array.isArray(rest.summaryEntries)) return rest;
+  // Advanced Memory writes automated range and compacted entries; a Chat Summary agent's entries stay as before.
   const summaryEntries = normalizeChatSummaryEntries(rest.summaryEntries).filter(
-    (entry) => entry.origin !== "automated",
+    (entry) => entry.origin !== "automated" || entry.sourceMode === "agent",
   );
   return { ...rest, summaryEntries, summary: compileChatSummaryEntries(summaryEntries) };
 }

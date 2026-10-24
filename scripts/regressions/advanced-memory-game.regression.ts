@@ -209,7 +209,7 @@ assert.match(generate, /\(chatMode === "roleplay" \|\| chatMode === "game"\) && 
 
 // A new session starts its own memory: the progress is left behind, the settings carry over.
 const gameRoutes = readFileSync(new URL("../../packages/server/src/routes/game.routes.ts", import.meta.url), "utf8");
-assert.match(gameRoutes, /const carryMeta = withoutSessionAdvancedMemory\(carriedMeta\);/);
+assert.match(gameRoutes, /const carryMeta = withoutSessionAdvancedMemory\(previousSessionMeta\);/);
 const carried = withoutSessionAdvancedMemory({
   advancedMemory: { ...DEFAULT_ADVANCED_MEMORY_SETTINGS, enabled: true },
   advancedMemoryState: { resetRevision: "old", contextStarts: { gm: "old-message" } },
@@ -233,6 +233,15 @@ const carried = withoutSessionAdvancedMemory({
       enabled: true,
       sourceMode: "last",
     },
+    {
+      id: "agent",
+      kind: "rolling",
+      origin: "automated",
+      title: "Chat Summary agent",
+      content: "The agent's recap.",
+      enabled: false,
+      sourceMode: "agent",
+    },
   ],
   summary: "Old recap.\n\nMira owes us.",
   gameId: "saltmere",
@@ -240,9 +249,9 @@ const carried = withoutSessionAdvancedMemory({
 assert.equal((carried.advancedMemory as { enabled: boolean }).enabled, true, "the settings carry over");
 assert.equal(carried.advancedMemoryState, undefined, "the old session's progress does not");
 assert.deepEqual(
-  (carried.summaryEntries as Array<{ id: string }>).map((entry) => entry.id),
-  ["mine"],
-  "Advanced Memory's recaps of the old session's messages stay behind; the player's own entry carries over",
+  (carried.summaryEntries as Array<{ id: string }>).map((entry) => entry.id).sort(),
+  ["agent", "mine"],
+  "Advanced Memory's recaps of the old session's messages stay behind; the player's and the agent's carry over",
 );
 assert.equal(carried.summary, "Mira owes us.");
 assert.equal(carried.gameId, "saltmere");

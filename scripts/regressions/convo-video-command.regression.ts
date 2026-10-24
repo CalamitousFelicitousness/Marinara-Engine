@@ -560,12 +560,16 @@ try {
     'ALICE: I am home.\nAna Lee: bye\nAna: "Wait."\n' +
     'Guard: "Stop!"\nOld Guard: "Halt."\nVoiceover: "It was late."\nVoice_Over: "Go."\nLighting: "warm"\n' +
     'Guard: "Wait"\nOld Guard: "No entry"\nScene: "A rainy street at night."\nCamera: "Slow pan left."\n' +
-    'Action: "She turns."\nshot_1: "Close-up."\noverall_soundscape: "Rain and distant thunder."\nFrame Rate: "24 fps"';
+    'Action: "She turns."\nshot_1: "Close-up."\noverall_soundscape: "Rain and distant thunder."\nFrame Rate: "24 fps"\n' +
+    "Shot 1: close-up\nShot 2: wide\nCamera angle: low, 35mm\nShot description: slow pan\nAna: hi\n" +
+    "https://example.com/clip\n" +
+    'Guard 1: "Stop!"\nShot 3: "Close-up."';
   const shapedNote =
     '\n[Ana sent a video message: wind rising 16:9 none wide "I\'m leaving." "slow pan" "16:9" The camera: pans left. ' +
     'Her tone: flat Mara to lens: "We have to go." Ana smiles: late ALICE: I am home. Ana Lee: bye Ana: "Wait." Guard: "Stop!" ' +
     'Old Guard: "Halt." "It was late." "Go." "warm" Guard: "Wait" Old Guard: "No entry" "A rainy street at night." ' +
-    '"Slow pan left." "She turns." "Close-up." "Rain and distant thunder." "24 fps"]';
+    '"Slow pan left." "She turns." "Close-up." "Rain and distant thunder." "24 fps" close-up wide low, 35mm slow pan ' +
+    'Ana: hi https://example.com/clip Guard 1: "Stop!" "Close-up."]';
   assert.equal(
     formatSentVideoNotes([{ type: "video", characterName: "Ana", prompt: shapedPrompt }], ["Alice"]),
     shapedNote,

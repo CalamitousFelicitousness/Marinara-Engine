@@ -119,9 +119,10 @@ export function conversationPromptHistoryContent(
 
 const SENT_SELFIE_DESCRIPTION_MAX_CHARS = 600;
 
-// A field label starts a line: one to three words, then a colon ("camera: …", "Shot_1: …", "Aspect Ratio: …",
-// "OVERALL_SOUNDSCAPE: …"). A link ("https://…") is not one.
-const LINE_START_LABEL_RE = /^([ \t]*)((?:[A-Za-z][A-Za-z0-9_]* ){0,2}[A-Za-z][A-Za-z0-9_]*)[ \t]*:(?!\/\/)[ \t]*/gmu;
+// A field label starts a line: a word and up to two more words or numbers, then a colon ("camera: …", "Shot_1: …",
+// "Shot 1: …", "Aspect Ratio: …", "OVERALL_SOUNDSCAPE: …"). A link ("https://…") is not one.
+const LINE_START_LABEL_RE =
+  /^([ \t]*)([A-Za-z][A-Za-z0-9_]*(?: (?:[A-Za-z][A-Za-z0-9_]*|\d+)){0,2})[ \t]*:(?!\/\/)[ \t]*/gmu;
 // A negative prompt lists what the clip must not show, so its line goes whole, as its JSON field does.
 const NEGATIVE_PROMPT_LINE_RE = /^[ \t]*negative(?:[ _]prompt)?[ \t]*:.*$/gimu;
 // Words a label never holds: articles, pronouns, prepositions, conjunctions and auxiliaries mark prose ("The camera:",
@@ -134,10 +135,11 @@ const PROSE_WORDS = new Set(
     "will would can could should may might must"
   ).split(" "),
 );
-// Before a quoted value, a head shaped like a name ("Guard", "Old Guard", "GUARD": capitalised plain words) is a
-// speaker outside the chat ('Guard: "Wait"'), unless a word in it names a prompt field ('Scene: "A rainy street."').
-// Lowercase, numbered or underscored heads ("camera", "shot_1", "overall_soundscape") are never names.
-const NAME_WORD_RE = /^[A-Z][A-Za-z]*$/u;
+// Before a quoted value, a head shaped like a name ("Guard", "Old Guard", "GUARD", "Guard 1": capitalised plain words,
+// perhaps numbered) is a speaker outside the chat ('Guard: "Wait"'), unless a word in it names a prompt field
+// ('Scene: "A rainy street."', 'Shot 1: "Close-up."'). Lowercase or underscored heads ("camera", "shot_1",
+// "overall_soundscape") are never names.
+const NAME_WORD_RE = /^(?:[A-Z][A-Za-z]*|\d+)$/u;
 const FIELD_WORDS = new Set(
   (
     "action ambience angle aspect atmosphere audio background camera caption captions character characters " +
@@ -158,10 +160,11 @@ function wordCase(word: string): string {
 }
 
 /**
- * Removes line-start field labels. A label is judged by its shape, not a word list: no prose word, and every word in
- * one case ("Aspect Ratio", "camera angle"), so a sentence ("Ana smiles:") stays. A speaker stays too: a head with any
- * word of a chat member's name (`speakerNameParts`: "Ana:", "ALICE:", "Ana Lee:"), or a name-shaped head before a
- * quote (a speaker outside the chat: 'Guard: "Wait"'), is dialogue, not a label.
+ * Removes line-start field labels. A label is judged by its shape: no prose word, and every word in one case
+ * ("Aspect Ratio", "camera angle", "Shot 1"; numbers have none) or a field word last ("Camera angle"), so a sentence
+ * ("Ana smiles:") stays. A speaker stays too: a head with any word of a chat member's name (`speakerNameParts`: "Ana:",
+ * "ALICE:", "Ana Lee:"), or a name-shaped head before a quote (a speaker outside the chat: 'Guard: "Wait"'), is
+ * dialogue, not a label.
  */
 function stripFieldLabels(text: string, speakerNameParts: ReadonlySet<string>): string {
   return text
@@ -173,7 +176,9 @@ function stripFieldLabels(text: string, speakerNameParts: ReadonlySet<string>): 
       const quoted = /^["“]/u.test(all.slice(offset + label.length));
       if (quoted && words.every((word) => NAME_WORD_RE.test(word)) && !folded.some((word) => FIELD_WORDS.has(word)))
         return label;
-      return new Set(words.map(wordCase)).size === 1 ? `${indent} ` : label;
+      const lettered = words.filter((word) => /^[A-Za-z]/u.test(word));
+      const isLabel = new Set(lettered.map(wordCase)).size === 1 || FIELD_WORDS.has(lettered.at(-1)!.toLowerCase());
+      return isLabel ? `${indent} ` : label;
     });
 }
 

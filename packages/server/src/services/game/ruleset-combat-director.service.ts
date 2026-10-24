@@ -2988,7 +2988,12 @@ function rulesetCandidatesFrom(
         const weighed = average >= pool ? Math.max(pool, mean * 0.75) : mean;
         // A symbol fight's hit is weighed with what either side's spends buy (1.780).
         const worth = aimed?.worth ?? average;
-        candidate.damage = Math.min(2, (worth / weighed) * (1 + others.length + again)) * chance;
+        // A limited use (a flask, a slot, a use a day) thrown at worse than even odds is weighed
+        // against keeping it for a fair throw: below even, its chance counts twice over (re-test
+        // 2026-10-24: flasks thrown at disadvantage from beside a troll, 5 of 16 landing).
+        const limited = price > 0 || !!fallingAction?.uses || !!fallingAction?.itemUse;
+        const odds = limited && chance < 0.5 ? chance / 0.5 : 1;
+        candidate.damage = Math.min(2, (worth / weighed) * (1 + others.length + again)) * chance * odds;
         candidate.action.expected = average * chance * (1 + others.length + again);
         if (average >= pool) candidate.finish = chance;
         // Everybody it could drop, the others it spreads to included: by its average, and by the most
@@ -3007,7 +3012,7 @@ function rulesetCandidatesFrom(
         // Worth as much as the save it forces is likely to fail (re-test 9): a dagger's scratch on a
         // caster who shrugs off any concentration save is no reason to throw it past a Multiattack.
         const breaks = target.concentrating ? 0.3 * rulesetConcentrationFails(combat, target, average) : 0;
-        if (rider + breaks > 0) candidate.setup = (rider + breaks) * chance;
+        if (rider + breaks > 0) candidate.setup = (rider + breaks) * chance * odds;
       } else if (ally) {
         // Giving back a pool that is already full, or one somebody without a sheet does not have,
         // gives nothing.
@@ -4259,27 +4264,34 @@ function rulesetPickReasons(
   const foe = !!actor && !!target && target.side !== actor.side;
   // A roll it has to make where it lies (one against death) is no choice, and says no why.
   if (actor && !rulesetCombatStanding(actor)) return [];
-  const reasons = (Object.entries(parts) as Array<[keyof CombatAiScoreParts, number]>)
-    .filter(([, part]) => Math.abs(part) >= RULESET_REASON_FLOOR)
-    .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
-    .slice(0, 3)
-    .map(([why]): DirectedRulesetReason => {
-      if (why === "damage") {
-        const damage = candidate.damage ?? 0;
-        return {
-          why,
-          ...(targetId ? { targetId } : {}),
-          strength: damage >= 0.5 ? "heavy" : damage >= 0.2 ? "solid" : "some",
-          ...(candidate.action.edge ? { edge: { ...candidate.action.edge } } : {}),
-        };
-      }
-      if (why === "risk" || why === "cost") return { why };
-      if (foe && (why === "healing" || why === "support" || why === "protection")) return { why };
-      // Its own side's one is not one it wants down: the friend it picked is the one most in need
-      // (laptop playtest 2026-10-23: "heals Isolde; Isolde is the one its side most wants down").
-      if (why === "focus" && target && actor && !foe) return { why: "mostInNeed", ...(targetId ? { targetId } : {}) };
-      return { why, ...(targetId ? { targetId } : {}) };
-    });
+  const ranked = (Object.entries(parts) as Array<[keyof CombatAiScoreParts, number]>).sort(
+    (a, b) => Math.abs(b[1]) - Math.abs(a[1]),
+  );
+  const said = ranked.filter(([, part]) => Math.abs(part) >= RULESET_REASON_FLOOR).slice(0, 3);
+  // A step taken for a small gain still says it: the largest gain is its reason, however small
+  // (re-test 2026-10-24: a zombie's slam on the fighter with nothing said).
+  if (said.length === 0 && candidate.action.option.kind !== "end-turn") {
+    const gain = ranked.find(([, part]) => part > 0);
+    if (gain) said.push(gain);
+    else if ((candidate.damage ?? 0) > 0 || candidate.action.option.kind === "attack") said.push(["damage", 0]);
+  }
+  const reasons = said.map(([why]): DirectedRulesetReason => {
+    if (why === "damage") {
+      const damage = candidate.damage ?? 0;
+      return {
+        why,
+        ...(targetId ? { targetId } : {}),
+        strength: damage >= 0.5 ? "heavy" : damage >= 0.2 ? "solid" : "some",
+        ...(candidate.action.edge ? { edge: { ...candidate.action.edge } } : {}),
+      };
+    }
+    if (why === "risk" || why === "cost") return { why };
+    if (foe && (why === "healing" || why === "support" || why === "protection")) return { why };
+    // Its own side's one is not one it wants down: the friend it picked is the one most in need
+    // (laptop playtest 2026-10-23: "heals Isolde; Isolde is the one its side most wants down").
+    if (why === "focus" && target && actor && !foe) return { why: "mostInNeed", ...(targetId ? { targetId } : {}) };
+    return { why, ...(targetId ? { targetId } : {}) };
+  });
   if (walked) reasons.push({ why: "walked", cells: walked });
   if (reasons.length === 0 && candidate.action.option.kind === "end-turn") reasons.push({ why: "nothingWorth" });
   return reasons;

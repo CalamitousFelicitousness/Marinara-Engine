@@ -21,6 +21,7 @@ import {
   createRulesetEncounter,
   parseRulesetDefinition,
   rulesetCombatant,
+  rulesetHitChances,
   rulesetWindowOptions,
   type RulesetDefinition,
   type RulesetEncounterState,
@@ -180,6 +181,45 @@ try {
     };
     assert.equal(at(35), "smash", "at 35 of 44 it fights");
     assert.equal(at(8), "mend", "at 8 of 44 it mends");
+  }
+
+  // ── A flask is kept rather than thrown at poor odds; a bow costs nothing to miss (re-test 2026-10-24) ──
+  {
+    const flask = {
+      id: "flask",
+      name: "Flask",
+      budget: "action",
+      toHit: 4,
+      range: { normal: 20 },
+      damage: { count: 2, sides: 6, flat: 0, type: "fire" },
+      uses: { per: "day", count: 2 },
+    };
+    const sling = {
+      id: "sling",
+      name: "Sling",
+      budget: "action",
+      toHit: 4,
+      range: { normal: 30 },
+      damage: { count: 1, sides: 6, flat: 2 },
+    };
+    const picks = (mode: "normal" | "disadvantage") => {
+      const { encounter, state } = fight({
+        pip: {
+          side: "enemy",
+          block: block([flask, sling], { health: 38 }),
+          at: { x: mode === "normal" ? 5 : 7, y: 4 },
+        },
+        brute: { side: "party", block: block([poke], { health: 60, defense: 15 }), at: { x: 8, y: 4 } },
+      });
+      rulesetCombatant(encounter, "pip")!.movementLeft = 0;
+      const chance = rulesetHitChances(definition, encounter, "pip", "flask", ["brute"]).brute!;
+      return { chance, id: pickRulesetChoice(definition, state, encounter, "pip")?.option.id };
+    };
+    const fair = picks("normal");
+    const poor = picks("disadvantage");
+    assert.ok(poor.chance < 0.5 && fair.chance >= 0.5, `odds: ${fair.chance} then ${poor.chance}`);
+    assert.equal(fair.id, "flask", "at even odds the flask, worth a little more");
+    assert.equal(poor.id, "sling", "beside it, at disadvantage, the sling and the flask kept");
   }
 
   // ── At 2 health beside what could fell it, mending itself beats a heavy blow (re-test 2026-10-24) ──

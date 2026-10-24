@@ -1158,6 +1158,43 @@ try {
         "and says why",
       );
     }
+    // A blow worth little against a sturdy target still says why it was struck (re-test 2026-10-24:
+    // a zombie's slam on the fighter with no reason given).
+    {
+      const tap = {
+        id: "tap",
+        name: "Tap",
+        budget: "action",
+        toHit: 3,
+        reach: 1,
+        damage: { count: 1, sides: 2, flat: 0 },
+      };
+      const { encounter, state } = wide(
+        { zombie: { x: 3, y: 3 }, knight: { x: 2, y: 3 } },
+        {
+          zombie: { side: "enemy", block: block({ type: "undead", mind: "mindless", health: 22, actions: [tap] }) },
+          knight: { side: "party", block: block({ health: 400, actions: [claw] }) },
+        },
+        {},
+      );
+      state.rulesetFight = {
+        encounter,
+        events: [],
+        eventSeq: 0,
+        controllers: { knight: "manual" },
+        bosses: [],
+      } as never;
+      assert.ok(commandRulesetCombatDirector(definition, state, { type: "continue" }).ok);
+      const turn = state.rulesetFight!.events.map((entry) => entry.event);
+      assert.ok(
+        turn.some((event) => event.type === "attack" && event.actorId === "zombie"),
+        JSON.stringify(turn),
+      );
+      assert.ok(
+        turn.some((event) => event.type === "reasoning" && event.actorId === "zombie"),
+        `the slam says why: ${JSON.stringify(turn)}`,
+      );
+    }
   }
 
   // ── Refused ──

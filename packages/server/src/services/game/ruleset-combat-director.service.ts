@@ -50,6 +50,7 @@ import {
   rulesetItemSlotPayment,
   rulesetBlowKind,
   rulesetCombatant,
+  rulesetCombatEffects,
   rulesetCreatureKind,
   rulesetActiveConditions,
   rulesetItemEffectFacts,
@@ -183,6 +184,8 @@ import { combatDirectorView, type CombatDirectorState } from "./combat-director.
  *  ponytail: a fixed window. A fight that needs its whole history on screen wants the events in
  *  their own paged store, which is the upgrade path. */
 export const RULESET_COMBAT_EVENT_LIMIT = 200;
+/** How many of the AI's reasons a session keeps beside them, newest first. */
+export const RULESET_COMBAT_REASON_LIMIT = 60;
 
 /** How many lines the opponents' own build is allowed to leave behind. */
 const RULESET_ADJUSTMENT_LIMIT = 60;
@@ -771,15 +774,17 @@ function record(fight: RulesetFightState, events: readonly DirectedRulesetEvent[
 }
 
 /**
- * The fight's events cut back to `RULESET_COMBAT_EVENT_LIMIT`. The AI's reasons (only ever shown
- * with Debug on) go first, oldest first, so they never cost a player an event of the fight itself:
- * the fight's own events keep the whole window, and only once they fill it does the oldest go.
+ * The fight's events cut back: its own to `RULESET_COMBAT_EVENT_LIMIT`, and the AI's reasons (only
+ * ever shown with Debug on) to `RULESET_COMBAT_REASON_LIMIT` beside them, oldest first each. A
+ * reason never costs a player an event of the fight, and a long fight still keeps its newest reasons
+ * (laptop playtest 2026-10-23: past 200 events every new reason was cut as soon as it was written).
  */
 export function trimRulesetFightEvents<T extends { event: { type: string } }>(events: T[]): T[] {
-  let over = events.length - RULESET_COMBAT_EVENT_LIMIT;
-  if (over <= 0) return events;
-  const kept = events.filter((entry) => !(entry.event.type === "reasoning" && over-- > 0));
-  return over > 0 ? kept.slice(over) : kept;
+  const reasons = events.filter((entry) => entry.event.type === "reasoning").length;
+  let reasonsOver = reasons - RULESET_COMBAT_REASON_LIMIT;
+  let eventsOver = events.length - reasons - RULESET_COMBAT_EVENT_LIMIT;
+  if (reasonsOver <= 0 && eventsOver <= 0) return events;
+  return events.filter((entry) => (entry.event.type === "reasoning" ? !(reasonsOver-- > 0) : !(eventsOver-- > 0)));
 }
 
 /** Who plays this combatant: the player, the Engine's own picker, or the Game Master. */
@@ -1219,10 +1224,12 @@ export function rulesetMenu(
             pay: Object.fromEntries(payWith.map((pool) => [pool, rulesetPaidLevel(definition, actor, action, pool)])),
           }
         : undefined;
-    const raisesDefense =
+    const answer =
       inWindow && encounter.window?.trigger.kind === "hit" && option.kind !== "end-turn"
         ? heldHitAnswer(definition, encounter, actorId, option, targetIds, encounter.window.trigger)
         : undefined;
+    const raisesDefense =
+      answer?.to !== undefined ? { to: answer.to, ...(answer.misses ? { misses: answer.misses } : {}) } : undefined;
     return {
       ...rest,
       ...(payWith ? { payWith, payLabels: rulesetPoolLabels(definition, payWith) } : {}),
@@ -1230,6 +1237,7 @@ export function rulesetMenu(
       targetIds,
       ...(forecastFor && Object.keys(forecastFor).length > 0 ? { forecastFor } : {}),
       ...(raisesDefense ? { raisesDefense } : {}),
+      ...(answer?.halvesTo !== undefined ? { halvesTo: answer.halvesTo } : {}),
       ...(aim.length > 0 ? { aim } : {}),
       ...(hitChances && Object.keys(hitChances).length > 0 ? { hitChances } : {}),
       ...(saveChances && Object.keys(saveChances).length > 0 ? { saveChances } : {}),
@@ -1363,10 +1371,13 @@ function heldHitAnswer(
   option: RulesetCombatOption,
   targetIds: string[],
   hit: HeldHit,
-): { to: number; misses?: true } | undefined {
+): { to?: number; misses?: true; halvesTo?: number } | undefined {
   const combat = definition.combat;
   if (!combat) return undefined;
   const struckId = hit.targetIds?.[0] ?? actorId;
+  const before = rulesetCombatant(encounter, struckId);
+  const resisted = (one: RulesetCombatant) =>
+    rulesetCombatEffects(definition, combat, one, encounter).has("resist-all");
   // The one struck leads, when the answer may go to them: a reaction shielding an ally.
   const aimed = targetIds.includes(struckId) ? [struckId, ...targetIds.filter((id) => id !== struckId)] : targetIds;
   try {
@@ -1388,8 +1399,14 @@ function heldHitAnswer(
       : hit.optionId;
     const action = source?.actions.find((one) => one.id === heldId);
     const to = rulesetDefenseAgainst(definition, combat, step.state, struck, source, action).defense;
-    if (to <= hit.defense) return undefined;
-    return { to, ...(hit.total < to ? { misses: true as const } : {}) };
+    if (to > hit.defense) return { to, ...(hit.total < to ? { misses: true as const } : {}) };
+    // One that halves the hit's harm instead (Uncanny Dodge) says about what it comes to (laptop
+    // playtest 2026-10-23), as a raised defense says whether the hit misses.
+    if (before && !resisted(before) && rulesetCombatEffects(definition, combat, struck, step.state).has("resist-all")) {
+      const stakes = heldHitStakes(definition, encounter, hit, actorId);
+      if (stakes !== undefined) return { halvesTo: Math.floor(stakes / 2) };
+    }
+    return undefined;
   } catch (error) {
     logger.debug(error, "[game/combat:ruleset] could not preview %s's answer %s to a held hit", actorId, option.id);
     return undefined;
@@ -4099,8 +4116,15 @@ function rulesetPickReasons(
   candidate: CombatAiCandidate<RulesetCandidate>,
   parts: CombatAiScoreParts,
   walked?: number,
+  /** The fight, to tell a target of the other side: what helps or heals is never about that one. */
+  encounter?: RulesetEncounterState,
 ): DirectedRulesetReason[] {
   const targetId = candidate.targetId;
+  const actor = encounter ? rulesetCombatant(encounter, candidate.action.choice.actorId) : undefined;
+  const target = encounter && targetId ? rulesetCombatant(encounter, targetId) : undefined;
+  // A blow's help or healing is for its own side, never the one it strikes (re-test 2026-10-23: a
+  // troll's Multiattack logged "support@Pip").
+  const foe = !!actor && !!target && target.side !== actor.side;
   const reasons = (Object.entries(parts) as Array<[keyof CombatAiScoreParts, number]>)
     .filter(([, part]) => Math.abs(part) >= RULESET_REASON_FLOOR)
     .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
@@ -4116,6 +4140,7 @@ function rulesetPickReasons(
         };
       }
       if (why === "risk" || why === "cost") return { why };
+      if (foe && (why === "healing" || why === "support" || why === "protection")) return { why };
       return { why, ...(targetId ? { targetId } : {}) };
     });
   if (walked) reasons.push({ why: "walked", cells: walked });
@@ -5364,7 +5389,7 @@ function answerRulesetWindows(
         window: window.id,
       });
     } else if (ranked && choice.optionId !== RULESET_PASS_OPTION) {
-      recordReasons(fight, asking, rulesetPickReasons(ranked.candidate, ranked.parts));
+      recordReasons(fight, asking, rulesetPickReasons(ranked.candidate, ranked.parts, undefined, fight.encounter));
     }
   }
 }
@@ -5575,7 +5600,7 @@ function playRulesetTurn(
       if (!walkTowardsTrouble(definition, state, fight, actorId, leash)) {
         // Ending a turn it did nothing with says why; ending one it already spent says nothing new.
         if (ranked && picked && action === 0)
-          recordReasons(fight, actorId, rulesetPickReasons(ranked.candidate, ranked.parts));
+          recordReasons(fight, actorId, rulesetPickReasons(ranked.candidate, ranked.parts, undefined, fight.encounter));
         break;
       }
       continue;
@@ -5608,7 +5633,7 @@ function playRulesetTurn(
     // A getaway is taken where it stands, and then it runs (1.745).
     if (picked.defensive === "disengage") {
       if (applyChoice(definition, state, fight, picked.choice).refused) break;
-      recordReasons(fight, actorId, rulesetPickReasons(ranked!.candidate, ranked!.parts));
+      recordReasons(fight, actorId, rulesetPickReasons(ranked!.candidate, ranked!.parts, undefined, fight.encounter));
       const away = rulesetRetreatCell(definition, fight.encounter, actorId);
       if (away)
         applyChoice(definition, state, fight, { actorId, optionId: RULESET_MOVE_OPTION, targetIds: [], to: away });
@@ -5641,7 +5666,7 @@ function playRulesetTurn(
     }
     const at = rulesetPositionOf(rulesetCombatant(fight.encounter, actorId));
     const walked = from && at ? Math.max(Math.abs(at.x - from.x), Math.abs(at.y - from.y)) : undefined;
-    recordReasons(fight, actorId, rulesetPickReasons(ranked!.candidate, ranked!.parts, walked));
+    recordReasons(fight, actorId, rulesetPickReasons(ranked!.candidate, ranked!.parts, walked, fight.encounter));
     // Kept through what it does after the shot that is no blow of its own (a goblin's Hide), so
     // the rest of its walk still keeps its distance (re-test 9); a blow up close ends it.
     const blow = !!rulesetCombatant(fight.encounter, actorId)?.actions.find((one) => one.id === picked.choice.optionId)

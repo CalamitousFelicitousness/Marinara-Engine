@@ -1592,7 +1592,9 @@ export function RulesetCombatMenu({
               to: option.raisesDefense.to,
             },
           ).trim()
-        : rulesetOptionForecastText(option, t);
+        : option.halvesTo !== undefined
+          ? t("game.combat.ruleset.screen.harmHalved", { amount: option.halvesTo })
+          : rulesetOptionForecastText(option, t);
       const reach = option.area
         ? t("game.combat.ruleset.screen.area", {
             size: rulesetDistanceText(option.area.size, distance, t),

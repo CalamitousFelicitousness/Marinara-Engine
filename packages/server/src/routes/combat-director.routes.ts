@@ -72,6 +72,7 @@ import {
   rulesetFightLiveStates,
   syncRulesetCombatants,
   RULESET_COMBAT_EVENT_LIMIT,
+  RULESET_COMBAT_REASON_LIMIT,
   type RulesetFightState,
 } from "../services/game/ruleset-combat-director.service.js";
 import { loadRulesetRegistry, resolveGameRuleset } from "../services/game/ruleset-registry.service.js";
@@ -471,7 +472,8 @@ export async function combatDirectorRoutes(
           eventSeq: z.number().int().min(0),
           events: z
             .array(z.object({ seq: z.number().int().min(0), event: z.unknown() }))
-            .max(RULESET_COMBAT_EVENT_LIMIT),
+            // The fight's own and the AI's reasons beside them, each kept to its own window.
+            .max(RULESET_COMBAT_EVENT_LIMIT + RULESET_COMBAT_REASON_LIMIT),
           controllers: z.record(key, z.enum(["manual", "ai"])),
           bosses: z.array(key).max(40),
           thinkers: z.array(key).max(40).optional(),

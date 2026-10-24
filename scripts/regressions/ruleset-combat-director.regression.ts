@@ -54,6 +54,7 @@ import {
   rulesetDirectorStage,
   rulesetFightLiveStates,
   RULESET_COMBAT_EVENT_LIMIT,
+  RULESET_COMBAT_REASON_LIMIT,
   rulesetWindowTargetOf,
   syncRulesetCombatants,
   trimRulesetFightEvents,
@@ -2121,22 +2122,22 @@ console.log(
   assert.equal(approach.targetId, "moth", "toward the moth her walk closed on, not the jackal behind the rock");
 }
 
-// The AI's reasons give way first when the fight's events are cut back: the fight's own events keep
-// the whole window, and only once they fill it does the oldest of them go.
+// The fight's events and the AI's reasons are cut back each to its own window: a reason never costs
+// the fight an event, and a long fight keeps its newest reasons (laptop playtest 2026-10-23).
 {
   const entry = (seq: number, type: string) => ({ seq, event: { type } });
   const real = Array.from({ length: RULESET_COMBAT_EVENT_LIMIT }, (_, index) => entry(index * 2, "attack"));
   const mixed = real.flatMap((one) => [one, entry(one.seq + 1, "reasoning")]);
-  assert.deepEqual(trimRulesetFightEvents(mixed), real, "every reason goes before any event of the fight");
-  const fewer = [...real.slice(0, 150).flatMap((one) => [one, entry(one.seq + 1, "reasoning")])];
-  const trimmed = trimRulesetFightEvents(fewer);
-  assert.equal(trimmed.length, RULESET_COMBAT_EVENT_LIMIT);
-  assert.equal(trimmed.filter((one) => one.event.type === "attack").length, 150, "no event of the fight lost");
+  const trimmed = trimRulesetFightEvents(mixed);
+  assert.equal(trimmed.filter((one) => one.event.type === "attack").length, RULESET_COMBAT_EVENT_LIMIT);
   assert.deepEqual(
     trimmed.filter((one) => one.event.type === "reasoning").map((one) => one.seq),
-    real.slice(100, 150).map((one) => one.seq + 1),
+    real.slice(-RULESET_COMBAT_REASON_LIMIT).map((one) => one.seq + 1),
     "the newest reasons are the ones kept",
   );
+  // Past the window, a new reason is kept and the oldest goes.
+  const next = trimRulesetFightEvents([...trimmed, entry(RULESET_COMBAT_EVENT_LIMIT * 2 + 1, "reasoning")]);
+  assert.equal(next.at(-1)!.seq, RULESET_COMBAT_EVENT_LIMIT * 2 + 1, "a new reason is never cut as it is written");
   const over = [...real, entry(RULESET_COMBAT_EVENT_LIMIT * 2, "attack")];
-  assert.deepEqual(trimRulesetFightEvents(over), over.slice(1), "with no reason left, the oldest event goes");
+  assert.deepEqual(trimRulesetFightEvents(over), over.slice(1), "the oldest event of the fight goes");
 }

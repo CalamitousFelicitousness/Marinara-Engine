@@ -1738,9 +1738,13 @@ function rulesetReasonText(reason: DirectedRulesetReason, names: RulesetCombatNa
             edge: say(`edge_${reason.edge.way}`, { target: target(reason.targetId), type: reason.edge.damageType }),
           })
         : say(`damage_${reason.strength}`, { target: target(reason.targetId) });
-    case "finish":
     case "healing":
     case "support":
+      // Untargeted, it is its own (healing) or its side's (support): never "its target".
+      return reason.targetId
+        ? say(reason.why, { target: target(reason.targetId) })
+        : say(reason.why === "healing" ? "healingSelf" : "supportSide");
+    case "finish":
     case "setup":
     case "coordination":
     case "focus":

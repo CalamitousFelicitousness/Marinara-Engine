@@ -295,6 +295,8 @@ export interface DirectedRulesetOption extends RulesetCombatOption {
   /** For an answer to a held hit: the defense the hit is checked against once it is taken, where it
    *  raises it, and whether the hit then misses. */
   raisesDefense?: { to: number; misses?: true };
+  /** For an answer to a held hit that halves its harm instead: about what the hit comes to then. */
+  halvesTo?: number;
   /** For an option that lands as a shape: the cells it may be aimed at, and who each aim would
    *  catch, so a board can draw the template before the choice is confirmed. */
   aim?: Array<{ x: number; y: number; targetIds: string[] }>;

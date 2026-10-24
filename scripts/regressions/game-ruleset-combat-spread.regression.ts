@@ -53,13 +53,15 @@ try {
   const club = { id: "club", name: "Club", budget: "action", toHit: 5, damage: { count: 1, sides: 4, flat: 0 } };
   const grid = (): TacticalGrid =>
     ({ width: 20, height: 14, tiles: Array.from({ length: 14 }, () => Array(20).fill("plains")) }) as TacticalGrid;
-  const fight = (actions: unknown[]) => {
+  const fight = (actions: unknown[], hero?: RulesetStatBlock) => {
     const state = createRulesetEncounter({
       definition,
       seed: 1,
       roller: () => 10,
       combatants: [
-        { id: "hero", name: "Hero", side: "party", build },
+        hero
+          ? { id: "hero", name: "Hero", side: "party", block: hero }
+          : { id: "hero", name: "Hero", side: "party", build },
         { id: "friend", name: "Friend", side: "party", build },
         {
           id: "mage",
@@ -88,6 +90,7 @@ try {
       to: move.to,
       friend: rulesetGap(after, who(state, "friend")),
       mage: rulesetGap(after, who(state, "mage")),
+      spread: !!(move as { spread?: true }).spread,
     };
   };
 
@@ -98,7 +101,39 @@ try {
   const blasted = walk(fight([club, blast]));
   assert.equal(blasted.mage, plain.mage, `no nearer for spreading: ${JSON.stringify({ plain, blasted })}`);
   assert.ok(blasted.friend > 4, `out of the blast's size of the friend: ${JSON.stringify(blasted)}`);
-  console.info("Spread under a blast: a walk closes in as near, out of the blast's size of a friend.");
+  // And says so on the debug log (S1c), only where keeping apart moved it.
+  assert.equal(blasted.spread, true, "the walk says it kept apart");
+  assert.equal(plain.spread, false, "a plain walk says nothing of it");
+  // A beast does not think to (S1b): a wolf, or anything mindless, closes in as it would anyway.
+  for (const mind of ["instinct", "mindless"] as const) {
+    const wolf = {
+      health: 40,
+      defense: 12,
+      initiativeModifier: 0,
+      speed: 30,
+      mind,
+      actions: [club],
+    } as unknown as RulesetStatBlock;
+    const beast = walk(fight([club, blast], wolf));
+    assert.equal(beast.spread, false, `a ${mind} one says nothing of keeping apart`);
+    assert.deepEqual(
+      beast.to,
+      walk(fight([club], wolf)).to,
+      `a ${mind} one ignores the blast: ${JSON.stringify(beast)}`,
+    );
+  }
+  const cunning = {
+    health: 40,
+    defense: 12,
+    initiativeModifier: 0,
+    speed: 30,
+    mind: "cunning",
+    actions: [club],
+  } as unknown as RulesetStatBlock;
+  assert.ok(walk(fight([club, blast], cunning)).friend > 4, "a cunning one still spreads");
+  console.info(
+    "Spread under a blast: a walk closes in as near, out of the blast's size of a friend; a beast or a mindless thing does not think to.",
+  );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

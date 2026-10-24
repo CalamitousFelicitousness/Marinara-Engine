@@ -1691,6 +1691,8 @@ interface RulesetCandidate {
   edge?: RulesetBlowEdge;
   /** A limited use thrown at worse than even odds: whom it would like to hit adds nothing to it. */
   poorOdds?: true;
+  /** A closing walk that stopped apart from its own side under an opponent's blast (S1c). */
+  spread?: true;
 }
 
 /** How many cells a turn is weighed from. The board is small and a turn is short, so this is a
@@ -2047,7 +2049,8 @@ function rulesetThrowsFrom(
  * What standing bunched with its own side adds where an opponent holds a blast it could still use
  * (S1): an area is worth more to its maker the more it catches, so each friend within its size of the
  * cell makes it likelier to land there, a share of its average for each, up to all of it. Any area
- * that harms, whatever the ruleset calls it: a dragon's breath, a fireball, a grenade.
+ * that harms, whatever the ruleset calls it: a dragon's breath, a fireball, a grenade. Only to one
+ * that thinks about the fight (S1b): a wolf or a zombie closes in as it would anyway.
  */
 function rulesetCrowdHarmAt(
   definition: RulesetDefinition,
@@ -2055,6 +2058,8 @@ function rulesetCrowdHarmAt(
   actor: RulesetCombatant,
   cell: { x: number; y: number },
 ): number {
+  const mind = rulesetCombatantMind(definition, actor);
+  if (mind === "mindless" || mind === "instinct") return 0;
   const perCell = definition.combat?.distance?.perCell;
   const span = rulesetSpanOf(actor);
   const friends = encounter.combatants.filter(
@@ -4279,7 +4284,10 @@ export function rulesetClosingMove(
   const pool = Math.max(1, (health?.value ?? 1) + (health?.temp ?? 0));
   const crowded = (cell: { x: number; y: number }) =>
     Math.min(2, (2 * rulesetCrowdHarmAt(definition, encounter, actor, cell)) / pool);
-  let best: { cell: { x: number; y: number; cost: number; provokes: string[] }; away: number } | null = null;
+  type Stop = { cell: { x: number; y: number; cost: number; provokes: string[] }; away: number } | null;
+  let best: Stop = null;
+  // Where it would stop with nobody to keep apart from, to tell when keeping apart moved it.
+  let plain: Stop = null;
   // Every cell it may walk to, not a sample of them: closing the distance is one comparison a cell.
   for (const cell of rulesetWalkableCells(definition, encounter, actorId)) {
     const closer = nearest(cell);
@@ -4293,14 +4301,15 @@ export function rulesetClosingMove(
       rulesetZoneHarmAt(encounter, actor, cell, true) > 0
     )
       continue;
+    const beats = (than: Stop, away: number) =>
+      !than ||
+      away < than.away ||
+      (away === than.away &&
+        (cell.provokes.length < than.cell.provokes.length ||
+          (cell.provokes.length === than.cell.provokes.length && cell.cost < than.cell.cost)));
     const away = closer + crowded(cell);
-    const better =
-      !best ||
-      away < best.away ||
-      (away === best.away &&
-        (cell.provokes.length < best.cell.provokes.length ||
-          (cell.provokes.length === best.cell.provokes.length && cell.cost < best.cell.cost)));
-    if (better) best = { cell, away };
+    if (beats(best, away)) best = { cell, away };
+    if (beats(plain, closer)) plain = { cell, away: closer };
   }
   if (!best) return null;
   return {
@@ -4308,6 +4317,8 @@ export function rulesetClosingMove(
     option: { id: RULESET_MOVE_OPTION, kind: "move", label: "Move", targets: { side: "self", count: 0 } },
     to: { x: best.cell.x, y: best.cell.y },
     walked: best.cell.cost,
+    // It stopped somewhere else than the nearest for keeping apart from its own side (S1c).
+    ...(plain && (plain.cell.x !== best.cell.x || plain.cell.y !== best.cell.y) ? { spread: true as const } : {}),
   };
 }
 
@@ -6817,6 +6828,7 @@ function walkTowardsTrouble(
         toward
           ? { why: "pressCaster", targetId: toward }
           : { why: "approach", ...(nearest ? { targetId: nearest } : {}), ...(sprinted ? { sprinted: true } : {}) },
+        ...(closing.spread ? [{ why: "spread" as const }] : []),
       ]);
     }
     return true;

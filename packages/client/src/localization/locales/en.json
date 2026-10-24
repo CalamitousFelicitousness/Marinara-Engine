@@ -2435,6 +2435,7 @@
   "game.combat.ruleset.event.reason.protection": "stands up for a friend under attack",
   "game.combat.ruleset.event.reason.risk": "worth the danger it puts itself in",
   "game.combat.ruleset.event.reason.setup": "sets up what comes next against {{target}}",
+  "game.combat.ruleset.event.reason.spread": "it stopped apart from its side rather than nearest, so one blast cannot catch them all",
   "game.combat.ruleset.event.reason.support": "helps {{target}}",
   "game.combat.ruleset.event.reason.supportSide": "helps its side",
   "game.combat.ruleset.event.reason.walked": "walked {{distance}} first to act from there",

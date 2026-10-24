@@ -29,6 +29,7 @@ import {
   type RulesetEncounterState,
   type RulesetStatBlock,
 } from "../../packages/shared/src/index.js";
+import { rulesetAreaCells } from "../../packages/shared/src/features/ruleset-combat/grid.js";
 
 const dataDir = mkdtempSync(join(tmpdir(), "marinara-combat-minds-"));
 process.env.DATA_DIR = dataDir;
@@ -1402,6 +1403,57 @@ try {
       assert.ok(
         there?.choice.optionId !== "pour" || (!!at && Math.max(Math.abs(at.x - 8), Math.abs(at.y - 4)) > 2),
         `not beside the orc at grips with the knight: ${JSON.stringify(there)}`,
+      );
+    }
+    // Nor poured on a square one of its own stands on, to catch the foe beside them (re-test
+    // 2026-10-24: burning oil on the fighter's square to reach a wolf).
+    {
+      const pour = {
+        id: "pour",
+        label: "Pour",
+        kind: "attack",
+        budget: "action",
+        targets: { side: "enemy", count: 1 },
+        range: { normal: 60 },
+        area: { shape: "box", size: 2 },
+        save: { save: "dex_save", difficulty: 15, onSuccess: "negates" },
+        damage: { count: 0, sides: 0, flat: 5, type: "fire" },
+        zone: { rounds: 10, triggers: ["enter", "end"] },
+      };
+      const { encounter, state } = wide(
+        {
+          pip: { x: 2, y: 4 },
+          orc: { x: 9, y: 3 },
+          knight: { x: 9, y: 4 },
+          squire: { x: 10, y: 4 },
+          page: { x: 10, y: 3 },
+        },
+        {
+          pip: { side: "enemy", block: block({ type: "humanoid", mind: "tactical", health: 30, actions: [] }) },
+          orc: { side: "enemy", block: block({ type: "humanoid", health: 30, actions: [claw] }) },
+          knight: { side: "party", block: block({ health: 12, actions: [claw] }) },
+          squire: { side: "party", block: block({ health: 12, actions: [claw] }) },
+          page: { side: "party", block: block({ health: 12, actions: [claw] }) },
+        },
+        { pip: { ...master, temperament: "disciplined" } },
+      );
+      rulesetCombatant(encounter, "pip")!.actions.push(pour as never);
+      state.rulesetFight = {
+        encounter,
+        events: [],
+        eventSeq: 0,
+        controllers: { knight: "manual", squire: "manual", page: "manual" },
+        bosses: [],
+      } as never;
+      const picked = pickRulesetChoice(definition, state, encounter, "pip");
+      const at = picked?.choice.at;
+      assert.ok(
+        picked?.choice.optionId !== "pour" ||
+          (!!at &&
+            !rulesetAreaCells("box", 2, { x: 2, y: 4 }, at, encounter.board!.grid!).some(
+              (cell) => cell.x === 9 && cell.y === 3,
+            )),
+        `not on the orc's square: ${JSON.stringify(picked)}`,
       );
     }
     // A blow worth little against a sturdy target still says why it was struck (re-test 2026-10-24:

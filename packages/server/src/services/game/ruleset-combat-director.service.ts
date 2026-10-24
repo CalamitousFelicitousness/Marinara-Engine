@@ -3800,6 +3800,9 @@ function weighCaught(
     !option.heals
   ) {
     friendWeight = 2;
+    // Never on a square one of its own side stands on, itself included: they burn in it before they
+    // can step out (re-test 2026-10-24: burning oil poured on the fighter's square to reach a wolf).
+    if (friends.length > 0) return false;
     const perCell = definition.combat?.distance?.perCell ?? 1;
     // An action's area is in cells already, as its range is.
     const reach = (action.area?.size ?? 1) + 1;

@@ -544,16 +544,24 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
 
   const board = buildRulesetBoard(input, combatants);
   if (board && "error" in board) return { ok: false, error: board.error };
-  let encounter = createRulesetEncounter({
-    definition,
-    seed: input.seed,
-    combatants,
-    bestiary: input.bestiary,
-    ...(board ? { board } : {}),
-    ...(input.surprised?.length ? { surprised: input.surprised } : {}),
-    ...(input.inLair?.length ? { inLair: input.inLair } : {}),
-    ...(input.heldGround ? { heldGround: input.heldGround } : {}),
-  });
+  const encounterOn = (on: typeof board) =>
+    createRulesetEncounter({
+      definition,
+      seed: input.seed,
+      combatants,
+      bestiary: input.bestiary,
+      ...(on ? { board: on } : {}),
+      ...(input.surprised?.length ? { surprised: input.surprised } : {}),
+      ...(input.inLair?.length ? { inLair: input.inLair } : {}),
+      ...(input.heldGround ? { heldGround: input.heldGround } : {}),
+    });
+  let encounter = encounterOn(board);
+  // A side facing a blast deploys spread by its size (combat AI S1a): the same board, laid again.
+  const spread = board ? rulesetDeploySpread(definition, encounter) : {};
+  if (spread.party || spread.enemy) {
+    const spaced = buildRulesetBoard(input, combatants, spread);
+    if (spaced && !("error" in spaced)) encounter = encounterOn(spaced);
+  }
   for (const [id, tier] of heldToTier) {
     const built = rulesetCombatant(encounter, id);
     if (!built) continue;
@@ -648,6 +656,29 @@ function rulesetThinkersOf(
 }
 
 /**
+ * How far apart each side deploys (combat AI S1a): one past the size of the largest area that harms
+ * the other side holds at the start, as the crowding term reads it (a burst all around its centre, a
+ * cone or a line a third of its length), so its opening blast catches one or two of them, not the
+ * whole block. Nothing for a side the other holds no such area against.
+ */
+function rulesetDeploySpread(
+  definition: RulesetDefinition,
+  encounter: RulesetEncounterState,
+): { party?: number; enemy?: number } {
+  const spread: { party?: number; enemy?: number } = {};
+  for (const foe of encounter.combatants) {
+    const facing = foe.side === "party" ? "enemy" : "party";
+    for (const action of foe.actions) {
+      if (!action.area || !action.damage || rulesetSafeAverage(action.damage) <= 0) continue;
+      if (!rulesetActionAvailable(foe, action, encounter, definition)) continue;
+      const across = action.area.shape === "burst" ? action.area.size : Math.max(1, Math.floor(action.area.size / 3));
+      spread[facing] = Math.max(spread[facing] ?? 0, across + 1);
+    }
+  }
+  return spread;
+}
+
+/**
  * The board, from the tactical style's OWN path: its generator, its terrain, its board sizes, its
  * formations and the same bounded brief the Game Master may propose. Nothing here draws a grid.
  *
@@ -662,6 +693,7 @@ function rulesetThinkersOf(
 function buildRulesetBoard(
   input: RulesetFightSeed,
   combatants: readonly RulesetCombatantInput[],
+  spread: { party?: number; enemy?: number } = {},
 ):
   | {
       grid: TacticalGrid;
@@ -706,6 +738,7 @@ function buildRulesetBoard(
       rng,
       generated.protectedTiles,
       true,
+      spread,
     )
   )
     return { error: "Battlefield features prevent a connected deployment." };

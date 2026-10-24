@@ -869,6 +869,64 @@ function ensureConnectivity(
 }
 
 /**
+ * Targets moved apart so that no two of one side's stand within `gap` of each other where they can
+ * (combat AI S1a): a side facing a blast deploys spread by its size, not in a block it catches whole.
+ * A target too close to one kept before it moves to the nearest open cell clear of all of them, a
+ * step toward the other side counting double and never more than `gap` nearer it. Where the board
+ * has no room for that gap, the widest one it has room for.
+ */
+function spreadTargets(
+  grid: TacticalGrid,
+  targets: readonly TacticalCoord[],
+  gap: number,
+  others: readonly TacticalCoord[],
+): TacticalCoord[] {
+  if (gap < 2 || targets.length < 2) return [...targets];
+  const apart = (a: TacticalCoord, b: TacticalCoord) => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
+  const fromOthers = (at: TacticalCoord) =>
+    others.length > 0 ? Math.min(...others.map((one) => apart(at, one))) : Number.POSITIVE_INFINITY;
+  const lay = (width: number) => {
+    const kept: TacticalCoord[] = [];
+    let fits = true;
+    for (const target of targets) {
+      const at = {
+        x: clamp(Math.round(target.x), 0, grid.width - 1),
+        y: clamp(Math.round(target.y), 0, grid.height - 1),
+      };
+      const clear = (cell: TacticalCoord) => kept.every((one) => apart(cell, one) >= width);
+      if (clear(at)) {
+        kept.push(at);
+        continue;
+      }
+      const from = fromOthers(at);
+      let best: TacticalCoord | undefined;
+      let bestCost = Number.POSITIVE_INFINITY;
+      for (let y = 0; y < grid.height; y++) {
+        for (let x = 0; x < grid.width; x++) {
+          const cell = { x, y };
+          if (isImpassable(grid, x, y) || !clear(cell)) continue;
+          const nearer = Math.max(0, from - fromOthers(cell));
+          if (nearer > Math.ceil(width / 2)) continue;
+          const cost = (x - at.x) ** 2 + (y - at.y) ** 2 + 3 * nearer ** 2;
+          if (cost < bestCost) {
+            best = cell;
+            bestCost = cost;
+          }
+        }
+      }
+      if (!best) fits = false;
+      kept.push(best ?? at);
+    }
+    return { kept, fits };
+  };
+  for (let width = gap; width > 2; width--) {
+    const laid = lay(width);
+    if (laid.fits) return laid.kept;
+  }
+  return lay(2).kept;
+}
+
+/**
  * Place units according to `formation`. Party/enemy target tiles come from
  * `formationTargets`; claimNear resolves collisions + passability so every unit
  * lands on a unique passable tile; ensureConnectivity carves corridors so every
@@ -886,6 +944,9 @@ export function placeSpawns(
   /** The party starts together around its strip's middle, not spread to its corners (a ruleset
    *  fight's, re-test 2026-10-23: a rogue's first turn spent dashing nine squares to the leader). */
   partyTogether = false,
+  /** How far apart each side stands, where it can (combat AI S1a): past the size of a blast the
+   *  other side holds. */
+  spread: { party?: number; enemy?: number } = {},
 ): boolean {
   const occupied = new Set<string>();
   const party = units.filter((u) => u.side === "party");
@@ -896,18 +957,30 @@ export function placeSpawns(
   const targets = formationTargets(grid, formation, party.length, bossFirst.length, rng, partyTogether);
 
   const lastPartyTarget = targets.party[targets.party.length - 1] ?? { x: 0, y: Math.floor(grid.height / 2) };
-  party.forEach((u, i) => {
-    const tile = claimNear(grid, occupied, targets.party[i] ?? lastPartyTarget, protectedTiles);
-    u.x = tile.x;
-    u.y = tile.y;
-  });
-
   const lastEnemyTarget = targets.enemies[targets.enemies.length - 1] ?? {
     x: grid.width - 1,
     y: Math.floor(grid.height / 2),
   };
+  const partyTargets = spreadTargets(
+    grid,
+    party.map((_, i) => targets.party[i] ?? lastPartyTarget),
+    spread.party ?? 0,
+    targets.enemies,
+  );
+  const enemyTargets = spreadTargets(
+    grid,
+    bossFirst.map((_, i) => targets.enemies[i] ?? lastEnemyTarget),
+    spread.enemy ?? 0,
+    partyTargets,
+  );
+  party.forEach((u, i) => {
+    const tile = claimNear(grid, occupied, partyTargets[i]!, protectedTiles);
+    u.x = tile.x;
+    u.y = tile.y;
+  });
+
   bossFirst.forEach((u, i) => {
-    const tile = claimNear(grid, occupied, targets.enemies[i] ?? lastEnemyTarget, protectedTiles);
+    const tile = claimNear(grid, occupied, enemyTargets[i]!, protectedTiles);
     u.x = tile.x;
     u.y = tile.y;
   });

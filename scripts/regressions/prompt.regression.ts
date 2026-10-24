@@ -5216,6 +5216,15 @@ const cases: RegressionCase[] = [
         }),
         ["Maukie"],
       );
+      // A group video's selfie first frame shows the group too.
+      assert.deepEqual(
+        resolveConversationSelfieRequestedNames({
+          speakerName: "Maukie",
+          chatCharacters: [{ name: "Maukie" }, { name: "Dottore" }],
+          commandContext: "User: Send me a group video of you two!",
+        }),
+        ["Maukie", "Dottore"],
+      );
     },
   },
   {

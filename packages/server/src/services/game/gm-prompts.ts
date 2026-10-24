@@ -648,7 +648,6 @@ function buildWidgetSummaryLines(widgets: HudWidget[]): string[] {
 /** Build the GM system prompt. Injects full game context (story arc, plot twists, map, etc.). */
 export function buildGmSystemPrompt(ctx: GmPromptContext): string {
   const plotTwists = normalizePromptTextList(ctx.plotTwists);
-  const npcs = normalizePromptNpcs(ctx.npcs);
   const sessionSummaries = normalizePromptSessionSummaries(ctx.sessionSummaries);
   const partyNames = normalizePromptTextList(ctx.partyNames);
   const partyCards = Array.isArray(ctx.partyCards) ? ctx.partyCards : [];
@@ -690,16 +689,6 @@ export function buildGmSystemPrompt(ctx: GmPromptContext): string {
   const storyScript = ctx.story ? storyScriptPromptText(ctx.story) : "";
   if (storyScript) sections.push(`<story_script>`, storyScript, `</story_script>`);
 
-  if (ctx.tacticalBattlefieldContext) {
-    sections.push(
-      `<tactical_battlefield>`,
-      `This is the accepted board for the active tactical encounter:`,
-      ctx.tacticalBattlefieldContext,
-      `Keep later combat narration consistent with this resolved board and its terrain.`,
-      `</tactical_battlefield>`,
-    );
-  }
-
   sections.push(wrapGameInstructions(normalizePromptText(ctx.gameSystemPrompt) || DEFAULT_GAME_SYSTEM_PROMPT));
 
   if (ctx.ruleset?.gmReference) {
@@ -738,46 +727,9 @@ export function buildGmSystemPrompt(ctx: GmPromptContext): string {
   // ── Current State ──
   // Moved to buildGmFormatReminder() so the model sees the latest
   // game state closest to generation (same rationale as active_widgets).
-
-  // ── Server-Computed Context (narrate these, don't recalculate) ──
-  if (ctx.weatherContext) {
-    sections.push(`<weather_update>`, ctx.weatherContext, `</weather_update>`);
-  }
-
-  if (ctx.perceptionHints) {
-    sections.push(ctx.perceptionHints);
-  }
-
-  if (ctx.moraleContext) {
-    sections.push(ctx.moraleContext);
-  }
-
-  if (ctx.encounterHint) {
-    sections.push(
-      `<encounter_triggered>`,
-      `The server rolled a random encounter. Narrate this:`,
-      ctx.encounterHint,
-      `</encounter_triggered>`,
-    );
-  }
-
-  if (ctx.combatResults) {
-    sections.push(
-      `<combat_results>`,
-      `The server computed these combat results. Narrate them dramatically:`,
-      ctx.combatResults,
-      `</combat_results>`,
-    );
-  }
-
-  if (ctx.playerNotes?.trim()) {
-    sections.push(
-      `<player_notes>`,
-      `The player has written the following personal notes. Consider these when narrating; they reflect what the player is tracking, their theories, and their plans:`,
-      ctx.playerNotes.trim(),
-      `</player_notes>`,
-    );
-  }
+  // The scene's changing state (weather, perception, morale, map, NPCs, notes, the
+  // tactical board) is buildGmSceneState(), sent in the turn reminder instead: anything that
+  // changes here invalidates the provider's prompt cache for the whole history after it.
 
   // ── Active HUD Widgets ──
   // Moved to buildGmFormatReminder() so they sit next to <widget_commands>
@@ -805,21 +757,6 @@ export function buildGmSystemPrompt(ctx: GmPromptContext): string {
       ...campaignPlanLines,
       `</campaign_plan_secret>`,
     );
-  }
-
-  /*
-  Legacy map policy kept for rollback reference:
-  - Full map JSON on move/first turn.
-  - Location-only summary otherwise.
-  */
-  // ── Map (compact state summary) ──
-  if (ctx.map) {
-    sections.push(`<map_state>`, ...buildMapStateLines(ctx.map, ctx.playerMoved, ctx.turnNumber), `</map_state>`);
-  }
-
-  // ── NPCs ──
-  if (npcs.length > 0) {
-    sections.push(`<tracked_npcs>`, ...buildTrackedNpcLines(npcs), `</tracked_npcs>`);
   }
 
   // ── Previous Sessions (all summaries, latest session continuity in detail) ──
@@ -861,6 +798,93 @@ export function buildGmSystemPrompt(ctx: GmPromptContext): string {
     partyLines.push(`Party members: ${partyNames.join(", ")}`);
   }
   sections.push(`<party>`, ...partyLines, `</party>`);
+
+  return sections.join("\n");
+}
+
+/**
+ * The scene's changing state: what the Engine computed for this turn and what the game tracks
+ * from turn to turn. It rides the turn reminder after the history, never the system prompt, so
+ * the system prompt and the history before it stay byte-stable and cacheable across turns.
+ */
+export function buildGmSceneState(
+  ctx: Pick<
+    GmPromptContext,
+    | "weatherContext"
+    | "perceptionHints"
+    | "moraleContext"
+    | "encounterHint"
+    | "combatResults"
+    | "playerNotes"
+    | "map"
+    | "playerMoved"
+    | "turnNumber"
+    | "npcs"
+    | "tacticalBattlefieldContext"
+  >,
+): string {
+  const npcs = normalizePromptNpcs(ctx.npcs);
+  const sections: string[] = [];
+
+  // ── Server-Computed Context (narrate these, don't recalculate) ──
+  if (ctx.weatherContext) {
+    sections.push(`<weather_update>`, ctx.weatherContext, `</weather_update>`);
+  }
+
+  if (ctx.perceptionHints) {
+    sections.push(ctx.perceptionHints);
+  }
+
+  if (ctx.moraleContext) {
+    sections.push(ctx.moraleContext);
+  }
+
+  if (ctx.encounterHint) {
+    sections.push(
+      `<encounter_triggered>`,
+      `The server rolled a random encounter. Narrate this:`,
+      ctx.encounterHint,
+      `</encounter_triggered>`,
+    );
+  }
+
+  if (ctx.combatResults) {
+    sections.push(
+      `<combat_results>`,
+      `The server computed these combat results. Narrate them dramatically:`,
+      ctx.combatResults,
+      `</combat_results>`,
+    );
+  }
+
+  if (ctx.playerNotes?.trim()) {
+    sections.push(
+      `<player_notes>`,
+      `The player has written the following personal notes. Consider these when narrating; they reflect what the player is tracking, their theories, and their plans:`,
+      ctx.playerNotes.trim(),
+      `</player_notes>`,
+    );
+  }
+
+  // ── Map (compact state summary) ──
+  if (ctx.map) {
+    sections.push(`<map_state>`, ...buildMapStateLines(ctx.map, ctx.playerMoved, ctx.turnNumber), `</map_state>`);
+  }
+
+  // ── NPCs ──
+  if (npcs.length > 0) {
+    sections.push(`<tracked_npcs>`, ...buildTrackedNpcLines(npcs), `</tracked_npcs>`);
+  }
+
+  if (ctx.tacticalBattlefieldContext) {
+    sections.push(
+      `<tactical_battlefield>`,
+      `This is the accepted board for the active tactical encounter:`,
+      ctx.tacticalBattlefieldContext,
+      `Keep later combat narration consistent with this resolved board and its terrain.`,
+      `</tactical_battlefield>`,
+    );
+  }
 
   return sections.join("\n");
 }
@@ -1594,6 +1618,8 @@ export function buildGmFormatReminder(
     | "enableQuickTimeEvents"
     | "gameSpecialInstructions"
   > & {
+    /** buildGmSceneState(): the scene's changing state, placed between the history and the instructions. */
+    sceneState?: string;
     ttsEmotionIndicatorsEnabled?: boolean;
     /** An Overworld RPG game (`gameStyleFromMetadata`): only it opens dungeon, cave and station maps
      *  with `[map:]`. Absent or false is Classic Game Mode, which never teaches the tag. */
@@ -1760,6 +1786,8 @@ export function buildGmFormatReminder(
     `</current_state>`,
     ``,
   );
+  const sceneState = ctx.sceneState?.trim();
+  if (sceneState) lines.push(sceneState, ``);
 
   lines.push(
     `<output_format>`,

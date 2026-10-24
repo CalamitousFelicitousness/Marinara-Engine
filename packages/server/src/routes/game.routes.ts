@@ -233,6 +233,7 @@ import {
   SkillCheckUntrainedError,
 } from "../services/game/skill-check-resolution.service.js";
 import { applyAllSegmentEdits, stripGmCommandTags } from "../services/game/segment-edits.js";
+import { withoutSessionAdvancedMemory } from "../services/advanced-memory.js";
 import { processLorebooks, type LorebookScanResult } from "../services/lorebook/index.js";
 import {
   GAME_LOREBOOK_KEEPER_SOURCE_ID,
@@ -8078,8 +8079,11 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         // The tellings of one of the previous session's turns: the stacks carry over, the record
         // of how that turn was told does not.
         gameInventoryTurn: _previousInventoryTurn,
-        ...carryMeta
+        ...previousSessionMeta
       } = prevMeta;
+      // Advanced Memory's settings carry over; its progress and its own recaps of the previous
+      // session's messages do not, so the new session builds its memory from its own story.
+      const carryMeta = withoutSessionAdvancedMemory(previousSessionMeta);
 
       const newMeta = parseMeta(newChat.metadata);
       const updatedNewMeta = {

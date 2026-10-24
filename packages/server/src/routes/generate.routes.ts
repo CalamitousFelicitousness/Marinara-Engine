@@ -82,6 +82,9 @@ import {
 import { gameStorySpends } from "../services/game/story-item-uses.service.js";
 import {
   createAdvancedMemoryService,
+  effectiveAdvancedMemorySettings,
+  GAME_MASTER_MEMORY_READER_ID,
+  gameAdvancedMemorySource,
   sceneCheckTranscript,
   selectAdvancedMemoryMessages,
   selectAdvancedMemoryWhisperOnlyIds,
@@ -869,7 +872,7 @@ import {
 import { createAgentLorebookTriggerResolver } from "../services/generation/agent-lorebook-triggers.js";
 import { addInventoryEntry, addLocationEntry, upsertQuest, addNpcEntry } from "../services/game/journal.service.js";
 import { updateJournal } from "../services/generation/game-journal-runtime.js";
-import { buildGmFormatReminder } from "../services/game/gm-prompts.js";
+import { buildGmFormatReminder, buildGmSceneState } from "../services/game/gm-prompts.js";
 import {
   createGameRollTagRegex,
   parseRollDiceToolResult,
@@ -1915,8 +1918,11 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
 
       // Get chat messages
       const chatMode = requestChatMode;
-      const advancedMemorySettings = normalizeAdvancedMemorySettings(chatMeta.advancedMemory);
-      const advancedMemoryEnabled = chatMode === "roleplay" && advancedMemorySettings.enabled;
+      const advancedMemorySettings = effectiveAdvancedMemorySettings(
+        chatMode,
+        normalizeAdvancedMemorySettings(chatMeta.advancedMemory),
+      );
+      const advancedMemoryEnabled = (chatMode === "roleplay" || chatMode === "game") && advancedMemorySettings.enabled;
       // A character never replies before Advanced Memory has decided who sees earlier messages (#7192).
       const decidesMessageVisibility =
         advancedMemoryEnabled &&
@@ -1946,10 +1952,15 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           : -1;
       const operationMessages =
         advancedTargetIndex >= 0 ? allChatMessages.slice(0, advancedTargetIndex + 1) : allChatMessages;
-      const advancedSourceMessages =
+      const advancedSourcePrefix =
         advancedTargetIndex >= 0
           ? allChatMessages.slice(0, advancedTargetIndex + (input.continueMessageId ? 1 : 0))
           : allChatMessages;
+      // Game memory reads the history as the GM gets it; the memory service shapes its own copy the same way.
+      const advancedSourceMessages =
+        advancedMemoryEnabled && chatMode === "game"
+          ? gameAdvancedMemorySource(advancedSourcePrefix, chatMeta as Record<string, unknown>)
+          : advancedSourcePrefix;
       if (advancedMemoryEnabled) {
         const memoryStatus = await advancedMemory.status(input.chatId);
         if (memoryStatus.missingKnowledgeCharacterIds.length) {
@@ -3277,12 +3288,14 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             ? input.forCharacterId
             : null;
         const promptCharacterIds = resolvePromptCharacterIdsForTarget(characterIds, promptTargetCharacterId);
+        // The GM reads a Game chat's memory alone, as its narrator.
+        const advancedMemoryAudienceIds = chatMode === "game" ? [GAME_MASTER_MEMORY_READER_ID] : promptCharacterIds;
         const advancedAgentSourceIds = advancedMemoryEnabled
           ? new Set(
               selectAdvancedMemoryMessages(
                 advancedSourceMessages,
                 advancedMemorySettings,
-                promptCharacterIds,
+                advancedMemoryAudienceIds,
                 promptGroupChatMode === "individual",
               ).map((message) => message.id),
             )
@@ -3291,7 +3304,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           ? selectAdvancedMemoryWhisperOnlyIds(
               advancedSourceMessages,
               advancedMemorySettings,
-              promptCharacterIds,
+              advancedMemoryAudienceIds,
               promptGroupChatMode === "individual",
             )
           : undefined;
@@ -5015,10 +5028,15 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           });
         }
 
-        if (advancedMemoryEnabled && advancedMemoryPlacements.length === 0) {
+        const presetPlacedAdvancedMemory = advancedMemoryPlacements.length > 0;
+        if (advancedMemoryEnabled && !presetPlacedAdvancedMemory) {
           advancedMemoryPlacements = ADVANCED_MEMORY_MARKER_TYPES.map((type) =>
             createAdvancedMemoryPlacement(type, wrapFormat),
           );
+        }
+        // Game places its memory after the history, just before the turn reminder (below), so the
+        // summary and recalled scenes that change each turn never sit in front of the cached history.
+        if (advancedMemoryEnabled && !presetPlacedAdvancedMemory && chatMode !== "game") {
           const historyIndex = finalMessages.findIndex((message) => message.contextKind === "history");
           finalMessages.splice(
             historyIndex < 0 ? finalMessages.length : historyIndex,
@@ -5580,6 +5598,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             : undefined;
           const formatReminder = resolvePromptMacros(
             buildGmFormatReminder({
+              sceneState: buildGmSceneState(gmCtx),
               ttsEmotionIndicatorsEnabled: gameTtsEmotionIndicatorsEnabled(await appSettings.get(TTS_SETTINGS_KEY)),
               hasSceneModel,
               hudWidgets: gmCtx.hudWidgets,
@@ -5686,6 +5705,14 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 : {}),
             }),
           );
+          if (advancedMemoryEnabled)
+            finalMessages.push(
+              ...advancedMemoryPlacements.map((placement) => ({
+                role: placement.role,
+                content: placement.token,
+                contextKind: "prompt" as const,
+              })),
+            );
           finalMessages.push({ role: "user" as const, content: formatReminder });
           logger.debug(
             "[generate/game] Injected format reminder (%d chars) as last user message",
@@ -8883,7 +8910,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               sourceMessages: advancedSourceMessages,
               messages: preparedMessagesForGen,
               placements: advancedMemoryPlacements,
-              audienceCharacterIds,
+              // The GM reads a Game chat's memory alone, as its narrator.
+              audienceCharacterIds:
+                chatMode === "game" && !input.impersonate ? [GAME_MASTER_MEMORY_READER_ID] : audienceCharacterIds,
               audienceMode: input.impersonate ? "owner" : undefined,
               maxContext: effectiveMaxContext ?? connectionMaxContext,
               maxTokens,

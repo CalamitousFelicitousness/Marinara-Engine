@@ -54,6 +54,7 @@ export * from "./board-events.js";
 export * from "./calls.js";
 export * from "./sight.js";
 export * from "./mind.js";
+export * from "./deploy.js";
 export {
   RULESET_PICK_UP_OPTION_PREFIX,
   RULESET_AVERT_OPTION_PREFIX,

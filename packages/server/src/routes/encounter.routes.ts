@@ -16,6 +16,7 @@ import {
   type WorldElementSet,
   gameWorldElementSet,
   TACTICAL_TERRAINS,
+  COMBAT_START_PLACES,
   WORLD_DEFAULT_BATTLEFIELDS,
   gameWorldBattlefields,
   type WorldBattlefields,
@@ -382,6 +383,8 @@ export const encounterBlueprintSchema = z
           aiHints: combatAiHintsSchema.optional(),
           // Caught unaware as the fight begins (1.237); a ruleset fight reads it.
           surprised: z.boolean().optional().catch(undefined),
+          // Where the story put them (2026-10-24); a ruleset fight reads it.
+          start: z.enum(COMBAT_START_PLACES).optional().catch(undefined),
           // What it set up before the fight, standing as it begins (1.446); a ruleset fight reads it.
           standing: z
             .array(
@@ -449,6 +452,8 @@ export const encounterBlueprintSchema = z
             .catch(undefined),
           // Fights in its own lair (1.315); a ruleset fight reads it.
           inLair: z.boolean().optional().catch(undefined),
+          // Where the Game Master starts it (2026-10-24); a ruleset fight reads it.
+          start: z.enum(COMBAT_START_PLACES).optional().catch(undefined),
           spellSlots: z.record(z.string().regex(/^[1-9]$/), z.number().int().min(0).max(100)).optional(),
           boss: combatBossSchema.optional(),
           mp: z.number().min(0).max(100000).optional(),
@@ -814,6 +819,9 @@ export function buildInitPrompt(
     inst += `- Inside "proposed", every id must come from this ruleset: budgets are ${ruleset.budgets.join(", ") || "none"}; saves are ${ruleset.saves.join(", ") || "none"}; damage types are ${ruleset.damageTypes.join(", ") || "untyped only"}. A name this ruleset does not have is dropped.\n`;
     inst += `- Keep the hp, attack, defense, speed and level fields as well. They are the Engine's own numbers and are used outside the fight.\n`;
     inst += `- Lair: give "inLair": true to an enemy the party is fighting inside its own lair (a dragon in its cave, a lich in its tomb). Its lair then acts each round. Leave it out anywhere else.\n`;
+    if (tactical) {
+      inst += `- Where each begins on the board: you place every enemy. Give an enemy "start" when the scene says where it is: "front" or "rear" of its own side, "ahead" of it alone, on the party's "flank", "behind" the party, "among" them, or "hidden" in cover. Leave it out to keep it in its side's formation. The players place their own characters, so give a party member "start" ONLY when the story put them somewhere as the fight began (the wizard who walked into the cavern first is at the "front" when the goblins spring); leave it out for everybody else.\n`;
+    }
     inst += `- Set up beforehand: give "standing": [{"entry": "its own spell's name", "at": "between" or "self"}] to a party member or enemy the scene shows set up a lasting ward, glyph or hallowed ground before the fight began (a Glyph of Warding on the door, Hallow over the shrine). "between" puts it between them and their foes, "self" where they stand; for a glyph holding a spell, add "stores": "that spell's name". A spell cast beforehand that is not a ward on the ground (Heroes' Feast, Foresight, a buff) may be listed the same way with "on": ["names of those it was cast on"], and is in effect as the fight starts. A ward that works on one sort of creature (Hallow's extra effect) may add "kind": "that creature type". A spell cast beforehand that is done one of several ways (the creature Find Familiar calls, or the damage type Forbiddance deals) adds "mode": "that way's name". A ward that strikes the sorts of creature its caster named (Forbiddance's) adds "kinds": ["those creature types"]. A spell cast beforehand into something that stores it (a Ring of Spell Storing, a shield guardian) adds "into": "that item's or creature's name", with "on": ["its holder's name"] when somebody else holds it. Only for what the scene says was really done; leave it out otherwise.\n`;
     const sheet = ruleset.sheet;
     inst += `- An enemy whose power comes from this ruleset's own lists and pools (a spellcaster, say) may be proposed as a SHEET instead of numbers: "proposed": {"tier":"tier id","sheet":{"abilities":{},"skills":{},"saves":{},"fields":{},"lists":{}}}. Give no health, defense, initiativeModifier, speed, abilities or saves beside a sheet: the Engine builds it exactly as it builds a character, fills in anything left out with the ruleset's defaults, and then holds it to the tier. Every id must come from this sheet:\n`;

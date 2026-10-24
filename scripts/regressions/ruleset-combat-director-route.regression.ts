@@ -543,6 +543,12 @@ try {
       if (response.statusCode === 200) fight = response.json().session;
       return response;
     };
+    // The player sets Brenna down before the first turn (2026-10-24): nobody acts until they begin.
+    assert.equal(fight.stage, "deploy", "the fight waits for the party to be set down");
+    assert.deepEqual(fight.ruleset!.deploy?.ids, ["brenna"]);
+    assert.equal((await send({ type: "continue" })).statusCode, 400, "and no turn is taken meanwhile");
+    assert.equal((await send({ type: "deployed" })).statusCode, 200);
+    assert.equal(fight.ruleset!.deploy, undefined, "beginning it ends the setting down");
     for (let guard = 0; guard < 20 && fight.ruleset!.controller !== "manual" && !fight.outcome; guard++) {
       await send({ type: "continue" });
     }

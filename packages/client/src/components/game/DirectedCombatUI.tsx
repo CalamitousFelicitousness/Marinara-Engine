@@ -226,6 +226,8 @@ export function DirectedCombatUI(props: Props) {
           onYield={() => send({ type: "yield" })}
           onControl={(unitId, controller) => send({ type: "control", unitId, controller })}
           onSpends={chooseSpends}
+          onDeploy={(unitId, to) => send({ type: "deploy", unitId, to })}
+          onDeployed={() => send({ type: "deployed" })}
           controls={
             <CombatAiControls
               // A ruleset fight takes a companion's controller at any time but a decision (the

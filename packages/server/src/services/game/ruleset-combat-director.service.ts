@@ -100,6 +100,7 @@ import {
   rulesetWalkingDistances,
   rulesetFootprint,
   rulesetFootprintAt,
+  rulesetCellBlocked,
   rulesetSees,
   rulesetSpanOf,
   rulesetSqueezeAt,
@@ -116,6 +117,9 @@ import {
   rulesetActionIsSpell,
   rulesetCombatantMind,
   rulesetCombatantForesees,
+  rulesetStartPlacements,
+  rulesetDeployCells,
+  type CombatStartPlace,
   rulesetAirborne,
   RULESET_FLY_UP_OPTION,
   shiftCombatTemperament,
@@ -237,17 +241,38 @@ export interface RulesetFightState {
   }; /** What the fight looked like when a round last began, and how many rounds in a row it has looked
    *  just the same (K8): a fight nothing can change any more is called off. */
   stall?: { key: string; round: number; rounds: number; seq: number };
+  /** Before the first turn, while the player sets their own down (2026-10-24, Alyssa): the cells
+   *  they may stand on, and who of the party the Game Master already placed, which stay where the
+   *  story put them. Gone once the player begins the fight. */
+  deploy?: { cells: Array<{ x: number; y: number }>; placed: string[] };
 }
 
 export type RulesetCommandResult = { ok: true } | { ok: false; error: string; code: string };
 
 const refuse = (error: string, code: string): RulesetCommandResult => ({ ok: false, error, code });
 
+/** Who of the party the player sets down before the first turn (2026-10-24): each they play whom
+ *  the story did not place. Nobody once the fight has begun. */
+export function rulesetDeployers(state: CombatDirectorState, fight: RulesetFightState): string[] {
+  if (!fight.deploy) return [];
+  return fight.encounter.combatants
+    .filter(
+      (one) =>
+        one.side === "party" &&
+        !one.object &&
+        rulesetPositionOf(one) &&
+        !fight.deploy!.placed.includes(one.id) &&
+        rulesetController(state, fight, one) === "manual",
+    )
+    .map((one) => one.id);
+}
+
 /** Where the fight stands, once a command has been applied: who is waited on, or that it is over. */
 export function rulesetDirectorStage(state: CombatDirectorState): CombatDirectorState["stage"] {
   const fight = fightOf(state);
   if (!fight) return state.stage;
   if (state.outcome) return "finished";
+  if (fight.deploy) return "deploy";
   if (state.window) return "decision";
   // A window the fight is holding open is waited on exactly as a turn is, and by whoever it is
   // asking rather than whoever is on turn. Reading only the turn here would leave a client whose
@@ -271,6 +296,8 @@ function settled(state: CombatDirectorState): RulesetCommandResult {
       : [];
     if (asked.length > 0) fight.encounter.askSpends = asked;
     else delete fight.encounter.askSpends;
+    // With nobody left for the player to set down (each handed to the Engine), the fight begins.
+    if (fight.deploy && rulesetDeployers(state, fight).length === 0) delete fight.deploy;
   }
   combatDirectorView(state);
   if (state.outcome) {
@@ -299,6 +326,8 @@ export interface RulesetFightOpponent {
   mind?: CombatMind;
   /** Its side follows it, by the story (combat AI E2): a bandit chief nobody's bestiary marks. */
   leader?: boolean;
+  /** Where it begins (2026-10-24), as the Game Master placed it; its formation's place when unsaid. */
+  start?: CombatStartPlace;
   /** How it fights: the same competence and temperament its choices in the fight are made with,
    *  which is also what fills an invented sheet's open choices. Assigned here when not given. */
   tactics?: Pick<CombatTactics, "proficiency" | "adjective">;
@@ -309,7 +338,11 @@ export interface RulesetFightOpponent {
 export interface RulesetFightSeed {
   definition: RulesetDefinition;
   seed: number;
-  party: Array<{ id: string; name: string }>;
+  /** `start`: where the story put a party member (2026-10-24), which they do not choose for themselves. */
+  party: Array<{ id: string; name: string; start?: CombatStartPlace }>;
+  /** Whether the player sets their own down before the first turn (2026-10-24): the game's fights
+   *  ask it; a fight built to be read at once (a test, a preview) starts where it was laid. */
+  deploy?: boolean;
   enemies: RulesetFightOpponent[];
   /** Whether this fight is fought on a board. The ruleset still has to say what a cell is worth:
    *  one that does not stays theatre of the mind whatever the game asked for. */
@@ -567,9 +600,32 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
   // One facing a blast that thinks ahead deploys apart by its size (combat AI S1a): the same board,
   // laid again.
   const spread = board ? rulesetDeploySpread(definition, encounter) : {};
+  let laid = board;
   if (Object.keys(spread).length > 0) {
     const spaced = rulesetSpacedBoard(input, combatants, spread);
-    if (spaced) encounter = encounterOn(spaced);
+    if (spaced) encounter = encounterOn((laid = spaced));
+  }
+  // Where everybody begins (2026-10-24, Alyssa): whoever the Game Master started somewhere there, and
+  // the rest of the party by what each does (a caster back, a fighter forward), for the player to
+  // move as they please before the first turn.
+  let deploy: RulesetFightState["deploy"];
+  if (laid) {
+    const places: Record<string, CombatStartPlace> = Object.fromEntries(
+      [...input.party, ...input.enemies].flatMap((one) => (one.start ? [[one.id, one.start]] : [])),
+    );
+    const roles = Object.fromEntries(
+      encounter.combatants
+        .filter((one) => one.side === "party" && !one.object && !places[one.id])
+        .map((one) => [one.id, rulesetCombatantRole(one, definition, encounter)]),
+    );
+    const stands = combatants.map((one) => ({ id: one.id, side: one.side }));
+    const placements = rulesetStartPlacements(laid.grid, laid.placements, stands, places, roles);
+    if (JSON.stringify(placements) !== JSON.stringify(laid.placements))
+      encounter = encounterOn((laid = { ...laid, placements }));
+    const deployers = Object.keys(roles);
+    const cells =
+      input.deploy && deployers.length > 0 ? rulesetDeployCells(laid.grid, placements, stands, deployers) : [];
+    if (cells.length > 0) deploy = { cells, placed: input.party.flatMap((one) => (places[one.id] ? [one.id] : [])) };
   }
   for (const [id, tier] of heldToTier) {
     const built = rulesetCombatant(encounter, id);
@@ -599,6 +655,7 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
     ...rulesetThinkersOf(input.definition, encounter, input.enemies),
     adjustments: adjustments.slice(0, RULESET_ADJUSTMENT_LIMIT),
     ...(Object.keys(lootTables).length > 0 ? { lootTables } : {}),
+    ...(deploy ? { deploy } : {}),
   };
   record(fight, encounter.opening);
   for (const line of fight.adjustments) logger.info("[game/combat:ruleset] %s", line);
@@ -1647,6 +1704,15 @@ function rulesetViewOf(definition: RulesetDefinition, state: CombatDirectorState
         }
       : {}),
     ...(actor && !over ? { actorId: actor.id } : {}),
+    // Who the player sets down before the first turn, and where they may (2026-10-24).
+    ...(fight.deploy && !over
+      ? {
+          deploy: {
+            ids: rulesetDeployers(state, fight),
+            cells: fight.deploy.cells.map((cell) => ({ x: cell.x, y: cell.y })),
+          },
+        }
+      : {}),
     controller,
     combatants: encounter.combatants.map((combatant) =>
       projectCombatant(definition, combatant, encounter, actor && !over ? actor : undefined, praying),
@@ -7302,6 +7368,49 @@ function runRulesetCommand(
   if (command.type === "begin" || command.type === "classic" || command.type === "tactical") {
     return refuse("Action does not match this combat mode.", "ruleset_combat_wrong_style");
   }
+
+  // Setting the party down before the first turn (2026-10-24): only that, the way out and who plays
+  // whom while it lasts.
+  if (command.type === "deploy" || command.type === "deployed") {
+    if (!fight.deploy) return refuse("The fight has already begun.", "ruleset_combat_deployed");
+    if (command.type === "deployed") {
+      delete fight.deploy;
+      return settled(state);
+    }
+    const one = rulesetCombatant(fight.encounter, command.unitId);
+    if (!one || !rulesetDeployers(state, fight).includes(one.id))
+      return refuse(
+        "Only a party member you play, whom the story has not placed, is set down by you.",
+        "ruleset_combat_unknown-actor",
+      );
+    const to = command.to;
+    if (!fight.deploy.cells.some((cell) => cell.x === to.x && cell.y === to.y))
+      return refuse("That square is not where your side lines up.", "ruleset_combat_bad_cell");
+    const grid = fight.encounter.board!.grid;
+    const others = new Set(
+      fight.encounter.combatants
+        .filter((other) => other.id !== one.id && rulesetPositionOf(other))
+        .flatMap((other) => rulesetFootprint(other))
+        .map((cell) => `${cell.x},${cell.y}`),
+    );
+    if (
+      rulesetFootprintAt(to, rulesetSpanOf(one)).some(
+        (cell) => rulesetCellBlocked(grid, cell.x, cell.y) || others.has(`${cell.x},${cell.y}`),
+      )
+    )
+      return refuse("Somebody or something is already there.", "ruleset_combat_bad_cell");
+    one.x = to.x;
+    one.y = to.y;
+    return settled(state);
+  }
+  if (
+    fight.deploy &&
+    command.type !== "flee" &&
+    command.type !== "control" &&
+    command.type !== "orders" &&
+    command.type !== "spends"
+  )
+    return refuse("Set the party down and begin the fight first.", "ruleset_combat_deploying");
 
   if (command.type === "flee") {
     state.outcome = "flee";

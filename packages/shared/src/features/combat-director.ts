@@ -112,6 +112,10 @@ export type DirectedCommand =
       heightens?: string;
     }
   | { type: "choose"; candidateId: string }
+  /** A party member the player plays set down before the first turn (2026-10-24), on one of the
+   *  view's `deploy.cells`; `deployed` begins the fight. */
+  | { type: "deploy"; unitId: string; to: { x: number; y: number } }
+  | { type: "deployed" }
   | { type: "continue" }
   | { type: "fallback" }
   | { type: "control"; unitId: string; controller: "manual" | "ai" }
@@ -364,6 +368,8 @@ export interface DirectedRulesetView {
     /** The cells a fog or haze covers, by "x,y": heavy unless it only lightly obscures. */
     fog?: Record<string, "light" | "heavy">;
   };
+  /** Before the first turn (2026-10-24): whom the player sets down, and the squares they may. */
+  deploy?: { ids: string[]; cells: Array<{ x: number; y: number }> };
   actorId?: string;
   /** Who plays the actor whose turn it is. */
   controller: "manual" | "ai" | "gm";
@@ -455,7 +461,8 @@ export interface DirectedCombatView {
   revision: number;
   style: "classic" | "tactical" | "ruleset";
   round: number;
-  stage: "select" | "action" | "decision" | "finished";
+  /** `deploy`: before a ruleset fight's first turn, while the player sets their party down (2026-10-24). */
+  stage: "select" | "action" | "decision" | "deploy" | "finished";
   actorId?: string;
   party: Combatant[];
   enemies: Combatant[];

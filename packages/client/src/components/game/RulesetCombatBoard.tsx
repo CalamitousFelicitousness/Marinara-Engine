@@ -101,6 +101,10 @@ export interface RulesetCombatBoardProps {
   menuRef: RefObject<HTMLDivElement | null>;
   /** Whose token the pointer or the keyboard is on, so the pane can open their details. */
   onHover?: (id: string | null) => void;
+  /** Before the first turn (2026-10-24): the squares the player may set their party down on, lit,
+   *  and every square clicked handed to `onPlace`. */
+  placing?: Set<string>;
+  onPlace?: (cell: { x: number; y: number }) => void;
   className?: string;
 }
 
@@ -114,6 +118,8 @@ export function RulesetCombatBoard({
   onStepChange: setStep,
   menuRef: menuRoot,
   onHover,
+  placing,
+  onPlace,
   className,
 }: RulesetCombatBoardProps) {
   const { t } = useTranslation();
@@ -238,7 +244,12 @@ export function RulesetCombatBoard({
   /** What clicking or pressing Enter on this square does, which is only ever finishing a step the
    *  player opened. A square outside the step is inert: it is information, not a command. */
   const takeCell = (cell: RulesetBoardCell) => {
-    if (busy || !step) return;
+    if (busy) return;
+    if (placing && onPlace) {
+      onPlace({ x: cell.x, y: cell.y });
+      return;
+    }
+    if (!step) return;
     if (step.stage === "move" && cell.reach) {
       // A finger is easily a square off, and a walk cannot be taken back: on a touch screen the
       // first tap picks the square and a second tap on it walks, as an aim is laid.
@@ -615,6 +626,12 @@ export function RulesetCombatBoard({
                     <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-[0.7em] opacity-45">
                       {icon}
                     </span>
+                  )}
+                  {placing?.has(key) && (
+                    <span
+                      className="pointer-events-none absolute inset-0 bg-emerald-400/30 ring-1 ring-inset ring-emerald-200/70"
+                      style={{ animation: "tc-move-range 1.5s ease-in-out infinite" }}
+                    />
                   )}
                   {cell.reach && art?.reach && (
                     <span

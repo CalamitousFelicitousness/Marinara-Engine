@@ -1,6 +1,7 @@
 import { createGameStateStorage, parseStoredRulesetLive } from "../services/storage/game-state.storage.js";
 import {
   normalizeGameDifficulty,
+  COMBAT_START_PLACES,
   DECISION_TIMEOUT_MS,
   combatWeatherSchema,
   applyGameInventoryOps,
@@ -69,6 +70,7 @@ import {
   createRulesetFight,
   directedRulesetView,
   releaseRulesetHeldGround,
+  rulesetDeployers,
   rulesetDirectorStage,
   rulesetFightLiveStates,
   syncRulesetCombatants,
@@ -125,6 +127,8 @@ const directedCombatantFields = z.object({
   surprised: z.boolean().optional(),
   /** Fights in its own lair (1.315): read by a ruleset fight only. */
   inLair: z.boolean().optional(),
+  /** Where the Game Master starts it on the board (2026-10-24): read by a ruleset fight only. */
+  start: z.enum(COMBAT_START_PLACES).optional(),
   /** What it set up before the fight, standing as it begins (1.446): read by a ruleset fight only. */
   standing: z
     .array(
@@ -288,6 +292,8 @@ const command = z.discriminatedUnion("type", [
     heightens: z.string().min(1).max(200).optional(),
   }),
   z.object({ type: z.literal("choose"), candidateId: key }),
+  z.object({ type: z.literal("deploy"), unitId: key, to: coord }),
+  z.object({ type: z.literal("deployed") }),
   z.object({ type: z.literal("continue") }),
   z.object({ type: z.literal("fallback") }),
   z.object({ type: z.literal("flee") }),
@@ -996,11 +1002,17 @@ export async function combatDirectorRoutes(
             definition,
             seed: battlefield.seed,
             positioned: input.positioned === true,
+            // The player sets the party down before the first turn (2026-10-24).
+            deploy: true,
             environment: environment ?? null,
             formation: input.formation ?? null,
             ...(input.boardPack ? { pack: input.boardPack } : {}),
             ...(here ? { made: here } : battlefield.battlefield ? { battlefield: battlefield.battlefield } : {}),
-            party: input.party.map((member) => ({ id: member.id, name: member.name })),
+            party: input.party.map((member) => ({
+              id: member.id,
+              name: member.name,
+              ...(member.start ? { start: member.start } : {}),
+            })),
             enemies: input.enemies.map((enemy, index) => ({
               id: enemy.id,
               name: enemy.name,
@@ -1013,6 +1025,7 @@ export async function combatDirectorRoutes(
               ...(enemy.aiHints?.named ? { named: true } : {}),
               ...(enemy.aiHints?.mind ? { mind: enemy.aiHints.mind } : {}),
               ...(enemy.aiHints?.leader ? { leader: true } : {}),
+              ...(enemy.start ? { start: enemy.start } : {}),
             })),
             cards,
             playerName: persona?.name ?? null,
@@ -1060,6 +1073,8 @@ export async function combatDirectorRoutes(
             });
           }
           state.rulesetFight = built.fight;
+          // A party the Engine plays all of has nobody for the player to set down.
+          if (built.fight.deploy && rulesetDeployers(state, built.fight).length === 0) delete built.fight.deploy;
           syncRulesetCombatants(definition, state);
           state.stage = rulesetDirectorStage(state);
           session = { definition, packageId: resolved.packageId };

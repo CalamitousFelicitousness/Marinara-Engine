@@ -1153,6 +1153,8 @@ export function generatedPartyMemberToCombatant(
     movementMode,
     // Caught unaware as the scene set it (1.237), read by a ruleset fight only.
     ...(member.surprised === true ? { surprised: true } : {}),
+    // Where the story put them (2026-10-24), read by a ruleset fight only.
+    ...(member.start ? { start: member.start } : {}),
     // What they set up before it (1.446), read by a ruleset fight only.
     ...(Array.isArray(member.standing) && member.standing.length ? { standing: member.standing } : {}),
   };
@@ -1212,6 +1214,7 @@ export function generatedEnemyToCombatant(enemy: CombatEnemy, index: number, fal
     ...(enemy.proposed !== undefined ? { proposed: enemy.proposed } : {}),
     ...(enemy.surprised === true ? { surprised: true } : {}),
     ...(enemy.inLair === true ? { inLair: true } : {}),
+    ...(enemy.start ? { start: enemy.start } : {}),
     ...(Array.isArray(enemy.standing) && enemy.standing.length ? { standing: enemy.standing } : {}),
   };
 }

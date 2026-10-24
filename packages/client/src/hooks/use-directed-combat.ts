@@ -166,7 +166,9 @@ export function useDirectedCombat(input: {
   // reaches a player, and it hands a boss over by opening its window, which the effect above then
   // drives exactly as it drives the other two styles.
   const ruleset = query.data?.style === "ruleset" ? query.data.ruleset : undefined;
-  const autoplay = !!ruleset && !query.data?.window && !query.data?.outcome && ruleset.controller !== "manual";
+  // Nobody takes a turn while the player sets the party down (2026-10-24).
+  const autoplay =
+    !!ruleset && !ruleset.deploy && !query.data?.window && !query.data?.outcome && ruleset.controller !== "manual";
   useEffect(() => {
     if (queued.current.length || !autoplay || mutate.isPending || mutate.isError) return;
     if (refusedRevision.current !== null && refusedRevision.current === query.data?.revision) return;

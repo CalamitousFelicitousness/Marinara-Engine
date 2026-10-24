@@ -1,4 +1,5 @@
 import type { CombatAiHints } from "../features/combat-ai.js";
+import type { CombatStartPlace } from "../features/ruleset-combat/deploy.js";
 // ──────────────────────────────────────────────
 // Combat Encounter Types
 // ──────────────────────────────────────────────
@@ -139,6 +140,8 @@ export interface CombatStandingEntry {
 export interface CombatPartyMember {
   /** Caught unaware as the fight begins (1.237); a ruleset fight reads it. */
   surprised?: boolean;
+  /** Where the story put them as it begins (2026-10-24), when it did; a ruleset fight reads it. */
+  start?: CombatStartPlace;
   /** What they set up before the fight, standing as it begins (1.446); a ruleset fight reads it. */
   standing?: CombatStandingEntry[];
   projectile?: boolean;
@@ -171,6 +174,8 @@ export interface RulesetEncounterBlueprint {
   standing?: CombatStandingEntry[];
   /** Fights in its own lair (1.315): its lair actions are taken. A ruleset fight reads it. */
   inLair?: boolean;
+  /** Where the Game Master starts it on the board (2026-10-24); a ruleset fight reads it. */
+  start?: CombatStartPlace;
   creature?: string;
   tier?: string;
   proposed?: unknown;

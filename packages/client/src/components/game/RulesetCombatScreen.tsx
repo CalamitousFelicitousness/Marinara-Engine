@@ -52,6 +52,9 @@ export interface RulesetCombatScreenProps {
   notice?: ReactNode;
   /** The fight is over: the pane holds only the notice (the caller's end of the fight), no turn. */
   ended?: boolean;
+  /** Before the first turn (2026-10-24): one of the party set down on a square, and the fight begun. */
+  onDeploy?: (unitId: string, to: { x: number; y: number }) => void;
+  onDeployed?: () => void;
 }
 
 export function RulesetCombatScreen({
@@ -71,6 +74,8 @@ export function RulesetCombatScreen({
   onSpends,
   notice,
   ended,
+  onDeploy,
+  onDeployed,
 }: RulesetCombatScreenProps) {
   const { t } = useTranslation();
   const [step, setStep] = useState<RulesetMenuStep | null>(null);
@@ -94,7 +99,24 @@ export function RulesetCombatScreen({
   // carries the menu for it.
   const asked = window && view.options ? window : undefined;
   const answerer = asked ? byId.get(asked.actorId) : undefined;
-  const ending = !window ? view.options?.find((option) => option.kind === "end-turn") : undefined;
+  // Before the first turn the player sets their own down (2026-10-24), and nobody acts until they begin.
+  const deploy = !ended && onDeploy ? view.deploy : undefined;
+  const [deployPick, setDeployPick] = useState<string | null>(null);
+  const placingId = deploy ? (deploy.ids.find((id) => id === deployPick) ?? deploy.ids[0]) : undefined;
+  const placing = useMemo(
+    () => (deploy ? new Set(deploy.cells.map((cell) => `${cell.x},${cell.y}`)) : undefined),
+    [deploy],
+  );
+  const place = (cell: { x: number; y: number }) => {
+    if (!deploy || !onDeploy) return;
+    const there = view.combatants.find((one) => one.x === cell.x && one.y === cell.y);
+    if (there && deploy.ids.includes(there.id)) {
+      setDeployPick(there.id);
+      return;
+    }
+    if (placingId && placing?.has(`${cell.x},${cell.y}`)) onDeploy(placingId, cell);
+  };
+  const ending = !window && !deploy ? view.options?.find((option) => option.kind === "end-turn") : undefined;
   const distance = view.grid?.distance;
 
   // The option list starts at its top on every new turn, never where the last turn left it scrolled.
@@ -114,11 +136,12 @@ export function RulesetCombatScreen({
   const [leaving, setLeaving] = useState(false);
   const [yielding, setYielding] = useState(false);
   const boardStep = !!step && (step.stage === "move" || step.stage === "aim" || step.stage === "target");
-  const ownTurn = !!view.options && !window;
+  const ownTurn = !!view.options && !window && !deploy;
+  const deploying = !!deploy;
   const askedId = asked?.id;
   useEffect(() => {
-    if (narrow && boardStep) setPhoneTab("board");
-  }, [narrow, boardStep]);
+    if (narrow && (boardStep || deploying)) setPhoneTab("board");
+  }, [narrow, boardStep, deploying]);
   useEffect(() => {
     // Somebody else's turn leaves a player reading the turn order or the log where they are.
     if (narrow) setPhoneTab((tab) => (ended || askedId || ownTurn ? "pane" : tab === "pane" ? "board" : tab));
@@ -238,9 +261,19 @@ export function RulesetCombatScreen({
           {controls}
         </div>
       )}
-      {!ended && actor && <CurrentTurn actor={actor} marks={marks} distance={distance} t={t} />}
+      {!ended && !deploy && actor && <CurrentTurn actor={actor} marks={marks} distance={distance} t={t} />}
       <div ref={optionsBox} className="min-h-0 flex-1 overflow-y-auto border-t border-[var(--border)]">
-        {ended ? null : asked ? (
+        {ended ? null : deploy ? (
+          <DeployPane
+            ids={deploy.ids}
+            view={view}
+            placingId={placingId}
+            busy={busy}
+            onPick={setDeployPick}
+            onBegin={() => onDeployed?.()}
+            t={t}
+          />
+        ) : asked ? (
           <p className="m-3 rounded-lg border border-dashed border-[var(--border)] px-3 py-4 text-center text-xs text-[var(--muted-foreground)]">
             {t("game.combat.ruleset.screen.takingTurn", { name: actor?.name ?? "" })}
           </p>
@@ -286,6 +319,8 @@ export function RulesetCombatScreen({
         onStepChange={setStep}
         menuRef={menuRoot}
         onHover={setHovered}
+        placing={placing}
+        onPlace={deploy ? place : undefined}
       />
       {/* A phone has the log as a tab of its own, so the board keeps the height. */}
       {logOpen && !narrow && (
@@ -334,7 +369,19 @@ export function RulesetCombatScreen({
                 or the end of the player's turn. It keeps one height whichever it holds, so the board
                 above never jumps between steps under a finger about to tap it. */}
             <div className={cn("flex shrink-0 flex-col justify-end overflow-hidden", !ended && "h-[min(10.5rem,36%)]")}>
-              {boardStep ? (
+              {deploy ? (
+                <div className="min-h-0 flex-1 overflow-y-auto border-t border-[var(--border)] bg-[var(--card)]">
+                  <DeployPane
+                    ids={deploy.ids}
+                    view={view}
+                    placingId={placingId}
+                    busy={busy}
+                    onPick={setDeployPick}
+                    onBegin={() => onDeployed?.()}
+                    t={t}
+                  />
+                </div>
+              ) : boardStep ? (
                 <div className="min-h-0 flex-1 overflow-y-auto border-t border-[var(--border)] bg-[var(--card)]">
                   <RulesetCombatMenu
                     layout="step"
@@ -804,5 +851,61 @@ export function RulesetFightEnd({
         {t("game.combat.director.finish")}
       </button>
     </section>
+  );
+}
+
+/** Setting the party down before the first turn (2026-10-24): who is being placed, the others to
+ *  pick from, and the way to begin. */
+function DeployPane({
+  ids,
+  view,
+  placingId,
+  busy,
+  onPick,
+  onBegin,
+  t,
+}: {
+  ids: string[];
+  view: DirectedRulesetView;
+  placingId?: string;
+  busy: boolean;
+  onPick: (id: string) => void;
+  onBegin: () => void;
+  t: TFunction;
+}) {
+  const names = new Map(view.combatants.map((one) => [one.id, one.name]));
+  return (
+    <div className="space-y-2.5 p-3">
+      <h3 className="m-0 text-sm font-semibold">{t("game.combat.ruleset.deploy.title")}</h3>
+      <p className="m-0 text-xs text-[var(--muted-foreground)]">{t("game.combat.ruleset.deploy.hint")}</p>
+      <div className="flex flex-wrap gap-1.5">
+        {ids.map((id) => (
+          <button
+            key={id}
+            type="button"
+            aria-pressed={id === placingId}
+            onClick={() => onPick(id)}
+            className={cn(
+              "min-h-9 rounded-lg border px-3 text-xs focus-visible:outline-2 focus-visible:outline-[var(--primary)]",
+              id === placingId
+                ? "border-emerald-300/80 bg-emerald-400/15 font-semibold text-[var(--foreground)]"
+                : "border-[var(--border)] text-[var(--muted-foreground)] hover:text-[var(--foreground)]",
+            )}
+          >
+            {id === placingId
+              ? t("game.combat.ruleset.deploy.placing", { name: names.get(id) ?? id })
+              : (names.get(id) ?? id)}
+          </button>
+        ))}
+      </div>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={onBegin}
+        className="min-h-9 w-full rounded-lg bg-[var(--primary)] px-3 text-sm font-semibold text-[var(--primary-foreground)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--primary)] disabled:opacity-50"
+      >
+        {t("game.combat.ruleset.deploy.begin")}
+      </button>
+    </div>
   );
 }

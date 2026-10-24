@@ -2426,6 +2426,7 @@
   "game.combat.ruleset.event.reason.itsTarget": "its target",
   "game.combat.ruleset.event.reason.keptBack": "keeps {{label}} for later",
   "game.combat.ruleset.event.reason.keptBackFor": "keeps {{label}} for {{target}} for later",
+  "game.combat.ruleset.event.reason.leavesHarm": "it stepped out of what was striking it where it stood",
   "game.combat.ruleset.event.reason.mostInNeed": "{{target}} is the one of its side most in need",
   "game.combat.ruleset.event.reason.nothingWorth": "nothing it could do was worth the price, so it ended its turn",
   "game.combat.ruleset.event.reason.noWay": "it could not carry out what it meant to from where it got to, so it ended its turn",

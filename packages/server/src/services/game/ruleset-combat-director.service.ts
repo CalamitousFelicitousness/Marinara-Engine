@@ -2190,6 +2190,16 @@ function weighRulesetTeam(
         // its walk, and stepping away later draws its blow, so the same throw from out of reach is
         // safer than "a walk away" reads.
         if (!defensive && rulesetThrowsFrom(encounter, actor, candidate, cell) && reaches(cell)) candidate.risk *= 1.25;
+        // Mending itself lowers the danger it stands in as much as the health it gains: what could
+        // fell it at 2 health is a quarter of that at 9 (re-test 2026-10-24: a cleric at 2 of 27 kept
+        // her potion back for later in Spirit Guardians).
+        const self =
+          candidate.targetId === actor.id || (!candidate.targetId && candidate.action.option.targets.side === "self");
+        if (!defensive && self && (candidate.healing ?? 0) > 0) {
+          const own = rulesetCombatHealth(definition, combat, actor);
+          const pool = Math.max(1, own.value + own.temp);
+          candidate.risk *= pool / (pool + candidate.healing! * Math.max(1, own.max));
+        }
       }
     }
     // Where it ends up (combat AI A1): beside a friend an opponent is on, which a bulwark stands up
@@ -5705,6 +5715,8 @@ function playRulesetTurn(
     const picked = ranked?.candidate.action ?? null;
     const idle = !picked || picked.option.kind === "end-turn";
     if (idle) {
+      // Standing where a lasting area strikes it, it gets out first.
+      if (!stays && stepOutOfHarm(definition, state, fight, actorId)) continue;
       // A shot thrown, it steps back where nobody can walk up and strike it, still in range for the
       // next; and with somebody still in its range it does not walk in to meet them.
       if (!stays && keepAloft(definition, state, fight, actorId)) continue;
@@ -6434,6 +6446,46 @@ function stepBefore(
   // thing it meant to do from there is no longer the thing it can do.
   const after = rulesetCombatant(fight.encounter, actorId);
   return !!after && rulesetCombatStanding(after) && after.x === to.x && after.y === to.y;
+}
+
+/**
+ * Out of a lasting area or aura that strikes it where it stands (re-test 2026-10-24: a cleric at 8
+ * health stood up in Spirit Guardians and ended her turn there, one step from its edge): with nothing
+ * worth doing, it steps to the cell it can reach that the areas strike least, an opportunity blow
+ * drawn counting against a cell, and the danger there breaking ties. False when no cell is better.
+ */
+function stepOutOfHarm(
+  definition: RulesetDefinition,
+  state: CombatDirectorState,
+  fight: RulesetFightState,
+  actorId: string,
+): boolean {
+  const actor = rulesetCombatant(fight.encounter, actorId);
+  const home = rulesetPositionOf(actor);
+  if (!actor || !home || !fight.encounter.board?.grid) return false;
+  const here = rulesetZoneHarmAt(fight.encounter, actor, home);
+  if (here <= 0) return false;
+  let best: { cell: { x: number; y: number }; harm: number; provokes: number; danger: number } | null = null;
+  for (const cell of rulesetWalkableCells(definition, fight.encounter, actorId)) {
+    const harm = rulesetZoneHarmAt(fight.encounter, actor, cell);
+    if (harm >= here) continue;
+    const provokes = cell.provokes.length;
+    const danger = rulesetDangerAt(definition, fight.encounter, actor, cell);
+    if (
+      !best ||
+      harm < best.harm ||
+      (harm === best.harm && (provokes < best.provokes || (provokes === best.provokes && danger < best.danger)))
+    )
+      best = { cell: { x: cell.x, y: cell.y }, harm, provokes, danger };
+  }
+  if (!best) return false;
+  if (
+    applyChoice(definition, state, fight, { actorId, optionId: RULESET_MOVE_OPTION, targetIds: [], to: best.cell })
+      .refused
+  )
+    return false;
+  recordReasons(fight, actorId, [{ why: "leavesHarm" }]);
+  return true;
 }
 
 /** Nothing in reach: close the distance, sprinting first when the ruleset has a sprint and the

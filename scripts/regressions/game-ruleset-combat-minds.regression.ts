@@ -1112,6 +1112,52 @@ try {
       };
       assert.equal(stays(4), false, "at 4 health it leaves the aura");
     }
+    // With nothing worth doing at all, it does not end its turn inside the aura either: it steps out
+    // (re-test 2026-10-24: a cleric at 8 health stood up in Spirit Guardians and stood there).
+    {
+      const { encounter, state } = wide(
+        { cultist: { x: 3, y: 3 }, knight: { x: 2, y: 3 } },
+        {
+          cultist: { side: "enemy", block: block({ type: "humanoid", mind: "cunning", health: 30, actions: [] }) },
+          knight: { side: "party", block: block({ health: 80, actions: [claw] }) },
+        },
+        { cultist: { ...master, temperament: "disciplined" } },
+      );
+      const knight = rulesetCombatant(encounter, "knight")!;
+      const triggers = ["turn-start"];
+      knight.actions.push({
+        id: "guardians",
+        label: "Guardians",
+        kind: "attack",
+        budget: "action",
+        autoHit: true,
+        targets: { side: "enemy", count: 0 },
+        area: { shape: "burst", size: 2 },
+        damage: { count: 3, sides: 8, flat: 0 },
+        zone: { rounds: 10, triggers, anchor: "caster" },
+      } as never);
+      knight.zones = [{ actionId: "guardians", label: "Guardians", rounds: 10, anchor: "caster", triggers } as never];
+      state.rulesetFight = {
+        encounter,
+        events: [],
+        eventSeq: 0,
+        controllers: { knight: "manual" },
+        bosses: [],
+      } as never;
+      assert.ok(commandRulesetCombatDirector(definition, state, { type: "continue" }).ok);
+      const turn = state.rulesetFight!.events.map((entry) => entry.event);
+      // Out past the knight's reach, whose blow the knight's player is asked about first.
+      const out = turn.find((event) => event.type === "move" && event.actorId === "cultist");
+      const asked = turn.some((event) => event.type === "window" && event.moverId === "cultist");
+      assert.ok(
+        asked || (out?.type === "move" && Math.max(Math.abs(out.to.x - 2), Math.abs(out.to.y - 3)) > 2),
+        `it steps out of the aura: ${JSON.stringify(turn)}`,
+      );
+      assert.ok(
+        turn.some((event) => event.type === "reasoning" && event.reasons.some((reason) => reason.why === "leavesHarm")),
+        "and says why",
+      );
+    }
   }
 
   // ── Refused ──

@@ -182,6 +182,48 @@ try {
     assert.equal(at(8), "mend", "at 8 of 44 it mends");
   }
 
+  // ── At 2 health beside what could fell it, mending itself beats a heavy blow (re-test 2026-10-24) ──
+  {
+    const potion = {
+      id: "potion",
+      name: "Potion",
+      budget: "action",
+      self: true,
+      heal: { count: 2, sides: 4, flat: 2 },
+    };
+    const rays = {
+      id: "rays",
+      name: "Rays",
+      budget: "action",
+      toHit: 7,
+      range: { normal: 120 },
+      damage: { count: 6, sides: 6, flat: 0, type: "fire" },
+    };
+    const maul = {
+      id: "maul",
+      name: "Maul",
+      budget: "action",
+      toHit: 6,
+      reach: 1,
+      damage: { count: 2, sides: 6, flat: 4 },
+    };
+    const { encounter, state } = fight({
+      elara: { side: "enemy", block: block([rays, potion], { health: 27 }), at: { x: 5, y: 4 } },
+      priest: { side: "party", block: block([maul], { health: 27 }), at: { x: 6, y: 4 } },
+    });
+    const elara = rulesetCombatant(encounter, "elara")!;
+    elara.health = { ...elara.health!, value: 2 };
+    state.enemies[0]!.tactics = {
+      version: 1,
+      seed: 0,
+      category: "unknown",
+      proficiency: "master",
+      role: "spellcaster",
+      adjective: "disciplined",
+    };
+    assert.equal(pickRulesetChoice(definition, state, encounter, "elara")?.option.id, "potion");
+  }
+
   // ── Mending a friend waits for a wound worth a turn (I2): never at 85% ──
   {
     const cure = {

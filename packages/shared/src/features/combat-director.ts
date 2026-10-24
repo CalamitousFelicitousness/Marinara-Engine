@@ -266,6 +266,7 @@ export type DirectedRulesetEvent =
  *   - `nothingWorth`: nothing it could do was worth its price, so it ended its turn.
  *   - `noWay`: what it meant to do could not be carried out from where it got to, so it ended its turn.
  *   - `holding`: told to hold or fall back, it stayed where it was with nothing in reach.
+ *   - `leavesHarm`: with nothing worth doing, it stepped out of a lasting area striking it there.
  *   - `focus`: its target is the one its side most wants down (one dropping areas on it).
  *   - `mostInNeed`: the friend it picked is the one of its side most in need of it.
  *   - `keptBack`: an item's healing it weighed and kept for later (`label`, for `targetId`).
@@ -290,7 +291,7 @@ export type DirectedRulesetReason =
   | { why: "walked"; cells: number }
   | { why: "approach"; targetId?: string; sprinted?: true }
   | { why: "driven" }
-  | { why: "nothingWorth" | "noWay" | "holding" }
+  | { why: "nothingWorth" | "noWay" | "holding" | "leavesHarm" }
   | { why: "keptBack"; label: string; targetId?: string };
 /** One option of the legal menu, with the combatants it may be pointed at right now. */
 export interface DirectedRulesetOption extends RulesetCombatOption {

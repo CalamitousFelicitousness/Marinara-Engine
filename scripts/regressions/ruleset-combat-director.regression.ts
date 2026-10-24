@@ -1991,6 +1991,7 @@ console.log(
     "mostInNeed",
     "keptBack",
     "pressCaster",
+    "leavesHarm",
   ]);
   const idle = new Set(["nothingWorth", "noWay", "holding"]);
   const played = (definition: RulesetDefinition, state: CombatDirectorState, party: Array<{ id: string }>) => {

@@ -12,6 +12,7 @@ import posixpath
 import re
 import shutil
 import subprocess
+import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -318,8 +319,73 @@ def run_git(args, limit=MAX_SECTION_CHARS):
     return truncate(result.stdout + result.stderr, limit)
 
 
+class ReviewWithheld(RuntimeError):
+    """The PR is not known to be open and Ready; no model work or review mutation is permitted."""
+
+
+def gh_mutates(args):
+    if args[:2] in (["pr", "comment"], ["pr", "review"]):
+        return True
+    if not args or args[0] != "api":
+        return False
+    if "graphql" in args:
+        query = next((arg.split("=", 1)[1].lstrip() for arg in args if arg.startswith("query=")), "")
+        return not (query.startswith("query") or query.startswith("{"))
+    method = next((args[index + 1].upper() for index, arg in enumerate(args[:-1]) if arg in ("-X", "--method")), "")
+    return method not in ("", "GET", "HEAD") or (not method and any(arg in args for arg in ("-f", "-F", "--field", "--raw-field", "--input")))
+
+
 def run_gh(args, *, input_text=None, timeout=120, check=False):
+    if gh_mutates(args):
+        require_ready(os.environ.get("PR_NUM", ""))
     return run(["gh", *args], input_text=input_text, timeout=timeout, check=check)
+
+
+def require_ready(pr_num, fields=""):
+    """Read live metadata, never event snapshots or CI results. Missing evidence fails closed."""
+    repo = os.environ.get("GITHUB_REPOSITORY", "")
+    if not pr_num or not repo:
+        raise ReviewWithheld("Dottore withheld: pull request identity is unavailable.")
+    names = ",".join(dict.fromkeys(["state", "isDraft", *filter(None, fields.split(","))]))
+    try:
+        pr = json.loads(run_gh(["pr", "view", pr_num, "--repo", repo, "--json", names], check=True).stdout)
+    except Exception as exc:
+        raise ReviewWithheld(f"Dottore withheld: live readiness could not be verified ({error_text(exc)}).") from exc
+    if not isinstance(pr, dict) or pr.get("state") != "OPEN" or pr.get("isDraft") is not False:
+        raise ReviewWithheld("Dottore withheld: the pull request must be open and Ready for review.")
+    return pr
+
+
+def workflow_ready(value):
+    if output := os.environ.get("GITHUB_OUTPUT"):
+        with open(output, "a", encoding="utf-8") as stream:
+            stream.write(f"ready={str(value).lower()}\n")
+
+
+class ReviewReadiness:
+    """Share a throttled stream check across the existing workers; a withheld run cannot resume itself."""
+    def __init__(self, pr_num):
+        self.pr_num, self.checked, self.withheld = pr_num, None, None
+        self.lock = threading.Lock()
+
+    def __call__(self, fresh=False):
+        with self.lock:
+            if self.withheld:
+                raise self.withheld
+            if not fresh and self.checked is not None and time.monotonic() - self.checked < 15:
+                return
+            try:
+                require_ready(self.pr_num)
+            except ReviewWithheld as exc:
+                self.withheld = exc
+                raise
+            self.checked = time.monotonic()
+
+
+def write_withheld_review(exc):
+    workflow_ready(False)
+    pathlib.Path("review.json").write_text(json.dumps({"review_state": "withheld", "detail": str(exc)}) + "\n", "utf-8")
+    print(str(exc), file=sys.stderr)
 
 
 def truncate(text, limit):
@@ -921,7 +987,7 @@ def review_clients(models):
         options = {
             "api_key": os.environ[f"DOTTORE_{slot.upper()}_API_KEY"].strip(),
             "base_url": settings["base_url"] or None,
-            "max_retries": MODEL_MAX_RETRIES,
+            "max_retries": 0,  # chat owns retries so each attempt checks live readiness.
         }
         if settings["api"] in ("openai", "responses"):
             from openai import OpenAI
@@ -981,6 +1047,7 @@ class ReviewRun:
     lock: threading.Lock = field(default_factory=threading.Lock)
     # The PR's merge base, set when an incremental review checks candidates carried from the last examination.
     pr_base: str = ""
+    readiness: object = None
 
 
 def function_tool(name, description, properties, required):
@@ -1212,12 +1279,14 @@ class ResponseFailed(Exception):
         self.code = code or ""
 
 
-def watched(stream, started, timing, limit=MODEL_STREAM_LIMIT):
+def watched(stream, started, timing, limit=MODEL_STREAM_LIMIT, readiness=None):
     """Yield a stream's events, noting when the first arrived and stopping one that makes no progress. A stopped stream
     returns no usage, so the error carries what had streamed by then: thinking, text and tool-input characters."""
     seen = {"thinking": 0, "text": 0, "tool": 0}
     last = 0.0  # when the counts last grew; pings and block boundaries do not count
     for event in stream:
+        if readiness:
+            readiness()
         elapsed = time.monotonic() - started
         timing.setdefault("first_chunk", elapsed)
         if elapsed - last > limit:
@@ -1246,10 +1315,10 @@ def watched(stream, started, timing, limit=MODEL_STREAM_LIMIT):
         yield event
 
 
-def read_stream(stream, started, timing, limit=MODEL_STREAM_LIMIT):
+def read_stream(stream, started, timing, limit=MODEL_STREAM_LIMIT, readiness=None):
     """Assemble a streamed Chat Completions reply; return (message, usage)."""
     content, calls, usage, stop = [], {}, None, None
-    for chunk in watched(stream, started, timing, limit):
+    for chunk in watched(stream, started, timing, limit, readiness):
         usage = getattr(chunk, "usage", None) or usage
         for choice in chunk.choices or []:
             stop = getattr(choice, "finish_reason", None) or stop
@@ -1293,7 +1362,7 @@ def openai_reply(ctx, settings, messages, tools, tool_choice, read_timeout, star
     stream = None
     try:
         with ctx.clients[settings["slot"]].chat.completions.create(**request) as stream:
-            return read_stream(stream, started, timing, stream_limit)
+            return read_stream(stream, started, timing, stream_limit, getattr(ctx, "readiness", None))
     except (httpx2.TimeoutException, httpx2.TransportError, openai.APIConnectionError) as exc:
         # OpenAI wraps transport errors during iteration too; only an opened stream uses the stalled-call retry.
         if stream is None and isinstance(exc, openai.APIConnectionError):
@@ -1360,7 +1429,7 @@ def responses_reply(ctx, settings, messages, tools, tool_choice, read_timeout, s
     stream = None
     try:
         with ctx.clients[settings["slot"]].responses.create(**request) as stream:
-            for event in watched(stream, started, timing, stream_limit):
+            for event in watched(stream, started, timing, stream_limit, getattr(ctx, "readiness", None)):
                 if event.type in ("response.completed", "response.incomplete"):
                     response = event.response
                     # An incomplete response was cut short, by the output cap or a filter, as Claude's max_tokens stop.
@@ -1466,7 +1535,7 @@ def claude_reply(ctx, settings, messages, tools, tool_choice, read_timeout, star
         request["output_config"] = {"effort": settings["effort"]}
     try:
         with ctx.clients[settings["slot"]].messages.stream(**request) as stream:
-            for _ in watched(stream, started, timing, stream_limit):
+            for _ in watched(stream, started, timing, stream_limit, getattr(ctx, "readiness", None)):
                 pass
             reply = stream.get_final_message()
     except (httpx2.TimeoutException, httpx2.TransportError) as exc:
@@ -1548,13 +1617,15 @@ def chat(ctx, role, messages, tools, tool_choice, cache_key="", until=None, sett
             raise RuntimeError(f"the {role} role failed {MAX_ROLE_FAILURES} calls in a row, so it makes no more")
     first_call = not any(message.get("role") == "assistant" for message in messages)
     reply = {"anthropic": claude_reply, "responses": responses_reply}.get(settings["api"], openai_reply)
-    # The client retries a request that fails before its stream opens. This retries one that stalls after
+    # SDK retries are disabled: this loop checks readiness before every request, including a retry. It retries one that stalls after
     # it at once, at most MODEL_MAX_RETRIES times since each stall has already used a read timeout, and
     # waits out a transient gateway error, which can arrive mid-stream with a request to resend. A role whose calls
     # give up MAX_ROLE_FAILURES times in a row stops: a dead endpoint costs no more. Attempts are not counted, so a
     # rate-limit burst across parallel calls does not trip the breaker before any of them retries.
     stalls = 0
     for attempt in range(len(RETRY_DELAYS) + 1):
+        if readiness := getattr(ctx, "readiness", None):
+            readiness(fresh=True)
         started = time.monotonic()
         timing = {}
         if len(tools) == 1 and (settings.get("minutes") or until):
@@ -1570,6 +1641,8 @@ def chat(ctx, role, messages, tools, tool_choice, cache_key="", until=None, sett
         try:
             message, usage = reply(ctx, settings, messages, tools, tool_choice, read_timeout, started, timing, cache_key, stream_limit)
             break
+        except ReviewWithheld:
+            raise
         except Exception as exc:
             stalled = isinstance(exc, StreamStalled)
             stalls += stalled
@@ -3830,6 +3903,7 @@ def resolve_repaired_threads(pr_num, repaired, head_sha):
     repaired = [item for item in repaired if item.get("thread_id") and item.get("comment_id")]
     if not repaired:
         return
+    require_ready(pr_num)
     try:
         still_open = {thread["thread_id"] for thread in open_dottore_threads(pr_num)}
     except Exception as exc:
@@ -3845,6 +3919,8 @@ def resolve_repaired_threads(pr_num, repaired, head_sha):
         # Resolve first: a reply on a thread that stays open would be posted again by every later review.
         try:
             run_gh(["api", "graphql", "-f", f"query={RESOLVE_THREAD_MUTATION}", "-f", f"thread={item['thread_id']}"], check=True)
+        except ReviewWithheld:
+            raise
         except Exception as exc:
             print(f"::warning::Dottore could not resolve thread {item['thread_id']}: {error_text(exc)}", flush=True)
             continue
@@ -3855,6 +3931,8 @@ def resolve_repaired_threads(pr_num, repaired, head_sha):
                 input_text=json.dumps({"body": reply}),
                 check=True,
             )
+        except ReviewWithheld:
+            raise
         except Exception as exc:
             print(f"::warning::Dottore resolved thread {item['thread_id']} but could not reply: {error_text(exc)}", flush=True)
 
@@ -4140,6 +4218,13 @@ def missing_model_text(missing):
 
 def produce_review(args):
     pr_num = os.environ.get("PR_NUM", "")
+    readiness = ReviewReadiness(pr_num)
+    try:
+        readiness(fresh=True)
+    except ReviewWithheld as exc:
+        write_withheld_review(exc)
+        return
+    workflow_ready(True)
     missing = missing_model_setup()
     if not pr_num and missing:
         write_skipped_review("Review Skipped", missing_model_text(missing))
@@ -4235,6 +4320,7 @@ def produce_review(args):
             files=frozenset(files),
             deadline=stats["started_at"] + REVIEW_DEADLINE_SECONDS,
             cost_limit=cost_limit(),
+            readiness=readiness,
             chunks=chunks,
             pr_base=git_out(["merge-base", f"origin/{base_ref}", "HEAD"]) if leftover else "",
         )
@@ -4249,6 +4335,11 @@ def produce_review(args):
         )
         with ThreadPoolExecutor(max_workers=review_concurrency()) as pool:
             review_obj = agentic_review(ctx, effective_mode, pool, threads, leftover)
+        readiness(fresh=True)
+    except ReviewWithheld as exc:
+        write_withheld_review(exc)
+        print_telemetry(stats)
+        return
     except Exception as exc:
         write_skipped_review(
             "Review Failed",
@@ -4323,6 +4414,8 @@ def carried_title(review_obj):
 
 def render_review(args):
     review_obj = json.loads(pathlib.Path(args.review_json).read_text("utf-8"))
+    if review_obj.get("review_state") == "withheld":
+        raise ReviewWithheld(review_obj.get("detail", "Dottore review was withheld."))
     if review_obj.get("review_state") == "no_new_diff_reviewed" and carried_title(review_obj):
         head_sha = review_obj.get("head_sha") or os.environ.get("PR_HEAD_SHA", "")
         pathlib.Path("review.md").write_text(carry_walkthrough(review_obj["carried_walkthrough"], head_sha), "utf-8")
@@ -4491,6 +4584,9 @@ def filter_duplicate_inline_comments(pr_num, comments):
 
 def post_review(args):
     pr_num = os.environ["PR_NUM"]
+    require_ready(pr_num)
+    if load_review_for_status(args.review_json).get("review_state") == "withheld":
+        raise ReviewWithheld("Dottore review was withheld; no checkpoint is published.")
     body = pathlib.Path(args.review_md).read_text("utf-8")
     head_sha_match = STATE_MARKER_RE.search(walkthrough_header(body))
     head_sha = head_sha_match.group(1) if head_sha_match else os.environ.get(
@@ -4583,14 +4679,13 @@ def autofix_prompt(args):
     GITHUB_OUTPUT; a reason it cannot goes to the PR as a comment."""
     pr_num, repo = os.environ["PR_NUM"], os.environ["GITHUB_REPOSITORY"]
     asked = args.trigger == "asked"
+    require_ready(pr_num)
     if not asked:
         walkthrough = latest_walkthrough_comment(pr_num)
         if not walkthrough or not autofix_ticked(walkthrough.get("body")):
             return
-    fields = "isCrossRepository,maintainerCanModify,headRepository,headRepositoryOwner,headRefName,headRefOid,state"
-    pr = json.loads(run_gh(["pr", "view", pr_num, "--repo", repo, "--json", fields], check=True).stdout)
-    if pr.get("state") != "OPEN":
-        return
+    fields = "isCrossRepository,maintainerCanModify,headRepository,headRepositoryOwner,headRefName,headRefOid"
+    pr = require_ready(pr_num, fields)
     # The repair goes to the head branch's repository: this one, or a fork whose author allowed edits by maintainers.
     owner, name = (pr.get("headRepositoryOwner") or {}).get("login"), (pr.get("headRepository") or {}).get("name")
     head_repo = f"{owner}/{name}"
@@ -4706,9 +4801,7 @@ def approve(args):
     asked (/dottore approve) is told what is still missing."""
     pr_num, repo = os.environ["PR_NUM"], os.environ["GITHUB_REPOSITORY"]
     asked = args.trigger == "asked"
-    pr = json.loads(
-        run_gh(["pr", "view", pr_num, "--repo", repo, "--json", "state,isDraft,headRefOid,baseRefName"], check=True).stdout
-    )
+    pr = require_ready(pr_num, "headRefOid,baseRefName")
     head = pr["headRefOid"]
     reviews = load_json_list(run_gh(["api", f"repos/{repo}/pulls/{pr_num}/reviews?per_page=100", "--paginate"], check=True).stdout)
     approvals = [
@@ -4720,8 +4813,6 @@ def approve(args):
         if review.get("commit_id") != head:
             message = f"message=The specimen changed; `{short_ref(head)}` needs its own examination."
             run_gh(["api", "-X", "PUT", f"repos/{repo}/pulls/{pr_num}/reviews/{review['id']}/dismissals", "-f", message, "-f", "event=DISMISS"], check=True)
-    if pr.get("state") != "OPEN" or pr.get("isDraft"):
-        return
     if any(review.get("commit_id") == head for review in approvals):
         if asked:
             run_gh(["pr", "comment", pr_num, "--repo", repo, "--body", f"🎭 Dottore already discharged `{short_ref(head)}`."], check=True)
@@ -4745,7 +4836,7 @@ def approve(args):
     if missing:
         print("Not approved: " + "; ".join(missing))
         if asked:
-            note = "🎭 Dottore cannot discharge this specimen yet: " + "; ".join(missing) + "."
+            note = "🎭 Dottore’s approval is waiting: " + "; ".join(missing) + ". Examination runs independently of these checks."
             run_gh(["pr", "comment", pr_num, "--repo", repo, "--body", note], check=True)
         return
     approval = (
@@ -4845,6 +4936,7 @@ def main():
     autofix.add_argument("--review-json", default="review.json")
     approve_cmd = sub.add_parser("approve")
     approve_cmd.add_argument("--trigger", choices=["auto", "asked"], default="auto")
+    sub.add_parser("ready")
     status = sub.add_parser("status-state")
     status.add_argument("--review-json", default="review.json")
     status.add_argument("--job-status", default="success")
@@ -4856,6 +4948,14 @@ def main():
         render_review(args)
     elif args.command == "post":
         post_review(args)
+    elif args.command == "ready":
+        try:
+            require_ready(os.environ.get("PR_NUM", ""))
+        except ReviewWithheld as exc:
+            print(str(exc), file=sys.stderr)
+            print("ready=false")
+        else:
+            print("ready=true")
     elif args.command == "status-state":
         status_state(args)
     elif args.command == "autofix-prompt":
@@ -4868,4 +4968,8 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except ReviewWithheld as exc:
+        workflow_ready(False)
+        print(str(exc), file=sys.stderr)

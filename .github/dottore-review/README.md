@@ -26,7 +26,27 @@ itself (`job.workflow_sha`), reads `rules.json` from the base branch, and fetche
 
 ## Asking for a review
 
-Only open pull requests marked **Ready for review** are reviewable. Drafts are withheld for automatic, manual and direct workflow requests. Live readiness is checked again before model work and publication; marking a draft Ready uses the existing automatic review trigger.
+Only open pull requests marked **Ready for review** are reviewable. Automatic, manual and direct workflow requests
+all read live readiness before model work and publication. Closed, merged, draft or unverifiable PRs are withheld
+without publishing a review checkpoint. Marking a draft Ready uses the existing automatic review trigger; the last
+published checkpoint still selects an incremental review when the PR has one.
+
+Examination does **not** wait for CI. Only approval waits for the required checks, a completed viable review and
+resolved threads. An ordinary review request does not post an approval-waiting notice; `/dottore approve` explicitly
+asks for that approval check.
+
+Each model attempt, including a retry, checks readiness. SDK retries are disabled so the existing outer retry loop
+owns every request. During a response, the existing stream watchdog shares a readiness check at most once per
+15 seconds **when events arrive**, and closes the stream when it observes a draft, closed PR or unavailable evidence.
+This is not an independent cancellation poll: an already-started silent request can wait for its existing network
+read timeout (180/360 seconds, or the role/remaining-deadline allowance for submit-only calls). Thinking timeouts are
+unchanged, and a request already sent cannot be undone. Publication and each GitHub mutation check readiness again.
+Repairs also check before exposing the model key and before publishing a patch; an already-running Claude Code
+repair may make further turns and finish locally, but its patch is not pushed while the PR is draft.
+
+The shared runtime takes effect for a base branch when that branch uses the updated reviewer; Marinara-Agents must
+also update its immutable Engine workflow pin. Default-branch dispatchers and reviews into `main` take their code
+from `main`, so staging changes do not activate those copies before a normal release.
 
 Reviews start on request. A repository owner, organisation member or collaborator comments on the pull request:
 

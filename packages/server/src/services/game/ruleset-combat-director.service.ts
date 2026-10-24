@@ -3792,6 +3792,25 @@ function weighCaught(
       const walks = rulesetInCells(one.speed, perCell);
       return there <= walks && there + rulesetGapFrom(at, 1, to) <= apart;
     };
+    // One that shoots or casts at its nearest opponent from where it stands walks nowhere (AI pass
+    // 2026-10-24: oil and caltrops laid round two mages eleven squares off).
+    const shoots = (one: RulesetCombatant) => {
+      const to = standing.reduce<RulesetCombatant | undefined>(
+        (best, friend) => (!best || rulesetGap(one, friend) < rulesetGap(one, best) ? friend : best),
+        undefined,
+      );
+      return (
+        !!to &&
+        one.actions.some(
+          (blow) =>
+            !!blow.damage &&
+            !!blow.range &&
+            !blow.reach &&
+            blow.range.normal >= rulesetGap(one, to) &&
+            rulesetActionAvailable(one, blow, encounter, definition),
+        )
+      );
+    };
     walkers = encounter.combatants.filter(
       (one) =>
         one.side !== actor.side &&
@@ -3800,6 +3819,7 @@ function weighCaught(
         rulesetCombatStanding(one) &&
         !caught.includes(one) &&
         !!rulesetPositionOf(one) &&
+        !shoots(one) &&
         (rulesetGapFrom(at, 1, one) <= reach || onTheirWay(one)),
     );
     // Its own side walks the same ground: a friend nearer it than any of those walkers, on its way to
@@ -4093,10 +4113,20 @@ function repositionCell(
     .map((action) => action.reach!);
   let best: { x: number; y: number } | null = null;
   let worth = 0;
-  if (nearest(here) <= 1 && health.max > 0 && health.value * 2 <= health.max) {
-    // Fleeing: the cell farthest from every enemy, and only if it gets clear of them.
-    for (const cell of cells) if (!best || nearest(cell) > nearest(best)) best = cell;
-    if (best && nearest(best) > 1) worth = 0.6;
+  // How far outside the reach of whoever reaches furthest toward it a cell is: 0 or less is in it. A
+  // dragon's bite reaches two squares (AI pass 2026-10-24: a Misty Step that landed two squares from
+  // a young dragon, in its reach, and the walk on was bitten).
+  const clearOf = (at: { x: number; y: number }) =>
+    Math.min(
+      ...foes.map((foe) => rulesetGapFrom(at, span, foe) - Math.max(1, rulesetOpportunityAttack(foe)?.reach ?? 1)),
+    );
+  if (clearOf(here) <= 0 && health.max > 0 && health.value * 2 <= health.max) {
+    // Fleeing: the cell clearest of every enemy's reach, then farthest from them, and only if it gets
+    // clear of them all.
+    for (const cell of cells)
+      if (!best || clearOf(cell) > clearOf(best) || (clearOf(cell) === clearOf(best) && nearest(cell) > nearest(best)))
+        best = cell;
+    if (best && clearOf(best) > 0) worth = 0.6;
   } else if (reaches.length > 0 && nearest(here) > Math.max(...reaches)) {
     // Closing: the cell nearest an enemy that puts one in reach.
     const reach = Math.max(...reaches);

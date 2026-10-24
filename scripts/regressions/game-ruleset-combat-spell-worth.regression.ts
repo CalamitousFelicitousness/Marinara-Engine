@@ -578,6 +578,21 @@ try {
     // Somewhere the pack will cross before it reaches the rogue, never under a wolf already there.
     assert.ok((charging?.choice.at?.x ?? 99) <= 5, `in its way: ${JSON.stringify(charging?.choice.at)}`);
     assert.notEqual(laid([{ x: 3, y: 4 }])?.option.id, "caltrops", "not once the pack is at grips");
+    // Nor before foes that shoot from where they stand: they never walk in (AI pass 2026-10-24: oil and
+    // caltrops laid before two mages eleven squares off).
+    const shooters = (() => {
+      const bolt = { ...flick, id: "bolt", name: "Bolt", range: { normal: 120 } };
+      const { encounter, state } = fight({
+        rogue: { side: "enemy", block: block([flick]), at: { x: 2, y: 4 } },
+        friend: { side: "enemy", block: block([poke]), at: { x: 2, y: 5 } },
+        mage0: { side: "party", block: block([poke, bolt], { speed: 40 }), at: { x: 9, y: 4 } },
+        mage1: { side: "party", block: block([poke, bolt], { speed: 40 }), at: { x: 10, y: 3 } },
+        mage2: { side: "party", block: block([poke, bolt], { speed: 40 }), at: { x: 10, y: 5 } },
+      });
+      rulesetCombatant(encounter, "rogue")!.actions.push(caltrops as never);
+      return pickRulesetChoice(definition, state, encounter, "rogue");
+    })();
+    assert.notEqual(shooters?.option.id, "caltrops", `not before shooters: ${JSON.stringify(shooters?.choice)}`);
     // Never on the ground its own side walks first, out toward slower foes (re-test 2026-10-23: the
     // party stepped on its own caltrops four squares ahead of it).
     const slow = (() => {

@@ -1027,6 +1027,38 @@ try {
       );
       assert.notEqual(shot?.mode, "disadvantage", "and not at disadvantage");
     }
+    // Hurt, it steps out of the reach of a glaive that reaches two squares, not just off the cell
+    // beside it (AI pass 2026-10-24: a Misty Step two squares from a young dragon, in its bite).
+    {
+      const misty = { id: "misty", name: "Misty Step", budget: "bonus", teleport: { distance: 10 } };
+      const glaive = { ...claw, id: "glaive", name: "Glaive", reach: 10 };
+      const { encounter, state } = wide(
+        { archer: { x: 5, y: 3 }, knight: { x: 5, y: 2 }, orc: { x: 5, y: 6 } },
+        {
+          archer: { side: "enemy", block: block({ type: "humanoid", mind: "cunning", actions: [claw, misty] }) },
+          knight: { side: "party", block: block({ health: 80, actions: [glaive] }) },
+          orc: { side: "party", block: block({ health: 80, actions: [claw] }) },
+        },
+        { archer: { ...master, temperament: "disciplined" } },
+      );
+      const archer = rulesetCombatant(encounter, "archer")!;
+      archer.health = { ...archer.health!, value: 6 };
+      state.rulesetFight = {
+        encounter,
+        events: [],
+        eventSeq: 0,
+        controllers: { knight: "manual", orc: "manual" },
+        bosses: [],
+      } as never;
+      assert.ok(commandRulesetCombatDirector(definition, state, { type: "continue" }).ok);
+      const turn = state.rulesetFight!.events.map((entry) => entry.event);
+      const went = turn.find((event) => event.type === "teleported") as { to: { x: number; y: number } } | undefined;
+      assert.ok(went, `it gets away: ${JSON.stringify(turn)}`);
+      assert.ok(
+        Math.max(Math.abs(went!.to.x - 5), Math.abs(went!.to.y - 2)) > 2,
+        `out of the glaive's reach: ${JSON.stringify(went)}`,
+      );
+    }
     // Nearly dead, and every cell it could step to lies in the knight's aura: it does not teleport into
     // it to die there (playtest: a mage at 4 health that Misty Stepped into Spirit Guardians).
     for (const health of [4, 60]) {

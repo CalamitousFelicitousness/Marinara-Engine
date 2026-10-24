@@ -26,6 +26,8 @@ itself (`job.workflow_sha`), reads `rules.json` from the base branch, and fetche
 
 ## Asking for a review
 
+Only open pull requests marked **Ready for review** are reviewable. Drafts are withheld for automatic, manual and direct workflow requests. Live readiness is checked again before model work and publication; marking a draft Ready uses the existing automatic review trigger.
+
 Reviews start on request. A repository owner, organisation member or collaborator comments on the pull request:
 
 | Comment | What happens |

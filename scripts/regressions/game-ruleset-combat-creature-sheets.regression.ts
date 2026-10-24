@@ -1385,6 +1385,11 @@ const spellbook = parsedOrThrow(
   assert.ok(!spellsOf(named).includes("Mending Touch"));
   // A spell it names is one it has ready, without being told so.
   assert.equal(rowsOf(named).find((row) => row.name === "Spark Lash")?.prepared, true);
+  // A class the ruleset has never heard of holds it to nothing: what it names, it keeps (laptop
+  // playtest 2026-10-24: an "Orc War-Shaman" lost every spell it was written with).
+  const invented = fightOf(sorcerer({ class: "Orc War-Shaman" }, [{ name: "Mending Touch" }, { name: "Spark Lash" }]));
+  assert.ok(spellsOf(invented).includes("Mending Touch") && spellsOf(invented).includes("Spark Lash"));
+  assert.doesNotMatch(invented.adjustments.join("\n"), /not open to a sheet/);
   // A caster that names no class has nothing open to it in a list organised by class.
   const classless = fightOf(sorcerer({ class: "" }, [{ name: "Spark Lash" }]));
   assert.match(

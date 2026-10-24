@@ -659,6 +659,19 @@ export function GameSetupWizard({
   const [partyCharacterIds, setPartyCharacterIds] = useState<string[]>(() =>
     Array.from(new Set(initialPartyCharacterIds.filter((id) => characters.some((character) => character.id === id)))),
   );
+  // Somebody added to the chat while the wizard is open (from Characters) joins the party it starts
+  // with (laptop re-test 2026-10-24: a member added mid-setup was left out of the game).
+  const seenPartyIds = useRef(new Set(partyCharacterIds));
+  const offeredPartyIds = initialPartyCharacterIds.join("\n");
+  useEffect(() => {
+    const added = initialPartyCharacterIds.filter(
+      (id) => !seenPartyIds.current.has(id) && characters.some((character) => character.id === id),
+    );
+    if (added.length === 0) return;
+    for (const id of added) seenPartyIds.current.add(id);
+    setPartyCharacterIds((ids) => Array.from(new Set([...ids, ...added])));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed by the ids, not the array's identity
+  }, [offeredPartyIds, characters]);
   // Goals and preferences start as the last game's; a note says so while the text is unchanged.
   const [rememberedSetupText] = useState(() => ({
     playerGoals: useUIStore.getState().rememberedGameSetupText?.playerGoals ?? "",

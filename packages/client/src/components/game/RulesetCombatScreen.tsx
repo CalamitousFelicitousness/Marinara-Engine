@@ -209,8 +209,9 @@ export function RulesetCombatScreen({
           type="button"
           disabled={busy}
           onClick={() => {
-            // On a phone the thumb that ends a turn is right beside it, so leaving asks twice.
-            if (narrow && !leaving) {
+            // Leaving ends the fight for everybody and sits right beside End turn, so it asks twice
+            // (laptop playtest 2026-10-24).
+            if (!leaving) {
               setLeaving(true);
               return;
             }
@@ -218,7 +219,9 @@ export function RulesetCombatScreen({
           }}
           className="min-h-9 rounded-lg border border-[var(--border)] px-3 text-xs text-[var(--muted-foreground)] hover:bg-[var(--foreground)]/[0.05] hover:text-[var(--foreground)] focus-visible:outline-2 focus-visible:outline-[var(--primary)] disabled:opacity-50"
         >
-          {leaving ? t("game.combat.ruleset.screen.leaveConfirm") : t("game.combat.ruleset.menu.flee")}
+          {leaving
+            ? t(narrow ? "game.combat.ruleset.screen.leaveConfirm" : "game.combat.ruleset.menu.fleeConfirm")
+            : t("game.combat.ruleset.menu.flee")}
         </button>
       </div>
       {!window && view.canYield && onYield && (

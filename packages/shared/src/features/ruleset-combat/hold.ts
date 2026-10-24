@@ -305,19 +305,33 @@ function entryOpenTo(
   catalogId: string,
   entry: RulesetCatalogEntry,
   sheet: RulesetSheetBuild,
+  /** The whole catalog, when a value it never names opens all of it: a sheet's own invention (an
+   *  "Orc War-Shaman") is no class of the ruleset's to hold its spells to. */
+  everything?: readonly RulesetCatalogEntry[],
 ): boolean {
+  const valuesOf = (one: RulesetCatalogEntry, filterId: string) => {
+    const value = one.filters?.[filterId];
+    return (Array.isArray(value) ? value : value === undefined ? [] : [value]).map((candidate) =>
+      String(candidate).trim().toLowerCase(),
+    );
+  };
   return boundFilters(definition, catalogId).every(({ filter, field }) => {
     const texts = sheetFieldMatchTexts(field, sheet.fields[field.id]).map((text) => text.trim().toLowerCase());
-    const value = entry.filters?.[filter.id];
-    const values = Array.isArray(value) ? value : value === undefined ? [] : [value];
-    return values.some((candidate) => texts.includes(String(candidate).trim().toLowerCase()));
+    if (valuesOf(entry, filter.id).some((candidate) => texts.includes(candidate))) return true;
+    return (
+      !!everything &&
+      texts.length > 0 &&
+      !everything.some((one) => valuesOf(one, filter.id).some((candidate) => texts.includes(candidate)))
+    );
   });
 }
 
 /**
  * Only the entries the ruleset opens to this sheet: a row out of a catalog whose filters are bound
  * to a sheet field (5e's spells by class) is kept only when the sheet's own value opens it. Rows not
- * out of such a catalog are untouched. What went is said, and why.
+ * out of such a catalog are untouched, and so is every row of one whose value the catalog never
+ * names (laptop playtest 2026-10-24: an invented "Orc War-Shaman" lost Bane, Cure Wounds and Guiding
+ * Bolt). What went is said, and why.
  */
 export function restrictRulesetSheetEntries(
   definition: RulesetDefinition,
@@ -332,7 +346,7 @@ export function restrictRulesetSheetEntries(
       if (typeof mark !== "string") return true;
       const catalogId = mark.slice(0, mark.indexOf("/"));
       const entry = catalogs[catalogId]?.find((candidate) => candidate.id === mark.slice(mark.indexOf("/") + 1));
-      if (!entry || entryOpenTo(definition, catalogId, entry, sheet)) return true;
+      if (!entry || entryOpenTo(definition, catalogId, entry, sheet, catalogs[catalogId])) return true;
       const reason = boundFilters(definition, catalogId)
         .map(({ field }) => {
           const value = sheet.fields[field.id] ?? field.default;

@@ -416,6 +416,19 @@ export interface RulesetFightSeed {
 
 export type RulesetFightSeedResult = { ok: true; fight: RulesetFightState } | { ok: false; error: string };
 
+/** The walk most of a bestiary's creatures have, or none when no creature in it says a speed. */
+function rulesetUsualBestiarySpeed(bestiary: RulesetCatalogEntriesById): number | undefined {
+  const counts = new Map<number, number>();
+  for (const entries of Object.values(bestiary))
+    for (const entry of entries) {
+      const speed = entry.creature?.speed;
+      if (typeof speed === "number" && speed > 0) counts.set(speed, (counts.get(speed) ?? 0) + 1);
+    }
+  let best: { speed: number; count: number } | undefined;
+  for (const [speed, count] of counts) if (!best || count > best.count) best = { speed, count };
+  return best?.speed;
+}
+
 /**
  * A fight, ready for its first turn, or a plain sentence saying why it could not be built.
  *
@@ -489,6 +502,12 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
     return { ok: false, error: "Nobody in this party has a ruleset sheet, so this fight cannot read their numbers." };
   }
 
+  // An opponent built off the threat scale, or proposed without one, gets the walk most of the
+  // bestiary has: with none it could never leave its cell, and readied all fight (laptop playtest
+  // 2026-10-24: tier-built ogres and orcs, eleven squares off on a large board).
+  const usualSpeed = rulesetUsualBestiarySpeed(input.bestiary);
+  const withUsualSpeed = <T extends RulesetStatBlock>(block: T): T =>
+    block.speed !== undefined || block.speeds || usualSpeed === undefined ? block : { ...block, speed: usualSpeed };
   for (const opponent of input.enemies) {
     // By the reference the Game Master named, then by the opponent's own name, and no further: a
     // fight built on a near miss is worse than one the Engine says it could not build.
@@ -597,14 +616,14 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
       if (block) {
         const clamped = clampRulesetStatBlock(definition, block, opponent.tier ?? proposed.data.tier);
         for (const line of clamped.adjusted) adjustments.push(`${opponent.name}: ${line}`);
-        combatants.push({ id: opponent.id, name: opponent.name, side: "enemy", block: clamped.block });
+        combatants.push({ id: opponent.id, name: opponent.name, side: "enemy", block: withUsualSpeed(clamped.block) });
         continue;
       }
     }
     if (proposed && !proposed.success) {
       adjustments.push(`The proposed stat block for ${opponent.name} could not be read, so its tier was used.`);
     }
-    const built = rulesetTierStatBlock(definition, opponent.tier, opponent.name);
+    const built = rulesetTierStatBlock(definition, opponent.tier);
     if (!built) {
       return {
         ok: false,
@@ -615,7 +634,7 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
       adjustments.push(`The tier "${opponent.tier}" is not on this ruleset's scale, so ${built.tier.label} was used.`);
     }
     adjustments.push(`${opponent.name} was built from the numbers of ${built.tier.label}.`);
-    combatants.push({ id: opponent.id, name: opponent.name, side: "enemy", block: built.block });
+    combatants.push({ id: opponent.id, name: opponent.name, side: "enemy", block: withUsualSpeed(built.block) });
   }
 
   // What each opponent has on it as it begins (1.784): what the Game Master gave it, else what its
@@ -730,6 +749,10 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
   for (const opponent of input.enemies) {
     const one = opponent.leader ? encounter.combatants.find((combatant) => combatant.id === opponent.id) : undefined;
     if (one) one.leader = true;
+    // A boss is not shaken by its own side's losses (laptop playtest 2026-10-24: a war-chief at 110
+    // of 121 surrendered once half its warband was down); being hurt still tells on it.
+    const boss = opponent.boss ? encounter.combatants.find((combatant) => combatant.id === opponent.id) : undefined;
+    if (boss) boss.steadfast = true;
   }
   const fight: RulesetFightState = {
     encounter,
@@ -3558,6 +3581,9 @@ function rulesetCandidatesFrom(
         // 2026-10-23: potions drunk at 26 of 38): above that it is worth a fifth, taken only when
         // nothing better is on offer.
         const limited = price > 0 || !!fallingAction?.uses || !!fallingAction?.itemUse;
+        // Barely scratched it is not given at all, even with nothing else to do (laptop playtest
+        // 2026-10-24: a potion drunk at 34 of 44).
+        if (limited && !target.down && health.value > health.max * 0.75) continue;
         if (limited && !target.down && health.value > health.max / 2) candidate.healing *= 0.2;
       } else if (average > 0) {
         // Never its own side, and never somebody who is already down: the rules let a blow land on
@@ -6963,6 +6989,19 @@ function answerRulesetWindows(
         ? pickRulesetRanked(definition, state, fight.encounter, asking, menu)
         : null;
     const picked = ranked?.candidate.action;
+    // A hit no answer on the menu could turn (a Parry's +3 against a hit beating the defense by ten)
+    // is let go without a word: there was nothing to weigh (cloud AI fights 2026-10-24).
+    const trigger = window.trigger;
+    const unturnable =
+      trigger.kind === "hit" &&
+      !looking &&
+      (!picked?.choice || picked.choice.optionId === RULESET_PASS_OPTION) &&
+      menu
+        .filter((option) => option.id !== RULESET_PASS_OPTION)
+        .every((option) => {
+          const answer = heldHitAnswer(definition, fight.encounter, asking, option, trigger.targetIds ?? [], trigger);
+          return answer?.to !== undefined && !answer.misses;
+        });
     const choice: RulesetCombatChoice = looking
       ? { actorId: asking, optionId: looking.id, targetIds: [], window: window.id }
       : picked?.choice
@@ -6987,7 +7026,8 @@ function answerRulesetWindows(
     } else if (ranked && choice.optionId === RULESET_PASS_OPTION) {
       // Weighed and let go: said, so a pass reads as a choice rather than the menu going unread. A
       // moment with nothing to answer it with but letting it go says nothing.
-      if (menu.some((option) => option.id !== RULESET_PASS_OPTION)) recordReasons(fight, asking, [{ why: "letGo" }]);
+      if (!unturnable && menu.some((option) => option.id !== RULESET_PASS_OPTION))
+        recordReasons(fight, asking, [{ why: "letGo" }]);
     } else if (ranked) {
       callOutSetUps(definition, fight, asking);
       recordReasons(
@@ -7382,13 +7422,22 @@ function playRulesetTurn(
   if (silent && territory) record(fight, [{ type: "holdsGround", actorId }]);
   else if (silent && rulesetCombatStanding(rulesetCombatant(fight.encounter, actorId)!))
     recordReasons(fight, actorId, [
-      tried.size > 0
-        ? { why: "noWay" }
-        : stays
-          ? { why: "holding" }
-          : ordered && rulesetClosingMove(definition, fight.encounter, actorId)
-            ? { why: "guarding", targetId: ordered.charge.id }
-            : { why: "nothingWorth" },
+      // Held helpless (paralysed, stunned): not a choice it made (cloud AI fights 2026-10-24).
+      definition.combat &&
+      rulesetCombatEffects(
+        definition,
+        definition.combat,
+        rulesetCombatant(fight.encounter, actorId)!,
+        fight.encounter,
+      ).has("cannot-act")
+        ? { why: "cannotAct" }
+        : tried.size > 0
+          ? { why: "noWay" }
+          : stays
+            ? { why: "holding" }
+            : ordered && rulesetClosingMove(definition, fight.encounter, actorId)
+              ? { why: "guarding", targetId: ordered.charge.id }
+              : { why: "nothingWorth" },
     ]);
   advanceTurn(definition, state, fight);
 }

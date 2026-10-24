@@ -341,6 +341,7 @@ export type DirectedRulesetReason =
   | {
       why:
         | "nothingWorth"
+        | "cannotAct"
         | "noWay"
         | "holding"
         | "leavesHarm"

@@ -445,7 +445,6 @@ export function rulesetStatBlockFromCreature(
 export function rulesetTierStatBlock(
   definition: RulesetDefinition,
   tierId: string | undefined,
-  name: string,
 ): { block: RulesetStatBlock; tier: RulesetCombatThreatTier } | null {
   const combat = definition.combat;
   const tiers = combat?.threat?.tiers ?? [];
@@ -464,7 +463,8 @@ export function rulesetTierStatBlock(
       actions: [
         {
           id: "strike",
-          name: `${name}: attack`,
+          // Its own name is on the log beside it already: "Orc Raider 2 readies Orc Raider 2: attack".
+          name: "Attack",
           budget: combat.economy.budgets[0]!.id,
           toHit: tier.toHit,
           damage: { count: 0, sides: 0, flat: Math.max(1, middle(tier.damagePerRound)) },

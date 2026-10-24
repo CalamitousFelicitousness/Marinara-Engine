@@ -420,6 +420,11 @@ const emberParty = [
     1,
     "a tier gives one attack and nothing else",
   );
+  // Its one attack is named for what it is, not for whom (laptop playtest 2026-10-24: "Orc Raider 2
+  // readies Orc Raider 2: attack"), and it walks as most of the bestiary does: with no speed a
+  // tier-built ogre never left its cell and readied all fight.
+  assert.equal(thing.actions.find((action) => action.kind !== "contest")?.label, "Attack");
+  assert.ok(thing.speed > 0, "the walk most of the bestiary has");
   assert.ok(
     tiered.rulesetFight!.adjustments.some((line) => line.includes("was built from the numbers of")),
     "an opponent nobody wrote says where its numbers came from",

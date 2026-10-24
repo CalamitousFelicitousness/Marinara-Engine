@@ -18988,6 +18988,8 @@ function moraleTurn(ctx: RulesetCombatContext, actor: RulesetCombatant): boolean
     if (actor.moraleChecked?.includes(trigger) || !happened(trigger)) continue;
     // A disciplined one is not shaken by the first of its side to fall (combat AI T1).
     if (trigger === "first-fall" && temperament === "disciplined") continue;
+    // Nor is a steadfast one by any of its side's losses.
+    if (actor.steadfast && (trigger === "first-fall" || trigger === "half-down" || trigger === "leader-down")) continue;
     actor.moraleChecked = [...(actor.moraleChecked ?? []), trigger];
     const check = morale.check;
     // Said before the roll, so the save that follows has a reason (re-test 14).

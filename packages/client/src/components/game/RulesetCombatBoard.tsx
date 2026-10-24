@@ -250,11 +250,50 @@ export function RulesetCombatBoard({
     up: [],
     down: [],
   });
+  // The part of the room that is actually on screen, where the marks sit (laptop playtest 2026-10-24:
+  // a "▶19" stood at the middle of the whole room, 311px above the window, when the room ran past
+  // what its column and the window show). Measured against the box the marks are laid out in.
+  const stage = useRef<HTMLDivElement>(null);
+  const [seen, setSeen] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
   useEffect(() => {
     const box = room.current;
     if (!scrolls || !box) return;
     const measure = () => {
-      const frame = box.getBoundingClientRect();
+      const whole = box.getBoundingClientRect();
+      let left = whole.left;
+      let top = whole.top;
+      let right = whole.right;
+      let bottom = whole.bottom;
+      // Every box above that clips (the board's column, the chat area), then the window itself.
+      for (let up = box.parentElement; up; up = up.parentElement) {
+        const style = window.getComputedStyle(up);
+        if (style.overflowX === "visible" && style.overflowY === "visible") continue;
+        const clip = up.getBoundingClientRect();
+        if (style.overflowX !== "visible") {
+          left = Math.max(left, clip.left);
+          right = Math.min(right, clip.right);
+        }
+        if (style.overflowY !== "visible") {
+          top = Math.max(top, clip.top);
+          bottom = Math.min(bottom, clip.bottom);
+        }
+      }
+      left = Math.max(left, 0);
+      top = Math.max(top, 0);
+      right = Math.min(right, window.innerWidth);
+      bottom = Math.min(bottom, window.innerHeight);
+      const origin = stage.current?.getBoundingClientRect();
+      const nextSeen =
+        origin && right > left && bottom > top
+          ? {
+              left: Math.round(left - origin.left),
+              top: Math.round(top - origin.top),
+              width: Math.round(right - left),
+              height: Math.round(bottom - top),
+            }
+          : null;
+      setSeen((before) => (JSON.stringify(before) === JSON.stringify(nextSeen) ? before : nextSeen));
+      const frame = { left, top, right, bottom };
       const next: Record<"left" | "right" | "up" | "down", Array<{ x: number; y: number }>> = {
         left: [],
         right: [],
@@ -280,11 +319,16 @@ export function RulesetCombatBoard({
       setAway((before) => (JSON.stringify(before) === JSON.stringify(next) ? before : next));
     };
     measure();
-    box.addEventListener("scroll", measure, { passive: true });
+    // Any scroll counts, the room's own or a box's above it; and the room changes size without the
+    // window doing so when the log or the combat pane is put away.
+    document.addEventListener("scroll", measure, { capture: true, passive: true });
     window.addEventListener("resize", measure);
+    const sized = new ResizeObserver(measure);
+    sized.observe(box);
     return () => {
-      box.removeEventListener("scroll", measure);
+      document.removeEventListener("scroll", measure, { capture: true });
       window.removeEventListener("resize", measure);
+      sized.disconnect();
     };
   }, [scrolls, foes]);
   const bring = (cell: { x: number; y: number }) => {
@@ -551,7 +595,7 @@ export function RulesetCombatBoard({
       <style>{TACTICAL_BOARD_KEYFRAMES}</style>
       {/* The board keeps a floor of its own height, and takes whatever the log and the pane leave. */}
       {/* The room and the marks on its edges, which stay where they are while it scrolls. */}
-      <div className="relative flex min-h-0 flex-1 flex-col">
+      <div ref={stage} className="relative flex min-h-0 flex-1 flex-col">
         <div
           ref={room}
           className={cn(
@@ -1091,28 +1135,31 @@ export function RulesetCombatBoard({
             })}
           </div>
         </div>
-        {scrolls &&
-          (["left", "right", "up", "down"] as const).map((edge) =>
-            away[edge].length > 0 ? (
-              <button
-                key={edge}
-                type="button"
-                aria-label={t("game.combat.ruleset.board.foesAway", { count: away[edge].length })}
-                title={t("game.combat.ruleset.board.foesAway", { count: away[edge].length })}
-                onClick={() => bring(away[edge][0]!)}
-                className={cn(
-                  "absolute z-20 inline-flex min-h-8 min-w-8 items-center justify-center gap-1 rounded-full border border-rose-300/70 bg-black/75 px-2 text-xs font-bold text-rose-100 shadow focus-visible:outline-2 focus-visible:outline-white",
-                  edge === "left" && "left-1 top-1/2 -translate-y-1/2",
-                  edge === "right" && "right-1 top-1/2 -translate-y-1/2",
-                  edge === "up" && "left-1/2 top-1 -translate-x-1/2",
-                  edge === "down" && "bottom-1 left-1/2 -translate-x-1/2",
-                )}
-              >
-                <span aria-hidden="true">{{ left: "◀", right: "▶", up: "▲", down: "▼" }[edge]}</span>
-                {away[edge].length}
-              </button>
-            ) : null,
-          )}
+        {scrolls && seen && (
+          <div className="pointer-events-none absolute z-20" style={seen}>
+            {(["left", "right", "up", "down"] as const).map((edge) =>
+              away[edge].length > 0 ? (
+                <button
+                  key={edge}
+                  type="button"
+                  aria-label={t("game.combat.ruleset.board.foesAway", { count: away[edge].length })}
+                  title={t("game.combat.ruleset.board.foesAway", { count: away[edge].length })}
+                  onClick={() => bring(away[edge][0]!)}
+                  className={cn(
+                    "pointer-events-auto absolute inline-flex min-h-8 min-w-8 items-center justify-center gap-1 rounded-full border border-rose-300/70 bg-black/75 px-2 text-xs font-bold text-rose-100 shadow focus-visible:outline-2 focus-visible:outline-white",
+                    edge === "left" && "left-1 top-1/2 -translate-y-1/2",
+                    edge === "right" && "right-1 top-1/2 -translate-y-1/2",
+                    edge === "up" && "left-1/2 top-1 -translate-x-1/2",
+                    edge === "down" && "bottom-1 left-1/2 -translate-x-1/2",
+                  )}
+                >
+                  <span aria-hidden="true">{{ left: "◀", right: "▶", up: "▲", down: "▼" }[edge]}</span>
+                  {away[edge].length}
+                </button>
+              ) : null,
+            )}
+          </div>
+        )}
       </div>
 
       {/* One line, right under the board: what the square under the pointer or the keyboard is, or

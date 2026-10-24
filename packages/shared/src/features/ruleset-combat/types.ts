@@ -2129,6 +2129,8 @@ export interface RulesetCombatant {
   /** Its side follows it by the story (combat AI E2), whatever its stat block says: its fall is a
    *  leader's, for `leader-down` morale checks. */
   leader?: true;
+  /** Not shaken by its own side's losses (a boss): only morale triggers about itself are checked. */
+  steadfast?: true;
   /** The bestiary entry an opponent was made from, when it was made from one: what its art is found by
    *  (design-game-creature-art.md). Never read by the fight's rules. Out of a borrowed catalog (1.220),
    *  `from` names the lender's ruleset and catalog. */

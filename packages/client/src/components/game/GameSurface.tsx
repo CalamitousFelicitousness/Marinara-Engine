@@ -12383,6 +12383,39 @@ function GameSurfaceComponent({
     }, 4000);
     return () => window.clearInterval(timer);
   }, [activeChatId, queryClient, sessionStatus, waitingOnOtherSetup]);
+  // A tab that only sits on the wizard reads the game again now and then, and whenever it is looked
+  // at again, so a setup another tab finished takes it to that game too (laptop re-test 2026-10-24:
+  // a second tab left on the wizard never noticed).
+  const unmade = needsCreation || sessionStatus === "setup";
+  const onSetupWizard = isSetupActive || (!setupWizardDismissed && unmade);
+  const setupBusy = createGame.isPending || gameSetup.isPending;
+  const sawUnmade = useRef(false);
+  useEffect(() => {
+    if (!onSetupWizard || setupBusy) {
+      sawUnmade.current = false;
+      return;
+    }
+    if (unmade) sawUnmade.current = true;
+    else if (sawUnmade.current) {
+      // Made elsewhere while this tab looked on: its wizard closes for the game.
+      sawUnmade.current = false;
+      useGameModeStore.getState().setSetupActive(false);
+      return;
+    }
+    if (waitingOnOtherSetup) return;
+    const reread = () => {
+      if (document.visibilityState === "visible")
+        void queryClient.invalidateQueries({ queryKey: chatKeys.detail(activeChatId) });
+    };
+    const timer = window.setInterval(reread, 5000);
+    window.addEventListener("focus", reread);
+    document.addEventListener("visibilitychange", reread);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", reread);
+      document.removeEventListener("visibilitychange", reread);
+    };
+  }, [activeChatId, onSetupWizard, queryClient, setupBusy, unmade, waitingOnOtherSetup]);
   useEffect(() => {
     leaveDropsChat.current =
       canAutoDeleteEmptySetupChat && !createGame.isPending && !gameSetup.isPending ? activeChatId : null;

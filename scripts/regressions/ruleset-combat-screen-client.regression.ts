@@ -1674,7 +1674,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   assert.equal(printed.get("knockedOut"), "Brenna knocks Thorn Lurker out: unconscious and stable.");
   assert.equal(printed.get("itemsMade"), "Brenna makes 10 Goodberry.");
   assert.equal(printed.get("itemsVanished"), "1 Iron Bar made by Brenna vanishes.");
-  assert.equal(printed.get("morale"), "Thorn Lurker loses heart and flees!");
+  assert.equal(printed.get("morale"), "Thorn Lurker loses heart and tries to flee!");
   assert.equal(
     say({ type: "morale", actorId: "lurker", trigger: "first-fall", outcome: "surrender" }),
     "Thorn Lurker loses heart and surrenders.",

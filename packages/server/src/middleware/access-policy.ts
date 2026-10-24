@@ -12,15 +12,17 @@ export interface AccessFacts {
   loopbackIp: boolean;
   /** Request carries reverse-proxy forwarding headers. */
   forwardingHeaders: boolean;
-  /** Loopback socket, but the Host header names another client-facing host. */
+  /** The Host header names another client-facing host (loopback or Docker peer). */
   relayedHost: boolean;
+  /** Request arrived over HTTP/1.0, which browsers never use but default reverse proxies do. */
+  http10: boolean;
   /** Peer address is in the active IP_ALLOWLIST. */
   allowlisted: boolean;
   /** Peer is in a trusted private / non-routable range. */
   privateNetworkIp: boolean;
   /** Peer address is in 100.64.0.0/10. */
   tailscaleIp: boolean;
-  /** The local socket address the peer connected to is in 100.64.0.0/10. */
+  /** The local socket address the peer connected to is a 100.64.0.0/10 address on a Tailscale interface. */
   tailscaleLocalAddress: boolean;
   /** Peer address is in 172.16.0.0/12. */
   dockerIp: boolean;
@@ -28,9 +30,12 @@ export interface AccessFacts {
   dockerRuntimeMatch: boolean;
   /** Running in Docker and the peer is in a Docker compatibility network. */
   dockerCompatibilityNetwork: boolean;
+  /** Peer address is in TRUSTED_AUTH_PROXY: a forward-auth proxy that already logged the visitor in. */
+  trustedAuthProxy: boolean;
   config: {
     basicAuthConfigured: boolean;
     ipAllowlistConfigured: boolean;
+    trustedAuthProxyConfigured: boolean;
     adminSecretConfigured: boolean;
     loopbackProxyAuthRequired: boolean;
     dockerProxyAuthRequired: boolean;
@@ -50,6 +55,7 @@ export type AccessReason =
   | "remote-optin"
   | "password-required"
   | "forwarded-loopback-locked"
+  | "trusted-auth-proxy"
   | "locked-down";
 
 export interface AccessPolicy {
@@ -78,63 +84,69 @@ export interface AccessPolicy {
   reason: AccessReason;
 }
 
-/** A loopback peer that relays a remote client (forwarding headers or relayed Host) counts as remote. */
+/** A loopback peer that relays a remote client (forwarding headers, relayed Host or HTTP/1.0) counts as remote. */
 export function isForwardedLoopbackPeer(loopbackIp: boolean, relayed: boolean, proxyAuthRequired: boolean): boolean {
   return loopbackIp && relayed && proxyAuthRequired;
 }
 
 export function evaluateAccessPolicy(f: AccessFacts): AccessPolicy {
   const { config } = f;
-  const forwardedLoopback = isForwardedLoopbackPeer(
-    f.loopbackIp,
-    f.forwardingHeaders || f.relayedHost,
-    config.loopbackProxyAuthRequired,
-  );
+  const proxied = f.forwardingHeaders || f.relayedHost || f.http10;
+  const forwardedLoopback = isForwardedLoopbackPeer(f.loopbackIp, proxied, config.loopbackProxyAuthRequired);
   const local = f.loopbackIp && !forwardedLoopback;
 
   // Docker Desktop and OrbStack show LAN clients at the gateway address, so
   // automatic Docker trust stands down once a password or allowlist is set.
-  const accessControlConfigured = config.basicAuthConfigured || config.ipAllowlistConfigured;
+  const accessControlConfigured =
+    config.basicAuthConfigured || config.ipAllowlistConfigured || config.trustedAuthProxyConfigured;
   const dockerAutoWithheld = config.dockerMode === "auto" && f.dockerRuntimeMatch && accessControlConfigured;
   const dockerTrusted =
     config.dockerMode === "enabled"
       ? f.dockerIp || f.dockerRuntimeMatch || f.dockerCompatibilityNetwork
       : config.dockerMode === "auto" && f.dockerRuntimeMatch && !dockerAutoWithheld;
-  const dockerProxyForwarded = dockerTrusted && f.forwardingHeaders;
+  const dockerProxyForwarded = dockerTrusted && proxied;
   const tailscaleTrusted =
     f.tailscaleIp &&
     (config.tailscaleMode === "enabled" || (config.tailscaleMode === "auto" && f.tailscaleLocalAddress));
+  // Forwarding headers on a Tailscale peer mean a proxy relays another client.
+  const tailscaleProxyForwarded = tailscaleTrusted && f.forwardingHeaders;
   const trustedInterface =
-    dockerProxyForwarded && config.dockerProxyAuthRequired ? false : tailscaleTrusted || dockerTrusted;
+    (dockerProxyForwarded && config.dockerProxyAuthRequired) || tailscaleProxyForwarded
+      ? false
+      : tailscaleTrusted || dockerTrusted;
 
-  const trustedPeer = !forwardedLoopback && (f.loopbackIp || f.allowlisted || trustedInterface);
+  // A trusted auth proxy is an explicit operator choice like the BYPASS_AUTH_* flags, so it also
+  // passes IP_ALLOWLIST: the proxy decides who gets in. It never makes a relayed visitor local.
+  const trustedPeer = f.trustedAuthProxy || (!forwardedLoopback && (f.loopbackIp || f.allowlisted || trustedInterface));
   const openAccess =
     !trustedPeer &&
     !config.basicAuthConfigured &&
     ((f.privateNetworkIp && config.allowUnauthenticatedPrivateNetwork) || config.allowUnauthenticatedRemote);
   const lockedDown = !trustedPeer && !config.basicAuthConfigured && !openAccess;
 
-  const reason: AccessReason = forwardedLoopback
-    ? lockedDown
-      ? "forwarded-loopback-locked"
-      : config.basicAuthConfigured
-        ? "password-required"
-        : "remote-optin"
-    : f.loopbackIp
-      ? "loopback"
-      : f.allowlisted
-        ? "allowlisted"
-        : trustedInterface
-          ? tailscaleTrusted
-            ? "tailscale"
-            : "docker"
-          : lockedDown
-            ? "locked-down"
-            : openAccess
-              ? f.privateNetworkIp && config.allowUnauthenticatedPrivateNetwork
-                ? "private-network-optin"
-                : "remote-optin"
-              : "password-required";
+  const reason: AccessReason = f.trustedAuthProxy
+    ? "trusted-auth-proxy"
+    : forwardedLoopback
+      ? lockedDown
+        ? "forwarded-loopback-locked"
+        : config.basicAuthConfigured
+          ? "password-required"
+          : "remote-optin"
+      : f.loopbackIp
+        ? "loopback"
+        : f.allowlisted
+          ? "allowlisted"
+          : trustedInterface
+            ? tailscaleTrusted
+              ? "tailscale"
+              : "docker"
+            : lockedDown
+              ? "locked-down"
+              : openAccess
+                ? f.privateNetworkIp && config.allowUnauthenticatedPrivateNetwork
+                  ? "private-network-optin"
+                  : "remote-optin"
+                : "password-required";
 
   return {
     forwardedLoopback,
@@ -143,7 +155,7 @@ export function evaluateAccessPolicy(f: AccessFacts): AccessPolicy {
     trustedPeer,
     allowlisted: f.allowlisted,
     // A loopback peer passes unless it relays a remote client.
-    ipAllowed: f.loopbackIp ? !forwardedLoopback : trustedInterface || f.allowlisted,
+    ipAllowed: f.trustedAuthProxy || (f.loopbackIp ? !forwardedLoopback : trustedInterface || f.allowlisted),
     authRequired: !trustedPeer && !openAccess && config.basicAuthConfigured,
     lockedDown,
     basicAuthConfigured: config.basicAuthConfigured,

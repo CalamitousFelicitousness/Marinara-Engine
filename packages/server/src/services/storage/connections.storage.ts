@@ -17,7 +17,8 @@ import { sweepDanglingConnectionReferences } from "./connection-reference-cleanu
 import { clearConnectionRateLimit, setConnectionRateLimit } from "../llm/connection-rate-limit-registry.js";
 import { logger } from "../../lib/logger.js";
 
-type ConnectionDefaultCategory = "image_generation" | "video_generation" | "audio" | "decision" | "language";
+type ConnectionDefaultCategory =
+  "image_generation" | "video_generation" | "audio_generation" | "audio" | "decision" | "language";
 
 /**
  * Decrypt a stored connection for internal use and keep the per-connection outbound throttle
@@ -34,6 +35,7 @@ function withDecryptedKey<T extends { id: string; apiKeyEncrypted: string; maxRe
 function defaultCategoryForProvider(provider: string): ConnectionDefaultCategory {
   if (provider === "image_generation") return "image_generation";
   if (provider === "video_generation") return "video_generation";
+  if (provider === "audio_generation") return "audio_generation";
   if (provider === "audio") return "audio";
   if (provider === "decision") return "decision";
   return "language";
@@ -42,6 +44,10 @@ function defaultCategoryForProvider(provider: string): ConnectionDefaultCategory
 /** Decision connections never become the main connection, a random pick or an agent fallback. */
 function takesChatDefaults(provider: string): boolean {
   return provider !== "decision";
+}
+
+function takesMainDefaults(provider: string): boolean {
+  return takesChatDefaults(provider) && provider !== "audio_generation";
 }
 
 /** One model in a saved provider list: display and limit fields only, never credentials. */
@@ -287,6 +293,50 @@ export function createConnectionsStorage(db: DB) {
       return withDecryptedKey(row);
     },
 
+    /** Music/SFX defaults are independent of speech and language connections. */
+    async getDefaultForAudioGeneration() {
+      const rows = await db
+        .select()
+        .from(apiConnections)
+        .where(
+          and(
+            eq(apiConnections.provider, "audio_generation"),
+            eq(apiConnections.defaultForAgents, "true"),
+            ne(apiConnections.profileImportReviewRequired, "true"),
+          ),
+        );
+      return rows[0] ? withDecryptedKey(rows[0]) : null;
+    },
+
+    async getFallbackForAudioGeneration() {
+      const rows = await db
+        .select()
+        .from(apiConnections)
+        .where(
+          and(
+            eq(apiConnections.provider, "audio_generation"),
+            eq(apiConnections.fallbackForAgents, "true"),
+            ne(apiConnections.profileImportReviewRequired, "true"),
+          ),
+        );
+      return rows[0] ? withDecryptedKey(rows[0]) : null;
+    },
+
+    /** An old Game or Roleplay profile can retain its former TTS connection ID. */
+    async getAudioGenerationForLegacyConnection(id: string) {
+      const rows = await db
+        .select()
+        .from(apiConnections)
+        .where(
+          and(
+            eq(apiConnections.provider, "audio_generation"),
+            eq(apiConnections.audioGenerationLegacyConnectionId, id),
+            ne(apiConnections.profileImportReviewRequired, "true"),
+          ),
+        );
+      return rows[0] ? withDecryptedKey(rows[0]) : null;
+    },
+
     /** Decision defaults are independent of chat, agent, and media defaults. */
     async getDefaultForDecision() {
       const rows = await db
@@ -324,9 +374,9 @@ export function createConnectionsStorage(db: DB) {
         savedModels: null,
         imagePath: input.imagePath ?? null,
         maxContext: input.maxContext ?? 128000,
-        isDefault: String(takesChatDefaults(input.provider) && (input.isDefault ?? false)),
+        isDefault: String(takesMainDefaults(input.provider) && (input.isDefault ?? false)),
         fallbackForMain: String(providerCategory === "language" && (input.fallbackForMain ?? false)),
-        useForRandom: String(takesChatDefaults(input.provider) && (input.useForRandom ?? false)),
+        useForRandom: String(takesMainDefaults(input.provider) && (input.useForRandom ?? false)),
         defaultForAgents: String(input.defaultForAgents ?? false),
         fallbackForAgents: String(takesChatDefaults(input.provider) && (input.fallbackForAgents ?? false)),
         enableCaching: String(input.enableCaching ?? false),
@@ -348,6 +398,9 @@ export function createConnectionsStorage(db: DB) {
         videoService: input.videoService ?? null,
         videoPromptInstructions: input.videoPromptInstructions ?? null,
         audioSource: input.audioSource ?? null,
+        audioGenerationSource: input.audioGenerationSource ?? null,
+        audioGenerationCallbackUrl: input.audioGenerationCallbackUrl ?? null,
+        audioSoundEffectsModel: input.audioSoundEffectsModel ?? null,
         decisionSource: input.decisionSource ?? null,
         credentialsFromConnectionId: input.provider === "decision" ? (input.credentialsFromConnectionId ?? null) : null,
         maxStateTokens: input.maxStateTokens ?? null,
@@ -356,6 +409,9 @@ export function createConnectionsStorage(db: DB) {
         audioTimeoutMs: input.audioTimeoutMs ?? null,
         audioSoundEffects: String(input.audioSoundEffects ?? false),
         audioMusic: String(input.audioMusic ?? false),
+        audioMusicEndpoint: input.audioMusicEndpoint ?? null,
+        audioSoundEffectsEndpoint: input.audioSoundEffectsEndpoint ?? null,
+        audioGenerationFormat: input.audioGenerationFormat ?? "binary",
         promptPresetId: input.promptPresetId ?? null,
         maxTokensOverride: input.maxTokensOverride ?? null,
         claudeFastMode: String(input.claudeFastMode ?? false),
@@ -365,7 +421,7 @@ export function createConnectionsStorage(db: DB) {
       };
       await db.transaction(async (tx) => {
         // If this is set as default, unset others.
-        if (input.isDefault && takesChatDefaults(input.provider)) {
+        if (input.isDefault && takesMainDefaults(input.provider)) {
           await tx.update(apiConnections).set({ isDefault: "false" });
           values.fallbackForMain = "false";
         }
@@ -576,6 +632,10 @@ export function createConnectionsStorage(db: DB) {
       if (data.audioSource !== undefined) {
         updateFields.audioSource = data.audioSource;
       }
+      if (data.audioGenerationSource !== undefined) updateFields.audioGenerationSource = data.audioGenerationSource;
+      if (data.audioGenerationCallbackUrl !== undefined)
+        updateFields.audioGenerationCallbackUrl = data.audioGenerationCallbackUrl;
+      if (data.audioSoundEffectsModel !== undefined) updateFields.audioSoundEffectsModel = data.audioSoundEffectsModel;
       if (data.audioVoice !== undefined) {
         updateFields.audioVoice = data.audioVoice;
       }
@@ -586,6 +646,10 @@ export function createConnectionsStorage(db: DB) {
       if (data.audioMusic !== undefined) {
         updateFields.audioMusic = String(data.audioMusic);
       }
+      if (data.audioMusicEndpoint !== undefined) updateFields.audioMusicEndpoint = data.audioMusicEndpoint;
+      if (data.audioSoundEffectsEndpoint !== undefined)
+        updateFields.audioSoundEffectsEndpoint = data.audioSoundEffectsEndpoint;
+      if (data.audioGenerationFormat !== undefined) updateFields.audioGenerationFormat = data.audioGenerationFormat;
       if (data.promptPresetId !== undefined) {
         updateFields.promptPresetId = data.promptPresetId;
       }
@@ -604,13 +668,15 @@ export function createConnectionsStorage(db: DB) {
       if (data.treatAsLocalEndpoint !== undefined) {
         updateFields.treatAsLocalEndpoint = String(data.treatAsLocalEndpoint);
       }
-      if (!takesChatDefaults(effectiveProvider)) {
+      if (!takesMainDefaults(effectiveProvider)) {
         updateFields.isDefault = "false";
         updateFields.useForRandom = "false";
+      }
+      if (!takesChatDefaults(effectiveProvider)) {
         updateFields.fallbackForAgents = "false";
       }
       await db.transaction(async (tx) => {
-        if (shouldClearDefault && takesChatDefaults(effectiveProvider)) {
+        if (shouldClearDefault && takesMainDefaults(effectiveProvider)) {
           await tx.update(apiConnections).set({ isDefault: "false" });
           updateFields.fallbackForMain = "false";
         }
@@ -743,6 +809,12 @@ export function createConnectionsStorage(db: DB) {
         audioTimeoutMs: source.audioTimeoutMs,
         audioSoundEffects: source.audioSoundEffects,
         audioMusic: source.audioMusic,
+        audioMusicEndpoint: source.audioMusicEndpoint,
+        audioSoundEffectsEndpoint: source.audioSoundEffectsEndpoint,
+        audioGenerationFormat: source.audioGenerationFormat,
+        audioGenerationSource: source.audioGenerationSource as CreateConnectionInput["audioGenerationSource"],
+        audioGenerationCallbackUrl: source.audioGenerationCallbackUrl,
+        audioSoundEffectsModel: source.audioSoundEffectsModel,
         promptPresetId: source.promptPresetId,
         maxTokensOverride: source.maxTokensOverride,
         maxParallelJobs: source.maxParallelJobs,

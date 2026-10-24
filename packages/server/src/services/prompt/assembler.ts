@@ -19,7 +19,13 @@ import type {
   MacroDecisionAnswers,
   ResolveMacroOptions,
 } from "@marinara-engine/shared";
-import { DEFAULT_GENERATION_PARAMS, generationParametersSchema, resolveMacros } from "@marinara-engine/shared";
+import {
+  DEFAULT_GENERATION_PARAMS,
+  generationParametersSchema,
+  resolveMacros,
+  withoutPresetTokenLimits,
+  isStockMarinaraUniversalPreset,
+} from "@marinara-engine/shared";
 import { wrapContent, wrapGroup } from "./format-engine.js";
 import { sanitizePromptLeaf } from "./prompt-escaping.js";
 import { ensureLorebookScan, expandMarker, type MarkerContext } from "./marker-expander.js";
@@ -75,6 +81,7 @@ export interface AssemblerInput {
     groupOrder: string; // JSON string of string[]
     wrapFormat: string; // "xml" | "markdown"
     parameters: string; // JSON string of GenerationParameters
+    systemKey?: string;
     variableGroups: string;
     variableValues: string;
   };
@@ -135,6 +142,7 @@ export interface AssemblerInput {
   personaPhoneticName?: string;
   personaDescription: string;
   personaFields?: {
+    example?: string;
     phoneticName?: string;
     personality?: string;
     scenario?: string;
@@ -218,11 +226,13 @@ export interface AssemblerOutput {
   /** Final ChatML messages ready for the LLM */
   messages: ChatMLMessage[];
   /** Parsed generation parameters */
-  parameters: GenerationParameters;
+  parameters: Partial<Omit<GenerationParameters, "maxTokens" | "maxContext" | "useMaxContext">>;
   /** Final preset and choice-variable values available after section macro processing. */
   macroVariables: Record<string, string>;
   /** Agent outputs made available to {{agent::TYPE}} while assembling sections. */
   macroAgentData: Record<string, string>;
+  /** Resolved Persona examples observed during assembly; callers must still check the emitted messages. */
+  resolvedPersonaExamples: string[];
   /** Valid character cards discovered through exact ID macros, including activated lorebook entries. */
   referencedCharacterIds: string[];
   /** Any lorebook depth entries that were queued (already injected into messages) */
@@ -242,7 +252,9 @@ export interface AssemblerOutput {
   advancedMemoryPlacements?: AdvancedMemoryPlacement[];
 }
 
-export function parsePresetParameters(raw: string): GenerationParameters {
+export function parsePresetParameters(
+  raw: string,
+): Omit<GenerationParameters, "maxTokens" | "maxContext" | "useMaxContext"> {
   let parsed: unknown = null;
   try {
     parsed = JSON.parse(raw) as unknown;
@@ -254,7 +266,7 @@ export function parsePresetParameters(raw: string): GenerationParameters {
       ? { ...DEFAULT_GENERATION_PARAMS, ...(parsed as Partial<GenerationParameters>) }
       : { ...DEFAULT_GENERATION_PARAMS };
   const result = generationParametersSchema.safeParse(merged);
-  if (result.success) return result.data;
+  if (result.success) return withoutPresetTokenLimits(result.data);
 
   const out: GenerationParameters = { ...DEFAULT_GENERATION_PARAMS };
   const source = merged as Record<string, unknown>;
@@ -265,28 +277,40 @@ export function parsePresetParameters(raw: string): GenerationParameters {
       (out as Record<keyof GenerationParameters, unknown>)[key] = field.data;
     }
   }
-  return out;
+  return withoutPresetTokenLimits(out);
 }
 
 // ═══════════════════════════════════════════════
 //  Main Assembler
 // ═══════════════════════════════════════════════
 
+/** The bundled preset supplies prompt text only; connection/chat settings own generation controls. */
+export function getPresetGenerationParameters(
+  preset: { parameters: string; systemKey?: unknown } | null | undefined,
+): AssemblerOutput["parameters"] {
+  return preset && isStockMarinaraUniversalPreset(preset) ? {} : parsePresetParameters(preset?.parameters ?? "{}");
+}
+
 export async function assemblePrompt(input: AssemblerInput): Promise<AssemblerOutput> {
   const wrapFormat = (input.preset.wrapFormat || "xml") as WrapFormat;
   const chatSummary = input.advancedMemory ? null : (input.chatSummary ?? null);
   const advancedMemoryPlacements: AdvancedMemoryPlacement[] = [];
-  const parameters = parsePresetParameters(input.preset.parameters);
+  const parameters = getPresetGenerationParameters(input.preset);
+  const formatting = { ...DEFAULT_GENERATION_PARAMS, ...parameters };
   const sectionOrder = JSON.parse(input.preset.sectionOrder) as string[];
   const variableValues = JSON.parse(input.preset.variableValues) as Record<string, string>;
   // Preset text can safely delay all character macros until the responder is known.
   // Lorebook content only delays names so field macros keep the same budgeting behavior.
-  const deferAllMacroOptions: ResolveMacroOptions | undefined = input.deferCharacterMacros
-    ? { deferCharacterMacros: "all" }
-    : undefined;
-  const deferNameMacroOptions: ResolveMacroOptions | undefined = input.deferCharacterMacros
-    ? { deferCharacterMacros: "names" }
-    : undefined;
+  const resolvedPersonaExamples = new Set<string>();
+  // Each root gets a new options object; nested resolutions still share its budget.
+  const deferAllMacroOptions = (): ResolveMacroOptions => ({
+    onPersonaExampleResolved: (text) => resolvedPersonaExamples.add(text),
+    ...(input.deferCharacterMacros ? { deferCharacterMacros: "all" } : {}),
+  });
+  const deferNameMacroOptions = (): ResolveMacroOptions => ({
+    ...deferAllMacroOptions(),
+    ...(input.deferCharacterMacros ? { deferCharacterMacros: "names" } : {}),
+  });
 
   // Build lookup maps
   const sectionMap = new Map(input.sections.map((s) => [s.id, s]));
@@ -404,7 +428,7 @@ export async function assemblePrompt(input: AssemblerInput): Promise<AssemblerOu
 
   // Resolve macros inside variable values themselves (e.g. {{user}} in a choice value)
   for (const key of Object.keys(variableValues)) {
-    variableValues[key] = resolveMacros(variableValues[key]!, macroCtx, deferAllMacroOptions);
+    variableValues[key] = resolveMacros(variableValues[key]!, macroCtx, deferAllMacroOptions());
   }
 
   const addActivatedLorebookCardReferences = async (result: LorebookScanResult) => {
@@ -471,7 +495,7 @@ export async function assemblePrompt(input: AssemblerInput): Promise<AssemblerOu
 
     if (!discoveredReferences) return;
 
-    const resolveReferenceMacros = (value: string) => resolveMacrosForPreview(value, macroCtx, deferNameMacroOptions);
+    const resolveReferenceMacros = (value: string) => resolveMacrosForPreview(value, macroCtx, deferNameMacroOptions());
     result.worldInfoBefore = resolveReferenceMacros(result.worldInfoBefore);
     result.worldInfoAfter = resolveReferenceMacros(result.worldInfoAfter);
     result.depthEntries = result.depthEntries.map((entry) => ({
@@ -529,7 +553,7 @@ export async function assemblePrompt(input: AssemblerInput): Promise<AssemblerOu
     previewOnly: input.previewOnly === true,
     resolveLorebookContent: (value, lorebookEntryCounts) => {
       setLorebookEntryCounts(macroCtx, lorebookEntryCounts);
-      return resolveMacrosWithVariableSnapshot(value, macroCtx, deferNameMacroOptions);
+      return resolveMacrosWithVariableSnapshot(value, macroCtx, deferNameMacroOptions());
     },
     resolveLorebookDecisions: input.lorebookDecisions,
     onLorebookScan: addActivatedLorebookCardReferences,
@@ -617,7 +641,7 @@ export async function assemblePrompt(input: AssemblerInput): Promise<AssemblerOu
       resolved = await resolveSection(section, {
         macroCtx,
         markerCtx,
-        macroOptions: deferAllMacroOptions,
+        macroOptions: deferAllMacroOptions(),
         wrapFormat,
         runtimeAgentData: input.runtimeAgentData ?? {},
         runtimeAgentTypesUsed,
@@ -714,10 +738,10 @@ export async function assemblePrompt(input: AssemblerInput): Promise<AssemblerOu
 
   // ── Phase 3: Adjacent same-role merging ──
   let finalMessages =
-    input.deferMessagePostProcessing || !parameters.strictRoleFormatting ? messages : mergeAdjacentMessages(messages);
+    input.deferMessagePostProcessing || !formatting.strictRoleFormatting ? messages : mergeAdjacentMessages(messages);
 
   // ── Phase 4: Squash leading system messages if enabled ──
-  if (parameters.squashSystemMessages && !input.deferMessagePostProcessing) {
+  if (formatting.squashSystemMessages && !input.deferMessagePostProcessing) {
     finalMessages = squashLeadingSystemMessages(finalMessages);
   }
 
@@ -767,7 +791,7 @@ export async function assemblePrompt(input: AssemblerInput): Promise<AssemblerOu
   // ── Phase 6: Strict role formatting ──
   // Keeps explicit section roles while folding system blocks to the front and
   // merging adjacent same-role messages.
-  if (parameters.strictRoleFormatting && !input.deferMessagePostProcessing) {
+  if (formatting.strictRoleFormatting && !input.deferMessagePostProcessing) {
     finalMessages = enforceStrictRoles(finalMessages);
   }
 
@@ -784,7 +808,7 @@ export async function assemblePrompt(input: AssemblerInput): Promise<AssemblerOu
       markerCtx.chatSummary,
       wrapFormat,
       macroCtx,
-      deferAllMacroOptions,
+      deferAllMacroOptions(),
       input.chatSummaryReaders,
     );
   }
@@ -806,7 +830,7 @@ export async function assemblePrompt(input: AssemblerInput): Promise<AssemblerOu
 
   // ── Phase 8: Single user message mode ──
   // Collapses entire prompt into one user message.
-  if (parameters.singleUserMessage && !input.deferMessagePostProcessing) {
+  if (formatting.singleUserMessage && !input.deferMessagePostProcessing) {
     const combined = finalMessages
       .map((m) => {
         if (m.role !== "user") return `[${m.role.toUpperCase()}]\n${m.content}`;
@@ -824,6 +848,7 @@ export async function assemblePrompt(input: AssemblerInput): Promise<AssemblerOu
     parameters,
     macroVariables: { ...macroCtx.variables },
     macroAgentData: { ...(macroCtx.agentData ?? {}) },
+    resolvedPersonaExamples: [...resolvedPersonaExamples],
     referencedCharacterIds: Object.keys(macroCtx.characterReferences ?? {}),
     lorebookDepthEntriesCount,
     ...(markerCtx.updatedEntryStateOverrides

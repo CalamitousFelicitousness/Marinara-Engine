@@ -8,6 +8,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import {
+  BUILT_IN_GAME_COMBAT_STYLES,
   RULESET_CHECK_SCOPED_EFFECTS,
   RULESET_COMBAT_CONDITION_EFFECTS,
   RULESET_CREATURE_PLAIN_NEEDS,
@@ -143,14 +144,15 @@ function refuseNoSizeStep(node) {
   }
 }
 
-// A sheet item's `hideWhen` compares its field exactly one way too: equals, notEquals or in. Found
-// by its shape: `field` beside all three.
+// A sheet item's `hideWhen` compares its field or derived value exactly one way too: equals,
+// notEquals or in. Found by its shape: `field` or `derived` beside all three.
 function requireOneHideWhenComparison(node) {
   if (Array.isArray(node)) return node.forEach(requireOneHideWhenComparison);
   if (!node || typeof node !== "object") return;
   Object.values(node).forEach(requireOneHideWhenComparison);
   const keys = ["equals", "notEquals", "in"];
-  if (node.type === "object" && node.properties?.field && keys.every((key) => node.properties[key])) {
+  const subject = node.properties?.field ?? node.properties?.derived;
+  if (node.type === "object" && subject && keys.every((key) => node.properties[key])) {
     node.oneOf = keys.map((key) => ({ required: [key] }));
   }
 }
@@ -231,6 +233,18 @@ function uniqueConditionEndings(node) {
   Object.values(node).forEach(uniqueConditionEndings);
   if (node.type === "object" && node.properties?.condition && node.properties.endsWhen) {
     node.properties.endsWhen.uniqueItems = true;
+  }
+}
+
+// A combat block names each of its styles once, and one of them built in (1.379).
+function checkedCombatStyles(node) {
+  if (Array.isArray(node)) return node.forEach(checkedCombatStyles);
+  if (!node || typeof node !== "object") return;
+  Object.values(node).forEach(checkedCombatStyles);
+  const styles = node.properties?.styles;
+  if (node.properties?.distance && styles?.type === "array") {
+    styles.uniqueItems = true;
+    styles.contains = { enum: [...BUILT_IN_GAME_COMBAT_STYLES] };
   }
 }
 
@@ -772,6 +786,7 @@ requireCatalogFeeds(schema);
 requireSaveEndsUntilSave(schema);
 uniqueConditionEndings(schema);
 uniqueCombatSenses(schema);
+checkedCombatStyles(schema);
 widthOnlyOnALine(schema);
 cancelOnlyWhenAimed(schema);
 modifierSaysSomething(schema);

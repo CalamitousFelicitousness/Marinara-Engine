@@ -77,7 +77,7 @@ export function ExpandedTextarea({
           data-component="ExpandedTextarea"
           style={overlayStyle}
           className={cn(
-            "fixed inset-0 z-[100] flex flex-col bg-[var(--sidebar)] max-md:pt-[env(safe-area-inset-top)]",
+            "fixed inset-0 z-[100] flex flex-col bg-[var(--sidebar)] pr-(--mari-safe-area-inset-right) pl-(--mari-safe-area-inset-left) max-md:pt-[env(safe-area-inset-top)]",
             isChatSurface && `text-[var(--marinara-chat-chrome-panel-text)] ${NEUTRAL_SURFACE_VARIABLES}`,
           )}
           initial={{ opacity: 0 }}

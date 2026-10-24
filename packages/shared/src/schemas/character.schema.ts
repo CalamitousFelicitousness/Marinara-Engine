@@ -2,6 +2,7 @@
 // Character Zod Schemas
 // ──────────────────────────────────────────────
 import { z } from "zod";
+import { cardFieldAlternativesSchema } from "./card-field-alternative.schema.js";
 import { choiceDisplayModeSchema, choiceOptionSchema, choiceOptionSortSchema } from "./prompt.schema.js";
 import { storedRulesetSheetsSchema } from "./ruleset.schema.js";
 
@@ -92,6 +93,7 @@ export const characterExtensionsSchema = z
     fav: z.boolean().default(false),
     world: z.string().default(""),
     depth_prompt: depthPromptSchema.default({}),
+    cardFieldAlternatives: cardFieldAlternativesSchema.optional(),
     backstory: z.string().default(""),
     appearance: z.string().default(""),
     /** Marinara Engine: use `imageAppearance` instead of `appearance` in image prompts. */
@@ -151,7 +153,7 @@ export const characterBookSchema = z
 export const characterDataSchema = z
   .object({
     name: z.string().trim().min(1),
-    summary: z.string().trim().max(500).default(""),
+    summary: z.string().trim().default(""),
     description: z.string().default(""),
     personality: z.string().default(""),
     scenario: z.string().default(""),

@@ -55,9 +55,14 @@ A review posts:
 
 The verdicts: **Viable** (nothing found) and **Viable, With Notes** (nitpicks only) discharge the head; **Repair
 Required** (defects open) and **Specimen Unstable** (a high or blocking defect, or a failed control) hold it; **Specimen
-Unexamined** means the review did not finish, so nothing is reported as found. A head with no new diff since the last
-examination (a base merge, a repeated `/dottore`) keeps that examination's walkthrough and verdict, recorded for the
-new head; `/dottore full` examines it afresh.
+Unexamined** means the review did not finish, so nothing is reported as found. **Examination Incomplete** means the
+checker judged some candidates but not all, usually for lack of time: the head is recorded with the unjudged ones, the
+status fails, and the next review is incremental and judges them, with or without new changes, beside its own
+candidates by severity. An unjudged removed line, or unjudged candidates too long for the walkthrough comment even
+without their repair contracts, are not carried, so the head stays unrecorded and the next review is full; a carried
+candidate whose file is gone is dropped. A head with no new diff
+since the last examination (a base merge, a repeated `/dottore`) keeps that examination's walkthrough and verdict,
+recorded for the new head; `/dottore full` examines it afresh.
 
 ## How a review runs
 
@@ -111,9 +116,11 @@ write access; a read or triage collaborator's request is ignored. While the box 
 three Dottore repairs in a row with no push from a person, it stops and says so (`MAX_AUTOFIX_ROUNDS` in
 `dottore_review.py`). The repair is reviewed again by the auto dispatcher; with that workflow disabled, the next
 review waits for a `/dottore` comment, so each repair is one `/dottore` away. Repairs go to the pull request's own
-branch, so a pull request from a fork gets the repair prompt at the end of the walkthrough instead. The pushed commit
-names the findings it repairs, carries the runner's own account of the change, and ends with a `Dottore-Autofix`
-trailer that counts the rounds.
+branch, in this repository or in the fork it comes from. A fork's branch takes them only when its author left **Allow
+edits and access to secrets by maintainers** (**Allow edits from maintainers** on a fork without workflows) ticked; a
+fork owned by an organisation has no such option. Otherwise Dottore says so, and the repair prompt at the end of the
+walkthrough is the way to repair it. The pushed commit names the findings it repairs, carries the
+runner's own account of the change, and ends with a `Dottore-Autofix` trailer that counts the rounds.
 
 A repair runs in two jobs after the review job:
 
@@ -125,7 +132,7 @@ A repair runs in two jobs after the review job:
   App's token, because a push made with `GITHUB_TOKEN` starts no CI and no review. That push starts the next review,
   whose repair check resolves the threads the code confirms. A patch that changed nothing, failed the checks, met a
   branch that moved meanwhile, or was rejected by the push (one editing a workflow file, which the App's token cannot
-  push, so the repair is told not to) is reported in a comment instead.
+  push, so the repair is told not to) is reported in a comment instead, and so is any other failure of the push job.
 
 The App needs **Contents: Read and write** on the repository, installed there, with its ID and private key in the
 `DOTTORE_APP_ID` and `DOTTORE_APP_PRIVATE_KEY` secrets. A calling workflow passes both.
@@ -162,7 +169,7 @@ Each model has the same five settings. The key is a secret; the rest are variabl
 | `DOTTORE_SMALL_MODEL`, `DOTTORE_LARGE_MODEL` | Variable | The model's name at its provider | Required |
 | `DOTTORE_SMALL_API_KEY`, `DOTTORE_LARGE_API_KEY` | Secret | The provider's API key | Required |
 | `DOTTORE_SMALL_BASE_URL`, `DOTTORE_LARGE_BASE_URL` | Variable | The provider's endpoint | OpenAI's or Anthropic's own |
-| `DOTTORE_SMALL_API`, `DOTTORE_LARGE_API` | Variable | `openai` for an OpenAI-compatible Chat Completions endpoint, `anthropic` for Claude's Messages format | `openai` |
+| `DOTTORE_SMALL_API`, `DOTTORE_LARGE_API` | Variable | `openai` for an OpenAI-compatible Chat Completions endpoint, `anthropic` for Claude's Messages format, `responses` for OpenAI's Responses format | `openai` |
 | `DOTTORE_SMALL_EFFORT`, `DOTTORE_LARGE_EFFORT` | Variable | Reasoning effort, such as `medium`, `high` or `xhigh` | The model's default |
 
 The values the fork trial ran, Claude Haiku 5.5 reading and GPT Astra judging, both through LinkAPI:
@@ -195,18 +202,28 @@ small model and GLM as the large one, both through LinkAPI:
 | `EFFORT` | empty | empty |
 
 Use `anthropic` for Claude models, even through a gateway that also offers Chat Completions: Claude's tool calls only
-work reliably in its own format, and prompt caching and effort work only there. Give a gateway's base URL without
-`/v1`, such as `https://linkapi.ai`.
+work reliably in its own format, and prompt caching and effort work only there. For `anthropic`, give a gateway's base
+URL without `/v1`, such as `https://linkapi.ai`.
 
-Effort passes through unchanged, as `reasoning_effort` in the OpenAI format and as Claude's `effort`, so use a value the
-model accepts, or leave it empty for a model that takes none. Starting values, to be measured on a few known pull
-requests before relying on them:
+Use `responses` when the provider serves the model only on `/v1/responses`, or takes tool calls with reasoning only
+there. It takes the same base URL as `openai`, ending in `/v1`, and the same key. Calls stay stateless: nothing is stored
+at the provider, and each turn's encrypted reasoning goes back with the next.
+
+Effort passes through unchanged, as `reasoning_effort` in the OpenAI format, `reasoning.effort` in the Responses format
+and Claude's `effort`, so use a value the model accepts, or leave it empty for a model that takes none. Starting
+values, to be measured on a few known pull requests before relying on them:
 
 | Model | As the large model | As the small model |
 | --- | --- | --- |
 | GPT (Astra, Sol) | `xhigh` | `medium` |
 | Claude Opus or Sonnet | `high` | `medium` |
 | Claude Haiku or GPT Luna | not recommended: small models browse without forming claims | `high` |
+
+Effort weighs most on a large pull request. It is split into packets (`MAX_CHUNK_PATCH_CHARS`, `MAX_REVIEW_CHUNKS`),
+and every packet's scouts run first, sharing `DOTTORE_CONCURRENCY`; then all the finders start together, each with its
+full `minutes`, and the checker takes the last 8 minutes. A higher small-model effort therefore delays every finder,
+and a large-model effort above the table lengthens every packet's thinking. Prefer the table's values, or a Haiku-class
+small model, before changing `minutes`.
 
 The cost limit counts tokens at the price table in `dottore_review.py` (`MODEL_PRICES_USD`). A model it does not list
 counts at the dearest listed rates, so a review on it reports more than it spent and reaches `DOTTORE_COST_LIMIT_USD`
@@ -226,7 +243,7 @@ These are all of Dottore's repository variables, beside the model settings above
 | `DOTTORE_AUTO_REVIEW` | `true` reviews a pull request when it opens, is marked ready for review or gets a push (drafts wait until ready). Otherwise a review starts only on request; a repair Dottore pushes is still reviewed | off | the auto dispatcher |
 | `DOTTORE_BASE_REFS` | Comma-separated base branches whose pull requests get reviewed | `refactor,main,staging` | every dispatcher and the review job |
 | `DOTTORE_COST_LIMIT_USD` | Stop a review's model calls once it has spent this many dollars at the price table in `dottore_review.py`; `0` removes the limit | `1.00` | the review job |
-| `DOTTORE_CONCURRENCY` | Model calls run at once, up to 16 | `4` | the review job |
+| `DOTTORE_CONCURRENCY` | Scout and checker calls run at once, up to 16; the finders always run all at once, up to 16 | `4` | the review job |
 | `DOTTORE_FINDERS` | Finder copies per packet, `1` or `2`; a second one starts a few seconds later and reuses the cache | `1` | the review job |
 
 Everything else the reviewer reads from its environment, the workflow sets itself: the pull request number, head and
@@ -263,29 +280,38 @@ Each role's limits are kept in code, in `ROLE_DEFAULTS` in `dottore_review.py`:
 | `reads` | Read-tool calls; `0` offers none | `10` per scout | `0` | `5`, plus 1 per extra candidate |
 | `chars` | Characters of tool output | `40000` per scout | `0` | `40000`, plus 4000 per extra candidate |
 | `minutes` | Time box, from the role's first call | `5` | `10` | the review's last 8 minutes |
-| `max_tokens` | Output cap per call, Claude models only | `16000` | `32000` | `32000` |
+| `max_tokens` | Output cap per call, Claude models only | `16000` | `64000` | `64000` |
 | `places` | Places each scout keeps; `0` turns the scouts off | `6` | – | – |
 | `scouts` | Scouts per packet, each with a share of its changes; a PR split into packets runs more scouts than `DOTTORE_CONCURRENCY` in turn | `4` | – | – |
 
-A role's `minutes` also bounds each of its model calls: a role offered no tools thinks before its first byte, so its
-call may stay silent for the whole box, and a reply still streaming when the box ends is cut there. A role offered no
-tools whose reply runs into `max_tokens` is sent once more at the next lower effort (`max` → `xhigh` → `high` →
+A role's `minutes` controls when it must submit and how long each call offered only its submit tool may wait without
+progress, however late in the review it starts. A reply that keeps producing thinking, text or tool-input characters can finish past that time box;
+pings, empty deltas and block boundaries do not refresh the watchdog. Claude requests summarized thinking so that
+its progress is visible even on models that omit thinking text by default. A role offered no
+read tools whose reply runs into `max_tokens` is sent once more at the next lower effort (`max` → `xhigh` → `high` →
 `medium` → `low`) with a box of its own; at `low`, or with no effort set, the review fails instead. On Claude, thinking
-counts inside `max_tokens`, so a larger or slower Claude model may need a larger cap.
+counts inside `max_tokens`; the judging roles use 64000 so Opus 5.5 at extra-high effort has room for both thinking
+and its submission, following [Anthropic's migration guidance](https://platform.claude.com/docs/en/models/opus-5-5/migration-guide).
 
 Other limits in `dottore_review.py`: a 30-minute review (`REVIEW_DEADLINE_SECONDS`), the last 8 minutes of it
 reserved for the checker, at most 20 candidates checked per review (`MAX_VERIFIED_CANDIDATES`), 3 submit attempts,
 a role aborting after 3 failed calls in a row (`MAX_ROLE_FAILURES`), 180 s for a call's first byte and 360 s between
-bytes (`FIRST_CALL_TIMEOUT`, `MODEL_REQUEST_TIMEOUT`), 900 s per streaming reply of a role with tools
-(`MODEL_STREAM_LIMIT`; a role without tools gets its box instead), at most 2 notes and 2 open questions per review
+bytes (`FIRST_CALL_TIMEOUT`, `MODEL_REQUEST_TIMEOUT`), 900 s without meaningful stream progress for a role with
+read tools (`MODEL_STREAM_LIMIT`; a finder or scout offered only its submit tool gets its whole `minutes` box, and a
+checker with `reads` at `0` what is left of the review, at least 180 s; a reply stopped for silence is not resent),
+at most 2 notes and 2 open questions per review
 (`MAX_NITPICKS`, `MAX_OPEN_QUESTIONS`), and the packet split for large PRs (`MAX_CHUNK_PATCH_CHARS`,
 `MAX_REVIEW_CHUNKS`).
+
+The review deadline stops new work and asks agents to submit; it does not interrupt an active reply or shorten its silence allowance. The workflow's
+40-minute review-step limit and 45-minute job limit still bound the entire run, including a reply that keeps progressing.
 
 ## Reading the run log
 
 Each review logs a `Dottore roles:` line with the model, API and effort each role resolved to; a `Dottore review base:`
 line when an incremental review merged the base branch into its diff base; a `Dottore call:` line per model call with
-its tokens, cache use, time and the dollars spent so far; a `Dottore scout:` line per scout and per packet with the
+its tokens, the reply's stop reason, cache use, time and the dollars spent so far; a `Dottore carried:` line when an
+incremental review finds candidates the last one left unjudged, with how many it took up and dropped; a `Dottore scout:` line per scout and per packet with the
 places they added; and a `Dottore telemetry:` line with totals by role. The repair job logs an `Autofix:` line with
 Claude Code's turns, time and list price. Use them to compare cost, caching and time between setups.
 

@@ -142,6 +142,7 @@ function kindLabel(kind: CapabilityCatalogPackage["manifest"]["kind"][number]) {
   if (kind === "turn-game") return "Conversation Game";
   if (kind === "maps") return "Maps";
   if (kind === "ruleset") return "Rules";
+  if (kind === "experience") return "Experience";
   return "Agent";
 }
 
@@ -389,7 +390,7 @@ export function AgentCatalogView() {
   return (
     <div
       data-component="AgentCatalogView"
-      className="mari-chrome-token-scope flex h-full min-h-0 flex-col overflow-hidden bg-[var(--background)]"
+      className="mari-chrome-token-scope flex h-full min-h-0 flex-col overflow-hidden bg-[var(--marinara-editor-bg)]"
     >
       <header className="relative z-10 flex shrink-0 items-center gap-3 border-b border-[var(--border)]/50 bg-[var(--card)]/90 px-3 py-2 backdrop-blur-md md:px-6 md:py-3">
         <button

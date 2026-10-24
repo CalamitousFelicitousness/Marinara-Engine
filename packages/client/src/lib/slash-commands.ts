@@ -93,6 +93,8 @@ export interface SlashCommandContext {
   selfie?: (characterId?: string) => void | Promise<void>;
   /** Have a Conversation character send a video message, as the chat Gallery's Video button does. */
   video?: (characterId?: string) => void | Promise<void>;
+  /** Roleplay /video: a clip of the latest reply, or of the description. */
+  roleplayVideo?: (description?: string) => void | Promise<void>;
   /** Active downloadable capability packages available to this composer. */
   availableCapabilityIds?: ReadonlySet<string>;
   /** Installed Conversation games that contribute manual slash launchers. */
@@ -662,7 +664,7 @@ export function parseTargetedHideArguments(
 }
 
 function readHiddenFromAICharacterIds(extra: unknown): string[] {
-  let parsed: Record<string, unknown> = {};
+  let parsed: Record<string, unknown>;
   try {
     parsed =
       typeof extra === "string"
@@ -1393,12 +1395,30 @@ const COMMANDS: SlashCommand[] = [
   },
   {
     name: "video",
-    description: "Have a character send you a short video message",
-    usage: "/video [name (optional)]",
+    description: "Have a character send you a short video message, or in Roleplay, make a clip of the scene",
+    usage: "/video [name (optional)] — in Roleplay: /video [description (optional)]",
     requiredCapabilityId: "illustrator",
-    modes: ["conversation"],
+    modes: ["conversation", "roleplay"],
     local: true,
     async execute(args, ctx) {
+      if (ctx.roleplayVideo) {
+        if (useGalleryStore.getState().videoGeneratingChatIds.has(ctx.chatId)) {
+          return { handled: true, feedback: await translateSlash("ui.chat.slash.video.alreadyRunning") };
+        }
+        useGalleryStore.getState().setChatGeneratingVideo(ctx.chatId, true);
+        try {
+          await withSlashCommandTimeout(
+            Promise.resolve(ctx.roleplayVideo(args.trim() || undefined)),
+            ILLUSTRATE_SLASH_TIMEOUT_MS,
+            await translateSlash("ui.chat.slash.video.timedOut"),
+          );
+        } catch (error) {
+          toast.error(error instanceof Error ? error.message : await translateSlash("ui.chat.slash.video.failed"));
+        } finally {
+          useGalleryStore.getState().setChatGeneratingVideo(ctx.chatId, false);
+        }
+        return { handled: true };
+      }
       if (!ctx.video) {
         return { handled: true, feedback: await translateSlash("ui.chat.slash.video.unavailable") };
       }

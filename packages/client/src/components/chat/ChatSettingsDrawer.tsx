@@ -1,3 +1,4 @@
+import { ChatButtonLayoutSettings } from "../../features/chat-settings/ChatButtonLayoutSettings";
 // ──────────────────────────────────────────────
 // Chat: Settings Drawer — per-chat configuration
 // ──────────────────────────────────────────────
@@ -15,11 +16,13 @@ import {
 } from "react";
 import { useQuery, useQueryClient, useQueries } from "@tanstack/react-query";
 import { useTranslation, useTranslation as useUiTranslation } from "react-i18next";
+import { useLocalizedUiText } from "../../localization/use-localized-ui-text";
 import { toast } from "sonner";
 import { RoleplayCommandsSettings } from "./RoleplayCommandsSettings";
 import { ChatBranchesPanel } from "./ChatBranchesPanel";
 import { ChatMessageSearch } from "./ChatMessageSearch";
 import { ChatWindowFavoriteButton } from "./ChatWindowFavoriteButton";
+import { listCombatStyles, resolveCombatStyle } from "../game/combat-styles";
 import { AgentActivitySection } from "../agents/AgentActivitySection";
 import { withAgentActivityStatus } from "../agents/AgentActivityIcon";
 import { useKeepFocusedFieldAboveKeyboard } from "../../hooks/use-keep-focused-field-above-keyboard";
@@ -98,6 +101,7 @@ import { type ChatToolbarFloatingPanelAnchor } from "./ChatToolbarControls";
 import { PickerDropdown } from "../../features/chat-settings/PickerDropdown";
 import { PersonaHistoryReassignDropdown } from "../../features/chat-settings/sections/PersonaHistoryReassignDropdown";
 import { ChatSettingsSection as Section } from "../../features/chat-settings/ChatSettingsSection";
+import { ChatBranchGraphButton } from "./ChatBranchGraphWindow";
 import { ActiveChatBackgroundPicker } from "../panels/settings/BackgroundPicker";
 import { AdvancedParametersSection } from "../../features/chat-settings/sections/AdvancedParametersSection";
 import { ChatNameSection } from "../../features/chat-settings/sections/ChatNameSection";
@@ -119,6 +123,7 @@ import { CapabilityElement } from "../capabilities/CapabilityElement";
 import type { AvatarCrop, MultiplayerHostAction } from "@marinara-engine/shared";
 import {
   AVATAR_AGENT_IDS,
+  audioConnectionSupportsGeneration,
   BUILT_IN_AGENTS,
   VIDEO_FIRST_FRAMES,
   normalizeVideoFirstFrame,
@@ -127,6 +132,9 @@ import {
   getRelevantCardVariables,
   hasOnboardingContent,
   readCardOnboarding,
+  ROLEPLAY_DEFAULT_VIDEO_FIRST_FRAME,
+  ILLUSTRATOR_VIDEO_MODES,
+  normalizeIllustratorVideoMode,
   DEFAULT_GAME_DICE_POOL_AGE_TURNS as DEFAULT_DICE_POOL_AGE_TURNS,
   DEFAULT_GAME_DICE_POOL_WINDOW as DEFAULT_DICE_POOL_WINDOW,
   advancedMemoryProblems,
@@ -136,6 +144,7 @@ import {
   normalizeGroupChatMode,
   normalizeSemanticSummaryRetrievalSettings,
   resolveScopedRegexMode,
+  isConversationCommandToggleOn,
 } from "@marinara-engine/shared";
 import { cn, getAvatarCropStyle } from "../../lib/utils";
 import { showAlertDialog, showChoiceDialog, showConfirmDialog, showPromptDialog } from "../../lib/app-dialogs";
@@ -160,6 +169,7 @@ import {
 import { ExpressionSpriteSettings } from "./ExpressionSpriteSettings";
 import { AvatarLayoutSettings, type AvatarLayoutControls } from "./AvatarLayoutSettings";
 import { AgentPromptTemplateSelect } from "./AgentPromptTemplateSelect";
+import { AgentLorebookAttachment } from "./AgentLorebookAttachment";
 import { HapticConnectionPanel } from "./HapticConnectionPanel";
 import { HAPTIC_SENSITIVITY_OPTIONS } from "./haptic-sensitivity-options";
 import { ChatModeIcon } from "./ChatModeIcon";
@@ -335,6 +345,8 @@ import {
   resolveDefaultAgentPromptTemplateId,
   resolveAgentPromptTemplate,
   normalizeChatSummaryEntries,
+  rulesetCombatStyle,
+  rulesetCombatStyles,
 } from "@marinara-engine/shared";
 import type {
   Chat,
@@ -608,6 +620,9 @@ const CONVERSATION_COMMAND_TOGGLE_OPTIONS: Array<{
   id: ConversationCommandKey;
   label: string;
   description: string;
+  /** Catalog keys for the label and description; entries without them still show their English text. */
+  labelKey?: string;
+  descriptionKey?: string;
 }> = [
   {
     id: "schedule_update",
@@ -623,6 +638,13 @@ const CONVERSATION_COMMAND_TOGGLE_OPTIONS: Array<{
     id: "selfie",
     label: "Selfies",
     description: "Let characters request a generated selfie.",
+  },
+  {
+    id: "video",
+    label: "Videos",
+    description: "Let characters send short video messages.",
+    labelKey: "ui.chat.conversationcommands.videos",
+    descriptionKey: "ui.chat.conversationcommands.videosDescription",
   },
   {
     id: "memory",
@@ -704,13 +726,6 @@ function readConversationCommandToggles(value: unknown): Partial<Record<Conversa
     if (typeof source[key] === "boolean") toggles[key] = source[key] as boolean;
   }
   return toggles;
-}
-
-function isConversationCommandToggleEnabled(
-  toggles: Partial<Record<ConversationCommandKey, boolean>>,
-  command: ConversationCommandKey,
-): boolean {
-  return toggles[command] !== false;
 }
 
 const MARINARA_UNIVERSAL_PRESET_NAME = "Marinara's Universal Preset";
@@ -965,6 +980,7 @@ export function ChatSettingsDrawer({
   onOpenScheduleEditor,
 }: ChatSettingsDrawerProps) {
   const { t: localizeUi } = useUiTranslation();
+  const localizeText = useLocalizedUiText();
   const { t } = useTranslation();
   const qc = useQueryClient();
   // Popped-out sections render from here, so the settings stay live while any of them is open.
@@ -1283,10 +1299,14 @@ export function ChatSettingsDrawer({
   }, [chat.id, gameWidgetSource]);
 
   // Creator-notes card CSS: the current per-chat mode (default "chat"), and
-  // whether any active character actually ships CSS — the Card Theming control
-  // only appears when one does, so it never clutters chats it can't affect.
+  // whether any active character actually ships CSS — the CSS mode buttons
+  // only appear when one does, so they never clutter chats they can't affect.
   const cardCssMode: "disabled" | "exclusive" | "chat" =
     metadata.cardCssMode === "exclusive" || metadata.cardCssMode === "chat" ? metadata.cardCssMode : "disabled";
+  // ponytail: chats that never set it inherit the retired global Text Rules switch, so it stays on for its users.
+  const legacyColorInlineNames = useUIStore((s) => s.colorInlineNames);
+  const colorInlineNames =
+    typeof metadata.colorInlineNames === "boolean" ? metadata.colorInlineNames : legacyColorInlineNames;
   const activeCardsHaveCss = useMemo(() => {
     if (!allCharacters) return false;
     const byId = new Map((allCharacters as Array<{ id: string; data: unknown }>).map((c) => [c.id, c]));
@@ -2112,6 +2132,10 @@ export function ChatSettingsDrawer({
   // The agent's value may be saved as text ("0"); read it the way the server does.
   const illustratorRunInterval =
     illustratorChatRunInterval ?? normalizeIllustratorRunInterval(illustratorDefaults.runInterval) ?? 5;
+  // Videos made on their own: this chat's Video Run Interval, else the agent's, else the server default (5).
+  const illustratorChatVideoRunInterval = normalizeIllustratorRunInterval(metadata.illustratorVideoRunInterval);
+  const illustratorVideoRunInterval =
+    illustratorChatVideoRunInterval ?? normalizeIllustratorRunInterval(illustratorDefaults.videoRunInterval) ?? 5;
   const illustratorAutoBackgroundsEnabled = metadata.illustratorAutoBackgroundsEnabled === true;
   const selectedIllustratorPromptConnectionMissing =
     illustratorPromptConnectionId.length > 0 &&
@@ -2125,10 +2149,6 @@ export function ChatSettingsDrawer({
   const gameImageIncludeCharacterAppearance = metadata.gameImageIncludeCharacterAppearance !== false;
   const gameImageAutoGenerationEnabled = metadata.gameImageAutoGenerationEnabled !== false;
   const gameImageDynamicPromptEnabled = metadata.gameImageDynamicPromptEnabled === true;
-  const effectiveCombatStyle: GameCombatStyle =
-    (metadata.gameCombatStyle as GameCombatStyle | undefined) ??
-    (metadata.gameSetupConfig?.combatStyle as GameCombatStyle | undefined) ??
-    "classic";
   // A missing choice is by side: every game before turn order was a choice played that way (combat C6c).
   const effectiveTurnOrder: "side" | "initiative" =
     ((metadata.gameTacticalTurnOrder ?? metadata.gameSetupConfig?.tacticalTurnOrder) as string | undefined) ===
@@ -2152,6 +2172,18 @@ export function ChatSettingsDrawer({
   // positions.
   const rulesetHasPositions =
     rulesetResolvesFights && gameRuleset.status === "ok" && !!gameRuleset.definition.combat?.distance;
+  // The styles that ruleset lets the game play (1.379): a saved one it leaves out shows, and plays, as
+  // the first it lists.
+  const rulesetDefinition = gameRuleset.status === "ok" ? gameRuleset.definition : null;
+  const allowedCombatStyles = rulesetCombatStyles(rulesetDefinition);
+  const effectiveCombatStyle: GameCombatStyle = resolveCombatStyle(
+    rulesetCombatStyle(
+      rulesetDefinition,
+      (metadata.gameCombatStyle as GameCombatStyle | undefined) ??
+        (metadata.gameSetupConfig?.combatStyle as GameCombatStyle | undefined),
+      listCombatStyles(),
+    ),
+  );
   const gameSceneVideosEnabled =
     metadata.gameSceneVideosEnabled === true ||
     (metadata.gameSceneVideosEnabled !== false &&
@@ -2285,7 +2317,8 @@ export function ChatSettingsDrawer({
     });
   }, [chat.id, updateMeta]);
   const resetIllustratorAvatarReferences = useCallback(() => {
-    updateMeta.mutate({ id: chat.id, illustratorUseAvatarReferences: null });
+    // Both halves of Send Avatar References: images back to the agent's default, videos back to off.
+    updateMeta.mutate({ id: chat.id, illustratorUseAvatarReferences: null, illustratorVideoUseAvatarReferences: null });
   }, [chat.id, updateMeta]);
   const toggleIllustratorAutoBackgrounds = useCallback(() => {
     updateMeta.mutate({
@@ -2347,7 +2380,7 @@ export function ChatSettingsDrawer({
     <div className="flex flex-col gap-1">
       <label className="flex flex-col gap-1">
         <span className="text-[0.625rem] font-medium text-[var(--foreground)]">
-          {localizeUi("ui.agents.agenteditor.runInterval")}
+          {localizeUi("ui.agents.agenteditor.imageRunInterval")}
         </span>
         <span className="flex items-center gap-2">
           <DraftNumberInput
@@ -2371,6 +2404,38 @@ export function ChatSettingsDrawer({
       <AgentDefaultStatus
         overridden={illustratorChatRunInterval !== null}
         onReset={() => updateMeta.mutate({ id: chat.id, illustratorRunInterval: null })}
+      />
+    </div>
+  );
+  const renderIllustratorVideoRunInterval = () => (
+    <div className="flex flex-col gap-1">
+      <label className="flex flex-col gap-1">
+        <span className="text-[0.625rem] font-medium text-[var(--foreground)]">
+          {localizeUi("ui.agents.agenteditor.videoRunInterval")}
+        </span>
+        <span className="flex items-center gap-2">
+          <DraftNumberInput
+            value={illustratorVideoRunInterval}
+            min={0}
+            max={MAX_ILLUSTRATOR_RUN_INTERVAL}
+            onCommit={(value) => {
+              if (value !== illustratorVideoRunInterval) {
+                updateMeta.mutate({ id: chat.id, illustratorVideoRunInterval: value });
+              }
+            }}
+            className="w-24 rounded-lg border border-[var(--border)] bg-[var(--background)] px-2.5 py-2 text-xs tabular-nums text-[var(--foreground)] outline-none transition-colors focus:border-[var(--primary)]/50"
+          />
+          <span className="text-[0.625rem] text-[var(--muted-foreground)]">
+            {localizeUi("ui.agents.agenteditor.messages")}
+          </span>
+        </span>
+        <span className="text-[0.625rem] leading-snug text-[var(--muted-foreground)]">
+          {localizeUi("agents.illustrator.chatVideoRunIntervalHelp")}
+        </span>
+      </label>
+      <AgentDefaultStatus
+        overridden={illustratorChatVideoRunInterval !== null}
+        onReset={() => updateMeta.mutate({ id: chat.id, illustratorVideoRunInterval: null })}
       />
     </div>
   );
@@ -2962,7 +3027,7 @@ export function ChatSettingsDrawer({
     const confirmation = firstMesConfirm;
     const selectedGreeting = confirmation.greetings[confirmation.selectedIndex];
     if (!selectedGreeting) return;
-    let messageId: string | null = null;
+    let messageId: string | null;
     try {
       const msg = await createMessage.mutateAsync({
         role: "assistant",
@@ -3521,6 +3586,22 @@ export function ChatSettingsDrawer({
     await toggleAgent(agentId, { skipDirectorRemovalWarning: true });
   };
 
+  const renderAgentLorebookAttachment = (agentType: string) => {
+    const agent = availableAgents.find((entry) => entry.id === agentType);
+    if (!agent || (agent.builtIn && agent.category !== "writer" && agent.category !== "tracker")) return null;
+    if (agentType === "hierarchical-maps") {
+      const api = mapsPackage?.manifest.schemaVersion === 2 ? mapsPackage.manifest.capabilityApi : null;
+      if (!api || api.major < 1 || (api.major === 1 && api.minor < 380)) {
+        return (
+          <p data-agent-lorebook-package-update={agentType} className="text-xs text-[var(--muted-foreground)]">
+            {localizeUi("chat.agentLorebook.packageUpdateRequired")}
+          </p>
+        );
+      }
+    }
+    return <AgentLorebookAttachment chatId={chat.id} agentType={agentType} />;
+  };
+
   const getRoleplayAgentMenuRemoveHandler = (agentId: string, agentName: string) => {
     if (!isRoleplayMode) return undefined;
     return () => {
@@ -3542,7 +3623,7 @@ export function ChatSettingsDrawer({
     ) : null;
 
   const renderStandaloneRoleplayAgentSettingsCard = (agent: (typeof availableAgents)[number]) => {
-    let settings: React.ReactNode = null;
+    let settings: React.ReactNode;
 
     if (agent.id === "hierarchical-maps" && mapsPackage) {
       settings = (
@@ -3634,6 +3715,7 @@ export function ChatSettingsDrawer({
         order={getRoleplayAgentSettingsOrder(agent.id)}
         onRemove={getRoleplayAgentMenuRemoveHandler(agent.id, agent.name)}
       >
+        {renderAgentLorebookAttachment(agent.id)}
         {settings}
       </AgentSettingsCard>
     );
@@ -5147,6 +5229,7 @@ export function ChatSettingsDrawer({
                   overridden={typeof agentPromptTemplateSelections[agent.id] === "string"}
                   onChange={(promptTemplateId) => updateAgentPromptTemplateSelection(agent.id, promptTemplateId)}
                 />
+                {renderAgentLorebookAttachment(agent.id)}
                 {backfillAvailable && agentConfig && (
                   <div className="mt-2 space-y-2">
                     <AgentSettingsToggle
@@ -5271,6 +5354,7 @@ export function ChatSettingsDrawer({
         order={getRoleplayAgentSettingsOrder("haptic")}
         onRemove={getRoleplayAgentMenuRemoveHandler("haptic", hapticAgentMeta.name)}
       >
+        {renderAgentLorebookAttachment("haptic")}
         <AgentSettingsToggle
           label={localizeUi("ui.chat.hapticsetupfields.hapticFeedback")}
           description={
@@ -5429,6 +5513,8 @@ export function ChatSettingsDrawer({
             </button>
           </div>
         )}
+
+        <ChatButtonLayoutSettings />
 
         <div
           className={cn(
@@ -5640,6 +5726,8 @@ export function ChatSettingsDrawer({
               icon={<GitBranch size="0.875rem" />}
               count={branchCount}
               help={localizeUi("chat.settings.branchesHelp")}
+              actions={<ChatBranchGraphButton />}
+              detachedHeaderControls={<ChatBranchGraphButton />}
             >
               <ChatBranchesPanel activeChatId={chat.id} activeChatName={chat.name} groupId={chat.groupId ?? null} />
             </Section>
@@ -5731,6 +5819,7 @@ export function ChatSettingsDrawer({
               combatStyle={effectiveCombatStyle}
               rulesetResolvesFights={rulesetResolvesFights}
               rulesetHasPositions={rulesetHasPositions}
+              allowedStyles={allowedCombatStyles}
               onCombatStyleChange={(gameCombatStyle) => updateMeta.mutate({ id: chat.id, gameCombatStyle })}
               turnOrder={effectiveTurnOrder}
               onTurnOrderChange={(gameTacticalTurnOrder) => updateMeta.mutate({ id: chat.id, gameTacticalTurnOrder })}
@@ -6698,8 +6787,8 @@ export function ChatSettingsDrawer({
             </Section>
           )}
 
-          {/* Card Theming — only shown when an active character ships creator-notes CSS */}
-          {activeCardsHaveCss && (
+          {/* Card Theming — inline name colors in every Roleplay chat; the CSS modes only when an active character ships creator-notes CSS */}
+          {(isRoleplayMode || activeCardsHaveCss) && (
             <Section
               id={`${chatMode}-card-theming`}
               style={{ order: CHAT_SETTINGS_ORDER.cardTheming }}
@@ -6707,50 +6796,68 @@ export function ChatSettingsDrawer({
               icon={<Paintbrush size="0.875rem" />}
               help={localizeUi("ui.chat.chatsettingsdrawer.applyCssEmbeddedInACharacterSCreatorNotes")}
             >
-              <div className="space-y-2">
-                <div className="flex rounded-lg ring-1 ring-[var(--border)]">
-                  <button
-                    onClick={() => updateMeta.mutate({ id: chat.id, cardCssMode: "disabled" })}
-                    className={cn(
-                      "flex-1 px-3 py-2 text-[0.6875rem] font-medium transition-colors rounded-l-lg",
-                      cardCssMode === "disabled"
-                        ? "bg-[var(--primary)] text-white"
-                        : "text-[var(--muted-foreground)] hover:bg-[var(--accent)]",
-                    )}
-                  >
-                    {localizeUi("ui.agents.agenteditor.disabled")}
-                  </button>
-                  <button
-                    onClick={() => updateMeta.mutate({ id: chat.id, cardCssMode: "exclusive" })}
-                    className={cn(
-                      "flex-1 px-3 py-2 text-[0.6875rem] font-medium transition-colors",
-                      cardCssMode === "exclusive"
-                        ? "bg-[var(--primary)] text-white"
-                        : "text-[var(--muted-foreground)] hover:bg-[var(--accent)]",
-                    )}
-                  >
-                    {localizeUi("ui.chat.chatsettingsdrawer.exclusive")}
-                  </button>
-                  <button
-                    onClick={() => updateMeta.mutate({ id: chat.id, cardCssMode: "chat" })}
-                    className={cn(
-                      "flex-1 px-3 py-2 text-[0.6875rem] font-medium transition-colors rounded-r-lg",
-                      cardCssMode === "chat"
-                        ? "bg-[var(--primary)] text-white"
-                        : "text-[var(--muted-foreground)] hover:bg-[var(--accent)]",
-                    )}
-                  >
-                    {localizeUi("ui.chat.chatsettingsdrawer.chat")}
-                  </button>
+              {isRoleplayMode && (
+                <SettingsSwitch
+                  label={localizeUi("ui.chat.chatsettingsdrawer.colorCharacterNamesInText")}
+                  description={localizeUi("ui.chat.chatsettingsdrawer.colorCharacterNamesInTextDescription")}
+                  checked={colorInlineNames}
+                  onChange={(checked) => updateMeta.mutate({ id: chat.id, colorInlineNames: checked })}
+                  labelPosition="start"
+                  className={cn(
+                    "justify-between rounded-md px-3 py-2.5 text-left",
+                    colorInlineNames
+                      ? "bg-[var(--primary)]/10 ring-1 ring-[var(--primary)]/30"
+                      : "bg-[var(--secondary)] hover:bg-[var(--accent)]",
+                  )}
+                  labelClassName="text-[0.6875rem] font-medium"
+                />
+              )}
+              {activeCardsHaveCss && (
+                <div className={cn("space-y-2", isRoleplayMode && "mt-2")}>
+                  <div className="flex rounded-lg ring-1 ring-[var(--border)]">
+                    <button
+                      onClick={() => updateMeta.mutate({ id: chat.id, cardCssMode: "disabled" })}
+                      className={cn(
+                        "flex-1 px-3 py-2 text-[0.6875rem] font-medium transition-colors rounded-l-lg",
+                        cardCssMode === "disabled"
+                          ? "bg-[var(--primary)] text-white"
+                          : "text-[var(--muted-foreground)] hover:bg-[var(--accent)]",
+                      )}
+                    >
+                      {localizeUi("ui.agents.agenteditor.disabled")}
+                    </button>
+                    <button
+                      onClick={() => updateMeta.mutate({ id: chat.id, cardCssMode: "exclusive" })}
+                      className={cn(
+                        "flex-1 px-3 py-2 text-[0.6875rem] font-medium transition-colors",
+                        cardCssMode === "exclusive"
+                          ? "bg-[var(--primary)] text-white"
+                          : "text-[var(--muted-foreground)] hover:bg-[var(--accent)]",
+                      )}
+                    >
+                      {localizeUi("ui.chat.chatsettingsdrawer.exclusive")}
+                    </button>
+                    <button
+                      onClick={() => updateMeta.mutate({ id: chat.id, cardCssMode: "chat" })}
+                      className={cn(
+                        "flex-1 px-3 py-2 text-[0.6875rem] font-medium transition-colors rounded-r-lg",
+                        cardCssMode === "chat"
+                          ? "bg-[var(--primary)] text-white"
+                          : "text-[var(--muted-foreground)] hover:bg-[var(--accent)]",
+                      )}
+                    >
+                      {localizeUi("ui.chat.chatsettingsdrawer.chat")}
+                    </button>
+                  </div>
+                  <p className="text-[0.625rem] text-[var(--muted-foreground)]">
+                    {cardCssMode === "disabled"
+                      ? localizeUi("ui.chat.chatsettingsdrawer.cardCssIsOffNoCharacterStylingIsApplied")
+                      : cardCssMode === "exclusive"
+                        ? localizeUi("ui.chat.chatsettingsdrawer.eachCharacterSCssOnlyAffectsTheirOwnMessages")
+                        : localizeUi("ui.chat.chatsettingsdrawer.allCardCssAffectsTheEntireChatAreaIncluding")}
+                  </p>
                 </div>
-                <p className="text-[0.625rem] text-[var(--muted-foreground)]">
-                  {cardCssMode === "disabled"
-                    ? localizeUi("ui.chat.chatsettingsdrawer.cardCssIsOffNoCharacterStylingIsApplied")
-                    : cardCssMode === "exclusive"
-                      ? localizeUi("ui.chat.chatsettingsdrawer.eachCharacterSCssOnlyAffectsTheirOwnMessages")
-                      : localizeUi("ui.chat.chatsettingsdrawer.allCardCssAffectsTheEntireChatAreaIncluding")}
-                </p>
-              </div>
+              )}
             </Section>
           )}
 
@@ -7355,12 +7462,14 @@ export function ChatSettingsDrawer({
                       {conversationCommandsEnabled && (
                         <div className="grid gap-2 @lg:grid-cols-2">
                           {availableConversationCommandOptions.map((command) => {
-                            const enabled = isConversationCommandToggleEnabled(conversationCommandToggles, command.id);
+                            const enabled = isConversationCommandToggleOn(conversationCommandToggles, command.id);
                             return (
                               <SettingsSwitch
                                 key={command.id}
-                                label={command.label}
-                                description={command.description}
+                                label={command.labelKey ? localizeUi(command.labelKey) : command.label}
+                                description={
+                                  command.descriptionKey ? localizeUi(command.descriptionKey) : command.description
+                                }
                                 checked={enabled}
                                 onChange={(nextEnabled) =>
                                   updateMeta.mutate({
@@ -7396,6 +7505,7 @@ export function ChatSettingsDrawer({
                         )}
                         initialOpen={false}
                       >
+                        {renderAgentLorebookAttachment("illustrator")}
                         <GenerationSettingsLink
                           onClick={openGenerationSettings}
                           title={localizeUi("ui.chat.chatsettingsdrawer.openSettingsGenerations")}
@@ -7499,6 +7609,24 @@ export function ChatSettingsDrawer({
                           <span className="block text-[0.6875rem] font-semibold text-[var(--foreground)]">
                             {localizeUi("ui.chat.chatsettingsdrawer.videoMessages")}
                           </span>
+                          <AgentSettingsToggle
+                            label={localizeUi("ui.chat.chatsettingsdrawer.generatedVideos")}
+                            description={localizeUi("ui.chat.chatsettingsdrawer.generatedVideosConversationHelp")}
+                            enabled={conversationCommandsEnabled && conversationCommandToggles.video === true}
+                            onToggle={() => {
+                              const nextEnabled = !(
+                                conversationCommandsEnabled && conversationCommandToggles.video === true
+                              );
+                              updateMeta.mutate({
+                                id: chat.id,
+                                ...(nextEnabled ? { characterCommands: true } : {}),
+                                conversationCommandToggles: { ...conversationCommandToggles, video: nextEnabled },
+                              });
+                            }}
+                          />
+                          {conversationCommandsEnabled &&
+                            conversationCommandToggles.video === true &&
+                            renderIllustratorVideoRunInterval()}
                           <label className="flex flex-col gap-1">
                             <span className="text-[0.625rem] font-medium text-[var(--foreground)]">
                               {localizeUi("ui.chat.chatsettingsdrawer.videoConnection")}
@@ -8159,10 +8287,13 @@ export function ChatSettingsDrawer({
                       id: string;
                       name: string;
                       provider: string;
+                      audioGenerationSource?: string | null;
+                      audioGenerationLegacyConnectionId?: string | null;
                       audioSoundEffects?: string | boolean;
+                      audioSoundEffectsEndpoint?: string | null;
                       profileImportReviewRequired?: unknown;
                     }>,
-                  ).filter((connection) => isConnectionFlagTrue(connection.audioSoundEffects))}
+                  ).filter((connection) => audioConnectionSupportsGeneration(connection, "sfx"))}
                 />
               )}
               {isGame && (
@@ -8603,6 +8734,7 @@ export function ChatSettingsDrawer({
                           order={getRoleplayAgentSettingsOrder("lorebook-keeper")}
                           onRemove={getRoleplayAgentMenuRemoveHandler("lorebook-keeper", lorebookKeeperAgentMeta.name)}
                         >
+                          {renderAgentLorebookAttachment("lorebook-keeper")}
                           <div className="flex flex-col items-stretch gap-2 rounded-lg bg-[var(--background)]/75 px-3 py-2 ring-1 ring-[var(--border)] @lg:flex-row @lg:items-center @lg:justify-between">
                             <p className="min-w-0 flex-1 text-[0.625rem] leading-snug text-[var(--muted-foreground)]">
                               {localizeUi(
@@ -8699,6 +8831,7 @@ export function ChatSettingsDrawer({
                             cardEvolutionAuditorAgentMeta.name,
                           )}
                         >
+                          {renderAgentLorebookAttachment("card-evolution-auditor")}
                           <div className="space-y-2 rounded-lg bg-[var(--background)]/75 px-3 py-2 ring-1 ring-[var(--border)]">
                             <p className="text-[0.625rem] leading-snug text-[var(--muted-foreground)]">
                               {localizeUi("ui.chat.chatsettingsdrawer.thisAgentNeverEditsCardsDirectlyItProposesExact")}
@@ -8726,6 +8859,7 @@ export function ChatSettingsDrawer({
                           order={getRoleplayAgentSettingsOrder("prose-guardian")}
                           onRemove={getRoleplayAgentMenuRemoveHandler("prose-guardian", proseGuardianAgentMeta.name)}
                         >
+                          {renderAgentLorebookAttachment("prose-guardian")}
                           <AgentSettingsTextarea
                             label={localizeUi("ui.agents.agenteditor.bannedWords")}
                             value={proseGuardianBannedDraft}
@@ -8798,6 +8932,7 @@ export function ChatSettingsDrawer({
                           order={getRoleplayAgentSettingsOrder("director")}
                           onRemove={getRoleplayAgentMenuRemoveHandler("director", directorAgentMeta.name)}
                         >
+                          {renderAgentLorebookAttachment("director")}
                           <p className="rounded-lg bg-[var(--background)]/45 px-2.5 py-2 text-[0.625rem] text-[var(--muted-foreground)] ring-1 ring-[var(--border)]">
                             {localizeUi("ui.chat.agentaddsetupfields.chooseBetweenANaturalOrRandomPushEachTime")}
                           </p>
@@ -8861,6 +8996,7 @@ export function ChatSettingsDrawer({
                           order={getRoleplayAgentSettingsOrder("continuity")}
                           onRemove={getRoleplayAgentMenuRemoveHandler("continuity", continuityAgentMeta.name)}
                         >
+                          {renderAgentLorebookAttachment("continuity")}
                           <AgentSettingsToggle
                             label={localizeUi("ui.chat.agentaddsetupfields.holdMessageUntilRewrite")}
                             description={
@@ -8889,6 +9025,7 @@ export function ChatSettingsDrawer({
                           order={getRoleplayAgentSettingsOrder("html")}
                           onRemove={getRoleplayAgentMenuRemoveHandler("html", htmlAgentMeta.name)}
                         >
+                          {renderAgentLorebookAttachment("html")}
                           <AgentSettingsToggle
                             label={localizeUi("ui.chat.agentaddsetupfields.holdMessageUntilRewrite")}
                             description={
@@ -8910,6 +9047,7 @@ export function ChatSettingsDrawer({
 
                       {metadata.enableAgents && isRoleplayMode && knowledgeRetrievalActive && (
                         <KnowledgeAgentSettingsCard
+                          attachment={renderAgentLorebookAttachment("knowledge-retrieval")}
                           id={getAgentSettingsMenuId(chat.id, "knowledge-retrieval")}
                           agentType="knowledge-retrieval"
                           title={knowledgeRetrievalAgentMeta.name}
@@ -8927,6 +9065,7 @@ export function ChatSettingsDrawer({
 
                       {metadata.enableAgents && isRoleplayMode && knowledgeRouterActive && (
                         <KnowledgeAgentSettingsCard
+                          attachment={renderAgentLorebookAttachment("knowledge-router")}
                           id={getAgentSettingsMenuId(chat.id, "knowledge-router")}
                           agentType="knowledge-router"
                           title={knowledgeRouterAgentMeta.name}
@@ -8960,6 +9099,7 @@ export function ChatSettingsDrawer({
                             ) : null
                           }
                         >
+                          {renderAgentLorebookAttachment("expression")}
                           <ExpressionSpriteSettings
                             chatId={chat.id}
                             displayModes={spriteDisplayModes}
@@ -9044,6 +9184,7 @@ export function ChatSettingsDrawer({
                           order={getRoleplayAgentSettingsOrder("echo-chamber")}
                           onRemove={getRoleplayAgentMenuRemoveHandler("echo-chamber", echoChamberAgentMeta.name)}
                         >
+                          {renderAgentLorebookAttachment("echo-chamber")}
                           <AgentPromptTemplateSelect
                             options={getPromptOptionsForAgent("echo-chamber")}
                             selectedId={
@@ -9084,6 +9225,7 @@ export function ChatSettingsDrawer({
                           order={getRoleplayAgentSettingsOrder("illustrator")}
                           onRemove={getRoleplayAgentMenuRemoveHandler("illustrator", illustratorAgentMeta.name)}
                         >
+                          {renderAgentLorebookAttachment("illustrator")}
                           <AgentPromptTemplateSelect
                             options={getPromptOptionsForAgent("illustrator")}
                             selectedId={
@@ -9097,7 +9239,9 @@ export function ChatSettingsDrawer({
                           />
                           {renderIllustratorPromptConnectionSelect()}
                           {renderIllustratorImageConnectionSelect()}
-                          {renderIllustratorRunInterval()}
+                          {/* Clips only runs on the Video Run Interval, shown with the clip settings. */}
+                          {normalizeIllustratorVideoMode(metadata.illustratorVideoMode) !== "clips_only" &&
+                            renderIllustratorRunInterval()}
                           <AgentSettingsToggle
                             label={localizeUi("ui.chat.chatsettingsdrawer.generateSceneBackgrounds")}
                             description={localizeUi(
@@ -9106,6 +9250,64 @@ export function ChatSettingsDrawer({
                             enabled={illustratorAutoBackgroundsEnabled}
                             onToggle={toggleIllustratorAutoBackgrounds}
                           />
+                          <label className="flex flex-col gap-1">
+                            <span className="text-[0.625rem] font-medium text-[var(--foreground)]">
+                              {localizeUi("ui.chat.chatsettingsdrawer.illustratorMakes")}
+                            </span>
+                            <span className="text-[0.625rem] leading-snug text-[var(--muted-foreground)]">
+                              {localizeUi("ui.chat.chatsettingsdrawer.illustratorMakesHelp")}
+                            </span>
+                            <select
+                              value={normalizeIllustratorVideoMode(metadata.illustratorVideoMode)}
+                              onChange={(e) =>
+                                updateMeta.mutate({
+                                  id: chat.id,
+                                  illustratorVideoMode: normalizeIllustratorVideoMode(e.target.value),
+                                })
+                              }
+                              className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-2.5 py-2 text-xs text-[var(--foreground)] outline-none transition-colors focus:border-[var(--primary)]/50"
+                            >
+                              {ILLUSTRATOR_VIDEO_MODES.map((mode) => (
+                                <option key={mode} value={mode}>
+                                  {localizeUi(`ui.chat.chatsettingsdrawer.illustratorVideoMode.${mode}`)}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          {normalizeIllustratorVideoMode(metadata.illustratorVideoMode) !== "pictures" &&
+                            renderIllustratorVideoRunInterval()}
+                          <label className="flex flex-col gap-1">
+                            <span className="text-[0.625rem] font-medium text-[var(--foreground)]">
+                              {localizeUi("ui.chat.chatsettingsdrawer.videoFirstFrame")}
+                            </span>
+                            <span className="text-[0.625rem] leading-snug text-[var(--muted-foreground)]">
+                              {localizeUi("ui.chat.chatsettingsdrawer.roleplayVideoFirstFrameHelp")}
+                            </span>
+                            <select
+                              value={normalizeVideoFirstFrame(
+                                metadata.sceneVideoFirstFrame,
+                                ROLEPLAY_DEFAULT_VIDEO_FIRST_FRAME,
+                              )}
+                              onChange={(e) =>
+                                updateMeta.mutate({
+                                  id: chat.id,
+                                  sceneVideoFirstFrame: normalizeVideoFirstFrame(e.target.value),
+                                })
+                              }
+                              className="w-full rounded-lg border border-[var(--border)] bg-[var(--background)] px-2.5 py-2 text-xs text-[var(--foreground)] outline-none transition-colors focus:border-[var(--primary)]/50"
+                            >
+                              {VIDEO_FIRST_FRAMES.map((mode) => (
+                                <option key={mode} value={mode}>
+                                  {/* Send Avatar References for videos gives Prompt only the avatar to start from. */}
+                                  {localizeUi(
+                                    mode === "prompt_only" && metadata.illustratorVideoUseAvatarReferences === true
+                                      ? "ui.chat.chatsettingsdrawer.videoFirstFrame.prompt_only_avatar"
+                                      : `ui.chat.chatsettingsdrawer.roleplayVideoFirstFrame.${mode}`,
+                                  )}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
                           {renderIllustratorImageStyleSelect({
                             description:
                               "Shared by Illustrator scenes and generated backgrounds so both keep the same visual language.",
@@ -9134,14 +9336,22 @@ export function ChatSettingsDrawer({
                             }
                             onReset={resetIllustratorCharacterAppearance}
                           />
-                          <AgentSettingsToggle
+                          <MediaScopeSelect
                             label={localizeUi("ui.chat.agentaddsetupfields.sendAvatarReferences")}
-                            description={localizeUi(
-                              "ui.chat.agentaddsetupfields.sendMatchingCharacterAndPersonaAvatarsOrSpritesAs",
-                            )}
-                            enabled={illustratorUseAvatarReferences}
-                            onToggle={toggleIllustratorAvatarReferences}
-                            overridden={typeof metadata.illustratorUseAvatarReferences === "boolean"}
+                            description={localizeUi("ui.chat.chatsettingsdrawer.roleplayAvatarReferencesScopeHelp")}
+                            images={illustratorUseAvatarReferences}
+                            videos={metadata.illustratorVideoUseAvatarReferences === true}
+                            onChange={({ images, videos }) =>
+                              updateMeta.mutate({
+                                id: chat.id,
+                                illustratorUseAvatarReferences: images,
+                                illustratorVideoUseAvatarReferences: videos,
+                              })
+                            }
+                            overridden={
+                              typeof metadata.illustratorUseAvatarReferences === "boolean" ||
+                              metadata.illustratorVideoUseAvatarReferences === true
+                            }
                             onReset={resetIllustratorAvatarReferences}
                           />
                           <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-[var(--background)]/75 px-3 py-2 ring-1 ring-[var(--border)]">
@@ -9221,6 +9431,7 @@ export function ChatSettingsDrawer({
                           order={getRoleplayAgentSettingsOrder("spotify")}
                           onRemove={getRoleplayAgentMenuRemoveHandler("spotify", musicDjAgentMeta.name)}
                         >
+                          {renderAgentLorebookAttachment("spotify")}
                           <p className="text-[0.55rem] text-[var(--muted-foreground)]/80">
                             {localizeUi("ui.chat.musicdjsetupfields.activePlayer")}{" "}
                             {getMusicProviderLabel(musicPlayerSource)}.
@@ -9391,6 +9602,7 @@ export function ChatSettingsDrawer({
                         "ui.chat.chatsettingsdrawer.autoGenerateSceneIllustrationsNpcPortraitsAndLocationBackgrounds",
                       )}
                     >
+                      {renderAgentLorebookAttachment("illustrator")}
                       <GenerationSettingsLink
                         onClick={openGenerationSettings}
                         title={localizeUi("ui.chat.chatsettingsdrawer.openSettingsGenerations")}
@@ -9669,6 +9881,7 @@ export function ChatSettingsDrawer({
                                         title={agent.name}
                                         description={worldMapsSettingsDescription}
                                       >
+                                        {renderAgentLorebookAttachment(agent.id)}
                                         <CapabilityElement
                                           packageId={mapsPackage.id}
                                           view="settings"
@@ -9779,8 +9992,10 @@ export function ChatSettingsDrawer({
                                       )}
                                       labelClassName="min-w-0 text-xs font-medium [&>span>label]:block [&>span>label]:truncate"
                                     />
+                                    {active && !knowledgeAgentType && renderAgentLorebookAttachment(agent.id)}
                                     {active && knowledgeAgentType && (
                                       <KnowledgeAgentSettingsCard
+                                        attachment={renderAgentLorebookAttachment(knowledgeAgentType)}
                                         agentType={knowledgeAgentType}
                                         title={agent.name}
                                         description={getActiveAgentMenuDescription(agent.description)}
@@ -10008,6 +10223,7 @@ export function ChatSettingsDrawer({
                                               }
                                             />
                                           )}
+                                          {renderAgentLorebookAttachment(agent.id)}
                                           {renderDownloadedAgentChatSettings(agent)}
                                         </div>
                                       );
@@ -10664,7 +10880,7 @@ export function ChatSettingsDrawer({
             {agentAddIntervalMeta && agentAddPreview.runInterval != null && (
               <div className="space-y-1.5">
                 <label className="block text-[0.6875rem] font-semibold text-[var(--foreground)]">
-                  {agentAddIntervalMeta.label}
+                  {localizeText(agentAddIntervalMeta.label)}
                 </label>
                 <div className="flex items-center gap-3">
                   {agentAddPreview.agent.builtIn ? (
@@ -11252,6 +11468,7 @@ function MemoryRecallMemoriesModal({
 }
 
 function KnowledgeAgentSettingsCard({
+  attachment,
   id,
   agentType,
   title,
@@ -11262,6 +11479,7 @@ function KnowledgeAgentSettingsCard({
   onChange,
   onRemove,
 }: {
+  attachment?: React.ReactNode;
   id?: string;
   agentType: KnowledgeAgentType;
   title: string;
@@ -11316,6 +11534,7 @@ function KnowledgeAgentSettingsCard({
       order={order}
       onRemove={onRemove}
     >
+      {attachment}
       <AgentSettingsToggle
         label={localizeUi("ui.chat.knowledgesourcefields.useChatActiveLorebooks")}
         description={

@@ -358,6 +358,34 @@ try {
     const blows = walkUp([bite, claw, multiattack]);
     const one = walkUp([bite, claw]);
     assert.ok(blows > one * 2, `a Multiattack counts every blow of it: ${blows} against ${one}`);
+
+    // Walking up to throw, it throws from out of a troll's long reach, not from inside it (I1b
+    // re-test 2026-10-24: 10 of 12 throws made from within a troll's reach).
+    const dart = { ...fire, id: "dart", name: "Dart", range: { normal: 25 } };
+    const longClaw = { ...claw, reach: 10 };
+    const { encounter, state } = fight({
+      thrower: { side: "enemy", block: block([dart], { health: 38 }), at: { x: 3, y: 4 } },
+      troll0: troll({ x: 11, y: 4 }, [bite, longClaw]),
+    });
+    const picked = pickRulesetChoice(definition, state, encounter, "thrower");
+    assert.equal(picked?.option.id, "dart", "it throws");
+    assert.ok(picked?.to, "it walks up first");
+    const gap = Math.max(Math.abs(picked.to.x - 11), Math.abs(picked.to.y - 4));
+    assert.ok(gap > 2, `out of the claw's reach: ${JSON.stringify(picked.to)}`);
+    // And a throw from inside that reach is read as clearly riskier than the same throw a step
+    // outside it, not as "a walk away" alike.
+    const riskAt = (gapWanted: number) =>
+      Math.max(
+        ...rankRulesetChoices(definition, state, encounter, "thrower", 400)
+          .filter(
+            (one) =>
+              one.candidate.action.option.id === "dart" &&
+              one.candidate.action.to &&
+              Math.max(Math.abs(one.candidate.action.to.x - 11), Math.abs(one.candidate.action.to.y - 4)) === gapWanted,
+          )
+          .map((one) => one.candidate.risk ?? 0),
+      );
+    assert.ok(riskAt(2) > riskAt(3) * 1.2, `inside the reach ${riskAt(2)} against outside ${riskAt(3)}`);
   }
 
   // ── A hazard is laid where the other side will walk into it (I3 re-test 2026-10-23) ──

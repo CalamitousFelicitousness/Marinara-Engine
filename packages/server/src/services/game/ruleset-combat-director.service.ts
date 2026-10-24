@@ -1690,6 +1690,16 @@ function rulesetCandidates(
   // Where staying would likely finish it at its next turn's start, any step out is weighed, whatever
   // it does from there (playtest 2026-10-23: cultists that stayed in Spirit Guardians to die).
   const deadly = !!actor && !!home && rulesetZoneKillsAt(definition, encounter, actor, home);
+  // A thrower standing in an opponent's reach weighs the same throw from a step out of it (I1b).
+  const reachedHere = !!actor && !!home && rulesetFoeReachesCell(definition, encounter, actor, home);
+  const clear = (candidate: CombatAiCandidate<RulesetCandidate>) =>
+    reachedHere &&
+    !!actor &&
+    !!candidate.action.to &&
+    worth(candidate) > 0 &&
+    worth(candidate) >= staying &&
+    rulesetThrowsFrom(encounter, actor, candidate, candidate.action.to) &&
+    !rulesetFoeReachesCell(definition, encounter, actor, candidate.action.to);
   const cooler = (candidate: CombatAiCandidate<RulesetCandidate>) =>
     burning > 0 &&
     !!actor &&
@@ -1702,6 +1712,7 @@ function rulesetCandidates(
       (candidate) =>
         worth(candidate) > staying ||
         cooler(candidate) ||
+        clear(candidate) ||
         (roams && worth(candidate) > 0 && candidate.targetId !== undefined && !reachable.has(candidate.targetId)),
     ),
   ];
@@ -1936,6 +1947,43 @@ function rulesetDangerAt(
   return Math.min(3, harm / pool);
 }
 
+/** Whether an opponent standing now could strike this cell without taking a step: within the reach
+ *  of a blow it has that is not thrown or shot. */
+function rulesetFoeReachesCell(
+  definition: RulesetDefinition,
+  encounter: RulesetEncounterState,
+  actor: RulesetCombatant,
+  cell: { x: number; y: number },
+): boolean {
+  const span = rulesetSpanOf(actor);
+  return encounter.combatants.some((foe) => {
+    if (foe.side === actor.side || !rulesetCombatStanding(foe) || !rulesetPositionOf(foe)) return false;
+    const reach = Math.max(
+      0,
+      ...foe.actions
+        .filter(
+          (action) => !!action.damage && !action.range && rulesetActionAvailable(foe, action, encounter, definition),
+        )
+        .map((action) => action.reach ?? 1),
+    );
+    return reach > 0 && rulesetGapFrom(cell, span, foe) <= reach;
+  });
+}
+
+/** Whether a candidate is a blow thrown or shot from where it would stand, its target out of the
+ *  reach it would have in hand. */
+function rulesetThrowsFrom(
+  encounter: RulesetEncounterState,
+  actor: RulesetCombatant,
+  candidate: CombatAiCandidate<RulesetCandidate>,
+  cell: { x: number; y: number },
+): boolean {
+  const action = actor.actions.find((one) => one.id === candidate.action.option.id);
+  const target = candidate.targetId ? rulesetCombatant(encounter, candidate.targetId) : undefined;
+  if (!action?.range || !action.damage || !target || !rulesetPositionOf(target)) return false;
+  return rulesetGapFrom(cell, rulesetSpanOf(actor), target) > Math.max(1, action.reach ?? 0);
+}
+
 /**
  * What standing bunched with its own side adds where an opponent holds a blast it could still use
  * (S1): an area is worth more to its maker the more it catches, so each friend within its size of the
@@ -2084,6 +2132,12 @@ function weighRulesetTeam(
     if (!dangers.has(key)) dangers.set(key, rulesetDangerAt(definition, encounter, actor, cell, fights));
     return dangers.get(key)!;
   };
+  const reached = new Map<string, boolean>();
+  const reaches = (cell: { x: number; y: number }) => {
+    const key = `${cell.x},${cell.y}`;
+    if (!reached.has(key)) reached.set(key, rulesetFoeReachesCell(definition, encounter, actor, cell));
+    return reached.get(key)!;
+  };
   const allies = encounter.combatants.filter(
     (one) => one.side === actor.side && one.id !== actor.id && rulesetCombatStanding(one),
   );
@@ -2131,6 +2185,11 @@ function weighRulesetTeam(
         // Hiding is worth something only out of an opponent's reach: next to one, it is seen.
         const seen = foes.some((foe) => near(actor, foe));
         candidate.risk = danger(cell) * (defensive === "dodge" ? 0.7 : defensive === "hide" && !seen ? 0.6 : 1);
+        // A throw or a shot made from inside an opponent's reach (I1b re-test 2026-10-24: a thrower
+        // that threw 10 of 12 times from within a troll's reach): there it strikes without spending
+        // its walk, and stepping away later draws its blow, so the same throw from out of reach is
+        // safer than "a walk away" reads.
+        if (!defensive && rulesetThrowsFrom(encounter, actor, candidate, cell) && reaches(cell)) candidate.risk *= 1.25;
       }
     }
     // Where it ends up (combat AI A1): beside a friend an opponent is on, which a bulwark stands up

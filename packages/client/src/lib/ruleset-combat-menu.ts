@@ -4,7 +4,7 @@
 // each one lists exactly who it may be pointed at. Nothing here decides legality or does any
 // arithmetic; it groups what arrived, spells what an option spends out of the words the option
 // carries, and keeps a player's picking inside the option's own list and count.
-import type { DirectedRulesetOption, DirectedRulesetView } from "@marinara-engine/shared";
+import type { DirectedCombatView, DirectedRulesetOption, DirectedRulesetView } from "@marinara-engine/shared";
 import {
   RULESET_FLY_DOWN_OPTION,
   RULESET_FLY_UP_OPTION,
@@ -520,21 +520,53 @@ export function rulesetSendsOnPick(option: DirectedRulesetOption): boolean {
   return option.targets.count === 1;
 }
 
+/** The fight a spend carry was sent into, and, while it has not landed, the revision it failed at. */
+export interface RulesetSpendCarried {
+  key: string;
+  failedAt?: number;
+}
+
 /** Whether this browser's choice of picking its own symbol spends (1.382) is carried into the fight
- *  on screen now. Null while it waits: no fight in symbol dice, a step in flight, a decision standing
- *  open (which would refuse the command), or this fight already carried. Otherwise the fight's key
- *  to remember as carried, and whether the command needs sending at all. A fight is its id and its
- *  instance, since a restored checkpoint is another fight under the same id. */
+ *  on screen now. Null while it waits: no fight in symbol dice, a fight already over, a step in
+ *  flight, a decision standing open (which would refuse the command), or this fight already carried
+ *  (or carried and failed at this same revision, so it is tried again only once the fight moves).
+ *  Otherwise the fight's key, whether the command needs sending at all, and the revision it goes
+ *  at. A fight is its id and its instance, since a restored checkpoint is another fight. */
 export function rulesetSpendCarry(
   session:
-    { id: string; instanceId?: string; window?: unknown; ruleset?: { spends?: { choose: boolean } } } | undefined,
+    | (Pick<DirectedCombatView, "id" | "instanceId" | "revision" | "window" | "outcome"> & {
+        ruleset?: Pick<DirectedRulesetView, "spends">;
+      })
+    | undefined,
   busy: boolean,
-  carried: string | null,
+  carried: RulesetSpendCarried | null,
   preferred: boolean,
-): { key: string; send: boolean } | null {
+): { key: string; send: boolean; revision: number } | null {
   const spends = session?.ruleset?.spends;
-  if (!session || !spends || busy || session.window) return null;
+  if (!session || !spends || session.outcome || busy || session.window) return null;
   const key = `${session.id}|${session.instanceId ?? ""}`;
-  if (carried === key) return null;
-  return { key, send: preferred && !spends.choose };
+  if (carried?.key === key && (carried.failedAt === undefined || carried.failedAt === session.revision)) return null;
+  return { key, send: preferred && !spends.choose, revision: session.revision };
+}
+
+/** The carry itself: at most one command per fight while it is in flight or landed, however often
+ *  this runs, and one that does not come back accepted is marked as failed at its revision. */
+export function runRulesetSpendCarry(
+  carry: ReturnType<typeof rulesetSpendCarry>,
+  carried: { current: RulesetSpendCarried | null },
+  send: (command: { type: "spends"; choose: true }, options: { onError: () => void }) => void,
+): void {
+  if (!carry) return;
+  const at = carried.current;
+  if (at?.key === carry.key && at.failedAt === undefined) return;
+  carried.current = { key: carry.key };
+  if (!carry.send) return;
+  send(
+    { type: "spends", choose: true },
+    {
+      onError: () => {
+        if (carried.current?.key === carry.key) carried.current = { key: carry.key, failedAt: carry.revision };
+      },
+    },
+  );
 }

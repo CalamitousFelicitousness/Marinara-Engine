@@ -87,7 +87,9 @@ import {
   rulesetPicksStep,
   rulesetSparePick,
   rulesetSpendCarry,
+  runRulesetSpendCarry,
   type RulesetMenuStep,
+  type RulesetSpendCarried,
 } from "../../packages/client/src/lib/ruleset-combat-menu.js";
 import {
   isRulesetCombatFight,
@@ -2444,24 +2446,45 @@ function drawn(...rows: string[]): TacticalGrid {
   } as never;
   assert.equal(rulesetOptionLabel(engine, t), "Let the Engine choose: Cut deeper, Rally");
   // The browser's choice is carried into a symbol fight once, and never while a decision is open.
-  const fightView = (choose: boolean, extra: Record<string, unknown> = {}) => ({
-    id: "fight",
-    instanceId: "row-1",
-    ruleset: { spends: { choose } },
-    ...extra,
-  });
-  assert.deepEqual(rulesetSpendCarry(fightView(false), false, null, true), { key: "fight|row-1", send: true });
-  assert.deepEqual(rulesetSpendCarry(fightView(false), false, null, false), { key: "fight|row-1", send: false });
-  assert.deepEqual(rulesetSpendCarry(fightView(true), false, null, true), { key: "fight|row-1", send: false });
-  assert.equal(rulesetSpendCarry(fightView(false), false, "fight|row-1", true), null, "carried once");
+  const fightView = (choose: boolean, extra: Record<string, unknown> = {}) =>
+    ({ id: "fight", instanceId: "row-1", revision: 4, ruleset: { spends: { choose } }, ...extra }) as never;
+  const sends = { key: "fight|row-1", send: true, revision: 4 };
+  assert.deepEqual(rulesetSpendCarry(fightView(false), false, null, true), sends);
+  assert.deepEqual(rulesetSpendCarry(fightView(false), false, null, false), { ...sends, send: false });
+  assert.deepEqual(rulesetSpendCarry(fightView(true), false, null, true), { ...sends, send: false });
+  assert.equal(rulesetSpendCarry(fightView(false), false, { key: "fight|row-1" }, true), null, "carried once");
   assert.equal(rulesetSpendCarry(fightView(false, { window: { id: "w" } }), false, null, true), null, "waits");
   assert.equal(rulesetSpendCarry(fightView(false), true, null, true), null, "waits for a step in flight");
-  assert.equal(rulesetSpendCarry({ id: "fight" }, false, null, true), null, "no symbol fight");
+  assert.equal(rulesetSpendCarry({ id: "fight", revision: 1 } as never, false, null, true), null, "no symbol fight");
+  assert.equal(rulesetSpendCarry(fightView(false, { outcome: "victory" }), false, null, true), null, "a fight over");
   assert.deepEqual(
-    rulesetSpendCarry(fightView(false, { instanceId: "row-2" }), false, "fight|row-1", true),
-    { key: "fight|row-2", send: true },
+    rulesetSpendCarry(fightView(false, { instanceId: "row-2" }), false, { key: "fight|row-1" }, true),
+    { ...sends, key: "fight|row-2" },
     "a restored checkpoint is another fight",
   );
+  // One that failed waits for the fight to move, then goes again.
+  const failed = { key: "fight|row-1", failedAt: 4 };
+  assert.equal(rulesetSpendCarry(fightView(false), false, failed, true), null, "not again at the same revision");
+  assert.deepEqual(rulesetSpendCarry(fightView(false, { revision: 5 }), false, failed, true), {
+    ...sends,
+    revision: 5,
+  });
+  // The carry itself: one command however often it runs, and a failure marked where it failed.
+  {
+    const carried: { current: RulesetSpendCarried | null } = { current: null };
+    const sent: Array<() => void> = [];
+    const send = (_command: unknown, options: { onError: () => void }) => sent.push(options.onError);
+    runRulesetSpendCarry(sends, carried, send);
+    runRulesetSpendCarry(sends, carried, send);
+    assert.equal(sent.length, 1, "run twice by one closure, one command leaves");
+    assert.deepEqual(carried.current, { key: "fight|row-1" });
+    sent[0]!();
+    assert.deepEqual(carried.current, failed, "a command that failed is marked at its revision");
+    runRulesetSpendCarry({ ...sends, revision: 5 }, carried, send);
+    assert.equal(sent.length, 2, "and is sent again once the fight has moved");
+    runRulesetSpendCarry({ ...sends, send: false }, { current: null }, send);
+    assert.equal(sent.length, 2, "nothing to send is nothing sent");
+  }
   const grid = drawn(".....", ".....");
   const state = createRulesetEncounter({
     definition: fiveE,

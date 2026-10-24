@@ -1,5 +1,5 @@
 import { CombatWeatherSummary } from "./CombatWeatherSummary";
-import { useEffect, useMemo, useRef, type ComponentProps } from "react";
+import { useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 import type {
   CombatDecisionOption,
   RulesetDefinition,
@@ -13,7 +13,7 @@ import { RulesetCombatScreen, RulesetFightEnd } from "./RulesetCombatScreen";
 import { RulesetCombatStatus } from "./RulesetCombatStatus";
 import { readSpendChoice, writeSpendChoice } from "./RulesetSpendToggle";
 import { rulesetValueLabel } from "../../lib/ruleset-combat-log";
-import { rulesetSpendCarry } from "../../lib/ruleset-combat-menu";
+import { rulesetSpendCarry, runRulesetSpendCarry, type RulesetSpendCarried } from "../../lib/ruleset-combat-menu";
 import type { RulesetCellChoice } from "../../lib/ruleset-combat-board";
 import { TacticalCombatUI } from "./TacticalCombatUI";
 import { cn } from "../../lib/utils";
@@ -73,22 +73,19 @@ export function DirectedCombatUI(props: Props) {
   const defenseLabel = definition ? rulesetValueLabel(definition, definition.combat?.defense) : "";
   // Whether the player picks their own symbol spends (1.382) is this browser's, carried into each new
   // fight once, as it opens: the fight starts with the Engine picking.
-  const spendsCarried = useRef<string | null>(null);
-  const carry = rulesetSpendCarry(
-    s?.style === "ruleset" ? s : undefined,
-    busy,
-    spendsCarried.current,
-    readSpendChoice(),
-  );
+  const spendsCarried = useRef<RulesetSpendCarried | null>(null);
+  const [preferSpends, setPreferSpends] = useState(readSpendChoice);
+  const carry = rulesetSpendCarry(s?.style === "ruleset" ? s : undefined, busy, spendsCarried.current, preferSpends);
   const carryKey = carry?.key;
   const carrySends = !!carry?.send;
+  const carryRevision = carry?.revision;
   useEffect(() => {
-    if (!carryKey) return;
-    spendsCarried.current = carryKey;
-    if (carrySends) send({ type: "spends", choose: true });
-  }, [carryKey, carrySends, send]);
+    if (carryKey === undefined || carryRevision === undefined) return;
+    runRulesetSpendCarry({ key: carryKey, send: carrySends, revision: carryRevision }, spendsCarried, send);
+  }, [carryKey, carrySends, carryRevision, send]);
   const chooseSpends = (choose: boolean) => {
     writeSpendChoice(choose);
+    setPreferSpends(choose);
     send({ type: "spends", choose });
   };
   if (loading || !s)

@@ -581,6 +581,36 @@ try {
       ["slip"],
     );
     assert.deepEqual(pickRulesetSymbolSpends(kinded.combat!, { t: 1 }, true, "attacker", budget), []);
+    // Two spends reaching for one step of heat: the worthier gets it whatever the order they are
+    // listed in, and the symbols the other would have used buy the best of what still lands.
+    const contended = parsedOrThrow(
+      doc((document) => {
+        const spends = document.combat.symbols.spends;
+        spends.find((spend: { id: string }) => spend.id === "overreach").worth = 2.5;
+        spends.push({
+          id: "scorch",
+          label: "Scorch",
+          by: "target",
+          symbol: "h",
+          cost: 1,
+          track: { id: "heat", by: 1, on: "attacker" },
+          worth: 3,
+        });
+      }),
+    );
+    rulesetCombatant(hot, "brute")!.tracks = { heat: 4 };
+    const oneStep = () =>
+      rulesetSymbolSpendBudget(contended, hot, rulesetCombatant(hot, "brute")!, rulesetCombatant(hot, "ada")!);
+    assert.deepEqual(
+      pickRulesetSymbolSpends(contended.combat!, { h: 3 }, false, "target", oneStep()).map((pick) => [
+        pick.spend.id,
+        pick.times,
+      ]),
+      [
+        ["slip", 1],
+        ["scorch", 1],
+      ],
+    );
     const cleaver = rulesetCombatOptions(kinded, already, "ada").find((entry) => entry.label === "Cleaver")!;
     const declined = applyRulesetCombatChoice(
       kinded,

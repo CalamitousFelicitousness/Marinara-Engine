@@ -286,6 +286,35 @@ export const RULESET_SYMBOL_SPEND_UNLIMITED: RulesetSymbolSpendBudget = {
   take: () => {},
 };
 
+/** The most worth one symbol's `capacity` buys from `spends`, each at most `copies` times: a bounded
+ *  knapsack, one item per copy. Ties keep the symbols for the story. */
+function fillRulesetSymbolSpends(
+  spends: readonly RulesetSymbolSpend[],
+  capacity: number,
+  copies: (spend: RulesetSymbolSpend) => number,
+): Map<RulesetSymbolSpend, number> {
+  const items = spends.flatMap((spend) => Array.from({ length: Math.max(0, copies(spend)) }, () => spend));
+  const best = Array.from({ length: Math.max(0, capacity) + 1 }, () => ({ worth: 0, used: 0, items: [] as number[] }));
+  items.forEach((item, index) => {
+    const worth = rulesetSymbolSpendWorth(item);
+    for (let room = capacity; room >= item.cost; room--) {
+      const from = best[room - item.cost]!;
+      const worthNow = from.worth + worth;
+      const usedNow = from.used + item.cost;
+      const here = best[room]!;
+      if (worthNow > here.worth + 1e-9 || (Math.abs(worthNow - here.worth) <= 1e-9 && usedNow < here.used)) {
+        best[room] = { worth: worthNow, used: usedNow, items: [...from.items, index] };
+      }
+    }
+  });
+  const chosen = best.reduce((top, one) =>
+    one.worth > top.worth + 1e-9 || (Math.abs(one.worth - top.worth) <= 1e-9 && one.used < top.used) ? one : top,
+  );
+  const times = new Map<RulesetSymbolSpend, number>();
+  for (const index of chosen.items) times.set(items[index]!, (times.get(items[index]!) ?? 0) + 1);
+  return times;
+}
+
 /** The spends one side buys with the symbols a roll left, the most worth for what it has: each
  *  symbol is its own budget, so each is filled on its own, and a spend worth nothing is never bought.
  *  Ties keep the symbols for the story. What lands is asked of `budget` as each is bought, so two
@@ -305,39 +334,38 @@ export function pickRulesetSymbolSpends(
       (hit ? spend.when !== "miss" : spend.when !== "hit") &&
       rulesetSymbolSpendWorth(spend) > 0,
   );
-  const picks: RulesetSymbolSpendPick[] = [];
+  const bought = new Map<RulesetSymbolSpend, number>();
   for (const symbol of new Set(spends.map((spend) => spend.symbol))) {
-    const capacity = symbols[symbol] ?? 0;
-    // One item per time a spend may be bought, so a bounded knapsack is a plain one.
-    const items = spends
-      .filter((spend) => spend.symbol === symbol)
-      .flatMap((spend) => Array.from({ length: Math.min(spend.max, budget.copies(spend)) }, () => spend));
-    const best = Array.from({ length: capacity + 1 }, () => ({ worth: 0, used: 0, items: [] as number[] }));
-    items.forEach((item, index) => {
-      const worth = rulesetSymbolSpendWorth(item);
-      for (let room = capacity; room >= item.cost; room--) {
-        const from = best[room - item.cost]!;
-        const worthNow = from.worth + worth;
-        const usedNow = from.used + item.cost;
-        const here = best[room]!;
-        if (worthNow > here.worth + 1e-9 || (Math.abs(worthNow - here.worth) <= 1e-9 && usedNow < here.used)) {
-          best[room] = { worth: worthNow, used: usedNow, items: [...from.items, index] };
-        }
+    let left = symbols[symbol] ?? 0;
+    // Filled again from what is left after each round of taking, so two spends reaching for one
+    // holder's room never both count: the worthier is taken first, and the symbols the other would
+    // have used go to the best of what still lands.
+    for (;;) {
+      const chosen = fillRulesetSymbolSpends(
+        spends.filter((spend) => spend.symbol === symbol),
+        left,
+        (spend) => Math.min(spend.max - (bought.get(spend) ?? 0), budget.copies(spend)),
+      );
+      if (chosen.size === 0) break;
+      const byWorth = [...chosen.keys()].sort(
+        (a, b) => rulesetSymbolSpendWorth(b) - rulesetSymbolSpendWorth(a) || spends.indexOf(a) - spends.indexOf(b),
+      );
+      let whole = true;
+      let took = false;
+      for (const spend of byWorth) {
+        const wanted = chosen.get(spend)!;
+        const count = Math.min(wanted, budget.copies(spend));
+        if (count < wanted) whole = false;
+        if (count <= 0) continue;
+        budget.take(spend, count);
+        bought.set(spend, (bought.get(spend) ?? 0) + count);
+        left -= count * spend.cost;
+        took = true;
       }
-    });
-    const chosen = best.reduce((top, one) =>
-      one.worth > top.worth + 1e-9 || (Math.abs(one.worth - top.worth) <= 1e-9 && one.used < top.used) ? one : top,
-    );
-    const times = new Map<RulesetSymbolSpend, number>();
-    for (const index of chosen.items) times.set(items[index]!, (times.get(items[index]!) ?? 0) + 1);
-    // In the order the ruleset lists them, each only as often as it still lands.
-    for (const spend of spends) {
-      const count = Math.min(times.get(spend) ?? 0, budget.copies(spend));
-      if (count <= 0) continue;
-      budget.take(spend, count);
-      picks.push({ spend, times: count });
+      if (whole || !took) break;
     }
   }
+  const picks: RulesetSymbolSpendPick[] = [...bought].map(([spend, times]) => ({ spend, times }));
   return picks.sort(
     (a, b) => (combat.symbols?.spends ?? []).indexOf(a.spend) - (combat.symbols?.spends ?? []).indexOf(b.spend),
   );

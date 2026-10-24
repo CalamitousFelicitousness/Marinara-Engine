@@ -520,44 +520,46 @@ export function rulesetSendsOnPick(option: DirectedRulesetOption): boolean {
   return option.targets.count === 1;
 }
 
-/** The fight a spend carry was sent into, how many times, and, while it has not landed, how it
- *  failed: refused by the rules at a revision, or lost on the way. */
+/** The fight a spend carry was sent into, how many times it was lost on the way, and, while it has
+ *  not landed, how it failed: refused by the rules at a revision, or lost while one view stood. */
 export interface RulesetSpendCarried {
   key: string;
-  tries: number;
-  failed?: { refused: true; at: number } | { refused: false };
+  lost: number;
+  failed?: { refused: true; at: number } | { refused: false; view: number };
 }
 
-/** A carry lost on the way is sent again this many times in all, so a server that is down is not
- *  asked for ever. */
+/** A carry lost on the way is sent this many times in all, so a server that is down is not asked
+ *  for ever. A refusal is not counted: the rules answered it, and it waits for the fight to move. */
 export const RULESET_SPEND_CARRY_TRIES = 3;
 
 /** Whether this browser's choice of picking its own symbol spends (1.382) is carried into the fight
  *  on screen now. Null while it waits: no fight in symbol dice, a fight already over, a step in
  *  flight, a decision standing open (which would refuse the command), or this fight already carried.
  *  One the rules refused is tried again once the fight has moved past that revision; one lost on
- *  the way, on the next view, up to its tries. Otherwise the fight's key, whether the command needs
- *  sending at all, and the revision it goes at. A fight is its id and its instance, since a restored
- *  checkpoint is another fight. */
+ *  the way, once a fresh view has come in (`view` is when the one on screen arrived), up to its
+ *  tries. Otherwise the fight's key, whether the command needs sending at all, and the revision and
+ *  view it goes at. A fight is its id and its instance, since a restored checkpoint is another. */
 export function rulesetSpendCarry(
   session:
     | (Pick<DirectedCombatView, "id" | "instanceId" | "revision" | "window" | "outcome"> & {
         ruleset?: Pick<DirectedRulesetView, "spends">;
       })
     | undefined,
+  view: number,
   busy: boolean,
   carried: RulesetSpendCarried | null,
   preferred: boolean,
-): { key: string; send: boolean; revision: number } | null {
+): { key: string; send: boolean; revision: number; view: number } | null {
   const spends = session?.ruleset?.spends;
   if (!session || !spends || session.outcome || busy || session.window) return null;
   const key = `${session.id}|${session.instanceId ?? ""}`;
   if (carried?.key === key) {
     const failed = carried.failed;
     if (!failed) return null;
-    if (failed.refused ? failed.at === session.revision : carried.tries >= RULESET_SPEND_CARRY_TRIES) return null;
+    if (failed.refused && failed.at === session.revision) return null;
+    if (!failed.refused && (failed.view === view || carried.lost >= RULESET_SPEND_CARRY_TRIES)) return null;
   }
-  return { key, send: preferred && !spends.choose, revision: session.revision };
+  return { key, send: preferred && !spends.choose, revision: session.revision, view };
 }
 
 /** The carry itself: at most one command per fight while it is in flight or landed, however often
@@ -572,22 +574,17 @@ export function runRulesetSpendCarry(
   if (!carry) return;
   const at = carried.current?.key === carry.key ? carried.current : null;
   if (at && !at.failed) return;
-  if (!carry.send) {
-    carried.current = { key: carry.key, tries: at?.tries ?? 0 };
-    return;
-  }
-  const tries = (at?.tries ?? 0) + 1;
-  carried.current = { key: carry.key, tries };
+  const lost = at?.lost ?? 0;
+  carried.current = { key: carry.key, lost };
+  if (!carry.send) return;
   send(
     { type: "spends", choose: true },
     {
       onError: (error) => {
         if (carried.current?.key !== carry.key) return;
-        carried.current = {
-          key: carry.key,
-          tries,
-          failed: refused(error) ? { refused: true, at: carry.revision } : { refused: false },
-        };
+        carried.current = refused(error)
+          ? { key: carry.key, lost, failed: { refused: true, at: carry.revision } }
+          : { key: carry.key, lost: lost + 1, failed: { refused: false, view: carry.view } };
       },
     },
   );

@@ -46,6 +46,7 @@ export function DirectedCombatUI(props: Props) {
     busy,
     send,
     refresh,
+    viewedAt,
   } = useDirectedCombat({
     chatId: props.chatId,
     anchor: props.anchor,
@@ -75,19 +76,26 @@ export function DirectedCombatUI(props: Props) {
   // fight once, as it opens: the fight starts with the Engine picking.
   const spendsCarried = useRef<RulesetSpendCarried | null>(null);
   const [preferSpends, setPreferSpends] = useState(readSpendChoice);
-  const carry = rulesetSpendCarry(s?.style === "ruleset" ? s : undefined, busy, spendsCarried.current, preferSpends);
+  const carry = rulesetSpendCarry(
+    s?.style === "ruleset" ? s : undefined,
+    viewedAt,
+    busy,
+    spendsCarried.current,
+    preferSpends,
+  );
   const carryKey = carry?.key;
   const carrySends = !!carry?.send;
   const carryRevision = carry?.revision;
+  const carryView = carry?.view;
   useEffect(() => {
-    if (carryKey === undefined || carryRevision === undefined) return;
+    if (carryKey === undefined || carryRevision === undefined || carryView === undefined) return;
     runRulesetSpendCarry(
-      { key: carryKey, send: carrySends, revision: carryRevision },
+      { key: carryKey, send: carrySends, revision: carryRevision, view: carryView },
       spendsCarried,
       send,
       isRulesetRefusal,
     );
-  }, [carryKey, carrySends, carryRevision, send]);
+  }, [carryKey, carrySends, carryRevision, carryView, send]);
   const chooseSpends = (choose: boolean) => {
     writeSpendChoice(choose);
     setPreferSpends(choose);

@@ -142,6 +142,8 @@ export function useDirectedCombat(input: {
     error: query.error ?? mutate.error,
     loading: query.isPending,
     busy: mutate.isPending,
+    /** When the view on screen arrived: a refetch or an accepted step, never a command failing. */
+    viewedAt: query.dataUpdatedAt,
     send,
     refresh: () => {
       mutate.reset();

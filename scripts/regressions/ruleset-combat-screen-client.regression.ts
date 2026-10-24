@@ -2425,12 +2425,23 @@ function drawn(...rows: string[]): TacticalGrid {
   assert.equal(rulesetAimSoFar(undefined), null);
 }
 
-// ── The menu groups, the movement group first ──
+// ── The menu groups, the movement group first on a turn ──
 {
+  // A symbol throw's spends (1.382) are only ever asked in a window of their own, so they lead it.
   assert.deepEqual(
     [...RULESET_MENU_KINDS],
-    ["move", "attack", "reload", "ability", "item", "switch", "block", "contest", "standard", "end-turn"],
+    ["spend", "move", "attack", "reload", "ability", "item", "switch", "block", "contest", "standard", "end-turn"],
   );
+  assert.ok(messages["game.combat.ruleset.group.spend"], "en.json is missing the spend heading");
+  const engine = {
+    id: "engine-spends",
+    kind: "spend",
+    label: "Cut deeper, Rally",
+    targets: { side: "self", count: 0 },
+    targetIds: [],
+    symbolSpend: { engine: true, picks: [] },
+  } as never;
+  assert.equal(rulesetOptionLabel(engine, t), "Let the Engine choose: Cut deeper, Rally");
   const grid = drawn(".....", ".....");
   const state = createRulesetEncounter({
     definition: fiveE,

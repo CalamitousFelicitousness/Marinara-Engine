@@ -172,17 +172,6 @@ jobs:
           git checkout --detach "$HEAD_SHA"
           echo "PR_HEAD_SHA=$HEAD_SHA" >> "$GITHUB_ENV"
 
-      - name: Mark Dottore status in progress
-        if: steps.admission.outputs.ready == 'true' && inputs.review_mode != 'autofix'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          [ "$(python3 /tmp/dottore-review-tool/dottore_review.py ready)" = "ready=true" ] || exit 0
-          gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$PR_HEAD_SHA" \
-            -f state=pending -f context="Dottore Review" \
-            -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
-            -f description="The specimen is on Dottore's observation table. Examination in progress." >/dev/null
-
       - name: Run Dottore review
         id: examination
         if: steps.admission.outputs.ready == 'true' && inputs.review_mode != 'autofix'

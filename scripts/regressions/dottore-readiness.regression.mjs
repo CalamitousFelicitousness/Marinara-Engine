@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import vm from "node:vm";
 
 const python = ["python3", "python"].find(
   (command) => spawnSync(command, ["-c", "import sys; sys.exit(sys.version_info < (3, 9))"]).status === 0,
@@ -212,3 +216,124 @@ const result = spawnSync(python, ["-c", proof, reviewer], {
 });
 assert.equal(result.status, 0, `${result.error?.message ?? ""}\n${result.stdout}${result.stderr}`);
 console.info("Dottore readiness regressions passed.");
+
+// Execute the actual status-publication Bash, including its real readiness command.
+// No GitHub request escapes the fixture; model work is represented only by its step outputs.
+if (process.platform !== "win32") {
+  const workflow = readFileSync(new URL("../../.github/workflows/dottore-review.yml", import.meta.url), "utf8");
+  const steps = workflow
+    .split(/^      - name: /mu)
+    .slice(1)
+    .filter((step) => step.includes('context="Dottore Review"'))
+    .map((step) => {
+      const lines = step.split("        run: |\n")[1].split("\n");
+      const end = lines.findIndex((line) => line.trim() && !line.startsWith("          "));
+      return {
+        name: step.split("\n")[0],
+        condition: step.match(/^        if: (.+)$/mu)?.[1],
+        script: lines
+          .slice(0, end < 0 ? undefined : end)
+          .map((line) => line.slice(10))
+          .join("\n"),
+      };
+    });
+  assert.ok(steps.some((step) => step.name === "Complete Dottore status"));
+  const directory = mkdtempSync(join(tmpdir(), "dottore-status-readiness-"));
+  try {
+    // The real CLI uses evaluated union annotations; mirror Actions' Python 3.10+ runtime.
+    const cliPython = ["python3", "python"]
+      .map((command) =>
+        spawnSync(command, ["-c", "import sys; print(sys.executable); sys.exit(sys.version_info < (3, 10))"], {
+          encoding: "utf8",
+          timeout: 5_000,
+        }),
+      )
+      .find((result) => result.status === 0)
+      ?.stdout.trim();
+    assert.ok(cliPython, "The workflow CLI proof requires Python 3.10 or newer, as used in Actions");
+    for (const command of ["python", "python3"]) {
+      writeFileSync(join(directory, command), `#!/bin/sh\nexec '${cliPython.replaceAll("'", "'\\''")}' "$@"\n`, {
+        mode: 0o755,
+      });
+    }
+    const calls = join(directory, "calls.jsonl");
+    writeFileSync(
+      join(directory, "gh"),
+      `#!/usr/bin/env node
+const fs = require("node:fs");
+const args = process.argv.slice(2);
+if (args[0] === "pr" && args[1] === "view") {
+  if (process.env.STATUS_READINESS === "error") process.exit(1);
+  process.stdout.write(JSON.stringify({state: process.env.STATUS_READINESS === "ready" || process.env.STATUS_READINESS === "draft" ? "OPEN" : process.env.STATUS_READINESS.toUpperCase(), isDraft: process.env.STATUS_READINESS === "draft"}));
+} else if (args[0] === "api" && args.includes("POST") && args.some(arg => arg.includes("/statuses/"))) {
+  fs.appendFileSync(process.env.STATUS_CALLS, JSON.stringify(args) + "\\n");
+} else { throw new Error("Unexpected GitHub boundary: " + JSON.stringify(args)); }
+`,
+      { mode: 0o755 },
+    );
+    writeFileSync(join(directory, "review.json"), JSON.stringify({ findings: [], nitpicks: [], pre_merge_checks: [] }));
+    const failures = [];
+    const scenarios = [
+      { name: "Ready review completes", expected: ["success"] },
+      { name: "Draft during examination", examination: "false", readiness: "draft", expected: [] },
+      { name: "Publication withheld", post: "false", readiness: "draft", expected: [] },
+      { name: "Readiness API fails at publication", readiness: "error", expected: [] },
+      { name: "PR closes before publication", readiness: "closed", expected: [] },
+      { name: "PR merges before publication", readiness: "merged", expected: [] },
+      { name: "Draft admission", admission: "false", readiness: "draft", expected: [] },
+      { name: "Ready examination fails", job: "failure", expected: ["failure"] },
+      { name: "Autofix does not publish a review status", mode: "autofix", expected: [] },
+    ];
+    for (const scenario of scenarios) {
+      writeFileSync(calls, "");
+      for (const step of steps) {
+        const condition = step.condition
+          .replaceAll("always()", "true")
+          .replaceAll("steps.admission.outputs.ready", JSON.stringify(scenario.admission ?? "true"))
+          .replaceAll("steps.examination.outputs.ready", JSON.stringify(scenario.examination ?? "true"))
+          .replaceAll("steps.post.outputs.ready", JSON.stringify(scenario.post ?? "true"))
+          .replaceAll("inputs.review_mode", JSON.stringify(scenario.mode ?? "auto"));
+        if (!vm.runInNewContext(condition)) continue;
+        const ready = step.name === "Mark Dottore status in progress" ? "ready" : (scenario.readiness ?? "ready");
+        const script = step.script.replaceAll("/tmp/dottore-review-tool/dottore_review.py", reviewer);
+        const execution = spawnSync("bash", ["-e", "-o", "pipefail", "-c", script], {
+          cwd: directory,
+          encoding: "utf8",
+          timeout: 10_000,
+          env: {
+            ...process.env,
+            PATH: `${directory}:${process.env.PATH}`,
+            PYTHONDONTWRITEBYTECODE: "1",
+            GITHUB_REPOSITORY: "Pasta-Devs/Marinara-Engine",
+            GITHUB_SERVER_URL: "https://github.com",
+            GITHUB_RUN_ID: "fixture",
+            PR_NUM: "42",
+            PR_HEAD_SHA: "a".repeat(40),
+            JOB_STATUS: scenario.job ?? "success",
+            STATUS_CALLS: calls,
+            STATUS_READINESS: ready,
+          },
+        });
+        assert.equal(execution.status, 0, `${scenario.name}: ${execution.error?.message ?? ""}\n${execution.stderr}`);
+      }
+      const statuses = readFileSync(calls, "utf8")
+        .split("\n")
+        .filter(Boolean)
+        .map((line) =>
+          JSON.parse(line)
+            .find((arg) => arg.startsWith("state="))
+            .slice(6),
+        );
+      console.info(`${scenario.name}: ${JSON.stringify(statuses)}`);
+      if (JSON.stringify(statuses) !== JSON.stringify(scenario.expected)) failures.push(scenario.name);
+    }
+    assert.deepEqual(
+      failures,
+      [],
+      "Withheld runs publish no pending or false terminal status; Ready outcomes stay terminal",
+    );
+    console.info(`Dottore status lifecycle regressions passed (${scenarios.length} scenarios).`);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+}

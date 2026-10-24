@@ -75,6 +75,10 @@ A review posts:
 - **The `Dottore Review` commit status**: success once the review is posted, whatever it found, with the verdict and
   the counts in its text; failure only when the review did not run or did not finish.
 
+Only the final commit status is published. Follow the Actions run while examination is in progress. If readiness
+cannot be confirmed before publication, that run adds no status, so it cannot strand a pending state. Statuses
+already published by earlier runs are unchanged.
+
 The verdicts: **Viable** (nothing found) and **Viable, With Notes** (nitpicks only) discharge the head; **Repair
 Required** (defects open) and **Specimen Unstable** (a high or blocking defect, or a failed control) hold it; **Specimen
 Unexamined** means the review did not finish, so nothing is reported as found. **Examination Incomplete** means the

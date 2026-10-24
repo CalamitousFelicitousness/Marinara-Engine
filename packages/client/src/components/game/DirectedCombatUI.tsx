@@ -7,7 +7,7 @@ import type {
   TacticalTerrain,
 } from "@marinara-engine/shared";
 import { useTranslation } from "react-i18next";
-import { useDirectedCombat } from "../../hooks/use-directed-combat";
+import { isRulesetRefusal, useDirectedCombat } from "../../hooks/use-directed-combat";
 import { GameCombatUI } from "./GameCombatUI";
 import { RulesetCombatScreen, RulesetFightEnd } from "./RulesetCombatScreen";
 import { RulesetCombatStatus } from "./RulesetCombatStatus";
@@ -81,7 +81,12 @@ export function DirectedCombatUI(props: Props) {
   const carryRevision = carry?.revision;
   useEffect(() => {
     if (carryKey === undefined || carryRevision === undefined) return;
-    runRulesetSpendCarry({ key: carryKey, send: carrySends, revision: carryRevision }, spendsCarried, send);
+    runRulesetSpendCarry(
+      { key: carryKey, send: carrySends, revision: carryRevision },
+      spendsCarried,
+      send,
+      isRulesetRefusal,
+    );
   }, [carryKey, carrySends, carryRevision, send]);
   const chooseSpends = (choose: boolean) => {
     writeSpendChoice(choose);

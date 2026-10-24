@@ -520,18 +520,25 @@ export function rulesetSendsOnPick(option: DirectedRulesetOption): boolean {
   return option.targets.count === 1;
 }
 
-/** The fight a spend carry was sent into, and, while it has not landed, the revision it failed at. */
+/** The fight a spend carry was sent into, how many times, and, while it has not landed, how it
+ *  failed: refused by the rules at a revision, or lost on the way. */
 export interface RulesetSpendCarried {
   key: string;
-  failedAt?: number;
+  tries: number;
+  failed?: { refused: true; at: number } | { refused: false };
 }
+
+/** A carry lost on the way is sent again this many times in all, so a server that is down is not
+ *  asked for ever. */
+export const RULESET_SPEND_CARRY_TRIES = 3;
 
 /** Whether this browser's choice of picking its own symbol spends (1.382) is carried into the fight
  *  on screen now. Null while it waits: no fight in symbol dice, a fight already over, a step in
- *  flight, a decision standing open (which would refuse the command), or this fight already carried
- *  (or carried and failed at this same revision, so it is tried again only once the fight moves).
- *  Otherwise the fight's key, whether the command needs sending at all, and the revision it goes
- *  at. A fight is its id and its instance, since a restored checkpoint is another fight. */
+ *  flight, a decision standing open (which would refuse the command), or this fight already carried.
+ *  One the rules refused is tried again once the fight has moved past that revision; one lost on
+ *  the way, on the next view, up to its tries. Otherwise the fight's key, whether the command needs
+ *  sending at all, and the revision it goes at. A fight is its id and its instance, since a restored
+ *  checkpoint is another fight. */
 export function rulesetSpendCarry(
   session:
     | (Pick<DirectedCombatView, "id" | "instanceId" | "revision" | "window" | "outcome"> & {
@@ -545,27 +552,42 @@ export function rulesetSpendCarry(
   const spends = session?.ruleset?.spends;
   if (!session || !spends || session.outcome || busy || session.window) return null;
   const key = `${session.id}|${session.instanceId ?? ""}`;
-  if (carried?.key === key && (carried.failedAt === undefined || carried.failedAt === session.revision)) return null;
+  if (carried?.key === key) {
+    const failed = carried.failed;
+    if (!failed) return null;
+    if (failed.refused ? failed.at === session.revision : carried.tries >= RULESET_SPEND_CARRY_TRIES) return null;
+  }
   return { key, send: preferred && !spends.choose, revision: session.revision };
 }
 
 /** The carry itself: at most one command per fight while it is in flight or landed, however often
- *  this runs, and one that does not come back accepted is marked as failed at its revision. */
+ *  this runs, and one that does not come back accepted is marked with how it failed. */
 export function runRulesetSpendCarry(
   carry: ReturnType<typeof rulesetSpendCarry>,
   carried: { current: RulesetSpendCarried | null },
-  send: (command: { type: "spends"; choose: true }, options: { onError: () => void }) => void,
+  send: (command: { type: "spends"; choose: true }, options: { onError: (error: unknown) => void }) => void,
+  /** Whether an error is the rules saying no, rather than the command being lost. */
+  refused: (error: unknown) => boolean,
 ): void {
   if (!carry) return;
-  const at = carried.current;
-  if (at?.key === carry.key && at.failedAt === undefined) return;
-  carried.current = { key: carry.key };
-  if (!carry.send) return;
+  const at = carried.current?.key === carry.key ? carried.current : null;
+  if (at && !at.failed) return;
+  if (!carry.send) {
+    carried.current = { key: carry.key, tries: at?.tries ?? 0 };
+    return;
+  }
+  const tries = (at?.tries ?? 0) + 1;
+  carried.current = { key: carry.key, tries };
   send(
     { type: "spends", choose: true },
     {
-      onError: () => {
-        if (carried.current?.key === carry.key) carried.current = { key: carry.key, failedAt: carry.revision };
+      onError: (error) => {
+        if (carried.current?.key !== carry.key) return;
+        carried.current = {
+          key: carry.key,
+          tries,
+          failed: refused(error) ? { refused: true, at: carry.revision } : { refused: false },
+        };
       },
     },
   );

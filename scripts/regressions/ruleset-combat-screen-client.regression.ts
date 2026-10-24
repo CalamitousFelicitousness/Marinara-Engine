@@ -87,6 +87,7 @@ import {
   rulesetPicksStep,
   rulesetSparePick,
   rulesetSpendCarry,
+  RULESET_SPEND_CARRY_TRIES,
   runRulesetSpendCarry,
   type RulesetMenuStep,
   type RulesetSpendCarried,
@@ -2452,38 +2453,54 @@ function drawn(...rows: string[]): TacticalGrid {
   assert.deepEqual(rulesetSpendCarry(fightView(false), false, null, true), sends);
   assert.deepEqual(rulesetSpendCarry(fightView(false), false, null, false), { ...sends, send: false });
   assert.deepEqual(rulesetSpendCarry(fightView(true), false, null, true), { ...sends, send: false });
-  assert.equal(rulesetSpendCarry(fightView(false), false, { key: "fight|row-1" }, true), null, "carried once");
+  assert.equal(
+    rulesetSpendCarry(fightView(false), false, { key: "fight|row-1", tries: 1 }, true),
+    null,
+    "carried once",
+  );
   assert.equal(rulesetSpendCarry(fightView(false, { window: { id: "w" } }), false, null, true), null, "waits");
   assert.equal(rulesetSpendCarry(fightView(false), true, null, true), null, "waits for a step in flight");
   assert.equal(rulesetSpendCarry({ id: "fight", revision: 1 } as never, false, null, true), null, "no symbol fight");
   assert.equal(rulesetSpendCarry(fightView(false, { outcome: "victory" }), false, null, true), null, "a fight over");
   assert.deepEqual(
-    rulesetSpendCarry(fightView(false, { instanceId: "row-2" }), false, { key: "fight|row-1" }, true),
+    rulesetSpendCarry(fightView(false, { instanceId: "row-2" }), false, { key: "fight|row-1", tries: 1 }, true),
     { ...sends, key: "fight|row-2" },
     "a restored checkpoint is another fight",
   );
-  // One that failed waits for the fight to move, then goes again.
-  const failed = { key: "fight|row-1", failedAt: 4 };
-  assert.equal(rulesetSpendCarry(fightView(false), false, failed, true), null, "not again at the same revision");
-  assert.deepEqual(rulesetSpendCarry(fightView(false, { revision: 5 }), false, failed, true), {
+  // One the rules refused waits for the fight to move; one lost on the way goes again, up to its tries.
+  const refusedAt = { key: "fight|row-1", tries: 1, failed: { refused: true as const, at: 4 } };
+  assert.equal(rulesetSpendCarry(fightView(false), false, refusedAt, true), null, "not again at the same revision");
+  assert.deepEqual(rulesetSpendCarry(fightView(false, { revision: 5 }), false, refusedAt, true), {
     ...sends,
     revision: 5,
   });
-  // The carry itself: one command however often it runs, and a failure marked where it failed.
+  const lost = (tries: number) => ({ key: "fight|row-1", tries, failed: { refused: false as const } });
+  assert.deepEqual(rulesetSpendCarry(fightView(false), false, lost(1), true), sends, "lost: the same view again");
+  assert.equal(
+    rulesetSpendCarry(fightView(false), false, lost(RULESET_SPEND_CARRY_TRIES), true),
+    null,
+    "up to its tries",
+  );
+  // The carry itself: one command however often it runs, and a failure marked by how it failed.
   {
     const carried: { current: RulesetSpendCarried | null } = { current: null };
-    const sent: Array<() => void> = [];
-    const send = (_command: unknown, options: { onError: () => void }) => sent.push(options.onError);
-    runRulesetSpendCarry(sends, carried, send);
-    runRulesetSpendCarry(sends, carried, send);
+    const sent: Array<(error: unknown) => void> = [];
+    const send = (_command: unknown, options: { onError: (error: unknown) => void }) => sent.push(options.onError);
+    const refused = (error: unknown) => error === "refused";
+    runRulesetSpendCarry(sends, carried, send, refused);
+    runRulesetSpendCarry(sends, carried, send, refused);
     assert.equal(sent.length, 1, "run twice by one closure, one command leaves");
-    assert.deepEqual(carried.current, { key: "fight|row-1" });
-    sent[0]!();
-    assert.deepEqual(carried.current, failed, "a command that failed is marked at its revision");
-    runRulesetSpendCarry({ ...sends, revision: 5 }, carried, send);
+    assert.deepEqual(carried.current, { key: "fight|row-1", tries: 1 });
+    sent[0]!("refused");
+    assert.deepEqual(carried.current, refusedAt, "a refusal is marked at its revision");
+    runRulesetSpendCarry({ ...sends, revision: 5 }, carried, send, refused);
     assert.equal(sent.length, 2, "and is sent again once the fight has moved");
-    runRulesetSpendCarry({ ...sends, send: false }, { current: null }, send);
-    assert.equal(sent.length, 2, "nothing to send is nothing sent");
+    sent[1]!(new Error("network"));
+    assert.deepEqual(carried.current, lost(2), "a command lost on the way is marked lost, at any revision");
+    runRulesetSpendCarry({ ...sends, revision: 5 }, carried, send, refused);
+    assert.equal(sent.length, 3, "and goes again on the next view of the same revision");
+    runRulesetSpendCarry({ ...sends, send: false }, { current: null }, send, refused);
+    assert.equal(sent.length, 3, "nothing to send is nothing sent");
   }
   const grid = drawn(".....", ".....");
   const state = createRulesetEncounter({

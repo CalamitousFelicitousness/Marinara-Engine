@@ -95,6 +95,7 @@ import {
   RULESET_ZONE_OPTION_PREFIX,
   RULESET_ZONE_TURN_OPTION_PREFIX,
   RULESET_PASS_OPTION,
+  RULESET_ENGINE_SPENDS_OPTION,
   RULESET_STAND_OPTION,
   type CombatAiCandidate,
   type CombatAiScoreParts,
@@ -2295,6 +2296,19 @@ function answerRulesetWindows(
     const combatant = rulesetCombatant(fight.encounter, asking);
     const controller = rulesetController(state, fight, combatant);
     if (controller === "manual") return;
+    // A chooser of their own spends handed to the Engine mid-throw (1.382) gets the Engine's pick.
+    if (window.kind === "spend") {
+      const engine = rulesetWindowOptions(definition, fight.encounter, asking).some(
+        (option) => option.id === RULESET_ENGINE_SPENDS_OPTION,
+      );
+      applyChoiceOnly(definition, state, fight, {
+        actorId: asking,
+        optionId: engine ? RULESET_ENGINE_SPENDS_OPTION : RULESET_PASS_OPTION,
+        targetIds: [],
+        window: window.id,
+      });
+      continue;
+    }
     if (controller === "gm" && openRulesetWindowDecision(definition, state, fight, asking)) return;
     const menu = rulesetWindowOptions(definition, fight.encounter, asking);
     // Somebody hidden from it, and a Detect to look for them with (1.287).

@@ -832,6 +832,24 @@ try {
       view.options?.map((option) => option.id),
       [RULESET_ENGINE_SPENDS_OPTION, "spend:cut", "spend:rally"],
     );
+    // Handed to the Engine while she is asked, she gets the Engine's pick.
+    const handed = structuredClone(state);
+    assert.ok(
+      director.commandRulesetCombatDirector(
+        definition,
+        handed,
+        { type: "control", unitId: "ada", controller: "ai" },
+        "manual",
+      ).ok,
+    );
+    assert.deepEqual(handed.rulesetFight!.encounter.askSpends, ["bo"]);
+    assert.ok(director.commandRulesetCombatDirector(definition, handed, { type: "continue" }, "manual").ok);
+    assert.deepEqual(
+      handed
+        .rulesetFight!.events.flatMap(({ event }) => (event.type === "symbol-spend" ? [event.spendId] : []))
+        .slice(0, 2),
+      ["cut", "rally"],
+    );
     assert.ok(
       director.commandRulesetCombatDirector(
         definition,

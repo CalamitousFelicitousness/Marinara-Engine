@@ -64,7 +64,6 @@ import {
   type SpatialMapGroundingMode,
   type SpatialMapDraftSize,
   type GameCombatStyle,
-  type TacticalBattlefieldSize,
   type Persona,
   type AvatarCrop,
   type MultiplayerPlayer,
@@ -315,19 +314,6 @@ const SPATIAL_MAP_DRAFT_SIZE_OPTIONS: Array<{
   { value: "large", targetLocationCount: 28, label: "Large", detail: "About 28 places" },
 ];
 const SPATIAL_CUSTOM_TARGET_LOCATION_LIMIT = 40;
-const TACTICAL_BATTLEFIELD_SIZE_OPTIONS: Array<{
-  value: "auto" | TacticalBattlefieldSize;
-  labelKey: string;
-}> = [
-  { value: "auto", labelKey: "ui.game.gamesetupwizard.auto" },
-  { value: "small", labelKey: "ui.game.gamesetupwizard.small" },
-  { value: "medium", labelKey: "ui.game.gamesetupwizard.medium" },
-  { value: "large", labelKey: "ui.game.gamesetupwizard.large" },
-  { value: "huge", labelKey: "ui.game.gamesetupwizard.battlefieldHuge" },
-  { value: "vast", labelKey: "ui.game.gamesetupwizard.battlefieldVast" },
-  { value: "colossal", labelKey: "ui.game.gamesetupwizard.battlefieldColossal" },
-];
-
 function normalizeSpatialMapTargetLocationCount(value: string): number | null {
   const parsed = Number(value);
   if (!value.trim() || !Number.isInteger(parsed) || !Number.isFinite(parsed)) return null;
@@ -663,7 +649,6 @@ export function GameSetupWizard({
   const [gmNamedControl, setGmNamedControl] = useState(true);
   // A cruel opponent may strike the fallen (combat AI T3): off unless asked for.
   const [cruelOpponents, setCruelOpponents] = useState(false);
-  const [tacticalBattlefieldSize, setTacticalBattlefieldSize] = useState<"auto" | TacticalBattlefieldSize>("auto");
   const [gmMode, setGmMode] = useState<GameGmMode>("standalone");
   // The GM intro message (1.339): null follows the Experience's own.
   const [gameIntro, setGameIntro] = useState<GameIntroChoice | null>(null);
@@ -1436,7 +1421,6 @@ export function GameSetupWizard({
     setGmBossControl(config.gmBossControl ?? true);
     setGmNamedControl(config.gmNamedControl ?? false);
     setCruelOpponents(config.cruelOpponents === true);
-    setTacticalBattlefieldSize(config.tacticalBattlefield?.size ?? "auto");
     setRating(config.rating);
     setLanguage(config.language?.trim() || "English");
     setAutoTranslate(config.autoTranslate === true);
@@ -1577,12 +1561,6 @@ export function GameSetupWizard({
         ? trimmedGameSystemPrompt
         : null;
     const trimmedGameSpecialInstructions = gameSpecialInstructions.trim();
-    const tacticalBattlefield =
-      combatStyle === "tactical"
-        ? {
-            ...(tacticalBattlefieldSize !== "auto" ? { size: tacticalBattlefieldSize } : {}),
-          }
-        : {};
 
     return {
       ...buildExperienceSetup(activeExperience, experienceSeed, isNewGame),
@@ -1615,7 +1593,7 @@ export function GameSetupWizard({
       gmBossControl,
       ...(gmBossControl ? { gmNamedControl } : {}),
       ...(cruelOpponents ? { cruelOpponents } : {}),
-      ...(Object.keys(tacticalBattlefield).length > 0 ? { tacticalBattlefield } : {}),
+      // The board's size is the Game Master's to choose, by the place (2026-10-24, Alyssa).
       spatialMapInstructions:
         enableAgents && hierarchicalMapsInstalled && draftSpatialMap
           ? spatialMapInstructions.trim() || undefined
@@ -2448,31 +2426,6 @@ export function GameSetupWizard({
                           </span>
                         </span>
                       </label>
-                      {combatStyle === "tactical" && (
-                        <div className="mt-3 space-y-3 rounded-xl border border-[var(--primary)]/20 bg-[var(--primary)]/5 p-3">
-                          <div>
-                            <div>
-                              <label htmlFor="game-setup-battlefield-size" className={GAME_SETUP_FIELD_LABEL}>
-                                {localizeUi("ui.game.gamesetupwizard.battlefieldSize")}
-                              </label>
-                              <select
-                                id="game-setup-battlefield-size"
-                                value={tacticalBattlefieldSize}
-                                onChange={(event) =>
-                                  setTacticalBattlefieldSize(event.target.value as "auto" | TacticalBattlefieldSize)
-                                }
-                                className={GAME_SETUP_INPUT_CLASS}
-                              >
-                                {TACTICAL_BATTLEFIELD_SIZE_OPTIONS.map((option) => (
-                                  <option key={option.value} value={option.value}>
-                                    {localizeUi(option.labelKey)}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-                          </div>
-                        </div>
-                      )}
                     </div>
 
                     {rulesets.length > 0 && (

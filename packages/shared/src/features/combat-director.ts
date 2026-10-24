@@ -350,6 +350,8 @@ export interface DirectedRulesetView {
     walls?: Record<string, number>;
     /** Growth and seasons on its cells (1.318), by "x,y". */
     ground?: Record<string, { growth?: true; season?: string }>;
+    /** Cells off the map (2026-10-24), outside[y][x]: drawn as nothing. Absent on a box. */
+    outside?: boolean[][];
     distance: { label: string; perCell: number };
     /** The scene a board painted for the place (worldgen W9g) looks like, drawn instead of the fight's own. */
     scene?: TacticalEnvironment;

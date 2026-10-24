@@ -228,6 +228,8 @@ export function RulesetCombatBoard({
   const focusCell = (x: number, y: number) => {
     const clampedX = Math.max(0, Math.min(grid.width - 1, x));
     const clampedY = Math.max(0, Math.min(grid.height - 1, y));
+    // Off the map is no square to stand the cursor on (2026-10-24).
+    if (byKey.get(rulesetCellKey({ x: clampedX, y: clampedY }))?.outside) return;
     setCursor({ x: clampedX, y: clampedY });
     tiles.current.get(rulesetCellKey({ x: clampedX, y: clampedY }))?.focus();
   };
@@ -470,6 +472,8 @@ export function RulesetCombatBoard({
           >
             {cells.map((cell) => {
               const key = rulesetCellKey(cell);
+              // Beyond the board's outline (2026-10-24): nothing, not even a square's frame.
+              if (cell.outside) return <div key={key} aria-hidden="true" className="pointer-events-none" />;
               const icon = resolveTerrainIcon(environment, cell.terrain);
               const onPath = path.has(key);
               const provokes = (cell.reach?.provokes.length ?? 0) > 0;

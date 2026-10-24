@@ -18,6 +18,7 @@ export type { GameCombatStyle } from "../../types/game.js";
 
 export type { TacticalTerrain } from "./environments.js";
 import type { TacticalTerrain, TacticalEnvironment } from "./environments.js";
+import type { TacticalBoardOutline } from "./board-outline.js";
 
 /** Fixed board sizes for procedural tactical encounters, smallest first: 12x8, 13x9, 14x10, and
  *  (2026-10-24) 24x16 for a great hall, 40x26 for a lair, 64x40 for a war's battlefield. */
@@ -49,6 +50,8 @@ export interface TacticalBattlefieldFeature {
 export interface TacticalBattlefieldBrief {
   exposure?: CombatWeather["exposure"];
   size?: TacticalBattlefieldSize;
+  /** The outline it is cut to (2026-10-24); its place's when none is named. */
+  outline?: TacticalBoardOutline;
   features?: TacticalBattlefieldFeature[];
 }
 
@@ -57,9 +60,12 @@ export interface TacticalBattlefieldBrief {
 export type TacticalBattlefieldProvenance =
   | {
       kind: "generated";
-      /** 1: flat; 2: with foothills (combat C6b). A saved fight keeps the board it was fought on. */
-      generatorVersion: 1 | 2;
+      /** 1: flat; 2: with foothills (combat C6b); 3: cut to an outline and sized past large
+       *  (2026-10-24). A saved fight keeps the board it was fought on. */
+      generatorVersion: 1 | 2 | 3;
       size: TacticalBattlefieldSize;
+      /** The outline it was cut to, when it is not a box. */
+      outline?: TacticalBoardOutline;
       brief?: TacticalBattlefieldBrief;
     }
   | { kind: "hand-made"; size: TacticalBattlefieldSize; id: string; name: string; scene: TacticalEnvironment };
@@ -196,6 +202,10 @@ export interface TacticalGrid {
   /** What lies on each cell over its terrain (Capability API 1.318), by "x,y": growth (hard going,
    *  lightly obscuring), its own light, a fog, a season. Only a ruleset fight sets it. */
   ground?: Record<string, TacticalGroundCell>;
+  /** Cells off the map (2026-10-24), outside[y][x]: beyond the outline a generated board is cut to (a
+   *  cavern, a round tower, a ruin). Their tile is a wall, so nothing moves into or sees through them,
+   *  as off the board's edge; they are drawn as nothing and never change. Absent on a box. */
+  outside?: boolean[][];
 }
 
 /** What lies on one cell over its terrain (1.318). */

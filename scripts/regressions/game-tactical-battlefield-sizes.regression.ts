@@ -10,6 +10,11 @@
  *   - A ruleset fight left to the Engine whose board has no room for the gaps its blasts need grows
  *     to a size that has, up to the vast one; one the Game Master or the player sized stays as named.
  *   - A turn on the colossal board still takes a moment, not a minute.
+ *   - Shaped boards (2026-10-24, Alyssa: why are all the maps rectangular?): a round tower, a cavern,
+ *     a valley and a broken ruin, each its place's by default (a cave a cavern). Off the map is a wall
+ *     drawn as nothing; the strips the sides line up on stay on the map, all of it is one piece, and
+ *     nobody is placed off it. A saved board whose cells off the map are not walls is refused, and
+ *     nothing that changes the ground changes them.
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -22,6 +27,13 @@ import {
   rulesetPositionOf,
   type RulesetDefinition,
 } from "../../packages/shared/src/index.js";
+import {
+  tacticalOutsideValid,
+  tacticalOutlineFor,
+} from "../../packages/shared/src/features/tactical-combat/board-outline.js";
+import { isImpassable } from "../../packages/shared/src/features/tactical-combat/math.js";
+import { summarizeTacticalBattlefield } from "../../packages/shared/src/features/tactical-combat/battlefield-summary.js";
+import { rulesetChangeGround } from "../../packages/shared/src/features/ruleset-combat/board-events.js";
 import {
   defaultBattlefieldSize,
   generateTacticalBattlefield,
@@ -66,7 +78,9 @@ try {
         `${size}: ${unit.id} lines up in the arena: ${JSON.stringify(unit)} in ${JSON.stringify(arena)}`,
       );
     }
-    const across = Math.min(...units.filter((u) => u.side === "enemy").map((u) => u.x)) - Math.max(...units.filter((u) => u.side === "party").map((u) => u.x));
+    const across =
+      Math.min(...units.filter((u) => u.side === "enemy").map((u) => u.x)) -
+      Math.max(...units.filter((u) => u.side === "party").map((u) => u.x));
     assert.ok(across <= 30, `${size}: the sides start ${across} apart, not a whole battlefield`);
   }
   assert.deepEqual(tacticalArena({ width: 14, height: 10 }), { x: 0, y: 0, width: 14, height: 10 });
@@ -80,6 +94,76 @@ try {
   });
   assert.ok(walled.ok);
   assert.ok(walled.protectedTiles.size >= 40, `the wall scales with the board: ${walled.protectedTiles.size} squares`);
+
+  // ── Shaped boards ──
+  assert.equal(tacticalOutlineFor("cave"), "cavern");
+  assert.equal(tacticalOutlineFor("ruins"), "broken");
+  assert.equal(tacticalOutlineFor("plains"), "box");
+  assert.ok(validateTacticalBattlefieldBrief({ outline: "round" }).ok);
+  assert.ok(!validateTacticalBattlefieldBrief({ outline: "star" }).ok, "an unknown outline is refused");
+  const plainBox = generateTacticalBattlefield(8, deterministicRng(1, 0), "plains", { size: "large" });
+  assert.ok(plainBox.ok && !plainBox.grid.outside, "open ground stays a box");
+  for (const outline of ["round", "cavern", "valley", "broken"] as const) {
+    for (const size of ["small", "large", "huge", "vast", "colossal"] as const) {
+      for (let seed = 1; seed <= 12; seed++) {
+        const made = generateTacticalBattlefield(10, deterministicRng(seed, 0), "forest", {
+          size,
+          outline,
+          features: [{ terrain: "water", placement: "north", shape: "patch" }],
+        });
+        const where = `${outline} ${size} seed ${seed}`;
+        assert.ok(made.ok, `${where}: ${made.ok ? "" : made.error}`);
+        const { grid } = made;
+        assert.ok(grid.outside, `${where}: cut to its outline`);
+        assert.ok(tacticalOutsideValid(grid), `${where}: off the map is wall`);
+        const off = grid.outside!.flat().filter(Boolean).length;
+        assert.ok(off > 0, `${where}: some of it is off the map`);
+        assert.ok(off < grid.width * grid.height * 0.6, `${where}: most of it is on the map (${off} off)`);
+        const arena = tacticalArena(grid);
+        for (let y = arena.y; y < arena.y + arena.height; y++)
+          for (const x of [arena.x, arena.x + 1, arena.x + arena.width - 2, arena.x + arena.width - 1])
+            assert.ok(!grid.outside![y]![x] && grid.tiles[y]![x] === "plains", `${where}: the strip at ${x},${y}`);
+        // One piece: every cell on the map that is not a wall's own reaches the middle around walls.
+        const units = [
+          ...[0, 1, 2, 3, 4].map((i) => ({ side: "party" as const, x: 0, y: 0, id: `p${i}` })),
+          ...[0, 1, 2, 3, 4].map((i) => ({ side: "enemy" as const, x: 0, y: 0, id: `e${i}` })),
+        ];
+        for (const formation of ["line", "ambush", "surrounded", "skirmish", "defense"] as const) {
+          const board = structuredClone(grid);
+          assert.ok(
+            placeSpawns(board, units, formation, deterministicRng(seed, 1), made.protectedTiles),
+            `${where} ${formation}: placed`,
+          );
+          assert.ok(tacticalOutsideValid(board), `${where} ${formation}: no corridor off the map`);
+          for (const unit of units) {
+            assert.ok(!board.outside![unit.y]![unit.x], `${where} ${formation}: ${unit.id} on the map`);
+            assert.ok(!isImpassable(board, unit.x, unit.y), `${where} ${formation}: ${unit.id} on open ground`);
+          }
+        }
+      }
+    }
+  }
+  const cave = generateTacticalBattlefield(8, deterministicRng(4, 0), "cave", undefined);
+  assert.ok(cave.ok && cave.grid.outside, "a cave is a cavern by itself");
+  assert.equal((cave as { battlefield: { outline?: string } }).battlefield.outline, "cavern");
+  assert.match(
+    summarizeTacticalBattlefield({ seed: 4, environment: "cave", battlefield: cave.battlefield, grid: cave.grid }) ??
+      "",
+    /Outline: cavern, \d+ squares off the map/,
+    "the Game Master is told its outline",
+  );
+  // Saved: off the map must be wall; nothing that changes the ground changes it.
+  const broken = structuredClone(cave.grid);
+  const offCell = (() => {
+    for (let y = 0; y < broken.height; y++)
+      for (let x = 0; x < broken.width; x++) if (broken.outside![y]![x]) return { x, y };
+    throw new Error("no cell off the map");
+  })();
+  broken.tiles[offCell.y]![offCell.x] = "plains";
+  assert.equal(tacticalOutsideValid(broken), false, "a board with open ground off the map is refused");
+  const ground = { board: { grid: structuredClone(cave.grid), placements: {} }, combatants: [] } as never;
+  rulesetChangeGround(ground, [offCell], { terrain: "plains" } as never);
+  assert.equal((ground as any).board.grid.tiles[offCell.y][offCell.x], "wall", "the ground off the map never changes");
 
   // ── A ruleset fight that needs room ──
   const fiveEText = readFileSync(
@@ -109,7 +193,7 @@ try {
     return result.definition;
   };
   const names = ["Ada", "Bram", "Cora", "Dain"];
-  const fight = (definition: RulesetDefinition, battlefield?: unknown, enemies = 1) => {
+  const fight = (definition: RulesetDefinition, battlefield?: unknown, enemies = 1, environment?: string) => {
     const bestiary = Object.fromEntries(
       (definition.catalogs ?? []).flatMap((catalog) =>
         catalog.holds === "creatures" && catalog.entries ? [[catalog.id, catalog.entries]] : [],
@@ -121,6 +205,7 @@ try {
       seed: 5,
       positioned: true,
       ...(battlefield ? { battlefield } : {}),
+      ...(environment ? { environment } : {}),
       party: names.map((name) => ({ id: name.toLowerCase(), name })),
       enemies: Array.from({ length: enemies }, (_, i) => ({
         id: i === 0 ? "mage" : `mage${i}`,
@@ -140,7 +225,9 @@ try {
   const gap = (a: { x: number; y: number }, b: { x: number; y: number }) =>
     Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
   const party = (encounter: any) =>
-    names.map((name) => rulesetPositionOf(encounter.combatants.find((one: { id: string }) => one.id === name.toLowerCase()))!);
+    names.map((name) =>
+      rulesetPositionOf(encounter.combatants.find((one: { id: string }) => one.id === name.toLowerCase()))!,
+    );
   const closest = (cells: { x: number; y: number }[]) =>
     Math.min(...cells.flatMap((a, i) => cells.slice(i + 1).map((b) => gap(a, b))));
 
@@ -148,7 +235,13 @@ try {
   assert.equal(plain.board.grid.width, 12, "with nothing that blasts, the board its head count gives");
   const grown = fight(withMage([slam, fireball]));
   assert.equal(grown.board.grid.width, 24, "a 20-foot fireball needs the huge board for four kept clear of it");
-  assert.ok(closest(party(grown)) >= 5, `and there the party keeps exactly clear of it: ${JSON.stringify(party(grown))}`);
+  assert.ok(
+    closest(party(grown)) >= 5,
+    `and there the party keeps exactly clear of it: ${JSON.stringify(party(grown))}`,
+  );
+  const caved = fight(withMage([slam]), undefined, 1, "cave");
+  assert.ok(caved.board.grid.outside, "a ruleset fight in a cave is fought in a cavern");
+  for (const one of caved.combatants) assert.ok(!caved.board.grid.outside[one.y][one.x], `${one.id} stands on the map`);
   const named = fight(withMage([slam, fireball]), { size: "small" });
   assert.equal(named.board.grid.width, 12, "a size the Game Master named stays as named");
 

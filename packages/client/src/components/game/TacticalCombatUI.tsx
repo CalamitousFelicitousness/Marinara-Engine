@@ -1455,6 +1455,9 @@ export function TacticalCombatUI({
             {liveState.grid.tiles.flatMap((row, y) =>
               row.map((terrain, x) => {
                 const key = `${x},${y}`;
+                // Beyond the board's outline (2026-10-24): nothing is drawn there.
+                if (liveState.grid.outside?.[y]?.[x])
+                  return <div key={key} aria-hidden="true" className="pointer-events-none" />;
                 const inMove = movementKeys.has(key);
                 const inThreat = threatKeys.has(key);
                 const isStaged = stagedMove?.x === x && stagedMove?.y === y;

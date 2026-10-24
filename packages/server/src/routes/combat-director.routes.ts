@@ -34,6 +34,7 @@ import { z } from "zod";
 import {
   assignCombatTactics,
   TERRAIN_DATA,
+  tacticalOutsideValid,
   combatBossSchema,
   combatInterruptFields,
   combatOrdersSchema,
@@ -491,7 +492,8 @@ export async function combatDirectorRoutes(
         grid.tiles.length !== grid.height ||
         grid.tiles.some(
           (row) => row.length !== grid.width || row.some((tile) => !Object.hasOwn(TERRAIN_DATA, tile as string)),
-        )
+        ) ||
+        !tacticalOutsideValid(grid as Parameters<typeof tacticalOutsideValid>[0])
       )
         throw new Error("Invalid battlefield in save.");
       // Everybody on the board or nobody: a fight with one combatant standing nowhere could answer
@@ -552,7 +554,8 @@ export async function combatDirectorRoutes(
         grid.tiles.some(
           (row) =>
             !Array.isArray(row) || row.length !== grid.width || row.some((tile) => !Object.hasOwn(TERRAIN_DATA, tile)),
-        )
+        ) ||
+        !tacticalOutsideValid(grid)
       )
         throw new Error("Invalid battlefield in save.");
       if (!Array.isArray(state.tactical.units) || state.tactical.units.length > 40)

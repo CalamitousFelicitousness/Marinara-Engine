@@ -14,6 +14,12 @@
 
 import { clamp, climbCost, isImpassable, manhattan } from "./math.js";
 import { TERRAIN_DATA } from "./types.js";
+import {
+  TACTICAL_BOARD_OUTLINES,
+  tacticalOutlineCells,
+  tacticalOutlineFor,
+  type TacticalBoardOutline,
+} from "./board-outline.js";
 import type {
   TacticalBattlefieldBrief,
   TacticalBattlefieldFeature,
@@ -30,7 +36,7 @@ import type {
 
 /** Increment when a generated brief's resolved-grid semantics intentionally change. Version 2 (combat C6b)
  *  adds foothills: the same tiles as version 1 for the same seed, with height read off them. */
-export const TACTICAL_BATTLEFIELD_GENERATOR_VERSION = 2 as const;
+export const TACTICAL_BATTLEFIELD_GENERATOR_VERSION = 3 as const;
 
 /**
  * Foothills (combat C6b): a mountain stands two levels high, ground beside one (any of its eight
@@ -99,7 +105,7 @@ export function validateTacticalBattlefieldBrief(value: unknown): TacticalBattle
   if (value === undefined) return { ok: true };
   if (!value || typeof value !== "object" || Array.isArray(value))
     return { ok: false, error: "Invalid battlefield brief." };
-  const source = value as { size?: unknown; features?: unknown; exposure?: unknown };
+  const source = value as { size?: unknown; features?: unknown; exposure?: unknown; outline?: unknown };
   if (
     source.exposure !== undefined &&
     (typeof source.exposure !== "string" || !["exposed", "sheltered", "unknown"].includes(source.exposure))
@@ -107,6 +113,12 @@ export function validateTacticalBattlefieldBrief(value: unknown): TacticalBattle
     return { ok: false, error: "Unknown battlefield exposure." };
   if (source.size !== undefined && (typeof source.size !== "string" || !hasOwnKey(BATTLEFIELD_SIZES, source.size))) {
     return { ok: false, error: "Unknown battlefield size." };
+  }
+  if (
+    source.outline !== undefined &&
+    (typeof source.outline !== "string" || !TACTICAL_BOARD_OUTLINES.includes(source.outline as TacticalBoardOutline))
+  ) {
+    return { ok: false, error: "Unknown battlefield outline." };
   }
   if (source.features !== undefined && !Array.isArray(source.features)) {
     return { ok: false, error: "Battlefield features must be a list." };
@@ -151,6 +163,7 @@ export function validateTacticalBattlefieldBrief(value: unknown): TacticalBattle
     brief: {
       ...(source.exposure ? { exposure: source.exposure as TacticalBattlefieldBrief["exposure"] } : {}),
       ...(source.size ? { size: source.size as TacticalBattlefieldSize } : {}),
+      ...(source.outline ? { outline: source.outline as TacticalBoardOutline } : {}),
       ...(features.length ? { features } : {}),
     },
   };
@@ -221,9 +234,14 @@ export function gridDimensions(unitCount: number, size?: TacticalBattlefieldSize
 
 const SPAWN_COLS = 2;
 
+/** A cell off the map (2026-10-24): outside the board's outline. Nothing is ever painted on it. */
+function offMap(grid: TacticalGrid, x: number, y: number): boolean {
+  return grid.outside?.[y]?.[x] === true;
+}
+
 function set(grid: TacticalGrid, x: number, y: number, terrain: TacticalTerrain): void {
   if (Number.isInteger(x) && Number.isInteger(y) && x >= 0 && y >= 0 && x < grid.width && y < grid.height)
-    grid.tiles[y]![x] = terrain;
+    if (!offMap(grid, x, y)) grid.tiles[y]![x] = terrain;
 }
 
 function inBounds(grid: TacticalGrid, x: number, y: number): boolean {
@@ -431,7 +449,9 @@ function featureTiles(grid: TacticalGrid, feature: TacticalBattlefieldFeature): 
         const tile = { x: anchor.x + dx * scale + i - lead, y: anchor.y + dy * scale + j - lead };
         tiles.set(tileKey(tile.x, tile.y), tile);
       }
-  return [...tiles.values()].filter((tile) => inBounds(grid, tile.x, tile.y) && !inSpawnZone(grid, tile.x, tile.y));
+  return [...tiles.values()].filter(
+    (tile) => inBounds(grid, tile.x, tile.y) && !inSpawnZone(grid, tile.x, tile.y) && !offMap(grid, tile.x, tile.y),
+  );
 }
 
 /** How many times a standard board's size a board is, each way (2026-10-24): 1 up to the huge one,
@@ -459,7 +479,7 @@ function carveCorridorWithoutProtectedTiles(
     ] as const) {
       const next = { x: current.x + dx, y: current.y + dy };
       const key = tileKey(next.x, next.y);
-      if (!inBounds(grid, next.x, next.y) || parent.has(key)) continue;
+      if (!inBounds(grid, next.x, next.y) || parent.has(key) || offMap(grid, next.x, next.y)) continue;
       if (protectedTiles.has(key) && isImpassable(grid, next.x, next.y)) continue;
       parent.set(key, tileKey(current.x, current.y));
       queue.push(next);
@@ -494,6 +514,22 @@ export function generateTacticalBattlefield(
   const size = brief?.size ?? defaultBattlefieldSize(unitCount);
   const grid = generateGrid(unitCount, rng, environment, size);
   const protectedTiles = new Set<string>();
+  // Cut to the place's outline (2026-10-24): what is off the map is a wall nobody sees, keeping the
+  // strips the sides line up on and the middle on it.
+  const outline = brief?.outline ?? tacticalOutlineFor(environment);
+  const middle = { x: Math.floor(grid.width / 2), y: Math.floor(grid.height / 2) };
+  const inside = tacticalOutlineCells(
+    grid.width,
+    grid.height,
+    outline,
+    rng,
+    (x, y) => inSpawnZone(grid, x, y) || (Math.abs(x - middle.x) <= 1 && Math.abs(y - middle.y) <= 1),
+  );
+  if (inside) {
+    grid.outside = inside.map((row) => row.map((on) => !on));
+    for (let y = 0; y < grid.height; y++)
+      for (let x = 0; x < grid.width; x++) if (grid.outside[y]![x]) grid.tiles[y]![x] = "wall";
+  }
 
   for (const feature of brief?.features ?? []) {
     for (const tile of featureTiles(grid, feature)) {
@@ -526,7 +562,8 @@ export function generateTacticalBattlefield(
       kind: "generated",
       generatorVersion: TACTICAL_BATTLEFIELD_GENERATOR_VERSION,
       size,
-      ...(brief && (brief.size || brief.features?.length) ? { brief } : {}),
+      ...(inside ? { outline } : {}),
+      ...(brief && (brief.size || brief.features?.length || brief.outline) ? { brief } : {}),
     },
   };
 }
@@ -661,7 +698,11 @@ function claimNear(
   while (queue.length) {
     const cur = queue.shift()!;
     const key = `${cur.x},${cur.y}`;
-    if (!occupied.has(key) && (!isImpassable(grid, cur.x, cur.y) || !protectedTiles.has(key))) {
+    if (
+      !occupied.has(key) &&
+      !offMap(grid, cur.x, cur.y) &&
+      (!isImpassable(grid, cur.x, cur.y) || !protectedTiles.has(key))
+    ) {
       occupied.add(key);
       if (isImpassable(grid, cur.x, cur.y)) set(grid, cur.x, cur.y, "plains");
       return cur;
@@ -928,9 +969,14 @@ function ensureConnectivity(
   for (const u of units) {
     const from = { x: u.x, y: u.y };
     if (reachable(grid, from, hub)) continue;
-    if (protectedTiles.size === 0) {
+    // A straight corridor may run off a shaped board's map, so one goes round inside it instead.
+    if (protectedTiles.size === 0 && !grid.outside) {
       carveCorridor(grid, from, hub);
-    } else if (!carveCorridorWithoutProtectedTiles(grid, from, hub, protectedTiles)) {
+    } else if (
+      !carveCorridorWithoutProtectedTiles(grid, from, hub, protectedTiles) &&
+      // On a shaped board a feature may close the only way through a narrow of it: the way is cut.
+      !(grid.outside && carveCorridorWithoutProtectedTiles(grid, from, hub, new Set()))
+    ) {
       return false;
     }
   }

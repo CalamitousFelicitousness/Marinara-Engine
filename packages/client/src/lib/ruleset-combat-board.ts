@@ -37,6 +37,8 @@ export interface RulesetBoardCell {
   solid: boolean;
   /** How high the cell stands (combat C6b), 0 on level ground. */
   height: number;
+  /** Off the map (2026-10-24): beyond the board's outline, drawn as nothing. */
+  outside?: true;
   /** Who is standing here, defeated or not: on every cell they fill (1.194). */
   occupant?: DirectedRulesetCombatant;
   /** The cell their token is drawn from, the top-left one they fill (1.194). */
@@ -411,6 +413,7 @@ export function rulesetBoardCells(view: DirectedRulesetView, step: RulesetMenuSt
         // A standing wall that blocks movement is as solid as rock while it stands (1.177).
         solid: TERRAIN_DATA[terrain]?.impassable === true || ((grid.walls?.[key] ?? 0) & 1) === 1,
         height: grid.elevation?.[y]?.[x] ?? 0,
+        ...(grid.outside?.[y]?.[x] ? { outside: true as const } : {}),
         ...(occupant ? { occupant } : {}),
         ...(occupant && occupant.x === x && occupant.y === y ? { anchor: true as const } : {}),
         ...(reach.has(key) ? { reach: reach.get(key)! } : {}),

@@ -639,7 +639,8 @@ export function buildInitPrompt(
   gameStateCtx: string,
   spellbookCtx: string,
   tactical: boolean,
-  tacticalBattlefield?: TacticalBattlefieldSetup,
+  // The board's size is the Game Master's to choose (2026-10-24): a setup's own is no longer pressed on it.
+  _tacticalBattlefield?: TacticalBattlefieldSetup,
   /** Present only for a game whose ruleset resolves its own fights. */
   ruleset?: EncounterRulesetBrief | null,
   /** What the model is asked about the inventory's items. `guess` is false when the game's ruleset
@@ -741,7 +742,7 @@ export function buildInitPrompt(
   inst += `    "terrainBrief": {\n`;
   inst += `      "exposure": "exposed|sheltered|unknown"`;
   if (tactical) {
-    inst += `,\n      "size": "small|medium|large|huge|vast|colossal",\n`;
+    inst += `,\n      "size": "small|medium|large|huge|vast|colossal",\n      "outline": "box|round|cavern|valley|broken",\n`;
     inst += `      "features": [{"terrain":"plains|forest|mountain|ruin|water|wall","placement":"center|north|south|east|west","shape":"patch|barrier"}]`;
   }
   inst += `\n    }\n  },\n`;
@@ -764,7 +765,7 @@ export function buildInitPrompt(
   inst += `- Explicitly identify each actual boss enemy with boss: {points: 3, anticipation: true, attackCost: 1, defendCost: 1, moveCost: 1}; omit boss for ordinary enemies and elites. This also applies to a solo boss. Do not infer boss status from HP alone. Boss skills may have legendaryCost: 1..3 when they are appropriate additional actions.\n`;
   inst += `- Mark actual spellcasting abilities with spell: true. For an established area attack, supply areaRadius: 1..3 and friendlyFire: true/false for Tactical; targetScope: "all-enemies" supplies explicit non-spatial group damage in Classic. Omit these for single-target spells. Only when the established kit includes one, represent an interrupting spell with reaction: "counterspell", spell: true, range: 3, and its real mpCost/cooldown. A defensive ward/interception can use reaction: "guard" with its real cost/range. Reaction-only abilities are not ordinary turn attacks. Do not give every caster Counterspell. You may supply range: 1..12 tiles for Tactical abilities; an ability used on oneself takes range: 1 or none. Spell slots may be supplied as spellSlots: {"3": 2} and slotLevel: 3 ONLY when established; otherwise use finite MP and omit slot fields. These are generic Engine rules, not a claim of 5e compliance.\n`;
   if (tactical)
-    inst += `- battlefield.terrainBrief.size goes by the place, not the head count: small to large for a room, a clearing or a street; huge (24 by 16 squares) for a great hall, a wide cavern or an open field; vast (40 by 26) for a lair or a ruin, such as a dragon's castle ruins; colossal (64 by 40) only for a war's battlefield. Omit it to let the Engine size it by the fighters.\n`;
+    inst += `- battlefield.terrainBrief.size goes by the place, not the head count: small to large for a room, a clearing or a street; huge (24 by 16 squares) for a great hall, a wide cavern or an open field; vast (40 by 26) for a lair or a ruin, such as a dragon's castle ruins; colossal (64 by 40) only for a war's battlefield. Omit it to let the Engine size it by the fighters. battlefield.terrainBrief.outline is the shape of the place: round for a tower, an arena or a ring of stones; cavern for a cave; valley for a pass or a ravine between slopes; broken for a ruin, a dungeon or a castle whose walls have fallen; box for a hall, a street or open ground. Omit it to let the Engine shape it by the environment.\n`;
   inst += `- battlefield.terrainBrief.exposure: exposed only when the actual combat site is open to outdoor weather; sheltered for enclosed/covered sites; unknown if context cannot establish either. Apply this in both Classic and Tactical. Do not invent current weather.\n`;
   inst += `- On each combatant, projectile and requiresSight are optional boolean traits of their BASIC attack. On each attack/skill, supply its own projectile/requiresSight booleans when grounded in its actual mechanics (arrows are projectiles; sight-aimed attacks require sight). These flags control weather penalties. Do not infer traits from translated names or grant weather immunity. Omitted flags receive no weather accuracy modifier.\n`;
   inst += `- Describe the environment at THIS encounter's current location, using current scene details. Do not reuse a world-creation terrain template.\n`;
@@ -796,9 +797,6 @@ export function buildInitPrompt(
     ).map((terrain) => `${terrain} is ${battlefields!.tiles[terrain]}`);
     if (tileWords.length) {
       inst += `- battlefield.terrainBrief.features: in this setting ${tileWords.join(", ")}. Write the terrain id, not the setting's word.\n`;
-    }
-    if (tacticalBattlefield?.size) {
-      inst += `- battlefield.terrainBrief.size: use exactly "${tacticalBattlefield.size}" because the player selected that board size.\n`;
     }
   }
   inst += `- statuses: format {"name":"Status","emoji":"💀","duration":X,"modifier":-2,"stat":"attack|defense|speed|hp"}\n`;

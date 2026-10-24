@@ -1616,6 +1616,7 @@ function rulesetViewOf(definition: RulesetDefinition, state: CombatDirectorState
             tiles: grid.tiles.map((row) => [...row]),
             ...(grid.elevation ? { elevation: grid.elevation.map((row) => [...row]) } : {}),
             ...(grid.walls ? { walls: { ...grid.walls } } : {}),
+            ...(grid.outside ? { outside: grid.outside.map((row) => [...row]) } : {}),
             // Growth and seasons on its cells (1.318); light and fog come with the shading.
             ...(grid.ground && Object.values(grid.ground).some((here) => here.growth || here.season)
               ? {

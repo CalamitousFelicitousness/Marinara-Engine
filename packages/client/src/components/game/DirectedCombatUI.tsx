@@ -265,7 +265,14 @@ export function DirectedCombatUI(props: Props) {
   return (
     <RulesetKindsContext.Provider value={nameKinds}>
       <div className="flex h-full min-h-0 flex-col">
-        <div className="relative min-h-0 flex-1 overflow-hidden">
+        <div
+          className={cn(
+            "relative min-h-0 flex-1 overflow-hidden",
+            // A ruleset board starts below the game's top-left float on a wide screen, so the folded
+            // map pill does not cover its top squares.
+            fight && "md:pt-[var(--game-top-float-bottom,0px)]",
+          )}
+        >
           {s.style === "tactical" && s.tactical ? (
             <TacticalCombatUI
               tileWords={props.tileWords}

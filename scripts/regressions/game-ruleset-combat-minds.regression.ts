@@ -1255,6 +1255,39 @@ try {
         `the slam says why: ${JSON.stringify(turn)}`,
       );
     }
+    // A fight in which nothing can change is called off rather than played for ever (K1, K6, K8: a
+    // board nobody could cross, spare orders that never knock anybody out, a hill both sides stood on).
+    {
+      const { encounter, state } = wide(
+        { guard: { x: 2, y: 3 }, knight: { x: 12, y: 3 } },
+        {
+          guard: { side: "enemy", block: block({ type: "humanoid", mind: "cunning", speed: 0, actions: [] }) },
+          knight: { side: "party", block: block({ health: 40, speed: 0, actions: [] }) },
+        },
+        {},
+      );
+      state.rulesetFight = {
+        encounter,
+        events: [],
+        eventSeq: 0,
+        controllers: { knight: "ai" },
+        bosses: [],
+      } as never;
+      for (let step = 0; step < 200 && !state.outcome; step += 1)
+        assert.ok(commandRulesetCombatDirector(definition, state, { type: "continue" }).ok);
+      assert.equal(state.outcome, "flee", "the fight is called off");
+      assert.equal(state.stalled, true);
+      assert.equal(state.summary?.stalled, true, "and the recap says it broke off");
+      const round = state.rulesetFight!.encounter.round;
+      assert.ok(round >= 10 && round <= 13, `after ten rounds of nothing: ${round}`);
+      assert.ok(
+        state.rulesetFight!.events.some(
+          (entry) => entry.event.type === "outcome" && entry.event.outcome === "fled" && entry.event.stalled,
+        ),
+        "the log says so",
+      );
+      assert.equal(state.stage, "finished");
+    }
   }
 
   // ── Refused ──

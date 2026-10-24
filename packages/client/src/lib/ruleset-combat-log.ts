@@ -1786,11 +1786,13 @@ export function rulesetCombatEventLine(
       return key(
         event.yielded
           ? "outcomeYielded"
-          : event.outcome === "victory"
-            ? "outcomeVictory"
-            : event.outcome === "fled"
-              ? "outcomeFled"
-              : "outcomeDefeat",
+          : event.stalled
+            ? "outcomeStalled"
+            : event.outcome === "victory"
+              ? "outcomeVictory"
+              : event.outcome === "fled"
+                ? "outcomeFled"
+                : "outcomeDefeat",
       );
     case "refused":
       return key("refused", {

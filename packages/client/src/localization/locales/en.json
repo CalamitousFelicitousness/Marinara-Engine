@@ -2379,6 +2379,7 @@
   "game.combat.ruleset.event.opportunity": "{{actor}} strikes at {{target}} with {{label}} as they move away.",
   "game.combat.ruleset.event.outcomeDefeat": "The party has fallen.",
   "game.combat.ruleset.event.outcomeFled": "The party has left the fight.",
+  "game.combat.ruleset.event.outcomeStalled": "Nothing has changed for ten rounds, and the fight breaks off.",
   "game.combat.ruleset.event.outcomeVictory": "The fight is won.",
   "game.combat.ruleset.event.outcomeYielded": "The party lays down its arms and is taken alive.",
   "game.combat.ruleset.event.owingDead": "{{actor}}'s debt comes due, {{count}} saves ({{rolls}}), and is paid with their life.",

@@ -882,6 +882,8 @@ export interface CombatSummary {
   }>;
   /** The party gave itself up to honourable opponents (combat AI T6), who take it alive. */
   yielded?: true;
+  /** The fight broke off with both sides standing, after rounds in which nothing changed (K8). */
+  stalled?: true;
   /** Resolved tactical terrain retained after the live combat snapshot is cleared. */
   battlefieldSummary?: string;
   /** What the win dropped into the party's bags, and how many of each nobody could carry. */

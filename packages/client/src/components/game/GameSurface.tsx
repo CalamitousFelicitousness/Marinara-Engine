@@ -11855,6 +11855,11 @@ function GameSurfaceComponent({
           recapLines.push(
             "The party surrendered to its honourable opponents, who accepted and take them alive as prisoners.",
           );
+        // Called off after rounds in which nothing changed (K8): nobody got away, nobody won.
+        if (summary.stalled)
+          recapLines.push(
+            "Neither side could hurt or reach the other any more, and the fight broke off with both still standing.",
+          );
         if (defeatedEnemies.length > 0) recapLines.push(`Defeated: ${defeatedEnemies.join(", ")}`);
         if (survivingEnemies.length > 0 && !fought) {
           recapLines.push(`Survived: ${survivingEnemies.map((e) => `${e.name} (${e.hp}/${e.maxHp} HP)`).join(", ")}`);
@@ -11884,7 +11889,7 @@ function GameSurfaceComponent({
         if (outcome === "victory") prefix = "*The battle is won.*";
         else if (outcome === "defeat")
           prefix = summary.yielded ? "*The party lays down its arms...*" : "*The party has been defeated...*";
-        else prefix = "*The party flees from battle!*";
+        else prefix = summary.stalled ? "*The fight breaks off...*" : "*The party flees from battle!*";
 
         // Wrap the recap in a clearly-labelled block so the GM treats it as canonical combat
         // context (the core prompt rule teaches how to narrate it). The block is stripped from

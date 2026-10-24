@@ -223,7 +223,9 @@ export interface RulesetFightState {
     defended: boolean;
     /** Whether it has struck up close this turn (combat AI A4), and may get out again after. */
     struckClose?: boolean;
-  };
+  }; /** What the fight looked like when a round last began, and how many rounds in a row it has looked
+   *  just the same (K8): a fight nothing can change any more is called off. */
+  stall?: { key: string; round: number; rounds: number };
 }
 
 export type RulesetCommandResult = { ok: true } | { ok: false; error: string; code: string };
@@ -5582,6 +5584,52 @@ function answerRulesetWindows(
   }
 }
 
+/** How many whole rounds a fight may go on with nothing in it changing before it breaks off (K8):
+ *  nobody hurt or healed, nobody moved, downed or given a condition, no area made or gone. Ten, so a
+ *  run of misses never ends a fight that is still being fought. */
+const RULESET_STALL_ROUNDS = 10;
+
+/** What a round could change, and only that. A condition's own countdown is left out: it moves by
+ *  itself, and a fight in which only clocks run is a fight in which nothing happens. */
+function rulesetStallKey(encounter: RulesetEncounterState): string {
+  return JSON.stringify(
+    encounter.combatants.map((combatant) => [
+      combatant.id,
+      combatant.health?.value,
+      combatant.health?.temp,
+      combatant.x,
+      combatant.y,
+      combatant.down,
+      combatant.dying,
+      combatant.defeated,
+      !!combatant.away,
+      combatant.tracked.map((one) => one.condition).sort(),
+      combatant.zones?.length ?? 0,
+    ]),
+  );
+}
+
+/** Called as each turn begins: a fight that has looked the same for ten rounds breaks off, both
+ *  sides still standing, and says so (K1, K6, K8: a board nobody could cross, orders to spare that
+ *  no blow could honour, a hill both sides stood on for fifty rounds). */
+function rulesetStalled(state: CombatDirectorState, fight: RulesetFightState): boolean {
+  const round = fight.encounter.round;
+  const key = rulesetStallKey(fight.encounter);
+  const stall = fight.stall;
+  if (!stall || stall.key !== key) {
+    fight.stall = { key, round, rounds: 0 };
+    return false;
+  }
+  if (round <= stall.round) return false;
+  stall.round = round;
+  stall.rounds += 1;
+  if (stall.rounds < RULESET_STALL_ROUNDS) return false;
+  state.outcome = "flee";
+  state.stalled = true;
+  record(fight, [{ type: "outcome", outcome: "fled", stalled: true }]);
+  return true;
+}
+
 function advanceTurn(definition: RulesetDefinition, state: CombatDirectorState, fight: RulesetFightState): void {
   // A fight that is over has no next turn, and saying so a second time would print the outcome twice.
   if (rulesetEncounterOutcome(fight.encounter) !== "ongoing") return;
@@ -5591,6 +5639,7 @@ function advanceTurn(definition: RulesetDefinition, state: CombatDirectorState, 
   const step = advanceRulesetTurn(definition, fight.encounter, rollerFor(fight));
   absorb(definition, state, fight, step);
   answerRulesetWindows(definition, state, fight);
+  if (rulesetStalled(state, fight)) return;
   // A player's member on the ground and dying has rolled against death as the turn began and has
   // nothing else to do: the turn ends by itself rather than waiting on a click that decides nothing.
   const next = currentRulesetActor(fight.encounter);

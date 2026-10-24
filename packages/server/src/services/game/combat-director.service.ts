@@ -81,6 +81,8 @@ export interface CombatDirectorState extends DirectedCombatView {
   cruel?: boolean;
   /** The party gave itself up to honourable opponents (combat AI T6): a defeat nobody died of. */
   yielded?: true;
+  /** Called off with both sides standing, after rounds in which nothing changed (K8). */
+  stalled?: true;
   difficulty: string;
   weather?: CombatWeather;
   /** The game's elements (worldgen W6c); the classic six when absent. */
@@ -188,6 +190,7 @@ function sync(s: CombatDirectorState) {
       outcome: s.outcome,
       rounds: s.round,
       ...(s.yielded ? { yielded: true as const } : {}),
+      ...(s.stalled ? { stalled: true as const } : {}),
       // The board fought on, either style's: a ruleset's is the tactical style's own board.
       battlefieldSummary: s.tactical
         ? (summarizeTacticalBattlefield(s.tactical) ?? undefined)

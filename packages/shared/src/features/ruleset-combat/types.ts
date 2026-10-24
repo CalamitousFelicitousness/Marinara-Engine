@@ -4304,8 +4304,9 @@ export type RulesetCombatEvent =
   | { type: "track"; targetId: string; sourceId: string; track: string; label: string; from: number; to: number }
   /** What only a rest would give back, given back by somebody's action (1.201). */
   | { type: "unsealed"; targetId: string; sourceId: string; amount: number; maxHealth: number }
-  /** How the fight ended; `yielded` when the party gave itself up to honourable foes (combat AI T6). */
-  | { type: "outcome"; outcome: RulesetEncounterOutcome; yielded?: true }
+  /** How the fight ended; `yielded` when the party gave itself up to honourable foes (combat AI T6),
+   *  `stalled` when it broke off after rounds in which nothing changed (K8). */
+  | { type: "outcome"; outcome: RulesetEncounterOutcome; yielded?: true; stalled?: true }
   | { type: "refused"; actorId: string; optionId?: string; reason: RulesetCombatRefusal };
 
 /** `fled` (1.279): the party is out of the fight with somebody of it gone from it alive. */

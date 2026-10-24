@@ -845,7 +845,7 @@ export function clampRulesetStatBlock(
     if (action.toHit !== undefined && action.toHit > toHitCap) {
       adjusted.push(`"${action.name}" now hits at ${toHitCap} instead of ${action.toHit}.`);
       action.toHit = toHitCap;
-      // Never more upgraded dice than it now throws (1.382).
+      // Never more upgraded dice than it now throws (1.780).
       if (action.upgrades !== undefined && action.upgrades > Math.max(0, toHitCap)) {
         action.upgrades = Math.max(0, toHitCap);
       }

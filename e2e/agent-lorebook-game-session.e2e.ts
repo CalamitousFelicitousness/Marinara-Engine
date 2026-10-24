@@ -58,7 +58,7 @@ for (const theme of ["dark", "light"] as const) {
                 description: "Map fixture",
                 engine: { min: "2.5.1", maxExclusive: "3.0.0" },
                 kind: ["agent", "maps"],
-                capabilityApi: { major: 1, minor: 380 },
+                capabilityApi: { major: 1, minor: 778 },
                 builtAgainst: { engineVersion: "2.5.1", engineCommit: "a".repeat(40) },
                 entrypoints: { client: "client.js", agents: "agents.json" },
                 permissions: ["ui"],

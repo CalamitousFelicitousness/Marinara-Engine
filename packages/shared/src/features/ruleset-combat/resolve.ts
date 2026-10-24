@@ -1426,7 +1426,7 @@ function throwSave(
   const mode = rulesetSaveMode(ctx.definition, ctx.combat, combatant, save, ctx.state, against, lean);
   if (rulesetCombatIsSymbol(ctx.combat)) {
     // The save's number is its dice, its difficulty the dice thrown against them, and cover and
-    // what conditions add are boost or setback dice (1.382).
+    // what conditions add are boost or setback dice (1.780).
     const bonuses = rollBonuses(
       ctx,
       rulesetConditionModifiers(ctx.definition, ctx.combat, combatant, "saves", ctx.state, save, against),
@@ -1573,7 +1573,7 @@ function passesGate(
     modifier: gate.modifier,
   };
   if (rulesetCombatIsSymbol(ctx.combat)) {
-    // The check's number is its dice and its difficulty the dice against them (1.382).
+    // The check's number is its dice and its difficulty the dice against them (1.780).
     const bonuses = rollBonuses(ctx, modifiers);
     const thrown = throwSymbols(ctx, actor, gate.modifier, bonusTotal(bonuses), mode, {
       difficulty: gate.difficulty,
@@ -1690,7 +1690,7 @@ function poolRecord(thrown: RulesetCombatPoolThrow & { penalty: number }): Rules
   };
 }
 
-/** A `symbol-pool` fight's throw (1.382) for an attack, a save, a check or a side of a contest: the
+/** A `symbol-pool` fight's throw (1.780) for an attack, a save, a check or a side of a contest: the
  *  thrower's own dice, what their conditions add as boost or setback dice, their wound penalty as
  *  setback, and the boost and setback a spend left for their next roll, which this one uses up. */
 function throwSymbols(
@@ -1732,7 +1732,7 @@ function symbolRecord(thrown: RulesetSymbolThrow & { penalty: number }): Ruleset
   };
 }
 
-/** Each side buys what the symbols an attack's roll left can buy (1.382): the attacker first, with
+/** Each side buys what the symbols an attack's roll left can buy (1.780): the attacker first, with
  *  the symbols that favour them, and then their target, with the ones that favour the target. What a
  *  spend does to the hit itself (harm, a critical) is handed back for the blow; everything else
  *  happens now and says so. What nobody spends stays on the roll for the story. */
@@ -4996,7 +4996,7 @@ function throwCheck(
   const checkModifiers = () =>
     rulesetConditionModifiers(ctx.definition, ctx.combat, who, "checks", ctx.state, skill, undefined, ability);
   if (rulesetCombatIsSymbol(ctx.combat)) {
-    // Each side throws its own dice and the more net successes wins (1.382).
+    // Each side throws its own dice and the more net successes wins (1.780).
     const bonuses = rollBonuses(ctx, checkModifiers());
     const thrown = throwSymbols(ctx, who, modifier, bonusTotal(bonuses), mode);
     return {
@@ -8718,7 +8718,7 @@ function resolveActionBody(
     let critical = false;
     // Under `dice-pool`, the successes a hit had past the ones it needed: each is one more damage die.
     let extraDice = 0;
-    // Under `symbol-pool` (1.382), what the hit's successes and its maker's spends add to its harm.
+    // Under `symbol-pool` (1.780), what the hit's successes and its maker's spends add to its harm.
     let symbolHarm = 0;
     // What lasted one attack, on either side of it: noted when the roll is made and spent once this
     // blow is over, landed or not, so it counts for the blow's damage as well as its roll.
@@ -8790,7 +8790,7 @@ function resolveActionBody(
       }
       if (symbolic) {
         // The to-hit number is the attacker's dice (some upgraded), the defense the difficulty dice
-        // thrown against them, and what conditions add boost or setback dice (1.382). Net successes
+        // thrown against them, and what conditions add boost or setback dice (1.780). Net successes
         // land it; what is left over is spent, by either side, before its harm is dealt.
         const bonuses = rollBonuses(
           ctx,
@@ -9371,7 +9371,7 @@ function resolveActionBody(
         ? empowerCritical(criticalExtra(ctx, action.damage, extra, action.damage.reroll), action.damage)
         : { rolls: [], flat: 0 };
       // A symbol fight's hit adds what its successes and spends bought, and the target soaks it as a
-      // number off the whole blow (1.382), never below none.
+      // number off the whole blow (1.780), never below none.
       const soaked = symbolic ? rulesetSoakOf(target, rulesetCombatDamageKind(ctx.combat, action.damage.type)) : 0;
       const thrown = Math.max(0, rolled.total + sumOf(bonus.rolls) + bonus.flat + symbolHarm - soaked);
       // Never less than the weapon's floor.

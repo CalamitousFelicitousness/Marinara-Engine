@@ -1206,7 +1206,7 @@ export function rulesetCombatStanding(combatant: RulesetCombatant): boolean {
   return !combatant.defeated && !combatant.down;
 }
 
-/** Who a symbol spend lands on (1.382): the attacker, their target, or the next of either side to
+/** Who a symbol spend lands on (1.780): the attacker, their target, or the next of either side to
  *  take a turn after the one now, standing and neither of the two. Nobody when that side has nobody
  *  else. */
 export function rulesetSymbolSpendHolder(
@@ -1226,7 +1226,7 @@ export function rulesetSymbolSpendHolder(
   return undefined;
 }
 
-/** What one attack's symbol spends can do (1.382), kept as they are bought: everybody a spend names
+/** What one attack's symbol spends can do (1.780), kept as they are bought: everybody a spend names
  *  must be there and standing; a condition goes on once per holder and kind on a throw, and not at
  *  all where it is kept off, sealed apart from whoever puts it on, or one of a kind already held; a
  *  track moves only as many whole steps as it has room for that way, room the throw's earlier spends
@@ -1420,7 +1420,7 @@ function rowAbilityAndSkill(
 
 /** What an attack adds to hit from one skill and one ability, each an id or anything else, which
  *  names nothing: see `rowAbilityAndSkill`. */
-/** In a `symbol-pool` fight (1.382) a to-hit number off a sheet is an ability and a skill's ranks
+/** In a `symbol-pool` fight (1.780) a to-hit number off a sheet is an ability and a skill's ranks
  *  together. The larger of the two is the dice and the smaller how many of them are upgraded, as the
  *  ruleset's own checks build a pool; an action that names no ability keeps its number as plain dice. */
 function splitSymbolDice(

@@ -1,4 +1,4 @@
-// Capability API 1.381: packages reuse Engine playback and asset selection.
+// Capability API 1.779: packages reuse Engine playback and asset selection.
 import { scoreMusic, type MusicScoreInput } from "@marinara-engine/shared";
 import type { GameAssetManifest } from "../hooks/use-game-assets";
 

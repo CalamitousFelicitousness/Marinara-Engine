@@ -1470,15 +1470,15 @@ const capabilityPackageManifestBaseSchema = z
 //        and creature traits to 1200.
 // 1.379: which combat styles a ruleset's games may play (`combat.styles`): the New Game wizard and the
 //        game's settings offer only those, and a game saved on another plays the first one listed.
-// 1.380: package-bound per-chat agent reference lorebook trigger resolution.
-// 1.381: independent browser audio players, shared manifest fetch and default music selection.
-// 1.382: fights for a symbol-pool ruleset (`combat.kind: "symbol-pool"`): attacks, saves, checks,
+// 1.778: package-bound per-chat agent reference lorebook trigger resolution.
+// 1.779: independent browser audio players, shared manifest fetch and default music selection.
+// 1.780: fights for a symbol-pool ruleset (`combat.kind: "symbol-pool"`): attacks, saves, checks,
 //        contests and initiative thrown in the ruleset's own symbol dice, a defense read as the
 //        difficulty dice, `combat.symbols` for the harm each net success adds, flat soak and the
 //        spends leftover symbols buy (harm, a critical, a condition, a track, boost or setback dice
 //        on the next roll), picked by the Engine and the AI for whichever side spends that symbol.
 //        A creature action's `upgrades` names its upgraded to-hit dice.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 382 } as const);
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 780 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

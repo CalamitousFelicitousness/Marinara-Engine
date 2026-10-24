@@ -5459,7 +5459,7 @@ const creatureActionSchema = z
     budget: sheetId,
     toHit: z.number().int().min(-50).max(100).optional(),
     /** In a `symbol-pool` fight, how many of its `toHit` dice are upgraded ones (Capability API
-     *  1.382): a skill's ranks under a larger ability. */
+     *  1.780): a skill's ranks under a larger ability. */
     upgrades: z.number().int().min(0).max(12).optional(),
     /** The amount simply lands: no roll to make. */
     autoHit: z.boolean().optional(),
@@ -9534,11 +9534,11 @@ const combatInitiativeResourceSchema = z
   })
   .strict();
 
-/** Whom one symbol spend lands on (Capability API 1.382): either side of the attack, or the next
+/** Whom one symbol spend lands on (Capability API 1.780): either side of the attack, or the next
  *  one of that side's allies to act. */
 const symbolSpendOnSchema = z.enum(["attacker", "target", "attacker-ally", "target-ally"]);
 
-/** One thing a symbol left over on an attack buys (Capability API 1.382): `cost` of `symbol` buys it,
+/** One thing a symbol left over on an attack buys (Capability API 1.780): `cost` of `symbol` buys it,
  *  up to `max` times on one roll. `by` is the side that chooses it, so an attacker's advantage is
  *  theirs to spend and their threat their target's. The Engine and the AI pick spends without the
  *  Game Master; what is left unspent stays on the roll for the story. */
@@ -9612,7 +9612,7 @@ const combatObjectSchema = z
      *  `attack-vs-defense` adds dice up and compares them with a number; `dice-pool` throws the
      *  ruleset's own pools and counts successes, so every number a roll adds is dice and every number
      *  it meets is successes, exactly as the ruleset's `dice-pool` checks read the sheet.
-     *  `symbol-pool` (Capability API 1.382) throws the ruleset's own symbol dice: a to-hit number is
+     *  `symbol-pool` (Capability API 1.780) throws the ruleset's own symbol dice: a to-hit number is
      *  the attacker's dice, a defense the difficulty dice against them, and `symbols` says what the
      *  symbols left over buy. */
     kind: z.enum(["attack-vs-defense", "dice-pool", "symbol-pool"]),
@@ -9688,7 +9688,7 @@ const combatObjectSchema = z
       .strict()
       .describe("Required when kind is dice-pool, and refused when it is attack-vs-defense.")
       .optional(),
-    /** What a `symbol-pool` fight's symbols do (Capability API 1.382). Required there, and refused
+    /** What a `symbol-pool` fight's symbols do (Capability API 1.780). Required there, and refused
      *  under the other kinds. */
     symbols: combatSymbolsSchema.optional(),
     /** A pool's least damage dice after soak, read off the attacker (1.146). */
@@ -12645,7 +12645,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       issue(at("initiative", "plus"), "plus is added to a pool's successes, and initiative is not a pool");
     }
     if (combat.kind !== "dice-pool") {
-      // A symbol pool's initiative is its successes (1.382), so it may be thrown as a pool too.
+      // A symbol pool's initiative is its successes (1.780), so it may be thrown as a pool too.
       if (initiative.pool && combat.kind !== "symbol-pool")
         issue(at("initiative", "pool"), 'Initiative thrown as a pool is for a "dice-pool" or "symbol-pool" fight');
       if (initiative.resource)
@@ -12694,7 +12694,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
     // and a pool fight throws the ruleset's own pools, so it has nothing to say about a total.
     // A keep-the-highest ruleset (1.138) has no fight of its own: its checks read one die, which no
     // attack, save or damage roll of a fight is written in. Fights stay with the Game Master. A
-    // symbol pool fights only as a `symbol-pool` fight (1.382), which throws its own dice.
+    // symbol pool fights only as a `symbol-pool` fight (1.780), which throws its own dice.
     if (resolution.kind === "dice-highest") {
       issue(at("kind"), `A ${resolution.kind} ruleset has no fight of its own, so leave combat out`);
     }
@@ -12897,7 +12897,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       checkRef(limit.max, [...path, "max"], derivedIds);
     });
     // A pool fight adds dice to a pool, so a condition's rolled number would be a number of dice
-    // nobody could throw; a symbol fight's flat number is boost or setback dice (1.382). Said per
+    // nobody could throw; a symbol fight's flat number is boost or setback dice (1.780). Said per
     // modifier, on conditions and on levels alike.
     if (pooled || symbolic) {
       const diceModifiers = (
@@ -14679,7 +14679,7 @@ function creatureIssues(
   // Soak is a pool fight's, by the health track's own kinds.
   if (creature.soak) {
     if (combat.kind === "symbol-pool") {
-      // A symbol fight takes soak off the harm (1.382), where its `symbols` says it does.
+      // A symbol fight takes soak off the harm (1.780), where its `symbols` says it does.
       if (!combat.symbols?.soak)
         add([...at, "soak"], 'This fight\'s "symbols" says nothing about soak, so there is no way to take it');
     } else if (combat.kind !== "dice-pool") add([...at, "soak"], 'Soak is for a "dice-pool" or "symbol-pool" fight');
@@ -14847,7 +14847,7 @@ function creatureIssues(
     if (action.reaction?.cancelSave && !saves.has(action.reaction.cancelSave.save))
       add([...path, "reaction", "cancelSave", "save"], `Unknown save "${action.reaction.cancelSave.save}"`);
     if (action.reaction) reactionAgainstIssues(catalogIds, action.reaction, [...path, "reaction"], add);
-    // Upgraded dice are some of a symbol fight's to-hit dice (1.382).
+    // Upgraded dice are some of a symbol fight's to-hit dice (1.780).
     if (action.upgrades !== undefined) {
       if (combat.kind !== "symbol-pool") add([...path, "upgrades"], 'Upgraded dice are for a "symbol-pool" fight');
       else if (

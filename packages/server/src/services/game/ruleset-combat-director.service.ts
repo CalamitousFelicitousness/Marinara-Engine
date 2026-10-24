@@ -1611,7 +1611,7 @@ function rulesetCandidatesFrom(
       const ally = target.side === actor.side;
       const health = rulesetCombatHealth(definition, combat, target);
       const pool = Math.max(1, health.value + health.temp);
-      // A symbol fight's forecast hangs on who is aimed at (1.382): their soak, their side's allies,
+      // A symbol fight's forecast hangs on who is aimed at (1.780): their soak, their side's allies,
       // the conditions they already have. Every other fight's menu number holds for each target.
       const aimed =
         option.forecast?.worth !== undefined
@@ -1672,7 +1672,7 @@ function rulesetCandidatesFrom(
             ...others.map((other) => other.id),
             ...Array.from({ length: again }, () => targetId),
           ];
-        // A symbol fight's hit is weighed with what either side's spends buy (1.382).
+        // A symbol fight's hit is weighed with what either side's spends buy (1.780).
         const worth = aimed?.worth ?? average;
         candidate.damage = Math.min(2, (worth / pool) * (1 + others.length + again)) * chance;
         if (average >= pool) candidate.finish = chance;

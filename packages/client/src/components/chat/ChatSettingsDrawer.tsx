@@ -3591,7 +3591,7 @@ export function ChatSettingsDrawer({
     if (!agent || (agent.builtIn && agent.category !== "writer" && agent.category !== "tracker")) return null;
     if (agentType === "hierarchical-maps") {
       const api = mapsPackage?.manifest.schemaVersion === 2 ? mapsPackage.manifest.capabilityApi : null;
-      if (!api || api.major < 1 || (api.major === 1 && api.minor < 380)) {
+      if (!api || api.major < 1 || (api.major === 1 && api.minor < 778)) {
         return (
           <p data-agent-lorebook-package-update={agentType} className="text-xs text-[var(--muted-foreground)]">
             {localizeUi("chat.agentLorebook.packageUpdateRequired")}

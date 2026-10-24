@@ -21,7 +21,7 @@ const { getCapabilityService } =
   await import("../../packages/server/src/services/capability-packages/capability-service-registry.service.js");
 const { supportedCapabilityApi } = await import("../../packages/shared/src/schemas/capability-package.schema.js");
 assert.equal(supportedCapabilityApi.major, 1);
-assert.ok(supportedCapabilityApi.minor >= 380);
+assert.ok(supportedCapabilityApi.minor >= 778);
 
 const packages = [
   ["reference-package-a", ["agent-runtime", "chat-read"]],

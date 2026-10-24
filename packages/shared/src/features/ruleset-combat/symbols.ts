@@ -1,5 +1,5 @@
 /**
- * The arithmetic of a `symbol-pool` fight (Capability API 1.382): the ruleset's own symbol dice
+ * The arithmetic of a `symbol-pool` fight (Capability API 1.780): the ruleset's own symbol dice
  * thrown for an attack, a save or a check, the exact spread of symbols a forecast reads, and the
  * spends the symbols left over buy.
  *
@@ -272,7 +272,7 @@ export interface RulesetSymbolSpendPick {
   times: number;
 }
 
-/** What one throw's spends can still do (1.382): how many more copies of a spend would land, given
+/** What one throw's spends can still do (1.780): how many more copies of a spend would land, given
  *  what has already been bought on this throw, and the record of buying them. The fight and its
  *  forecast hold one per throw, so what is priced is what lands. */
 export interface RulesetSymbolSpendBudget {

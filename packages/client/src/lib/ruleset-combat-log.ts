@@ -50,7 +50,7 @@ export interface RulesetCombatNames {
   distance: (cells: number) => string;
   /** A drop of so many levels of the board in the ruleset's own distance (combat C6b): "10 ft". */
   height: (levels: number) => string;
-  /** One of a symbol pool's symbols (1.382), by id. */
+  /** One of a symbol pool's symbols (1.780), by id. */
   symbol?: (id: string) => string;
 }
 
@@ -213,7 +213,7 @@ function symbolsText(symbols: Record<string, number>, t: TFunction, symbolName: 
   return named.length > 0 ? named.join(", ") : (t("game.combat.ruleset.roll.noSymbols") as string);
 }
 
-/** A symbol throw (1.382), for a `symbol-pool` fight: the symbols left after cancelling, from how
+/** A symbol throw (1.780), for a `symbol-pool` fight: the symbols left after cancelling, from how
  *  many of the thrower's own dice (how many upgraded, the boost and setback dice, and what made them
  *  up). What it was thrown against is the line's to say. */
 export function rulesetSymbolRollText(
@@ -361,7 +361,7 @@ export function rulesetCombatEventLine(
       return key("turn", { actor: names.combatant(event.actorId) });
     case "attack": {
       const named = bonusNamer(names, t);
-      // A symbol throw carries its difficulty dice with it (1.382).
+      // A symbol throw carries its difficulty dice with it (1.780).
       if (event.pool?.symbols) {
         return key(event.outcome === "miss" ? "attackSymbolMiss" : "attackSymbolHit", {
           actor: names.combatant(event.actorId),

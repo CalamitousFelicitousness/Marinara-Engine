@@ -1341,7 +1341,7 @@ function contestTotals(
   );
   const mode = rulesetCheckMode(definition, combat, combatant, state, undefined, ability);
   if (rulesetCombatIsSymbol(combat)) {
-    // A side's dice are its check, and what its conditions and wounds add boost or setback (1.382).
+    // A side's dice are its check, and what its conditions and wounds add boost or setback (1.780).
     const bonus = rulesetBonusDice(modifiers);
     return rulesetSymbolSuccessDistribution(
       definition,
@@ -1976,7 +1976,7 @@ function forecastFor(
   pointedAt?: RulesetCombatant,
 ): RulesetCombatOption["forecast"] | undefined {
   const forecast: NonNullable<RulesetCombatOption["forecast"]> = {};
-  // A symbol fight's attack (1.382): the dice it throws, and at whom, for its harm to read.
+  // A symbol fight's attack (1.780): the dice it throws, and at whom, for its harm to read.
   let symbolDice: RulesetSymbolDice | undefined;
   let symbolTarget: RulesetCombatant | undefined;
   if (action.sequence) {
@@ -2053,7 +2053,7 @@ function forecastFor(
     const toHit = action.toHit + rulesetToHitAgainst(definition, action, target, actor);
     if (rulesetCombatIsSymbol(combat)) {
       // The attacker's dice against the target's difficulty dice, exactly as the throw will be made
-      // (1.382). What a hit is worth is worked out with its harm, below.
+      // (1.780). What a hit is worth is worked out with its harm, below.
       symbolDice = rulesetSymbolDice(definition, {
         dice: toHit,
         upgrades: action.upgrades,
@@ -2093,7 +2093,7 @@ function forecastFor(
     );
     forecast.averageDamage = Math.round(average * 100) / 100;
     if (symbolDice && symbolTarget) {
-      // Over every way the throw may come out (1.382): what its successes add, what each side's
+      // Over every way the throw may come out (1.780): what its successes add, what each side's
       // spends buy, and the target's soak. `worth` is what the AI weighs a hit at.
       const expected = rulesetSymbolAttackForecast(
         definition,

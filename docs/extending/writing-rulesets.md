@@ -13,7 +13,7 @@ A ruleset can only fill in the blanks of a mechanic the Engine already knows. To
 
 - **`dice-highest`**: throw a pool and read its highest die, or add its highest few. That covers Blades in the Dark and Trophy Dark.
 - **`roll-against`**: roll at or under (or over) the sheet's number. That covers percentile skills and GURPS checks.
-- **`symbol-pool`**: build and upgrade narrative dice, then cancel opposing symbols. That covers Genesys checks, and its fights since Capability API 1.382.
+- **`symbol-pool`**: build and upgrade narrative dice, then cancel opposing symbols. That covers Genesys checks, and its fights since Capability API 1.780.
 
 All five are described in full under [Resolution kinds](#resolution-kinds).
 
@@ -294,7 +294,7 @@ Genesys builds a pool from a characteristic and a skill rank, then adds opposing
 - `boost` and `setback`: optional dice added by `bonus="+N"` and `bonus="-N"`, respectively, up to each `max` (default 3, ceiling 6). Signed adjustments combine before this limit is applied. Capability API **1.150** also accepts `setback="N"` independently: `bonus="2" setback="1"` throws both sides. A negative bonus adds to `setback`, with the combined setback count held to `setback.max`; boost dice stay bounded by `boost.max`.
 - `allowOwnUpgrade`: optional, false when absent. With `true`, `upgradeOwn="N"` upgrades N more character dice to `pool.upgrade` (which must be declared), after sheet upgrades and purchased dice. When all existing dice are upgraded, each extra upgrade adds one upgraded die, still bounded by `pool.max`. This also works with `pool.build: "sum"`. Declaring this key, even as `false`, requires capabilityApi **1.150**. Attribute names use camel case, like `zeroDice`; `upgradeOwn` affects the roller and `upgrade` still affects only difficulty dice. Both `setback` and `upgradeOwn` take nonnegative integers and are ignored outside symbol pools; `upgradeOwn` is ignored unless enabled.
 - `success`: needs this many of its symbol after cancellation, one by default. Critical success and failure mark any occurrence of their named symbol, even if its added success or failure cancels. Both markers may occur together, and neither changes whether the net successes passed the check.
-- `outcomes` can read the net success count (`total`) or `net successes - needed + 1` (`margin`). Bands still decide success in their usual way; the original critical symbols remain marked. `spend` buys only extra base character dice within `pool.max`. Its fights are a `symbol-pool` fight (Capability API 1.382, see A fight thrown in symbol dice, below); any other combat kind is refused beside it.
+- `outcomes` can read the net success count (`total`) or `net successes - needed + 1` (`margin`). Bands still decide success in their usual way; the original critical symbols remain marked. `spend` buys only extra base character dice within `pool.max`. Its fights are a `symbol-pool` fight (Capability API 1.780, see A fight thrown in symbol dice, below); any other combat kind is refused beside it.
 - The record keeps `resolution="sum"`, with `symbols="2s 1a 1t"`, `thrown=` identifying each die, and `rolls=` holding its 1-based face. Encoded `symbolDetails` preserves labels, face symbols and both critical markers. `setback` records the independent setback dice actually added after the shared setback limit, and `upgradeOwn` records additional upgrades actually applied; ignored or zero additions are omitted. The card and summary name the net symbols, including an empty result, rather than adding face numbers. Overrides can change this kind's rules, but cannot replace `symbols` or `dice`.
 
 #### What is out of scope, and why
@@ -3343,7 +3343,7 @@ no tears at all, may spend one point of Resolve a turn, and throw initiative aga
 anybody acts, slowest first. In a fight where each combatant picks one action when their turn comes,
 declaring first changes nothing any rule reads, so there is nothing for a key to say.
 
-### A fight thrown in symbol dice: `symbol-pool` (Capability API 1.382)
+### A fight thrown in symbol dice: `symbol-pool` (Capability API 1.780)
 
 A `symbol-pool` ruleset reads symbols rather than numbers, and its fights can too, so the Engine runs
 the whole fight without asking the Game Master what an advantage bought. `"kind": "symbol-pool"`

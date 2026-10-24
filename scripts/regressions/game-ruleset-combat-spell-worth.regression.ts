@@ -222,6 +222,38 @@ try {
     assert.equal(poor.id, "sling", "beside it, at disadvantage, the sling and the flask kept");
   }
 
+  // ── Nor thrown at poor odds with the bonus action, at the one that hurt it (re-test 2026-10-24: Fast
+  // Hands flasks thrown at disadvantage beside a troll its friend was fighting, 14 of 16) ──
+  {
+    const flask = {
+      id: "flask",
+      name: "Flask",
+      budget: "bonus",
+      toHit: 4,
+      range: { normal: 20 },
+      damage: { count: 2, sides: 6, flat: 0, type: "fire" },
+      uses: { per: "day", count: 2 },
+    };
+    const throws = (mode: "normal" | "disadvantage") => {
+      const { encounter, state } = fight({
+        pip: { side: "party", block: block([flask], { health: 38 }), at: { x: mode === "normal" ? 5 : 7, y: 4 } },
+        troll: { side: "enemy", block: block([poke], { health: 84, defense: 15 }), at: { x: 8, y: 4 } },
+        brom: { side: "party", block: block([poke], { health: 44 }), at: { x: 9, y: 4 } },
+      });
+      const pip = rulesetCombatant(encounter, "pip")!;
+      pip.movementLeft = 0;
+      // Its action spent on its rapier already: the bonus action is all it has left.
+      pip.budgets.action = 0;
+      const chance = rulesetHitChances(definition, encounter, "pip", "flask", ["troll"]).troll!;
+      return { chance, id: pickRulesetChoice(definition, state, encounter, "pip")?.option.id };
+    };
+    const fair = throws("normal");
+    const poor = throws("disadvantage");
+    assert.ok(poor.chance < 0.5 && fair.chance >= 0.5, `odds: ${fair.chance} then ${poor.chance}`);
+    assert.equal(fair.id, "flask", "at even odds it throws");
+    assert.notEqual(poor.id, "flask", "beside it, at disadvantage, it keeps the flask");
+  }
+
   // ── At 2 health beside what could fell it, mending itself beats a heavy blow (re-test 2026-10-24) ──
   {
     const potion = {

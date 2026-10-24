@@ -1218,6 +1218,56 @@ try {
         `the one on its own side of the oil: ${JSON.stringify(picked)}`,
       );
     }
+    // Nor poured beside a friend at grips with somebody, who steps where the fight goes and into it
+    // (re-test 2026-10-24: burning oil a cell from the fighter brawling the ghouls).
+    {
+      const pour = {
+        id: "pour",
+        label: "Pour",
+        kind: "attack",
+        budget: "action",
+        targets: { side: "enemy", count: 1 },
+        range: { normal: 60 },
+        area: { shape: "box", size: 1 },
+        save: { save: "dex_save", difficulty: 15, onSuccess: "negates" },
+        damage: { count: 0, sides: 0, flat: 5, type: "fire" },
+        zone: { rounds: 10, triggers: ["enter"] },
+      };
+      const pours = (brawling: boolean) => {
+        const { encounter, state } = wide(
+          {
+            pip: { x: 3, y: 4 },
+            orc: { x: brawling ? 8 : 4, y: brawling ? 4 : 1 },
+            knight: { x: 9, y: 4 },
+            squire: { x: 9, y: 5 },
+          },
+          {
+            pip: { side: "enemy", block: block({ type: "humanoid", mind: "tactical", health: 30, actions: [] }) },
+            orc: { side: "enemy", block: block({ type: "humanoid", health: 30, actions: [claw] }) },
+            knight: { side: "party", block: block({ health: 12, actions: [claw] }) },
+            squire: { side: "party", block: block({ health: 12, actions: [claw] }) },
+          },
+          { pip: { ...master, temperament: "disciplined" } },
+        );
+        rulesetCombatant(encounter, "pip")!.actions.push(pour as never);
+        state.rulesetFight = {
+          encounter,
+          events: [],
+          eventSeq: 0,
+          controllers: { knight: "manual", squire: "manual" },
+          bosses: [],
+        } as never;
+        return pickRulesetChoice(definition, state, encounter, "pip");
+      };
+      const apart = pours(false);
+      assert.equal(apart?.choice.optionId, "pour", `with nobody of its own there, it pours: ${JSON.stringify(apart)}`);
+      const there = pours(true);
+      const at = there?.choice.at;
+      assert.ok(
+        there?.choice.optionId !== "pour" || (!!at && Math.max(Math.abs(at.x - 8), Math.abs(at.y - 4)) > 2),
+        `not beside the orc at grips with the knight: ${JSON.stringify(there)}`,
+      );
+    }
     // A blow worth little against a sturdy target still says why it was struck (re-test 2026-10-24:
     // a zombie's slam on the fighter with no reason given).
     {

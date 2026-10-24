@@ -230,7 +230,7 @@ export interface RulesetFightState {
     struckClose?: boolean;
   }; /** What the fight looked like when a round last began, and how many rounds in a row it has looked
    *  just the same (K8): a fight nothing can change any more is called off. */
-  stall?: { key: string; round: number; rounds: number };
+  stall?: { key: string; round: number; rounds: number; seq: number };
 }
 
 export type RulesetCommandResult = { ok: true } | { ok: false; error: string; code: string };
@@ -1655,6 +1655,8 @@ interface RulesetCandidate {
   drops?: string[];
   /** Why it is worth more against its target than its forecast says (I1), for its reasons. */
   edge?: RulesetBlowEdge;
+  /** A limited use thrown at worse than even odds: whom it would like to hit adds nothing to it. */
+  poorOdds?: true;
 }
 
 /** How many cells a turn is weighed from. The board is small and a turn is short, so this is a
@@ -1787,8 +1789,9 @@ function rulesetCandidates(
   const keeps = !!actor && rulesetKeepsDefensive(definition, encounter, actor, tactics, orders);
   // Nothing to hurt or help from anywhere it can get to this turn: a dodge, a getaway or a hide only
   // for one that keeps to them (and not past two turns of it). Anybody else goes looking for the
-  // fight, which a defensive pick would stop it doing, so healthy wolves would hide all fight.
-  if (!own.some((candidate) => worth(candidate) > 0))
+  // fight, which a defensive pick would stop it doing, so healthy wolves would hide all fight. A
+  // limited use at poor odds is no reason to give up ending the turn: it is weighed against keeping it.
+  if (!own.some((candidate) => worth(candidate) > 0 && !candidate.action.poorOdds))
     return keeps ? own : own.filter((candidate) => rulesetDefensiveName(candidate.action.option) === undefined);
   return own.filter(
     (candidate) =>
@@ -3054,6 +3057,11 @@ function rulesetCandidatesFrom(
         // 2026-10-24: flasks thrown at disadvantage from beside a troll, 5 of 16 landing).
         const limited = price > 0 || !!fallingAction?.uses || !!fallingAction?.itemUse;
         const odds = limited && chance < 0.5 ? chance / 0.5 : 1;
+        // And the use kept for a fair throw is worth something of its own: the poorer the odds, the more.
+        if (odds < 1) {
+          candidate.action.poorOdds = true;
+          candidate.cost = (candidate.cost ?? 0) + 0.25 * (1 - odds);
+        }
         candidate.damage = Math.min(2, (worth / weighed) * (1 + others.length + again)) * chance * odds;
         candidate.action.expected = average * chance * (1 + others.length + again);
         if (average >= pool) candidate.finish = chance;
@@ -3741,6 +3749,23 @@ function weighCaught(
     // lands, as a foe beside it does; and its maker, who knows where it lies, not at all (I3 re-test
     // 2026-10-23: caltrops in a charging pack's way weighed as if the rogue would tread on them).
     nearOnly = new Set(near.map((one) => one.id));
+    // Never beside a friend at grips with somebody: it steps where the fight goes, into it (re-test
+    // 2026-10-24: burning oil poured a cell from the fighter brawling the ghouls, who walked in).
+    if (
+      near.some(
+        (one) =>
+          one.id !== actor.id &&
+          encounter.combatants.some(
+            (other) =>
+              other.side !== actor.side &&
+              !other.object &&
+              rulesetCombatStanding(other) &&
+              !!rulesetPositionOf(other) &&
+              rulesetGap(one, other) <= 1,
+          ),
+      )
+    )
+      return false;
     friends = [...friends, ...near.filter((one) => one.id !== actor.id)];
     // And those of the other side who would cross it on their way to whoever of its side is nearest,
     // within a turn's walk (I3 re-test 2026-10-23: caltrops never laid before a charging wolf pack).
@@ -4535,6 +4560,14 @@ function weighChoices(
   if (!menu) weighRulesetPrepare(definition, encounter, actor, unit.tactics!, candidates);
   if (!menu && unit.tactics!.mind !== "mindless")
     weighRulesetLeadership(definition, state, encounter, actor, candidates);
+  // Whom it most wants down, and joining its side's attack on them, are reasons to pick a blow at
+  // them, never reasons to spend a limited use at poor odds on them (re-test 2026-10-24: Fast Hands
+  // flasks thrown at disadvantage from beside a troll, 14 of 16, carried by the fight being there).
+  for (const candidate of candidates)
+    if (candidate.action.poorOdds) {
+      if ((candidate.focus ?? 0) > 0) candidate.focus = 0;
+      if ((candidate.coordination ?? 0) > 0) candidate.coordination = 0;
+    }
   return { unit, actor, candidates, orders, behavior, opening };
 }
 
@@ -5618,26 +5651,28 @@ function answerRulesetWindows(
 }
 
 /** How many whole rounds a fight may go on with nothing in it changing before it breaks off (K8):
- *  nobody hurt or healed, nobody moved, downed or given a condition, no area made or gone. Ten, so a
- *  run of misses never ends a fight that is still being fought. */
+ *  nobody hurt or healed, nobody moved, downed or gone, and no blow reaching anybody's health. Ten,
+ *  so a run of misses never ends a fight that is still being fought. */
 const RULESET_STALL_ROUNDS = 10;
 
-/** What a round could change, and only that. A condition's own countdown is left out: it moves by
- *  itself, and a fight in which only clocks run is a fight in which nothing happens. */
-function rulesetStallKey(encounter: RulesetEncounterState): string {
+/** What a round could change that can still end the fight, and only that: health, where each
+ *  stands, who is down or gone. Conditions, areas and a ruleset's own counters are left out, as
+ *  they can turn over for ever with nobody nearer the end (K6 re-test: a duellist ordered to spare
+ *  shifting initiative and crashing the last ape for 74 rounds). */
+function rulesetStallKey(definition: RulesetDefinition, encounter: RulesetEncounterState): string {
+  const combat = definition.combat!;
   return JSON.stringify(
     encounter.combatants.map((combatant) => [
       combatant.id,
-      combatant.health?.value,
-      combatant.health?.temp,
+      // Off its sheet for one that has one, as every other reading of it is.
+      rulesetCombatHealth(definition, combat, combatant).value,
+      rulesetCombatHealth(definition, combat, combatant).temp,
       combatant.x,
       combatant.y,
       combatant.down,
       combatant.dying,
       combatant.defeated,
       !!combatant.away,
-      combatant.tracked.map((one) => one.condition).sort(),
-      combatant.zones?.length ?? 0,
     ]),
   );
 }
@@ -5645,17 +5680,21 @@ function rulesetStallKey(encounter: RulesetEncounterState): string {
 /** Called as each turn begins: a fight that has looked the same for ten rounds breaks off, both
  *  sides still standing, and says so (K1, K6, K8: a board nobody could cross, orders to spare that
  *  no blow could honour, a hill both sides stood on for fifty rounds). */
-function rulesetStalled(state: CombatDirectorState, fight: RulesetFightState): boolean {
+function rulesetStalled(definition: RulesetDefinition, state: CombatDirectorState, fight: RulesetFightState): boolean {
   const round = fight.encounter.round;
-  const key = rulesetStallKey(fight.encounter);
+  const key = rulesetStallKey(definition, fight.encounter);
   const stall = fight.stall;
-  if (!stall || stall.key !== key) {
-    fight.stall = { key, round, rounds: 0 };
+  // A blow that reached somebody's health, soaked to nothing or not, is the fight still being fought:
+  // a pool fight where every hit is taken by a hide counts as going on (pool fight seed 10).
+  const struck = !!stall && fight.events.some((entry) => entry.seq > stall.seq && entry.event.type === "damage");
+  if (!stall || stall.key !== key || struck) {
+    fight.stall = { key, round, rounds: 0, seq: fight.eventSeq };
     return false;
   }
   if (round <= stall.round) return false;
   stall.round = round;
   stall.rounds += 1;
+  stall.seq = fight.eventSeq;
   if (stall.rounds < RULESET_STALL_ROUNDS) return false;
   state.outcome = "flee";
   state.stalled = true;
@@ -5672,7 +5711,7 @@ function advanceTurn(definition: RulesetDefinition, state: CombatDirectorState, 
   const step = advanceRulesetTurn(definition, fight.encounter, rollerFor(fight));
   absorb(definition, state, fight, step);
   answerRulesetWindows(definition, state, fight);
-  if (rulesetStalled(state, fight)) return;
+  if (rulesetStalled(definition, state, fight)) return;
   // A player's member on the ground and dying has rolled against death as the turn began and has
   // nothing else to do: the turn ends by itself rather than waiting on a click that decides nothing.
   const next = currentRulesetActor(fight.encounter);
@@ -5918,6 +5957,14 @@ function playRulesetTurn(
     const from = rulesetPositionOf(rulesetCombatant(fight.encounter, actorId));
     if (picked.to && !picked.defensive && !fromHere && !stepBefore(definition, state, fight, actorId, picked.to)) {
       tried.add(rulesetChoiceKey(picked.choice));
+      // Dropped on the way (a blow as it left somebody's reach): the walk still says what it was
+      // for, as it would have had it got there (re-test 2026-10-24).
+      const fell = rulesetCombatant(fight.encounter, actorId);
+      if (!fell || !rulesetCombatStanding(fell)) {
+        const at = rulesetPositionOf(fell);
+        const walked = from && at ? Math.max(Math.abs(at.x - from.x), Math.abs(at.y - from.y)) : undefined;
+        recordReasons(fight, actorId, rulesetPickReasons(ranked!.candidate, ranked!.parts, walked, fight.encounter));
+      }
       continue;
     }
     // Reckless first (1.590), as it is about to make a melee weapon attack.

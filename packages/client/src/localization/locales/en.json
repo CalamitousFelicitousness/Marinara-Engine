@@ -523,6 +523,7 @@
   "chat.advancedMemory.fix.show": "Show",
   "chat.advancedMemory.fix.title": "Memory problems",
   "chat.advancedMemory.fromBeginning": "From the beginning of eligible history",
+  "chat.advancedMemory.gameHelp": "The Game Master reads every memory. Each turn sends the current scene, a recap of earlier ones and the moments that matter now, instead of the whole session.",
   "chat.advancedMemory.generated": "Generated",
   "chat.advancedMemory.helperModel": "Helper model",
   "chat.advancedMemory.import": "Import",

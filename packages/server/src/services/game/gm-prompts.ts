@@ -728,7 +728,7 @@ export function buildGmSystemPrompt(ctx: GmPromptContext): string {
   // Moved to buildGmFormatReminder() so the model sees the latest
   // game state closest to generation (same rationale as active_widgets).
   // The scene's changing state (weather, perception, morale, map, NPCs, notes, the
-  // tactical board) is buildGmSceneState(), sent in the reminder too: anything that
+  // tactical board) is buildGmSceneState(), sent in the turn reminder instead: anything that
   // changes here invalidates the provider's prompt cache for the whole history after it.
 
   // ── Active HUD Widgets ──

@@ -3077,6 +3077,16 @@ function carriesSoloRole760(value: unknown, depth = 0): boolean {
 }
 
 /** Losing heart (1.746): `combat.morale`, or a stat block's `morale` score or `leader`. */
+/** Words a text field or column offers to pick (1.785): `suggestions` on a `type: "text"`. */
+function carriesTextSuggestions785(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesTextSuggestions785(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.type === "text" && Array.isArray(record.suggestions)) return true;
+  return featureValues(record).some((one) => carriesTextSuggestions785(one, depth + 1));
+}
+
 /** What a creature has on it as a fight begins (1.784): a creature's `inventory` of item or table lines. */
 function carriesCreatureInventory784(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -12609,6 +12619,10 @@ export function getCapabilityPackageInstallIssue(
     })()
   ) {
     return "A ruleset whose sheet migrations set a column on list rows (setColumn) requires schemaVersion 2 and capabilityApi 1.783 or newer";
+  }
+  // Words a text field offers to pick, 1.785.
+  if (!declaresApi(785) && carriesTextSuggestions785(ruleset)) {
+    return "A ruleset whose text fields offer words to pick (a text field's suggestions) requires schemaVersion 2 and capabilityApi 1.785 or newer";
   }
   // What a creature has on it as a fight begins, 1.784.
   if (

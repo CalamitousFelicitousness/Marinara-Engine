@@ -1496,7 +1496,9 @@ const capabilityPackageManifestBaseSchema = z
 //        can (a sheet-backed one as a party member does; a plain stat block what is used up in the using
 //        and reads nothing of its user), and what it has left drops when it is beaten. The Game Master
 //        may give an opponent its own instead (`carrying`).
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 784 } as const);
+// 1.785: a text field's or list column's `suggestions`: words offered as chips to pick, the field still
+//        typed in freely (a ranger's favored enemies).
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 785 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

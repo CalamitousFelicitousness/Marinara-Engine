@@ -940,6 +940,9 @@ const textFieldShape = {
   type: z.literal("text"),
   maxLength: z.number().int().min(1).max(500),
   default: z.string().max(500).optional(),
+  /** Words offered to pick (1.785), each added as a chip, the field still typed in freely: a
+   *  ranger's favored enemies out of the creature types. */
+  suggestions: z.array(z.string().trim().min(1).max(80)).min(1).max(40).optional(),
 };
 const longtextFieldShape = {
   type: z.literal("longtext"),

@@ -107,7 +107,7 @@ export function TypedInput({
     );
   }
   const maxLength = spec.type === "text" ? spec.maxLength : 40;
-  return (
+  const input = (
     <input
       type="text"
       value={typeof value === "string" ? value : ""}
@@ -120,5 +120,43 @@ export function TypedInput({
       aria-describedby={describedBy}
       className={inputClass}
     />
+  );
+  const suggestions = spec.type === "text" ? spec.suggestions : undefined;
+  if (!suggestions?.length) return input;
+  // Words offered to pick (1.785): a chip adds its word to what is written, and takes it out again.
+  const text = typeof value === "string" ? value : "";
+  const words = text
+    .split(",")
+    .map((one) => one.trim())
+    .filter(Boolean);
+  const has = (word: string) => words.some((one) => one.toLowerCase() === word.toLowerCase());
+  return (
+    <div className="space-y-1">
+      {input}
+      <div className="flex flex-wrap gap-1">
+        {suggestions.map((word) => (
+          <button
+            key={word}
+            type="button"
+            aria-pressed={has(word)}
+            disabled={disabled}
+            onClick={() =>
+              onChange(
+                (has(word) ? words.filter((one) => one.toLowerCase() !== word.toLowerCase()) : [...words, word])
+                  .join(", ")
+                  .slice(0, maxLength),
+              )
+            }
+            className={`rounded-full border px-2 py-0.5 text-[0.6875rem] ${
+              has(word)
+                ? "border-[var(--primary)] bg-[var(--primary)]/15 text-[var(--foreground)]"
+                : "border-[var(--border)] text-[var(--muted-foreground)] hover:bg-[var(--accent)]"
+            }`}
+          >
+            {word}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }

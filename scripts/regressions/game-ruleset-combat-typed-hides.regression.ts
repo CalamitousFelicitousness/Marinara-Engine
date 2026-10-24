@@ -384,6 +384,10 @@ try {
   const { createElement } = React;
   const { renderToStaticMarkup } = clientRequire("react-dom/server");
   const { I18nextProvider } = await import("../../packages/client/node_modules/react-i18next/dist/es/index.js");
+  // The sheet loads the catalogs its rows point at (2026-10-24), so it renders under a query client.
+  const { QueryClient, QueryClientProvider } =
+    await import("../../packages/client/node_modules/@tanstack/react-query/build/modern/index.js");
+  const queryClient = new QueryClient();
   const i18n = clientRequire("i18next").createInstance();
   await i18n.init({
     lng: "en",
@@ -408,7 +412,9 @@ try {
     }),
     createElement(RulesetCombatStatus, { definition, view }),
   ]) {
-    const html = renderToStaticMarkup(createElement(I18nextProvider, { i18n }, component));
+    const html = renderToStaticMarkup(
+      createElement(QueryClientProvider, { client: queryClient }, createElement(I18nextProvider, { i18n }, component)),
+    );
     for (const word of ["bludgeoning except magical", "Resists:", "Condition immunities: Frightened"])
       assert.ok(html.includes(word), `rendered defenses include ${word}`);
   }

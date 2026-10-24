@@ -9,6 +9,7 @@ import {
   readRulesetLive,
   resolveRulesetAbilityValues,
   type EvaluatedRulesetSheet,
+  type RulesetCatalogEntriesById,
   type RulesetCombatAmount,
   type RulesetCombatDamage,
   type RulesetDefinition,
@@ -124,6 +125,8 @@ export function rulesetSheetAttacks(
   build: RulesetSheetBuild,
   live: RulesetLiveState | undefined,
   items: ReadonlyArray<RulesetSheetItem> | undefined,
+  /** The catalogs its rows came from, so what its features do to its attacks counts. */
+  catalogs?: RulesetCatalogEntriesById,
 ): RulesetSheetAttack[] {
   if (!definition.combat) return [];
   try {
@@ -131,7 +134,17 @@ export function rulesetSheetAttacks(
       definition,
       seed: 1,
       roller: () => 1,
-      combatants: [{ id: "sheet", name: "sheet", side: "party", build, live, ...(items ? { items } : {}) }],
+      combatants: [
+        {
+          id: "sheet",
+          name: "sheet",
+          side: "party",
+          build,
+          live,
+          ...(items ? { items } : {}),
+          ...(catalogs ? { catalogs } : {}),
+        },
+      ],
     });
     const seen = new Set<string>();
     return (state.combatants[0]?.actions ?? []).flatMap((action) => {
@@ -149,4 +162,22 @@ export function rulesetSheetAttacks(
   } catch {
     return [];
   }
+}
+
+/** A list's rows as the sheet shows them: its own, then the rows every sheet's fight has as well
+ *  (`combat.attacks` `always`, 1.244) where it has none of the same name, so 5e's Unarmed Strike is
+ *  on the sheet a fight reads it from (laptop class builds 2026-10-24). */
+export function rulesetListRowsShown(definition: RulesetDefinition, listId: string, rows: unknown): unknown {
+  const own = Array.isArray(rows) ? (rows as Array<Record<string, unknown>>) : [];
+  const nameOf = (row: Record<string, unknown>, column: string) =>
+    typeof row?.[column] === "string" ? (row[column] as string).trim().toLowerCase() : "";
+  const always = (definition.combat?.attacks ?? []).flatMap((source) => {
+    if (source.list !== listId || !source.always?.length) return [];
+    const names = new Set(own.map((row) => nameOf(row, source.name)).filter(Boolean));
+    return source.always.filter((row) => {
+      const name = nameOf(row, source.name);
+      return !!name && !names.has(name);
+    });
+  });
+  return always.length > 0 ? [...own, ...always] : rows;
 }

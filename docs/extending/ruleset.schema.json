@@ -7875,6 +7875,16 @@
                     "type": "string",
                     "maxLength": 500
                   },
+                  "suggestions": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 80
+                    },
+                    "minItems": 1,
+                    "maxItems": 40
+                  },
                   "$comment": {}
                 },
                 "required": [
@@ -10919,6 +10929,16 @@
                         "default": {
                           "type": "string",
                           "maxLength": 500
+                        },
+                        "suggestions": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 80
+                          },
+                          "minItems": 1,
+                          "maxItems": 40
                         },
                         "$comment": {}
                       },
@@ -23949,6 +23969,16 @@
                     "type": "string",
                     "maxLength": 500
                   },
+                  "suggestions": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 80
+                    },
+                    "minItems": 1,
+                    "maxItems": 40
+                  },
                   "$comment": {}
                 },
                 "required": [
@@ -25542,6 +25572,16 @@
                         "default": {
                           "type": "string",
                           "maxLength": 500
+                        },
+                        "suggestions": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 80
+                          },
+                          "minItems": 1,
+                          "maxItems": 40
                         },
                         "$comment": {}
                       },
@@ -215301,6 +215341,16 @@
                   "default": {
                     "type": "string",
                     "maxLength": 500
+                  },
+                  "suggestions": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 80
+                    },
+                    "minItems": 1,
+                    "maxItems": 40
                   },
                   "$comment": {}
                 },

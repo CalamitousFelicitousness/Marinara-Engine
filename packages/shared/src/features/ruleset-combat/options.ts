@@ -333,6 +333,7 @@ function grantedStandardOptions(
           budget: granted.budget,
           targets: name === "help" ? { side: "ally", count: 1 } : { side: "self", count: 0 },
           ...(paid.cost.length > 0 ? { cost: paid.cost } : {}),
+          grantedBy: action.label,
         }),
       );
     }

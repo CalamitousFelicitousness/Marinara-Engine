@@ -141,6 +141,7 @@ function ChoiceSlot({
   atCap,
   held,
   filterLabelOf = (id) => id,
+  infoOf,
 }: {
   title: string;
   slot: RulesetBuilderAbilitySlot | RulesetBuilderTrainedSlot | RulesetBuilderEntrySlot;
@@ -151,8 +152,13 @@ function ChoiceSlot({
   /** Whether the sheet already has it from somewhere else (a dwarf's Dwarvish), so it is no pick. */
   held?: (id: string) => boolean;
   filterLabelOf?: (id: string) => string;
+  /** What an option is, for its Info (laptop class builds 2026-10-24): a Fighting Style's summary, as
+   *  a catalog step's card shows it. */
+  infoOf?: (id: string) => string | undefined;
 }) {
   const { t } = useUiTranslation();
+  const [openInfo, setOpenInfo] = useState<string | null>(null);
+  const infoDomId = useId();
   const full = slot.chosen.length >= slot.count;
   const repeat = "repeat" in slot && !!slot.repeat;
   const left = Math.max(
@@ -226,28 +232,48 @@ function ChoiceSlot({
             );
           }
           const known = !on && !!held?.(id);
+          const info = infoOf?.(id);
           return (
-            <button
-              key={id}
-              type="button"
-              aria-pressed={on}
-              disabled={!on && (full || known || !!atCap?.(id) || !!slot.disabled?.[id])}
-              onClick={() =>
-                onChange(on ? stored.filter((each) => each !== id) : [...stored.filter((each) => each !== id), id])
-              }
-              className={`${chipClass} ${on ? chipOn : chipOff}`}
-            >
-              {labelOf(id)}
-              {known ? (
-                <span className="block font-normal">{t("ui.rulesets.builder.alreadyKnown")}</span>
-              ) : (
-                !on &&
-                slot.disabled?.[id] && <span className="block font-normal">{t(reasonKey[slot.disabled[id]!])}</span>
+            <span key={id} className="inline-flex items-start gap-0.5">
+              <button
+                type="button"
+                aria-pressed={on}
+                disabled={!on && (full || known || !!atCap?.(id) || !!slot.disabled?.[id])}
+                onClick={() =>
+                  onChange(on ? stored.filter((each) => each !== id) : [...stored.filter((each) => each !== id), id])
+                }
+                className={`${chipClass} ${on ? chipOn : chipOff}`}
+              >
+                {labelOf(id)}
+                {known ? (
+                  <span className="block font-normal">{t("ui.rulesets.builder.alreadyKnown")}</span>
+                ) : (
+                  !on &&
+                  slot.disabled?.[id] && <span className="block font-normal">{t(reasonKey[slot.disabled[id]!])}</span>
+                )}
+              </button>
+              {info && (
+                <button
+                  type="button"
+                  aria-expanded={openInfo === id}
+                  aria-controls={infoDomId}
+                  aria-label={t("ui.rulesets.builder.infoFor", { name: labelOf(id) })}
+                  onClick={() => setOpenInfo(openInfo === id ? null : id)}
+                  className={`${chipClass} ${chipOff}`}
+                >
+                  {t("ui.rulesets.builder.info")}
+                </button>
               )}
-            </button>
+            </span>
           );
         })}
       </div>
+      {openInfo && infoOf?.(openInfo) && (
+        <div id={infoDomId} className="space-y-1 text-[0.6875rem] text-[var(--muted-foreground)]">
+          <p className="font-semibold text-[var(--foreground)]">{labelOf(openInfo)}</p>
+          <p>{infoOf(openInfo)}</p>
+        </div>
+      )}
     </fieldset>
   );
 }
@@ -524,6 +550,7 @@ export function RulesetSheetBuilder({
                 ?.filters?.find((filter) => filter.id === id)?.label ?? id
             }
             labelOf={(id) => (catalogs[slot.catalog] ?? []).find((entry) => entry.id === id)?.label ?? id}
+            infoOf={(id) => (catalogs[slot.catalog] ?? []).find((entry) => entry.id === id)?.summary}
             held={(id) => {
               const entry = (catalogs[slot.catalog] ?? []).find((one) => one.id === id);
               return !!entry && rulesetBuilderEntryHeld(definition, build, slot.catalog, entry);

@@ -309,7 +309,11 @@ export function rulesetOptionLabel(option: DirectedRulesetOption, t: TFunction):
   // A trap disarmed (1.653), by name.
   if (option.disarms) return t("game.combat.ruleset.menu.disarm", { zone: option.label });
   if (option.kind !== "standard") return option.label;
-  return t(`game.combat.ruleset.standard.${option.label}`, { defaultValue: option.label });
+  const standard = t(`game.combat.ruleset.standard.${option.label}`, { defaultValue: option.label });
+  // Bought with another budget by an entry of theirs: named after it, "Patient Defense (Dodge)".
+  return option.grantedBy
+    ? t("game.combat.ruleset.menu.granted", { source: option.grantedBy, action: standard })
+    : standard;
 }
 
 /** The name a readied option goes by (1.288): a walk is the Engine's own word. */

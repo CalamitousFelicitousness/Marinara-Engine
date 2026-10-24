@@ -4417,6 +4417,9 @@ export interface RulesetCombatAlterOffer {
 }
 
 export interface RulesetCombatOption {
+  /** The entry that lets a standard action be bought with another budget (laptop class builds
+   *  2026-10-24): a menu names it after that, "Patient Defense (Dodge)", not as a plain Dodge. */
+  grantedBy?: string;
   /** Allowed, but nothing can come of it now: a Hide with every opponent seeing its user clearly.
    *  Left off a player's menu and never picked by the AI. */
   futile?: true;

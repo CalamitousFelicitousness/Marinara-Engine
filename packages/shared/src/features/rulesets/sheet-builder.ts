@@ -1382,6 +1382,9 @@ export function rulesetBuilderEntrySlots(
           .filter(
             (option) =>
               (option.rows?.length ?? 0) > 0 &&
+              // A variant is used through its parent's row, never picked on its own (1.753), here as
+              // in a catalog step: "Produce Flame (held)" is Produce Flame's (laptop class builds 2026-10-24).
+              option.variantOf === undefined &&
               Object.entries(choice.filters ?? {}).every(([filterId, value]) => filterHas(option, filterId, value)) &&
               (!choice.ids || choice.ids.includes(option.id)) &&
               !given.has(`${choice.catalog}/${option.id}`) &&

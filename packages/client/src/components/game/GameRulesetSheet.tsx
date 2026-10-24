@@ -9,7 +9,8 @@
 // Nothing here knows a system by name. Every pool, track, note, condition and rest is read out of
 // the definition, so a ruleset whose only resource is an empty-start "stress" track renders as
 // completely as one with spell slots.
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useQueries } from "@tanstack/react-query";
 import { Check, Minus, Pencil, Plus, X } from "lucide-react";
 import type { TFunction } from "i18next";
 import { useTranslation as useUiTranslation } from "react-i18next";
@@ -32,7 +33,10 @@ import {
   rulesetSectionGroups,
   isRulesetItemHidden,
   isRulesetTextHidden,
+  rulesetCatalogIdsForBuild,
   type EvaluatedRulesetSheet,
+  type RulesetCatalogEntriesById,
+  type RulesetCatalogPayload,
   type ResolvedRulesetLive,
   type RulesetDefinition,
   type RulesetField,
@@ -51,7 +55,13 @@ import { rulesetEffectPhrase } from "./RulesetItemPicker";
 import { RulesetSheetEditor } from "../rulesets/RulesetSheetEditor";
 import { stalePartySheet, useSavePartySheet } from "../../hooks/use-party-sheet";
 import { rulesetCheckValueText } from "../../lib/ruleset-resolution";
-import { rulesetPoolGroupLabel, rulesetSheetAttacks, rulesetSheetSummaryShown } from "../../lib/ruleset-sheet-view";
+import {
+  rulesetListRowsShown,
+  rulesetPoolGroupLabel,
+  rulesetSheetAttacks,
+  rulesetSheetSummaryShown,
+} from "../../lib/ruleset-sheet-view";
+import { rulesetCatalogQuery } from "../../hooks/use-capability-packages";
 import { useCombatScreenStore } from "../../stores/combat-screen.store";
 import { DraftNumberInput } from "../ui/DraftNumberInput";
 import { DraftTextarea } from "../ui/DraftTextarea";
@@ -601,7 +611,29 @@ export function GameRulesetSheet({
     const declared = definition.sheet.live.text.find((one) => one.id === entry.id);
     return !declared || !isRulesetTextHidden(declared, build, definition, evaluated.derived);
   });
-  const attacks = useMemo(() => rulesetSheetAttacks(definition, build, live, items), [definition, build, live, items]);
+  // The catalogs this sheet's rows point at, so its attacks are read with what its features do to
+  // them, as a fight reads them: Martial Arts's Dexterity on a quarterstaff (laptop class builds
+  // 2026-10-24). The same queries the editor and the battle prefetch share.
+  const catalogIds = useMemo(() => rulesetCatalogIdsForBuild(definition, build), [definition, build]);
+  const combineCatalogs = useCallback(
+    (results: readonly { data: RulesetCatalogPayload | undefined }[]): RulesetCatalogEntriesById => {
+      const loaded: RulesetCatalogEntriesById = {};
+      results.forEach((result, index) => {
+        const catalogId = catalogIds[index];
+        if (catalogId && result.data) loaded[catalogId] = result.data.entries;
+      });
+      return loaded;
+    },
+    [catalogIds],
+  );
+  const catalogs = useQueries({
+    queries: catalogIds.map((catalogId) => rulesetCatalogQuery(definition.id, catalogId, definition.version)),
+    combine: combineCatalogs,
+  });
+  const attacks = useMemo(
+    () => rulesetSheetAttacks(definition, build, live, items, catalogs),
+    [definition, build, live, items, catalogs],
+  );
   const saveModifiers = checkSources.flatMap((source) =>
     rulesetItemEffectFacts(definition, {
       modifiers: source.modifiers?.filter((one) => one.against),
@@ -839,7 +871,7 @@ export function GameRulesetSheet({
                   key={list.id}
                   definition={definition}
                   list={list}
-                  rows={build.lists?.[list.id]}
+                  rows={rulesetListRowsShown(definition, list.id, build.lists?.[list.id])}
                   yes={localizeUi("game.ruleset.sheet.yes")}
                 />
               ))}
@@ -874,6 +906,13 @@ export function GameRulesetSheet({
                     </div>
                   ))}
                 </div>
+              )}
+              {/* Outside a game nothing is worn yet, so armor class counts none (laptop class builds
+                  2026-10-24: a new Paladin's card read AC 10). */}
+              {items === undefined && (definition.items?.startingGear?.length ?? 0) > 0 && (
+                <p className="text-[0.6875rem] text-[var(--muted-foreground)]">
+                  {localizeUi("ui.rulesets.sheet.gearInGame")}
+                </p>
               )}
 
               {/* Under their section headings where the ruleset gives them some; otherwise one grid, as always. */}

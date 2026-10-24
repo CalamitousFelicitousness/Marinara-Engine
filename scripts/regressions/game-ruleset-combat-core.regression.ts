@@ -2658,6 +2658,12 @@ const labels = (definition: RulesetDefinition, state: RulesetEncounterState, id:
       ],
       "only the three the entry named, and only for the budget it named",
     );
+    // Each named after the entry that grants it, so a menu says Quick Hands rather than a plain Dash
+    // (laptop class builds 2026-10-24: Patient Defense read as Dodge).
+    assert.deepEqual(
+      [...new Set(menu.filter((option) => option.id.includes("@")).map((option) => option.grantedBy))],
+      ["Quick Hands"],
+    );
     // Nobody helps themselves, whichever budget the help was bought with: the rule reads the
     // action's NAME, so the budgeted id is held to it exactly as the plain one is. The permission
     // is edited on the PICKED entry, which is what the fight reads, not on the file's own copy.

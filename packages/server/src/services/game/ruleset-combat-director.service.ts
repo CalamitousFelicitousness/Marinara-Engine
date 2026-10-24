@@ -2108,6 +2108,12 @@ function weighRulesetTeam(
     const kept = candidates.filter((candidate) => rulesetDefensiveName(candidate.action.option) !== "disengage");
     if (kept.length > 0) candidates.splice(0, candidates.length, ...kept);
   }
+  // Hidden already, hiding again gets it nothing (laptop playtest 2026-10-23: a rogue hid twice in a
+  // turn, the second with its bonus action).
+  if (actor.hiding) {
+    const kept = candidates.filter((candidate) => rulesetDefensiveName(candidate.action.option) !== "hide");
+    if (kept.length > 0) candidates.splice(0, candidates.length, ...kept);
+  }
   for (const candidate of candidates) {
     const defensive = keeps ? rulesetDefensiveName(candidate.action.option) : undefined;
     if (defensive) {
@@ -3613,6 +3619,30 @@ function weighCaught(
         !!rulesetPositionOf(one) &&
         (rulesetGapFrom(at, 1, one) <= reach || onTheirWay(one)),
     );
+    // Its own side walks the same ground: a friend nearer it than any of those walkers, on its way to
+    // the nearest of the other side, crosses it first (re-test 2026-10-23: caltrops and burning oil
+    // laid four squares before the party, where the party stepped on them and the wolves never did).
+    const first = Math.min(Infinity, ...walkers.map((one) => rulesetGapFrom(at, 1, one)));
+    const others = encounter.combatants.filter(
+      (one) => one.side !== actor.side && rulesetCombatStanding(one) && !!rulesetPositionOf(one),
+    );
+    const crossing = standing.filter((friend) => {
+      if (friend.id === actor.id || friends.includes(friend)) return false;
+      const to = others.reduce<RulesetCombatant | undefined>(
+        (best, one) => (!best || rulesetGap(friend, one) < rulesetGap(friend, best) ? one : best),
+        undefined,
+      );
+      if (!to) return false;
+      const apart = rulesetGap(friend, to);
+      // At grips already, or with the other side coming to it within a turn, it walks nowhere.
+      if (apart <= 1 || rulesetInCells(to.speed, perCell) + 1 >= apart) return false;
+      const there = rulesetGapFrom(at, 1, friend);
+      return (
+        there <= first && there <= rulesetInCells(friend.speed, perCell) && there + rulesetGapFrom(at, 1, to) <= apart
+      );
+    });
+    for (const friend of crossing) nearOnly.add(friend.id);
+    friends = [...friends, ...crossing];
   }
   const worthOn = (target: RulesetCombatant) =>
     rulesetEffectWorth(definition, combat, encounter, actor, action, target);
@@ -4052,6 +4082,9 @@ export function pickRulesetChoice(
 interface RulesetRankedPick {
   candidate: CombatAiCandidate<RulesetCandidate>;
   parts: CombatAiScoreParts;
+  /** An item's healing it weighed and kept for later, for the debug log (laptop playtest 2026-10-23:
+   *  a bloodied fighter's potion never showed as weighed). */
+  keptBack?: { label: string; targetId?: string };
 }
 
 /** The pick with how it was scored, for the reasons the debug log gives after it. */
@@ -4092,6 +4125,15 @@ function pickChoice(
     orders,
   );
   const chosen = ranked.candidate.action;
+  const kept =
+    (ranked.candidate.healing ?? 0) > 0
+      ? undefined
+      : candidates.find(
+          (one) =>
+            one !== ranked.candidate &&
+            (one.healing ?? 0) > 0 &&
+            !!actor.actions.find((action) => action.id === one.action.option.id)?.itemUse,
+        );
   if (opening && behavior!.opens!.some((id) => rulesetOpensWith(actor, chosen, id))) unit.tactics!.opened = true;
   // Counted only on its own turn's choice, not on a reaction's. Walking, dashing or waiting is not
   // fighting, so only a blow or a spell lets it grow careful again, and then for one turn at most:
@@ -4101,7 +4143,12 @@ function pickChoice(
     else if (chosen.option.kind !== "move" && chosen.option.kind !== "end-turn" && chosen.option.kind !== "standard")
       unit.tactics!.wary = Math.min(unit.tactics!.wary ?? 0, 1);
   }
-  return ranked;
+  return kept
+    ? {
+        ...ranked,
+        keptBack: { label: kept.action.option.label, ...(kept.targetId ? { targetId: kept.targetId } : {}) },
+      }
+    : ranked;
 }
 
 /** How small a part of a pick's score is too small to give as a reason. */
@@ -4125,6 +4172,8 @@ function rulesetPickReasons(
   // A blow's help or healing is for its own side, never the one it strikes (re-test 2026-10-23: a
   // troll's Multiattack logged "support@Pip").
   const foe = !!actor && !!target && target.side !== actor.side;
+  // A roll it has to make where it lies (one against death) is no choice, and says no why.
+  if (actor && !rulesetCombatStanding(actor)) return [];
   const reasons = (Object.entries(parts) as Array<[keyof CombatAiScoreParts, number]>)
     .filter(([, part]) => Math.abs(part) >= RULESET_REASON_FLOOR)
     .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
@@ -4141,6 +4190,9 @@ function rulesetPickReasons(
       }
       if (why === "risk" || why === "cost") return { why };
       if (foe && (why === "healing" || why === "support" || why === "protection")) return { why };
+      // Its own side's one is not one it wants down: the friend it picked is the one most in need
+      // (laptop playtest 2026-10-23: "heals Isolde; Isolde is the one its side most wants down").
+      if (why === "focus" && target && actor && !foe) return { why: "mostInNeed", ...(targetId ? { targetId } : {}) };
       return { why, ...(targetId ? { targetId } : {}) };
     });
   if (walked) reasons.push({ why: "walked", cells: walked });
@@ -5666,7 +5718,10 @@ function playRulesetTurn(
     }
     const at = rulesetPositionOf(rulesetCombatant(fight.encounter, actorId));
     const walked = from && at ? Math.max(Math.abs(at.x - from.x), Math.abs(at.y - from.y)) : undefined;
-    recordReasons(fight, actorId, rulesetPickReasons(ranked!.candidate, ranked!.parts, walked, fight.encounter));
+    recordReasons(fight, actorId, [
+      ...rulesetPickReasons(ranked!.candidate, ranked!.parts, walked, fight.encounter),
+      ...(ranked!.keptBack ? [{ why: "keptBack" as const, ...ranked!.keptBack }] : []),
+    ]);
     // Kept through what it does after the shot that is no blow of its own (a goblin's Hide), so
     // the rest of its walk still keeps its distance (re-test 9); a blow up close ends it.
     const blow = !!rulesetCombatant(fight.encounter, actorId)?.actions.find((one) => one.id === picked.choice.optionId)
@@ -6352,7 +6407,18 @@ function walkTowardsTrouble(
     // A sprint the rules refused costs nothing: the walk below happens either way.
     if (!sprinted.refused) {
       const again = rulesetClosingMove(definition, fight.encounter, actorId, leash, toward);
-      return !!again && !applyChoice(definition, state, fight, again.choice).refused && walked(true);
+      if (again && !applyChoice(definition, state, fight, again.choice).refused) return walked(true);
+      // The longer walk would not go: the one it had before the sprint, and if not even that, it
+      // says so rather than spend its turns sprinting on the spot (laptop playtest 2026-10-23: a
+      // boss "dashes" every round and never left her corner).
+      if (!applyChoice(definition, state, fight, closing.choice).refused) return walked(true);
+      if (explain) recordReasons(fight, actorId, [{ why: "noWay" }]);
+      logger.warn(
+        "[game/combat:ruleset] %s sprinted and could not walk to %o",
+        actorId,
+        again?.choice.to ?? closing.choice.to ?? null,
+      );
+      return false;
     }
   }
   return !applyChoice(definition, state, fight, closing.choice).refused && walked(false);
@@ -6511,6 +6577,11 @@ function rulesetSuggestionReason(
   const nameOf = (id: string | undefined) => (id ? (rulesetCombatant(encounter, id)?.name ?? id) : "");
   const target = nameOf(candidate.targetId);
   const option = candidate.action.option;
+  const actorSide = rulesetCombatant(encounter, candidate.action.choice.actorId)?.side;
+  const friend =
+    !!candidate.targetId &&
+    actorSide !== undefined &&
+    rulesetCombatant(encounter, candidate.targetId)?.side === actorSide;
   const said: Record<keyof CombatAiScoreParts, () => string> = {
     damage: () => {
       const edge = candidate.action.edge;
@@ -6531,7 +6602,10 @@ function rulesetSuggestionReason(
       `spends ${option.cost?.length ? option.cost.map((one) => `${one.amount} ${one.label}`).join(", ") : "a limited use"}`,
     protection: () => "stands up for a friend under attack",
     coordination: () => `joins its side's attack${target ? ` on ${target}` : ""}`,
-    focus: () => `${target || "its target"} is the one it most wants down`,
+    focus: () =>
+      friend
+        ? `${target} is the one of its side most in need`
+        : `${target || "its target"} is the one it most wants down`,
   };
   const reasons = (Object.entries(parts) as Array<[keyof CombatAiScoreParts, number]>)
     .filter(([, part]) => Math.abs(part) >= 0.05)

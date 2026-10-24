@@ -267,6 +267,8 @@ export type DirectedRulesetEvent =
  *   - `noWay`: what it meant to do could not be carried out from where it got to, so it ended its turn.
  *   - `holding`: told to hold or fall back, it stayed where it was with nothing in reach.
  *   - `focus`: its target is the one its side most wants down (one dropping areas on it).
+ *   - `mostInNeed`: the friend it picked is the one of its side most in need of it.
+ *   - `keptBack`: an item's healing it weighed and kept for later (`label`, for `targetId`).
  *   - `pressCaster`: nothing to do yet, so it closed on the one dropping areas on its side from out
  *     of reach.
  */
@@ -279,13 +281,17 @@ export type DirectedRulesetReason =
        *  vulnerable to, one that stops it regenerating, or a clause dealt only to what it is. */
       edge?: { way: "vulnerable" | "stops" | "suits"; damageType: string };
     }
-  | { why: "finish" | "healing" | "support" | "setup" | "protection" | "coordination" | "focus"; targetId?: string }
+  | {
+      why: "finish" | "healing" | "support" | "setup" | "protection" | "coordination" | "focus" | "mostInNeed";
+      targetId?: string;
+    }
   | { why: "pressCaster"; targetId: string }
   | { why: "risk" | "cost" }
   | { why: "walked"; cells: number }
   | { why: "approach"; targetId?: string; sprinted?: true }
   | { why: "driven" }
-  | { why: "nothingWorth" | "noWay" | "holding" };
+  | { why: "nothingWorth" | "noWay" | "holding" }
+  | { why: "keptBack"; label: string; targetId?: string };
 /** One option of the legal menu, with the combatants it may be pointed at right now. */
 export interface DirectedRulesetOption extends RulesetCombatOption {
   targetIds: string[];

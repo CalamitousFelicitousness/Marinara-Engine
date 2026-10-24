@@ -1988,6 +1988,8 @@ console.log(
     "noWay",
     "holding",
     "focus",
+    "mostInNeed",
+    "keptBack",
     "pressCaster",
   ]);
   const idle = new Set(["nothingWorth", "noWay", "holding"]);

@@ -398,6 +398,20 @@ try {
     // Somewhere the pack will cross before it reaches the rogue, never under a wolf already there.
     assert.ok((charging?.choice.at?.x ?? 99) <= 5, `in its way: ${JSON.stringify(charging?.choice.at)}`);
     assert.notEqual(laid([{ x: 3, y: 4 }])?.option.id, "caltrops", "not once the pack is at grips");
+    // Never on the ground its own side walks first, out toward slower foes (re-test 2026-10-23: the
+    // party stepped on its own caltrops four squares ahead of it).
+    const slow = (() => {
+      const { encounter, state } = fight({
+        rogue: { side: "enemy", block: block([flick]), at: { x: 1, y: 4 } },
+        friend: { side: "enemy", block: block([poke]), at: { x: 6, y: 4 } },
+        goblin0: { side: "party", block: block([poke]), at: { x: 13, y: 4 } },
+        goblin1: { side: "party", block: block([poke]), at: { x: 13, y: 3 } },
+      });
+      rulesetCombatant(encounter, "rogue")!.actions.push({ ...caltrops, range: { normal: 10 } } as never);
+      return pickRulesetChoice(definition, state, encounter, "rogue");
+    })();
+    if (slow?.option.id === "caltrops")
+      assert.ok((slow.choice.at?.x ?? 0) >= 7, `not before its own fighter: ${JSON.stringify(slow.choice.at)}`);
   }
 
   // ── Oil is worth throwing only where a fire will follow ──

@@ -1748,10 +1748,16 @@ function rulesetReasonText(reason: DirectedRulesetReason, names: RulesetCombatNa
     case "setup":
     case "coordination":
     case "focus":
+    case "mostInNeed":
     case "pressCaster":
       return say(reason.why, { target: target(reason.targetId) });
     case "walked":
       return say("walked", { distance: names.distance(reason.cells) });
+    case "keptBack":
+      return say(reason.targetId ? "keptBackFor" : "keptBack", {
+        label: reason.label,
+        target: target(reason.targetId),
+      });
     case "approach":
       return say(reason.sprinted ? "approachSprint" : "approach", { target: target(reason.targetId) });
     default:

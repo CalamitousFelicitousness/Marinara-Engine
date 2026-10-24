@@ -215,6 +215,7 @@ import {
 } from "../services/spatial-context/owner-turn.js";
 import { shouldSuppressIllustratorForegroundForStoryboard } from "../services/game/storyboard-agent-settings.js";
 import {
+  agentCurrentLocationFromProjection,
   formatOwnerSpatialBreadcrumb,
   injectOwnerSpatialPrompt,
   projectGameSnapshotLocation,
@@ -6062,6 +6063,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             ),
           mainResponse: null,
           gameState,
+          currentLocation: agentCurrentLocationFromProjection(ownerSpatialProjection),
           characters: charInfo,
           characterTrackerHistory: characterTrackerHistory as unknown as AgentContext["characterTrackerHistory"],
           persona:
@@ -12452,9 +12454,15 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 )
               : undefined;
           const postReplyDecisionContext = postAgentDecisionTexts.length > 0 ? { decisions: postAgentDecisions } : {};
+          // The reply may have moved the party on the map; it is committed before post-reply
+          // agents run, so they see where the story is now, not where the turn started (#8251).
+          const postReplySpatialProjection = hierarchicalMapsEnabledForChat
+            ? await resolveOwnerSpatialProjection(input.chatId, {}, chatMeta)
+            : ownerSpatialProjection;
           const postAgentContext: AgentContext = {
             ...agentContext,
             ...postReplyDecisionContext,
+            currentLocation: agentCurrentLocationFromProjection(postReplySpatialProjection),
             mainResponse: agentCompletedResponse,
             preGenInjections: contextInjections,
             parallelResults,
@@ -12517,6 +12525,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 ...(await pipeline.postGenerate(agentCompletedResponse, {
                   preGenInjections: contextInjections,
                   parallelResults,
+                  currentLocation: postAgentContext.currentLocation,
                   ...postReplyDecisionContext,
                 })),
                 ...parallelResults,
@@ -14412,7 +14421,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                       const spatialLocationReferenceImage = await resolveSpatialLocationReferenceImage({
                         db: app.db,
                         chatId: input.chatId,
-                        projection: ownerSpatialProjection?.ownerMode === "roleplay" ? ownerSpatialProjection : null,
+                        projection:
+                          postReplySpatialProjection?.ownerMode === "roleplay" ? postReplySpatialProjection : null,
                       });
                       let illustratorRefImages: string[] | undefined;
                       const referenceResolution = await resolveIllustratorCharacterReferences({
@@ -14605,7 +14615,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                             referenceCharacterIds: useAvatarRefs ? referenceResolution.characterIds : [],
                             referencePersonaId: useAvatarRefs ? referenceResolution.personaId : null,
                             locationImageId: spatialLocationReferenceImage
-                              ? ownerSpatialProjection?.referenceImageId
+                              ? postReplySpatialProjection?.referenceImageId
                               : null,
                           }),
                         });

@@ -292,6 +292,7 @@ const regressionAgentDefinitions = REGRESSION_AGENT_IDS.map((id) => ({
 replaceBuiltInAgentDefinitions(regressionAgentDefinitions);
 replaceBuiltInAgentDefinitionsDist(regressionAgentDefinitions);
 import {
+  buildAgentCurrentLocationBlock,
   buildAgentReferenceContextBlock,
   buildIllustratorImageStyleInstructionBlock,
   compactGameStateForAgentContext,
@@ -314,6 +315,7 @@ import {
   shouldMigrateCleanHtmlPattern,
 } from "../../packages/server/src/db/seed-regex.js";
 import { applyRegexScriptsToPromptText } from "../../packages/server/src/services/regex/regex-application.js";
+import { agentCurrentLocationFromProjection } from "../../packages/server/src/services/spatial-context/projection.js";
 import { shouldSkipAgentByMessageInterval } from "../../packages/server/src/services/generation/agent-cadence.js";
 import {
   DIRECTOR_SECRET_PLOT_LAST_MESSAGE_KEY,
@@ -7761,6 +7763,104 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
       assert.equal(Array.isArray(questState.playerStats.activeQuests), true);
       assert.equal(questState.playerStats.activeQuests?.[0]?.name, "The Man Called Maukie");
       assert.equal(questState.fieldLocks["quests.id:The%20Man%20Called%20Maukie.name"], true);
+    },
+  },
+  {
+    name: "Illustrator prompts carry the current Maps location under Tracker data (#8251)",
+    async run() {
+      const projection = {
+        kind: "owner",
+        chatId: "chat-1",
+        ownerMode: "roleplay",
+        definitionRevision: 1,
+        currentLocationId: "loc_throne",
+        breadcrumb: [
+          { id: "loc_palace", name: "Royal Palace" },
+          { id: "loc_throne", name: "Throne Room" },
+        ],
+        description: "  A vaulted white hall where the Queen holds court.  ",
+        modelMemory: "PRIVATE_MEMORY_SENTINEL",
+        referenceImageId: "img-1",
+        useReferenceImage: true,
+        lorebookEntryIds: [],
+        destinations: [{ id: "loc_yard", name: "Palace Yard", kind: "area", relation: "link", sortOrder: 0 }],
+        omittedDestinationCount: 0,
+      } as any;
+      const currentLocation = agentCurrentLocationFromProjection(projection);
+      assert.deepEqual(currentLocation, {
+        path: "Royal Palace > Throne Room",
+        description: "A vaulted white hall where the Queen holds court.",
+      });
+      assert.equal(agentCurrentLocationFromProjection({ ...projection, ownerMode: "game" }), null);
+      assert.equal(agentCurrentLocationFromProjection(null), null);
+
+      const defaultSources = getAgentContextSources({ settings: {} });
+      const context = makeRegressionAgentContext({
+        mainResponse: "The Queen rises from the throne.",
+        currentLocation,
+      });
+      const block = buildAgentCurrentLocationBlock(context, defaultSources);
+      assert.match(block, /^<current_location>\n/u);
+      assert.match(block, /Path: Royal Palace > Throne Room\nDescription: A vaulted white hall/u);
+      assert.doesNotMatch(block, /PRIVATE_MEMORY_SENTINEL|Palace Yard|loc_throne/u);
+      assert.equal(buildAgentCurrentLocationBlock(context, { ...defaultSources, trackerData: false }), "");
+      assert.equal(buildAgentCurrentLocationBlock({ ...context, currentLocation: null }, defaultSources), "");
+
+      const illustratorConfig = (settings: Record<string, unknown> = {}) =>
+        makeRegressionAgentConfig({
+          id: "builtin:illustrator",
+          type: "illustrator",
+          name: "Illustrator",
+          promptTemplate: "Illustrate the scene.",
+          settings: { contextSize: 2, maxTokens: 512, ...settings },
+        });
+      const quietBeat = `{"shouldGenerate":false,"prompt":"","style":"","characters":[],"reason":"quiet beat"}`;
+
+      // Automatic Illustrator run.
+      const automatic = makeCapturingProvider(quietBeat);
+      await executeAgent(illustratorConfig() as any, context, automatic.provider as any, "regression-model");
+      const automaticText = automatic.calls[0]!.map((message) => message.content).join("\n");
+      assert.ok(automaticText.includes(block), "automatic Illustrator run gets the location block");
+
+      const automaticOff = makeCapturingProvider(quietBeat);
+      await executeAgent(
+        illustratorConfig({ contextSources: { ...defaultSources, trackerData: false } }) as any,
+        context,
+        automaticOff.provider as any,
+        "regression-model",
+      );
+      assert.doesNotMatch(automaticOff.calls[0]!.map((message) => message.content).join("\n"), /<current_location>/u);
+
+      // Agents that don't write image prompts never get it.
+      const tracker = makeCapturingProvider("{}");
+      await executeAgent(
+        makeRegressionAgentConfig({ type: "world-state", settings: { contextSize: 2, maxTokens: 512 } }) as any,
+        context,
+        tracker.provider as any,
+        "regression-model",
+      );
+      assert.doesNotMatch(tracker.calls[0]!.map((message) => message.content).join("\n"), /<current_location>/u);
+
+      // [illustrate:] commands and the Gallery button.
+      const runManualWriter = async (settings: Record<string, unknown> = {}) => {
+        const capture = makeCapturingProvider(
+          JSON.stringify({ prompt: "The Queen rises.", characters: [], reason: "Scene." }),
+        );
+        await writeManualIllustratorPromptPlan({
+          illustratorAgent: {
+            ...illustratorConfig(settings),
+            provider: capture.provider,
+            model: "regression-model",
+          } as any,
+          context,
+        });
+        return capture.calls[0]![0]!.content;
+      };
+      assert.ok((await runManualWriter()).includes(block), "manual writer gets the same location block");
+      assert.doesNotMatch(
+        await runManualWriter({ contextSources: { ...defaultSources, trackerData: false } }),
+        /<current_location>/u,
+      );
     },
   },
   {

@@ -24,7 +24,8 @@ import type { TacticalGrid } from "../../packages/shared/src/features/tactical-c
 const dataDir = mkdtempSync(join(tmpdir(), "marinara-deploy-spread-"));
 process.env.DATA_DIR = dataDir;
 process.env.FILE_STORAGE_DIR = join(dataDir, "storage");
-const { createRulesetFight } = await import("../../packages/server/src/services/game/ruleset-combat-director.service.js");
+const { createRulesetFight } =
+  await import("../../packages/server/src/services/game/ruleset-combat-director.service.js");
 
 try {
   const fiveEText = readFileSync(
@@ -76,7 +77,9 @@ try {
     } as never);
     assert.ok(built.ok, built.ok ? "" : (built as { error: string }).error);
     const encounter = (built as { fight: { encounter: { combatants: never[] } } }).fight.encounter;
-    return names.map((name) => rulesetPositionOf(encounter.combatants.find((one: { id: string }) => one.id === name.toLowerCase()))!);
+    return names.map((name) =>
+      rulesetPositionOf(encounter.combatants.find((one: { id: string }) => one.id === name.toLowerCase()))!,
+    );
   };
   const gap = (a: { x: number; y: number }, b: { x: number; y: number }) =>
     Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
@@ -121,7 +124,9 @@ try {
     assert.ok(closest(enemies(spaced)) >= 3, `spread three apart: ${JSON.stringify(enemies(spaced))}`);
     const party = spaced.filter((one) => one.side === "party");
     const nearest = (list: typeof plain) =>
-      Math.min(...enemies(list).flatMap((foe) => list.filter((one) => one.side === "party").map((one) => gap(one, foe))));
+      Math.min(
+        ...enemies(list).flatMap((foe) => list.filter((one) => one.side === "party").map((one) => gap(one, foe))),
+      );
     assert.ok(nearest(spaced) >= nearest(plain) - 1, `none of them nearer the party: ${JSON.stringify(party)}`);
   }
 

@@ -517,563 +517,570 @@ export function RulesetCombatBoard({
   return (
     <div className={cn("relative flex min-h-0 flex-col text-white", className)}>
       <style>{TACTICAL_BOARD_KEYFRAMES}</style>
-      {scrolls &&
-        (["left", "right", "up", "down"] as const).map((edge) =>
-          away[edge].length > 0 ? (
-            <button
-              key={edge}
-              type="button"
-              aria-label={t("game.combat.ruleset.board.foesAway", { count: away[edge].length })}
-              title={t("game.combat.ruleset.board.foesAway", { count: away[edge].length })}
-              onClick={() => bring(away[edge][0]!)}
-              className={cn(
-                "absolute z-20 inline-flex min-h-8 min-w-8 items-center justify-center gap-1 rounded-full border border-rose-300/70 bg-black/75 px-2 text-xs font-bold text-rose-100 shadow focus-visible:outline-2 focus-visible:outline-white",
-                edge === "left" && "left-1 top-1/2 -translate-y-1/2",
-                edge === "right" && "right-1 top-1/2 -translate-y-1/2",
-                edge === "up" && "left-1/2 top-1 -translate-x-1/2",
-                edge === "down" && "bottom-1 left-1/2 -translate-x-1/2",
-              )}
-            >
-              <span aria-hidden="true">{{ left: "◀", right: "▶", up: "▲", down: "▼" }[edge]}</span>
-              {away[edge].length}
-            </button>
-          ) : null,
-        )}
       {/* The board keeps a floor of its own height, and takes whatever the log and the pane leave. */}
-      <div
-        ref={room}
-        className={cn(
-          "relative z-10 flex min-h-[9rem] flex-1 items-start px-1.5 pt-1.5 [container-type:size] sm:min-h-[12rem] sm:px-3 sm:pt-3",
-          scrolls ? "overflow-auto pb-1.5 sm:pb-3" : "justify-center overflow-hidden",
-        )}
-      >
+      {/* The room and the marks on its edges, which stay where they are while it scrolls. */}
+      <div className="relative flex min-h-0 flex-1 flex-col">
         <div
-          role="group"
-          aria-label={t("game.combat.ruleset.board.title")}
-          // Whole and square, whichever way the room runs out. The box above is a size container, so
-          // the board can ask how wide AND how tall its room is: it takes the full width, or the
-          // width its own shape allows at the full height, whichever is smaller. (A width of 100%
-          // with a ceiling on the height does NOT do this: the ceiling clamps the height and the
-          // width stays, which stretched every square sideways on a wide screen.)
-          className="relative mx-auto mb-auto mt-0 shrink-0 md:m-auto"
-          style={{
-            aspectRatio: `${grid.width} / ${grid.height}`,
-            width: scrolls
-              ? `max(${grid.width} * 1.75rem, min(100cqw, calc(100cqh * ${grid.width} / ${grid.height})))`
-              : `min(100cqw, calc(100cqh * ${grid.width} / ${grid.height}))`,
-          }}
+          ref={room}
+          className={cn(
+            "relative z-10 flex min-h-[9rem] flex-1 items-start px-1.5 pt-1.5 [container-type:size] sm:min-h-[12rem] sm:px-3 sm:pt-3",
+            scrolls ? "overflow-auto pb-1.5 sm:pb-3" : "justify-center overflow-hidden",
+          )}
         >
           <div
-            className={cn("absolute inset-0 grid", drawn ? "gap-0" : "gap-[2px]")}
+            role="group"
+            aria-label={t("game.combat.ruleset.board.title")}
+            // Whole and square, whichever way the room runs out. The box above is a size container, so
+            // the board can ask how wide AND how tall its room is: it takes the full width, or the
+            // width its own shape allows at the full height, whichever is smaller. (A width of 100%
+            // with a ceiling on the height does NOT do this: the ceiling clamps the height and the
+            // width stays, which stretched every square sideways on a wide screen.)
+            className="relative mx-auto mb-auto mt-0 shrink-0 md:m-auto"
             style={{
-              gridTemplateColumns: `repeat(${grid.width}, 1fr)`,
-              gridTemplateRows: `repeat(${grid.height}, 1fr)`,
+              aspectRatio: `${grid.width} / ${grid.height}`,
+              width: scrolls
+                ? `max(${grid.width} * 1.75rem, min(100cqw, calc(100cqh * ${grid.width} / ${grid.height})))`
+                : `min(100cqw, calc(100cqh * ${grid.width} / ${grid.height}))`,
             }}
           >
-            {cells.map((cell) => {
-              const key = rulesetCellKey(cell);
-              // Beyond the board's outline (2026-10-24): nothing, not even a square's frame.
-              if (cell.outside) return <div key={key} aria-hidden="true" className="pointer-events-none" />;
-              const icon = resolveTerrainIcon(environment, cell.terrain);
-              const onPath = path.has(key);
-              const provokes = (cell.reach?.provokes.length ?? 0) > 0;
-              const isCursor = cursor.x === cell.x && cursor.y === cell.y;
-              const isActor = actor?.x === cell.x && actor?.y === cell.y;
-              const isAimed = !!aimed && reading?.x === cell.x && reading?.y === cell.y;
-              const art = cellArt.get(key);
-              return (
-                <button
-                  type="button"
-                  key={key}
-                  data-cell={key}
-                  ref={(node) => {
-                    if (node) tiles.current.set(key, node);
-                    else tiles.current.delete(key);
-                  }}
-                  tabIndex={isCursor ? 0 : -1}
-                  aria-label={[
-                    t("game.combat.ruleset.board.cell", { x: cell.x, y: cell.y }),
-                    sentences.get(key) ?? "",
-                    cell.zones ? t("game.combat.ruleset.board.zones", { zones: cell.zones.join(", ") }) : "",
-                    cell.summons ? t("game.combat.ruleset.board.summons", { names: cell.summons.join(", ") }) : "",
-                  ].join(" ")}
-                  // Who stands here, said on hover as the token's letters cannot, with the odds against
-                  // them while a target is being picked.
-                  title={
-                    cell.occupant
-                      ? [
-                          cell.occupant.name,
-                          step?.stage === "target" && cell.targetable && step.option.forecastFor?.[cell.occupant.id]
-                            ? rulesetOptionForecastText(
-                                { ...step.option, forecast: step.option.forecastFor[cell.occupant.id] },
-                                t,
-                              )
-                            : "",
-                        ]
-                          .filter(Boolean)
-                          .join(": ")
-                      : undefined
-                  }
-                  onPointerDown={(event) => {
-                    lastPointer.current = event.pointerType;
-                  }}
-                  onClick={(event) => {
-                    // A click the keyboard made has no pointer behind it.
-                    if (event.detail === 0) lastPointer.current = "keyboard";
-                    takeCell(cell);
-                  }}
-                  onKeyDown={(event) => onKeyDown(event, cell)}
-                  onFocus={() => {
-                    setCursor({ x: cell.x, y: cell.y });
-                    setReading({ x: cell.x, y: cell.y });
-                  }}
-                  onBlur={() =>
-                    setReading((current) => (current?.x === cell.x && current.y === cell.y ? null : current))
-                  }
-                  // Hover reads a square for a mouse or a pen only. A phone fires the mouse's enter as
-                  // part of a tap, and a page that changes under that enter has its tap taken for a
-                  // hover (Safari drops the click), which is how the first tap on a square did nothing.
-                  onPointerEnter={(event) => {
-                    if (event.pointerType !== "touch") setReading({ x: cell.x, y: cell.y });
-                  }}
-                  onPointerLeave={(event) => {
-                    if (event.pointerType === "touch") return;
-                    setReading((current) => (current?.x === cell.x && current.y === cell.y ? null : current));
-                  }}
-                  className={cn(
-                    "group relative overflow-hidden rounded-[3px] transition-all duration-150 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-white",
-                    cell.solid && "cursor-not-allowed",
-                  )}
-                  style={{ backgroundColor: palette[cell.terrain] + TILE_ALPHA, boxShadow: tileShadow(cell.terrain) }}
-                >
-                  {art?.ground ? (
-                    // The pack's ground (1.333), then its edge blocks over it, a quarter of a corner each.
-                    <>
-                      <span className="pointer-events-none absolute inset-0" style={boardSliceStyle(art.ground)} />
-                      {art.edges.map(({ quarter, slice }) => (
+            <div
+              className={cn("absolute inset-0 grid", drawn ? "gap-0" : "gap-[2px]")}
+              style={{
+                gridTemplateColumns: `repeat(${grid.width}, 1fr)`,
+                gridTemplateRows: `repeat(${grid.height}, 1fr)`,
+              }}
+            >
+              {cells.map((cell) => {
+                const key = rulesetCellKey(cell);
+                // Beyond the board's outline (2026-10-24): nothing, not even a square's frame.
+                if (cell.outside) return <div key={key} aria-hidden="true" className="pointer-events-none" />;
+                const icon = resolveTerrainIcon(environment, cell.terrain);
+                const onPath = path.has(key);
+                const provokes = (cell.reach?.provokes.length ?? 0) > 0;
+                const isCursor = cursor.x === cell.x && cursor.y === cell.y;
+                const isActor = actor?.x === cell.x && actor?.y === cell.y;
+                const isAimed = !!aimed && reading?.x === cell.x && reading?.y === cell.y;
+                const art = cellArt.get(key);
+                return (
+                  <button
+                    type="button"
+                    key={key}
+                    data-cell={key}
+                    ref={(node) => {
+                      if (node) tiles.current.set(key, node);
+                      else tiles.current.delete(key);
+                    }}
+                    tabIndex={isCursor ? 0 : -1}
+                    aria-label={[
+                      t("game.combat.ruleset.board.cell", { x: cell.x, y: cell.y }),
+                      sentences.get(key) ?? "",
+                      cell.zones ? t("game.combat.ruleset.board.zones", { zones: cell.zones.join(", ") }) : "",
+                      cell.summons ? t("game.combat.ruleset.board.summons", { names: cell.summons.join(", ") }) : "",
+                    ].join(" ")}
+                    // Who stands here, said on hover as the token's letters cannot, with the odds against
+                    // them while a target is being picked.
+                    title={
+                      cell.occupant
+                        ? [
+                            cell.occupant.name,
+                            step?.stage === "target" && cell.targetable && step.option.forecastFor?.[cell.occupant.id]
+                              ? rulesetOptionForecastText(
+                                  { ...step.option, forecast: step.option.forecastFor[cell.occupant.id] },
+                                  t,
+                                )
+                              : "",
+                          ]
+                            .filter(Boolean)
+                            .join(": ")
+                        : undefined
+                    }
+                    onPointerDown={(event) => {
+                      lastPointer.current = event.pointerType;
+                    }}
+                    onClick={(event) => {
+                      // A click the keyboard made has no pointer behind it.
+                      if (event.detail === 0) lastPointer.current = "keyboard";
+                      takeCell(cell);
+                    }}
+                    onKeyDown={(event) => onKeyDown(event, cell)}
+                    onFocus={() => {
+                      setCursor({ x: cell.x, y: cell.y });
+                      setReading({ x: cell.x, y: cell.y });
+                    }}
+                    onBlur={() =>
+                      setReading((current) => (current?.x === cell.x && current.y === cell.y ? null : current))
+                    }
+                    // Hover reads a square for a mouse or a pen only. A phone fires the mouse's enter as
+                    // part of a tap, and a page that changes under that enter has its tap taken for a
+                    // hover (Safari drops the click), which is how the first tap on a square did nothing.
+                    onPointerEnter={(event) => {
+                      if (event.pointerType !== "touch") setReading({ x: cell.x, y: cell.y });
+                    }}
+                    onPointerLeave={(event) => {
+                      if (event.pointerType === "touch") return;
+                      setReading((current) => (current?.x === cell.x && current.y === cell.y ? null : current));
+                    }}
+                    className={cn(
+                      "group relative overflow-hidden rounded-[3px] transition-all duration-150 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-white",
+                      cell.solid && "cursor-not-allowed",
+                    )}
+                    style={{ backgroundColor: palette[cell.terrain] + TILE_ALPHA, boxShadow: tileShadow(cell.terrain) }}
+                  >
+                    {art?.ground ? (
+                      // The pack's ground (1.333), then its edge blocks over it, a quarter of a corner each.
+                      <>
+                        <span className="pointer-events-none absolute inset-0" style={boardSliceStyle(art.ground)} />
+                        {art.edges.map(({ quarter, slice }) => (
+                          <span
+                            key={quarter}
+                            className={cn(
+                              "pointer-events-none absolute h-1/2 w-1/2",
+                              quarter % 2 ? "left-1/2" : "left-0",
+                              quarter > 1 ? "top-1/2" : "top-0",
+                            )}
+                            style={boardSliceStyle(slice)}
+                          />
+                        ))}
+                      </>
+                    ) : (
+                      <>
                         <span
-                          key={quarter}
-                          className={cn(
-                            "pointer-events-none absolute h-1/2 w-1/2",
-                            quarter % 2 ? "left-1/2" : "left-0",
-                            quarter > 1 ? "top-1/2" : "top-0",
-                          )}
-                          style={boardSliceStyle(slice)}
+                          className="pointer-events-none absolute inset-0"
+                          style={{
+                            backgroundImage: `url(${TILE_TEXTURES[cell.terrain]})`,
+                            backgroundSize: "cover",
+                            backgroundPosition: "center",
+                            transform: `rotate(${((cell.x * 7 + cell.y * 13) % 4) * 90}deg) scale(1.03)`,
+                          }}
                         />
-                      ))}
-                    </>
-                  ) : (
-                    <>
+                        <span
+                          className="pointer-events-none absolute inset-0"
+                          style={{ backgroundColor: palette[cell.terrain] + tintAlpha }}
+                        />
+                        <span className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/10 via-transparent to-black/25" />
+                      </>
+                    )}
+                    {cell.terrain === "water" && !art?.ground && (
                       <span
                         className="pointer-events-none absolute inset-0"
                         style={{
-                          backgroundImage: `url(${TILE_TEXTURES[cell.terrain]})`,
-                          backgroundSize: "cover",
-                          backgroundPosition: "center",
-                          transform: `rotate(${((cell.x * 7 + cell.y * 13) % 4) * 90}deg) scale(1.03)`,
+                          background:
+                            "linear-gradient(115deg, transparent 30%, rgba(125,211,252,0.35) 50%, transparent 70%)",
+                          backgroundSize: "200% 200%",
+                          animation: "tc-shimmer 3.5s linear infinite",
                         }}
                       />
+                    )}
+                    {/* Raised ground (combat C6b): lighter a level, marked in the corner. */}
+                    {cell.height > 0 && art?.rim && (
+                      <span className="pointer-events-none absolute inset-0" style={boardSliceStyle(art.rim)} />
+                    )}
+                    {cell.height > 0 && !art?.rim && (
+                      <span className="pointer-events-none absolute inset-0" style={heightWash(cell.height)}>
+                        <span className="absolute right-0.5 top-0 text-[0.5em] font-bold leading-none text-white/75">
+                          {"▲".repeat(Math.min(cell.height, 3))}
+                        </span>
+                      </span>
+                    )}
+                    {/* Nothing walks in and nothing sees through: drawn solid rather than merely dark. */}
+                    {cell.solid && (
+                      <span
+                        className={cn(
+                          "pointer-events-none absolute inset-0 ring-1 ring-inset ring-white/25",
+                          !art?.ground && "bg-black/45",
+                        )}
+                      />
+                    )}
+                    {icon && !art?.ground && (
+                      <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-[0.7em] opacity-45">
+                        {icon}
+                      </span>
+                    )}
+                    {placing?.has(key) && (
+                      <span
+                        className="pointer-events-none absolute inset-0 bg-emerald-400/50 ring-2 ring-inset ring-emerald-100/90"
+                        style={{ animation: "tc-move-range 1.5s ease-in-out infinite" }}
+                      />
+                    )}
+                    {cell.reach && art?.reach && (
                       <span
                         className="pointer-events-none absolute inset-0"
-                        style={{ backgroundColor: palette[cell.terrain] + tintAlpha }}
+                        style={{ ...boardSliceStyle(art.reach), animation: "tc-move-range 1.5s ease-in-out infinite" }}
                       />
-                      <span className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/10 via-transparent to-black/25" />
-                    </>
-                  )}
-                  {cell.terrain === "water" && !art?.ground && (
-                    <span
-                      className="pointer-events-none absolute inset-0"
-                      style={{
-                        background:
-                          "linear-gradient(115deg, transparent 30%, rgba(125,211,252,0.35) 50%, transparent 70%)",
-                        backgroundSize: "200% 200%",
-                        animation: "tc-shimmer 3.5s linear infinite",
-                      }}
-                    />
-                  )}
-                  {/* Raised ground (combat C6b): lighter a level, marked in the corner. */}
-                  {cell.height > 0 && art?.rim && (
-                    <span className="pointer-events-none absolute inset-0" style={boardSliceStyle(art.rim)} />
-                  )}
-                  {cell.height > 0 && !art?.rim && (
-                    <span className="pointer-events-none absolute inset-0" style={heightWash(cell.height)}>
-                      <span className="absolute right-0.5 top-0 text-[0.5em] font-bold leading-none text-white/75">
-                        {"▲".repeat(Math.min(cell.height, 3))}
-                      </span>
-                    </span>
-                  )}
-                  {/* Nothing walks in and nothing sees through: drawn solid rather than merely dark. */}
-                  {cell.solid && (
-                    <span
-                      className={cn(
-                        "pointer-events-none absolute inset-0 ring-1 ring-inset ring-white/25",
-                        !art?.ground && "bg-black/45",
-                      )}
-                    />
-                  )}
-                  {icon && !art?.ground && (
-                    <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-[0.7em] opacity-45">
-                      {icon}
-                    </span>
-                  )}
-                  {placing?.has(key) && (
-                    <span
-                      className="pointer-events-none absolute inset-0 bg-emerald-400/30 ring-1 ring-inset ring-emerald-200/70"
-                      style={{ animation: "tc-move-range 1.5s ease-in-out infinite" }}
-                    />
-                  )}
-                  {cell.reach && art?.reach && (
-                    <span
-                      className="pointer-events-none absolute inset-0"
-                      style={{ ...boardSliceStyle(art.reach), animation: "tc-move-range 1.5s ease-in-out infinite" }}
-                    />
-                  )}
-                  {cell.reach && (
-                    <span
-                      className={cn(
-                        "pointer-events-none absolute inset-0 ring-1 ring-inset",
-                        provokes
-                          ? "bg-amber-400/35 ring-amber-300/70"
-                          : cn(!art?.reach && "bg-sky-400/35", "ring-sky-300/70"),
-                      )}
-                      style={{ animation: "tc-move-range 1.5s ease-in-out infinite" }}
-                    />
-                  )}
-                  {/* The walk itself, over the highlight: every cell it passes through, drawn as it
+                    )}
+                    {cell.reach && (
+                      <span
+                        className={cn(
+                          "pointer-events-none absolute inset-0 ring-1 ring-inset",
+                          provokes
+                            ? "bg-amber-400/35 ring-amber-300/70"
+                            : cn(!art?.reach && "bg-sky-400/35", "ring-sky-300/70"),
+                        )}
+                        style={{ animation: "tc-move-range 1.5s ease-in-out infinite" }}
+                      />
+                    )}
+                    {/* The walk itself, over the highlight: every cell it passes through, drawn as it
                       is hovered or focused so the way round a wall is visible before it is taken. */}
-                  {onPath && (
-                    <span className="pointer-events-none absolute inset-0 bg-white/30 ring-2 ring-inset ring-white/70" />
-                  )}
-                  {/* Somebody would swing at this walk on the way. The cell is amber above; this is
+                    {onPath && (
+                      <span className="pointer-events-none absolute inset-0 bg-white/30 ring-2 ring-inset ring-white/70" />
+                    )}
+                    {/* Somebody would swing at this walk on the way. The cell is amber above; this is
                       the mark that says why, and the strip under the board names them. */}
-                  {provokes && (
-                    <span className="pointer-events-none absolute left-0 top-0 bg-amber-300/90 px-[2px] text-[0.5rem] font-black leading-tight text-black">
-                      !
-                    </span>
-                  )}
-                  {cell.reach && (
-                    <span className="pointer-events-none absolute bottom-0 right-0 bg-black/60 px-[2px] text-[0.5rem] font-bold leading-tight tabular-nums text-white/90">
-                      {rulesetDistanceText(cell.reach.cost, grid.distance, t)}
-                    </span>
-                  )}
-                  {/* The light on the square when it is not bright, and a fog or haze over it. */}
-                  {cell.light && (
-                    <span
-                      className={cn(
-                        "pointer-events-none absolute inset-0",
-                        !art?.light && cell.light === "dark" && "bg-black/60",
-                        !art?.light && cell.light === "dim" && "bg-black/30",
-                        !art?.light && cell.light === "sunlight" && "bg-white/20",
-                      )}
-                      style={art?.light ? boardSliceStyle(art.light) : undefined}
-                      title={t(RULESET_BOARD_LIGHT_KEYS[cell.light])}
-                    />
-                  )}
-                  {cell.fog && (
-                    <span
-                      className={cn(
-                        "pointer-events-none absolute inset-0",
-                        !art?.fog && (cell.fog === "heavy" ? "bg-white/50" : "bg-white/25"),
-                      )}
-                      style={art?.fog ? boardSliceStyle(art.fog) : undefined}
-                      title={t(RULESET_BOARD_FOG_KEYS[cell.fog])}
-                    />
-                  )}
-                  {art?.ice && (
-                    <span className="pointer-events-none absolute inset-0" style={boardSliceStyle(art.ice)} />
-                  )}
-                  {/* A lasting area (1.172): the pack's art for it, under a clear tint that is always drawn,
+                    {provokes && (
+                      <span className="pointer-events-none absolute left-0 top-0 bg-amber-300/90 px-[2px] text-[0.5rem] font-black leading-tight text-black">
+                        !
+                      </span>
+                    )}
+                    {cell.reach && (
+                      <span className="pointer-events-none absolute bottom-0 right-0 bg-black/60 px-[2px] text-[0.5rem] font-bold leading-tight tabular-nums text-white/90">
+                        {rulesetDistanceText(cell.reach.cost, grid.distance, t)}
+                      </span>
+                    )}
+                    {/* The light on the square when it is not bright, and a fog or haze over it. */}
+                    {cell.light && (
+                      <span
+                        className={cn(
+                          "pointer-events-none absolute inset-0",
+                          !art?.light && cell.light === "dark" && "bg-black/60",
+                          !art?.light && cell.light === "dim" && "bg-black/30",
+                          !art?.light && cell.light === "sunlight" && "bg-white/20",
+                        )}
+                        style={art?.light ? boardSliceStyle(art.light) : undefined}
+                        title={t(RULESET_BOARD_LIGHT_KEYS[cell.light])}
+                      />
+                    )}
+                    {cell.fog && (
+                      <span
+                        className={cn(
+                          "pointer-events-none absolute inset-0",
+                          !art?.fog && (cell.fog === "heavy" ? "bg-white/50" : "bg-white/25"),
+                        )}
+                        style={art?.fog ? boardSliceStyle(art.fog) : undefined}
+                        title={t(RULESET_BOARD_FOG_KEYS[cell.fog])}
+                      />
+                    )}
+                    {art?.ice && (
+                      <span className="pointer-events-none absolute inset-0" style={boardSliceStyle(art.ice)} />
+                    )}
+                    {/* A lasting area (1.172): the pack's art for it, under a clear tint that is always drawn,
                       because a pack's area art alone can read as no more than a shadow on the ground. */}
-                  {cell.zones && (
-                    <>
-                      {art?.zones.map((slice, n) => (
-                        <span key={n} className="pointer-events-none absolute inset-0" style={boardSliceStyle(slice)} />
-                      ))}
-                      {/* Each area's own tint, side by side where two overlap. */}
-                      {(cell.zoneTints ?? [0]).map((tint, n, tints) => (
-                        <span
-                          key={`tint-${tint}`}
-                          className={cn(
-                            "pointer-events-none absolute inset-y-0 ring-1 ring-inset",
-                            ZONE_TINT_CLASSES[tint],
-                          )}
-                          style={{ left: `${(n * 100) / tints.length}%`, width: `${100 / tints.length}%` }}
-                          title={cell.zones?.join(", ")}
-                        />
-                      ))}
-                    </>
-                  )}
-                  {/* What a spell called up strikes from here (a Spiritual Weapon). */}
-                  {cell.summons && (
-                    <span
-                      className="pointer-events-none absolute right-0 top-0 z-[1] flex h-1/2 w-1/2 items-center justify-center rounded-bl bg-black/70 text-amber-200 ring-1 ring-amber-300/60"
-                      title={cell.summons.join(", ")}
-                    >
-                      <Sword className="h-[80%] w-[80%]" aria-hidden="true" />
-                    </span>
-                  )}
-                  {/* A wall's section (1.200): how much it has left, and a ring while it may be struck. */}
-                  {cell.section && cell.section.health > 0 && (
-                    <span className="pointer-events-none absolute bottom-0 left-0 bg-black/60 px-[2px] text-[0.5rem] font-bold leading-tight tabular-nums text-white">
-                      {cell.section.health}
-                    </span>
-                  )}
-                  {/* Growth (1.318): a tangle over the square, in the theme's primary colour until art draws it. */}
-                  {cell.growth && (
-                    <span
-                      className={cn(
-                        "pointer-events-none absolute inset-0",
-                        !art?.growth && "bg-[var(--primary)]/30 ring-1 ring-inset ring-[var(--primary)]/40",
-                      )}
-                      style={art?.growth ? boardSliceStyle(art.growth) : undefined}
-                      title={t("game.combat.ruleset.board.growth")}
-                    />
-                  )}
-                  {/* A prop (1.316): drawn as a crate standing in the square, its health in the corner;
+                    {cell.zones && (
+                      <>
+                        {art?.zones.map((slice, n) => (
+                          <span
+                            key={n}
+                            className="pointer-events-none absolute inset-0"
+                            style={boardSliceStyle(slice)}
+                          />
+                        ))}
+                        {/* Each area's own tint, side by side where two overlap. */}
+                        {(cell.zoneTints ?? [0]).map((tint, n, tints) => (
+                          <span
+                            key={`tint-${tint}`}
+                            className={cn(
+                              "pointer-events-none absolute inset-y-0 ring-1 ring-inset",
+                              ZONE_TINT_CLASSES[tint],
+                            )}
+                            style={{ left: `${(n * 100) / tints.length}%`, width: `${100 / tints.length}%` }}
+                            title={cell.zones?.join(", ")}
+                          />
+                        ))}
+                      </>
+                    )}
+                    {/* What a spell called up strikes from here (a Spiritual Weapon). */}
+                    {cell.summons && (
+                      <span
+                        className="pointer-events-none absolute right-0 top-0 z-[1] flex h-1/2 w-1/2 items-center justify-center rounded-bl bg-black/70 text-amber-200 ring-1 ring-amber-300/60"
+                        title={cell.summons.join(", ")}
+                      >
+                        <Sword className="h-[80%] w-[80%]" aria-hidden="true" />
+                      </span>
+                    )}
+                    {/* A wall's section (1.200): how much it has left, and a ring while it may be struck. */}
+                    {cell.section && cell.section.health > 0 && (
+                      <span className="pointer-events-none absolute bottom-0 left-0 bg-black/60 px-[2px] text-[0.5rem] font-bold leading-tight tabular-nums text-white">
+                        {cell.section.health}
+                      </span>
+                    )}
+                    {/* Growth (1.318): a tangle over the square, in the theme's primary colour until art draws it. */}
+                    {cell.growth && (
+                      <span
+                        className={cn(
+                          "pointer-events-none absolute inset-0",
+                          !art?.growth && "bg-[var(--primary)]/30 ring-1 ring-inset ring-[var(--primary)]/40",
+                        )}
+                        style={art?.growth ? boardSliceStyle(art.growth) : undefined}
+                        title={t("game.combat.ruleset.board.growth")}
+                      />
+                    )}
+                    {/* A prop (1.316): drawn as a crate standing in the square, its health in the corner;
                       broken, as its rubble. */}
-                  {cell.prop && (
-                    <span
-                      className={cn(
-                        "pointer-events-none absolute",
-                        art?.prop
-                          ? "inset-0"
-                          : cn(
-                              "inset-[18%] rounded-[2px] border",
-                              cell.prop.health > 0
-                                ? "border-[var(--foreground)]/60 bg-[var(--muted)]/80"
-                                : "border-dashed border-[var(--foreground)]/40 bg-transparent",
-                            ),
-                      )}
-                      style={art?.prop ? boardSliceStyle(art.prop) : undefined}
-                      title={
-                        cell.prop.health > 0
-                          ? t("game.combat.ruleset.board.prop", {
-                              label: cell.prop.label,
-                              health: cell.prop.health,
-                              max: cell.prop.max,
-                            })
-                          : t("game.combat.ruleset.board.propBroken", { label: cell.prop.label })
-                      }
-                    />
+                    {cell.prop && (
+                      <span
+                        className={cn(
+                          "pointer-events-none absolute",
+                          art?.prop
+                            ? "inset-0"
+                            : cn(
+                                "inset-[18%] rounded-[2px] border",
+                                cell.prop.health > 0
+                                  ? "border-[var(--foreground)]/60 bg-[var(--muted)]/80"
+                                  : "border-dashed border-[var(--foreground)]/40 bg-transparent",
+                              ),
+                        )}
+                        style={art?.prop ? boardSliceStyle(art.prop) : undefined}
+                        title={
+                          cell.prop.health > 0
+                            ? t("game.combat.ruleset.board.prop", {
+                                label: cell.prop.label,
+                                health: cell.prop.health,
+                                max: cell.prop.max,
+                              })
+                            : t("game.combat.ruleset.board.propBroken", { label: cell.prop.label })
+                        }
+                      />
+                    )}
+                    {cell.prop && cell.prop.health > 0 && (
+                      <span className="pointer-events-none absolute bottom-0 right-0 bg-black/60 px-[2px] text-[0.5rem] font-bold leading-tight tabular-nums text-white">
+                        {cell.prop.health}
+                      </span>
+                    )}
+                    {cell.strikable && (
+                      <span className="pointer-events-none absolute inset-0 ring-2 ring-inset ring-[var(--destructive)]" />
+                    )}
+                    {(cell.aim || cell.laid) && (
+                      <span
+                        className={cn(
+                          "pointer-events-none absolute inset-0 ring-1 ring-inset",
+                          isAimed || cell.laid
+                            ? "bg-amber-400/55 ring-2 ring-amber-200"
+                            : cn(!art?.aim && "bg-amber-400/20", "ring-amber-300/40"),
+                        )}
+                        style={art?.aim && !isAimed && !cell.laid ? boardSliceStyle(art.aim) : undefined}
+                      />
+                    )}
+                    {template.has(key) && (
+                      <span
+                        data-template=""
+                        className="pointer-events-none absolute inset-0 bg-orange-500/35 ring-1 ring-inset ring-orange-200/70"
+                      />
+                    )}
+                    {/* Somebody else's area, held open for an answer: where it lands. */}
+                    {heldCells.has(key) && (
+                      <span className="pointer-events-none absolute inset-0 bg-[#f5c97a]/45 ring-1 ring-inset ring-[#f5c97a]/90" />
+                    )}
+                    {isActor && (
+                      <span className="pointer-events-none absolute inset-0 rounded-[3px] border-2 border-dashed border-white/85" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Tokens never take the pointer: a click on one lands on the square beneath it, so the
+              board has exactly one focusable thing per square and the arrow keys mean one thing. */}
+            {cells.map((cell) => {
+              const combatant = cell.occupant;
+              // Drawn once, from its top-left cell, across every cell it fills (1.194).
+              if (!combatant || !cell.anchor) return null;
+              const span = Math.max(1, combatant.span ?? 1);
+              const key = rulesetCellKey(cell);
+              const onTurn = combatant.id === view.actorId;
+              const party = combatant.side === "party";
+              const ai = party && played.has(combatant.id);
+              const sprite = resolveSprite(sprites.get(combatant.id));
+              // An opponent with no picture of its own is drawn with its creature art when the pack has it.
+              const creature =
+                combatant.side !== "party" && sprite.kind !== "url"
+                  ? findCreatureArtIn(creaturePacks, {
+                      creature: combatant.creature,
+                      rulesetId: view.ruleset.id,
+                      name: combatant.name,
+                    })
+                  : null;
+              const percent = rulesetHealthPercent(combatant.health);
+              const bar = rulesetHealthTone(percent);
+              // What they are doing (dodging, hidden), beside what the fight put on them, which the
+              // condition marks show.
+              const stances = (combatant.stances ?? []).map((stance) => ({
+                id: `stance:${stance}`,
+                label: t(`game.combat.ruleset.stance.${stance}`),
+              }));
+              // A trait they hold all fight is never marked, or Lucky would hide Blessed.
+              const marked = combatant.conditions.filter((condition) => !condition.trait);
+              // One ring, the strongest that applies: who is up, who may be picked, who an area catches
+              // (red where it is one of the caster's own side).
+              const glow = onTurn
+                ? "0 0 0 2px #ffffff, 0 0 14px 3px rgba(255,255,255,0.55)"
+                : cell.targetable
+                  ? "0 0 0 2px #ff5d73, 0 0 12px 2px rgba(255,93,115,0.6)"
+                  : alliesCaught.has(combatant.id)
+                    ? "0 0 0 3px #ef4444, 0 0 12px 2px rgba(239,68,68,0.7)"
+                    : caught.has(combatant.id)
+                      ? "0 0 0 2px #f5c97a, 0 0 12px 2px rgba(245,201,122,0.6)"
+                      : // A prisoner reads at a glance (re-test 16): a white ring as well as its flag.
+                        combatant.surrendered
+                        ? "0 0 0 2px rgba(255,255,255,0.9)"
+                        : undefined;
+              return (
+                <div
+                  key={combatant.id}
+                  data-combatant={combatant.id}
+                  data-cell={key}
+                  aria-hidden="true"
+                  className={cn(
+                    "pointer-events-none absolute z-10 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center transition-all duration-200",
+                    // A prisoner (re-test 15) is no corpse: dimmed, in its colours, under a white flag.
+                    combatant.defeated && !combatant.surrendered && "opacity-40 grayscale",
+                    combatant.surrendered && "opacity-60",
+                    !combatant.defeated && combatant.down && "opacity-70 grayscale",
                   )}
-                  {cell.prop && cell.prop.health > 0 && (
-                    <span className="pointer-events-none absolute bottom-0 right-0 bg-black/60 px-[2px] text-[0.5rem] font-bold leading-tight tabular-nums text-white">
-                      {cell.prop.health}
-                    </span>
-                  )}
-                  {cell.strikable && (
-                    <span className="pointer-events-none absolute inset-0 ring-2 ring-inset ring-[var(--destructive)]" />
-                  )}
-                  {(cell.aim || cell.laid) && (
-                    <span
-                      className={cn(
-                        "pointer-events-none absolute inset-0 ring-1 ring-inset",
-                        isAimed || cell.laid
-                          ? "bg-amber-400/55 ring-2 ring-amber-200"
-                          : cn(!art?.aim && "bg-amber-400/20", "ring-amber-300/40"),
-                      )}
-                      style={art?.aim && !isAimed && !cell.laid ? boardSliceStyle(art.aim) : undefined}
-                    />
-                  )}
-                  {template.has(key) && (
-                    <span
-                      data-template=""
-                      className="pointer-events-none absolute inset-0 bg-orange-500/35 ring-1 ring-inset ring-orange-200/70"
-                    />
-                  )}
-                  {/* Somebody else's area, held open for an answer: where it lands. */}
-                  {heldCells.has(key) && (
-                    <span className="pointer-events-none absolute inset-0 bg-[#f5c97a]/45 ring-1 ring-inset ring-[#f5c97a]/90" />
-                  )}
-                  {isActor && (
-                    <span className="pointer-events-none absolute inset-0 rounded-[3px] border-2 border-dashed border-white/85" />
-                  )}
-                </button>
+                  style={{
+                    left: `${((cell.x + span / 2) / grid.width) * 100}%`,
+                    top: `${((cell.y + span / 2) / grid.height) * 100}%`,
+                    width: `${(100 / grid.width) * 0.84 * span}%`,
+                  }}
+                >
+                  {/* The party is round and the other side square-cornered, so shape tells the sides
+                    apart and the ring's colour only repeats it. */}
+                  <div
+                    className={cn(
+                      "relative flex aspect-square w-full items-center justify-center border-2 shadow-lg drop-shadow-[0_2px_3px_rgba(0,0,0,0.6)] @container",
+                      party ? "rounded-full" : "rounded-[24%]",
+                    )}
+                    style={{
+                      borderColor: party ? "#9dbdff" : "#ff9aaa",
+                      backgroundColor: party ? "rgba(42,71,120,0.92)" : "rgba(106,33,51,0.92)",
+                      boxShadow: glow,
+                    }}
+                  >
+                    {creature ? (
+                      // The token is 0.84 of a cell: its art is drawn at the creature's own size, on the cell.
+                      <CreatureArtFigure
+                        pack={creature.pack}
+                        creature={creature.creature}
+                        // Fights of one ruleset share the key: a fighter keeps its look across them.
+                        variant={creatureArtVariant(creature.creature, view.ruleset.id, combatant.id)}
+                        facing={facings.get(combatant.id) ?? "down"}
+                        flying={combatant.flying}
+                        cellFraction={1 / 0.84}
+                        label={combatant.name}
+                      />
+                    ) : sprite.kind === "url" ? (
+                      <img
+                        src={sprite.value}
+                        alt=""
+                        className={cn("h-full w-full object-cover", party ? "rounded-full" : "rounded-[24%]")}
+                      />
+                    ) : sprite.kind === "emoji" ? (
+                      <span className="text-[min(4vw,1.5rem)] leading-none">{sprite.value}</span>
+                    ) : (
+                      // Sized by the token itself, so the letters stay inside it however small the
+                      // squares are; a token too small for two keeps the first.
+                      <span className="text-[38cqw] font-black leading-none text-white/90">
+                        <span className="hidden @min-[24px]:inline">{initialsOf(combatant.name)}</span>
+                        <span className="@min-[24px]:hidden">{initialsOf(combatant.name).slice(0, 1)}</span>
+                      </span>
+                    )}
+                    {combatant.surrendered ? (
+                      <span className="absolute -left-1 -top-1 z-20 flex h-[45%] w-[45%] items-center justify-center rounded-full bg-slate-900/90 ring-1 ring-white/80">
+                        <Flag className="h-[70%] w-[70%] text-white" aria-hidden="true" />
+                      </span>
+                    ) : (
+                      (combatant.defeated || combatant.down) && (
+                        <Skull className="absolute -top-1.5 left-1/2 h-3 w-3 -translate-x-1/2 text-[var(--destructive)] drop-shadow" />
+                      )
+                    )}
+                    {/* Caught unaware (1.237): marked until their first turn is over. */}
+                    {combatant.surprised && !combatant.defeated && !combatant.down && (
+                      <Zap className="absolute -top-1.5 left-1/2 h-3 w-3 -translate-x-1/2 text-[var(--primary)] drop-shadow" />
+                    )}
+                    {/* What they are doing (a letter each, three at most) and a ring for a spell they hold
+                      together, down the right side. The square's own sentence names them in full. */}
+                    {!combatant.defeated && (stances.length > 0 || combatant.concentrating) && (
+                      <div className="absolute -right-1.5 top-1/2 flex -translate-y-1/2 flex-col gap-px">
+                        {combatant.concentrating && (
+                          <span className="flex h-3 w-3 items-center justify-center rounded-full border border-sky-300 bg-sky-500/80 text-[0.45rem] font-black leading-none text-white">
+                            C
+                          </span>
+                        )}
+                        {stances.slice(0, 3).map((stance) => (
+                          <span
+                            key={stance.id}
+                            title={stance.label}
+                            className="flex h-3 w-3 items-center justify-center rounded-full border border-emerald-200 bg-emerald-600/85 text-[0.45rem] font-black uppercase leading-none text-white"
+                          >
+                            {stance.label.charAt(0)}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {/* The health bar sits ON the token rather than under it: a bar below the circle
+                      is taller than the square it belongs to, and on a small board it laps over the
+                      combatant in the next row. */}
+                    {ai && (
+                      <span className="absolute -right-1.5 -top-1.5 rounded-[4px] bg-[#9dbdff] px-[3px] text-[0.45rem] font-black leading-tight text-[#140e1c]">
+                        {t("game.combat.ruleset.screen.aiTag")}
+                      </span>
+                    )}
+                    {/* What is on them, by icon where the art pack has one and by the first letters of its
+                      name where it does not: one letter is too many conditions' (Shielded, Stunned). */}
+                    {marked.length > 0 && !combatant.defeated && (
+                      <span className="absolute -left-1.5 -top-1.5 flex items-center gap-px">
+                        {marked.slice(0, 2).map((condition) => (
+                          <ArtIcon
+                            key={condition.id}
+                            ids={condition.icons ?? []}
+                            className="h-3.5 w-3.5 rounded-sm bg-black/70 ring-1 ring-white/60"
+                            fallback={
+                              <span className="rounded-[3px] bg-black/75 px-[2px] text-[0.45rem] font-bold leading-tight text-white ring-1 ring-white/50">
+                                {condition.label.slice(0, 3)}
+                              </span>
+                            }
+                          />
+                        ))}
+                        {marked.length > 2 && (
+                          <span className="rounded-[3px] bg-black/75 px-[2px] text-[0.45rem] font-bold leading-tight text-white">
+                            +{marked.length - 2}
+                          </span>
+                        )}
+                      </span>
+                    )}
+                    {/* Thick enough to read at a glance, and never thinner than a sliver while any health is left. */}
+                    <div className="absolute -bottom-1.5 left-0 right-0 h-1.5 overflow-hidden rounded-full bg-black/75 ring-1 ring-black/60 sm:h-2">
+                      <div
+                        className={cn("h-full transition-all duration-300", bar)}
+                        style={{ width: `${percent > 0 ? Math.max(percent, 8) : 0}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
               );
             })}
           </div>
-
-          {/* Tokens never take the pointer: a click on one lands on the square beneath it, so the
-              board has exactly one focusable thing per square and the arrow keys mean one thing. */}
-          {cells.map((cell) => {
-            const combatant = cell.occupant;
-            // Drawn once, from its top-left cell, across every cell it fills (1.194).
-            if (!combatant || !cell.anchor) return null;
-            const span = Math.max(1, combatant.span ?? 1);
-            const key = rulesetCellKey(cell);
-            const onTurn = combatant.id === view.actorId;
-            const party = combatant.side === "party";
-            const ai = party && played.has(combatant.id);
-            const sprite = resolveSprite(sprites.get(combatant.id));
-            // An opponent with no picture of its own is drawn with its creature art when the pack has it.
-            const creature =
-              combatant.side !== "party" && sprite.kind !== "url"
-                ? findCreatureArtIn(creaturePacks, {
-                    creature: combatant.creature,
-                    rulesetId: view.ruleset.id,
-                    name: combatant.name,
-                  })
-                : null;
-            const percent = rulesetHealthPercent(combatant.health);
-            const bar = rulesetHealthTone(percent);
-            // What they are doing (dodging, hidden), beside what the fight put on them, which the
-            // condition marks show.
-            const stances = (combatant.stances ?? []).map((stance) => ({
-              id: `stance:${stance}`,
-              label: t(`game.combat.ruleset.stance.${stance}`),
-            }));
-            // A trait they hold all fight is never marked, or Lucky would hide Blessed.
-            const marked = combatant.conditions.filter((condition) => !condition.trait);
-            // One ring, the strongest that applies: who is up, who may be picked, who an area catches
-            // (red where it is one of the caster's own side).
-            const glow = onTurn
-              ? "0 0 0 2px #ffffff, 0 0 14px 3px rgba(255,255,255,0.55)"
-              : cell.targetable
-                ? "0 0 0 2px #ff5d73, 0 0 12px 2px rgba(255,93,115,0.6)"
-                : alliesCaught.has(combatant.id)
-                  ? "0 0 0 3px #ef4444, 0 0 12px 2px rgba(239,68,68,0.7)"
-                  : caught.has(combatant.id)
-                    ? "0 0 0 2px #f5c97a, 0 0 12px 2px rgba(245,201,122,0.6)"
-                    : // A prisoner reads at a glance (re-test 16): a white ring as well as its flag.
-                      combatant.surrendered
-                      ? "0 0 0 2px rgba(255,255,255,0.9)"
-                      : undefined;
-            return (
-              <div
-                key={combatant.id}
-                data-combatant={combatant.id}
-                data-cell={key}
-                aria-hidden="true"
-                className={cn(
-                  "pointer-events-none absolute z-10 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center transition-all duration-200",
-                  // A prisoner (re-test 15) is no corpse: dimmed, in its colours, under a white flag.
-                  combatant.defeated && !combatant.surrendered && "opacity-40 grayscale",
-                  combatant.surrendered && "opacity-60",
-                  !combatant.defeated && combatant.down && "opacity-70 grayscale",
-                )}
-                style={{
-                  left: `${((cell.x + span / 2) / grid.width) * 100}%`,
-                  top: `${((cell.y + span / 2) / grid.height) * 100}%`,
-                  width: `${(100 / grid.width) * 0.84 * span}%`,
-                }}
-              >
-                {/* The party is round and the other side square-cornered, so shape tells the sides
-                    apart and the ring's colour only repeats it. */}
-                <div
-                  className={cn(
-                    "relative flex aspect-square w-full items-center justify-center border-2 shadow-lg drop-shadow-[0_2px_3px_rgba(0,0,0,0.6)] @container",
-                    party ? "rounded-full" : "rounded-[24%]",
-                  )}
-                  style={{
-                    borderColor: party ? "#9dbdff" : "#ff9aaa",
-                    backgroundColor: party ? "rgba(42,71,120,0.92)" : "rgba(106,33,51,0.92)",
-                    boxShadow: glow,
-                  }}
-                >
-                  {creature ? (
-                    // The token is 0.84 of a cell: its art is drawn at the creature's own size, on the cell.
-                    <CreatureArtFigure
-                      pack={creature.pack}
-                      creature={creature.creature}
-                      // Fights of one ruleset share the key: a fighter keeps its look across them.
-                      variant={creatureArtVariant(creature.creature, view.ruleset.id, combatant.id)}
-                      facing={facings.get(combatant.id) ?? "down"}
-                      flying={combatant.flying}
-                      cellFraction={1 / 0.84}
-                      label={combatant.name}
-                    />
-                  ) : sprite.kind === "url" ? (
-                    <img
-                      src={sprite.value}
-                      alt=""
-                      className={cn("h-full w-full object-cover", party ? "rounded-full" : "rounded-[24%]")}
-                    />
-                  ) : sprite.kind === "emoji" ? (
-                    <span className="text-[min(4vw,1.5rem)] leading-none">{sprite.value}</span>
-                  ) : (
-                    // Sized by the token itself, so the letters stay inside it however small the
-                    // squares are; a token too small for two keeps the first.
-                    <span className="text-[38cqw] font-black leading-none text-white/90">
-                      <span className="hidden @min-[24px]:inline">{initialsOf(combatant.name)}</span>
-                      <span className="@min-[24px]:hidden">{initialsOf(combatant.name).slice(0, 1)}</span>
-                    </span>
-                  )}
-                  {combatant.surrendered ? (
-                    <span className="absolute -left-1 -top-1 z-20 flex h-[45%] w-[45%] items-center justify-center rounded-full bg-slate-900/90 ring-1 ring-white/80">
-                      <Flag className="h-[70%] w-[70%] text-white" aria-hidden="true" />
-                    </span>
-                  ) : (
-                    (combatant.defeated || combatant.down) && (
-                      <Skull className="absolute -top-1.5 left-1/2 h-3 w-3 -translate-x-1/2 text-[var(--destructive)] drop-shadow" />
-                    )
-                  )}
-                  {/* Caught unaware (1.237): marked until their first turn is over. */}
-                  {combatant.surprised && !combatant.defeated && !combatant.down && (
-                    <Zap className="absolute -top-1.5 left-1/2 h-3 w-3 -translate-x-1/2 text-[var(--primary)] drop-shadow" />
-                  )}
-                  {/* What they are doing (a letter each, three at most) and a ring for a spell they hold
-                      together, down the right side. The square's own sentence names them in full. */}
-                  {!combatant.defeated && (stances.length > 0 || combatant.concentrating) && (
-                    <div className="absolute -right-1.5 top-1/2 flex -translate-y-1/2 flex-col gap-px">
-                      {combatant.concentrating && (
-                        <span className="flex h-3 w-3 items-center justify-center rounded-full border border-sky-300 bg-sky-500/80 text-[0.45rem] font-black leading-none text-white">
-                          C
-                        </span>
-                      )}
-                      {stances.slice(0, 3).map((stance) => (
-                        <span
-                          key={stance.id}
-                          title={stance.label}
-                          className="flex h-3 w-3 items-center justify-center rounded-full border border-emerald-200 bg-emerald-600/85 text-[0.45rem] font-black uppercase leading-none text-white"
-                        >
-                          {stance.label.charAt(0)}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  {/* The health bar sits ON the token rather than under it: a bar below the circle
-                      is taller than the square it belongs to, and on a small board it laps over the
-                      combatant in the next row. */}
-                  {ai && (
-                    <span className="absolute -right-1.5 -top-1.5 rounded-[4px] bg-[#9dbdff] px-[3px] text-[0.45rem] font-black leading-tight text-[#140e1c]">
-                      {t("game.combat.ruleset.screen.aiTag")}
-                    </span>
-                  )}
-                  {/* What is on them, by icon where the art pack has one and by the first letters of its
-                      name where it does not: one letter is too many conditions' (Shielded, Stunned). */}
-                  {marked.length > 0 && !combatant.defeated && (
-                    <span className="absolute -left-1.5 -top-1.5 flex items-center gap-px">
-                      {marked.slice(0, 2).map((condition) => (
-                        <ArtIcon
-                          key={condition.id}
-                          ids={condition.icons ?? []}
-                          className="h-3.5 w-3.5 rounded-sm bg-black/70 ring-1 ring-white/60"
-                          fallback={
-                            <span className="rounded-[3px] bg-black/75 px-[2px] text-[0.45rem] font-bold leading-tight text-white ring-1 ring-white/50">
-                              {condition.label.slice(0, 3)}
-                            </span>
-                          }
-                        />
-                      ))}
-                      {marked.length > 2 && (
-                        <span className="rounded-[3px] bg-black/75 px-[2px] text-[0.45rem] font-bold leading-tight text-white">
-                          +{marked.length - 2}
-                        </span>
-                      )}
-                    </span>
-                  )}
-                  {/* Thick enough to read at a glance, and never thinner than a sliver while any health is left. */}
-                  <div className="absolute -bottom-1.5 left-0 right-0 h-1.5 overflow-hidden rounded-full bg-black/75 ring-1 ring-black/60 sm:h-2">
-                    <div
-                      className={cn("h-full transition-all duration-300", bar)}
-                      style={{ width: `${percent > 0 ? Math.max(percent, 8) : 0}%` }}
-                    />
-                  </div>
-                </div>
-              </div>
-            );
-          })}
         </div>
+        {scrolls &&
+          (["left", "right", "up", "down"] as const).map((edge) =>
+            away[edge].length > 0 ? (
+              <button
+                key={edge}
+                type="button"
+                aria-label={t("game.combat.ruleset.board.foesAway", { count: away[edge].length })}
+                title={t("game.combat.ruleset.board.foesAway", { count: away[edge].length })}
+                onClick={() => bring(away[edge][0]!)}
+                className={cn(
+                  "absolute z-20 inline-flex min-h-8 min-w-8 items-center justify-center gap-1 rounded-full border border-rose-300/70 bg-black/75 px-2 text-xs font-bold text-rose-100 shadow focus-visible:outline-2 focus-visible:outline-white",
+                  edge === "left" && "left-1 top-1/2 -translate-y-1/2",
+                  edge === "right" && "right-1 top-1/2 -translate-y-1/2",
+                  edge === "up" && "left-1/2 top-1 -translate-x-1/2",
+                  edge === "down" && "bottom-1 left-1/2 -translate-x-1/2",
+                )}
+              >
+                <span aria-hidden="true">{{ left: "◀", right: "▶", up: "▲", down: "▼" }[edge]}</span>
+                {away[edge].length}
+              </button>
+            ) : null,
+          )}
       </div>
 
       {/* One line, right under the board: what the square under the pointer or the keyboard is, or

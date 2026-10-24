@@ -2149,6 +2149,7 @@
   "game.combat.ruleset.board.zones": "In {{zones}}.",
   "game.combat.ruleset.deploy.begin": "Begin the fight",
   "game.combat.ruleset.deploy.hint": "Pick who to move, then a lit square for them. Anyone the story already placed stays where they are.",
+  "game.combat.ruleset.deploy.notHere": "Pick a lit, empty square: that one is not where your side lines up.",
   "game.combat.ruleset.deploy.placing": "Placing {{name}}",
   "game.combat.ruleset.deploy.title": "Choose where you start",
   "game.combat.ruleset.event.absorbed": "{{target}}'s {{by}} takes in {{label}}, which does nothing.",

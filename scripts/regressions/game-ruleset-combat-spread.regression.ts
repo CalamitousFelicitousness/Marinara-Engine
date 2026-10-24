@@ -147,8 +147,27 @@ try {
     walk(fight([club], cunning, no)).to,
     "one that does not ignores the blast",
   );
+  // The spacing it deployed with holds on the walk, even where keeping it costs ground (S1a-walk,
+  // re-test 2026-10-24: Pip dashed beside Brom on the mage, and the first Fireball caught three).
+  {
+    const state = fight([club, blast]);
+    const friend = who(state, "friend");
+    friend.x = 16;
+    friend.y = 6;
+    const hero = who(state, "hero");
+    hero.x = 8;
+    hero.y = 6;
+    const kept = walk(state);
+    assert.ok(kept.friend > 4, `it keeps out of the blast's size of the friend: ${JSON.stringify(kept)}`);
+    assert.ok(kept.mage < 10, `and still closes in: ${JSON.stringify(kept)}`);
+    // With nothing that blasts, it walks on to the friend's side.
+    const open = fight([club]);
+    Object.assign(who(open, "friend"), { x: 16, y: 6 });
+    Object.assign(who(open, "hero"), { x: 8, y: 6 });
+    assert.ok(walk(open).friend <= 4, `with no blast it walks up beside them: ${JSON.stringify(walk(open))}`);
+  }
   console.info(
-    "Spread under a blast: a walk closes in as near, out of the blast's size of a friend; a beast or a mindless thing does not think to, a cunning one only sometimes.",
+    "Spread under a blast: a walk closes in as near, out of the blast's size of a friend; a beast or a mindless thing does not think to, a cunning one only sometimes; the spacing holds on the walk.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

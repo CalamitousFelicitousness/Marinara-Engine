@@ -251,6 +251,14 @@ export type RulesetCommandResult = { ok: true } | { ok: false; error: string; co
 
 const refuse = (error: string, code: string): RulesetCommandResult => ({ ok: false, error, code });
 
+/** The fight begun, once the party is set down (2026-10-24): whose turn it is, said now. */
+export function rulesetBeginFight(fight: RulesetFightState): void {
+  if (!fight.deploy) return;
+  delete fight.deploy;
+  const actor = currentRulesetActor(fight.encounter);
+  if (actor) record(fight, [{ type: "turn", actorId: actor.id, round: fight.encounter.round }]);
+}
+
 /** Who of the party the player sets down before the first turn (2026-10-24): each they play whom
  *  the story did not place. Nobody once the fight has begun. */
 export function rulesetDeployers(state: CombatDirectorState, fight: RulesetFightState): string[] {
@@ -297,7 +305,7 @@ function settled(state: CombatDirectorState): RulesetCommandResult {
     if (asked.length > 0) fight.encounter.askSpends = asked;
     else delete fight.encounter.askSpends;
     // With nobody left for the player to set down (each handed to the Engine), the fight begins.
-    if (fight.deploy && rulesetDeployers(state, fight).length === 0) delete fight.deploy;
+    if (fight.deploy && rulesetDeployers(state, fight).length === 0) rulesetBeginFight(fight);
   }
   combatDirectorView(state);
   if (state.outcome) {
@@ -657,7 +665,9 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
     ...(Object.keys(lootTables).length > 0 ? { lootTables } : {}),
     ...(deploy ? { deploy } : {}),
   };
-  record(fight, encounter.opening);
+  // Whose turn it is is said once the player begins it, not while they set the party down (re-test
+  // 2026-10-24: "Brom takes their turn" was logged before Begin).
+  record(fight, deploy ? encounter.opening.filter((event) => event.type !== "turn") : encounter.opening);
   for (const line of fight.adjustments) logger.info("[game/combat:ruleset] %s", line);
   return { ok: true, fight };
 }
@@ -2214,6 +2224,58 @@ function rulesetCrowdHarmAt(
     harm += worst;
   }
   return harm;
+}
+
+/**
+ * How far from its own side one that thinks ahead keeps while an opponent in reach of it still holds
+ * an area that harms (S1a-walk, re-test 2026-10-24): the largest such area's size and one more, as it
+ * deployed, so a walk does not undo the spacing it started with. None, 0, for one that does not
+ * think of it or with no such area left against it.
+ */
+function rulesetBlastSpacing(
+  definition: RulesetDefinition,
+  encounter: RulesetEncounterState,
+  actor: RulesetCombatant,
+  cell: { x: number; y: number },
+): number {
+  if (!rulesetCombatantForesees(definition, actor, encounter.seed)) return 0;
+  const perCell = definition.combat?.distance?.perCell;
+  const span = rulesetSpanOf(actor);
+  let needs = 0;
+  for (const foe of encounter.combatants) {
+    if (foe.side === actor.side || !rulesetCombatStanding(foe) || !rulesetPositionOf(foe)) continue;
+    const gap = rulesetGapFrom(cell, span, foe);
+    const walks = perCell ? rulesetInCells(foe.speed, perCell) : 6;
+    for (const action of foe.actions) {
+      if (!action.area || !action.damage) continue;
+      if (!rulesetActionAvailable(foe, action, encounter, definition)) continue;
+      if (gap > (action.range?.long ?? action.range?.normal ?? action.area.size) + walks) continue;
+      const across = action.area.shape === "burst" ? action.area.size : Math.max(1, Math.floor(action.area.size / 3));
+      needs = Math.max(needs, across + 1);
+    }
+  }
+  return needs;
+}
+
+/** Whether a cell is nearer one of its own side than the spacing it keeps under a blast. */
+function rulesetTooCloseUnderBlast(
+  definition: RulesetDefinition,
+  encounter: RulesetEncounterState,
+  actor: RulesetCombatant,
+  cell: { x: number; y: number },
+): boolean {
+  const needs = rulesetBlastSpacing(definition, encounter, actor, cell);
+  if (needs < 2) return false;
+  const span = rulesetSpanOf(actor);
+  return encounter.combatants.some(
+    (one) =>
+      one.side === actor.side &&
+      one.id !== actor.id &&
+      !one.object &&
+      rulesetCombatStanding(one) &&
+      !!rulesetPositionOf(one) &&
+      rulesetGapFrom(cell, span, one) < needs,
+  );
 }
 
 /** The harm a zone at a cell does whoever starts or ends a turn in it, whoever left it (1.745):
@@ -4448,7 +4510,9 @@ export function rulesetClosingMove(
       (away === than.away &&
         (cell.provokes.length < than.cell.provokes.length ||
           (cell.provokes.length === than.cell.provokes.length && cell.cost < than.cell.cost)));
-    const away = closer + crowded(cell);
+    // Inside the spacing it deployed with, from its own side under a blast, only when no cell that
+    // keeps it gets any closer (S1a-walk): Pip dashed beside Brom, and the first blast caught three.
+    const away = closer + (rulesetTooCloseUnderBlast(definition, encounter, actor, cell) ? 1000 : crowded(cell));
     if (beats(best, away)) best = { cell, away };
     if (beats(plain, closer)) plain = { cell, away: closer };
   }
@@ -7374,7 +7438,7 @@ function runRulesetCommand(
   if (command.type === "deploy" || command.type === "deployed") {
     if (!fight.deploy) return refuse("The fight has already begun.", "ruleset_combat_deployed");
     if (command.type === "deployed") {
-      delete fight.deploy;
+      rulesetBeginFight(fight);
       return settled(state);
     }
     const one = rulesetCombatant(fight.encounter, command.unitId);

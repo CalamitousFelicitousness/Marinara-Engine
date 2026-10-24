@@ -123,6 +123,8 @@ try {
   {
     const state = begin({ deploy: true, adaStart: "front" });
     assert.equal(state.stage, "deploy", "the fight waits for the player to set the party down");
+    const turns = () => state.rulesetFight!.events.filter((entry) => entry.event.type === "turn").length;
+    assert.equal(turns(), 0, "nobody's turn is said before the fight begins");
     const view = directedRulesetView(definition, state)!;
     assert.deepEqual(view.deploy?.ids, ["bram", "cora"], "Ada, whom the story put at the front, is not theirs to move");
     assert.ok(view.deploy!.cells.length > 0, "there are squares to choose");
@@ -165,6 +167,7 @@ try {
     // Beginning the fight ends it, and the turns run.
     assert.ok(commandRulesetCombatDirector(definition, state, { type: "deployed" }).ok);
     assert.equal(state.rulesetFight!.deploy, undefined);
+    assert.ok(turns() >= 1, "and once it has, whose turn it is");
     assert.notEqual(state.stage, "deploy");
     assert.equal(directedRulesetView(definition, state)!.deploy, undefined);
     assert.ok(

@@ -70,6 +70,7 @@ import {
   createRulesetFight,
   directedRulesetView,
   releaseRulesetHeldGround,
+  rulesetBeginFight,
   rulesetDeployers,
   rulesetDirectorStage,
   rulesetFightLiveStates,
@@ -1074,7 +1075,7 @@ export async function combatDirectorRoutes(
           }
           state.rulesetFight = built.fight;
           // A party the Engine plays all of has nobody for the player to set down.
-          if (built.fight.deploy && rulesetDeployers(state, built.fight).length === 0) delete built.fight.deploy;
+          if (built.fight.deploy && rulesetDeployers(state, built.fight).length === 0) rulesetBeginFight(built.fight);
           syncRulesetCombatants(definition, state);
           state.stage = rulesetDirectorStage(state);
           session = { definition, packageId: resolved.packageId };

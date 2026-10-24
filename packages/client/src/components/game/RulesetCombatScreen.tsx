@@ -102,6 +102,8 @@ export function RulesetCombatScreen({
   // Before the first turn the player sets their own down (2026-10-24), and nobody acts until they begin.
   const deploy = !ended && onDeploy ? view.deploy : undefined;
   const [deployPick, setDeployPick] = useState<string | null>(null);
+  // A tap that sets nobody down says why (re-test 2026-10-24: a bad tap did nothing at all).
+  const [deployNote, setDeployNote] = useState(false);
   const placingId = deploy ? (deploy.ids.find((id) => id === deployPick) ?? deploy.ids[0]) : undefined;
   const placing = useMemo(
     () => (deploy ? new Set(deploy.cells.map((cell) => `${cell.x},${cell.y}`)) : undefined),
@@ -112,9 +114,12 @@ export function RulesetCombatScreen({
     const there = view.combatants.find((one) => one.x === cell.x && one.y === cell.y);
     if (there && deploy.ids.includes(there.id)) {
       setDeployPick(there.id);
+      setDeployNote(false);
       return;
     }
-    if (placingId && placing?.has(`${cell.x},${cell.y}`)) onDeploy(placingId, cell);
+    const lit = placing?.has(`${cell.x},${cell.y}`) && !there;
+    setDeployNote(!lit);
+    if (placingId && lit) onDeploy(placingId, cell);
   };
   const ending = !window && !deploy ? view.options?.find((option) => option.kind === "end-turn") : undefined;
   const distance = view.grid?.distance;
@@ -269,6 +274,7 @@ export function RulesetCombatScreen({
             view={view}
             placingId={placingId}
             busy={busy}
+            note={deployNote}
             onPick={setDeployPick}
             onBegin={() => onDeployed?.()}
             t={t}
@@ -376,6 +382,7 @@ export function RulesetCombatScreen({
                     view={view}
                     placingId={placingId}
                     busy={busy}
+                    note={deployNote}
                     onPick={setDeployPick}
                     onBegin={() => onDeployed?.()}
                     t={t}
@@ -861,6 +868,7 @@ function DeployPane({
   view,
   placingId,
   busy,
+  note,
   onPick,
   onBegin,
   t,
@@ -869,6 +877,7 @@ function DeployPane({
   view: DirectedRulesetView;
   placingId?: string;
   busy: boolean;
+  note: boolean;
   onPick: (id: string) => void;
   onBegin: () => void;
   t: TFunction;
@@ -878,6 +887,11 @@ function DeployPane({
     <div className="space-y-2.5 p-3">
       <h3 className="m-0 text-sm font-semibold">{t("game.combat.ruleset.deploy.title")}</h3>
       <p className="m-0 text-xs text-[var(--muted-foreground)]">{t("game.combat.ruleset.deploy.hint")}</p>
+      {note && (
+        <p role="status" className="m-0 text-xs font-medium text-amber-300">
+          {t("game.combat.ruleset.deploy.notHere")}
+        </p>
+      )}
       <div className="flex flex-wrap gap-1.5">
         {ids.map((id) => (
           <button

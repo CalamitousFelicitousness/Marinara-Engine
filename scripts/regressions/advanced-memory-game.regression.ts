@@ -71,6 +71,7 @@ const {
   effectiveAdvancedMemorySettings,
   gameAdvancedMemorySource,
   GAME_MASTER_MEMORY_READER_ID,
+  withoutSessionAdvancedMemory,
 } = await import("../../packages/server/src/services/advanced-memory.js");
 const { createConnectionSchema } = await import("../../packages/shared/src/schemas/connection.schema.ts");
 const { DEFAULT_ADVANCED_MEMORY_SETTINGS } = await import("../../packages/shared/src/types/advanced-memory.ts");
@@ -208,7 +209,49 @@ assert.match(generate, /\(chatMode === "roleplay" \|\| chatMode === "game"\) && 
 
 // A new session starts its own memory: the progress is left behind, the settings carry over.
 const gameRoutes = readFileSync(new URL("../../packages/server/src/routes/game.routes.ts", import.meta.url), "utf8");
-assert.match(gameRoutes, /advancedMemoryState: _previousAdvancedMemoryState,\s*\.\.\.carryMeta/);
+assert.match(gameRoutes, /const carryMeta = withoutSessionAdvancedMemory\(carriedMeta\);/);
+const carried = withoutSessionAdvancedMemory({
+  advancedMemory: { ...DEFAULT_ADVANCED_MEMORY_SETTINGS, enabled: true },
+  advancedMemoryState: { resetRevision: "old", contextStarts: { gm: "old-message" } },
+  summaryEntries: [
+    {
+      id: "auto",
+      kind: "rolling",
+      origin: "automated",
+      title: "Messages #1-#40",
+      content: "Old recap.",
+      enabled: true,
+      sourceMode: "range",
+      messageIds: ["old-1"],
+    },
+    {
+      id: "mine",
+      kind: "rolling",
+      origin: "manual",
+      title: "Notes",
+      content: "Mira owes us.",
+      enabled: true,
+      sourceMode: "last",
+    },
+  ],
+  summary: "Old recap.\n\nMira owes us.",
+  gameId: "saltmere",
+});
+assert.equal((carried.advancedMemory as { enabled: boolean }).enabled, true, "the settings carry over");
+assert.equal(carried.advancedMemoryState, undefined, "the old session's progress does not");
+assert.deepEqual(
+  (carried.summaryEntries as Array<{ id: string }>).map((entry) => entry.id),
+  ["mine"],
+  "Advanced Memory's recaps of the old session's messages stay behind; the player's own entry carries over",
+);
+assert.equal(carried.summary, "Mira owes us.");
+assert.equal(carried.gameId, "saltmere");
+assert.deepEqual(withoutSessionAdvancedMemory({ gameId: "x", advancedMemoryState: {} }), { gameId: "x" });
+
+// Every settings read in the memory service sees the GM as the reader, or a Game chat's policy check never
+// matches the settings it was prepared with.
+const service = readFileSync(new URL("../../packages/server/src/services/advanced-memory.ts", import.meta.url), "utf8");
+assert.doesNotMatch(service, /settings: normalizeAdvancedMemorySettings\(/);
 
 // The Game drawer shows Advanced Memory without the per-character controls.
 const drawer = readFileSync(

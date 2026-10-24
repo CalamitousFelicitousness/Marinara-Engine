@@ -492,6 +492,20 @@ export function gameAdvancedMemorySource<T extends { id: string; role: string; c
   );
 }
 
+/**
+ * A new Game session's metadata, copied from the previous session's: the Advanced Memory settings stay, its
+ * progress and its own continuity entries (which recap the previous session's messages) are left behind.
+ * Summary entries the player wrote stay.
+ */
+export function withoutSessionAdvancedMemory(metadata: Record<string, unknown>): Record<string, unknown> {
+  const { advancedMemoryState: _state, ...rest } = metadata;
+  if (!Array.isArray(rest.summaryEntries)) return rest;
+  const summaryEntries = normalizeChatSummaryEntries(rest.summaryEntries).filter(
+    (entry) => entry.origin !== "automated",
+  );
+  return { ...rest, summaryEntries, summary: compileChatSummaryEntries(summaryEntries) };
+}
+
 function policyFingerprint(ctx: Context): string {
   return hash([
     ctx.individual,
@@ -3876,8 +3890,9 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
         // initialize/reindex can resume; reading the saved archive stays available.
         const savedChat = await chats.getById(chatId);
         if (object(object(savedChat?.metadata).advancedMemoryState).paused === true) return;
-        const autoVisibility = normalizeAdvancedMemorySettings(
-          object(savedChat?.metadata).advancedMemory,
+        const autoVisibility = effectiveAdvancedMemorySettings(
+          savedChat?.mode ?? "",
+          normalizeAdvancedMemorySettings(object(savedChat?.metadata).advancedMemory),
         ).autoMessageVisibility;
         // Automatic visibility can change the sources, so its cutoff reads them after the decision.
         const cutoffContext = options.maxRequestInputTokens != null && !autoVisibility ? await context(chatId) : null;
@@ -4394,7 +4409,10 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
               preparationPolicyRevision({
                 ...ctx,
                 metadata: fresh,
-                settings: normalizeAdvancedMemorySettings(fresh.advancedMemory),
+                settings: effectiveAdvancedMemorySettings(
+                  ctx.mode,
+                  normalizeAdvancedMemorySettings(fresh.advancedMemory),
+                ),
               }) !== preparationPolicyRevision(ctx)
             )
               throw new Error("Chat Summaries changed during preparation; retry");
@@ -4680,7 +4698,10 @@ export function createAdvancedMemoryService(db: DB, { includeExcerptsInStatus = 
             preparationPolicyRevision({
               ...ctx,
               metadata: fresh,
-              settings: normalizeAdvancedMemorySettings(fresh.advancedMemory),
+              settings: effectiveAdvancedMemorySettings(
+                ctx.mode,
+                normalizeAdvancedMemorySettings(fresh.advancedMemory),
+              ),
             }) !== preparationPolicyRevision(ctx)
           )
             throw new Error("Chat Summaries changed while being combined; retry");

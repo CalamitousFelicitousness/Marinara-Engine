@@ -72,6 +72,7 @@ import {
   normalizeInventoryTrackerPlayerStats,
   findInvalidInventoryTrackerRow,
   nameToXmlTag,
+  getAgentContextSources,
 } from "../../packages/shared/src/index.js";
 import { replaceBuiltInAgentDefinitions as replaceBuiltInAgentDefinitionsDist } from "../../packages/shared/dist/index.js";
 import { buildInventoryTrackerEditPatch } from "../../packages/client/src/features/tracker-panel/lib/inventory-tracker-edit.js";
@@ -291,6 +292,7 @@ const regressionAgentDefinitions = REGRESSION_AGENT_IDS.map((id) => ({
 replaceBuiltInAgentDefinitions(regressionAgentDefinitions);
 replaceBuiltInAgentDefinitionsDist(regressionAgentDefinitions);
 import {
+  buildAgentReferenceContextBlock,
   buildIllustratorImageStyleInstructionBlock,
   compactGameStateForAgentContext,
   executeAgent,
@@ -6475,6 +6477,57 @@ const cases: RegressionCase[] = [
       assert.match(manualContract, /ignore automatic-generation conditions, cadence, and response schemas/u);
       assert.doesNotMatch(manualContract, /"shouldGenerate"\s*:/u);
       assert.doesNotMatch(manualContract, /"generateBackground"\s*:/u);
+
+      // #8246: [illustrate:] commands and the Gallery button follow the Illustrator's Context Sources
+      // for lorebook entries, summary and author notes, like an automatic Illustrator run.
+      const referenceContext = {
+        ...makeRegressionAgentContext(),
+        activatedLorebookEntries: [
+          { id: "lore-harbor", name: "Silver Harbor", content: "LORE_SILVER_HARBOR_LANTERNS" },
+        ],
+        chatSummary: "SUMMARY_SHIPWRECK_ARC",
+        authorNotes: "NOTES_KEEP_IT_RAINY",
+      };
+      const runReferenceWriter = async (settings: Record<string, unknown>) => {
+        const capture = makeCapturingProvider(
+          JSON.stringify({ prompt: "Lantern-lit harbor at night.", characters: [], reason: "Scene." }),
+        );
+        await writeManualIllustratorPromptPlan({
+          illustratorAgent: {
+            ...makeRegressionAgentConfig({
+              id: "builtin:illustrator",
+              type: "illustrator",
+              name: "Illustrator",
+              promptTemplate: "Illustrate the scene.",
+              settings: { contextSize: 2, maxTokens: 512, ...settings },
+            }),
+            provider: capture.provider,
+            model: "regression-model",
+          } as any,
+          context: referenceContext,
+        });
+        return capture.calls[0]![0]!.content;
+      };
+      const defaultReferencePrompt = await runReferenceWriter({});
+      assert.match(defaultReferencePrompt, /<activated_lorebook_context>[\s\S]*LORE_SILVER_HARBOR_LANTERNS/u);
+      assert.match(defaultReferencePrompt, /<chat_summary>\nSUMMARY_SHIPWRECK_ARC/u);
+      assert.match(defaultReferencePrompt, /<author_notes>\nNOTES_KEEP_IT_RAINY/u);
+      assert.ok(
+        defaultReferencePrompt.includes(
+          buildAgentReferenceContextBlock(referenceContext, getAgentContextSources({ settings: {} })),
+        ),
+        "manual writer renders the same reference block as normal agent calls",
+      );
+      const toggledReferencePrompt = await runReferenceWriter({
+        contextSources: {
+          ...getAgentContextSources({ settings: {} }),
+          activatedLorebookEntries: false,
+          chatSummary: false,
+        },
+      });
+      assert.doesNotMatch(toggledReferencePrompt, /LORE_SILVER_HARBOR_LANTERNS/u);
+      assert.doesNotMatch(toggledReferencePrompt, /SUMMARY_SHIPWRECK_ARC/u);
+      assert.match(toggledReferencePrompt, /NOTES_KEEP_IT_RAINY/u);
 
       const macroCapture = makeCapturingProvider(
         JSON.stringify({

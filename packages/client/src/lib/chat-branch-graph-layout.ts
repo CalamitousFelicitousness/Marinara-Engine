@@ -6,10 +6,11 @@ import type { BranchTreeChat, BranchTreeRow } from "./chat-branch-tree";
 export const BRANCH_GRAPH_STEP = 16;
 export const BRANCH_GRAPH_GAP_WIDTH = 64;
 export const BRANCH_GRAPH_LANE_HEIGHT = 28;
-/** How far a roomy window may zoom a small graph in, and then spread its dots and lanes out. */
+/** How far a roomy window may zoom a small graph in, and then spread its dots out. */
 const MAX_SCALE = 2;
 const MAX_STEP = 48;
-const MAX_LANE_HEIGHT = 48;
+/** How far a graph a little too wide for its window may shrink to fit, before it scrolls instead. */
+const MIN_SCALE = 0.75;
 const PAD_X = 12;
 /** Messages kept visible on each side of a fork, a lane's start and a tip. */
 const CONTEXT = 3;
@@ -68,7 +69,9 @@ export type BranchGraphLayout<T extends BranchTreeChat> = {
  * the fork. Long runs collapse on the shared axis rather than per lane, so a fork still lines up with
  * the message it came from. A run never contains a lane's start or tip, so every lane either spans a
  * collapsed run completely or doesn't touch it. With a `fit`, the graph uses the room it is given: the
- * more there is, the fewer runs fold; a graph that still has room left zooms in, then spreads out.
+ * more there is, the fewer runs fold; a graph that still has room left zooms in, then spreads out, and one a
+ * little too wide shrinks, down to `MIN_SCALE`, before it scrolls. The lanes share the height, but never get
+ * shorter than `BRANCH_GRAPH_LANE_HEIGHT`: too many of them scroll instead.
  */
 export function layoutChatBranchGraph<T extends BranchTreeChat>(
   rows: readonly BranchTreeRow<T>[],
@@ -175,16 +178,15 @@ export function layoutChatBranchGraph<T extends BranchTreeChat>(
       stillFolded.shift();
     }
     folded = runs.filter((run) => stillFolded.includes(run));
-    // Zoom a small graph in as a whole, then spread its dots and lanes over the room that is left.
+    // Shrink a graph a little too wide to fit, or zoom a small one in as a whole; then spread its dots over the
+    // width that is left, and its lanes over the height, down to their base height.
     const lanesAt = Math.max(1, lanes.length);
-    scale = clamp(
-      Math.min(fit.width / widthAt(BRANCH_GRAPH_STEP, folded), fit.height / (lanesAt * BRANCH_GRAPH_LANE_HEIGHT)),
-      1,
-      MAX_SCALE,
-    );
+    const widthRatio = fit.width / widthAt(BRANCH_GRAPH_STEP, folded);
+    const heightRatio = fit.height / (lanesAt * BRANCH_GRAPH_LANE_HEIGHT);
+    scale = widthRatio < 1 ? Math.max(MIN_SCALE, widthRatio) : clamp(Math.min(widthRatio, heightRatio), 1, MAX_SCALE);
     const room = fit.width / scale - 2 * PAD_X - folded.length * BRANCH_GRAPH_GAP_WIDTH;
     step = clamp(Math.floor(room / slots(folded)), BRANCH_GRAPH_STEP, MAX_STEP);
-    laneHeight = clamp(Math.floor(fit.height / scale / lanesAt), BRANCH_GRAPH_LANE_HEIGHT, MAX_LANE_HEIGHT);
+    laneHeight = Math.max(BRANCH_GRAPH_LANE_HEIGHT, Math.floor(fit.height / scale / lanesAt));
   }
   const foldedFrom = new Map(folded.map((run) => [run.from, run]));
 

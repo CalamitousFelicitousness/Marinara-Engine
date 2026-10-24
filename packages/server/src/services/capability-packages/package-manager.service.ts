@@ -3077,6 +3077,16 @@ function carriesSoloRole760(value: unknown, depth = 0): boolean {
 }
 
 /** Losing heart (1.746): `combat.morale`, or a stat block's `morale` score or `leader`. */
+/** How many of its words a text field or column has its holder pick (1.786): `pick` on a `type: "text"`. */
+function carriesTextPick786(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesTextPick786(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  if (record.type === "text" && record.pick !== undefined) return true;
+  return featureValues(record).some((one) => carriesTextPick786(one, depth + 1));
+}
+
 /** Words a text field or column offers to pick (1.785): `suggestions` on a `type: "text"`. */
 function carriesTextSuggestions785(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -12619,6 +12629,10 @@ export function getCapabilityPackageInstallIssue(
     })()
   ) {
     return "A ruleset whose sheet migrations set a column on list rows (setColumn) requires schemaVersion 2 and capabilityApi 1.783 or newer";
+  }
+  // How many of a text field's words to pick, 1.786.
+  if (!declaresApi(786) && carriesTextPick786(ruleset)) {
+    return "A ruleset whose text fields say how many words to pick (a text field's pick) requires schemaVersion 2 and capabilityApi 1.786 or newer";
   }
   // Words a text field offers to pick, 1.785.
   if (!declaresApi(785) && carriesTextSuggestions785(ruleset)) {

@@ -163,7 +163,7 @@ try {
     "../../lib/ruleset-catalog": `export const visibleCatalogEntries = (_d, _l, _c, entries) => entries;`,
     "../../lib/ruleset-resolution": `export const rulesetCheckValueText = (_d, value) => String(value);`,
     "../ui/DraftNumberInput": `export const DraftNumberInput = 'number';`,
-    "./RulesetTypedInput": `export const TypedInput = 'input', inputClass = '', labelClass = ''; export const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));`,
+    "./RulesetTypedInput": `export const TypedInput = 'input', inputClass = '', labelClass = ''; export const rulesetPickCount = () => undefined; export const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));`,
   };
   const built = await bundle({
     stdin: {

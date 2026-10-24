@@ -45,7 +45,7 @@ import { applyCatalogRefresh, planCatalogRefresh, type CatalogRefreshRow } from 
 import { rulesetRowSpellcastingText } from "../../lib/ruleset-sheet-view";
 import { rulesetCheckValueText } from "../../lib/ruleset-resolution";
 import { DraftNumberInput } from "../ui/DraftNumberInput";
-import { clamp, inputClass, labelClass, TypedInput, type Scalar } from "./RulesetTypedInput";
+import { clamp, inputClass, labelClass, rulesetPickCount, TypedInput, type Scalar } from "./RulesetTypedInput";
 import { RollCellButton } from "./RulesetRollCellButton";
 
 type ListRow = Record<string, Scalar>;
@@ -648,6 +648,7 @@ export function RulesetSheetEditor({
                       value={build.fields[field.id]}
                       onChange={(value) => commit({ fields: { ...build.fields, [field.id]: value } })}
                       ariaLabel={field.label}
+                      pick={rulesetPickCount(definition, build, field)}
                     />
                   </label>
                 ))}

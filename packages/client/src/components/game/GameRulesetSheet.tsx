@@ -27,6 +27,7 @@ import {
   defaultRulesetSheetBuild,
   evaluateRulesetSheet,
   readRulesetLive,
+  resolveRulesetValueRef,
   rulesetCheckEffects,
   rulesetCheckSources,
   rulesetHideLines,
@@ -579,6 +580,17 @@ export function GameRulesetSheet({
     [definition, build, items, resolved],
   );
 
+  // The level a pool's slots are cast at, for one that names its own (5e's pact slots).
+  const poolLevels = useMemo(() => {
+    const out: Record<string, number> = {};
+    for (const pool of definition.sheet.live.pools) {
+      if (!pool.level) continue;
+      const level = Math.trunc(resolveRulesetValueRef(definition, build, pool.level, evaluated));
+      if (level > 0) out[pool.id] = level;
+    }
+    return out;
+  }, [definition, build, evaluated]);
+
   const checkSources = useMemo(
     () => rulesetCheckSources(definition, build, live, items),
     [definition, build, live, items],
@@ -953,6 +965,13 @@ export function GameRulesetSheet({
                         title={pool.label}
                       >
                         {pool.label}
+                        {/* What its slots are cast at, where the pool says (laptop builder 2026-10-24:
+                            a warlock's pact slots read no level). */}
+                        {poolLevels[pool.key] !== undefined && (
+                          <span className="ml-1 text-[0.6875rem] text-[var(--muted-foreground)]">
+                            {localizeUi("game.ruleset.sheet.poolLevel", { level: poolLevels[pool.key]! })}
+                          </span>
+                        )}
                       </span>
                       <div className="flex shrink-0 items-center gap-1">
                         <button

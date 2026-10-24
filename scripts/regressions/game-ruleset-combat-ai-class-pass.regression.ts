@@ -115,7 +115,14 @@ try {
       actions,
       ...extra,
     }) as unknown as RulesetStatBlock;
-  const smash = { id: "smash", name: "Smash", budget: "action", toHit: 6, reach: 5, damage: { count: 2, sides: 8, flat: 4 } };
+  const smash = {
+    id: "smash",
+    name: "Smash",
+    budget: "action",
+    toHit: 6,
+    reach: 5,
+    damage: { count: 2, sides: 8, flat: 4 },
+  };
   const bolt = {
     id: "bolt",
     name: "Bolt",
@@ -214,9 +221,12 @@ try {
         budget: "action",
         targets: { side: "self", count: 0 },
         calls: {
-          block: block([{ id: "bite", name: "Bite", budget: "action", toHit: 4, reach: 5, damage: { count: 0, sides: 0, flat } }], {
-            health,
-          }),
+          block: block(
+            [{ id: "bite", name: "Bite", budget: "action", toHit: 4, reach: 5, damage: { count: 0, sides: 0, flat } }],
+            {
+              health,
+            },
+          ),
           name: "Wolf",
           creature: { catalogId: "creatures", entryId: "wolf" },
           count: { count: 0, sides: 0, flat: count },
@@ -389,7 +399,9 @@ try {
       combatants: [{ id: "mage", name: "Mage", side: "party", block: block([]) }],
     });
     const mage = rulesetCombatant(encounter, "mage")!;
-    const wolf = block([{ id: "bite", name: "Bite", budget: "action", toHit: 4, reach: 5, damage: { count: 0, sides: 0, flat: 5 } }]);
+    const wolf = block([
+      { id: "bite", name: "Bite", budget: "action", toHit: 4, reach: 5, damage: { count: 0, sides: 0, flat: 5 } },
+    ]);
     mage.actions.push({
       id: "summon",
       label: "Summon",
@@ -401,7 +413,12 @@ try {
         {
           id: "call-0",
           label: "Wolf ×2",
-          call: { block: wolf, name: "Wolf", creature: { catalogId: "creatures", entryId: "wolf" }, count: { count: 0, sides: 0, flat: 2 } },
+          call: {
+            block: wolf,
+            name: "Wolf",
+            creature: { catalogId: "creatures", entryId: "wolf" },
+            count: { count: 0, sides: 0, flat: 2 },
+          },
         },
         {
           id: "call-1",

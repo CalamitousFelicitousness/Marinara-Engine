@@ -5,6 +5,7 @@
  *
  *   - Read and kept; refused empty or past 40.
  *   - Gated at 1.785.
+ *   - How many to pick (1.786), `pick`, read off the sheet: kept, gated at 1.786.
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -61,7 +62,19 @@ try {
   assert.notEqual(getCapabilityPackageInstallIssue(manifest(785) as never, ember(words)), gate);
   assert.notEqual(getCapabilityPackageInstallIssue(manifest(784) as never, ember()), gate);
 
-  console.info("Text suggestions: read and kept, refused empty or past 40, gated at 1.785.");
+  // How many to pick (1.786), read off the sheet: kept, and gated on its own.
+  const picking = ember(words);
+  picking.sheet.fields.find((field: { id: string }) => field.id === "calling").pick = { const: 2 };
+  const picked = parseRulesetDefinition(picking);
+  assert.ok(picked.ok, picked.ok ? "" : picked.issues.join("; "));
+  const pickField = picked.definition.sheet.fields.find((field) => field.id === "calling");
+  assert.deepEqual(pickField?.type === "text" ? pickField.pick : undefined, { const: 2 });
+  const pickGate =
+    "A ruleset whose text fields say how many words to pick (a text field's pick) requires schemaVersion 2 and capabilityApi 1.786 or newer";
+  assert.equal(getCapabilityPackageInstallIssue(manifest(785) as never, picking), pickGate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(786) as never, picking), pickGate);
+
+  console.info("Text suggestions: read and kept, refused empty or past 40, gated at 1.785; pick at 1.786.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

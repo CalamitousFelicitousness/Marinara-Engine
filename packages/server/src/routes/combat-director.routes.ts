@@ -508,11 +508,17 @@ export async function combatDirectorRoutes(
       )
         throw new Error("Invalid battlefield in save.");
       // Everybody on the board or nobody: a fight with one combatant standing nowhere could answer
-      // nothing about distance, and the resolver builds one only when it can place them all.
+      // nothing about distance, and the resolver builds one only when it can place them all. Those
+      // the resolver itself took off the board stand nowhere: a called creature sent away, a corpse
+      // risen as something else (class re-test 2026-10-24: a save refused once a druid's eight horses
+      // were sent away).
+      const gone = (combatant: { defeated?: boolean; dismissed?: true; corpseRaised?: true }) =>
+        !!combatant.defeated && (!!combatant.dismissed || !!combatant.corpseRaised);
       const placed = state.rulesetFight!.encounter.combatants.filter(
         (combatant) => typeof combatant.x === "number" || typeof combatant.y === "number",
       );
-      if (placed.length !== state.rulesetFight!.encounter.combatants.length) throw new Error("Invalid saved position.");
+      const unplaced = state.rulesetFight!.encounter.combatants.filter((combatant) => !placed.includes(combatant));
+      if (unplaced.some((combatant) => !gone(combatant))) throw new Error("Invalid saved position.");
       for (const combatant of placed) {
         if (
           !Number.isInteger(combatant.x) ||

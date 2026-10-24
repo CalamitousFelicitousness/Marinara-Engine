@@ -943,6 +943,10 @@ const textFieldShape = {
   /** Words offered to pick (1.785), each added as a chip, the field still typed in freely: a
    *  ranger's favored enemies out of the creature types. */
   suggestions: z.array(z.string().trim().min(1).max(80)).min(1).max(40).optional(),
+  /** How many of them its holder picks (1.786), read off the sheet: a ranger's favored enemies, one
+   *  more at 6th and 14th level. The editor says "choose N" and stops offering more once N are in;
+   *  what is typed is never refused. */
+  pick: rulesetValueRefSchema.optional(),
 };
 const longtextFieldShape = {
   type: z.literal("longtext"),
@@ -18195,6 +18199,18 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       });
     });
   }
+
+  // How many words a text field has picked (1.786) reads the sheet as it is built.
+  sheet.fields.forEach((field, index) => {
+    if (field.type === "text" && field.pick)
+      checkRef(field.pick, ["sheet", "fields", index, "pick"], derivedIds, false);
+  });
+  sheet.lists.forEach((list, listIndex) =>
+    list.columns.forEach((column, index) => {
+      if (column.type === "text" && column.pick)
+        checkRef(column.pick, ["sheet", "lists", listIndex, "columns", index, "pick"], derivedIds, false);
+    }),
+  );
 
   sheet.live.pools.forEach((pool, index) => {
     const path = ["sheet", "live", "pools", index];

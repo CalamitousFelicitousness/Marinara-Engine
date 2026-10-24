@@ -66,6 +66,7 @@ import {
   rulesetCombatHide,
   rulesetRegenerations,
   rulesetTargetIs,
+  rulesetTargetTypesAllow,
   rulesetCombatOptions,
   rulesetCostSteps,
   rulesetAverageAmount,
@@ -172,6 +173,7 @@ import {
   type RulesetBoardLight,
   type RulesetCatalogEntriesById,
   type RulesetCombatAction,
+  type RulesetCombatCondition,
   type RulesetCombatApplies,
   type RulesetCombatChoice,
   type RulesetWindowTrigger,
@@ -2060,7 +2062,13 @@ function rulesetCandidates(
   // fight, which a defensive pick would stop it doing, so healthy wolves would hide all fight. A
   // limited use at poor odds is no reason to give up ending the turn: it is weighed against keeping it.
   if (!own.some((candidate) => worth(candidate) > 0 && !candidate.action.poorOdds))
-    return keeps ? own : own.filter((candidate) => rulesetDefensiveName(candidate.action.option) === undefined);
+    return keeps
+      ? own
+      : own.filter(
+          (candidate) =>
+            rulesetDefensiveName(candidate.action.option) === undefined ||
+            (!!actor && rulesetKeepsGrantedDefensive(definition, encounter, actor, tactics, candidate.action.option)),
+        );
   return own.filter(
     (candidate) =>
       (!candidate.hold && candidate.action.option.kind !== "standard") ||
@@ -2073,6 +2081,27 @@ function rulesetDefensiveName(option: RulesetCombatOption): RulesetCandidate["de
   if (option.kind !== "standard") return undefined;
   const name = rulesetStandardName(option.id);
   return name === "dodge" || name === "disengage" || name === "hide" ? name : undefined;
+}
+
+/** Whether a dodge or getaway an ability of its own grants on another budget (a monk's Patient
+ *  Defense and Step of the Wind, a rogue's Cunning Action) is weighed with nothing better left to do
+ *  this turn: by anybody but a mindless or reckless one, hurt and standing where a turn of blows
+ *  would take a good share of what it has left (class re-test 2026-10-24: never once used). */
+function rulesetKeepsGrantedDefensive(
+  definition: RulesetDefinition,
+  encounter: RulesetEncounterState,
+  actor: RulesetCombatant,
+  tactics: CombatTactics | undefined,
+  option: RulesetCombatOption,
+): boolean {
+  if (!option.grantedBy || rulesetDefensiveName(option) === undefined || !definition.combat) return false;
+  if (!tactics || tactics.mind === "mindless" || tactics.adjective === "reckless" || tactics.adjective === "fanatical")
+    return false;
+  if ((tactics.wary ?? 0) >= 2) return false;
+  const health = rulesetCombatHealth(definition, definition.combat, actor);
+  if (health.value >= health.max * 0.75) return false;
+  const home = rulesetPositionOf(actor);
+  return !home || rulesetDangerAt(definition, encounter, actor, home) >= 0.3;
 }
 
 /** Whether a creature weighs dodging, getting away or hiding against its attacks (1.745): a careful,
@@ -2571,7 +2600,11 @@ function weighRulesetTeam(
     if (kept.length > 0) candidates.splice(0, candidates.length, ...kept);
   }
   for (const candidate of candidates) {
-    const defensive = keeps ? rulesetDefensiveName(candidate.action.option) : undefined;
+    const defensive =
+      keeps ||
+      rulesetKeepsGrantedDefensive(definition, encounter, actor, units.get(actor.id)?.tactics, candidate.action.option)
+        ? rulesetDefensiveName(candidate.action.option)
+        : undefined;
     if (defensive) {
       candidate.action.defensive = defensive;
       candidate.hold = true;
@@ -2825,6 +2858,48 @@ interface PricedOption {
   price: number;
 }
 
+/** How far the fight leans its actor's way, as what keeping a one-off item is worth: 0 for an even
+ *  fight or a worse one, up to 0.75 when the other side's health is next to nothing beside its own. */
+function rulesetFightEase(
+  definition: RulesetDefinition,
+  encounter: RulesetEncounterState,
+  actor: RulesetCombatant,
+): number {
+  const combat = definition.combat;
+  if (!combat) return 0;
+  const total = (mine: boolean) =>
+    encounter.combatants
+      .filter((one) => (one.side === actor.side) === mine && !one.object && rulesetCombatStanding(one))
+      .reduce((sum, one) => {
+        const health = rulesetCombatHealth(definition, combat, one);
+        return sum + Math.max(0, health.value + health.temp);
+      }, 0);
+  const own = total(true);
+  const theirs = total(false);
+  if (own + theirs <= 0) return 0;
+  return Math.max(0, own / (own + theirs) - 0.5) * 1.5;
+}
+
+/** What something it puts on itself costs it once it is over, a level of a track for each (5e's
+ *  Frenzy, a level of exhaustion as the rage ends): half a use's worth, and dearer the easier the
+ *  fight looks (class re-test 2026-10-24). */
+function rulesetAfterPrice(
+  definition: RulesetDefinition,
+  actor: RulesetCombatant,
+  option: RulesetCombatOption,
+  spare: number,
+): number {
+  if (option.targets.side !== "self") return 0;
+  const action = actor.actions.find((one) => one.id === option.id);
+  let levels = 0;
+  for (const applied of action?.applies ?? []) {
+    if (!rulesetSheetWithin(definition, actor, applied.when)) continue;
+    const rule = definition.combat?.conditions?.find((one) => one.condition === applied.condition);
+    for (const track of rule?.onEnd?.tracks ?? []) levels += Math.max(0, track.by);
+  }
+  return levels * (0.5 + spare);
+}
+
 /**
  * Every option on a menu, and every BIGGER way of paying for one, each with what that costs.
  *
@@ -2859,6 +2934,7 @@ export function priced(
         ]),
       )
     : undefined;
+  const spare = rulesetFightEase(definition, encounter, actor);
   for (const option of menu ?? rulesetCombatOptions(definition, encounter, actor.id)) {
     const base =
       (option.cost ?? []).reduce(
@@ -2866,8 +2942,11 @@ export function priced(
         0,
       ) +
       (option.signature?.cost ?? 0) +
-      // An item used up by using it (a flask of oil, a vial of acid) is not thrown for nothing.
-      (actor.actions.find((action) => action.id === option.id)?.itemUse?.consumes ? 0.25 : 0);
+      // An item used up by using it (a flask of oil, a vial of acid) is not thrown for nothing, and
+      // dearer the easier the fight looks (class re-test 2026-10-24: a one-off Potion of
+      // Invisibility drunk in round one against every orc band).
+      (actor.actions.find((action) => action.id === option.id)?.itemUse?.consumes ? 0.25 + spare : 0) +
+      rulesetAfterPrice(definition, actor, option, spare);
     // One that only a higher pool can pay for now (1.171) is never taken at its own price.
     const ways: PricedOption[] = [
       ...(option.upcastOnly ? [] : [{ option, price: base }]),
@@ -3426,8 +3505,13 @@ function rulesetCandidatesFrom(
             ? { value: health.value, max: Math.max(health.value, Math.floor(health.max / 2)) }
             : health;
         if (capped.value >= capped.max && !target.down) continue;
+        // As many uses as it may choose (Lay on Hands' points), as the resolver spends them: enough to
+        // heal them fully, or all it has (class re-test 2026-10-24: weighed as healing 1 and never used).
+        const uses = option.amount
+          ? Math.max(1, Math.min(option.amount.max, Math.ceil((capped.max - capped.value) / Math.max(1, average))))
+          : 1;
         candidate.healing =
-          rulesetHealingWorth(average, capped) * (capped.max / Math.max(1, health.max)) + (target.down ? 1 : 0);
+          rulesetHealingWorth(average * uses, capped) * (capped.max / Math.max(1, health.max)) + (target.down ? 1 : 0);
         // A limited heal (a potion, a slot, a use a day) waits until a friend is below half (I2 re-test
         // 2026-10-23: potions drunk at 26 of 38): above that it is worth a fifth, taken only when
         // nothing better is on offer.
@@ -3625,12 +3709,23 @@ function rulesetCandidatesFrom(
           if (candidate.setup) candidate.setup *= 0.5;
         }
       }
-      // Starting another held spell lets go of the one it holds up: as dear as what that one is worth,
-      // so Guidance or Shield of Faith held does not keep Spirit Guardians in the book (re-test
-      // 2026-10-23).
-      if (fallingAction?.concentration && actor.concentrating && actor.concentrating.actionId !== option.id)
-        candidate.cost = (candidate.cost ?? 0) + rulesetHeldWorth(definition, combat, encounter, actor);
       candidates.push(candidate);
+    }
+  }
+  // Twinned (1.253): a single-target one sent at a second target as well, for what its alteration
+  // costs, worth what it would be on each (class re-test 2026-10-24: Twinned Spell never used). The
+  // two are paired from the candidates already weighed here, so both are legal from where it stands.
+  if (!menu) candidates.push(...twinnedCandidates(encounter, actor, candidates));
+  // Starting another held spell lets go of the one it holds up: as dear as what that one is worth,
+  // so Guidance or Shield of Faith held does not keep Spirit Guardians in the book (re-test
+  // 2026-10-23), and an Entangle does not send away the eight creatures a summons holds (class
+  // re-test 2026-10-24). Whatever way it is weighed: a shape, a blow, something on itself.
+  if (actor.concentrating) {
+    const letGo = rulesetHeldWorth(definition, combat, encounter, actor);
+    for (const candidate of candidates) {
+      const id = candidate.action.option.id;
+      const holds = actor.actions.find((one) => one.id === id)?.concentration;
+      if (holds && id !== actor.concentrating.actionId) candidate.cost = (candidate.cost ?? 0) + letGo;
     }
   }
   // A legendary action that moves after what it does (1.285): on to where a teleport would go, or
@@ -3643,6 +3738,72 @@ function rulesetCandidatesFrom(
   }
   if (standing) for (const candidate of candidates) candidate.action.to = { ...standing };
   return candidates;
+}
+
+/** The single-target candidates that a twinning alteration on offer could send at a second target
+ *  too, each paired with the best other of the same way of using it on somebody of the same side. */
+function twinnedCandidates(
+  encounter: RulesetEncounterState,
+  actor: RulesetCombatant,
+  candidates: Array<CombatAiCandidate<RulesetCandidate>>,
+): Array<CombatAiCandidate<RulesetCandidate>> {
+  const gains = (candidate: CombatAiCandidate<RulesetCandidate>) =>
+    (candidate.damage ?? 0) + (candidate.healing ?? 0) + (candidate.support ?? 0) + (candidate.setup ?? 0);
+  const groups = new Map<string, Array<CombatAiCandidate<RulesetCandidate>>>();
+  for (const candidate of candidates) {
+    const { choice, option } = candidate.action;
+    const offer = option.alters?.find((one) => one.twins);
+    if (!offer || option.targets.count !== 1 || choice.targetIds.length !== 1 || choice.alters?.length) continue;
+    if (!candidate.targetId || gains(candidate) <= 0) continue;
+    const target = rulesetCombatant(encounter, candidate.targetId);
+    if (!target) continue;
+    const key = JSON.stringify([
+      option.id,
+      choice.payWith ?? null,
+      choice.mode ?? null,
+      choice.style ?? null,
+      target.side === actor.side,
+    ]);
+    (groups.get(key) ?? groups.set(key, []).get(key)!).push(candidate);
+  }
+  const out: Array<CombatAiCandidate<RulesetCandidate>> = [];
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+    const sorted = [...group].sort((a, b) => gains(b) - gains(a));
+    for (const first of sorted) {
+      const second = sorted.find((one) => one.targetId !== first.targetId);
+      if (!second) continue;
+      const offer = first.action.option.alters!.find((one) => one.twins)!;
+      const add = (a?: number, b?: number) => (a === undefined && b === undefined ? undefined : (a ?? 0) + (b ?? 0));
+      const twinned: CombatAiCandidate<RulesetCandidate> = {
+        ...first,
+        action: {
+          ...first.action,
+          choice: {
+            ...first.action.choice,
+            targetIds: [first.targetId!, second.targetId!],
+            alters: [offer.id],
+          },
+          ...(add(first.action.denies, second.action.denies) !== undefined
+            ? { denies: add(first.action.denies, second.action.denies) }
+            : {}),
+          ...(add(first.action.combo, second.action.combo) !== undefined
+            ? { combo: add(first.action.combo, second.action.combo) }
+            : {}),
+          ...(first.action.drops || second.action.drops
+            ? { drops: [...new Set([...(first.action.drops ?? []), ...(second.action.drops ?? [])])] }
+            : {}),
+        },
+        cost: (first.cost ?? 0) + offer.cost,
+      };
+      for (const part of ["damage", "healing", "support", "setup"] as const) {
+        const sum = add(first[part], second[part]);
+        if (sum !== undefined) twinned[part] = sum;
+      }
+      out.push(twinned);
+    }
+  }
+  return out;
 }
 
 /** What each effect of a condition is worth on an opponent (`foe`) or a friend (`friend`), as a share
@@ -3904,14 +4065,24 @@ export function rulesetEffectWorth(
     // A number added or taken off, whichever way it points, is worth a little; more damage of one
     // type taken only when somebody on the other side deals that type (lamp oil wants a fire), and
     // one that counts only on blows of some types (1.777) only when somebody deals one of them.
+    // Only those that point its way: a defense lowered (Slow's) helps no friend, and a bonus no foe
+    // (class re-test 2026-10-24: Slow cast over the party as support).
+    const lifts = (modifier: { to: string; flat?: number; times?: number; dice?: string; mode?: string }) => {
+      const up =
+        (modifier.flat ?? 0) > 0 || (modifier.times ?? 1) > 1 || !!modifier.dice || modifier.mode === "advantage";
+      const down = (modifier.flat ?? 0) < 0 || (modifier.times ?? 1) < 1 || modifier.mode === "disadvantage";
+      if (!up && !down) return undefined;
+      return modifier.to === "damage-taken" ? !up : up;
+    };
     const counted = (rule?.modifiers ?? []).filter(
       (modifier) =>
-        modifier.to !== "damage-taken" ||
-        (modifier.onTypes
-          ? modifier.onTypes.some((type) => rulesetSideDeals(encounter, target.side, type))
-          : !modifier.damageType ||
-            (modifier.flat ?? 0) <= 0 ||
-            rulesetSideDeals(encounter, target.side, modifier.damageType)),
+        lifts(modifier) !== (foe ? true : false) &&
+        (modifier.to !== "damage-taken" ||
+          (modifier.onTypes
+            ? modifier.onTypes.some((type) => rulesetSideDeals(encounter, target.side, type))
+            : !modifier.damageType ||
+              (modifier.flat ?? 0) <= 0 ||
+              rulesetSideDeals(encounter, target.side, modifier.damageType))),
     );
     // One that only touches ability checks is next to nothing in a fight (re-test 2026-10-23: a cleric
     // spent six actions on Guidance); one spent the first time it adds (1.777) is worth half.
@@ -3946,7 +4117,7 @@ export function rulesetEffectWorth(
         }
       }
     }
-    if (rule?.effects?.includes("ends-on-damage")) each *= 0.6;
+    if (rulesetBreaksOnHarm(rule)) each *= 0.6;
     worth += Math.min(1.2, each) * rulesetDurationWorth(applied.duration);
   }
   if (worth === undefined) return undefined;
@@ -4041,6 +4212,15 @@ function rulesetLingeringHarm(
   return Math.min(1, harmed / Math.max(1, health.value + health.temp)) * lands;
 }
 
+/** Whether a condition ends at the first harm or blow at its holder: an effect that says so, or its
+ *  own `endsWhen` (5e's Turned, ended by any damage). */
+function rulesetBreaksOnHarm(rule: RulesetCombatCondition | undefined): boolean {
+  return (
+    !!rule?.effects?.includes("ends-on-damage") ||
+    !!rule?.endsWhen?.some((one) => one === "damaged" || one === "harmed-by-source-side" || one === "attacked")
+  );
+}
+
 /**
  * The harm an opponent is kept from doing by what this puts on it (class pass 2026-10-24: 28
  * Stunning Strikes and every Hold Person let go, weighed only as a small setup): its turns taken
@@ -4064,10 +4244,15 @@ function rulesetDeniedHarm(
   for (const applied of action.applies) {
     if (held.has(applied.condition) || !rulesetSheetWithin(definition, actor, applied.when)) continue;
     if (rulesetImmuneToCondition(target, applied.condition, definition, encounter, actor)) continue;
-    const effects = combat.conditions?.find((one) => one.condition === applied.condition)?.effects ?? [];
-    const share = effects.includes("cannot-act") ? 1 : effects.includes("cannot-harm") ? 0.8 : 0;
+    const rule = combat.conditions?.find((one) => one.condition === applied.condition);
+    const effects = rule?.effects ?? [];
+    // A turn kept to walking and the standard actions (Turn Undead's, Fear's) harms nobody either,
+    // less surely where one with nowhere to walk has its turn back (class re-test 2026-10-24: Turn
+    // the Unholy never used on three zombies).
+    const kept = rule?.behavior?.only ? (rule.behavior.onlyWhenStuck === "any" ? 0.6 : 0.8) : 0;
+    const share = effects.includes("cannot-act") ? 1 : Math.max(effects.includes("cannot-harm") ? 0.8 : 0, kept);
     if (share <= 0) continue;
-    const taken = share * rulesetTurnsTaken(applied.duration) * (effects.includes("ends-on-damage") ? 0.6 : 1);
+    const taken = share * rulesetTurnsTaken(applied.duration) * (rulesetBreaksOnHarm(rule) ? 0.6 : 1);
     turns = Math.max(turns, taken);
   }
   if (turns <= 0) return 0;
@@ -4124,13 +4309,14 @@ function rulesetFollowUpWorth(
   for (const applied of action.applies) {
     if (held.has(applied.condition) || !rulesetSheetWithin(definition, actor, applied.when)) continue;
     if (rulesetImmuneToCondition(target, applied.condition, definition, encounter, actor)) continue;
-    const effects = combat.conditions?.find((one) => one.condition === applied.condition)?.effects ?? [];
+    const rule = combat.conditions?.find((one) => one.condition === applied.condition);
+    const effects = rule?.effects ?? [];
     const critical = effects.includes("attacks-from-adjacent-critical") && !now.has("attacks-from-adjacent-critical");
     const easier = effects.includes("attacks-against-advantage") && !now.has("attacks-against-advantage");
     if (!critical && !easier) continue;
     crits ||= critical;
     advantage ||= easier;
-    turns = Math.max(turns, rulesetTurnsTaken(applied.duration) * (effects.includes("ends-on-damage") ? 0.3 : 1));
+    turns = Math.max(turns, rulesetTurnsTaken(applied.duration) * (rulesetBreaksOnHarm(rule) ? 0.3 : 1));
   }
   if (turns <= 0) return 0;
   const near = (one: RulesetCombatant) =>
@@ -4576,6 +4762,9 @@ function weighCaught(
   // What its conditions are worth on each it catches, read off the ruleset (see `rulesetEffectWorth`).
   const action = actor.actions.find((one) => one.id === option.id);
   caught = rulesetPoolReaches(definition, combat, actor, action, caught, candidate.action.choice.payWith);
+  // Only who it may take, by what they are (class re-test 2026-10-24: Turn the Unholy weighed as
+  // turning the paladin and the monk it was read out around, so it was never used on the undead).
+  caught = caught.filter((target) => rulesetTargetTypesAllow(definition, target, action?.targetTypes, actor));
   // A hazard that strikes only whoever walks into it (caltrops) does nothing as it is laid to the
   // other side already standing there: they are not walking in (I3 re-test 2026-10-23: caltrops
   // laid on a wolf's own square).
@@ -4809,6 +4998,20 @@ function weighCaught(
       : unread / Math.max(1, foes.length + walkers.length);
     if (worth <= 0) return false;
     candidate.setup = read ? Math.min(2, worth) : 0.4 * worth;
+    // The turns it takes from them are counted as a single target's are (a Hold Person's): the blows
+    // they would have struck (class re-test 2026-10-24: Turn the Unholy never used on three zombies).
+    const denied =
+      foes.reduce((sum, target) => sum + rulesetDeniedHarm(definition, combat, encounter, actor, action, target), 0) +
+      0.5 *
+        walkers.reduce(
+          (sum, target) => sum + rulesetDeniedHarm(definition, combat, encounter, actor, action, target),
+          0,
+        );
+    if (read && denied > 0) {
+      candidate.damage = Math.min(2, denied);
+      candidate.action.denies = candidate.damage;
+      candidate.setup *= 0.5;
+    }
   } else {
     // Something meant for the other side that would catch only its own: ball bearings under a friend.
     if (option.targets.side === "enemy") return false;
@@ -6166,6 +6369,17 @@ function rulesetHeldWorth(
 ): number {
   const held = actor.concentrating;
   if (!held) return 0;
+  // Creatures it holds here, by the harm they still bring (class re-test 2026-10-24).
+  const called = encounter.combatants.filter(
+    (one) => one.calledBy === actor.id && one.calledWith === held.actionId && !one.dismissed && !one.defeated,
+  );
+  if (called.length > 0) {
+    const foes = encounter.combatants.filter((one) => one.side !== actor.side && rulesetCombatStanding(one));
+    if (foes.length === 0) return 0;
+    const foeMean = rulesetSideHealthMean(definition, combat, encounter, foes[0]!.side);
+    const harm = called.reduce((sum, one) => sum + rulesetEveryTurnBlow(one) * 0.6, 0);
+    return 2 * (1 - Math.exp(-(2 * harm) / Math.max(1, foeMean) / 2));
+  }
   const action = actor.actions.find((one) => one.id === held.actionId);
   if (!action || action.damage || action.zone || action.heal) return 0.4;
   const on = (held.targets ?? [actor.id])
@@ -7867,9 +8081,15 @@ function walkTowardsTrouble(
     !actor.flags.dashed &&
     (closing.walked === undefined || closing.walked >= (actor.movementLeft ?? 0));
   if (sprint) {
+    // On another budget where an ability of its own grants one (a monk's Step of the Wind, a rogue's
+    // Cunning Action), so the turn's action is left for whoever the walk reaches (class re-test
+    // 2026-10-24: never once used).
+    const granted = rulesetCombatOptions(definition, fight.encounter, actorId).find(
+      (option) => option.kind === "standard" && !!option.grantedBy && rulesetStandardName(option.id) === "dash",
+    );
     const sprinted = applyChoice(definition, state, fight, {
       actorId,
-      optionId: "standard:dash",
+      optionId: granted?.id ?? "standard:dash",
       targetIds: [],
     });
     // A sprint the rules refused costs nothing: the walk below happens either way.

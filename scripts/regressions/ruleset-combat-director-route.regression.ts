@@ -651,6 +651,23 @@ try {
         assert.match(answer.json().error, /Invalid saved position/);
       }
 
+      // One the resolver itself took off the board, a called creature sent away, stands nowhere and
+      // is let be (class re-test 2026-10-24); one merely beaten and taken off is still refused.
+      const sentAway = await tamper((combatants) => {
+        delete combatants[1]!.x;
+        delete combatants[1]!.y;
+        combatants[1]!.defeated = true;
+        combatants[1]!.dismissed = true;
+      });
+      assert.equal(sentAway.statusCode, 200, sentAway.body);
+      const vanished = await tamper((combatants) => {
+        delete combatants[1]!.x;
+        delete combatants[1]!.y;
+        combatants[1]!.defeated = true;
+      });
+      assert.equal(vanished.statusCode, 400, vanished.body);
+      assert.match(vanished.json().error, /Invalid saved position/);
+
       // Off the board altogether is still refused.
       const outside = await tamper((combatants, tiles) => {
         combatants[1]!.x = tiles[0]!.length + 5;

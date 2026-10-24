@@ -1498,7 +1498,9 @@ const capabilityPackageManifestBaseSchema = z
 //        may give an opponent its own instead (`carrying`).
 // 1.785: a text field's or list column's `suggestions`: words offered as chips to pick, the field still
 //        typed in freely (a ranger's favored enemies).
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 785 } as const);
+// 1.786: a text field's or list column's `pick`: how many of its `suggestions` its holder picks, read
+//        off the sheet (a ranger's favored enemies by level), shown as "choose N".
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 786 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

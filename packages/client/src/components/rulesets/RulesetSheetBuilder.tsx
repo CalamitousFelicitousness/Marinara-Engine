@@ -74,7 +74,7 @@ import { api } from "../../lib/api-client";
 import { visibleCatalogEntries } from "../../lib/ruleset-catalog";
 import { rulesetCheckValueText } from "../../lib/ruleset-resolution";
 import { DraftNumberInput } from "../ui/DraftNumberInput";
-import { clamp, inputClass, labelClass, TypedInput } from "./RulesetTypedInput";
+import { clamp, inputClass, labelClass, rulesetPickCount, TypedInput } from "./RulesetTypedInput";
 import { RollCellButton, rollRulesetCell } from "./RulesetRollCellButton";
 
 /** A bonus with its sign, as a sheet prints one. */
@@ -840,6 +840,7 @@ export function RulesetSheetBuilder({
             <span className={labelClass}>{field.label}</span>
             <TypedInput
               spec={spec}
+              pick={rulesetPickCount(definition, build, spec)}
               value={build.fields[id]}
               onChange={(value) =>
                 // A value the builder answers for, changed here, is still the builder's: a later pick

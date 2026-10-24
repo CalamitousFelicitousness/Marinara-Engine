@@ -104,7 +104,7 @@ try {
   const legacyManifest = capabilityPackageManifestSchema.parse(installedPackage("legacy", ["agent"]).manifest);
   assert.equal(legacyManifest.schemaVersion, 1, "Existing manifest v1 packages must remain readable");
   assert.equal(getCapabilityApiCompatibilityIssue(legacyManifest), null);
-  assert.deepEqual(supportedCapabilityApi, { major: 1, minor: 785 });
+  assert.deepEqual(supportedCapabilityApi, { major: 1, minor: 786 });
 
   const manifestV2 = capabilityPackageManifestSchema.parse({
     ...legacyManifest,
@@ -140,11 +140,11 @@ try {
   });
   assert.match(
     getCapabilityApiCompatibilityIssue(unsupportedMajorManifest) ?? "",
-    /requires capability API 2\.0; this Engine supports 1\.785/,
+    /requires capability API 2\.0; this Engine supports 1\.786/,
   );
   const currentMinorManifest = capabilityPackageManifestSchema.parse({
     ...manifestV2,
-    capabilityApi: { major: 1, minor: 785 },
+    capabilityApi: { major: 1, minor: 786 },
   });
   assert.equal(getCapabilityApiCompatibilityIssue(currentMinorManifest), null);
   assert.equal(
@@ -208,6 +208,7 @@ try {
     [783, "sheet migrations that set a column"],
     [784, "what a creature has on it"],
     [785, "text field suggestions"],
+    [786, "how many text suggestions to pick"],
   ];
   for (const [minor, label] of supportedMinors) {
     assert.equal(
@@ -220,11 +221,11 @@ try {
   }
   const unsupportedMinorManifest = capabilityPackageManifestSchema.parse({
     ...manifestV2,
-    capabilityApi: { major: 1, minor: 786 },
+    capabilityApi: { major: 1, minor: 787 },
   });
   assert.match(
     getCapabilityApiCompatibilityIssue(unsupportedMinorManifest) ?? "",
-    /requires capability API 1\.786; this Engine supports 1\.785/,
+    /requires capability API 1\.787; this Engine supports 1\.786/,
   );
   const startupManifest = {
     ...currentMinorManifest,

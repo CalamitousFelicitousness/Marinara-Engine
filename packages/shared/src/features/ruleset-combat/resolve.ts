@@ -16487,6 +16487,9 @@ function resolveActionBodyIn(
   } else {
     if (action.gives) grantBudgets(ctx, actor, action);
     if (action.concentration) startConcentration(ctx, actor, action);
+    // Whoever the concentration it let go of sent away is caught by nothing now (class re-test
+    // 2026-10-24: an Entangle that made a horse sent away by casting it save).
+    targets = targets.filter((target) => !target.dismissed);
   }
   const steps = action.innate
     ? Math.max(0, action.innate.level - action.innate.baseLevel)

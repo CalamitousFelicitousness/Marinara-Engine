@@ -386,6 +386,32 @@ try {
           .map((one) => one.candidate.risk ?? 0),
       );
     assert.ok(riskAt(2) > riskAt(3) * 1.2, `inside the reach ${riskAt(2)} against outside ${riskAt(3)}`);
+
+    // Standing up for a friend a troll is on is worth less to one the trolls could fell in a turn
+    // than to one who can take it (I1b re-test 2026-10-24: Pip walked into two trolls to stand up
+    // for Brom, every fight).
+    const stab = {
+      id: "stab",
+      name: "Stab",
+      budget: "action",
+      toHit: 5,
+      reach: 1,
+      damage: { count: 1, sides: 8, flat: 3 },
+    };
+    const standsUp = (health: number) => {
+      const { encounter, state } = fight({
+        rogue: { side: "enemy", block: block([stab], { health }), at: { x: 3, y: 4 } },
+        fighter: { side: "enemy", block: block([stab], { health: 120 }), at: { x: 8, y: 4 } },
+        troll0: troll({ x: 9, y: 4 }, [bite, longClaw]),
+        troll1: troll({ x: 9, y: 5 }, [bite, longClaw]),
+      });
+      return Math.max(
+        ...rankRulesetChoices(definition, state, encounter, "rogue", 400)
+          .filter((one) => one.candidate.action.option.id === "stab")
+          .map((one) => one.candidate.protection ?? 0),
+      );
+    };
+    assert.ok(standsUp(38) < standsUp(400) * 0.75, `frail ${standsUp(38)} against sturdy ${standsUp(400)}`);
   }
 
   // ── A hazard is laid where the other side will walk into it (I3 re-test 2026-10-23) ──

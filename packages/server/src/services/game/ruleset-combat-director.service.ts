@@ -2202,16 +2202,19 @@ function weighRulesetTeam(
     const covers = lands ? threatened.filter(beside).length : 0;
     if (role === "supporter" && lands && allies.some((ally) => hurt(ally) && beside(ally)))
       candidate.support = (candidate.support ?? 0) + 0.15;
+    // Standing up for a friend is worth less the more it would cost the one doing it: where the
+    // opponents could fell it in a turn, half as much (I1b re-test 2026-10-24: a frail rogue that
+    // walked into two trolls' reach to stand up for the fighter, and was felled).
+    const shielding = (worth: number) => (home ? worth / (1 + danger(lands ?? home)) : worth);
     const target = candidate.targetId ? rulesetCombatant(encounter, candidate.targetId) : undefined;
     if (!target || target.side === actor.side) {
-      if (covers > 0) candidate.protection = Math.min(1, 0.3 * covers);
+      if (covers > 0) candidate.protection = shielding(Math.min(1, 0.3 * covers));
       continue;
     }
     const guarding = threatened.filter((ally) => near(ally, target));
     if (guarding.length > 0 || covers > 0)
-      candidate.protection = Math.min(
-        1,
-        guarding.reduce((sum, ally) => sum + 0.5 + (hurt(ally) ? 0.3 : 0), 0) + 0.3 * covers,
+      candidate.protection = shielding(
+        Math.min(1, guarding.reduce((sum, ally) => sum + 0.5 + (hurt(ally) ? 0.3 : 0), 0) + 0.3 * covers),
       );
     const engaged = allies.filter((ally) => near(ally, target)).length;
     // From across the target from a friend already on it (combat AI A1): a flank, a skirmisher's.

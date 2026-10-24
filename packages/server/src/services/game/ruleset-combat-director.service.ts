@@ -6168,11 +6168,16 @@ function playRulesetTurn(
   if (turned) record(fight, [{ type: "temperamentShift", actorId, ...turned }]);
   // Broken (1.746): its whole turn is getting away.
   if (actor?.routed) {
-    // Its why before it runs, so the getaway reads as the broken morale it is (D4).
-    recordReasons(fight, actorId, [{ why: "routed" }]);
-    runForTheEdge(definition, state, fight, actorId);
-    advanceTurn(definition, state, fight);
-    return;
+    // With no way left to the edge it fights on, as cornered things do (laptop re-test 2026-10-24: a
+    // bugbear in a cavern with no way out dashed on the spot for fifteen turns).
+    if (rulesetHasWayOut(definition, fight.encounter, actor)) {
+      // Its why before it runs, so the getaway reads as the broken morale it is (D4).
+      recordReasons(fight, actorId, [{ why: "routed" }]);
+      runForTheEdge(definition, state, fight, actorId);
+      advanceTurn(definition, state, fight);
+      return;
+    }
+    recordReasons(fight, actorId, [{ why: "cornered" }]);
   }
   // Lying in wait (1.747): it hides where it can and keeps still until its prey comes to it.
   if (actor && rulesetLiesInWait(definition, state, fight.encounter, actor)) {
@@ -6921,8 +6926,47 @@ function runForTheEdge(
   }
 }
 
-/** The cell a running creature may walk to nearest the board's edge (1.746), furthest from its
- *  opponents among those as near: null when none is nearer the edge than where it stands. */
+/** Every cell of the board's edge a running creature leaves by (1.746): its sides, and on a shaped
+ *  board (2026-10-24) its outline too, the cells beside one off the map. */
+function rulesetExitCells(grid: TacticalGrid): Array<{ x: number; y: number }> {
+  const outside = grid.outside;
+  const cells: Array<{ x: number; y: number }> = [];
+  for (let y = 0; y < grid.height; y++)
+    for (let x = 0; x < grid.width; x++) {
+      if (outside?.[y]?.[x]) continue;
+      const side = x === 0 || y === 0 || x === grid.width - 1 || y === grid.height - 1;
+      const rim = !!outside && [-1, 0, 1].some((dy) => [-1, 0, 1].some((dx) => outside[y + dy]?.[x + dx] === true));
+      if (side || rim) cells.push({ x, y });
+    }
+  return cells;
+}
+
+/** How far each cell walks to the board's edge, for one running: nothing on it, and a walk ending
+ *  beside it one step more, so that a creature next to the edge still has a step to take. */
+function rulesetExitDistances(encounter: RulesetEncounterState, actor: RulesetCombatant): Map<string, number> {
+  const grid = encounter.board!.grid;
+  const exits = rulesetExitCells(grid);
+  const on = new Set(exits.map((cell) => `${cell.x},${cell.y}`));
+  const walked = rulesetWalkingDistances(grid, exits, actor);
+  return new Map([...walked].map(([key, cost]) => [key, on.has(key) ? 0 : cost + 1]));
+}
+
+/** Whether a running creature has any way left to the edge: at it already, or a walk that gets there. */
+function rulesetHasWayOut(
+  definition: RulesetDefinition,
+  encounter: RulesetEncounterState,
+  actor: RulesetCombatant,
+): boolean {
+  if (!encounter.board?.grid || !rulesetPositionOf(actor) || rulesetAtBoardEdge(encounter, actor)) return true;
+  const distances = rulesetExitDistances(encounter, actor);
+  return rulesetFootprint(actor).some((cell) => Number.isFinite(distances.get(`${cell.x},${cell.y}`) ?? Infinity))
+    ? rulesetEdgeCell(definition, encounter, actor.id) !== null
+    : false;
+}
+
+/** The cell a running creature may walk to nearest the board's edge by the walk (1.746), furthest
+ *  from its opponents among those as near: null when none is nearer the edge than where it stands.
+ *  The way round counts, not the line: out of a cavern is back along its passage. */
 function rulesetEdgeCell(
   definition: RulesetDefinition,
   encounter: RulesetEncounterState,
@@ -6933,8 +6977,9 @@ function rulesetEdgeCell(
   const grid = encounter.board?.grid;
   if (!actor || !from || !grid) return null;
   const span = rulesetSpanOf(actor);
+  const distances = rulesetExitDistances(encounter, actor);
   const edge = (cell: { x: number; y: number }) =>
-    Math.min(cell.x, cell.y, grid.width - (cell.x + span), grid.height - (cell.y + span));
+    Math.min(...rulesetFootprintAt(cell, span).map((one) => distances.get(`${one.x},${one.y}`) ?? Infinity));
   const foes = encounter.combatants.filter(
     (one) => one.side !== actor.side && rulesetCombatStanding(one) && rulesetPositionOf(one),
   );
@@ -6944,7 +6989,7 @@ function rulesetEdgeCell(
   const here = edge(from);
   for (const cell of rulesetWalkableCells(definition, encounter, actorId)) {
     const near = edge(cell);
-    if (near >= here) continue;
+    if (!Number.isFinite(near) || near >= here) continue;
     const far = away(cell);
     if (!best || near < best.edge || (near === best.edge && far > best.away))
       best = { cell: { x: cell.x, y: cell.y }, edge: near, away: far };

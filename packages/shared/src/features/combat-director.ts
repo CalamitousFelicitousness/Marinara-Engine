@@ -303,7 +303,10 @@ export type DirectedRulesetReason =
   | { why: "walked"; cells: number }
   | { why: "approach"; targetId?: string; sprinted?: true }
   | { why: "driven" }
-  | { why: "nothingWorth" | "noWay" | "holding" | "leavesHarm" | "spread" | "routed" | "liesInWait" | "wards" }
+  | {
+      why:
+        "nothingWorth" | "noWay" | "holding" | "leavesHarm" | "spread" | "routed" | "cornered" | "liesInWait" | "wards";
+    }
   | { why: "keptBack"; label: string; targetId?: string };
 /** One option of the legal menu, with the combatants it may be pointed at right now. */
 export interface DirectedRulesetOption extends RulesetCombatOption {

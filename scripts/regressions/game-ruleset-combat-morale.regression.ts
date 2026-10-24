@@ -5,7 +5,8 @@
  *     board's edge is gone at once; one that holds is not asked again for the same thing.
  *   - A saved check: a hurt creature whose mind gives up surrenders with an opponent beside it, and
  *     the summary says so; one immune to `unlessImmune`, a mindless one and a called one never check.
- *   - The director runs a broken creature for the edge, and it gets away.
+ *   - The director runs a broken creature for the edge, and it gets away; on a shaped board by its
+ *     outline, and one walled in with no way out fights on (2026-10-24).
  *   - Refusals and the install gate.
  */
 import assert from "node:assert/strict";
@@ -334,7 +335,8 @@ try {
   }
 
   // ── The director runs a broken creature for the edge ──
-  {
+  type Shape = (grid: any, ada: any, lurker: any) => void;
+  const routedRun = (shape?: Shape) => {
     const definition = parsed(fiveE(rolled));
     const creaturesId = (definition.catalogs ?? []).find((catalog) => catalog.holds === "creatures")!.id;
     const bestiary = Object.fromEntries(
@@ -389,6 +391,7 @@ try {
     ada.y = Math.floor(grid.height / 2);
     lurker.x = ada.x + 1;
     lurker.y = ada.y;
+    shape?.(grid, ada, lurker);
     syncRulesetCombatants(definition, state);
     state.stage = rulesetDirectorStage(state);
     // Ada stands and watches, played by nobody but the player. Ending her turn starts the lurker's.
@@ -412,6 +415,10 @@ try {
       assert.ok(commandRulesetCombatDirector(definition, state, { type: "continue" }).ok);
     }
     const events = [...state.rulesetFight!.events.map((entry) => entry.event), ...hers];
+    return { events, lurker: rulesetCombatant(state.rulesetFight!.encounter, "lurker")!, grid };
+  };
+  {
+    const { events } = routedRun();
     const types = events.map((event) => event.type);
     const away = events.findIndex((event) => event.type === "standard" && event.actorId === "lurker");
     assert.ok(away >= 0, `it got away from Ada first: ${JSON.stringify(types)}`);
@@ -425,6 +432,46 @@ try {
     assert.ok(
       events.some((event) => event.type === "fled" && event.actorId === "lurker"),
       `and ran off the board: ${JSON.stringify(types)}`,
+    );
+  }
+
+  // ── Cornered: with no way left to the edge it fights on (laptop re-test 2026-10-24) ──
+  {
+    const { events } = routedRun((grid, ada, lurker) => {
+      // A ring of wall round the two of them: nobody walks out.
+      for (let y = ada.y - 2; y <= ada.y + 2; y++)
+        for (let x = ada.x - 2; x <= lurker.x + 2; x++)
+          if (y === ada.y - 2 || y === ada.y + 2 || x === ada.x - 2 || x === lurker.x + 2) grid.tiles[y][x] = "wall";
+    });
+    const reasons = events.flatMap((event) =>
+      event.type === "reasoning" && event.actorId === "lurker" ? event.reasons.map((one) => one.why) : [],
+    );
+    assert.ok(reasons.includes("cornered"), `it says it has no way out: ${JSON.stringify(reasons)}`);
+    assert.ok(!reasons.includes("routed"), `and does not run on the spot: ${JSON.stringify(reasons)}`);
+    assert.ok(!events.some((event) => event.type === "fled" && event.actorId === "lurker"), "nor gets away");
+    assert.ok(
+      !events.some(
+        (event) => event.type === "standard" && event.actorId === "lurker" && /dash/i.test(JSON.stringify(event)),
+      ),
+      "nor dashes where it stands",
+    );
+  }
+
+  // ── A shaped board: its outline is an edge, and the way out is walked round to ──
+  {
+    const { events } = routedRun((grid, ada, lurker) => {
+      // Everything but a passage three squares high lies off the map: its rows above and below the
+      // lurker's are its outline, a step away, where the board's sides are far.
+      grid.outside = Array.from({ length: grid.height }, (_, y) =>
+        Array.from({ length: grid.width }, (_, x) => !(Math.abs(y - ada.y) <= 1 && x >= ada.x - 3)),
+      );
+      for (let y = 0; y < grid.height; y++)
+        for (let x = 0; x < grid.width; x++) if (grid.outside[y][x]) grid.tiles[y][x] = "wall";
+      assert.ok(lurker.x < grid.width - 2, "the sides are no nearer than the outline");
+    });
+    assert.ok(
+      events.some((event) => event.type === "fled" && event.actorId === "lurker"),
+      `it leaves by the board's outline: ${JSON.stringify(events.map((event) => event.type))}`,
     );
   }
 

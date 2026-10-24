@@ -2416,6 +2416,7 @@
   "game.combat.ruleset.event.reason.approach": "nothing in reach, so it closed on {{target}}",
   "game.combat.ruleset.event.reason.approachSprint": "nothing in reach, so it sprinted toward {{target}}",
   "game.combat.ruleset.event.reason.coordination": "joins its side's attack on {{target}}",
+  "game.combat.ruleset.event.reason.cornered": "its nerve broke, but it had no way out, so it fought on",
   "game.combat.ruleset.event.reason.cost": "worth the limited use it spends",
   "game.combat.ruleset.event.reason.damage_heavy": "heavy damage to {{target}}",
   "game.combat.ruleset.event.reason.damage_solid": "solid damage to {{target}}",

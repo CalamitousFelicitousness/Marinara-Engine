@@ -19013,8 +19013,15 @@ function moraleTurn(ctx: RulesetCombatContext, actor: RulesetCombatant): boolean
 export function rulesetAtBoardEdge(state: RulesetEncounterState, combatant: RulesetCombatant): boolean {
   const grid = state.board?.grid;
   if (!grid || !rulesetPositionOf(combatant)) return true;
+  // On a shaped board (2026-10-24) its edge is its outline as well: beside a square off the map.
+  const outside = (grid as { outside?: boolean[][] }).outside;
   return rulesetFootprint(combatant).some(
-    (cell) => cell.x <= 0 || cell.y <= 0 || cell.x >= grid.width - 1 || cell.y >= grid.height - 1,
+    (cell) =>
+      cell.x <= 0 ||
+      cell.y <= 0 ||
+      cell.x >= grid.width - 1 ||
+      cell.y >= grid.height - 1 ||
+      (!!outside && [-1, 0, 1].some((dy) => [-1, 0, 1].some((dx) => outside[cell.y + dy]?.[cell.x + dx] === true))),
   );
 }
 

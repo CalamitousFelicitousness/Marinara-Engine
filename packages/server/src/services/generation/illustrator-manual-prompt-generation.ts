@@ -241,10 +241,7 @@ export function buildManualIllustratorPromptMessages(args: {
   const promptModeInstruction = args.selectedPromptTemplate?.trim();
   // Lorebook entries, summary and author notes follow the Illustrator's Context Sources,
   // exactly as in an automatic Illustrator run (#8246).
-  const referenceContext = buildAgentReferenceContextBlock(
-    args.context,
-    args.contextSources ?? getAgentContextSources({ settings: {} }),
-  );
+  const referenceContext = buildAgentReferenceContextBlock(args.context, args.contextSources);
   const systemPrompt = [
     promptModeInstruction
       ? [

@@ -3099,7 +3099,10 @@ function buildLoreBlock(context: AgentContext, sources: CustomAgentContextSource
  * chat summary and author notes. Shared with the manual Illustrator prompt writer so
  * `[illustrate:]` commands see the same lore as an automatic Illustrator run (#8246).
  */
-export function buildAgentReferenceContextBlock(context: AgentContext, sources: CustomAgentContextSources): string {
+export function buildAgentReferenceContextBlock(
+  context: AgentContext,
+  sources: CustomAgentContextSources = ALL_AGENT_CONTEXT_SOURCES,
+): string {
   const parts: string[] = [];
   const wrapFormat = normalizeAgentContextWrapFormat(context.wrapFormat);
 

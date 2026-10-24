@@ -1,5 +1,5 @@
 import { realpath } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { z } from "zod";
 import type { CapabilityGalleryImageAnimationInput, VideoGenerationResult } from "@marinara-engine/shared";
 import { isDebugAgentsEnabled } from "../../config/runtime-config.js";
@@ -63,7 +63,12 @@ export async function animateCapabilityGalleryImage(
       if (file.size > maxImageBytes) throw new ChatVideoError(400, "The selected gallery image is too large.");
       input.signal?.throwIfAborted();
       const bytes = await file.handle.readFile();
-      return await toVideoReferenceImage(bytes.toString("base64"));
+      return await toVideoReferenceImage(
+        bytes.toString("base64"),
+        runtime.publicReferenceUpload?.enabled
+          ? undefined
+          : `/api/global-gallery/file/${encodeURIComponent(basename(path))}`,
+      );
     } finally {
       await file.handle.close();
     }

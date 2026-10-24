@@ -406,7 +406,8 @@ export function ConnectionEditor() {
 
   // Local editable state
   const [localName, setLocalName] = useState("");
-  const [localProvider, setLocalProvider] = useState<APIProvider>("openai");
+  // Cached connections hydrate on mount; provider effects must preserve their saved media defaults.
+  const [localProvider, setLocalProvider] = useState<APIProvider>(() => (conn?.provider as APIProvider) ?? "openai");
   const [localBaseUrl, setLocalBaseUrl] = useState("");
   const [localApiKey, setLocalApiKey] = useState("");
   const [clearStoredApiKeyOnSave, setClearStoredApiKeyOnSave] = useState(false);

@@ -233,7 +233,7 @@ try {
     const publicUrl = `https://public.fixture.example${relativeUrl}`;
     assert.deepEqual(submissions[0].input.image_urls, [publicUrl, publicUrl]);
     await animateCapabilityGalleryImage(db, seedanceInput, provider);
-    assert.equal(calls.at(-1)!.request.publicReferenceUpload, undefined, "temporary upload remains opt-in");
+    assert.equal(calls.at(-1)!.request.publicReferenceUpload, null, "temporary upload remains opt-in");
     await connections.updateDefaultParameters(seedance.id, {
       videoGeneration: {
         service: "seedance",
@@ -242,6 +242,12 @@ try {
     });
     await animateCapabilityGalleryImage(db, seedanceInput, provider);
     assert.deepEqual(calls.at(-1)!.request.publicReferenceUpload, { enabled: true, expiry: "1h" });
+    assert.equal(
+      calls.at(-1)!.request.referenceImage?.url,
+      undefined,
+      "explicit upload retains its byte-based reference even when a protected public origin is configured",
+    );
+    assert.equal(calls.at(-1)!.request.lastFrameImage?.url, undefined);
     assert.equal(submissions.length, 1, "the fixture makes no live provider or temporary-upload requests");
   } finally {
     globalThis.fetch = originalFetch;

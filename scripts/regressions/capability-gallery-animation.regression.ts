@@ -96,6 +96,7 @@ try {
   assert.equal(calls[0].request.resolution, "480p");
   assert.equal(calls[0].request.referenceImage?.mimeType, "image/png");
   assert.equal(calls[0].request.referenceImage?.base64, png.toString("base64"));
+  assert.equal(calls[0].request.referenceImage?.url, "/api/global-gallery/file/fixture.png");
   assert.equal(calls[0].request.lastFrameImage, undefined);
   assert.equal(calls[0].request.queue, true);
   assert.equal(calls[0].request.connectionKey, primary.id);
@@ -184,6 +185,70 @@ try {
   await animateCapabilityGalleryImage(db, { ...input, galleryImageId: converted.id }, provider);
   assert.equal(calls.at(-1)!.request.referenceImage?.mimeType, "image/png");
   assert.notEqual(calls.at(-1)!.request.referenceImage?.base64, webp.toString("base64"));
+  assert.equal(calls.at(-1)!.request.referenceImage?.url, undefined, "converted image bytes have no public URL");
+
+  const filename = "Banner #1 + 100%.jpeg";
+  const jpeg = await sharp({ create: { width: 2, height: 2, channels: 3, background: "pink" } })
+    .jpeg()
+    .toBuffer();
+  writeFileSync(join(root, filename), jpeg);
+  const jpegImage = await gallery.createImage({ filePath: `global/${filename}` });
+  assert(jpegImage);
+  await animateCapabilityGalleryImage(db, { ...input, galleryImageId: jpegImage.id }, provider);
+  const relativeUrl = "/api/global-gallery/file/Banner%20%231%20%2B%20100%25.jpeg";
+  assert.equal(calls.at(-1)!.request.referenceImage?.url, relativeUrl);
+  assert.equal(calls.at(-1)!.request.referenceImage?.mimeType, "image/jpeg");
+  assert.equal(calls.at(-1)!.request.referenceImage?.base64, jpeg.toString("base64"));
+
+  const seedance = await connections.create(
+    createConnectionSchema.parse({
+      name: "Seedance public reference fixture",
+      provider: "video_generation",
+      videoGenerationSource: "seedance",
+      videoService: "seedance",
+      baseUrl: "https://8.8.8.8",
+      apiKey: "fixture-only",
+    }),
+  );
+  const seedanceInput = { ...input, connectionId: seedance.id, galleryImageId: jpegImage.id, loop: true };
+  const originalFetch = globalThis.fetch;
+  const originalPublicBase = process.env.VIDEO_REFERENCE_PUBLIC_BASE_URL;
+  const submissions: Array<{ input: { image_urls: string[] } }> = [];
+  await connections.update(fallback.id, { fallbackForAgents: false });
+  globalThis.fetch = async (url, options) => {
+    assert.equal(String(url), "https://8.8.8.8/v1/videos/generations");
+    submissions.push(JSON.parse(String(options?.body)));
+    return new Response(JSON.stringify({ error: "fixture stops before generation" }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+  try {
+    delete process.env.VIDEO_REFERENCE_PUBLIC_BASE_URL;
+    await assert.rejects(animateCapabilityGalleryImage(db, seedanceInput), /require.*publicly reachable HTTPS/);
+    assert.equal(submissions.length, 0, "missing public configuration does not submit or upload an image");
+    process.env.VIDEO_REFERENCE_PUBLIC_BASE_URL = "https://public.fixture.example";
+    await assert.rejects(animateCapabilityGalleryImage(db, seedanceInput), /400.*fixture stops before generation/);
+    assert.equal(submissions.length, 1, "the real Seedance adapter reaches the intercepted submission once");
+    const publicUrl = `https://public.fixture.example${relativeUrl}`;
+    assert.deepEqual(submissions[0].input.image_urls, [publicUrl, publicUrl]);
+    await animateCapabilityGalleryImage(db, seedanceInput, provider);
+    assert.equal(calls.at(-1)!.request.publicReferenceUpload, undefined, "temporary upload remains opt-in");
+    await connections.updateDefaultParameters(seedance.id, {
+      videoGeneration: {
+        service: "seedance",
+        seedance: { temporaryPublicReferenceUploadEnabled: true, temporaryPublicReferenceUploadExpiry: "1h" },
+      },
+    });
+    await animateCapabilityGalleryImage(db, seedanceInput, provider);
+    assert.deepEqual(calls.at(-1)!.request.publicReferenceUpload, { enabled: true, expiry: "1h" });
+    assert.equal(submissions.length, 1, "the fixture makes no live provider or temporary-upload requests");
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalPublicBase === undefined) delete process.env.VIDEO_REFERENCE_PUBLIC_BASE_URL;
+    else process.env.VIDEO_REFERENCE_PUBLIC_BASE_URL = originalPublicBase;
+    await connections.update(fallback.id, { fallbackForAgents: true });
+  }
   let finish!: () => void, started!: () => void;
   const generating = new Promise<void>((resolve) => {
     started = resolve;

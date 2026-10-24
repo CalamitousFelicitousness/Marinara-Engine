@@ -3055,13 +3055,7 @@ function rulesetCandidatesFrom(
         // A limited use (a flask, a slot, a use a day) thrown at worse than even odds is weighed
         // against keeping it for a fair throw: below even, its chance counts twice over (re-test
         // 2026-10-24: flasks thrown at disadvantage from beside a troll, 5 of 16 landing).
-        const limited = price > 0 || !!fallingAction?.uses || !!fallingAction?.itemUse;
-        const odds = limited && chance < 0.5 ? chance / 0.5 : 1;
-        // And the use kept for a fair throw is worth something of its own: the poorer the odds, the more.
-        if (odds < 1) {
-          candidate.action.poorOdds = true;
-          candidate.cost = (candidate.cost ?? 0) + 0.25 * (1 - odds);
-        }
+        const odds = rulesetFairOdds(candidate, price, fallingAction, chance);
         candidate.damage = Math.min(2, (worth / weighed) * (1 + others.length + again)) * chance * odds;
         candidate.action.expected = average * chance * (1 + others.length + again);
         if (average >= pool) candidate.finish = chance;
@@ -3134,13 +3128,15 @@ function rulesetCandidatesFrom(
         if (ally || target.down) continue;
         const rider = rulesetEffectWorth(definition, combat, encounter, actor, fallingAction, target) ?? 0;
         if (rider <= 0) continue;
-        candidate.setup = rider * chance;
+        candidate.setup = rider * chance * rulesetFairOdds(candidate, price, fallingAction, chance);
       } else {
         // What it does to them, read off what it puts on them: nothing, for what they already have
-        // or cannot take.
+        // or cannot take. As likely as it is to land, and a limited use kept for fair odds as a blow
+        // is (re-test 2026-10-24: oil thrown at disadvantage beside trolls, only to set up a fire).
         const holds = rulesetEffectWorth(definition, combat, encounter, actor, fallingAction, target);
         if (holds === 0) continue;
-        candidate.setup = holds ?? 0.4;
+        candidate.setup =
+          (holds ?? 0.4) * (ally ? 1 : chance * rulesetFairOdds(candidate, price, fallingAction, chance));
       }
       // Starting another held spell lets go of the one it holds up: as dear as what that one is worth,
       // so Guidance or Shield of Faith held does not keep Spirit Guardians in the book (re-test
@@ -3890,10 +3886,15 @@ function weighCaught(
     if (hurt > 0 && share + (walkers.length ? Math.max(0, rider) : 0) < 2 * hurt) return false;
     candidate.damage = Math.max(0, Math.min(2, share - hurt)) * chance;
     if (candidate.damage <= 0 && !(walkers.length && rider > 0)) return false;
-    // Whom of the other side it would likely drop, for orders that spare them.
+    // Whom of the other side it could drop, for orders that spare them: by the most it can do, as a
+    // single blow is weighed (K6 re-test 2026-10-24: a duellist under orders to spare killed an
+    // archer with an area blast).
+    const most = rulesetCombatIsPool(combat)
+      ? Math.max(average, rulesetPoolDamageMost(action?.damage))
+      : average * rulesetDamageCeiling(action?.damage);
     const dropped = foes.filter((target) => {
       const health = rulesetCombatHealth(definition, combat, target);
-      return average >= Math.max(1, health.value + health.temp);
+      return most >= Math.max(1, health.value + health.temp);
     });
     if (dropped.length) candidate.action.drops = dropped.map((target) => target.id);
     if (rider > 0) candidate.setup = Math.min(2, rider) * chance;
@@ -5103,6 +5104,25 @@ function rulesetDamageCeiling(damage: RulesetCombatAction["damage"] | undefined)
       .filter((one) => !one.targetIs && !one.onCritical && one.whileOn === undefined)
       .reduce((sum, one) => sum + one.count * one.sides + one.flat, 0);
   return Math.max(1, most / average);
+}
+
+/** What a limited use (a flask, a slot, a use a day) aimed at worse than even odds is worth of what
+ *  it would be at even odds: below even, its chance counts twice over, the candidate is marked so
+ *  whom its side wants down adds nothing to it, and keeping the use for a fair throw costs it the
+ *  more the poorer the odds (re-test 2026-10-24: flasks thrown at disadvantage beside a troll). */
+function rulesetFairOdds(
+  candidate: CombatAiCandidate<RulesetCandidate>,
+  price: number,
+  action: RulesetCombatAction | undefined,
+  chance: number,
+): number {
+  const limited = price > 0 || !!action?.uses || !!action?.itemUse;
+  const odds = limited && chance < 0.5 ? chance / 0.5 : 1;
+  if (odds < 1) {
+    candidate.action.poorOdds = true;
+    candidate.cost = (candidate.cost ?? 0) + 0.25 * (1 - odds);
+  }
+  return odds;
 }
 
 /** The most a blow's harm comes to in a `dice-pool` fight: each of its dice a success, its flat part

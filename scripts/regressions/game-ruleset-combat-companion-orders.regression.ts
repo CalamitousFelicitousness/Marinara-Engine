@@ -284,6 +284,32 @@ try {
     assert.ok(onGoblin <= 1, `two darts can roll 10: ${JSON.stringify(spared?.choice)}`);
   }
 
+  // ── Spare holds back an area that could kill, by the most its dice can roll (re-test 2026-10-24) ──
+  {
+    const flare = {
+      id: "flare",
+      name: "Flare",
+      budget: "action",
+      range: { normal: 150 },
+      area: { shape: "burst", size: 20 },
+      save: { save: "dex_save", difficulty: 15, onSuccess: "half" },
+      damage: { count: 8, sides: 6, flat: 0 },
+    };
+    const sturdy = (encounter: RulesetEncounterState) => {
+      for (const id of ["orc", "goblin"]) {
+        const one = rulesetCombatant(encounter, id)!;
+        one.health = { ...one.health!, value: 40, max: 40 };
+      }
+    };
+    assert.equal(
+      pick(field([flare]), { posture: "hold" }, [], sturdy)?.option.id,
+      "flare",
+      "it blasts when not told to spare",
+    );
+    const spared = pick(field([flare]), { posture: "hold", spare: true }, [], sturdy);
+    assert.notEqual(spared?.option.id, "flare", `8d6 can roll 48: ${JSON.stringify(spared?.choice)}`);
+  }
+
   // ── Whoever drops areas on the party comes first (re-test round 2, the cult mage) ──
   {
     const blast = {

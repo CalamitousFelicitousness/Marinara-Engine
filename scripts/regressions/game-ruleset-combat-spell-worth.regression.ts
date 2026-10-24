@@ -234,9 +234,19 @@ try {
       damage: { count: 2, sides: 6, flat: 0, type: "fire" },
       uses: { per: "day", count: 2 },
     };
-    const throws = (mode: "normal" | "disadvantage") => {
+    // And one that only sets something up, a net thrown to hold them (re-test 2026-10-24: oil).
+    const net = {
+      id: "flask",
+      name: "Net",
+      budget: "bonus",
+      toHit: 4,
+      range: { normal: 20 },
+      applies: [{ condition: "restrained", duration: { rounds: 1 } }],
+      uses: { per: "day", count: 2 },
+    };
+    const throws = (mode: "normal" | "disadvantage", thrown: Record<string, unknown> = flask) => {
       const { encounter, state } = fight({
-        pip: { side: "party", block: block([flask], { health: 38 }), at: { x: mode === "normal" ? 5 : 7, y: 4 } },
+        pip: { side: "party", block: block([thrown], { health: 38 }), at: { x: mode === "normal" ? 5 : 7, y: 4 } },
         troll: { side: "enemy", block: block([poke], { health: 84, defense: 15 }), at: { x: 8, y: 4 } },
         brom: { side: "party", block: block([poke], { health: 44 }), at: { x: 9, y: 4 } },
       });
@@ -252,6 +262,8 @@ try {
     assert.ok(poor.chance < 0.5 && fair.chance >= 0.5, `odds: ${fair.chance} then ${poor.chance}`);
     assert.equal(fair.id, "flask", "at even odds it throws");
     assert.notEqual(poor.id, "flask", "beside it, at disadvantage, it keeps the flask");
+    assert.equal(throws("normal", net).id, "flask", "a net at even odds, thrown");
+    assert.notEqual(throws("disadvantage", net).id, "flask", "and kept at poor odds");
   }
 
   // ── At 2 health beside what could fell it, mending itself beats a heavy blow (re-test 2026-10-24) ──

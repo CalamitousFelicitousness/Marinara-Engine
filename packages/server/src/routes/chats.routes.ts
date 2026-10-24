@@ -146,7 +146,7 @@ import { restoreBranchHudLists, trimJournalForBranch } from "../services/game/br
 import { removeGameInventoryTelling, switchGameInventoryTelling } from "../services/game/game-inventory.service.js";
 import { applyAllSegmentEdits, applyMessageSegmentEdits } from "../services/game/segment-edits.js";
 import { loadRulesetRegistry, resolveGameRuleset } from "../services/game/ruleset-registry.service.js";
-import { addGamePartyCards } from "../services/game/game-party-cards.js";
+import { addGamePartyCards, syncGamePartyIds } from "../services/game/game-party-cards.js";
 import type { Journal } from "../services/game/journal.service.js";
 import { createRegexScriptsStorage } from "../services/storage/regex-scripts.storage.js";
 import { filterRelevantLorebooks, processLorebooks } from "../services/lorebook/index.js";
@@ -1613,6 +1613,20 @@ export async function chatsRoutes(app: FastifyInstance) {
           updated = (await storage.getById(req.params.id)) ?? updated;
       } catch (err) {
         logger.warn(err, "Failed to add game cards for characters added to a game");
+      }
+    }
+    if (
+      updated &&
+      existing.mode === "game" &&
+      (cardVariableCharacterIdsToSeed.length > 0 || cardVariableCharacterIdsToDrop.length > 0)
+    ) {
+      try {
+        if (
+          await syncGamePartyIds(app.db, req.params.id, cardVariableCharacterIdsToSeed, cardVariableCharacterIdsToDrop)
+        )
+          updated = (await storage.getById(req.params.id)) ?? updated;
+      } catch (err) {
+        logger.warn(err, "Failed to update the game party for characters added or removed");
       }
     }
     if (updated && identityChanged) {

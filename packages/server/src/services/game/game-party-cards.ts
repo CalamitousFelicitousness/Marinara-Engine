@@ -101,3 +101,31 @@ export async function addGamePartyCards(db: DB, chatId: string, characterIds: re
   });
   return added;
 }
+
+/**
+ * The game's party list (`gamePartyCharacterIds`) as members join or leave a game from the
+ * Characters panel or Chat Settings: added ones join it and removed ones leave it, so the Game
+ * Master's prompt and a fight read the party the chat holds before the next session's start
+ * reconciles it (laptop playtest 2026-10-24: six in the chat, four in the party). The party's NPCs
+ * stay, and a game with no list yet is left to build one as it always has.
+ */
+export async function syncGamePartyIds(
+  db: DB,
+  chatId: string,
+  added: readonly string[],
+  removed: readonly string[],
+): Promise<boolean> {
+  if (added.length === 0 && removed.length === 0) return false;
+  let changed = false;
+  await createChatsStorage(db).patchMetadata(chatId, (current) => {
+    if (!Array.isArray(current.gamePartyCharacterIds)) return {};
+    const ids = (current.gamePartyCharacterIds as unknown[]).filter(
+      (id): id is string => typeof id === "string" && id.trim().length > 0,
+    );
+    const gone = new Set(removed);
+    const next = [...new Set([...ids.filter((id) => !gone.has(id)), ...added])];
+    changed = next.length !== ids.length || next.some((id, index) => id !== ids[index]);
+    return changed ? { gamePartyCharacterIds: next } : {};
+  });
+  return changed;
+}

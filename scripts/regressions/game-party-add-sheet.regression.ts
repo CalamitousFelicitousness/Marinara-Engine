@@ -2,7 +2,9 @@
  * A character added to a game on a ruleset from the Characters panel or Chat Settings (PATCH
  * /api/chats/:id) joins with a copy of their card's ruleset sheet, as one the Game Master recruits
  * does: the laptop playtest (2026-10-24) found Kesh, a level 5 monk, on a blank level-1 sheet. One
- * who already has a game card keeps it, and a game with no ruleset gets no card from here.
+ * who already has a game card keeps it, and a game with no ruleset gets no card from here. The game's
+ * party list follows who joins and leaves, on any game (six in the chat, four in the party, the same
+ * playtest).
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -64,6 +66,7 @@ try {
         ? { gameRuleset: { id: "local/ember-roads", version: ember.version, packageId: null, options: {} } }
         : {}),
       gameCharacterCards: [{ name: "Bram", class: "Ranger", rulesetSheet: { v: 1, build: {} } }],
+      gamePartyCharacterIds: [bram.id, "npc:guide"],
     });
     return made;
   };
@@ -71,6 +74,11 @@ try {
     const row = await chats.getById(chatId);
     const meta = (typeof row!.metadata === "string" ? JSON.parse(row!.metadata) : row!.metadata) as Record<string, any>;
     return meta.gameCharacterCards as Array<Record<string, any>>;
+  };
+  const partyOf = async (chatId: string) => {
+    const row = await chats.getById(chatId);
+    const meta = (typeof row!.metadata === "string" ? JSON.parse(row!.metadata) : row!.metadata) as Record<string, any>;
+    return meta.gamePartyCharacterIds as string[];
   };
   const add = (chatId: string, ids: string[]) =>
     app.inject({ method: "PATCH", url: `/api/chats/${chatId}`, payload: { characterIds: ids } });
@@ -93,11 +101,16 @@ try {
   // Sent again, nothing is added twice.
   await add(played.id, [bram.id, kesh.id, mara.id]);
   assert.equal((await cardsOf(played.id)).length, 3);
+  // The party list follows who joins and leaves, its NPCs kept.
+  assert.deepEqual(await partyOf(played.id), [bram.id, "npc:guide", kesh.id, mara.id]);
+  await add(played.id, [bram.id, kesh.id]);
+  assert.deepEqual(await partyOf(played.id), [bram.id, "npc:guide", kesh.id]);
 
   // A game with no ruleset is left as it was.
   const plain = await game(false);
   await add(plain.id, [bram.id, kesh.id]);
   assert.equal((await cardsOf(plain.id)).length, 1);
+  assert.deepEqual(await partyOf(plain.id), [bram.id, "npc:guide", kesh.id], "its party list follows too");
 
   console.log("game-party-add-sheet: ok");
 } finally {

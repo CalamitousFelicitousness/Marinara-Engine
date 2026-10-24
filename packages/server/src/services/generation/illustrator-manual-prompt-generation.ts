@@ -1,4 +1,9 @@
-import { DEFAULT_GENERATION_PARAMS, type AgentContext } from "@marinara-engine/shared";
+import {
+  DEFAULT_GENERATION_PARAMS,
+  getAgentContextSources,
+  type AgentContext,
+  type CustomAgentContextSources,
+} from "@marinara-engine/shared";
 import {
   buildCharacterAppearanceReferenceBlock,
   NOVELAI_V5_MAX_CHARACTER_PROMPTS,
@@ -8,6 +13,7 @@ import {
 import { logger } from "../../lib/logger.js";
 import {
   agentRequestOptions,
+  buildAgentReferenceContextBlock,
   gateAgentTemperature,
   normalizeAgentContextSize,
   renderAgentPromptTemplate,
@@ -227,10 +233,18 @@ export function buildManualIllustratorPromptMessages(args: {
   request?: string;
   /** Generated Videos: the clip offer the Illustrator agent gets, so a manual illustration can become a clip too. */
   videoOffer?: Parameters<typeof formatOptionalVideoOffer>[0] | null;
+  /** The Illustrator agent's Context Sources; omitted means the built-in defaults. */
+  contextSources?: CustomAgentContextSources;
 }): ChatMessage[] {
   // Custom prompts may mix visual instructions with schemas or generation conditions.
   // Preserve them intact; the manual contract below overrides only when/how to return the prompt.
   const promptModeInstruction = args.selectedPromptTemplate?.trim();
+  // Lorebook entries, summary and author notes follow the Illustrator's Context Sources,
+  // exactly as in an automatic Illustrator run (#8246).
+  const referenceContext = buildAgentReferenceContextBlock(
+    args.context,
+    args.contextSources ?? getAgentContextSources({ settings: {} }),
+  );
   const systemPrompt = [
     promptModeInstruction
       ? [
@@ -246,6 +260,7 @@ export function buildManualIllustratorPromptMessages(args: {
       : "No visual style profile is selected. Infer only the visual treatment supported by the scene context.",
     args.characterPromptInstruction?.trim() ?? "",
     buildCharacterPersonaContext(args.context),
+    ...(referenceContext ? [referenceContext] : []),
   ].join("\n\n");
   const messages: ChatMessage[] = [
     {
@@ -305,6 +320,7 @@ export async function writeManualIllustratorPromptPlan(args: {
     imagePromptInstructions: args.imagePromptInstructions,
     request: args.request,
     videoOffer: args.videoOffer,
+    contextSources: getAgentContextSources(args.illustratorAgent),
   });
   args.debugLog?.(
     "[debug/illustrator/manual-illustration-prompt] messages:\n%s",
@@ -323,7 +339,7 @@ export async function writeManualIllustratorPromptPlan(args: {
     );
     if (!measureContextBudget(requestMessages, { maxContext, maxTokens }).fits) {
       throw new Error(
-        "Manual Illustrator request exceeds the connection context limit. Shorten the selected prompt or reduce Illustrator context size, or increase the connection context limit.",
+        "Manual Illustrator request exceeds the connection context limit. Shorten the selected prompt, reduce the Illustrator context size or Context Sources, or increase the connection context limit.",
       );
     }
     return args.illustratorAgent.provider.chatComplete(requestMessages, {

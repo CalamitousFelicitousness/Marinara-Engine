@@ -3094,6 +3094,41 @@ function buildLoreBlock(context: AgentContext, sources: CustomAgentContextSource
   return parts.join("\n");
 }
 
+/**
+ * The reference blocks an agent's Context Sources gate: activated lorebook entries,
+ * chat summary and author notes. Shared with the manual Illustrator prompt writer so
+ * `[illustrate:]` commands see the same lore as an automatic Illustrator run (#8246).
+ */
+export function buildAgentReferenceContextBlock(context: AgentContext, sources: CustomAgentContextSources): string {
+  const parts: string[] = [];
+  const wrapFormat = normalizeAgentContextWrapFormat(context.wrapFormat);
+
+  if (sources.activatedLorebookEntries && context.activatedLorebookEntries?.length) {
+    parts.push(`<activated_lorebook_context>`);
+    parts.push(`Lorebook entries activated for the main generation on this turn:`);
+    for (const entry of context.activatedLorebookEntries) {
+      parts.push(`<entry id="${escapeXml(entry.id)}" name="${escapeXml(entry.name ?? "")}">`);
+      parts.push(sanitizePromptLeaf(entry.content, wrapFormat));
+      parts.push(`</entry>`);
+    }
+    parts.push(`</activated_lorebook_context>`);
+  }
+
+  if (sources.chatSummary && context.chatSummary) {
+    parts.push(`<chat_summary>`);
+    parts.push(escapeXml(context.chatSummary));
+    parts.push(`</chat_summary>`);
+  }
+
+  if (sources.authorNotes && context.authorNotes) {
+    parts.push(`<author_notes>`);
+    parts.push(escapeXml(context.authorNotes));
+    parts.push(`</author_notes>`);
+  }
+
+  return parts.join("\n");
+}
+
 function pushLoreField(parts: string[], label: string, value: string | undefined): void {
   const text = value?.trim();
   if (!text) return;
@@ -3448,28 +3483,8 @@ function buildAgentExtras(
     }
   }
 
-  if (sources.activatedLorebookEntries && context.activatedLorebookEntries?.length) {
-    parts.push(`<activated_lorebook_context>`);
-    parts.push(`Lorebook entries activated for the main generation on this turn:`);
-    for (const entry of context.activatedLorebookEntries) {
-      parts.push(`<entry id="${escapeXml(entry.id)}" name="${escapeXml(entry.name ?? "")}">`);
-      parts.push(sanitizePromptLeaf(entry.content, wrapFormat));
-      parts.push(`</entry>`);
-    }
-    parts.push(`</activated_lorebook_context>`);
-  }
-
-  if (sources.chatSummary && context.chatSummary) {
-    parts.push(`<chat_summary>`);
-    parts.push(escapeXml(context.chatSummary));
-    parts.push(`</chat_summary>`);
-  }
-
-  if (sources.authorNotes && context.authorNotes) {
-    parts.push(`<author_notes>`);
-    parts.push(escapeXml(context.authorNotes));
-    parts.push(`</author_notes>`);
-  }
+  const referenceContext = buildAgentReferenceContextBlock(context, sources);
+  if (referenceContext) parts.push(referenceContext);
 
   if (context.memory._sourceMaterial) {
     parts.push(`<source_material>`);

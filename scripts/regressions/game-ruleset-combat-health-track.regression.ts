@@ -317,11 +317,48 @@ try {
     refuse(
       (doc) => (doc.catalogs = JSON.parse(emberText).catalogs),
       /Health is the track "wounds", which carries no buffer for temporary points/,
-    ); // A maximum the sheet works out is the ruleset's threshold, so it is accepted.
-    parsedOrThrow(
+    );
+    // A start read off the sheet could be full, so a health track starts at its default.
+    refuse(
+      (doc) => (doc.sheet.live.tracks.at(-1).startFrom = { field: "toughness" }),
+      /"wounds" starts where the sheet says, so it may start full: a health track starts at its default/,
+    );
+  }
+
+  // ── A threshold the sheet works out is each character's own ──
+  {
+    const threshold = parsedOrThrow(
       woundsDocument((doc) => (doc.sheet.live.tracks.at(-1).max = { field: "toughness" })),
       "a threshold read off the sheet",
     );
+    const tough = (toughness: number, live: unknown = {}) => ({
+      ...traveller(live),
+      build: buildOf({ ...travellerBuild(), fields: { calling: "Hauler", toughness } }),
+    });
+    const state = createRulesetEncounter({
+      definition: threshold,
+      seed: 4242,
+      combatants: [tough(2, { tracks: { wounds: 1 } }), hound],
+      roller: dice(6, 5, 1, 1),
+    });
+    assert.deepEqual(rulesetCombatHealth(threshold, threshold.combat!, who(state, "juno")), {
+      value: 1,
+      max: 2,
+      temp: 0,
+    });
+    // A build whose threshold comes to nothing has no health to fight with, as a pool whose
+    // maximum comes to nothing has none: that is the character, not a broken ruleset.
+    const none = createRulesetEncounter({
+      definition: threshold,
+      seed: 4242,
+      combatants: [tough(0), hound],
+      roller: dice(6, 5, 1, 1),
+    });
+    assert.deepEqual(rulesetCombatHealth(threshold, threshold.combat!, who(none, "juno")), {
+      value: 0,
+      max: 0,
+      temp: 0,
+    });
   }
 
   // ── Health on a plain track needs 1.383 to install ──

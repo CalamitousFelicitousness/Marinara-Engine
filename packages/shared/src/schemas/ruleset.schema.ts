@@ -12566,18 +12566,22 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         return null;
       }
       // A plain track fills from its floor up to its maximum (1.383), and a full one is out of it.
-      // Its maximum is the ruleset's, so one that starts there puts every fresh character into
-      // their first fight already down.
+      // One that starts full puts every fresh character into their first fight already down. A
+      // start read off the sheet could be anywhere, so a health track starts at its `default` (or
+      // its floor), and that is checked against a maximum written as a number. A maximum the sheet
+      // works out is the character's own, as a pool's is: a build whose threshold comes to nothing
+      // has no health to fight with, exactly as one whose hit point maximum does.
       if (!woundTracks.has(health.track)) {
         const track = sheet.live.tracks.find((entry) => entry.id === health.track)!;
+        if (track.startFrom) {
+          issue(
+            [...path, "track"],
+            `"${health.track}" starts where the sheet says, so it may start full: a health track starts at its default`,
+          );
+        }
         if (typeof track.max === "number" && track.max <= track.min) {
           issue([...path, "track"], `"${health.track}" has no room above its floor, so it cannot be the health track`);
-        } else if (
-          typeof track.max === "number" &&
-          !track.startFrom &&
-          track.default !== undefined &&
-          track.default >= track.max
-        ) {
+        } else if (typeof track.max === "number" && track.default !== undefined && track.default >= track.max) {
           issue([...path, "track"], `"${health.track}" starts full, so it cannot be the health track`);
         }
         return null;
@@ -15417,7 +15421,8 @@ function useIssues(
     }
     value(use.gate.difficulty, "number", [...at, "gate", "difficulty"]);
   }
-  // A wound track has boxes and no buffer, as an ability's temporary points are refused there too.
+  // A track, wound or plain (1.383), carries no buffer, as an ability's temporary points are refused
+  // there too.
   const health = definition.combat?.health ?? definition.battle?.health;
   const track =
     health && "track" in health ? definition.sheet.live.tracks.find((one) => one.id === health.track) : null;

@@ -2858,8 +2858,9 @@ same keys for a d20 system:
   naming a plain track (no `levels` or `boxes`) that FILLS UP from its `min` to its `max` (Capability
   API 1.383): damage adds the points, a heal takes them off, and a track at its `max` is out of the
   fight, as a pool at zero is. Genesys's Wounds is one, with the Wound Threshold as its `max`; a
-  system where you go down only PAST the threshold makes the `max` one more than it. A plain track
-  may not start at its `max`, and takes no `damageKinds`. No track grants temporary points.
+  system where you go down only PAST the threshold makes the `max` one more than it. A plain health
+  track starts at its `default` (not a `startFrom`), may not start at its `max`, and takes no
+  `damageKinds`. A `max` the sheet works out is each character's own, as a pool's maximum is. No track grants temporary points.
 - `defense`: required, a value reference. A field the player enters, or a derived value you compute.
 - `initiative`: required. The dice rolled once at the start, and an optional modifier reference. A
   tie goes to the higher modifier, and then to the order the fight was set up in. `"each": "round"`

@@ -256,10 +256,10 @@ export interface RulesetCombatHealth {
  *
  * A WOUND TRACK is reported as the levels it has LEFT: `value` is how many boxes are still clear
  * and `max` is the track's length. A plain track that fills up (1.383) is read the same way: the
- * room left above its value, out of its length from floor to maximum. That is deliberate and it is what keeps the rest of the fight
- * written in its own words: "down" is a combatant at zero, and a full track is a combatant with no
- * boxes left, so `dropToZero`, the dying rules, the recap and the screen all keep asking the one
- * question they already ask. A track carries no buffer, so `temp` is always 0 on one.
+ * room left above its value, out of its length from floor to maximum. That is deliberate and it
+ * is what keeps the rest of the fight written in its own words: "down" is a combatant at zero,
+ * and a full track is a combatant with no boxes left, so `dropToZero`, the dying rules, the recap
+ * and the screen all keep asking the one question they already ask. A track carries no buffer, so `temp` is always 0 on one.
  */
 export function rulesetCombatHealth(
   definition: RulesetDefinition,

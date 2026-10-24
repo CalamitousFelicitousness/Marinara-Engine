@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  createRulesetEncounter,
   defaultRulesetSheetBuild,
   parseRulesetDefinition,
   rulesetPositionOf,
@@ -24,7 +25,7 @@ import type { TacticalGrid } from "../../packages/shared/src/features/tactical-c
 const dataDir = mkdtempSync(join(tmpdir(), "marinara-deploy-spread-"));
 process.env.DATA_DIR = dataDir;
 process.env.FILE_STORAGE_DIR = join(dataDir, "storage");
-const { createRulesetFight } =
+const { createRulesetFight, rulesetDeploySpread } =
   await import("../../packages/server/src/services/game/ruleset-combat-director.service.js");
 
 try {
@@ -102,6 +103,56 @@ try {
       spread.every((cell) => cell.x <= Math.max(...together.map((one) => one.x)) + 2),
       `and none of them steps far out toward the mage: ${JSON.stringify(spread)}`,
     );
+  }
+
+  {
+    // Only a side with somebody in it that thinks about the fight (S1b re-test): a wolf pack or a
+    // horde of zombies facing the same blast comes on bunched as it always does.
+    const definition = withMage([slam]);
+    const sides = (mind: string) =>
+      rulesetDeploySpread(
+        definition,
+        createRulesetEncounter({
+          definition,
+          seed: 1,
+          board: {
+            grid: {
+              width: 16,
+              height: 12,
+              tiles: Array.from({ length: 12 }, () => Array.from({ length: 16 }, () => "plains")),
+            } as never,
+            placements: {
+              caster: { x: 0, y: 5 },
+              pack0: { x: 15, y: 4 },
+              pack1: { x: 15, y: 5 },
+              pack2: { x: 15, y: 6 },
+            },
+          },
+          combatants: [
+            {
+              id: "caster",
+              name: "Caster",
+              side: "party",
+              block: {
+                health: 20,
+                defense: 12,
+                initiativeModifier: 0,
+                speed: 30,
+                actions: [{ ...blast, damage: { count: 8, sides: 6, flat: 0 } }],
+              } as never,
+            },
+            ...[0, 1, 2].map((i) => ({
+              id: `pack${i}`,
+              name: `Pack ${i}`,
+              side: "enemy" as const,
+              block: { health: 11, defense: 13, initiativeModifier: 0, speed: 40, mind, actions: [slam] } as never,
+            })),
+          ],
+        }),
+      );
+    assert.deepEqual(sides("instinct"), {}, "a wolf pack does not spread");
+    assert.deepEqual(sides("mindless"), {}, "nor a horde of zombies");
+    assert.deepEqual(sides("cunning"), { enemy: 3 }, `a cunning band does: ${JSON.stringify(sides("cunning"))}`);
   }
 
   {

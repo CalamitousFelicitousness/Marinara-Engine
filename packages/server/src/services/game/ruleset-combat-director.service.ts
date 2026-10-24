@@ -659,15 +659,23 @@ function rulesetThinkersOf(
  * How far apart each side deploys (combat AI S1a): one past the size of the largest area that harms
  * the other side holds at the start, as the crowding term reads it (a burst all around its centre, a
  * cone or a line a third of its length), so its opening blast catches one or two of them, not the
- * whole block. Nothing for a side the other holds no such area against.
+ * whole block. Nothing for a side the other holds no such area against, nor for one with nobody in it
+ * that thinks about the fight (S1b re-test: a wolf pack and a horde of zombies deployed spread).
  */
-function rulesetDeploySpread(
+export function rulesetDeploySpread(
   definition: RulesetDefinition,
   encounter: RulesetEncounterState,
 ): { party?: number; enemy?: number } {
   const spread: { party?: number; enemy?: number } = {};
+  const thinks = (side: "party" | "enemy") =>
+    encounter.combatants.some((one) => {
+      if (one.side !== side || one.object) return false;
+      const mind = rulesetCombatantMind(definition, one);
+      return mind !== "mindless" && mind !== "instinct";
+    });
   for (const foe of encounter.combatants) {
     const facing = foe.side === "party" ? "enemy" : "party";
+    if (!thinks(facing)) continue;
     for (const action of foe.actions) {
       if (!action.area || !action.damage || rulesetSafeAverage(action.damage) <= 0) continue;
       if (!rulesetActionAvailable(foe, action, encounter, definition)) continue;

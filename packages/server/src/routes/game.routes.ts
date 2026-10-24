@@ -115,6 +115,7 @@ import { createGameWorldSnapshotsStorage } from "../services/storage/game-world-
 import { loadGameWorld, saveGameWorldSnapshot } from "../services/game/game-world.service.js";
 import { createConnectionsStorage } from "../services/storage/connections.storage.js";
 import { createCharactersStorage } from "../services/storage/characters.storage.js";
+import { buildFallbackGameCharacterCard } from "../services/game/game-party-cards.js";
 import { createCharacterGalleryStorage } from "../services/storage/character-gallery.storage.js";
 import { createPersonaGalleryStorage } from "../services/storage/persona-gallery.storage.js";
 import { createGalleryStorage } from "../services/storage/gallery.storage.js";
@@ -3042,42 +3043,6 @@ export function applyGeneratedGameCharacterCards(
  */
 function gameCardsForPrompt(cards: Array<Record<string, unknown>>): Array<Record<string, unknown>> {
   return cards.map(({ rulesetSheet: _sheet, ...card }) => card);
-}
-
-function buildFallbackGameCharacterCard(characterData: Record<string, any>, characterName: string) {
-  const description =
-    typeof characterData.description === "string" && characterData.description.trim()
-      ? characterData.description.trim()
-      : typeof characterData.personality === "string" && characterData.personality.trim()
-        ? characterData.personality.trim()
-        : `${characterName} joins the party.`;
-  const appearance =
-    typeof characterData.extensions?.appearance === "string" && characterData.extensions.appearance.trim()
-      ? characterData.extensions.appearance.trim()
-      : typeof characterData.appearance === "string" && characterData.appearance.trim()
-        ? characterData.appearance.trim()
-        : "";
-  const backstory =
-    typeof characterData.extensions?.backstory === "string" && characterData.extensions.backstory.trim()
-      ? characterData.extensions.backstory.trim()
-      : typeof characterData.backstory === "string" && characterData.backstory.trim()
-        ? characterData.backstory.trim()
-        : "";
-
-  return {
-    name: characterName,
-    shortDescription: description,
-    class: "Companion",
-    abilities: [],
-    strengths: [],
-    weaknesses: [],
-    extra: Object.fromEntries(
-      [
-        ["appearance", appearance],
-        ["backstory", backstory],
-      ].filter((entry): entry is [string, string] => Boolean(entry[1])),
-    ),
-  };
 }
 
 function getDiscordWebhookUrl(meta: Record<string, unknown>): string {

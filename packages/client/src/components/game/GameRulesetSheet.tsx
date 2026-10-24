@@ -28,7 +28,6 @@ import {
   evaluateRulesetSheet,
   readRulesetLive,
   rulesetKeptCalls,
-  resolveRulesetValueRef,
   rulesetCheckEffects,
   rulesetCheckSources,
   rulesetHideLines,
@@ -59,6 +58,7 @@ import { stalePartySheet, useSavePartySheet } from "../../hooks/use-party-sheet"
 import { rulesetCheckValueText } from "../../lib/ruleset-resolution";
 import {
   rulesetListRowsShown,
+  rulesetPoolLevels,
   rulesetPoolGroupLabel,
   rulesetSheetAttacks,
   rulesetSheetSummaryShown,
@@ -584,15 +584,7 @@ export function GameRulesetSheet({
   );
 
   // The level a pool's slots are cast at, for one that names its own (5e's pact slots).
-  const poolLevels = useMemo(() => {
-    const out: Record<string, number> = {};
-    for (const pool of definition.sheet.live.pools) {
-      if (!pool.level) continue;
-      const level = Math.trunc(resolveRulesetValueRef(definition, build, pool.level, evaluated));
-      if (level > 0) out[pool.id] = level;
-    }
-    return out;
-  }, [definition, build, evaluated]);
+  const poolLevels = useMemo(() => rulesetPoolLevels(definition, build, evaluated), [definition, build, evaluated]);
 
   const checkSources = useMemo(
     () => rulesetCheckSources(definition, build, live, items),

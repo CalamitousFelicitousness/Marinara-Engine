@@ -146,6 +146,7 @@ import { restoreBranchHudLists, trimJournalForBranch } from "../services/game/br
 import { removeGameInventoryTelling, switchGameInventoryTelling } from "../services/game/game-inventory.service.js";
 import { applyAllSegmentEdits, applyMessageSegmentEdits } from "../services/game/segment-edits.js";
 import { loadRulesetRegistry, resolveGameRuleset } from "../services/game/ruleset-registry.service.js";
+import { addGamePartyCards } from "../services/game/game-party-cards.js";
 import type { Journal } from "../services/game/journal.service.js";
 import { createRegexScriptsStorage } from "../services/storage/regex-scripts.storage.js";
 import { filterRelevantLorebooks, processLorebooks } from "../services/lorebook/index.js";
@@ -1602,6 +1603,16 @@ export async function chatsRoutes(app: FastifyInstance) {
         updated = (await dropRemovedChatCardVariables(app, req.params.id, cardVariableCharacterIdsToDrop)) ?? updated;
       } catch (err) {
         logger.warn(err, "Failed to drop onboarding card variables for removed chat characters");
+      }
+    }
+    // A character joining a game on a ruleset from here joins with their card's sheet, as one the
+    // Game Master recruits does (laptop playtest 2026-10-24).
+    if (updated && existing.mode === "game" && cardVariableCharacterIdsToSeed.length > 0) {
+      try {
+        if (await addGamePartyCards(app.db, req.params.id, cardVariableCharacterIdsToSeed))
+          updated = (await storage.getById(req.params.id)) ?? updated;
+      } catch (err) {
+        logger.warn(err, "Failed to add game cards for characters added to a game");
       }
     }
     if (updated && identityChanged) {

@@ -198,10 +198,7 @@ try {
   assert.ok(button.ok);
   assert.deepEqual(rulesetKeptCalls(button.live), []);
   // With no familiar the next fight calls nobody.
-  assert.equal(
-    fightWith(dismissed.live).encounter.combatants.filter((one) => one.calledBy === "wren").length,
-    0,
-  );
+  assert.equal(fightWith(dismissed.live).encounter.combatants.filter((one) => one.calledBy === "wren").length, 0);
 
   console.log("game-ruleset-kept-calls: ok");
 } finally {

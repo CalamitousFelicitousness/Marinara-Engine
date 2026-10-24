@@ -8,6 +8,7 @@ import {
   isRulesetItemHidden,
   readRulesetLive,
   resolveRulesetAbilityValues,
+  resolveRulesetValueRef,
   type EvaluatedRulesetSheet,
   type RulesetCatalogEntriesById,
   type RulesetCombatAmount,
@@ -180,4 +181,20 @@ export function rulesetListRowsShown(definition: RulesetDefinition, listId: stri
     });
   });
   return always.length > 0 ? [...own, ...always] : rows;
+}
+
+/** The level each pool that has one pays at (1.116, 1.171), by pool id, where it is above 0: a
+ *  warlock's pact slots, "level 3". */
+export function rulesetPoolLevels(
+  definition: RulesetDefinition,
+  build: RulesetSheetBuild,
+  evaluated?: EvaluatedRulesetSheet,
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const pool of definition.sheet.live.pools) {
+    if (!pool.level) continue;
+    const level = Math.trunc(resolveRulesetValueRef(definition, build, pool.level, evaluated));
+    if (level > 0) out[pool.id] = level;
+  }
+  return out;
 }

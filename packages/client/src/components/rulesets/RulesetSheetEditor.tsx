@@ -27,6 +27,7 @@ import {
   rulesetBuilderUsesChoiceConstraints,
   type RulesetBuilderState,
   type RulesetCatalogEntriesById,
+  type RulesetLiveState,
   type RulesetCatalogPayload,
   type RulesetDefinition,
   type RulesetLayerOptions,
@@ -42,7 +43,7 @@ import { RulesetSheetBuilder } from "./RulesetSheetBuilder";
 import { RulesetCatalogRefreshModal } from "./RulesetCatalogRefreshModal";
 import { rulesetCatalogQuery } from "../../hooks/use-capability-packages";
 import { applyCatalogRefresh, planCatalogRefresh, type CatalogRefreshRow } from "../../lib/ruleset-catalog";
-import { rulesetRowSpellcastingText } from "../../lib/ruleset-sheet-view";
+import { rulesetPoolLevels, rulesetRowSpellcastingText, rulesetSheetAttacks } from "../../lib/ruleset-sheet-view";
 import { rulesetCheckValueText } from "../../lib/ruleset-resolution";
 import { DraftNumberInput } from "../ui/DraftNumberInput";
 import { clamp, inputClass, labelClass, rulesetPickCount, TypedInput, type Scalar } from "./RulesetTypedInput";
@@ -281,6 +282,11 @@ export function RulesetSheetEditor({
     queries: catalogIds.map((catalogId) => rulesetCatalogQuery(definition.id, catalogId, definition.version)),
     combine: combineCatalogs,
   });
+  const poolLevels = useMemo(() => rulesetPoolLevels(definition, build, evaluated), [definition, build, evaluated]);
+  const attacks = useMemo(
+    () => rulesetSheetAttacks(definition, build, live as RulesetLiveState | undefined, items, loadedCatalogs),
+    [definition, build, live, items, loadedCatalogs],
+  );
 
   // Whether the user has changed anything in THIS editor. Opening a sheet must never write to it,
   // so the late recompute below is only for a sheet that is already being edited.
@@ -608,10 +614,46 @@ export function RulesetSheetEditor({
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               {restingPools.map((pool) => (
                 <div key={pool.key} className="flex min-w-0 flex-col gap-1">
-                  <span className={labelClass}>{pool.label}</span>
+                  <span className={labelClass}>
+                    {pool.label}
+                    {poolLevels[pool.key] !== undefined && (
+                      <span className="ml-1 font-normal normal-case tracking-normal">
+                        {t("game.ruleset.sheet.poolLevel", { level: poolLevels[pool.key]! })}
+                      </span>
+                    )}
+                  </span>
                   <span className="rounded-lg border border-dashed border-[var(--border)] px-2 py-1 text-center text-xs font-semibold tabular-nums text-[var(--foreground)]">
                     {pool.start === "empty" ? t("ui.rulesets.sheet.poolStartsEmpty", { max: pool.max }) : pool.max}
                   </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {/* Its attacks as a fight works them out (laptop class builds 2026-10-24): Unarmed Strike, and
+            what its features do to them, such as Martial Arts' Dexterity. */}
+        {attacks.length > 0 && (
+          <div className="space-y-1">
+            <h4 className="text-xs font-semibold text-[var(--foreground)]">{t("game.ruleset.sheet.attacks")}</h4>
+            <div className="space-y-1">
+              {attacks.map((attack) => (
+                <div
+                  key={attack.id}
+                  className="flex flex-wrap items-baseline gap-x-2 rounded-lg border border-[var(--border)] px-2 py-1"
+                >
+                  <span className="min-w-0 flex-1 basis-24 break-words text-xs font-semibold text-[var(--foreground)]">
+                    {attack.label}
+                  </span>
+                  {attack.toHit !== undefined && (
+                    <span className="shrink-0 text-xs tabular-nums text-[var(--foreground)]">
+                      {t("game.ruleset.sheet.toHit", { value: `${attack.toHit >= 0 ? "+" : ""}${attack.toHit}` })}
+                    </span>
+                  )}
+                  {attack.damage && (
+                    <span className="shrink-0 text-xs tabular-nums text-[var(--muted-foreground)]">
+                      {attack.damage}
+                    </span>
+                  )}
                 </div>
               ))}
             </div>

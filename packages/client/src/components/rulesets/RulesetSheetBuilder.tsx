@@ -70,6 +70,7 @@ import {
   workOutRulesetListRow,
 } from "@marinara-engine/shared";
 import { rulesetCatalogQuery } from "../../hooks/use-capability-packages";
+import { rulesetPoolLevels, rulesetSheetAttacks } from "../../lib/ruleset-sheet-view";
 import { api } from "../../lib/api-client";
 import { visibleCatalogEntries } from "../../lib/ruleset-catalog";
 import { rulesetCheckValueText } from "../../lib/ruleset-resolution";
@@ -389,6 +390,11 @@ export function RulesetSheetBuilder({
   const evaluated = useMemo(
     () => (preview ? evaluateRulesetSheet(definition, preview.build) : rawEvaluated),
     [definition, preview, rawEvaluated],
+  );
+  // Its attacks as a fight works them out, for the summary.
+  const attacks = useMemo(
+    () => (ready ? rulesetSheetAttacks(definition, build, undefined, undefined, catalogs) : []),
+    [build, catalogs, definition, ready],
   );
   const increases = (preview?.state ?? rawState).applied?.increases ?? {};
   // What the reads below see: the preview's state (its method, once the builder starts the sheet).
@@ -2019,6 +2025,7 @@ export function RulesetSheetBuilder({
   // never crowd the scores.
   const summary = definition.gm.sheetSummary;
   const restingPools = outsideGame ? listRulesetLivePools(definition, build) : [];
+  const poolLevels = outsideGame ? rulesetPoolLevels(definition, build, evaluated) : {};
   const fieldById = new Map(definition.sheet.fields.map((field) => [field.id, field]));
   const blankFields = defaultRulesetSheetBuild(definition).fields;
   const shownFields = [
@@ -2238,6 +2245,8 @@ export function RulesetSheetBuilder({
                 <div key={pool.key} className="rounded border border-dashed border-[var(--border)] px-1.5 py-0.5">
                   <dt className="break-words text-[0.625rem] leading-tight text-[var(--muted-foreground)]">
                     {pool.label}
+                    {poolLevels[pool.key] !== undefined &&
+                      ` · ${t("game.ruleset.sheet.poolLevel", { level: poolLevels[pool.key]! })}`}
                   </dt>
                   <dd className="text-xs font-semibold tabular-nums text-[var(--foreground)]">
                     {pool.start === "empty" ? t("ui.rulesets.sheet.poolStartsEmpty", { max: pool.max }) : pool.max}
@@ -2248,6 +2257,19 @@ export function RulesetSheetBuilder({
           )}
           {gearNote && (
             <p className="text-[0.6875rem] text-[var(--muted-foreground)]">{t("ui.rulesets.sheet.gearInGame")}</p>
+          )}
+          {/* Its attacks as a fight works them out (laptop class builds 2026-10-24): Unarmed Strike,
+              and Martial Arts' Dexterity on a quarterstaff. */}
+          {attacks.length > 0 && (
+            <p className="text-[0.6875rem] text-[var(--foreground)]">
+              <span className="text-[var(--muted-foreground)]">{t("game.ruleset.sheet.attacks")}: </span>
+              {attacks
+                .map(
+                  (attack) =>
+                    `${attack.label}${attack.toHit !== undefined ? ` ${attack.toHit >= 0 ? "+" : ""}${attack.toHit}` : ""}${attack.damage ? ` (${attack.damage})` : ""}`,
+                )
+                .join(", ")}
+            </p>
           )}
           {(["saves", "skills"] as const).map((what) => {
             const names = trainedNames(what);

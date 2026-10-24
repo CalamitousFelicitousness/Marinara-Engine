@@ -96,6 +96,7 @@ import {
 import { useConnections, useModelParameterCapabilities } from "../../hooks/use-connections";
 import { useDefaultPreset, usePresets } from "../../hooks/use-presets";
 import { useCharacterGroups, usePersonas } from "../../hooks/use-characters";
+import { GameRulesetUpdate } from "./GameRulesetUpdate";
 import { GameSetupRulesChooser, GameSetupRulesetSheetStatus } from "./GameSetupRulesChooser";
 import { getCombatStyle, isBuiltInCombatStyle, listCombatStyles, resolveCombatStyle } from "./combat-styles";
 import { GameSetupWorldKitChooser, MapPackLock } from "./GameSetupWorldKitChooser";
@@ -2428,6 +2429,9 @@ export function GameSetupWizard({
                       </label>
                     </div>
 
+                    {!isNewGame && chatMetadata?.gameRuleset != null && (
+                      <GameRulesetUpdate chatId={activeChatId} pin={chatMetadata.gameRuleset} variant="wizard" />
+                    )}
                     {rulesets.length > 0 && (
                       <GameSetupRulesChooser
                         rulesets={rulesets}

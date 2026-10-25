@@ -2757,6 +2757,10 @@ function OverallGenerationSettings() {
   const setQueueImageGenerationRequests = useUIStore((s) => s.setQueueImageGenerationRequests);
   const reviewImagePromptsBeforeSend = useUIStore((s) => s.reviewImagePromptsBeforeSend);
   const setReviewImagePromptsBeforeSend = useUIStore((s) => s.setReviewImagePromptsBeforeSend);
+  const saveGeneratedImagesAsWebp = useUIStore((s) => s.saveGeneratedImagesAsWebp);
+  const setSaveGeneratedImagesAsWebp = useUIStore((s) => s.setSaveGeneratedImagesAsWebp);
+  const generatedImageWebpQuality = useUIStore((s) => s.generatedImageWebpQuality);
+  const setGeneratedImageWebpQuality = useUIStore((s) => s.setGeneratedImageWebpQuality);
 
   return (
     <SettingsSection
@@ -2780,6 +2784,35 @@ function OverallGenerationSettings() {
           onChange={setReviewImagePromptsBeforeSend}
           help={localizeUi("settings.controls.reviewMediaPrompts.help")}
         />
+        <ToggleSetting
+          anchorId={getSettingsControlAnchorId("generated-image-webp")}
+          label={localizeUi("settings.controls.generatedImageWebp.label")}
+          checked={saveGeneratedImagesAsWebp}
+          onChange={setSaveGeneratedImagesAsWebp}
+          help={localizeUi("settings.controls.generatedImageWebp.help")}
+        />
+        {saveGeneratedImagesAsWebp && (
+          <label
+            id={getSettingsControlAnchorId("generated-image-webp-quality")}
+            className="flex scroll-mt-3 flex-col gap-1.5 rounded-lg p-1"
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-xs">{localizeUi("settings.controls.generatedImageWebpQuality.label")}</span>
+              <span className="text-xs tabular-nums text-[var(--muted-foreground)]">{generatedImageWebpQuality}</span>
+              <HelpTooltip text={localizeUi("settings.controls.generatedImageWebpQuality.help")} />
+            </div>
+            <input
+              type="range"
+              min={1}
+              max={100}
+              step={1}
+              aria-label={localizeUi("settings.controls.generatedImageWebpQuality.label")}
+              value={generatedImageWebpQuality}
+              onChange={(event) => setGeneratedImageWebpQuality(Number(event.target.value))}
+              className="w-full accent-[var(--primary)]"
+            />
+          </label>
+        )}
       </div>
     </SettingsSection>
   );

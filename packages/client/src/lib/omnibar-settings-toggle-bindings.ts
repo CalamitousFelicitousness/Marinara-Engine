@@ -123,6 +123,10 @@ export const OMNIBAR_SETTINGS_TOGGLE_BINDINGS: Readonly<Record<string, OmnibarSe
     get: (state) => state.queueImageGenerationRequests,
     set: (value) => useUIStore.getState().setQueueImageGenerationRequests(value),
   },
+  "generated-image-webp": {
+    get: (state) => state.saveGeneratedImagesAsWebp,
+    set: (value) => useUIStore.getState().setSaveGeneratedImagesAsWebp(value),
+  },
   "custom-cursor": {
     get: (state) => state.customCursorEnabled,
     set: (value) => useUIStore.getState().setCustomCursorEnabled(value),

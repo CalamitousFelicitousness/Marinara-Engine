@@ -266,6 +266,8 @@ export interface ImageGenRequest {
   characterPrompts?: SceneIllustrationCharacterPrompt[];
   /** Request a transparent image background when the provider/model supports it. */
   transparentBackground?: boolean;
+  /** Keep uncompressed provider output for sprite/portrait processing that requires its original pixels and format. */
+  preserveProviderOutput?: boolean;
   /** Optional caller-owned abort signal for cancelling long image requests. */
   signal?: AbortSignal;
   /** Emit the final provider request even when the global log level is above debug. */
@@ -355,7 +357,7 @@ export interface VideoGenerationRequest {
   // Gemini Omni currently takes duration guidance through the prompt, not video_config.
   durationSeconds: number;
   aspectRatio: "16:9" | "9:16";
-  resolution?: "480p" | "720p" | "1080p";
+  resolution?: "480p" | "720p" | "768p" | "1080p";
   referenceImage?: VideoReferenceImage | null;
   /** API-format workflow JSON for local ComfyUI video generation. */
   comfyWorkflow?: string;

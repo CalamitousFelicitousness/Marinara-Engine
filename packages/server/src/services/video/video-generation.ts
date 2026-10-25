@@ -19,7 +19,11 @@ import {
 import { buildAtlasCloudVideoRequest, runAtlasCloudPrediction } from "../media/atlas-cloud.js";
 import { adaptAtlasCloudVideoRequest, fetchAtlasCloudModelSchema } from "../media/atlas-cloud-video-schema.js";
 import { generateToAPIsVideo, isToAPIsMediaUrl, ToAPIsSubmittedTaskError } from "../media/toapis-media.js";
-import { buildComfyUiLoraWorkflowReplacements } from "@marinara-engine/shared";
+import {
+  buildComfyUiLoraWorkflowReplacements,
+  getOpenRouterVideoModelLimits,
+  resolveOpenRouterVideoModelDefaults,
+} from "@marinara-engine/shared";
 
 import type {
   VideoReferenceImage,
@@ -1031,6 +1035,16 @@ async function generateOpenRouterVideo(
 ): Promise<VideoGenerationResult> {
   if (!apiKey.trim()) throw new Error("OpenRouter video generation requires an OpenRouter API key");
   const model = request.model?.trim() || DEFAULT_OPENROUTER_VIDEO_MODEL;
+  if (getOpenRouterVideoModelLimits(model)) {
+    request = {
+      ...request,
+      ...resolveOpenRouterVideoModelDefaults(model, {
+        durationSeconds: request.durationSeconds,
+        aspectRatio: request.aspectRatio,
+        resolution: request.resolution ?? "720p",
+      }),
+    };
+  }
   const startUrl = buildOpenRouterVideosUrl(baseUrl, "videos");
   const body: Record<string, unknown> = {
     model,
@@ -1057,6 +1071,12 @@ async function generateOpenRouterVideo(
     }
     body.frame_images = frameImages;
   }
+
+  logDebugOverride(
+    request.debugMode === true || isDebugAgentsEnabled(),
+    "[video-gen/openrouter] final request payload:\n%s",
+    JSON.stringify(body.frame_images ? { ...body, frame_images: "[redacted reference images]" } : body, null, 2),
+  );
 
   const started = await safeFetch(startUrl, {
     method: "POST",
@@ -1540,7 +1560,7 @@ function buildXaiVideosUrl(baseUrl: string, path: string): string {
   }
 }
 
-function buildOpenRouterVideosUrl(baseUrl: string, path: string): string {
+export function buildOpenRouterVideosUrl(baseUrl: string, path: string): string {
   const fallback = "https://openrouter.ai/api/v1";
   const raw = (baseUrl || fallback).trim().replace(/\/+$/, "") || fallback;
   try {

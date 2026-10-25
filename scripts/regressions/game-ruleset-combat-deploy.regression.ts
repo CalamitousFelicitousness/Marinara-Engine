@@ -52,6 +52,7 @@ try {
     deploy?: boolean;
     ai?: boolean;
     adaStart?: "front";
+    allStart?: boolean;
     foeStarts?: Array<"behind" | "among">;
   }) => {
     const foes = opts.foeStarts ?? [undefined, undefined];
@@ -64,6 +65,7 @@ try {
         id: name.toLowerCase(),
         name,
         ...(name === "Ada" && opts.adaStart ? { start: opts.adaStart } : {}),
+        ...(opts.allStart ? { start: "front" as const } : {}),
       })),
       enemies: foes.map((start, i) => ({
         id: `foe${i}`,
@@ -174,6 +176,14 @@ try {
       !commandRulesetCombatDirector(definition, state, { type: "deploy", unitId: "bram", to: free }).ok,
       "and nobody is set down once it has begun",
     );
+  }
+
+  {
+    // A Game Master who started the whole party somewhere started nobody in particular (laptop party
+    // A): the player still sets every one of them down.
+    const state = begin({ deploy: true, allStart: true });
+    assert.equal(state.stage, "deploy");
+    assert.deepEqual(directedRulesetView(definition, state)!.deploy?.ids, ["ada", "bram", "cora"]);
   }
 
   {

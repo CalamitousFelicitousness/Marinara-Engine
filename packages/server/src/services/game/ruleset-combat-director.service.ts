@@ -704,10 +704,15 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
     const placements = rulesetStartPlacements(laid.grid, laid.placements, stands, places, nudged);
     if (JSON.stringify(placements) !== JSON.stringify(laid.placements))
       encounter = encounterOn((laid = { ...laid, placements }));
-    const deployers = Object.keys(roles);
+    // A Game Master who placed the whole party placed nobody in particular (laptop party A: everyone
+    // "front" or "hidden"): the player still sets them down, from where it put them.
+    const members = encounter.combatants.filter((one) => one.side === "party" && !one.object).map((one) => one.id);
+    const everyone = Object.keys(roles).length === 0 && members.length > 1;
+    const deployers = everyone ? members : Object.keys(roles);
     const cells =
       input.deploy && deployers.length > 0 ? rulesetDeployCells(laid.grid, placements, stands, deployers) : [];
-    if (cells.length > 0) deploy = { cells, placed: input.party.flatMap((one) => (places[one.id] ? [one.id] : [])) };
+    if (cells.length > 0)
+      deploy = { cells, placed: everyone ? [] : input.party.flatMap((one) => (places[one.id] ? [one.id] : [])) };
   }
   for (const [id, tier] of heldToTier) {
     const built = rulesetCombatant(encounter, id);

@@ -493,9 +493,9 @@ export const ENCOUNTER_BESTIARY_INDEX_MAX = 60;
 
 /** How many catalog entry names one list of the sheet brief shows. The names are what lets a Game
  *  Master give an invented caster spells this ruleset actually has.
- *  ponytail: the first ones in declaration order, with no filtering by tier or level. A long catalog
- *  wants the names narrowed to the tier being written, and that is the upgrade path. */
-export const ENCOUNTER_SHEET_NAMES_MAX = 60;
+ *  Enough for a whole spell list (5e's SRD has about 320), so the Game Master picks from what is there
+ *  rather than inventing one it lacks (laptop party A: Ray of Sickness). */
+export const ENCOUNTER_SHEET_NAMES_MAX = 400;
 
 /** The ruleset's own sheet, as a Game Master needs it to write an invented creature on it: every id
  *  with what it may hold, and the lists a fight reads with the names their catalogs offer. */
@@ -836,7 +836,7 @@ export function buildInitPrompt(
     for (const list of sheet.lists) {
       inst += `  - lists.${list.id}: rows of ${list.columns.join(", ")}${list.counts ? `; ${list.counts}` : ""}\n`;
       if (list.nameColumn && list.names.length > 0) {
-        inst += `    A row may name an entry this ruleset offers, as {"${list.nameColumn}":"<name>"}, and the Engine fills in the rest of it: ${list.names.join(", ")}${list.more > 0 ? `, and ${list.more} more` : ""}.\n`;
+        inst += `    A row may name an entry this ruleset offers, as {"${list.nameColumn}":"<name>"}, and the Engine fills in the rest of it: ${list.names.join(", ")}${list.more > 0 ? `, and ${list.more} more` : ""}. Give an invented creature only names this ruleset offers: one it does not have does nothing in a fight, so pick the nearest one it has.\n`;
       }
       if (list.openBy.length > 0) {
         inst += `    Which of these a creature may have depends on ${list.openBy.map((field) => `fields.${field}`).join(" and ")}, so set it.\n`;

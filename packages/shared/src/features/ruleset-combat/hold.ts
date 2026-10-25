@@ -318,10 +318,9 @@ function entryOpenTo(
   return boundFilters(definition, catalogId).every(({ filter, field }) => {
     const texts = sheetFieldMatchTexts(field, sheet.fields[field.id]).map((text) => text.trim().toLowerCase());
     if (valuesOf(entry, filter.id).some((candidate) => texts.includes(candidate))) return true;
+    // No value at all (an invented Cult Necromancer with no Class) holds it to nothing either.
     return (
-      !!everything &&
-      texts.length > 0 &&
-      !everything.some((one) => valuesOf(one, filter.id).some((candidate) => texts.includes(candidate)))
+      !!everything && !everything.some((one) => valuesOf(one, filter.id).some((candidate) => texts.includes(candidate)))
     );
   });
 }

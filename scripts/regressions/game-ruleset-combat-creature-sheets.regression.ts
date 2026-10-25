@@ -1390,13 +1390,10 @@ const spellbook = parsedOrThrow(
   const invented = fightOf(sorcerer({ class: "Orc War-Shaman" }, [{ name: "Mending Touch" }, { name: "Spark Lash" }]));
   assert.ok(spellsOf(invented).includes("Mending Touch") && spellsOf(invented).includes("Spark Lash"));
   assert.doesNotMatch(invented.adjustments.join("\n"), /not open to a sheet/);
-  // A caster that names no class has nothing open to it in a list organised by class.
+  // Nor does naming no class (laptop party A: a Cult Necromancer lost Chill Touch and Animate Dead).
   const classless = fightOf(sorcerer({ class: "" }, [{ name: "Spark Lash" }]));
-  assert.match(
-    classless.adjustments.join("\n"),
-    /Road Caster: "Spark Lash" is not open to a sheet with no Class in this ruleset, so dropped\./,
-  );
-  assert.deepEqual(spellsOf(classless), []);
+  assert.doesNotMatch(classless.adjustments.join("\n"), /not open to a sheet/);
+  assert.ok(spellsOf(classless).includes("Spark Lash"));
 
   // The choices it left open are filled: only with its class's spells, only what it can pay for.
   const veteran = { proficiency: "veteran", adjective: "disciplined" } as const;

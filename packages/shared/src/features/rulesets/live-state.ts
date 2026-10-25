@@ -15,6 +15,7 @@ import { z } from "zod";
 import {
   RULESET_CONDITIONS_MAX,
   RULESET_CATALOG_ROW_KEY,
+  RULESET_STANDS_FOR_ROW_KEY,
   rulesetSheetBuildSchema,
   storedRulesetSheetsSchema,
   RULESET_WOUND_EXTRA_PER_ROW,
@@ -2339,9 +2340,18 @@ export function rulesetEntryNamed(
   build: RulesetSheetBuild,
   catalogs: RulesetCatalogEntriesById,
   wanted: string,
-): { ok: true; ref: string; entry: RulesetCatalogEntry } | { ok: false; reason: RulesetSheetRefusal } {
+):
+  | {
+      ok: true;
+      ref: string;
+      entry: RulesetCatalogEntry;
+      /** The entry its row stands for (1.477), when another's: Pact of the Chain's Find Familiar. */
+      standsFor?: RulesetCatalogEntry;
+    }
+  | { ok: false; reason: RulesetSheetRefusal } {
   const byRef = rulesetCatalogEntriesByRef(catalogs);
   const matched = new Set<string>();
+  const standing = new Map<string, string>();
   for (const list of definition.sheet.lists) {
     const rows = build.lists?.[list.id];
     if (!Array.isArray(rows)) continue;
@@ -2355,6 +2365,8 @@ export function rulesetEntryNamed(
       const label = byRef.get(ref)?.label;
       if ((typeof name === "string" && sameName(name, wanted)) || (label && sameName(label, wanted))) {
         matched.add(ref);
+        const stands = own(cells, RULESET_STANDS_FOR_ROW_KEY);
+        if (typeof stands === "string" && stands !== ref) standing.set(ref, stands);
       }
     }
   }
@@ -2363,7 +2375,8 @@ export function rulesetEntryNamed(
   const ref = [...matched][0]!;
   const entry = byRef.get(ref);
   if (!entry) return { ok: false, reason: "unknown-entry" };
-  return { ok: true, ref, entry };
+  const standsFor = standing.has(ref) ? byRef.get(standing.get(ref)!) : undefined;
+  return { ok: true, ref, entry, ...(standsFor ? { standsFor } : {}) };
 }
 
 export type RulesetUsePlan =
@@ -2445,10 +2458,13 @@ export function rulesetUseKeptCall(
   op: Extract<RulesetSheetOp, { op: "use" }>,
 ): { ok: true; entry: string; as: string } | { ok: false; reason: RulesetSheetRefusal } | null {
   const found = rulesetEntryNamed(definition, build, catalogs, op.name.trim());
-  const mechanics = found.ok ? found.entry.mechanics : undefined;
+  // A row standing for another entry calls what that one calls (laptop party A: Pact of the Chain's
+  // Find Familiar row is the Pact's, and the spell's calls were never read).
+  const source = found.ok ? (found.standsFor?.mechanics?.calls ? found.standsFor : found.entry) : undefined;
+  const mechanics = source?.mechanics;
   const calls = mechanics?.calls;
-  if (!found.ok || !mechanics?.beforeFight || !calls || definition.combat === undefined) return null;
-  const entry = found.entry.label;
+  if (!source || !mechanics?.beforeFight || !calls || definition.combat === undefined) return null;
+  const entry = source.label;
   const plain = (value: string | number) => String(value).trim().toLowerCase();
   const holds = (value: unknown, want: unknown) => {
     if (value === undefined) return false;

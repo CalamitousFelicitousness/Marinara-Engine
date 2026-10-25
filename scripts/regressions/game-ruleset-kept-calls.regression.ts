@@ -93,6 +93,25 @@ try {
       },
     ],
   });
+  // Pact of the Chain: a feature whose spell row stands for Find Familiar (1.477).
+  doc.catalogs.push({
+    id: "pacts",
+    label: "Pacts",
+    feeds: ["spells"],
+    entries: [
+      {
+        id: "chain",
+        label: "Pact of the Chain",
+        rows: [
+          {
+            list: "spells",
+            values: { name: "Find Familiar", level: 1, prepared: true },
+            standsFor: "spells/find-familiar",
+          },
+        ],
+      },
+    ],
+  });
   const parsed = parseRulesetDefinition(doc);
   assert.ok(parsed.ok, parsed.ok ? "" : parsed.issues.join("; "));
   const definition: RulesetDefinition = parsed.definition;
@@ -134,6 +153,40 @@ try {
   // Cast again, the new one takes its place.
   const again = say(`[sheet: op="use" name="Find Familiar" as="Cat"]`, cast.live);
   assert.deepEqual(rulesetKeptCalls(again.live.wren), [{ entry: "Find Familiar", as: "Cat" }]);
+
+  // A row another entry wrote that stands for it calls what it calls (laptop party A: the Pact's).
+  const pacts = definition.catalogs!.find((entry) => entry.id === "pacts")!.entries! as RulesetCatalogEntry[];
+  const chained = rulesetSheetBuildSchema.parse({
+    ...build,
+    lists: { spells: pacts.flatMap((entry) => rowsFromCatalogEntry("pacts", entry).map((row) => row.row)) },
+  });
+  const pact = applySheetCommandTags(`[sheet: who="Mara" op="use" name="Find Familiar" as="Owl, Fey"]`, {
+    definition,
+    cards: [{ name: "Mara", build: chained }],
+    playerName: "Wren",
+    live: {},
+    catalogs: { spells, pacts, ...bestiary },
+  });
+  assert.equal(pact.outcomes[0]!.ok, true, pact.outcomes[0]!.reason);
+  assert.match(pact.outcomes[0]!.now ?? "", /Owl, Fey called, and stays/);
+  assert.deepEqual(rulesetKeptCalls(pact.live.mara), [{ entry: "Find Familiar", as: "Owl, Fey" }]);
+  const pactFight = createRulesetFight({
+    definition,
+    seed: 3,
+    party: [{ id: "mara", name: "Mara" }],
+    enemies: [{ id: "rat", name: "Giant Rat", creature: "creatures/rat" }],
+    cards: [{ name: "Mara", rulesetSheet: { v: 1, build: chained } }],
+    playerName: "Mara",
+    live: pact.live,
+    partyCatalogs: { spells, pacts },
+    bestiary,
+  });
+  assert.ok(pactFight.ok, pactFight.ok ? "" : pactFight.error);
+  assert.equal(
+    pactFight.fight.encounter.combatants.filter((one) => one.calledBy === "mara").length,
+    1,
+    "the owl comes",
+  );
 
   // ── The Game Master reads it ──
   assert.match(renderRulesetSheetBlock(definition, cards[0]!, cast.live.wren), /With them: Owl, Fey \(Find Familiar\)/);

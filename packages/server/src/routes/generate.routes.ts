@@ -242,6 +242,7 @@ import {
   isRoleplayCommandAllowed,
   getRoleplayCommandActivity,
   applyGameInventoryTags,
+  dropGameLootRepeats,
   applyGamePlaceTags,
   worldKitSize,
   worldPlaceByName,
@@ -880,7 +881,12 @@ import {
 import { createAgentLorebookTriggerResolver } from "../services/generation/agent-lorebook-triggers.js";
 import { addInventoryEntry, addLocationEntry, upsertQuest, addNpcEntry } from "../services/game/journal.service.js";
 import { updateJournal } from "../services/generation/game-journal-runtime.js";
-import { buildGmFormatReminder, buildGmSceneState, insertStableGmInstructions } from "../services/game/gm-prompts.js";
+import {
+  buildGmFormatReminder,
+  buildGmSceneState,
+  insertStableGmInstructions,
+  rulesetRestAskedFor,
+} from "../services/game/gm-prompts.js";
 import {
   createGameRollTagRegex,
   parseRollDiceToolResult,
@@ -5655,6 +5661,13 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             ...(pinnedGameRuleset?.status === "ok"
               ? {
                   ruleset: pinnedGameRuleset.definition,
+                  // A rest the player asked for by name is named in this turn's reminder.
+                  ...(() => {
+                    const asked = input.impersonate
+                      ? undefined
+                      : rulesetRestAskedFor(pinnedGameRuleset.definition, latestUserContent);
+                    return asked ? { playerAsksRest: asked } : {};
+                  })(),
                   // Gated on impersonate like the package verbs below: an impersonated turn is the
                   // player writing, nothing applies sheet commands to it, and a tag the model wrote
                   // there would land in the player's own message as visible text.
@@ -10342,7 +10355,12 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 normalizeGameInventoryStacks(currentMeta.gameInventory),
                 telling,
               );
-              const requested = fullResponse;
+              // What a won fight already dropped is not added again by the reply to its recap.
+              const recap = [...allChatMessages].reverse().find((message) => message.role === "user");
+              const requested = dropGameLootRepeats(
+                fullResponse,
+                typeof recap?.content === "string" ? recap.content : "",
+              );
               const rules =
                 tellsInventory || turnRests.length > 0 || turnMaterials.length > 0
                   ? await loadGameInventoryItemBook(

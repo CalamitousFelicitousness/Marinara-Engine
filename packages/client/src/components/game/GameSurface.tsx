@@ -38,6 +38,7 @@ import {
   rulesetReadsItems,
   rulesetCombatStyle,
   gameDungeonMapFromMetadata,
+  GAME_LOOT_GIVEN_LINE,
 } from "@marinara-engine/shared";
 // ──────────────────────────────────────────────
 // Game: Main Surface (rendered by ChatArea when mode === "game")
@@ -3290,7 +3291,16 @@ function GameSurfaceComponent({
         };
         const forgetCommand = () => processedPartyChangeCommandsRef.current.delete(commandKey);
         if (partyChange.change !== "add") {
-          removePartyMember.mutate(variables, { onError: forgetCommand });
+          // The player says whether one leaves for good (laptop playtest 2026-10-25: the Game Master
+          // took the player's fallen heroes out of the party as it told them dead).
+          void showConfirmDialog({
+            title: localizeUi("game.partyLeave.title", { name: characterName }),
+            message: localizeUi("game.partyLeave.message", { name: characterName }),
+            confirmLabel: localizeUi("game.partyLeave.remove"),
+            cancelLabel: localizeUi("game.partyLeave.keep"),
+          }).then((confirmed) => {
+            if (confirmed) removePartyMember.mutate(variables, { onError: forgetCommand });
+          });
           continue;
         }
         // mutateAsync: the callbacks passed to mutate() only fire for the last of several calls.
@@ -11941,7 +11951,7 @@ function GameSurfaceComponent({
         if (sheetRecapLine) recapLines.push(sheetRecapLine);
         if (summary.battlefieldSummary?.trim()) recapLines.push(`Battlefield: ${summary.battlefieldSummary.trim()}`);
         // What dropped is already in the bags, so the Game Master narrates it and never adds it again.
-        if (lootText) recapLines.push(`Loot (already in the party's bags): ${lootText}`);
+        if (lootText) recapLines.push(`${GAME_LOOT_GIVEN_LINE}${lootText}`);
         if (leftText) recapLines.push(`Left behind (nobody could carry it): ${leftText}`);
         if (!lootText && !leftText)
           recapLines.push(

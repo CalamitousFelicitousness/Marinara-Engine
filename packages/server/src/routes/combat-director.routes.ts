@@ -42,6 +42,7 @@ import {
   combatBossSchema,
   combatInterruptFields,
   combatOrdersSchema,
+  type CombatOrders,
   combatTacticsSchema,
   combatAiHintsSchema,
   rulesetBestiarySheetCatalogIds,
@@ -111,6 +112,21 @@ import { resolveVisibleGameStateAnchor } from "./generate/generate-route-utils.j
 
 /** Where a chat keeps who plays each of its party in a fight (the player or the Engine). */
 const COMBAT_CONTROLLERS_KEY = "combatControllers";
+
+/** Where a chat keeps the standing orders the player gave each companion, for its next fights too
+ *  (laptop playtest 2026-10-25: orders set back to none at every fight). */
+const COMBAT_ORDERS_KEY = "combatOrders";
+
+function rememberedOrders(meta: Record<string, unknown>): Record<string, CombatOrders> {
+  const kept = meta[COMBAT_ORDERS_KEY];
+  if (!kept || typeof kept !== "object" || Array.isArray(kept)) return {};
+  return Object.fromEntries(
+    Object.entries(kept as Record<string, unknown>).flatMap(([id, orders]) => {
+      const parsed = combatOrdersSchema.safeParse(orders);
+      return parsed.success ? [[id, parsed.data] as const] : [];
+    }),
+  );
+}
 
 function rememberedControllers(meta: Record<string, unknown>): Record<string, "manual" | "ai"> {
   const kept = meta[COMBAT_CONTROLLERS_KEY];
@@ -1338,6 +1354,14 @@ export async function combatDirectorRoutes(
             const controller = kept[member.id];
             if (controller) built.fight.controllers[member.id] = controller;
           }
+          // And the orders the player last gave each companion, where whom one protects is here too.
+          const ordered = rememberedOrders(meta);
+          for (const unit of state.party) {
+            const orders = ordered[unit.id];
+            if (unit.orders || !orders) continue;
+            if (orders.protectId !== undefined && !state.party.some((one) => one.id === orders.protectId)) continue;
+            unit.orders = orders;
+          }
           state.rulesetFight = built.fight;
           // A party the Engine plays all of has nobody for the player to set down.
           if (built.fight.deploy && rulesetDeployers(state, built.fight).length === 0) rulesetBeginFight(built.fight);
@@ -1424,6 +1448,7 @@ export async function combatDirectorRoutes(
     // Who the player hands to the Engine, or takes back, is kept for the chat's next fights too
     // (laptop party A 2026-10-25: companions back on Player at every fight).
     let controlled: { unitId: string; controller: "manual" | "ai" } | undefined;
+    let ordered: { unitId: string; orders: CombatOrders | null } | undefined;
     try {
       const result = await serialized(input.chatId, async () => {
         const found = await load(input.chatId, input.anchor);
@@ -1517,6 +1542,7 @@ export async function combatDirectorRoutes(
         // A refusal changed nothing, so nothing is saved and no request id is spent on it.
         if (refused) return { refusal: refused };
         if (input.command.type === "control" && ruleset) controlled = input.command;
+        if (input.command.type === "orders" && ruleset) ordered = input.command;
         state.requests = [...state.requests, input.requestId].slice(-256);
         // What it spends is kept only while the step is saved: a save that fails takes it back.
         if (storySpend && "spend" in storySpend) {
@@ -1526,6 +1552,21 @@ export async function combatDirectorRoutes(
         }
         return await saveLettingGo(row.id, input.chatId, state, session, ruleset);
       });
+      if (ordered) {
+        const { unitId, orders } = ordered;
+        await chats
+          .patchMetadata(
+            input.chatId,
+            (current) => {
+              const kept: Record<string, CombatOrders> = { ...rememberedOrders(current) };
+              if (orders) kept[unitId] = orders;
+              else delete kept[unitId];
+              return { [COMBAT_ORDERS_KEY]: kept };
+            },
+            { touchUpdatedAt: false },
+          )
+          .catch((err) => logger.warn(err, "Unable to remember a companion's orders"));
+      }
       if (controlled) {
         const { unitId, controller } = controlled;
         await chats

@@ -12687,6 +12687,16 @@ export function getCapabilityPackageInstallIssue(
   ) {
     return "A ruleset with an encounter budget (combat.threat.budget, or a threat tier's worth) requires schemaVersion 2 and capabilityApi 1.793 or newer";
   }
+  // A rest that clears temporary points, 1.794.
+  if (
+    !declaresApi(794) &&
+    (() => {
+      const rests = plainRecord(ruleset)?.rests;
+      return Array.isArray(rests) && rests.some((rest) => plainRecord(plainRecord(rest)?.clear)?.temp !== undefined);
+    })()
+  ) {
+    return "A ruleset whose rest clears temporary points (clear.temp) requires schemaVersion 2 and capabilityApi 1.794 or newer";
+  }
   // A list's pools counted up rather than spent, 1.791.
   if (
     !declaresApi(791) &&

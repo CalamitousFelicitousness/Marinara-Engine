@@ -2572,6 +2572,9 @@ const restSchema = z
       .object({
         text: z.array(sheetId).max(12).default([]),
         conditions: z.union([z.literal("all"), z.array(sheetId).max(RULESET_CONDITIONS_MAX)]).default([]),
+        /** Every pool's temporary points go as it ends (Capability API 1.794): 5e's temporary hit
+         *  points, which last until a long rest. */
+        temp: z.boolean().optional(),
       })
       .strict()
       .default({}),

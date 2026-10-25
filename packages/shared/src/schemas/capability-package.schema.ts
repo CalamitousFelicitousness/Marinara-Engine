@@ -1511,7 +1511,9 @@ const capabilityPackageManifestBaseSchema = z
 // 1.793: an encounter budget, `combat.threat.budget`, and a threat tier's `worth`: what a fight may hold
 //        for a party by level and game difficulty. The Game Master is told it, and invented opponents
 //        are brought down a rung while a fight is over it.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 793 } as const);
+// 1.794: a rest's `clear.temp`: every pool's temporary points go as it ends (5e's temporary hit points
+//        at a long rest).
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 794 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

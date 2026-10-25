@@ -39,6 +39,7 @@ import { fileURLToPath } from "node:url";
 import {
   applyRulesetCombatChoice,
   capRulesetCasterSheet,
+  raiseRulesetCasterPools,
   raiseRulesetSheetAbilities,
   createRulesetEncounter,
   holdRulesetSheetHealth,
@@ -1963,6 +1964,37 @@ const dataDir = mkdtempSync(join(tmpdir(), "marinara-creature-sheets-"));
     assert.match(raised.adjusted[0] ?? "", /^Charisma was set to \d+, as no scores were written\.$/);
     const written = { ...sheet, abilities: { cha: 8 } };
     assert.equal(raiseRulesetSheetAbilities(spellbook, written, tier).sheet, written);
+  }
+  // Sent with no slots at all, it is given the pools its spells are paid out of, so they stay (laptop
+  // playtest 2026-10-25: casters with no class level cast Chill Touch for 11 rounds).
+  {
+    const fields = Object.fromEntries(
+      Object.entries(caster(many).sheet.fields).filter(([id]) => !id.startsWith("slots_max_")),
+    );
+    const slotless = started({
+      definition: spellbook,
+      cards: [card("Brenna", fighterBuild())],
+      party: [{ id: "brenna", name: "Brenna" }],
+      enemies: [
+        {
+          id: "mage",
+          name: "Ash Mage",
+          tier: "cr_2",
+          boss: true,
+          proposed: { ...caster(many), sheet: { ...caster(many).sheet, fields } },
+        },
+      ],
+    }).rulesetFight!;
+    assert.ok(spellsOf(slotless, "mage").includes("Ember Lance"), spellsOf(slotless, "mage").join(", "));
+    assert.ok(
+      slotless.adjustments.some((line) =>
+        /was set to 1, so its spells have the pools they are paid out of\./.test(line),
+      ),
+      slotless.adjustments.join("; "),
+    );
+    assert.ok(!slotless.adjustments.some((line) => /beyond what this sheet can pay for/.test(line)));
+    // One sent with some slots is its own and untouched.
+    assert.equal(raiseRulesetCasterPools(spellbook, sheet, fightCatalogs(spellbook)).sheet, sheet);
   }
   // A legendary one (a boss with Legendary Resistance) keeps all it can cast; uncastable still goes.
   const legend = started({

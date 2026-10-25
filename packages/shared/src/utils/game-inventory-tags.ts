@@ -858,3 +858,38 @@ export function refuseGameInventoryTags(content: string, reason: string): string
       return serializeLootTag(request ?? { raw: body.trim() }, reason);
     });
 }
+
+/** The line a won fight's recap names what dropped on, already in the bags. */
+export const GAME_LOOT_GIVEN_LINE = "Loot (already in the party's bags): ";
+
+/**
+ * A reply's adds and earns of what a won fight already dropped, taken out once each: the recap the
+ * reply answers says the loot is in the bags, and an add of it again counted it twice (laptop playtest
+ * 2026-10-25: "Found: Staff, gold pieces ×15", then the next turn earned the 15 gold and a second
+ * Staff). Only one that names a drop of the recap, at its count, goes; anything else stays.
+ */
+export function dropGameLootRepeats(reply: string, recap: string): string {
+  const at = recap.indexOf(GAME_LOOT_GIVEN_LINE);
+  if (at < 0) return reply;
+  const line = recap
+    .slice(at + GAME_LOOT_GIVEN_LINE.length)
+    .split("\n")[0]!
+    .trim();
+  if (!line) return reply;
+  // Each drop as the recap counts it: "Staff", "gold pieces ×15". A name may hold a comma ("Crossbow,
+  // heavy"), so a drop is found where its own words are, not by splitting the line.
+  let left = `, ${line.toLowerCase()},`;
+  return reply.replace(/\[inventory:([^\]]*)\]/gi, (tag, body: string) => {
+    const attributes = new Map<string, string>();
+    for (const match of body.matchAll(/(\w+)="([^"]*)"/g)) attributes.set(match[1]!.toLowerCase(), match[2]!);
+    const action = attributes.get("action")?.toLowerCase();
+    const item = attributes.get("item")?.trim().toLowerCase();
+    if ((action !== "add" && action !== "earn") || !item || attributes.has("result")) return tag;
+    const count = Number(attributes.get("count") ?? 1);
+    const drop = `, ${count > 1 ? `${item} ×${count}` : item},`;
+    const found = left.indexOf(drop);
+    if (found < 0) return tag;
+    left = `${left.slice(0, found)},${left.slice(found + drop.length)}`;
+    return "";
+  });
+}

@@ -26,6 +26,7 @@ import {
   gameInventoryBagKey,
   gameInventoryFoldStandIn,
   gameInventoryCoinRef,
+  gameInventoryLooseNameKey,
   gameInventoryNameKey,
   type GameInventoryStack,
   type GameInventoryBearer,
@@ -1183,6 +1184,16 @@ export function rulesetItemBook(
       const key = gameInventoryNameKey(alias);
       if (!byName.has(key)) byName.set(key, read);
     }
+  // And last, any of those names with its words in another order or counted many ("Heavy Crossbow",
+  // "Crossbows, heavy" for Crossbow, heavy: laptop playtest 2026-10-25). A loose name two items share
+  // finds neither.
+  const byLoose = new Map<string, RulesetItemBookEntry | null>();
+  for (const [key, read] of byName) {
+    const loose = gameInventoryLooseNameKey(key);
+    if (!loose) continue;
+    const had = byLoose.get(loose);
+    byLoose.set(loose, had === undefined || had?.item === read.item ? read : null);
+  }
   // The items the Game Master invented, found by name after the ruleset's own. One name may have
   // several: each telling of a turn that proposed it made its own, and a switch back to an older
   // telling must still find the one it holds. A name finds the newest.
@@ -1262,7 +1273,9 @@ export function rulesetItemBook(
     return (
       byName.get(key) ??
       (made ? all.get(rulesetInventedItemRef(made.id)) : coin ? all.get(coin.coin.item) : undefined) ??
-      (offered.has(ref) ? all.get(ref) : undefined)
+      (offered.has(ref) ? all.get(ref) : undefined) ??
+      byLoose.get(gameInventoryLooseNameKey(name)) ??
+      undefined
     );
   };
   /** The ruleset's own weapon of this category whose name shares the most words with `name` (a word

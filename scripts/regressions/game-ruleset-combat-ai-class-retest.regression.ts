@@ -428,6 +428,21 @@ try {
       return event.type === "reasoning" && event.actorId === "o1" ? event.reasons!.map((one) => one.why) : [];
     });
     assert.deepEqual(said, ["cannotAct"]);
+    // In danger where it stands, too (laptop playtest 2026-10-25: a surprised High Priest's first turn
+    // read "worth the danger it puts itself in").
+    const ringed = fight([
+      { id: "o1", name: "o1", side: "enemy", block: block([smash], { health: 6 }), at: { x: 5, y: 5 } },
+      sheetOf("mei", sheet({ level: 5 }), { x: 4, y: 5 }),
+      sheetOf("kai", sheet({ level: 5 }), { x: 6, y: 5 }),
+      sheetOf("ren", sheet({ level: 5 }), { x: 5, y: 4 }),
+    ]);
+    rulesetCombatant(ringed.encounter, "o1")!.surprised = true;
+    assert.ok(commandRulesetCombatDirector(definition, ringed.state, { type: "continue" }).ok);
+    const ringedSaid = ringed.state.rulesetFight!.events.flatMap((entry) => {
+      const event = entry.event as { type: string; actorId?: string; reasons?: Array<{ why: string }> };
+      return event.type === "reasoning" && event.actorId === "o1" ? event.reasons!.map((one) => one.why) : [];
+    });
+    assert.deepEqual(ringedSaid, ["cannotAct"]);
   }
 
   // ── Twinned: one point, two foes ──

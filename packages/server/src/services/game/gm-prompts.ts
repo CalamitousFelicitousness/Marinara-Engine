@@ -1677,6 +1677,29 @@ function renderRulesetSheetSection(
 /** The parts `buildGmFormatReminder` can render. */
 export type GmReminderPart = "whole" | "stable" | "turn";
 
+/** The ruleset rest the player's turn asks for by name ("we take a long rest"), the longest name that
+ *  matches when several do, for the turn's reminder (laptop playtest 2026-10-25: a long rest the
+ *  player asked for was told with no rest command, and nothing came back). */
+export function rulesetRestAskedFor(
+  ruleset: Pick<import("@marinara-engine/shared").RulesetDefinition, "rests">,
+  text: string,
+): string | undefined {
+  let found: { label: string; length: number } | undefined;
+  for (const rest of ruleset.rests) {
+    // A rest called only "Rest" is not looked for: "the rest of us" asks for none.
+    const words = [rest.label, `${rest.id} rest`].filter(
+      (word, index, all) => all.indexOf(word) === index && word.trim().toLowerCase() !== "rest",
+    );
+    for (const word of words) {
+      const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const pattern = new RegExp(`(^|[^\\p{L}\\p{N}])${escaped}($|[^\\p{L}\\p{N}])`, "iu");
+      if (pattern.test(text) && (!found || word.length > found.length))
+        found = { label: rest.label, length: word.length };
+    }
+  }
+  return found?.label;
+}
+
 export function buildGmFormatReminder(
   ctx: Pick<
     GmPromptContext,
@@ -1720,6 +1743,8 @@ export function buildGmFormatReminder(
     addressMode?: "party" | "gm";
     /** Whether the current player turn already includes a resolved [dice: ...] roll. */
     playerDiceRollSubmitted?: boolean;
+    /** The ruleset rest the player's turn asks for by name (`rulesetRestAskedFor`). */
+    playerAsksRest?: string;
     /** The ruleset this game pinned, when the install can honour it. Its check guidance and
      *  difficulty ladder replace the built-in skill-check lines. Absent is the Engine's own rules
      *  and renders today's reminder byte for byte. */
@@ -1770,6 +1795,7 @@ export function buildGmFormatReminder(
       ...ctx,
       addressMode: undefined,
       playerDiceRollSubmitted: false,
+      playerAsksRest: undefined,
       gameActiveState: "exploration",
       dungeonMap: undefined,
       dicePoolBlock: undefined,
@@ -2016,6 +2042,14 @@ export function buildGmFormatReminder(
             `- The player already threw for this turn. Use their roll rather than calling the tool again for the same action.`,
           ]
         : []),
+    );
+  }
+
+  if (T && ctx.ruleset && ctx.playerAsksRest) {
+    lines.push(
+      ``,
+      `THE PLAYER ASKS TO REST:`,
+      `- Their turn asks for a ${ctx.playerAsksRest}. Unless the story stops it, write [sheet: who="party" op="rest" rest="${ctx.playerAsksRest}"] in this reply; a rest told without it restores nothing.`,
     );
   }
 

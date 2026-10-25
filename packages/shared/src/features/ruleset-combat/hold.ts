@@ -601,6 +601,120 @@ function healthField(definition: RulesetDefinition, poolId: string): Extract<Rul
 export const RULESET_INVENTED_CASTER_MOST = 6;
 
 /**
+ * An invented caster sent with none of the pools its spells are paid out of (5e's spell slots: a
+ * sheet with no class level, laptop playtest 2026-10-25, cast Chill Touch for 11 rounds with its
+ * leveled spells dropped) has the one number field that opens them raised, a step at a time, until
+ * as many of its spells as that field can pay for are paid for, at the lowest value that does. Of
+ * several such fields, the one that pays for the most, then the one whose label the sheet names most
+ * (its class "Wizard", its spells' classes: so a wizard's slots come back as a wizard's do), then the
+ * lowest. A sheet with any of those
+ * pools is the Game Master's own and never touched. What changed is said.
+ */
+export function raiseRulesetCasterPools(
+  definition: RulesetDefinition,
+  proposed: RulesetSheetBuild,
+  catalogs: RulesetCatalogEntriesById,
+): { sheet: RulesetSheetBuild; adjusted: string[] } {
+  const pools = definition.sheet.live.pools;
+  const family = (id: string) => pools.find((pool) => pool.id === id)?.group;
+  const familyOf = new Map(pools.flatMap((pool) => (pool.group !== undefined ? [[pool.id, pool.group]] : [])));
+  // The rows paid out of a family, with the family each is paid out of.
+  const wanted: Array<{ label: string; group: string }> = [];
+  for (const rows of Object.values(proposed.lists)) {
+    for (const row of rows) {
+      const mark = row[RULESET_CATALOG_ROW_KEY];
+      if (typeof mark !== "string") continue;
+      const entry = catalogs[mark.slice(0, mark.indexOf("/"))]?.find(
+        (candidate) => candidate.id === mark.slice(mark.indexOf("/") + 1),
+      );
+      if (!entry?.mechanics) continue;
+      const asked = planRulesetUse(definition, proposed, {}, catalogs, { op: "use", name: entry.label });
+      const spent = asked.ok
+        ? asked.steps.find((step) => step.op.op === "spend" && familyOf.has(step.op.pool))
+        : undefined;
+      if (spent) wanted.push({ label: entry.label, group: family((spent.op as { pool: string }).pool)! });
+    }
+  }
+  if (wanted.length === 0) return { sheet: proposed, adjusted: [] };
+  const groups = new Set(wanted.map((one) => one.group));
+  const open = (build: RulesetSheetBuild) =>
+    readRulesetLive(definition, build, {}).pools.some(
+      (pool) => groups.has(familyOf.get(pool.key) ?? "") && pool.max > 0,
+    );
+  if (open(proposed)) return { sheet: proposed, adjusted: [] };
+  const paidFor = (build: RulesetSheetBuild) =>
+    wanted.filter(({ label }) => {
+      const pools = definition.sheet.live.pools;
+      const plan = planRulesetUse(definition, build, {}, catalogs, { op: "use", name: label });
+      if (!plan.ok) return false;
+      const spent = plan.steps.find((step) => step.op.op === "spend")?.op as { pool: string } | undefined;
+      const own = pools.find((pool) => pool.id === spent?.pool);
+      const rungs = own?.group !== undefined ? pools.filter((pool) => pool.group === own.group) : [];
+      // Out of its own pool or a bigger one of the family, as `capRulesetCasterSheet` reads it.
+      return [undefined, ...rungs.slice(rungs.indexOf(own!) + 1).map((pool) => pool.id)].some((pool) => {
+        const tried = planRulesetUse(definition, build, {}, catalogs, {
+          op: "use",
+          name: label,
+          ...(pool ? { pool } : {}),
+        });
+        if (!tried.ok) return false;
+        let live: unknown = {};
+        for (const step of tried.steps) {
+          const result = applyRulesetSheetOp(definition, build, live, step.op);
+          if (!result.ok) return false;
+          live = result.live;
+        }
+        return true;
+      });
+    }).length;
+  // The words the sheet says of itself: its text and choice fields, and its rows' text.
+  const said = [
+    ...Object.values(proposed.fields),
+    ...Object.values(proposed.lists).flatMap((rows) => rows.flatMap((row) => Object.values(row))),
+  ]
+    .flatMap((value) => (typeof value === "string" ? [value] : Array.isArray(value) ? value.map(String) : []))
+    .map((value) => ` ${value.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ")} `);
+  const named = (label: string) => {
+    const word = ` ${label
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, " ")
+      .trim()} `;
+    return word.trim() ? said.filter((text) => text.includes(word)).length : 0;
+  };
+  let best:
+    { field: Extract<RulesetField, { type: "number" }>; value: number; paid: number; named: number } | undefined;
+  for (const field of definition.sheet.fields) {
+    if (field.type !== "number" || !field.integer) continue;
+    const at = (value: number) => {
+      const sheet = structuredClone(proposed);
+      sheet.fields[field.id] = value;
+      return sheet;
+    };
+    const from = typeof proposed.fields[field.id] === "number" ? (proposed.fields[field.id] as number) : field.min;
+    if (from >= field.max || !open(at(field.max))) continue;
+    const most = paidFor(at(field.max));
+    if (most === 0) continue;
+    // The lowest value that pays for as many as its top does.
+    let value = from + 1;
+    while (value < field.max && paidFor(at(value)) < most) value += 1;
+    const names = named(field.label);
+    if (
+      !best ||
+      most > best.paid ||
+      (most === best.paid && (names > best.named || (names === best.named && value < best.value)))
+    )
+      best = { field, value, paid: most, named: names };
+  }
+  if (!best) return { sheet: proposed, adjusted: [] };
+  const sheet = structuredClone(proposed);
+  sheet.fields[best.field.id] = best.value;
+  return {
+    sheet,
+    adjusted: [`${best.field.label} was set to ${best.value}, so its spells have the pools they are paid out of.`],
+  };
+}
+
+/**
  * An invented caster held to what it can cast: an entry its fresh sheet could never pay for (a 5th
  * level spell on a sheet with no 5th level slots) goes, and of those paid for out of a pool family
  * (spell slots, as against a cantrip or a ki feature) it keeps `most`, spread over its pools from the

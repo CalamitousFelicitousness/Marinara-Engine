@@ -1768,6 +1768,19 @@ export function rulesetCombatEventLine(
       });
     case "dying": {
       if (event.result === "stable") return key("dyingStable", { actor: names.combatant(event.actorId) });
+      if (event.harmed)
+        return key(event.result === "dead" ? "dyingHarmedDead" : "dyingHarmed", {
+          actor: names.combatant(event.actorId),
+          count: event.harmed,
+          successes: event.successes,
+          failures: event.failures,
+        });
+      if (event.result === "dead" && event.rolls.length > 0)
+        return key("dyingDeadRoll", {
+          actor: names.combatant(event.actorId),
+          roll: rulesetRollText({ ...event, modifier: 0, total: event.total ?? event.kept }, t, bonusNamer(names, t)),
+          difficulty: event.difficulty,
+        });
       if (event.result === "dead") return key("dyingDead", { actor: names.combatant(event.actorId) });
       if (event.result === "revived")
         return key("dyingRevived", {
@@ -1892,7 +1905,11 @@ function rulesetReasonText(
     case "couldNotAnswer":
       return say(`couldNotAnswer_${reason.because.replace("-", "_")}`, { label: reason.label });
     case "gmPick":
-      return reason.rank ? say("gmPickSuggested", { rank: reason.rank }) : say("gmPick");
+      return reason.rank === 1
+        ? say("gmPickTop")
+        : reason.rank
+          ? say("gmPickSuggested", { rank: reason.rank })
+          : say("gmPick");
     default:
       return say(reason.why);
   }

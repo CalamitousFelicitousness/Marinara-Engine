@@ -1403,6 +1403,15 @@ const labels = (definition: RulesetDefinition, state: RulesetEncounterState, id:
       (entry) => entry.id === track,
     )!.value;
   assert.equal(tracks("brenna", "death_save_failures"), 2);
+  // The blow is said as what it cost (laptop playtest 2026-10-25: failures that came with no line).
+  assert.deepEqual(
+    [
+      firstOf(kicked.events, "dying").harmed,
+      firstOf(kicked.events, "dying").result,
+      firstOf(kicked.events, "dying").failures,
+    ],
+    [1, "failure", 2],
+  );
 
   const up = endTurn(fiveE, kicked.state, "rot", 20);
   assert.equal(firstOf(up.events, "dying").result, "revived");
@@ -1420,12 +1429,19 @@ const labels = (definition: RulesetDefinition, state: RulesetEncounterState, id:
 {
   let state = fight(fiveE, [fighter({ pools: { hp: { value: 0 } } }), wizard(), rot()], 10, 9, 18);
   assert.deepEqual([who(state, "brenna").down, who(state, "brenna").dying], [true, true]);
+  let rolled: ReturnType<typeof endTurn> | undefined;
   for (const face of [3, 5, 7]) {
-    state = endTurn(fiveE, state, "rot", face).state;
-    state = endTurn(fiveE, state, "brenna").state;
+    rolled = endTurn(fiveE, state, "rot", face);
+    state = endTurn(fiveE, rolled.state, "brenna").state;
     state = endTurn(fiveE, state, "corwin").state;
   }
   assert.equal(who(state, "brenna").defeated, true, "three failures and she is gone");
+  // The roll that kills is said with its roll, once (laptop playtest 2026-10-25: a death at 2 passed
+  // and 1 failed with no roll shown).
+  assert.deepEqual(
+    eventsOf(rolled!.events, "dying").map((event) => [event.rolls, event.result, event.failures, event.harmed]),
+    [[[7], "dead", 3, undefined]],
+  );
   assert.equal(rulesetEncounterOutcome(state), "ongoing");
 
   // Healing brings somebody back from zero, which is why a downed ally is still a legal target.

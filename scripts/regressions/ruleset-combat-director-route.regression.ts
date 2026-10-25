@@ -1154,6 +1154,48 @@ try {
     assert.notEqual(next.party.find((one) => one.id === "brenna")?.controller, "ai", "Brenna stays the player's");
   }
 
+  // ── The orders the player gave a companion are kept for the chat's next fight (laptop playtest
+  //    2026-10-25: orders set back to none at every fight) ──
+  {
+    const kept = await newGame({ ruleset: true });
+    const fightBody = (
+      anchor: string,
+      party = [unit("brenna", "Brenna", "player"), unit("corwin", "Corwin", "player")],
+    ) => ({
+      chatId: kept.chat.id,
+      anchor,
+      style: "ruleset",
+      party,
+      enemies: [unit("hound", "Cinder Hound", "enemy")],
+    });
+    const first = (await post("/combat/start", fightBody(kept.anchor.id))).json().session as DirectedCombatView;
+    const ordered = await post("/combat/command", {
+      chatId: kept.chat.id,
+      anchor: kept.anchor.id,
+      id: first.id,
+      instanceId: first.instanceId,
+      revision: first.revision,
+      requestId: crypto.randomUUID(),
+      command: { type: "orders", unitId: "corwin", orders: { posture: "protect", protectId: "brenna", heal: true } },
+    });
+    assert.equal(ordered.statusCode, 200, ordered.body);
+    const meta = JSON.parse((await chats.getById(kept.chat.id))!.metadata || "{}");
+    assert.deepEqual(meta.combatOrders, { corwin: { posture: "protect", protectId: "brenna", heal: true } });
+    const later = await chats.createMessage({ chatId: kept.chat.id, role: "assistant", content: "[state: combat]" });
+    const next = (await post("/combat/start", fightBody(later.id))).json().session as DirectedCombatView;
+    assert.deepEqual(next.party.find((one) => one.id === "corwin")?.orders, {
+      posture: "protect",
+      protectId: "brenna",
+      heal: true,
+    });
+    assert.equal(next.party.find((one) => one.id === "brenna")?.orders, undefined, "Brenna has none");
+    // Whom it protects is not in this fight: its orders wait for one they are.
+    const alone = await chats.createMessage({ chatId: kept.chat.id, role: "assistant", content: "[state: combat]" });
+    const without = (await post("/combat/start", fightBody(alone.id, [unit("corwin", "Corwin", "player")]))).json()
+      .session as DirectedCombatView;
+    assert.equal(without.party.find((one) => one.id === "corwin")?.orders, undefined);
+  }
+
   // ── A word in the setup the Engine has none of never refuses the fight (laptop playtest 2026-10-25:
   //    a mechanic's trigger "charge") ──
   {

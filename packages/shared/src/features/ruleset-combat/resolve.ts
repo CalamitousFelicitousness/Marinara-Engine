@@ -2667,29 +2667,50 @@ function revive(ctx: RulesetCombatContext, target: RulesetCombatant): void {
   ctx.events.push({ type: "revived", actorId: target.id, health: healthOf(ctx, target).value });
 }
 
-function addDeathFailures(ctx: RulesetCombatContext, target: RulesetCombatant, amount: number): void {
+/** Failures against death, from a blow while down (`harmed`, said here) or a roll its caller says.
+ *  True when they kill. */
+function addDeathFailures(ctx: RulesetCombatContext, target: RulesetCombatant, amount: number, harmed = true): boolean {
   const dying = ctx.combat.dying;
-  if (!dying) return;
+  if (!dying) return false;
   writeRulesetSheet(ctx.definition, target, { op: "track", track: dying.failures, by: amount });
   const failures = trackValue(ctx, target, dying.failures);
   const successes = trackValue(ctx, target, dying.successes);
-  if (failures < trackMax(ctx, target, dying.failures)) return;
+  if (failures < trackMax(ctx, target, dying.failures)) {
+    if (!harmed) return false;
+    ctx.events.push({
+      type: "dying",
+      actorId: target.id,
+      rolls: [],
+      kept: 0,
+      difficulty: dying.succeedAt,
+      successes,
+      failures,
+      result: "failure",
+      harmed: amount,
+    });
+    return false;
+  }
   target.defeated = true;
   target.diedRound = ctx.state.round;
   endSummons(ctx, target);
   endZones(ctx, target);
   unconjureAll(ctx, target);
   target.dying = false;
-  ctx.events.push({
-    type: "dying",
-    actorId: target.id,
-    rolls: [],
-    kept: 0,
-    difficulty: dying.succeedAt,
-    successes,
-    failures,
-    result: "dead",
-  });
+  // A roll that kills is said with its roll (laptop playtest 2026-10-25: "does not get up again"
+  // at 2 passed and 1 failed, the roll that failed twice never shown).
+  if (harmed)
+    ctx.events.push({
+      type: "dying",
+      actorId: target.id,
+      rolls: [],
+      kept: 0,
+      difficulty: dying.succeedAt,
+      successes,
+      failures,
+      result: "dead",
+      harmed: amount,
+    });
+  return true;
 }
 
 /** The roll a character makes at the start of their turn while they are down. */
@@ -2775,10 +2796,7 @@ function deathSave(ctx: RulesetCombatContext, actor: RulesetCombatant): void {
   else failures = 1;
 
   if (failures > 0) {
-    const before = actor.defeated;
-    addDeathFailures(ctx, actor, failures);
-    if (!before && actor.defeated) return;
-    say("failure");
+    say(addDeathFailures(ctx, actor, failures, false) ? "dead" : "failure");
     return;
   }
   writeRulesetSheet(ctx.definition, actor, { op: "track", track: dying.successes, by: successes });
@@ -16886,7 +16904,20 @@ function resolveActionBodyIn(
   // Taken in by its only target (1.507), a foe's: a Rod of Absorption, an Ioun Stone of Absorption.
   const only = targets.length === 1 && !action.area ? targets[0]! : undefined;
   const absorbed = only && reaches(only) && absorbAction(ctx, actor, action, only, payWith) ? only.id : undefined;
-  for (const target of targets) {
+  // Each of one that may be pointed at the same one again (1.305) that finds its target already
+  // dropped by one before it goes at the next of its targets still up, or nowhere (laptop playtest
+  // 2026-10-25: Magic Missile darts landing on a downed foe, and one that had surrendered).
+  const struck = new Set<string>();
+  for (const listed of targets) {
+    let target = listed;
+    if (action.targets.repeat && struck.has(target.id) && (!rulesetCombatStanding(target) || target.away)) {
+      const next = targets.find(
+        (one) => one.id !== listed.id && rulesetCombatStanding(one) && !one.away && reaches(one),
+      );
+      if (!next) continue;
+      target = next;
+    }
+    struck.add(target.id);
     if (!reaches(target) || spared.has(target.id) || target.id === absorbed) continue;
     // An image (1.553): it passes through, and its maker's side sees it for what it is.
     if (target.illusion && target.id !== actor.id && target.calledBy !== actor.id) {

@@ -159,6 +159,16 @@ try {
       `a name it has no item of is told: ${fight.adjustments.join(" | ")}`,
     );
     assert.equal(rulesetCombatant(fight.encounter, "bare")!.carried, undefined, "an empty list is nothing at all");
+    // Counted after its name, many of it, and in other words (laptop playtest 2026-10-25: "Heavy
+    // Crossbow" given for 5e's "Crossbow, heavy" was no item).
+    for (const line of ["Poultices (2)", "poultice x2", "2 Poultices"]) {
+      const given = begin([{ id: "jackal", creature: `${bestiaryId}/rust-jackal`, items: [line] }]);
+      assert.deepEqual(
+        rulesetCombatant(given.encounter, "jackal")!.carried,
+        [{ ref: "outfitter/poultice", name: "Poultice", count: 2 }],
+        `${line}: ${given.adjustments.join(" | ")}`,
+      );
+    }
   }
 
   // ── Coins the Game Master gives it, with how many (laptop playtest 2026-10-25: a thief's stolen 9 gp,

@@ -47,6 +47,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   GAME_INVENTORY_MAX_QUANTITY,
+  gameInventoryLooseNameKey,
   parseRulesetCatalogFile,
   parseRulesetDefinition,
   rulesetItemBearers,
@@ -659,6 +660,13 @@ try {
     assert.equal(book.entries.length, 9);
     assert.equal(book.itemNamed("  hand AXE ")?.item, "outfitter/hand-axe", "a label in any case");
     assert.equal(book.itemNamed("hand-axe"), undefined, "an entry's id is not its name");
+    // Its words in another order, or counted many, find it last (laptop playtest 2026-10-25: "Heavy
+    // Crossbow" given for 5e's "Crossbow, heavy" was no item).
+    assert.equal(book.itemNamed("Axe, hand")?.item, "outfitter/hand-axe");
+    assert.equal(book.itemNamed("hand axes")?.item, "outfitter/hand-axe");
+    assert.equal(gameInventoryLooseNameKey("Crossbow, heavy"), gameInventoryLooseNameKey("Heavy Crossbows"));
+    assert.equal(gameInventoryLooseNameKey("Potion of Healing"), gameInventoryLooseNameKey("healing potions"));
+    assert.equal(gameInventoryLooseNameKey("Torches"), "torch");
     assert.equal(book.itemOf("outfitter/arrows")?.stack, 20);
     assert.equal(book.itemOf("outfitter/hand-axe")?.stack, undefined);
     assert.equal(book.plain, "allow");

@@ -251,6 +251,40 @@ export function gameInventoryNameKey(name: string): string {
   return name.trim().replace(/\s+/g, " ").toLowerCase();
 }
 
+/** Words a loose name drops: "Potion of Healing" is a "Healing Potion". */
+const LOOSE_NAME_SKIPPED = new Set(["a", "an", "the", "of"]);
+
+/** One of a word: "crossbows", "torches", "berries" are a crossbow, a torch, a berry. A last "e"
+ *  goes too, so "axes" (an axe or an ax) and "axe" are one word. */
+function oneOf(word: string): string {
+  const one =
+    word.length <= 3
+      ? word
+      : word.endsWith("ies")
+        ? `${word.slice(0, -3)}y`
+        : /(?:ches|shes|xes|sses|zes)$/.test(word)
+          ? word.slice(0, -2)
+          : word.endsWith("s") && !word.endsWith("ss") && !word.endsWith("us")
+            ? word.slice(0, -1)
+            : word;
+  return one.length > 2 && one.endsWith("e") ? one.slice(0, -1) : one;
+}
+
+/** A name's words in any order, each as one of it ("Crossbow, heavy" and "Heavy Crossbows"): what a
+ *  name is matched by when nothing has it as written (laptop playtest 2026-10-25). */
+export function gameInventoryLooseNameKey(name: string): string {
+  return (
+    name
+      .toLowerCase()
+      // A hyphen and an apostrophe keep a word whole: "hand-axe" is an id, not the Hand axe.
+      .split(/[^\p{L}\p{N}'-]+/u)
+      .filter((word) => word.length > 0 && !LOOSE_NAME_SKIPPED.has(word))
+      .map(oneOf)
+      .sort()
+      .join(" ")
+  );
+}
+
 function cleanName(name: string): string {
   return name.trim().replace(/\s+/g, " ");
 }

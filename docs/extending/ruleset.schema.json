@@ -40122,6 +40122,9 @@
                 ],
                 "default": []
               },
+              "temp": {
+                "type": "boolean"
+              },
               "$comment": {}
             },
             "additionalProperties": false,

@@ -2174,8 +2174,8 @@ export function applyRulesetSheetOp(
     return after.ok ? { ...after, now: `${spent.now}; ${after.now}`.slice(0, MAX_NOW_LENGTH) } : after;
   }
 
-  // A rest does exactly what the definition says and nothing else — no implied healing, and no
-  // temporary buffers dropped, because no ruleset asked for that here.
+  // A rest does exactly what the definition says and nothing else: no implied healing, and no
+  // temporary buffers dropped unless its `clear.temp` says so (1.794).
   const values = new Map(resolved.pools.map((pool) => [pool.key, { pool, value: pool.value, temp: pool.temp }]));
   const trackValues = new Map(resolved.tracks.map((track) => [track.id, { track, value: track.value }]));
   const changes: string[] = [];
@@ -2286,6 +2286,16 @@ export function applyRulesetSheetOp(
       if (value !== target.value) changes.push(`${target.pool.label} ${value}/${target.pool.max}`);
       target.value = value;
       setPool(target.pool, value, target.temp);
+    }
+  }
+  // Temporary points it clears (1.794): 5e's temporary hit points at a long rest.
+  if (rest.clear.temp) {
+    for (const pool of resolved.pools) {
+      const now = values.get(pool.key);
+      if (!now || now.temp <= 0) continue;
+      now.temp = 0;
+      changes.push(`${pool.label} temporary points gone`);
+      setPool(pool, now.value, 0);
     }
   }
   // Any rest gives back what only a rest could (1.193): nothing is sealed after one but what no rest

@@ -15,6 +15,7 @@ import {
   gameInventoryNameKey,
   applyRulesetSheetOp,
   capRulesetCasterSheet,
+  raiseRulesetCasterPools,
   raiseRulesetSheetAbilities,
   RULESET_INVENTED_CASTER_MOST,
   rulesetBudgetLevel,
@@ -634,7 +635,7 @@ export interface RulesetFightSeed {
   /** Whose bag each party member's items are in, by name (1.706): null for the player's own. */
   holders?: (name: string) => string | null;
   /** The ruleset's items (1.785), for what its opponents have on them: none read without it. */
-  itemBook?: Pick<RulesetItemBook, "entries" | "coins" | "itemOf">;
+  itemBook?: Pick<RulesetItemBook, "entries" | "coins" | "itemOf"> & Partial<Pick<RulesetItemBook, "itemNamed">>;
   /** The catalogs the party's own rows came from, so the fight knows what an ability costs. */
   partyCatalogs: RulesetCatalogEntriesById;
   /** Every catalog of this ruleset that holds creatures. */
@@ -1009,6 +1010,10 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
       const legendary =
         opponent.boss &&
         (proposed.data.signaturePoints !== undefined || proposed.data.legendaryResistance !== undefined);
+      // Sent with no pools its spells are paid out of (no class level), it is given the one that pays.
+      const pooled = raiseRulesetCasterPools(definition, sheet, input.bestiary);
+      pooled.adjusted.forEach(said);
+      sheet = pooled.sheet;
       const capped = capRulesetCasterSheet(
         definition,
         sheet,
@@ -1334,7 +1339,7 @@ const RULESET_CARRIED_CURSOR = 17840;
 /** The items the Game Master gave an opponent (1.785), each line one of the ruleset's by its reference
  *  or its name, any case: lines naming one item are added together, and one naming none is told. */
 function rulesetGivenItems(
-  book: Pick<RulesetItemBook, "entries" | "coins">,
+  book: Pick<RulesetItemBook, "entries" | "coins"> & Partial<Pick<RulesetItemBook, "itemNamed">>,
   lines: readonly string[],
   unknown: (name: string) => void,
   coins?: Map<string, { ref: string; name: string; count: number }>,
@@ -1356,16 +1361,37 @@ function rulesetGivenItems(
         coins.set(coin.item, { ref: coin.item, name: coin.name, count: (coins.get(coin.item)?.count ?? 0) + count });
       continue;
     }
-    const key = wanted.toLowerCase();
-    const found =
-      book.entries.find((entry) => entry.item === wanted) ??
-      book.entries.find((entry) => !entry.coin && entry.name.trim().toLowerCase() === key);
+    // By its ref or its name as written, else with a count before or after it ("2 Javelins",
+    // "Javelin x2", "Javelins (3)"), and by the book's own lookup, its other names and its words in
+    // another order ("Heavy Crossbow" for Crossbow, heavy: laptop playtest 2026-10-25).
+    const named = (text: string) => {
+      const key = text.toLowerCase();
+      const exact =
+        book.entries.find((entry) => entry.item === text) ??
+        book.entries.find((entry) => !entry.coin && entry.name.trim().toLowerCase() === key);
+      if (exact) return exact;
+      const looked = book.itemNamed?.(text);
+      return looked && !looked.coin ? looked : undefined;
+    };
+    const after = /^(.+?)\s*(?:[x×]\s*(\d+)|\(\s*[x×]?\s*(\d+)\s*\))$/i.exec(wanted);
+    const counts: Array<[string, number]> = [[wanted, 1]];
+    if (counted) counts.push([counted[2]!, Number(counted[1])]);
+    if (after) counts.push([after[1]!, Number(after[2] ?? after[3])]);
+    let found: ReturnType<typeof named>;
+    let many = 1;
+    for (const [text, count] of counts) {
+      found = named(text.trim());
+      if (found) {
+        many = Math.max(1, Math.min(100, count));
+        break;
+      }
+    }
     if (!found) {
       unknown(wanted);
       continue;
     }
     const before = had.get(found.item);
-    had.set(found.item, { item: found.item, name: found.name, count: (before?.count ?? 0) + 1 });
+    had.set(found.item, { item: found.item, name: found.name, count: (before?.count ?? 0) + many });
   }
   return [...had.values()];
 }
@@ -6554,8 +6580,11 @@ function rulesetPickReasons(
   if (walked) reasons.push({ why: "walked", cells: walked });
   // Surprised, it could only end its turn: not a choice (laptop playtest 2026-10-25: "nothing it could
   // do was worth the price").
+  // Whatever else its parts said (laptop playtest 2026-10-25: a surprised High Priest's first turn
+  // read "worth the danger it puts itself in").
+  if (candidate.action.option.kind === "end-turn" && actor?.surprised) return [{ why: "cannotAct" }];
   if (reasons.length === 0 && candidate.action.option.kind === "end-turn")
-    reasons.push({ why: actor?.surprised ? "cannotAct" : candidate.action.spares ? "sparing" : "nothingWorth" });
+    reasons.push({ why: candidate.action.spares ? "sparing" : "nothingWorth" });
   return reasons;
 }
 

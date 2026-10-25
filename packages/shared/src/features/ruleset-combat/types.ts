@@ -4351,6 +4351,9 @@ export type RulesetCombatEvent =
       successes: number;
       failures: number;
       result: "success" | "failure" | "stable" | "dead" | "revived";
+      /** The failures a blow while down cost, with no roll: said whether or not it kills (laptop
+       *  playtest 2026-10-25: a death at 2 passed and 1 failed with no blow shown). */
+      harmed?: number;
     }
   | { type: "down"; actorId: string; dying: boolean }
   | { type: "defeated"; actorId: string }

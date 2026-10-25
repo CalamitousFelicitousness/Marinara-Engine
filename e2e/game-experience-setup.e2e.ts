@@ -762,7 +762,9 @@ test("an ordinary setup import keeps the prefilled seed", async ({ page }, testI
   await expect(wizard.getByRole("alert")).toHaveCount(0);
 });
 
-test("Tactical setup leaves the board size to the Game Master and retires battlefield seed and terrain guidance", async ({ page }, testInfo) => {
+test("Tactical setup leaves the board size to the Game Master and retires battlefield seed and terrain guidance", async ({
+  page,
+}, testInfo) => {
   test.setTimeout(90_000);
   await page.route("**/api/capability-packages/installed", (route) => route.fulfill({ json: [] }));
   await page.route("**/api/capability-packages/agents", (route) => route.fulfill({ json: [] }));

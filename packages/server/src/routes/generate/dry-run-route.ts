@@ -1803,6 +1803,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
       );
 
       const assemblerInput: AssemblerInput = {
+        worldState: promptMacroContext.worldState,
         model: conn.model,
         reasoning: promptReasoning,
         deferMessagePostProcessing: true,

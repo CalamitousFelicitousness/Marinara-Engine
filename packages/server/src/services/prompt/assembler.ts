@@ -195,6 +195,8 @@ export interface AssemblerInput {
   lorebookTokenBudget?: number;
   /** Current game state for lorebook conditions and schedules. */
   gameState?: Record<string, unknown> | null;
+  /** Same selected scene clock used by the route and agent prompts. */
+  worldState?: MacroContext["worldState"];
   /** Generation trigger labels used by per-entry lorebook include/exclude filters. */
   generationTriggers?: string[];
   /** Preview/debug assembly: lorebook markers should not consume timing or ephemeral state. */
@@ -353,7 +355,7 @@ export async function assemblePrompt(input: AssemblerInput): Promise<AssemblerOu
   // Build macro context (character names and primary card fields resolved from IDs)
   const macroCtx = await buildPromptMacroContext({
     db: input.db,
-    worldState: input.gameState,
+    worldState: input.worldState === undefined ? input.gameState : input.worldState,
     model: input.model,
     reasoning: input.reasoning,
     characterIds: input.characterIds,

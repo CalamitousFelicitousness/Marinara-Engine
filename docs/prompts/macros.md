@@ -161,7 +161,7 @@ Write names and IDs as plain text. Macros inside them, such as `{{include::{{cha
 
 ## Time macros
 
-All time macros read one shared moment per resolution, so they always agree with each other. The timezone comes from your browser.
+The real-world time macros read one shared moment per resolution, so they always agree with each other. The timezone comes from your browser.
 
 | Macro | Resolves to |
 | --- | --- |
@@ -170,6 +170,13 @@ All time macros read one shared moment per resolution, so they always agree with
 | `{{datetime}}` / `{{isotime}}` | A full timestamp with the timezone offset. The two names mean the same thing. |
 | `{{weekday}}` | The weekday name, such as `Monday`. |
 | `{{timezone}}` | The timezone name, such as `Europe/Warsaw`. |
+| `{{date.world_state}}` | The current in-world date tracked by World State, kept in its original format. |
+| `{{time.world_state}}` | The current in-world time tracked by World State, kept in its original format. |
+| `{{weekday.world_state}}` | A custom world field named Weekday or Day of Week, a weekday written in the tracked date, or the weekday of a valid `YYYY-MM-DD` tracked date. |
+
+The `.world_state` macros work in prompts and agent templates. They read the scene's selected tracker snapshot, including the selected swipe or regeneration base. A missing value becomes empty; it never falls back to today's real-world clock. Fictional calendars keep their own date and time text. For a fictional weekday, add a World State custom field named Weekday or Day of Week.
+
+For example, `{{#if weekday.world_state == "Monday"}}Use the weekday routine.{{/if}}` reads the tracked weekday instead of the real one.
 
 ## Random and dice macros
 

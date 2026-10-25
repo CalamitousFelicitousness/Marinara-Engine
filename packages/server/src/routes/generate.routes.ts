@@ -3899,6 +3899,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           );
 
           const assemblerInput: AssemblerInput = {
+            worldState: promptMacroContext.worldState,
             model: conn.model,
             reasoning: promptReasoning,
             agentHistoryMessageId: input.regenerateMessageId ?? undefined,

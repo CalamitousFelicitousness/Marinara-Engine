@@ -338,11 +338,6 @@ function readMacroVariable(map: Record<string, string> | undefined, name: string
   return typeof value === "string" ? value : undefined;
 }
 
-/**
- * `{{reasoning}}`, or undefined when a preset or chat variable of that name owns it. Presets made before the macro
- * existed may define their own `reasoning` variable, so the variable keeps the name. `name` is the spelling as
- * written: the macro matches any case, but variables match exactly, as in the catch-all pass.
- */
 function worldStateWeekday(state: MacroContext["worldState"]): string {
   let customFields = state?.worldCustomFields;
   if (typeof customFields === "string") {
@@ -374,6 +369,11 @@ function worldStateWeekday(state: MacroContext["worldState"]): string {
     : "";
 }
 
+/**
+ * `{{reasoning}}`, or undefined when a preset or chat variable of that name owns it. Presets made before the macro
+ * existed may define their own `reasoning` variable, so the variable keeps the name. `name` is the spelling as
+ * written: the macro matches any case, but variables match exactly, as in the catch-all pass.
+ */
 function readReasoningMacro(ctx: MacroContext, name: string): string | undefined {
   if (
     readMacroVariable(ctx.variables, name) !== undefined ||

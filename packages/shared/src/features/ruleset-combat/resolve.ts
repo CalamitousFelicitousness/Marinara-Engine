@@ -8041,12 +8041,17 @@ function applyChoice(
     actor,
     actor.actions.find((entry) => entry.id === option.id),
   );
-  const modeId = choice.mode ?? keptMode;
+  const namedIn = actor.actions.find((entry) => entry.id === option.id);
+  // A damage type left unnamed (1.738) is the first one offered, as it is set up before a fight: a
+  // cast refused for it struck nobody (Ruleset 0.431: Spirit Guardians cast with no type named).
+  const modeId =
+    choice.mode ??
+    keptMode ??
+    (namedIn?.damageTypeChoice ? namedIn.modes?.find((entry) => entry.damageType)?.id : undefined);
   const mode = modeId === undefined ? undefined : option.modes?.find((entry) => entry.id === modeId);
   if (choice.mode !== undefined && !mode) return refusal(state, choice.actorId, "unknown-mode", option.id);
   // A creature type is picked as it is used (1.270): no kind, no Antipathy.
   // And so is the weapon put in hand (1.306).
-  const namedIn = actor.actions.find((entry) => entry.id === option.id);
   // How well its user knows where it goes, leaving the fight (1.655).
   if (
     !mode &&

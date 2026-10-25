@@ -8,7 +8,8 @@
  *     on; teleporting within it or out of it stays allowed.
  *   - `kindChoice: "many"`: the kinds named as it is cast are what its zone strikes, in place of its
  *     `targetTypes`; named none, its own.
- *   - `damageTypeChoice`: the damage type, picked as a mode, that it and its zone deal.
+ *   - `damageTypeChoice`: the damage type, picked as a mode, that it and its zone deal; cast with none
+ *     picked, the first it offers.
  *   - Set up before a fight with `kinds` and `mode`; with no mode, the first type, said.
  *   - Refusals and the install gates.
  */
@@ -207,9 +208,15 @@ try {
     assert.equal(rulesetCombatant(step.state, "cleric")!.zones![0]!.strikesIs, undefined);
     assert.deepEqual(struck(step.state), { imp: ["15 radiant"], zombie: ["15 radiant"] });
   }
-  // ── Refused: no damage type, a kind it does not offer, none at all, one twice ──
+  // ── Named no damage type: the first it offers (Ruleset 0.431: a cast with none struck nobody) ──
+  {
+    const step = cast({});
+    assert.deepEqual(of(step.events, "refused"), [], JSON.stringify(of(step.events, "refused")));
+    assert.equal(rulesetCombatant(step.state, "cleric")!.zones![0]!.damageType, "radiant");
+    assert.deepEqual(struck(step.state), { imp: ["15 radiant"], zombie: ["15 radiant"] });
+  }
+  // ── Refused: a type or kind it does not offer, no kind at all, one twice ──
   for (const [extra, why] of [
-    [{}, "no damage type"],
     [{ mode: "damage-fire" }, "a type it does not offer"],
     [{ mode: "damage-radiant", kinds: ["dragon"] }, "a kind it does not offer"],
     [{ mode: "damage-radiant", kinds: ["humanoid"] }, "a kind its targetTypes leaves out"],

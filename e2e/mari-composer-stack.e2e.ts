@@ -166,6 +166,7 @@ test("landscape: empty welcome quick options scroll clear of the composer", asyn
     const option = pane.locator(".mari-suggestion-chips button").last();
     await expect(option).toBeInViewport();
     await option.click({ trial: true });
+    await testInfo.attach("mari-landscape-quick-options", { body: await pane.screenshot(), contentType: "image/png" });
   } finally {
     await cleanup(request, connectionId);
   }

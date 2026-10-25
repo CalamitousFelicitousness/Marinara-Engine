@@ -170,7 +170,7 @@ for (const theme of ["dark", "light"] as const) {
       await page.reload();
       await expect(limit).toHaveValue("0");
       await testInfo.attach(`retention-${theme}`, {
-        body: await limit.locator("..").screenshot(),
+        body: await limit.locator("xpath=ancestor::section[1]").screenshot(),
         contentType: "image/png",
       });
       await limit.selectOption("5");

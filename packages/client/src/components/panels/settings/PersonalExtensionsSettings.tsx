@@ -25,6 +25,8 @@ import { toast } from "sonner";
 import {
   PERSONAL_EXTENSION_CAPABILITIES,
   PERSONAL_EXTENSION_FULL_PAGE_CAPABILITY,
+  PERSONAL_EXTENSION_DEFAULT_REVISIONS,
+  PERSONAL_EXTENSION_MAX_REVISIONS,
   type PersonalExtensionListItem,
 } from "@marinara-engine/shared";
 import { ApiError, getPrivilegedActionErrorMessage } from "../../../lib/api-client";
@@ -215,12 +217,12 @@ export function ExtensionRevisionHistorySettings() {
         <label htmlFor={limitId}>{t("settings.extensions.revisionHistory.limit")}</label>
         <select
           id={limitId}
-          value={data?.limit ?? 10}
+          value={data?.limit ?? PERSONAL_EXTENSION_DEFAULT_REVISIONS}
           disabled={!data || update.isPending}
           onChange={(event) => void changeLimit(Number(event.target.value))}
           className="rounded-lg bg-[var(--secondary)] px-3 py-2 ring-1 ring-[var(--border)] disabled:opacity-50"
         >
-          {Array.from({ length: 11 }, (_, limit) => (
+          {Array.from({ length: PERSONAL_EXTENSION_MAX_REVISIONS + 1 }, (_, limit) => (
             <option key={limit} value={limit}>
               {limit}
             </option>

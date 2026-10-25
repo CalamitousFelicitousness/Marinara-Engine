@@ -1,6 +1,7 @@
 import {
   createPersonalExtensionSchema,
   personalExtensionRevisionRetentionSchema,
+  PERSONAL_EXTENSION_DEFAULT_REVISIONS,
   PERSONAL_EXTENSION_FULL_PAGE_CAPABILITY,
   normalizePersonalExtensionCapabilities,
   type CreatePersonalExtensionInput,
@@ -142,8 +143,10 @@ export function createPersonalExtensionsStorage(db: DB) {
   const appSettings = createAppSettingsStorage(db);
   const getRevisionRetention = async () => {
     const raw = await appSettings.get(REVISION_RETENTION_KEY);
-    const parsed = personalExtensionRevisionRetentionSchema.shape.limit.safeParse(Number(raw));
-    return raw !== null && parsed.success ? parsed.data : 10;
+    const parsed = personalExtensionRevisionRetentionSchema.shape.limit.safeParse(
+      raw?.trim() ? Number(raw) : undefined,
+    );
+    return parsed.success ? parsed.data : PERSONAL_EXTENSION_DEFAULT_REVISIONS;
   };
   const getById = async (id: string) => {
     const rows = await db.select().from(installedExtensions).where(eq(installedExtensions.id, id));

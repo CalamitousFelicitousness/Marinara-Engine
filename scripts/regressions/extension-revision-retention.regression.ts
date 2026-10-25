@@ -22,7 +22,13 @@ app.decorate("db", db);
 try {
   await app.register(personalExtensionsRoutes, { prefix: "/api/personal-extensions" });
   const storage = createPersonalExtensionsStorage(db);
-  const userStorage = createPersonalExtensionSettingsStorage(createAppSettingsStorage(db));
+  const appSettings = createAppSettingsStorage(db);
+  const userStorage = createPersonalExtensionSettingsStorage(appSettings);
+  for (const raw of ["", "bad", "-1", "11"]) {
+    await appSettings.set("extension-revision-retention", raw);
+    assert.equal(await storage.getRevisionRetention(), 10, "Invalid stored limits preserve the default history");
+  }
+  await appSettings.remove("extension-revision-retention");
   const extensions = [];
   for (const source of ["professor_mari", "external"] as const) {
     const extension = await storage.create(

@@ -5499,7 +5499,7 @@ export function ChatSettingsDrawer({
                 className={cn(
                   "flex-1 px-3 py-2 text-[0.6875rem] font-medium transition-colors rounded-l-lg",
                   cardCssMode === "disabled"
-                    ? "bg-[var(--primary)] text-white"
+                    ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
                     : "text-[var(--muted-foreground)] hover:bg-[var(--accent)]",
                 )}
               >
@@ -5510,7 +5510,7 @@ export function ChatSettingsDrawer({
                 className={cn(
                   "flex-1 px-3 py-2 text-[0.6875rem] font-medium transition-colors",
                   cardCssMode === "exclusive"
-                    ? "bg-[var(--primary)] text-white"
+                    ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
                     : "text-[var(--muted-foreground)] hover:bg-[var(--accent)]",
                 )}
               >
@@ -5521,7 +5521,7 @@ export function ChatSettingsDrawer({
                 className={cn(
                   "flex-1 px-3 py-2 text-[0.6875rem] font-medium transition-colors rounded-r-lg",
                   cardCssMode === "chat"
-                    ? "bg-[var(--primary)] text-white"
+                    ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
                     : "text-[var(--muted-foreground)] hover:bg-[var(--accent)]",
                 )}
               >

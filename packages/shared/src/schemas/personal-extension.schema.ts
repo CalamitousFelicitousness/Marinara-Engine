@@ -128,8 +128,11 @@ export const externalExtensionsPolicyUpdateSchema = z.object({
   enabled: z.boolean(),
 });
 
+export const PERSONAL_EXTENSION_MAX_REVISIONS = 10;
+export const PERSONAL_EXTENSION_DEFAULT_REVISIONS = 10;
+
 export const personalExtensionRevisionRetentionSchema = z.object({
-  limit: z.number().int().min(0).max(10),
+  limit: z.number().int().min(0).max(PERSONAL_EXTENSION_MAX_REVISIONS),
   confirmPrune: z.literal(true).optional(),
 });
 

@@ -39,6 +39,7 @@ import { fileURLToPath } from "node:url";
 import {
   applyRulesetCombatChoice,
   capRulesetCasterSheet,
+  raiseRulesetSheetAbilities,
   createRulesetEncounter,
   holdRulesetSheetHealth,
   normalizeCharacterLookupName,
@@ -1933,6 +1934,17 @@ const dataDir = mkdtempSync(join(tmpdir(), "marinara-creature-sheets-"));
     ["Frost Mote", "Ember Lance", "Spark Lash"],
     "its one 2nd level spell, then its first 1st level one",
   );
+  // Written with no scores, the ability it casts with is raised to its tier; written ones stay (laptop
+  // playtest 2026-10-25: a cleric 4 with "abilities": {} cast at DC 10).
+  {
+    const tier = spellbook.combat!.threat!.tiers.find((one) => one.id === "cr_2")!;
+    const bare = { ...sheet, abilities: {} };
+    const raised = raiseRulesetSheetAbilities(spellbook, bare, tier);
+    assert.ok((raised.sheet.abilities.cha ?? 0) > 10, JSON.stringify(raised));
+    assert.match(raised.adjusted[0] ?? "", /^Charisma was set to \d+, as no scores were written\.$/);
+    const written = { ...sheet, abilities: { cha: 8 } };
+    assert.equal(raiseRulesetSheetAbilities(spellbook, written, tier).sheet, written);
+  }
   // A legendary one (a boss with Legendary Resistance) keeps all it can cast; uncastable still goes.
   const legend = started({
     definition: spellbook,

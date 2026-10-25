@@ -1168,7 +1168,8 @@ try {
     const first = await post(
       "/combat/start",
       fightBody(away.anchor.id, [
-        { ...unit("mage", "Cult Mage", "enemy"), creature: "creatures/thorn-lurker" },
+        // A named one comes back by its name even beside another called so.
+        { ...unit("mage", "Cult Mage", "enemy"), creature: "creatures/thorn-lurker", aiHints: { named: true } },
         { ...unit("mender", "Hedge Mender", "enemy"), creature: "creatures/hedge-mender" },
         unit("hound", "Cinder Hound", "enemy"),
       ]),
@@ -1207,6 +1208,16 @@ try {
         "Hedge Mender",
       ]);
       assert.deepEqual(kept.beaten, []);
+      // Two nameless ones of a name are nobody to know again (laptop playtest 2026-10-25: a second
+      // Cult Guard came back as an old crossbow guard), and the name is forgotten.
+      const pair = structuredClone(won);
+      const twin = structuredClone(pair.encounter.combatants.find((one: { id: string }) => one.id === "hound"));
+      twin.id = "hound2";
+      pair.encounter.combatants.push(twin);
+      pair.made.hound2 = structuredClone(pair.made.hound);
+      const twins = rulesetFightReturningFoes(definition, pair);
+      assert.ok(!twins.fled.some((one: { name: string }) => one.name === "Cinder Hound"));
+      assert.deepEqual(twins.beaten, ["Cinder Hound", "Cinder Hound"]);
     }
     await engineStates.updateStateById(row.id, JSON.stringify(doc), undefined, away.chat.id);
     const ended = await post("/combat/command", {

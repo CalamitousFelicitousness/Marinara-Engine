@@ -1121,9 +1121,17 @@ export async function combatDirectorRoutes(
           // One of a name comes back once: the second Bandit of a fight where one Bandit got away is a
           // fresh one (cloud re-test 2026-10-25: both came back at 1 of 13).
           const claimed = new Set<string>();
+          const calledSo = new Map<string, number>();
+          for (const enemy of input.enemies) {
+            const key = rulesetReturningFoeKey(enemy.name);
+            calledSo.set(key, (calledSo.get(key) ?? 0) + 1);
+          }
           const backAs = input.enemies.map((enemy) => {
             const key = rulesetReturningFoeKey(enemy.name);
             if (claimed.has(key) || !returning[key]) return undefined;
+            // A nameless one comes back only where it is the one of its name (2026-10-25): of two
+            // Cult Guards, neither is the guard that got away before.
+            if (!returning[key].named && (calledSo.get(key) ?? 0) > 1) return undefined;
             claimed.add(key);
             return returning[key];
           });

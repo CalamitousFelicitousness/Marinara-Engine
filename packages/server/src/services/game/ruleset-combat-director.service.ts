@@ -15,6 +15,7 @@ import {
   gameInventoryNameKey,
   applyRulesetSheetOp,
   capRulesetCasterSheet,
+  raiseRulesetSheetAbilities,
   RULESET_INVENTED_CASTER_MOST,
   rulesetBudgetLevel,
   rulesetBudgetedTiers,
@@ -306,7 +307,11 @@ export interface RulesetReturningFoe {
   health?: number;
   /** The health it got away without (laptop playtest 2026-10-25: Kallian fled at 21 of 32 and came
    *  back whole): it comes back still missing it. */
-  taken?: number; /** The coins it had on it, which it takes along when it gets away. */
+  taken?: number;
+  /** A named one of the story, or a boss (2026-10-25): it comes back by its name whatever else is
+   *  called so. One that is not comes back only as the one of its name in a fight. */
+  named?: true;
+  /** The coins it had on it, which it takes along when it gets away. */
   coins?: Array<{ ref: string; name: string; count: number }>;
   /** What its sheet's pools other than health were at as the fight ended (2026-10-25): spell slots
    *  spent stay spent until it rests, as its class's do. */
@@ -334,10 +339,22 @@ export function rulesetFightReturningFoes(
 } {
   const fled: RulesetReturningFoe[] = [];
   const beaten: string[] = [];
+  // A nameless foe that was one of several called the same (two Cult Guards) is no one to know again:
+  // the next of that name is a fresh one (laptop playtest 2026-10-25: a second Cult Guard came back as
+  // an old crossbow guard).
+  const called = new Map<string, number>();
+  for (const one of fight.encounter.combatants) {
+    const made = one.side === "enemy" ? fight.made?.[one.id] : undefined;
+    if (made) called.set(rulesetReturningFoeKey(made.name), (called.get(rulesetReturningFoeKey(made.name)) ?? 0) + 1);
+  }
   for (const one of fight.encounter.combatants) {
     if (one.side !== "enemy" || one.calledBy !== undefined || one.object) continue;
     const made = fight.made?.[one.id];
     if (!made) continue;
+    if (!made.named && (called.get(rulesetReturningFoeKey(made.name)) ?? 0) > 1) {
+      beaten.push(made.name);
+      continue;
+    }
     // One that got away, or was still standing as the fight ended (it won: laptop playtest 2026-10-25,
     // a War-mage that beat the party came back rebuilt at 40 health from 65), is the same one next time.
     const standing = !one.away && !one.down && !one.defeated;
@@ -965,6 +982,12 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
       const tiers = combat.threat?.tiers ?? [];
       const wanted = opponent.tier ?? proposed.data.tier;
       const tier = tiers.find((entry) => entry.id === wanted) ?? tiers[0];
+      // Written with no scores, the ability it casts with is raised to its tier (2026-10-25).
+      if (tier) {
+        const raised = raiseRulesetSheetAbilities(definition, sheet, tier);
+        raised.adjusted.forEach(said);
+        sheet = raised.sheet;
+      }
       const held = tier ? holdRulesetSheetHealth(definition, sheet, tier) : { sheet, adjusted: [] };
       held.adjusted.forEach(said);
       // What the entry adds beside the sheet (its own actions, riders, the damage it shrugs off) is
@@ -1240,6 +1263,7 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
         opponent.id,
         {
           name: opponent.name,
+          ...(opponent.named || opponent.boss ? { named: true as const } : {}),
           ...(opponent.creature !== undefined ? { creature: opponent.creature } : {}),
           ...(opponent.tier !== undefined ? { tier: opponent.tier } : {}),
           ...(opponent.proposed !== undefined ? { proposed: structuredClone(opponent.proposed) } : {}),

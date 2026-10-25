@@ -696,6 +696,50 @@ export function capRulesetCasterSheet(
 }
 
 /**
+ * An invented sheet written with no ability scores, whose fields name the ability it works from (5e's
+ * spellcasting ability), has that ability raised until what reads it reaches its tier: a number that
+ * reads like a save difficulty up to the tier's, one that reads like a bonus to hit up to its to-hit
+ * (laptop playtest 2026-10-25: a cleric 4 with no scores cast at DC 10 and +2). The ruleset's own
+ * formulas say what each score gives; scores it did write are its own and never touched.
+ */
+export function raiseRulesetSheetAbilities(
+  definition: RulesetDefinition,
+  proposed: RulesetSheetBuild,
+  tier: RulesetCombatThreatTier,
+): { sheet: RulesetSheetBuild; adjusted: string[] } {
+  if (Object.keys(proposed.abilities ?? {}).length > 0) return { sheet: proposed, adjusted: [] };
+  const declared = definition.sheet;
+  const abilityIds = new Set(declared.abilities.filter((ability) => !ability.value).map((ability) => ability.id));
+  const sheet = structuredClone(proposed);
+  const adjusted: string[] = [];
+  for (const field of declared.fields) {
+    if (field.type !== "enum") continue;
+    const ability = sheet.fields[field.id];
+    if (typeof ability !== "string" || !abilityIds.has(ability)) continue;
+    const reads = declared.derived.filter((derived) =>
+      JSON.stringify(derived).includes(`"abilityModFromField":${JSON.stringify(field.id)}`),
+    );
+    if (reads.length === 0) continue;
+    const valueOf = (build: RulesetSheetBuild) =>
+      reads.map((derived) => resolveRulesetValueRef(definition, build, { derived: derived.id }));
+    const start = valueOf(sheet);
+    // Each is held to whichever of the tier's two numbers it is nearer.
+    const targets = start.map((value) =>
+      Math.abs(value - tier.saveDifficulty) <= Math.abs(value - tier.toHit) ? tier.saveDifficulty : tier.toHit,
+    );
+    const rule = declared.abilities.find((candidate) => candidate.id === ability)!;
+    const from = sheet.abilities[ability] ?? rule.default;
+    let score = from;
+    while (score < rule.max && valueOf(sheet).some((value, index) => value < targets[index]!)) {
+      score += 1;
+      sheet.abilities[ability] = score;
+    }
+    if (score !== from) adjusted.push(`${rule.label} was set to ${score}, as no scores were written.`);
+  }
+  return { sheet, adjusted };
+}
+
+/**
  * Health into the tier's band, through the one field the ruleset's health is read off, so the sheet
  * itself says the new number and nothing downstream has to know it was held. A wound track's length
  * is the ruleset's own and is never changed; a formula with no single field in it is left as written,

@@ -9564,11 +9564,11 @@ const combatSymbolsSchema = z
         counts: z.enum(["all", "beyond"]).default("all"),
       })
       .strict()
-      .default({}),
+      .prefault({}),
     /** What a target takes off each hit's harm, off their sheet: `byKind` names kinds of the health
      *  track and wins over `all` for its kind. A creature gives its own numbers. Never below none. */
     soak: z
-      .object({ all: rulesetValueRefSchema.optional(), byKind: z.record(rulesetValueRefSchema).optional() })
+      .object({ all: rulesetValueRefSchema.optional(), byKind: z.record(z.string(), rulesetValueRefSchema).optional() })
       .strict()
       .optional(),
     spends: z.array(combatSymbolSpendSchema).min(1).max(16).optional(),

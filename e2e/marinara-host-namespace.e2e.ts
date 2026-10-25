@@ -54,6 +54,27 @@ test.describe("The host namespace agent packages use", () => {
     test.skip(!testInfo.project.name.includes("desktop"), "One browser proves the shared client namespace.");
   });
 
+  test("keeps the installed-package Zod 3 API while Engine validators use native Zod 4", async ({ page }) => {
+    await openPackagePage(page);
+    await page.goto("/");
+    await waitForPackageClient(page);
+    const legacy = await page.evaluate(() => {
+      // Probe the runtime ABI rather than assuming the Engine's compile-time Zod version.
+      const z = (globalThis as any).__MARINARA_HOST__.modules.zod.z;
+      const invalid = z.string().safeParse(1);
+      return {
+        record: z.record(z.number()).parse({ gold: 3 }),
+        sparse: z
+          .object({ name: z.string().default("fallback") })
+          .partial()
+          .parse({}),
+        deepPartial: typeof z.object({ nested: z.object({ value: z.string() }) }).deepPartial,
+        errorAlias: invalid.error.errors === invalid.error.issues,
+      };
+    });
+    expect(legacy).toEqual({ record: { gold: 3 }, sparse: {}, deepPartial: "function", errorAlias: true });
+  });
+
   test("is complete, live and read-only before a package client loads", async ({ page }) => {
     await openPackagePage(page);
     await page.goto("/");

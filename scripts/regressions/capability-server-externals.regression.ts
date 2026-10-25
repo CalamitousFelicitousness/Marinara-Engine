@@ -168,7 +168,7 @@ export async function activate(context) {
     require: requiredZod.z.record(requiredZod.z.number()).parse({ b: 2 }),
     requireSubpath: requiredZod.z === require("zod/v3").z,
     packageMajor: Number(require("zod/package.json").version.split(".")[0]),
-    v4: nativeZod.z.string().parse("native subpath"),
+    v4: nativeZod.z.string().parse("bundled v4 subpath"),
   };
   return context.api.registerService("externals-probe", {
     modules, urls, compat, parsed: namedZod.object({ a: namedZod.number() }).parse({ a: 1 }),
@@ -217,7 +217,7 @@ async function activateProbe(label: string): Promise<ProbeService> {
       require: { b: 2 },
       requireSubpath: true,
       packageMajor: 3,
-      v4: "native subpath",
+      v4: "bundled v4 subpath",
     },
     `${label}: the full legacy package ABI survives activation`,
   );
@@ -250,6 +250,12 @@ try {
   await activateProbe("link to another install");
   assert.ok(existsSync(join(oldZod, "index.js")), "relinking removes only the link, never what it pointed to");
   await capabilityModuleRuntime.deactivatePackage("externals-probe");
+
+  // ── A transitive dependency of the Engine never resolves for a package ──
+  await assert.rejects(
+    () => capabilityModuleRuntime.activatePackage(app, "externals-transitive"),
+    /Cannot find package 'ws'|ERR_MODULE_NOT_FOUND/,
+  );
 
   // An upgrade retires old managed snapshots and activates unchanged installed packages again.
   const stale = join(dir, "capability-runtime-snapshots", "externals-probe-1.0.0-old");
@@ -295,12 +301,6 @@ try {
     /not a managed Engine link/,
   );
   assert.equal(readFileSync(join(unknownSnapshot, "node_modules", "keep.txt"), "utf8"), "kept");
-
-  // ── A transitive dependency of the Engine never resolves for a package ──
-  await assert.rejects(
-    () => capabilityModuleRuntime.activatePackage(app, "externals-transitive"),
-    /Cannot find package 'ws'|ERR_MODULE_NOT_FOUND/,
-  );
 
   // ── Something that is not a link is left alone ──
   const realRoot = join(dir, "real-directory-root");

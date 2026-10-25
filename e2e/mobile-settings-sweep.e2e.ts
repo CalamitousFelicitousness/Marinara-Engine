@@ -264,7 +264,7 @@ for (const theme of ["dark", "light"] as const) {
       await expect(name).toBeFocused();
       await expect(name).toHaveValue("Visible while typing");
       await testInfo.attach(`connection-keyboard-${theme}`, {
-        body: await page.screenshot(),
+        body: await page.screenshot({ animations: "disabled" }),
         contentType: "image/png",
       });
     } finally {

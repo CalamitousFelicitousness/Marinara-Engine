@@ -269,7 +269,22 @@ try {
   assert.equal(empty.json().error, "This fight has nobody on the party's side.");
   const none = await post("/combat/start", { ...body, enemies: [] });
   assert.equal(none.json().error, "This fight has nobody to fight.");
-  const start = await post("/combat/start", body);
+  // A mechanic no interval drives may say 0 (laptop party B fight 2: an hp_threshold one's refused
+  // the whole fight), and a value that is refused is named where it is.
+  const blight = {
+    name: "Blighted Sap",
+    description: "Sap that corrodes.",
+    trigger: "hp_threshold",
+    interval: 0,
+    hpThreshold: 75,
+    effectType: "damage_all",
+    power: 0.8,
+    status: { name: "Corroded", emoji: "", duration: 2, modifier: -2 },
+  };
+  const named = await post("/combat/start", { ...body, mechanics: [{ ...blight, interval: -1 }] });
+  assert.equal(named.statusCode, 400);
+  assert.match(named.json().error, /^mechanics\.0\.interval: /);
+  const start = await post("/combat/start", { ...body, mechanics: [blight] });
   assert.equal(start.statusCode, 200, start.body);
   let s = start.json().session as DirectedCombatView;
   assert.equal(s.style, "ruleset");

@@ -28,6 +28,7 @@ import {
   evaluateRulesetSheet,
   readRulesetLive,
   rulesetKeptCalls,
+  rulesetKeptForm,
   rulesetCheckEffects,
   rulesetCheckSources,
   rulesetHideLines,
@@ -576,6 +577,7 @@ export function GameRulesetSheet({
   const resolved = useMemo(() => readRulesetLive(definition, build, live, items), [definition, build, live, items]);
   // What a use outside a fight called and keeps (1.787): a familiar, until it is dismissed or killed.
   const keptCalls = useMemo(() => rulesetKeptCalls(live), [live]);
+  const keptForm = useMemo(() => rulesetKeptForm(live), [live]);
   // Against the live state as it stands, so a value that reads a track or a pool shows what it is now,
   // and against what the character holds, so one that reads their items does too.
   const evaluated = useMemo(
@@ -1142,6 +1144,33 @@ export function GameRulesetSheet({
                         )}
                       </span>
                     ))}
+                  </div>
+                </div>
+              )}
+
+              {keptForm && (
+                <div className="space-y-1.5">
+                  <p className={labelClass}>{localizeUi("game.ruleset.sheet.keptForm")}</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    <span
+                      title={keptForm.entry}
+                      className={`${chipClass} inline-flex items-center gap-1 border-[var(--border)] text-[var(--foreground)]`}
+                    >
+                      {keptForm.as}
+                      {!settled && !readOnly && (
+                        <button
+                          type="button"
+                          onClick={() => apply({ op: "dismiss", name: keptForm.entry })}
+                          aria-label={localizeUi("game.ruleset.sheet.endKeptFormAria", {
+                            name: keptForm.as,
+                            who: cardName,
+                          })}
+                          className="-mr-1 rounded-full p-0.5 text-[var(--muted-foreground)] hover:bg-[var(--secondary)] hover:text-[var(--foreground)]"
+                        >
+                          <X size={10} aria-hidden="true" />
+                        </button>
+                      )}
+                    </span>
                   </div>
                 </div>
               )}

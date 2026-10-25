@@ -112,6 +112,17 @@ export interface RulesetLiveState {
    *  creature it called, as it was named ("" for its only one). It joins every fight its caller is
    *  in until it is dismissed or killed: Find Familiar's familiar. */
   called?: Record<string, string>;
+  /** The shape an entry used outside a fight put its user in and keeps them in (1.790): the entry's
+   *  name, the form's, and the form's own health once a fight has taken some. They start every fight
+   *  in it until it ends: a druid's Wild Shape. */
+  shaped?: RulesetLiveShaped;
+}
+
+/** A shape kept on a sheet from a use outside a fight (1.790). */
+export interface RulesetLiveShaped {
+  entry: string;
+  as: string;
+  health?: number;
 }
 
 /** A save a held condition is made against as days pass (Capability API 1.510). */
@@ -207,6 +218,13 @@ const liveStackId = z.string().min(1).max(MAX_LIVE_KEY_LENGTH);
 /** The creature a kept call called (1.787), by name: "" for an entry that calls only one. */
 const liveCalledValue = z.string().max(MAX_LIVE_KEY_LENGTH);
 const MAX_LIVE_CALLED = 20;
+const liveShapedSchema = z
+  .object({
+    entry: z.string().min(1).max(MAX_LIVE_KEY_LENGTH),
+    as: z.string().min(1).max(MAX_LIVE_KEY_LENGTH),
+    health: z.number().int().min(0).max(MAX_LIVE_NUMBER).optional(),
+  })
+  .strict();
 
 const liveDaySaveSchema = z
   .object({
@@ -250,6 +268,7 @@ export const rulesetLiveStateSchema = z
     wornFrom: boundedRecord(liveStackId, MAX_LIVE_CONDITIONS, "conditions worn items keep on").optional(),
     wardsOff: boundedRecord(liveStackId, MAX_LIVE_CONDITIONS, "what conditions ward off").optional(),
     called: boundedRecord(liveCalledValue, MAX_LIVE_CALLED, "kept calls").optional(),
+    shaped: liveShapedSchema.optional(),
   })
   .strip();
 
@@ -839,6 +858,8 @@ function readStoredLiveStateAsIs(stored: unknown): RulesetLiveState {
   if (wardsOff) state.wardsOff = wardsOff;
   const called = keepValid(source.called, liveCalledValue, MAX_LIVE_CALLED);
   if (called) state.called = called;
+  const shaped = liveShapedSchema.safeParse(source.shaped);
+  if (shaped.success) state.shaped = shaped.data;
   return state;
 }
 
@@ -879,6 +900,8 @@ function normalizeLiveState(state: RulesetLiveState): RulesetLiveState {
   if (wardsOff.length > 0) normalized.wardsOff = Object.fromEntries(wardsOff);
   // What a kept call called (1.787) stays until it is dismissed or killed.
   if (state.called && Object.keys(state.called).length > 0) normalized.called = state.called;
+  // And a kept shape (1.790) until it ends.
+  if (state.shaped) normalized.shaped = state.shaped;
   return normalized;
 }
 
@@ -1884,9 +1907,15 @@ export function applyRulesetSheetOp(
     return done(`${entry.label} ${own(entry.valueLabels, value) ?? value}`);
   }
 
-  // What a kept call called (1.787), sent away by the entry's name or the creature's.
+  // What a kept call called (1.787), sent away by the entry's name or the creature's; or a kept
+  // shape (1.790) ended, by the entry's name or the form's.
   if (op.op === "dismiss") {
     const wanted = typeof op.name === "string" ? op.name.trim() : "";
+    const shape = next.shaped;
+    if (wanted && shape && (sameName(shape.entry, wanted) || sameName(shape.as, wanted))) {
+      delete next.shaped;
+      return done(`${shape.as} shape ended`);
+    }
     const key = Object.keys(next.called ?? {}).find(
       (entry) => sameName(entry, wanted) || (!!next.called![entry] && sameName(next.called![entry]!, wanted)),
     );
@@ -2544,6 +2573,88 @@ function rulesetSheetEntryCalling(
     }
   }
   return undefined;
+}
+
+/**
+ * The shape a Game Master's `use` of an entry outside a fight keeps its user in (1.790): an entry that
+ * changes its user's own shape (`forms`, aimed at `self`), whose form stays on their sheet and starts
+ * every fight they are in until it ends. A druid's Wild Shape. Null for an entry that changes no shape
+ * of its user's. The form is the one `as` names, checked against the forms it offers where the catalog
+ * they come from is among `catalogs`: no higher than the cap their sheet reads, and none that moves in
+ * a way they may not take yet. One it offers alone needs no name.
+ */
+export function rulesetUseKeptForm(
+  definition: RulesetDefinition,
+  build: RulesetSheetBuild,
+  catalogs: RulesetCatalogEntriesById,
+  op: Extract<RulesetSheetOp, { op: "use" }>,
+  stored: unknown,
+  items?: ReadonlyArray<RulesetSheetItem>,
+): { ok: true; shaped: RulesetLiveShaped } | { ok: false; reason: RulesetSheetRefusal } | null {
+  const found = rulesetEntryNamed(definition, build, catalogs, op.name.trim());
+  const source = found.ok ? (found.standsFor?.mechanics?.forms ? found.standsFor : found.entry) : undefined;
+  const forms = source?.mechanics?.forms;
+  if (!source || !forms || source.mechanics?.targets !== "self" || definition.combat === undefined) return null;
+  const entry = source.label;
+  const plain = (value: string | number) => String(value).trim().toLowerCase();
+  const holds = (value: unknown, want: unknown) => {
+    if (value === undefined) return false;
+    const have = (Array.isArray(value) ? value : [value]).map((one) => plain(one as string));
+    return (Array.isArray(want) ? want : [want]).some((one) => have.includes(plain(one as string)));
+  };
+  let evaluated: ReturnType<typeof evaluateRulesetSheetLive> | undefined;
+  const read = (ref: RulesetValueRef) =>
+    resolveRulesetValueRef(
+      definition,
+      build,
+      ref,
+      (evaluated ??= evaluateRulesetSheetLive(definition, build, stored, items)),
+    );
+  const cap = forms.upTo?.at ? read(forms.upTo.at) : undefined;
+  // The forms it offers, as a fight reads them: those it names, then its catalog's matches.
+  const refs = [...(forms.into ?? [])];
+  const from = forms.from;
+  for (const one of from ? (catalogs[from.catalog] ?? []) : []) {
+    const ref = `${from!.catalog}/${one.id}`;
+    if (refs.includes(ref)) continue;
+    if (!Object.entries(from!.filters ?? {}).every(([id, want]) => holds(one.filters?.[id], want))) continue;
+    if (Object.entries(from!.notFilters ?? {}).some(([id, want]) => holds(one.filters?.[id], want))) continue;
+    refs.push(ref);
+  }
+  const offered = refs.flatMap((ref) => {
+    const [catalogId, entryId] = ref.split("/");
+    const one = catalogs[catalogId ?? ""]?.find((candidate) => candidate.id === entryId);
+    if (!one?.creature) return [];
+    const ranked = forms.upTo ? one.filters?.[forms.upTo.filter] : undefined;
+    if (cap !== undefined && typeof ranked === "number" && ranked > cap) return [];
+    const speeds = (one.creature as { speeds?: Record<string, number> }).speeds;
+    if (forms.without?.some((bar) => (speeds?.[bar.speed] ?? 0) > 0 && !(bar.unless && read(bar.unless) > 0)))
+      return [];
+    return [one.label];
+  });
+  // Only what can be read is checked: forms from a catalog not to hand are taken as named.
+  const known = from ? from.catalog in catalogs : true;
+  const wanted = op.as?.trim() ?? "";
+  if (!wanted) {
+    if (offered.length === 1) return { ok: true, shaped: { entry, as: offered[0]! } };
+    const listed = offered.length
+      ? ` from ${offered.slice(0, MAX_KEPT_CALL_NAMES).join(", ")}${offered.length > MAX_KEPT_CALL_NAMES ? ", ..." : ""}`
+      : "";
+    return { ok: false, reason: `bad-amount: name the form ${entry} takes, as as="Name"${listed}` };
+  }
+  const named = offered.find((one) => sameName(one, wanted)) ?? (known ? undefined : wanted);
+  if (!named) {
+    const listed = offered.length
+      ? `; it takes ${offered.slice(0, MAX_KEPT_CALL_NAMES).join(", ")}${offered.length > MAX_KEPT_CALL_NAMES ? ", ..." : ""}`
+      : "";
+    return { ok: false, reason: `bad-amount: ${entry} cannot take the form "${wanted}" now${listed}` };
+  }
+  return { ok: true, shaped: { entry, as: named } };
+}
+
+/** The shape a use outside a fight keeps its user in (1.790), as the sheet stores it. */
+export function rulesetKeptForm(stored: unknown): RulesetLiveShaped | undefined {
+  return readStoredLiveStateAsIs(stored).shaped;
 }
 
 /** What each entry used outside a fight called and keeps (1.787), as the sheet stores it. */

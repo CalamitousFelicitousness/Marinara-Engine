@@ -18,7 +18,7 @@ import {
 } from "../../schemas/ruleset.schema.js";
 import { rulesetCheckSources, rulesetHideLines } from "./check-effects.js";
 import { rulesetItemEffectFacts, rulesetItemEffectText } from "./item-book.js";
-import { readRulesetLive, rulesetKeptCalls } from "./live-state.js";
+import { readRulesetLive, rulesetKeptCalls, rulesetKeptForm } from "./live-state.js";
 import { rulesetCatalogEntriesByRef } from "./scaled-rows.js";
 import { rulesetItemAccess } from "./sheet-builder.js";
 import {
@@ -218,6 +218,9 @@ export function renderRulesetSheetBlock(
     call.as ? `${safeValue(call.as)} (${safeValue(call.entry)})` : safeValue(call.entry),
   );
   if (kept.length > 0) push(`With them: ${kept.join(", ")}`);
+  // And the shape one keeps them in (1.790), which they start every fight in.
+  const shaped = rulesetKeptForm(stored);
+  if (shaped) push(`In the shape of: ${safeValue(shaped.as)} (${safeValue(shaped.entry)})`);
   for (const source of rulesetCheckSources(definition, build, stored, items)) {
     const modifiers = source.modifiers?.filter((one) => one.to === "damage");
     if (modifiers?.length)

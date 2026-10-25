@@ -144,6 +144,7 @@ import {
   rulesetOpenLairWindow,
   rulesetStandingAtStart,
   rulesetKeptCalls,
+  rulesetKeptForm,
   type RulesetStandingZone,
   rulesetWindowOptions,
   rulesetAreaCells,
@@ -219,6 +220,9 @@ export const RULESET_COMBAT_REASON_LIMIT = 60;
 
 /** How many lines the opponents' own build is allowed to leave behind. */
 const RULESET_ADJUSTMENT_LIMIT = 60;
+
+/** The same name, without case or the space around it: a kept shape's form as stored and in a fight. */
+const sameRulesetName = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
 /** How many actions one turn of an actor nobody controls may take before the turn is ended anyway.
  *  Budgets already bound it; this is the belt beside the braces. */
@@ -773,16 +777,21 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
   }
   // What a member's sheet keeps from a use outside a fight comes along on its own, paid for then
   // (1.787): their familiar. The Game Master's own listing of the same entry is left out for it.
-  const kept = encounter.combatants.flatMap((one) =>
-    one.side === "party" && one.sheet
-      ? rulesetKeptCalls(input.live?.[normalizeCharacterLookupName(one.name)]).map((call) => ({
-          casterId: one.id,
-          entry: call.entry,
-          ...(call.as ? { mode: call.as } : {}),
-          kept: call.entry,
-        }))
-      : [],
-  );
+  // And the shape one keeps them in (1.790): a druid who went into the fight a wolf starts it one.
+  const kept = encounter.combatants.flatMap((one) => {
+    if (one.side !== "party" || !one.sheet) return [];
+    const stored = input.live?.[normalizeCharacterLookupName(one.name)];
+    const shaped = rulesetKeptForm(stored);
+    return [
+      ...rulesetKeptCalls(stored).map((call) => ({
+        casterId: one.id,
+        entry: call.entry,
+        ...(call.as ? { mode: call.as } : {}),
+        kept: call.entry,
+      })),
+      ...(shaped ? [{ casterId: one.id, entry: shaped.entry, mode: shaped.as, kept: shaped.entry }] : []),
+    ];
+  });
   const standing = [
     ...(input.standing ?? []).filter(
       (one) =>
@@ -798,6 +807,15 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
     const stood = rulesetStandingAtStart(definition, encounter, standing);
     encounter = stood.state;
     adjustments.push(...stood.skipped);
+    // A kept shape comes in with what its form had left of its own health when last it fought.
+    for (const one of encounter.combatants) {
+      const shaped =
+        one.side === "party" && one.sheet
+          ? rulesetKeptForm(input.live?.[normalizeCharacterLookupName(one.name)])
+          : undefined;
+      if (shaped?.health === undefined || !one.shape?.health || !sameRulesetName(one.shape.name, shaped.as)) continue;
+      one.shape.health.value = Math.max(1, Math.min(one.shape.health.max, shaped.health));
+    }
   }
   // A lair whose count comes before everybody's acts before the first turn (1.315).
   encounter = rulesetOpenLairWindow(definition, encounter);
@@ -1216,6 +1234,36 @@ export function rulesetFightLiveStates(fight: RulesetFightState): RulesetLiveSta
         state = { ...state, called };
         if (!Object.keys(called).length) delete state.called;
       }
+    }
+    // So is a kept shape that ended in it (1.790), and one still held keeps its form's health and the
+    // condition holding it, which the fight's end took off; a shape they took in the fight by an
+    // entry of their own and still hold as it ends is kept from then on.
+    const shape = combatant.shape;
+    const entry = shape
+      ? [...(shape.was.actions ?? []), ...combatant.actions].find((action) =>
+          action.modes?.some(
+            (mode) =>
+              mode.form?.creature.catalogId === shape.form.catalogId &&
+              mode.form.creature.entryId === shape.form.entryId,
+          ),
+        )
+      : undefined;
+    const held =
+      shape && !combatant.defeated && (state?.shaped ? sameRulesetName(state.shaped.as, shape.name) : !!entry);
+    if (held) {
+      const conditions = state?.conditions ?? [];
+      state = {
+        ...state,
+        ...(conditions.includes(shape.condition) ? {} : { conditions: [...conditions, shape.condition] }),
+        shaped: {
+          entry: state?.shaped?.entry ?? entry!.label,
+          as: state?.shaped?.as ?? shape.name,
+          ...(shape.health ? { health: Math.max(0, shape.health.value) } : {}),
+        },
+      };
+    } else if (state?.shaped) {
+      state = { ...state };
+      delete state.shaped;
     }
     live[normalizeCharacterLookupName(combatant.name)] = state;
   }

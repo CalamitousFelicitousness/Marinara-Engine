@@ -1557,6 +1557,7 @@ function renderRulesetSheetSection(
           ...(ruleset.combat
             ? [
                 `- For an ability used outside a fight that calls a creature to stay with them, add as="Creature" (and its creature type after a comma where they pick one, as="Name, Type"). It stays on their sheet ("With them") and joins every fight they are in. [sheet: who="Name" op="dismiss" name="Ability or creature"] when it is sent away or killed outside a fight.`,
+                `- For an ability used outside a fight that changes their own shape, add as="Form" (a beast's name for Wild Shape). They stay in it ("In the shape of") and start every fight in it. [sheet: who="Name" op="dismiss" name="Ability or form"] when it ends outside a fight.`,
               ]
             : []),
         ]

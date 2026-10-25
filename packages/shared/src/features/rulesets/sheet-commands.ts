@@ -35,6 +35,7 @@ import {
   type RulesetSheetOpResult,
   rulesetUseHealOutsideFight,
   rulesetUseKeptCall,
+  rulesetUseKeptForm,
   rulesetPoolNowText,
 } from "./live-state.js";
 
@@ -169,6 +170,9 @@ export function applySheetCommandTags(
     // The creature a call that stays calls (1.787), named before anything is paid for it.
     const kept = rulesetUseKeptCall(ctx.definition, card.build, ctx.catalogs ?? {}, op);
     if (kept && !kept.ok) return kept;
+    // The shape one that changes its user's own keeps them in (1.790), named the same way.
+    const shaped = rulesetUseKeptForm(ctx.definition, card.build, ctx.catalogs ?? {}, op, live[key], card.items);
+    if (shaped && !shaped.ok) return shaped;
     // A priced material (1.774) carried, and taken only once everything else is paid.
     const used = usedUp.get(key) ?? {};
     const material = plan.material ? rulesetMaterialFor(ctx.definition, plan.material, card.items, used) : undefined;
@@ -212,6 +216,12 @@ export function applySheetCommandTags(
       const before = (state ?? live[key] ?? {}) as RulesetLiveState;
       state = { ...before, called: { ...before.called, [kept.entry]: kept.as } };
       paid.push(`${kept.as || plan.label} called, and stays`);
+    }
+    // Kept on the sheet too (1.790), in place of any shape before it: they start every fight in it
+    // until it ends, with the form's own health.
+    if (shaped) {
+      state = { ...((state ?? live[key] ?? {}) as RulesetLiveState), shaped: shaped.shaped };
+      paid.push(`in the shape of ${shaped.shaped.as}`);
     }
     // An ability that costs nothing, such as a cantrip or a passive feature, is fine and changes
     // nothing: it is the Game Master saying what happened, not asking to spend.

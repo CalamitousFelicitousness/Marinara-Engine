@@ -616,18 +616,48 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
     const withReactions = <T extends RulesetStatBlock>(block: T): T => {
       const has = new Set(block.actions.flatMap((one) => [one.id, one.name.toLowerCase()]));
       const lent: RulesetStatBlockAction[] = [];
+      const cast: string[] = [];
       for (const attack of opponent.attacks ?? []) {
         if ((!attack.reaction && !attack.kind) || has.has(attack.name.toLowerCase())) continue;
         const reaction = rulesetBestiaryReaction(definition, input.bestiary, attack.name);
         if (!reaction || has.has(reaction.id)) {
-          if (!reaction && attack.reaction && !onSheet.has(attack.name.toLowerCase()))
+          if (reaction || !attack.reaction || onSheet.has(attack.name.toLowerCase())) continue;
+          // One this ruleset has as an entry that answers (a Counterspell that is a spell here),
+          // on a block with no sheet to write it on: cast as its own, once this fight (laptop
+          // playtest 2026-10-25: an invented Cult Mage's Counterspell never countered).
+          const entry = block.sheet ? undefined : rulesetAnsweringEntryRef(input.bestiary, attack.name);
+          if (entry && !cast.includes(entry)) {
+            cast.push(entry);
+            has.add(attack.name.toLowerCase());
+            adjustments.push(
+              `${opponent.name}: "${attack.name}" is this ruleset's own, so it may be cast once this fight.`,
+            );
+          } else if (!entry)
             adjustments.push(`${opponent.name}: this ruleset has no reaction called "${attack.name}".`);
           continue;
         }
         has.add(reaction.id).add(attack.name.toLowerCase());
         lent.push(reaction);
       }
-      return lent.length > 0 ? { ...block, actions: [...block.actions, ...lent] } : block;
+      if (lent.length === 0 && cast.length === 0) return block;
+      const casting = block.spellcasting;
+      return {
+        ...block,
+        actions: [...block.actions, ...lent],
+        ...(cast.length > 0
+          ? {
+              spellcasting: {
+                ...casting,
+                spells: [
+                  ...(casting?.spells ?? []),
+                  ...cast
+                    .filter((ref) => !casting?.spells.some((spell) => spell.entry === ref))
+                    .map((ref) => ({ entry: ref, uses: { per: "encounter" as const, count: 1 } })),
+                ],
+              },
+            }
+          : {}),
+      };
     };
     // A creature invented for this fight in the ruleset's own terms: a mage with slots and spells.
     // Read leniently, held to its tier the way a plain invention is, and held again once it is built.
@@ -6121,6 +6151,19 @@ export function rankRulesetChoices(
   });
 }
 
+/** The catalog entry (`catalog/entry`) named `name` that answers a moment (a reaction such as 5e's
+ *  Counterspell or Shield), outside the bestiaries, or undefined. */
+function rulesetAnsweringEntryRef(catalogs: RulesetCatalogEntriesById, name: string): string | undefined {
+  const wanted = name.trim().toLowerCase();
+  for (const [catalogId, entries] of Object.entries(catalogs)) {
+    const entry = entries.find(
+      (one) => !one.creature && !!one.mechanics?.reaction && one.label.trim().toLowerCase() === wanted,
+    );
+    if (entry) return `${catalogId}/${entry.id}`;
+  }
+  return undefined;
+}
+
 /** A unit for a combatant the Engine keeps none for, read afresh from the fight at each pick. */
 function rulesetPassingUnit(actor: RulesetCombatant): CombatDirectorState["party"][number] {
   return {
@@ -7437,22 +7480,35 @@ function absorb(
   fight: RulesetFightState,
   step: Pick<RulesetCombatStep, "state" | "unanswered"> & { events: readonly RulesetCombatEvent[] },
 ): void {
+  const before = fight.encounter.window;
   fight.encounter = step.state;
   record(fight, step.events);
-  // Every window opened, and every one let go, is said in the server's log: a fight standing on one
-  // that nobody was shown is otherwise untraceable (laptop playtest 2026-10-25).
+  // Every window opened, let go or closed is said in the server's log: a fight standing on one that
+  // nobody was shown is otherwise untraceable (laptop playtest 2026-10-25).
+  const passed = new Set<string>();
   for (const event of step.events) {
     if (event.type === "window")
       logger.info(
-        "[game/combat:ruleset] Window %s (%s%s) opened, waiting on %s",
+        "[game/combat:ruleset] Window %s (%s%s%s) opened, waiting on %s",
         event.window,
         event.kind,
+        event.moment
+          ? ` on ${event.moment}`
+          : event.readied
+            ? ` readied, ${event.readied}`
+            : event.moverId
+              ? ` as ${event.moverId} moves`
+              : "",
         event.label ? `: ${event.label}` : "",
         event.waiting.join(", "),
       );
-    else if (event.type === "pass")
+    else if (event.type === "pass") {
+      passed.add(event.window);
       logger.info("[game/combat:ruleset] %s let window %s go by", event.actorId, event.window);
+    }
   }
+  if (before && before.id !== fight.encounter.window?.id && !passed.has(before.id))
+    logger.info("[game/combat:ruleset] Window %s closed, answered or ended", before.id);
   for (const one of step.unanswered ?? []) {
     // Why a reaction could not answer is said once a round, not at every window after it (cloud
     // probes 2026-10-25: a Mage logged "used", and then out of reach or sight, up to four a round).

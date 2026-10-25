@@ -374,10 +374,13 @@ async function loadBestiary(
  *  them too, whether a proposal wrote it or not, because its open choices are filled from there. */
 function proposedSheetLists(
   definition: RulesetDefinition,
-  enemies: ReadonlyArray<{ proposed?: unknown }>,
+  enemies: ReadonlyArray<{ proposed?: unknown; attacks?: ReadonlyArray<{ reaction?: unknown }> }>,
 ): Set<string> {
   const lists = new Set<string>();
   for (const enemy of enemies) {
+    // A reaction it was given by name may be an entry of the ruleset's own (a Counterspell that is a
+    // spell), read off whichever list that entry's catalog feeds.
+    if (enemy.attacks?.some((attack) => attack.reaction)) for (const list of definition.sheet.lists) lists.add(list.id);
     const sheet = (enemy.proposed as { sheet?: { lists?: unknown } } | undefined)?.sheet;
     if (!sheet || typeof sheet !== "object") continue;
     if (sheet.lists && typeof sheet.lists === "object") for (const id of Object.keys(sheet.lists)) lists.add(id);

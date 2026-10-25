@@ -1181,6 +1181,31 @@ const spellbook = parsedOrThrow(
     );
     assert.ok(!counterer.adjustments.some((line) => /no reaction called/.test(line)), counterer.adjustments.join("; "));
   }
+  // And on an invented creature with no sheet, written in plain numbers or only a tier: cast as its
+  // own, once this fight.
+  for (const proposed of [plainProposal, undefined]) {
+    const plain = started({
+      definition: spellbook,
+      cards: [card("Brenna", fighterBuild())],
+      party: [{ id: "brenna", name: "Brenna" }],
+      enemies: [
+        {
+          id: "mage",
+          name: "Cult Mage",
+          tier: "cr_1",
+          attacks: [{ name: "Hex Counter", reaction: "counter" }],
+          ...(proposed ? { proposed } : {}),
+        },
+      ],
+    }).rulesetFight!;
+    const mage = who(plain.encounter, "mage");
+    const counter = mage.actions.find((action) => action.label === "Hex Counter");
+    assert.ok(counter, `the named reaction is the ruleset's spell: ${mage.actions.map((a) => a.label)}`);
+    assert.ok(counter.reaction, "and answers as that spell does");
+    assert.deepEqual(counter.uses, { per: "encounter", count: 1 }, "once this fight");
+    assert.ok(!plain.adjustments.some((line) => /no reaction called/.test(line)), plain.adjustments.join("; "));
+    assert.ok(plain.adjustments.some((line) => /"Hex Counter" is this ruleset's own/.test(line)));
+  }
 
   // On Ember Roads, whose health adds its Toughness to a constant and its Brawn: the one field in
   // the sum is the one moved.

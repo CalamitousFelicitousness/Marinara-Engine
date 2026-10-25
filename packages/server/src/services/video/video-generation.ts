@@ -1893,6 +1893,15 @@ async function seedanceReferenceImageUrl(
   const uploaded = await maybeUploadSeedanceReferenceImage(image, label, publicUpload, signal);
   if (uploaded) return uploaded;
 
+  if (!raw) {
+    throw new Error(
+      `Seedance ${label} reference has no public HTTPS URL. ` +
+        "Converted images, such as WebP illustrations prepared as PNG, require Upload Seedance reference frames temporarily " +
+        "to be enabled in this Video Generation connection, even when VIDEO_REFERENCE_PUBLIC_BASE_URL is configured. " +
+        "Alternatively, select a PNG/JPEG illustration with a publicly reachable HTTPS URL.",
+    );
+  }
+
   throw new Error(
     `Seedance image-to-video references require a publicly reachable HTTPS image URL for the ${label}. ` +
       "Expose Marinara through a public HTTPS tunnel such as Cloudflare Tunnel or ngrok, then set " +

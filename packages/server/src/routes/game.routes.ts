@@ -465,6 +465,7 @@ import {
   type VideoReferenceImage,
 } from "../services/video/video-generation.js";
 import { resolveGameVideoRuntime, type GameVideoRuntime } from "../services/video/game-video-runtime.js";
+import { toVideoReferenceImage } from "../services/video/chat-video-generation.js";
 import {
   buildStoryboardAnimationRefinementMessages,
   compactStoryboardAnimationPrompt,
@@ -1866,17 +1867,8 @@ function resolveGeneratedIllustrationAssetPath(tag: unknown): string | null {
   );
 }
 
-function imageMimeTypeForPath(path: string): VideoReferenceImage["mimeType"] | null {
-  const ext = extname(path).toLowerCase();
-  if (ext === ".png") return "image/png";
-  if (ext === ".jpg" || ext === ".jpeg") return "image/jpeg";
-  return null;
-}
-
-function readOmniReferenceImage(path: string, url?: string | null): VideoReferenceImage {
-  const mimeType = imageMimeTypeForPath(path);
-  if (!mimeType) throw new Error("Scene videos require a PNG or JPEG scene illustration");
-  return { base64: readFileSync(path).toString("base64"), mimeType, url };
+async function readOmniReferenceImage(path: string, url?: string | null): Promise<VideoReferenceImage> {
+  return toVideoReferenceImage(readFileSync(path).toString("base64"), url);
 }
 
 function titleCaseSlug(value: string): string {
@@ -15142,7 +15134,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
             try {
               const galleryImagePath = resolveGalleryImagePath(galleryImage);
               if (!galleryImagePath) throw new Error("Storyboard keyframe image file could not be found.");
-              const referenceImage = readOmniReferenceImage(
+              const referenceImage = await readOmniReferenceImage(
                 galleryImagePath,
                 sourceGalleryImagePathForMetadata(galleryImage),
               );
@@ -15548,7 +15540,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       }
       try {
         sourceIllustrationPath = sourceGalleryImagePathForMetadata(galleryImage);
-        referenceImage = readOmniReferenceImage(galleryImagePath, sourceIllustrationPath);
+        referenceImage = await readOmniReferenceImage(galleryImagePath, sourceIllustrationPath);
       } catch (err) {
         const message = err instanceof Error ? err.message : "The selected gallery illustration cannot be used.";
         return reply.status(400).send({ error: message });
@@ -15569,7 +15561,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       }
       try {
         sourceIllustrationPath = sourceIllustrationPathForMetadata(sourceIllustrationAssetPath);
-        referenceImage = readOmniReferenceImage(sourceIllustrationAssetPath, sourceIllustrationPath);
+        referenceImage = await readOmniReferenceImage(sourceIllustrationAssetPath, sourceIllustrationPath);
       } catch (err) {
         const message = err instanceof Error ? err.message : "The current scene illustration cannot be used.";
         return reply.status(400).send({ error: message });

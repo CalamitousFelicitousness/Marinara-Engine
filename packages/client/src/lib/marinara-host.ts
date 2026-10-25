@@ -17,7 +17,7 @@ import * as reactDomClient from "react-dom/client";
 import * as reactI18next from "react-i18next";
 import * as sonner from "sonner";
 import * as tailwindMerge from "tailwind-merge";
-import * as zod from "zod";
+import * as zod from "zod-v3";
 import * as zustand from "zustand";
 import * as zustandMiddleware from "zustand/middleware";
 import { supportedCapabilityApi } from "@marinara-engine/shared";

@@ -1,7 +1,7 @@
 import { pathToFileURL } from "node:url";
 import { existsSync } from "node:fs";
 import { randomUUID } from "node:crypto";
-import { chmod, lstat, mkdir, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { FastifyInstance, InjectOptions, LightMyRequestResponse as InjectResponse } from "fastify";
@@ -37,6 +37,7 @@ import { createCapabilityLanguageModelHost } from "./capability-language-model.s
 import {
   linkCapabilityNativeDependencies,
   linkCapabilityPackageDependencies,
+  linkCapabilitySnapshotDependencies,
 } from "./capability-native-dependencies.service.js";
 import {
   createCapabilityEmbeddingHost,
@@ -326,7 +327,7 @@ class CapabilityModuleRuntime {
       await writeFile(join(root, "manifest.json"), JSON.stringify(installed.manifest), { flag: "wx", mode: 0o400 });
       const nodeModules = join(DATA_DIR, "capability-packages", "node_modules");
       if (existsSync(nodeModules) && !existsSync(join(root, "node_modules"))) {
-        await symlink(nodeModules, join(root, "node_modules"), process.platform === "win32" ? "junction" : "dir");
+        await linkCapabilitySnapshotDependencies(root, nodeModules);
       }
       return {
         entrypoint: join(root, verified.entrypoint),

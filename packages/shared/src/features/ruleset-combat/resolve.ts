@@ -11,6 +11,7 @@ import { rulesetCatalogEntriesByRef } from "../rulesets/scaled-rows.js";
 import { rulesetCombatantBehavior, rulesetCombatantMind } from "./mind.js";
 import {
   rulesetPoolMaxSuccesses,
+  rulesetRowEntryRef,
   rulesetSheetBuildSchema,
   type RulesetAbsorbs,
   type RulesetCatalogItem,
@@ -12159,10 +12160,26 @@ export function rulesetStandingAtStart(
       action.label.trim().toLowerCase() === name.trim().toLowerCase() ||
       // An item's use by its own name too, as the ruleset wrote it: "Apply the Oil".
       (!!action.itemUse && action.label.trim().toLowerCase().endsWith(`: ${name.trim().toLowerCase()}`));
+    // A row of theirs by that name that stands for the same entry as another (Pact of the Chain's
+    // "Find Familiar" beside its "Find Familiar (Pact of the Chain)", the one a fight reads): any
+    // name of those rows (cloud probe 2026-10-25: the owl kept on the sheet never came).
+    const rows = Object.values(caster.sheet?.build.lists ?? {}).flatMap((list) =>
+      Array.isArray(list) ? (list as Array<Record<string, unknown>>) : [],
+    );
+    const cells = (row: Record<string, unknown>) =>
+      Object.values(row).filter((value): value is string => typeof value === "string");
+    const refs = new Set(
+      rows
+        .filter((row) => cells(row).some((cell) => cell.trim().toLowerCase() === one.entry.trim().toLowerCase()))
+        .map((row) => rulesetRowEntryRef(row))
+        .filter((ref): ref is string => typeof ref === "string"),
+    );
+    const aliases = rows.filter((row) => refs.has(rulesetRowEntryRef(row) as string)).flatMap(cells);
     const action =
       caster.actions.find((entry) => !!entry.zone && named(entry, one.entry)) ??
       // Any other entry of theirs (1.449), done as the fight starts.
-      caster.actions.find((entry) => named(entry, one.entry));
+      caster.actions.find((entry) => named(entry, one.entry)) ??
+      caster.actions.find((entry) => aliases.some((alias) => named(entry, alias)));
     if (!action) {
       skipped.push(`${caster.name} has no entry called "${one.entry}", so nothing stands for it.`);
       continue;
@@ -18982,7 +18999,9 @@ function moraleTurn(ctx: RulesetCombatContext, actor: RulesetCombatant): boolean
     if (trigger === "leader-down")
       return fallen.some((one) => one.id !== actor.id && (one.block?.leader || one.leader));
     const health = rulesetCombatHealth(ctx.definition, ctx.combat, actor);
-    return health.value < health.max * (morale.hurtBelow ?? 0.5);
+    // A steadfast one (a boss) is shaken only when badly hurt, at half the line (cloud AI fights
+    // 2026-10-25: bosses gave up at 31 of 72 and 40 of 85).
+    return health.value < health.max * (morale.hurtBelow ?? 0.5) * (actor.steadfast ? 0.5 : 1);
   };
   for (const trigger of morale.on) {
     if (actor.moraleChecked?.includes(trigger) || !happened(trigger)) continue;

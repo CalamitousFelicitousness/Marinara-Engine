@@ -25,7 +25,8 @@ export const COMBAT_START_PLACES = Object.freeze([
 export type CombatStartPlace = (typeof COMBAT_START_PLACES)[number];
 
 type Cell = { x: number; y: number };
-type Stand = { id: string; side: "party" | "enemy" };
+/** `group`: what kind it is (a pack of zombies), so those started on a flank take the same one. */
+type Stand = { id: string; side: "party" | "enemy"; group?: string };
 
 const STEPS = [
   [1, 0],
@@ -106,7 +107,18 @@ export function rulesetStartPlacements(
     const length = Math.max(1, Math.hypot(dx, dy));
     return { x: dx / length, y: dy / length };
   };
-  let flank = 1;
+  // How far its rear or a flank is, by the board (laptop party A: archers and a wight started
+  // "rear" 3 cells from the party on a 40-wide board): 3 and 4 on a small one, more on a big one.
+  const span = Math.max(grid.width, grid.height);
+  const back = Math.max(3, Math.round(span * 0.15));
+  const wide = Math.max(4, Math.round(span * 0.1));
+  // A flank each kind keeps: the second kind takes the other one, the third the first again.
+  const flanks = new Map<string, number>();
+  const flankOf = (one: Stand) => {
+    const group = one.group ?? one.id;
+    if (!flanks.has(group)) flanks.set(group, flanks.size % 2 === 0 ? 1 : -1);
+    return flanks.get(group)!;
+  };
   const move = (one: Stand, target: Cell) => {
     const held = new Set(
       stands.filter((other) => other.id !== one.id && out[other.id]).map((other) => key(out[other.id]!)),
@@ -121,15 +133,23 @@ export function rulesetStartPlacements(
     const d = toward(own, other);
     const side = { x: -d.y, y: d.x };
     if (place) {
+      // Its rear is away from the other side through where it stands: behind its own line, or the
+      // outside of a ring it is part of (an ambush, whose centre is the party's).
+      const from = out[one.id];
+      const outward = from && Math.hypot(from.x - other.x, from.y - other.y) >= 1 ? toward(other, from) : null;
+      const reach = from ? Math.hypot(from.x - other.x, from.y - other.y) : 0;
+      const sign = place === "flank" ? flankOf(one) : 1;
       const target =
         place === "front"
           ? { x: own.x + d.x * 2, y: own.y + d.y * 2 }
           : place === "rear"
-            ? { x: own.x - d.x * 3, y: own.y - d.y * 3 }
+            ? outward && Math.hypot(own.x - other.x, own.y - other.y) < reach
+              ? { x: other.x + outward.x * (reach + back), y: other.y + outward.y * (reach + back) }
+              : { x: own.x - d.x * back, y: own.y - d.y * back }
             : place === "ahead"
               ? { x: own.x + d.x * 5, y: own.y + d.y * 5 }
               : place === "flank"
-                ? { x: other.x + side.x * 4 * (flank = -flank), y: other.y + side.y * 4 * flank }
+                ? { x: other.x + side.x * wide * sign, y: other.y + side.y * wide * sign }
                 : place === "behind"
                   ? { x: other.x + d.x * 3, y: other.y + d.y * 3 }
                   : place === "among"

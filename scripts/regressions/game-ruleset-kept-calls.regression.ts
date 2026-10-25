@@ -22,6 +22,7 @@ import {
   rowsFromCatalogEntry,
   rulesetKeptCalls,
   rulesetSheetBuildSchema,
+  RULESET_STANDS_FOR_ROW_KEY,
   supportedCapabilityApi,
   type RulesetCatalogEntry,
   type RulesetDefinition,
@@ -68,7 +69,12 @@ try {
   });
   const creatures = doc.catalogs.find((catalog: { holds?: string }) => catalog.holds === "creatures");
   creatures.filters.push({ id: "familiar", label: "Familiar", type: "text" });
-  creatures.entries.push(beast("owl", "Owl", "yes"), beast("cat", "Cat", "yes"), beast("rat", "Giant Rat", "no"));
+  creatures.entries.push(
+    beast("owl", "Owl", "yes"),
+    beast("cat", "Cat", "yes"),
+    beast("rat", "Giant Rat", "no"),
+    beast("imp", "Imp", "chain"),
+  );
   doc.catalogs.push({
     id: "spells",
     label: "Spells",
@@ -91,6 +97,18 @@ try {
           appliesSelf: [{ condition: "bonded", duration: { rounds: 14400 } }],
         },
       },
+      {
+        id: "find-familiar-chain",
+        label: "Find Familiar (Pact of the Chain)",
+        rows: [{ list: "spells", values: { name: "Find Familiar (Pact of the Chain)", level: 1, prepared: true } }],
+        mechanics: {
+          kind: "utility",
+          targets: "self",
+          cost: [{ pool: "slots_1", amount: 1 }],
+          beforeFight: true,
+          calls: { from: { catalog: "creatures", filters: { familiar: ["yes", "chain"] } }, count: { flat: 1 } },
+        },
+      },
     ],
   });
   // Pact of the Chain: a feature whose spell row stands for Find Familiar (1.477).
@@ -102,7 +120,13 @@ try {
       {
         id: "chain",
         label: "Pact of the Chain",
+        // Two rows for the one spell, the fight reading the first: its own name, and the plain one.
         rows: [
+          {
+            list: "spells",
+            values: { name: "Find Familiar (Pact of the Chain)", level: 1, prepared: true },
+            standsFor: "spells/find-familiar",
+          },
           {
             list: "spells",
             values: { name: "Find Familiar", level: 1, prepared: true },
@@ -120,7 +144,9 @@ try {
   const build = rulesetSheetBuildSchema.parse({
     abilities: { str: 10, dex: 10, con: 10, int: 16, wis: 10, cha: 10 },
     fields: { level: 3, ac: 12, speed: 30, hp_max: 20, race: "Human", spellcasting_ability: "int", slots_max_1: 4 },
-    lists: { spells: spells.flatMap((entry) => rowsFromCatalogEntry("spells", entry).map((row) => row.row)) },
+    lists: {
+      spells: spells.slice(0, 1).flatMap((entry) => rowsFromCatalogEntry("spells", entry).map((row) => row.row)),
+    },
   });
   const cards = [{ name: "Wren", build }];
   const say = (content: string, live: RulesetLiveStates = {}) =>
@@ -186,6 +212,33 @@ try {
     pactFight.fight.encounter.combatants.filter((one) => one.calledBy === "mara").length,
     1,
     "the owl comes",
+  );
+
+  // A creature only another row on the sheet calls: the refusal lists what this one calls, and names
+  // the row that calls it (laptop: the Imp asked of the plain spell, not the Pact's).
+  const both = rulesetSheetBuildSchema.parse({
+    ...build,
+    lists: {
+      spells: [
+        ...(build.lists!.spells as unknown[]),
+        {
+          ...(rowsFromCatalogEntry("pacts", pacts[0]!)[0]!.row as Record<string, unknown>),
+          [RULESET_STANDS_FOR_ROW_KEY]: "spells/find-familiar-chain",
+        },
+      ],
+    },
+  });
+  const imp = applySheetCommandTags(`[sheet: who="Mara" op="use" name="Find Familiar" as="Imp"]`, {
+    definition,
+    cards: [{ name: "Mara", build: both }],
+    playerName: "Wren",
+    live: {},
+    catalogs: { spells, pacts, ...bestiary },
+  });
+  assert.equal(imp.outcomes[0]!.ok, false);
+  assert.match(
+    imp.outcomes[0]!.reason ?? "",
+    /cannot call "Imp"; it calls Owl, Cat; use "Find Familiar \(Pact of the Chain\)" for that/,
   );
 
   // ── The Game Master reads it ──

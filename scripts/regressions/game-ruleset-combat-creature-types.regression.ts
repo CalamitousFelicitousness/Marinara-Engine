@@ -303,6 +303,45 @@ try {
     assert.equal(getCapabilityPackageInstallIssue(manifest(167) as never, typed), gate, "a creature's own type");
   }
 
+  // An invented opponent is what the Game Master says it is, else what a character is (laptop party
+  // A: Hold Person had nobody to hold in a cult made up for the fight).
+  {
+    const { createRulesetFight } =
+      await import("../../packages/server/src/services/game/ruleset-combat-director.service.js");
+    const built = createRulesetFight({
+      definition,
+      seed: 1,
+      party: [{ id: "hero", name: "Hero" }],
+      enemies: [
+        { id: "cultist", name: "Cultist", tier: "cr_1" },
+        { id: "wight", name: "Wight", tier: "cr_3", creatureType: "Undead" },
+        { id: "rotter", name: "Rotting Zombie 2", tier: "cr_1" },
+      ],
+      cards: [{ name: "Hero", rulesetSheet: { v: 1, build: build() } }],
+      playerName: "Hero",
+      live: {},
+      partyCatalogs: {},
+      bestiary: {
+        creatures: [
+          {
+            id: "zombie",
+            label: "Zombie",
+            creature: { type: "undead", health: 22, defense: 8, initiativeModifier: -2, actions: [] },
+          },
+        ],
+      },
+    } as never);
+    assert.ok(built.ok, built.ok ? "" : built.error);
+    const kind = (id: string) =>
+      rulesetCreatureKind(
+        definition,
+        built.fight.encounter.combatants.find((one) => one.id === id)!,
+      ).type;
+    assert.equal(kind("cultist"), "humanoid");
+    assert.equal(kind("wight"), "undead");
+    assert.equal(kind("rotter"), "undead", "a Zombie by its name");
+  }
+
   console.log("Creature types: slayer dice, holy water, beasts only, Sleep past the undead, gated at 1.168.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

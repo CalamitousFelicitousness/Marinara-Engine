@@ -307,12 +307,49 @@ try {
     const low = scene(8);
     const dodged = pickRulesetChoice(definition, low.state, low.encounter, "mei");
     assert.equal(dodged?.option.id, "standard:dodge@bonus", `hurt, it dodges: ${dodged?.option.id}`);
+    // Dodging already, it does not dodge again (laptop party A: Patient Defense, then the Dodge).
+    const again = scene(8);
+    rulesetCombatant(again.encounter, "mei")!.flags.dodging = true;
+    assert.notEqual(
+      pickRulesetChoice(definition, again.state, again.encounter, "mei")?.option.id,
+      "standard:dodge@bonus",
+    );
     const whole = scene(40);
     assert.notEqual(
       pickRulesetChoice(definition, whole.state, whole.encounter, "mei")?.option.id,
       "standard:dodge@bonus",
       "whole, it does not",
     );
+  }
+
+  // ── A cast of many rounds is not begun in a fight (re-test 2026-10-24: Animate Dead's 10) ──
+  {
+    const doom = { id: "doom", name: "Doom", budget: "action", toHit: 10, reach: 5, damage: { count: 10, sides: 10 } };
+    const scene = (rounds: number) => {
+      const made = fight([
+        { id: "lich", name: "lich", side: "enemy", block: block([doom, poke]), at: { x: 4, y: 5 } },
+        { id: "foe", name: "foe", side: "party", block: block([smash]), at: { x: 5, y: 5 } },
+      ]);
+      rulesetCombatant(made.encounter, "lich")!.actions.find((one) => one.id === "doom")!.castingRounds = rounds;
+      return pickRulesetChoice(definition, made.state, made.encounter, "lich")?.option.id;
+    };
+    assert.equal(scene(1), "doom", "a cast of a round is weighed");
+    assert.notEqual(scene(10), "doom", "one of ten rounds is not");
+  }
+
+  // ── Held helpless, its turn says it could not act (cloud AI fights 2026-10-25: "risk") ──
+  {
+    const scene = fight([
+      { id: "o1", name: "o1", side: "enemy", block: block([smash]), at: { x: 5, y: 5 } },
+      sheetOf("mei", sheet({ level: 5 }), { x: 4, y: 5 }),
+    ]);
+    rulesetCombatant(scene.encounter, "o1")!.tracked.push({ condition: "paralyzed", rounds: null });
+    assert.ok(commandRulesetCombatDirector(definition, scene.state, { type: "continue" }).ok);
+    const said = scene.state.rulesetFight!.events.flatMap((entry) => {
+      const event = entry.event as { type: string; actorId?: string; reasons?: Array<{ why: string }> };
+      return event.type === "reasoning" && event.actorId === "o1" ? event.reasons!.map((one) => one.why) : [];
+    });
+    assert.deepEqual(said, ["cannotAct"]);
   }
 
   // ── Twinned: one point, two foes ──
@@ -385,6 +422,34 @@ try {
       (one) => one.candidate.action.option.id === "slow" && (one.candidate.support ?? 0) > 0,
     );
     assert.equal(support.length, 0, "never weighed as support over the party");
+  }
+
+  // ── A pattern that holds whoever it catches, never over a friend at grips (laptop party A) ──
+  {
+    const pattern = {
+      id: "pattern",
+      name: "Pattern",
+      budget: "action",
+      range: { normal: 60 },
+      targets: "any",
+      area: { shape: "burst", size: 1 },
+      save: { save: "wis_save", difficulty: 15 },
+      saveDifficulty: 15,
+      applies: [{ condition: "incapacitated", duration: { rounds: 10 } }],
+    };
+    const scene = fight([
+      { id: "mira", name: "mira", side: "party", block: block([poke, pattern]), at: { x: 2, y: 5 } },
+      { id: "ada", name: "ada", side: "party", block: block([smash]), at: { x: 8, y: 5 } },
+      { id: "orc", name: "orc", side: "enemy", block: block([smash]), at: { x: 9, y: 5 } },
+    ]);
+    const held = ranked(scene, "mira").filter((one) => one.candidate.action.option.id === "pattern");
+    const catches = (at: { x: number; y: number } | undefined, cell: { x: number; y: number }) =>
+      !!at && Math.max(Math.abs(at.x - cell.x), Math.abs(at.y - cell.y)) <= 1;
+    assert.ok(held.length > 0, "cast where it catches the orc alone");
+    assert.ok(
+      held.every((one) => !catches(one.candidate.action.choice.at, { x: 8, y: 5 })),
+      `never over Ada: ${JSON.stringify(held.map((one) => one.candidate.action.choice.at))}`,
+    );
   }
 
   // ── A summons held, not let go for a lesser held spell ──

@@ -2471,17 +2471,20 @@ export function rulesetUseKeptCall(
     const have = (Array.isArray(value) ? value : [value]).map((one) => plain(one as string));
     return (Array.isArray(want) ? want : [want]).some((one) => have.includes(plain(one as string)));
   };
-  // What it can call, by name, where that can be read: its catalog's matches, or its one creature.
-  const from = calls.from;
-  const names = from
-    ? catalogs[from.catalog]
-        ?.filter(
-          (one) =>
-            Object.entries(from.filters ?? {}).every(([id, want]) => holds(one.filters?.[id], want)) &&
-            !Object.entries(from.notFilters ?? {}).some(([id, want]) => holds(one.filters?.[id], want)),
-        )
-        .map((one) => one.label)
-    : undefined;
+  // What an entry can call, by name, where that can be read: its catalog's matches, or its one creature.
+  const callable = (what: NonNullable<RulesetCatalogMechanics["calls"]>) => {
+    const from = what.from;
+    return from
+      ? catalogs[from.catalog]
+          ?.filter(
+            (one) =>
+              Object.entries(from.filters ?? {}).every(([id, want]) => holds(one.filters?.[id], want)) &&
+              !Object.entries(from.notFilters ?? {}).some(([id, want]) => holds(one.filters?.[id], want)),
+          )
+          .map((one) => one.label)
+      : undefined;
+  };
+  const names = callable(calls);
   const alone = !!calls.creature || names?.length === 1;
   const types = (calls.asTypes ?? []).map((id) => ({
     id,
@@ -2497,10 +2500,50 @@ export function rulesetUseKeptCall(
   }
   const [base = "", typed] = wanted.split(",").map((part) => part.trim());
   const named = names ? names.find((one) => sameName(one, base)) : base;
-  if (named === undefined || !named) return { ok: false, reason: `bad-amount: ${entry} cannot call "${base}"` };
+  if (named === undefined || !named) {
+    const listed = names?.length
+      ? `; it calls ${names.slice(0, MAX_KEPT_CALL_NAMES).join(", ")}${names.length > MAX_KEPT_CALL_NAMES ? ", ..." : ""}`
+      : "";
+    const other = rulesetSheetEntryCalling(definition, build, catalogs, base, callable);
+    const elsewhere = other && !sameName(other, op.name.trim()) ? `; use "${other}" for that` : "";
+    return { ok: false, reason: `bad-amount: ${entry} cannot call "${base}"${listed}${elsewhere}` };
+  }
   const type = typed ? types.find((one) => sameName(one.id, typed) || sameName(one.label, typed)) : undefined;
   if (typed && !type) return { ok: false, reason: `bad-amount: ${entry} cannot call a "${typed}"` };
   return { ok: true, entry, as: type ? `${named}, ${type.label}` : named };
+}
+
+/** The name of another row on the sheet whose entry keeps a call of `creature` (1.788), so a refusal
+ *  can point a Game Master at it: the Imp a warlock calls through "Find Familiar (Pact of the Chain)"
+ *  and not the plain spell. */
+function rulesetSheetEntryCalling(
+  definition: RulesetDefinition,
+  build: RulesetSheetBuild,
+  catalogs: RulesetCatalogEntriesById,
+  creature: string,
+  callable: (calls: NonNullable<RulesetCatalogMechanics["calls"]>) => string[] | undefined,
+): string | undefined {
+  const byRef = rulesetCatalogEntriesByRef(catalogs);
+  for (const list of definition.sheet.lists) {
+    const rows = build.lists?.[list.id];
+    if (!Array.isArray(rows)) continue;
+    const nameColumn = listNameColumn(definition, list);
+    for (const row of rows) {
+      if (!row || typeof row !== "object") continue;
+      const cells = row as Record<string, unknown>;
+      const ref = own(cells, RULESET_CATALOG_ROW_KEY);
+      if (typeof ref !== "string") continue;
+      const stands = own(cells, RULESET_STANDS_FOR_ROW_KEY);
+      const entry = byRef.get(ref);
+      const standsFor = typeof stands === "string" ? byRef.get(stands) : undefined;
+      const source = standsFor?.mechanics?.calls ? standsFor : entry;
+      const calls = source?.mechanics?.beforeFight ? source.mechanics.calls : undefined;
+      if (!calls || !callable(calls)?.some((one) => sameName(one, creature))) continue;
+      const name = nameColumn ? own(cells, nameColumn) : undefined;
+      return typeof name === "string" && name.trim() ? name.trim() : entry?.label;
+    }
+  }
+  return undefined;
 }
 
 /** What each entry used outside a fight called and keeps (1.787), as the sheet stores it. */

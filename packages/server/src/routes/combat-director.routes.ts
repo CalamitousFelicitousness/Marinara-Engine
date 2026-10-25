@@ -194,6 +194,8 @@ export const directedCombatantSchema = directedCombatantFields.refine(resourcePo
 const rulesetOpponentSchema = directedCombatantFields
   .extend({
     creature: z.string().min(1).max(200).optional(),
+    /** What an invented one is, by the ruleset's creature type id. */
+    creatureType: z.string().min(1).max(80).optional(),
     tier: key.optional(),
     /** A stat block in the shared creature form. Checked when the fight is built, so a malformed
      *  one costs its opponent its proposal rather than costing the whole battle. */
@@ -1035,6 +1037,7 @@ export async function combatDirectorRoutes(
               name: enemy.name,
               ...(enemy.creature !== undefined ? { creature: enemy.creature } : {}),
               ...(enemy.tier !== undefined ? { tier: enemy.tier } : {}),
+              ...(enemy.creatureType !== undefined ? { creatureType: enemy.creatureType } : {}),
               ...(enemy.proposed !== undefined ? { proposed: enemy.proposed } : {}),
               ...(enemy.tactics ? { tactics: enemy.tactics } : {}),
               ...(enemyAdjusts[index] ? { adjust: enemyAdjusts[index] } : {}),

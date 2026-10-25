@@ -234,6 +234,47 @@ try {
     assert.ok(roles.c!.x > placements.c.x, `the bruiser forward: ${JSON.stringify(roles.c)}`);
   }
 
+  {
+    // An ambush on a vast board (laptop party A): the foes ring the party, so a "rear" one goes out past
+    // the ring by the board's size, and a pack on a flank keeps to one side together.
+    const grid = {
+      width: 40,
+      height: 26,
+      tiles: Array.from({ length: 26 }, () => Array.from({ length: 40 }, () => "plains")),
+    } as never;
+    const placements: Record<string, { x: number; y: number }> = {
+      a: { x: 20, y: 13 },
+      b: { x: 20, y: 14 },
+      archer: { x: 23, y: 13 },
+      z1: { x: 17, y: 13 },
+      z2: { x: 20, y: 10 },
+      g1: { x: 20, y: 17 },
+      g2: { x: 23, y: 16 },
+    };
+    const stands = [
+      { id: "a", side: "party" as const },
+      { id: "b", side: "party" as const },
+      { id: "archer", side: "enemy" as const, group: "archer" },
+      { id: "z1", side: "enemy" as const, group: "zombie" },
+      { id: "z2", side: "enemy" as const, group: "zombie" },
+      { id: "g1", side: "enemy" as const, group: "ghoul" },
+      { id: "g2", side: "enemy" as const, group: "ghoul" },
+    ];
+    const placed = rulesetStartPlacements(grid, placements, stands, {
+      archer: "rear",
+      z1: "flank",
+      z2: "flank",
+      g1: "flank",
+      g2: "flank",
+    });
+    const party = centre([placements.a!, placements.b!]);
+    assert.ok(gap(placed.archer!, party) >= 9, `the rear is well out past the ring: ${JSON.stringify(placed.archer)}`);
+    const sideOf = (cell: { x: number; y: number }) => Math.sign(cell.y - party.y) || Math.sign(cell.x - party.x);
+    assert.equal(sideOf(placed.z1!), sideOf(placed.z2!), "the zombies keep one flank");
+    assert.equal(sideOf(placed.g1!), sideOf(placed.g2!), "the ghouls keep one flank");
+    assert.notEqual(sideOf(placed.z1!), sideOf(placed.g1!), "the ghouls take the other");
+  }
+
   console.info(
     "Ruleset deployment: the Game Master places opponents and anyone the story put somewhere, the player sets down the rest before the first turn.",
   );

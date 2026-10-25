@@ -464,6 +464,8 @@ export const encounterBlueprintSchema = z
           // opponent the proposal, never the whole blueprint: the Engine falls back to the
           // bestiary and then to the tier.
           creature: z.string().max(200).optional().catch(undefined),
+          // What an invented one is (a humanoid cultist), which spells that hold only some read.
+          creatureType: z.string().max(80).optional().catch(undefined),
           tier: z.string().max(80).optional().catch(undefined),
           proposed: rulesetProposedCreatureSchema.optional().catch(undefined),
           attacks: z
@@ -524,6 +526,8 @@ export interface EncounterRulesetBrief {
   budgets: string[];
   saves: string[];
   damageTypes: string[];
+  /** The creature types an invented enemy is one of (Hold Person holds only a humanoid). */
+  creatureTypes: string[];
   sheet: EncounterSheetBrief;
 }
 
@@ -634,6 +638,7 @@ export async function encounterRulesetBrief(
     budgets: combat.economy.budgets.filter((budget) => budget.count > 0).map((budget) => budget.id),
     saves: definition.sheet.saves.map((save) => save.id),
     damageTypes: [...(combat.damageTypes ?? [])],
+    creatureTypes: (combat.creatureTypes?.types ?? []).map((type) => type.id),
     sheet: await encounterSheetBrief(definition, packageId),
   };
 }
@@ -733,6 +738,8 @@ export function buildInitPrompt(
     inst += `      "creature": "a name from the bestiary list below, when one of them is this enemy",\n`;
     inst += `      "tier": "one of the threat tier ids listed below",\n`;
     inst += `      "carrying": ["what it has on it, each named as one of this ruleset's items"],\n`;
+    if (ruleset.creatureTypes.length > 0)
+      inst += `      "creatureType": "for an enemy in no bestiary, what it is: ${ruleset.creatureTypes.join("|")}",\n`;
     inst += `      "proposed": {"health":12,"defense":13,"initiativeModifier":2,"tier":"tier id","speed":30,"saves":{"save id":2},"resist":["damage type"],"actions":[{"id":"strike","name":"Strike","budget":"budget id","toHit":4,"damage":{"dice":"1d6","flat":2,"type":"damage type"}}]},\n`;
   }
   inst += `      "sprite": "emoji or brief visual description"\n`;

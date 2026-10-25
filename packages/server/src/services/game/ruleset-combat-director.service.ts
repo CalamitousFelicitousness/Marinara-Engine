@@ -363,6 +363,8 @@ export interface RulesetFightOpponent {
   /** What the Game Master gave it to have on it (1.784), one line an item by its name or reference:
    *  in place of what its bestiary entry rolls for, and none at all when empty. */
   items?: string[];
+  /** What an invented one is, by the ruleset's creature type id: a humanoid cultist. */
+  creatureType?: string;
 }
 
 export interface RulesetFightSeed {
@@ -508,7 +510,38 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
   const usualSpeed = rulesetUsualBestiarySpeed(input.bestiary);
   const withUsualSpeed = <T extends RulesetStatBlock>(block: T): T =>
     block.speed !== undefined || block.speeds || usualSpeed === undefined ? block : { ...block, speed: usualSpeed };
+  // What an invented one is: what the Game Master said, else what a character is (laptop party A:
+  // Hold Person had nobody to hold among a cult it made up).
+  const kinds = combat.creatureTypes;
+  const typed = <T extends RulesetStatBlock>(block: T, said?: string): T => {
+    if (!kinds || block.type !== undefined) return block;
+    const named = said
+      ? kinds.types.find((one) =>
+          [one.id, one.label].some((name) => name.trim().toLowerCase() === said.trim().toLowerCase()),
+        )?.id
+      : undefined;
+    const type = named ?? kindNamedIn(opponentName) ?? kinds.default;
+    return type === undefined ? block : { ...block, type };
+  };
+  // Else the type of the bestiary creature its name says it is ("Rotting Zombie 2" is a Zombie).
+  let opponentName = "";
+  const kindNamedIn = (name: string): string | undefined => {
+    const words = ` ${name.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ")} `;
+    let best: { length: number; type: string } | undefined;
+    for (const entries of Object.values(input.bestiary))
+      for (const entry of entries) {
+        const label = entry.label
+          .toLowerCase()
+          .replace(/[^\p{L}\p{N}]+/gu, " ")
+          .trim();
+        const type = entry.creature?.type;
+        if (type && label && words.includes(` ${label} `) && label.length > (best?.length ?? 0))
+          best = { length: label.length, type };
+      }
+    return best?.type;
+  };
   for (const opponent of input.enemies) {
+    opponentName = opponent.name;
     // By the reference the Game Master named, then by the opponent's own name, and no further: a
     // fight built on a near miss is worse than one the Engine says it could not build.
     const named = opponent.creature ? findRulesetCreature(input.bestiary, opponent.creature) : null;
@@ -606,7 +639,7 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
         id: opponent.id,
         name: opponent.name,
         side: "enemy",
-        block: { ...extras, sheet: held.sheet, ...(tier ? { tier: tier.id } : {}) },
+        block: typed({ ...extras, sheet: held.sheet, ...(tier ? { tier: tier.id } : {}) }, opponent.creatureType),
       });
       if (tier) heldToTier.set(opponent.id, tier);
       continue;
@@ -616,7 +649,12 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
       if (block) {
         const clamped = clampRulesetStatBlock(definition, block, opponent.tier ?? proposed.data.tier);
         for (const line of clamped.adjusted) adjustments.push(`${opponent.name}: ${line}`);
-        combatants.push({ id: opponent.id, name: opponent.name, side: "enemy", block: withUsualSpeed(clamped.block) });
+        combatants.push({
+          id: opponent.id,
+          name: opponent.name,
+          side: "enemy",
+          block: typed(withUsualSpeed(clamped.block), opponent.creatureType),
+        });
         continue;
       }
     }
@@ -634,7 +672,12 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
       adjustments.push(`The tier "${opponent.tier}" is not on this ruleset's scale, so ${built.tier.label} was used.`);
     }
     adjustments.push(`${opponent.name} was built from the numbers of ${built.tier.label}.`);
-    combatants.push({ id: opponent.id, name: opponent.name, side: "enemy", block: withUsualSpeed(built.block) });
+    combatants.push({
+      id: opponent.id,
+      name: opponent.name,
+      side: "enemy",
+      block: typed(withUsualSpeed(built.block), opponent.creatureType),
+    });
   }
 
   // What each opponent has on it as it begins (1.784): what the Game Master gave it, else what its
@@ -700,7 +743,15 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
     // One already spaced against a blast stands where that put it, not back or forward by its role,
     // which closed the gap the blast needs (re-test D5: the party began 3 apart against a 5).
     const nudged = Object.fromEntries(Object.entries(roles).filter(([id]) => spread[id] === undefined));
-    const stands = combatants.map((one) => ({ id: one.id, side: one.side }));
+    // Of a kind by its bestiary entry, else its name without a count ("Zombie 2" is a Zombie).
+    const stands = combatants.map((one) => ({
+      id: one.id,
+      side: one.side,
+      group:
+        "creature" in one && one.creature
+          ? `${one.creature.catalogId}/${one.creature.entryId}`
+          : one.name.replace(/\s*#?\d+$/, "").toLowerCase(),
+    }));
     const placements = rulesetStartPlacements(laid.grid, laid.placements, stands, places, nudged);
     if (JSON.stringify(placements) !== JSON.stringify(laid.placements))
       encounter = encounterOn((laid = { ...laid, placements }));
@@ -2672,6 +2723,11 @@ function weighRulesetTeam(
     const kept = candidates.filter((candidate) => rulesetDefensiveName(candidate.action.option) !== "hide");
     if (kept.length > 0) candidates.splice(0, candidates.length, ...kept);
   }
+  // Nor dodging when it dodges already (laptop party A: a monk's Patient Defense, then the Dodge).
+  if (actor.flags.dodging) {
+    const kept = candidates.filter((candidate) => rulesetDefensiveName(candidate.action.option) !== "dodge");
+    if (kept.length > 0) candidates.splice(0, candidates.length, ...kept);
+  }
   for (const candidate of candidates) {
     const defensive =
       keeps ||
@@ -2889,7 +2945,13 @@ function rulesetCandidatesAfterMoving(
       actor.y = home.y;
       actor.movementLeft = home.movementLeft;
     }
-    const penalty = cell.provokes.length * RULESET_PROVOKE_PENALTY;
+    // A blow it walks into may break what it holds as well (laptop party A: a warlock walked out of
+    // reach and lost her Hypnotic Pattern to the parting blow): about half the time it is lost.
+    const holding =
+      actor.concentrating && definition.combat && cell.provokes.length > 0
+        ? 0.5 * Math.min(1, rulesetHeldWorth(definition, definition.combat, encounter, actor))
+        : 0;
+    const penalty = cell.provokes.length * (RULESET_PROVOKE_PENALTY + holding);
     // Blows from a gap it squeezes into are at a disadvantage the menu read here does not know of
     // yet; blows from open ground, once squeezed, are out of the one it has (re-test 17: a
     // crocodile biting from a gap for fifty rounds with open ground beside Brom).
@@ -3172,6 +3234,9 @@ export function rulesetWindowTargetOf(
     : undefined;
 }
 
+/** How many rounds a cast may take and still be weighed in a fight (see `rulesetCandidatesFrom`). */
+const RULESET_LONG_CAST_ROUNDS = 3;
+
 function rulesetCandidatesFrom(
   definition: RulesetDefinition,
   encounter: RulesetEncounterState,
@@ -3215,6 +3280,10 @@ function rulesetCandidatesFrom(
       (actor.summons?.some((one) => one.actionId === option.id) ||
         actor.zones?.some((one) => one.actionId === option.id))
     )
+      continue;
+    // A cast that takes many rounds (1.445) is begun before a fight, not in one: the fight is often
+    // over before it lands (re-test 2026-10-24: Animate Dead opening fights with its 10 rounds).
+    if ((actor.actions.find((entry) => entry.id === option.id)?.castingRounds ?? 0) >= RULESET_LONG_CAST_ROUNDS)
       continue;
     // Turning a line or cone the actor carries (1.182) is weighed the same way, before any walk.
     if (option.id.startsWith(RULESET_ZONE_TURN_OPTION_PREFIX)) {
@@ -4319,8 +4388,10 @@ function rulesetDeniedHarm(
   actor: RulesetCombatant,
   action: RulesetCombatAction | undefined,
   target: RulesetCombatant,
+  /** One of its own side caught in it: the blows its side loses, against the other side's health. */
+  own = false,
 ): number {
-  if (!action?.applies?.length || target.side === actor.side || target.down) return 0;
+  if (!action?.applies?.length || (target.side === actor.side) !== own || target.down) return 0;
   const best = Math.max(0, ...target.actions.map((one) => rulesetSafeAverage(one.damage)));
   if (best <= 0) return 0;
   const held = new Set(rulesetCombatConditions(definition, target));
@@ -4341,7 +4412,8 @@ function rulesetDeniedHarm(
   }
   if (turns <= 0) return 0;
   const lands = action.save ? rulesetFailChance(definition, combat, target, action.save) : 1;
-  const mean = rulesetSideHealthMean(definition, combat, encounter, actor.side);
+  const against = own ? encounter.combatants.find((one) => one.side !== actor.side && !one.object)?.side : undefined;
+  const mean = rulesetSideHealthMean(definition, combat, encounter, against ?? actor.side);
   return Math.min(1.5, (turns * best) / Math.max(1, mean)) * lands;
 }
 
@@ -5093,8 +5165,19 @@ function weighCaught(
           (sum, target) => sum + rulesetDeniedHarm(definition, combat, encounter, actor, action, target),
           0,
         );
+    // Less the turns it takes from its own caught in it, each twice a foe's (laptop party A: a
+    // Hypnotic Pattern over the party's fighter, who failed and stood helpless).
+    const lost =
+      2 *
+      friendWeight *
+      friends.reduce(
+        (sum, target) =>
+          sum + beside(target) * rulesetDeniedHarm(definition, combat, encounter, actor, action, target, true),
+        0,
+      );
+    if (read && denied > 0 && denied <= lost) return false;
     if (read && denied > 0) {
-      candidate.damage = Math.min(2, denied);
+      candidate.damage = Math.min(2, denied - lost);
       candidate.action.denies = candidate.damage;
       candidate.setup *= 0.5;
     }
@@ -5558,6 +5641,8 @@ function rulesetPickReasons(
   walked?: number,
   /** The fight, to tell a target of the other side: what helps or heals is never about that one. */
   encounter?: RulesetEncounterState,
+  /** The rules, to tell a turn it could not use (paralysed) from one it chose to let go. */
+  definition?: RulesetDefinition,
 ): DirectedRulesetReason[] {
   const targetId = candidate.targetId;
   const actor = encounter ? rulesetCombatant(encounter, candidate.action.choice.actorId) : undefined;
@@ -5567,6 +5652,16 @@ function rulesetPickReasons(
   const foe = !!actor && !!target && target.side !== actor.side;
   // A roll it has to make where it lies (one against death) is no choice, and says no why.
   if (actor && !rulesetCombatStanding(actor)) return [];
+  // Held helpless, its turn ends with nothing done: not for the risk of doing anything (cloud AI
+  // fights 2026-10-25: a paralysed gladiator boss logged "risk").
+  if (
+    actor &&
+    encounter &&
+    definition?.combat &&
+    candidate.action.option.kind === "end-turn" &&
+    rulesetCombatEffects(definition, definition.combat, actor, encounter).has("cannot-act")
+  )
+    return [{ why: "cannotAct" }];
   const ranked = (Object.entries(parts) as Array<[keyof CombatAiScoreParts, number]>).sort(
     (a, b) => Math.abs(b[1]) - Math.abs(a[1]),
   );
@@ -7044,7 +7139,7 @@ function answerRulesetWindows(
         rulesetWindowReasons(
           window.trigger,
           ranked.candidate,
-          rulesetPickReasons(ranked.candidate, ranked.parts, undefined, fight.encounter),
+          rulesetPickReasons(ranked.candidate, ranked.parts, undefined, fight.encounter, definition),
           rulesetCombatant(fight.encounter, asking)?.actions.find((one) => one.id === choice.optionId)?.reaction
             ?.cancels === true,
         ),
@@ -7333,7 +7428,11 @@ function playRulesetTurn(
         )
           recordReasons(fight, actorId, [{ why: "guarding", targetId: ordered.charge.id }]);
         else if (ranked && picked && action === 0)
-          recordReasons(fight, actorId, rulesetPickReasons(ranked.candidate, ranked.parts, undefined, fight.encounter));
+          recordReasons(
+            fight,
+            actorId,
+            rulesetPickReasons(ranked.candidate, ranked.parts, undefined, fight.encounter, definition),
+          );
         break;
       }
       continue;
@@ -7366,7 +7465,11 @@ function playRulesetTurn(
     // A getaway is taken where it stands, and then it runs (1.745).
     if (picked.defensive === "disengage") {
       if (applyChoice(definition, state, fight, picked.choice).refused) break;
-      recordReasons(fight, actorId, rulesetPickReasons(ranked!.candidate, ranked!.parts, undefined, fight.encounter));
+      recordReasons(
+        fight,
+        actorId,
+        rulesetPickReasons(ranked!.candidate, ranked!.parts, undefined, fight.encounter, definition),
+      );
       const away = rulesetRetreatCell(definition, fight.encounter, actorId);
       if (away)
         applyChoice(definition, state, fight, { actorId, optionId: RULESET_MOVE_OPTION, targetIds: [], to: away });
@@ -7385,7 +7488,11 @@ function playRulesetTurn(
       if (!fell || !rulesetCombatStanding(fell)) {
         const at = rulesetPositionOf(fell);
         const walked = from && at ? Math.max(Math.abs(at.x - from.x), Math.abs(at.y - from.y)) : undefined;
-        recordReasons(fight, actorId, rulesetPickReasons(ranked!.candidate, ranked!.parts, walked, fight.encounter));
+        recordReasons(
+          fight,
+          actorId,
+          rulesetPickReasons(ranked!.candidate, ranked!.parts, walked, fight.encounter, definition),
+        );
       }
       continue;
     }
@@ -7408,7 +7515,7 @@ function playRulesetTurn(
     const at = rulesetPositionOf(rulesetCombatant(fight.encounter, actorId));
     const walked = from && at ? Math.max(Math.abs(at.x - from.x), Math.abs(at.y - from.y)) : undefined;
     recordReasons(fight, actorId, [
-      ...rulesetPickReasons(ranked!.candidate, ranked!.parts, walked, fight.encounter),
+      ...rulesetPickReasons(ranked!.candidate, ranked!.parts, walked, fight.encounter, definition),
       ...(ranked!.keptBack ? [{ why: "keptBack" as const, ...ranked!.keptBack }] : []),
     ]);
     callOutSetUps(definition, fight, actorId);

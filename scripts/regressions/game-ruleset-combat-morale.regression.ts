@@ -254,6 +254,14 @@ try {
       morale(yielded.events).map((event) => [event.trigger, event.outcome]),
       [["hurt", "surrender"]],
     );
+    // A boss (steadfast) is shaken only when badly hurt: at 6 of 20 it fights on, at 4 it yields.
+    const bossAt = (health: number) => {
+      const state = fight(definition, { gob: { block: block(), at: { x: 2, y: 1 }, health } });
+      rulesetCombatant(state, "gob")!.steadfast = true;
+      return morale(endTurn(definition, state, 1).events).map((event) => [event.trigger, event.outcome]);
+    };
+    assert.deepEqual(bossAt(6), []);
+    assert.deepEqual(bossAt(4), [["hurt", "surrender"]]);
     const summary = rulesetEncounterSummary(definition, yielded.state);
     assert.equal(summary.enemies[0]!.surrendered, true);
     assert.equal(summary.enemies[0]!.left, undefined, "gave up, not got away");

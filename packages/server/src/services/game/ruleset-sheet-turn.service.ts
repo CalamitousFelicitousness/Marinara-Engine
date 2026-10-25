@@ -237,7 +237,10 @@ function replyWearTags(content: string): string {
 function replyUsesCatalogEntry(content: string): boolean {
   if (!content.includes("[")) return false;
   for (const match of content.matchAll(createSheetCommandTagRegex())) {
-    if (parseSheetCommandTagBody(match[1] ?? "").op?.op === "use") return true;
+    const op = parseSheetCommandTagBody(match[1] ?? "").op;
+    // A rest that uses a feature as it ends (1.773) reads that feature's entry too (ship readiness:
+    // Arcane Recovery off the Game Master's rest tag gave back nothing).
+    if (op?.op === "use" || (op?.op === "rest" && op.use)) return true;
   }
   return false;
 }

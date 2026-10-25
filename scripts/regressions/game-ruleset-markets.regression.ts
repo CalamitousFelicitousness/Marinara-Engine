@@ -633,11 +633,17 @@ const buy = (tag: string, stacks: GameInventoryStack[], market = quoter()) =>
     lines[3],
     "- chapel of the Vigil (to wardens of Nerve 3 or more only): Page of the vigil litany 1 shillings",
   );
-  assert.equal(lines.length, 4);
+  // And nothing it does not name is priced or counted (laptop playtest 2026-10-25: a temple's last vial).
+  assert.equal(
+    lines[4],
+    "Never name a price or say how many are left of a ware this block does not name: try the buy first and narrate what the Engine answers.",
+  );
+  assert.equal(lines.length, 5);
   assert.deepEqual(
     rulesetMarketPromptText(gravewatch, book, { name: "Crossroads", size: "hamlet" })!.split("\n").slice(1),
     [
       "- chandler: Shot and powder 1 pennies, Warming tonic 4 pennies, A bed at the watch-house 6 pennies (a service), Lantern-keeper's coat 8 shillings",
+      "Never name a price or say how many are left of a ware this block does not name: try the buy first and narrate what the Engine answers.",
     ],
   );
   assert.equal(
@@ -660,7 +666,10 @@ const buy = (tag: string, stacks: GameInventoryStack[], market = quoter()) =>
     rulesetMarketPromptText(smallOnly, rulesetItemBook(smallOnly, entriesOf(smallOnly)), { size: "hamlet" })!
       .split("\n")
       .slice(1),
-    ["- No seller keeps shop in a place this size."],
+    [
+      "- No seller keeps shop in a place this size.",
+      "Never name a price or say how many are left of a ware this block does not name: try the buy first and narrate what the Engine answers.",
+    ],
   );
   // More than a dozen of one seller's wares: the cheapest dozen, and how many more.
   const crowded = parsedOrThrow(

@@ -661,6 +661,9 @@ export function rulesetMarketPromptText(
   const lines = [
     `MARKET: ${where}, a ${at.label}. Prices at ${fair.label}, the default level (${levels}).`,
     ...sellers,
+    // Laptop playtest 2026-10-25: a temple's last vial offered at fifty gold pieces, and the buy
+    // refused, since no seller there had it.
+    "Never name a price or say how many are left of a ware this block does not name: try the buy first and narrate what the Engine answers.",
   ];
   if (market.buyBack !== undefined) {
     const purse = market.places[at.rank]?.purse;

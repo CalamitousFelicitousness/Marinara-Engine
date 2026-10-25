@@ -140,7 +140,7 @@ try {
   });
   assert.match(
     getCapabilityApiCompatibilityIssue(unsupportedMajorManifest) ?? "",
-    /requires capability API 2\.0; this Engine supports 1\.790/,
+    /requires capability API 2\.0; this Engine supports 1\.791/,
   );
   const currentMinorManifest = capabilityPackageManifestSchema.parse({
     ...manifestV2,
@@ -231,11 +231,11 @@ try {
   }
   const unsupportedMinorManifest = capabilityPackageManifestSchema.parse({
     ...manifestV2,
-    capabilityApi: { major: 1, minor: 791 },
+    capabilityApi: { major: 1, minor: 792 },
   });
   assert.match(
     getCapabilityApiCompatibilityIssue(unsupportedMinorManifest) ?? "",
-    /requires capability API 1\.791; this Engine supports 1\.790/,
+    /requires capability API 1\.792; this Engine supports 1\.791/,
   );
   const startupManifest = {
     ...currentMinorManifest,

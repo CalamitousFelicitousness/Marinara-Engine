@@ -373,7 +373,7 @@ try {
         restartRequired: false,
         contributions: { assets: { paths: ["ruleset.json"] } },
       }) as never;
-    const issue = /fight health is a plain track that fills up requires schemaVersion 2 and capabilityApi 1\.781/;
+    const issue = /fight health is a plain track that fills up requires schemaVersion 2 and capabilityApi 1\.782/;
     const plain = { sheet: { live: { tracks: [{ id: "wounds", min: 0, max: 5 }] } } };
     for (const block of ["combat", "battle"]) {
       const ruleset = { ...plain, [block]: { health: { track: "wounds" } } } as never;

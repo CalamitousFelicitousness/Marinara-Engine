@@ -116,7 +116,7 @@ try {
   }
 
   // ── The gate ──
-  const gate = /capabilityApi 1\.775 or newer/;
+  const gate = /capabilityApi 1\.776 or newer/;
   const manifest = (minor: number) => ({
     schemaVersion: 2,
     capabilityApi: { major: 1, minor },
@@ -134,7 +134,7 @@ try {
     getCapabilityPackageInstallIssue(manifest(minor) as never, doc as never, undefined as never) ?? "";
   assert.doesNotMatch(issueAt(378, fixture()), gate, "the example asks for nothing new");
   assert.match(issueAt(378, fixture(["tactical"])), gate);
-  assert.doesNotMatch(issueAt(775, fixture(["tactical"])), gate);
+  assert.doesNotMatch(issueAt(776, fixture(["tactical"])), gate);
 
   // ── Where it is read ──
   const wizard = readSource("packages/client/src/components/game/GameSetupWizard.tsx");

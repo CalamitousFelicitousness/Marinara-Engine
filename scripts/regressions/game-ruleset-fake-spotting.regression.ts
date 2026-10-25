@@ -151,7 +151,8 @@ try {
     };
     assert.equal(issue(791, spotting(bare)), null);
     for (const edit of [
-      (doc: Record<string, any>) => (entryOf(doc, "bitter-tonic").item.tells = [{ check: { ability: "nerve" }, dc: 4, says: "x" }]),
+      (doc: Record<string, any>) =>
+        (entryOf(doc, "bitter-tonic").item.tells = [{ check: { ability: "nerve" }, dc: 4, says: "x" }]),
       (doc: Record<string, any>) =>
         (doc.items.market.sellers.find((seller: { id: string }) => seller.id === "fence").manner = {
           check: { ability: "warmth" },
@@ -176,24 +177,30 @@ try {
     assert.match(
       issue(
         792,
-        spotting((doc) => (entryOf(doc, "warming-tonic").item.tells = [{ check: { ability: "nerve" }, dc: 4, says: "x" }])),
+        spotting(
+          (doc) => (entryOf(doc, "warming-tonic").item.tells = [{ check: { ability: "nerve" }, dc: 4, says: "x" }]),
+        ),
       ) ?? "",
       /"kit\/warming-tonic" has tells or foolsReveal but is no fake/,
     );
     assert.match(
-      issue(792, spotting((doc) => (doc.items.revealsFakes[1].items = ["kit/warming-tonic"]))) ?? "",
+      issue(
+        792,
+        spotting((doc) => (doc.items.revealsFakes[1].items = ["kit/warming-tonic"])),
+      ) ?? "",
       /reads "kit\/warming-tonic": it is no fake/,
     );
     assert.match(
-      issue(792, spotting((doc) => (entryOf(doc, "bitter-tonic").item.foolsReveal = ["sight"]))) ?? "",
+      issue(
+        792,
+        spotting((doc) => (entryOf(doc, "bitter-tonic").item.foolsReveal = ["sight"])),
+      ) ?? "",
       /fools "sight": it is none of items.revealsFakes/,
     );
     assert.match(
       issue(
         792,
-        spotting(
-          (doc) => (entryOf(doc, "bitter-tonic").item.tells[0].carries = { anyOf: ["kit/bottled-sunlight"] }),
-        ),
+        spotting((doc) => (entryOf(doc, "bitter-tonic").item.tells[0].carries = { anyOf: ["kit/bottled-sunlight"] })),
       ) ?? "",
       /carries "kit\/bottled-sunlight": it is no item/,
     );
@@ -223,7 +230,15 @@ try {
     const warm = { ...wren, name: "Ama", build: build(1, 6) };
     const fence = definition.items!.market!.sellers!.find((seller) => seller.id === "fence")!;
     assert.deepEqual(
-      noticeRulesetFake({ definition, book, stacks: [], spotters: [warm], truly: "kit/bitter-tonic", manner: fence.manner, roll }),
+      noticeRulesetFake({
+        definition,
+        book,
+        stacks: [],
+        spotters: [warm],
+        truly: "kit/bitter-tonic",
+        manner: fence.manner,
+        roll,
+      }),
       { who: "Ama", says: "the fence will not meet anyone's eye" },
     );
     // A tell that needs a kit the spotter does not carry is never theirs to make.
@@ -232,7 +247,14 @@ try {
     );
     const kittedBook = rulesetItemBook(kitted, entriesOf(kitted));
     const kittedNotice = (stacks: GameInventoryStack[]) =>
-      noticeRulesetFake({ definition: kitted, book: kittedBook, stacks, spotters: [juno], truly: "kit/bitter-tonic", roll });
+      noticeRulesetFake({
+        definition: kitted,
+        book: kittedBook,
+        stacks,
+        spotters: [juno],
+        truly: "kit/bitter-tonic",
+        roll,
+      });
     assert.equal(kittedNotice([]), undefined);
     assert.equal(
       kittedNotice([{ id: "k1", name: "Lantern coat", item: "kit/lantern-coat", quantity: 1, holder: "Juno" }])?.who,
@@ -283,18 +305,22 @@ try {
     const warned = { ...newDay(), warned: new Set([rulesetMarketStockKey("fence", "Warming tonic")]) };
     assert.equal(readResolvedInventoryTags(run(buyTag, coins(5), quoter(warned)).content)[0]?.ok, true);
     // Juno buying: Wren notices nothing, so it goes through.
-    const junoBuys = run(
-      '[inventory: action="buy" item="Warming tonic" count="1" seller="fence" who="Juno"]',
-      [...coins(5), { id: "c1", name: "shillings", item: "coin:shilling", quantity: 5, holder: "Juno" }],
-    );
+    const junoBuys = run('[inventory: action="buy" item="Warming tonic" count="1" seller="fence" who="Juno"]', [
+      ...coins(5),
+      { id: "c1", name: "shillings", item: "coin:shilling", quantity: 5, holder: "Juno" },
+    ]);
     assert.equal(readResolvedInventoryTags(junoBuys.content)[0]?.ok, true, junoBuys.content);
     // A real tonic from the honest chandler is never held, and nor is a buy with nobody to notice.
     assert.equal(
-      readResolvedInventoryTags(run('[inventory: action="buy" item="Warming tonic" seller="chandler"]', coins(5)).content)[0]
-        ?.ok,
+      readResolvedInventoryTags(
+        run('[inventory: action="buy" item="Warming tonic" seller="chandler"]', coins(5)).content,
+      )[0]?.ok,
       true,
     );
-    assert.equal(readResolvedInventoryTags(run(buyTag, coins(5), quoter(newDay(), spottingOf([wren]))).content)[0]?.ok, true);
+    assert.equal(
+      readResolvedInventoryTags(run(buyTag, coins(5), quoter(newDay(), spottingOf([wren]))).content)[0]?.ok,
+      true,
+    );
     // Without spotting (an older Engine's market), a fake's buy goes through as before.
     const plain = rulesetMarketQuoter(definition, book, town, () => true, undefined, newDay());
     assert.equal(readResolvedInventoryTags(run(buyTag, coins(5), plain).content)[0]?.ok, true);
@@ -342,7 +368,10 @@ try {
     assert.equal(look(juno, 9, "kit/bitter-tonic")?.found, "named");
     assert.equal(look(juno, 9, "kit/bitter-tonic")?.says, "it smells of nightshade, not ginger");
     const unnamed = parsedOrThrow(spotting((doc) => delete doc.items.namesItAt));
-    assert.equal(look(juno, 9, "kit/bitter-tonic", unnamed, rulesetItemBook(unnamed, entriesOf(unnamed)))?.found, "fake");
+    assert.equal(
+      look(juno, 9, "kit/bitter-tonic", unnamed, rulesetItemBook(unnamed, entriesOf(unnamed)))?.found,
+      "fake",
+    );
     // Every die missing: they cannot tell.
     assert.equal(look(juno, 2, "kit/bitter-tonic")?.found, "unsure");
     // A real tonic rolls its fakes' tells, the same check, and reads genuine.
@@ -361,13 +390,18 @@ try {
     assert.equal(answer?.ok, true, looked.content);
     assert.ok(["fake", "named", "unsure"].includes(answer!.found!), looked.content);
     assert.match(answer!.note ?? "", /^Wren looks Warming tonic over: Nerve \d+ against \d+, /);
-    const after = looked.stacks.find((stack) => stack.id === "f1" || stack.truly === undefined && stack.item === "kit/bitter-tonic");
+    const after = looked.stacks.find(
+      (stack) => stack.id === "f1" || (stack.truly === undefined && stack.item === "kit/bitter-tonic"),
+    );
     assert.ok(after, looked.content);
     if (answer!.found === "named") assert.equal(after!.item, "kit/bitter-tonic");
     else assert.deepEqual(after!.inspected, ["wren"]);
     if (answer!.found === "fake") assert.equal(after!.suspect, "Wren");
     // The same roll for the same look all day.
-    assert.equal(run('[inventory: action="inspect" item="Warming tonic"]', [...coins(5), fakeStack]).content, looked.content);
+    assert.equal(
+      run('[inventory: action="inspect" item="Warming tonic"]', [...coins(5), fakeStack]).content,
+      looked.content,
+    );
     // Tried once, not again.
     const tried = { ...fakeStack, inspected: ["wren"] };
     assert.equal(
@@ -376,14 +410,16 @@ try {
     );
     // Somebody with no sheet cannot look; without spotting nobody can.
     assert.equal(
-      readResolvedInventoryTags(run('[inventory: action="inspect" item="Warming tonic" who="Nobody"]', [fakeStack]).content)[0]
-        ?.reason,
+      readResolvedInventoryTags(
+        run('[inventory: action="inspect" item="Warming tonic" who="Nobody"]', [fakeStack]).content,
+      )[0]?.reason,
       "unknown-character",
     );
     const plain = rulesetMarketQuoter(definition, book, town, () => true, undefined, newDay());
     assert.equal(
-      readResolvedInventoryTags(run('[inventory: action="inspect" item="Warming tonic"]', [fakeStack], plain).content)[0]
-        ?.reason,
+      readResolvedInventoryTags(
+        run('[inventory: action="inspect" item="Warming tonic"]', [fakeStack], plain).content,
+      )[0]?.reason,
       "cannot-inspect",
     );
   }
@@ -411,7 +447,10 @@ try {
     assert.equal(revealRulesetFake(book, way("ash_sight"), undefined), "unsure");
     assert.equal(revealRulesetFake(book, way("poison_sense"), "kit/bitter-tonic"), "unsure");
     const fooled = parsedOrThrow(spotting((doc) => (entryOf(doc, "bitter-tonic").item.foolsReveal = ["truesight"])));
-    assert.equal(revealRulesetFake(rulesetItemBook(fooled, entriesOf(fooled)), way("truesight"), "kit/bitter-tonic"), "genuine");
+    assert.equal(
+      revealRulesetFake(rulesetItemBook(fooled, entriesOf(fooled)), way("truesight"), "kit/bitter-tonic"),
+      "genuine",
+    );
     // Cast with the tag: named and shown for what it is, as often as it is cast, and never a try.
     const cast = run('[inventory: action="inspect" item="Warming tonic" with="Truesight"]', [fakeStack]);
     const [answer] = readResolvedInventoryTags(cast.content);
@@ -420,11 +459,14 @@ try {
       cast.stacks.map((stack) => [stack.item, stack.truly ?? null]),
       [["kit/bitter-tonic", null]],
     );
-    const onReal = run('[inventory: action="inspect" item="Warming tonic" with="truesight"]', [{ ...realStack, inspected: ["wren"] }]);
+    const onReal = run('[inventory: action="inspect" item="Warming tonic" with="truesight"]', [
+      { ...realStack, inspected: ["wren"] },
+    ]);
     assert.equal(readResolvedInventoryTags(onReal.content)[0]?.found, "genuine", onReal.content);
     assert.equal(
-      readResolvedInventoryTags(run('[inventory: action="inspect" item="Warming tonic" with="Second sight"]', [fakeStack]).content)[0]
-        ?.reason,
+      readResolvedInventoryTags(
+        run('[inventory: action="inspect" item="Warming tonic" with="Second sight"]', [fakeStack]).content,
+      )[0]?.reason,
       "cannot-reveal",
     );
   }
@@ -451,7 +493,10 @@ try {
       }),
     );
     assert.doesNotMatch(
-      rulesetMarketPromptText(none, rulesetItemBook(none, entriesOf(none)), { name: "Barrowmere", size: "market town" })!,
+      rulesetMarketPromptText(none, rulesetItemBook(none, entriesOf(none)), {
+        name: "Barrowmere",
+        size: "market town",
+      })!,
       /inspect|held/,
     );
   }

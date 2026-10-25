@@ -94,7 +94,10 @@ function spotterAsks(
   const meets = (needs: RulesetItemTell["needs"] | undefined, any?: boolean) =>
     rulesetItemNeedsMet(definition, spotter.build, evaluated, needs, any);
   // Advantage where any one of its lines is met: a guild merchant's, or a fence's old trade.
-  const leaning = (line: { advantageIf?: RulesetItemTell["advantageIf"]; disadvantageIf?: RulesetItemTell["disadvantageIf"] }) => {
+  const leaning = (line: {
+    advantageIf?: RulesetItemTell["advantageIf"];
+    disadvantageIf?: RulesetItemTell["disadvantageIf"];
+  }) => {
     const advantage = !!line.advantageIf && meets(line.advantageIf, true);
     const disadvantage = !!line.disadvantageIf && meets(line.disadvantageIf, true);
     return advantage === disadvantage ? undefined : advantage ? ("advantage" as const) : ("disadvantage" as const);
@@ -109,7 +112,13 @@ function spotterAsks(
     line: Pick<RulesetItemTell, "check" | "dc" | "says" | "advantageIf" | "disadvantageIf">,
     isManner: boolean,
   ) => {
-    const ask = rulesetItemGateCheck(definition, spotter.build, evaluated, { check: line.check, difficulty: line.dc }, line.dc);
+    const ask = rulesetItemGateCheck(
+      definition,
+      spotter.build,
+      evaluated,
+      { check: line.check, difficulty: line.dc },
+      line.dc,
+    );
     if (!ask) return;
     asks.push({
       label: checkLabel(definition, line.check),
@@ -244,7 +253,9 @@ export function revealRulesetFake(
   const narrow = !!way.tags?.length || !!way.items?.length;
   if (fake?.foolsReveal?.includes(way.id)) return "genuine";
   const reads =
-    !narrow || way.tags?.some((tag) => fake?.tags?.includes(tag)) || (truly !== undefined && way.items?.includes(truly));
+    !narrow ||
+    way.tags?.some((tag) => fake?.tags?.includes(tag)) ||
+    (truly !== undefined && way.items?.includes(truly));
   if (fake && reads) return "named";
   return narrow ? "unsure" : "genuine";
 }

@@ -1292,6 +1292,30 @@ try {
     assert.deepEqual([mender.value, mender.max], [10, 22], "on its sheet too");
     const fresh = again.ruleset!.combatants.find((one) => one.id === "mender4")!.health;
     assert.equal(fresh.value, fresh.max, "the unmarked one is a fresh one");
+    // Written again in other words, it is still the one (laptop playtest 2026-10-25: "Cult Thug
+    // (Highwayman)" came back as "Highwayman Thug", escaped druids as "Vengeful Cult Druid").
+    const { rulesetReturningFoeReworded } =
+      await import("../../packages/server/src/services/game/ruleset-combat-director.service.js");
+    assert.equal(rulesetReturningFoeReworded("Cult Thug (Highwayman)", "Highwayman Thug"), true);
+    assert.equal(rulesetReturningFoeReworded("Cult Druid", "Vengeful Cult Druid"), true);
+    assert.equal(rulesetReturningFoeReworded("Cult Thug", "Thug"), false, "one word is anybody");
+    assert.equal(rulesetReturningFoeReworded("Cult Thug", "Cult Mage"), false);
+    const third = await chats.createMessage({ chatId: away.chat.id, role: "assistant", content: "[state: combat]" });
+    const reworded = await post(
+      "/combat/start",
+      fightBody(third.id, [
+        { ...unit("mender5", "Vengeful Hedge Mender", "enemy"), creature: "creatures/hedge-mender" },
+        { ...unit("mender6", "Desperate Hedge Mender", "enemy"), creature: "creatures/hedge-mender" },
+      ]),
+    );
+    assert.equal(reworded.statusCode, 200, reworded.body);
+    const view = reworded.json().session as DirectedCombatView;
+    const vengeful = view.ruleset!.combatants.find((one) => one.id === "mender5")!.health;
+    assert.deepEqual([vengeful.value, vengeful.max], [10, 22], "the one that got away, in other words");
+    const desperate = view.ruleset!.combatants.find((one) => one.id === "mender6")!.health;
+    assert.equal(desperate.value, desperate.max, "only one was kept, so the other is fresh");
+    const rewordedRow = (await engineStates.getByChatAndMessage(away.chat.id, third.id, 0, COMBAT_DIRECTOR_NAMESPACE))!;
+    assert.deepEqual(JSON.parse(rewordedRow.state).rulesetFight.returnedFrom, ["hedge mender"]);
   }
 
   console.log(

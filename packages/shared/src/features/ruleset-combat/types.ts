@@ -3806,7 +3806,16 @@ export type RulesetCombatEvent =
   /** Something aimed at an image passed through it (1.553), and its maker's side saw it for one. */
   | { type: "seenThrough"; actorId: string; targetId: string; label: string }
   /** Creatures called into the fight (1.325), by whom and with what. */
-  | { type: "called"; actorId: string; label: string; ids: string[]; disobeys?: true }
+  | {
+      type: "called";
+      actorId: string;
+      label: string;
+      ids: string[];
+      disobeys?: true;
+      /** How many of those called did not come, and why: the fight was full, no room on the board,
+       *  or none its caller could see within `cells` of them (a call's `within`). */
+      short?: { count: number; why: "full" | "room" | "seen"; cells?: number };
+    }
   /** Called creatures sent away (1.381): their time is up, or the concentration holding them ended. */
   /** Health regained as a turn starts (1.383), or none because harm it is stopped by was taken. */
   | { type: "regenerates"; actorId: string; amount: number; stopped?: true }

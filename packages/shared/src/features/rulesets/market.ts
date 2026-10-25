@@ -132,6 +132,8 @@ export function rulesetMarketPrice(
   times: number,
   count: number,
   layerOptions?: RulesetLayerOptions | null,
+  /** The coins prices are written in (`rulesetPricedCoins`), said before the rest. */
+  priced?: ReadonlySet<string>,
 ): { owed: number; family: GameInventoryCoin[]; familyId: string; said: string; saidIn: string } | undefined {
   const full = definition.items?.currencies?.find((family) => family.units.some((unit) => unit.id === cost.unit));
   const unit = full?.units.find((each) => each.id === cost.unit);
@@ -150,10 +152,15 @@ export function rulesetMarketPrice(
       ...(coin.one ? { one: coin.one } : {}),
       value: coin.value,
     }));
-  // The family's smallest coin, worth 1, is always left, so some coin says the price exactly.
+  // The family's smallest coin, worth 1, is always left, so some coin says the price exactly. Where
+  // its own coin does not, a coin some price of the ruleset is written in says it before one none is
+  // (laptop playtest 2026-10-25: a Mace sold for "5 electrum pieces", a coin no 5e price uses).
   const own = family.find((coin) => coin.item === gameInventoryCoinRef(cost.unit));
+  const exact = (coin: GameInventoryCoin) => owed % coin.value === 0;
   const shown =
-    (own && owed % own.value === 0 ? own : family.find((coin) => owed % coin.value === 0)) ?? family.at(-1)!;
+    (own && exact(own)
+      ? own
+      : (family.find((coin) => exact(coin) && !!priced?.has(coin.item)) ?? family.find(exact))) ?? family.at(-1)!;
   return {
     owed,
     family,
@@ -161,6 +168,15 @@ export function rulesetMarketPrice(
     said: rulesetCoinAmount({ label: shown.name, one: shown.one }, owed / shown.value),
     saidIn: shown.item,
   };
+}
+
+/** The coins some item of a book has its price written in, by coin ref. */
+export function rulesetPricedCoins(
+  entries: ReadonlyArray<{ entry: { item?: { cost?: { unit: string } } } }>,
+): ReadonlySet<string> {
+  const found = new Set<string>();
+  for (const one of entries) if (one.entry.item?.cost?.unit) found.add(gameInventoryCoinRef(one.entry.item.cost.unit));
+  return found;
 }
 
 /**
@@ -289,6 +305,7 @@ export function rulesetMarketQuoter(
   /** The party's sheets, for inspecting and for noticing a fake before it is bought (1.792). */
   spotting?: RulesetMarketSpotting,
 ): GameInventoryMarket {
+  const priced = rulesetPricedCoins(book.entries ?? []);
   const bought = new Map(day?.bought ?? []);
   const stockBought = new Map(day?.stockBought ?? []);
   const paidOut = new Map(day?.paidOut ?? []);
@@ -336,7 +353,7 @@ export function rulesetMarketQuoter(
       const item = found?.entry.item;
       if (!found || !item || !book.offers(found.item)) return { ok: false, reason: "unknown-item" };
       if (!item.cost) return { ok: false, reason: "not-for-sale" };
-      const price = rulesetMarketPrice(definition, item.cost, level.times, request.count, layerOptions);
+      const price = rulesetMarketPrice(definition, item.cost, level.times, request.count, layerOptions, priced);
       if (!price) return { ok: false, reason: "not-for-sale" };
       const sold = { ok: true as const, item: found.item, name: found.name, service: item.service === true };
       const answer = { family: price.family, owed: price.owed, price: price.said, level: level.label };
@@ -440,7 +457,14 @@ export function rulesetMarketQuoter(
       const worthOf = spotted ? trueEntry?.entry.item : item;
       const price =
         worthOf?.cost && !worthOf.service
-          ? rulesetMarketPrice(definition, worthOf.cost, fair.times * market.buyBack, request.count, layerOptions)
+          ? rulesetMarketPrice(
+              definition,
+              worthOf.cost,
+              fair.times * market.buyBack,
+              request.count,
+              layerOptions,
+              priced,
+            )
           : undefined;
       if (!price) return { ok: false, reason: "not-for-sale", ...(revealed ? { revealed } : {}) };
       // What the place's sellers pay out in a day, counted in the purse's own family.
@@ -462,6 +486,9 @@ export function rulesetMarketQuoter(
         worth: price.owed,
         price: price.said,
         paidIn: price.saidIn,
+        // Paid out in the coins prices are written in, where they make the sum (laptop playtest
+        // 2026-10-25: a Mace sold for electrum).
+        ...(priced.size > 0 ? { payIn: [...priced] } : {}),
         ...(revealed ? { revealed } : {}),
         ...(seller ? { seller: seller.label } : {}),
       };
@@ -605,11 +632,12 @@ export function rulesetMarketPromptText(
   if (!at) return alone(`MARKET: ${where} has no market.`);
   const shelf = rulesetMarketShelf(definition, book, at, day?.key ?? "");
   const fair = rulesetMarketLevel(market)!;
+  const priced = rulesetPricedCoins(book.entries ?? []);
   const levels = market.prices.map((level) => `${level.label} ×${level.times}`).join(", ");
   const sold = book.entries.flatMap((entry) => {
     const item = entry.entry.item;
     if (!item?.cost || rulesetItemDeceptive(item) || rulesetItemSoldRank(market, item) > at.rank) return [];
-    const price = rulesetMarketPrice(definition, item.cost, fair.times, 1, layerOptions);
+    const price = rulesetMarketPrice(definition, item.cost, fair.times, 1, layerOptions, priced);
     if (!price) return [];
     const limit = shelf.limit(entry.item, item);
     const left =
@@ -636,7 +664,9 @@ export function rulesetMarketPromptText(
     const more = wares.length - listed.length;
     const inStock = stock.flatMap((drop) => {
       const item = book.entries.find((entry) => entry.item === drop.item)?.entry.item;
-      const price = item?.cost ? rulesetMarketPrice(definition, item.cost, fair.times, 1, layerOptions) : undefined;
+      const price = item?.cost
+        ? rulesetMarketPrice(definition, item.cost, fair.times, 1, layerOptions, priced)
+        : undefined;
       const left = drop.count - (day?.stockBought.get(rulesetMarketStockKey(seller, drop.name)) ?? 0);
       const told = drop.truly
         ? ` (FAKE: really ${drop.trulyName}; this seller passes it off as the real thing)`

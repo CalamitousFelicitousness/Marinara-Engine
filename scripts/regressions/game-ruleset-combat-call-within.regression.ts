@@ -165,6 +165,31 @@ try {
     definition = parsed(fiveE());
     bestiary = { creatures: definition.catalogs!.find((catalog) => catalog.holds === "creatures")!.entries! };
   }
+  // ── Those with no room it sees are said, and why (cloud summons check 2026-10-25: 7 of 8
+  //    Draft Horses came, the eighth with no word) ──
+  {
+    definition = parsed(fiveE({ ...animate, count: { flat: 12 }, within: { distance: 5, seen: true } }));
+    bestiary = { creatures: definition.catalogs!.find((catalog) => catalog.holds === "creatures")!.entries! };
+    const taken = applyRulesetCombatChoice(
+      definition,
+      fight(),
+      { actorId: "treant", optionId: "animate", targetIds: [] },
+      roll,
+    );
+    const said = taken.events.find((event) => event.type === "called");
+    assert.ok(said && said.type === "called");
+    assert.equal(said.ids.length, 8, "the eight cells beside it");
+    assert.deepEqual(said.short, { count: 4, why: "seen", cells: 1 });
+    definition = parsed(fiveE());
+    bestiary = { creatures: definition.catalogs!.find((catalog) => catalog.holds === "creatures")!.entries! };
+    const all = applyRulesetCombatChoice(
+      definition,
+      fight(),
+      { actorId: "treant", optionId: "animate", targetIds: [] },
+      roll,
+    ).events.find((event) => event.type === "called");
+    assert.ok(all && all.type === "called" && all.short === undefined, "all came, nothing said");
+  }
   // ── Refused: nothing within ──
   {
     const bad = parseRulesetDefinition(fiveE({ ...animate, within: { seen: true } }));

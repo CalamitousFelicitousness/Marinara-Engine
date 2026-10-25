@@ -82,6 +82,7 @@ import {
   rulesetBringBackFoe,
   rulesetReturningFoeKey,
   rulesetReturningFoeMarked,
+  rulesetReturningFoeReworded,
   syncRulesetCombatants,
   RULESET_COMBAT_EVENT_LIMIT,
   RULESET_COMBAT_REASON_LIMIT,
@@ -867,6 +868,22 @@ export async function combatDirectorRoutes(
                 // (Scarred)", "Cult Thug (Highwayman)") are kept one after another, as "<name>#2" on.
                 const names = new Set([...beaten, ...fled.map((foe) => foe.name)].map(rulesetReturningFoeKey));
                 for (const key of Object.keys(kept)) if (names.has(key.replace(/#\d+$/, ""))) delete kept[key];
+                // And each that came back in other words, under the name it was kept by, the rest of
+                // that name numbered on again.
+                const fight = s.rulesetFight!;
+                for (const gone of fight.returnedFrom ?? []) {
+                  if (!kept[gone]) continue;
+                  delete kept[gone];
+                  const base = gone.replace(/#\d+$/, "");
+                  const rest: RulesetReturningFoe[] = [];
+                  const nth = (key: string) => Number(/#(\d+)$/.exec(key)?.[1] ?? 1);
+                  for (const key of Object.keys(kept).sort((a, b) => nth(a) - nth(b)))
+                    if (key === base || (key.startsWith(`${base}#`) && /^#\d+$/.test(key.slice(base.length)))) {
+                      rest.push(kept[key]!);
+                      delete kept[key];
+                    }
+                  rest.forEach((foe, index) => (kept[index === 0 ? base : `${base}#${index + 1}`] = foe));
+                }
                 // Stamped with the game clock, so the rests it takes before it comes back are counted.
                 const clock = gameClockMinutes(current.gameTime);
                 const counted = new Map<string, number>();
@@ -1157,6 +1174,26 @@ export async function combatDirectorRoutes(
               if (stored[index]) backAs[at] = stored[index];
             });
           }
+          // One kept from before and written again in other words, by the Game Master's own words for
+          // it, once each (laptop playtest 2026-10-25: "Cult Thug (Highwayman)" came back as "Highwayman
+          // Thug" with a fresh sheet). Only one of a name nothing in this fight is called.
+          const taken = new Set(backAs.filter((foe): foe is RulesetReturningFoe => !!foe));
+          const asked = new Set(keys);
+          const others = Object.entries(returning).filter(
+            ([key, foe]) => !asked.has(key.replace(/#\d+$/, "")) && !taken.has(foe),
+          );
+          // Forgotten under its old name once this fight ends, so it never comes back twice.
+          const reworded: string[] = [];
+          input.enemies.forEach((enemy, at) => {
+            if (backAs[at]) return;
+            // The first kept that fits, so two that got away of one name ("Cult Druid") come back as the
+            // story's two ("Vengeful Cult Druid", "Desperate Cult Druid"), one each.
+            const found = others.find(([, foe]) => rulesetReturningFoeReworded(foe.name, enemy.name));
+            if (!found) return;
+            backAs[at] = found[1];
+            reworded.push(found[0]);
+            others.splice(others.indexOf(found), 1);
+          });
           const built = createRulesetFight({
             definition,
             seed: battlefield.seed,
@@ -1253,6 +1290,7 @@ export async function combatDirectorRoutes(
                 }),
           });
           if (!built.ok) return reply.code(400).send({ error: built.error });
+          if (reworded.length) built.fight.returnedFrom = reworded;
           const clockNow = gameClockMinutes(meta.gameTime);
           backAs.forEach((back, index) => {
             if (!back) return;

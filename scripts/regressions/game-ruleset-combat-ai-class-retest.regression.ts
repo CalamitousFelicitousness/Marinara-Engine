@@ -807,6 +807,34 @@ try {
     const choices = ranked(again, "grak");
     assert.equal(choices.find((one) => one.candidate.action.option.id === "fury")?.candidate.setup ?? 0, 0);
     assert.notEqual(choices[0]?.candidate.action.option.id, "fury", "no fury while furious");
+    // Nor another way into it while it holds, a foe in reach or not (laptop playtest 2026-10-25:
+    // Ulfgar, raging by Frenzy, raged again in round 4, and the rage ended with the turn).
+    for (const at of [
+      { x: 3, y: 5 },
+      { x: 15, y: 9 },
+    ]) {
+      const held = fight([
+        { id: "grak", name: "grak", side: "party", block: block([smash]), at: { x: 2, y: 5 } },
+        { id: "orc", name: "orc", side: "enemy", block: block([smash]), at },
+      ]);
+      const raging = rulesetCombatant(held.encounter, "grak")!;
+      raging.actions.push(
+        { ...fury, id: "frenzy", label: "Frenzy" } as unknown as RulesetCombatAction,
+        {
+          ...fury,
+          id: "rage",
+          label: "Rage",
+          applies: [
+            { condition: "furious", duration: { rounds: 10 } },
+            { condition: "fierce", duration: { rounds: 10 }, endsWith: "furious" },
+          ],
+        } as unknown as RulesetCombatAction,
+      );
+      raging.tracked.push({ condition: "furious", source: "grak", rounds: 8 } as never);
+      raging.stirred = true as never;
+      const picked = pickRulesetChoice(definition, held.state, held.encounter, "grak");
+      assert.ok(!["frenzy", "rage"].includes(picked?.option.id ?? ""), `no rage again: ${picked?.option.id}`);
+    }
   }
 
   // ── A spell that grows with its slot is cast from the lowest slot that drops its target (laptop
@@ -1018,6 +1046,32 @@ try {
       return ranked(scene, "mira").find((one) => one.candidate.action.option.id === "rally");
     })();
     assert.ok(empty && full && full.score < empty.score, "dearer to let go of with foes in it");
+    // One that may be moved onto a foe is dear to let go of though nobody stands in it now (laptop
+    // playtest 2026-10-25: Wren let her Moonbeam go in round 2 for Conjure Animals).
+    const beam = {
+      ...guardians,
+      id: "beam",
+      label: "Beam",
+      area: { shape: "burst", size: 5 },
+      zone: { rounds: 10, triggers, move: { budget: "action", distance: 60 } },
+    } as unknown as RulesetCombatAction;
+    mira.actions.push(beam);
+    mira.concentrating = { actionId: "beam", label: "Beam" } as never;
+    const corner = (x: number, y: number) =>
+      [
+        { actionId: "beam", label: "Beam", rounds: 10, anchor: "point", at: { x, y }, cells: [{ x, y }], triggers },
+      ] as never;
+    mira.zones = corner(0, 0);
+    const stuck = ranked(scene, "mira").find((one) => one.candidate.action.option.id === "rally");
+    mira.zones = corner(0, 9);
+    const unmoved = (() => {
+      const saved = beam.zone!.move;
+      delete (beam.zone as { move?: unknown }).move;
+      const out = ranked(scene, "mira").find((one) => one.candidate.action.option.id === "rally");
+      (beam.zone as { move?: unknown }).move = saved;
+      return out;
+    })();
+    assert.ok(stuck && unmoved && stuck.score < unmoved.score, "a beam that can be moved onto a foe is kept");
   }
 
   // ── A lasting area that harms whoever is in it each turn is worth more than one round of its harm

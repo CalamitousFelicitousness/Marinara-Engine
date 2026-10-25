@@ -749,6 +749,9 @@ export function holdRulesetSheetHealth(
   definition: RulesetDefinition,
   proposed: RulesetSheetBuild,
   tier: RulesetCombatThreatTier,
+  /** The health the Game Master gave it, held to where it is inside the band (laptop playtest
+   *  2026-10-25: three invented CR 3 foes sent at 45, 45 and 40 came out at 52, 52 and 32). */
+  given?: number,
 ): { sheet: RulesetSheetBuild; adjusted: string[] } {
   const health = definition.combat?.health;
   if (!health || !("pool" in health)) return { sheet: proposed, adjusted: [] };
@@ -756,7 +759,10 @@ export function holdRulesetSheetHealth(
     readRulesetLive(definition, build, {}).pools.find((pool) => pool.key === health.pool)?.max ?? 0;
   const before = maxOf(proposed);
   const [low, high] = tier.health;
-  if (before >= low && before <= high) return { sheet: proposed, adjusted: [] };
+  const asked =
+    given !== undefined && Number.isFinite(given) && given >= low && given <= high ? Math.round(given) : undefined;
+  if (asked === undefined ? before >= low && before <= high : before === asked)
+    return { sheet: proposed, adjusted: [] };
   const field = healthField(definition, health.pool);
   if (!field) {
     return {
@@ -766,7 +772,7 @@ export function holdRulesetSheetHealth(
       ],
     };
   }
-  const target = Math.min(high, Math.max(low, before));
+  const target = asked ?? Math.min(high, Math.max(low, before));
   const bounded = (value: number) =>
     Math.min(field.max, Math.max(field.min, field.integer ? Math.round(value) : value));
   // The field moved by what health is short, then by what is still short, a few times: health need not
@@ -799,7 +805,7 @@ export function holdRulesetSheetHealth(
       Math.abs(other.after - target) < Math.abs(one.after - target) ? other : one,
     );
   };
-  const within = (value: number) => value >= low && value <= high;
+  const within = (value: number) => (asked === undefined ? value >= low && value <= high : value === asked);
   let best = through(proposed);
   let reset: Extract<RulesetField, { type: "enum" }> | undefined;
   // A choice the sheet made that health reads, and that leaves the field out of it, is set back to the
@@ -830,13 +836,18 @@ export function holdRulesetSheetHealth(
     }
   }
   const { sheet, after } = best;
+  // Already in the band, and not to be moved to the Game Master's own number: as written.
+  if (asked !== undefined && after === before && before >= low && before <= high)
+    return { sheet: proposed, adjusted: [] };
   const back = reset ? ` with its ${reset.label} set back to the ruleset's default` : "";
   return {
     sheet,
     adjusted: [
-      within(after)
-        ? `Health ${before} was pulled into the ${low} to ${high} of ${tier.label} through its ${field.label}${back}, and is now ${after}.`
-        : `Health ${before} was moved toward the ${low} to ${high} of ${tier.label} as far as its ${field.label} goes, and is now ${after}.`,
+      asked !== undefined && after === asked
+        ? `Health ${before} was set to the Game Master's ${asked} through its ${field.label}${back}.`
+        : within(after) || (asked !== undefined && after >= low && after <= high)
+          ? `Health ${before} was pulled into the ${low} to ${high} of ${tier.label} through its ${field.label}${back}, and is now ${after}.`
+          : `Health ${before} was moved toward the ${low} to ${high} of ${tier.label} as far as its ${field.label} goes, and is now ${after}.`,
     ],
   };
 }

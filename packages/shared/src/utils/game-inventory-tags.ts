@@ -158,6 +158,8 @@ export interface GameInventoryMarket {
         price: string;
         /** The coin the price is said in: the seller pays in it and smaller, never in bigger ones. */
         paidIn?: string;
+        /** The coins it is paid out in where they make the sum: those some price is written in. */
+        payIn?: readonly string[];
         seller?: string;
         /** An honest buyer spotted a fake: what it truly is, which it now is, sold at that worth. */
         revealed?: { item: string; name: string };
@@ -653,7 +655,11 @@ export function applyGameInventoryTags(
             // In the coin the price is said in and smaller (laptop playtest 2026-10-25: a 60 gold sale
             // came in as 6 platinum).
             const top = sale.family.find((coin) => coin.item === sale.paidIn)?.value ?? Number.POSITIVE_INFINITY;
-            for (const coin of sale.family) {
+            // And in the coins prices are written in, where those make the sum (no electrum for a Mace).
+            const usual = sale.family.filter((coin) => !sale.payIn || sale.payIn.includes(coin.item));
+            const makes = (coins: readonly GameInventoryCoin[]) =>
+              coins.reduce((rest, coin) => (coin.value > top ? rest : rest % coin.value), sale.worth) === 0;
+            for (const coin of makes(usual) ? usual : sale.family) {
               if (coin.value > top) continue;
               const count = Math.floor(left / coin.value);
               if (count < 1) continue;

@@ -131,6 +131,7 @@ import {
   rulesetActionReach,
   rulesetGap,
   rulesetAtBoardEdge,
+  rulesetDistanceTo,
   rulesetInCells,
   rulesetCombatantBehavior,
   rulesetCombatantRole,
@@ -291,6 +292,9 @@ export interface RulesetFightState {
   deploy?: { cells: Array<{ x: number; y: number }>; placed: string[] };
   /** What each opponent was made from, by combatant id: what one that gets away comes back as. */
   made?: Record<string, RulesetReturningFoe>;
+  /** The keys of those kept from before that came back here under other words: forgotten under them
+   *  once the fight ends, as each is kept again by the name it fought under here. */
+  returnedFrom?: string[];
   /** The coins the Game Master gave each opponent, by combatant id (laptop playtest 2026-10-25: a
    *  thief's stolen 9 gp, "no item called gold pieces"): they drop with it when it is beaten. */
   purses?: Record<string, Array<{ ref: string; name: string; count: number }>>;
@@ -340,6 +344,22 @@ export function rulesetReturningFoeKey(name: string): string {
   // Less what the Game Master writes after it in brackets (laptop playtest 2026-10-25: the Cult Thug
   // that got away came back as "Cult Thug (Wounded)").
   return normalizeCharacterLookupName(name.replace(/\s*[([][^()[\]]*[)\]]\s*$/, "") || name);
+}
+
+/** Whether a fight's opponent is one kept from before under other words (laptop playtest 2026-10-25:
+ *  "Cult Thug (Highwayman)" got away and came back as "Highwayman Thug"): every word of one name, its
+ *  bracketed ones too, is among the other's, and the shorter has two words or more. */
+export function rulesetReturningFoeReworded(kept: string, name: string): boolean {
+  const words = (text: string) =>
+    new Set(
+      normalizeCharacterLookupName(text)
+        .split(/[^\p{L}\p{N}]+/u)
+        .filter((word) => word.length > 0 && !["the", "a", "an", "of"].includes(word)),
+    );
+  const one = words(kept);
+  const other = words(name);
+  const [few, many] = one.size <= other.size ? [one, other] : [other, one];
+  return few.size >= 2 && [...few].every((word) => many.has(word));
 }
 
 /** Whether a name carries a bracketed word after it, as a Game Master marks one it means: "(Wounded)". */
@@ -807,6 +827,12 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
       adjustments.push(
         `This fight is worth ${moved.worth.after}, more than this party's ${budget.step.label} budget of ${allowed}, with nothing left to bring down.`,
       );
+    // Said when nothing was brought down too, so a fight left as it was reads as weighed (laptop
+    // playtest 2026-10-25: three invented CR 3 foes, no word of the budget anywhere).
+    else if (moved.worth.before <= allowed)
+      adjustments.push(
+        `This fight is worth ${moved.worth.before}, within this party's ${budget.step.label} budget of ${allowed}.`,
+      );
   }
   for (const opponent of enemies) {
     opponentName = opponent.name;
@@ -1000,7 +1026,14 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
         raised.adjusted.forEach(said);
         sheet = raised.sheet;
       }
-      const held = tier ? holdRulesetSheetHealth(definition, sheet, tier) : { sheet, adjusted: [] };
+      const held = tier
+        ? holdRulesetSheetHealth(
+            definition,
+            sheet,
+            tier,
+            typeof proposed.data.health === "number" ? proposed.data.health : undefined,
+          )
+        : { sheet, adjusted: [] };
       held.adjusted.forEach(said);
       // What the entry adds beside the sheet (its own actions, riders, the damage it shrugs off) is
       // held by the plain clamp, on a block that borrows the tier's own numbers for the ones the
@@ -2794,6 +2827,22 @@ function rulesetCandidates(
           )
         )
           own.splice(index, 1);
+      }
+  }
+  // Nor is it entered again while it holds: the use is spent for nothing (laptop playtest 2026-10-25:
+  // Ulfgar raged again in round 4 while raging, struck nobody, and the rage ended with the turn).
+  if (actor) {
+    const idle = new Set(
+      (definition.combat?.conditions ?? []).filter((rule) => rule.endsIdle).map((rule) => rule.condition),
+    );
+    const holds = actor.tracked.filter((entry) => idle.has(entry.condition)).map((entry) => entry.condition);
+    if (holds.length > 0)
+      for (let index = own.length - 1; index >= 0; index--) {
+        const option = own[index]!.action.option;
+        const action = actor.actions.find((one) => one.id === option.id);
+        const puts = [...(action?.applies ?? []), ...(action?.appliesSelf ?? [])];
+        const onSelf = option.targets.side === "self" || (action?.appliesSelf ?? []).length > 0;
+        if (onSelf && puts.some((one) => holds.includes(one.condition))) own.splice(index, 1);
       }
   }
   // A bolt along a line (1.190) catches whoever stands between its wielder and the target, friend or
@@ -7428,13 +7477,28 @@ function rulesetHeldWorth(
     );
     if (foes.length === 0) return 0;
     let harm = 0;
+    // One its holder may move onto a foe (Moonbeam) still harms the one it can be moved onto, though
+    // nobody stands in it now (laptop playtest 2026-10-25: Wren let her Moonbeam go in round 2 to
+    // cast Conjure Animals, both 3rd-level slots gone).
+    const perCell = combat.distance?.perCell;
+    const moves = action.zone?.move;
+    let movable = 0;
     for (const zone of zones) {
       const cells = new Set(rulesetZoneCells(encounter, actor, zone).map((cell) => `${cell.x},${cell.y}`));
       for (const foe of foes) {
         const inside = rulesetFootprint(foe).some((cell) => cells.has(`${cell.x},${cell.y}`));
         if (inside && rulesetZoneCatches(actor, zone, action, foe)) harm += rulesetSafeAverage(action.damage);
+        else if (
+          moves &&
+          zone.at &&
+          perCell &&
+          rulesetZoneCatches(actor, zone, action, foe) &&
+          rulesetDistanceTo(zone.at, foe) <= rulesetInCells(moves.distance, perCell)
+        )
+          movable = rulesetSafeAverage(action.damage) * 0.7;
       }
     }
+    harm = Math.max(harm, movable);
     const foeMean = rulesetSideHealthMean(definition, combat, encounter, foes[0]!.side);
     return Math.max(0.4, 2 * (1 - Math.exp(-harm / Math.max(1, foeMean))));
   }

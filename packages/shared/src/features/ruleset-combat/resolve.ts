@@ -410,7 +410,7 @@ import {
   rulesetZoneSeenBy,
 } from "./zones.js";
 import { rulesetChangeGround, rulesetClearGrowth, rulesetGrowthRule, rulesetRunBoardEvents } from "./board-events.js";
-import { RULESET_CALLED_FIGHT_MAX, rulesetCallCreatures, rulesetTurnAfterCalls } from "./calls.js";
+import { RULESET_CALL_MAX, RULESET_CALLED_FIGHT_MAX, rulesetCallCreatures, rulesetTurnAfterCalls } from "./calls.js";
 import { rulesetFormAllowed, rulesetKeepsAction, rulesetLeaveShape, rulesetTakeShape } from "./shape.js";
 
 /** Everything one step of the fight needs: the rules, the state it is changing, its dice and the
@@ -11758,7 +11758,32 @@ function callCreatures(
       }
     }
   }
-  ctx.events.push({ type: "called", actorId: actor.id, label: action.label, ids, ...(disobeys ? { disobeys } : {}) });
+  // Those that did not come are said, and why (cloud summons check 2026-10-25: 7 of 8 Draft Horses
+  // came, the eighth with no word, the open room left on the board out of its caller's sight).
+  const wanted = Math.min(Math.max(0, Math.floor(count)), RULESET_CALL_MAX);
+  const short =
+    wanted > ids.length
+      ? {
+          count: wanted - ids.length,
+          why:
+            ctx.state.combatants.length >= RULESET_CALLED_FIGHT_MAX
+              ? ("full" as const)
+              : only && action.calls.within?.seen
+                ? ("seen" as const)
+                : ("room" as const),
+          ...(only && action.calls.within && ctx.definition.combat?.distance?.perCell !== undefined
+            ? { cells: rulesetInCells(action.calls.within.distance, ctx.definition.combat.distance.perCell) }
+            : {}),
+        }
+      : undefined;
+  ctx.events.push({
+    type: "called",
+    actorId: actor.id,
+    label: action.label,
+    ids,
+    ...(disobeys ? { disobeys } : {}),
+    ...(short ? { short } : {}),
+  });
   departuresOf(ctx, actor);
   // On their way, there after so many of their caller's turns (1.599): Children of the Night's.
   const arrivesIn = action.calls.arrivesIn ?? action.callsArriveIn;

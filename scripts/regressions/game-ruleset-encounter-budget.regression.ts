@@ -206,9 +206,14 @@ try {
   assert.equal((kept.made?.mage?.proposed as { tier?: string }).tier, "cr_0");
   // One that fits is left as it was, and so is any fight given no budget (a story's).
   const fits = fight({ enemies: [{ id: "pup", name: "Ash Pup", tier: "cr_1" }], budget: { difficulty: "normal" } });
-  assert.equal(fits.made?.pup?.tier, "cr_1");
-  assert.ok(!fits.adjustments.some((line) => /budget/.test(line)));
   const story = fight({ enemies: enemies.slice(1) });
+  assert.equal(fits.made?.pup?.tier, "cr_1");
+  // Said as weighed all the same (laptop playtest 2026-10-25: no word of the budget anywhere).
+  assert.deepEqual(
+    fits.adjustments.filter((line) => /budget/.test(line)),
+    ["This fight is worth 200, within this party's Moderate budget of 300."],
+  );
+  assert.ok(!story.adjustments.some((line) => /budget/.test(line)), "a story's fight says nothing of one");
   assert.equal(story.made?.brute?.tier, "cr_5");
   // A boss reaches the next step: two at level 2 have High's 400, so a CR 2 chief (450) and a CR 1/2
   // guard (100) come to 300 with the chief a rung down, and the guard stays.

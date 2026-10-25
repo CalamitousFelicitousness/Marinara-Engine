@@ -1432,6 +1432,16 @@ const spellbook = parsedOrThrow(
     assert.equal(capped.sheet.fields.hp_mode, undefined);
     assert.equal(capped.sheet.fields.hp_build, undefined);
     assert.doesNotMatch(capped.adjusted.join("\n"), /set back/);
+    // The Game Master's own number, where it is inside the band, is the one it gets (laptop playtest
+    // 2026-10-25: invented CR 3 foes sent at 45, 45 and 40 came out at 52, 52 and 32).
+    const given = holdRulesetSheetHealth(typedElseFixed, fixed, tier, 60);
+    assert.equal(max(given.sheet), 60, given.adjusted.join("; "));
+    assert.match(
+      given.adjusted.join("\n"),
+      /Health 28 was set to the Game Master's 60 through its Hit points by hand\./,
+    );
+    // One outside the band is held to the band as ever.
+    assert.equal(max(holdRulesetSheetHealth(typedElseFixed, fixed, tier, 500).sheet), 45);
   }
 
   // Strikes bought by one spend wait in hand and may go to ANY striking row, so a round is one spend

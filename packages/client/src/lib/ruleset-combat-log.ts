@@ -1034,12 +1034,24 @@ export function rulesetCombatEventLine(
         levels: event.rises ?? 0,
       });
     // Creatures called into the fight (1.325): Jars Burst.
-    case "called":
-      return key(event.ids.length ? (event.disobeys ? "calledDisobeys" : "called") : "calledNone", {
+    case "called": {
+      const said = key(event.ids.length ? (event.disobeys ? "calledDisobeys" : "called") : "calledNone", {
         actor: names.combatant(event.actorId),
         label: event.label,
         names: event.ids.map((id) => names.combatant(id)).join(", "),
       });
+      // Those that did not come, and why (cloud summons check 2026-10-25).
+      if (!event.short) return said;
+      const why =
+        event.short.why === "seen" && event.short.cells !== undefined
+          ? key("calledShortSeen", {
+              count: event.short.count,
+              actor: names.combatant(event.actorId),
+              distance: names.distance(event.short.cells),
+            })
+          : key(event.short.why === "full" ? "calledShortFull" : "calledShortRoom", { count: event.short.count });
+      return `${said} ${why}`;
+    }
     // Health regained as a turn starts (1.383): Regeneration, Survivor.
     // Taken inside somebody, or let out beside them (1.388).
     case "inside":

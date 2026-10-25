@@ -36,6 +36,7 @@ import {
   rulesetMarketLevel,
   rulesetMarketPlace,
   rulesetMarketPrice,
+  rulesetPricedCoins,
   rulesetCoinAmount,
   rulesetPurseText,
   rulesetMarketPromptText,
@@ -267,6 +268,23 @@ const night = { "layer.long_night": true };
     rulesetMarketPrice(gravewatch, { amount: 15, unit: "penny" }, 1, 4)?.said,
     "60 pennies",
     "a price in pennies stays in pennies, though a crown would pay it",
+  );
+  // Where its own coin does not pay it, a coin some price is written in says it before one none is
+  // (laptop playtest 2026-10-25: a Mace sold for "5 electrum pieces", a coin no 5e price uses).
+  assert.equal(rulesetMarketPrice(gravewatch, { amount: 1, unit: "crown" }, 0.6, 1)?.said, "3 shillings");
+  assert.equal(
+    rulesetMarketPrice(gravewatch, { amount: 1, unit: "crown" }, 0.6, 1, null, new Set(["coin:crown", "coin:penny"]))
+      ?.said,
+    "36 pennies",
+    "no price is written in shillings",
+  );
+  assert.deepEqual(
+    [...rulesetPricedCoins(book.entries)].sort(),
+    [
+      ...new Set(
+        book.entries.flatMap((entry) => (entry.entry.item?.cost ? [`coin:${entry.entry.item.cost.unit}`] : [])),
+      ),
+    ].sort(),
   );
   const tonic = book.itemOf("kit/warming-tonic")!.entry.item!.cost!;
   assert.equal(rulesetMarketPrice(gravewatch, tonic, 0.75, 1)?.owed, 3, "4 pennies cheap");

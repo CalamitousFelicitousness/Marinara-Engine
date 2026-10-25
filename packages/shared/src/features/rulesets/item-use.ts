@@ -562,7 +562,18 @@ export function useRulesetItemOutsideFight(input: {
           ? { uses: ownNow - 1, max: ownMax! }
           : after !== undefined && max !== undefined
             ? { charges: after, max }
-            : { count: use.consumes ? stack.quantity - 1 : stack.quantity },
+            : {
+                // Every stack of it in the bag, as the tag's count reads, not this stack alone (5e
+                // ship-readiness re-test 2026-10-24: "7 left" beside now="9").
+                count: spent.stacks.reduce(
+                  (total, one) =>
+                    total +
+                    (one.item === stack.item && gameInventoryBagKey(one.holder) === gameInventoryBagKey(stack.holder)
+                      ? one.quantity
+                      : 0),
+                  0,
+                ),
+              },
     },
   };
 }

@@ -2584,6 +2584,25 @@ The step edits the list where each row sits, so two retainers with the same name
 removing one keeps the other. Rows a catalog pick wrote are shown read-only with an "Added by a pick"
 note and come and go with the pick. **All fields** edits every row as before.
 
+A rows step may say how many rows it wants with `countFrom` (Capability API 1.788), a value read
+off the sheet: 5e's hit point rolls, one per level after 1st. When the step is shown, the builder
+adds rows, each as **Add a row** makes it, until the player's own rows reach that many, never past
+`max` or the list's `maxItems`; it never takes a row away, and a row removed there stays removed until
+the step is shown again. A character being described is not given rows by looking at the step. The
+step then waits on that many whole rows as it does on `min`, the larger of the two when both are
+given, and shows the same "N of M" count. A ruleset using it needs Capability API 1.788.
+
+```json
+{
+  "id": "hit_point_rolls",
+  "label": "Hit point rolls",
+  "kind": "rows",
+  "list": "hp_rolls",
+  "required": ["die", "roll"],
+  "countFrom": { "derived": "hp_rolls_due" }
+}
+```
+
 **Conditional offers, sheet-read bounds and creation rules (Capability API 1.155).** A spend offer
 may also carry:
 

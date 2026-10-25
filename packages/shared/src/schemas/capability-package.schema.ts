@@ -1502,7 +1502,10 @@ const capabilityPackageManifestBaseSchema = z
 //        off the sheet (a ranger's favored enemies by level), shown as "choose N".
 // 1.787: a `beforeFight` entry that calls a creature, used outside a fight, keeps it on its user's
 //        sheet, and it joins every fight they are in until it is dismissed or killed (Find Familiar).
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 787 } as const);
+// 1.788: a guided-builder rows step's `countFrom`: how many of the player's own rows it wants, read off
+//        the sheet (5e's hit point rolls, one per level after 1st). The step starts with that many and
+//        waits on that many whole rows, as its `min` does.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 788 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

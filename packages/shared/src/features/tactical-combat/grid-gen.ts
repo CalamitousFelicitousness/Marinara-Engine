@@ -1013,6 +1013,9 @@ function spreadTargets(
   targets: readonly TacticalCoord[],
   gaps: readonly number[],
   others: readonly TacticalCoord[],
+  /** A little give in where each one moved settles, so a spaced side is no exact lattice (laptop
+   *  playtest 2026-10-24: every foe on x 20/25/30/35). */
+  rng: () => number = () => 0,
 ): TacticalCoord[] {
   const gap = Math.max(0, ...gaps);
   if (gap < 2 || targets.length < 2) return [...targets];
@@ -1044,7 +1047,7 @@ function spreadTargets(
           if (isImpassable(grid, x, y) || !clear(cell)) continue;
           const nearer = Math.max(0, from - fromOthers(cell));
           if (nearer > Math.ceil(width / 2)) continue;
-          const cost = (x - at.x) ** 2 + (y - at.y) ** 2 + 3 * nearer ** 2;
+          const cost = (x - at.x) ** 2 + (y - at.y) ** 2 + 3 * nearer ** 2 + rng() * 2 * width;
           if (cost < bestCost) {
             best = cell;
             bestCost = cost;
@@ -1102,12 +1105,14 @@ export function placeSpawns(
     party.map((_, i) => targets.party[i] ?? lastPartyTarget),
     party.map((u) => u.spread ?? 0),
     targets.enemies,
+    rng,
   );
   const enemyTargets = spreadTargets(
     grid,
     bossFirst.map((_, i) => targets.enemies[i] ?? lastEnemyTarget),
     bossFirst.map((u) => u.spread ?? 0),
     partyTargets,
+    rng,
   );
   party.forEach((u, i) => {
     const tile = claimNear(grid, occupied, partyTargets[i]!, protectedTiles);

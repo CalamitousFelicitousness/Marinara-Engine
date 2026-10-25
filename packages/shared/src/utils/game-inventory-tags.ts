@@ -289,7 +289,7 @@ export function applyGameInventoryTags(
     item: string,
     count: number,
     bag: GameInventoryBagRef,
-  ): { outcome: InventoryTagOutcome; revealed?: string } => {
+  ): { outcome: InventoryTagOutcome; revealed?: string; note?: string } => {
     const flag = wear === "equip" || wear === "unequip" ? "equipped" : "bound";
     const on = wear === "equip" || wear === "bind";
     const items = gameInventoryItemsNamed(current, item, bag);
@@ -319,7 +319,19 @@ export function applyGameInventoryTags(
       if (wear === "bind" && stack.truly) revealed ??= rules?.itemOf(stack.truly)?.name ?? stack.truly;
     }
     const now = current.reduce((total, stack) => total + (mine(stack) && stack[flag] ? stack.quantity : 0), 0);
-    return { outcome: { ok: true, count: done, now }, ...(revealed ? { revealed } : {}) };
+    // Worn and not bound, an item that works only bound does nothing yet: said, so the Game Master
+    // binds it rather than narrate its magic (5e ship-readiness re-test 2026-10-24).
+    const unbound =
+      wear === "equip" &&
+      done > 0 &&
+      current.some(
+        (stack) => mine(stack) && stack.equipped && !stack.bound && !!stack.item && !!rules?.itemOf(stack.item)?.binds,
+      );
+    return {
+      outcome: { ok: true, count: done, now },
+      ...(revealed ? { revealed } : {}),
+      ...(unbound ? { note: "It does nothing until it is bound too: give it action bind." } : {}),
+    };
   };
 
   const next = content.replace(createInventoryTagRegex(), (_whole, body: string) => {
@@ -365,6 +377,7 @@ export function applyGameInventoryTags(
           return serializeInventoryTag(
             { ...shown, ...(worn.revealed ? { revealed: worn.revealed } : {}) },
             worn.outcome,
+            worn.note,
           );
         }
         if (request.action === "use") {

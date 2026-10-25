@@ -2103,6 +2103,11 @@ const builderStepSchema = z.discriminatedUnion("kind", [
       min: z.number().int().min(0).max(20).optional(),
       /** Rows the step lets the player add, never above the list's own maximum. */
       max: z.number().int().min(1).max(200).optional(),
+      /** How many of the player's own rows the step wants, read off the sheet (Capability API 1.788):
+       *  one hit point roll per level after 1st. The builder starts the step with that many rows, never
+       *  above its max and never removing one, and the step waits on that many whole rows, as `min` does
+       *  (the larger of the two when both are given). 5e ship-readiness re-test 2026-10-24. */
+      countFrom: (rulesetValueRefSchema as z.ZodType<RulesetValueRef, z.ZodTypeDef, unknown>).optional(),
       /** Values a new row starts with, in place of the columns' own defaults. */
       defaults: z.record(sheetId, sheetScalar).optional(),
       /** Each row is paid out of this builder pool (Capability API 1.159): a custom stunt, a trait, a
@@ -2243,6 +2248,7 @@ export type RulesetBuilderStep =
       required?: string[];
       min?: number;
       max?: number;
+      countFrom?: RulesetValueRef;
       defaults?: Record<string, string | number | boolean>;
       pool?: string;
       cost?: number | RulesetBuilderRowsCost;
@@ -18932,6 +18938,7 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
           issue([...path, "max"], `"${step.list}" holds at most ${list.maxItems} rows`);
         if (step.min !== undefined && step.min > (step.max ?? list?.maxItems ?? 20))
           issue([...path, "min"], "The step asks for more rows than it lets the player add");
+        if (step.countFrom) checkRef(step.countFrom, [...path, "countFrom"], derivedIds, false);
         pricedIssues(step, path);
         if (typeof step.cost === "object") {
           const cost = step.cost;

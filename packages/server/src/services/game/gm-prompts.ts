@@ -1528,6 +1528,25 @@ function renderRulesetSheetSection(
           `- Add pool="Pool" to that to spend from one pool only (${[...new Set(ruleset.rests.flatMap((rest) => (Array.isArray(rest.dice) ? rest.dice.map((entry) => entry.pool) : [])))].join(", ")}); without it they come from the first pool that has any.`,
         ]
       : []),
+    // A feature a rest offers as it ends (1.773): Arcane Recovery, used from the tag as well as the sheet.
+    ...(() => {
+      const offered = (ruleset.catalogs ?? [])
+        .flatMap((catalog) => catalog.entries ?? [])
+        .filter((entry) => entry.mechanics?.recovers?.atRest !== undefined);
+      if (offered.length === 0) return [];
+      const rests = new Map(ruleset.rests.map((rest) => [rest.id, rest.label]));
+      const said = [
+        ...new Set(
+          offered.map(
+            (entry) =>
+              `${entry.label} (${rests.get(entry.mechanics!.recovers!.atRest!) ?? entry.mechanics!.recovers!.atRest})`,
+          ),
+        ),
+      ];
+      return [
+        `- When a character uses a feature that works as a rest ends (${said.join(", ")}), add use="Feature" to that rest's command; add recover="Pool:count, Pool:count" when the player picks what it gives back, or the Engine gives back the highest spent that fit.`,
+      ];
+    })(),
     // Only a ruleset with catalogs of ROWS has entries to use: a bestiary or an item catalog writes
     // nothing onto a sheet, so without one of those nothing on a sheet carries a price the Engine
     // could pay, and the line would describe a command that always refuses.

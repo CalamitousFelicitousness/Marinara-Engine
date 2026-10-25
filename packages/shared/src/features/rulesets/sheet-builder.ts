@@ -2486,6 +2486,70 @@ export function rulesetBuilderOwnRows(
   );
 }
 
+/** The most of the player's own rows a rows step lets them add: its `max`, never above the list's own. */
+function rowsStepLimit(definition: RulesetDefinition, step: StepOf<"rows">): number {
+  const listMax = definition.sheet.lists.find((list) => list.id === step.list)?.maxItems ?? 0;
+  return Math.min(step.max ?? listMax, listMax);
+}
+
+/** How many of the player's own rows a rows step's `countFrom` asks for (Capability API 1.788): what
+ *  it reads off the sheet, never above what the step lets the player add, 0 with none. 5e's hit point
+ *  rolls read one per level after 1st (5e ship-readiness re-test 2026-10-24). */
+export function rulesetBuilderRowsCountFrom(
+  definition: RulesetDefinition,
+  step: StepOf<"rows">,
+  build: RulesetSheetBuild,
+): number {
+  if (!step.countFrom) return 0;
+  const count = Math.floor(resolveRulesetValueRef(definition, build, step.countFrom));
+  return Number.isFinite(count) ? Math.max(0, Math.min(count, rowsStepLimit(definition, step))) : 0;
+}
+
+/** The whole rows a rows step waits on before its badge clears: its `min`, or what `countFrom` asks
+ *  for when that is more (1.788). */
+export function rulesetBuilderRowsMin(
+  definition: RulesetDefinition,
+  step: StepOf<"rows">,
+  build: RulesetSheetBuild,
+): number {
+  return Math.max(step.min ?? 0, rulesetBuilderRowsCountFrom(definition, step, build));
+}
+
+/** The row a rows step adds: the columns' own defaults, under the step's `defaults`. */
+export function rulesetBuilderNewRow(definition: RulesetDefinition, step: StepOf<"rows">): Record<string, Scalar> {
+  const list = definition.sheet.lists.find((each) => each.id === step.list);
+  return {
+    ...Object.fromEntries(
+      (list?.columns ?? [])
+        .filter((column) => column.default !== undefined)
+        .map((column) => [column.id, column.default as Scalar]),
+    ),
+    ...step.defaults,
+  };
+}
+
+/** A rows step as the builder starts it (1.788): new rows added, each as the step's own "add row"
+ *  makes it, until the player's own rows reach what `countFrom` asks for, never past the step's or the
+ *  list's maximum. It never takes a row away, and with nothing to add hands back the same sheet.
+ *  `from` is the sheet the count is read off (the builder's applied sheet), `build` the one written. */
+export function rulesetBuilderFillRows(
+  definition: RulesetDefinition,
+  step: StepOf<"rows">,
+  build: RulesetSheetBuild,
+  from: RulesetSheetBuild = build,
+): RulesetSheetBuild {
+  const list = definition.sheet.lists.find((each) => each.id === step.list);
+  if (!list || !step.countFrom) return build;
+  const rows = Array.isArray(build.lists[list.id]) ? build.lists[list.id]! : [];
+  const adding = Math.min(
+    rulesetBuilderRowsCountFrom(definition, step, from) - rulesetBuilderOwnRows(build, list.id).length,
+    list.maxItems - rows.length,
+  );
+  if (adding <= 0) return build;
+  const added = Array.from({ length: adding }, () => rulesetBuilderNewRow(definition, step));
+  return { ...build, lists: { ...build.lists, [list.id]: [...rows, ...added] } };
+}
+
 export function rulesetBuilderRemaining(
   definition: RulesetDefinition,
   build: RulesetSheetBuild,
@@ -2538,7 +2602,8 @@ export function rulesetBuilderRemaining(
       const missing = rows.filter(({ row }) =>
         (step.required ?? []).some((id) => row[id] === undefined || row[id] === ""),
       ).length;
-      add(step.id, (step.min ?? 0) - (rows.length - missing));
+      // countFrom (1.788) asks for that many whole rows as min does, the larger of the two.
+      add(step.id, rulesetBuilderRowsMin(definition, step, build) - (rows.length - missing));
       add(step.id, missing);
     } else if (step.kind === "roll") {
       if (!state.describing) add(step.id, step.rolls.filter((roll) => !state.rolls?.[step.id]?.[roll.id]).length);

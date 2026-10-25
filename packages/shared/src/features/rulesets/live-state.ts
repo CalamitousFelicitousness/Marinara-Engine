@@ -1318,6 +1318,10 @@ export type RulesetSheetOp =
       /** How many of each pool's dice to spend first, by pool: a multiclass player's Short rest, which
        *  picks from each of their hit dice. Taken in the rest's own order of pools, before `dice`. */
       diceFrom?: Readonly<Record<string, number>>;
+      /** A feature the rest offers to use as it ends (1.773), named on the Game Master's tag: 5e's
+       *  Arcane Recovery. `recover` is what it gives back; without it, the highest spent that fit. */
+      use?: string;
+      recover?: ReadonlyArray<{ pool: string; count: number }>;
     }
   /** Days of game time pass (1.429): a spent row whose recharge takes days counts them, and fills
    *  again once they reach its count. `resting` (1.740): spent resting, so a condition whose days

@@ -225,7 +225,22 @@ export function parseSheetCommandTagBody(body: string): ParsedSheetCommandTag {
   if (rawDice !== undefined && (dice === null || dice < 0)) return parsed;
   // From one pool of several (1.337): 5e's d8 hit dice.
   const pool = dice ? values.get("pool")?.trim() : undefined;
-  return { ...parsed, op: { op: "rest", rest, ...(dice ? { dice } : {}), ...(pool ? { pool } : {}) } };
+  // A feature it offers as it ends (1.773): `use="Arcane Recovery"`, and what it gives back, if picked.
+  const use = values.get("use")?.trim();
+  const rawRecover = use ? values.get("recover") : undefined;
+  const recover = rawRecover === undefined ? [] : readRecover(rawRecover);
+  if (recover === null) return parsed;
+  return {
+    ...parsed,
+    op: {
+      op: "rest",
+      rest,
+      ...(dice ? { dice } : {}),
+      ...(pool ? { pool } : {}),
+      ...(use ? { use } : {}),
+      ...(recover.length ? { recover } : {}),
+    },
+  };
 }
 
 /** Pools and counts, `Pool:2, Other:1`; a pool without a count is one of it. Null when a count is not
@@ -355,6 +370,9 @@ export function serializeSheetCommandTag(
       attribute("rest", op.rest);
       if (op.dice) attribute("dice", op.dice);
       if (op.dice && op.pool) attribute("pool", op.pool);
+      if (op.use) attribute("use", op.use);
+      if (op.use && op.recover?.length)
+        attribute("recover", op.recover.map((entry) => `${entry.pool}:${entry.count}`).join(", "));
     }
   }
   if (outcome.ok) {

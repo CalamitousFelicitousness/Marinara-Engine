@@ -6,6 +6,8 @@
  *   - Taken with the rest, it gives back the slots picked and pays its own counter, all or nothing.
  *   - Another rest, a used-up counter, nothing spent: no offer. Asking for one the rest does not
  *     offer, or more levels than it gives, refuses the lot.
+ *   - The Game Master's rest tag takes it with use=, the highest that fit or recover= as picked; the
+ *     rest stands when it gives nothing, and says why.
  *   - Checked at import, and the install gate asks for 1.773.
  */
 import assert from "node:assert/strict";
@@ -15,6 +17,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   applyRulesetRestRecoveries,
+  applySheetCommandTags,
+  normalizeCharacterLookupName,
   parseRulesetDefinition,
   readRulesetLive,
   RULESET_CATALOG_ROW_KEY,
@@ -140,6 +144,34 @@ try {
     { name: "Arcane Recovery", recover: [{ pool: "slots_1", count: 1 }] },
   ]);
   assert.deepEqual(wrongRest, { ok: false, reason: "unknown-entry" });
+
+  // ── From the Game Master's rest tag: use="Arcane Recovery", the highest that fit or what is picked ──
+  const key = normalizeCharacterLookupName("Ilse");
+  const tagged = (tag: string, live: unknown = spent) =>
+    applySheetCommandTags(tag, {
+      definition,
+      cards: [{ name: "Ilse", build }],
+      playerName: "Ilse",
+      live: { [key]: live as never },
+      catalogs,
+    });
+  const byDefault = tagged(`[sheet: op="rest" rest="Short rest" use="Arcane Recovery"]`);
+  assert.ok(byDefault.outcomes[0]!.ok, JSON.stringify(byDefault.outcomes));
+  assert.equal(pool(byDefault.live[key], "slots_3")!.value, 2, "the highest spent that fit");
+  assert.match(byDefault.content, /use="Arcane Recovery"/);
+  assert.match(byDefault.outcomes[0]!.now!, /Arcane Recovery: /);
+  const picked = tagged(`[sheet: op="rest" rest="Short rest" use="arcane recovery" recover="slots_1:2"]`);
+  assert.ok(picked.outcomes[0]!.ok);
+  assert.equal(pool(picked.live[key], "slots_1")!.value, 4);
+  assert.equal(pool(picked.live[key], "slots_3")!.value, 1);
+  // Used up, too much picked, or a rest that does not offer it: the rest stands and says why.
+  const again = tagged(`[sheet: op="rest" rest="Short rest" use="Arcane Recovery"]`, byDefault.live[key]);
+  assert.ok(again.outcomes[0]!.ok);
+  assert.match(again.outcomes[0]!.now!, /Arcane Recovery: nothing it can give back now$/);
+  const greedy = tagged(`[sheet: op="rest" rest="Short rest" use="Arcane Recovery" recover="slots_3:2"]`);
+  assert.ok(greedy.outcomes[0]!.ok);
+  assert.match(greedy.outcomes[0]!.now!, /Arcane Recovery refused: /);
+  assert.equal(pool(greedy.live[key], "slots_3")!.value, 1);
 
   // ── Checked at import ──
   refused(

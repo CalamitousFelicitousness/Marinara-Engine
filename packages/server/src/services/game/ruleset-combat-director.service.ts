@@ -926,6 +926,9 @@ export function rulesetDeploySpread(
   for (const one of encounter.combatants) {
     const gap = blast[one.side];
     if (!gap || one.object || !rulesetCombatantForesees(definition, one, encounter.seed)) continue;
+    // A pack hunter starts with its pack, blast or no blast: it fights by standing together (laptop
+    // playtest 2026-10-24: wolves spread five apart).
+    if (rulesetCombatantBehavior(definition, one)?.pack) continue;
     spread[one.id] = gap;
   }
   return spread;

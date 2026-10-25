@@ -3,7 +3,7 @@
 // beside them. Everything it writes goes through the shared builder, which keeps the build the one
 // sheet the rest of the Engine reads and takes back what an unpicked entry gave.
 import { Check, ChevronLeft, ChevronRight, Dices, Minus, Plus, Trash2 } from "lucide-react";
-import { useCallback, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useQueries } from "@tanstack/react-query";
 import { useTranslation as useUiTranslation } from "react-i18next";
 import {
@@ -29,7 +29,10 @@ import {
   rulesetBuilderStepVisible,
   rulesetBuilderStepCount,
   rulesetBuilderRemaining,
+  rulesetBuilderFillRows,
+  rulesetBuilderNewRow,
   rulesetBuilderOwnRows,
+  rulesetBuilderRowsMin,
   rulesetBuilderInitialize,
   rulesetBuilderRoll,
   rulesetBuilderRollScoresInOrder,
@@ -478,6 +481,20 @@ export function RulesetSheetBuilder({
     onApply(applied.build, applied.state);
   };
   const infoBaseId = useId();
+
+  // A rows step that asks for a count of rows (1.788, 5e's hit point rolls: one per level after 1st)
+  // starts with that many when it is shown, each as "add row" makes it; it never takes a row away,
+  // and a row the player removes there stays removed until the step is shown again. A character being
+  // described is not written to by looking at it. 5e ship-readiness re-test 2026-10-24.
+  useEffect(() => {
+    if (!ready || describing || step.kind !== "rows" || !step.countFrom) return;
+    const filled = rulesetBuilderFillRows(definition, step, latest.current.build, build);
+    if (filled === latest.current.build) return;
+    const applied = applyRulesetBuilder(definition, filled, latest.current.state, catalogs);
+    onApply(applied.build, applied.state);
+    // Only when the step is shown (or the catalogs it waits on arrive), not on each edit made there.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step.id, ready, describing]);
 
   const abilityLabel = (id: string) => definition.sheet.abilities.find((ability) => ability.id === id)?.label ?? id;
   const skillLabel = (id: string) => definition.sheet.skills.find((skill) => skill.id === id)?.label ?? id;
@@ -1120,6 +1137,8 @@ export function RulesetSheetBuilder({
       }),
     );
     const complete = own.filter(({ row }) => !(current.required ?? []).some((id) => blank(row[id]))).length;
+    // The rows the step waits on: its min, or what its countFrom asks for when that is more (1.788).
+    const wanted = rulesetBuilderRowsMin(definition, current, build);
     // A catalog to copy rows from (1.159): each copy is the player's own row, priced on its own.
     const copies = current.from
       ? (catalogs[current.from] ?? []).flatMap((entry) => {
@@ -1130,9 +1149,9 @@ export function RulesetSheetBuilder({
     return (
       <div className="space-y-2">
         {pricedPool(current.pool)}
-        {current.min !== undefined && current.min > 0 && (
+        {wanted > 0 && (
           <p className="text-[0.6875rem] text-[var(--muted-foreground)]">
-            {t("ui.rulesets.builder.rowsCount", { count: complete, min: current.min })}
+            {t("ui.rulesets.builder.rowsCount", { count: complete, min: wanted })}
           </p>
         )}
         {own.length === 0 && picked.length === 0 && (
@@ -1230,19 +1249,7 @@ export function RulesetSheetBuilder({
         <button
           type="button"
           disabled={full}
-          onClick={() =>
-            write([
-              ...rawRows,
-              {
-                ...Object.fromEntries(
-                  list.columns
-                    .filter((column) => column.default !== undefined)
-                    .map((column) => [column.id, column.default as string | number | boolean]),
-                ),
-                ...current.defaults,
-              },
-            ])
-          }
+          onClick={() => write([...rawRows, rulesetBuilderNewRow(definition, current)])}
           className={buttonClass}
         >
           <Plus size={12} aria-hidden="true" />

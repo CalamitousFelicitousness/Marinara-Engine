@@ -151,7 +151,7 @@ try {
       };`,
     react: `export const useState = (initial) => globalThis.__gearHooks.useState(initial);
       export const useMemo = (fn) => fn(); export const useCallback = (fn) => fn;
-      export const useRef = (current) => ({ current }); export const useId = () => 'gear-test';`,
+      export const useRef = (current) => ({ current }); export const useId = () => 'gear-test'; export const useEffect = () => {};`,
     "react/jsx-runtime": `export const Fragment = 'fragment'; export const jsx = (type, props) => ({type, props}); export const jsxs = jsx;`,
     "react-i18next": `export const useTranslation = () => ({ t: (key) => key });`,
     "@tanstack/react-query": `export const useQueries = ({combine}) => combine([]);`,

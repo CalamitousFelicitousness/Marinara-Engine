@@ -23,8 +23,10 @@ import {
   type SheetCommandTagOutcome,
 } from "../../utils/sheet-command-tag.js";
 import {
+  applyRulesetRestRecoveries,
   applyRulesetSheetOp,
   rulesetRestDiceEntries,
+  rulesetRestRecoveries,
   rulesetRestExtraDie,
   planRulesetUse,
   type RulesetLiveState,
@@ -239,6 +241,37 @@ export function applySheetCommandTags(
     return best ? { extra: best } : {};
   };
 
+  // A feature the rest offers as it ends (1.773), named on the tag: the rest stands whatever it does,
+  // and its words say what the feature gave back or why it gave nothing.
+  const restEnds = (
+    card: SheetCommandCard,
+    op: Extract<RulesetSheetOp, { op: "rest" }>,
+    rested: Extract<RulesetSheetOpResult, { ok: true }>,
+  ): RulesetSheetOpResult => {
+    const rest = ctx.definition.rests.find(
+      (entry) => entry.id === op.rest || entry.label.trim().toLowerCase() === op.rest.trim().toLowerCase(),
+    );
+    const wanted = op.use!.trim().toLowerCase();
+    const offer = rest
+      ? rulesetRestRecoveries(ctx.definition, card.build, rested.live, ctx.catalogs ?? {}, rest.id).find(
+          (one) => one.name.trim().toLowerCase() === wanted,
+        )
+      : undefined;
+    if (!rest || !offer) return { ...rested, now: `${rested.now}; ${op.use}: nothing it can give back now` };
+    const used = applyRulesetRestRecoveries(
+      ctx.definition,
+      card.build,
+      rested.live,
+      ctx.catalogs ?? {},
+      rest.id,
+      [{ name: offer.name, recover: op.recover?.length ? [...op.recover] : offer.picks }],
+      ctx.roll,
+      card.items,
+    );
+    if (!used.ok) return { ...rested, now: `${rested.now}; ${offer.name} refused: ${used.reason}` };
+    return { ...rested, live: (used.live ?? {}) as RulesetLiveState, now: [rested.now, ...used.now].join("; ") };
+  };
+
   const applyTo = (card: SheetCommandCard, op: RulesetSheetOp): RulesetSheetOpResult => {
     const key = normalizeCharacterLookupName(card.name);
     try {
@@ -246,7 +279,8 @@ export function applySheetCommandTags(
       if (op.op === "use") return useOn(card, key, op);
       // Dice spent on a rest (1.335) take the party's best extra die (Song of Rest), whoever has it.
       const given = op.op === "rest" && op.dice && !op.extra ? { ...op, ...partyExtra(op.rest) } : op;
-      const result = applyRulesetSheetOp(ctx.definition, card.build, live[key], given, ctx.roll, card.items);
+      let result = applyRulesetSheetOp(ctx.definition, card.build, live[key], given, ctx.roll, card.items);
+      if (result.ok && op.op === "rest" && op.use) result = restEnds(card, op, result);
       if (result.ok) {
         store(key, result.live);
         if (result.build) {

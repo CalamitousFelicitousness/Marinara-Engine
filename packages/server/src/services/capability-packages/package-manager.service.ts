@@ -3077,6 +3077,19 @@ function carriesSoloRole760(value: unknown, depth = 0): boolean {
 }
 
 /** Losing heart (1.746): `combat.morale`, or a stat block's `morale` score or `leader`. */
+/** A guided-builder rows step that asks for a count of rows read off the sheet (1.788): `countFrom` on a
+ *  `kind: "rows"` step, as 5e's hit point rolls, one per level after 1st. */
+function carriesRowsCountFrom788(ruleset: unknown): boolean {
+  const steps = plainRecord(plainRecord(plainRecord(ruleset)?.sheet)?.builder)?.steps;
+  return (
+    Array.isArray(steps) &&
+    steps.some((value) => {
+      const step = plainRecord(value);
+      return step?.kind === "rows" && step.countFrom !== undefined;
+    })
+  );
+}
+
 /** How many of its words a text field or column has its holder pick (1.786): `pick` on a `type: "text"`. */
 function carriesTextPick786(value: unknown, depth = 0): boolean {
   if (!value || depth > 40) return false;
@@ -12629,6 +12642,10 @@ export function getCapabilityPackageInstallIssue(
     })()
   ) {
     return "A ruleset whose sheet migrations set a column on list rows (setColumn) requires schemaVersion 2 and capabilityApi 1.783 or newer";
+  }
+  // A rows step that starts with, and waits on, a count of rows read off the sheet, 1.788.
+  if (!declaresApi(788) && carriesRowsCountFrom788(ruleset)) {
+    return "A ruleset whose builder rows steps count their rows off the sheet (a rows step's countFrom) requires schemaVersion 2 and capabilityApi 1.788 or newer";
   }
   // How many of a text field's words to pick, 1.786.
   if (!declaresApi(786) && carriesTextPick786(ruleset)) {

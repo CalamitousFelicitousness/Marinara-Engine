@@ -288,7 +288,7 @@ try {
     refuses(
       fiveEText,
       modifier({ to: "healing", flat: 2 }),
-      /Invalid enum value/,
+      /modifiers\.0\.to: Invalid option: expected one of/,
       "healing is not a number a condition changes",
     );
     refuses(
@@ -356,7 +356,7 @@ try {
     refuses(
       fiveEText,
       level({ track: "exhaustion", at: 0, effects: ["cannot-act"] }),
-      /greater than or equal to 1/,
+      /Too small: expected number to be >=1/,
       "level 0",
     );
 

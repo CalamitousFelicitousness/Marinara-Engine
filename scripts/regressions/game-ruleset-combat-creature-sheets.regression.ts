@@ -394,10 +394,7 @@ function started(input: {
     /creature\.sheet\.lists\.attacks\.0: Column "proficient" takes true or false/,
   );
   // Live state is the fight's to keep, not the bestiary's to write.
-  refused(
-    (creature) => (creature.sheet.live = { pools: {} }),
-    /creature\.sheet: Unrecognized key\(s\) in object: 'live'/,
-  );
+  refused((creature) => (creature.sheet.live = { pools: {} }), /creature\.sheet: Unrecognized key: "live"/);
   // And a bonus is on a skill or a save, exactly as a character's is.
   assert.equal(issuesOf(withSergeant((creature) => (creature.sheet.bonuses = { athletics: 2, str_save: 1 }))), "");
 }

@@ -34298,7 +34298,6 @@
           "additionalProperties": false
         },
         "summary": {
-          "default": {},
           "type": "object",
           "properties": {
             "fields": {

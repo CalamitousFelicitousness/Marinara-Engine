@@ -10062,7 +10062,8 @@ const partySheetSchema: z.ZodType<RulesetParty, unknown> = z
       .object({ fields: z.array(sheetId).max(24).optional(), text: promptSafeText(400).optional() })
       .strict()
       .optional(),
-    summary: gmSchema.shape.sheetSummary.optional(),
+    // An omitted party summary uses all party fields; an explicit empty summary hides them.
+    summary: gmSchema.shape.sheetSummary.unwrap().optional(),
     text: promptSafeText(400).optional(),
   })
   .strict()

@@ -131,7 +131,7 @@ const night = { "layer.long_night": true };
     for (const key of path.slice(0, -1)) node = node[key];
     node[path.at(-1)!] = value;
   };
-  refused(at(["prices"], []), /items\.market\.prices: Array must contain at least 1/, "no price levels");
+  refused(at(["prices"], []), /items\.market\.prices: Too small: expected array to have >=1 items/, "no price levels");
   refused(
     at(
       ["prices"],
@@ -156,10 +156,10 @@ const night = { "layer.long_night": true };
   );
   refused(
     at(["prices", "0", "times"], 0),
-    /items\.market\.prices\.0\.times: Number must be greater than 0/,
+    /items\.market\.prices\.0\.times: Too small: expected number to be >0/,
     "a level of nothing",
   );
-  refused(at(["places"], []), /items\.market\.places: Array must contain at least 1/, "no places");
+  refused(at(["places"], []), /items\.market\.places: Too small: expected array to have >=1 items/, "no places");
   refused(at(["places", "1", "id"], "hamlet"), /market\.places\.1\.id: Duplicate place id "hamlet"/, "a place twice");
   refused(at(["sold", "0", "place"], "metropolis"), /sold\.0\.place: Unknown place "metropolis"/, "a rule's place");
   refused(at(["sold", "0", "filter"], { rarity: "mythic" }), /sold\.0\.filter\.rarity: Unknown item rarity/, "a word");
@@ -829,12 +829,8 @@ const manifest = (minor: number) => ({
     /A rule names a place, a limit or both/,
     "a rule naming nothing",
   );
-  day((doc) => (doc.items.market.buyBack = 0), /buyBack: Number must be greater than 0/, "nothing back");
-  day(
-    (doc) => (doc.items.market.buyBack = 1.5),
-    /buyBack: Number must be less than or equal to 1/,
-    "more back than paid",
-  );
+  day((doc) => (doc.items.market.buyBack = 0), /buyBack: Too small: expected number to be >0/, "nothing back");
+  day((doc) => (doc.items.market.buyBack = 1.5), /buyBack: Too big: expected number to be <=1/, "more back than paid");
   day((doc) => (doc.items.market.sold[0].limited = 0), /sold\.0\.limited/, "a limit of none");
   const pistolOf = (doc: Record<string, any>) =>
     doc.catalogs

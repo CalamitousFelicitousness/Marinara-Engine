@@ -52,7 +52,7 @@ try {
   assert.notEqual(issuesOf(fixture([])), "", "an empty list says nothing and is refused");
   assert.equal(
     issuesOf(fixture(["classic", "Tactical"])),
-    "combat.styles.1: Invalid",
+    "combat.styles.1: Invalid string: must match pattern /^[a-z][a-z0-9_-]{0,47}$/",
     "only the lower-case ID check fails",
   );
   assert.match(
@@ -64,7 +64,7 @@ try {
   assert.deepEqual(parse(fixture(eightStyles)).combat?.styles, eightStyles, "exactly eight styles are accepted");
   assert.equal(
     issuesOf(fixture([...eightStyles, "style-7"])),
-    "combat.styles: Array must contain at most 8 element(s)",
+    "combat.styles: Too big: expected array to have <=8 items",
     "only the nine-item length check fails",
   );
 

@@ -1,8 +1,14 @@
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { resolveMacros, type AgentContext, type MacroContext } from "../../packages/shared/src/index.js";
+import {
+  characterDataSchema,
+  resolveMacros,
+  type AgentContext,
+  type MacroContext,
+} from "../../packages/shared/src/index.js";
 
 const dataDir = mkdtempSync(join(tmpdir(), "marinara-world-clock-"));
 process.env.DATA_DIR = dataDir;
@@ -18,6 +24,7 @@ const { chatsRoutes } = await import("../../packages/server/src/routes/chats.rou
 const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
 const { createGameStateStorage } = await import("../../packages/server/src/services/storage/game-state.storage.js");
 const { createConnectionsStorage } = await import("../../packages/server/src/services/storage/connections.storage.js");
+const { createCharactersStorage } = await import("../../packages/server/src/services/storage/characters.storage.js");
 const { createPromptsStorage } = await import("../../packages/server/src/services/storage/prompts.storage.js");
 const { buildPromptMacroContext } = await import("../../packages/server/src/services/prompt/macro-context.js");
 const { renderAgentPromptTemplate } = await import("../../packages/server/src/services/agents/agent-executor.js");
@@ -32,6 +39,16 @@ await app.register(chatsRoutes, { prefix: "/api/chats" });
 const template = "{{date.world_state}}|{{time.world_state}}|{{weekday.world_state}}";
 const base: MacroContext = { user: "Mari", char: "Doctor", characters: ["Doctor"], variables: {} };
 const tracked = { date: "2026-10-24", time: "22:10" };
+const sent: string[] = [];
+const provider = createServer(async (request, response) => {
+  let raw = "";
+  for await (const chunk of request) raw += chunk;
+  sent.push(JSON.stringify(JSON.parse(raw).messages));
+  const part = { choices: [{ index: 0, delta: { content: "The story continues." }, finish_reason: null }] };
+  const stop = { choices: [{ index: 0, delta: {}, finish_reason: "stop" }] };
+  response.writeHead(200, { "content-type": "text/event-stream" });
+  response.end(`data: ${JSON.stringify(part)}\n\ndata: ${JSON.stringify(stop)}\n\ndata: [DONE]\n\n`);
+});
 
 try {
   assert.equal(resolveMacros(template, { ...base, worldState: tracked }), "2026-10-24|22:10|Saturday");
@@ -84,10 +101,13 @@ try {
     "Tracked values stay literal through late read passes too",
   );
 
+  await new Promise<void>((done) => provider.listen(0, "127.0.0.1", done));
+  const address = provider.address();
+  assert(address && typeof address === "object");
   const connection = await createConnectionsStorage(db).create({
     name: "Clock fixture",
     provider: "custom",
-    baseUrl: "http://127.0.0.1:1/v1",
+    baseUrl: `http://127.0.0.1:${address.port}/v1`,
     model: "fixture",
     apiKey: "fixture",
     maxContext: 8192,
@@ -184,10 +204,71 @@ try {
   await dry("2026-10-25|07:00|Sunday");
   await chats.setActiveSwipe(message.id, 0);
   await dry("2026-10-24|22:10|Saturday");
+
+  const characters = createCharactersStorage(db);
+  const roster = await Promise.all(
+    ["Mira", "Quinn"].map((name) =>
+      characters.create(
+        characterDataSchema.parse({
+          name,
+          description: "The scene date is {{date.world_state}}.",
+        }),
+      ),
+    ),
+  );
+  const cases: Array<{
+    mode: "conversation" | "roleplay" | "game";
+    groupMode?: "merged" | "individual";
+    speaker?: number;
+  }> = [
+    { mode: "conversation" },
+    { mode: "roleplay" },
+    { mode: "game" },
+    { mode: "roleplay", groupMode: "merged" },
+    { mode: "roleplay", groupMode: "individual", speaker: 0 },
+    { mode: "roleplay", groupMode: "individual", speaker: 1 },
+  ];
+  for (const row of cases) {
+    const target = await chats.create({
+      name: `Clock ${row.mode} ${row.groupMode ?? "single"} ${row.speaker ?? ""}`,
+      mode: row.mode,
+      characterIds: (row.groupMode ? roster : roster.slice(0, 1)).map((character) => character.id),
+      connectionId: connection.id,
+      promptPresetId: row.mode === "roleplay" ? preset.id : null,
+    });
+    await chats.patchMetadata(target.id, {
+      enableAgents: false,
+      enableTools: false,
+      enableMemoryRecall: false,
+      customSystemPrompt: template,
+      gameSystemPrompt: template,
+      ...(row.groupMode ? { groupChatMode: row.groupMode, groupResponseOrder: "manual" } : {}),
+    });
+    const prior = await chats.createMessage({ chatId: target.id, role: "assistant", content: "We pause." });
+    await states.create({ ...snapshot, chatId: target.id, messageId: prior.id });
+    await chats.createMessage({ chatId: target.id, role: "user", content: "Continue." });
+    const before = sent.length;
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/generate/",
+      payload: {
+        chatId: target.id,
+        ...(row.speaker === undefined ? {} : { forCharacterId: roster[row.speaker]!.id }),
+      },
+    });
+    assert.equal(response.statusCode, 200, response.body);
+    assert.ok(!response.body.includes('"type":"error"'), response.body);
+    assert.ok(sent.length > before, `${target.name}: provider received a prompt`);
+    for (const prompt of sent.slice(before)) {
+      assert.ok(prompt.includes("2026-10-24|22:10|Saturday"), `${target.name}: ${prompt}`);
+      assert.ok(!prompt.includes(".world_state}}"), `${target.name}: ${prompt}`);
+    }
+  }
   console.log(
     "World-state clock macros: literal/conditional, agent, stored-state, and selected-swipe preview checks passed",
   );
 } finally {
+  if (provider.listening) await new Promise<void>((done) => provider.close(() => done()));
   await app.close();
   await closeDB();
   rmSync(dataDir, { recursive: true, force: true });

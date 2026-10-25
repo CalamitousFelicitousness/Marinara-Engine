@@ -174,7 +174,7 @@ The real-world time macros read one shared moment per resolution, so they always
 | `{{time.world_state}}` | The current in-world time tracked by World State, kept in its original format. |
 | `{{weekday.world_state}}` | A custom world field named Weekday or Day of Week, a weekday written in the tracked date, or the weekday of a valid `YYYY-MM-DD` tracked date. |
 
-The `.world_state` macros work in prompts and agent templates. They read the scene's selected tracker snapshot, including the selected swipe or regeneration base. A missing value becomes empty; it never falls back to today's real-world clock. Fictional calendars keep their own date and time text. For a fictional weekday, add a World State custom field named Weekday or Day of Week.
+The `.world_state` macros work in prompts and agent templates. They read the world date and time shown for the current story turn. Switching swipes changes which turn's values they use; regenerating uses the story state that the replacement reply starts from. A missing value becomes empty; it never falls back to today's real-world clock. Fictional calendars keep their own date and time text. For a fictional weekday, add a World State custom field named Weekday or Day of Week.
 
 For example, `{{#if weekday.world_state == "Monday"}}Use the weekday routine.{{/if}}` reads the tracked weekday instead of the real one.
 

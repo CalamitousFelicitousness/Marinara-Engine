@@ -204,8 +204,18 @@ for (const theme of ["dark", "light"] as const) {
     await expect(limit).toHaveValue("3");
     await limit.selectOption("5");
     await expect(page.getByText("Remove older extension revisions?", { exact: true })).toBeVisible();
+    await expect(page.locator('.mari-modal[role="dialog"]')).toHaveCSS("opacity", "1");
+    await expect(page.locator(".mari-modal-panel")).toHaveCSS("opacity", "1");
+    if (testInfo.project.name === "mobile-webkit") {
+      await expect(page.locator("html")).toHaveAttribute("data-mari-ios-webkit", "");
+      await expect(page.locator(".mari-modal-panel")).toHaveCSS(
+        "background-color",
+        theme === "dark" ? "rgb(5, 3, 18)" : "rgb(250, 248, 255)",
+      );
+      await expect(page.locator(".mari-modal-panel")).toHaveCSS("background-image", /linear-gradient\(/);
+    }
     await testInfo.attach(`retention-restored-surplus-${theme}`, {
-      body: await page.screenshot(),
+      body: await page.screenshot({ animations: "disabled" }),
       contentType: "image/png",
     });
     await page.getByRole("button", { name: "Cancel", exact: true }).click();
@@ -264,7 +274,7 @@ for (const theme of ["dark", "light"] as const) {
       await expect(name).toBeFocused();
       await expect(name).toHaveValue("Visible while typing");
       await testInfo.attach(`connection-keyboard-${theme}`, {
-        body: await page.screenshot({ animations: "disabled" }),
+        body: await page.screenshot(),
         contentType: "image/png",
       });
     } finally {

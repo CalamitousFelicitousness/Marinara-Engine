@@ -2827,7 +2827,7 @@ html[data-mari-ios-webkit] .mari-modal {
   --mari-modal-opaque-bg: var(--background);
 }
 
-html[data-mari-ios-webkit] .mari-modal-panel {
+html[data-mari-ios-webkit] .mari-modal .mari-modal-panel {
   background-color: var(--mari-modal-opaque-bg);
   background-image: linear-gradient(var(--marinara-chat-chrome-panel-bg), var(--marinara-chat-chrome-panel-bg));
 }

@@ -12,6 +12,7 @@
 // party's live sheet state back, live in the route.
 
 import {
+  gameInventoryNameKey,
   applyRulesetSheetOp,
   capRulesetCasterSheet,
   RULESET_INVENTED_CASTER_MOST,
@@ -288,6 +289,9 @@ export interface RulesetFightState {
   deploy?: { cells: Array<{ x: number; y: number }>; placed: string[] };
   /** What each opponent was made from, by combatant id: what one that gets away comes back as. */
   made?: Record<string, RulesetReturningFoe>;
+  /** The coins the Game Master gave each opponent, by combatant id (laptop playtest 2026-10-25: a
+   *  thief's stolen 9 gp, "no item called gold pieces"): they drop with it when it is beaten. */
+  purses?: Record<string, Array<{ ref: string; name: string; count: number }>>;
 }
 
 /** An opponent as it was made for a fight, kept for when it gets away and comes back (laptop playtest
@@ -302,7 +306,8 @@ export interface RulesetReturningFoe {
   health?: number;
   /** The health it got away without (laptop playtest 2026-10-25: Kallian fled at 21 of 32 and came
    *  back whole): it comes back still missing it. */
-  taken?: number;
+  taken?: number; /** The coins it had on it, which it takes along when it gets away. */
+  coins?: Array<{ ref: string; name: string; count: number }>;
 }
 
 /** The key a returning opponent is kept and found under: its name, any case and spacing. */
@@ -332,10 +337,12 @@ export function rulesetFightReturningFoes(
     if ((one.away?.left && !one.away.surrendered) || standing) {
       const health = definition.combat ? rulesetCombatHealth(definition, definition.combat, one) : undefined;
       const taken = health ? Math.max(0, Math.round(health.max - health.value)) : 0;
+      const coins = fight.purses?.[one.id];
       fled.push({
         ...made,
         ...(!one.sheet && one.health ? { health: one.health.max } : {}),
         ...(taken > 0 ? { taken } : {}),
+        ...(coins?.length ? { coins } : {}),
       });
     } else if (one.down || (one.defeated && !one.away)) beaten.push(made.name);
   }
@@ -452,6 +459,8 @@ export interface RulesetFightOpponent {
   /** What the Game Master gave it to have on it (1.785), one line an item by its name or reference:
    *  in place of what its bestiary entry rolls for, and none at all when empty. */
   items?: string[];
+  /** Coins it comes back with, from an earlier fight it got away from. */
+  coins?: Array<{ ref: string; name: string; count: number }>;
   /** What an invented one is, by the ruleset's creature type id: a humanoid cultist. */
   creatureType?: string;
   /** The attacks the Game Master wrote for it in the Engine's own terms, by name, and whether each is
@@ -945,6 +954,7 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
 
   // What each opponent has on it as it begins (1.785): what the Game Master gave it, else what its
   // bestiary entry rolls for, by the fight's own seed so the same fight has the same.
+  const purses: Record<string, Array<{ ref: string; name: string; count: number }>> = {};
   if (input.itemBook) {
     const book = input.itemBook;
     input.enemies.forEach((opponent, index) => {
@@ -953,9 +963,14 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
       const rng = deterministicRng(input.seed >>> 0, RULESET_CARRIED_CURSOR + index);
       const roll = (sides: number) => 1 + Math.floor(rng() * sides);
       const lines = inventories.get(opponent.id);
+      const coins = new Map<string, { ref: string; name: string; count: number }>();
       const had = opponent.items
-        ? rulesetGivenItems(book, opponent.items, (name) =>
-            adjustments.push(`${opponent.name}: the ruleset has no item called "${name}", so it was not given.`),
+        ? rulesetGivenItems(
+            book,
+            opponent.items,
+            (name) =>
+              adjustments.push(`${opponent.name}: the ruleset has no item called "${name}", so it was not given.`),
+            coins,
           )
         : lines
           ? rollRulesetCreatureInventory(definition, book, lines, roll)
@@ -965,6 +980,10 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
         return item ? [{ held: { item, quantity: drop.count, worn: false, name: drop.name }, ref: drop.item }] : [];
       });
       if (carried.length > 0) (entry as { carried?: RulesetCarriedInput[] }).carried = carried;
+      // Coins, its own (the Game Master's) and one that comes back with what it took along.
+      for (const kept of opponent.coins ?? [])
+        coins.set(kept.ref, { ...kept, count: (coins.get(kept.ref)?.count ?? 0) + kept.count });
+      if (coins.size > 0) purses[opponent.id] = [...coins.values()];
     });
   }
 
@@ -1127,6 +1146,7 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
     ...rulesetThinkersOf(input.definition, encounter, input.enemies),
     adjustments: adjustments.slice(0, RULESET_ADJUSTMENT_LIMIT),
     ...(Object.keys(lootTables).length > 0 ? { lootTables } : {}),
+    ...(Object.keys(purses).length > 0 ? { purses } : {}),
     ...(deploy ? { deploy } : {}),
     // As it was fought, its tier brought down by the budget included.
     made: Object.fromEntries(
@@ -1155,14 +1175,28 @@ const RULESET_CARRIED_CURSOR = 17840;
 /** The items the Game Master gave an opponent (1.785), each line one of the ruleset's by its reference
  *  or its name, any case: lines naming one item are added together, and one naming none is told. */
 function rulesetGivenItems(
-  book: Pick<RulesetItemBook, "entries">,
+  book: Pick<RulesetItemBook, "entries" | "coins">,
   lines: readonly string[],
   unknown: (name: string) => void,
+  coins?: Map<string, { ref: string; name: string; count: number }>,
 ): Array<{ item: string; name: string; count: number }> {
   const had = new Map<string, { item: string; name: string; count: number }>();
+  // A coin by its name, one or many, any case ("9 gold pieces", "a silver piece"), with how many.
+  const one = (text: string) => gameInventoryNameKey(text).replace(/ies$/, "y").replace(/s$/, "");
   for (const line of lines) {
     const wanted = line.trim();
     if (!wanted) continue;
+    const counted = /^(\d+)\s*x?\s+(.+)$/i.exec(wanted);
+    const coinName = one(counted ? counted[2]! : wanted.replace(/^(a|an|one)\s+/i, ""));
+    const coin = coins
+      ? book.coins.find((entry) => one(entry.name) === coinName || one(entry.entry.id) === coinName)
+      : undefined;
+    if (coin && coins) {
+      const count = counted ? Math.min(1000000, Number(counted[1])) : 1;
+      if (count > 0)
+        coins.set(coin.item, { ref: coin.item, name: coin.name, count: (coins.get(coin.item)?.count ?? 0) + count });
+      continue;
+    }
     const key = wanted.toLowerCase();
     const found =
       book.entries.find((entry) => entry.item === wanted) ??

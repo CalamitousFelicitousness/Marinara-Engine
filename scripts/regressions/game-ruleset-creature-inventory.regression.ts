@@ -161,6 +161,43 @@ try {
     assert.equal(rulesetCombatant(fight.encounter, "bare")!.carried, undefined, "an empty list is nothing at all");
   }
 
+  // ── Coins the Game Master gives it, with how many (laptop playtest 2026-10-25: a thief's stolen 9 gp,
+  //    "no item called gold pieces") ──
+  {
+    const fight = begin([
+      { id: "thief", creature: `${bestiaryId}/rust-jackal`, items: ["9 marks", "a bit", "2 Bits", "Poultice"] },
+    ]);
+    assert.deepEqual(fight.purses?.thief, [
+      { ref: book.coins.find((coin) => coin.name === "marks")!.item, name: "marks", count: 9 },
+      { ref: book.coins.find((coin) => coin.name === "bits")!.item, name: "bits", count: 3 },
+    ]);
+    assert.deepEqual(rulesetCombatant(fight.encounter, "thief")!.carried, [
+      { ref: "outfitter/poultice", name: "Poultice", count: 1 },
+    ]);
+    assert.ok(!fight.adjustments.some((line: string) => /no item called/.test(line)), fight.adjustments.join(" | "));
+    // It takes them along when it gets away, and comes back with them.
+    const thief = rulesetCombatant(fight.encounter, "thief")!;
+    Object.assign(thief, { defeated: true, away: { by: "thief", label: "Fled", left: true } });
+    const { rulesetFightReturningFoes } =
+      await import("../../packages/server/src/services/game/ruleset-combat-director.service.js");
+    const gone = rulesetFightReturningFoes(definition, fight).fled[0]!;
+    assert.deepEqual(gone.coins, fight.purses.thief);
+    const back = createRulesetFight({
+      definition,
+      seed: 4,
+      party: [{ id: "ada", name: "Ada" }],
+      enemies: [{ id: "thief2", name: "thief", creature: `${bestiaryId}/rust-jackal`, items: [], coins: gone.coins }],
+      cards: [{ name: "Ada", rulesetSheet: { v: 1, build: defaultRulesetSheetBuild(definition) } }],
+      playerName: null,
+      live: {},
+      items: () => [],
+      itemBook: book,
+      partyCatalogs: {},
+      bestiary,
+    } as never) as { ok: true; fight: any };
+    assert.deepEqual(back.fight.purses?.thief2, fight.purses.thief);
+  }
+
   // ── Used in the fight: a hurt jackal presses its poultice on itself ──
   {
     const fight = begin([{ id: "jackal", creature: `${bestiaryId}/rust-jackal` }]);

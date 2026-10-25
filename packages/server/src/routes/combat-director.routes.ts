@@ -750,9 +750,10 @@ export async function combatDirectorRoutes(
             defeated: fallen.length,
             difficulty: s.difficulty,
             // What the beaten still had on them (1.785); one that ran took its along.
+            // Its coins too (laptop playtest 2026-10-25: a thief's stolen 9 gp never came back).
             carried: (encounter?.combatants ?? []).flatMap((combatant) =>
               combatant.side === "enemy" && combatant.defeated && !combatant.away?.left
-                ? rulesetCarriedLeft(combatant)
+                ? [...rulesetCarriedLeft(combatant), ...(s.rulesetFight?.purses?.[combatant.id] ?? [])]
                 : [],
             ),
           },
@@ -1125,6 +1126,7 @@ export async function combatDirectorRoutes(
                     ...(backAs[index]!.creature !== undefined ? { creature: backAs[index]!.creature } : {}),
                     ...(backAs[index]!.tier !== undefined ? { tier: backAs[index]!.tier } : {}),
                     ...(backAs[index]!.proposed !== undefined ? { proposed: backAs[index]!.proposed } : {}),
+                    ...(backAs[index]!.coins?.length ? { coins: backAs[index]!.coins } : {}),
                   }
                 : {
                     ...(enemy.creature !== undefined ? { creature: enemy.creature } : {}),

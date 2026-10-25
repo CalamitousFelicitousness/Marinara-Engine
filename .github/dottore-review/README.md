@@ -26,6 +26,28 @@ itself (`job.workflow_sha`), reads `rules.json` from the base branch, and fetche
 
 ## Asking for a review
 
+Only open pull requests marked **Ready for review** are reviewable. Automatic, manual and direct workflow requests
+all read live readiness before model work and publication. Closed, merged, draft or unverifiable PRs are withheld
+without publishing a review checkpoint. Marking a draft Ready uses the existing automatic review trigger; the last
+published checkpoint still selects an incremental review when the PR has one.
+
+Examination does **not** wait for CI. Only approval waits for the required checks, a completed viable review and
+resolved threads. An ordinary review request does not post an approval-waiting notice; `/dottore approve` explicitly
+asks for that approval check.
+
+Each model attempt, including a retry, checks readiness. SDK retries are disabled so the existing outer retry loop
+owns every request. During a response, the existing stream watchdog shares a readiness check at most once per
+15 seconds **when events arrive**, and closes the stream when it observes a draft, closed PR or unavailable evidence.
+This is not an independent cancellation poll: an already-started silent request can wait for its existing network
+read timeout (180/360 seconds, or the role/remaining-deadline allowance for submit-only calls). Thinking timeouts are
+unchanged, and a request already sent cannot be undone. Publication and each GitHub mutation check readiness again.
+Repairs also check before exposing the model key and before publishing a patch; an already-running Claude Code
+repair may make further turns and finish locally, but its patch is not pushed while the PR is draft.
+
+The shared runtime takes effect for a base branch when that branch uses the updated reviewer; Marinara-Agents must
+also update its immutable Engine workflow pin. Default-branch dispatchers and reviews into `main` take their code
+from `main`, so staging changes do not activate those copies before a normal release.
+
 Reviews start on request. A repository owner, organisation member or collaborator comments on the pull request:
 
 | Comment | What happens |
@@ -45,13 +67,22 @@ reviewed; a request on another gets a reply saying so. To keep Dottore strictly 
 A review posts:
 
 - **The walkthrough**, one comment per pull request, updated in place: the verdict in its title, Dottore beside it, the
-  counts, the change summary, the defects table, the notes, the autofix box, his observations and lab notes, and, folded
-  at the end, a repair prompt for an agent of your own. The last reviewed head and the open repair contracts ride in
-  HTML comments inside it, so the next review knows where it left off.
-- **A review thread per confirmed defect**, at its line, with a suggested fix and a footer naming the two ways it gets
-  resolved: a push Dottore re-examines, or the autofix box.
+  counts, the change summary, the defects table, the optional notes, any failed or blocking checks, the autofix box,
+  then, folded, his review notes (the other control checks, open questions, observations and lab notes) and a repair
+  prompt for an agent of your own, which opens by telling the agent to verify each finding before changing code. The last
+  reviewed head and the open repair contracts ride in HTML comments inside it, so the next review knows where it left off.
+- **A review thread per confirmed defect**, at its line: the severity and title, one plain sentence on what breaks, the
+  suggested fix, one quote in his voice, and, folded under Details, the full explanation, the other acceptable fixes
+  and the proof expected (only that fold is trimmed when a finding runs long). A footer names the two ways it gets
+  resolved: a push Dottore re-examines, or the autofix box. A new defect within a few lines of, or in the same function
+  as, a thread that round found repaired is posted as a reply in that thread instead of a new one, and the thread stays
+  open on it.
 - **The `Dottore Review` commit status**: success once the review is posted, whatever it found, with the verdict and
   the counts in its text; failure only when the review did not run or did not finish.
+
+Only the final commit status is published. Follow the Actions run while examination is in progress. If readiness
+cannot be confirmed before publication, that run adds no status, so it cannot strand a pending state. Statuses
+already published by earlier runs are unchanged.
 
 The verdicts: **Viable** (nothing found) and **Viable, With Notes** (nitpicks only) discharge the head; **Repair
 Required** (defects open) and **Specimen Unstable** (a high or blocking defect, or a failed control) hold it; **Specimen
@@ -68,8 +99,17 @@ recorded for the new head; `/dottore full` examines it afresh.
 
 Code first builds a bundle for each packet of the pull request: the PR description, the changed code at the head with
 its changes marked and the code around it, the definitions it reads, the same-file functions it calls two hops deep,
-where changed names are used elsewhere, the path rules and a guidance index. Then three roles run on two models (see
-Models): the small model reads, the large one judges.
+where changed names are used elsewhere, the path rules and a guidance index. It lists by name, without contents, the
+tracked tests named after a changed file, and, when the pull request changes a file under `.github/`, the repository's
+Actions variables (never its secrets). Then three roles run on two models (see Models): the small model reads, the
+large one judges.
+
+The finder and checker, but not the scouts, also see the first two issues the description closes (`Closes #N`,
+`Fixes #N`, `Resolves #N`). GitHub links closing issues only on pull requests into the default branch, so the keywords
+are read from the description, and an issue linked only by a plain mention or from the sidebar is not shown. Of each
+issue they see the title and the sections that say what the change must do or leave alone (Expected behavior,
+Requested behavior or change, Proposed solution, Proposed package or change, Scope and Not in scope, and their common
+variants), up to 1,000 characters. An issue with none of those sections shows the first 500 characters of its body.
 
 - **`scout`** reads outward from the bundle with the read-only tools and keeps places as it reads: the callers in other
   files, imported definitions and what the changed values flow into. Each packet's changed functions are split into
@@ -78,16 +118,19 @@ Models): the small model reads, the large one judges.
 - **`finder`** makes one call with no tools on the bundle and claims defects at changed lines.
 - **`verify`** (the checker) judges the finder's claims, one call per file, with the bundle and the code around each
   candidate in view and a few reads for what is still out of reach. Only confirmed findings are published; a confirmed
-  claim whose defect differs from its wording carries the finding text the checker wrote.
+  claim whose defect differs from its wording carries the finding text the checker wrote. A confirmation whose quoted
+  evidence does not match the head is withheld and counted under Verification Coverage.
 
 What gets published depends on kind, not severity. Every finding is a defect, low included: each gets a review thread,
 as a CodeRabbit finding does, and any of them makes the verdict Repair Required (Specimen Unstable from high up), so a
 low finding is carried across reviews, repaired by autofix and resolved before merge like any other. Severity grades the
-size of the repair. Nitpicks are notes: they are listed under Minor Imperfections, at most two, get no thread, and leave
-the verdict Viable, With Notes. The walkthrough states the verdict once in its title, with a remark in his voice and
+size of the repair. Nitpicks are notes: they are listed under Optional notes, at most two, get no thread, and leave
+the verdict Viable, With Notes, a green box that says nothing is required. Facts are written plainly; his voice is kept
+to the quotes. The walkthrough states the verdict once in its title, with a remark in his voice and
 one of his chibis beside the verdict box and the counts (`chibi/`, a few poses per verdict, both chosen by the head SHA
 and served raw from the pinned tooling checkout; the command status window has poses of its own, so the two comments
-never show the same one); the commit status carries the same verdict with the counts. The repair
+never show the same one); the commit status carries the same verdict with the counts. A walkthrough posted after the pull request got a new push
+says the head has moved past the commit it examined. The repair
 contracts of the defects are repeated at the end of the walkthrough as a prompt for an agent of your own, for a pull
 request Dottore cannot push to.
 
@@ -95,6 +138,12 @@ On a later review, the checker also re-judges Dottore's open threads on the file
 with the finder: one call per packet, with each thread's finding and repair contract. A thread it finds repaired, with
 evidence quoted from the head, gets a reply in voice and is resolved; one a person has replied to, or one whose finding
 that review raised again, stays open. Threads on files the review left alone are not checked.
+
+The repair contracts of earlier findings are carried in the walkthrough and shown to the finder on each later review.
+A contract whose thread is resolved, by Dottore or by a person, is dropped. One whose thread a repository owner, member
+or collaborator replied to is shown as disposed, with the reply, and the finder is told not to raise it again unless new code changes the input the
+reply names. A reply that only says a fix is coming also marks the contract disposed; the thread still holds the
+approval until someone resolves it.
 GitHub refuses to resolve a thread without `contents: write`, so a separate `resolve` job does it with that
 permission; it checks out no code and holds no model key, and runs only when a review found a repair. A repository that
 calls the shared workflow, such as Marinara-Agents, must grant `contents: write` in its caller too.
@@ -219,6 +268,12 @@ values, to be measured on a few known pull requests before relying on them:
 | Claude Opus or Sonnet | `high` | `medium` |
 | Claude Haiku or GPT Luna | not recommended: small models browse without forming claims | `high` |
 
+Effort weighs most on a large pull request. It is split into packets (`MAX_CHUNK_PATCH_CHARS`, `MAX_REVIEW_CHUNKS`),
+and every packet's scouts run first, sharing `DOTTORE_CONCURRENCY`; then all the finders start together, each with its
+full `minutes`, and the checker takes the last 8 minutes. A higher small-model effort therefore delays every finder,
+and a large-model effort above the table lengthens every packet's thinking. Prefer the table's values, or a Haiku-class
+small model, before changing `minutes`.
+
 The cost limit counts tokens at the price table in `dottore_review.py` (`MODEL_PRICES_USD`). A model it does not list
 counts at the dearest listed rates, so a review on it reports more than it spent and reaches `DOTTORE_COST_LIMIT_USD`
 early: add the model's prices to the table, or raise the limit. Before relying on a different model, run a few reviews
@@ -240,6 +295,9 @@ These are all of Dottore's repository variables, beside the model settings above
 | `DOTTORE_CONCURRENCY` | Scout and checker calls run at once, up to 16; the finders always run all at once, up to 16 | `4` | the review job |
 | `DOTTORE_FINDERS` | Finder copies per packet, `1` or `2`; a second one starts a few seconds later and reuses the cache | `1` | the review job |
 
+The review job also passes every repository variable to the reviewer, which shows them in the bundle only for a pull
+request that changes a file under `.github/`. Do not keep a value in a variable that a model provider must not see.
+
 Everything else the reviewer reads from its environment, the workflow sets itself: the pull request number, head and
 base, the mode, the paths of the prompt and rules it copied out of the pinned checkout, and that checkout's repository
 and commit, from which the chibis are served.
@@ -260,7 +318,7 @@ pull request cannot change the rules that examine it, and a repository that call
 | --- | --- |
 | `exclude_paths` | Glob patterns (`fnmatch`) of changed paths the review leaves out: they are listed as excluded in the bundle, and the tools neither read nor search them. |
 | `review_focus` | The areas the finder and checker are told to weigh, sent with the path rules. |
-| `severity_policy` | What each grade means, `blocking` to `nitpick`, sent to the models with the path rules. The prompt sets the same scale; keep the two in step. |
+| `severity_policy` | What each grade means, `blocking` to `nitpick`, sent to the models with the path rules. The prompt sets the same scale; keep the two in step. A missing test is a Proof Gap under pre-merge checks, not a graded finding. |
 | `repo_concerns` | Repository-wide rules that count as defects wherever a change touches them. |
 | `path_instructions` | A list of rules, each with a `name`, the path `prefixes` it applies to, the `guidance` documents whose headings go into the bundle's guidance index when a changed file matches, and the `checks` the models judge matching files against. `AGENTS.md` is always in the index. |
 | `autofix.validate` | The shell command the repair job runs on a patch before it is pushed, with a 25-minute limit; empty runs none. |
@@ -278,8 +336,8 @@ Each role's limits are kept in code, in `ROLE_DEFAULTS` in `dottore_review.py`:
 | `places` | Places each scout keeps; `0` turns the scouts off | `6` | – | – |
 | `scouts` | Scouts per packet, each with a share of its changes; a PR split into packets runs more scouts than `DOTTORE_CONCURRENCY` in turn | `4` | – | – |
 
-A role's `minutes` controls when it must submit and how long a call offered only its submit tool may wait without
-progress. A reply that keeps producing thinking, text or tool-input characters can finish past that time box;
+A role's `minutes` controls when it must submit and how long each call offered only its submit tool may wait without
+progress, however late in the review it starts. A reply that keeps producing thinking, text or tool-input characters can finish past that time box;
 pings, empty deltas and block boundaries do not refresh the watchdog. Claude requests summarized thinking so that
 its progress is visible even on models that omit thinking text by default. A role offered no
 read tools whose reply runs into `max_tokens` is sent once more at the next lower effort (`max` → `xhigh` → `high` →
@@ -291,12 +349,13 @@ Other limits in `dottore_review.py`: a 30-minute review (`REVIEW_DEADLINE_SECOND
 reserved for the checker, at most 20 candidates checked per review (`MAX_VERIFIED_CANDIDATES`), 3 submit attempts,
 a role aborting after 3 failed calls in a row (`MAX_ROLE_FAILURES`), 180 s for a call's first byte and 360 s between
 bytes (`FIRST_CALL_TIMEOUT`, `MODEL_REQUEST_TIMEOUT`), 900 s without meaningful stream progress for a role with
-read tools (`MODEL_STREAM_LIMIT`; a role offered only its submit tool gets its remaining box, with a 180 s minimum),
+read tools (`MODEL_STREAM_LIMIT`; a finder or scout offered only its submit tool gets its whole `minutes` box, and a
+checker with `reads` at `0` what is left of the review, at least 180 s; a reply stopped for silence is not resent),
 at most 2 notes and 2 open questions per review
 (`MAX_NITPICKS`, `MAX_OPEN_QUESTIONS`), and the packet split for large PRs (`MAX_CHUNK_PATCH_CHARS`,
 `MAX_REVIEW_CHUNKS`).
 
-The review deadline stops new work and asks agents to submit; it does not interrupt an active reply. The workflow's
+The review deadline stops new work and asks agents to submit; it does not interrupt an active reply or shorten its silence allowance. The workflow's
 40-minute review-step limit and 45-minute job limit still bound the entire run, including a reply that keeps progressing.
 
 ## Reading the run log

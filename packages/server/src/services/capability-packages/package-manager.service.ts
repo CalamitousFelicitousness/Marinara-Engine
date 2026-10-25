@@ -2211,6 +2211,31 @@ function carriesCalls(value: unknown, depth = 0): boolean {
   return featureValues(record).some((one) => carriesCalls(one, depth + 1));
 }
 
+/** A creature's action that names upgraded to-hit dice, for a `symbol-pool` fight (1.382). */
+function carriesSymbolUpgrades(value: unknown, depth = 0): boolean {
+  if (!value || depth > 40) return false;
+  if (Array.isArray(value)) return value.some((one) => carriesSymbolUpgrades(one, depth + 1));
+  const record = plainRecord(value);
+  if (!record) return false;
+  const creature = plainRecord(record.creature);
+  if (Array.isArray(creature?.actions) && creature.actions.some((one) => plainRecord(one)?.upgrades !== undefined))
+    return true;
+  return featureValues(record).some((one) => carriesSymbolUpgrades(one, depth + 1));
+}
+
+/** Whether `combat` or `battle` health names a sheet track with neither levels nor boxes (1.383). */
+function healthOnPlainTrack(ruleset: unknown): boolean {
+  const record = plainRecord(ruleset);
+  const tracks = plainRecord(plainRecord(record?.sheet)?.live)?.tracks;
+  if (!Array.isArray(tracks)) return false;
+  return [record?.combat, record?.battle].some((block) => {
+    const track = plainRecord(plainRecord(block)?.health)?.track;
+    if (typeof track !== "string") return false;
+    const declared = tracks.map(plainRecord).find((one) => one?.id === track);
+    return !!declared && declared.levels === undefined && declared.boxes === undefined;
+  });
+}
+
 /** A creature's action that leaves an area standing or changes the ground, or an area that lasts
  *  until the next lair action (1.324). */
 function carriesCreatureZones(value: unknown, depth = 0): boolean {
@@ -5246,6 +5271,22 @@ export function getCapabilityPackageInstallIssue(
   // Which combat styles its games may play, 1.379.
   if (!declaresApi(379) && shownCombat?.styles !== undefined) {
     return "A ruleset that names the combat styles its games may play requires schemaVersion 2 and capabilityApi 1.379 or newer";
+  }
+  // A fight thrown in the ruleset's symbol dice, what its symbols buy, and creatures' upgraded dice,
+  // 1.382.
+  if (
+    !declaresApi(382) &&
+    (shownCombat?.kind === "symbol-pool" ||
+      shownCombat?.symbols !== undefined ||
+      carriesSymbolUpgrades(ruleset) ||
+      [...(catalogDocuments?.values() ?? [])].some((document) => carriesSymbolUpgrades(document)))
+  ) {
+    return "A ruleset whose fights throw its symbol dice, or a creature with upgraded attack dice, requires schemaVersion 2 and capabilityApi 1.382 or newer";
+  }
+  // Health on a plain track that fills up to its maximum, 1.383. Before it only a wound track (one
+  // with levels or boxes) could be health.
+  if (!declaresApi(383) && healthOnPlainTrack(ruleset)) {
+    return "A ruleset whose fight health is a plain track that fills up requires schemaVersion 2 and capabilityApi 1.383 or newer";
   }
   // A ruleset over 256 KB or a catalog file over 1 MB, the ceilings before 1.340.
   if (

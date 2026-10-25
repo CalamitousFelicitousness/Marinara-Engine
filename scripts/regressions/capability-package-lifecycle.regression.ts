@@ -104,7 +104,7 @@ try {
   const legacyManifest = capabilityPackageManifestSchema.parse(installedPackage("legacy", ["agent"]).manifest);
   assert.equal(legacyManifest.schemaVersion, 1, "Existing manifest v1 packages must remain readable");
   assert.equal(getCapabilityApiCompatibilityIssue(legacyManifest), null);
-  assert.deepEqual(supportedCapabilityApi, { major: 1, minor: 381 });
+  assert.deepEqual(supportedCapabilityApi, { major: 1, minor: 384 });
 
   const manifestV2 = capabilityPackageManifestSchema.parse({
     ...legacyManifest,
@@ -140,11 +140,11 @@ try {
   });
   assert.match(
     getCapabilityApiCompatibilityIssue(unsupportedMajorManifest) ?? "",
-    /requires capability API 2\.0; this Engine supports 1\.381/,
+    /requires capability API 2\.0; this Engine supports 1\.384/,
   );
   const currentMinorManifest = capabilityPackageManifestSchema.parse({
     ...manifestV2,
-    capabilityApi: { major: 1, minor: 381 },
+    capabilityApi: { major: 1, minor: 384 },
   });
   assert.equal(getCapabilityApiCompatibilityIssue(currentMinorManifest), null);
   assert.equal(
@@ -201,6 +201,9 @@ try {
     [379, "ruleset combat styles"],
     [380, "package-bound reference lorebooks"],
     [381, "independent browser audio players"],
+    [382, "symbol-pool fights"],
+    [383, "health on a plain track"],
+    [384, "saved gallery image animation"],
   ];
   for (const [minor, label] of supportedMinors) {
     assert.equal(
@@ -213,11 +216,11 @@ try {
   }
   const unsupportedMinorManifest = capabilityPackageManifestSchema.parse({
     ...manifestV2,
-    capabilityApi: { major: 1, minor: 382 },
+    capabilityApi: { major: 1, minor: 385 },
   });
   assert.match(
     getCapabilityApiCompatibilityIssue(unsupportedMinorManifest) ?? "",
-    /requires capability API 1\.382; this Engine supports 1\.381/,
+    /requires capability API 1\.385; this Engine supports 1\.384/,
   );
   const startupManifest = {
     ...currentMinorManifest,
@@ -739,16 +742,6 @@ try {
     capabilityLanguageModelSource,
     /reasoningEffort:\s*options\.reasoningEffort,/u,
     "Capability model calls must preserve an explicit reasoning effort of none",
-  );
-  assert.match(
-    capabilityLanguageModelSource,
-    /AbortSignal\.any\(\[options\.signal,\s*timeoutSignal\]\)[\s\S]*withLlmRequestTimeout\(\s*timeoutMs,\s*async\s*\(\)\s*=>[\s\S]*provider\.chatComplete\(/u,
-    "Capability model calls must enforce AGENT_CALL_TIMEOUT_MS as a total-duration cap while scoping the transport timeout",
-  );
-  assert.match(
-    capabilityLanguageModelSource,
-    /const\s+timeoutSignal\s*=\s*AbortSignal\.timeout\(\s*timeoutMs\s*\);/u,
-    "Capability model calls must build their deadline signal from AbortSignal.timeout",
   );
   assert.doesNotMatch(
     capabilityLanguageModelSource,

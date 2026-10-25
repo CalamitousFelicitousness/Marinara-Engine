@@ -82,6 +82,9 @@ import {
 import { gameStorySpends } from "../services/game/story-item-uses.service.js";
 import {
   createAdvancedMemoryService,
+  effectiveAdvancedMemorySettings,
+  GAME_MASTER_MEMORY_READER_ID,
+  gameAdvancedMemorySource,
   sceneCheckTranscript,
   selectAdvancedMemoryMessages,
   selectAdvancedMemoryWhisperOnlyIds,
@@ -215,6 +218,7 @@ import {
 } from "../services/spatial-context/owner-turn.js";
 import { shouldSuppressIllustratorForegroundForStoryboard } from "../services/game/storyboard-agent-settings.js";
 import {
+  agentCurrentLocationFromProjection,
   formatOwnerSpatialBreadcrumb,
   injectOwnerSpatialPrompt,
   projectGameSnapshotLocation,
@@ -616,6 +620,7 @@ import {
   resolveGroupIndividualHistorySpeaker,
   resolveRoleplaySummaryTail,
   resolveCharacterNameMap,
+  resolveChatSpeakerNames,
   resolvePromptCharacterIdsForTarget,
   resolveRegenerationGameStateFallbackMessageIds,
   resolveRegenerationGameStateAnchor,
@@ -671,8 +676,8 @@ import {
   CONVERSATION_NO_REPEAT_INSTRUCTION,
   conversationPromptHistoryContent,
   formatConversationGroupOutputFormat,
-  formatSentSelfieNotes,
-  formatSentVideoNotes,
+  appendSentMediaNotes,
+  isSentVideoAttachment,
   resolvePresetModePrompt,
 } from "./generate/conversation-prompt-formatting.js";
 import {
@@ -867,7 +872,7 @@ import {
 import { createAgentLorebookTriggerResolver } from "../services/generation/agent-lorebook-triggers.js";
 import { addInventoryEntry, addLocationEntry, upsertQuest, addNpcEntry } from "../services/game/journal.service.js";
 import { updateJournal } from "../services/generation/game-journal-runtime.js";
-import { buildGmFormatReminder } from "../services/game/gm-prompts.js";
+import { buildGmFormatReminder, buildGmSceneState } from "../services/game/gm-prompts.js";
 import {
   createGameRollTagRegex,
   parseRollDiceToolResult,
@@ -894,6 +899,7 @@ import {
   shouldNarrateGameDiceOutcome,
   summarizeGameDiceTurn,
 } from "../services/game/one-request-dice.js";
+import { keepDraftCosts, rewriteKeptCommandsNote } from "../services/game/dice-rewrite-costs.js";
 import {
   isGameDicePoolEnabled,
   loadGameDicePoolSession,
@@ -1913,8 +1919,11 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
 
       // Get chat messages
       const chatMode = requestChatMode;
-      const advancedMemorySettings = normalizeAdvancedMemorySettings(chatMeta.advancedMemory);
-      const advancedMemoryEnabled = chatMode === "roleplay" && advancedMemorySettings.enabled;
+      const advancedMemorySettings = effectiveAdvancedMemorySettings(
+        chatMode,
+        normalizeAdvancedMemorySettings(chatMeta.advancedMemory),
+      );
+      const advancedMemoryEnabled = (chatMode === "roleplay" || chatMode === "game") && advancedMemorySettings.enabled;
       // A character never replies before Advanced Memory has decided who sees earlier messages (#7192).
       const decidesMessageVisibility =
         advancedMemoryEnabled &&
@@ -1944,10 +1953,15 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           : -1;
       const operationMessages =
         advancedTargetIndex >= 0 ? allChatMessages.slice(0, advancedTargetIndex + 1) : allChatMessages;
-      const advancedSourceMessages =
+      const advancedSourcePrefix =
         advancedTargetIndex >= 0
           ? allChatMessages.slice(0, advancedTargetIndex + (input.continueMessageId ? 1 : 0))
           : allChatMessages;
+      // Game memory reads the history as the GM gets it; the memory service shapes its own copy the same way.
+      const advancedSourceMessages =
+        advancedMemoryEnabled && chatMode === "game"
+          ? gameAdvancedMemorySource(advancedSourcePrefix, chatMeta as Record<string, unknown>)
+          : advancedSourcePrefix;
       if (advancedMemoryEnabled) {
         const memoryStatus = await advancedMemory.status(input.chatId);
         if (memoryStatus.missingKnowledgeCharacterIds.length) {
@@ -2497,6 +2511,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           .map((message: any) => message.id),
       );
       const initialLatestUserMessageId = [...chatMessages].reverse().find((message) => message.role === "user")?.id;
+      // Names in a sent clip's prompt ("Alice: …") stay in its history note; read once, on the first note.
+      let chatSpeakerNamesPromise: Promise<string[]> | null = null;
+      const getChatSpeakerNames = () => (chatSpeakerNamesPromise ??= resolveChatSpeakerNames(chars, chat));
       const mapChatHistoryMessageForPrompt = async (
         m: any,
         latestUserMessageId = initialLatestUserMessageId,
@@ -2540,17 +2557,13 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           extra.replyTo,
           m.role === "user" && m.id === latestUserMessageId,
         );
-        const userUploadedImages = attachments?.filter((a) => a.type?.startsWith("image/"));
-        if (m.role === "assistant" && userUploadedImages?.length) {
-          const photoName = userUploadedImages[0]?.filename ?? userUploadedImages[0]?.name;
-          content += `\n[Sent a photo${photoName ? `: ${photoName}` : ""}]`;
-        }
-        if (m.role === "assistant") {
-          content += formatSentSelfieNotes(updatedAttachments ?? attachments);
-          const videoNotes = formatSentVideoNotes(attachments);
-          // A video-only message has no text of its own; its note then starts the turn without a blank line.
-          if (videoNotes) content = content.trim() ? content + videoNotes : videoNotes.trimStart();
-        }
+        if (m.role === "assistant")
+          content = appendSentMediaNotes(
+            content,
+            attachments,
+            updatedAttachments ?? attachments,
+            chatMode === "conversation" && attachments?.some(isSentVideoAttachment) ? await getChatSpeakerNames() : [],
+          );
         const hiddenFromAICharacterIds = getMessageHiddenFromAICharacterIds(m);
         const conversationStartForCharacterIds = getMessageConversationStartCharacterIds(m);
 
@@ -3276,12 +3289,14 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             ? input.forCharacterId
             : null;
         const promptCharacterIds = resolvePromptCharacterIdsForTarget(characterIds, promptTargetCharacterId);
+        // The GM reads a Game chat's memory alone, as its narrator.
+        const advancedMemoryAudienceIds = chatMode === "game" ? [GAME_MASTER_MEMORY_READER_ID] : promptCharacterIds;
         const advancedAgentSourceIds = advancedMemoryEnabled
           ? new Set(
               selectAdvancedMemoryMessages(
                 advancedSourceMessages,
                 advancedMemorySettings,
-                promptCharacterIds,
+                advancedMemoryAudienceIds,
                 promptGroupChatMode === "individual",
               ).map((message) => message.id),
             )
@@ -3290,7 +3305,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           ? selectAdvancedMemoryWhisperOnlyIds(
               advancedSourceMessages,
               advancedMemorySettings,
-              promptCharacterIds,
+              advancedMemoryAudienceIds,
               promptGroupChatMode === "individual",
             )
           : undefined;
@@ -5014,10 +5029,15 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           });
         }
 
-        if (advancedMemoryEnabled && advancedMemoryPlacements.length === 0) {
+        const presetPlacedAdvancedMemory = advancedMemoryPlacements.length > 0;
+        if (advancedMemoryEnabled && !presetPlacedAdvancedMemory) {
           advancedMemoryPlacements = ADVANCED_MEMORY_MARKER_TYPES.map((type) =>
             createAdvancedMemoryPlacement(type, wrapFormat),
           );
+        }
+        // Game places its memory after the history, just before the turn reminder (below), so the
+        // summary and recalled scenes that change each turn never sit in front of the cached history.
+        if (advancedMemoryEnabled && !presetPlacedAdvancedMemory && chatMode !== "game") {
           const historyIndex = finalMessages.findIndex((message) => message.contextKind === "history");
           finalMessages.splice(
             historyIndex < 0 ? finalMessages.length : historyIndex,
@@ -5579,6 +5599,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             : undefined;
           const formatReminder = resolvePromptMacros(
             buildGmFormatReminder({
+              sceneState: buildGmSceneState(gmCtx),
               ttsEmotionIndicatorsEnabled: gameTtsEmotionIndicatorsEnabled(await appSettings.get(TTS_SETTINGS_KEY)),
               hasSceneModel,
               hudWidgets: gmCtx.hudWidgets,
@@ -5685,6 +5706,14 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 : {}),
             }),
           );
+          if (advancedMemoryEnabled)
+            finalMessages.push(
+              ...advancedMemoryPlacements.map((placement) => ({
+                role: placement.role,
+                content: placement.token,
+                contextKind: "prompt" as const,
+              })),
+            );
           finalMessages.push({ role: "user" as const, content: formatReminder });
           logger.debug(
             "[generate/game] Injected format reminder (%d chars) as last user message",
@@ -6062,6 +6091,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             ),
           mainResponse: null,
           gameState,
+          currentLocation: agentCurrentLocationFromProjection(ownerSpatialProjection),
           characters: charInfo,
           characterTrackerHistory: characterTrackerHistory as unknown as AgentContext["characterTrackerHistory"],
           persona:
@@ -8881,7 +8911,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               sourceMessages: advancedSourceMessages,
               messages: preparedMessagesForGen,
               placements: advancedMemoryPlacements,
-              audienceCharacterIds,
+              // The GM reads a Game chat's memory alone, as its narrator.
+              audienceCharacterIds:
+                chatMode === "game" && !input.impersonate ? [GAME_MASTER_MEMORY_READER_ID] : audienceCharacterIds,
               audienceMode: input.impersonate ? "owner" : undefined,
               maxContext: effectiveMaxContext ?? connectionMaxContext,
               maxTokens,
@@ -9829,6 +9861,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               // The first draft predates these results. Rewrite it with the real
               // outcomes in context, including on providers without a tools API.
               const records = [...fullResponse.matchAll(createGameRollTagRegex())].map((match) => match[0]);
+              // The draft as it stands now, its chance branches already picked: a cost in the half the
+              // dice threw away was never spent.
+              const draftForCosts = fullResponse;
               const checks = [...(rolled.results ?? []), ...generalRolls.checkResults];
               const paidCheckCosts = (rolled.results ?? []).flatMap(({ who, spent }) =>
                 spent ? [{ who: who ?? null, ...spent }] : [],
@@ -9858,7 +9893,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   draftTurn,
                   {
                     role: "user",
-                    content: `${resolvedSummary ? `The engine has now rolled the requested dice:\n${resolvedSummary}` : "The engine has now read the requested checks:\nNo dice were rolled."}${paidCheckCosts.length ? `\nReported check-purchase payments (other check-entry costs may also have been paid): ${JSON.stringify(paidCheckCosts)}` : ""}${generalRolls.unresolved.length ? `\nUnresolved requests:\n${generalRolls.unresolved.join("\n")}` : ""}${rolled.sparse - (rolled.untrained ?? 0) > 0 ? "\nSome checks could not be rolled and remain unresolved." : ""}${rolled.untrained ? "\nSome checks were not rolled because the character has no training in them: narrate that they could not attempt them." : ""}\n${addressMode === "gm" ? "Rewrite your entire last out-of-character answer using these real results, correcting any contradictory outcome before or after a check. Answer the player's question now." : "Rewrite your entire last narration using these real results, correcting any contradictory outcome before or after a check. Narrate the consequences now."} Do not repeat this player's action, invent numbers, request more rolls, or include dice/check tags: the engine keeps their records. For unresolved requests, leave the outcome open and explain what the player needs to clarify in supported notation. Re-emit every original movement or package command still justified by these outcomes; omit commands invalidated by them.${chatMeta.gameRuleset != null ? " The check pass has already applied any accepted purchases and check-entry costs to the sheets: do not re-emit already-applied check-pass sheet effects or charge those costs again. Write sheet commands for new harm, healing and genuinely additional resource costs these results decide, using the rolled totals: narration alone applies none of these new consequences." : ""} Apart from the already-applied check costs, only commands in your revised output will execute. ${addressMode === "gm" ? "Return only the complete revised out-of-character answer in the game's language, starting directly with the answer" : "Return only the complete revised GM narration in the game's language, starting directly with the scene"}: any planning goes inside one <think>...</think> block at the very start, never in the narration.`,
+                    content: `${resolvedSummary ? `The engine has now rolled the requested dice:\n${resolvedSummary}` : "The engine has now read the requested checks:\nNo dice were rolled."}${paidCheckCosts.length ? `\nReported check-purchase payments (other check-entry costs may also have been paid): ${JSON.stringify(paidCheckCosts)}` : ""}${generalRolls.unresolved.length ? `\nUnresolved requests:\n${generalRolls.unresolved.join("\n")}` : ""}${rolled.sparse - (rolled.untrained ?? 0) > 0 ? "\nSome checks could not be rolled and remain unresolved." : ""}${rolled.untrained ? "\nSome checks were not rolled because the character has no training in them: narrate that they could not attempt them." : ""}\n${addressMode === "gm" ? "Rewrite your entire last out-of-character answer using these real results, correcting any contradictory outcome before or after a check. Answer the player's question now." : "Rewrite your entire last narration using these real results, correcting any contradictory outcome before or after a check. Narrate the consequences now."} Do not repeat this player's action, invent numbers, request more rolls, or include dice/check tags: the engine keeps their records. For unresolved requests, leave the outcome open and explain what the player needs to clarify in supported notation. Re-emit every original movement or package command still justified by these outcomes; omit commands invalidated by them.${rewriteKeptCommandsNote(chatMeta.gameRuleset != null)} ${addressMode === "gm" ? "Return only the complete revised out-of-character answer in the game's language, starting directly with the answer" : "Return only the complete revised GM narration in the game's language, starting directly with the scene"}: any planning goes inside one <think>...</think> block at the very start, never in the narration.`,
                   },
                 ],
                 { tools: undefined },
@@ -9920,6 +9955,15 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 gameOutcomeNarrationFailed = true;
                 sendSseEvent(reply, { type: "game_outcome_narration_failed", data: { chatId: input.chatId } });
               }
+              debugLog("[generate/game/raw] rewrite after rolls: %s", narration);
+              // What the draft spent to act at all, and what it traded, happen whatever the dice say,
+              // even where the rewrite left them out or failed.
+              narration = keepDraftCosts(
+                draftForCosts,
+                narration,
+                personaName !== "User" ? personaName : null,
+                chatMeta.gameRuleset != null,
+              ).trim();
               fullResponse = [narration, ...records].join("\n");
               if (hierarchicalMapsEnabledForChat) {
                 const spatial = extractAssistantSpatialDirective(fullResponse);
@@ -12452,9 +12496,15 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 )
               : undefined;
           const postReplyDecisionContext = postAgentDecisionTexts.length > 0 ? { decisions: postAgentDecisions } : {};
+          // The reply may have moved the party on the map; it is committed before post-reply
+          // agents run, so they see where the story is now, not where the turn started (#8251).
+          const postReplySpatialProjection = hierarchicalMapsEnabledForChat
+            ? await resolveOwnerSpatialProjection(input.chatId, {}, chatMeta)
+            : ownerSpatialProjection;
           const postAgentContext: AgentContext = {
             ...agentContext,
             ...postReplyDecisionContext,
+            currentLocation: agentCurrentLocationFromProjection(postReplySpatialProjection),
             mainResponse: agentCompletedResponse,
             preGenInjections: contextInjections,
             parallelResults,
@@ -12517,6 +12567,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 ...(await pipeline.postGenerate(agentCompletedResponse, {
                   preGenInjections: contextInjections,
                   parallelResults,
+                  currentLocation: postAgentContext.currentLocation,
                   ...postReplyDecisionContext,
                 })),
                 ...parallelResults,
@@ -14412,7 +14463,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                       const spatialLocationReferenceImage = await resolveSpatialLocationReferenceImage({
                         db: app.db,
                         chatId: input.chatId,
-                        projection: ownerSpatialProjection?.ownerMode === "roleplay" ? ownerSpatialProjection : null,
+                        projection:
+                          postReplySpatialProjection?.ownerMode === "roleplay" ? postReplySpatialProjection : null,
                       });
                       let illustratorRefImages: string[] | undefined;
                       const referenceResolution = await resolveIllustratorCharacterReferences({
@@ -14605,7 +14657,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                             referenceCharacterIds: useAvatarRefs ? referenceResolution.characterIds : [],
                             referencePersonaId: useAvatarRefs ? referenceResolution.personaId : null,
                             locationImageId: spatialLocationReferenceImage
-                              ? ownerSpatialProjection?.referenceImageId
+                              ? postReplySpatialProjection?.referenceImageId
                               : null,
                           }),
                         });

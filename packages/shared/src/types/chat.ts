@@ -605,6 +605,8 @@ export interface ChatMetadata {
   /** An actual group participant, used only for individual Roleplay generations. */
   roleplayCommandNarratorId?: string | null;
   roleplayRollAudience?: RoleplayCommandAudience;
+  /** How a roll card is tinted by its result. Missing means "outcome". */
+  roleplayRollOutcomeTone?: "off" | "outcome" | "outcome-crits";
   roleplayCombatAudience?: RoleplayCommandAudience;
   roleplayDocumentAudience?: RoleplayCommandAudience;
   roleplayWhisperAudience?: RoleplayCommandAudience;
@@ -754,7 +756,7 @@ export interface ChatMetadata {
   /**
    * Finish a rolled Game turn in one provider request: the GM commits its prose blind,
    * the engine rolls afterwards and fills the result in, and the narration rewrite never
-   * fires. Absent means off.
+   * fires. Absent means on.
    */
   gameOneRequestDice?: boolean;
   /**

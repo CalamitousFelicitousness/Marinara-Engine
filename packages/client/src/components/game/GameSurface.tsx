@@ -165,6 +165,7 @@ import { lorebookKeys } from "../../hooks/use-lorebooks";
 import { api, ApiError, getJsonRepairRequest, type JsonRepairRequest } from "../../lib/api-client";
 import {
   forgetCombatSetupFailure,
+  isDroppedRequest,
   recalledCombatSetupFailure,
   rememberCombatSetupFailure,
 } from "../../lib/combat-setup-failures";
@@ -2104,6 +2105,7 @@ import {
   Loader2,
   Map as MapIcon,
   PanelsTopLeft,
+  Pencil,
   Play,
   Plug,
   RefreshCw,
@@ -5254,7 +5256,7 @@ function GameSurfaceComponent({
     // contain. With the sub-option on the sparse tag is left exactly as it is, and the
     // outcome is narrated at the start of the next turn. The endpoint is untouched and
     // keeps serving the live path and the player's own composer.
-    const poolModeActive = chatMeta.gameOneRequestDice === true && chatMeta.gameDicePoolMode === true;
+    const poolModeActive = chatMeta.gameOneRequestDice !== false && chatMeta.gameDicePoolMode === true;
     void (async () => {
       for (const sc of tags.skillChecks) {
         try {
@@ -9807,8 +9809,9 @@ function GameSurfaceComponent({
             !!err.payload &&
             typeof err.payload === "object" &&
             (err.payload as { reason?: unknown }).reason === "cut-off";
-          // Remembered, so opening this chat again waits for Retry Combat rather than asking again.
-          rememberCombatSetupFailure(requestChatId, messageId, { message, cutOff });
+          // Remembered, so opening this chat again waits for Retry Combat rather than asking again. A request
+          // the browser dropped (a reload mid-setup) is not: the server may have finished it.
+          if (!isDroppedRequest(err)) rememberCombatSetupFailure(requestChatId, messageId, { message, cutOff });
           setCombatGenerationCutOff(cutOff);
           setCombatGenerationError(message);
           // Only the Engine paths (manual button, retry, auto-queue) toast. An Experience/package
@@ -11913,15 +11916,6 @@ function GameSurfaceComponent({
     });
   }, [hudWidgets]);
 
-  const handleStartGameRequest = useCallback(() => {
-    if (experienceStartupBlocked || startGame.isPending || startGameRequested || startGameGuardRef.current) return;
-    if (normalizedWidgets.length > 0) {
-      setPrepareInitialWidgetsOpen(true);
-      return;
-    }
-    handleStartGameNow();
-  }, [experienceStartupBlocked, handleStartGameNow, normalizedWidgets.length, startGame.isPending, startGameRequested]);
-
   useEffect(() => {
     if (combatUiActive || normalizedWidgets.length === 0) {
       // Reset to the same width heuristic the state initializes with, NOT a
@@ -12547,18 +12541,32 @@ function GameSurfaceComponent({
                     </button>
                   )}
                 </div>
-              ) : (
-                <button
-                  onClick={() => {
-                    audioManager.unlock();
-                    handleStartGameRequest();
-                  }}
-                  disabled={experienceStartupBlocked || startGame.isPending || startGameRequested}
-                  className="group flex items-center gap-2 rounded-lg bg-zinc-900 px-6 py-3 text-sm font-semibold text-zinc-100 ring-1 ring-zinc-700/80 transition-all hover:scale-105 hover:bg-zinc-800 hover:shadow-lg hover:shadow-black/25 disabled:opacity-50 disabled:hover:scale-100"
-                >
-                  <Play size={18} className="transition-transform group-hover:scale-110" />
-                  {localizeUi("ui.game.gamesurfacecomponent.startGame")}
-                </button>
+              ) : prepareInitialWidgetsOpen ? null : (
+                // Start Game starts the game: the setup wizard already asked once. The starting widgets
+                // sheet is there for whoever wants it, and has its own Start Game, so this one waits.
+                <div className="flex flex-col items-center gap-2">
+                  <button
+                    onClick={() => {
+                      audioManager.unlock();
+                      handleStartGameNow();
+                    }}
+                    disabled={experienceStartupBlocked || startGame.isPending || startGameRequested}
+                    className="group flex items-center gap-2 rounded-lg bg-zinc-900 px-6 py-3 text-sm font-semibold text-zinc-100 ring-1 ring-zinc-700/80 transition-all hover:scale-105 hover:bg-zinc-800 hover:shadow-lg hover:shadow-black/25 disabled:opacity-50 disabled:hover:scale-100"
+                  >
+                    <Play size={18} className="transition-transform group-hover:scale-110" />
+                    {localizeUi("ui.game.gamesurfacecomponent.startGame")}
+                  </button>
+                  {normalizedWidgets.length > 0 && (
+                    <button
+                      onClick={() => setPrepareInitialWidgetsOpen(true)}
+                      disabled={experienceStartupBlocked || startGame.isPending || startGameRequested}
+                      className={cn(SURFACE_BTN, "disabled:opacity-50")}
+                    >
+                      <Pencil size={12} />
+                      {localizeUi("ui.game.gamesurfacecomponent.reviewStartingWidgets")}
+                    </button>
+                  )}
+                </div>
               )}
             </div>
           </div>
@@ -12704,6 +12712,7 @@ function GameSurfaceComponent({
             <Suspense fallback={null}>
               <GameJournal
                 chatId={activeChatId}
+                rulesetPin={chatMeta.gameRuleset}
                 hasWorld={Boolean(chatMeta.gameWorld)}
                 canMakeWorld={canMakeWorld}
                 worldRequest={makeWorldRequest}
@@ -13202,6 +13211,7 @@ function GameSurfaceComponent({
                         spatialContextLoading={activeSpatialContextLoading}
                         chatId={activeChatId}
                         constraintsRef={hudSurfaceRef}
+                        inFight={combatUiActive}
                       />
                     </div>
 
@@ -13655,6 +13665,7 @@ function GameSurfaceComponent({
                             combatStarting={combatStarting}
                             combatGenerationFailed={combatGenerationFailedAtGate}
                             combatGenerationCutOff={combatGenerationCutOff}
+                            combatGenerationReason={combatGenerationError}
                             onRetryCombatGeneration={retryCombatGeneration}
                             onDeleteMessage={onDeleteMessage}
                             onPeekPrompt={onPeekPrompt}
@@ -13755,6 +13766,7 @@ function GameSurfaceComponent({
                         combatStarting={combatStarting}
                         combatGenerationFailed={combatGenerationFailedAtGate}
                         combatGenerationCutOff={combatGenerationCutOff}
+                        combatGenerationReason={combatGenerationError}
                         onRetryCombatGeneration={retryCombatGeneration}
                         onDeleteMessage={onDeleteMessage}
                         onPeekPrompt={onPeekPrompt}

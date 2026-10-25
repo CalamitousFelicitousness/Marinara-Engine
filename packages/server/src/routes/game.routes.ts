@@ -234,6 +234,7 @@ import {
   SkillCheckUntrainedError,
 } from "../services/game/skill-check-resolution.service.js";
 import { applyAllSegmentEdits, stripGmCommandTags } from "../services/game/segment-edits.js";
+import { withoutSessionAdvancedMemory } from "../services/advanced-memory.js";
 import { processLorebooks, type LorebookScanResult } from "../services/lorebook/index.js";
 import {
   GAME_LOREBOOK_KEEPER_SOURCE_ID,
@@ -549,6 +550,7 @@ import {
 } from "../services/game/game-inventory.service.js";
 import { gameRepliesBefore, isGameMasterReply } from "../services/game/game-market.service.js";
 import { rollGameFightItemGate } from "../services/game/game-item-use.service.js";
+import { gameSetupBlueprintSchema } from "../services/game/game-setup-blueprint.js";
 import {
   normalizeIllustratorAppearance,
   readIllustratorAppearance,
@@ -6751,92 +6753,8 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     }
 
     if (setupData.blueprint) {
-      // Coerce LLM output into the campaign-plan ranges rather than rejecting it.
-      // The LLM occasionally exceeds the array caps or the pressure-clock step
-      // count; without preprocessing, a single out-of-range value would fail
-      // safeParse and silently drop the entire blueprint — including hudWidgets,
-      // which is what the user actually configured.
-      const sliceArray = (max: number) => (val: unknown) => (Array.isArray(val) ? val.slice(0, max) : val);
-      const clampInt = (min: number, max: number) => (val: unknown) =>
-        typeof val === "number" && Number.isFinite(val) ? Math.max(min, Math.min(max, Math.trunc(val))) : val;
-      const campaignPlanSchema = z
-        .object({
-          openingSituation: z.string().max(240).optional().default(""),
-          pressureClocks: z.preprocess(
-            sliceArray(2),
-            z
-              .array(
-                z.object({
-                  name: z.string().max(80),
-                  steps: z.preprocess(clampInt(1, 12), z.number().int().min(1).max(12).default(4)),
-                  current: z.preprocess(clampInt(0, 12), z.number().int().min(0).max(12).default(0)),
-                  failure: z.string().max(180).default(""),
-                }),
-              )
-              .default([]),
-          ),
-          factions: z.preprocess(
-            sliceArray(2),
-            z
-              .array(
-                z.object({
-                  name: z.string().max(80),
-                  goal: z.string().max(160),
-                  method: z.string().max(160).optional(),
-                  secret: z.string().max(180).optional(),
-                }),
-              )
-              .default([]),
-          ),
-          questSeeds: z.preprocess(sliceArray(3), z.array(z.string().max(180)).default([])),
-          encounterPrinciples: z.preprocess(sliceArray(2), z.array(z.string().max(160)).default([])),
-        })
-        .optional()
-        .nullable()
-        .transform((plan) => plan ?? undefined);
-      const blueprintSchema = z.object({
-        campaignPlan: campaignPlanSchema,
-        hudWidgets: z
-          .array(
-            z.object({
-              id: z.string(),
-              type: z.enum([
-                "progress_bar",
-                "gauge",
-                "relationship_meter",
-                "counter",
-                "stat_block",
-                "list",
-                "inventory_grid",
-                "timer",
-              ]),
-              label: z.string(),
-              icon: z.string().optional(),
-              position: z.enum(["hud_left", "hud_right"]),
-              accent: z.string().optional(),
-              config: z.record(z.string(), z.unknown()),
-            }),
-          )
-          .default([]),
-        introSequence: z
-          .array(
-            z.object({
-              effect: z.string(),
-              duration: z.number().optional(),
-              intensity: z.number().min(0).max(1).optional(),
-              target: z.enum(["background", "content", "all"]).optional(),
-              params: z.record(z.string(), z.string()).optional(),
-            }),
-          )
-          .default([]),
-        visualTheme: z
-          .object({
-            palette: z.string(),
-            uiStyle: z.string(),
-            moodDefault: z.string(),
-          })
-          .optional(),
-      });
+      const blueprintSchema = gameSetupBlueprintSchema;
+
       const normalizeStatBlocks = (widgets: Array<{ type: string; config: Record<string, unknown> }>) => {
         for (const w of widgets) {
           if (w.type === "stat_block" && w.config.stats) {
@@ -7332,6 +7250,12 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       connectionId,
       chat.connectionId,
     );
+    // The connection the setup was run on becomes the game's own, so the start screen and every turn
+    // after it use the one the player picked, not one the chat held before (laptop playtest
+    // 2026-10-24: the start screen offered the old connection). "random" stays a per-request pick.
+    if (connectionId && connectionId !== "random" && conn?.id === connectionId && connectionId !== chat.connectionId) {
+      await app.db.update(chatsTable).set({ connectionId, updatedAt: now() }).where(eq(chatsTable.id, chatId));
+    }
     const provider = await createGameMainProvider(connections, conn, baseUrl);
     const setupGenerationParameters = resolveStoredGameGenerationParameters(meta, defaultGenerationParameters);
 
@@ -8079,8 +8003,11 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         // The tellings of one of the previous session's turns: the stacks carry over, the record
         // of how that turn was told does not.
         gameInventoryTurn: _previousInventoryTurn,
-        ...carryMeta
+        ...previousSessionMeta
       } = prevMeta;
+      // Advanced Memory's settings carry over; its progress and its own recaps of the previous
+      // session's messages do not, so the new session builds its memory from its own story.
+      const carryMeta = withoutSessionAdvancedMemory(previousSessionMeta);
 
       const newMeta = parseMeta(newChat.metadata);
       const updatedNewMeta = {

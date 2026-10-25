@@ -20,6 +20,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  combatInterruptFields,
   parseRulesetDefinition,
   readRulesetLive,
   rowsFromCatalogEntry,
@@ -954,6 +955,81 @@ try {
     assert.ok(caught.success, JSON.stringify(caught.error?.issues));
     assert.equal((caught.data!.party[0] as Record<string, unknown>).surprised, true);
     assert.equal((caught.data!.enemies[0] as Record<string, unknown>).surprised, undefined);
+    // A number out of an ability's bounds is pulled to them, and one that is not a number left out,
+    // rather than refusing the whole setup (playtest 2026-10-23: Second Wind written with range 0).
+    const bounded = encounterBlueprintSchema.safeParse({
+      party: [
+        {
+          name: "Brannoc",
+          hp: 10,
+          maxHp: 10,
+          attacks: [
+            { name: "Second Wind", kind: "heal", range: 0 },
+            { name: "Longbow", range: 30, areaRadius: -1, slotLevel: "high" },
+          ],
+        },
+      ],
+      enemies: [{ name: "Goblin", hp: 7, maxHp: 7 }],
+      environment: "a road",
+    });
+    assert.ok(bounded.success, JSON.stringify(bounded.error?.issues));
+    const attacks = (bounded.data!.party[0] as { attacks: Array<Record<string, unknown>> }).attacks;
+    assert.equal(attacks[0]!.range, 1);
+    assert.deepEqual([attacks[1]!.range, attacks[1]!.areaRadius, attacks[1]!.slotLevel], [12, 0, undefined]);
+    // Only the setup is lenient: a turn or a replayed save still refuses an ability out of bounds.
+    assert.equal(combatInterruptFields.range.safeParse(0).success, false);
+    // A word it does not know is left out too, and the rest of the ability kept (laptop playtest
+    // 2026-10-25: a duelist's Parry written as reaction "counterattack" refused the whole fight).
+    const worded = encounterBlueprintSchema.safeParse({
+      party: [{ name: "Brannoc", hp: 10, maxHp: 10 }],
+      enemies: [
+        {
+          name: "Duelist",
+          hp: 12,
+          maxHp: 12,
+          attacks: [
+            { name: "Parry", reaction: "counterattack", range: 1 },
+            { name: "Fan of Blades", targetScope: "everyone", spell: "no", friendlyFire: 1 },
+            { name: "Ward", reaction: "guard" },
+          ],
+        },
+      ],
+      environment: "a hall",
+    });
+    assert.ok(worded.success, JSON.stringify(worded.error?.issues));
+    const duelist = (worded.data!.enemies[0] as { attacks: Array<Record<string, unknown>> }).attacks;
+    assert.deepEqual([duelist[0]!.name, duelist[0]!.reaction, duelist[0]!.range], ["Parry", undefined, 1]);
+    assert.deepEqual(
+      [duelist[1]!.targetScope, duelist[1]!.spell, duelist[1]!.friendlyFire],
+      [undefined, undefined, undefined],
+    );
+    assert.equal(duelist[2]!.reaction, "guard", "a word it knows is kept");
+    // An attack's kind is read the same way: a word for one of the four is that one, and an unknown
+    // one is left out (laptop 2026-10-25: kind "damage" refused a whole fight).
+    const kinded = encounterBlueprintSchema.safeParse({
+      party: [{ name: "Brannoc", hp: 10, maxHp: 10, attacks: [{ name: "Mend", kind: "Healing" }] }],
+      enemies: [
+        {
+          name: "Ogre",
+          hp: 30,
+          maxHp: 30,
+          attacks: [
+            { name: "Club", kind: "damage" },
+            { name: "Roar", kind: "intimidate" },
+            { name: "Bellow", kind: "debuff" },
+          ],
+        },
+      ],
+      environment: "a cave",
+    });
+    assert.ok(kinded.success, JSON.stringify(kinded.error?.issues));
+    const ogre = (kinded.data!.enemies[0] as { attacks: Array<Record<string, unknown>> }).attacks;
+    assert.deepEqual(
+      ogre.map((attack) => attack.kind),
+      ["attack", undefined, "debuff"],
+    );
+    assert.equal((kinded.data!.party[0] as { attacks: Array<Record<string, unknown>> }).attacks[0]!.kind, "heal");
+    assert.equal(combatInterruptFields.reaction.safeParse("counterattack").success, false);
     assert.ok(withBrief.at(-1)!.content.includes('"surprised": true'), "the prompt asks who was caught unaware");
     // An invention may be a sheet in the ruleset's own terms, and numbers written beside it go.
     const caster = blueprint({

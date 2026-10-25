@@ -101,7 +101,6 @@ import { type ChatToolbarFloatingPanelAnchor } from "./ChatToolbarControls";
 import { PickerDropdown } from "../../features/chat-settings/PickerDropdown";
 import { PersonaHistoryReassignDropdown } from "../../features/chat-settings/sections/PersonaHistoryReassignDropdown";
 import { ChatSettingsSection as Section } from "../../features/chat-settings/ChatSettingsSection";
-import { ChatBranchGraphButton } from "./ChatBranchGraphWindow";
 import { ActiveChatBackgroundPicker } from "../panels/settings/BackgroundPicker";
 import { AdvancedParametersSection } from "../../features/chat-settings/sections/AdvancedParametersSection";
 import { ChatNameSection } from "../../features/chat-settings/sections/ChatNameSection";
@@ -4007,9 +4006,11 @@ export function ChatSettingsDrawer({
   const [showSummariesModal, setShowSummariesModal] = useState(false);
   const [showAgentSuiteModal, setShowAgentSuiteModal] = useState(false);
   const [memoryView, setMemoryView] = useState<"advanced" | "standard" | null>(null);
-  const advancedMemoryStatus = useAdvancedMemoryStatus(chat.id, open && isRoleplayMode);
+  // Game chats keep their memory with the GM as its only reader.
+  const advancedMemoryAvailable = isRoleplayMode || isGame;
+  const advancedMemoryStatus = useAdvancedMemoryStatus(chat.id, open && advancedMemoryAvailable);
   const advancedMemoryEnabled =
-    isRoleplayMode &&
+    advancedMemoryAvailable &&
     (advancedMemoryStatus.data?.settings ?? normalizeAdvancedMemorySettings(metadata.advancedMemory)).enabled;
   useEffect(() => setMemoryView(null), [advancedMemoryEnabled, chat.id]);
   // A scene number in the Fix box (or a notice) opens Access memories at that scene.
@@ -5019,11 +5020,12 @@ export function ChatSettingsDrawer({
           )}
           labelClassName="text-[0.6875rem] font-medium"
         />
-        {isRoleplayMode && (
+        {advancedMemoryAvailable && (
           <AdvancedMemorySettings
             chatId={chat.id}
             metadataSettings={metadata.advancedMemory}
-            individual={groupChatMode === "individual"}
+            gameMode={isGame}
+            individual={!isGame && groupChatMode === "individual"}
             characters={chatCharIds.map((id) => ({ id, name: charNameMap.get(id) ?? id }))}
             connections={textConnectionsList}
             hasHistory={!!chat.lastMessageAt}
@@ -5059,7 +5061,7 @@ export function ChatSettingsDrawer({
         {advancedMemoryEnabled && memoryView === "advanced" && (
           <AdvancedMemoryInspector
             chatId={chat.id}
-            individual={groupChatMode === "individual"}
+            individual={!isGame && groupChatMode === "individual"}
             characters={chatCharIds.map((id) => ({ id, name: charNameMap.get(id) ?? id }))}
           />
         )}
@@ -5726,8 +5728,6 @@ export function ChatSettingsDrawer({
               icon={<GitBranch size="0.875rem" />}
               count={branchCount}
               help={localizeUi("chat.settings.branchesHelp")}
-              actions={<ChatBranchGraphButton />}
-              detachedHeaderControls={<ChatBranchGraphButton />}
             >
               <ChatBranchesPanel activeChatId={chat.id} activeChatName={chat.name} groupId={chat.groupId ?? null} />
             </Section>
@@ -10559,7 +10559,7 @@ export function ChatSettingsDrawer({
               onGameDiceOutcomeNarrationChange={(gameDiceOutcomeNarration) =>
                 updateMeta.mutate({ id: chat.id, gameDiceOutcomeNarration })
               }
-              gameOneRequestDice={metadata.gameOneRequestDice === true}
+              gameOneRequestDice={metadata.gameOneRequestDice !== false}
               onGameOneRequestDiceChange={(gameOneRequestDice) =>
                 updateMeta.mutate({ id: chat.id, gameOneRequestDice })
               }

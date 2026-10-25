@@ -2,6 +2,15 @@
 // forecast - picks an id from here, so legality is decided in exactly one place and a client never
 // computes it.
 
+import {
+  rulesetCombatIsSymbol,
+  rulesetSymbolAttackForecast,
+  rulesetSymbolChance,
+  rulesetSymbolDice,
+  rulesetSymbolSuccessDistribution,
+  type RulesetSymbolSpend,
+  type RulesetSymbolDice,
+} from "./symbols.js";
 import { rulesetEntryIcons } from "../rulesets/art-icons.js";
 import type {
   RulesetCombat,
@@ -61,6 +70,8 @@ import {
   rulesetDamageMinimum,
   rulesetCombatEffects,
   rulesetCombatStanding,
+  rulesetSymbolSpendBudget,
+  rulesetSymbolSpendStanding,
   rulesetAbilityNarrowing,
   rulesetCheckAbility,
   rulesetCheckMode,
@@ -131,6 +142,7 @@ import type {
   RulesetCombatAlterOffer,
   RulesetCombatCell,
   RulesetCombatOption,
+  RulesetCombatWindow,
   RulesetCombatRollMode,
   RulesetCombatContest,
   RulesetCombatant,
@@ -933,7 +945,7 @@ export function rulesetDefenseAgainst(
   attacker: RulesetCombatant | undefined,
   /** The blow itself, where one weapon ignores cover against this target (1.189). */
   action?: RulesetCombatAction,
-): { defense: number; cover: number; guards: RulesetConditionBonus[] } {
+): { defense: number; cover: number; guards: RulesetConditionBonus[]; unguarded: number } {
   // What the target's own conditions add. Defense is never rolled, so each is its flat number.
   const guards = rulesetConditionModifiers(definition, combat, target, "defense", state).map(
     ({ condition, level, derived, item, modifier }) => ({
@@ -957,7 +969,8 @@ export function rulesetDefenseAgainst(
     : rulesetCoverBonus(combat, state, target, rulesetPositionOf(attacker), "attack", attacker?.id);
   const highGround = combat.elevation?.highGround;
   const above = typeof highGround === "object" && rulesetAbove(state, attacker, target) ? highGround.bonus : 0;
-  return { defense: defense + cover - above, cover, guards };
+  const raised = guards.reduce((total, guard) => total + guard.value, 0);
+  return { defense: defense + cover - above, cover, guards, unguarded: defense - raised + cover - above };
 }
 
 /** What conditions add to one roll, as a forecast reads it: the flat part, and every die with the
@@ -1331,6 +1344,20 @@ function contestTotals(
     ability,
   );
   const mode = rulesetCheckMode(definition, combat, combatant, state, undefined, ability);
+  if (rulesetCombatIsSymbol(combat)) {
+    // A side's dice are its check, and what its conditions and wounds add boost or setback (1.382).
+    const bonus = rulesetBonusDice(modifiers);
+    return rulesetSymbolSuccessDistribution(
+      definition,
+      rulesetSymbolDice(definition, {
+        dice: check.modifier,
+        bonus: bonus.flat + rulesetCombatPenalty(definition, combatant),
+        boost: combatant.symbolDice?.boost,
+        setback: combatant.symbolDice?.setback,
+        mode,
+      }),
+    );
+  }
   if (rulesetCombatIsPool(combat)) {
     // A side's pool is its check, what its conditions add as dice, and its wound penalty.
     const bonus = rulesetBonusDice(modifiers);
@@ -1953,6 +1980,9 @@ function forecastFor(
   pointedAt?: RulesetCombatant,
 ): RulesetCombatOption["forecast"] | undefined {
   const forecast: NonNullable<RulesetCombatOption["forecast"]> = {};
+  // A symbol fight's attack (1.382): the dice it throws, and at whom, for its harm to read.
+  let symbolDice: RulesetSymbolDice | undefined;
+  let symbolTarget: RulesetCombatant | undefined;
   if (action.sequence) {
     const byId = new Map(actor.actions.map((entry) => [entry.id, entry]));
     // A part that has no use left, or is waiting for its dice, will not happen, so it is not
@@ -2025,15 +2055,31 @@ function forecastFor(
     );
     // What the weapon adds against what the target is (1.187), as the roll will.
     const toHit = action.toHit + rulesetToHitAgainst(definition, action, target, actor);
-    const chance = rulesetCombatIsPool(combat)
-      ? rulesetPoolChance(
-          definition,
-          toHit + bonus.flat + rulesetCombatPenalty(definition, actor),
-          Math.max(1, defense),
-          mode,
-          action.target,
-        )
-      : rulesetHitChance(combat, toHit, defense, mode, bonus, actor.criticalFrom);
+    if (rulesetCombatIsSymbol(combat)) {
+      // The attacker's dice against the target's difficulty dice, exactly as the throw will be made
+      // (1.382). What a hit is worth is worked out with its harm, below.
+      symbolDice = rulesetSymbolDice(definition, {
+        dice: toHit,
+        upgrades: action.upgrades,
+        difficulty: defense,
+        bonus: bonus.flat + rulesetCombatPenalty(definition, actor),
+        boost: actor.symbolDice?.boost,
+        setback: actor.symbolDice?.setback,
+        mode,
+      });
+      symbolTarget = target;
+    }
+    const chance = symbolDice
+      ? rulesetSymbolChance(definition, symbolDice)
+      : rulesetCombatIsPool(combat)
+        ? rulesetPoolChance(
+            definition,
+            toHit + bonus.flat + rulesetCombatPenalty(definition, actor),
+            Math.max(1, defense),
+            mode,
+            action.target,
+          )
+        : rulesetHitChance(combat, toHit, defense, mode, bonus, actor.criticalFrom);
     if (chance !== null) forecast.hitChance = Math.round(chance * 1000) / 1000;
   }
   // The whole blow, clauses and all. A clause with a save of its own is counted in full: a forecast
@@ -2050,6 +2096,24 @@ function forecastFor(
       rulesetDamageMinimum(definition, actor, damage),
     );
     forecast.averageDamage = Math.round(average * 100) / 100;
+    if (symbolDice && symbolTarget) {
+      // Over every way the throw may come out (1.382): what its successes add, what each side's
+      // spends buy, and the target's soak. `worth` is what the AI weighs a hit at.
+      const expected = rulesetSymbolAttackForecast(
+        definition,
+        combat,
+        symbolDice,
+        average,
+        rulesetSoakOf(
+          symbolTarget,
+          rulesetTargetDamageKind(definition, combat, symbolTarget, damage.type, damage.qualities).kind,
+        ),
+        // What the fight leaves unbought, its forecast prices at nothing.
+        () => rulesetSymbolSpendBudget(definition, state, actor, symbolTarget!),
+      );
+      forecast.averageDamage = Math.round(expected.averageDamage * 100) / 100;
+      forecast.worth = Math.round(expected.worth * 100) / 100;
+    }
   } else if (action.heal) forecast.averageDamage = Math.round(rulesetAverageDamage(action.heal) * 100) / 100;
   if (action.innate && action.use?.perCostStep && forecast.averageDamage !== undefined) {
     const steps = Math.max(0, action.innate.level - action.innate.baseLevel);
@@ -3711,6 +3775,57 @@ function rulesetSignatureCasts(
  *  takes, so passing is a choice the fight records rather than a timeout. */
 export const RULESET_PASS_OPTION = "pass";
 
+/** In a `spend` window (1.382): the Engine's own pick for whatever symbols are still unspent. A
+ *  spend's own option is `RULESET_SPEND_OPTION_PREFIX` and its id. */
+export const RULESET_ENGINE_SPENDS_OPTION = "engine-spends";
+export const RULESET_SPEND_OPTION_PREFIX = "spend:";
+
+/** What somebody choosing their own symbol spends (1.382) may take now: one more of each spend they
+ *  can still buy, and the Engine's pick for the rest when it would buy anything. Passing keeps what
+ *  they have chosen and spends nothing more. */
+function spendWindowOptions(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  window: RulesetCombatWindow,
+): RulesetCombatOption[] {
+  const trigger = window.trigger;
+  const held = window.resume?.kind === "action" ? window.resume.held : undefined;
+  if (trigger.kind !== "spend" || !held) return [];
+  const standing = rulesetSymbolSpendStanding(definition, state, held, trigger.sourceId, trigger.by, trigger.hit);
+  if (!standing) return [];
+  const symbols = definition.resolution.kind === "symbol-pool" ? definition.resolution.symbols : [];
+  const costOf = (spend: RulesetSymbolSpend) => [
+    {
+      pool: spend.symbol,
+      label: symbols.find((one) => one.id === spend.symbol)?.label ?? spend.symbol,
+      amount: spend.cost,
+    },
+  ];
+  const options: RulesetCombatOption[] = standing.choices.map((spend) => ({
+    id: `${RULESET_SPEND_OPTION_PREFIX}${spend.id}`,
+    kind: "spend",
+    label: spend.label,
+    targets: { side: "self", count: 0 },
+    cost: costOf(spend),
+    symbolSpend: { spend: spend.id },
+  }));
+  if (standing.engine.length > 0) {
+    options.unshift({
+      id: RULESET_ENGINE_SPENDS_OPTION,
+      kind: "spend",
+      label: standing.engine
+        .map(({ spend, times }) => (times > 1 ? `${spend.label} x${times}` : spend.label))
+        .join(", "),
+      targets: { side: "self", count: 0 },
+      symbolSpend: {
+        engine: true,
+        picks: standing.engine.map(({ spend, times }) => ({ spend: spend.id, times })),
+      },
+    });
+  }
+  return options;
+}
+
 /**
  * The menu of the one combatant a window is asking. Everybody else gets nothing, because a window
  * asks one at a time: the answer spends a budget or points, and two answers at once would spend
@@ -3729,6 +3844,7 @@ export function rulesetWindowOptions(
   if (!combat || !window || window.waiting[0] !== actorId) return [];
   // Points, not a budget, and priced and checked where every other signature option is.
   if (window.kind === "signature") return rulesetSignatureOptions(definition, state, actorId);
+  if (window.kind === "spend") return spendWindowOptions(definition, state, window);
 
   const actor = rulesetCombatant(state, actorId);
   if (!actor) return [];

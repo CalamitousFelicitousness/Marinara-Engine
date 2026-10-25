@@ -28,7 +28,7 @@ const recordPatchSchema = z
   .strict();
 
 const validationErrors = new Set([
-  "Advanced Memory is available only for Roleplay chats",
+  "Advanced Memory is available only for Roleplay and Game chats",
   "Minimum recalled messages cannot exceed the maximum",
   "The continuity summary budget must be smaller than the total context limit",
   "Select a narrator from this chat's characters",

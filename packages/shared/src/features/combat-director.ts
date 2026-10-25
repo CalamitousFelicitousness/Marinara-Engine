@@ -37,6 +37,35 @@ export const combatInterruptFields = {
   slotLevel: z.number().int().min(1).max(9).optional(),
   legendaryCost: z.number().int().min(1).max(6).optional(),
 };
+/** A whole number a model writes for an ability, held to its bounds: one out of range (a self
+ *  ability's `range: 0`) is pulled to the nearest bound rather than refusing the whole fight's
+ *  setup over it (playtest 2026-10-23), and anything that is not a number is left out. */
+const boundedAbilityInt = (min: number, max: number) =>
+  z
+    .preprocess(
+      (value) =>
+        typeof value === "number" && Number.isFinite(value) ? Math.min(max, Math.max(min, Math.round(value))) : value,
+      z.number().int().min(min).max(max),
+    )
+    .optional()
+    .catch(undefined);
+/** The same fields as a model's fight setup reads them. Only the setup is lenient: a turn or a
+ *  replayed save still refuses an ability out of bounds. A word or a flag it cannot read (a
+ *  `reaction: "counterattack"` for a duelist's Parry, laptop playtest 2026-10-25) is left out
+ *  rather than refusing the whole fight. */
+export const lenientCombatInterruptFields = {
+  ...combatInterruptFields,
+  projectile: combatInterruptFields.projectile.catch(undefined),
+  requiresSight: combatInterruptFields.requiresSight.catch(undefined),
+  spell: combatInterruptFields.spell.catch(undefined),
+  friendlyFire: combatInterruptFields.friendlyFire.catch(undefined),
+  targetScope: combatInterruptFields.targetScope.catch(undefined),
+  reaction: combatInterruptFields.reaction.catch(undefined),
+  areaRadius: boundedAbilityInt(0, 3),
+  range: boundedAbilityInt(1, 12),
+  slotLevel: boundedAbilityInt(1, 9),
+  legendaryCost: boundedAbilityInt(1, 6),
+};
 export type DirectedCommand =
   | { type: "begin"; unitId: string }
   | { type: "classic"; action: CombatPlayerAction }
@@ -78,6 +107,8 @@ export type DirectedCommand =
   | { type: "continue" }
   | { type: "fallback" }
   | { type: "control"; unitId: string; controller: "manual" | "ai" }
+  /** Whether the player chooses what their own symbol throws buy (1.382) rather than the Engine. */
+  | { type: "spends"; choose: boolean }
   | { type: "flee" };
 export interface CombatDecisionOption {
   id: string;
@@ -296,7 +327,9 @@ export interface DirectedRulesetView {
    *  is theirs rather than the actor's, and letting the moment go by is one of the answers. */
   window?: {
     id: string;
-    kind: "reaction" | "signature";
+    kind: "reaction" | "signature" | "spend";
+    /** For a `spend` window (1.382): the side being asked spends for, and whether the throw landed. */
+    spend?: { by: "attacker" | "target"; hit: boolean };
     /** Which moment, for the ones a reaction waits for, and what is happening at it. */
     moment?: "aimed" | "hit" | "harmed" | "used" | "falls" | "turn-start";
     targetIds?: string[];
@@ -322,6 +355,8 @@ export interface DirectedRulesetView {
      *  answers. Present only for a held area on a board. */
     cells?: Array<{ x: number; y: number }>;
   };
+  /** A fight in symbol dice (1.382): whether the player chooses their own spends. */
+  spends?: { choose: boolean };
   /** The last 200 events, each with a running number so a client prints only what is new. */
   events: Array<{ seq: number; event: DirectedRulesetEvent }>;
   summary?: RulesetEncounterSummary;

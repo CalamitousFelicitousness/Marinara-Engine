@@ -1,5 +1,5 @@
 /**
- * An item's use made again while concentrated on (Capability API 1.567): a scroll of Heat Metal.
+ * An item's use made again while concentrated on (Capability API 1.568): a scroll of Heat Metal.
  *
  *   - `use.repeats` with `concentration`: the scroll is spent once; while its user concentrates, its
  *     effect is offered again on `repeats.budget`, spending nothing of the item.
@@ -32,7 +32,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 567);
+  assert.ok(supportedCapabilityApi.minor >= 568);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -153,7 +153,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with an item's use made again while its user concentrates (use.repeats) requires schemaVersion 2 and capabilityApi 1.567 or newer";
+      "A ruleset with an item's use made again while its user concentrates (use.repeats) requires schemaVersion 2 and capabilityApi 1.568 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -167,13 +167,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(566) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(567) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(566) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(567) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(568) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(567) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Item use repeats: a scroll of Heat Metal is read once and heats its target again on a bonus action; gated at 1.567.",
+    "Item use repeats: a scroll of Heat Metal is read once and heats its target again on a bonus action; gated at 1.568.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

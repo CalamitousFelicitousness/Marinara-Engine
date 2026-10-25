@@ -1,10 +1,10 @@
 /**
- * A character's tags read off several fields (Capability API 1.697): `creatureTypes.tagsFrom` as a
+ * A character's tags read off several fields (Capability API 1.698): `creatureTypes.tagsFrom` as a
  * list, `["race", "alignment"]`, so a ghoul's Claws pass over an elf player character.
  *
- *   - Each field is read as one is (1.683), and the tags of all of them kept, once each.
+ *   - Each field is read as one is (1.684), and the tags of all of them kept, once each.
  *   - A one-field `tagsFrom` reads as before.
- *   - A rider that excepts elves (1.682) passes over the elf.
+ *   - A rider that excepts elves (1.683) passes over the elf.
  *   - Import refusals and the install gate.
  */
 import assert from "node:assert/strict";
@@ -30,7 +30,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 697);
+  assert.ok(supportedCapabilityApi.minor >= 698);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -110,7 +110,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset that reads a character's tags off several fields (creatureTypes.tagsFrom as a list) requires schemaVersion 2 and capabilityApi 1.697 or newer";
+      "A ruleset that reads a character's tags off several fields (creatureTypes.tagsFrom as a list) requires schemaVersion 2 and capabilityApi 1.698 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -124,13 +124,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(696) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(697) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(696) as never, fiveE("alignment")), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(697) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(698) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(697) as never, fiveE("alignment")), gate);
   }
 
   console.log(
-    "Tags from fields: a High Elf of Neutral Good alignment carries elf, good and neutral; a ghoul's except-elves passes over the elf but not the half-elf; gated at 1.697.",
+    "Tags from fields: a High Elf of Neutral Good alignment carries elf, good and neutral; a ghoul's except-elves passes over the elf but not the half-elf; gated at 1.698.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

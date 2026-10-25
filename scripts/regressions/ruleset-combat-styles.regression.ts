@@ -1,6 +1,6 @@
-/** Capability API 1.775: a ruleset names the combat styles its games may play (`combat.styles`). The
+/** Capability API 1.776: a ruleset names the combat styles its games may play (`combat.styles`). The
  *  list reads and is checked, the helpers allow, refuse and fall back as the docs say, the gate asks
- *  for 1.775, and the wizard, the settings, the game surface and the server all go through it. */
+ *  for 1.776, and the wizard, the settings, the game surface and the server all go through it. */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -40,7 +40,7 @@ const issuesOf = (doc: unknown) => {
 };
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 775);
+  assert.ok(supportedCapabilityApi.minor >= 776);
 
   // ── The list ──
   const open = parse(fixture());

@@ -39,7 +39,7 @@ assert.deepEqual(chooseClassicAction(actor("unprofiled"), [], [actor("target")],
   targetId: "target",
 });
 const weaken: CombatSkill = { id: "weaken", name: "Weaken", type: "debuff", mpCost: 5, power: 1, cooldown: 2 };
-// A thing that never thinks (the pursuer below), and an animal, which fights by its nature (1.745).
+// A thing that never thinks (the pursuer below), and an animal, which fights by its nature (1.746).
 const beast = {
   ...actor("beast"),
   aiHints: { category: "other" as const, temperament: "mindless" as const, proficiency: "master" as const },

@@ -1,5 +1,5 @@
 /**
- * Zones that suppress magic (Capability API 1.505).
+ * Zones that suppress magic (Capability API 1.506).
  *
  *   - An antimagic field: inside it, a spell's condition does nothing, a magical ring's worn effect
  *     stops, a magical wand's use is not offered, and a +1 sword strikes as a plain one (also at
@@ -38,7 +38,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 505);
+  assert.ok(supportedCapabilityApi.minor >= 506);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -262,7 +262,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose zones suppress conditions or items inside them (a zone's suppresses or forbids casts) requires schemaVersion 2 and capabilityApi 1.505 or newer";
+      "A ruleset whose zones suppress conditions or items inside them (a zone's suppresses or forbids casts) requires schemaVersion 2 and capabilityApi 1.506 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -276,13 +276,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(504) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(505) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(504) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(505) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(506) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(505) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Antimagic: inside the field a spell's condition and a magic ring do nothing, a wand is not offered, a +1 sword strikes plain (also at somebody inside), and no spell is cast from inside; all of it works outside; gated at 1.505.",
+    "Antimagic: inside the field a spell's condition and a magic ring do nothing, a wand is not offered, a +1 sword strikes plain (also at somebody inside), and no spell is cast from inside; all of it works outside; gated at 1.506.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

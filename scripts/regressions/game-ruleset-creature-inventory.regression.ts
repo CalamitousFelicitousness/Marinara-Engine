@@ -1,5 +1,5 @@
 /**
- * What a creature has on it as a fight begins (Capability API 1.784, Alyssa 2026-10-24).
+ * What a creature has on it as a fight begins (Capability API 1.785, Alyssa 2026-10-24).
  *
  *   - A bestiary creature's `inventory` lines, each rolled for once: an item of the ruleset's or a
  *     loot table's picks, `chance` in a hundred and `count` of it.
@@ -8,7 +8,7 @@
  *   - A plain stat block uses what is used up in the using and reads nothing of its user (a
  *     poultice), as many times as it has it; a sheet-backed one uses its items as a party member
  *     does. What is left is what drops, and the foe's card says what it has.
- *   - Refused for an unknown table, and gated at 1.784.
+ *   - Refused for an unknown table, and gated at 1.785.
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -236,7 +236,7 @@ try {
     );
     assert.ok(!both.ok && /names an item or a loot table, one of them/.test(both.issues.join("; ")));
     const gate =
-      "A ruleset whose creatures have things on them as a fight begins (a creature's inventory) requires schemaVersion 2 and capabilityApi 1.784 or newer";
+      "A ruleset whose creatures have things on them as a fight begins (a creature's inventory) requires schemaVersion 2 and capabilityApi 1.785 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -250,13 +250,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(783) as never, doc), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(784) as never, doc), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(783) as never, ember()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(784) as never, doc), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(785) as never, doc), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(784) as never, ember()), gate);
   }
 
   console.info(
-    "Creature inventory: rolled from its lines or given by the Game Master, used by a plain block and a sheet-backed one, what is left drops, gated at 1.784.",
+    "Creature inventory: rolled from its lines or given by the Game Master, used by a plain block and a sheet-backed one, what is left drops, gated at 1.785.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

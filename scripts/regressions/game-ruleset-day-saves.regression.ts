@@ -1,11 +1,11 @@
 /**
- * Saves made as days pass (Capability API 1.510).
+ * Saves made as days pass (Capability API 1.511).
  *
  *   - Feeblemind's "at the end of every 30 days, the creature can repeat its saving throw": a
  *     condition whose `saveEnds` says `"at": "days"` is never saved against in a fight; once the
  *     fight is over its holder's sheet keeps the save and its difficulty, and each 30 days passed
  *     they make it again, ending it on the first success.
- *   - Abilities raised for good (1.500) are kept through another change to the sheet.
+ *   - Abilities raised for good (1.501) are kept through another change to the sheet.
  *   - Refusals and the install gate.
  */
 import assert from "node:assert/strict";
@@ -34,7 +34,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 510);
+  assert.ok(supportedCapabilityApi.minor >= 511);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -139,7 +139,7 @@ try {
     assert.ok(off.ok);
     assert.equal(off.live.daySaves, undefined);
   }
-  // ── Abilities raised for good stay through another change (1.500) ──
+  // ── Abilities raised for good stay through another change (1.501) ──
   {
     const raised = raiseRulesetLiveAbilities({}, { con: { by: 2, max: 2 } });
     const after = applyRulesetSheetOp(definition, build, raised, { op: "pass", days: 1 });
@@ -158,7 +158,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      'A ruleset with a save made as days pass (saveEnds "at": "days") requires schemaVersion 2 and capabilityApi 1.510 or newer';
+      'A ruleset with a save made as days pass (saveEnds "at": "days") requires schemaVersion 2 and capabilityApi 1.511 or newer';
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -172,13 +172,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(509) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(510) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(509) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(510) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(511) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(510) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Day saves: Feeblemind's save goes onto the sheet as the fight ends, is made each 30 days passed until it ends it, and goes with the condition; raised abilities kept; gated at 1.510.",
+    "Day saves: Feeblemind's save goes onto the sheet as the fight ends, is made each 30 days passed until it ends it, and goes with the condition; raised abilities kept; gated at 1.511.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

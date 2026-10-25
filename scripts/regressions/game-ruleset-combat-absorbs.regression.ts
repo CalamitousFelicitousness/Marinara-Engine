@@ -1,5 +1,5 @@
 /**
- * Taking in a foe's spell aimed at the holder alone (Capability API 1.506).
+ * Taking in a foe's spell aimed at the holder alone (Capability API 1.507).
  *
  *   - A creature's condition takes in a 1st-level bolt; a 7th gets through.
  *   - A Rod of Absorption gains the bolt's level as charges, up to its most; an Ioun Stone of
@@ -37,7 +37,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 506);
+  assert.ok(supportedCapabilityApi.minor >= 507);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -253,7 +253,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose conditions or worn items take in an entry aimed at their holder alone (absorbs) requires schemaVersion 2 and capabilityApi 1.506 or newer";
+      "A ruleset whose conditions or worn items take in an entry aimed at their holder alone (absorbs) requires schemaVersion 2 and capabilityApi 1.507 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -267,13 +267,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(505) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(506) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(505) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(506) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(507) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(506) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Absorbs: a creature takes in a foe's 3rd-level bolt but not a 7th or a burst; a rod gains its level as charges up to its most, a stone spends them and takes nothing in without enough; gated at 1.506.",
+    "Absorbs: a creature takes in a foe's 3rd-level bolt but not a 7th or a burst; a rod gains its level as charges up to its most, a stone spends them and takes nothing in without enough; gated at 1.507.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

@@ -193,10 +193,10 @@ export function parseSheetCommandTagBody(body: string): ParsedSheetCommandTag {
     return { ...parsed, op: { op: "note", field, value: values.get("value") ?? "" } };
   }
   if (name === "pass") {
-    // Days of game time (1.429): a whole count.
+    // Days of game time (1.430): a whole count.
     const days = readInteger(values.get("days"));
     if (days === null || days < 1) return parsed;
-    // Spent resting (1.740): yes, true or on.
+    // Spent resting (1.741): yes, true or on.
     const resting = /^(yes|true|on)$/i.test(values.get("resting")?.trim() ?? "");
     return { ...parsed, op: { op: "pass", days, ...(resting ? { resting: true as const } : {}) } };
   }
@@ -205,11 +205,11 @@ export function parseSheetCommandTagBody(body: string): ParsedSheetCommandTag {
     const entry = (values.get("name") ?? values.get("spell"))?.trim();
     if (!entry) return parsed;
     const pool = values.get("pool")?.trim();
-    // What it gives back (1.394): `recover="Level 1 Slot:2, Level 2 Slot:1"`, a count after each pool.
+    // What it gives back (1.395): `recover="Level 1 Slot:2, Level 2 Slot:1"`, a count after each pool.
     const rawRecover = values.get("recover");
     const recover = rawRecover === undefined ? [] : readRecover(rawRecover);
     if (recover === null) return parsed;
-    // The creature it calls (1.787): `as="Owl"`, for a call that stays once the use is done.
+    // The creature it calls (1.788): `as="Owl"`, for a call that stays once the use is done.
     const as = values.get("as")?.trim();
     return {
       ...parsed,
@@ -223,7 +223,7 @@ export function parseSheetCommandTagBody(body: string): ParsedSheetCommandTag {
     };
   }
   if (name === "dismiss") {
-    // What a use outside a fight called and kept (1.787), by the entry's name or the creature's.
+    // What a use outside a fight called and kept (1.788), by the entry's name or the creature's.
     const entry = values.get("name")?.trim();
     if (!entry) return parsed;
     return { ...parsed, op: { op: "dismiss", name: entry } };
@@ -236,7 +236,7 @@ export function parseSheetCommandTagBody(body: string): ParsedSheetCommandTag {
   if (rawDice !== undefined && (dice === null || dice < 0)) return parsed;
   // From one pool of several (1.337): 5e's d8 hit dice.
   const pool = dice ? values.get("pool")?.trim() : undefined;
-  // A feature it offers as it ends (1.773): `use="Arcane Recovery"`, and what it gives back, if picked.
+  // A feature it offers as it ends (1.774): `use="Arcane Recovery"`, and what it gives back, if picked.
   const use = values.get("use")?.trim();
   const rawRecover = use ? values.get("recover") : undefined;
   const recover = rawRecover === undefined ? [] : readRecover(rawRecover);

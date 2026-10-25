@@ -104,7 +104,7 @@ try {
   const legacyManifest = capabilityPackageManifestSchema.parse(installedPackage("legacy", ["agent"]).manifest);
   assert.equal(legacyManifest.schemaVersion, 1, "Existing manifest v1 packages must remain readable");
   assert.equal(getCapabilityApiCompatibilityIssue(legacyManifest), null);
-  assert.deepEqual(supportedCapabilityApi, { major: 1, minor: 790 });
+  assert.deepEqual(supportedCapabilityApi, { major: 1, minor: 791 });
 
   const manifestV2 = capabilityPackageManifestSchema.parse({
     ...legacyManifest,
@@ -144,7 +144,7 @@ try {
   );
   const currentMinorManifest = capabilityPackageManifestSchema.parse({
     ...manifestV2,
-    capabilityApi: { major: 1, minor: 790 },
+    capabilityApi: { major: 1, minor: 791 },
   });
   assert.equal(getCapabilityApiCompatibilityIssue(currentMinorManifest), null);
   assert.equal(
@@ -198,21 +198,21 @@ try {
     [376, "Home browser fullscreen"],
     [377, "the Motion 14 host slot"],
     [378, "ruleset wording"],
-    [776, "a ruleset's weight unit"],
-    [777, "damage changes by damage type"],
-    [778, "package-bound reference lorebooks"],
-    [779, "independent browser audio players"],
-    [780, "symbol-pool fights"],
-    [781, "health on a plain track"],
-    [782, "attack ability choices"],
-    [783, "sheet migrations that set a column"],
-    [784, "what a creature has on it"],
-    [785, "text field suggestions"],
-    [786, "how many text suggestions to pick"],
-    [787, "calls kept on the sheet"],
-    [788, "rows steps that count their rows"],
-    [789, "a sheet bonus to hit on attack rows"],
-    [790, "a pool's tally column"],
+    [777, "a ruleset's weight unit"],
+    [778, "damage changes by damage type"],
+    [779, "package-bound reference lorebooks"],
+    [780, "independent browser audio players"],
+    [781, "symbol-pool fights"],
+    [782, "health on a plain track"],
+    [783, "attack ability choices"],
+    [784, "sheet migrations that set a column"],
+    [785, "what a creature has on it"],
+    [786, "text field suggestions"],
+    [787, "how many text suggestions to pick"],
+    [788, "calls kept on the sheet"],
+    [789, "rows steps that count their rows"],
+    [790, "a sheet bonus to hit on attack rows"],
+    [791, "a pool's tally column"],
   ];
   for (const [minor, label] of supportedMinors) {
     assert.equal(

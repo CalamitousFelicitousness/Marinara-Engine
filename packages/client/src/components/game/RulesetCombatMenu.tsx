@@ -237,7 +237,7 @@ export function RulesetCombatMenu({
   const [altersPicked, setAltersPicked] = useState<string[]>([]);
   // Who of its user's side is ticked to be spared in the spare step (1.254).
   const [sparesPicked, setSparesPicked] = useState<string[]>([]);
-  // The kinds ticked in the kinds step (1.737), handed up as it goes on.
+  // The kinds ticked in the kinds step (1.738), handed up as it goes on.
   const [kindsPicked, setKindsPicked] = useState<string[]>([]);
   // What a long list of ways to use it is narrowed to, typed (laptop 2026-10-25: Conjure Animals
   // offered 291 beasts in a row).
@@ -516,7 +516,7 @@ export function RulesetCombatMenu({
     }
     afterMode(option, style);
   };
-  /** Stored instead of done (1.508), paid with `payWith`. */
+  /** Stored instead of done (1.509), paid with `payWith`. */
   const store = (option: DirectedRulesetOption, place: { holderId: string; item?: number }, payWith?: string) => {
     closeStep();
     onChoose(option.id, [], payWith, { storesIn: place });
@@ -529,12 +529,12 @@ export function RulesetCombatMenu({
       return;
     }
     setDropping(null);
-    // Whether to store it instead comes first (1.508): a Ring of Spell Storing.
+    // Whether to store it instead comes first (1.509): a Ring of Spell Storing.
     if (!cast && option.storesIn?.length) {
       setStep({ stage: "store", option, targets: [] });
       return;
     }
-    // Then the kinds its zone strikes (1.737): Forbiddance's.
+    // Then the kinds its zone strikes (1.738): Forbiddance's.
     if (!named && option.kindsOf?.length && nameKinds) {
       setKindsPicked([]);
       setStep({ stage: "kinds", option, targets: [] });
@@ -623,7 +623,7 @@ export function RulesetCombatMenu({
       );
     }
 
-    // ── Casting it now, or storing it (1.508) ──
+    // ── Casting it now, or storing it (1.509) ──
     if (step?.stage === "store") {
       const option = step.option;
       return (
@@ -668,7 +668,7 @@ export function RulesetCombatMenu({
       );
     }
 
-    // ── Which of a spell's variants (1.753): Magic Circle against fiends, or against undead ──
+    // ── Which of a spell's variants (1.754): Magic Circle against fiends, or against undead ──
     if (step?.stage === "variant") {
       const ways = rulesetMenuVariants(view.options, step.option);
       return (
@@ -705,10 +705,10 @@ export function RulesetCombatMenu({
       );
     }
 
-    // ── The kinds its zone strikes (1.737) ──
+    // ── The kinds its zone strikes (1.738) ──
     if (step?.stage === "kinds" && step.option.kindsOf?.length) {
       const option = step.option;
-      // Exactly one where it wards off one thing (1.742): Wish's.
+      // Exactly one where it wards off one thing (1.743): Wish's.
       const toggle = (id: string) =>
         setKindsPicked(
           kindsPicked.includes(id)
@@ -1140,7 +1140,7 @@ export function RulesetCombatMenu({
                       count: Number(pool.slice(RULESET_CHARGE_STEP_PREFIX.length)),
                     })
                   : rulesetItemSlotPayment(pool)
-                    ? // Out of a worn item's charges, a charge a level (1.556).
+                    ? // Out of a worn item's charges, a charge a level (1.557).
                       t("game.combat.ruleset.upcast.itemSlot", {
                         pool:
                           option.payLabels?.[rulesetItemSlotPayment(pool)!.pool] ??
@@ -1184,7 +1184,7 @@ export function RulesetCombatMenu({
         if (!laid) return;
         if (picksFirst({ ...step, targets: [], cell: laid })) return;
         closeStep();
-        // Whom a layered wall spares (1.476), ticked below.
+        // Whom a layered wall spares (1.477), ticked below.
         const designates = option.designates && step.targets.length ? { designates: step.targets } : {};
         onChoose(
           option.id,
@@ -1197,7 +1197,7 @@ export function RulesetCombatMenu({
           step.alters,
         );
       };
-      // Who may go along on a teleport (1.276), or whom a layered wall spares (1.476), ticked here
+      // Who may go along on a teleport (1.276), or whom a layered wall spares (1.477), ticked here
       // while the board takes the cell.
       const carries = step.stage === "aim" ? (option.teleport?.carries ?? option.designates) : undefined;
       const prompt =
@@ -1333,7 +1333,7 @@ export function RulesetCombatMenu({
       );
     }
 
-    // ── Where its target is moved to (1.549): the board takes the cell, lifted as picked here ──
+    // ── Where its target is moved to (1.550): the board takes the cell, lifted as picked here ──
     if (step?.stage === "carry") {
       const option = step.option;
       const levels = option.movesTarget?.levels ?? 0;
@@ -1492,7 +1492,7 @@ export function RulesetCombatMenu({
                 </button>
               );
             })}
-            {/* What to end on a target, picked (1.411): Cleansing Touch's one spell. */}
+            {/* What to end on a target, picked (1.412): Cleansing Touch's one spell. */}
             {!many &&
               targets.flatMap((combatant) =>
                 (option.endsChoices?.[combatant.id] ?? []).map((choice) => (
@@ -1524,7 +1524,7 @@ export function RulesetCombatMenu({
                   </button>
                 )),
               )}
-            {/* A lasting area to end instead (1.411): Dispel Magic on a wall. */}
+            {/* A lasting area to end instead (1.412): Dispel Magic on a wall. */}
             {(option.dispels ?? []).map((zone, index) => (
               <button
                 ref={index === 0 && targets.length === 0 ? first : undefined}
@@ -1551,7 +1551,7 @@ export function RulesetCombatMenu({
                 </span>
               </button>
             ))}
-            {/* A condition to cut away instead (1.515): a net. */}
+            {/* A condition to cut away instead (1.516): a net. */}
             {(option.cuts ?? []).map((cut) => (
               <button
                 key={`${cut.holderId}:${cut.condition}`}
@@ -1667,7 +1667,7 @@ export function RulesetCombatMenu({
             : rulesetDistanceText(option.range.normal, distance, t)
           : "";
       const open = openId === option.id;
-      // A spell's variants sit under one row (1.753); one of them that can be aimed opens the pick.
+      // A spell's variants sit under one row (1.754); one of them that can be aimed opens the pick.
       const ways = rulesetMenuVariants(view.options, option);
       const unaimable = ways.every((way) => rulesetOptionUnaimable(way));
       return (
@@ -1748,7 +1748,7 @@ export function RulesetCombatMenu({
                         : t("game.combat.ruleset.menu.counterNever")}
                   </span>
                 )}
-                {/* Breaks a command at a cost (1.628): a Geas. */}
+                {/* Breaks a command at a cost (1.629): a Geas. */}
                 {option.defies && (
                   <span className="block text-[0.65rem] text-rose-600 dark:text-rose-300/80">
                     {t(
@@ -2058,7 +2058,7 @@ export function RulesetCombatMenu({
                             : t("game.combat.ruleset.menu.counterNever")}
                       </span>
                     )}
-                    {/* Breaks a command at a cost (1.628): a Geas. */}
+                    {/* Breaks a command at a cost (1.629): a Geas. */}
                     {option.defies && (
                       <span className="block text-[0.65rem] text-rose-600 dark:text-rose-300/80">
                         {t(

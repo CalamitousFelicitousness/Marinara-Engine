@@ -1,10 +1,10 @@
 /**
- * A condition that lifts its holder (Capability API 1.550): 5e's Reverse Gravity.
+ * A condition that lifts its holder (Capability API 1.551): 5e's Reverse Gravity.
  *
  *   - `lifts`: whoever holds it is up that far above the ground under them, in levels, and hovers
  *     there; a lasting area's `inside.conditions` puts it on everyone it catches.
  *   - When it comes off, they come down.
- *   - Its inside save thrown as it is cast (1.563): one who makes it is never lifted.
+ *   - Its inside save thrown as it is cast (1.564): one who makes it is never lifted.
  *   - The install gate.
  */
 import assert from "node:assert/strict";
@@ -35,7 +35,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 563);
+  assert.ok(supportedCapabilityApi.minor >= 564);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -149,7 +149,7 @@ try {
   assert.deepEqual(of(ended.events, "refused"), []);
   assert.equal(rulesetCombatant(ended.state, "ogre")!.altitude, undefined);
 
-  // ── Thrown as it is cast (1.563): the ogre that grabs something fixed stays down ──
+  // ── Thrown as it is cast (1.564): the ogre that grabs something fixed stays down ──
   {
     const saving = parsed(document(true));
     const spells = saving.catalogs!.find((catalog) => catalog.id === "spells")!.entries! as RulesetCatalogEntry[];
@@ -225,7 +225,7 @@ try {
   // ── The install gate ──
   {
     const onCastGate =
-      "A ruleset with a zone whose inside save is thrown as it is cast (inside.save.onCast) requires schemaVersion 2 and capabilityApi 1.563 or newer";
+      "A ruleset with a zone whose inside save is thrown as it is cast (inside.save.onCast) requires schemaVersion 2 and capabilityApi 1.564 or newer";
     const gateManifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -239,13 +239,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(gateManifest(562) as never, document(true)), onCastGate);
-    assert.notEqual(getCapabilityPackageInstallIssue(gateManifest(563) as never, document(true)), onCastGate);
-    assert.notEqual(getCapabilityPackageInstallIssue(gateManifest(562) as never, document()), onCastGate);
+    assert.equal(getCapabilityPackageInstallIssue(gateManifest(563) as never, document(true)), onCastGate);
+    assert.notEqual(getCapabilityPackageInstallIssue(gateManifest(564) as never, document(true)), onCastGate);
+    assert.notEqual(getCapabilityPackageInstallIssue(gateManifest(563) as never, document()), onCastGate);
   }
   {
     const gate =
-      "A ruleset with a condition that lifts its holder into the air (lifts) requires schemaVersion 2 and capabilityApi 1.550 or newer";
+      "A ruleset with a condition that lifts its holder into the air (lifts) requires schemaVersion 2 and capabilityApi 1.551 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -259,13 +259,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(549) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(550) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(549) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(550) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(551) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(550) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Reverse Gravity: everyone inside the area falls 100 feet upward and hangs there, and comes down when it goes; gated at 1.550. Its save thrown as it is cast keeps one who makes it down (1.563).",
+    "Reverse Gravity: everyone inside the area falls 100 feet upward and hangs there, and comes down when it goes; gated at 1.551. Its save thrown as it is cast keeps one who makes it down (1.564).",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

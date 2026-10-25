@@ -1,5 +1,5 @@
 /**
- * A derived value read from the words of a text field (Capability API 1.674): 5e's alignment,
+ * A derived value read from the words of a text field (Capability API 1.675): 5e's alignment,
  * written freely, as a number a creature's rules can read.
  *
  *   - "Lawful Good" reads `good`; "chaotic evil" reads `evil`; a field naming none reads `default`.
@@ -27,7 +27,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 674);
+  assert.ok(supportedCapabilityApi.minor >= 675);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -75,7 +75,7 @@ try {
 
   {
     const gate =
-      "A ruleset with a derived value read from the words of a text field (derived op wordsTable) requires schemaVersion 2 and capabilityApi 1.674 or newer";
+      "A ruleset with a derived value read from the words of a text field (derived op wordsTable) requires schemaVersion 2 and capabilityApi 1.675 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -89,11 +89,11 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(673) as never, withTable("alignment", table)), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(674) as never, withTable("alignment", table)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(674) as never, withTable("alignment", table)), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(675) as never, withTable("alignment", table)), gate);
   }
 
-  console.log("Words table: alignment read as whole words, first match wins, default otherwise; gated at 1.674.");
+  console.log("Words table: alignment read as whole words, first match wins, default otherwise; gated at 1.675.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

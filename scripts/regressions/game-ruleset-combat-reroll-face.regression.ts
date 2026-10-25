@@ -1,5 +1,5 @@
 /**
- * A face rolled again (Capability API 1.392): a halfling's Lucky.
+ * A face rolled again (Capability API 1.393): a halfling's Lucky.
  *
  *   - A natural 1 on an attack, a save or a contest check is rolled again once, the new face kept.
  *   - `rolls` narrows it; without the condition nothing is rolled again.
@@ -33,7 +33,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 392);
+  assert.ok(supportedCapabilityApi.minor >= 393);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -210,7 +210,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset that rolls a face again (a condition's or a level's rerollsFace) requires schemaVersion 2 and capabilityApi 1.392 or newer";
+      "A ruleset that rolls a face again (a condition's or a level's rerollsFace) requires schemaVersion 2 and capabilityApi 1.393 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -224,13 +224,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(391) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(392) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(391) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(392) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(393) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(392) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Reroll a face: Lucky's natural 1 rolled again once on an attack, a save and a contest check, narrowed by rolls, on a condition or a derived level; gated at 1.392.",
+    "Reroll a face: Lucky's natural 1 rolled again once on an attack, a save and a contest check, narrowed by rolls, on a condition or a derived level; gated at 1.393.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

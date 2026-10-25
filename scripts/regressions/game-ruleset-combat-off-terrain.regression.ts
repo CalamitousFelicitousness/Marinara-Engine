@@ -1,5 +1,5 @@
 /**
- * Conditions held off on some terrains (Capability API 1.462).
+ * Conditions held off on some terrains (Capability API 1.463).
  *
  *   - The aboleth's curse: no healing comes back on dry ground, and it does in water, or anywhere
  *     on a board whose environment is water; the curse is held off, not ended.
@@ -33,7 +33,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 462);
+  assert.ok(supportedCapabilityApi.minor >= 463);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -143,7 +143,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose conditions are held off on some terrains (whileOffTerrain) requires schemaVersion 2 and capabilityApi 1.462 or newer";
+      "A ruleset whose conditions are held off on some terrains (whileOffTerrain) requires schemaVersion 2 and capabilityApi 1.463 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -157,11 +157,11 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(461) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(462) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(462) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(463) as never, fiveE()), gate);
   }
 
-  console.log("Off terrain: an aboleth's curse keeps healing off on dry ground, not in water; gated at 1.462.");
+  console.log("Off terrain: an aboleth's curse keeps healing off on dry ground, not in water; gated at 1.463.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

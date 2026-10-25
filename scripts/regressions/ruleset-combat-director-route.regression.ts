@@ -158,7 +158,7 @@ await createGameRulesetsStorage(db).put({
   sourceKind: "local",
   definition: fixtureText,
 });
-// The same ruleset giving the Game Master the whole opposition (1.758).
+// The same ruleset giving the Game Master the whole opposition (1.759).
 const OPPOSITION_ID = "local/5e-gm-opposition";
 const opposed = JSON.parse(fixtureText) as Record<string, any>;
 opposed.id = "5e-gm-opposition";
@@ -805,7 +805,7 @@ try {
   }
 
   // ── A named opponent (combat AI P9): the Game Master plays it too, when the game asks for that; and
-  //    every opponent, named or not, where the ruleset gives it the opposition (1.758) ──
+  //    every opponent, named or not, where the ruleset gives it the opposition (1.759) ──
   for (const [named, rulesetId] of [
     [true, undefined],
     [false, undefined],

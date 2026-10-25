@@ -72,7 +72,7 @@ try {
   const cleric = creature("cleric", {
     riders: [{ id: "divine", name: "Divine Strike", on: "hit", oncePer: "own-turn", amount: { flat: 6 } }],
   });
-  // Blood Frenzy on melee attacks only (1.386): its thrown spear never has it.
+  // Blood Frenzy on melee attacks only (1.387): its thrown spear never has it.
   const sahuagin = creature("sahuagin", {
     attackModes: [{ mode: "advantage", targetHurt: true, melee: true }],
     actions: [
@@ -198,7 +198,7 @@ try {
     assert.equal(mode(state, "shark", "hero"), "advantage", "one point down is enough");
   }
 
-  // ── Blood Frenzy on melee attacks only (1.386) ──
+  // ── Blood Frenzy on melee attacks only (1.387) ──
   {
     const state = fight("sahuagin");
     who(state, "hero").health!.value = 29;
@@ -342,15 +342,15 @@ try {
       assert.notEqual(getCapabilityPackageInstallIssue(manifest(380) as never, doc), gate, beast.id);
     }
     assert.notEqual(getCapabilityPackageInstallIssue(manifest(379) as never, JSON.parse(fiveEText)), gate);
-    // Melee alone is 1.386's.
+    // Melee alone is 1.387's.
     const melee = JSON.parse(fiveEText) as Record<string, any>;
     melee.catalogs
       .find((catalog: { id: string }) => catalog.id === "creatures")
       .entries.push(structuredClone(sahuagin));
     const meleeGate =
-      "A ruleset with calls read from a catalog or scaled by cost, or an attack mode on melee attacks, requires schemaVersion 2 and capabilityApi 1.386 or newer";
-    assert.equal(getCapabilityPackageInstallIssue(manifest(385) as never, melee), meleeGate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(386) as never, melee), meleeGate);
+      "A ruleset with calls read from a catalog or scaled by cost, or an attack mode on melee attacks, requires schemaVersion 2 and capabilityApi 1.387 or newer";
+    assert.equal(getCapabilityPackageInstallIssue(manifest(386) as never, melee), meleeGate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(387) as never, melee), meleeGate);
   }
 
   console.log(

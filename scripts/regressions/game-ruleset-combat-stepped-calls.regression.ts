@@ -1,12 +1,12 @@
 /**
- * Calls that grow with the slot they are paid with (Capability API 1.521).
+ * Calls that grow with the slot they are paid with (Capability API 1.522).
  *
  *   - `calls.perStep`: Animate Dead's two more undead for each slot level above 3rd.
  *   - `options[].fromStep` and their own `perStep`: Create Undead's ghasts only from a higher slot,
  *     refused below it; its ghouls one more a level.
  *   - `upTo.perStep`: Conjure Elemental's challenge rating rising by one a level, a creature above
  *     its base offered and called only when paid high enough.
- *   - `calls.hostileOnBreak` (1.522): Conjure Elemental's elemental, its concentration broken, stays
+ *   - `calls.hostileOnBreak` (1.523): Conjure Elemental's elemental, its concentration broken, stays
  *     and turns on its caller's side, no longer theirs to dismiss; its rounds still run.
  *   - The install gates.
  */
@@ -39,7 +39,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 522);
+  assert.ok(supportedCapabilityApi.minor >= 523);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -228,7 +228,7 @@ try {
     assert.deepEqual(who(high.taken.state, high.called[0]!).creature, { catalogId: "creatures", entryId: "dire-wolf" });
   }
 
-  // ── Conjure Elemental's concentration broken: the elemental turns on the druid (1.522) ──
+  // ── Conjure Elemental's concentration broken: the elemental turns on the druid (1.523) ──
   {
     const hostile = parsed(
       document([conjure({ creature: "creatures/dire-wolf", count: { flat: 1 }, rounds: 600, hostileOnBreak: true })]),
@@ -269,7 +269,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a call that grows with each step of higher cost (calls perStep, fromStep, upTo perStep) requires schemaVersion 2 and capabilityApi 1.521 or newer";
+      "A ruleset with a call that grows with each step of higher cost (calls perStep, fromStep, upTo perStep) requires schemaVersion 2 and capabilityApi 1.522 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -284,8 +284,8 @@ try {
       restartRequired: false,
     });
     const doc = document([conjure({ creature: "creatures/dire-wolf", count: { flat: 1 }, perStep: 2 })]);
-    assert.equal(getCapabilityPackageInstallIssue(manifest(520) as never, doc), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(521) as never, doc), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(521) as never, doc), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(522) as never, doc), gate);
     const options = document([
       conjure({
         options: [
@@ -294,14 +294,14 @@ try {
         ],
       }),
     ]);
-    assert.equal(getCapabilityPackageInstallIssue(manifest(520) as never, options), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(521) as never, options), gate);
     const plain = document([conjure({ creature: "creatures/dire-wolf", count: { flat: 1 } })]);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(520) as never, plain), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(521) as never, plain), gate);
   }
 
   {
     const gate =
-      "A ruleset with called creatures that turn on their caller when its concentration breaks (calls hostileOnBreak) requires schemaVersion 2 and capabilityApi 1.522 or newer";
+      "A ruleset with called creatures that turn on their caller when its concentration breaks (calls hostileOnBreak) requires schemaVersion 2 and capabilityApi 1.523 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -316,12 +316,12 @@ try {
       restartRequired: false,
     });
     const doc = document([conjure({ creature: "creatures/dire-wolf", count: { flat: 1 }, hostileOnBreak: true })]);
-    assert.equal(getCapabilityPackageInstallIssue(manifest(521) as never, doc), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(522) as never, doc), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(522) as never, doc), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(523) as never, doc), gate);
   }
 
   console.log(
-    "Ruleset stepped calls: Animate Dead's two more a level, Create Undead's options from a higher slot and one more a level, Conjure Elemental's challenge rating rising with the slot (1.521), and its elemental turning on its caller as concentration breaks (1.522); gated.",
+    "Ruleset stepped calls: Animate Dead's two more a level, Create Undead's options from a higher slot and one more a level, Conjure Elemental's challenge rating rising with the slot (1.522), and its elemental turning on its caller as concentration breaks (1.523); gated.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

@@ -1,5 +1,5 @@
 /**
- * Creature actions used once on each creature (Capability API 1.658).
+ * Creature actions used once on each creature (Capability API 1.659).
  *
  *   - `whenSaved`: a creature that made its save is never picked again in the fight, and with
  *     `until` its sheet remembers it until that rest.
@@ -35,7 +35,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 658);
+  assert.ok(supportedCapabilityApi.minor >= 659);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -171,7 +171,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a creature's action used once on each creature (oncePerTarget on a creature) requires schemaVersion 2 and capabilityApi 1.658 or newer";
+      "A ruleset with a creature's action used once on each creature (oncePerTarget on a creature) requires schemaVersion 2 and capabilityApi 1.659 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -189,13 +189,13 @@ try {
     withPresence.catalogs
       .find((one: { holds?: string }) => one.holds === "creatures")
       .entries[0].creature.actions.push(presence({ whenSaved: true }));
-    assert.equal(getCapabilityPackageInstallIssue(manifest(657) as never, withPresence), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(658) as never, withPresence), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(657) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(658) as never, withPresence), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(659) as never, withPresence), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(658) as never, document()), gate);
   }
 
   console.log(
-    "Creature oncePerTarget: spared once saved, once its condition ends, or once used; shared sources; remembered until a rest on a sheet; gated at 1.658.",
+    "Creature oncePerTarget: spared once saved, once its condition ends, or once used; shared sources; remembered until a rest on a sheet; gated at 1.659.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

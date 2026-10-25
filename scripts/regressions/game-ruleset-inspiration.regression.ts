@@ -1,5 +1,5 @@
 /**
- * A text that follows the sheet, and a pool refilled at initiative (Capability API 1.395).
+ * A text that follows the sheet, and a pool refilled at initiative (Capability API 1.396).
  *
  *   - Font of Inspiration: the Bardic Inspiration counter recharges on a long rest until level 5, then
  *     a short one, written by the scaled-row recompute and locked in the editor.
@@ -33,7 +33,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 395);
+  assert.ok(supportedCapabilityApi.minor >= 396);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -196,7 +196,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose row sets a text by steps (scaled texts) or refills a pool at initiative (mechanics.refillsAtInitiative) requires schemaVersion 2 and capabilityApi 1.395 or newer";
+      "A ruleset whose row sets a text by steps (scaled texts) or refills a pool at initiative (mechanics.refillsAtInitiative) requires schemaVersion 2 and capabilityApi 1.396 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -210,13 +210,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(394) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(395) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(394) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(395) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(396) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(395) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Inspiration: a counter's recharge follows the level by steps of text; an empty pool gets one back as initiative is rolled; gated at 1.395.",
+    "Inspiration: a counter's recharge follows the level by steps of text; an empty pool gets one back as initiative is rolled; gated at 1.396.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

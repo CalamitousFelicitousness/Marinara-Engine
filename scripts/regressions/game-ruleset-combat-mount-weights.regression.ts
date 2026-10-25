@@ -1,12 +1,12 @@
 /**
- * Mounts that carry riders by weight (Capability API 1.625): 5e's Carpet of Flying, "can carry up to
+ * Mounts that carry riders by weight (Capability API 1.626): 5e's Carpet of Flying, "can carry up to
  * 200 pounds at that speed ... twice that weight, but it flies at half speed".
  *
  *   - Called out by its item's use, it is mounted by its caller though it is no bigger than they are.
  *   - It bears riders while their weight is within what it carries, at half speed past its full-speed
  *     weight; one more than that is not offered.
  *   - Its riders go where it flies; its rider getting down hands it to the next.
- *   - A Broom of Flying keeps 30 feet past its full load, not half (Capability API 1.644).
+ *   - A Broom of Flying keeps 30 feet past its full load, not half (Capability API 1.645).
  *   - Refusals and the install gate.
  */
 import assert from "node:assert/strict";
@@ -42,7 +42,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 625);
+  assert.ok(supportedCapabilityApi.minor >= 626);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -249,7 +249,7 @@ try {
   assert.equal(who(state, "carpet").passengers, undefined);
   assert.equal(cells(state, "carpet"), 16, "180 pounds again");
 
-  // ── A broom keeps its own speed past its full load (1.644) ──
+  // ── A broom keeps its own speed past its full load (1.645) ──
   {
     const broom = { weight: 200, slowedUpTo: 400, slowedSpeed: 30 };
     const rules = parsed(document(undefined, broom));
@@ -260,7 +260,7 @@ try {
     assert.equal(cells(flown, "carpet", rules), 6, "past it: 30 feet, not half of 80");
     refused(document(undefined, { weight: 200, slowedSpeed: 30 }), /slowedSpeed/);
     const gate =
-      "A ruleset with a mount's own speed past its full-pace load (mountCarries.slowedSpeed) requires schemaVersion 2 and capabilityApi 1.644 or newer";
+      "A ruleset with a mount's own speed past its full-pace load (mountCarries.slowedSpeed) requires schemaVersion 2 and capabilityApi 1.645 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -274,8 +274,8 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(643) as never, document(undefined, broom)), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(644) as never, document(undefined, broom)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(644) as never, document(undefined, broom)), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(645) as never, document(undefined, broom)), gate);
   }
 
   // ── Refusals ──
@@ -286,7 +286,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a mount that carries riders by weight (mountCarries, mounts.weights) requires schemaVersion 2 and capabilityApi 1.625 or newer";
+      "A ruleset with a mount that carries riders by weight (mountCarries, mounts.weights) requires schemaVersion 2 and capabilityApi 1.626 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -300,12 +300,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(624) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(625) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(625) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(626) as never, document()), gate);
   }
 
   console.log(
-    "Carpet of Flying: called by its item, it carries riders by weight, at half speed past its full load; gated at 1.625.",
+    "Carpet of Flying: called by its item, it carries riders by weight, at half speed past its full load; gated at 1.626.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

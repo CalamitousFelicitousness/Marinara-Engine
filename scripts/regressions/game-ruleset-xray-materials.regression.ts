@@ -1,5 +1,5 @@
 /**
- * Sight through so much of each material (Capability API 1.743): 5e's Ring of X-ray Vision, "1 foot
+ * Sight through so much of each material (Capability API 1.744): 5e's Ring of X-ray Vision, "1 foot
  * of stone, 1 inch of common metal, or up to 3 feet of wood or dirt. Thicker substances block the
  * vision, as does a thin sheet of lead".
  *
@@ -36,7 +36,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 743);
+  assert.ok(supportedCapabilityApi.minor >= 744);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -180,7 +180,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with sight through so much of each material (a sense's throughWalls naming materials, a wall's material, or combat.sight.boardWalls) requires schemaVersion 2 and capabilityApi 1.743 or newer";
+      "A ruleset with sight through so much of each material (a sense's throughWalls naming materials, a wall's material, or combat.sight.boardWalls) requires schemaVersion 2 and capabilityApi 1.744 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -194,20 +194,20 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(742) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(743) as never, fiveE()), gate);
     assert.equal(
       getCapabilityPackageInstallIssue(
-        manifest(742) as never,
+        manifest(743) as never,
         fiveE({ sense: true, material: { of: "stone", inches: 6 } }),
       ),
       gate,
     );
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(743) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(742) as never, fiveE({ sense: true })), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(744) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(743) as never, fiveE({ sense: true })), gate);
   }
 
   console.log(
-    "X-ray materials: sees through a foot of stone, an inch of metal, 3 feet of wood, never lead, the board's walls as the ruleset says and a cast wall as its own; gated at 1.743.",
+    "X-ray materials: sees through a foot of stone, an inch of metal, 3 feet of wood, never lead, the board's walls as the ruleset says and a cast wall as its own; gated at 1.744.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

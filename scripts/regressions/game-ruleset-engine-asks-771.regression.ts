@@ -1,5 +1,5 @@
 /**
- * Ruleset's asks of 2026-10-23 (Capability API 1.771):
+ * Ruleset's asks of 2026-10-23 (Capability API 1.772):
  *
  *   - `fellsKill`: whoever its damage drops to 0 dies outright, never dying (Disintegrate).
  *   - A creature action's `whileFlying`: offered only up in the air, and made in a sequence only then
@@ -35,7 +35,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 771);
+  assert.ok(supportedCapabilityApi.minor >= 772);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -275,18 +275,18 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with fellsKill, a creature action's whileFlying or castsOne, or a rescue's against requires schemaVersion 2 and capabilityApi 1.771 or newer";
+      "A ruleset with fellsKill, a creature action's whileFlying or castsOne, or a rescue's against requires schemaVersion 2 and capabilityApi 1.772 or newer";
     const flying = fiveE();
     flying.catalogs.find(
       (one: { holds?: string }) => one.holds === "creatures",
     ).entries[0].creature.actions[0].whileFlying = true;
-    assert.equal(getCapabilityPackageInstallIssue(manifest(770) as never, flying), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(771) as never, flying), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(770) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(771) as never, flying), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(772) as never, flying), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(771) as never, fiveE()), gate);
   }
 
   console.log(
-    "Engine asks 1.771: dust at 0, claws only in the air, a spell after the pincers, a scarab against the undead only; refused where unsaid; gated at 1.771.",
+    "Engine asks 1.772: dust at 0, claws only in the air, a spell after the pincers, a scarab against the undead only; refused where unsaid; gated at 1.772.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

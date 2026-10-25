@@ -1,12 +1,12 @@
 /**
- * Items that keep conditions on and lengthen jumps (Capability API 1.497), and conditions damage
- * stops until their holder's next turn (1.498).
+ * Items that keep conditions on and lengthen jumps (Capability API 1.498), and conditions damage
+ * stops until their holder's next turn (1.499).
  *
  *   - Boots of Striding and Springing: worn, a jump three times as far; carried, nothing.
  *   - Ioun Stone of Awareness: worn, a condition on its holder that is never written to the sheet,
  *     and gone once it is taken off.
  *   - Cloak of Displacement: attacks at its wearer lean against the attacker until a blow lands, and
- *     again from the wearer's next turn (1.498).
+ *     again from the wearer's next turn (1.499).
  *   - Refusals and the install gate.
  */
 import assert from "node:assert/strict";
@@ -37,7 +37,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 497);
+  assert.ok(supportedCapabilityApi.minor >= 498);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -154,7 +154,7 @@ try {
     assert.equal(alert(), false, "taken off, it goes");
   }
 
-  // ── Cloak of Displacement: a blow that lands stops it until the wearer's next turn (1.498) ──
+  // ── Cloak of Displacement: a blow that lands stops it until the wearer's next turn (1.499) ──
   {
     const state = fight();
     hero(state).sheet!.items = [item("Cloak of Displacement", true, { keepsOn: ["displaced"] })];
@@ -207,7 +207,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose items keep conditions on their holder or lengthen their jumps (an item effect's keepsOn or jumps) requires schemaVersion 2 and capabilityApi 1.497 or newer";
+      "A ruleset whose items keep conditions on their holder or lengthen their jumps (an item effect's keepsOn or jumps) requires schemaVersion 2 and capabilityApi 1.498 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -228,25 +228,25 @@ try {
       return doc;
     };
     for (const worn of [boots, stone]) {
-      assert.equal(getCapabilityPackageInstallIssue(manifest(496) as never, older(worn)), gate);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(497) as never, older(worn)), gate);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(497) as never, older(worn)), gate);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(498) as never, older(worn)), gate);
     }
     assert.notEqual(
-      getCapabilityPackageInstallIssue(manifest(496) as never, older({ fallsSafely: true })),
+      getCapabilityPackageInstallIssue(manifest(497) as never, older({ fallsSafely: true })),
       gate,
       "other item effects are older",
     );
     const harmGate =
-      "A ruleset whose conditions stop working when their holder takes damage (suppressedWhenHarmed) requires schemaVersion 2 and capabilityApi 1.498 or newer";
+      "A ruleset whose conditions stop working when their holder takes damage (suppressedWhenHarmed) requires schemaVersion 2 and capabilityApi 1.499 or newer";
     const cloak = JSON.parse(fiveEText) as Record<string, any>;
     cloak.combat.conditions[0].suppressedWhenHarmed = "until-own-turn-start";
-    assert.equal(getCapabilityPackageInstallIssue(manifest(497) as never, cloak), harmGate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(498) as never, cloak), harmGate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(497) as never, JSON.parse(fiveEText)), harmGate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(498) as never, cloak), harmGate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(499) as never, cloak), harmGate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(498) as never, JSON.parse(fiveEText)), harmGate);
   }
 
   console.log(
-    "Worn keeps: Boots of Striding and Springing triple a jump while worn, an Ioun Stone keeps its condition on while worn and never on the sheet, a Cloak of Displacement stops on a blow until its wearer's next turn; gated at 1.497 and 1.498.",
+    "Worn keeps: Boots of Striding and Springing triple a jump while worn, an Ioun Stone keeps its condition on while worn and never on the sheet, a Cloak of Displacement stops on a blow until its wearer's next turn; gated at 1.498 and 1.499.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

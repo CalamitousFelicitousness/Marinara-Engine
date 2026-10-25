@@ -251,7 +251,7 @@ export function applyGameInventoryTags(
     bag: GameInventoryBagRef | undefined,
     note?: string,
     action: "add" | "earn" = "add",
-    /** Minutes of game time it lasts before it vanishes (1.744). */
+    /** Minutes of game time it lasts before it vanishes (1.745). */
     lasts?: number,
   ): string => {
     const vanishes = lasts ? { lasts } : {};

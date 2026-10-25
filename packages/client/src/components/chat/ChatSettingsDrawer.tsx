@@ -2172,7 +2172,7 @@ export function ChatSettingsDrawer({
   // positions.
   const rulesetHasPositions =
     rulesetResolvesFights && gameRuleset.status === "ok" && !!gameRuleset.definition.combat?.distance;
-  // The styles that ruleset lets the game play (1.775): a saved one it leaves out shows, and plays, as
+  // The styles that ruleset lets the game play (1.776): a saved one it leaves out shows, and plays, as
   // the first it lists.
   const rulesetDefinition = gameRuleset.status === "ok" ? gameRuleset.definition : null;
   const allowedCombatStyles = rulesetCombatStyles(rulesetDefinition);
@@ -3591,7 +3591,7 @@ export function ChatSettingsDrawer({
     if (!agent || (agent.builtIn && agent.category !== "writer" && agent.category !== "tracker")) return null;
     if (agentType === "hierarchical-maps") {
       const api = mapsPackage?.manifest.schemaVersion === 2 ? mapsPackage.manifest.capabilityApi : null;
-      if (!api || api.major < 1 || (api.major === 1 && api.minor < 778)) {
+      if (!api || api.major < 1 || (api.major === 1 && api.minor < 779)) {
         return (
           <p data-agent-lorebook-package-update={agentType} className="text-xs text-[var(--muted-foreground)]">
             {localizeUi("chat.agentLorebook.packageUpdateRequired")}

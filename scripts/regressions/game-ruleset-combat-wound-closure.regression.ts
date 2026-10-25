@@ -1,5 +1,5 @@
 /**
- * A Periapt of Wound Closure (Capability API 1.672).
+ * A Periapt of Wound Closure (Capability API 1.673).
  *
  *   - A condition's `stabilizesWhenDying`: its holder, dying as their turn starts, is stable in place
  *     of the dying roll, whatever the die would have said.
@@ -31,7 +31,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 672);
+  assert.ok(supportedCapabilityApi.minor >= 673);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -155,7 +155,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a condition that stabilizes its dying holder, or rest dice that heal more (stabilizesWhenDying, a rest's dice times) requires schemaVersion 2 and capabilityApi 1.672 or newer";
+      "A ruleset with a condition that stabilizes its dying holder, or rest dice that heal more (stabilizesWhenDying, a rest's dice times) requires schemaVersion 2 and capabilityApi 1.673 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -169,14 +169,14 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(671) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(672) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(672) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(673) as never, fiveE()), gate);
     const restOnly = fiveE((doc) => doc.combat.conditions.pop());
-    assert.equal(getCapabilityPackageInstallIssue(manifest(671) as never, restOnly), gate, "the rest's times alone");
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(671) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(672) as never, restOnly), gate, "the rest's times alone");
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(672) as never, JSON.parse(fiveEText)), gate);
   }
 
-  console.log("Wound closure: stable when dying in place of the roll, hit dice healing doubled; gated at 1.672.");
+  console.log("Wound closure: stable when dying in place of the roll, hit dice healing doubled; gated at 1.673.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

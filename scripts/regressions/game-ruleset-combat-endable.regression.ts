@@ -1,5 +1,5 @@
 /**
- * A condition its holder may take off at will (Capability API 1.606): 5e's Ring of Invisibility,
+ * A condition its holder may take off at will (Capability API 1.607): 5e's Ring of Invisibility,
  * "until you use a bonus action to become visible again".
  *
  *   - Held, its holder is offered "End" with its label on the bonus action; taken, it comes off.
@@ -32,7 +32,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 606);
+  assert.ok(supportedCapabilityApi.minor >= 607);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -128,7 +128,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a condition its holder may take off at will (endable) requires schemaVersion 2 and capabilityApi 1.606 or newer";
+      "A ruleset with a condition its holder may take off at will (endable) requires schemaVersion 2 and capabilityApi 1.607 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -142,12 +142,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(605) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(606) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(606) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(607) as never, document()), gate);
   }
 
   console.log(
-    "endable: the Ring of Invisibility ended on a bonus action while held, never offered unheld; refusal; gated at 1.606.",
+    "endable: the Ring of Invisibility ended on a bonus action while held, never offered unheld; refusal; gated at 1.607.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

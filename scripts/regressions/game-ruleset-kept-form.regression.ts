@@ -1,5 +1,5 @@
 /**
- * A shape kept on the sheet (1.790, laptop party B 2026-10-25: a druid's Wild Shape used in the story
+ * A shape kept on the sheet (1.791, laptop party B 2026-10-25: a druid's Wild Shape used in the story
  * only added a condition, and the fight began with them in their own shape).
  *
  *   - Wild Shape used outside a fight names its form (`as=`), checked against the forms it offers:

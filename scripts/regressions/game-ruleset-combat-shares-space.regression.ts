@@ -1,5 +1,5 @@
 /**
- * Sharing spaces (Capability API 1.664).
+ * Sharing spaces (Capability API 1.665).
  *
  *   - A condition's `sharesSpace`, kept on a swarm: it walks into anybody's space and stops there, and
  *     anybody walks into its space and stops there. Somebody without it is still kept out.
@@ -32,7 +32,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 664);
+  assert.ok(supportedCapabilityApi.minor >= 665);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -111,7 +111,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a condition whose holder shares spaces (sharesSpace) requires schemaVersion 2 and capabilityApi 1.664 or newer";
+      "A ruleset with a condition whose holder shares spaces (sharesSpace) requires schemaVersion 2 and capabilityApi 1.665 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -125,12 +125,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(663) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(664) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(663) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(664) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(665) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(664) as never, JSON.parse(fiveEText)), gate);
   }
 
-  console.log("sharesSpace: a swarm stops in anybody's space and anybody in its own; gated at 1.664.");
+  console.log("sharesSpace: a swarm stops in anybody's space and anybody in its own; gated at 1.665.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

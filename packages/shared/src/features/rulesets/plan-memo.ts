@@ -20,7 +20,7 @@ export function withRulesetPlanMemo<T>(plan: () => T): T {
 }
 
 /** Runs `plan` in a pass of its own, whatever pass is open, and goes back to that one after: for a
- *  read made as things would stand otherwise (1.628's defiance), which the open pass's answers would
+ *  read made as things would stand otherwise (1.629's defiance), which the open pass's answers would
  *  get wrong. */
 export function withOwnRulesetPlanMemo<T>(plan: () => T): T {
   const outer = pass;

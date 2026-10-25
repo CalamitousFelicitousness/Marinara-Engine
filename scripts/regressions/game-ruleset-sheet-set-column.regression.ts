@@ -1,9 +1,9 @@
 /**
- * A sheet migration's `setColumn` (Capability API 1.783): one column set on every list row whose
+ * A sheet migration's `setColumn` (Capability API 1.784): one column set on every list row whose
  * `where` columns each hold one of the values listed, as attack rows made before a weapon's finesse
  * was set. Text matches ignoring case and spaces at its ends, a number exactly. The one step that
  * overwrites. Import checks: the list and every column named are on the sheet. Installing one needs
- * 1.783.
+ * 1.784.
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -103,7 +103,7 @@ try {
     /1 and 8 columns/,
   );
 
-  // Installing one needs 1.783.
+  // Installing one needs 1.784.
   const issue = (minor: number) =>
     getCapabilityPackageInstallIssue(
       {
@@ -117,11 +117,11 @@ try {
       } as never,
       document(),
     );
-  assert.match(issue(782) ?? "", /setColumn.*1\.783/);
-  assert.doesNotMatch(issue(783) ?? "", /setColumn/);
+  assert.match(issue(783) ?? "", /setColumn.*1\.783/);
+  assert.doesNotMatch(issue(784) ?? "", /setColumn/);
 
   console.log(
-    "Sheet migrations set a column: on the rows they match, ignoring case, refused for a list or column the sheet lacks, gated at 1.783.",
+    "Sheet migrations set a column: on the rows they match, ignoring case, refused for a list or column the sheet lacks, gated at 1.784.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

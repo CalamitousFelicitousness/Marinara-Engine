@@ -1,5 +1,5 @@
 /**
- * Saved against on the caster's turn, and sent away by failing (Capability API 1.467).
+ * Saved against on the caster's turn, and sent away by failing (Capability API 1.468).
  *
  *   - Prismatic Spray's Violet ray: blinded, with a save made as the caster's next turn starts (not
  *     the holder's own); a success ends the blindness, a failure sends the creature away for good,
@@ -34,7 +34,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 467);
+  assert.ok(supportedCapabilityApi.minor >= 468);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -180,7 +180,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose saves are made as the turn of whoever put a condition on starts, or whose failed saves send the holder away (saveEnds source-turn-start, failures dismisses), requires schemaVersion 2 and capabilityApi 1.467 or newer";
+      "A ruleset whose saves are made as the turn of whoever put a condition on starts, or whose failed saves send the holder away (saveEnds source-turn-start, failures dismisses), requires schemaVersion 2 and capabilityApi 1.468 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -199,13 +199,13 @@ try {
       { save: "wis_save", at: "source-turn-start" },
       { save: "wis_save", at: "turn-end", failures: { count: 1, dismisses: true } },
     ]) {
-      assert.equal(getCapabilityPackageInstallIssue(manifest(466) as never, fiveE(ends)), gate);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(467) as never, fiveE(ends)), gate);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(467) as never, fiveE(ends)), gate);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(468) as never, fiveE(ends)), gate);
     }
   }
 
   console.log(
-    "Source saves: Violet's blindness saved against as the caster's turn starts, ended by a success, sent away for good by a failure; gated at 1.467.",
+    "Source saves: Violet's blindness saved against as the caster's turn starts, ended by a success, sent away for good by a failure; gated at 1.468.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

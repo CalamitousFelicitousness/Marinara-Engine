@@ -1,5 +1,5 @@
 /**
- * A condition saying what its holder understands (Capability API 1.632): 5e's Feeblemind and Tongues.
+ * A condition saying what its holder understands (Capability API 1.633): 5e's Feeblemind and Tongues.
  *
  *   - `languages: "all"` on the caster: a Suggestion reaches one who shares no language with them.
  *   - `languages: "none"` on a target keeps them out; on the caster, nobody is reached; it wins over
@@ -33,7 +33,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 632);
+  assert.ok(supportedCapabilityApi.minor >= 633);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -137,7 +137,7 @@ try {
   assert.deepEqual(reached({ orc: ["feebleminded"] }), ["beast"], "Feeblemind: the orc understands nothing");
   assert.deepEqual(reached({ bard: ["feebleminded"] }), [], "nobody understands the bard");
   assert.deepEqual(reached({ bard: ["feebleminded", "tongued"] }), [], "none wins over all");
-  // Comprehend Languages (1.718): the demon understands the bard; the bard understanding all helps
+  // Comprehend Languages (1.719): the demon understands the bard; the bard understanding all helps
   // nobody understand her.
   assert.deepEqual(reached({ demon: ["comprehending"] }), ["beast", "demon", "orc"], "the demon comprehends");
   assert.deepEqual(reached({ bard: ["comprehending"] }), ["beast", "orc"], "comprehending is not being understood");
@@ -146,7 +146,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a condition saying what its holder understands (languages none or all) requires schemaVersion 2 and capabilityApi 1.632 or newer";
+      "A ruleset with a condition saying what its holder understands (languages none or all) requires schemaVersion 2 and capabilityApi 1.633 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -161,15 +161,15 @@ try {
       restartRequired: false,
     });
     const older = () => document((doc) => (doc.combat.conditions.at(-1).languages = "all"));
-    assert.equal(getCapabilityPackageInstallIssue(manifest(631) as never, older()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(632) as never, older()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(632) as never, older()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(633) as never, older()), gate);
     const understands =
-      "A ruleset with a condition whose holder understands every language (languages understands) requires schemaVersion 2 and capabilityApi 1.718 or newer";
-    assert.equal(getCapabilityPackageInstallIssue(manifest(717) as never, document()), understands);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(718) as never, document()), understands);
+      "A ruleset with a condition whose holder understands every language (languages understands) requires schemaVersion 2 and capabilityApi 1.719 or newer";
+    assert.equal(getCapabilityPackageInstallIssue(manifest(718) as never, document()), understands);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(719) as never, document()), understands);
   }
 
-  console.log("Feeblemind and Tongues: a holder understanding nothing or everything; gated at 1.632.");
+  console.log("Feeblemind and Tongues: a holder understanding nothing or everything; gated at 1.633.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

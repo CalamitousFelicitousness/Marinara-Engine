@@ -1,5 +1,5 @@
 /**
- * A creature's action whose uses each do something else (Capability API 1.671).
+ * A creature's action whose uses each do something else (Capability API 1.672).
  *
  *   - `byUse`: an androsphinx's Roar, three a day, frightens first, deafens as well second, and
  *     thunders third; its parts are never on the menu themselves; a use past the end makes the last.
@@ -34,7 +34,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 671);
+  assert.ok(supportedCapabilityApi.minor >= 672);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -243,7 +243,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a creature's action whose uses each do something else (byUse) requires schemaVersion 2 and capabilityApi 1.671 or newer";
+      "A ruleset with a creature's action whose uses each do something else (byUse) requires schemaVersion 2 and capabilityApi 1.672 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -257,12 +257,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(670) as never, withSphinx(roars)), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(671) as never, withSphinx(roars)), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(670) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(671) as never, withSphinx(roars)), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(672) as never, withSphinx(roars)), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(671) as never, JSON.parse(fiveEText)), gate);
   }
 
-  console.log("Roars: each use of the Roar louder than the last, its parts off the menu; gated at 1.671.");
+  console.log("Roars: each use of the Roar louder than the last, its parts off the menu; gated at 1.672.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

@@ -672,7 +672,7 @@ export function formatCatalogMechanics(
     const save = labels.saves[mechanics.save.save] ?? mechanics.save.save;
     parts.push(t(SAVE_KEYS[mechanics.save.onSuccess], { save }));
   }
-  // A ray rolled for each target (1.452).
+  // A ray rolled for each target (1.453).
   if (mechanics.rays) {
     parts.push(
       t("game.ruleset.catalog.mechanics.rays", {
@@ -799,12 +799,12 @@ export function formatCatalogMechanics(
         t("game.ruleset.catalog.mechanics.zoneForbids", { components: mechanics.zone.forbids.components.join(", ") }),
       );
     }
-    // No teleporting into, out of or within it (1.451).
+    // No teleporting into, out of or within it (1.452).
     if (mechanics.zone.forbids?.teleport === true) parts.push(t("game.ruleset.catalog.mechanics.zoneForbidsTeleport"));
-    // Nobody into it at all (1.737): Forbiddance.
+    // Nobody into it at all (1.738): Forbiddance.
     else if (mechanics.zone.forbids?.teleport === "into")
       parts.push(t("game.ruleset.catalog.mechanics.zoneForbidsTeleportInto"));
-    // Or out of it only past a save (1.587).
+    // Or out of it only past a save (1.588).
     else if (mechanics.zone.forbids?.teleport)
       parts.push(
         t("game.ruleset.catalog.mechanics.zoneForbidsTeleportSave", {

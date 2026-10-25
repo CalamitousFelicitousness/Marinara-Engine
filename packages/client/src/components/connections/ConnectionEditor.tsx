@@ -1807,7 +1807,7 @@ export function ConnectionEditor() {
           </span>
         </label>
         {showsPlanUsageWindows && localShowUsageWidget && (
-          <div className="mt-2 ml-[1.625rem] flex flex-wrap gap-x-5 gap-y-1.5">
+          <div className="mt-2 ml-[1.626rem] flex flex-wrap gap-x-5 gap-y-1.5">
             <label className="flex cursor-pointer items-center gap-2 text-xs">
               <input
                 type="checkbox"

@@ -512,7 +512,7 @@ export interface CapabilityRuntimeHost {
   resolveEmbeddings(): Promise<CapabilityEmbeddingHost>;
   getAgentConfig(): Promise<{ connectionId: string | null; settings: Record<string, unknown> } | null>;
   /**
-   * Capability API 1.778. Resolve this package's per-chat reference lorebook through
+   * Capability API 1.779. Resolve this package's per-chat reference lorebook through
    * the Engine's normal triggers. Requires `agent-runtime` and `chat-read`.
    * Other agents' attachments and the main reply are unaffected.
    */

@@ -1468,46 +1468,46 @@ const capabilityPackageManifestBaseSchema = z
 //        field's `hideWhen` by a derived value, a condition's `pickable: false`, a track's `showWhenSet`,
 //        an item toggle's `onLabel` and `offLabel`, an item use's `title`, a derived value's `signed`,
 //        and creature traits to 1200.
-// 1.379-1.774: the 5e work (Ruleset Engine capabilities and combat AI), held until 5e lands; each
+// 1.379-1.775: the 5e work (Ruleset Engine capabilities and combat AI), held until 5e lands; each
 //        minor's keys are documented in docs/extending/writing-rulesets.md.
-// 1.775: which combat styles a ruleset's games may play (`combat.styles`): the New Game wizard and the
+// 1.776: which combat styles a ruleset's games may play (`combat.styles`): the New Game wizard and the
 //        game's settings offer only those, and a game saved on another plays the first one listed.
 //        Upstream's 1.379, numbered above the held 5e minors.
-// 1.776: what a ruleset's weights are counted in (`items.carry.unit`), said after every weight shown.
-// 1.777: a damage change only on a blow carrying given damage types (`onTypes`), and one that spends
+// 1.777: what a ruleset's weights are counted in (`items.carry.unit`), said after every weight shown.
+// 1.778: a damage change only on a blow carrying given damage types (`onTypes`), and one that spends
 //        its condition once it adds (`spentOnUse`).
-// 1.778: package-bound per-chat agent reference lorebook trigger resolution.
-// 1.779: independent browser audio players, shared manifest fetch and default music selection.
-// 1.780: fights for a symbol-pool ruleset (`combat.kind: "symbol-pool"`): attacks, saves, checks,
+// 1.779: package-bound per-chat agent reference lorebook trigger resolution.
+// 1.780: independent browser audio players, shared manifest fetch and default music selection.
+// 1.781: fights for a symbol-pool ruleset (`combat.kind: "symbol-pool"`): attacks, saves, checks,
 //        contests and initiative thrown in the ruleset's own symbol dice, a defense read as the
 //        difficulty dice, `combat.symbols` for the harm each net success adds, flat soak and the
 //        spends leftover symbols buy (harm, a critical, a condition, a track, boost or setback dice
 //        on the next roll), picked by the Engine and the AI for whichever side spends that symbol.
 //        A creature action's `upgrades` names its upgraded to-hit dice.
-// 1.781: fight health on a plain track that fills up to its maximum (`combat.health` or
+// 1.782: fight health on a plain track that fills up to its maximum (`combat.health` or
 //        `battle.health` naming a track with neither levels nor boxes): Genesys's Wounds, read as the
 //        room left above its value, damage adding points and a heal taking them off. Upstream's 1.383.
-// 1.782: an attack list's `abilityChoices`: a value of a row's ability column that stands for the
+// 1.783: an attack list's `abilityChoices`: a value of a row's ability column that stands for the
 //        best of several abilities, for its damage too (5e's Finesse, the better of STR and DEX).
-// 1.783: a sheet migration's `setColumn`: one column set on every list row its `where` columns match,
+// 1.784: a sheet migration's `setColumn`: one column set on every list row its `where` columns match,
 //        as attack rows made before a weapon's ability choice existed.
-// 1.784: a bestiary creature's `inventory`: what it has on it as a fight begins, each line an item of
+// 1.785: a bestiary creature's `inventory`: what it has on it as a fight begins, each line an item of
 //        the ruleset's or a loot table's picks, `chance` in a hundred and `count` of it. It uses what it
 //        can (a sheet-backed one as a party member does; a plain stat block what is used up in the using
 //        and reads nothing of its user), and what it has left drops when it is beaten. The Game Master
 //        may give an opponent its own instead (`carrying`).
-// 1.785: a text field's or list column's `suggestions`: words offered as chips to pick, the field still
+// 1.786: a text field's or list column's `suggestions`: words offered as chips to pick, the field still
 //        typed in freely (a ranger's favored enemies).
-// 1.786: a text field's or list column's `pick`: how many of its `suggestions` its holder picks, read
+// 1.787: a text field's or list column's `pick`: how many of its `suggestions` its holder picks, read
 //        off the sheet (a ranger's favored enemies by level), shown as "choose N".
-// 1.787: a `beforeFight` entry that calls a creature, used outside a fight, keeps it on its user's
+// 1.788: a `beforeFight` entry that calls a creature, used outside a fight, keeps it on its user's
 //        sheet, and it joins every fight they are in until it is dismissed or killed (Find Familiar).
-// 1.788: a guided-builder rows step's `countFrom`: how many of the player's own rows it wants, read off
+// 1.789: a guided-builder rows step's `countFrom`: how many of the player's own rows it wants, read off
 //        the sheet (5e's hit point rolls, one per level after 1st). The step starts with that many and
 //        waits on that many whole rows, as its `min` does.
-// 1.789: an attack list's `toHit.sheetBonus`: a number off the sheet added to hit on its rows, or on
+// 1.790: an attack list's `toHit.sheetBonus`: a number off the sheet added to hit on its rows, or on
 //        only the rows whose `when` column holds a value (5e's Archery on ranged weapons).
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 790 } as const);
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 791 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

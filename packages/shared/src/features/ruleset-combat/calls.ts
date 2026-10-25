@@ -18,7 +18,7 @@ import type { RulesetDefinition } from "../../schemas/ruleset.schema.js";
 /** The most a fight holds once anybody has been called into it. */
 export const RULESET_CALLED_FIGHT_MAX = 40;
 
-/** The most one call brings (1.387). */
+/** The most one call brings (1.388). */
 export const RULESET_CALL_MAX = 32;
 
 /**
@@ -33,13 +33,13 @@ export function rulesetCallCreatures(
   count: number,
   roll: RulesetCombatRoller,
   cells?: readonly RulesetCombatCell[],
-  /** Only on `cells` (1.605): none set down anywhere else, so those with no cell left do not come. */
+  /** Only on `cells` (1.606): none set down anywhere else, so those with no cell left do not come. */
   only = false,
 ): string[] {
   const calls = action.calls;
   if (!calls) return [];
   const room = Math.max(0, RULESET_CALLED_FIGHT_MAX - state.combatants.length);
-  // As many as Conjure Animals calls at 9th level (1.387): eight, four times over.
+  // As many as Conjure Animals calls at 9th level (1.388): eight, four times over.
   const coming = Math.min(Math.max(0, Math.floor(count)), room, RULESET_CALL_MAX);
   if (coming === 0) return [];
   const same = state.combatants.filter((one) => one.calledBy && one.name.startsWith(calls.name)).length;
@@ -88,10 +88,10 @@ export function rulesetCallCreatures(
     if (grid && !placements[combatant.id]) continue;
     combatant.side = caller.side;
     combatant.calledBy = caller.id;
-    // What called it (1.517), for a zone that sets aside what entries of its catalog call.
+    // What called it (1.518), for a zone that sets aside what entries of its catalog call.
     if (action.catalog) combatant.calledFrom = action.catalog;
     combatant.creature = { ...calls.creature };
-    // Called kin that cannot call kin of their own (1.430).
+    // Called kin that cannot call kin of their own (1.431).
     if (calls.cantCall) {
       combatant.actions = combatant.actions.filter(
         (one) =>
@@ -109,7 +109,7 @@ export function rulesetCallCreatures(
   // this round's turn has passed is next round's.
   const order = state.order;
   for (const combatant of came) {
-    // An object takes no turn (1.463).
+    // An object takes no turn (1.464).
     if (calls.turnless) {
       combatant.turnless = true;
       continue;

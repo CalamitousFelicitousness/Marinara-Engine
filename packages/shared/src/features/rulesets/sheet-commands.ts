@@ -39,7 +39,7 @@ import {
   rulesetPoolNowText,
 } from "./live-state.js";
 
-/** A priced material a cast used up (1.774): whose, and how many out of which of their stacks. */
+/** A priced material a cast used up (1.775): whose, and how many out of which of their stacks. */
 export interface RulesetMaterialTaken {
   who: string;
   stacks: Array<{ id: string; count: number }>;
@@ -101,7 +101,7 @@ export function applySheetCommandTags(
   builds: Record<string, RulesetSheetBuild>;
   /** Each rest a character took, by card name: what a rest does to the items they carry follows it. */
   rests: Array<{ who: string; rest: string }>;
-  /** The priced materials a cast used up (1.774), by card name and the stacks they came out of. */
+  /** The priced materials a cast used up (1.775), by card name and the stacks they came out of. */
   materials: RulesetMaterialTaken[];
 } {
   const builds: Record<string, RulesetSheetBuild> = {};
@@ -167,13 +167,13 @@ export function applySheetCommandTags(
   const useOn = (card: SheetCommandCard, key: string, op: Extract<RulesetSheetOp, { op: "use" }>) => {
     const plan = planRulesetUse(ctx.definition, card.build, live[key], ctx.catalogs ?? {}, op);
     if (!plan.ok) return { ok: false, reason: plan.reason } as const;
-    // The creature a call that stays calls (1.787), named before anything is paid for it.
+    // The creature a call that stays calls (1.788), named before anything is paid for it.
     const kept = rulesetUseKeptCall(ctx.definition, card.build, ctx.catalogs ?? {}, op);
     if (kept && !kept.ok) return kept;
-    // The shape one that changes its user's own keeps them in (1.790), named the same way.
+    // The shape one that changes its user's own keeps them in (1.791), named the same way.
     const shaped = rulesetUseKeptForm(ctx.definition, card.build, ctx.catalogs ?? {}, op, live[key], card.items);
     if (shaped && !shaped.ok) return shaped;
-    // A priced material (1.774) carried, and taken only once everything else is paid.
+    // A priced material (1.775) carried, and taken only once everything else is paid.
     const used = usedUp.get(key) ?? {};
     const material = plan.material ? rulesetMaterialFor(ctx.definition, plan.material, card.items, used) : undefined;
     if (material === null) return { ok: false, reason: `no-material: ${plan.material!.label}` } as const;
@@ -185,7 +185,7 @@ export function applySheetCommandTags(
       state = result.live;
       paid.push(`${step.label} ${result.now}`);
     }
-    // What it heals its user outside a fight (1.772): Second Wind's 1d10 plus the fighter's level.
+    // What it heals its user outside a fight (1.773): Second Wind's 1d10 plus the fighter's level.
     const healed = rulesetUseHealOutsideFight(
       ctx.definition,
       card.build,
@@ -210,14 +210,14 @@ export function applySheetCommandTags(
       materials.push({ who: card.name, stacks });
       paid.push(`${plan.material.label} used up`);
     }
-    // Kept on the sheet (1.787), in place of whatever it called before: it joins every fight its
+    // Kept on the sheet (1.788), in place of whatever it called before: it joins every fight its
     // user is in until it is dismissed or killed.
     if (kept) {
       const before = (state ?? live[key] ?? {}) as RulesetLiveState;
       state = { ...before, called: { ...before.called, [kept.entry]: kept.as } };
       paid.push(`${kept.as || plan.label} called, and stays`);
     }
-    // Kept on the sheet too (1.790), in place of any shape before it: they start every fight in it
+    // Kept on the sheet too (1.791), in place of any shape before it: they start every fight in it
     // until it ends, with the form's own health.
     if (shaped) {
       state = { ...((state ?? live[key] ?? {}) as RulesetLiveState), shaped: shaped.shaped };
@@ -251,7 +251,7 @@ export function applySheetCommandTags(
     return best ? { extra: best } : {};
   };
 
-  // A feature the rest offers as it ends (1.773), named on the tag: the rest stands whatever it does,
+  // A feature the rest offers as it ends (1.774), named on the tag: the rest stands whatever it does,
   // and its words say what the feature gave back or why it gave nothing.
   const restEnds = (
     card: SheetCommandCard,

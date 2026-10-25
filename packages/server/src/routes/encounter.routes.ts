@@ -417,7 +417,7 @@ export const encounterBlueprintSchema = z
           surprised: z.boolean().optional().catch(undefined),
           // Where the story put them (2026-10-24); a ruleset fight reads it.
           start: z.enum(COMBAT_START_PLACES).optional().catch(undefined),
-          // What it set up before the fight, standing as it begins (1.446); a ruleset fight reads it.
+          // What it set up before the fight, standing as it begins (1.447); a ruleset fight reads it.
           standing: z
             .array(
               z
@@ -461,7 +461,7 @@ export const encounterBlueprintSchema = z
           aiHints: combatAiHintsSchema.optional(),
           // Caught unaware as the fight begins (1.237); a ruleset fight reads it, and any other fight checks such an opponent's morale first.
           surprised: z.boolean().optional().catch(undefined),
-          // What it set up before the fight, standing as it begins (1.446); a ruleset fight reads it.
+          // What it set up before the fight, standing as it begins (1.447); a ruleset fight reads it.
           standing: z
             .array(
               z
@@ -486,7 +486,7 @@ export const encounterBlueprintSchema = z
           inLair: z.boolean().optional().catch(undefined),
           // Where the Game Master starts it (2026-10-24); a ruleset fight reads it.
           start: z.enum(COMBAT_START_PLACES).optional().catch(undefined),
-          // What it has on it (1.784), the ruleset's items by name; a ruleset fight reads it.
+          // What it has on it (1.785), the ruleset's items by name; a ruleset fight reads it.
           carrying: z.array(z.string().min(1).max(200)).max(16).optional().catch(undefined),
           spellSlots: z.record(z.string().regex(/^[1-9]$/), z.number().int().min(0).max(100)).optional(),
           boss: combatBossSchema.optional(),
@@ -1131,7 +1131,7 @@ export async function encounterRoutes(app: FastifyInstance) {
         chatMeta = (chat.metadata as Record<string, unknown> | null) ?? null;
       }
       const { personaName, personaCtx } = withStandIn(identity, chatMeta);
-      // The game's ruleset, read once: it may name the combat styles its games play (1.775), and a fight
+      // The game's ruleset, read once: it may name the combat styles its games play (1.776), and a fight
       // it resolves gets its brief below.
       const resolvedRuleset =
         chatMeta?.gameRuleset != null ? resolveGameRuleset(chatMeta, await loadRulesetRegistry()) : null;

@@ -1,5 +1,5 @@
 /**
- * Hallowed ground that frees whoever steps in (Capability API 1.443).
+ * Hallowed ground that frees whoever steps in (Capability API 1.444).
  *
  *   - A circle against fiends: the thug steps in and the imp's fear comes off it, while a charm the
  *     mage put on stays; stepping elsewhere, nothing comes off.
@@ -34,7 +34,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 443);
+  assert.ok(supportedCapabilityApi.minor >= 444);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -180,7 +180,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose zones free whoever steps in of what those they keep out put on them (keepsOut frees) requires schemaVersion 2 and capabilityApi 1.443 or newer";
+      "A ruleset whose zones free whoever steps in of what those they keep out put on them (keepsOut frees) requires schemaVersion 2 and capabilityApi 1.444 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -194,13 +194,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(442) as never, fiveE(hallow)), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(443) as never, fiveE(hallow)), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(442) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(443) as never, fiveE(hallow)), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(444) as never, fiveE(hallow)), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(443) as never, fiveE()), gate);
   }
 
   console.log(
-    "Keeps out frees: stepping into hallowed ground takes off what a kept-out fiend put on, and nothing else; gated at 1.443.",
+    "Keeps out frees: stepping into hallowed ground takes off what a kept-out fiend put on, and nothing else; gated at 1.444.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

@@ -1,6 +1,6 @@
 /**
  * Saves made as days pass that count successes and harm on a failure, and damage kept off healing
- * (Capability API 1.734).
+ * (Capability API 1.735).
  *
  *   - Pale tincture: "The poisoned creature must repeat the saving throw every 24 hours, taking 3
  *     (1d6) poison damage on a failed save. Until this poison ends, the damage the poison deals can't
@@ -38,7 +38,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 734);
+  assert.ok(supportedCapabilityApi.minor >= 735);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -239,7 +239,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      'A ruleset with a save made as days pass that counts successes or harms on a failure (saveEnds "at": "days" with successes or harmsOnFail), or a condition that keepsDamage, requires schemaVersion 2 and capabilityApi 1.734 or newer';
+      'A ruleset with a save made as days pass that counts successes or harms on a failure (saveEnds "at": "days" with successes or harmsOnFail), or a condition that keepsDamage, requires schemaVersion 2 and capabilityApi 1.735 or newer';
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -253,18 +253,18 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(733) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(734) as never, document()), gate);
     assert.equal(
-      getCapabilityPackageInstallIssue(manifest(733) as never, document({ save: "con_save", at: "days", days: 1 })),
+      getCapabilityPackageInstallIssue(manifest(734) as never, document({ save: "con_save", at: "days", days: 1 })),
       gate,
       "keepsDamage alone",
     );
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(734) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(733) as never, JSON.parse(fiveEText)), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(735) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(734) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Day save harms: Pale tincture's save is counted to seven across the days, deals 1d6 poison on each failure kept off healing and rests until it ends; a fight's harms kept off a sheet's and a block's healing; gated at 1.734.",
+    "Day save harms: Pale tincture's save is counted to seven across the days, deals 1d6 poison on each failure kept off healing and rests until it ends; a fight's harms kept off a sheet's and a block's healing; gated at 1.735.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

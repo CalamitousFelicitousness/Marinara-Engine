@@ -1,5 +1,5 @@
 /**
- * Ground a careful walker crosses safely, and ground that stops a walk (Capability API 1.673).
+ * Ground a careful walker crosses safely, and ground that stops a walk (Capability API 1.674).
  *
  *   - `terrain.spareSlowWalkers`: caltrops near, "Move carefully" is offered, every step into them
  *     costing double, and a careful walk across them is not caught; a plain walk is.
@@ -36,7 +36,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 673);
+  assert.ok(supportedCapabilityApi.minor >= 674);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -169,7 +169,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with ground a careful walker crosses safely, or that stops a walk (terrain spareSlowWalkers, endsWalk) requires schemaVersion 2 and capabilityApi 1.673 or newer";
+      "A ruleset with ground a careful walker crosses safely, or that stops a walk (terrain spareSlowWalkers, endsWalk) requires schemaVersion 2 and capabilityApi 1.674 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -185,18 +185,18 @@ try {
     });
     const spell = { entries: [{ mechanics: { zone: { terrain: { endsWalk: true } } } }] };
     assert.equal(
-      getCapabilityPackageInstallIssue(manifest(672) as never, JSON.parse(fiveEText), new Map([["c.json", spell]])),
-      gate,
-    );
-    assert.notEqual(
       getCapabilityPackageInstallIssue(manifest(673) as never, JSON.parse(fiveEText), new Map([["c.json", spell]])),
       gate,
     );
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(672) as never, JSON.parse(fiveEText)), gate);
+    assert.notEqual(
+      getCapabilityPackageInstallIssue(manifest(674) as never, JSON.parse(fiveEText), new Map([["c.json", spell]])),
+      gate,
+    );
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(673) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Caltrops: a careful walk crosses at half speed uncaught, a failed save stops a plain one; gated at 1.673.",
+    "Caltrops: a careful walk crosses at half speed uncaught, a failed save stops a plain one; gated at 1.674.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

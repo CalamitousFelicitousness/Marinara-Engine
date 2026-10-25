@@ -1,5 +1,5 @@
 /**
- * Charges and uses that come back after a wait counted in game time (Capability API 1.540).
+ * Charges and uses that come back after a wait counted in game time (Capability API 1.541).
  *
  *   - A figurine's one charge back 2 days after it ran out, and no rest bringing it back sooner.
  *   - Wings of Flying's 1d12 hours, rolled as the wait starts.
@@ -30,7 +30,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 540);
+  assert.ok(supportedCapabilityApi.minor >= 541);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -192,7 +192,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose items' charges or uses come back after a wait in game time (recharge.after) requires schemaVersion 2 and capabilityApi 1.540 or newer";
+      "A ruleset whose items' charges or uses come back after a wait in game time (recharge.after) requires schemaVersion 2 and capabilityApi 1.541 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -206,13 +206,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(539) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(540) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(539) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(540) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(541) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(540) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Item waits: a figurine back 2 days after it ran out and never on a rest; Wings of Flying's rolled 1d12 hours kept; a further use's own uses back after a day, or sooner on its rest; gated at 1.540.",
+    "Item waits: a figurine back 2 days after it ran out and never on a rest; Wings of Flying's rolled 1d12 hours kept; a further use's own uses back after a day, or sooner on its rest; gated at 1.541.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

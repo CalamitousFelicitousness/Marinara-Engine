@@ -1,5 +1,5 @@
 /** Capability API 1.154: named rows the player adds, edits and removes in a guided builder step.
- *  Capability API 1.788: a rows step's `countFrom`, the rows it wants read off the sheet (5e's hit
+ *  Capability API 1.789: a rows step's `countFrom`, the rows it wants read off the sheet (5e's hit
  *  point rolls, one per level after 1st; 5e ship-readiness re-test 2026-10-24). */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -185,7 +185,7 @@ try {
     /Unknown column "missing"/,
   );
 
-  // A rows step that counts its rows off the sheet (1.788): one hit point roll per level after 1st.
+  // A rows step that counts its rows off the sheet (1.789): one hit point roll per level after 1st.
   const countedFixture = (step: Record<string, unknown> = {}) => {
     const next = base();
     next.sheet.derived.push({
@@ -334,12 +334,12 @@ try {
   const issue = (minor: number, value: unknown) => getCapabilityPackageInstallIssue(manifest(minor) as any, value);
   assert.match(issue(153, doc) ?? "", /1\.154/);
   assert.equal(issue(154, doc), null);
-  // countFrom on a rows step is gated at 1.788.
+  // countFrom on a rows step is gated at 1.789.
   assert.equal(
-    issue(787, counted),
-    "A ruleset whose builder rows steps count their rows off the sheet (a rows step's countFrom) requires schemaVersion 2 and capabilityApi 1.788 or newer",
+    issue(788, counted),
+    "A ruleset whose builder rows steps count their rows off the sheet (a rows step's countFrom) requires schemaVersion 2 and capabilityApi 1.789 or newer",
   );
-  assert.equal(issue(788, counted), null);
+  assert.equal(issue(789, counted), null);
   console.log("game-ruleset-builder-rows: passed");
 } finally {
   for (const [key, value] of Object.entries(previous)) {

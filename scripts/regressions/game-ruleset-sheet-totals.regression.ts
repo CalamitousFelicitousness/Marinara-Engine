@@ -1,5 +1,5 @@
 /**
- * Number fields held to a combined most (Capability API 1.656).
+ * Number fields held to a combined most (Capability API 1.657).
  *
  *   - `sheet.totals`: each field's most is lowered by what the others hold, never below its least.
  *   - The Game Master's advancement refuses a value past it, and takes one within it.
@@ -100,7 +100,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose sheet holds fields to a combined most (sheet.totals) requires schemaVersion 2 and capabilityApi 1.656 or newer";
+      "A ruleset whose sheet holds fields to a combined most (sheet.totals) requires schemaVersion 2 and capabilityApi 1.657 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -115,13 +115,13 @@ try {
       restartRequired: false,
     });
     const plain = document((doc) => delete doc.sheet.totals);
-    assert.equal(getCapabilityPackageInstallIssue(manifest(655) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(656) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(655) as never, plain), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(656) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(657) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(656) as never, plain), gate);
   }
 
   console.log(
-    "Sheet totals: each field's most less what the others hold, advancement refused past it, a sheet over it says so; gated at 1.656.",
+    "Sheet totals: each field's most less what the others hold, advancement refused past it, a sheet over it says so; gated at 1.657.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

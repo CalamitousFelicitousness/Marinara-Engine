@@ -1247,7 +1247,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     ],
     // A prop lit again (1.332).
     ["relit", say({ type: "relit", actorId: "brenna", propId: "p1", label: "Bonfire", cells: 9 })],
-    // Illusory duplicates (1.489), a blink (1.490), stopped time (1.491), stepping in (1.493).
+    // Illusory duplicates (1.490), a blink (1.491), stopped time (1.492), stepping in (1.494).
     [
       "duplicate",
       say({ type: "duplicate", actorId: "lurker", targetId: "brenna", roll: 6, needed: 6, diverted: true }),
@@ -1295,7 +1295,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   assert.equal(printed.get("relit"), "Brenna lights Bonfire again.");
   assert.equal(printed.get("itemSpent"), "Brenna's Figurine of Wondrous Power is spent for good.");
   assert.equal(printed.get("missileKept"), "Brenna catches the Arrow and keeps it.");
-  // A trap disarmed, or not (1.653).
+  // A trap disarmed, or not (1.654).
   const tried = { check: "thieves", rolls: [12], modifier: 3, total: 15 };
   assert.equal(
     say({ type: "zone", actorId: "lurker", label: "Glyph", outcome: "disarmed", targetId: "brenna", check: tried }),
@@ -1312,7 +1312,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     }),
     "Brenna fails to disarm Thorn Lurker’s Glyph (12 + 3 = 15).",
   );
-  // A zone closed by its caster, and spreading (1.621).
+  // A zone closed by its caster, and spreading (1.622).
   assert.equal(
     say({ type: "zone", actorId: "brenna", label: "Eversmoking Bottle", outcome: "closed" }),
     "Brenna closes Eversmoking Bottle.",
@@ -1563,7 +1563,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     "Why Thorn Lurker did that: likely takes Brenna out of the fight; heavy damage to Brenna; walked 2 first to act from there.",
   );
   assert.equal(printed.get("move"), "Brenna moves to 4, 2 for 3 and has 3 left.");
-  // A jump is a move that says so (1.483).
+  // A jump is a move that says so (1.484).
   assert.equal(
     say({
       type: "move",
@@ -1735,7 +1735,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   );
   assert.equal(printed.get("charged"), "Thorn Lurker charges Brenna with Gore.");
   assert.equal(printed.get("pushed"), "Brenna pushes Thorn Lurker back 1, to 4, 2.");
-  // Pulled in rather than pushed (1.659): a balor's whip.
+  // Pulled in rather than pushed (1.660): a balor's whip.
   assert.equal(
     say({
       type: "pushed",
@@ -1798,7 +1798,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     say({ type: "hangsOn", actorId: "lurker", left: 1 }),
     "Thorn Lurker hangs on at 1 instead of falling (1 left).",
   );
-  // With no count of uses (1.384): Undead Fortitude, as often as its save holds.
+  // With no count of uses (1.385): Undead Fortitude, as often as its save holds.
   assert.equal(
     say({ type: "hangsOn", actorId: "lurker", label: "Undead Fortitude" }),
     "Undead Fortitude: Thorn Lurker hangs on at 1 instead of falling.",

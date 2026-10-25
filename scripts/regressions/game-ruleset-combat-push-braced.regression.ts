@@ -1,5 +1,5 @@
 /**
- * Braced against being moved (Capability API 1.702): 5e's Dwarven Plate, "if an effect moves you
+ * Braced against being moved (Capability API 1.703): 5e's Dwarven Plate, "if an effect moves you
  * against your will along the ground, you can use a reaction to reduce the distance you are moved by
  * up to 10 feet".
  *
@@ -33,7 +33,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 702);
+  assert.ok(supportedCapabilityApi.minor >= 703);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -152,7 +152,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a condition braced against being moved (pushReducedBy) requires schemaVersion 2 and capabilityApi 1.702 or newer";
+      "A ruleset with a condition braced against being moved (pushReducedBy) requires schemaVersion 2 and capabilityApi 1.703 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -166,13 +166,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(701) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(702) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(701) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(702) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(703) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(702) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Push braced: Dwarven Plate takes 10 feet off a 15-foot shove for its reaction, the next goes the whole way, a 10-foot one goes nowhere; gated at 1.702.",
+    "Push braced: Dwarven Plate takes 10 feet off a 15-foot shove for its reaction, the next goes the whole way, a 10-foot one goes nowhere; gated at 1.703.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

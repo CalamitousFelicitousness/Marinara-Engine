@@ -499,7 +499,7 @@ try {
     assert.equal((conjured[0]!.event as { item: string }).item, "Flame Tongue", "the 2d6 one");
   }
 
-  // ── Let fall, and gone once left far off for a minute (1.464) ──
+  // ── Let fall, and gone once left far off for a minute (1.465) ──
   {
     const conjures = (pact.mechanics as { conjures: Record<string, unknown> }).conjures;
     conjures.vanishes = { beyond: 5, rounds: 10 };
@@ -625,15 +625,15 @@ try {
       assert.equal(getCapabilityPackageInstallIssue(manifest(305) as never, doc), gate, entry.id);
       assert.notEqual(getCapabilityPackageInstallIssue(manifest(306) as never, doc), gate);
     }
-    // Gone once left far off (1.464).
+    // Gone once left far off (1.465).
     const vanishing = JSON.parse(fiveEText) as Record<string, any>;
     const left = structuredClone(pact) as unknown as { mechanics: { conjures: Record<string, unknown> } };
     left.mechanics.conjures.vanishes = { beyond: 5, rounds: 10 };
     vanishing.catalogs.push({ id: "features", label: "Features", feeds: ["features"], entries: [left] });
     const later =
-      "A ruleset whose conjured weapons are gone once left lying far off (conjures vanishes) requires schemaVersion 2 and capabilityApi 1.464 or newer";
-    assert.equal(getCapabilityPackageInstallIssue(manifest(463) as never, vanishing), later);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(464) as never, vanishing), later);
+      "A ruleset whose conjured weapons are gone once left lying far off (conjures vanishes) requires schemaVersion 2 and capabilityApi 1.465 or newer";
+    assert.equal(getCapabilityPackageInstallIssue(manifest(464) as never, vanishing), later);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(465) as never, vanishing), later);
   }
 
   console.log(

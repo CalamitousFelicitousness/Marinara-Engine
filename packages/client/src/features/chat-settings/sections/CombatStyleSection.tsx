@@ -15,7 +15,7 @@ interface CombatStyleSectionProps {
   /** Whether that ruleset also says what one cell of a board is worth. With it the choice below
    *  decides whether such a fight has positions; without it, it is kept and not used. */
   rulesetHasPositions?: boolean;
-  /** The styles this game's ruleset lets it play (`combat.styles`, 1.775), or null for every one. */
+  /** The styles this game's ruleset lets it play (`combat.styles`, 1.776), or null for every one. */
   allowedStyles?: readonly string[] | null;
   onCombatStyleChange: (style: GameCombatStyle) => void;
   /** Who acts when in a Tactical battle (combat C6c). */

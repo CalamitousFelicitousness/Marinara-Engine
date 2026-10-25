@@ -1,5 +1,5 @@
 /**
- * Zones set up before a fight, standing as it starts (Capability API 1.446).
+ * Zones set up before a fight, standing as it starts (Capability API 1.447).
  *
  *   - Entries that say `beforeFight` are never on the fight menu.
  *   - Set up before the fight: paid for off the sheet, put down between the caster and the nearest
@@ -41,7 +41,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 446);
+  assert.ok(supportedCapabilityApi.minor >= 447);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -244,7 +244,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose entries are set up before a fight only (beforeFight) requires schemaVersion 2 and capabilityApi 1.446 or newer";
+      "A ruleset whose entries are set up before a fight only (beforeFight) requires schemaVersion 2 and capabilityApi 1.447 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -258,12 +258,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(445) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(446) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(446) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(447) as never, fiveE()), gate);
   }
 
   console.log(
-    "Standing zones: beforeFight entries stay off the menu; set up before the fight they are paid for and put down, a hidden one unsaid, and a foe walking in sets one off; gated at 1.446.",
+    "Standing zones: beforeFight entries stay off the menu; set up before the fight they are paid for and put down, a hidden one unsaid, and a foe walking in sets one off; gated at 1.447.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

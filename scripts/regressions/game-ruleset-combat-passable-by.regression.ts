@@ -1,6 +1,6 @@
 /**
  * A creature moved through only by the strong, and filling none of its space (Capability API
- * 1.584): 5e's Arcane Hand.
+ * 1.585): 5e's Arcane Hand.
  *
  *   - `passableBy: {ability: "str", above: 26, difficult: true}`: a foe of Strength 19 cannot walk
  *     through it; one of 27 can, as hard going, and may stop there.
@@ -31,7 +31,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 584);
+  assert.ok(supportedCapabilityApi.minor >= 585);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -140,7 +140,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a creature moved through only by the strong or filling none of its space (passableBy, fillsSpace) requires schemaVersion 2 and capabilityApi 1.584 or newer";
+      "A ruleset with a creature moved through only by the strong or filling none of its space (passableBy, fillsSpace) requires schemaVersion 2 and capabilityApi 1.585 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -154,17 +154,17 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(583) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(584) as never, document()), gate);
     assert.equal(
-      getCapabilityPackageInstallIssue(manifest(583) as never, document({ passableBy: undefined })),
+      getCapabilityPackageInstallIssue(manifest(584) as never, document({ passableBy: undefined })),
       gate,
       "fillsSpace alone",
     );
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(584) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(585) as never, document()), gate);
   }
 
   console.log(
-    "Passable by: a foe of Strength 19 stopped, one of 27 through as hard going; a friend stops in a space it does not fill; gated at 1.584.",
+    "Passable by: a foe of Strength 19 stopped, one of 27 through as hard going; a friend stops in a space it does not fill; gated at 1.585.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

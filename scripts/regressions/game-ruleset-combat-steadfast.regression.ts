@@ -1,5 +1,5 @@
 /**
- * A condition held only while an ally is seen near (Capability API 1.666).
+ * A condition held only while an ally is seen near (Capability API 1.667).
  *
  *   - `heldOnlyIn.allySeenWithin`: a bearded devil's Steadfast, kept on, makes it immune to being
  *     frightened while it sees an ally within 30 feet; with the ally too far, behind a wall, or down,
@@ -30,7 +30,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 666);
+  assert.ok(supportedCapabilityApi.minor >= 667);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -102,7 +102,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a condition held only while its holder sees an ally near (heldOnlyIn.allySeenWithin) requires schemaVersion 2 and capabilityApi 1.666 or newer";
+      "A ruleset with a condition held only while its holder sees an ally near (heldOnlyIn.allySeenWithin) requires schemaVersion 2 and capabilityApi 1.667 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -116,12 +116,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(665) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(666) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(665) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(666) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(667) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(666) as never, JSON.parse(fiveEText)), gate);
   }
 
-  console.log("Steadfast: held only while an ally is seen near; gated at 1.666.");
+  console.log("Steadfast: held only while an ally is seen near; gated at 1.667.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

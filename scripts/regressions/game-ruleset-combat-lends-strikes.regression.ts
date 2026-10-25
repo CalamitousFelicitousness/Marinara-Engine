@@ -1,5 +1,5 @@
 /**
- * An attack given up for one by a called creature (Capability API 1.472).
+ * An attack given up for one by a called creature (Capability API 1.473).
  *
  *   - Pact of the Chain: the warlock gives up their attack for the familiar to strike with its
  *     reaction, though it may not otherwise harm; at whom the familiar can reach, not the warlock.
@@ -34,7 +34,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 472);
+  assert.ok(supportedCapabilityApi.minor >= 473);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -169,7 +169,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose conditions let an attack be given up for one by a called creature (lendsStrikes) requires schemaVersion 2 and capabilityApi 1.472 or newer";
+      "A ruleset whose conditions let an attack be given up for one by a called creature (lendsStrikes) requires schemaVersion 2 and capabilityApi 1.473 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -183,12 +183,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(471) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(472) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(472) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(473) as never, document()), gate);
   }
 
   console.log(
-    "Lends strikes: Pact of the Chain gives up an attack for the familiar's, past its can't-harm, at whom it reaches, on its reaction; out of a strike in hand; not without the pact, a reaction or an attack, nor for another's familiar; gated at 1.472.",
+    "Lends strikes: Pact of the Chain gives up an attack for the familiar's, past its can't-harm, at whom it reaches, on its reaction; out of a strike in hand; not without the pact, a reaction or an attack, nor for another's familiar; gated at 1.473.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

@@ -75,11 +75,11 @@ export interface InventoryTagRequest {
   /** A buy's price level and seller, as the Game Master named them (#6917). */
   level?: string;
   seller?: string;
-  /** An add that vanishes after so many minutes of game time (Capability API 1.744): 5e's Creation. */
+  /** An add that vanishes after so many minutes of game time (Capability API 1.745): 5e's Creation. */
   lasts?: number;
 }
 
-/** The most a thing made to vanish lasts, in minutes (1.744): ten years. */
+/** The most a thing made to vanish lasts, in minutes (1.745): ten years. */
 const MOST_LASTS_MINUTES = 5_256_000;
 const LASTS_UNITS: ReadonlyArray<[RegExp, number]> = [
   [/^(?:m|mins?|minutes?)$/, 1],
@@ -88,7 +88,7 @@ const LASTS_UNITS: ReadonlyArray<[RegExp, number]> = [
   [/^(?:w|weeks?)$/, 10080],
 ];
 
-/** How long an add lasts (1.744), in minutes: "10 minutes", "12 hours", "1 day", "2 weeks", or a bare
+/** How long an add lasts (1.745), in minutes: "10 minutes", "12 hours", "1 day", "2 weeks", or a bare
  *  number of minutes. Undefined when it says nothing it can read. */
 export function readInventoryLasts(text: string | undefined): number | undefined {
   const match = /^(\d{1,7})\s*([a-z]*)$/i.exec(text?.trim().toLowerCase() ?? "");
@@ -99,7 +99,7 @@ export function readInventoryLasts(text: string | undefined): number | undefined
   return Math.min(MOST_LASTS_MINUTES, count * unit);
 }
 
-/** Minutes said the way a person would (1.744): "1 day", "12 hours", "10 minutes". */
+/** Minutes said the way a person would (1.745): "1 day", "12 hours", "10 minutes". */
 export function inventoryLastsWords(minutes: number): string {
   const [count, unit] =
     minutes % 1440 === 0 ? [minutes / 1440, "day"] : minutes % 60 === 0 ? [minutes / 60, "hour"] : [minutes, "minute"];
@@ -310,7 +310,7 @@ export function serializeInventoryTag(
         /** A fake shown for what it truly is: its true name (a reveal, or a sale an honest buyer saw
          *  through). */
         revealed?: string;
-        /** How long an add lasts before it vanishes, in minutes (1.744). */
+        /** How long an add lasts before it vanishes, in minutes (1.745). */
         lasts?: number;
       }
     | { raw: string },

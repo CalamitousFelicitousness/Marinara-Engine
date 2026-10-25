@@ -1,5 +1,5 @@
 /**
- * Knocking out (Capability API 1.704): 5e's knocking a creature out with a melee attack.
+ * Knocking out (Capability API 1.705): 5e's knocking a creature out with a melee attack.
  *
  *   - `dying.knockOut`: a character's free switch, once a turn, to pull their blows.
  *   - While on, a melee blow that drops somebody knocks them out: stable and alive, never dying or
@@ -36,7 +36,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 704);
+  assert.ok(supportedCapabilityApi.minor >= 705);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -238,7 +238,7 @@ try {
       /knockOut/,
     );
     const gate =
-      "A ruleset with knocking out by a melee blow (combat.dying.knockOut) requires schemaVersion 2 and capabilityApi 1.704 or newer";
+      "A ruleset with knocking out by a melee blow (combat.dying.knockOut) requires schemaVersion 2 and capabilityApi 1.705 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -252,12 +252,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(703) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(704) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(704) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(705) as never, fiveE()), gate);
   }
 
   console.log(
-    "Knocking out: a free switch once a turn; a pulled melee blow leaves the fallen stable and unconscious, an opponent beaten alive; ranged, unpulled and massive blows as always; gated at 1.704.",
+    "Knocking out: a free switch once a turn; a pulled melee blow leaves the fallen stable and unconscious, an opponent beaten alive; ranged, unpulled and massive blows as always; gated at 1.705.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

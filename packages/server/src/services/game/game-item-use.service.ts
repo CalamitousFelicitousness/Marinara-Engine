@@ -103,7 +103,7 @@ export function gameInventoryRestRecharge(
   };
 }
 
-/** The priced materials a turn's casts used up (1.774), taken off the stacks they came out of. */
+/** The priced materials a turn's casts used up (1.775), taken off the stacks they came out of. */
 export function gameInventoryMaterialsTaken(
   materials: ReadonlyArray<RulesetMaterialTaken>,
 ): (stacks: GameInventoryStack[]) => GameInventoryStack[] {
@@ -126,9 +126,9 @@ function useForCarrier(
   stackId: string,
   live: RulesetLiveStates,
   roll: (sides: number) => number,
-  /** One of its further uses (1.267, 1.503), by its place in `moreUses` from 1. */
+  /** One of its further uses (1.267, 1.504), by its place in `moreUses` from 1. */
   more?: number,
-  /** How long what it makes lasts (1.744), by its place in `makesItems.lasts` from 1. */
+  /** How long what it makes lasts (1.745), by its place in `makesItems.lasts` from 1. */
   lasts?: number,
 ): { outcome: RulesetItemUseOutcome; live: RulesetLiveStates; revealed?: string } {
   const stack = stacks.find((each) => each.id === stackId);
@@ -280,9 +280,9 @@ export async function useGameRulesetItem(
   chatId: string,
   stackId: string,
   roll: (sides: number) => number = rollDieSecurely,
-  /** One of its further uses (1.267, 1.503), by its place in `moreUses` from 1. */
+  /** One of its further uses (1.267, 1.504), by its place in `moreUses` from 1. */
   more?: number,
-  /** How long what it makes lasts (1.744), by its place in `makesItems.lasts` from 1. */
+  /** How long what it makes lasts (1.745), by its place in `makesItems.lasts` from 1. */
   lasts?: number,
 ): Promise<GameItemUseResult> {
   // Read before the chat's queue is held, as every other inventory change reads them.
@@ -360,7 +360,7 @@ export async function restGameRulesetCharacter(
   roll: (sides: number) => number = rollDieSecurely,
   /** The dice spent to heal first, by pool: the hit dice a Short rest asks for. */
   diceFrom?: Record<string, number>,
-  /** The features the player chose to use as it ends (1.773), with what each gives back. */
+  /** The features the player chose to use as it ends (1.774), with what each gives back. */
   recover?: ReadonlyArray<{ name: string; recover: RulesetUseRecover[] }>,
 ): Promise<GameRestResult> {
   const context = await loadGameRulesetSheetContext(db, chatId);
@@ -397,7 +397,7 @@ export async function restGameRulesetCharacter(
           held,
         );
         if (!rested.ok) throw new RestRefused(rested.reason);
-        // What the player chose to use as it ends (1.773): Arcane Recovery's slots, after the rest.
+        // What the player chose to use as it ends (1.774): Arcane Recovery's slots, after the rest.
         if (recover?.length) {
           const used = applyRulesetRestRecoveries(
             context.definition,
@@ -532,7 +532,7 @@ class RestRefused extends Error {
   }
 }
 
-/** The features a rest offers this character to use as it ends (1.773), read off their sheet as it
+/** The features a rest offers this character to use as it ends (1.774), read off their sheet as it
  *  stands: what the rest dialog lists, each with what it would give back by itself. */
 export async function gameRulesetRestOffers(
   db: DB,

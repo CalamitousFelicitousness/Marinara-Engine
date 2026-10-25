@@ -1,5 +1,5 @@
 /**
- * Engulfing, being held inside, and sizes in a target test (Capability API 1.387).
+ * Engulfing, being held inside, and sizes in a target test (Capability API 1.388).
  *
  *   - A gelatinous cube's Engulf: picked as a cell, it walks into whoever is no bigger than it holds;
  *     each saves, or takes its acid and is engulfed, inside the cube and carried along with it.
@@ -41,7 +41,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 387);
+  assert.ok(supportedCapabilityApi.minor >= 388);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -417,7 +417,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with an engulf, a condition that holds its holder inside, a harm on its source's turns or spared by a save, or a target test by size requires schemaVersion 2 and capabilityApi 1.387 or newer";
+      "A ruleset with an engulf, a condition that holds its holder inside, a harm on its source's turns or spared by a save, or a target test by size requires schemaVersion 2 and capabilityApi 1.388 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -431,18 +431,18 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(386) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(387) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(386) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(387) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(388) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(387) as never, JSON.parse(fiveEText)), gate);
     // A grapple by size alone, and a source-turn harm alone.
     const sized = JSON.parse(fiveEText);
     sized.combat.sizes = document().combat.sizes;
     sized.combat.conditions.push({ condition: "grappled_too", effects: [], harms: { at: "source-turn-end", flat: 1 } });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(386) as never, sized), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(387) as never, sized), gate);
   }
 
   console.log(
-    "Engulf: a cube walks into whoever fits, each saving or taken inside and carried along, untouchable from outside, acid on its turns, a mound's spared by a save, let out as it falls; pushed aside on a save or when full; off a board aimed at one; sized target tests; gated at 1.387.",
+    "Engulf: a cube walks into whoever fits, each saving or taken inside and carried along, untouchable from outside, acid on its turns, a mound's spared by a save, let out as it falls; pushed aside on a save or when full; off a board aimed at one; sized target tests; gated at 1.388.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

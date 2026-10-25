@@ -599,7 +599,7 @@ export function RulesetSheetEditor({
           />
         )}
 
-        {/* Fields held to a combined most and over it (1.656): an imported sheet, or one from before. */}
+        {/* Fields held to a combined most and over it (1.657): an imported sheet, or one from before. */}
         {rulesetSheetTotalsOver(definition, build).map((over) => (
           <p key={over.label} role="alert" className="text-xs text-[var(--destructive)]">
             {t("ui.rulesets.sheet.totalOver", over)}

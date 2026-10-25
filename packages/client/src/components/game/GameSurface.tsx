@@ -1155,7 +1155,7 @@ export function generatedPartyMemberToCombatant(
     ...(member.surprised === true ? { surprised: true } : {}),
     // Where the story put them (2026-10-24), read by a ruleset fight only.
     ...(member.start ? { start: member.start } : {}),
-    // What they set up before it (1.446), read by a ruleset fight only.
+    // What they set up before it (1.447), read by a ruleset fight only.
     ...(Array.isArray(member.standing) && member.standing.length ? { standing: member.standing } : {}),
   };
 }
@@ -8257,7 +8257,7 @@ function GameSurfaceComponent({
     [activeChatId, commitInventory, inventoryRefusal, localizeUi],
   );
 
-  /** One stack turned into another of its forms (1.559), 0 as it was made. */
+  /** One stack turned into another of its forms (1.560), 0 as it was made. */
   const handleFormInventoryStack = useCallback(
     async (stackId: string, form: number) => {
       if (!activeChatId) return null;
@@ -9068,7 +9068,7 @@ function GameSurfaceComponent({
   // (settings drawer) ?? wizard setup choice ?? legacy default "classic". An id
   // this client has not registered plays as classic (#8109).
   const combatSetupConfig = chatMeta.gameSetupConfig as Record<string, unknown> | undefined;
-  // A style the game's ruleset leaves out (`combat.styles`, 1.775) plays as the first it lists; a fight
+  // A style the game's ruleset leaves out (`combat.styles`, 1.776) plays as the first it lists; a fight
   // already pinned keeps its own.
   const effectiveCombatStyle: GameCombatStyle = resolveCombatStyle(
     combatPinnedStyle ??
@@ -11033,7 +11033,7 @@ function GameSurfaceComponent({
               diceFrom?: Record<string, number>,
               recover?: Array<{ name: string; recover: RulesetUseRecover[] }>,
             ) => handleRulesetRest(cardTitle, rest, diceFrom, recover),
-            // What a rest offers to use as it ends (1.773), read off the server's sheet.
+            // What a rest offers to use as it ends (1.774), read off the server's sheet.
             onRestOffers: async (rest: string) =>
               activeChatId
                 ? (
@@ -13558,7 +13558,7 @@ function GameSurfaceComponent({
                     data-game-float="map-and-party"
                     className={cn(
                       // On a phone it stops short of the control-button rows in the right half of the chat.
-                      "pointer-events-auto absolute left-3 right-[calc(50%+1.625rem)] z-20 flex min-w-0 items-start gap-2 md:right-auto",
+                      "pointer-events-auto absolute left-3 right-[calc(50%+1.626rem)] z-20 flex min-w-0 items-start gap-2 md:right-auto",
                       gameRuleset?.status === "ok" &&
                         gameRuleset.definition.clocks &&
                         Boolean(gameSnapshot?.rulesetClocks?.length) &&

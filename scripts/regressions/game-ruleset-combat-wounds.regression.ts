@@ -549,7 +549,7 @@ for (const marks of ["per-blow", "per-point"] as const) {
     );
   }
 
-  // Health naming a track nobody declared, and a plain track (1.781) that is handed kinds to mark.
+  // Health naming a track nobody declared, and a plain track (1.782) that is handed kinds to mark.
   refuse((doc) => {
     doc.combat.health = { track: "nowhere" };
   }, /Unknown track "nowhere"/);

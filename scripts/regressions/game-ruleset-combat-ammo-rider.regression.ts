@@ -1,5 +1,5 @@
 /**
- * Ammunition with clauses of its own (Capability API 1.641): 5e's Arrow of Slaying, "a creature of
+ * Ammunition with clauses of its own (Capability API 1.642): 5e's Arrow of Slaying, "a creature of
  * the type ... hit by the arrow must make a DC 17 Constitution saving throw, taking an extra 6d10
  * piercing damage on a failed save, or half as much extra damage on a successful one. Once an arrow of
  * slaying deals its extra damage to a creature, it becomes a nonmagical arrow."
@@ -38,7 +38,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 641);
+  assert.ok(supportedCapabilityApi.minor >= 642);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -221,7 +221,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with ammunition that adds to the shot it is fired as (item ammoRider) requires schemaVersion 2 and capabilityApi 1.641 or newer";
+      "A ruleset with ammunition that adds to the shot it is fired as (item ammoRider) requires schemaVersion 2 and capabilityApi 1.642 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -235,12 +235,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(640) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(641) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(641) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(642) as never, document()), gate);
   }
 
   console.log(
-    "Arrow of Slaying: ammunition's own 6d10 against its kind, shot as its own mode, spent into a plain arrow; gated at 1.641.",
+    "Arrow of Slaying: ammunition's own 6d10 against its kind, shot as its own mode, spent into a plain arrow; gated at 1.642.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

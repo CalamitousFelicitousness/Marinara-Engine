@@ -1,5 +1,5 @@
 /**
- * Calls kept on the sheet (Capability API 1.787, Alyssa 2026-10-24: "Keep on sheet").
+ * Calls kept on the sheet (Capability API 1.788, Alyssa 2026-10-24: "Keep on sheet").
  *
  *   - Find Familiar used outside a fight names its creature (`as=`), checked against what it calls;
  *     one left unnamed is refused with the names it may call. Paid for once, and kept on the sheet.
@@ -36,7 +36,7 @@ const { createRulesetFight, rulesetFightLiveStates } =
   await import("../../packages/server/src/services/game/ruleset-combat-director.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 787);
+  assert.ok(supportedCapabilityApi.minor >= 788);
   const doc = JSON.parse(
     readFileSync(
       fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
@@ -111,7 +111,7 @@ try {
       },
     ],
   });
-  // Pact of the Chain: a feature whose spell row stands for Find Familiar (1.477).
+  // Pact of the Chain: a feature whose spell row stands for Find Familiar (1.478).
   doc.catalogs.push({
     id: "pacts",
     label: "Pacts",

@@ -1,5 +1,5 @@
 /**
- * Called images rather than creatures (Capability API 1.552): 5e's Mislead and Project Image.
+ * Called images rather than creatures (Capability API 1.553): 5e's Mislead and Project Image.
  *
  *   - `calls.illusion`: what is aimed at the image passes through it, doing nothing, and shows it for
  *     what it is to the attacker's side, who may not aim at it again; the other side still may.
@@ -34,7 +34,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 552);
+  assert.ok(supportedCapabilityApi.minor >= 553);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -176,7 +176,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a call that makes images rather than creatures (calls.illusion) requires schemaVersion 2 and capabilityApi 1.552 or newer";
+      "A ruleset with a call that makes images rather than creatures (calls.illusion) requires schemaVersion 2 and capabilityApi 1.553 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -190,13 +190,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(551) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(552) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(551) as never, document(false)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(552) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(553) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(552) as never, document(false)), gate);
   }
 
   console.log(
-    "Illusion calls: a club passes through Mislead's double, which its side then sees for an image and aims at no more; gated at 1.552.",
+    "Illusion calls: a club passes through Mislead's double, which its side then sees for an image and aims at no more; gated at 1.553.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

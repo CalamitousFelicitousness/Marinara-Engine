@@ -1067,7 +1067,7 @@ class GameAudioManager {
 /** Global singleton instance. */
 export const audioManager = new GameAudioManager();
 
-/** Capability API 1.779: independent music/SFX ownership without touching Game's singleton. */
+/** Capability API 1.780: independent music/SFX ownership without touching Game's singleton. */
 export function createAudioPlayer(): AudioPlayer {
   const manager = new GameAudioManager();
   let disposed = false;

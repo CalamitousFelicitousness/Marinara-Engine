@@ -238,7 +238,7 @@ function replyUsesCatalogEntry(content: string): boolean {
   if (!content.includes("[")) return false;
   for (const match of content.matchAll(createSheetCommandTagRegex())) {
     const op = parseSheetCommandTagBody(match[1] ?? "").op;
-    // A rest that uses a feature as it ends (1.773) reads that feature's entry too (ship readiness:
+    // A rest that uses a feature as it ends (1.774) reads that feature's entry too (ship readiness:
     // Arcane Recovery off the Game Master's rest tag gave back nothing).
     if (op?.op === "use" || (op?.op === "rest" && op.use)) return true;
   }
@@ -246,7 +246,7 @@ function replyUsesCatalogEntry(content: string): boolean {
 }
 
 /** The catalogs what this reply uses outside a fight reads from, beyond the party's own rows: what
- *  a kept call calls (1.787), and the forms a kept shape takes (1.790), so the one named is checked
+ *  a kept call calls (1.788), and the forms a kept shape takes (1.791), so the one named is checked
  *  against what it may take now. Without them any form at all was taken (cloud probes 2026-10-25: a
  *  5th-level druid's Brown Bear and Giant Eagle). */
 export function rulesetTurnCalledCatalogs(catalogs: RulesetCatalogEntriesById, content: string): string[] {
@@ -284,7 +284,7 @@ export async function loadTurnRulesetCatalogs(
   if (!declared?.length || !(options?.force || replyUsesCatalogEntry(content))) return {};
   const wanted = new Set(context.cards.flatMap((card) => rulesetCatalogIdsForBuild(context.definition, card.build)));
   const catalogs: RulesetCatalogEntriesById = {};
-  // And the ones the party's calls kept outside a fight call from (1.787), to name the creature.
+  // And the ones the party's calls kept outside a fight call from (1.788), to name the creature.
   for (const pass of [0, 1]) {
     if (pass === 1) {
       const calledFrom = rulesetTurnCalledCatalogs(catalogs, content);
@@ -321,7 +321,7 @@ export interface GameRulesetSheetTurn {
   outcomes: SheetCommandOutcome[];
   /** Each rest a character took this turn, by card name. */
   rests: Array<{ who: string; rest: string }>;
-  /** The priced materials this turn's casts used up (1.774), out of the stacks they came from. */
+  /** The priced materials this turn's casts used up (1.775), out of the stacks they came from. */
   materials: RulesetMaterialTaken[];
 }
 

@@ -428,7 +428,7 @@ export function RulesetCombatBoard({
         return;
       }
       setStep(null);
-      // Who goes along on a teleport (1.276), or whom a layered wall spares (1.476), picked in the
+      // Who goes along on a teleport (1.276), or whom a layered wall spares (1.477), picked in the
       // menu while it is aimed.
       const carries = step.option.teleport ? step.targets : [];
       const designates = step.option.designates ? step.targets : [];
@@ -444,7 +444,7 @@ export function RulesetCombatBoard({
       );
       return;
     }
-    // Where its target is moved to (1.549), lifted as the menu says: Telekinesis.
+    // Where its target is moved to (1.550), lifted as the menu says: Telekinesis.
     if (step.stage === "carry" && cell.aim?.carry) {
       setStep(null);
       onChoose(
@@ -479,7 +479,7 @@ export function RulesetCombatBoard({
     if (step.stage === "target" && cell.targetable && cell.occupant) {
       const targets = rulesetPickTarget(step.option, step.targets, cell.occupant.id);
       if (rulesetSendsOnPick(step.option) && targets.length === 1) {
-        // Where it moves them is picked next (1.549).
+        // Where it moves them is picked next (1.550).
         const picks = rulesetPicksStep(view, step, targets);
         if (picks) {
           setStep(picks);

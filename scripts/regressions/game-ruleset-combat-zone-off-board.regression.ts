@@ -1,5 +1,5 @@
 /**
- * An area that leaves a zone, used with and without a board: 5e's Eversmoking Bottle (1.621).
+ * An area that leaves a zone, used with and without a board: 5e's Eversmoking Bottle (1.622).
  *
  *   - On a board it is aimed, at its user's own cell as much as any other within reach.
  *   - Off a board, where nothing is aimed, it may be set down on nobody in particular; pointing it at

@@ -91,14 +91,14 @@ export interface RulesetCombatDamageClause extends RulesetCombatAmount {
   tempHp?: true;
   /** Dealt only to a target carrying this condition from its maker (1.189). */
   marked?: string;
-  /** The ammunition it rides on (1.641): its stack, and whether it is spent once this reaches a
+  /** The ammunition it rides on (1.642): its stack, and whether it is spent once this reaches a
    *  target, shared by every clause of one shot. */
   shot?: { item: number; spends?: true; spent?: true };
 }
 
 /** An amount of damage, and what kind it is. The type is matched without case against a stat
  *  block's resistances, so "Fire" and "fire" are one thing. */
-/** A weapon's own dice as one item is off or on (1.690). */
+/** A weapon's own dice as one item is off or on (1.691). */
 export interface RulesetSlotsFreedDamage {
   count: number;
   sides: number;
@@ -128,7 +128,7 @@ export interface RulesetCombatDamage extends RulesetCombatAmount {
   alternatives?: RulesetCombatDamageAlternative[];
 }
 
-/** A table rolled for each target of an action (1.452): the row it lands on is what strikes them.
+/** A table rolled for each target of an action (1.453): the row it lands on is what strikes them.
  *  Each row deals the action's amount as `damageType` (nothing without one) and puts on the
  *  action's conditions it names; `again` rolls that many more, landing on it again rolled over. */
 export interface RulesetCombatRays {
@@ -145,14 +145,14 @@ export interface RulesetCombatDamageAlternative extends RulesetCombatAmount {
  *  only after `successes` of them, and after `failures.count` failures `becomes` another condition. */
 export interface RulesetCombatSaveEnds {
   save: string;
-  /** `action` (1.264): rolled when its holder spends their action on it. `days` (1.510): never in a
+  /** `action` (1.264): rolled when its holder spends their action on it. `days` (1.511): never in a
    *  fight, but once each `days` of game time outside one. */
   at: "turn-end" | "turn-start" | "damaged" | "action" | "source-turn-start" | "days";
   days?: number;
   successes?: number;
-  /** With `days`, dealt to its holder's sheet on each failed day's save (1.734). */
+  /** With `days`, dealt to its holder's sheet on each failed day's save (1.735). */
   harmsOnFail?: { dice?: string; flat?: number; type?: string };
-  /** Or, with `dismisses` (1.467), its holder leaves the fight for good, alive. */
+  /** Or, with `dismisses` (1.468), its holder leaves the fight for good, alive. */
   failures?: { count: number; becomes?: string; dismisses?: true };
   /** Rolled only while its holder cannot see whoever put it on (1.266). */
   unseen?: true;
@@ -172,13 +172,13 @@ export interface RulesetDroppedThing {
   at?: RulesetCombatCell;
   /** The budget picking it up costs; without one, the turn's one free pick-up. */
   pickUp?: string;
-  /** The round it was first found lying far off as its maker's turn started (1.464): a pact weapon's
+  /** The round it was first found lying far off as its maker's turn started (1.465): a pact weapon's
    *  minute counted from then. */
   farSince?: number;
 }
 
 /** A condition a hit or a failed save puts on its target. */
-/** What a blow does to whoever it drops (1.661): left stable, and what it puts on them. */
+/** What a blow does to whoever it drops (1.662): left stable, and what it puts on them. */
 export interface RulesetCombatOnFell {
   stabilizes?: true;
   applies?: RulesetCombatApplies[];
@@ -186,7 +186,7 @@ export interface RulesetCombatOnFell {
 
 export interface RulesetCombatApplies {
   condition: string;
-  /** The one entry or creature action its holder is warded from, picked as it was cast (1.742): an
+  /** The one entry or creature action its holder is warded from, picked as it was cast (1.743): an
    *  entry `<catalog>/<entry>`, or `action:<name>`. Wish's immunity to a single spell. */
   wardsOff?: string;
   /** The creature type its user named as they used it (1.270), remembered by what it puts on. */
@@ -199,23 +199,23 @@ export interface RulesetCombatApplies {
     | "instant"
     | "until-save"
     | "this-action"
-    /** No clock at all (1.469): Continual Flame. */
+    /** No clock at all (1.470): Continual Flame. */
     | "until-dispelled"
     | {
         rounds: number;
         at?: "turn-start";
         of?: "source";
         untilLair?: true;
-        /** Rounds more for each step of higher cost paid (1.431). */
+        /** Rounds more for each step of higher cost paid (1.432). */
         perStep?: number;
-        /** Rounds instead at one step higher, two and so on, the last for every step beyond (1.454),
-         *  or no clock at all (1.466). */
+        /** Rounds instead at one step higher, two and so on, the last for every step beyond (1.455),
+         *  or no clock at all (1.467). */
         bySteps?: Array<number | "until-dispelled">;
-        /** Paid high enough to have no clock (1.466): on until something takes it off. */
+        /** Paid high enough to have no clock (1.467): on until something takes it off. */
         untilDispelled?: true;
-        /** No longer than what was left of this condition when it last came off (1.600). */
+        /** No longer than what was left of this condition when it last came off (1.601). */
         remainingOf?: string;
-        /** `rounds` that many times over, rolled as it is put on (1.609). */
+        /** `rounds` that many times over, rolled as it is put on (1.610). */
         times?: string;
       };
   /** Its source holds no more than this many with it at once (1.320). */
@@ -232,11 +232,11 @@ export interface RulesetCombatApplies {
     uses?: string[];
     downed?: true;
     gains?: string[];
-    /** Its holder incapacitated, holding anything with `cannot-act` (1.592). */
+    /** Its holder incapacitated, holding anything with `cannot-act` (1.593). */
     incapacitated?: true;
   };
   /** It comes off once its holder is this far from whoever put it on, and, with `unseen`, out of
-   *  their sight (1.310): Eyebite's panic. With `orUnseen`, either as its holder ends a turn (1.417). */
+   *  their sight (1.310): Eyebite's panic. With `orUnseen`, either as its holder ends a turn (1.418). */
   endsAway?: { beyond: number; unseen?: true; orUnseen?: true };
   /** What breaking free of it is rolled against, in place of the holder's own side of the contest
    *  (1.103): 5e's "grappled (escape DC 13)"; `"save"` is the applier's save difficulty (1.174). */
@@ -247,15 +247,15 @@ export interface RulesetCombatApplies {
   when?: RulesetSheetBounds;
   /** It goes on only a target that is this (1.168). */
   targetIs?: RulesetTargetIs;
-  /** It goes on only a target with this much health or less as it lands (1.434). */
+  /** It goes on only a target with this much health or less as it lands (1.435). */
   targetHealthAtMost?: number;
-  /** It goes on only on a d100 of this or lower (1.630). */
+  /** It goes on only on a d100 of this or lower (1.631). */
   chance?: number;
-  /** Only by an attack rolled with advantage (1.660): a cloaker's bite on the head. */
+  /** Only by an attack rolled with advantage (1.661): a cloaker's bite on the head. */
   withAdvantage?: true;
-  /** Only while its applier holds none of these on anybody (1.724): a chain devil's grapple. */
+  /** Only while its applier holds none of these on anybody (1.725): a chain devil's grapple. */
   unlessImposing?: string[];
-  /** It goes on only when its entry is paid this many steps above its lowest cost (1.501). */
+  /** It goes on only when its entry is paid this many steps above its lowest cost (1.502). */
   paidSteps?: { atLeast?: number; atMost?: number };
   /** It ends whenever this other condition put on with it ends (1.202). */
   endsWith?: string;
@@ -270,23 +270,23 @@ export interface RulesetCombatApplies {
   };
   /** More of what the condition harms with for each step of a higher cost it was put on with (1.255). */
   harmsPerCostStep?: { dice?: string; flat?: number };
-  /** Its holder's health maximum raised while it holds, and their health with it (1.457): Aid. */
+  /** Its holder's health maximum raised while it holds, and their health with it (1.458): Aid. */
   raisesMax?: { dice?: string; flat?: number; perStep?: number };
   /** A creature of one of these threat tiers or below is destroyed in its place (1.266). */
   destroysUpTo?: Array<{ tier: string; when?: RulesetSheetBounds }>;
   /** A number off its applier's sheet, fixed as it goes on, for the condition's `temporary` (1.274). */
   value?: RulesetValueRef;
-  /** Days it lasts, off its applier's sheet as it goes on (1.647): no clock in the fight. */
+  /** Days it lasts, off its applier's sheet as it goes on (1.648): no clock in the fight. */
   lastsDays?: RulesetLastsDays;
-  /** Put on by an item's use, it ends once that item is no longer worn (1.648). */
+  /** Put on by an item's use, it ends once that item is no longer worn (1.649). */
   whileItemWorn?: true;
-  /** The inventory stack of the item whose use put it on, where `whileItemWorn` (1.648). */
+  /** The inventory stack of the item whose use put it on, where `whileItemWorn` (1.649). */
   wornItem?: string;
-  /** It goes on only a target holding one of these, read as it goes on (1.391): a kraken's swallow. */
+  /** It goes on only a target holding one of these, read as it goes on (1.392): a kraken's swallow. */
   targetHolds?: { conditions?: string[]; fromSelf?: string[] };
-  /** What its applier had put on the target, taken off once it is on (1.391): the swallow's grapple. */
+  /** What its applier had put on the target, taken off once it is on (1.392): the swallow's grapple. */
   endsOnTarget?: string[];
-  /** What a creature trying to pull its holder out takes, win or lose (1.391): the cube's acid. */
+  /** What a creature trying to pull its holder out takes, win or lose (1.392): the cube's acid. */
   harmsPuller?: { dice?: string; flat?: number; type?: string };
 }
 
@@ -324,7 +324,7 @@ export interface RulesetCombatPoolRoll {
   /** Dice the wound penalty took off, as a negative number. Absent when it took none. */
   penalty?: number;
   botch?: boolean;
-  /** A `symbol-pool` fight's throw (1.780): the symbols left after cancelling, by id, and the dice
+  /** A `symbol-pool` fight's throw (1.781): the symbols left after cancelling, by id, and the dice
    *  that went in. `dice` is then the thrower's own dice, `upgrades` how many were upgraded, and
    *  `difficulty` the dice thrown against them. */
   symbols?: Record<string, number>;
@@ -366,12 +366,12 @@ export interface RulesetCombatSaveRider {
   modes?: Array<{ is: RulesetTargetIs; mode: "advantage" | "disadvantage" }>;
   /** Its user's own side fails it without rolling (1.278): Calm Emotions. */
   alliesMayFail?: true;
-  /** A target on a side hostile to its user's rolls it with advantage (1.566): Charm Person. */
+  /** A target on a side hostile to its user's rolls it with advantage (1.567): Charm Person. */
   advantageIfFought?: true;
-  /** Another save the target may make instead, the better of the two (1.708): Deadly Leap. */
+  /** Another save the target may make instead, the better of the two (1.709): Deadly Leap. */
   or?: string;
-  /** A failure by at least `atLeast` puts these on in place of the action's `applies` (1.576). */
-  /** `resultAtMost` (1.657): a total of that or lower instead. */
+  /** A failure by at least `atLeast` puts these on in place of the action's `applies` (1.577). */
+  /** `resultAtMost` (1.658): a total of that or lower instead. */
   failedBy?: { atLeast?: number; resultAtMost?: number; applies: RulesetCombatApplies[] };
 }
 
@@ -402,7 +402,7 @@ export interface RulesetCombatCharge {
   /** The ruleset's distance on a block, cells in a fight. */
   push?: number;
   applies?: RulesetCombatApplies[];
-  /** Another of its actions at the one charged, from `budget`, while it holds `targetHolds` (1.530). */
+  /** Another of its actions at the one charged, from `budget`, while it holds `targetHolds` (1.531). */
   then?: { action: string; budget: string; targetHolds?: string[] };
 }
 
@@ -411,15 +411,15 @@ export interface RulesetCombatSequenceStep {
   /** The id of the action this step resolves, as the fight knows it. */
   actionId: string;
   times: number;
-  /** `times` for each head its maker has now (1.534): a hydra's bites. */
+  /** `times` for each head its maker has now (1.535): a hydra's bites. */
   perHead?: true;
-  /** Made as many times as these dice roll (1.627), in place of `times`. */
+  /** Made as many times as these dice roll (1.628), in place of `times`. */
   dice?: { count: number; sides: number };
-  /** Made only if every attack of the step at this place hit, at the one it hit (1.627). */
+  /** Made only if every attack of the step at this place hit, at the one it hit (1.628). */
   ifHit?: number;
-  /** Its maker may leave it out (1.627): one of the sequence's modes does. */
+  /** Its maker may leave it out (1.628): one of the sequence's modes does. */
   optional?: true;
-  /** Left out, in the mode the sequence is made in (1.627). */
+  /** Left out, in the mode the sequence is made in (1.628). */
   skipped?: true;
 }
 
@@ -471,7 +471,7 @@ export interface RulesetCombatMove {
   untouchable?: true;
   /** The one way of moving it uses (1.285). */
   speed?: RulesetMoveMode;
-  /** Every step nearer a hostile it can see (1.591): Aggressive. */
+  /** Every step nearer a hostile it can see (1.592): Aggressive. */
   toward?: "seen-hostile";
 }
 
@@ -483,7 +483,7 @@ export interface RulesetObscures {
   dispersed?: true | { after: number };
   /** Magical darkness, which a zone that `dispelsDark` ends (1.297). */
   darkness?: true;
-  /** Its caster sees through it (1.593). */
+  /** Its caster sees through it (1.594). */
   notForCaster?: true;
 }
 
@@ -501,14 +501,14 @@ export interface RulesetTeleport {
   /** A creature's (1.280): one of its own actions, by id, it may make once before or after the
    *  teleport as part of the same action. A blink dog's bite. */
   strike?: string;
-  /** How well its user knows where it goes, as modes, and what a mishap deals (1.654). */
+  /** How well its user knows where it goes, as modes, and what a mishap deals (1.655). */
   familiarity?: Array<{ id: string; label: string; mishap: number; similar?: number; off?: number }>;
   mishap?: { dice: string; type: string };
-  /** The familiarity picked, by its place (1.654). */
+  /** The familiarity picked, by its place (1.655). */
   familiar?: number;
 }
 
-/** A creature's action never used on the same creature again (1.658). */
+/** A creature's action never used on the same creature again (1.659). */
 export interface RulesetSparedAfter {
   whenSaved?: true;
   whenEnds?: true;
@@ -522,18 +522,18 @@ export interface RulesetStatBlockAction {
   /** The block's own id when it has one, so a bestiary keeps its names across a reload. A sequence
    *  names its parts by this id, so a block with sequences needs them. */
   id?: string;
-  /** What it does as it dies (1.524), never on its menu: a mephit's Death Burst. */
+  /** What it does as it dies (1.525), never on its menu: a mephit's Death Burst. */
   onDeath?: true;
-  /** Only in these shapes (1.531): "own", or a form's "catalog/entry". */
+  /** Only in these shapes (1.532): "own", or a form's "catalog/entry". */
   inShape?: string[];
-  /** Only while up in the air (1.771): a wyvern's claws. */
+  /** Only while up in the air (1.772): a wyvern's claws. */
   whileFlying?: true;
-  /** A sequence after which one spell of its spellcasting follows for nothing (1.771): a glabrezu. */
+  /** A sequence after which one spell of its spellcasting follows for nothing (1.772): a glabrezu. */
   castsOne?: true;
   name: string;
   budget: string;
   toHit?: number;
-  /** In a `symbol-pool` fight, how many of the `toHit` dice are upgraded ones (1.780). */
+  /** In a `symbol-pool` fight, how many of the `toHit` dice are upgraded ones (1.781). */
   upgrades?: number;
   autoHit?: boolean;
   /** Senses a target must have for this to affect it (Capability API 1.127). */
@@ -556,17 +556,17 @@ export interface RulesetStatBlockAction {
    *  when it has one (1.184). */
   push?: number;
   /** Pulled this far straight toward the creature, stopping beside it, in the ruleset's own distance,
-   *  on a failed save when it has one (1.659). */
+   *  on a failed save when it has one (1.660). */
   pull?: number;
-  /** Whoever its blow drops (1.661): left stable, and what it puts on them. */
+  /** Whoever its blow drops (1.662): left stable, and what it puts on them. */
   onFell?: RulesetCombatOnFell;
-  /** What each use does, in turn (1.671): other actions of this block. */
+  /** What each use does, in turn (1.672): other actions of this block. */
   byUse?: string[];
-  /** A contest the creature wins for what it puts on to go on (1.679): a merrow's Harpoon. */
+  /** A contest the creature wins for what it puts on to go on (1.680): a merrow's Harpoon. */
   contest?: { attacker: string[]; defender: string[]; ties?: "attacker" | "defender" };
-  /** What it puts on, pushes, pulls or sends away goes only on a target that is this (1.682). */
+  /** What it puts on, pushes, pulls or sends away goes only on a target that is this (1.683). */
   ridersIs?: RulesetTargetIs;
-  /** Whoever it lands on leaves the fight (1.669), its own creature too, still taking its turns away;
+  /** Whoever it lands on leaves the fight (1.670), its own creature too, still taking its turns away;
    *  `carries.within` in the ruleset's own distance. */
   dismisses?:
     | true
@@ -593,15 +593,15 @@ export interface RulesetStatBlockAction {
   ground?: RulesetCreatureGround;
   /** Whoever it lands on walks toward it on their own budget (1.326): Whisper a Name. */
   draws?: { spends: string };
-  /** Aimed only at whoever is this (1.389): a behir's Constrict. */
+  /** Aimed only at whoever is this (1.390): a behir's Constrict. */
   targetTypes?: RulesetCombatAction["targetTypes"];
-  /** Engulf (1.387): moves into smaller creatures' spaces, each saving or taken inside. */
+  /** Engulf (1.388): moves into smaller creatures' spaces, each saving or taken inside. */
   engulf?: RulesetEngulf;
-  /** A leap onto whoever stands where it lands (1.709): a bulette's Deadly Leap. */
+  /** A leap onto whoever stands where it lands (1.710): a bulette's Deadly Leap. */
   leapsOnto?: RulesetLeapsOnto;
-  /** Kept up on its later turns with this budget (1.711): a harpy's Luring Song. */
+  /** Kept up on its later turns with this budget (1.712): a harpy's Luring Song. */
   sustains?: { budget: string };
-  /** What a sequence does once every attack in it hit the one target (1.389): a shambling mound's. */
+  /** What a sequence does once every attack in it hit the one target (1.390): a shambling mound's. */
   allHit?: RulesetAllHit;
   /** Only at somebody who has taken their turn this round (1.327): the Hour Bell. */
   actedOnly?: true;
@@ -612,31 +612,31 @@ export interface RulesetStatBlockAction {
   calls?: {
     creature?: string;
     count?: RulesetCombatAmount;
-    /** Or its options, picked as it is used (1.430): Summon Demon. */
+    /** Or its options, picked as it is used (1.431): Summon Demon. */
     options?: RulesetCatalogCalls["options"];
     initiative?: "roll" | "after" | "none";
     rounds?: number;
     endsWithCaller?: true | "incapacitated";
     cantCall?: true;
-    /** Its caller may send them away as an action (1.433), or on another budget (1.594). */
+    /** Its caller may send them away as an action (1.434), or on another budget (1.595). */
     dismissible?: true | { budget: string };
-    /** They leave once their caller is farther than this (1.594). */
+    /** They leave once their caller is farther than this (1.595). */
     leash?: number;
-    /** Set down within this of their caller, seen when it says (1.605). */
+    /** Set down within this of their caller, seen when it says (1.606). */
     within?: { distance: number; seen?: true };
-    /** Offered only where it says (1.598). */
+    /** Offered only where it says (1.599). */
     onlyWhere?: RulesetCallWhere;
-    /** They appear after this many of their caller's turns (1.598). */
+    /** They appear after this many of their caller's turns (1.599). */
     arrivesIn?: RulesetCombatAmount;
-    /** Raised from a corpse (1.538): Create Specter. */
+    /** Raised from a corpse (1.539): Create Specter. */
     atCorpse?: { withinRounds: number; is?: RulesetTargetIs };
-    /** No more than this many stand at once (1.538). */
+    /** No more than this many stand at once (1.539). */
     atMost?: number;
-    /** Commanded on this budget (1.691): a solar's Flying Sword. */
+    /** Commanded on this budget (1.692): a solar's Flying Sword. */
     commandedWith?: string;
-    /** Commanded through this one of their caller's actions (1.720): a chain devil's Multiattack. */
+    /** Commanded through this one of their caller's actions (1.721): a chain devil's Multiattack. */
     commandedBy?: { action: string };
-    /** Their attacks made as this of their caller's own actions is (1.691). */
+    /** Their attacks made as this of their caller's own actions is (1.692). */
     fromCaller?: { action: string };
   };
   /** The forms it changes into (1.379), found in the bestiary as the fight begins. */
@@ -649,7 +649,7 @@ export interface RulesetStatBlockAction {
   /** Its damage lowers the health maximum (1.203): on a failed save of its own, on a failed save of
    *  the action's (`onFailedSave`), or on every blow (1.235); only `damageType`'s, healing its maker
    *  with `heals`. */
-  /** On a called creature (1.570): `false` keeps its caller's `adds` off this action, and
+  /** On a called creature (1.571): `false` keeps its caller's `adds` off this action, and
    *  `perCallerStep` is added once for each step the call was paid above its base. */
   callerAdds?: false;
   perCallerStep?: RulesetCombatAmount;
@@ -666,7 +666,7 @@ export interface RulesetStatBlockAction {
   drain?: { share?: number; damageType?: string };
   /** Offered only on a target holding one of these, or one of `fromSelf` its maker put on (1.235). */
   targetHolds?: { conditions?: string[]; fromSelf?: string[] };
-  /** Offered only while its maker has put none of these on anybody still holding it (1.699). */
+  /** Offered only while its maker has put none of these on anybody still holding it (1.700). */
   unlessImposing?: string[];
   /** What it adds after a straight run at its target this turn (1.186). */
   charge?: RulesetCombatCharge;
@@ -680,16 +680,16 @@ export interface RulesetStatBlockAction {
    *  `healsOnSlay` for each (1.311): Consume Life. */
   dyingOnly?: true;
   slaysOnFailedSave?: true;
-  /** Only a target with this much health or less is slain (1.662): a solar's Slaying Longbow. */
+  /** Only a target with this much health or less is slain (1.663): a solar's Slaying Longbow. */
   slaysHealthAtMost?: number;
-  /** A failed save drops them to no health instead (1.662): a sea hag's Death Glare. */
+  /** A failed save drops them to no health instead (1.663): a sea hag's Death Glare. */
   dropsOnFailedSave?: true;
   healsOnSlay?: RulesetCombatAmount;
-  /** Never on the same creature again (1.658). */
+  /** Never on the same creature again (1.659). */
   oncePerTarget?: RulesetSparedAfter;
   /** Who it fells on Held Ground is reaped (1.323). */
   reaps?: true;
-  /** It works only on a roll (1.425): a demon's 30 percent summoning. */
+  /** It works only on a roll (1.426): a demon's 30 percent summoning. */
   chance?: { sides: number; atMost: number };
   targetCount?: number;
   reach?: number;
@@ -699,7 +699,7 @@ export interface RulesetStatBlockAction {
     shape: RulesetCombatArea["shape"];
     size: number;
     width?: number;
-    /** A wall laid as a ring instead, this many across (1.712). */
+    /** A wall laid as a ring instead, this many across (1.713). */
     ring?: number;
     ringOnly?: true;
     friendlyFire?: boolean;
@@ -715,7 +715,7 @@ export interface RulesetStatBlockAction {
     action: string;
     times: number;
     perHead?: true;
-    /** Rolled for, an earlier step's hit, left out at will (1.627). */
+    /** Rolled for, an earlier step's hit, left out at will (1.628). */
     dice?: { count: number; sides: number };
     ifHit?: number;
     optional?: true;
@@ -746,7 +746,7 @@ export interface RulesetStatBlockAction {
   };
   /** It lands on the creature itself. */
   self?: true;
-  /** Costs no budget, and is offered only before its first attack of its own turn (1.590). */
+  /** Costs no budget, and is offered only before its first attack of its own turn (1.591). */
   free?: true;
   beforeAttack?: true;
 }
@@ -778,7 +778,7 @@ export interface RulesetStatBlock {
   hiding?: RulesetHidingTraits;
   /** Spells cast without slots, kept beside the block's own actions (1.123). */
   spellcasting?: RulesetCreature["spellcasting"];
-  /** What it holds to cast later (1.508), stored in it in the fight or before it: a shield guardian. */
+  /** What it holds to cast later (1.509), stored in it in the fight or before it: a shield guardian. */
   stores?: RulesetCreature["stores"];
   /** The creature described in the ruleset's OWN terms: a character sheet, as partial as it likes,
    *  keyed by the ids the ruleset declares. An opponent built from one is built the way a party
@@ -793,9 +793,9 @@ export interface RulesetStatBlock {
   speeds?: RulesetMoveSpeeds;
   /** It flies without needing to keep moving, so nothing knocks it out of the air (1.113). */
   hover?: true;
-  /** Ridden, it acts as it will (1.480): an intelligent mount. */
+  /** Ridden, it acts as it will (1.481): an intelligent mount. */
   mountIndependent?: true;
-  /** Ridden by as many as its back bears, by weight (1.625): a Carpet of Flying. */
+  /** Ridden by as many as its back bears, by weight (1.626): a Carpet of Flying. */
   mountCarries?: { weight: number; slowedUpTo?: number; slowedSpeed?: number };
   /** Its hands are full, so a `twoHanded` alternative never holds (1.102). */
   shield?: true;
@@ -804,13 +804,13 @@ export interface RulesetStatBlock {
   /** One of `combat.creatureTypes.types`, and its tags (1.168): what a target test reads. */
   type?: string;
   tags?: string[];
-  /** Its alignment in words (1.683): the tags it names are its tags too. */
+  /** Its alignment in words (1.684): the tags it names are its tags too. */
   alignment?: string;
-  /** How much thought it puts into a fight (1.745), over its type's and its score's. */
+  /** How much thought it puts into a fight (1.746), over its type's and its score's. */
   mind?: CombatMind;
-  /** How it goes about a fight (1.747), over its type's and the ruleset's. */
+  /** How it goes about a fight (1.748), over its type's and the ruleset's. */
   behavior?: RulesetCombatBehavior;
-  /** Its morale score, and whether its side follows it (1.746). */
+  /** Its morale score, and whether its side follows it (1.747). */
   morale?: number;
   leader?: true;
   /** Ability scores by the ruleset's own ability ids. Carried for the Game Master, not resolved. */
@@ -824,20 +824,20 @@ export interface RulesetStatBlock {
   resist?: RulesetCreatureHideEntry[];
   vulnerable?: string[];
   immune?: RulesetCreatureHideEntry[];
-  /** Damage types that heal it instead (1.525): a flesh golem's lightning. */
+  /** Damage types that heal it instead (1.526): a flesh golem's lightning. */
   healedBy?: string[];
-  /** Double damage to objects (1.544): Siege Monster. */
+  /** Double damage to objects (1.545): Siege Monster. */
   doubleToObjects?: true;
-  /** The tags of what it wears (1.695), as a target test's `wears` reads them. */
+  /** The tags of what it wears (1.696), as a target test's `wears` reads them. */
   wears?: string[];
-  /** Its own jump in the ruleset's distance (1.700), in place of one read off its abilities. */
+  /** Its own jump in the ruleset's distance (1.701), in place of one read off its abilities. */
   jump?: { long: number; high: number; withoutRunUp?: true };
   /** Only a foe whose `ability` score is above `above` moves through its space, as hard going with
-   *  `difficult` (1.584): the Arcane Hand. */
+   *  `difficult` (1.585): the Arcane Hand. */
   passableBy?: { ability: string; above: number; difficult?: true };
-  /** It does not fill its space (1.584): others may stop in it. */
+  /** It does not fill its space (1.585): others may stop in it. */
   fillsSpace?: false;
-  /** The languages it understands, by name (1.545). */
+  /** The languages it understands, by name (1.546). */
   languages?: string[];
   /** Conditions it shrugs off, and tracks whose levels it never suffers (1.115). */
   conditionImmunities?: string[];
@@ -864,19 +864,19 @@ export interface RulesetStatBlock {
   /** How many failed saves it may turn into successes (1.317): 5e's Legendary Resistance (3/Day). */
   legendaryResistance?: number;
   /** Dropping to 0, it is left at 1 instead (1.320), with a turn straight after where it says: the
-   *  Miller's Hourglass; with a save and the blow's terms from 1.384: Undead Fortitude. */
+   *  Miller's Hourglass; with a save and the blow's terms from 1.385: Undead Fortitude. */
   hangsOn?: RulesetHangsOn;
   /** What it regains as each of its turns starts (1.383). */
   regenerates?: RulesetRegeneration;
-  /** Harmed by one of `by` with `atLeast` health left, it splits in two (1.459): Black Pudding. */
+  /** Harmed by one of `by` with `atLeast` health left, it splits in two (1.460): Black Pudding. */
   splits?: { by: string[]; atLeast: number; smallest?: string };
-  /** What it puts on itself when a blow of one of `by` deals it anything (1.526): Aversion of Fire. */
+  /** What it puts on itself when a blow of one of `by` deals it anything (1.527): Aversion of Fire. */
   whenHarmedBy?: Array<{ by: string[]; applies: RulesetCombatApplies[] }>;
-  /** Budgets back in full as every turn starts, anybody's (1.533): a marilith's Reactive. */
+  /** Budgets back in full as every turn starts, anybody's (1.534): a marilith's Reactive. */
   refillsEveryTurn?: string[];
-  /** Weapons that hit it corrode (1.535): a rust monster's Rust Metal. */
+  /** Weapons that hit it corrode (1.536): a rust monster's Rust Metal. */
   corrodesWeapons?: { tags: string[]; sparesMagical?: true; step?: number; destroyedAt?: number; ammunition?: true };
-  /** Heads that die and grow back (1.534): a hydra's Multiple Heads and Reactive Heads. */
+  /** Heads that die and grow back (1.535): a hydra's Multiple Heads and Reactive Heads. */
   heads?: {
     count: number;
     max?: number;
@@ -887,9 +887,9 @@ export interface RulesetStatBlock {
     opportunityReactions?: true;
     whileMany?: string[];
   };
-  /** Felling with a melee attack on its turn, a move and its action again (1.529): Rampage. */
+  /** Felling with a melee attack on its turn, a move and its action again (1.530): Rampage. */
   rampage?: { action: string; budget: string; move?: number };
-  /** Rolled as each of its turns starts at low health (1.527): Berserk. */
+  /** Rolled as each of its turns starts at low health (1.528): Berserk. */
   rollsAtTurnStart?: Array<{ healthAtMost: number; dice: string; atLeast: number; applies: RulesetCombatApplies[] }>;
   /** It does not move while any of its cells is in one of these lights (1.319): Lantern-Shy. */
   stillIn?: RulesetBoardLight[];
@@ -926,7 +926,7 @@ export type RulesetCombatantInput =
       catalogs?: RulesetCatalogEntriesById;
       /** The items they hold as the fight starts, which an `itemStat` on their sheet reads. */
       items?: ReadonlyArray<RulesetSheetItem>;
-      /** Whose bag their items are in (1.705): a party member's name, null for the player's own
+      /** Whose bag their items are in (1.706): a party member's name, null for the player's own
        *  character. What a cast of theirs makes is written there; left out, it is not written. */
       holder?: string | null;
     }
@@ -936,9 +936,9 @@ export type RulesetCombatantInput =
       name: string;
       side: "enemy" | "party";
       block: RulesetStatBlock;
-      /** What is stored in it as the fight starts, for a block that `stores` (1.508). */
+      /** What is stored in it as the fight starts, for a block that `stores` (1.509). */
       stored?: RulesetStoredEntry[];
-      /** What it has on it as the fight starts (1.784), each by its item reference. */
+      /** What it has on it as the fight starts (1.785), each by its item reference. */
       carried?: ReadonlyArray<RulesetCarriedInput>;
     }
   /** A creature out of a bestiary, looked up in the catalogs the encounter was handed. */
@@ -953,15 +953,15 @@ export type RulesetCombatantInput =
        *  state, read as it begins (its conditions held, its health where it was left) and written
        *  back as it goes, as a sheet's is. */
       live?: unknown;
-      /** What is stored in it as the fight starts, for a creature that `stores` (1.508). */
+      /** What is stored in it as the fight starts, for a creature that `stores` (1.509). */
       stored?: RulesetStoredEntry[];
       /** Its stat block as this fight has it (1.363): a story fight's Legendary Resistance and health. */
       adjust?: { legendaryResistance?: number; health?: number; calls?: Array<{ action: string; creature: string }> };
-      /** What it has on it as the fight starts (1.784), each by its item reference. */
+      /** What it has on it as the fight starts (1.785), each by its item reference. */
       carried?: ReadonlyArray<RulesetCarriedInput>;
     };
 
-/** One item an opponent has on it as a fight starts (1.784), and the reference it drops as. Never
+/** One item an opponent has on it as a fight starts (1.785), and the reference it drops as. Never
  *  anybody's stack: nothing it uses is written to a bag. */
 export interface RulesetCarriedInput {
   held: RulesetSheetItem;
@@ -971,7 +971,7 @@ export interface RulesetCarriedInput {
 /** One thing a combatant may do, with every number already read off the sheet or the stat block.
  *  Resolved once, when the fight begins: armour and bonuses do not change mid-fight in this kind. */
 export interface RulesetCombatAction {
-  /** Cast by praying (Capability API 1.770), as the ruleset's `combat.poses.divine` says: read only
+  /** Cast by praying (Capability API 1.771), as the ruleset's `combat.poses.divine` says: read only
    *  by the art and the fight's marks, whose caster kneels to pray. */
   divine?: true;
   /** The entry's qualities, even without damage, for saves against magic (1.134). */
@@ -993,7 +993,7 @@ export interface RulesetCombatAction {
   /** Its damage lowers the health maximum (1.203): on a failed save of its own, on a failed save of
    *  the action's (`onFailedSave`), or on every blow (1.235); only `damageType`'s, healing its maker
    *  with `heals`. */
-  /** On a called creature (1.570): `false` keeps its caller's `adds` off this action, and
+  /** On a called creature (1.571): `false` keeps its caller's `adds` off this action, and
    *  `perCallerStep` is added once for each step the call was paid above its base. */
   callerAdds?: false;
   perCallerStep?: RulesetCombatAmount;
@@ -1010,11 +1010,11 @@ export interface RulesetCombatAction {
   drain?: { share?: number; damageType?: string };
   /** Offered only on a target holding one of these, or one of `fromSelf` its maker put on (1.235). */
   targetHolds?: { conditions?: string[]; fromSelf?: string[] };
-  /** Offered only while its user has put none of these on anybody still holding it (1.699): an
+  /** Offered only while its user has put none of these on anybody still holding it (1.700): an
    *  ankheg's Acid Spray, not while grappling. */
   unlessImposing?: string[];
   toHit?: number;
-  /** In a `symbol-pool` fight, how many of the `toHit` dice are upgraded ones (1.780). */
+  /** In a `symbol-pool` fight, how many of the `toHit` dice are upgraded ones (1.781). */
   upgrades?: number;
   /** The per-die target a pool fight throws this attack against, where the ruleset lets it move: a
    *  weapon's own. Without one the attack is thrown against the pool's usual target. */
@@ -1026,17 +1026,17 @@ export interface RulesetCombatAction {
   needsAny?: true;
   /** Cells its targets must all stand within of each other (1.267): Command. */
   targetsWithin?: number;
-  /** Cells each target after the first must stand within of the first (1.578): Chain Lightning. */
+  /** Cells each target after the first must stand within of the first (1.579): Chain Lightning. */
   targetsWithinFirst?: number;
   /** Only a creature its maker can see may be picked (1.178). */
   seen?: true;
   /** What using it needs, by the ids of `combat.components` (1.179). */
   components?: string[];
-  /** A priced material its user must carry (1.774), taken from what they carry where it is consumed. */
+  /** A priced material its user must carry (1.775), taken from what they carry where it is consumed. */
   material?: NonNullable<RulesetCatalogMechanics["material"]>;
   /** Offered only while this reads within its bounds off the holder's sheet (Capability API 1.166). */
   usableWhen?: RulesetSheetBounds;
-  /** It works only on a roll (1.425), paid for either way; a failure spends `failUses` instead. */
+  /** It works only on a roll (1.426), paid for either way; a failure spends `failUses` instead. */
   chance?: RulesetUseChance;
   /** Who it may be pointed at or catch, by what they are (Capability API 1.168). */
   targetTypes?: {
@@ -1047,14 +1047,14 @@ export interface RulesetCombatAction {
     abilityAtLeast?: Record<string, number>;
     notImmuneTo?: string[];
     calledBySelf?: true;
-    /** Only one that understands a language its user does (1.545). */
+    /** Only one that understands a language its user does (1.546). */
     understands?: true;
-    /** Only one under nobody else's control (1.617). */
+    /** Only one under nobody else's control (1.618). */
     uncontrolled?: true;
   };
   /** Dealt at its most to a target that is this (1.185). */
   maxAgainst?: RulesetTargetIs;
-  /** Another amount, dealt instead to a target that is this (1.613). */
+  /** Another amount, dealt instead to a target that is this (1.614). */
   amountAgainst?: { is: RulesetTargetIs; amount: RulesetCombatAmount };
   damage?: RulesetCombatDamage;
   heal?: RulesetCombatAmount;
@@ -1062,24 +1062,24 @@ export interface RulesetCombatAction {
   /** Health shared out among its targets, least health first (1.196); the rest are left alone. */
   healthPool?: RulesetCombatAmount;
   /** Its heal one amount shared out among its targets, each up to their maximum or half of it
-   *  (1.547): Preserve Life. */
+   *  (1.548): Preserve Life. */
   sharesHeal?: true | "half";
-  /** It heals each target all the health they are missing (1.741): Wish. */
+  /** It heals each target all the health they are missing (1.742): Wish. */
   healsAll?: true;
-  /** Each target won over by a contest of checks instead of a roll or a save (1.549): Telekinesis. */
+  /** Each target won over by a contest of checks instead of a roll or a save (1.550): Telekinesis. */
   contested?: {
     attacker: string[];
     defender: string[];
     ties: "attacker" | "defender";
-    /** Conditions put on a target its user loses to (1.602), each for `rounds`. */
+    /** Conditions put on a target its user loses to (1.603), each for `rounds`. */
     onLose?: { applies: Array<{ condition: string; rounds: number }> };
-    /** What it takes from a target it wins against (1.652): Telekinesis on what they hold. */
+    /** What it takes from a target it wins against (1.653): Telekinesis on what they hold. */
     takes?: { slots?: string[]; tags?: string[] };
-    /** Only what goes on after the blow waits on it (1.679), its damage landing either way, as a
+    /** Only what goes on after the blow waits on it (1.680), its damage landing either way, as a
      *  save that does nothing on a success: a merrow's Harpoon. */
     riders?: true;
   };
-  /** Each target it lands on moved to a cell its user picks (1.549), up to `cells` from where it
+  /** Each target it lands on moved to a cell its user picks (1.550), up to `cells` from where it
    *  stood, and with `up` lifted as many levels as the choice's `rises`: Telekinesis. */
   movesTarget?: { cells: number; up?: true };
   /** Whom the pool passes over (1.199): holders of these conditions, and those who cannot see its
@@ -1089,32 +1089,32 @@ export interface RulesetCombatAction {
   healthAtMost?: number;
   /** Kills outright whoever it affects (1.196). */
   kills?: true;
-  /** Kills outright whoever fails its save with this much health or less (1.434). */
+  /** Kills outright whoever fails its save with this much health or less (1.435). */
   killsAtMost?: number;
-  /** Whoever its damage drops to 0, or finds there, dies outright (1.771): Disintegrate. */
+  /** Whoever its damage drops to 0, or finds there, dies outright (1.772): Disintegrate. */
   fellsKill?: true;
-  /** `dismisses` sends away only those that are this (1.434). */
+  /** `dismisses` sends away only those that are this (1.435). */
   dismissesIs?: RulesetTargetIs;
-  /** What goes on after the blow, its contest too, goes only on a target that is this (1.682): a
+  /** What goes on after the blow, its contest too, goes only on a target that is this (1.683): a
    *  merrow's Harpoon on a Huge or smaller target. Its damage lands either way. */
   ridersIs?: RulesetTargetIs;
   /** A pool of each target's sheet this gives back some of: an item's `restore`. */
   /** `overMax` (1.252): it may go past the pool's maximum, as Font of Magic's slots do. */
   restore?: { pool: string; amount: RulesetCombatAmount; overMax?: true };
-  /** Spent pools of its user's sheet it gives back by itself (1.640): an item's `recovers`. */
+  /** Spent pools of its user's sheet it gives back by itself (1.641): an item's `recovers`. */
   recovers?: { group: string; upTo: RulesetValueRef; most?: number; count?: number };
   /** Conditions it takes off its target, in the order named, at most `count` of them (1.176); with
    *  `from`, only what a creature that is that put on (1.236). */
   ends?: { conditions: string[]; count?: number; from?: RulesetTargetIs; chosen?: true };
-  /** Ends what this catalog's entries put on its target (1.408): Dispel Magic, Cleansing Touch. */
+  /** Ends what this catalog's entries put on its target (1.409): Dispel Magic, Cleansing Touch. */
   endsSpells?: {
     catalogs: string[];
     count?: number;
     upTo?: "paid" | number;
     above?: { modifier: number; dc: number };
-    /** Its user picks which end (1.411). */
+    /** Its user picks which end (1.412). */
     chosen?: true;
-    /** It may be aimed at a lasting area instead (1.411). */
+    /** It may be aimed at a lasting area instead (1.412). */
     zones?: true;
   };
   /** Offered only while its user holds this condition, which gave it to them (1.236). */
@@ -1127,10 +1127,10 @@ export interface RulesetCombatAction {
   endsCondition?: string;
   /** Used only while its user stands in one of these lights (1.303). */
   usableIn?: { light: RulesetBoardLight[] };
-  /** Used only while its user holds one of these conditions (1.601). */
+  /** Used only while its user holds one of these conditions (1.602). */
   userHolds?: string[];
   /** What an item's use puts on lasts while the item's charges do, one spent each round it holds
-   *  (1.607). */
+   *  (1.608). */
   chargesPerRound?: true;
   /** Only within `within` cells of a standing prop named `prop` by id or label (1.332). */
   usableNear?: { prop: string; within: number };
@@ -1142,9 +1142,9 @@ export interface RulesetCombatAction {
         while: string;
         gone?: RulesetTargetIs;
         turns?: true;
-        /** Allies that go with its own user (1.669), `within` cells, nearest first. */
+        /** Allies that go with its own user (1.670), `within` cells, nearest first. */
         carries?: { count: number; within: number; condition: string };
-        /** Its user goes, into its target, while the target holds `while` from them (1.680). */
+        /** Its user goes, into its target, while the target holds `while` from them (1.681). */
         possesses?: true;
       };
   /** It steadies a dying target: no more dying rolls (1.176). */
@@ -1155,19 +1155,19 @@ export interface RulesetCombatAction {
   unseals?: true;
   /** It does one of its cures, not all (1.204): the mode picked, else the first the target needs. */
   cureOneOf?: true;
-  /** It puts on one of its `applies`, not all (1.432): the mode picked, else the first. */
+  /** It puts on one of its `applies`, not all (1.433): the mode picked, else the first. */
   appliesOneOf?: true;
-  /** The mode it is made in (1.676), as `rulesetModedAction` made it: what a repeat keeps. */
+  /** The mode it is made in (1.677), as `rulesetModedAction` made it: what a repeat keeps. */
   inMode?: string;
   /** Its user names a creature type as they use it (1.270), one of `modes`. */
   kindChoice?: true;
-  /** Its user names one or more of these creature types and tags as they use it (1.737), the
+  /** Its user names one or more of these creature types and tags as they use it (1.738), the
    *  kinds its zone strikes, among those its targetTypes names where it names any: Forbiddance. */
   kindsOf?: Array<{ id: string; label: string }>;
-  /** Its user picks the one entry or creature action in the fight what it puts on wards off (1.742),
+  /** Its user picks the one entry or creature action in the fight what it puts on wards off (1.743),
    *  offered as its option's `kindsOf`: Wish. */
   wardPick?: true;
-  /** Its user names its damage type as they use it (1.737), one of `modes`. */
+  /** Its user names its damage type as they use it (1.738), one of `modes`. */
   damageTypeChoice?: true;
   /** A form is picked as it is used (1.379), from its `modes`; `formCap` keeps out the forms above
    *  what its target may become. */
@@ -1179,9 +1179,9 @@ export interface RulesetCombatAction {
    *  `modes` when it names options. */
   callsOf?: RulesetCatalogCalls & { cantCall?: true; callerAction?: string; commandedBy?: string };
   callChoice?: true;
-  /** Whichever of its options comes arrives after this many of its caller's turns (1.598). */
+  /** Whichever of its options comes arrives after this many of its caller's turns (1.599). */
   callsArriveIn?: RulesetCombatAmount;
-  /** Which call it makes is rolled as it is used (1.543), never picked: each as likely as its
+  /** Which call it makes is rolled as it is used (1.544), never picked: each as likely as its
    *  `weight`, calling nobody without a `call`, those it calls joining the other side when `hostile`.
    *  A Bag of Tricks, an Efreeti Bottle. */
   callsRolled?: Array<{
@@ -1189,77 +1189,77 @@ export interface RulesetCombatAction {
     label: string;
     call?: NonNullable<RulesetCombatAction["calls"]>;
     hostile?: true;
-    /** Its place among the call's options, from 1 (1.575). */
+    /** Its place among the call's options, from 1 (1.576). */
     index?: number;
     /** Rounds in place of the call's own, item spent once it comes, and the one past the call's
-     *  lifetime (1.575): an Efreeti Bottle. */
+     *  lifetime (1.576): an Efreeti Bottle. */
     rounds?: number;
     spendsItem?: true;
     pastLifetime?: true;
   }>;
-  /** An item's rolled call keeps its first roll and counts its uses (1.575): an Efreeti Bottle. */
+  /** An item's rolled call keeps its first roll and counts its uses (1.576): an Efreeti Bottle. */
   callsRollKept?: true;
   callsLifetime?: number;
-  /** What it does is rolled as it is used (1.543): each row as likely as its `weight`, made as the
+  /** What it does is rolled as it is used (1.544): each row as likely as its `weight`, made as the
    *  holder's action `id`, or nothing in the fight without one. A Wand of Wonder. */
   rollsAmong?: Array<{ weight: number; label: string; id?: string }>;
-  /** Made only as a row another action rolled (1.543), never on a menu. */
+  /** Made only as a row another action rolled (1.544), never on a menu. */
   rolledPart?: true;
-  /** What each use does, in turn (1.671): the holder's actions by id, the nth use the nth, past the
+  /** What each use does, in turn (1.672): the holder's actions by id, the nth use the nth, past the
    *  end the last, counted by its `uses`. Those are marked `rolledPart`, never on a menu. */
   byUse?: string[];
   /** Taken as its holder's own attack hits, its damage joins that blow (1.241): Divine Smite. */
   addsToBlow?: true;
-  /** What its holder does as it dies (1.524), never on a menu: a mephit's Death Burst. */
+  /** What its holder does as it dies (1.525), never on a menu: a mephit's Death Burst. */
   onDeath?: true;
-  /** Offered only while its holder is in one of these shapes (1.531): "own", or "catalog/entry". */
+  /** Offered only while its holder is in one of these shapes (1.532): "own", or "catalog/entry". */
   inShape?: string[];
-  /** Offered only while its holder is up in the air (1.771), and made in a sequence only then. */
+  /** Offered only while its holder is up in the air (1.772), and made in a sequence only then. */
   whileFlying?: true;
-  /** Made, one spell of its holder's spellcasting may follow this turn for nothing (1.771). */
+  /** Made, one spell of its holder's spellcasting may follow this turn for nothing (1.772). */
   castsOne?: true;
-  /** Its holder's other actions whose effects happen too as this one does (1.519), each on whom its
+  /** Its holder's other actions whose effects happen too as this one does (1.520), each on whom its
    *  burst around them catches, spending nothing of theirs: Thunder and Lightning's Thunderclap. */
   alongside?: string[];
   /** What it adds is kept off by the one hit's made `save`, and its maker regains `drain` of what it
-   *  dealt (1.518): a Rod of Lordly Might's Drain Life. */
+   *  dealt (1.519): a Rod of Lordly Might's Drain Life. */
   addsWith?: { save?: { save: string; difficulty: number }; drain?: number };
-  /** Its holder's best melee strike at whoever caused its moment (1.406): Retaliation. */
+  /** Its holder's best melee strike at whoever caused its moment (1.407): Retaliation. */
   strikesWith?: "melee" | "ranged";
-  /** A strike again for nothing (1.412), at somebody other than `targetId` and within `within` cells
+  /** A strike again for nothing (1.413), at somebody other than `targetId` and within `within` cells
    *  of them: Horde Breaker's. */
   strikeAgain?: { targetId: string; within: number };
-  /** Whoever missed its holder attacks the one its holder picks instead (1.406). */
+  /** Whoever missed its holder attacks the one its holder picks instead (1.407). */
   redirects?: true;
-  /** Taken for somebody an attack is aimed at, it is aimed at its holder instead (1.493). */
+  /** Taken for somebody an attack is aimed at, it is aimed at its holder instead (1.494). */
   takesAim?: true;
-  /** Throws back the missile its holder just caught, with that missile's damage (1.400), or one die
-   *  of `sides` where that is the better (1.404): Martial Arts' die. */
+  /** Throws back the missile its holder just caught, with that missile's damage (1.401), or one die
+   *  of `sides` where that is the better (1.405): Martial Arts' die. */
   throwsCaught?: true | { sides: number };
-  /** Keeps the missile its holder just caught (1.610): the shooter's own, else `otherwise`. */
+  /** Keeps the missile its holder just caught (1.611): the shooter's own, else `otherwise`. */
   keepsCaught?: true | { otherwise: string };
   /** Taken as somebody else's attack hits, these dice come off the roll (1.250): Cutting Words. */
   lowersRoll?: { count: number; sides: number; flat: number; also?: Array<"checks" | "damage"> };
   /** Its user chooses how many uses one use spends, and it heals that many times over (1.251). */
   usesChosen?: true;
-  /** It takes this many rounds to cast (1.445), its budget spent again as each turn starts. */
+  /** It takes this many rounds to cast (1.446), its budget spent again as each turn starts. */
   castingRounds?: number;
-  /** Never on the fight menu (1.446): set up before a fight, standing as it starts. */
+  /** Never on the fight menu (1.447): set up before a fight, standing as it starts. */
   beforeFight?: true;
-  /** Casts other entries of a catalog, each its own option (1.458): 5e's Wish. On no menu itself. */
+  /** Casts other entries of a catalog, each its own option (1.459): 5e's Wish. On no menu itself. */
   duplicates?: { catalog: string; upTo: number; only?: string[] };
-  /** Aimed at a layered wall whose layer names it (1.475), destroying that layer in its turn;
+  /** Aimed at a layered wall whose layer names it (1.476), destroying that layer in its turn;
    *  `only` when it does nothing else, and so is offered only while such a wall stands. */
   endsLayers?: { only?: true; as?: string };
-  /** The entry that casts this one, as its own option paid as it is (1.458): Wish's id. */
+  /** The entry that casts this one, as its own option paid as it is (1.459): Wish's id. */
   duplicatedBy?: string;
-  /** Its concentration holds only when paid fewer steps of higher cost than this (1.454). */
+  /** Its concentration holds only when paid fewer steps of higher cost than this (1.455). */
   concentrationBelowStep?: number;
-  /** What it applies goes on what it calls, not on whoever it is aimed at (1.463): Antipathy. */
+  /** What it applies goes on what it calls, not on whoever it is aimed at (1.464): Antipathy. */
   appliesToCalled?: true;
-  /** Aimed at a point, steers every holder of this condition its user put on there (1.448). */
+  /** Aimed at a point, steers every holder of this condition its user put on there (1.449). */
   steers?: string;
-  /** A table rolled for each target, its row the ray that strikes them (1.452): Prismatic Spray. */
+  /** A table rolled for each target, its row the ray that strikes them (1.453): Prismatic Spray. */
   rays?: RulesetCombatRays;
   /** Changes how another action is used, chosen with it and paid for with this one's uses (1.253):
    *  5e's Metamagic. Never on a menu of its own. */
@@ -1275,21 +1275,21 @@ export interface RulesetCombatAction {
     /** Who Heightened gives disadvantage, as its user picked them (1.255). */
     heightened?: string;
     subtle?: true;
-    /** Those it spares take nothing (1.398), and as many more as the level it is paid at. */
+    /** Those it spares take nothing (1.399), and as many more as the level it is paid at. */
     sparesWhole?: true;
     sparesByLevel?: true;
-    /** Its damage at its most (1.399): Overchannel. */
+    /** Its damage at its most (1.400): Overchannel. */
     maximizes?: true;
   };
-  /** Its healing at its most (1.399): Supreme Healing. */
+  /** Its healing at its most (1.400): Supreme Healing. */
   healsMax?: true;
-  /** More healing to each it heals, and its user's own when it heals somebody else (1.405):
+  /** More healing to each it heals, and its user's own when it heals somebody else (1.406):
    *  Disciple of Life, Blessed Healer. `flat` is read off the sheet already. */
   healAdd?: RulesetCombatHealAdd[];
   healsSelf?: RulesetCombatHealAdd[];
-  /** Added to one damage roll of each use (1.398): Empowered Evocation. */
+  /** Added to one damage roll of each use (1.399): Empowered Evocation. */
   damageOnce?: number;
-  /** Its damage roll times this (1.577), and split evenly among those it catches: a Wand of Wonder's
+  /** Its damage roll times this (1.578), and split evenly among those it catches: a Wand of Wonder's
    *  gems. */
   damageTimes?: number;
   damageDivided?: true;
@@ -1299,7 +1299,7 @@ export interface RulesetCombatAction {
   alteredWith?: string[];
   /** The tags of the held weapon it is made with (1.246), for what comes after the attack action. */
   itemTags?: string[];
-  /** Its damage adds the modifier of the ability it is made with (1.485), so a condition that makes it
+  /** Its damage adds the modifier of the ability it is made with (1.486), so a condition that makes it
    *  with another moves its damage too. */
   damageAddsAbility?: true;
   /** A failed save drops its target to 0 health instead of the amount (1.245). */
@@ -1308,9 +1308,9 @@ export interface RulesetCombatAction {
   dyingOnly?: true;
   /** A failed save kills its target, and its user regains this for each one (1.311): Consume Life. */
   slaysOnFailedSave?: true;
-  /** Only a target with this much health or less is slain (1.662): a solar's Slaying Longbow. */
+  /** Only a target with this much health or less is slain (1.663): a solar's Slaying Longbow. */
   slaysHealthAtMost?: number;
-  /** A creature's (1.658): whom it spares once used on them, made their save, or what it put on
+  /** A creature's (1.659): whom it spares once used on them, made their save, or what it put on
    *  ended, by its source's key. */
   sparedAfter?: RulesetSparedAfter;
   healsOnSlay?: RulesetCombatAmount;
@@ -1332,16 +1332,16 @@ export interface RulesetCombatAction {
   /** Puts a weapon in its user's hand, the one its mode names (1.306): Pact of the Blade. What each
    *  mode makes is the combatant's `conjurable`. */
   conjures?: true;
-  /** Makes items as it is used (1.705): `count` more of the item held at `at` in its user's items,
+  /** Makes items as it is used (1.706): `count` more of the item held at `at` in its user's items,
    *  set there with none of it as the fight began. Goodberry. */
-  /** `lasts` (1.744): the minutes what it makes lasts, as picked; `lasting`, that it lasts only so
+  /** `lasts` (1.745): the minutes what it makes lasts, as picked; `lasting`, that it lasts only so
    *  long, so it is held in a place of its own. */
   makesItems?: { ref: string; count: number; at?: number; lasts?: number; lasting?: true };
   /** Not used on the same creature again until its user takes this rest (1.304): Chains of Carceri. */
   oncePerTarget?: { until: string; whenSaved?: true };
-  /** Kept up on later turns with `budget` (1.415): Intimidating Presence. */
+  /** Kept up on later turns with `budget` (1.416): Intimidating Presence. */
   sustains?: { budget: string };
-  /** The copy that keeps it up (1.415): the conditions it put on start these rounds again. */
+  /** The copy that keeps it up (1.416): the conditions it put on start these rounds again. */
   sustain?: { of: string; rounds: Record<string, number> };
   /** Its damage never takes a target below this much health (1.235). */
   leavesAtLeast?: number;
@@ -1353,7 +1353,7 @@ export interface RulesetCombatAction {
   applies?: RulesetCombatApplies[];
   /** What it puts on its own user as it is made (1.307): Sunbeam's mote. */
   appliesSelf?: RulesetCombatApplies[];
-  /** Its user saves against `appliesSelf` with its own `save` (1.677): Dust of Sneezing. */
+  /** Its user saves against `appliesSelf` with its own `save` (1.678): Dust of Sneezing. */
   appliesSelfSaves?: true;
   /** Standard actions its user takes with it (1.313): Expeditious Retreat's Dash. */
   takes?: Array<"dash" | "disengage" | "dodge">;
@@ -1362,7 +1362,7 @@ export interface RulesetCombatAction {
   repeats?: { budget: string; notSaved?: true; sameTargets?: true; group?: string; afterTargetDown?: true };
   /** A concentration entry's effect made again (1.310): offered only while its user concentrates on
    *  `of`, costing nothing off the sheet, at what the cast was paid at. */
-  /** `afterTargetDown` (1.588): only once everybody the cast was last aimed at is down. */
+  /** `afterTargetDown` (1.589): only once everybody the cast was last aimed at is down. */
   again?: { of: string; notSaved?: true; sameTargets?: true; group?: string; afterTargetDown?: true };
   concentration?: boolean;
   /** How the price is paid. The name is what the sheet's own `use` command knows the row by, and
@@ -1385,10 +1385,10 @@ export interface RulesetCombatAction {
     usesOf?: { cost: Array<{ pool: string; amount: number }> };
   };
   uses?: RulesetCombatUses;
-  /** Whose count its `uses` spend, when not its own id: each variant of a creature's spell (1.753)
+  /** Whose count its `uses` spend, when not its own id: each variant of a creature's spell (1.754)
    *  casts from the one spell's uses. */
   usesKey?: string;
-  /** The action this one is a variant of (1.753): Magic Circle (fiends) of Magic Circle. A menu
+  /** The action this one is a variant of (1.754): Magic Circle (fiends) of Magic Circle. A menu
    *  offers them as one button and a pick of which. */
   variantOf?: string;
   /** What that one button is called: the spell's own name, offered or not (Command, whose plain
@@ -1444,11 +1444,11 @@ export interface RulesetCombatAction {
     oneOf?: string;
     /** Only a hit with the item at this place in its holder's items (1.273): charges spent on it. */
     item?: number;
-    /** Only while its holder's worn items leave one of this slot free (1.400). */
+    /** Only while its holder's worn items leave one of this slot free (1.401). */
     freeSlot?: string;
-    /** Only an attack that missed its holder (1.406). */
+    /** Only an attack that missed its holder (1.407). */
     missed?: true;
-    /** Only when whoever caused it is this (1.406). */
+    /** Only when whoever caused it is this (1.407). */
     sourceIs?: RulesetTargetIs;
     /** It stops only what was paid for no higher up its pool family than this was (1.116). */
     upTo?: "paid";
@@ -1459,7 +1459,7 @@ export interface RulesetCombatAction {
   /** The catalog of the entry this action was built from, when it was built from one. A weapon row,
    *  a stat block's own action, a contest and a standard action have none. */
   catalog?: string;
-  /** The sheet list row it was made from (1.421): its list, and its text and choice columns, which
+  /** The sheet list row it was made from (1.422): its list, and its text and choice columns, which
    *  a condition's `rowsWhere` reads. */
   fromRow?: { list: string; values: Record<string, string> };
   /** The catalog an item's use casts from (1.180), as a scroll does: casting, without being an entry. */
@@ -1467,24 +1467,24 @@ export interface RulesetCombatAction {
   /** And the entry itself, as `<catalog>/<entry>` (1.117): what a reaction or a condition that names
    *  one entry reads. */
   entry?: string;
-  /** That entry's filters, as its catalog wrote them: what a ward's `where` reads (1.629). */
+  /** That entry's filters, as its catalog wrote them: what a ward's `where` reads (1.630). */
   filters?: Record<string, unknown>;
   /** IN CELLS, resolved once when the fight began, and read only by a positioned fight. An action
    *  with neither reaches one cell, which is the smallest step a board has. */
   reach?: number;
   range?: RulesetCombatRange;
-  /** The level an item's use casts at (1.714): a scroll's spell's. */
+  /** The level an item's use casts at (1.715): a scroll's spell's. */
   castLevel?: number;
   /** The level of a spell cast without slots, and the base it scales from (1.123). */
   innate?: {
     level: number;
     baseLevel: number;
     coven?: { id: string; size: number; within: number };
-    /** Cast with a slot of this level or higher (1.626), from its trait's `slots`. */
+    /** Cast with a slot of this level or higher (1.627), from its trait's `slots`. */
     slot?: number;
     slots?: Record<string, number>;
   };
-  /** Cast from what it was stored in (1.508): the item's place on its holder's sheet, none for the
+  /** Cast from what it was stored in (1.509): the item's place on its holder's sheet, none for the
    *  holder itself, and the stored entry. Offered once, and from an item only while it is worn. */
   storedIn?: { item?: number; record: RulesetStoredEntry };
   /** What this leaves to strike on later turns (1.122), with distances already in cells. */
@@ -1495,12 +1495,12 @@ export interface RulesetCombatAction {
   /** Cells whoever it lands on and does not save against is pushed straight away from its maker
    *  (1.182): 5e's Gust of Wind. */
   push?: number;
-  /** Cells they are pulled straight toward its maker instead, stopping beside them (1.659). */
+  /** Cells they are pulled straight toward its maker instead, stopping beside them (1.660). */
   pull?: number;
-  /** Whoever its blow drops, not already down (1.661): a giant spider's poison. */
+  /** Whoever its blow drops, not already down (1.662): a giant spider's poison. */
   onFell?: RulesetCombatOnFell;
   /** Whoever its area catches and saves is pushed away from where it was aimed until out of it
-   *  (1.615): a Bead of Force. */
+   *  (1.616): a Bead of Force. */
   pushesOutSaved?: true;
   /** Its user teleports (1.276): in the ruleset's distance on a block, in cells in a fight. */
   teleport?: RulesetTeleport;
@@ -1517,11 +1517,11 @@ export interface RulesetCombatAction {
   ground?: RulesetCreatureGround;
   /** Whoever it lands on spends `spends` to walk up to their speed toward its user (1.326). */
   draws?: { spends: string };
-  /** Engulf (1.387): moves into smaller creatures' spaces, each saving or taken inside. */
+  /** Engulf (1.388): moves into smaller creatures' spaces, each saving or taken inside. */
   engulf?: RulesetEngulf;
-  /** A leap onto whoever stands where it lands (1.709): a bulette's Deadly Leap. */
+  /** A leap onto whoever stands where it lands (1.710): a bulette's Deadly Leap. */
   leapsOnto?: RulesetLeapsOnto;
-  /** What a sequence does once every attack in it hit the one target (1.389): a shambling mound's. */
+  /** What a sequence does once every attack in it hit the one target (1.390): a shambling mound's. */
   allHit?: RulesetAllHit;
   /** Only at somebody who has taken their turn this round (1.327). */
   actedOnly?: true;
@@ -1537,57 +1537,57 @@ export interface RulesetCombatAction {
     creature: { catalogId: string; entryId: string };
     count: RulesetCombatAmount;
     after?: true;
-    /** They take no turns (1.463): an object, Antipathy's. */
+    /** They take no turns (1.464): an object, Antipathy's. */
     turnless?: true;
     /** They leave once this many rounds have passed, at their caller's turn (1.381). */
     rounds?: number;
-    /** Their count once over again for each this many steps of higher cost paid (1.386). */
+    /** Their count once over again for each this many steps of higher cost paid (1.387). */
     timesPerSteps?: number;
-    /** This many more for each step of higher cost paid (1.521), past `fromStep` where it has one. */
+    /** This many more for each step of higher cost paid (1.522), past `fromStep` where it has one. */
     perStep?: number;
-    /** Only when paid this many steps of higher cost or more (1.521): Create Undead's mummies. */
+    /** Only when paid this many steps of higher cost or more (1.522): Create Undead's mummies. */
     fromStep?: number;
-    /** They turn on their caller's side when its concentration is broken (1.522), not leaving. */
+    /** They turn on their caller's side when its concentration is broken (1.523), not leaving. */
     hostileOnBreak?: true;
-    /** Built from their caller (1.542): health maximum, attack bonus and an amount added to damage. */
+    /** Built from their caller (1.543): health maximum, attack bonus and an amount added to damage. */
     fromCaller?: { health?: true; toHit?: RulesetValueRef; adds?: RulesetValueRef; action?: string };
-    /** Acting only as their caller pays this budget for it (1.542). */
+    /** Acting only as their caller pays this budget for it (1.543). */
     commandedWith?: string;
-    /** Acting only once their caller has made this action (1.720). */
+    /** Acting only once their caller has made this action (1.721). */
     commandedBy?: string;
-    /** Images, not creatures (1.552): Mislead's double. */
+    /** Images, not creatures (1.553): Mislead's double. */
     illusion?: true;
-    /** They come against their caller unless its derived value is at least this (1.595). */
+    /** They come against their caller unless its derived value is at least this (1.596). */
     hostileUnless?: { derived: string; atLeast: number };
-    /** An item's call: the item is spent for good once one of them dies (1.596). */
+    /** An item's call: the item is spent for good once one of them dies (1.597). */
     spendsItemOnDeath?: true;
-    /** An item's call: the item becomes them, out of its holder's hands while they stand (1.597). */
+    /** An item's call: the item becomes them, out of its holder's hands while they stand (1.598). */
     becomesItem?: true;
-    /** Under nobody's control (1.599), tamed while holding `tamedWhile`: Pipes of the Sewers. */
+    /** Under nobody's control (1.600), tamed while holding `tamedWhile`: Pipes of the Sewers. */
     wild?: { tamedWhile?: string };
-    /** The chance in 100 they ignore every order once called, while `when` holds (1.649). */
+    /** The chance in 100 they ignore every order once called, while `when` holds (1.650). */
     disobeys?: { chance: number; when?: RulesetSheetBounds };
-    /** Offered only where it says (1.598): Children of the Night's bats away from the sun. */
+    /** Offered only where it says (1.599): Children of the Night's bats away from the sun. */
     onlyWhere?: RulesetCallWhere;
-    /** They appear after this many of their caller's turns (1.598), rolled as they are called. */
+    /** They appear after this many of their caller's turns (1.599), rolled as they are called. */
     arrivesIn?: RulesetCombatAmount;
-    /** They leave once their caller is farther than this, in the ruleset's distance (1.594). */
+    /** They leave once their caller is farther than this, in the ruleset's distance (1.595). */
     leash?: number;
     /** Commanded only while their caller is within this, in the ruleset's distance, and able to act
-     *  (1.604). */
+     *  (1.605). */
     commandedWithin?: number;
     /** Set down on open cells within `distance` of their caller, in the ruleset's distance, ones the
-     *  caller sees with `seen`, nearest its foes first (1.605). */
+     *  caller sees with `seen`, nearest its foes first (1.606). */
     within?: { distance: number; seen?: true };
-    /** They leave as soon as their caller is out (1.430), or down or unable to act (1.717). */
+    /** They leave as soon as their caller is out (1.431), or down or unable to act (1.718). */
     endsWithCaller?: true | "incapacitated";
-    /** They leave once every action of theirs counting uses is spent (1.726): a Dancing Sword. */
+    /** They leave once every action of theirs counting uses is spent (1.727): a Dancing Sword. */
     endsWhenSpent?: true;
-    /** They come without any calling actions of their own (1.430). */
+    /** They come without any calling actions of their own (1.431). */
     cantCall?: true;
-    /** Raised from a corpse that died within `withinRounds` and is `is` (1.538): Create Specter. */
+    /** Raised from a corpse that died within `withinRounds` and is `is` (1.539): Create Specter. */
     atCorpse?: { withinRounds: number; is?: RulesetTargetIs };
-    /** No more than this many of them stand at once (1.538). */
+    /** No more than this many of them stand at once (1.539). */
     atMost?: number;
   };
   /** A burst centred on its user, never aimed (1.282): everybody within `size` cells of them is
@@ -1612,11 +1612,11 @@ export interface RulesetCombatAction {
     tag: string;
     per: number;
     recover?: number;
-    /** What each carried stack of it with clauses of its own adds to the blow (1.641), by its place
+    /** What each carried stack of it with clauses of its own adds to the blow (1.642), by its place
      *  in `sheet.items`, and whether it is spent once one of them reaches a target. */
     riders?: Record<string, { plus: RulesetCombatDamageClause[]; spends?: true }>;
   };
-  /** Shot out of this stack of the holder's (its place in `sheet.items`) only (1.641): a mode
+  /** Shot out of this stack of the holder's (its place in `sheet.items`) only (1.642): a mode
    *  picked for its ammunition, an Arrow of Slaying. */
   ammoFrom?: number;
   /** The loaded count a weapon keeps on itself: which of the holder's items it is (its place in
@@ -1629,13 +1629,13 @@ export interface RulesetCombatAction {
     | { carried: true }
     | { conjured: string }
     | { called: string }
-    /** Pulling one's blows, or no longer (1.704): `combat.dying.knockOut`. */
+    /** Pulling one's blows, or no longer (1.705): `combat.dying.knockOut`. */
     | { knockOut: true }
-    /** Into another of an item's forms (1.559), 0 as it was made. */
+    /** Into another of an item's forms (1.560), 0 as it was made. */
     | { form: { item: number; to: number } }
-    /** Some of a weapon's bonus to its wielder's defense (1.721): a Defender's. */
+    /** Some of a weapon's bonus to its wielder's defense (1.722): a Defender's. */
     | { shift: { item: number; amount: number } }
-    /** A weapon lent by a call taken in hand (1.723), its place in `sheet.items`: a goat's horn. */
+    /** A weapon lent by a call taken in hand (1.724), its place in `sheet.items`: a goat's horn. */
     | { take: number };
   /** What turning it on and off is called (1.378): a hooded lantern's "Raise the hood". */
   switchLabels?: { on?: string; off?: string };
@@ -1663,13 +1663,13 @@ export interface RulesetCombatAction {
     save?: { save: string; difficulty: number };
     /** It lasts until its holder makes this save at a turn's start or end (1.169). */
     saveEnds?: { save: string; difficulty: number; at: "turn-start" | "turn-end" | "damaged" };
-    /** Its `rounds` counted on its maker's turns (1.518). */
+    /** Its `rounds` counted on its maker's turns (1.519). */
     of?: "source";
     /** Only on a target that is this (1.187). */
     targetIs?: RulesetTargetIs;
     /** At most once in any one turn (1.187). */
     oncePerTurn?: true;
-    /** A check its holder may spend the standard budget on to end it (1.495): a net's. */
+    /** A check its holder may spend the standard budget on to end it (1.496): a net's. */
     checkEnds?: { check: string; difficulty: number; by?: "any" };
   }>;
   /** More to hit against a target that is this (1.187), or that carries a condition its maker put on
@@ -1696,7 +1696,7 @@ export interface RulesetCombatAction {
    *  weapon (the ranged ones with `ranged`) roll with `mode` (1.192). `item` is this weapon's place
    *  in `sheet.items`. */
   othersWhileMarked?: { condition: string; mode: "advantage" | "disadvantage"; ranged?: true; item: number };
-  /** What a weapon item adds of its own (1.505): its to-hit and damage bonus, off as an antimagic
+  /** What a weapon item adds of its own (1.506): its to-hit and damage bonus, off as an antimagic
    *  zone suppresses it. */
   itemBonus?: { toHit: number; damage: number };
   /** Using an item: which of the holder's items it is (its place in `sheet.items`), and what using
@@ -1708,10 +1708,10 @@ export interface RulesetCombatAction {
      *  use is spent for nothing. The fight says what it really was once it is spent. */
     fake?: { name: string; dud?: true; does?: Partial<RulesetCombatAction> };
     consumes?: true;
-    /** Its chance in 100 to backfire as it is used (1.614): `amount` to its user, gone for good with
+    /** Its chance in 100 to backfire as it is used (1.615): `amount` to its user, gone for good with
      *  `destroys`, and doing nothing besides with `instead`. */
     backfires?: { chance: number; amount: RulesetCombatAmount; damageType?: string; destroys?: true; instead?: true };
-    /** Used again before its user rests (1.728): the save, and what failing it does to them. */
+    /** Used again before its user rests (1.729): the save, and what failing it does to them. */
     againBeforeRest?: {
       save: { save: string; difficulty: number };
       tracks?: Array<{ track: string; by: number }>;
@@ -1728,14 +1728,14 @@ export interface RulesetCombatAction {
         /** What it becomes in place of breaking (1.272), "<catalog>/<entry>". */
         becomes?: string;
       };
-      /** Used on with none left (1.608), each such use a `chance` in 100 of tearing it, the chance
+      /** Used on with none left (1.609), each such use a `chance` in 100 of tearing it, the chance
        *  again for each such use since its charges came back where `cumulative`. */
       overuse?: { chance: number; cumulative?: true };
       /** More charges its user may spend, each a step of a higher cost (1.269), and farther pushed for
        *  each, in cells (1.271). */
       step?: { max: number; amount?: RulesetCombatAmount; targets?: number; push?: number };
     };
-    /** A further use that counts its own uses (1.503): its place in `moreUses` from 1, and its most.
+    /** A further use that counts its own uses (1.504): its place in `moreUses` from 1, and its most.
      *  Each use spends one of those in place of the item's charges. */
     ownUses?: { more: number | string; max: number };
     /** Its `gate`, read off the user's sheet as the fight began: what is rolled (a skill's id when it
@@ -1806,7 +1806,7 @@ export interface RulesetCombatMode {
   id: string;
   label: string;
   ammo?: number;
-  /** Shot out of this stack only (1.641): ammunition with clauses of its own. */
+  /** Shot out of this stack only (1.642): ammunition with clauses of its own. */
   ammoFrom?: number;
   toHit?: number;
   target?: number;
@@ -1823,28 +1823,28 @@ export interface RulesetCombatMode {
   cure?: { ends?: string; track?: { track: string; by: number }; unseals?: true };
   /** The creature type named in this mode (1.270), remembered by what it puts on. */
   kind?: string;
-  /** The damage type it deals in this mode (1.737), and its zone's strikes too. */
+  /** The damage type it deals in this mode (1.738), and its zone's strikes too. */
   damageType?: string;
-  /** How long what it makes lasts in this mode (1.744), in minutes: Creation's materials. */
+  /** How long what it makes lasts in this mode (1.745), in minutes: Creation's materials. */
   madeLasts?: number;
   /** The form picked in this mode (1.379), taken by whoever what it puts on lands on. */
   form?: RulesetShapeForm;
   /** Who is called in this mode (1.381): Conjure Animals' two wolves or four. */
   call?: NonNullable<RulesetCombatAction["calls"]>;
-  /** The one of its `applies` it puts on in this mode (1.432), by its place. */
+  /** The one of its `applies` it puts on in this mode (1.433), by its place. */
   appliesPick?: number;
-  /** What a contest won takes in this mode (1.676), in place of all else it does: Telekinesis on
+  /** What a contest won takes in this mode (1.677), in place of all else it does: Telekinesis on
    *  a held object. */
   takes?: { slots?: string[]; tags?: string[] };
-  /** The id of its caster's own action stored in it in this mode (1.438): a spell glyph's spell. */
+  /** The id of its caster's own action stored in it in this mode (1.439): a spell glyph's spell. */
   stores?: string;
-  /** The creature type its zone works on inside in this mode (1.450): Hallow's chosen sort. */
+  /** The creature type its zone works on inside in this mode (1.451): Hallow's chosen sort. */
   insideType?: string;
   /** What a hit in this mode sets off around whoever it hit (1.312), `within` in cells. */
   aroundHit?: RulesetCombatAroundHit;
-  /** The places of the optional steps of a sequence left out in this mode (1.627). */
+  /** The places of the optional steps of a sequence left out in this mode (1.628). */
   skips?: number[];
-  /** A teleport's familiarity picked in this mode (1.654), by its place. */
+  /** A teleport's familiarity picked in this mode (1.655), by its place. */
   familiar?: number;
 }
 
@@ -1890,35 +1890,35 @@ export interface RulesetCombatContest {
   difficulty?: number;
   /** Offered only on a target holding this, or only on one dying and not stable (1.193). */
   targetHolds?: string;
-  /** Only where the actor put `targetHolds` on the target (1.537): Grappler's pin. */
+  /** Only where the actor put `targetHolds` on the target (1.538): Grappler's pin. */
   targetHeldBySelf?: true;
-  /** Offered only to an actor holding every one of these (1.562): the Grappler feat's pin. */
+  /** Offered only to an actor holding every one of these (1.563): the Grappler feat's pin. */
   actorHolds?: string[];
-  /** The actor rolls with advantage at a target no bigger than this size (1.571). */
+  /** The actor rolls with advantage at a target no bigger than this size (1.572). */
   advantageAtMostSize?: string;
-  /** Added to the actor's check, and the actor's check thrown with advantage (1.687): a Talisman of
+  /** Added to the actor's check, and the actor's check thrown with advantage (1.688): a Talisman of
    *  the Sphere's hold on a Sphere of Annihilation. */
   attackerAdds?: number;
   attackerAdvantage?: true;
-  /** Added to `push`, read off the actor's sheet or its caller's, in the ruleset's distance (1.571). */
+  /** Added to `push`, read off the actor's sheet or its caller's, in the ruleset's distance (1.572). */
   pushRead?: RulesetValueRef;
-  /** The winner moves with the one it pushed (1.582): Forceful Hand. */
+  /** The winner moves with the one it pushed (1.583): Forceful Hand. */
   follows?: true;
-  /** On loser and winner alike, while the target holds `whileTargetHolds` (1.537): a pin. */
+  /** On loser and winner alike, while the target holds `whileTargetHolds` (1.538): a pin. */
   both?: { applies: string[]; whileTargetHolds: string };
   targetDying?: true;
   /** Winning stabilizes a dying target (1.193). */
   stabilizes?: true;
-  /** Pulls the one `targetHolds` keeps inside another creature out (1.391), measured to the holder
+  /** Pulls the one `targetHolds` keeps inside another creature out (1.392), measured to the holder
    *  and rolled against the hold's escape DC, else `difficulty`. */
   pulls?: true;
 }
 
-/** Engulf (1.387): the actor moves through creatures no bigger than `upToSize`; each one entered
+/** Engulf (1.388): the actor moves through creatures no bigger than `upToSize`; each one entered
  *  makes `save` against `difficulty` or takes the action's damage and `applies`, and a condition
  *  with `inside` carries it along inside the actor. `ownMovement` spends the actor's own speed
  *  (otherwise the move is free, up to its speed); `atMost` caps how many it can hold at once. */
-/** A leap onto whoever stands where it lands (1.709): at least `atLeast` far, in the ruleset's
+/** A leap onto whoever stands where it lands (1.710): at least `atLeast` far, in the ruleset's
  *  distance; `noRoom` on one who saved with nowhere to be set down. */
 export interface RulesetLeapsOnto {
   atLeast: number;
@@ -1930,11 +1930,11 @@ export interface RulesetEngulf {
   save: { save: string; difficulty: number };
   ownMovement?: boolean;
   atMost?: number;
-  /** What it holds by size (1.389), in place of `atMost`. */
+  /** What it holds by size (1.390), in place of `atMost`. */
   room?: RulesetInsideRoom;
 }
 
-/** What a sequence does once every attack in it hit the one target (1.389). */
+/** What a sequence does once every attack in it hit the one target (1.390). */
 export interface RulesetAllHit {
   targetIs?: RulesetTargetIs;
   applies?: RulesetCombatApplies[];
@@ -1950,7 +1950,7 @@ export interface RulesetCombatArea {
   width?: number;
   /** A wall that may be laid instead as a ring this many cells across (1.177). */
   ring?: number;
-  /** Always laid as that ring (1.586): Forcecage. */
+  /** Always laid as that ring (1.587): Forcecage. */
   ringOnly?: true;
   /** How many of it may be set down at once, each touching another (1.178): Fire Storm's cubes. */
   copies?: number;
@@ -1992,44 +1992,44 @@ export interface RulesetCombatAgainst {
 }
 
 export interface RulesetTrackedCondition {
-  /** The one entry or creature action it wards its holder from (1.742), as it was picked. */
+  /** The one entry or creature action it wards its holder from (1.743), as it was picked. */
   wardsOff?: string;
-  /** What its `harms` have dealt in all, where its `attaches` lets go at a most (1.660). */
+  /** What its `harms` have dealt in all, where its `attaches` lets go at a most (1.661). */
   harmedTotal?: number;
-  /** What of a block's health it has kept off healing (1.734), given back as it ends. */
+  /** What of a block's health it has kept off healing (1.735), given back as it ends. */
   keptDamage?: number;
-  /** Its `harms` has dealt its once (1.546): Geas. */
+  /** Its `harms` has dealt its once (1.547): Geas. */
   harmedOnce?: true;
-  /** Its `holderDies` save has been thrown (1.561), its holder dead. */
+  /** Its `holderDies` save has been thrown (1.562), its holder dead. */
   holderDiedThrown?: true;
-  /** What is left of it to cut away (1.515), once something has been struck at it. */
+  /** What is left of it to cut away (1.516), once something has been struck at it. */
   cutLeft?: number;
-  /** What it raises a sheetless holder's health maximum by while it holds (1.457): Aid. */
+  /** What it raises a sheetless holder's health maximum by while it holds (1.458): Aid. */
   raisedMax?: number;
-  /** Turns its `stopsTime` has still to give (1.491), once rolled: time is stopped while it is set. */
+  /** Turns its `stopsTime` has still to give (1.492), once rolled: time is stopped while it is set. */
   stoppedTurns?: number;
-  /** How many of its `duplicates` are left (1.489), once one has been destroyed. */
+  /** How many of its `duplicates` are left (1.490), once one has been destroyed. */
   duplicatesLeft?: number;
-  /** The catalog of the entry that put it on (1.408): a spell's, for Dispel Magic. */
+  /** The catalog of the entry that put it on (1.409): a spell's, for Dispel Magic. */
   catalog?: string;
-  /** Who saved against its sanctuary and is free of it for the rest of the fight (1.407). */
+  /** Who saved against its sanctuary and is free of it for the rest of the fight (1.408). */
   immune?: string[];
-  /** Ends when `holderId` no longer holds `condition` (1.537): a pin's restraint, on both, with the
+  /** Ends when `holderId` no longer holds `condition` (1.538): a pin's restraint, on both, with the
    *  grapple it came from. */
   whileHeld?: { holderId: string; condition: string };
   /** Removed once the action that opened its window finishes (1.131). */
   thisAction?: true;
   condition: string;
-  /** The point it was put on from (1.441), where its behavior is measured `from` there: a zone's
+  /** The point it was put on from (1.442), where its behavior is measured `from` there: a zone's
    *  middle. */
   at?: RulesetCombatCell;
   /** Turns of the affected combatant left, or null for a condition with no clock of its own. */
   rounds: number | null;
-  /** Days it lasts once the fight is over (1.647), on a sheet: Quivering Palm. */
+  /** Days it lasts once the fight is over (1.648), on a sheet: Quivering Palm. */
   days?: number;
-  /** Each day its holder rests counts as this many of them (1.740): Wish's stress. */
+  /** Each day its holder rests counts as this many of them (1.741): Wish's stress. */
   restingCounts?: number;
-  /** The inventory stack whose item keeps it on while worn (1.648): Armor of Invulnerability. */
+  /** The inventory stack whose item keeps it on while worn (1.649): Armor of Invulnerability. */
   wornItem?: string;
   saveEnds?: RulesetCombatSaveEnds;
   /** When its rounds count down: as each of the holder's turns begins, rather than as each ends. */
@@ -2048,11 +2048,11 @@ export interface RulesetTrackedCondition {
     uses?: string[];
     downed?: true;
     gains?: string[];
-    /** Its holder incapacitated, holding anything with `cannot-act` (1.592). */
+    /** Its holder incapacitated, holding anything with `cannot-act` (1.593). */
     incapacitated?: true;
   };
   /** How far from its putter, and out of their sight, takes it off (1.310), or either as its holder
-   *  ends a turn (1.417). */
+   *  ends a turn (1.418). */
   endsAway?: { beyond: number; unseen?: true; orUnseen?: true };
   /** The difficulty the repeated save is rolled against: the one that applied it. */
   difficulty?: number;
@@ -2080,7 +2080,7 @@ export interface RulesetTrackedCondition {
   escapeDc?: number;
   /** The contest checks that may break it (1.175). */
   escapeChecks?: string[];
-  /** What somebody trying to pull its holder out takes, from its source (1.391). */
+  /** What somebody trying to pull its holder out takes, from its source (1.392). */
   harmsPuller?: { dice?: string; flat?: number; type?: string };
   /** The condition put on with it that it ends with (1.202). */
   endsWith?: string;
@@ -2098,9 +2098,9 @@ export interface RulesetTrackedCondition {
   /** What it harms with on top of the condition's own, from the higher cost it was put on with
    *  (1.255): Acid Arrow's extra 1d4 a slot level. */
   harmsMore?: RulesetCombatAmount;
-  /** How many of its harm's dice its saves have taken off (1.619): a Potion of Poison's. */
+  /** How many of its harm's dice its saves have taken off (1.620): a Potion of Poison's. */
   harmDropped?: number;
-  /** The round until which its holder's own `checkEnds` tries are barred (1.620), after a failed one. */
+  /** The round until which its holder's own `checkEnds` tries are barred (1.621), after a failed one. */
   checkBarredUntil?: number;
   /** The number its applier gave it as it went on (1.274): Heroism's spellcasting modifier. */
   value?: number;
@@ -2115,7 +2115,7 @@ export interface RulesetTrackedCondition {
   gaveTemp?: number;
 }
 
-/** Healing an amend adds (1.405), its sheet value read as the fight began. */
+/** Healing an amend adds (1.406), its sheet value read as the fight began. */
 export interface RulesetCombatHealAdd {
   flat: number;
   perLevel: number;
@@ -2138,7 +2138,7 @@ export interface RulesetCombatant {
   /** A party member who is a bestiary creature, its live state kept on its card: the conditions it
    *  came in holding, and the health pool its health is kept in. */
   cardLive?: { conditions: string[]; pool?: string };
-  /** Creatures a worn item's `ignoredBy` left them alone by (1.603) that they have since attacked,
+  /** Creatures a worn item's `ignoredBy` left them alone by (1.604) that they have since attacked,
    *  harmed or forced to save: those aim at them again. */
   provoked?: string[];
   initiative: number;
@@ -2162,7 +2162,7 @@ export interface RulesetCombatant {
   /** What this combatant's blows did that may happen once a turn, and in which turn (1.187), as
    *  `<round>:<turn>`: a weapon's wound. */
   oncePerTurn?: { at: string; keys: string[] };
-  /** Who hit this combatant with an attack in which turn (1.414), as `<round>:<turn>`: what a
+  /** Who hit this combatant with an attack in which turn (1.415), as `<round>:<turn>`: what a
    *  defense against an attacker that has hit already reads. */
   hitBy?: { at: string; ids: string[] };
   /** The points a signature action is bought with, when this combatant has any. */
@@ -2176,89 +2176,89 @@ export interface RulesetCombatant {
   };
   /** How many of its block's legendary resistances it has spent (1.317). */
   legendaryResisted?: number;
-  /** The creature it is inside of (1.387), engulfed: it moves with that creature. */
+  /** The creature it is inside of (1.388), engulfed: it moves with that creature. */
   insideOf?: string;
-  /** Holding their breath under water (1.482): turns of it left, then turns lasted without it. */
+  /** Holding their breath under water (1.483): turns of it left, then turns lasted without it. */
   breath?: { held: number; lasts?: number };
-  /** Conditions damage stopped working until their next turn starts (1.498): a Cloak of Displacement. */
+  /** Conditions damage stopped working until their next turn starts (1.499): a Cloak of Displacement. */
   harmStopped?: string[];
-  /** The conditions held that change their abilities (1.499), which their numbers were last worked
+  /** The conditions held that change their abilities (1.500), which their numbers were last worked
    *  out with. */
   abilityConditions?: string[];
-  /** A stat block's scores as those conditions change them (1.499), where it has no sheet. */
+  /** A stat block's scores as those conditions change them (1.500), where it has no sheet. */
   abilityScores?: Record<string, number>;
-  /** Riding this combatant (1.480): where it goes, they go, and they walk no way of their own. */
+  /** Riding this combatant (1.481): where it goes, they go, and they walk no way of their own. */
   mountedOn?: string;
-  /** Ridden by this combatant (1.480); `mountControlled` when its rider controls it, moving and
+  /** Ridden by this combatant (1.481); `mountControlled` when its rider controls it, moving and
    *  taking only the standard actions the ruleset names, and `mountWaits` the round it was mounted in
    *  after its own turn, so it does not act twice in it. */
   riddenBy?: string;
-  /** The conditions its rider's items worn by a mount keep on it (1.701): Horseshoes of Speed. */
+  /** The conditions its rider's items worn by a mount keep on it (1.702): Horseshoes of Speed. */
   mountWears?: string[];
-  /** Carried along besides its rider (1.625), on a mount that carries by weight. */
+  /** Carried along besides its rider (1.626), on a mount that carries by weight. */
   passengers?: string[];
   mountControlled?: true;
   mountWaits?: number;
-  /** What those it holds inside have dealt it this turn (1.389), by who, for `releasedWhen`. */
+  /** What those it holds inside have dealt it this turn (1.390), by who, for `releasedWhen`. */
   insideHurt?: { turn: string; by: Record<string, number> };
-  /** How it climbs out once whoever holds it inside has fallen (1.389), from what took it in. */
+  /** How it climbs out once whoever holds it inside has fallen (1.390), from what took it in. */
   insideCorpse?: { costs: number; prone?: true };
   /** How many times it has hung on at 1 instead of dropping (1.320). */
   hungOn?: number;
-  /** Its heads now (1.534): how many, how many died since its last turn, whether what stops them
+  /** Its heads now (1.535): how many, how many died since its last turn, whether what stops them
    *  growing reached it since then, the damage taken this turn, and its spare opportunity reactions. */
   heads?: { count: number; lost?: number; burned?: true; hurt?: { turn: string; dealt: number }; spare?: number };
-  /** How many times each condition or level of theirs has had them hang on at 1 this fight (1.384),
+  /** How many times each condition or level of theirs has had them hang on at 1 this fight (1.385),
    *  by its name. */
   hungOnBy?: Record<string, number>;
   /** Felled on Held Ground (1.323): out of the fight, never dying, up again later unless `reaped`. */
   felled?: true;
-  /** Knocked out by a melee blow pulled (1.704): out of the fight, unconscious and stable, alive. */
+  /** Knocked out by a melee blow pulled (1.705): out of the fight, unconscious and stable, alive. */
   knockedOut?: true;
-  /** Its corpse rose as something else (1.538), and is gone from the board. */
+  /** Its corpse rose as something else (1.539), and is gone from the board. */
   corpseRaised?: true;
   reaped?: true;
   /** Who called it into the fight (1.325). */
   calledBy?: string;
-  /** The catalog of the entry that called it (1.517): Conjure Animals' spells. */
+  /** The catalog of the entry that called it (1.518): Conjure Animals' spells. */
   calledFrom?: string;
   /** The action that called them (1.381), whose concentration ending sends them away. */
   calledWith?: string;
-  /** Kept on their caller's sheet (1.787), by the entry's name there: `gone` once their caller
+  /** Kept on their caller's sheet (1.788), by the entry's name there: `gone` once their caller
    *  dismissed them, so the sheet drops them as the fight ends, as it does once they are killed. */
   calledKept?: { entry: string; gone?: true };
   /** The round, at their caller's turn, they leave in (1.381). */
   calledUntil?: number;
-  /** They leave as soon as their caller is out (1.430), or down or unable to act (1.717). */
+  /** They leave as soon as their caller is out (1.431), or down or unable to act (1.718). */
   calledEndsWithCaller?: true | "incapacitated";
-  /** It leaves once every action of its counting uses is spent (1.726): a Dancing Sword. */
+  /** It leaves once every action of its counting uses is spent (1.727): a Dancing Sword. */
   calledEndsWhenSpent?: true;
-  /** They turn on their caller's side when the concentration that holds them is broken (1.522). */
+  /** They turn on their caller's side when the concentration that holds them is broken (1.523). */
   calledHostileOnBreak?: true;
   /** Their caller pays this budget for each of their turns but the first (`free`), or it passes
-   *  (1.542): 5e's Arcane Hand. */
-  /** Paid on `budget` (1.542), or given by their caller making `action` (1.720). */
+   *  (1.543): 5e's Arcane Hand. */
+  /** Paid on `budget` (1.543), or given by their caller making `action` (1.721). */
   calledCommand?: { budget?: string; free?: true; action?: string; given?: true };
-  /** Under nobody's control (1.599): each turn only walking toward its caller, unless it holds
+  /** Under nobody's control (1.600): each turn only walking toward its caller, unless it holds
    *  `tamedWhile`; it keeps no side standing. Pipes of the Sewers' swarms. */
   calledWild?: { tamedWhile?: string };
-  /** Ignoring every order (1.649), a dismissal's too: the obsidian steed. */
+  /** Ignoring every order (1.650), a dismissal's too: the obsidian steed. */
   calledDisobeys?: true;
-  /** An image, not a creature (1.552), and the sides that have seen it for one: Mislead's double. */
+  /** An image, not a creature (1.553), and the sides that have seen it for one: Mislead's double. */
   illusion?: { seenBy: string[] };
-  /** Turned on whoever called them (1.522): on the other side, no longer theirs to command. */
+  /** Turned on whoever called them (1.523): on the other side, no longer theirs to command. */
   calledTurned?: true;
-  /** They leave once their caller is farther than this many cells (1.594): a treant's tree. */
+  /** They leave once their caller is farther than this many cells (1.595): a treant's tree. */
   calledLeash?: number;
-  /** Commanded only while their caller is within this many cells and able to act (1.604): the Staff
+  /** Commanded only while their caller is within this many cells and able to act (1.605): the Staff
    *  of the Python's snake. */
   calledCommandWithin?: number;
-  /** Out of their caller's command this turn (1.604), so acting on their own: the Engine runs them. */
+  /** Out of their caller's command this turn (1.605), so acting on their own: the Engine runs them. */
   calledOnOwn?: true;
-  /** The item of their caller's that called them (1.596), by its place on the sheet: spent if they
+  /** The item of their caller's that called them (1.597), by its place on the sheet: spent if they
    *  die (`spends`), its wait held while they stay (`departure`). */
   calledItem?: { item: number; spends?: true; departure?: true; becomes?: true };
-  /** Called to take no turns (1.463): an object a spell is cast on. In no order, and no side's
+  /** Called to take no turns (1.464): an object a spell is cast on. In no order, and no side's
    *  standing for a fight's end. */
   turnless?: true;
   /** Sent away (1.381): off the board and out of the fight, as if never there. */
@@ -2268,7 +2268,7 @@ export interface RulesetCombatant {
   strikesLeft?: number;
   /** One pending skipped turn. A named condition is owned only if this daze put it on. */
   dazed?: { condition?: string };
-  /** Boost and setback dice a symbol spend left for the next roll they make (1.780), spent by it. */
+  /** Boost and setback dice a symbol spend left for the next roll they make (1.781), spent by it. */
   symbolDice?: { boost?: number; setback?: number };
   /** Strikes the entries their rows came from let them buy with another budget (1.242). */
   strikeGrants?: RulesetStrikeGrant[];
@@ -2278,7 +2278,7 @@ export interface RulesetCombatant {
    *  every turn, whosever it is; a "round" rider when the round turns over. */
   ridersSpent?: string[];
   tracked: RulesetTrackedCondition[];
-  /** Who saved against a sanctuary held on its sheet, not tracked (1.410), by condition, free of it
+  /** Who saved against a sanctuary held on its sheet, not tracked (1.411), by condition, free of it
    *  for the rest of the fight. */
   sanctuarySaved?: Record<string, string[]>;
   concentrating: {
@@ -2290,7 +2290,7 @@ export interface RulesetCombatant {
     /** Whom the cast was aimed at, and who has succeeded on a save against it (1.310). */
     targets?: string[];
     saved?: string[];
-    /** The mode the cast was made in (1.676), the one a repeat is made in. */
+    /** The mode the cast was made in (1.677), the one a repeat is made in. */
     mode?: string;
   } | null;
   /** Hidden (1.287): the Stealth total it hid with, and the opponents it is hidden from, by id. Gone
@@ -2313,7 +2313,7 @@ export interface RulesetCombatant {
   flags: {
     /** The light they carry was put out or lit this turn, for nothing (1.295). */
     lightSwitched?: true;
-    /** They turned to pulling their blows, or back, this turn (1.704); `"back"` once they undid it. */
+    /** They turned to pulling their blows, or back, this turn (1.705); `"back"` once they undid it. */
     knockOutSwitched?: true | "back";
     dodging?: boolean;
     dashed?: boolean;
@@ -2321,7 +2321,7 @@ export interface RulesetCombatant {
     hidden?: boolean;
     ready?: boolean;
     helped?: boolean;
-    /** Whom the help is against (1.755): the opponents beside its helper as it was given. Without
+    /** Whom the help is against (1.756): the opponents beside its helper as it was given. Without
      *  it, any attack takes it. */
     helpedAgainst?: string[];
     /** The off-hand weapon (its place in `sheet.items`) this turn's attack was made with, which
@@ -2329,7 +2329,7 @@ export interface RulesetCombatant {
     offHand?: number;
     /** Attacks made this turn, which a condition's cap on attacks a turn counts (combat C6d). */
     attacks?: number;
-    /** The items (their places in `sheet.items`) attacked with this turn (1.721). */
+    /** The items (their places in `sheet.items`) attacked with this turn (1.722). */
     attackedWith?: number[];
     /** What the attack action was taken with this turn, by name (1.242). */
     attackAction?: string[];
@@ -2342,11 +2342,11 @@ export interface RulesetCombatant {
     compelledTarget?: string;
     /** The turn began with nowhere a condition let them walk (1.266). */
     stuck?: boolean;
-    /** Walked by a condition as they ended this turn (1.456), so ending it again goes on. */
+    /** Walked by a condition as they ended this turn (1.457), so ending it again goes on. */
     walkedAfter?: true;
     /** Something dropped was picked up this turn for nothing (1.266). */
     pickedUp?: boolean;
-    /** Spells cast this turn as the bonus-action spell rule counts them (1.694): one with its budget,
+    /** Spells cast this turn as the bonus-action spell rule counts them (1.695): one with its budget,
      *  and one cast any way but what it still allows. */
     spellsCast?: { bonus?: true; other?: true };
     /** What an action made this turn lets its user make for nothing (1.280), each once. `paid` when
@@ -2357,11 +2357,11 @@ export interface RulesetCombatant {
       budget?: string;
       targetId?: string;
       uncharged?: true;
-      /** One of a choice (1.771): the spells a sequence's `castsOne` offers, the others gone once
+      /** One of a choice (1.772): the spells a sequence's `castsOne` offers, the others gone once
        *  one is made. The id of the sequence. */
       oneOf?: string;
     }>;
-    /** A strike again was made this turn (1.412): Horde Breaker, once a turn. */
+    /** A strike again was made this turn (1.413): Horde Breaker, once a turn. */
     struckAgain?: true;
   };
   /** At zero and out of the fight. `dying` is a party member a ruleset with a dying rule still
@@ -2376,7 +2376,7 @@ export interface RulesetCombatant {
   /** Sent out of the fight by somebody (1.236), and `defeated` while away: for good, or until they
    *  no longer hold `while` (5e's Banishment), when they come back where they were. */
   /** `left` (1.279): gone from the fight of its own accord, by a teleport that leaves it. */
-  /** `blinked` (1.490): off the board of its own condition's `blinks` until its next turn starts. */
+  /** `blinked` (1.491): off the board of its own condition's `blinks` until its next turn starts. */
   away?: {
     by: string;
     label: string;
@@ -2385,16 +2385,16 @@ export interface RulesetCombatant {
     left?: true;
     turns?: true;
     blinked?: true;
-    /** Set aside by a zone it was called into (1.517), back once it no longer covers them. */
+    /** Set aside by a zone it was called into (1.518), back once it no longer covers them. */
     setAside?: true;
-    /** Called and on its way (1.598): it arrives after this many more of its caller's turns. */
+    /** Called and on its way (1.599): it arrives after this many more of its caller's turns. */
     arriving?: number;
-    /** Gone along with `by` (1.669), and back when they are. */
+    /** Gone along with `by` (1.670), and back when they are. */
     carried?: true;
-    /** Gone into this combatant (1.680), and back beside them once they no longer hold `while` from
+    /** Gone into this combatant (1.681), and back beside them once they no longer hold `while` from
      *  it: a ghost's Possession. */
     possessing?: string;
-    /** Gave up (1.746): out of the fight alive, the other side's to deal with. */
+    /** Gave up (1.747): out of the fight alive, the other side's to deal with. */
     surrendered?: true;
   };
   /** Caught unaware as the fight began (1.237): no move and no action on their first turn, and no
@@ -2448,7 +2448,7 @@ export interface RulesetCombatant {
   /** What a delay held over to their next turn (1.120): the action as it was made, and the budget
    *  completing it takes. Absent while nothing waits. */
   delayed?: RulesetActionResume & { label: string; budget: string };
-  /** A cast taking rounds (1.445): the action as it was made, the budget each turn spends on it, the
+  /** A cast taking rounds (1.446): the action as it was made, the budget each turn spends on it, the
    *  turns still `left`, and what it was `paid`, given back if it fails. Absent while nothing is cast. */
   casting?: RulesetActionResume & {
     label: string;
@@ -2464,7 +2464,7 @@ export interface RulesetCombatant {
     rounds: number;
     move?: number;
     reach?: number;
-    /** It strikes by itself as its summoner's turn starts (1.523): a Faithful Hound. */
+    /** It strikes by itself as its summoner's turn starts (1.524): a Faithful Hound. */
     strikesAtTurnStart?: true;
     at?: RulesetCombatCell;
     payWith?: string;
@@ -2482,25 +2482,25 @@ export interface RulesetCombatant {
   itemsUsed?: Record<string, number>;
   loaded?: Record<string, number>;
   recoverable?: Record<string, number>;
-  /** Ammunition spent as it struck (1.641), the share of it that comes back after a won fight as
+  /** Ammunition spent as it struck (1.642), the share of it that comes back after a won fight as
    *  the plain stack of its tag at this place in `sheet.items`. */
   recoverableInto?: Record<string, number>;
-  /** What each weapon has taken off its damage rolls for good (1.535), corroded, keyed as the rest
+  /** What each weapon has taken off its damage rolls for good (1.536), corroded, keyed as the rest
    *  are: as the fight began and since. */
   corroded?: Record<string, number>;
-  /** The levels each item has ever taken in (1.555), keyed as the rest are: as the fight began and
+  /** The levels each item has ever taken in (1.556), keyed as the rest are: as the fight began and
    *  since. */
   absorbedEver?: Record<string, number>;
-  /** Each item's rolled call kept, counted and spent (1.575), keyed as the rest are: as the fight
+  /** Each item's rolled call kept, counted and spent (1.576), keyed as the rest are: as the fight
    *  began and since. */
   callRolls?: Record<string, RulesetItemCallRoll>;
-  /** The item the last shot was drawn from (1.535), for ammunition destroyed as it hits. */
+  /** The item the last shot was drawn from (1.536), for ammunition destroyed as it hits. */
   lastShot?: number;
   /** What each item with charges holds now, keyed as the rest are. */
   charges?: Record<string, number>;
-  /** What is left of each further use that counts its own (1.503), keyed `<item>:<more>`. */
+  /** What is left of each further use that counts its own (1.504), keyed `<item>:<more>`. */
   usesLeft?: Record<string, number>;
-  /** How many entries were stored on them this fight (1.508), for the ids of the next. */
+  /** How many entries were stored on them this fight (1.509), for the ids of the next. */
   storedCount?: number;
   /** The items that broke when their last charge was spent, keyed as the rest are. */
   broken?: Record<string, true>;
@@ -2509,31 +2509,31 @@ export interface RulesetCombatant {
   becomes?: Record<string, { ref: string; name: string; item: RulesetCatalogItem; actions: RulesetCombatAction[] }>;
   /** The items that became another in this fight (1.272): what each became. */
   became?: Record<string, string>;
-  /** Each item with forms in each of them (1.559), read as the fight began, by place in its
+  /** Each item with forms in each of them (1.560), read as the fight began, by place in its
    *  `forms.into` from 1 (0 as it was made): the item then, and the actions it is made with. Keyed as
    *  the rest are. */
   itemFormed?: Record<string, Array<{ item: RulesetCatalogItem; actions: RulesetCombatAction[] }>>;
-  /** What each item that frees its slots while on (1.690) changes of its holder's weapons' damage,
+  /** What each item that frees its slots while on (1.691) changes of its holder's weapons' damage,
    *  by the item's place and the weapon action's id: the dice off and on. A versatile longsword's
    *  1d8 and 1d10 either side of an Animated Shield. */
   slotsFreed?: Record<string, Record<string, { off: RulesetSlotsFreedDamage; on: RulesetSlotsFreedDamage }>>;
-  /** How many more of their own turns each switch they turned on stays on (1.690), by item. */
+  /** How many more of their own turns each switch they turned on stays on (1.691), by item. */
   onFor?: Record<string, number>;
   /** How many more of their own turns each making of what they made to last only so long stays, and
-   *  how many it made (1.744), by item. */
+   *  how many it made (1.745), by item. */
   madeFor?: Record<string, Array<{ rounds: number; count: number }>>;
-  /** What has set off a morale check of theirs already (1.746), each checked once. */
+  /** What has set off a morale check of theirs already (1.747), each checked once. */
   moraleChecked?: RulesetMoraleTrigger[];
   /** The temperament the Engine plays them with, kept here for the rules' own morale checks (combat
    *  AI T1, T2): a fanatic never checks, a disciplined one is not shaken by the first of its side to
    *  fall. Never read for anything else. */
   temperament?: string;
-  /** Broken and running (1.746): out of the fight as a turn of theirs starts at the board's edge. */
+  /** Broken and running (1.747): out of the fight as a turn of theirs starts at the board's edge. */
   routed?: true;
   /** The side they fight on of their own, while something that `controls` them has them on another
-   *  (1.561): Magic Jar. */
+   *  (1.562): Magic Jar. */
   ownSide?: "party" | "enemy";
-  /** The form each item that changed form in this fight is in now (1.559), 0 as it was made. */
+  /** The form each item that changed form in this fight is in now (1.560), 0 as it was made. */
   itemForms?: Record<string, number>;
   /** Whom an entry used once a creature until a rest went to (1.304), for one without a sheet: keyed
    *  `rest|action`, by name. A sheet keeps it on its live state. */
@@ -2546,10 +2546,10 @@ export interface RulesetCombatant {
       item: string;
       actions: RulesetCombatAction[];
       bound?: number;
-      /** What a made weapon takes and is (1.464), for what makes held things fall. */
+      /** What a made weapon takes and is (1.465), for what makes held things fall. */
       slots?: string[];
       tags?: string[];
-      /** Gone once let fall and left this far off this many of its maker's turns (1.464), in cells. */
+      /** Gone once let fall and left this far off this many of its maker's turns (1.465), in cells. */
       vanishes?: { beyond: number; rounds: number };
     }
   >;
@@ -2560,12 +2560,12 @@ export interface RulesetCombatant {
   on?: Record<string, boolean>;
   /** The light they carry is out (1.295). */
   doused?: true;
-  /** They pull their blows (1.704): one of their melee attacks that drops somebody knocks them out. */
+  /** They pull their blows (1.705): one of their melee attacks that drops somebody knocks them out. */
   knocksOut?: true;
-  /** Some of a weapon's bonus moved to their defense (1.721), its place in `sheet.items` and how
+  /** Some of a weapon's bonus moved to their defense (1.722), its place in `sheet.items` and how
    *  much, until the start of their next turn: a Defender's. */
   bonusShift?: { item: number; amount: number };
-  /** Weapons lent by a call they have taken (1.723), by place in `sheet.items`: the id of the called
+  /** Weapons lent by a call they have taken (1.724), by place in `sheet.items`: the id of the called
    *  creature they were taken from, theirs while it stands. */
   lentTaken?: Record<number, string>;
   /** The light a creature sheds now, in place of its block's, since one of its actions lit or put
@@ -2587,7 +2587,7 @@ export interface RulesetCombatant {
   };
   /** An opponent's block, and the health the encounter keeps for it. */
   block?: RulesetStatBlock;
-  /** What it had on it as the fight began (1.784), in order: what is left of each is
+  /** What it had on it as the fight began (1.785), in order: what is left of each is
    *  `rulesetCarriedLeft`'s, and drops when it is beaten. */
   carried?: Array<{ ref: string; name: string; count: number }>;
   /** `sealed` is what only a rest gives back (1.193), which no heal lifts it past. */
@@ -2607,17 +2607,17 @@ export interface RulesetCombatant {
   /** Harm its regeneration is stopped by was taken since its last turn started (1.383). */
   regenHeld?: true;
   /** Down at 0 but not out while it may regenerate (1.383): a troll, until its turn. */
-  /** Who dealt them damage last (1.396), for what grants points as a foe drops. */
+  /** Who dealt them damage last (1.397), for what grants points as a foe drops. */
   harmedBy?: string;
   /** What they have done this fight: the health they took off the other side and gave back to their
    *  own. What the other side's combat AI weighs them by. */
   done?: { dealt?: number; healed?: number };
-  /** Has made an attack at a foe, or taken damage, since their last turn ended (1.420). */
+  /** Has made an attack at a foe, or taken damage, since their last turn ended (1.421). */
   stirred?: true;
-  /** The presence senses already said since they came on (1.428), by condition. */
+  /** The presence senses already said since they came on (1.429), by condition. */
   presenceSaid?: string[];
   regrowing?: true;
-  /** What was left of each condition that came off before it ran out (1.600), by condition: its
+  /** What was left of each condition that came off before it ran out (1.601), by condition: its
    *  rounds then and the round it came off. Wind Walk's cloud, for the way back into it. */
   conditionLeft?: Record<string, { rounds: number; round: number }>;
   /** Their own ways of moving while a condition gives them more (1.382); `speeds` and `hover` are
@@ -2625,35 +2625,35 @@ export interface RulesetCombatant {
   baseSpeeds?: { speeds?: RulesetMoveSpeeds; hover?: true };
   /** Moving only up and down, never across (1.382): Levitate. */
   levitating?: true;
-  /** No walk while a condition's speeds are their only ways of moving (1.539): Gaseous Form. */
+  /** No walk while a condition's speeds are their only ways of moving (1.540): Gaseous Form. */
   noWalk?: true;
   /** Ground hard going of itself, the board's terrain and its growth, costs them a plain step
-   *  (1.416): 5e's Land's Stride. A lasting area's hard going still counts. */
+   *  (1.417): 5e's Land's Stride. A lasting area's hard going still counts. */
   ignoresHardGround?: true;
-  /** On foot they take steps of any height and cross water, but never stop on water (1.416): 5e's
+  /** On foot they take steps of any height and cross water, but never stop on water (1.417): 5e's
    *  Unarmored Movement at 9th level. */
   runsAcross?: true;
-  /** They stand on water and walk across it as on solid ground (1.513): 5e's Water Walk. */
+  /** They stand on water and walk across it as on solid ground (1.514): 5e's Water Walk. */
   walksOnLiquid?: true;
-  /** Actions, by id or label in lower case, that never hinder them (1.688): their lasting areas do
+  /** Actions, by id or label in lower case, that never hinder them (1.689): their lasting areas do
    *  not catch them, and what they put on does not go on. 5e's Web Walker. */
   unhinderedBy?: string[];
-  /** Where their climb is no good (1.655): these tiles, and with `slippery` slippery zones. Only
+  /** Where their climb is no good (1.656): these tiles, and with `slippery` slippery zones. Only
    *  while every climb they have says so: Slippers of Spider Climbing. */
   climbNotOn?: { terrain: string[]; slippery?: true };
-  /** They walk through other creatures' spaces, larger ones or anybody's (1.479). */
+  /** They walk through other creatures' spaces, larger ones or anybody's (1.480). */
   passesCreatures?: "larger" | "any";
-  /** Whose spaces they have entered in which turn (1.488), as `<round>:<turn>`: Fire Form's once a
+  /** Whose spaces they have entered in which turn (1.489), as `<round>:<turn>`: Fire Form's once a
    *  turn each. */
   entered?: { at: string; ids: string[] };
-  /** They walk through solid ground as hard going and may stop inside it (1.479), taking `harm` as
+  /** They walk through solid ground as hard going and may stop inside it (1.480), taking `harm` as
    *  a turn of theirs ends there. */
   passesObjects?: { harm?: RulesetCombatAmount & { damageType?: string } };
   /** Tiles, and actions' lasting areas by id or label in lower case, whose hard going costs them a
-   *  plain step (1.692): 5e's Ice Walk. */
+   *  plain step (1.693): 5e's Ice Walk. */
   easyGround?: string[];
   /** What they take for each cell they walk into on these tiles or in these actions' lasting areas
-   *  (1.692): Water Susceptibility. */
+   *  (1.693): Water Susceptibility. */
   harmedEntering?: { terrain: string[]; zones: string[]; harm: RulesetCombatAmount & { damageType?: string } };
   /** In the air (Capability API 1.354): a flier off the ground, whatever its height. One that only
    *  flies, or hovers, starts so; one takes off with a step only its flight takes or the "Take off"
@@ -2669,7 +2669,7 @@ export interface RulesetCombatant {
   /** How many cells a side it fills on the board, its own `x`/`y` the top-left one (1.194): its
    *  size's `cells`. Absent for one cell. */
   span?: number;
-  /** Their whole span while they stand squeezed into less (1.665), given back once they fit again. */
+  /** Their whole span while they stand squeezed into less (1.666), given back once they fit again. */
   squeezedFrom?: number;
   /** Where a combatant without a sheet stands on the sheet's live tracks, by track id (1.115): the
    *  levels of `combat.levels` read these as a sheet's are read off its live state. */
@@ -2719,7 +2719,7 @@ export interface RulesetEncounterState {
   heldGround?: RulesetHeldGround;
   /** Who has begun a turn this round (1.327), the one going on included. */
   acted?: string[];
-  /** Who has begun a turn at all this fight (1.528): Assassinate's "hasn't taken a turn". */
+  /** Who has begun a turn at all this fight (1.529): Assassinate's "hasn't taken a turn". */
   tookTurn?: string[];
   /** How many creatures have been called into the fight (1.325), for their ids. */
   called?: number;
@@ -2785,7 +2785,7 @@ export type RulesetWindowTrigger =
       sourceId: string;
       optionId: string;
       label: string;
-      /** The kind of attack it is (1.493), where it is one. */
+      /** The kind of attack it is (1.494), where it is one. */
       blow?: RulesetBlowKind;
       catalog?: string;
       entry?: string;
@@ -2818,7 +2818,7 @@ export type RulesetWindowTrigger =
   /** Somebody is falling, before its damage and prone (1.124). The source is the faller. */
   | { kind: "falls"; sourceId: string; label: "fall"; levels: number; fallerIds?: string[] }
   | { kind: "turn-start"; sourceId: string; label: string }
-  /** A weapon's blow that the ones being asked lessened to nothing (1.400): `damage` is its dice
+  /** A weapon's blow that the ones being asked lessened to nothing (1.401): `damage` is its dice
    *  and type, for an answer that throws it back. */
   | {
       kind: "caught";
@@ -2829,11 +2829,11 @@ export type RulesetWindowTrigger =
       catalog?: string;
       entry?: string;
       damage: { count: number; sides: number; type?: string };
-      /** The shooter's ammunition it was (1.610), by its place on their sheet, and the share of a shot
+      /** The shooter's ammunition it was (1.611), by its place on their sheet, and the share of a shot
        *  they would win back. */
       missile?: { item: number; recover?: number };
     }
-  /** An attack that is over, hit or missed (1.406): only the ones it attacked answer, `missedIds`
+  /** An attack that is over, hit or missed (1.407): only the ones it attacked answer, `missedIds`
    *  the ones it missed, and `optionId` the attack, for an answer that sends it elsewhere. */
   | {
       kind: "attacked";
@@ -2890,17 +2890,17 @@ export interface RulesetReactionAlso {
   budget?: string;
   /** Only a hit with the item at this place in its holder's items (1.273). */
   item?: number;
-  /** Only while its holder's worn items leave one of this slot free (1.400). */
+  /** Only while its holder's worn items leave one of this slot free (1.401). */
   freeSlot?: string;
-  /** Only an attack that missed its holder (1.406). */
+  /** Only an attack that missed its holder (1.407). */
   missed?: true;
-  /** Only when whoever caused it is this (1.406). */
+  /** Only when whoever caused it is this (1.407). */
   sourceIs?: RulesetTargetIs;
-  /** Only for one holding an item with one of these tags (1.548): a shield guardian's amulet. */
+  /** Only for one holding an item with one of these tags (1.549): a shield guardian's amulet. */
   forHolds?: string[];
 }
 
-/** Who a use attacked, hit or missed, the ones it missed, and the kind of blow each was (1.406). */
+/** Who a use attacked, hit or missed, the ones it missed, and the kind of blow each was (1.407). */
 export interface RulesetAttackedRecord {
   targetIds: string[];
   missedIds: string[];
@@ -2911,7 +2911,7 @@ export interface RulesetAttackedRecord {
  *  it, and for a hit, the kind of blow. */
 export interface RulesetMomentCause {
   targetIds?: string[];
-  /** What the action that caused it carries (1.548). */
+  /** What the action that caused it carries (1.549). */
   qualities?: string[];
   action?: string;
   catalog?: string;
@@ -2925,10 +2925,10 @@ export interface RulesetMomentCause {
   budget?: string;
   /** The place in its maker's items of the item it was struck with (1.273). */
   item?: number;
-  /** Of an attack that is over (1.406): the ones it missed, and the kind of blow each was. */
+  /** Of an attack that is over (1.407): the ones it missed, and the kind of blow each was. */
   missedIds?: string[];
   blows?: Record<string, RulesetBlowKind>;
-  /** The attack's own option, for an answer that sends it elsewhere (1.406). */
+  /** The attack's own option, for an answer that sends it elsewhere (1.407). */
   attackOption?: string;
 }
 
@@ -2936,7 +2936,7 @@ export interface RulesetMomentCause {
  *  `entries` (`<catalog>/<entry>`, 1.117). Either is enough. */
 export interface RulesetReactionAgainst {
   actions?: string[];
-  /** Anything carrying one of these qualities (1.548): Rock Catching. */
+  /** Anything carrying one of these qualities (1.549): Rock Catching. */
   qualities?: string[];
   catalogs?: string[];
   entries?: string[];
@@ -3011,9 +3011,9 @@ export interface RulesetActionResume {
   spares?: string[];
   /** Who Heightened gives disadvantage, as they were picked (1.255). */
   heightens?: string;
-  /** Whom a layered wall spares, as they were picked (1.476). */
+  /** Whom a layered wall spares, as they were picked (1.477). */
   designates?: string[];
-  /** The kinds its zone strikes, as they were named (1.737): ids of its action's `kindsOf`. */
+  /** The kinds its zone strikes, as they were named (1.738): ids of its action's `kindsOf`. */
   kinds?: string[];
   /** Where a teleport goes and whom it takes along, so it still goes once a window has closed. */
   teleport?: { to?: RulesetCombatCell; carries: string[] };
@@ -3037,13 +3037,13 @@ export interface RulesetStrikeGrant {
 /** Damage added to a held blow by its maker's answer (1.241), with what a higher payment adds. */
 export interface RulesetHeldAddition {
   label: string;
-  /** None where all it does is its conditions (1.518): a Rod of Lordly Might's Paralyze. */
+  /** None where all it does is its conditions (1.519): a Rod of Lordly Might's Paralyze. */
   damage?: RulesetCombatDamage;
   extra?: { amount: RulesetCombatAmount; times: number };
   /** Conditions it puts on the one hit (1.273): a Staff of Withering's, against its save. */
   onHit?: NonNullable<RulesetCombatAction["onHit"]>;
   /** A made save by the one hit keeps its damage off, and its maker regains `drain` of what it
-   *  dealt (1.518): a Rod of Lordly Might's Drain Life. */
+   *  dealt (1.519): a Rod of Lordly Might's Drain Life. */
   save?: { save: string; difficulty: number };
   drain?: number;
 }
@@ -3073,7 +3073,7 @@ export interface RulesetHeldAttack {
     natural: boolean;
     /** What answers took off it after it hit (1.250): Cutting Words. */
     lowered?: number;
-    /** A symbol fight's throw (1.780): the symbols it left, spent once it is known to land. */
+    /** A symbol fight's throw (1.781): the symbols it left, spent once it is known to land. */
     symbols?: Record<string, number>;
     /** What each side asked has chosen to buy with them so far, by spend id. A side that is here was
      *  asked, and is never asked again for this throw; one that is not gets the Engine's pick. */
@@ -3083,17 +3083,17 @@ export interface RulesetHeldAttack {
   mine: string[];
   /** Whoever the action had already hurt before it was held, for the moment after it. */
   hurt: string[];
-  /** Whoever it had already attacked before it was held, hit or missed (1.406). */
+  /** Whoever it had already attacked before it was held, hit or missed (1.407). */
   attacked?: RulesetAttackedRecord;
   /** What its maker added to the blow while it was held (1.241): Divine Smite. */
   adds?: RulesetHeldAddition[];
   /** The one target every attack of its sequence before this part hit, or false once one missed
-   *  (1.389), for the sequence's `allHit`. */
+   *  (1.390), for the sequence's `allHit`. */
   allHit?: string | false;
-  /** What each step of its sequence before this part came to (1.627), by the step's place: the one
+  /** What each step of its sequence before this part came to (1.628), by the step's place: the one
    *  target every attack of it hit, or false. */
   stepHits?: Record<string, string | false>;
-  /** How many strikes each rolled step of its sequence came to (1.627), by the step's place. */
+  /** How many strikes each rolled step of its sequence came to (1.628), by the step's place. */
   stepRolls?: Record<string, number>;
 }
 
@@ -3137,14 +3137,14 @@ export interface RulesetWalkResume {
   /** The window between turns a legendary move was bought in, held behind a strike it provoked and
    *  asked on from once the walk ends. */
   outer?: RulesetCombatWindow;
-  /** An engulf (1.387): the action it is, and whoever it has entered so far, each taken in or pushed
+  /** An engulf (1.388): the action it is, and whoever it has entered so far, each taken in or pushed
    *  out of its way once the walk ends. */
   engulf?: { actionId: string; entered: string[] };
-  /** A leap onto whoever stands where it lands (1.709): the action it is, made once it lands. */
+  /** A leap onto whoever stands where it lands (1.710): the action it is, made once it lands. */
   leap?: { actionId: string };
-  /** A jump (1.483): a cell of movement a cell, touching the ground only where it lands. */
+  /** A jump (1.484): a cell of movement a cell, touching the ground only where it lands. */
   jump?: true;
-  /** Walked carefully (1.673): every step into ground that spares slow walkers costs double, and
+  /** Walked carefully (1.674): every step into ground that spares slow walkers costs double, and
    *  that ground's `enter` lets them by. */
   careful?: true;
 }
@@ -3213,11 +3213,11 @@ export interface RulesetCheckModeRule {
 export type RulesetAttackModeRule = Omit<RulesetCheckModeRule, "skills"> & {
   allyAdjacent?: true;
   targetHurt?: true;
-  /** Melee attacks only (1.386). */
+  /** Melee attacks only (1.387). */
   melee?: true;
-  /** Only at a target surprised, or not yet acted in the fight (1.528). */
+  /** Only at a target surprised, or not yet acted in the fight (1.529). */
   whenTarget?: "surprised" | "not-yet-acted";
-  /** Only at a target holding one of these that it put on them (1.537): a mimic's Grappler. */
+  /** Only at a target holding one of these that it put on them (1.538): a mimic's Grappler. */
   targetHoldsFromSelf?: string[];
 };
 
@@ -3365,7 +3365,7 @@ export type RulesetCombatRefusal =
   | "compelled"
   /** What it is made with lies where it was dropped (1.266). */
   | "dropped"
-  /** The creatures picked stand too far from each other (1.267), or from the first (1.578). */
+  /** The creatures picked stand too far from each other (1.267), or from the first (1.579). */
   | "targets-apart";
 
 export type RulesetCombatAttackOutcome = "hit" | "miss" | "critical";
@@ -3376,22 +3376,22 @@ export type RulesetCombatRollMode = "normal" | "advantage" | "disadvantage";
 export type RulesetCombatEvent =
   /** What a condition made its holder let fall (1.266), and picking one thing back up. */
   | { type: "letFall"; actorId: string; condition: string; labels: string[] }
-  /** What a contest won took from its target (1.652), now lying at its winner's feet. */
+  /** What a contest won took from its target (1.653), now lying at its winner's feet. */
   | { type: "takenAway"; actorId: string; targetId: string; label: string; labels: string[] }
   | { type: "pickedUp"; actorId: string; label: string }
-  /** One attack given up for one by a creature its maker called (1.472): Pact of the Chain. */
+  /** One attack given up for one by a creature its maker called (1.473): Pact of the Chain. */
   | { type: "lent"; actorId: string; calledId: string; label: string }
   | { type: "averted"; actorId: string; holderId: string; back?: true }
-  /** An attack or a harmful entry kept off a sanctuary's holder by a failed save (1.407): sent to
+  /** An attack or a harmful entry kept off a sanctuary's holder by a failed save (1.408): sent to
    *  `to`, or lost. */
   | { type: "sanctuary"; actorId: string; holderId: string; label: string; to?: string }
-  /** A health maximum raised while a condition holds, and the health with it (1.457): Aid. */
+  /** A health maximum raised while a condition holds, and the health with it (1.458): Aid. */
   | { type: "raisedMax"; targetId: string; condition: string; amount: number }
-  /** A creature split in two by what harmed it (1.459): a Black Pudding. Each has `health`. */
+  /** A creature split in two by what harmed it (1.460): a Black Pudding. Each has `health`. */
   | { type: "split"; actorId: string; ids: string[]; health: number }
-  /** A ray of a table rolled for one target (1.452): Prismatic Spray's colours. */
+  /** A ray of a table rolled for one target (1.453): Prismatic Spray's colours. */
   | { type: "ray"; actorId: string; targetId: string; label: string; ray: string; roll: number }
-  /** Holders of a condition steered toward a point by whoever put it on (1.448): Compulsion. */
+  /** Holders of a condition steered toward a point by whoever put it on (1.449): Compulsion. */
   | {
       type: "steered";
       actorId: string;
@@ -3399,7 +3399,7 @@ export type RulesetCombatEvent =
       condition: string;
       targetIds: string[];
     }
-  /** A turn's budget wasted to a condition as the turn began (1.447), its save failed: Bestow Curse. */
+  /** A turn's budget wasted to a condition as the turn began (1.448), its save failed: Bestow Curse. */
   | {
       type: "wasted";
       actorId: string;
@@ -3584,11 +3584,11 @@ export type RulesetCombatEvent =
         | "dispelled"
         /** Not put on: its source holds as many with it as it may (1.320). */
         | "full"
-        /** Not put on: its holder stands where its source is kept out (1.436). */
+        /** Not put on: its holder stands where its source is kept out (1.437). */
         | "warded"
-        /** Gone as its holder stepped into ground that keeps its source out (1.443): Hallow. */
+        /** Gone as its holder stepped into ground that keeps its source out (1.444): Hallow. */
         | "freed"
-        /** Slipped free of by its holder (1.470): Freedom of Movement. */
+        /** Slipped free of by its holder (1.471): Freedom of Movement. */
         | "slipped";
       stacks?: number;
     }
@@ -3615,12 +3615,12 @@ export type RulesetCombatEvent =
       condition?: string;
       text?: string;
     }
-  /** `uncommanded` (1.542): a called creature whose caller did not pay for its turn. */
+  /** `uncommanded` (1.543): a called creature whose caller did not pay for its turn. */
   | { type: "skip"; actorId: string; reason: "daze" | "uncommanded" | "wild" }
   | { type: "spend"; actorId: string; pool: string; label: string; amount: number }
   | { type: "budget"; actorId: string; budget: string; left: number }
   | { type: "uses"; actorId: string; optionId: string; label: string; left: number; of: number }
-  /** Cast by praying (1.770, the ruleset's `combat.poses.divine`): told by the fight's director as
+  /** Cast by praying (1.771, the ruleset's `combat.poses.divine`): told by the fight's director as
    *  the choice is made, for the screen's praying mark until its caster's next turn. */
   | { type: "prayed"; actorId: string; optionId: string; label: string }
   /** An item whose last charge was just spent, and whose die said it breaks. */
@@ -3668,17 +3668,17 @@ export type RulesetCombatEvent =
     }
   /** An item's gate: the check its user rolled before it could work. A failed one used it up for
    *  nothing. Shaped as a save is, with `check` naming what was rolled. */
-  /** What a presence sense tells its holder (1.428): which kinds are within `within`, none found
+  /** What a presence sense tells its holder (1.429): which kinds are within `within`, none found
    *  when `kinds` is empty. */
   | { type: "presence"; actorId: string; condition: string; within: number; kinds: string[] }
-  /** Time stopped for `actorId` (1.491): `turns` in a row rolled, or `ended` early by what reached
+  /** Time stopped for `actorId` (1.492): `turns` in a row rolled, or `ended` early by what reached
    *  somebody else, or `over` after the last. */
   | { type: "timeStop"; actorId: string; label: string; turns?: number; ended?: "affected" | "over" }
-  /** `actorId` stepped in to be the target of what `sourceId` aimed at `targetId` (1.493). */
+  /** `actorId` stepped in to be the target of what `sourceId` aimed at `targetId` (1.494). */
   | { type: "tookAim"; actorId: string; targetId: string; sourceId: string; label: string }
-  /** The die its holder's `blinks` rolled as their turn ended (1.490), and whether they vanished. */
+  /** The die its holder's `blinks` rolled as their turn ended (1.491), and whether they vanished. */
   | { type: "blink"; actorId: string; label: string; roll: number; needed: number; vanished: boolean }
-  /** An attack on somebody with duplicates (1.489): whether the die turned it onto one, and `lost`
+  /** An attack on somebody with duplicates (1.490): whether the die turned it onto one, and `lost`
    *  once the attack hit it, with how many are `left`. */
   | {
       type: "duplicate";
@@ -3690,7 +3690,7 @@ export type RulesetCombatEvent =
       lost?: true;
       left?: number;
     }
-  /** A use's chance rolled (1.425): `sure` when nothing needed rolling. */
+  /** A use's chance rolled (1.426): `sure` when nothing needed rolling. */
   | {
       type: "chance";
       actorId: string;
@@ -3751,14 +3751,14 @@ export type RulesetCombatEvent =
       /** Who it carried and where to (1.329). */
       pushed?: Array<{ id: string; from: RulesetCombatCell; to: RulesetCombatCell }>;
     }
-  /** Taken inside somebody (1.387), or let out beside them (`out`). */
+  /** Taken inside somebody (1.388), or let out beside them (`out`). */
   | { type: "inside"; targetId: string; holderId: string; out?: true }
-  /** Holding their breath under water as a turn starts (1.482): turns of it left, then lasted. */
+  /** Holding their breath under water as a turn starts (1.483): turns of it left, then lasted. */
   | { type: "breath"; actorId: string; held: number; lasts: number }
-  /** Up on a mount (1.480), or off it (`off`), thrown or fallen (`fell`). */
+  /** Up on a mount (1.481), or off it (`off`), thrown or fallen (`fell`). */
   | { type: "mount"; riderId: string; mountId: string; off?: true; fell?: true }
   /** Left at 1 instead of dropping to 0 (1.320), and how many more times it may; with `outright`
-   *  (1.580), spared being slain outright instead. */
+   *  (1.581), spared being slain outright instead. */
   | { type: "hangsOn"; actorId: string; label?: string; left?: number; outright?: true }
   /** A prop lit again (1.332): who lit it, and how many cells it lights. */
   | { type: "relit"; actorId: string; propId: string; label: string; cells: number }
@@ -3787,7 +3787,7 @@ export type RulesetCombatEvent =
       to: RulesetCombatCell;
       path: RulesetCombatCell[];
     }
-  /** Somebody moved where whoever won them over picked (1.549), with no step between, and lifted
+  /** Somebody moved where whoever won them over picked (1.550), with no step between, and lifted
    *  `rises` levels above the ground there: Telekinesis. */
   | {
       type: "carried";
@@ -3798,12 +3798,12 @@ export type RulesetCombatEvent =
       to: RulesetCombatCell;
       rises?: number;
     }
-  /** Somebody lifted by a condition they now hold (1.550), from and to so many levels above the
+  /** Somebody lifted by a condition they now hold (1.551), from and to so many levels above the
    *  ground under them: Reverse Gravity. */
   | { type: "lifted"; targetId: string; from: number; to: number }
-  /** What was stored in somebody cast by itself as its moment came (1.553): Contingency. */
+  /** What was stored in somebody cast by itself as its moment came (1.554): Contingency. */
   | { type: "storedCast"; actorId: string; label: string; targetId: string }
-  /** Something aimed at an image passed through it (1.552), and its maker's side saw it for one. */
+  /** Something aimed at an image passed through it (1.553), and its maker's side saw it for one. */
   | { type: "seenThrough"; actorId: string; targetId: string; label: string }
   /** Creatures called into the fight (1.325), by whom and with what. */
   | { type: "called"; actorId: string; label: string; ids: string[]; disobeys?: true }
@@ -3816,13 +3816,13 @@ export type RulesetCombatEvent =
       ids: string[];
       reason: "rounds" | "concentration" | "caller" | "dismissed" | "leash" | "spent";
     }
-  /** Called creatures that turn on their caller's side as its concentration breaks (1.522). */
+  /** Called creatures that turn on their caller's side as its concentration breaks (1.523). */
   | { type: "turnedOn"; actorId: string; ids: string[] }
-  /** An item spent for good as the creature it called dies (1.596): a Ring of Djinni Summoning. */
+  /** An item spent for good as the creature it called dies (1.597): a Ring of Djinni Summoning. */
   | { type: "itemSpent"; actorId: string; label: string }
-  /** A missile caught and kept (1.610): Gloves of Missile Snaring. `label` is what it was. */
+  /** A missile caught and kept (1.611): Gloves of Missile Snaring. `label` is what it was. */
   | { type: "missileKept"; actorId: string; label: string }
-  /** An item backfiring on its user as they use it (1.614): a Horn of Blasting exploding. `roll` is
+  /** An item backfiring on its user as they use it (1.615): a Horn of Blasting exploding. `roll` is
    *  its d100, and `destroyed` says it is gone. */
   | { type: "backfired"; actorId: string; label: string; roll: number; destroyed?: true }
   /** An aura grown as its holder's turn starts (1.320), and how far it reaches now. */
@@ -3843,9 +3843,9 @@ export type RulesetCombatEvent =
   | { type: "legendaryResistance"; actorId: string; save: string; left: number }
   /** A lair action taken on its lair's count (1.315); what it does follows. */
   | { type: "lair"; actorId: string; optionId: string; label: string }
-  /** Stopped on water they could only run across (1.416), and come out on the nearest open ground. */
+  /** Stopped on water they could only run across (1.417), and come out on the nearest open ground. */
   | { type: "ashore"; actorId: string; to: RulesetCombatCell }
-  /** What its user put on somebody kept up for longer (1.415): Intimidating Presence. */
+  /** What its user put on somebody kept up for longer (1.416): Intimidating Presence. */
   | { type: "sustained"; actorId: string; targetId: string; condition: string; label: string }
   /** A spend that bought several strikes, and what is left of it after this one. */
   | { type: "strikes"; actorId: string; optionId: string; label: string; left: number }
@@ -3913,9 +3913,9 @@ export type RulesetCombatEvent =
       left: number;
       /** How far the move got, when a strike on the way stopped it short. */
       stopped?: boolean;
-      /** A jump (1.483). */
+      /** A jump (1.484). */
       jumped?: true;
-      /** Whoever came along: dragged (1.481), clinging (1.660) or carried shut in a sphere (1.314). */
+      /** Whoever came along: dragged (1.482), clinging (1.661) or carried shut in a sphere (1.314). */
       dragged?: string[];
     }
   /** What a summoned weapon did, from its appearance to its ending (1.122). */
@@ -3941,22 +3941,22 @@ export type RulesetCombatEvent =
         | "dispersed"
         /** Magical darkness ended where a light met it (1.297). */
         | "dispelled"
-        /** A hidden zone found by `targetId`'s Search (1.439). */
+        /** A hidden zone found by `targetId`'s Search (1.440). */
         | "found"
-        /** Its first standing layer destroyed by `targetId`, or left standing by what they did (1.474). */
+        /** Its first standing layer destroyed by `targetId`, or left standing by what they did (1.475). */
         | "layer-gone"
         | "layer-held"
-        /** On to its stage `layer` names (1.541). */
+        /** On to its stage `layer` names (1.542). */
         | "stage"
-        /** Closed by its caster (1.621), ended or lingering, and widened (1.621). */
+        /** Closed by its caster (1.622), ended or lingering, and widened (1.622). */
         | "closed"
         | "spread"
-        /** Disarmed by `targetId`, or not, with `check` (1.653). */
+        /** Disarmed by `targetId`, or not, with `check` (1.654). */
         | "disarmed"
         | "disarm-failed";
-      /** The check a disarm was tried with (1.653). */
+      /** The check a disarm was tried with (1.654). */
       check?: RulesetContestSide;
-      /** The layer it was about (1.474), or with `stage` (1.541) the stage it is at now. */
+      /** The layer it was about (1.475), or with `stage` (1.542) the stage it is at now. */
       layer?: string;
       targetId?: string;
       /** What caught them: one of the zone's triggers, or walking on its ground (1.173). */
@@ -4023,7 +4023,7 @@ export type RulesetCombatEvent =
       roll?: number;
       needed?: number;
     }
-  /** A cast taking rounds (1.445): `started` and `continued` with `left` turns to go, then
+  /** A cast taking rounds (1.446): `started` and `continued` with `left` turns to go, then
    *  `completed`, or `lost` with what it cost given back. */
   | {
       type: "casting";
@@ -4059,24 +4059,24 @@ export type RulesetCombatEvent =
   | { type: "fell"; targetId: string; levels: number }
   /** Killed outright by a blow that slays (1.187). */
   | { type: "slain"; actorId: string; targetId: string; label: string }
-  /** Braced against being moved, going `cells` less (1.702): Dwarven Plate. */
+  /** Braced against being moved, going `cells` less (1.703): Dwarven Plate. */
   | { type: "pushBraced"; actorId: string; label: string; cells: number }
-  /** Knocked out by a pulled melee blow instead of dropped dying or slain (1.704). */
+  /** Knocked out by a pulled melee blow instead of dropped dying or slain (1.705). */
   | { type: "knockedOut"; actorId: string; sourceId: string }
-  /** Taken by a carapace (1.707): `roll` on its die, its holder untouched, and with `back` turned at
+  /** Taken by a carapace (1.708): `roll` on its die, its holder untouched, and with `back` turned at
    *  its maker. */
   | { type: "reflected"; targetId: string; sourceId: string; label: string; by: string; roll: number; back: boolean }
-  /** Items made by a cast (1.705): Goodberry's berries, into its caster's hand. */
+  /** Items made by a cast (1.706): Goodberry's berries, into its caster's hand. */
   | { type: "itemsMade"; actorId: string; label: string; count: number }
-  /** What they made to last only so long, gone as its time ran out (1.744): Creation's. */
+  /** What they made to last only so long, gone as its time ran out (1.745): Creation's. */
   | { type: "itemsVanished"; actorId: string; label: string; count: number }
-  /** What set off a morale check (1.746), said before its roll or save. */
+  /** What set off a morale check (1.747), said before its roll or save. */
   | { type: "moraleCheck"; actorId: string; trigger: RulesetMoraleTrigger }
   /** A creature the Engine plays turning to another temperament (combat AI T7): what set it off. */
   | { type: "temperamentShift"; actorId: string; to: string; on: string }
   /** A territorial creature keeping to its ground for the turn (combat AI T4). */
   | { type: "holdsGround"; actorId: string }
-  /** A morale check (1.746): what set it off, the roll or save, and whether it held, fled or gave up. */
+  /** A morale check (1.747): what set it off, the roll or save, and whether it held, fled or gave up. */
   | {
       type: "morale";
       actorId: string;
@@ -4085,9 +4085,9 @@ export type RulesetCombatEvent =
       roll?: number;
       score?: number;
     }
-  /** Broken and got away off the edge of the board (1.746). */
+  /** Broken and got away off the edge of the board (1.747). */
   | { type: "fled"; actorId: string }
-  /** Killed outright by massive damage (1.693). */
+  /** Killed outright by massive damage (1.694). */
   | { type: "massiveDeath"; actorId: string }
   /** Dropped to 0 health at once by a failed save (1.245): Quivering Palm. */
   | { type: "dropped"; actorId: string; targetId: string; label: string }
@@ -4115,10 +4115,10 @@ export type RulesetCombatEvent =
       by: number;
       total: number;
     }
-  /** A pool given back as initiative was rolled, its holder having none left (1.395): Superior
+  /** A pool given back as initiative was rolled, its holder having none left (1.396): Superior
    *  Inspiration. `now` is the pool as it stands after. */
   | { type: "refilled"; actorId: string; label: string; pool: string; now: string }
-  /** A face of its maker's own roll rolled again by what they hold (1.392): a halfling's Lucky. */
+  /** A face of its maker's own roll rolled again by what they hold (1.393): a halfling's Lucky. */
   | { type: "rerolled"; actorId: string; label: string; face: number; to: number }
   /** A failed roll rolled again or turned into a success by what its maker spent (1.249). */
   | { type: "rescued"; actorId: string; optionId: string; label: string; by: RulesetCombatRescue["by"] }
@@ -4126,7 +4126,7 @@ export type RulesetCombatEvent =
   | { type: "dismissed"; actorId: string; targetId: string; label: string; while?: string }
   /** Out of the fight by a teleport that leaves it (1.279), or along with whoever did (`by`). */
   | { type: "left"; actorId: string; label: string; by?: string }
-  /** How a teleport out of the fight went (1.654): the d100, under the familiarity `row`. */
+  /** How a teleport out of the fight went (1.655): the d100, under the familiarity `row`. */
   | {
       type: "teleportRoll";
       actorId: string;
@@ -4137,11 +4137,11 @@ export type RulesetCombatEvent =
     }
   /** Back from where it was sent (1.236), or, with `gone`, kept there for good. */
   | { type: "returned"; targetId: string; gone?: true }
-  /** Called creatures that came after their caller's turns (1.598): Children of the Night's. */
+  /** Called creatures that came after their caller's turns (1.599): Children of the Night's. */
   | { type: "arrived"; actorId: string; ids: string[] }
-  /** A called creature set aside by a zone that covers it (1.517): Antimagic Field's summons. */
+  /** A called creature set aside by a zone that covers it (1.518): Antimagic Field's summons. */
   | { type: "setAside"; targetId: string; label: string }
-  /** A foe's entry taken in by its only target (1.506): a Rod of Absorption's, its charges now. */
+  /** A foe's entry taken in by its only target (1.507): a Rod of Absorption's, its charges now. */
   | {
       type: "absorbed";
       targetId: string;
@@ -4151,16 +4151,16 @@ export type RulesetCombatEvent =
       by: string;
       charges?: { now: number; max: number };
     }
-  /** An entry stored in an item or a creature to be cast later (1.508), at the level it was paid at. */
+  /** An entry stored in an item or a creature to be cast later (1.509), at the level it was paid at. */
   | { type: "stored"; actorId: string; holderId: string; label: string; by: string; level: number }
-  /** A foe's entry its only target turned back at its user on the save's top face (1.507): a Ring
+  /** A foe's entry its only target turned back at its user on the save's top face (1.508): a Ring
    *  of Spell Turning's. */
   | { type: "turnedBack"; targetId: string; sourceId: string; label: string; by: string }
   /** A check made to end a condition (1.313): Maze's way out, or no roll for one that always makes it. */
   | {
       type: "checkEnded";
       actorId: string;
-      /** Whose condition it was, when somebody else made the check for them (1.502). */
+      /** Whose condition it was, when somebody else made the check for them (1.503). */
       holderId?: string;
       condition: string;
       difficulty: number;
@@ -4180,11 +4180,11 @@ export type RulesetCombatEvent =
   | { type: "extraTurn"; actorId: string; initiative: number; label: string }
   /** Its maker adds this to the blow that just hit (1.241): Divine Smite. */
   | { type: "added"; actorId: string; targetId: string; label: string; to: string }
-  /** What a creature does as it dies (1.524): a mephit's Death Burst. */
+  /** What a creature does as it dies (1.525): a mephit's Death Burst. */
   | { type: "deathBurst"; actorId: string; label: string }
-  /** Its low-health roll as its turn starts (1.527): Berserk's d6. */
+  /** Its low-health roll as its turn starts (1.528): Berserk's d6. */
   | { type: "turnRoll"; actorId: string; roll: number; atLeast: number; conditions: string[] }
-  /** A weapon corroded on hitting it (1.535): `penalty` off its damage now, gone when `destroyed`;
+  /** A weapon corroded on hitting it (1.536): `penalty` off its damage now, gone when `destroyed`;
    *  with `ammunition`, the shot is destroyed. */
   | {
       type: "corroded";
@@ -4195,19 +4195,19 @@ export type RulesetCombatEvent =
       destroyed?: true;
       ammunition?: true;
     }
-  /** One of its heads died (1.534), `left` still on it. */
+  /** One of its heads died (1.535), `left` still on it. */
   | { type: "headLost"; actorId: string; left: number }
-  /** Heads grown back as its turn ends (1.534), `heads` now; none when `burned`. */
+  /** Heads grown back as its turn ends (1.535), `heads` now; none when `burned`. */
   | { type: "headsGrow"; actorId: string; grown: number; heads: number; burned?: true }
-  /** Rampaging on after felling one (1.529): `cells` more to move, and `label` again. */
+  /** Rampaging on after felling one (1.530): `cells` more to move, and `label` again. */
   | { type: "rampage"; actorId: string; label: string; cells: number }
-  /** Made to go at the nearest creature it sees (1.527). */
+  /** Made to go at the nearest creature it sees (1.528). */
   | { type: "goesAt"; actorId: string; condition: string; targetId: string }
-  /** Another use's effect happening beside the one used (1.519): Thunderclap with Lightning Strike. */
+  /** Another use's effect happening beside the one used (1.520): Thunderclap with Lightning Strike. */
   | { type: "alongside"; actorId: string; label: string; to: string }
-  /** How many strikes a sequence's rolled step makes (1.627): a violet fungus's 1d4 touches. */
+  /** How many strikes a sequence's rolled step makes (1.628): a violet fungus's 1d4 touches. */
   | { type: "strikesRolled"; actorId: string; label: string; dice: string; count: number }
-  /** A table rolled as something was used (1.543): `roll` of `of`, and the row it came up. */
+  /** A table rolled as something was used (1.544): `roll` of `of`, and the row it came up. */
   | { type: "rolledTable"; actorId: string; label: string; roll: number; of: number; result: string }
   /** A blow that follows a straight run at its target, before what the charge adds lands (1.186). */
   | {
@@ -4218,7 +4218,7 @@ export type RulesetCombatEvent =
     }
   /** A pool of health rolled to share out among an action's targets (1.196), and whom it took. */
   | { type: "healthPool"; actorId: string; label: string; rolls: number[]; total: number; affected: string[] }
-  /** A blow struck at a condition to cut it away (1.515): `left` of it after, `freed` when none is. */
+  /** A blow struck at a condition to cut it away (1.516): `left` of it after, `freed` when none is. */
   | {
       type: "cut";
       actorId: string;
@@ -4251,9 +4251,9 @@ export type RulesetCombatEvent =
       from: RulesetCombatCell;
       to: RulesetCombatCell;
       path: RulesetCombatCell[];
-      /** Where the pusher moved with them (1.582). */
+      /** Where the pusher moved with them (1.583). */
       followed?: { from: RulesetCombatCell; to: RulesetCombatCell };
-      /** Pulled toward the actor rather than pushed away (1.659). */
+      /** Pulled toward the actor rather than pushed away (1.660). */
       pulled?: true;
     }
   /** Teleported (1.276): the user, or one they carried (`by` names the user then). */
@@ -4264,7 +4264,7 @@ export type RulesetCombatEvent =
       to: RulesetCombatCell;
       label: string;
       by?: string;
-      /** Kept where they were by the zone so named, its save failed (1.587): Forcecage. */
+      /** Kept where they were by the zone so named, its save failed (1.588): Forcecage. */
       heldIn?: string;
     }
   /** A held attack's roll, checked again once the one it hit had answered: against what their
@@ -4288,7 +4288,7 @@ export type RulesetCombatEvent =
   | { type: "cover"; targetId: string; bonus: number; defense?: number; save?: string }
   /** A spending blow whose dice were below the target's hardness: it landed and did nothing. */
   | { type: "hardness"; targetId: string; sourceId: string; label: string; hardness: number; dice: number }
-  /** Symbols left over on an attack's roll bought something (1.780): `actorId` chose it, for `times`
+  /** Symbols left over on an attack's roll bought something (1.781): `actorId` chose it, for `times`
    *  of `cost` `symbol` each, on the roll `rollerId` made at `targetId`. What it did follows as its
    *  own events; boost and setback dice wait on `onId`'s next roll. */
   | {
@@ -4313,9 +4313,9 @@ export type RulesetCombatEvent =
   | { type: "reload"; actorId: string; optionId: string; label: string; loaded: number; of: number; drew?: number }
   /** An item switched on or off (1.170). */
   | { type: "switch"; actorId: string; optionId: string; label: string; on: boolean }
-  /** Taken over by whoever put a condition on (1.561), now on their side, or back on their own. */
+  /** Taken over by whoever put a condition on (1.562), now on their side, or back on their own. */
   | { type: "controlled"; targetId: string; sourceId: string; active: boolean }
-  /** An item turned into another of its forms (1.559): a Rod of Lordly Might made a flame tongue. */
+  /** An item turned into another of its forms (1.560): a Rod of Lordly Might made a flame tongue. */
   | { type: "reformed"; actorId: string; label: string; form: string }
   /** Won back after the fight: some of what was shot out of one stack. */
   | { type: "recovered"; actorId: string; label: string; count: number }
@@ -4333,9 +4333,9 @@ export type RulesetCombatEvent =
       actorId: string;
       rolls: number[];
       kept: number;
-      /** Rolled twice (1.484): Beacon of Hope. */
+      /** Rolled twice (1.485): Beacon of Hope. */
       mode?: RulesetCombatRollMode;
-      /** What was added to it as a save, and its total with them (1.484): Bless. */
+      /** What was added to it as a save, and its total with them (1.485): Bless. */
       bonuses?: RulesetConditionBonus[];
       total?: number;
       difficulty: number;
@@ -4375,16 +4375,16 @@ export interface RulesetCombatAlter {
   drops?: string[];
   twins?: true;
   joins?: true;
-  /** Only entries its filter reads so (1.398), resolved to `entries` as its holder is set up. */
+  /** Only entries its filter reads so (1.399), resolved to `entries` as its holder is set up. */
   where?: RulesetCatalogWhere;
   entries?: string[];
-  /** Those it spares take nothing on a success that leaves half (1.398): Sculpt Spells. */
+  /** Those it spares take nothing on a success that leaves half (1.399): Sculpt Spells. */
   sparesWhole?: true;
-  /** It spares as many more as the level it is paid at (1.398). */
+  /** It spares as many more as the level it is paid at (1.399). */
   sparesByLevel?: true;
-  /** Its damage at its most, paid within these levels (1.399): Overchannel. */
+  /** Its damage at its most, paid within these levels (1.400): Overchannel. */
   maximizes?: { fromLevel?: number; upToLevel?: number };
-  /** Harm to its user past the first `free` uses of its counter (1.399): Overchannel. */
+  /** Harm to its user past the first `free` uses of its counter (1.400): Overchannel. */
   backlash?: { free: number; dice: string; grows?: string; type?: string; unblockable?: true };
 }
 
@@ -4399,7 +4399,7 @@ export interface RulesetCombatRescue {
   saves?: string[];
   /** The budget spending it takes (1.257): a ring of evasion's reaction. */
   budget?: string;
-  /** Only a save against these (1.771), either one enough: an entry whose filter reads so, or a
+  /** Only a save against these (1.772), either one enough: an entry whose filter reads so, or a
    *  creature of one of these types. A Scarab of Protection. */
   against?: { where?: { filter: string; equals: string | number }; fromTypes?: string[] };
 }
@@ -4417,7 +4417,7 @@ export interface RulesetCombatAlterOffer {
   budget?: string;
   /** How many of its user's side it catches it may spare (Careful), each picked by `spares` (1.254). */
   spares?: number;
-  /** `spares` counts the level the action is paid at (1.398): one more for each level it is paid
+  /** `spares` counts the level the action is paid at (1.399): one more for each level it is paid
    *  above its own. */
   sparesByLevel?: true;
   /** It gives one it catches disadvantage on their first save (Heightened), picked by `heightens`
@@ -4432,9 +4432,9 @@ export interface RulesetCombatOption {
   /** Allowed, but nothing can come of it now: a Hide with every opponent seeing its user clearly.
    *  Left off a player's menu and never picked by the AI. */
   futile?: true;
-  /** The trap it disarms (1.653): its caster's and the action that laid it. */
+  /** The trap it disarms (1.654): its caster's and the action that laid it. */
   disarms?: { casterId: string; actionId: string };
-  /** Breaks what these conditions on its actor command (1.628), and is harmed for it: 5e's Geas.
+  /** Breaks what these conditions on its actor command (1.629), and is harmed for it: 5e's Geas.
    *  With `cells`, only a walk ending at one of them does; the rest of the walk breaks nothing. */
   defies?: { conditions: string[]; cells?: RulesetCombatCell[] };
   /** The holder must pass this save to cancel (1.131). */
@@ -4499,41 +4499,41 @@ export interface RulesetCombatOption {
   payGains?: Record<string, { amount?: RulesetCombatAmount; heals?: true; size?: number }>;
   /** The cells of standing wall sections this attack may be pointed at instead (1.200). */
   walls?: RulesetCombatCell[];
-  /** Lasting areas it may be aimed at instead of a creature, to end them (1.411): Dispel Magic on a
+  /** Lasting areas it may be aimed at instead of a creature, to end them (1.412): Dispel Magic on a
    *  Wall of Fire. The choice names one as `dispel`. */
   dispels?: Array<{ casterId: string; actionId: string; label: string }>;
-  /** Conditions it may strike at instead of a creature, to cut them away (1.515): a net on its
+  /** Conditions it may strike at instead of a creature, to cut them away (1.516): a net on its
    *  holder, with what is left of it. The choice names one as `cut`. */
   cuts?: Array<{ holderId: string; condition: string; label: string; left: number }>;
-  /** What its user may pick to end on each target, by target id (1.411): the conditions entries of
+  /** What its user may pick to end on each target, by target id (1.412): the conditions entries of
    *  its catalogs put on them. The choice names them as `ends`; left out, the highest end first. */
   endsChoices?: Record<string, Array<{ condition: string; label: string; level?: number }>>;
   /** Where a teleport may go (1.276), as cells its user's corner would stand on, and who of its
    *  user's side may go along, at most `count` of them. The choice names the cell as `at`. */
   teleport?: { cells: RulesetCombatCell[]; carries?: { count: number; ids: string[] }; leaves?: true };
-  /** Where each target it lands on may be moved to (1.549), by target id; the choice names the cell
+  /** Where each target it lands on may be moved to (1.550), by target id; the choice names the cell
    *  as `to`, and up to `levels` levels above the ground there as `rises`. Telekinesis. */
   movesTarget?: { cells: Record<string, RulesetCombatCell[]>; levels?: number };
-  /** Whom a layered wall may spare (1.476), picked as it is cast: at most `count` of `ids`. The
+  /** Whom a layered wall may spare (1.477), picked as it is cast: at most `count` of `ids`. The
    *  choice names them as `designates`. */
   designates?: { count: number; ids: string[] };
-  /** The creature types and tags its zone may strike (1.737), one or more named as it is cast:
-   *  the choice names them as `kinds`. Forbiddance. Or (1.742) the entries and creature actions in
+  /** The creature types and tags its zone may strike (1.738), one or more named as it is cast:
+   *  the choice names them as `kinds`. Forbiddance. Or (1.743) the entries and creature actions in
    *  the fight what it puts on may ward off, exactly one named (`kindsOne`): Wish. */
   kindsOf?: Array<{ id: string; label: string }>;
-  /** Exactly one of `kindsOf` is named (1.742). */
+  /** Exactly one of `kindsOf` is named (1.743). */
   kindsOne?: true;
-  /** The option this one is a variant of (1.753), as its action says: the menu folds it under that
+  /** The option this one is a variant of (1.754), as its action says: the menu folds it under that
    *  one's button, or under one button of its own named `variantName` when that one is not offered. */
   variantOf?: string;
   variantName?: string;
   /** An area that does nothing to those it catches but ward them (Magic Circle): no damage, save,
    *  condition, shove or trigger. A screen does not warn that it catches the caster's own side. */
   harmless?: true;
-  /** Help that is given only against an opponent beside its helper (1.755), so a menu greyed for want
+  /** Help that is given only against an opponent beside its helper (1.756), so a menu greyed for want
    *  of a target says that rather than that nobody is in sight. */
   besideOnly?: true;
-  /** What it may be stored in instead of done (1.508): its user's own item (`item`, its place on
+  /** What it may be stored in instead of done (1.509): its user's own item (`item`, its place on
    *  their sheet) or one an ally beside them holds, or a creature that stores (no `item`), with the
    *  levels still free there. The choice names one as `storesIn`. */
   storesIn?: Array<{ holderId: string; item?: number; label: string; room: number }>;
@@ -4567,7 +4567,7 @@ export interface RulesetCombatOption {
   offHand?: true;
   /** Whether the item a switch turns is on now (1.170). */
   on?: boolean;
-  /** The switch pulls its user's blows (1.704): a menu says "knock out" and "strike to kill" rather
+  /** The switch pulls its user's blows (1.705): a menu says "knock out" and "strike to kill" rather
    *  than turning the rule's label on and off. */
   knocksOut?: true;
   /** What turning it on and off is called (1.378), where the ruleset names the two. */
@@ -4578,15 +4578,15 @@ export interface RulesetCombatOption {
   dismiss?: true;
   /** A concentration entry's effect made again (1.310), named by `label`. */
   again?: true;
-  /** What its user put on somebody kept up (1.415), named by `label`. */
+  /** What its user put on somebody kept up (1.416), named by `label`. */
   sustain?: true;
   /** Picking up what its holder dropped (1.266), named by `label`. */
   pickUp?: true;
   /** Averting the eyes from a gaze's holder, named by `label`, or looking at them again (1.268). */
   avert?: { holderId: string; back?: true };
-  /** Slipping free of the condition named by the id, called `label` (1.470). */
+  /** Slipping free of the condition named by the id, called `label` (1.471). */
   slip?: true;
-  /** One attack of its maker's given up for one by a creature they called (1.472): who, with what,
+  /** One attack of its maker's given up for one by a creature they called (1.473): who, with what,
    *  out of which of its budgets; and the attack action it comes out of, its budget and strikes. */
   lend?: { calledId: string; actionId: string; spends: string; attackBudget: string; strikes: number };
   /** Paid out of a budget a condition grants for an attack of one strike (combat C6d, Haste's extra
@@ -4606,7 +4606,7 @@ export interface RulesetCombatOption {
    *  `hitChance` the share of rolls that would land against the first legal target. A sequence
    *  forecasts the sum of its parts' damage and no single chance to hit, because its parts each
    *  roll their own. */
-  /** `worth` (1.780): in a symbol fight, what a hit is worth in harm with what either side's spends
+  /** `worth` (1.781): in a symbol fight, what a hit is worth in harm with what either side's spends
    *  buy folded in, the misses' share included, so the chance times it is the attack's whole worth. */
   forecast?: { hitChance?: number; averageDamage?: number; worth?: number };
   /** The initiative styles this attack may be made in, each with what it is expected to do: a style
@@ -4630,7 +4630,7 @@ export interface RulesetCombatOption {
   cells?: RulesetReachableCell[];
   /** What a `move` option that is not a step costs of the allowance: getting back up. */
   movementCost?: number;
-  /** The name of whom a mounting option mounts (1.480). */
+  /** The name of whom a mounting option mounts (1.481). */
   mounts?: string;
   /** The shape this covers, in cells, and how far away it may be aimed. Present only in a
    *  positioned fight, and then the option is aimed at a cell rather than at anybody. */
@@ -4640,7 +4640,7 @@ export interface RulesetCombatOption {
     width?: number;
     /** A wall that may be laid as a ring this many across, and one with a side to choose (1.177). */
     ring?: number;
-    /** Laid only as that ring (1.586). */
+    /** Laid only as that ring (1.587). */
     ringOnly?: true;
     sided?: true;
     /** How many times it may be set down at once (1.178). */
@@ -4658,10 +4658,10 @@ export interface RulesetCombatChoice {
   targetIds: string[];
   /** Pay out of another pool of the same family: the upcast, under the `use` command's own rule. */
   payWith?: string;
-  /** Where the `move` option is walking to. Where its targets are moved to (1.549): one of its
+  /** Where the `move` option is walking to. Where its targets are moved to (1.550): one of its
    *  option's `movesTarget.cells`. */
   to?: RulesetCombatCell;
-  /** How many levels above the ground at `to` its target is lifted (1.549), up to its option's
+  /** How many levels above the ground at `to` its target is lifted (1.550), up to its option's
    *  `movesTarget.levels`. */
   rises?: number;
   /** The cell an area is aimed at. An option with an area takes this instead of target ids. Where
@@ -4669,12 +4669,12 @@ export interface RulesetCombatChoice {
   at?: RulesetCombatCell;
   /** Who goes along on a teleport (1.276): ids its option's `teleport.carries` offers. */
   carries?: string[];
-  /** Whom a layered wall spares (1.476): ids its option's `designates` offers. */
+  /** Whom a layered wall spares (1.477): ids its option's `designates` offers. */
   designates?: string[];
-  /** The kinds its zone strikes (1.737): one or more ids its option's `kindsOf` offers. Named
+  /** The kinds its zone strikes (1.738): one or more ids its option's `kindsOf` offers. Named
    *  none, it strikes whom its own `targetTypes` say. */
   kinds?: string[];
-  /** Stored instead of done (1.508): one of its option's `storesIn`. */
+  /** Stored instead of done (1.509): one of its option's `storesIn`. */
   storesIn?: { holderId: string; item?: number };
   /** Which way a wall runs from `at` (1.177): toward this cell. Across the line to its maker when
    *  left out. A ring ignores it. */
@@ -4685,12 +4685,12 @@ export interface RulesetCombatChoice {
   /** A wall's section to strike at instead of a creature (1.200): any cell of it, one the option's
    *  `walls` offers. */
   wall?: RulesetCombatCell;
-  /** A lasting area to end instead of a creature (1.411): one the option's `dispels` offers. */
+  /** A lasting area to end instead of a creature (1.412): one the option's `dispels` offers. */
   dispel?: { casterId: string; actionId: string };
-  /** A condition to strike at and cut away instead of a creature (1.515): one the option's `cuts`
+  /** A condition to strike at and cut away instead of a creature (1.516): one the option's `cuts`
    *  offers. */
   cut?: { holderId: string; condition: string };
-  /** Which of its target's conditions to end (1.411), from the option's `endsChoices`. */
+  /** Which of its target's conditions to end (1.412), from the option's `endsChoices`. */
   ends?: string[];
   /** Lay a wall whose area allows it as a ring around `at` instead (1.177). */
   ring?: boolean;
@@ -4760,9 +4760,9 @@ export interface RulesetEncounterSummary {
     maxHealth: number;
     defeated: boolean;
     left?: true;
-    /** Knocked out, not slain (1.704). */
+    /** Knocked out, not slain (1.705). */
     knockedOut?: true;
-    /** Gave up, alive (1.746). */
+    /** Gave up, alive (1.747). */
     surrendered?: true;
   }>;
   /** What was broken on the board (1.316), by label, in the order it broke. */
@@ -4783,9 +4783,9 @@ export interface RulesetCombatZoneRule {
   rounds: number;
   /** It ends as its maker's lair count next comes round (1.324). */
   untilLair?: true;
-  /** It stays when its caster is defeated or leaves (1.440), counting down as each round ends. */
+  /** It stays when its caster is defeated or leaves (1.441), counting down as each round ends. */
   outlasts?: true;
-  /** It ends as its maker is incapacitated, too (1.725): an ice devil's Wall of Ice. */
+  /** It ends as its maker is incapacitated, too (1.726): an ice devil's Wall of Ice. */
   endsWithCaller?: "incapacitated";
   anchor: "point" | "caster";
   /** Put on a cell somebody stands on, carried with them (1.301): only its caster (`own`), or anybody. */
@@ -4798,7 +4798,7 @@ export interface RulesetCombatZoneRule {
     budget: string;
     distance: number;
     ram?: boolean;
-    /** Moved by anybody near on a check (1.678), in cells: a Sphere of Annihilation. `perCell` turns
+    /** Moved by anybody near on a check (1.679), in cells: a Sphere of Annihilation. `perCell` turns
      *  the mover's ability's feet into cells. */
     check?: {
       check: string;
@@ -4807,7 +4807,7 @@ export interface RulesetCombatZoneRule {
       perCell: number;
       distanceBy?: { abilityMod: string; times: number; atLeast?: number };
       failsToward?: number;
-      /** What a mover holding an item with one of these tags does better (1.687): `distanceBy` in
+      /** What a mover holding an item with one of these tags does better (1.688): `distanceBy` in
        *  the ruleset's distance, read only while they already control it. */
       holding?: {
         tags: string[];
@@ -4822,9 +4822,9 @@ export interface RulesetCombatZoneRule {
   /** A line or cone held by its caster that they may turn to face another way, spending `budget`
    *  (1.182). */
   turn?: { budget: string };
-  /** Its caster may close it, spending `budget` (1.621): ended, or staying `lingers` more rounds. */
+  /** Its caster may close it, spending `budget` (1.622): ended, or staying `lingers` more rounds. */
   close?: { budget: string; lingers?: number };
-  /** A burst widening by `by` cells every `every` of its caster's turns, to a radius of `upTo` (1.621). */
+  /** A burst widening by `by` cells every `every` of its caster's turns, to a radius of `upTo` (1.622). */
   spreads?: { by: number; every: number; upTo: number };
   /** It goes off as it ends, doing its effect once to everybody in it (1.183): `grows` is added to its
    *  amount at the end of each of its caster's turns, and `touched` sets it off when somebody moves
@@ -4832,20 +4832,20 @@ export interface RulesetCombatZoneRule {
   detonates?: {
     grows?: RulesetCombatAmount;
     touched?: boolean;
-    /** Set off by somebody entering it, only those `by` names (1.435): Glyph of Warding. */
+    /** Set off by somebody entering it, only those `by` names (1.436): Glyph of Warding. */
     entered?: true;
     by?: RulesetTargetIs;
-    /** Going off, it reaches everybody within this many cells of its middle (1.435): Symbol. */
+    /** Going off, it reaches everybody within this many cells of its middle (1.436): Symbol. */
     within?: number;
     /** Once set off, it stays as a burst of `size` cells for `rounds`, striking at its `triggers` and
-     *  shedding `lights` (1.437): Symbol's sphere. */
+     *  shedding `lights` (1.438): Symbol's sphere. */
     becomes?: {
       size: number;
       rounds: number;
       triggers: RulesetCombatZoneRule["triggers"];
       lights?: RulesetCombatZoneRule["lights"];
     };
-    /** Its caster may store one of their own entries in it (1.438), cast at whoever sets it off. */
+    /** Its caster may store one of their own entries in it (1.439), cast at whoever sets it off. */
     stores?: true;
   };
   /** Damage of one of these types reaching it sets it alight (1.183); it burns away when its caster's
@@ -4857,13 +4857,13 @@ export interface RulesetCombatZoneRule {
   costTimes?: number;
   /** Speed is halved inside it, on top of any hard going (1.175). */
   halvesSpeed?: boolean;
-  /** Slick underfoot (1.655): no climb kept off slippery ground climbs into it. */
+  /** Slick underfoot (1.656): no climb kept off slippery ground climbs into it. */
   slippery?: true;
-  /** A careful walk into it, at double the cost, is not caught by `enter` (1.673): caltrops. */
+  /** A careful walk into it, at double the cost, is not caught by `enter` (1.674): caltrops. */
   spareSlowWalkers?: true;
-  /** `enter` catches only a creature moving into it, never one it is moved onto (1.748). */
+  /** `enter` catches only a creature moving into it, never one it is moved onto (1.749). */
   enterOnlyByMoving?: true;
-  /** Caught by `enter` and not saving, the walker stops there for the turn (1.673). */
+  /** Caught by `enter` and not saving, the walker stops there for the turn (1.674). */
   endsWalk?: true;
   /** Its hard going counts only for a step that brings the mover nearer its caster (1.182). */
   towardCaster?: boolean;
@@ -4879,12 +4879,12 @@ export interface RulesetCombatZoneRule {
    *  this condition from its caster (1.175). */
   whileHeld?: { condition: string; amount: RulesetCombatAmount; damageType?: string };
   /** A wall nobody moves or sees through (1.177). No spell is cast into, out of or across one that
-   *  blocks `spells` (1.586), a wall or not: Forcecage. Nor is a shot from afar made across one that
-   *  blocks `ranged` (1.643): Cube of Force. */
+   *  blocks `spells` (1.587), a wall or not: Forcecage. Nor is a shot from afar made across one that
+   *  blocks `ranged` (1.644): Cube of Force. */
   blocks?: { move?: boolean; sight?: boolean; spells?: boolean; ranged?: boolean };
-  /** What the wall is made of, and how thick (1.743), for a sense that sees through only so much. */
+  /** What the wall is made of, and how thick (1.744), for a sense that sees through only so much. */
   material?: { of: string; inches: number };
-  /** What it does from one of its caster's turns on (1.541), its amounts in the fight's own: Storm of
+  /** What it does from one of its caster's turns on (1.542), its amounts in the fight's own: Storm of
    *  Vengeance. */
   stages?: Array<{
     from: number;
@@ -4897,13 +4897,13 @@ export interface RulesetCombatZoneRule {
     difficult?: true;
     obscures?: true;
     noRanged?: true;
-    /** A concentration save as each turn starts inside, and a wind (1.564): Storm of Vengeance. */
+    /** A concentration save as each turn starts inside, and a wind (1.565): Storm of Vengeance. */
     breaksConcentration?: true;
     disperses?: true;
   }>;
-  /** Cover it gives what lies on its far side (1.539): 5e's Blade Barrier. */
+  /** Cover it gives what lies on its far side (1.540): 5e's Blade Barrier. */
   cover?: "half" | "three-quarters";
-  /** Turns aside attacks from afar with a weapon that is not magical (1.565), but those `spares` names:
+  /** Turns aside attacks from afar with a weapon that is not magical (1.566), but those `spares` names:
    *  5e's Wind Wall. */
   turnsShots?: { spares?: string[] };
   /** A wall's one side (1.177): cells within `distance` of it there catch as `triggers` say. */
@@ -4932,22 +4932,22 @@ export interface RulesetCombatZoneRule {
   obscures?: RulesetObscures;
   /** A wind: obscuring zones it reaches that are `dispersed` end (1.286). */
   disperses?: true;
-  /** Gases, wind and fog do not pass its edge (1.643): Cube of Force. */
+  /** Gases, wind and fog do not pass its edge (1.644): Cube of Force. */
   sealsAir?: true;
   /** Conditions on, and damage types kept off, whoever stands in it (1.179). */
   inside?: {
     conditions?: string[];
     immune?: string[];
-    /** Only those it matches (1.444). */
+    /** Only those it matches (1.445). */
     is?: RulesetTargetIs;
-    /** Whom it works on is a creature type chosen as it is cast, as a mode (1.450). */
+    /** Whom it works on is a creature type chosen as it is cast, as a mode (1.451). */
     chooses?: "type";
-    /** Thrown on entering and at a turn's start; made, ignored until they leave (1.444). */
-    /** `onCast` (1.563): thrown too by whoever is inside as it is cast. */
+    /** Thrown on entering and at a turn's start; made, ignored until they leave (1.445). */
+    /** `onCast` (1.564): thrown too by whoever is inside as it is cast. */
     save?: { save: string; ignoresUntilLeaves: true; onCast?: true };
   };
   /** Components nothing used from inside it may need (1.179). */
-  /** `teleport` an object (1.587): out of it only past that save. */
+  /** `teleport` an object (1.588): out of it only past that save. */
   forbids?: {
     components?: string[];
     teleport?: true | "into" | { save: string; difficulty: "caster" };
@@ -4959,30 +4959,30 @@ export interface RulesetCombatZoneRule {
     maxLevel: number;
     by?: "base" | "paid";
     maxLevelPerCostStep?: number;
-    /** Only the entries its filter reads so, or these (1.629). */
+    /** Only the entries its filter reads so, or these (1.630). */
     where?: { filter: string; equals: string | number };
     entries?: string[];
   };
-  /** What does nothing inside it (1.505): conditions off these catalogs, items with these tags. */
+  /** What does nothing inside it (1.506): conditions off these catalogs, items with these tags. */
   suppresses?: { catalogs?: string[]; tags?: string[]; setsAsideCalled?: true };
-  /** Kinds it keeps out of it, or in it (1.436): Magic Circle, Hallow. */
+  /** Kinds it keeps out of it, or in it (1.437): Magic Circle, Hallow. */
   keepsOut?: {
     is: RulesetTargetIs;
     way?: "in" | "out";
     attacksInto?: "disadvantage";
     cantGive?: string[];
-    /** Conditions put on by those it keeps out that come off whoever steps into it (1.443). */
+    /** Conditions put on by those it keeps out that come off whoever steps into it (1.444). */
     frees?: string[];
-    /** Nor do they reach through it with a melee blow of the least reach (1.579): Antilife Shell. */
+    /** Nor do they reach through it with a melee blow of the least reach (1.580): Antilife Shell. */
     reach?: true;
-    /** Carried over one of them, it ends (1.579). */
+    /** Carried over one of them, it ends (1.580). */
     endsOnSweep?: true;
   };
-  /** Hidden from its caster's foes until found with a Search throwing this check (1.439). */
+  /** Hidden from its caster's foes until found with a Search throwing this check (1.440). */
   hidden?: { check: string };
-  /** A trap its caster's foes may disarm with this check (1.653). */
+  /** A trap its caster's foes may disarm with this check (1.654). */
   disarm?: { check: string; difficulty?: number; tripsOnFailBy?: number };
-  /** Layers crossed one at a time, each destroyed in turn (1.474), and the flash of whoever sees it
+  /** Layers crossed one at a time, each destroyed in turn (1.475), and the flash of whoever sees it
    *  within `within` CELLS: Prismatic Wall. */
   layers?: {
     rows: Array<{
@@ -4992,10 +4992,10 @@ export interface RulesetCombatZoneRule {
       applies?: string[];
       save?: string;
       endedBy?: { damage?: { types: string[]; atLeast: number }; entries?: string[]; wind?: true };
-      /** What cannot pass through while it stands (1.476). */
+      /** What cannot pass through while it stands (1.477). */
       blocks?: Array<"ranged-nonmagical" | "ranged-magical" | "spells">;
     }>;
-    /** Its caster, their side, or its caster and those picked as it was cast (1.476). */
+    /** Its caster, their side, or its caster and those picked as it was cast (1.477). */
     spares?: "caster" | "allies" | { chosen: number };
     flash?: {
       within: number;
@@ -5010,27 +5010,27 @@ export interface RulesetCombatZoneRule {
  *  cast on; one held by its caster is worked out around them wherever they stand. */
 export interface RulesetCombatZone {
   actionId: string;
-  /** Set off by somebody entering it (1.435), so its ending goes off. */
+  /** Set off by somebody entering it (1.436), so its ending goes off. */
   tripped?: true;
-  /** Gone off and stayed as what it `becomes` (1.437): it strikes at its new triggers and never goes
+  /** Gone off and stayed as what it `becomes` (1.438): it strikes at its new triggers and never goes
    *  off again. */
   became?: true;
-  /** The sides that have found it, hidden (1.439). */
+  /** The sides that have found it, hidden (1.440). */
   foundBy?: string[];
-  /** Who made its inside save and ignores what it does inside until they leave (1.444). */
+  /** Who made its inside save and ignores what it does inside until they leave (1.445). */
   shrugged?: string[];
-  /** Whom its inside works on, chosen as it was cast (1.450), or by a tag (1.650). */
+  /** Whom its inside works on, chosen as it was cast (1.451), or by a tag (1.651). */
   insideIs?: RulesetTargetIs;
-  /** Creature types left out of what it keeps out, chosen as it was cast (1.650): Hallow's. */
+  /** Creature types left out of what it keeps out, chosen as it was cast (1.651): Hallow's. */
   keptOutSpares?: string[];
-  /** The kinds its strikes reach, named as it was cast (1.737), in place of its entry's own:
+  /** The kinds its strikes reach, named as it was cast (1.738), in place of its entry's own:
    *  Forbiddance's. */
   strikesIs?: RulesetTargetIs;
-  /** The damage type its strikes deal, named as it was cast (1.737). */
+  /** The damage type its strikes deal, named as it was cast (1.738). */
   damageType?: string;
-  /** Whoever set it off by entering it (1.435), for a stored entry to be cast at (1.438). */
+  /** Whoever set it off by entering it (1.436), for a stored entry to be cast at (1.439). */
   trippedBy?: string;
-  /** The id of its caster's own action stored in it (1.438), cast as it goes off. */
+  /** The id of its caster's own action stored in it (1.439), cast as it goes off. */
   stored?: string;
   label: string;
   rounds: number;
@@ -5038,7 +5038,7 @@ export interface RulesetCombatZone {
   triggers: RulesetCombatZoneRule["triggers"];
   /** Where it was centred, for a zone held at a point. */
   at?: RulesetCombatCell;
-  /** A wall laid as a ring (1.587), so what it rings is inside it too. */
+  /** A wall laid as a ring (1.588), so what it rings is inside it too. */
   ringed?: true;
   /** The middles of its further copies (1.301), which move with it. */
   also?: RulesetCombatCell[];
@@ -5066,14 +5066,14 @@ export interface RulesetCombatZone {
   dealt?: number;
   /** The turn ("round:turn") it was rammed into somebody, and moves no more in (1.175). */
   rammed?: string;
-  /** Who last moved it on its check (1.678): whom anybody else contests to move it. */
+  /** Who last moved it on its check (1.679): whom anybody else contests to move it. */
   heldBy?: string;
   /** How many of its caster's turns have ended since it was cast, each adding its `grows` (1.183). */
   grown?: number;
-  /** Cells its burst has widened by (1.621), and its caster's turns ended toward the next widening. */
+  /** Cells its burst has widened by (1.622), and its caster's turns ended toward the next widening. */
   widened?: number;
   spreadTurns?: number;
-  /** Closed by its caster (1.621), lingering out its last rounds. */
+  /** Closed by its caster (1.622), lingering out its last rounds. */
   closed?: true;
   /** Its sections and the health each has left (1.200); one at 0 is broken. */
   sections?: Array<{ cells: RulesetCombatCell[]; health: number }>;
@@ -5081,11 +5081,11 @@ export interface RulesetCombatZone {
   burning?: boolean;
   /** Until its maker's next lair count (1.324). */
   untilLair?: true;
-  /** How many of its layers are gone, from the first (1.474). */
+  /** How many of its layers are gone, from the first (1.475). */
   layersGone?: number;
-  /** Whom its caster picked for it to spare (1.476). */
+  /** Whom its caster picked for it to spare (1.477). */
   spared?: string[];
-  /** Its caster's turns since it was cast, counting that one as the first (1.541), and the place of
+  /** Its caster's turns since it was cast, counting that one as the first (1.542), and the place of
    *  the stage it is at, for a zone in stages. */
   turns?: number;
   stage?: number;

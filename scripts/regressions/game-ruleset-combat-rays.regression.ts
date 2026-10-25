@@ -1,5 +1,5 @@
 /**
- * A ray for each target (Capability API 1.452).
+ * A ray for each target (Capability API 1.453).
  *
  *   - Prismatic Spray: a d8 for each creature it reaches picks its ray; a ray deals its own damage
  *     type or puts on its own condition; the eighth row strikes two more, an eighth rolled over;
@@ -33,7 +33,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 452);
+  assert.ok(supportedCapabilityApi.minor >= 453);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -204,7 +204,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose entries roll a ray for each target (rays) requires schemaVersion 2 and capabilityApi 1.452 or newer";
+      "A ruleset whose entries roll a ray for each target (rays) requires schemaVersion 2 and capabilityApi 1.453 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -218,12 +218,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(451) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(452) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(452) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(453) as never, fiveE()), gate);
   }
 
   console.log(
-    "Rays: Prismatic Spray rolls a ray for each target, its own type or condition, a special ray striking two more on one save; gated at 1.452.",
+    "Rays: Prismatic Spray rolls a ray for each target, its own type or condition, a special ray striking two more on one save; gated at 1.453.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

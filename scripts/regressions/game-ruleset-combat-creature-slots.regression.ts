@@ -1,6 +1,6 @@
 /**
  * A creature's spell slots, shared by its coven, and a spell of its trait with its own numbers
- * (Capability API 1.626): 5e's hag covens, "1st level (4 slots)", and a hag's innate spells at their
+ * (Capability API 1.627): 5e's hag covens, "1st level (4 slots)", and a hag's innate spells at their
  * own DC.
  *
  *   - A spell with no uses spends a slot of its level, else the lowest higher one left; none left, it
@@ -242,7 +242,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a creature's spell slots or a spell of its trait with its own numbers (spellcasting.slots, spells[].saveDifficulty) requires schemaVersion 2 and capabilityApi 1.626 or newer";
+      "A ruleset with a creature's spell slots or a spell of its trait with its own numbers (spellcasting.slots, spells[].saveDifficulty) requires schemaVersion 2 and capabilityApi 1.627 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -256,11 +256,11 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(625) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(626) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(626) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(627) as never, fiveE()), gate);
   }
 
-  console.log("Hag covens: creature spell slots, shared by a coven, and spells at their own numbers; gated at 1.626.");
+  console.log("Hag covens: creature spell slots, shared by a coven, and spells at their own numbers; gated at 1.627.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

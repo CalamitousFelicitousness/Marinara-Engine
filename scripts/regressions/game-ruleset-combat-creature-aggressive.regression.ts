@@ -1,5 +1,5 @@
 /**
- * A creature's move toward a hostile it can see, on its own turn (Capability API 1.591): an orc's
+ * A creature's move toward a hostile it can see, on its own turn (Capability API 1.592): an orc's
  * Aggressive.
  *
  *   - `move.toward: "seen-hostile"` on an action that does nothing but move: offered on its own turn
@@ -33,7 +33,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 591);
+  assert.ok(supportedCapabilityApi.minor >= 592);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -153,7 +153,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a creature's move toward a hostile it can see (move.toward) requires schemaVersion 2 and capabilityApi 1.591 or newer";
+      "A ruleset with a creature's move toward a hostile it can see (move.toward) requires schemaVersion 2 and capabilityApi 1.592 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -167,13 +167,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(590) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(591) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(590) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(591) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(592) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(591) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Creature Aggressive: a bonus move on its own turn, every step nearer a hostile it sees; gated at 1.591.",
+    "Creature Aggressive: a bonus move on its own turn, every step nearer a hostile it sees; gated at 1.592.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

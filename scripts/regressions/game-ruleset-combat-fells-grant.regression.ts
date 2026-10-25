@@ -1,5 +1,5 @@
 /**
- * Temporary points as a foe drops (Capability API 1.396).
+ * Temporary points as a foe drops (Capability API 1.397).
  *
  *   - Dark One's Blessing: a warlock's level grants Charisma modifier + level as the foe they cut down
  *     drops; the log says so.
@@ -33,7 +33,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 396);
+  assert.ok(supportedCapabilityApi.minor >= 397);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -188,7 +188,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose condition or level grants temporary points as a foe drops (fellsGrant) requires schemaVersion 2 and capabilityApi 1.396 or newer";
+      "A ruleset whose condition or level grants temporary points as a foe drops (fellsGrant) requires schemaVersion 2 and capabilityApi 1.397 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -202,13 +202,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(395) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(396) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(395) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(396) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(397) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(396) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Fells grant: Dark One's Blessing gives 6 as the warlock's own blow drops a foe, nothing for an ally's kill; a creature's const; gated at 1.396.",
+    "Fells grant: Dark One's Blessing gives 6 as the warlock's own blow drops a foe, nothing for an ally's kill; a creature's const; gated at 1.397.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

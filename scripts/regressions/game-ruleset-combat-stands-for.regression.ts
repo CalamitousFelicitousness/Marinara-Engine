@@ -1,5 +1,5 @@
 /**
- * A row that stands for another entry than the one that writes it (Capability API 1.477).
+ * A row that stands for another entry than the one that writes it (Capability API 1.478).
  *
  *   - Pact of the Chain writes a Find Familiar row onto the spells list that stands for the spell:
  *     the fight offers it and casts it as the spell, while the row still belongs to the feature.
@@ -37,7 +37,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 477);
+  assert.ok(supportedCapabilityApi.minor >= 478);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -169,7 +169,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose entries write rows that stand for another entry in a fight (standsFor) requires schemaVersion 2 and capabilityApi 1.477 or newer";
+      "A ruleset whose entries write rows that stand for another entry in a fight (standsFor) requires schemaVersion 2 and capabilityApi 1.478 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -183,13 +183,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(476) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(477) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(476) as never, fiveE(pact(""))), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(477) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(478) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(477) as never, fiveE(pact(""))), gate);
   }
 
   console.log(
-    "Stands for: Pact of the Chain's Find Familiar row is cast as the spell while it still belongs to the pact; without standsFor it is the feature's and offers nothing; gated at 1.477.",
+    "Stands for: Pact of the Chain's Find Familiar row is cast as the spell while it still belongs to the pact; without standsFor it is the feature's and offers nothing; gated at 1.478.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

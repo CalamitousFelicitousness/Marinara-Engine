@@ -1,6 +1,6 @@
 /**
  * A worn item that keeps creatures of some bestiary entries from aiming at its wearer (Capability API
- * 1.603): 5e's Pipes of the Sewers, "ordinary rats and giant rats are indifferent toward you and will
+ * 1.604): 5e's Pipes of the Sewers, "ordinary rats and giant rats are indifferent toward you and will
  * not attack you unless you threaten or harm them".
  *
  *   - A rat never aims at the piper while the pipes are worn, but still at the piper's friend.
@@ -34,7 +34,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 603);
+  assert.ok(supportedCapabilityApi.minor >= 604);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -161,7 +161,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with an item that keeps creatures of some entries from aiming at its wearer (ignoredBy) requires schemaVersion 2 and capabilityApi 1.603 or newer";
+      "A ruleset with an item that keeps creatures of some entries from aiming at its wearer (ignoredBy) requires schemaVersion 2 and capabilityApi 1.604 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -175,12 +175,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(602) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(603) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(603) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(604) as never, document()), gate);
   }
 
   console.log(
-    "worn.ignoredBy: rats leave the piper alone but not the bard, a wolf does not; one the piper attacks aims at them again; gated at 1.603.",
+    "worn.ignoredBy: rats leave the piper alone but not the bard, a wolf does not; one the piper attacks aims at them again; gated at 1.604.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

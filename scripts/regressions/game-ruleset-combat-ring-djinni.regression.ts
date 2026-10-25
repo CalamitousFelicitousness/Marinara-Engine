@@ -1,6 +1,6 @@
 /**
  * An item spent as the creature it called dies, and a wait that starts at that creature's departure
- * (Capability API 1.596): a Ring of Djinni Summoning, "After the djinni departs, it can't be summoned
+ * (Capability API 1.597): a Ring of Djinni Summoning, "After the djinni departs, it can't be summoned
  * again for 24 hours, and the ring becomes nonmagical if the djinni dies".
  *
  *   - Rubbed, the ring keeps the djinni's stay (`outRounds`) as it counts down, and its last
@@ -40,7 +40,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 596);
+  assert.ok(supportedCapabilityApi.minor >= 597);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -256,7 +256,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with an item spent as what it called dies (calls.spendsItemOnDeath), a wait from a called creature's departure (recharge.after.fromDeparture) or a round's length (combat.roundSeconds) requires schemaVersion 2 and capabilityApi 1.596 or newer";
+      "A ruleset with an item spent as what it called dies (calls.spendsItemOnDeath), a wait from a called creature's departure (recharge.after.fromDeparture) or a round's length (combat.roundSeconds) requires schemaVersion 2 and capabilityApi 1.597 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -270,15 +270,15 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(595) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(596) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(596) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(597) as never, document()), gate);
     const onlyRound = JSON.parse(fiveEText);
     onlyRound.combat.roundSeconds = 6;
-    assert.equal(getCapabilityPackageInstallIssue(manifest(595) as never, onlyRound), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(595) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(596) as never, onlyRound), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(596) as never, JSON.parse(fiveEText)), gate);
   }
 
-  console.log("Ring of Djinni: spent as its djinni dies; its wait from the djinni's departure; gated at 1.596.");
+  console.log("Ring of Djinni: spent as its djinni dies; its wait from the djinni's departure; gated at 1.597.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

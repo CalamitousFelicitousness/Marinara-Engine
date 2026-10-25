@@ -1,5 +1,5 @@
 /**
- * Traps disarmed with a check (Capability API 1.653).
+ * Traps disarmed with a check (Capability API 1.654).
  *
  *   - A hidden glyph with `disarm` is offered to its caster's foes once found, within a cell of it.
  *   - Made, it is gone without going off; failed by less than its margin, nothing; failed by its
@@ -39,7 +39,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 653);
+  assert.ok(supportedCapabilityApi.minor >= 654);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -282,7 +282,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with traps disarmed with a check (zone.disarm or the disarm standard action) requires schemaVersion 2 and capabilityApi 1.653 or newer";
+      "A ruleset with traps disarmed with a check (zone.disarm or the disarm standard action) requires schemaVersion 2 and capabilityApi 1.654 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -303,13 +303,13 @@ try {
       doc.combat.standard = doc.combat.standard.filter((one: string) => one !== "disarm");
       doc.catalogs.push({ id: "spells", label: "Spells", feeds: ["spells"], entries: [plainGlyph] });
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(652) as never, withTrap), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(653) as never, withTrap), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(652) as never, plain), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(653) as never, withTrap), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(654) as never, withTrap), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(653) as never, plain), gate);
   }
 
   console.log(
-    "Trap disarm: a found trap within a cell is offered to its caster's foes; made, it is gone unfired; failed by its margin, it goes off at whoever tried; Fast Hands pays with the bonus action; gated at 1.653.",
+    "Trap disarm: a found trap within a cell is offered to its caster's foes; made, it is gone unfired; failed by its margin, it goes off at whoever tried; Fast Hands pays with the bonus action; gated at 1.654.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

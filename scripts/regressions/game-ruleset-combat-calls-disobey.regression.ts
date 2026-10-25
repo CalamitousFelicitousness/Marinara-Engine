@@ -1,5 +1,5 @@
 /**
- * Called creatures that may ignore every order (Capability API 1.649): 5e's obsidian steed, "If you
+ * Called creatures that may ignore every order (Capability API 1.650): 5e's obsidian steed, "If you
  * have a good alignment, the figurine has a 10 percent chance each time you use it to ignore your
  * orders, including a command to revert to figurine form."
  *
@@ -35,7 +35,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 649);
+  assert.ok(supportedCapabilityApi.minor >= 650);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -163,7 +163,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a call whose creatures may ignore every order (calls.disobeys) requires schemaVersion 2 and capabilityApi 1.649 or newer";
+      "A ruleset with a call whose creatures may ignore every order (calls.disobeys) requires schemaVersion 2 and capabilityApi 1.650 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -177,13 +177,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(648) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(649) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(648) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(649) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(650) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(649) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Calls disobey: the obsidian steed ignores every order on its 10 in 100 for a good caller, a dismissal too; gated at 1.649.",
+    "Calls disobey: the obsidian steed ignores every order on its 10 in 100 for a good caller, a dismissal too; gated at 1.650.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

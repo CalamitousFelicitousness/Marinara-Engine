@@ -1,5 +1,5 @@
 /**
- * Away under a condition its holder may take off at will (Capability API 1.611): 5e's Robe of Stars,
+ * Away under a condition its holder may take off at will (Capability API 1.612): 5e's Robe of Stars,
  * "use an action to enter the Astral Plane ... You remain there until you use an action to return".
  *
  *   - Used, its wearer leaves the fight and still takes turns, on which only "End" and ending the
@@ -32,7 +32,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 611);
+  assert.ok(supportedCapabilityApi.minor >= 612);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -162,7 +162,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset that sends its holder away under a condition they may take off at will (dismisses with endable) requires schemaVersion 2 and capabilityApi 1.611 or newer";
+      "A ruleset that sends its holder away under a condition they may take off at will (dismisses with endable) requires schemaVersion 2 and capabilityApi 1.612 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -176,12 +176,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(610) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(611) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(611) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(612) as never, document()), gate);
   }
 
   console.log(
-    "away at will: the Robe of Stars takes its wearer out of the fight, still taking turns with only End on offer, and back where they left; gated at 1.611.",
+    "away at will: the Robe of Stars takes its wearer out of the fight, still taking turns with only End on offer, and back where they left; gated at 1.612.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

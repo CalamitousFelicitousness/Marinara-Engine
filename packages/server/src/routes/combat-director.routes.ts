@@ -144,7 +144,7 @@ const directedCombatantFields = z.object({
   inLair: z.boolean().optional(),
   /** Where the Game Master starts it on the board (2026-10-24): read by a ruleset fight only. */
   start: z.enum(COMBAT_START_PLACES).optional(),
-  /** What it set up before the fight, standing as it begins (1.446): read by a ruleset fight only. */
+  /** What it set up before the fight, standing as it begins (1.447): read by a ruleset fight only. */
   standing: z
     .array(
       z
@@ -213,7 +213,7 @@ const rulesetOpponentSchema = directedCombatantFields
     /** A stat block in the shared creature form. Checked when the fight is built, so a malformed
      *  one costs its opponent its proposal rather than costing the whole battle. */
     proposed: z.unknown().optional(),
-    /** What the Game Master gave it to have on it (1.784): the ruleset's items, one a line, by name
+    /** What the Game Master gave it to have on it (1.785): the ruleset's items, one a line, by name
      *  or reference; read when the fight is built, and one it has no such item of is told. */
     carrying: z.array(z.string().min(1).max(200)).max(16).optional(),
   })
@@ -285,26 +285,26 @@ const command = z.discriminatedUnion("type", [
     also: z.array(coord).max(9).optional(),
     /** A wall's section struck at instead of a creature (1.200), checked by the resolver. */
     wall: coord.optional(),
-    /** A lasting area ended instead of a creature (1.411), checked by the resolver. */
+    /** A lasting area ended instead of a creature (1.412), checked by the resolver. */
     dispel: z.object({ casterId: key, actionId: key }).strict().optional(),
-    /** A condition struck at to cut it away (1.515), checked against the menu by the resolver. */
+    /** A condition struck at to cut it away (1.516), checked against the menu by the resolver. */
     cut: z.object({ holderId: key, condition: key }).strict().optional(),
-    /** Which of its target's conditions it ends (1.411), checked by the resolver. */
+    /** Which of its target's conditions it ends (1.412), checked by the resolver. */
     ends: z.array(key).max(16).optional(),
     /** Who goes along on a teleport (1.276), checked against the menu by the resolver. */
     carries: z.array(key).max(8).optional(),
-    /** Whom a layered wall spares (1.476), checked against the menu by the resolver. */
+    /** Whom a layered wall spares (1.477), checked against the menu by the resolver. */
     designates: z.array(key).max(20).optional(),
-    /** The kinds its zone strikes (1.737), checked against the menu by the resolver. */
+    /** The kinds its zone strikes (1.738), checked against the menu by the resolver. */
     kinds: z.array(key).max(40).optional(),
-    /** Stored instead of done (1.508), in a place the menu offers, checked by the resolver. */
+    /** Stored instead of done (1.509), in a place the menu offers, checked by the resolver. */
     storesIn: z
       .object({ holderId: key, item: z.number().int().min(0).max(500).optional() })
       .strict()
       .optional(),
     /** How many uses it spends (1.251), checked against the menu by the resolver. */
     amount: z.number().int().min(1).max(1000).optional(),
-    /** How many levels up a target moved to `to` is lifted (1.549), checked by the resolver. */
+    /** How many levels up a target moved to `to` is lifted (1.550), checked by the resolver. */
     rises: z.number().int().min(0).max(100).optional(),
     /** The alterations it is used with (1.253), checked against the action by the resolver. */
     alters: z.array(z.string().min(1).max(200)).max(8).optional(),
@@ -722,7 +722,7 @@ export async function combatDirectorRoutes(
             tables: fallen.flatMap((enemy) => s.rulesetFight?.lootTables?.[enemy.id] ?? []),
             defeated: fallen.length,
             difficulty: s.difficulty,
-            // What the beaten still had on them (1.784); one that ran took its along.
+            // What the beaten still had on them (1.785); one that ran took its along.
             carried: (encounter?.combatants ?? []).flatMap((combatant) =>
               combatant.side === "enemy" && combatant.defeated && !combatant.away?.left
                 ? rulesetCarriedLeft(combatant)
@@ -948,7 +948,7 @@ export async function combatDirectorRoutes(
         // A ruleset's fight is on a board only when the game asks for one and the ruleset says what a cell
         // is worth; the ruleset is read once, here.
         const resolved = input.style === "ruleset" ? resolveGameRuleset(meta, await loadRulesetRegistry()) : null;
-        // Who plays the other side (1.758), read off the game's ruleset whatever style resolves the fight.
+        // Who plays the other side (1.759), read off the game's ruleset whatever style resolves the fight.
         const rules = resolved ?? (meta.gameRuleset ? resolveGameRuleset(meta, await loadRulesetRegistry()) : null);
         const opposition = rules?.status === "ok" ? rules.definition.gm.opposition : undefined;
         const here =
@@ -982,7 +982,7 @@ export async function combatDirectorRoutes(
           gmNamed: setup.gmBossControl === true && setup.gmNamedControl === true,
           // A cruel opponent may strike the fallen only where the game allows it (combat AI T3).
           cruel: setup.cruelOpponents === true,
-          // Every opponent, where the game's ruleset gives the Game Master the opposition (1.758).
+          // Every opponent, where the game's ruleset gives the Game Master the opposition (1.759).
           gmAll: setup.gmBossControl === true && opposition === "game-master",
           difficulty: normalizeGameDifficulty(setup.difficulty),
           weather: resolveCombatWeather(
@@ -1093,7 +1093,7 @@ export async function combatDirectorRoutes(
             live: parseStoredRulesetLive(liveRow?.rulesetLive),
             // What each member holds as the fight starts, when the ruleset's sheet reads items.
             ...(fightItems ? { items: fightItems, holders: rulesetCardHolder(cardNames, persona?.name ?? null) } : {}),
-            // The ruleset's items, for what its opponents have on them (1.784).
+            // The ruleset's items, for what its opponents have on them (1.785).
             ...(itemBook ? { itemBook } : {}),
             partyCatalogs: await loadFightCatalogs(resolved.packageId, definition, (c) => partyLists.has(c.id)),
             bestiary: await loadBestiary(resolved.packageId, definition, proposedSheetLists(definition, input.enemies)),
@@ -1101,7 +1101,7 @@ export async function combatDirectorRoutes(
             surprised: [...input.party, ...input.enemies].flatMap((one) => (one.surprised ? [one.id] : [])),
             // Who fights in its own lair (1.315).
             inLair: input.enemies.flatMap((one) => (one.inLair ? [one.id] : [])),
-            // What was set up before it, standing as it begins (1.446).
+            // What was set up before it, standing as it begins (1.447).
             standing: [...input.party, ...input.enemies].flatMap((one) =>
               (one.standing ?? []).map((entry) => ({ casterId: one.id, ...entry })),
             ),

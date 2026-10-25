@@ -1,5 +1,5 @@
 /**
- * Rolled tables (Capability API 1.543).
+ * Rolled tables (Capability API 1.544).
  *
  *   - A Wand of Wonder: its use rolls on its `useTable`, each row as likely as its weight. A row with
  *     an area is centred on whom it was aimed, a `self` row lands on its user, and a row with no use
@@ -38,7 +38,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 543);
+  assert.ok(supportedCapabilityApi.minor >= 544);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -312,7 +312,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a call or an item's use rolled for (calls.rolled, useTable, rollsTable) requires schemaVersion 2 and capabilityApi 1.543 or newer";
+      "A ruleset with a call or an item's use rolled for (calls.rolled, useTable, rollsTable) requires schemaVersion 2 and capabilityApi 1.544 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -326,13 +326,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(542) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(543) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(542) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(543) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(544) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(543) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Rolled tables: a Wand of Wonder rolls its table (a burst at whom it was aimed, a row only told, a weighted row), an Efreeti Bottle serves, turns on its caller or grants wishes; refusals and the gate at 1.543.",
+    "Rolled tables: a Wand of Wonder rolls its table (a burst at whom it was aimed, a row only told, a weighted row), an Efreeti Bottle serves, turns on its caller or grants wishes; refusals and the gate at 1.544.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

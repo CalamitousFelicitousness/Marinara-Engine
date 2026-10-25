@@ -1,5 +1,5 @@
 /**
- * Fight poses (Capability API 1.770), the marks before the art:
+ * Fight poses (Capability API 1.771), the marks before the art:
  *
  *   - `combat.poses` parses; a `divine` with neither `entries` nor `column` and `values` is refused, and
  *     so is a `hidden` condition the ruleset does not have.
@@ -36,7 +36,7 @@ const {
 } = await import("../../packages/server/src/services/game/ruleset-combat-director.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 770);
+  assert.ok(supportedCapabilityApi.minor >= 771);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -215,14 +215,14 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    const gate = "A ruleset with fight poses (combat.poses) requires schemaVersion 2 and capabilityApi 1.770 or newer";
-    assert.equal(getCapabilityPackageInstallIssue(manifest(769) as never, fiveE(poses)), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(770) as never, fiveE(poses)), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(769) as never, fiveE()), gate);
+    const gate = "A ruleset with fight poses (combat.poses) requires schemaVersion 2 and capabilityApi 1.771 or newer";
+    assert.equal(getCapabilityPackageInstallIssue(manifest(770) as never, fiveE(poses)), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(771) as never, fiveE(poses)), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(770) as never, fiveE()), gate);
   }
 
   console.log(
-    "Combat poses: parsed and refused; marked and named prayers listed, logged and shown until the next turn; a hidden party member sneaks; nothing without combat.poses; gated at 1.770.",
+    "Combat poses: parsed and refused; marked and named prayers listed, logged and shown until the next turn; a hidden party member sneaks; nothing without combat.poses; gated at 1.771.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

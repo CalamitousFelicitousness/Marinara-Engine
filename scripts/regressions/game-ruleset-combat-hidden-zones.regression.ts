@@ -1,5 +1,5 @@
 /**
- * Hidden zones (Capability API 1.439).
+ * Hidden zones (Capability API 1.440).
  *
  *   - A hidden Glyph of Warding: its caster's side sees it, its foes do not, until one of them finds
  *     it with a Search, whose Investigation meets the glyph's save difficulty; then their whole side
@@ -42,7 +42,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 439);
+  assert.ok(supportedCapabilityApi.minor >= 440);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -271,7 +271,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose zones are hidden from their caster's foes (hidden) requires schemaVersion 2 and capabilityApi 1.439 or newer";
+      "A ruleset whose zones are hidden from their caster's foes (hidden) requires schemaVersion 2 and capabilityApi 1.440 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -291,13 +291,13 @@ try {
     const plain = fiveE((doc) => {
       doc.catalogs.push({ id: "spells", label: "Spells", feeds: ["spells"], entries: [plainGlyph] });
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(438) as never, withGlyph), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(439) as never, withGlyph), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(438) as never, plain), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(439) as never, withGlyph), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(440) as never, withGlyph), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(439) as never, plain), gate);
   }
 
   console.log(
-    "Hidden zones: a hidden glyph is shown only to its caster's side until a foe's Search finds it with Investigation against its save difficulty; gated at 1.439.",
+    "Hidden zones: a hidden glyph is shown only to its caster's side until a foe's Search finds it with Investigation against its save difficulty; gated at 1.440.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

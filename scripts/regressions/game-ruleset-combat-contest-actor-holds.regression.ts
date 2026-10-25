@@ -1,5 +1,5 @@
 /**
- * A contest offered only to an actor holding a condition (Capability API 1.562).
+ * A contest offered only to an actor holding a condition (Capability API 1.563).
  *
  *   - The Grappler feat's pin, with `actorHolds: ["grappling"]`: offered to the one holding the
  *     feat's condition, and to nobody else, even with a creature grappled.
@@ -31,7 +31,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 562);
+  assert.ok(supportedCapabilityApi.minor >= 563);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -118,7 +118,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a contest offered only to an actor holding a condition (actorHolds) requires schemaVersion 2 and capabilityApi 1.562 or newer";
+      "A ruleset with a contest offered only to an actor holding a condition (actorHolds) requires schemaVersion 2 and capabilityApi 1.563 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -132,12 +132,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(561) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(562) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(562) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(563) as never, document()), gate);
   }
 
   console.log(
-    "Contest actorHolds: the pin is offered only to the one holding the feat's condition; unknown conditions refused; gated at 1.562.",
+    "Contest actorHolds: the pin is offered only to the one holding the feat's condition; unknown conditions refused; gated at 1.563.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

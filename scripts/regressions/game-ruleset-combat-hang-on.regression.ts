@@ -1,5 +1,5 @@
 /**
- * Hanging on at 1 instead of dropping to 0 (Capability API 1.384).
+ * Hanging on at 1 instead of dropping to 0 (Capability API 1.385).
  *
  *   - A creature's save against the blow: Undead Fortitude, DC 5 + the damage, never against
  *     radiant or a critical hit.
@@ -37,7 +37,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 384);
+  assert.ok(supportedCapabilityApi.minor >= 385);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -301,7 +301,7 @@ try {
     delete doc.combat.conditions.find((one: { condition: string }) => one.condition === "raging").hangsOn;
   };
 
-  // ── A list row's pool, and only while raging (1.388) ──
+  // ── A list row's pool, and only while raging (1.389) ──
   {
     const rows = parsed(document(rowsEdit));
     const orc = (amount: number, conditions: string[], counters: Array<Record<string, unknown>>) => {
@@ -384,7 +384,7 @@ try {
     );
   }
 
-  // ── Rows written by catalogs in files of their own (1.389): checked once the files are beside it ──
+  // ── Rows written by catalogs in files of their own (1.390): checked once the files are beside it ──
   {
     const { readRulesetPackageFile } = await import("../../packages/server/src/services/game/ruleset-package-file.js");
     for (const fault of [false, true]) {
@@ -399,7 +399,7 @@ try {
       const documents = { "ruleset.json": JSON.stringify(doc), "catalogs/traits.json": file };
       const declared = {
         schemaVersion: 2,
-        capabilityApi: { major: 1, minor: 389 },
+        capabilityApi: { major: 1, minor: 390 },
         builtAgainst: { engineVersion: "2.4.6", engineCommit: "0".repeat(40) },
         id: "ruleset-rows",
         name: "Rows",
@@ -476,7 +476,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset that hangs on at 1 from a condition or a level, or on a save or the blow's own terms, requires schemaVersion 2 and capabilityApi 1.384 or newer";
+      "A ruleset that hangs on at 1 from a condition or a level, or on a save or the blow's own terms, requires schemaVersion 2 and capabilityApi 1.385 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -491,34 +491,34 @@ try {
       restartRequired: false,
     });
     assert.equal(getCapabilityPackageInstallIssue(manifest(383) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(384) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(385) as never, document()), gate);
     assert.notEqual(getCapabilityPackageInstallIssue(manifest(383) as never, JSON.parse(fiveEText)), gate);
-    // A creature's 1.320 hang-on alone is not 1.384's.
+    // A creature's 1.320 hang-on alone is not 1.385's.
     const hourglass = JSON.parse(fiveEText);
     hourglass.catalogs
       .find((catalog: { holds?: string }) => catalog.holds === "creatures")
       .entries.push({ ...zombie, creature: { ...zombie.creature, hangsOn: { uses: 1, extraTurn: true } } });
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(383) as never, hourglass), gate); // A list row's pool, or whileHolding: 1.388.
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(383) as never, hourglass), gate); // A list row's pool, or whileHolding: 1.389.
     const later =
-      "A ruleset that hangs on at 1 off a list row's pool or only while holding a condition, or with a shape's saves and checks the better of two, requires schemaVersion 2 and capabilityApi 1.388 or newer";
+      "A ruleset that hangs on at 1 off a list row's pool or only while holding a condition, or with a shape's saves and checks the better of two, requires schemaVersion 2 and capabilityApi 1.389 or newer";
     const rowSpend = document((doc) => {
       doc.combat.conditions.at(-1).hangsOn = { spends: "Relentless Endurance" };
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(387) as never, rowSpend), later);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(388) as never, rowSpend), later);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(388) as never, rowSpend), later);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(389) as never, rowSpend), later);
     assert.notEqual(
-      getCapabilityPackageInstallIssue(manifest(387) as never, document()),
+      getCapabilityPackageInstallIssue(manifest(388) as never, document()),
       later,
-      "pool ids are 1.384's",
+      "pool ids are 1.385's",
     );
     const holding = document((doc) => {
       doc.combat.conditions.at(-1).hangsOn.whileHolding = ["raging"];
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(387) as never, holding), later);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(388) as never, holding), later);
   }
 
   console.log(
-    "Hanging on at 1: Undead Fortitude's save against the blow, never radiant or critical; Relentless by the blow's size; Relentless Endurance off a pool; Relentless Rage's growing save tallied on the sheet; a level's; gated at 1.384.",
+    "Hanging on at 1: Undead Fortitude's save against the blow, never radiant or critical; Relentless by the blow's size; Relentless Endurance off a pool; Relentless Rage's growing save tallied on the sheet; a level's; gated at 1.385.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

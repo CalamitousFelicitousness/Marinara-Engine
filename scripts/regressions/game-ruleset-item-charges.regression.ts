@@ -124,7 +124,7 @@ try {
     );
     refused(
       charges((c) => (c.recharge.rests = [])),
-      // No rest needs a wait instead (1.540).
+      // No rest needs a wait instead (1.541).
       /recharge: Say when they come back/,
       "no rest",
     );

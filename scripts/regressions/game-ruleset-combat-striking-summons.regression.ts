@@ -1,5 +1,5 @@
 /**
- * Summons that strike by themselves (Capability API 1.523).
+ * Summons that strike by themselves (Capability API 1.524).
  *
  *   - `summons.strikesAtTurnStart`: 5e's Faithful Hound. Cast, it only appears; as each of its
  *     caster's turns starts it bites the nearest hostile creature within its reach of where it stands,
@@ -36,7 +36,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 523);
+  assert.ok(supportedCapabilityApi.minor >= 524);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -159,7 +159,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a summons that strikes by itself as its summoner's turn starts (summons strikesAtTurnStart) requires schemaVersion 2 and capabilityApi 1.523 or newer";
+      "A ruleset with a summons that strikes by itself as its summoner's turn starts (summons strikesAtTurnStart) requires schemaVersion 2 and capabilityApi 1.524 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -173,16 +173,16 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(522) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(523) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(523) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(524) as never, fiveE()), gate);
     assert.notEqual(
-      getCapabilityPackageInstallIssue(manifest(522) as never, fiveE(hound({ budget: "bonus", rounds: 10 }))),
+      getCapabilityPackageInstallIssue(manifest(523) as never, fiveE(hound({ budget: "bonus", rounds: 10 }))),
       gate,
     );
   }
 
   console.log(
-    "Ruleset striking summons: a Faithful Hound only appears as it is cast, then bites the nearest foe within its reach as each of its caster's turns starts, never commanded, for up to 4800 rounds; refusals and the gate at 1.523.",
+    "Ruleset striking summons: a Faithful Hound only appears as it is cast, then bites the nearest foe within its reach as each of its caster's turns starts, never commanded, for up to 4800 rounds; refusals and the gate at 1.524.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

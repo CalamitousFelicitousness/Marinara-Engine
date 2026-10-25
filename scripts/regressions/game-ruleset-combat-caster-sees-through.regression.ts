@@ -1,5 +1,5 @@
 /**
- * What obscures for everybody but its caster (Capability API 1.593): a Staff of Swarming Insects'
+ * What obscures for everybody but its caster (Capability API 1.594): a Staff of Swarming Insects'
  * Insect Cloud, "heavily obscured for creatures other than you".
  *
  *   - Cast and carried on its caster: the caster sees out of it; whoever is outside sees nobody in
@@ -33,7 +33,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 593);
+  assert.ok(supportedCapabilityApi.minor >= 594);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -136,7 +136,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with something that obscures for everybody but its caster (obscures.notForCaster) requires schemaVersion 2 and capabilityApi 1.593 or newer";
+      "A ruleset with something that obscures for everybody but its caster (obscures.notForCaster) requires schemaVersion 2 and capabilityApi 1.594 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -150,11 +150,11 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(592) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(593) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(593) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(594) as never, document()), gate);
   }
 
-  console.log("Obscures for everybody but its caster: the caster sees out, nobody sees in; refusal; gated at 1.593.");
+  console.log("Obscures for everybody but its caster: the caster sees out, nobody sees in; refusal; gated at 1.594.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

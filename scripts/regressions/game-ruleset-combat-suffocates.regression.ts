@@ -1,6 +1,6 @@
 /**
  * A condition that chokes its holder wherever they are, and a save kept off while they hold some
- * condition (Capability API 1.635): 5e's Dust of Sneezing and Choking.
+ * condition (Capability API 1.636): 5e's Dust of Sneezing and Choking.
  *
  *   - `suffocates`: on dry land its holder holds their breath and then chokes, as under water.
  *   - `savesUnless`: its save to end it is not rolled while they are unconscious.
@@ -33,7 +33,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 635);
+  assert.ok(supportedCapabilityApi.minor >= 636);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -219,7 +219,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a condition that chokes its holder or whose save waits on what they hold (suffocates, savesUnless) requires schemaVersion 2 and capabilityApi 1.635 or newer";
+      "A ruleset with a condition that chokes its holder or whose save waits on what they hold (suffocates, savesUnless) requires schemaVersion 2 and capabilityApi 1.636 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -233,11 +233,11 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(634) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(635) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(635) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(636) as never, fiveE()), gate);
   }
 
-  console.log("Dust of Sneezing and Choking: choking on land, saved against only while conscious; gated at 1.635.");
+  console.log("Dust of Sneezing and Choking: choking on land, saved against only while conscious; gated at 1.636.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

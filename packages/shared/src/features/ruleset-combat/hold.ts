@@ -247,6 +247,41 @@ export function readProposedRulesetSheet(
     sheet.fields[id] = kept;
   }
 
+  // An entry the sheet names by a level it sets (5e's level_cleric, which choosing Cleric sets) sets
+  // the rest of what choosing it sets too, where the sheet left it out (laptop playtest 2026-10-25: a
+  // cleric 4 written with no spellcasting ability had no slots and a save DC of 10). One per group of
+  // entries a sheet takes only one of, the highest level first.
+  const named: Array<{ entry: RulesetCatalogEntry; by: string[]; level: number }> = [];
+  for (const entries of Object.values(catalogs)) {
+    for (const entry of entries) {
+      if (!entry.exclusive || !entry.grants?.sets) continue;
+      const by = Object.entries(entry.grants.sets).flatMap(([id, value]) =>
+        typeof value === "number" && value > 0 && typeof proposed.fields?.[id] === "number" && id in sheet.fields
+          ? [id]
+          : [],
+      );
+      if (by.length > 0) named.push({ entry, by, level: Math.max(...by.map((id) => sheet.fields[id] as number)) });
+    }
+  }
+  // Each level read once, by the first entry that sets it (a Cleric, never a Cleric taken second too).
+  const taken = new Set<string>();
+  for (const { entry, by } of named.sort((a, b) => b.level - a.level)) {
+    if (taken.has(`group:${entry.exclusive}`) || by.some((id) => taken.has(id))) continue;
+    taken.add(`group:${entry.exclusive}`);
+    for (const id of by) taken.add(id);
+    const filled: string[] = [];
+    for (const [id, value] of Object.entries(entry.grants!.sets!)) {
+      if (proposed.fields?.[id] !== undefined || sheet.fields[id] !== undefined) continue;
+      const field = declared.fields.find((candidate) => candidate.id === id);
+      const kept = field ? fitted(field, value) : undefined;
+      if (kept === undefined) continue;
+      sheet.fields[id] = kept;
+      filled.push(field!.label);
+    }
+    if (filled.length > 0)
+      adjusted.push(`${listed(filled)} set as ${entry.label} sets ${filled.length === 1 ? "it" : "them"}.`);
+  }
+
   const nothing: string[] = [];
   const picked: Array<{ catalogId: string; entry: RulesetCatalogEntry; listId: string }> = [];
   for (const [listId, rows] of Object.entries(proposed.lists ?? {})) {

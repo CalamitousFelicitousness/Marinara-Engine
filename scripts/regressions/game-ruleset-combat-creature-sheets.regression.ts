@@ -1701,6 +1701,51 @@ const spellbook = parsedOrThrow(
   const lash = priced(spellbook, onTurn, lasher).find((way) => way.option.label === "Spark Lash");
   assert.ok(lash, `Spark Lash is on its menu: ${priced(spellbook, onTurn, lasher).map((way) => way.option.label)}`);
   assert.equal(lash.price, (1 / 4) * (1 + 0.5 / 4), "one of four, the fewer left the dearer");
+  // A level it gives itself sets what choosing that class sets, where the sheet left it out (laptop
+  // playtest 2026-10-25: a cleric 4 written with no spellcasting ability cast only cantrips, at a
+  // save DC of 10). One entry per level: the class taken second does not set a second class.
+  {
+    const classed = structuredClone(spellbook);
+    classed.catalogs!.push({
+      id: "classes",
+      label: "Classes",
+      feeds: ["spells"],
+      entries: [
+        {
+          id: "sorcerer",
+          label: "Sorcerer",
+          exclusive: "first_class",
+          grants: { sets: { level: 1, class: "Sorcerer", spellcasting_ability: "cha" } },
+        },
+        {
+          id: "sorcerer-second",
+          label: "Sorcerer (second class)",
+          exclusive: "second_class",
+          grants: { sets: { level: 1, spellcasting_ability: "int" } },
+        },
+      ],
+    } as never);
+    const caster = started({
+      definition: classed,
+      cards: [card("Brenna", fighterBuild())],
+      party: [{ id: "brenna", name: "Brenna" }],
+      enemies: [
+        {
+          id: "caster",
+          name: "Cult Adept",
+          tier: "cr_2",
+          proposed: { tier: "cr_2", sheet: { fields: { level: 4 }, lists: { spells: [{ name: "Spark Lash" }] } } },
+        },
+      ],
+    }).rulesetFight!;
+    const adept = who(caster.encounter, "caster");
+    assert.equal(adept.sheet!.build.fields.spellcasting_ability, "cha", caster.adjustments.join("; "));
+    assert.equal(adept.sheet!.build.fields.class, "Sorcerer");
+    assert.ok(
+      caster.adjustments.includes('Cult Adept: "Class", "Spellcasting ability" set as Sorcerer sets them.'),
+      caster.adjustments.join("; "),
+    );
+  }
 
   // Temperament and competence tilt the draw, over many fights.
   /** How often each kind of first-rung spell is filled in over sixty fights, for one temperament. */

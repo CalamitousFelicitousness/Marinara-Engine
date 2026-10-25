@@ -387,6 +387,11 @@ function proposedSheetLists(
     const sheet = (enemy.proposed as { sheet?: { lists?: unknown } } | undefined)?.sheet;
     if (!sheet || typeof sheet !== "object") continue;
     if (sheet.lists && typeof sheet.lists === "object") for (const id of Object.keys(sheet.lists)) lists.add(id);
+    // A level it gives itself is read off the entry that sets it (a class), which may set more.
+    const fields = (sheet as { fields?: unknown }).fields;
+    if (fields && typeof fields === "object" && Object.keys(fields).length > 0)
+      for (const catalog of definition.catalogs ?? [])
+        if (!catalog.holds) for (const list of catalog.feeds ?? []) lists.add(list);
     for (const source of definition.combat?.abilities ?? []) if (source.onlyWhen) lists.add(source.list);
   }
   return lists;

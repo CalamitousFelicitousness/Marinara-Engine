@@ -405,6 +405,8 @@ try {
       // Nor (1.685, 1.686): what an item's wearer is, for its statsIf and touchHarms lines.
       const wearer = ["$comment", "needs", "needsAny", "add", "dice", "flat", "type"];
       if (key === "needs" && Object.keys(properties).every((one) => wearer.includes(one))) continue;
+      // Nor (1.792): what a fake's tell asks of the sheet of whoever may notice it.
+      if (key === "needs" && properties.says && properties.dc) continue;
       found[key]++;
       assert.equal(shape.minItems, 1);
       assert.equal(shape.maxItems, 4);

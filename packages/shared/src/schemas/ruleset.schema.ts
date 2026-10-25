@@ -10804,6 +10804,14 @@ const lootEntrySchema = z
     }
   });
 
+/** What a check about an item rolls: a skill, an ability, or a value off the sheet. A use's `gate`,
+ *  and a fake's `tells` and a seller's `manner` (Capability API 1.792). */
+const itemCheckSchema = z.union([
+  z.object({ skill: sheetId }).strict(),
+  z.object({ ability: sheetId }).strict(),
+  z.object({ value: rulesetValueRefSchema }).strict(),
+]);
+
 /** One of the ruleset's items, named as `<catalog>/<entry>`. */
 const rulesetItemRefSchema = z
   .string()
@@ -11009,6 +11017,18 @@ const marketSchema = z
             /** A dishonest seller (Capability API 1.79) passes fakes off as what they pass for, from
              *  their stock, and buys a fake as what it seems. Sellers are honest unless they say so. */
             honest: z.literal(false).optional(),
+            /** What gives a dishonest seller away (Capability API 1.792): a check on the seller, not the
+             *  item, whose success says something is off about what they sell, never what it is. */
+            manner: z
+              .object({
+                check: itemCheckSchema,
+                dc: z.number().int().min(1).max(100),
+                advantageIf: sheetNeedsSchema("advantageIf").optional(),
+                disadvantageIf: sheetNeedsSchema("disadvantageIf").optional(),
+                says: promptSafeText(160),
+              })
+              .strict()
+              .optional(),
             only: z
               .object({ value: rulesetValueRefSchema, atLeast: z.number().finite(), label: promptSafeText(80) })
               .strict()
@@ -11076,6 +11096,32 @@ const itemsSchema = z
     /** What an item the player types in becomes: a plain item, or nothing at all. */
     freeform: z.enum(["plain", "refuse"]).default("plain"),
     market: marketSchema.optional(),
+    /** How far past a fake's tell a check must go to tell what the fake truly is too (Capability API
+     *  1.792): 5 in 5e. Without it a check only ever says it is a fake. */
+    namesItAt: z.number().int().min(1).max(50).optional(),
+    /** What a passive score starts from before a character's number (Capability API 1.792): 10 in
+     *  5e, the default. */
+    passiveBase: z.number().int().min(0).max(100).optional(),
+    /** How the party notices a fake about to be bought (Capability API 1.792): with no dice, by
+     *  passive scores (the default), or by rolling each check (`"roll"`). */
+    warnBy: z.enum(["passive", "roll"]).optional(),
+    /** The ways of seeing through fakes a character may cast on an item (Capability API 1.792): a
+     *  spell, a ritual. One with `tags` or `items` reads only a fake carrying one of the tags or being
+     *  one of the items (fakes' refs, "<catalog>/<entry>"), and none without either reads any fake. */
+    revealsFakes: z
+      .array(
+        z
+          .object({
+            id: sheetId,
+            label: promptSafeText(60),
+            tags: z.array(sheetId).min(1).max(8).optional(),
+            items: z.array(rulesetItemRefSchema).min(1).max(24).optional(),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(8)
+      .optional(),
     /** Gear a character may take at the start, never given on its own (Capability API 1.78). */
     startingGear: z.array(startingGearSchema).min(1).max(40).optional(),
   })
@@ -11873,11 +11919,7 @@ export const rulesetItemUseSchema = catalogMechanicsObject
      *  nothing. `check` names what is rolled: a skill, an ability, or a value off the sheet. */
     gate: z
       .object({
-        check: z.union([
-          z.object({ skill: sheetId }).strict(),
-          z.object({ ability: sheetId }).strict(),
-          z.object({ value: rulesetValueRefSchema }).strict(),
-        ]),
+        check: itemCheckSchema,
         difficulty: orItemStat(z.number().int().min(1).max(100)),
         unless: z.object({ value: rulesetValueRefSchema, atLeast: z.number().finite() }).strict().optional(),
       })
@@ -12074,6 +12116,26 @@ const itemMoreUseSchema: z.ZodType<RulesetItemMoreUse, z.ZodTypeDef, unknown> = 
   })
   .strict();
 
+/** One way to tell a fake for what it is (Capability API 1.792): a check anyone may make, its
+ *  difficulty, and what a success sees. `needs` is what the sheet must meet to make it at all,
+ *  `carries` an item the checker must have in their bag (a kit for a tool check). With any one line
+ *  of `advantageIf` met it is rolled with advantage, of `disadvantageIf` with disadvantage. */
+const itemTellSchema = z
+  .object({
+    check: itemCheckSchema,
+    dc: z.number().int().min(1).max(100),
+    needs: sheetNeedsSchema("needs").optional(),
+    needsAny: z.literal(true).optional(),
+    carries: z
+      .object({ anyOf: z.array(rulesetItemRefSchema).min(1).max(6) })
+      .strict()
+      .optional(),
+    advantageIf: sheetNeedsSchema("advantageIf").optional(),
+    disadvantageIf: sheetNeedsSchema("disadvantageIf").optional(),
+    says: promptSafeText(160),
+  })
+  .strict();
+
 const catalogItemObjectSchema = z
   .object({
     category: sheetId,
@@ -12103,6 +12165,13 @@ const catalogItemObjectSchema = z
     /** A fake (Capability API 1.79): the ruleset item it passes for, "<catalog>/<entry>". A dishonest
      *  seller sells it as that item, at that item's price; an honest one never sells it. */
     passesFor: rulesetItemRefSchema.optional(),
+    /** What can give a fake away (Capability API 1.792): up to six checks, each with what a success
+     *  sees. Inspected, the best one the checker can make is rolled; about to be bought, the party
+     *  weighs them with no dice. A real item inspected rolls the tells of the fakes that pass for it. */
+    tells: z.array(itemTellSchema).min(1).max(6).optional(),
+    /** The ways of seeing through fakes (`items.revealsFakes`, by id) this one shows itself to as what
+     *  it passes for (Capability API 1.792): 5e's dust of sneezing and choking fools identify. */
+    foolsReveal: z.array(sheetId).min(1).max(8).optional(),
     /** The item has to be bound (attuned, invested) before it does anything while worn. */
     binds: (
       z

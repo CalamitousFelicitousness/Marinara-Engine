@@ -29,6 +29,7 @@ import {
   gameInventoryStackNamed,
   revealGameInventoryFake,
   releaseGameInventoryUnmetBindings,
+  markGameInventoryInspected,
 } from "./game-inventory-stacks.js";
 import { payGameInventoryCoins, type GameInventoryPayment } from "./game-inventory-coins.js";
 import {
@@ -110,8 +111,32 @@ export interface GameInventoryMarket {
         /** A fake a dishonest seller passed off (Capability API 1.79): what it truly is. The buyer
          *  gets it as `item`, and the stack keeps this. */
         truly?: string;
+        /** Someone else in the party noticed it is a fake (1.792): the buy waits for their warning. */
+        held?: { who: string; says: string };
       }
     | { ok: false; reason: GameInventoryMarketRefusal };
+  /** One character's look at an item before trusting it (1.792): `stack` when it is in their bag, else
+   *  a seller's ware here. `with` names a way of seeing through fakes, cast on it. Without it nothing
+   *  is inspected. */
+  inspect?(request: {
+    item: string;
+    who?: string;
+    seller?: string;
+    with?: string;
+    stack?: GameInventoryStack;
+    stacks: readonly GameInventoryStack[];
+  }):
+    | {
+        ok: true;
+        found: "fake" | "named" | "genuine" | "unsure";
+        /** Who looked, by their card's name. */
+        by: string;
+        line: string;
+        check?: { label: string; total: number; dc: number; rolls: number[] };
+        seller?: string;
+        revealed?: { item: string; name: string };
+      }
+    | { ok: false; reason: string };
   /** What a seller here pays for `count` of an item (#6934). Without it nothing is sold back. */
   sale?(request: {
     item: string;
@@ -140,7 +165,9 @@ export interface GameInventoryMarket {
   record?(
     done:
       | { buy: { name: string; count: number; seller?: string; stock?: boolean } }
-      | { sell: { familyId: string; worth: number } },
+      | { sell: { familyId: string; worth: number } }
+      /** A fake's buy held for a warning (1.792): asked again today, it goes through. */
+      | { warned: { seller: string; name: string } },
   ): void;
 }
 
@@ -509,6 +536,16 @@ export function applyGameInventoryTags(
             level: quote.level,
             ...(quote.seller ? { seller: quote.seller } : {}),
           };
+          // Someone in the party noticed it is a fake (1.792): nothing is paid yet, and asked again
+          // today it goes through.
+          if (quote.held && quote.seller) {
+            market.record?.({ warned: { seller: quote.seller, name: quote.name } });
+            return serializeInventoryTag(
+              answered,
+              { ok: false, reason: "held" },
+              `${quote.held.who} noticed: ${quote.held.says}`,
+            );
+          }
           const holder = who.bag?.holder;
           const paid = payGameInventoryCoins(current, holder, quote.family, quote.owed);
           if (!paid.ok) return serializeInventoryTag(answered, { ok: false, reason: paid.reason });
@@ -656,6 +693,41 @@ export function applyGameInventoryTags(
             remaining -= count;
           }
           return parts.join(" ");
+        }
+        if (request.action === "inspect") {
+          // A look at an item before trusting it (1.792): the inspector's own stack of it, else a
+          // seller's ware. What it found is kept on the stack: suspect, or shown for what it is.
+          if (!market?.inspect) return serializeInventoryTag(shown, { ok: false, reason: "cannot-inspect" });
+          const stack = gameInventoryStackNamed(current, item, who.bag ?? {}, true);
+          const looked = market.inspect({
+            item,
+            ...(request.who ? { who: request.who } : {}),
+            ...(request.seller ? { seller: request.seller } : {}),
+            ...(request.with ? { with: request.with } : {}),
+            ...(stack ? { stack } : {}),
+            stacks: current,
+          });
+          const asked = {
+            ...shown,
+            ...(request.seller && !stack ? { seller: request.seller } : {}),
+          };
+          if (!looked.ok) return serializeInventoryTag(asked, { ok: false, reason: looked.reason });
+          const answered = {
+            ...asked,
+            who: looked.by,
+            ...(looked.seller && !stack ? { seller: looked.seller } : {}),
+            found: looked.found,
+            ...(looked.revealed ? { revealed: looked.revealed.name } : {}),
+          };
+          if (stack) {
+            current = markGameInventoryInspected(current, stack.id, looked.by, {
+              tried: !request.with,
+              suspect: looked.found === "fake",
+            });
+            if (looked.found === "named") current = revealGameInventoryFake(current, stack.id, rules);
+          }
+          const now = stack ? (current.find((each) => each.id === stack.id)?.quantity ?? stack.quantity) : 0;
+          return serializeInventoryTag(answered, { ok: true, count: 1, now }, looked.line);
         }
         if (request.action === "reveal") {
           // A fake shown for what it truly is (1.79): the stack the name finds in who's bag becomes its

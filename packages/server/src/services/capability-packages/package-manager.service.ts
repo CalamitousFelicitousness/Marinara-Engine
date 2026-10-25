@@ -8385,6 +8385,17 @@ function entriesCarryHonesty(entries: unknown): boolean {
   );
 }
 
+/** Spotting fakes' item keys (1.792): `tells` and `foolsReveal`, new keys on the strict item. */
+function entriesCarrySpotting(entries: unknown): boolean {
+  return (
+    Array.isArray(entries) &&
+    entries.some((entry) => {
+      const item = plainRecord(plainRecord(entry)?.item);
+      return item?.tells !== undefined || item?.foolsReveal !== undefined;
+    })
+  );
+}
+
 const LOOT_ISSUE =
   "A ruleset with loot tables, or creatures that carry loot, requires schemaVersion 2 and capabilityApi 1.63 or newer";
 
@@ -8581,6 +8592,7 @@ export function getCapabilityPackageInstallIssue(
   let carriesCoverlessSaves = false;
   let carriesMarketDay = false;
   let carriesHonesty = false;
+  let carriesSpotting = false;
   let carriesAmountAdd = false;
   let carriesGrants = false;
   let carriesEntryChoices = false;
@@ -8723,6 +8735,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryCoverlessSaves(header.entries)) carriesCoverlessSaves = true;
       if (entriesCarryMarketDay(header.entries)) carriesMarketDay = true;
       if (entriesCarryHonesty(header.entries)) carriesHonesty = true;
+      if (entriesCarrySpotting(header.entries)) carriesSpotting = true;
       if (entriesCarryAmountAdd(header.entries)) carriesAmountAdd = true;
       if (entriesCarryGrants(header.entries)) carriesGrants = true;
       if (entriesCarryEntryChoices(header.entries)) carriesEntryChoices = true;
@@ -8802,6 +8815,7 @@ export function getCapabilityPackageInstallIssue(
       if (entriesCarryCoverlessSaves(fileEntries)) carriesCoverlessSaves = true;
       if (entriesCarryMarketDay(fileEntries)) carriesMarketDay = true;
       if (entriesCarryHonesty(fileEntries)) carriesHonesty = true;
+      if (entriesCarrySpotting(fileEntries)) carriesSpotting = true;
       if (entriesCarryAmountAdd(fileEntries)) carriesAmountAdd = true;
       if (entriesCarryGrants(fileEntries)) carriesGrants = true;
       if (entriesCarryEntryChoices(fileEntries)) carriesEntryChoices = true;
@@ -8843,6 +8857,28 @@ export function getCapabilityPackageInstallIssue(
   for (const fake of fakes) {
     const issue = rulesetFakeIssue(fake.ref, fake.item, itemsByRef.get(fake.item.passesFor!));
     if (issue) return `The fake "${fake.ref}" cannot pass for "${fake.item.passesFor}": ${issue}`;
+  }
+  // A fake's tells (1.792) read only a fake, carry only items of this ruleset, and fool only ways of
+  // seeing through fakes the items block names.
+  const ways =
+    (plainRecord(ruleset?.items)?.revealsFakes as Array<{ id?: unknown; items?: unknown }> | undefined) ?? [];
+  const revealIds = new Set(ways.map((way) => way?.id));
+  for (const way of ways) {
+    const wrong = (Array.isArray(way?.items) ? way.items : []).find(
+      (ref) => typeof ref !== "string" || !itemsByRef.get(ref)?.passesFor,
+    );
+    if (wrong !== undefined)
+      return `The way "${String(way.id)}" of seeing through fakes reads "${String(wrong)}": it is no fake of this ruleset`;
+  }
+  for (const [ref, item] of itemsByRef) {
+    if ((item.tells || item.foolsReveal) && !item.passesFor)
+      return `The item "${ref}" has tells or foolsReveal but is no fake: they read only an item with passesFor`;
+    for (const tell of item.tells ?? []) {
+      const missing = tell.carries?.anyOf.find((each) => !itemsByRef.has(each));
+      if (missing) return `The fake "${ref}" has a tell that carries "${missing}": it is no item of this ruleset`;
+    }
+    const unknown = item.foolsReveal?.find((id) => !revealIds.has(id));
+    if (unknown) return `The fake "${ref}" fools "${unknown}": it is none of items.revealsFakes`;
   }
   // What an item becomes on its last charge (1.272) is an item, in whichever file it is.
   for (const [ref, item] of itemsByRef) {
@@ -9099,6 +9135,16 @@ export function getCapabilityPackageInstallIssue(
   const sellers = plainRecord(plainRecord(ruleset?.items)?.market)?.sellers;
   const dishonest = Array.isArray(sellers) && sellers.some((seller) => plainRecord(seller)?.honest !== undefined);
   if (!declaresApi(79) && (carriesHonesty || dishonest)) return HONESTY_ISSUE;
+  // Spotting fakes, 1.792: a fake's tells, a dishonest seller's manner, and the items block's keys.
+  const itemsBlock = plainRecord(ruleset?.items);
+  if (
+    !declaresApi(792) &&
+    (carriesSpotting ||
+      (Array.isArray(sellers) && sellers.some((seller) => plainRecord(seller)?.manner !== undefined)) ||
+      ["namesItAt", "passiveBase", "warnBy", "revealsFakes"].some((key) => itemsBlock?.[key] !== undefined))
+  ) {
+    return "A ruleset whose fakes can be spotted (tells, foolsReveal, a seller's manner, items.namesItAt, passiveBase, warnBy or revealsFakes) requires schemaVersion 2 and capabilityApi 1.792 or newer";
+  }
   // A critical range off the sheet, 1.81: a new key on the strict attack roll.
   if (!declaresApi(81) && plainRecord(plainRecord(combatBlock)?.attackRoll)?.criticalFrom !== undefined) {
     return CRITICAL_RANGE_ISSUE;

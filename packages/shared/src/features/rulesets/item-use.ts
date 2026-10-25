@@ -646,6 +646,9 @@ export function rollRulesetItemGate(input: {
   return { check, ...rollGateOutsideFight(definition, user, held, ask, input.roll) };
 }
 
+/** A check rolled outside a fight as a use's gate is (1.792): a fake's tell or a seller's manner. */
+export const rollRulesetCheckOutsideFight = rollGateOutsideFight;
+
 /** A gate rolled as a check is outside a fight: the ruleset's own dice with the sheet's number, the
  *  user's wound penalty and what their conditions and items do to that check, and the lean they give
  *  it. A pool's difficulty is the successes it needs, never fewer than one nor more than it can count. */
@@ -655,6 +658,8 @@ function rollGateOutsideFight(
   held: ReturnType<typeof rulesetSheetItems>,
   ask: NonNullable<ReturnType<typeof rulesetItemGateCheck>>,
   roll: (sides: number) => number,
+  /** A lean the check is made with besides what the sheet gives it (1.792): a tell's `advantageIf`. */
+  lean?: "advantage" | "disadvantage",
 ): Omit<NonNullable<RulesetItemUseSaid["gate"]>, "check"> {
   const resolution = definition.resolution;
   // The sheet as it stands, for what a change reads off it (1.414).
@@ -704,7 +709,7 @@ function rollGateOutsideFight(
     );
     return { total: rolled.total, difficulty, success: rolled.success, rolls: rolled.rolls };
   }
-  const mode = rulesetCheckRollMode({}, effects);
+  const mode = rulesetCheckRollMode(lean ? { [lean]: true } : {}, effects);
   const rolled = rollDiceSumCheck(
     definition,
     {

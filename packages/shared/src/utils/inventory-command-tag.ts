@@ -35,7 +35,9 @@ export type InventoryTagAction =
   | "buy"
   | "sell"
   /** A fake shown for what it truly is (Capability API 1.79). */
-  | "reveal";
+  | "reveal"
+  /** A character looks an item over before trusting it (Capability API 1.792). */
+  | "inspect";
 
 const INVENTORY_TAG_ACTIONS: readonly InventoryTagAction[] = [
   "add",
@@ -51,6 +53,7 @@ const INVENTORY_TAG_ACTIONS: readonly InventoryTagAction[] = [
   "buy",
   "sell",
   "reveal",
+  "inspect",
 ];
 
 function readAction(value: string | undefined): InventoryTagAction | undefined {
@@ -72,9 +75,12 @@ export interface InventoryTagRequest {
   to?: string;
   /** An add that proposes an item of the ruleset: the parts the Game Master gave it. */
   proposal?: Omit<GameInventoryItemProposal, "name">;
-  /** A buy's price level and seller, as the Game Master named them (#6917). */
+  /** A buy's price level and seller, as the Game Master named them (#6917); an inspection's seller,
+   *  whose ware is looked at (1.792). */
   level?: string;
   seller?: string;
+  /** An inspection's way of seeing through fakes, cast on the item (1.792). */
+  with?: string;
   /** An add that vanishes after so many minutes of game time (Capability API 1.745): 5e's Creation. */
   lasts?: number;
 }
@@ -201,7 +207,7 @@ export function parseInventoryTagBody(body: string): InventoryTagRequest | null 
   let action: InventoryTagAction = readAction(actionValue) ?? "add";
   if (actionValue === undefined) {
     // A bare word, read only before the first attribute so an item's own name never counts.
-    const bare = /\b(add|remove|give|equip|unequip|bind|unbind|use|pay|earn|buy|sell|reveal)\b/i.exec(
+    const bare = /\b(add|remove|give|equip|unequip|bind|unbind|use|pay|earn|buy|sell|reveal|inspect)\b/i.exec(
       body.slice(0, Math.min(attributes[0]?.start ?? body.length, 40)),
     );
     if (bare) action = bare[1]!.toLowerCase() as InventoryTagAction;
@@ -227,7 +233,9 @@ export function parseInventoryTagBody(body: string): InventoryTagRequest | null 
   const to = cleanName(values.get("to"));
   const proposal = action === "add" ? readProposal(values) : undefined;
   const level = action === "buy" ? cleanName(values.get("level")) : undefined;
-  const seller = action === "buy" || action === "sell" ? cleanName(values.get("seller")) : undefined;
+  const seller =
+    action === "buy" || action === "sell" || action === "inspect" ? cleanName(values.get("seller")) : undefined;
+  const by = action === "inspect" ? cleanName(values.get("with")) : undefined;
   const lasts = action === "add" ? readInventoryLasts(values.get("lasts")) : undefined;
   return {
     action,
@@ -239,6 +247,7 @@ export function parseInventoryTagBody(body: string): InventoryTagRequest | null 
     ...(proposal ? { proposal } : {}),
     ...(level ? { level } : {}),
     ...(seller ? { seller } : {}),
+    ...(by ? { with: by } : {}),
     ...(lasts ? { lasts } : {}),
   };
 }
@@ -312,6 +321,8 @@ export function serializeInventoryTag(
         revealed?: string;
         /** How long an add lasts before it vanishes, in minutes (1.745). */
         lasts?: number;
+        /** What an inspection found (1.792): fake, named, genuine or unsure. */
+        found?: string;
       }
     | { raw: string },
   outcome: InventoryTagOutcome,
@@ -331,6 +342,7 @@ export function serializeInventoryTag(
     if (input.level) attribute("level", input.level);
     if (input.seller) attribute("seller", input.seller);
     if (input.revealed) attribute("revealed", input.revealed);
+    if (input.found) attribute("found", input.found);
     if (input.lasts) attribute("lasts", inventoryLastsWords(input.lasts));
   }
   if (outcome.ok) {
@@ -362,7 +374,13 @@ export interface ResolvedInventoryTag {
   stock?: boolean;
   /** A fake's true name, once it is shown for what it is (1.79). */
   revealed?: string;
+  /** What an inspection found (1.792). */
+  found?: "fake" | "named" | "genuine" | "unsure";
+  /** What the Engine said about it: an inspection's roll and finding, a held buy's warning. */
+  note?: string;
 }
+
+const FOUND = new Set(["fake", "named", "genuine", "unsure"]);
 
 /** Read one resolved tag body, or null for one the Engine has not answered. */
 export function readResolvedInventoryTagBody(body: string): ResolvedInventoryTag | null {
@@ -393,9 +411,16 @@ export function readResolvedInventoryTagBody(body: string): ResolvedInventoryTag
     ...(result === "ok" && Number.isFinite(now) ? { now } : {}),
     ...(reason && result !== "ok" ? { reason } : {}),
     ...(price && result === "ok" && (action === "buy" || action === "sell") ? { price } : {}),
-    ...(values.get("seller")?.trim() && result === "ok" ? { seller: values.get("seller")!.trim() } : {}),
+    // A buy held for a warning keeps its seller too (1.792), for the day's count of them.
+    ...(values.get("seller")?.trim() && (result === "ok" || reason === "held")
+      ? { seller: values.get("seller")!.trim() }
+      : {}),
     ...(values.get("stock")?.trim() === "true" && result === "ok" ? { stock: true } : {}),
     ...(cleanName(values.get("revealed")) ? { revealed: cleanName(values.get("revealed"))! } : {}),
+    ...(action === "inspect" && result === "ok" && FOUND.has(values.get("found") ?? "")
+      ? { found: values.get("found") as NonNullable<ResolvedInventoryTag["found"]> }
+      : {}),
+    ...(values.get("note")?.trim() ? { note: values.get("note")!.trim() } : {}),
   };
 }
 

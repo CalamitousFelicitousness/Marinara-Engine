@@ -1508,7 +1508,7 @@ const capabilityPackageManifestBaseSchema = z
 //        waits on that many whole rows, as its `min` does.
 // 1.790: an attack list's `toHit.sheetBonus`: a number off the sheet added to hit on its rows, or on
 //        only the rows whose `when` column holds a value (5e's Archery on ranged weapons).
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 791 } as const);
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 792 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

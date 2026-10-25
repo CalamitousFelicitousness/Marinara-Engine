@@ -3497,6 +3497,49 @@ Capability API 1.79 lets an item be risky or a fake, and a seller be dishonest.
 - **Worn or carried**: a fake does what it truly does on the character's sheet (its `worn` or `carried` effects and its stats). The first inventory change after which the sheet shows a number, or what a check adds, that the item it passes for would not, finds it out, and the journal and the screen say what it was. A difference only a fight reads (a resistance) does not, and neither does a change to the sheet alone until the next inventory change. In a fight, a worn fake weapon still attacks as the weapon it passes for.
 - Under single-player trust, Peek Prompt shows the Game Master's view, truth included.
 
+#### Spotting fakes
+
+Capability API 1.792 lets a character tell a fake for what it is, by a check they make or by noticing it before anybody pays. The Engine knows none of the checks by name: the ruleset writes them.
+
+```json
+{
+  "id": "potion-of-poison",
+  "label": "Potion of Poison",
+  "item": {
+    "category": "potion",
+    "passesFor": "magic_items/potion-of-healing",
+    "tells": [
+      {
+        "check": { "value": { "derived": "poisoners_kit_check" } },
+        "dc": 13,
+        "carries": { "anyOf": ["gear/poisoners-kit"] },
+        "says": "a faint bitterness under the sweetness"
+      },
+      { "check": { "skill": "arcana" }, "dc": 18, "says": "its magic does not feel like healing magic" }
+    ],
+    "foolsReveal": ["identify"]
+  }
+}
+```
+
+```json
+"items": {
+  "namesItAt": 5,
+  "revealsFakes": [{ "id": "identify", "label": "Identify" }, { "id": "detect-poison", "label": "Detect Poison and Disease", "items": ["magic_items/potion-of-poison"] }],
+  "market": { "sellers": [
+    { "id": "fence", "label": "Fence", "honest": false, "sells": [{ "tag": "magical" }],
+      "manner": { "check": { "skill": "insight" }, "dc": 13, "advantageIf": [{ "value": { "derived": "knows_trade" }, "atLeast": 1 }], "says": "their eyes slide away when you ask about it" } }
+  ] }
+}
+```
+
+- **`tells`** on a fake (up to six): each a check anyone may make (`check` is a skill, an ability or a value off the sheet, as a use's `gate` names one), its difficulty `dc`, and what a success sees (`says`). `needs` is what the sheet must meet to make it at all (with `needsAny`, any one of them), and `carries` an item the checker must have in their own bag, such as the kit a tool check is made with. With any one line of `advantageIf` met it is rolled with advantage, with any one of `disadvantageIf` with disadvantage.
+- **`manner`** on a dishonest seller: a check on the seller rather than the item, with the same parts. A success says something is off about what they sell, never what it is.
+- **Inspecting**: `[inventory: action="inspect" item="Potion of Healing" who="Mira"]` looks over an item in Mira's bag, and `seller="Fence"` looks over a ware a seller here shows today, before anyone buys. The inventory's **Inspect** button, offered by a ruleset whose fakes can be spotted, says "I look my Potion of Healing over carefully before trusting it." for the Game Master to write the tag. The Engine rolls the best check the character can make about it, with the ruleset's own dice: a fake's tells, and a dishonest seller's manner. A success on a fake finds it suspect: the answer says what they saw, and the bag shows "Mira thinks it is a fake" while it is still called what it passes for. A success by `items.namesItAt` or more (5 in 5e) on a tell also names it, and from then on it is its true item. A real item rolls the tells of the fakes that pass for it, so asking gives nothing away, and a success says it looks genuine. Each character tries once per item (a stack keeps who has; a ware is remembered for the market day); a failure says they cannot tell. An item nothing could give away, or one a character cannot check at all, is refused with `nothing-to-check`, and the try is not spent.
+- **Noticing before a buy**: when a buy would get a fake from a dishonest seller, every other member of the party weighs each check they can make about it and the seller, with no dice: `items.passiveBase` (10 by default) and their number, 5 more with advantage and 5 less with disadvantage. The first who meets a difficulty has noticed: nothing is paid, and the buy is answered `reason="held"` with who noticed what. The Game Master is asked to play it as that companion warning the buyer in character, without accusing the seller to their face unless that companion's personality would, and to let the buyer decide. The player is not told anything else. The same buy from that seller asked again that day goes through. `items.warnBy: "roll"` rolls those checks instead.
+- **Seeing through fakes**: `items.revealsFakes` lists the ways of seeing through fakes a character may cast on an item (a spell, a ritual), each with an `id`, its `label` and, for one that sees only some fakes, the `tags` they carry or the fakes themselves by ref (`items`, which only fakes may be). Naming the fakes keeps a telling tag off them: a potion of poison tagged "poison" would give itself away beside the healing potion it passes for. `[inventory: action="inspect" item="Potion of Healing" who="Mira" with="Identify"]` names one: a fake it reads is named, one whose `foolsReveal` lists it shows as what it passes for, and a fake it cannot read, or a real item, shows nothing ("genuine" for a way that reads any fake, else "unsure"). It costs no try; whatever casting it costs is the Game Master's, as any spell's is.
+- A ruleset using any of these needs Capability API 1.792. A fake's `tells` or `foolsReveal` on an item that is no fake, a `carries` item or a `revealsFakes` item that is not one of the ruleset's (a fake, for `items`), and a `foolsReveal` id that `revealsFakes` does not list are refused at install.
+
 ### Using items outside a fight
 
 The same `use` works outside a fight (Capability API 1.60 for `restore`; the rest needs nothing new). The inventory's **Use** button, on one of your items with a `use`, and the Game Master's `[inventory: action="use" item="Poultice" who="Juno"]` both do what the item does to whoever carries it, with the Engine's dice:

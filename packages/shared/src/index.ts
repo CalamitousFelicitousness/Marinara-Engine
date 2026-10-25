@@ -287,6 +287,7 @@ export * from "./features/rulesets/invented-items.js";
 export * from "./features/rulesets/item-use.js";
 export * from "./features/rulesets/loot.js";
 export * from "./features/rulesets/market.js";
+export * from "./features/rulesets/fake-spotting.js";
 export * from "./features/rulesets/starting-gear.js";
 export * from "./features/rulesets/material.js";
 export * from "./features/rulesets/sheet-builder.js";

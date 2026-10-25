@@ -23,6 +23,7 @@ import {
   Plus,
   Power,
   Scissors,
+  Search,
   Shirt,
   Wand2,
   X,
@@ -87,6 +88,8 @@ export interface InventoryItem {
   on?: true;
   /** The form an item with forms is in (1.560), from 1; absent as it was made. Only ever one item. */
   form?: number;
+  /** Who looked it over and thinks it is a fake (1.792), while it is still called what it passes for. */
+  suspect?: string;
 }
 
 /** One party member's bag: `holder` as a stack has it (absent for the player), and the name shown. */
@@ -134,6 +137,9 @@ interface GameInventoryProps {
   onFormItem?: (stackId: string, form: number) => Promise<string | null> | string | null;
   /** Called when the user wants to use an item during input phase */
   onUseItem?: (stackId: string, itemName: string, more?: number, lasts?: number) => void;
+  /** Called when the user wants a ruleset item looked over before trusting it (1.792), during input
+   *  phase; offered only by a ruleset whose fakes can be spotted. */
+  onInspectItem?: (stackId: string, itemName: string) => void;
   /** Called when the user gives a stack a nickname, or its own name back. Resolves to the stack's id. */
   onRenameItem?: (stackId: string, nextName: string) => Promise<string | null> | string | null;
   /** Called when the user sets a stack's count: the +1 and -1 buttons, or a typed amount. 0 removes it. */
@@ -201,6 +207,7 @@ export function GameInventory({
   onSwitchItem,
   onFormItem,
   onUseItem,
+  onInspectItem,
   onRenameItem,
   onSetItemQuantity,
   onSplitItem,
@@ -841,6 +848,11 @@ export function GameInventory({
                     {localizeUi("ui.game.gameinventory.carriedBy", { value1: bagName(selectedInventoryItem.holder) })}
                   </span>
                 )}
+                {selectedInventoryItem.suspect && (
+                  <span className="ml-1.5 rounded border border-red-500/25 bg-red-500/10 px-1 font-normal text-red-300">
+                    {localizeUi("ui.game.gameinventory.suspectValue1", { value1: selectedInventoryItem.suspect })}
+                  </span>
+                )}
               </div>
             )}
             {selectedRulesetItem && (
@@ -1217,6 +1229,25 @@ export function GameInventory({
                     {pick ? pick.label : localizeUi("ui.agents.agenteditor.use")}
                   </button>
                 ))}
+              {selectedInventoryItem && selectedInventoryItem.item && canInteract && onInspectItem && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onInspectItem(
+                      selectedInventoryItem.id,
+                      selectedInventoryItem.nickname
+                        ? `${selectedLabel} (${selectedInventoryItem.name})`
+                        : selectedLabel,
+                    );
+                    setSelectedItem(null);
+                  }}
+                  className="flex h-7 shrink-0 items-center justify-center gap-1 rounded border border-white/8 bg-white/[0.03] px-2 text-[0.7rem] text-white/70 transition-colors hover:bg-white/[0.06]"
+                  title={localizeUi("ui.game.gameinventory.inspectHint")}
+                >
+                  <Search size={12} />
+                  {localizeUi("ui.game.gameinventory.inspect")}
+                </button>
+              )}
               {/* Its further uses (Capability API 1.504), each its own button. */}
               {selectedInventoryItem &&
                 canInteract &&

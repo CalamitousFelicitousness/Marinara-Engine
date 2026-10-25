@@ -80,6 +80,12 @@ export interface GameInventoryStack {
    *  passes for. Set only by a dishonest seller's sale, never by an op a client sends. Only the Game
    *  Master's view, curses, use, sale and a reveal read it; everything the player sees reads `item`. */
   truly?: string;
+  /** Who has looked it over (Capability API 1.792), by their names compared without case: one try
+   *  each. */
+  inspected?: string[];
+  /** Who looked it over and thinks it is a fake (Capability API 1.792), by their card's name: shown
+   *  beside it, while it is still called what it passes for. */
+  suspect?: string;
   /** The minutes of game time left before it vanishes (Capability API 1.745), counted as the clock
    *  moves: 5e's Creation, a day of vegetable matter. Kept on a stack of any size, all of it made
    *  together; nothing else is ever added to it, nor it to anything else. */
@@ -400,10 +406,12 @@ function makeStack(stack: {
   storedEntries?: GameInventoryStoredEntry[];
   on?: boolean;
   truly?: string;
+  inspected?: string[];
+  suspect?: string;
   vanishesIn?: number;
 }): GameInventoryStack {
   const { id, name, nickname, item, quantity, holder, equipped, bound, loaded, charges, usesLeft, on, truly } = stack;
-  const { corroded, absorbedEver, callRoll, form, waits, vanishesIn } = stack;
+  const { corroded, absorbedEver, callRoll, form, waits, vanishesIn, inspected, suspect } = stack;
   const { storedEntries } = stack;
   const named = nickname && gameInventoryNameKey(nickname) !== gameInventoryNameKey(name) ? { nickname } : {};
   return {
@@ -426,8 +434,37 @@ function makeStack(stack: {
     ...(storedEntries && quantity === 1 ? { storedEntries } : {}),
     ...(on && quantity === 1 ? { on: true as const } : {}),
     ...(truly && item && truly !== item ? { truly } : {}),
+    ...(inspected?.length ? { inspected: inspected.slice(0, INSPECTED_MAX) } : {}),
+    ...(suspect ? { suspect } : {}),
     ...(vanishesIn !== undefined && vanishesIn >= 1 ? { vanishesIn } : {}),
   };
+}
+
+/** The most inspectors one stack remembers (1.792): a party's worth. */
+const INSPECTED_MAX = 12;
+
+/**
+ * A stack once somebody has looked it over (Capability API 1.792): `by`, their name, among those who
+ * have tried (`tried`; a spell cast on it is no try), and the one who thinks it a fake when they do
+ * (`suspect`). Unchanged for any other stack.
+ */
+export function markGameInventoryInspected(
+  stacks: GameInventoryStack[],
+  id: string,
+  by: string,
+  found: { tried: boolean; suspect: boolean },
+): GameInventoryStack[] {
+  const key = gameInventoryNameKey(by);
+  return stacks.map((stack) => {
+    if (stack.id !== id) return stack;
+    const inspected =
+      found.tried && !stack.inspected?.includes(key) ? [...(stack.inspected ?? []), key] : stack.inspected;
+    return makeStack({
+      ...stack,
+      ...(inspected ? { inspected } : {}),
+      ...(found.suspect ? { suspect: cleanName(by).slice(0, GAME_INVENTORY_HOLDER_MAX_LENGTH) } : {}),
+    });
+  });
 }
 
 /** Whether a stack is worn or bound: one item, kept apart from the rest of its kind. */
@@ -604,6 +641,15 @@ export function normalizeGameInventoryStacks(raw: unknown): GameInventoryStack[]
         nickname,
         item: readItemRef(source.item),
         truly: readItemRef(source.truly),
+        inspected: Array.isArray(source.inspected)
+          ? source.inspected
+              .filter((each): each is string => typeof each === "string" && each.trim().length > 0)
+              .map((each) => gameInventoryNameKey(each).slice(0, GAME_INVENTORY_HOLDER_MAX_LENGTH))
+          : undefined,
+        suspect:
+          typeof source.suspect === "string"
+            ? cleanName(source.suspect).slice(0, GAME_INVENTORY_HOLDER_MAX_LENGTH) || undefined
+            : undefined,
         // Worn and bound are one item each, so a stack saved with more is read as a plain stack.
         equipped: source.equipped === true && quantity === 1,
         bound: source.bound === true && quantity === 1,
@@ -723,6 +769,7 @@ export function revealGameInventoryFake(
       waits: _waits,
       storedEntries: _stored,
       on: _on,
+      suspect: _suspect,
       ...rest
     } = stack;
     return makeStack({ ...rest, item: truly, name: rules?.itemOf(truly)?.name ?? rest.name });
@@ -765,6 +812,8 @@ export interface GameInventoryTotal {
   item?: string;
   /** A fake's true item (`GameInventoryStack.truly`): for the Game Master's view only. */
   truly?: string;
+  /** Who thinks it is a fake (1.792). */
+  suspect?: string;
   /** How many of it are worn, and how many bound, when any are. */
   equipped?: number;
   bound?: number;
@@ -797,6 +846,7 @@ export function gameInventoryTotals(
           ...(stack.truly && !asSeen ? { truly: stack.truly } : {}),
         })
         .get(item)!;
+    if (stack.suspect && !line.suspect) line.suspect = stack.suspect;
     line.quantity += stack.quantity;
     if (stack.equipped) line.equipped = (line.equipped ?? 0) + stack.quantity;
     if (stack.bound) line.bound = (line.bound ?? 0) + stack.quantity;

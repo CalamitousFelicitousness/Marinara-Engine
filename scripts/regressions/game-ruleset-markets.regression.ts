@@ -1468,7 +1468,14 @@ try {
   const quiet = await chats.create({ name: "No place yet", mode: "game", characterIds: [] });
   assert.deepEqual(await gameMarketDayFor(db, quiet.id, null, undefined, book), {
     place: null,
-    day: { key: "", bought: new Map(), stockBought: new Map(), paidOut: new Map() },
+    day: {
+      key: "",
+      bought: new Map(),
+      stockBought: new Map(),
+      paidOut: new Map(),
+      warned: new Set(),
+      inspected: new Set(),
+    },
   });
   // A place the world set (no place tag began a day there): its day runs over the replies in a row
   // whose turns were there, each stamped so on its extra, and counts what they bought; a turn anywhere

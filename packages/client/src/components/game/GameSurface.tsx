@@ -9253,6 +9253,24 @@ function GameSurfaceComponent({
   /** The Use button. One of the ruleset's items with a `use` is used by the Engine first: what it does
    *  to whoever carries it lands on their sheet, it is spent, and the Game Master is told what happened
    *  in an `[item_used]` block. Anything else is simply said, and the Game Master decides. */
+  // Looking an item over before trusting it (1.792): said, and the Game Master's inspect tag rolls it.
+  const inventorySpotsFakes =
+    gameRuleset.status === "ok" &&
+    (!!gameRuleset.definition.items?.revealsFakes?.length ||
+      !!inventoryItemBook?.entries.some((entry) => entry.entry.item?.tells?.length));
+  const handleInspectInventoryStack = useCallback(
+    (stackId: string, label: string) => {
+      setInventoryOpen(false);
+      const holder = inventoryItemsRef.current.find((entry) => entry.id === stackId)?.holder;
+      sendMessage(
+        holder
+          ? `${holder} looks the ${label} over carefully before trusting it.`
+          : `I look my ${label} over carefully before trusting it.`,
+      );
+    },
+    [sendMessage],
+  );
+
   const handleUseInventoryStack = useCallback(
     async (stackId: string, label: string, more?: number, lasts?: number) => {
       setInventoryOpen(false);
@@ -14399,6 +14417,7 @@ function GameSurfaceComponent({
                   onSwapItems={handleSwapInventoryStacks}
                   canInteract={sessionInteractive && narrationDone && !isStreaming}
                   onUseItem={handleUseInventoryStack}
+                  onInspectItem={inventorySpotsFakes ? handleInspectInventoryStack : undefined}
                   startingGear={inventoryStartingGear}
                 />
 

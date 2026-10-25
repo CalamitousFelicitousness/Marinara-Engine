@@ -62,10 +62,11 @@ for (const theme of ["dark", "light"] as const) {
           if (event.key !== "?") return;
           const target = event.target instanceof Element ? event.target.tagName : null;
           const path = event.composedPath().map((node) => (node instanceof Element ? node.tagName : null));
-          queueMicrotask(() => {
+          // Native event dispatch can run microtasks between listeners; sample after bubbling finishes.
+          window.setTimeout(() => {
             events.push({ key: event.key, target, path, defaultPrevented: event.defaultPrevented });
             fixture.dataset.keyTrace = JSON.stringify(events);
-          });
+          }, 0);
         },
         { capture: true },
       );
@@ -74,6 +75,14 @@ for (const theme of ["dark", "light"] as const) {
     const help = page.getByRole("dialog", { name: "Keyboard shortcuts", exact: true });
     const results: unknown[] = [];
     try {
+      // Verify the real global listener has attached before testing fields during initial app startup.
+      await fixture.getByRole("button", { name: "Outside text fields" }).click();
+      await expect(async () => {
+        await page.keyboard.press("?");
+        await expect(help).toBeVisible({ timeout: 500 });
+      }).toPass({ timeout: 10_000 });
+      await page.keyboard.press("Escape");
+      await expect(help).toHaveCount(0);
       for (const scope of [
         fixture.locator("[data-light-fields]"),
         fixture.locator("marinara-keyboard-shadow-fixture"),

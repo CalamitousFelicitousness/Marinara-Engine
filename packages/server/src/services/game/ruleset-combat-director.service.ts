@@ -678,7 +678,13 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
       const reactionNames = (opponent.attacks ?? [])
         .filter((attack) => attack.reaction && !rulesetBestiaryReaction(definition, input.bestiary, attack.name))
         .map((attack) => attack.name);
-      const placed = rulesetProposedSheetWithEntries(definition, proposed.data.sheet, reactionNames, input.bestiary);
+      // So does every other attack its writer named that this ruleset has as one of its entries (laptop
+      // playtest 2026-10-25: a cult priest's Mace and a druid's Quarterstaff, written beside its sheet
+      // rather than in it, which it then fought without). A name it has nowhere is the writer's own
+      // word for one of the sheet's attacks.
+      const attackNames = (opponent.attacks ?? []).filter((attack) => !attack.reaction).map((attack) => attack.name);
+      const armed = rulesetProposedSheetWithEntries(definition, proposed.data.sheet, attackNames, input.bestiary).sheet;
+      const placed = rulesetProposedSheetWithEntries(definition, armed, reactionNames, input.bestiary);
       const trial = readProposedRulesetSheet(definition, placed.sheet, input.bestiary).sheet;
       // Whether a fresh sheet could pay for it, at its own price or out of a bigger pool of the family.
       const paysWith = (name: string, pool?: string) => {
@@ -704,7 +710,7 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
         unpaid.length > 0
           ? rulesetProposedSheetWithEntries(
               definition,
-              proposed.data.sheet,
+              armed,
               reactionNames.filter((name) => !unpaid.includes(name)),
               input.bestiary,
             )
@@ -3422,23 +3428,11 @@ export function priced(
   menu?: RulesetCombatOption[],
 ): PricedOption[] {
   const out: PricedOption[] = [];
-  // What is left in each pool of its sheet: the fewer left, the dearer each one, so the last is kept
-  // for when it matters (half again its price) and a full pool is spent freely.
-  const left = actor.sheet
-    ? new Map(
-        readRulesetLive(definition, actor.sheet.build, actor.sheet.live, actor.sheet.items).pools.map((pool) => [
-          pool.key,
-          pool.value,
-        ]),
-      )
-    : undefined;
+  const share = rulesetPoolShare(definition, actor);
   const spare = rulesetFightEase(definition, encounter, actor);
   for (const option of menu ?? rulesetCombatOptions(definition, encounter, actor.id)) {
     const base =
-      (option.cost ?? []).reduce(
-        (total, entry) => total + entry.amount * (1 + 0.5 / Math.max(1, left?.get(entry.pool) ?? Infinity)),
-        0,
-      ) +
+      (option.cost ?? []).reduce((total, entry) => total + share(entry.pool, entry.amount), 0) +
       (option.signature?.cost ?? 0) +
       // An item used up by using it (a flask of oil, a vial of acid) is not thrown for nothing, and
       // dearer the easier the fight looks (class re-test 2026-10-24: a one-off Potion of
@@ -3448,12 +3442,40 @@ export function priced(
     // One that only a higher pool can pay for now (1.171) is never taken at its own price.
     const ways: PricedOption[] = [
       ...(option.upcastOnly ? [] : [{ option, price: base }]),
-      ...biggerWays(definition, actor, option),
+      ...biggerWays(definition, actor, option, share),
     ];
     // Modes first, so each mode is then made in every style, forecast as that style does.
     out.push(...ways.flatMap(modedWays).flatMap((way) => styledWays(definition, way)));
   }
   return out;
+}
+
+/**
+ * What spending `amount` of one pool costs its spender. The fewer left, the dearer each one, so the
+ * last is kept for when it matters (half again its price) and a full pool is spent freely. The party
+ * carries what it keeps into the next fight, so each one is dear to it; an opponent has only this
+ * fight to spend it in, so to it each one is the share of the pool it is (laptop playtest 2026-10-25:
+ * a druid with four of its smallest pool never spent one, each priced as much as a whole foe's
+ * health, and cast its free blast all fight). A pool with no maximum to read, or an actor with no
+ * sheet, prices it at its amount.
+ */
+function rulesetPoolShare(
+  definition: RulesetDefinition,
+  actor: RulesetCombatant,
+): (pool: string, amount: number) => number {
+  const pools = actor.sheet
+    ? new Map(
+        readRulesetLive(definition, actor.sheet.build, actor.sheet.live, actor.sheet.items).pools.map((pool) => [
+          pool.key,
+          pool,
+        ]),
+      )
+    : undefined;
+  return (key, amount) => {
+    const pool = pools?.get(key);
+    const scale = actor.side === "enemy" && pool && Number.isFinite(pool.max) && pool.max > 0 ? pool.max : 1;
+    return (amount / scale) * (1 + 0.5 / Math.max(1, pool?.value ?? Infinity));
+  };
 }
 
 /** The bigger ways of paying for one option: once per pool it could be paid from, each with its
@@ -3462,6 +3484,7 @@ function biggerWays(
   definition: RulesetDefinition,
   actor: RulesetCombatant,
   option: RulesetCombatOption,
+  share: (pool: string, amount: number) => number,
 ): PricedOption[] {
   const action = actor.actions.find((entry) => entry.id === option.id);
   // What grows paid bigger, or what can only be paid out of another pool now (1.171).
@@ -3495,7 +3518,12 @@ function biggerWays(
           : {}),
       },
       payWith: pool,
-      price: paid.cost.reduce((total, entry) => total + entry.amount, 0) + steps,
+      // An opponent's each step above its own rung a little dearer again, on its share of the pool,
+      // so the small one is still cast when it does.
+      price:
+        actor.side === "enemy"
+          ? paid.cost.reduce((total, entry) => total + share(entry.pool, entry.amount), 0) * (1 + 0.25 * steps)
+          : paid.cost.reduce((total, entry) => total + entry.amount, 0) + steps,
     });
     // What grows no bigger is paid from the least pool that can pay for it, and no other (laptop
     // 2026-10-25: an Entangle out of a 3rd-level slot with a 2nd-level one left).

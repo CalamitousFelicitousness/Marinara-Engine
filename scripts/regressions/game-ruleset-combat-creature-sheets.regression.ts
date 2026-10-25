@@ -71,6 +71,7 @@ import {
   commandRulesetCombatDirector,
   createRulesetFight,
   directedRulesetView,
+  priced,
   rulesetDirectorStage,
   rulesetFightLiveStates,
   syncRulesetCombatants,
@@ -1688,6 +1689,18 @@ const spellbook = parsedOrThrow(
     spellsOf(novice).filter((name) => firstRung.includes(name)),
     ["Spark Lash"],
   );
+  // One its writer named as an attack beside the sheet rather than in it is on the sheet all the same
+  // (laptop playtest 2026-10-25: a cult priest's Mace and a druid's Quarterstaff, fought without).
+  // A boss, whose sheet is the Game Master's in full, so nothing else fills it in.
+  const beside = fightOf(sorcerer(), { attacks: [{ name: "Spark Lash" }, { name: "Rotting Claws" }], boss: true });
+  assert.ok(spellsOf(beside).includes("Spark Lash"), `named beside its sheet: ${spellsOf(beside)}`);
+  // And an opponent spends its pools as the share of them it is: it has only this fight to spend
+  // them in (laptop playtest 2026-10-25: a druid with four of its smallest pool never spent one).
+  const lasher = who(beside.encounter, "caster");
+  const onTurn = { ...beside.encounter, turn: beside.encounter.order.indexOf("caster") };
+  const lash = priced(spellbook, onTurn, lasher).find((way) => way.option.label === "Spark Lash");
+  assert.ok(lash, `Spark Lash is on its menu: ${priced(spellbook, onTurn, lasher).map((way) => way.option.label)}`);
+  assert.equal(lash.price, (1 / 4) * (1 + 0.5 / 4), "one of four, the fewer left the dearer");
 
   // Temperament and competence tilt the draw, over many fights.
   /** How often each kind of first-rung spell is filled in over sixty fights, for one temperament. */

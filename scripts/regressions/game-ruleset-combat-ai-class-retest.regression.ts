@@ -46,7 +46,7 @@ const dataDir = mkdtempSync(join(tmpdir(), "marinara-ai-class-retest-"));
 process.env.DATA_DIR = dataDir;
 process.env.FILE_STORAGE_DIR = join(dataDir, "storage");
 const { createCombatDirector } = await import("../../packages/server/src/services/game/combat-director.service.js");
-const { commandRulesetCombatDirector, pickRulesetChoice, rankRulesetChoices } =
+const { commandRulesetCombatDirector, pickRulesetChoice, rankRulesetChoices, rulesetEffectWorth } =
   await import("../../packages/server/src/services/game/ruleset-combat-director.service.js");
 
 try {
@@ -133,6 +133,7 @@ try {
     { id: "tame", label: "Tame" },
     { id: "sphered", label: "Sphered" },
     { id: "beast_shaped", label: "Beast shape" },
+    { id: "laughing", label: "Laughing" },
   );
   doc.combat.conditions.push(
     {
@@ -158,6 +159,7 @@ try {
     { condition: "sphered", effects: [], sealed: {} },
     // Wild Shape's: a form taken, turned back from as a bonus action.
     { condition: "beast_shaped", effects: [], shape: { revert: "bonus" } },
+    { condition: "laughing", effects: [] },
   );
   const parsed = parseRulesetDefinition(doc);
   assert.ok(parsed.ok, parsed.ok ? "" : parsed.issues.join("; "));
@@ -812,6 +814,35 @@ try {
       pickRulesetChoice(definition, scene.state, scene.encounter, "rowan")?.option.id,
       RULESET_SHAPE_REVERT_ID,
     );
+  }
+
+  // ── What ends with another put on with it lasts as that one does: Hideous Laughter's incapacitated,
+  //    as long as its laughing (laptop 2026-10-25: a Counterspell let it go at its own caster) ──
+  {
+    const scene = fight([
+      { id: "vyre", name: "vyre", side: "party", block: block([poke]), at: { x: 2, y: 5 } },
+      { id: "orc", name: "orc", side: "enemy", block: block([smash]), at: { x: 6, y: 5 } },
+    ]);
+    const vyre = rulesetCombatant(scene.encounter, "vyre")!;
+    const orc = rulesetCombatant(scene.encounter, "orc")!;
+    const spell = (applies: unknown[]) =>
+      ({
+        id: "x",
+        label: "x",
+        kind: "debuff",
+        budget: "action",
+        targets: { side: "enemy", count: 1 },
+        applies,
+      }) as unknown as RulesetCombatAction;
+    const laughter = spell([
+      { condition: "laughing", duration: "until-save" },
+      { condition: "incapacitated", duration: "instant", endsWith: "laughing" },
+    ]);
+    const held = spell([{ condition: "incapacitated", duration: "until-save" }]);
+    const worth = (action: RulesetCombatAction) =>
+      rulesetEffectWorth(definition, definition.combat!, scene.encounter, vyre, action, orc) ?? 0;
+    assert.ok(worth(laughter) > 0, "incapacitated for as long as the laughing is worth something");
+    assert.ok(Math.abs(worth(laughter) - worth(held)) < 1e-9, "as much as the same held until a save");
   }
 
   console.info(

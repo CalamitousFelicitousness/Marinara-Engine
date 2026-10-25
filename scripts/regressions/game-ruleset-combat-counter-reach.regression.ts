@@ -203,6 +203,20 @@ try {
     assert.deepEqual(cast.unanswered, [{ actorId: "corwin", label: "Counter", because: "cost" }]);
     const asked = bolt(fight(definition));
     assert.equal(asked.unanswered, undefined, "one who can answer is asked, and nothing is said");
+    // One that does not have it ready is not said to have failed to pay for it (laptop 2026-10-25).
+    const entries = spells();
+    const counter = entries.find((entry) => entry.id === "counter")!;
+    (counter.mechanics as Record<string, unknown>).usableWhen = { value: { const: 0 }, atLeast: 1 };
+    const unready = fight(parsedOrThrow(fiveE(), "the 5e example"), entries);
+    const mageBolt = rulesetCombatOptions(definition, unready, "mage").find((entry) => entry.label === "Bolt")!;
+    const silent = applyRulesetCombatChoice(
+      definition,
+      unready,
+      { actorId: "mage", optionId: mageBolt.id, targetIds: ["corwin"] },
+      () => 10,
+    );
+    assert.equal(silent.state.window, undefined, "nobody is asked");
+    assert.equal(silent.unanswered, undefined, "and nothing is said of a reaction not ready");
   }
 
   // ── Levels ──

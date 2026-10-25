@@ -4365,7 +4365,7 @@ export function rulesetEffectWorth(
     // Ended by its holder's next attack (a Potion of Invisibility): one turn of it, whatever it says
     // (cloud class re-test round 2: drunk on the first turn beside its foes).
     const once = !foe && !!applied.endsWhenHolder?.attacks;
-    worth += Math.min(1.2, each) * rulesetDurationWorth(once ? { rounds: 1 } : applied.duration);
+    worth += Math.min(1.2, each) * rulesetDurationWorth(once ? { rounds: 1 } : rulesetLasting(action, applied));
   }
   if (worth === undefined) return undefined;
   const lands = action.save && foe ? rulesetFailChance(definition, combat, target, action.save) : 1;
@@ -4388,6 +4388,18 @@ function rulesetPendingBlow(
   const trigger = encounter.window?.trigger;
   if (!action?.addsToBlow || trigger?.kind !== "hit" || trigger.sourceId !== actor.id) return 0;
   return rulesetSafeAverage(actor.actions.find((one) => one.id === trigger.optionId)?.damage);
+}
+
+/** How long what an action puts on lasts, for weighing it: one that ends with another put on with it
+ *  (1.202) and says nothing of its own lasts as that one does, as Hideous Laughter's incapacitated
+ *  lasts its laughing (laptop 2026-10-25: a Counterspell let it go at its own caster as worth nothing). */
+function rulesetLasting(action: RulesetCombatAction, applied: RulesetCombatApplies): RulesetCombatApplies["duration"] {
+  if (!applied.endsWith || (applied.duration !== "instant" && applied.duration !== "this-action"))
+    return applied.duration;
+  const linked = action.applies?.find((one) => one !== applied && one.condition === applied.endsWith);
+  return linked && linked.duration !== "instant" && linked.duration !== "this-action"
+    ? linked.duration
+    : applied.duration;
 }
 
 /** How many of a target's turns a condition put on it takes, for what it keeps them from doing. */
@@ -4450,7 +4462,8 @@ function rulesetLingeringHarm(
     if (!harm || (harm.at !== "turn-start" && harm.at !== "turn-end")) continue;
     const dice = harm.dice ? parseRulesetCombatDice(harm.dice) : null;
     const amount = (dice ? rulesetSafeAverage(dice) : 0) + (harm.flat ?? 0);
-    const turns = applied.checkEnds || applied.saveEnds ? 1.5 : Math.max(1, rulesetTurnsTaken(applied.duration));
+    const turns =
+      applied.checkEnds || applied.saveEnds ? 1.5 : Math.max(1, rulesetTurnsTaken(rulesetLasting(action, applied)));
     harmed += amount * turns;
   }
   if (harmed <= 0) return 0;
@@ -4501,7 +4514,7 @@ function rulesetDeniedHarm(
     const kept = rule?.behavior?.only ? (rule.behavior.onlyWhenStuck === "any" ? 0.6 : 0.8) : 0;
     const share = effects.includes("cannot-act") ? 1 : Math.max(effects.includes("cannot-harm") ? 0.8 : 0, kept);
     if (share <= 0) continue;
-    const taken = share * rulesetTurnsTaken(applied.duration) * (rulesetBreaksOnHarm(rule) ? 0.6 : 1);
+    const taken = share * rulesetTurnsTaken(rulesetLasting(action, applied)) * (rulesetBreaksOnHarm(rule) ? 0.6 : 1);
     turns = Math.max(turns, taken);
   }
   if (turns <= 0) return 0;
@@ -4566,7 +4579,7 @@ function rulesetFollowUpWorth(
     if (!critical && !easier) continue;
     crits ||= critical;
     advantage ||= easier;
-    turns = Math.max(turns, rulesetTurnsTaken(applied.duration) * (rulesetBreaksOnHarm(rule) ? 0.3 : 1));
+    turns = Math.max(turns, rulesetTurnsTaken(rulesetLasting(action, applied)) * (rulesetBreaksOnHarm(rule) ? 0.3 : 1));
   }
   if (turns <= 0) return 0;
   const near = (one: RulesetCombatant) =>
@@ -4710,7 +4723,7 @@ function rulesetBoostWorth(
     }
     // Ended by their next attack (a Potion of Invisibility), it lasts their one blow and the foes'
     // turns before it, whatever it says (cloud class re-test round 2: drunk on the first turn).
-    const turns = once ? 1 : rulesetTurnsHeld(applied.duration);
+    const turns = once ? 1 : rulesetTurnsHeld(rulesetLasting(action, applied));
     // Kept off only once a foe can get at them: a turn of it goes by first with none in a walk.
     const kept = Math.max(0, turns - (near ? 0 : 1));
     worth += (turns * adds) / Math.max(1, foeMean) + (kept * keeps) / Math.max(1, ownMean);
@@ -6870,7 +6883,7 @@ function weighRulesetPrepare(
     if (!action?.applies?.length) continue;
     if (action.concentration && actor.concentrating) continue;
     // Only what lasts into the fight: a moment's help is spent before anybody arrives.
-    if (!action.applies.some((applied) => rulesetDurationWorth(applied.duration) >= 0.85)) continue;
+    if (!action.applies.some((applied) => rulesetDurationWorth(rulesetLasting(action, applied)) >= 0.85)) continue;
     candidate.focus = (candidate.focus ?? 0) + RULESET_PREPARE_FOCUS;
   }
 }

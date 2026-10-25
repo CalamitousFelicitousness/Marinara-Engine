@@ -6768,7 +6768,9 @@ export function rulesetReactionsAt(
     if (action.redirects && rulesetRedirectTargets(state, actor, sourceId, cause.attackOption).length === 0)
       return false;
     if (optionFrom(definition, combat, state, actor, action, true) === null) {
-      missed?.(action, "cost");
+      // Not said for one its holder does not have ready (laptop 2026-10-25: "held Counterspell, but
+      // could not pay for it", again and again, for one who had not prepared it).
+      if (missed && rulesetActionAvailable(actor, action, state, definition)) missed(action, "cost");
       return false;
     }
     // A bystander's distance is to the creature it protects. An explicit range still limits the

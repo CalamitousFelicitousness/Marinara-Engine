@@ -130,6 +130,8 @@ export interface AssemblerInput {
   chatChoices: Record<string, string | string[]>;
   /** SillyTavern-compatible local variables persisted in this chat. */
   localVariables?: Record<string, string>;
+  /** Reuse the injected instructions in derived character profiles without rerunning their macros. */
+  onCharacterPostHistoryResolved?: (characterId: string, content: string) => void;
   /** Chat context */
   chatId: string;
   characterIds: string[];
@@ -775,6 +777,7 @@ export async function assemblePrompt(input: AssemblerInput): Promise<AssemblerOu
     input.characterIds,
     macroCtx,
     wrapFormat,
+    input.onCharacterPostHistoryResolved,
   );
   if (characterAdvancedPromptEntries.length > 0) {
     allDepthEntries.push(characterAdvancedPromptEntries);

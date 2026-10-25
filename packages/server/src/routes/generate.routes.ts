@@ -3263,6 +3263,10 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         const scopedLorebookScansByCharacterId = new Map<string, Promise<LorebookScanResult>>();
         let presetHandledLorebooks = false;
         let characterAdvancedPromptsInjected = false;
+        const resolvedCharacterPostHistory = new Map<string, string>();
+        const rememberCharacterPostHistory = (characterId: string, content: string) => {
+          resolvedCharacterPostHistory.set(characterId, content);
+        };
         const presetHasLorebookMarker = (sections: Array<{ isMarker: string; markerConfig: string | null }>) =>
           sections.some((section) => {
             if (section.isMarker !== "true" || !section.markerConfig) return false;
@@ -3782,6 +3786,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             characterAdvancedPromptIds,
             promptMacroContext,
             wrapFormat,
+            rememberCharacterPostHistory,
           );
           if (entries.length > 0) {
             finalMessages = injectAtDepth(finalMessages, entries);
@@ -3911,6 +3916,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             choiceBlocks: choiceBlocks as any,
             chatChoices,
             localVariables: chatMacroVariables,
+            onCharacterPostHistoryResolved: rememberCharacterPostHistory,
             chatId: input.chatId,
             characterIds: promptCharacterIds,
             lorebookCharacterIds: withIdentityLorebookScope(promptCharacterIds),
@@ -4939,9 +4945,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           character.appearance = resolveCharacterPromptText(character.appearance);
           character.mesExample = resolveCharacterPromptText(character.mesExample);
           character.firstMes = resolveCharacterPromptText(character.firstMes);
-          character.postHistoryInstructions = resolveCharacterPromptText(character.postHistoryInstructions);
         }
-        const characterMacroProfilesById = buildCharacterMacroProfilesById(charInfo);
         const isAvailableGroupResponder = (characterId: string): boolean =>
           chatMode !== "conversation" || conversationRespondingCharacterIds?.has(characterId) === true;
         const availableGroupCharacters = charInfo.filter((character) => isAvailableGroupResponder(character.id));
@@ -5882,6 +5886,19 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           });
           logger.debug("[generate] Injected continuation prompt for assistant message %s", input.continueMessageId);
         }
+
+        // Game injects these later than the other modes. Build derived profiles only
+        // after that injection, reusing its result rather than executing the card again.
+        for (const character of charInfo) {
+          const profile = historyMacroProfilesById.get(character.id);
+          character.postHistoryInstructions =
+            resolvedCharacterPostHistory.get(character.id) ??
+            resolveMacrosForPreview(
+              character.postHistoryInstructions,
+              profile ? scopePromptMacroContextToCharacter(promptMacroContext, profile) : promptMacroContext,
+            );
+        }
+        const characterMacroProfilesById = buildCharacterMacroProfilesById(charInfo);
 
         // ── Group chat processing ──
         // Preserve group-chat behavior when the user temporarily disables all but

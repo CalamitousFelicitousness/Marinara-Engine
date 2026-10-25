@@ -9,7 +9,11 @@
  */
 import assert from "node:assert/strict";
 
-import { draftCostTags, keepDraftCosts } from "../../packages/server/src/services/game/dice-rewrite-costs.js";
+import {
+  draftCostTags,
+  keepDraftCosts,
+  rewriteKeptCommandsNote,
+} from "../../packages/server/src/services/game/dice-rewrite-costs.js";
 
 const spendShape = `[sheet: who="Wren Mosswood" op="spend" pool="Wild Shape" amount="1"]`;
 const spendSong = `[sheet: who="Lyra Quill" op="spend" pool="Bardic Inspiration" amount="1"]`;
@@ -54,6 +58,31 @@ assert.equal(keepDraftCosts(party, unnamed, "Mira"), `${party}\n${unnamed}`);
 const partyNamed = `[sheet: sheet="party" who="Mira" op="spend" pool="Ki" amount="1"]`;
 assert.equal(keepDraftCosts(party, partyNamed, "Mira"), `${party}\n${partyNamed}`);
 assert.equal(keepDraftCosts(party, party, "Mira"), party, "the same party command is kept once");
+
+// What the draft traded is kept too: a buy the rewrite dropped is put back, one it repeats is kept
+// once, and an item found is the rewrite's to say (laptop 2026-10-25: a rewrite after a roll dropped
+// a whole shopping trip and the player never saw the coin refusal).
+const buyRope = `[inventory: action="buy" item="Rope, hempen (50 feet)" seller="general store" who="Rook Hallow"]`;
+const buyLantern = `[inventory: action="buy" item="Lantern, hooded" who="Rook Hallow"]`;
+const found = `[inventory: action="add" item="Silver key" who="Rook Hallow"]`;
+const shopping = [buyRope, buyLantern, found, "Rook haggles.", `[skill_check: skill="Persuasion" dc="12"]`].join("\n");
+assert.deepEqual(draftCostTags(shopping), [buyRope, buyLantern], "trades only, not what was found");
+const shopped = `[inventory: who="rook hallow" item="lantern, hooded" action="BUY"]\nThe shopkeeper relents.`;
+assert.equal(keepDraftCosts(shopping, shopped, "Mira"), `${buyRope}\n${shopped}`);
+// In a game with no ruleset the trades are kept and a sheet command is left alone.
+assert.equal(keepDraftCosts(`${cast}\n${buyLantern}`, "", null, false), buyLantern);
+
+// A trade the rewrite re-emits with another count is the rewrite's, not a second trade.
+const buyTwo = `[inventory: action="buy" item="Lantern, hooded" count="2" who="Rook Hallow"]`;
+assert.equal(keepDraftCosts(buyLantern, buyTwo, "Mira"), buyTwo, "a re-emitted trade runs once");
+
+// The rewrite prompt says the trades are kept in every game, and the sheet costs only with a ruleset.
+for (const sheets of [true, false]) {
+  const note = rewriteKeptCommandsNote(sheets);
+  assert.match(note, /trade and gear inventory commands of your draft .* are kept as written/);
+  assert.match(note, /Apart from these kept commands/);
+  assert.equal(/sheet spend and use commands/.test(note), sheets);
+}
 
 // A draft with no costs leaves the rewrite exactly as it is.
 assert.equal(keepDraftCosts("No tags at all.", rewrite), rewrite);

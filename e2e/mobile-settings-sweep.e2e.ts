@@ -122,7 +122,7 @@ for (const theme of ["dark", "light"] as const) {
       }, gameId);
       await expect(page.getByRole("textbox", { name: "What do you do?", exact: true })).toBeVisible();
       const gameSettingsButton = page.locator("[data-chat-settings-button]");
-      if (await gameSettingsButton.getAttribute("aria-expanded") !== "true") await gameSettingsButton.click();
+      if ((await gameSettingsButton.getAttribute("aria-expanded")) !== "true") await gameSettingsButton.click();
       const gameSettings = page.locator('[data-window="chat-settings"]');
       await expect(
         gameSettings.locator('[data-chat-settings-section="game-party"]').getByRole("group", { name: "Card Theming" }),

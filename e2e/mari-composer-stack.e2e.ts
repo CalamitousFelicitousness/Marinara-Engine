@@ -148,11 +148,19 @@ test("landscape: empty welcome quick options scroll clear of the composer", asyn
     const pane = page.locator('[data-component="GlobalOmnibar.Mari"]:not([aria-hidden="true"])');
     await expect(pane.locator(".mari-omnibar-empty-welcome")).toBeVisible();
     if (testInfo.project.name.includes("mobile")) {
-      await expect.poll(() => pane.evaluate((element) => {
-        const transcript = element.querySelector('[data-component="HomeProfessorMariChat.Transcript"]')!.getBoundingClientRect();
-        const dock = element.querySelector(".mari-workspace-composer-dock")!.getBoundingClientRect();
-        return transcript.bottom - dock.top;
-      }), { message: "the touch scrollport itself is clear of the composer" }).toBeLessThanOrEqual(1);
+      await expect
+        .poll(
+          () =>
+            pane.evaluate((element) => {
+              const transcript = element
+                .querySelector('[data-component="HomeProfessorMariChat.Transcript"]')!
+                .getBoundingClientRect();
+              const dock = element.querySelector(".mari-workspace-composer-dock")!.getBoundingClientRect();
+              return transcript.bottom - dock.top;
+            }),
+          { message: "the touch scrollport itself is clear of the composer" },
+        )
+        .toBeLessThanOrEqual(1);
     }
     await expect.poll(() => contentUnderStack(page), { message: "landscape quick options" }).toBeLessThanOrEqual(1);
     const option = pane.locator(".mari-suggestion-chips button").last();

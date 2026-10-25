@@ -234,6 +234,11 @@ try {
     const lone = rulesetStandingAtStart(withEntangle, alone, [{ casterId: "mage", entry: "Entangle", at: "self" }]);
     const own = (who(lone.state, "mage").zones ?? []).find((zone) => zone.label === "Entangle");
     assert.deepEqual(own?.at, { x: 14, y: 7 }, "it holds the caster too, so it still goes over the foes");
+    // Put down between them, where it would catch nobody, it goes onto the foes (laptop 2026-10-25:
+    // a story Entangle a cell short of the wolves).
+    const between = rulesetStandingAtStart(withEntangle, fresh, [{ casterId: "mage", entry: "Entangle" }]);
+    const short = (who(between.state, "mage").zones ?? []).find((zone) => zone.label === "Entangle");
+    assert.deepEqual(short?.at, { x: 14, y: 7 }, JSON.stringify(short));
   }
 
   // ── The install gate ──

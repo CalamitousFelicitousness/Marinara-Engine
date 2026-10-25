@@ -881,6 +881,38 @@ try {
     assert.notEqual(picked?.option.id, area.id, `no ${area.name} over its guard: ${JSON.stringify(picked?.choice)}`);
   }
 
+  // ── A held hold over two is not let go to hold one (laptop 2026-10-25: a Hypnotic Pattern on
+  // two wolves dropped, and a new slot spent, to cast it again on the duelist alone) ──
+  {
+    const pattern = {
+      id: "pattern",
+      name: "Pattern",
+      budget: "action",
+      range: { normal: 120 },
+      area: { shape: "burst", size: 10 },
+      save: { save: "wis_save", difficulty: 16, onSuccess: "negates" },
+      applies: [{ condition: "paralyzed", duration: { rounds: 10 } }],
+      concentration: true,
+    };
+    const single = { ...hold, id: "single", name: "Single", concentration: true };
+    const { encounter, state } = fight({
+      mage: { side: "enemy", block: block([pattern, single, flick]), at: { x: 2, y: 4 } },
+      wolf1: { side: "party", block: block([smash]), at: { x: 10, y: 1 } },
+      wolf2: { side: "party", block: block([smash]), at: { x: 11, y: 1 } },
+      duelist: { side: "party", block: block([smash]), at: { x: 9, y: 6 } },
+    });
+    const mage = rulesetCombatant(encounter, "mage")!;
+    const patternId = mage.actions.find((one) => one.label === "Pattern")!.id;
+    mage.concentrating = { actionId: patternId, label: "Pattern", targets: ["wolf1", "wolf2"] } as never;
+    for (const id of ["wolf1", "wolf2"])
+      rulesetCombatant(encounter, id)!.tracked.push({ condition: "paralyzed", rounds: 10, sourceId: "mage" } as never);
+    const picked = pickRulesetChoice(definition, state, encounter, "mage");
+    assert.ok(
+      picked?.option.label !== "Pattern" && picked?.option.label !== "Single",
+      `the two held are kept: ${picked?.option.label} ${JSON.stringify(picked?.choice)}`,
+    );
+  }
+
   console.log(
     "Spell worth: a hold goes on the most dangerous opponent and never on one that cannot be held; healing is worth what is missing; oil waits for a fire; a Counterspell is worth what it stops.",
   );

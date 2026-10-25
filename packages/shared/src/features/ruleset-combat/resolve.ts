@@ -12148,10 +12148,11 @@ function standingCell(
     .sort((a, b) => rulesetGap(caster, a) - rulesetGap(caster, b));
   const foe = foes[0] ? rulesetPositionOf(foes[0]) : undefined;
   const between = foe ? { x: Math.round((own.x + foe.x) / 2), y: Math.round((own.y + foe.y) / 2) } : own;
-  if (at !== "self") return between;
+  const base = at === "self" ? own : between;
   // An area put down where they stand that works on whoever is in it, not only their foes (laptop
   // 2026-10-25: an Entangle set up "at self" held the whole party and nobody else): over their foes
-  // instead, wherever it catches the fewest of their own side and then the most foes.
+  // instead, wherever it catches the fewest of their own side and then the most foes. One put down
+  // between them that catches no foe is moved onto them too (laptop: a cell short of the wolves).
   if (
     !action?.area ||
     action.zone?.anchor === "caster" ||
@@ -12169,7 +12170,7 @@ function standingCell(
     action.targets.side === "ally" ||
     action.targets.side === "self"
   )
-    return own;
+    return base;
   const caught = (cell: RulesetCombatCell) => {
     const cells = new Set(rulesetAimedCells(state, caster.id, action.id, cell).map((one) => `${one.x},${one.y}`));
     const inside = state.combatants.filter(
@@ -12183,14 +12184,22 @@ function standingCell(
       foes: inside.filter((one) => one.side !== caster.side).length,
     };
   };
-  const here = caught(own);
-  if (here.own === 0) return own;
-  const tried = [...foes.map((one) => rulesetPositionOf(one)!), ...(between === own ? [] : [between])].map((cell) => ({
+  const here = caught(base);
+  if (here.own === 0 && (at === "self" || here.foes > 0 || foes.length === 0)) return base;
+  // Each of them, nearest first, then their middle, then the cell between.
+  const placed = foes.map((one) => rulesetPositionOf(one)!);
+  const middle = placed.length
+    ? {
+        x: Math.round(placed.reduce((sum, cell) => sum + cell.x, 0) / placed.length),
+        y: Math.round(placed.reduce((sum, cell) => sum + cell.y, 0) / placed.length),
+      }
+    : undefined;
+  const tried = [...placed, ...(middle ? [middle] : []), ...(between === base ? [] : [between])].map((cell) => ({
     cell,
     ...caught(cell),
   }));
   const best = tried.sort((a, b) => a.own - b.own || b.foes - a.foes)[0];
-  return best && (best.own < here.own || (best.own === here.own && best.foes > here.foes)) ? best.cell : own;
+  return best && (best.own < here.own || (best.own === here.own && best.foes > here.foes)) ? best.cell : base;
 }
 
 /**

@@ -6828,11 +6828,17 @@ function rulesetHeldWorth(
   if (on.length === 0) return 0;
   // Read as though not yet put on them, so what they hold counts.
   const puts = new Set((action.applies ?? []).map((applied) => applied.condition));
-  const worth = on.reduce((sum, one) => {
-    const bare: RulesetCombatant = { ...one, tracked: one.tracked.filter((entry) => !puts.has(entry.condition)) };
-    return sum + (rulesetEffectWorth(definition, combat, encounter, actor, action, bare) ?? 0.4);
-  }, 0);
-  return Math.min(0.4, worth);
+  const worthOn = (list: RulesetCombatant[]) =>
+    list.reduce((sum, one) => {
+      const bare: RulesetCombatant = { ...one, tracked: one.tracked.filter((entry) => !puts.has(entry.condition)) };
+      return sum + (rulesetEffectWorth(definition, combat, encounter, actor, action, bare) ?? 0.4);
+    }, 0);
+  // Help on its own side is worth little to keep (Shield of Faith is no reason to keep Spirit
+  // Guardians in the book); foes it holds are worth all they would do freed (laptop 2026-10-25: a
+  // Hypnotic Pattern on two wolves let go to hold the duelist alone).
+  const foes = on.filter((one) => one.side !== actor.side);
+  const friends = on.filter((one) => one.side === actor.side);
+  return worthOn(foes) + (friends.length > 0 ? Math.min(0.4, worthOn(friends)) : 0);
 }
 
 /** What getting a friend back on their feet is worth over anything else it could do. */

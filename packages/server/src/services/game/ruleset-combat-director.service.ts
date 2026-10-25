@@ -308,6 +308,13 @@ export interface RulesetReturningFoe {
    *  back whole): it comes back still missing it. */
   taken?: number; /** The coins it had on it, which it takes along when it gets away. */
   coins?: Array<{ ref: string; name: string; count: number }>;
+  /** What its sheet's pools other than health were at as the fight ended (2026-10-25): spell slots
+   *  spent stay spent until it rests, as its class's do. */
+  pools?: Record<string, unknown>;
+  /** The slots a block caster had left, by level (2026-10-25), until a long rest gives them back. */
+  slotsLeft?: Record<string, number>;
+  /** The game clock in minutes as it got away (2026-10-25), against which its rests are counted. */
+  clock?: number;
 }
 
 /** The key a returning opponent is kept and found under: its name, any case and spacing. */
@@ -338,15 +345,94 @@ export function rulesetFightReturningFoes(
       const health = definition.combat ? rulesetCombatHealth(definition, definition.combat, one) : undefined;
       const taken = health ? Math.max(0, Math.round(health.max - health.value)) : 0;
       const coins = fight.purses?.[one.id];
+      const healthPool = definition.combat && "pool" in definition.combat.health ? definition.combat.health.pool : null;
+      const livePools = (one.sheet?.live as { pools?: Record<string, unknown> } | undefined)?.pools;
+      const pools = livePools
+        ? Object.fromEntries(Object.entries(livePools).filter(([key]) => key !== healthPool))
+        : undefined;
+      const slotsLeft = one.sheet
+        ? undefined
+        : Object.fromEntries(
+            Object.entries(one.uses ?? {}).flatMap(([key, left]) =>
+              key.startsWith("slot:") && typeof left === "number" ? [[key.slice(5), left] as const] : [],
+            ),
+          );
       fled.push({
         ...made,
         ...(!one.sheet && one.health ? { health: one.health.max } : {}),
         ...(taken > 0 ? { taken } : {}),
         ...(coins?.length ? { coins } : {}),
+        ...(pools && Object.keys(pools).length ? { pools } : {}),
+        ...(slotsLeft && Object.keys(slotsLeft).length ? { slotsLeft } : {}),
       });
     } else if (one.down || (one.defeated && !one.away)) beaten.push(made.name);
   }
   return { fled, beaten };
+}
+
+/** Whether a rest is a short one, by its id or name (2026-10-25); any other is taken for a night's. */
+function rulesetShortRest(rest: { id: string; label?: string }): boolean {
+  return /\bshort\b/.test(`${rest.id} ${rest.label ?? ""}`.toLowerCase());
+}
+
+/** The rests that passed between two readings of the game clock (2026-10-25): a short one once an
+ *  hour has, any other once 8 hours have, the short ones first. */
+export function rulesetRestsBetween(definition: RulesetDefinition, from?: number, to?: number): string[] {
+  if (from === undefined || to === undefined || !(to > from)) return [];
+  const elapsed = to - from;
+  const rests = definition.rests ?? [];
+  return [
+    ...rests.filter((rest) => rulesetShortRest(rest) && elapsed >= 60),
+    ...rests.filter((rest) => !rulesetShortRest(rest) && elapsed >= 480),
+  ].map((rest) => rest.id);
+}
+
+/** An opponent that comes back as it left (2026-10-25): still missing the health it got away without,
+ *  never down for it, with the spell slots and other pools it spent still spent, until the rests that
+ *  passed since give them back as its class's would. A block caster's slots, and its health, come back
+ *  only with a night's rest. */
+export function rulesetBringBackFoe(
+  definition: RulesetDefinition,
+  one: RulesetCombatant,
+  back: RulesetReturningFoe,
+  clock?: number,
+): void {
+  const combat = definition.combat;
+  if (!one.sheet && one.health && back.health) one.health = { value: back.health, max: back.health, temp: 0 };
+  const rests = rulesetRestsBetween(definition, back.clock, clock);
+  const longRest = rests.some((id) => {
+    const rest = definition.rests?.find((r) => r.id === id);
+    return !!rest && !rulesetShortRest(rest);
+  });
+  if (one.sheet) {
+    if (back.pools && Object.keys(back.pools).length) {
+      const live = (one.sheet.live ?? {}) as { pools?: Record<string, unknown> };
+      one.sheet.live = { ...live, pools: { ...(live.pools ?? {}), ...back.pools } } as never;
+    }
+  } else if (back.slotsLeft && !longRest) {
+    for (const [level, left] of Object.entries(back.slotsLeft)) {
+      if (one.uses[`slot:${level}`] !== undefined)
+        one.uses[`slot:${level}`] = Math.min(one.uses[`slot:${level}`]!, left);
+    }
+  }
+  if (combat && back.taken && !(longRest && !one.sheet)) {
+    const health = rulesetCombatHealth(definition, combat, one);
+    const taken = Math.min(back.taken, Math.max(0, health.max - 1));
+    if (taken > 0 && !one.sheet && one.health) one.health = { ...one.health, value: one.health.max - taken };
+    else if (taken > 0 && one.sheet && "pool" in combat.health) {
+      const hurt = applyRulesetSheetOp(definition, one.sheet.build, one.sheet.live as never, {
+        op: "damage",
+        pool: combat.health.pool,
+        amount: taken,
+      });
+      if (hurt.ok) one.sheet.live = hurt.live;
+    }
+  }
+  if (one.sheet)
+    for (const rest of rests) {
+      const rested = applyRulesetSheetOp(definition, one.sheet.build, one.sheet.live as never, { op: "rest", rest });
+      if (rested.ok) one.sheet.live = rested.live;
+    }
 }
 
 export type RulesetCommandResult = { ok: true } | { ok: false; error: string; code: string };
@@ -6343,6 +6429,9 @@ function rulesetPickReasons(
       return { why: "takesTurn", targetId };
     if (why === "damage" && (candidate.action.boosts ?? 0) * 2 >= (candidate.damage ?? 0))
       return { why: "support", ...(targetId ? { targetId } : {}) };
+    // Harm it does by turning itself into something (a druid's Wild Shape) is no blow on itself
+    // (laptop playtest 2026-10-25: "solid damage to Blighted Druid").
+    if (why === "damage" && actor && targetId === actor.id) return { why: "support", targetId };
     if (why === "damage") {
       const damage = candidate.damage ?? 0;
       return {
@@ -6366,8 +6455,10 @@ function rulesetPickReasons(
   reasons.splice(0, reasons.length, ...once);
   if (candidate.action.spareYields) reasons.unshift({ why: "spareYields" });
   if (walked) reasons.push({ why: "walked", cells: walked });
+  // Surprised, it could only end its turn: not a choice (laptop playtest 2026-10-25: "nothing it could
+  // do was worth the price").
   if (reasons.length === 0 && candidate.action.option.kind === "end-turn")
-    reasons.push({ why: candidate.action.spares ? "sparing" : "nothingWorth" });
+    reasons.push({ why: actor?.surprised ? "cannotAct" : candidate.action.spares ? "sparing" : "nothingWorth" });
   return reasons;
 }
 

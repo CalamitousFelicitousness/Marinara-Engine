@@ -603,8 +603,8 @@ export const RULESET_INVENTED_CASTER_MOST = 6;
 /**
  * An invented caster held to what it can cast: an entry its fresh sheet could never pay for (a 5th
  * level spell on a sheet with no 5th level slots) goes, and of those paid for out of a pool family
- * (spell slots, as against a cantrip or a ki feature) it keeps the first `most`, in the order they
- * were written. Rows not out of a catalog are untouched. What went is said.
+ * (spell slots, as against a cantrip or a ki feature) it keeps `most`, spread over its pools from the
+ * biggest down. Rows not out of a catalog are untouched. What went is said.
  */
 export function capRulesetCasterSheet(
   definition: RulesetDefinition,
@@ -629,7 +629,8 @@ export function capRulesetCasterSheet(
   };
   const uncastable: string[] = [];
   const over: string[] = [];
-  let kept = 0;
+  // Each row paid out of a family, with how far up the family its own pool is (a spell's level).
+  const paidRows = new Map<Record<string, unknown>, { label: string; rung: number; order: number }>();
   for (const [listId, rows] of Object.entries(sheet.lists)) {
     sheet.lists[listId] = rows.filter((row) => {
       const mark = row[RULESET_CATALOG_ROW_KEY];
@@ -657,13 +658,32 @@ export function capRulesetCasterSheet(
         uncastable.push(entry.label);
         return false;
       }
-      if (kept >= most) {
-        over.push(entry.label);
-        return false;
-      }
-      kept += 1;
+      paidRows.set(row, { label: entry.label, rung: Math.max(0, family.indexOf(own!)), order: paidRows.size });
       return true;
     });
+  }
+  // Which it keeps, spread over its pools from the biggest down, one of each in turn, as written
+  // within each (cloud re-test 2026-10-25: a wizard 5 kept its six 1st and 2nd level spells, and
+  // Fireball, Counterspell and Haste went).
+  if (paidRows.size > most) {
+    const byRung = new Map<number, Array<Record<string, unknown>>>();
+    for (const [row, one] of [...paidRows].sort((a, b) => a[1].order - b[1].order))
+      byRung.set(one.rung, [...(byRung.get(one.rung) ?? []), row]);
+    const rungs = [...byRung.keys()].sort((a, b) => b - a);
+    const keep = new Set<Record<string, unknown>>();
+    for (let turn = 0; keep.size < most; turn += 1)
+      for (const rung of rungs) {
+        const row = byRung.get(rung)![turn];
+        if (row && keep.size < most) keep.add(row);
+      }
+    for (const [listId, rows] of Object.entries(sheet.lists))
+      sheet.lists[listId] = rows.filter((row) => !paidRows.has(row) || keep.has(row));
+    over.push(
+      ...[...paidRows]
+        .filter(([row]) => !keep.has(row))
+        .sort((a, b) => a[1].order - b[1].order)
+        .map(([, one]) => one.label),
+    );
   }
   const adjusted: string[] = [];
   if (uncastable.length > 0)

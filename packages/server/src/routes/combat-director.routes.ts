@@ -27,6 +27,7 @@ import {
   loadGameInventoryItemBook,
 } from "../services/game/game-inventory.service.js";
 import { resolveCombatWeather } from "../services/game/weather.service.js";
+import { gameClockMinutes } from "../services/game/time.service.js";
 import { addGameLoot, planGameVictoryLoot } from "../services/game/game-loot.service.js";
 import { rollDieSecurely } from "../services/game/dice-rng.js";
 import { rollGameFightItemGate } from "../services/game/game-item-use.service.js";
@@ -48,9 +49,7 @@ import {
   rulesetReadsItems,
   rulesetCatalogIdsForBuild,
   rulesetCellBlocked,
-  rulesetCombatHealth,
   rulesetSheetBuildsByName,
-  applyRulesetSheetOp,
   type Combatant,
   type DirectedCombatView,
   type DirectedCommand,
@@ -79,6 +78,7 @@ import {
   rulesetDirectorStage,
   rulesetFightLiveStates,
   rulesetFightReturningFoes,
+  rulesetBringBackFoe,
   rulesetReturningFoeKey,
   syncRulesetCombatants,
   RULESET_COMBAT_EVENT_LIMIT,
@@ -857,7 +857,10 @@ export async function combatDirectorRoutes(
                     : {}) as Record<string, RulesetReturningFoe>),
                 };
                 for (const name of beaten) delete kept[rulesetReturningFoeKey(name)];
-                for (const foe of fled) kept[rulesetReturningFoeKey(foe.name)] = foe;
+                // Stamped with the game clock, so the rests it takes before it comes back are counted.
+                const clock = gameClockMinutes(current.gameTime);
+                for (const foe of fled)
+                  kept[rulesetReturningFoeKey(foe.name)] = clock === undefined ? foe : { ...foe, clock };
                 return { gameReturningFoes: kept };
               },
               { metadataQueueHeld: true, touchUpdatedAt: false },
@@ -1220,26 +1223,13 @@ export async function combatDirectorRoutes(
                 }),
           });
           if (!built.ok) return reply.code(400).send({ error: built.error });
+          const clockNow = gameClockMinutes(meta.gameTime);
           backAs.forEach((back, index) => {
             if (!back) return;
             const one = built.fight.encounter.combatants.find((c) => c.id === input.enemies[index]!.id);
-            if (one && !one.sheet && one.health && back.health)
-              one.health = { value: back.health, max: back.health, temp: 0 };
-            // Still missing what it got away without, never down for it.
-            const combat = definition.combat;
-            if (one && back.taken && combat) {
-              const health = rulesetCombatHealth(definition, combat, one);
-              const taken = Math.min(back.taken, Math.max(0, health.max - 1));
-              if (taken > 0 && !one.sheet && one.health) one.health = { ...one.health, value: one.health.max - taken };
-              else if (taken > 0 && one.sheet && "pool" in combat.health) {
-                const hurt = applyRulesetSheetOp(definition, one.sheet.build, one.sheet.live as never, {
-                  op: "damage",
-                  pool: combat.health.pool,
-                  amount: taken,
-                });
-                if (hurt.ok) one.sheet.live = hurt.live;
-              }
-            }
+            // Still missing what it got away without, never down for it, and its spent slots still
+            // spent until it has rested (2026-10-25).
+            if (one) rulesetBringBackFoe(definition, one, back, clockNow);
             built.fight.adjustments.push(`${input.enemies[index]!.name} is the same one the party met before.`);
           });
           // The Engine's own party array follows the fight's: a sheet the setup left out joins it, a

@@ -1903,6 +1903,36 @@ const dataDir = mkdtempSync(join(tmpdir(), "marinara-creature-sheets-"));
   assert.deepEqual(two.adjusted, [
     '"Kindle Heart", "Binding Glare", "Hex Counter" went: an invented caster keeps 2 of what it pays for out of its pools.',
   ]);
+  // Spread over its slots from the biggest down, not the first ones written (cloud re-test 2026-10-25:
+  // a wizard 5 kept six 1st and 2nd level spells, and Fireball went).
+  const higher = started({
+    definition: spellbook,
+    cards: [card("Brenna", fighterBuild())],
+    party: [{ id: "brenna", name: "Brenna" }],
+    enemies: [
+      {
+        id: "mage",
+        name: "Ash Mage",
+        tier: "cr_2",
+        boss: true,
+        proposed: {
+          ...caster(many),
+          sheet: { ...caster(many).sheet, fields: { ...caster(many).sheet.fields, level: 5, slots_max_2: 2 } },
+        },
+      },
+    ],
+  }).rulesetFight!;
+  const spread = capRulesetCasterSheet(
+    spellbook,
+    who(higher.encounter, "mage").sheet!.build,
+    fightCatalogs(spellbook),
+    2,
+  );
+  assert.deepEqual(
+    spread.sheet.lists.spells!.map((row) => row.name),
+    ["Frost Mote", "Ember Lance", "Spark Lash"],
+    "its one 2nd level spell, then its first 1st level one",
+  );
   // A legendary one (a boss with Legendary Resistance) keeps all it can cast; uncastable still goes.
   const legend = started({
     definition: spellbook,

@@ -5231,6 +5231,9 @@ function GameSurfaceComponent({
     setPendingSegmentEffects([]);
     setPendingInventorySegmentUpdates([]);
     appliedSegmentsRef.current = new Set();
+    // A new turn's inventory is announced afresh: a segment told last turn would otherwise keep this
+    // turn's buys and refusals at the same segment silent (laptop playtest 2026-10-25).
+    appliedInventorySegmentsRef.current = new Set();
     // Cancel any pending segment persist timer to prevent it from overwriting our reset
     if (segmentPersistTimer.current) {
       clearTimeout(segmentPersistTimer.current);

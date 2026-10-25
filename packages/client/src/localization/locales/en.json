@@ -2749,6 +2749,7 @@
   "game.combat.ruleset.menu.yieldConfirmTouch": "Surrender to them? Tap again",
   "game.combat.ruleset.mode.plain": "As it is",
   "game.combat.ruleset.mode.prompt": "How is {{label}} used?",
+  "game.combat.ruleset.mode.search": "Search",
   "game.combat.ruleset.mode.targets": "up to {{count}} targets",
   "game.combat.ruleset.option.ammo": "{{count}} to shoot",
   "game.combat.ruleset.option.ammoToLoad": "{{count}} to load",

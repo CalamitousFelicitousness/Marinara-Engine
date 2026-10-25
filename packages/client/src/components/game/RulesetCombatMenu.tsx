@@ -56,6 +56,9 @@ import { cn } from "../../lib/utils";
 import { RulesetBudgetPip, type RulesetBudgetMark } from "./RulesetBudgetPip";
 import { useMatchMedia } from "../../hooks/use-match-media";
 
+/** How many ways to use one option it takes before the list can be searched. */
+const RULESET_MODE_SEARCH_FROM = 12;
+
 export interface RulesetCombatMenuProps {
   view: DirectedRulesetView;
   /** The ruleset's own name for a budget id, so the menu says "Bonus action" or "Action" as the
@@ -236,6 +239,9 @@ export function RulesetCombatMenu({
   const [sparesPicked, setSparesPicked] = useState<string[]>([]);
   // The kinds ticked in the kinds step (1.737), handed up as it goes on.
   const [kindsPicked, setKindsPicked] = useState<string[]>([]);
+  // What a long list of ways to use it is narrowed to, typed (laptop 2026-10-25: Conjure Animals
+  // offered 291 beasts in a row).
+  const [modeQuery, setModeQuery] = useState("");
   const nameKinds = useRulesetKinds();
   // Leaving the fight asks twice: one stray click is not a lost battle.
   const [fleeing, setFleeing] = useState(false);
@@ -504,6 +510,7 @@ export function RulesetCombatMenu({
   /** The step after the style is chosen: the weapon's mode, where it has any. */
   const afterStyle = (option: DirectedRulesetOption, style?: string) => {
     if (option.modes && option.modes.length > 0) {
+      setModeQuery("");
       setStep({ stage: "mode", option, ...(style ? { style } : {}), targets: [] });
       return;
     }
@@ -797,12 +804,37 @@ export function RulesetCombatMenu({
     if (step && modes.length > 0) {
       const option = step.option;
       const plain = rulesetOptionForecastText(option, t);
+      // A long list is searched, and the ones that hit hardest come first.
+      const searchable = modes.length > RULESET_MODE_SEARCH_FROM;
+      const query = modeQuery.trim().toLowerCase();
+      const shown = (searchable && query ? modes.filter((mode) => mode.label.toLowerCase().includes(query)) : modes)
+        .map((mode, index) => ({ mode, index }))
+        .sort(
+          (a, b) =>
+            (b.mode.forecast?.averageDamage ?? 0) * (b.mode.forecast?.hitChance ?? 1) -
+              (a.mode.forecast?.averageDamage ?? 0) * (a.mode.forecast?.hitChance ?? 1) || a.index - b.index,
+        )
+        .map(({ mode }) => mode);
       return (
         <div className="flex flex-col gap-2 p-3">
           <p className={`text-xs ${ink.muted}`} id="ruleset-mode-prompt">
             {t("game.combat.ruleset.mode.prompt", { label: rulesetOptionLabel(option, t) })}
           </p>
-          <div className="flex flex-wrap gap-2" role="group" aria-labelledby="ruleset-mode-prompt">
+          {searchable && (
+            <input
+              type="search"
+              value={modeQuery}
+              onChange={(event) => setModeQuery(event.target.value)}
+              placeholder={t("game.combat.ruleset.mode.search")}
+              aria-label={t("game.combat.ruleset.mode.search")}
+              className={`w-full rounded-md border px-2 py-1 text-xs ${ink.border} ${ink.fill} ${ink.body}`}
+            />
+          )}
+          <div
+            className={cn("flex flex-wrap gap-2", searchable && "max-h-64 overflow-y-auto")}
+            role="group"
+            aria-labelledby="ruleset-mode-prompt"
+          >
             <button
               ref={first}
               type="button"
@@ -813,7 +845,7 @@ export function RulesetCombatMenu({
               <span className={`block font-semibold ${ink.strong}`}>{t("game.combat.ruleset.mode.plain")}</span>
               {plain && <span className={`block text-[0.65rem] ${ink.faint}`}>{plain}</span>}
             </button>
-            {modes.map((mode) => {
+            {shown.map((mode) => {
               const forecast = rulesetModeText(option, mode, t);
               return (
                 <button

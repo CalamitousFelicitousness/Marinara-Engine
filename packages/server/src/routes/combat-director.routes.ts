@@ -1074,17 +1074,17 @@ export async function combatDirectorRoutes(
               ...(enemy.aiHints?.leader ? { leader: true } : {}),
               ...(enemy.start ? { start: enemy.start } : {}),
               ...(enemy.carrying ? { items: enemy.carrying } : {}),
-              // Its attacks by name and its reactions, from the Game Master's own skills: a heal or a
-              // ward names no strike.
-              ...(enemy.skills?.some((skill) => skill.type === "attack" || skill.reaction)
+              // Its attacks by name, and what may be its reactions, from the Game Master's own skills: a
+              // heal names no strike, and a reaction word the Engine has none of ("Parry") is dropped as
+              // the blueprint is read, so a skill that is no attack is looked for by name too (laptop
+              // 2026-10-25).
+              ...(enemy.skills?.length
                 ? {
-                    attacks: enemy.skills.flatMap((skill) =>
-                      skill.reaction
-                        ? [{ name: skill.name, reaction: skill.reaction }]
-                        : skill.type === "attack"
-                          ? [{ name: skill.name }]
-                          : [],
-                    ),
+                    attacks: enemy.skills.map((skill) => ({
+                      name: skill.name,
+                      ...(skill.reaction ? { reaction: skill.reaction } : {}),
+                      ...(skill.type !== "attack" ? { kind: skill.type } : {}),
+                    })),
                   }
                 : {}),
             })),

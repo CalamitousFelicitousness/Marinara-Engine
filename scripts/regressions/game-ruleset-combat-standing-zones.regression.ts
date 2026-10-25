@@ -5,6 +5,7 @@
  *   - Set up before the fight: paid for off the sheet, put down between the caster and the nearest
  *     foe or where they stand; a hidden one put down unsaid; an unknown one left out and said.
  *   - A foe walking into the glyph set up beforehand sets it off.
+ *   - An area that holds whoever is in it, set up where its caster stands, goes over their foes.
  *   - The install gate.
  */
 import assert from "node:assert/strict";
@@ -178,6 +179,61 @@ try {
       JSON.stringify(step.events.filter((one) => one.type === "zone")),
     );
     assert.ok(rulesetCombatHealth(definition, definition.combat!, who(step.state, "a")).value < 100);
+  }
+
+  // ── An area that holds whoever is in it, set up "where they stand" beside a friend, goes down over
+  // their foes instead (laptop 2026-10-25: a story Entangle held the whole party) ──
+  {
+    const entangle = spell("entangle", {
+      kind: "debuff",
+      area: { shape: "box", size: 20 },
+      range: 90,
+      cost: [{ pool: "slots_1", amount: 1 }],
+      save: { save: "str_save", onSuccess: "negates" },
+      applies: [{ condition: "restrained", duration: { rounds: 10 } }],
+      zone: { rounds: 10, triggers: [], terrain: { difficult: true } },
+    });
+    const withEntangle = parsed(fiveE([...spells, entangle]));
+    const mage = state.combatants.find((one) => one.id === "mage")!;
+    const fresh = createRulesetEncounter({
+      definition: withEntangle,
+      seed: 1,
+      roller: roll,
+      combatants: [
+        {
+          id: "mage",
+          name: "Mage",
+          side: "party",
+          build: rulesetSheetBuildSchema.parse({
+            ...mage.sheet!.build,
+            lists: {
+              spells: [...spells, entangle].flatMap((entry) =>
+                rowsFromCatalogEntry("spells", entry).map((row) => row.row),
+              ),
+            },
+          }),
+          catalogs: { spells: [...spells, entangle] },
+        },
+        { id: "friend", name: "Friend", side: "party", block },
+        { id: "a", name: "A", side: "enemy", block },
+        { id: "b", name: "B", side: "enemy", block },
+      ],
+      board: {
+        grid: grid(),
+        placements: { mage: { x: 2, y: 7 }, friend: { x: 3, y: 7 }, a: { x: 14, y: 7 }, b: { x: 20, y: 7 } },
+      },
+    });
+    const set = rulesetStandingAtStart(withEntangle, fresh, [{ casterId: "mage", entry: "Entangle", at: "self" }]);
+    assert.deepEqual(set.skipped, []);
+    const placed = (who(set.state, "mage").zones ?? []).find((zone) => zone.label === "Entangle");
+    assert.deepEqual(placed?.at, { x: 14, y: 7 }, JSON.stringify(placed));
+    // Alone, it would still hold its own caster.
+    const alone = structuredClone(fresh);
+    alone.combatants = alone.combatants.filter((one) => one.id !== "friend");
+    alone.order = alone.order.filter((id) => id !== "friend");
+    const lone = rulesetStandingAtStart(withEntangle, alone, [{ casterId: "mage", entry: "Entangle", at: "self" }]);
+    const own = (who(lone.state, "mage").zones ?? []).find((zone) => zone.label === "Entangle");
+    assert.deepEqual(own?.at, { x: 14, y: 7 }, "it holds the caster too, so it still goes over the foes");
   }
 
   // ── The install gate ──

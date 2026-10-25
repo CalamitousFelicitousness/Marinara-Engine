@@ -6,6 +6,8 @@
  *     none, and with none named it still has one "Attack".
  *   - A reaction it was given is the one this ruleset's bestiary has by that name; one the bestiary
  *     has nowhere is said, and left out.
+ *     A skill that is no attack is looked for by name too: the blueprint drops a reaction word the
+ *     Engine has none of ("Parry"), so the duelist's arrived as a plain buff.
  *   - The Game Master is told which reactions there are.
  */
 import assert from "node:assert/strict";
@@ -92,8 +94,9 @@ try {
       attacks: [
         { name: "Rapier" },
         { name: "Dagger" },
-        { name: "Parry", reaction: "guard" },
+        { name: "Parry", kind: "buff" },
         { name: "Bolt Ward", reaction: "guard" },
+        { name: "Battle Cry", kind: "buff" },
       ],
     },
   ]);
@@ -109,6 +112,9 @@ try {
     duel.adjustments.join(" | "),
   );
   assert.ok(!duelist.actions.some((action) => action.label === "Bolt Ward"), "one the bestiary lacks is left out");
+  // A buff that is no reaction anywhere is no strike either, and nothing is said of it.
+  assert.ok(!labels.includes("Battle Cry"));
+  assert.ok(!duel.adjustments.some((line) => line.includes("Battle Cry")));
 
   // ── With no attacks named, still one Attack ──
   const plain = fight([{ id: "thing", name: "Thing", tier: "cr_1" }]);

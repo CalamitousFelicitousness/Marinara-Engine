@@ -12139,15 +12139,58 @@ function standingCell(
   state: RulesetEncounterState,
   caster: RulesetCombatant,
   at: "self" | "between",
+  action?: RulesetCombatAction,
 ): RulesetCombatCell | undefined {
   const own = rulesetPositionOf(caster);
-  if (!own || !state.board?.grid || at === "self") return own ?? undefined;
+  if (!own || !state.board?.grid) return own ?? undefined;
   const foes = state.combatants
     .filter((one) => one.side !== caster.side && rulesetCombatStanding(one) && rulesetPositionOf(one))
     .sort((a, b) => rulesetGap(caster, a) - rulesetGap(caster, b));
   const foe = foes[0] ? rulesetPositionOf(foes[0]) : undefined;
-  if (!foe) return own;
-  return { x: Math.round((own.x + foe.x) / 2), y: Math.round((own.y + foe.y) / 2) };
+  const between = foe ? { x: Math.round((own.x + foe.x) / 2), y: Math.round((own.y + foe.y) / 2) } : own;
+  if (at !== "self") return between;
+  // An area put down where they stand that works on whoever is in it, not only their foes (laptop
+  // 2026-10-25: an Entangle set up "at self" held the whole party and nobody else): over their foes
+  // instead, wherever it catches the fewest of their own side and then the most foes.
+  if (
+    !action?.area ||
+    action.zone?.anchor === "caster" ||
+    // A trap set off by whoever walks in (a glyph) is laid where they stand on purpose.
+    !!action.zone?.detonates ||
+    !!action.zone?.hidden ||
+    // A ward over the ground (Hallow) is meant to stand around them.
+    !!action.zone?.inside ||
+    !!action.zone?.keepsOut ||
+    !!action.zone?.wards ||
+    !!action.zone?.forbids ||
+    (!action.damage && !action.save && !action.applies?.length) ||
+    action.area.friendlyFire === false ||
+    action.heal ||
+    action.targets.side === "ally" ||
+    action.targets.side === "self"
+  )
+    return own;
+  const caught = (cell: RulesetCombatCell) => {
+    const cells = new Set(rulesetAimedCells(state, caster.id, action.id, cell).map((one) => `${one.x},${one.y}`));
+    const inside = state.combatants.filter(
+      (one) =>
+        rulesetCombatStanding(one) &&
+        !rulesetUnhinderedBy(one, [action.id, action.label]) &&
+        rulesetFootprint(one).some((spot) => cells.has(`${spot.x},${spot.y}`)),
+    );
+    return {
+      own: inside.filter((one) => one.side === caster.side).length,
+      foes: inside.filter((one) => one.side !== caster.side).length,
+    };
+  };
+  const here = caught(own);
+  if (here.own === 0) return own;
+  const tried = [...foes.map((one) => rulesetPositionOf(one)!), ...(between === own ? [] : [between])].map((cell) => ({
+    cell,
+    ...caught(cell),
+  }));
+  const best = tried.sort((a, b) => a.own - b.own || b.foes - a.foes)[0];
+  return best && (best.own < here.own || (best.own === here.own && best.foes > here.foes)) ? best.cell : own;
 }
 
 /**
@@ -12390,7 +12433,7 @@ export function rulesetStandingAtStart(
     }
     const mark = ctx.events.length;
     if (action.concentration) startConcentration(ctx, caster, action);
-    const at = standingCell(ctx.state, caster, one.at ?? "between");
+    const at = standingCell(ctx.state, caster, one.at ?? "between", action);
     placeZone(ctx, caster, action, {
       kind: "action",
       actorId: caster.id,

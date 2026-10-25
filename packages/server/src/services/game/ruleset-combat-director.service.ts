@@ -379,7 +379,7 @@ export interface RulesetFightOpponent {
   creatureType?: string;
   /** The attacks the Game Master wrote for it in the Engine's own terms, by name, and whether each is
    *  a reaction: what names an invented one's strikes, and which bestiary reactions it borrows. */
-  attacks?: Array<{ name: string; reaction?: string }>;
+  attacks?: Array<{ name: string; reaction?: string; kind?: "heal" | "buff" | "debuff" }>;
 }
 
 export interface RulesetFightSeed {
@@ -599,10 +599,11 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
       const has = new Set(block.actions.flatMap((one) => [one.id, one.name.toLowerCase()]));
       const lent: RulesetStatBlockAction[] = [];
       for (const attack of opponent.attacks ?? []) {
-        if (!attack.reaction || has.has(attack.name.toLowerCase())) continue;
+        if ((!attack.reaction && !attack.kind) || has.has(attack.name.toLowerCase())) continue;
         const reaction = rulesetBestiaryReaction(definition, input.bestiary, attack.name);
         if (!reaction || has.has(reaction.id)) {
-          if (!reaction) adjustments.push(`${opponent.name}: this ruleset has no reaction called "${attack.name}".`);
+          if (!reaction && attack.reaction)
+            adjustments.push(`${opponent.name}: this ruleset has no reaction called "${attack.name}".`);
           continue;
         }
         has.add(reaction.id).add(attack.name.toLowerCase());
@@ -700,7 +701,7 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
     const built = rulesetTierStatBlock(
       definition,
       opponent.tier,
-      (opponent.attacks ?? []).filter((one) => !one.reaction).map((one) => one.name),
+      (opponent.attacks ?? []).filter((one) => !one.reaction && !one.kind).map((one) => one.name),
     );
     if (!built) {
       return {
@@ -3447,6 +3448,9 @@ function rulesetCandidatesFrom(
         actor.zones?.some((one) => one.actionId === option.id))
     )
       continue;
+    // Nor an area it holds up still standing, whatever the menu offers (laptop 2026-10-25: a second,
+    // bigger Entangle cast while the first held).
+    if (actor.concentrating?.actionId === option.id && actor.zones?.some((one) => one.actionId === option.id)) continue;
     // A cast that takes many rounds (1.445) is begun before a fight, not in one: the fight is often
     // over before it lands (re-test 2026-10-24: Animate Dead opening fights with its 10 rounds).
     if ((actor.actions.find((entry) => entry.id === option.id)?.castingRounds ?? 0) >= RULESET_LONG_CAST_ROUNDS)

@@ -1040,6 +1040,7 @@ export async function collectCharacterPostHistoryEntries(
   characterIds: string[],
   macroCtx: MacroContext,
   wrapFormat: WrapFormat,
+  onResolved?: (characterId: string, content: string) => void,
 ): Promise<PromptDepthEntry[]> {
   if (characterIds.length === 0) return [];
 
@@ -1070,6 +1071,7 @@ export async function collectCharacterPostHistoryEntries(
       },
     }).trim();
 
+    onResolved?.(id, content);
     if (content) {
       const label = multiCharacter
         ? `${data.name ?? "Character"} post-history instructions`
@@ -1090,10 +1092,11 @@ export async function collectCharacterAdvancedPromptEntries(
   characterIds: string[],
   macroCtx: MacroContext,
   wrapFormat: WrapFormat,
+  onPostHistoryResolved?: (characterId: string, content: string) => void,
 ): Promise<PromptDepthEntry[]> {
   const [depthEntries, postHistoryEntries] = await Promise.all([
     collectCharacterDepthPromptEntries(db, characterIds, macroCtx),
-    collectCharacterPostHistoryEntries(db, characterIds, macroCtx, wrapFormat),
+    collectCharacterPostHistoryEntries(db, characterIds, macroCtx, wrapFormat, onPostHistoryResolved),
   ]);
   return [...depthEntries, ...postHistoryEntries];
 }

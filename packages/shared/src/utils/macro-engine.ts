@@ -812,30 +812,21 @@ export function resolveDeferredCharacterMacros(
   result = result.split(DEFERRED_CHARACTER_MACRO_TOKENS.char).join(profile.name);
   result = result.split(DEFERRED_CHARACTER_MACRO_TOKENS.charPhonetic).join(profile.phoneticName ?? profile.name);
   result = result.split(DEFERRED_CHARACTER_MACRO_TOKENS.group).join(resolveGroupCharacters(scopedContext));
-  result = result
-    .split(DEFERRED_CHARACTER_MACRO_TOKENS.description)
-    .join(resolveCharacterFieldValue(profile, "description", 0, baseContext));
-  result = result
-    .split(DEFERRED_CHARACTER_MACRO_TOKENS.personality)
-    .join(resolveCharacterFieldValue(profile, "personality", 0, baseContext));
-  result = result
-    .split(DEFERRED_CHARACTER_MACRO_TOKENS.backstory)
-    .join(resolveCharacterFieldValue(profile, "backstory", 0, baseContext));
-  result = result
-    .split(DEFERRED_CHARACTER_MACRO_TOKENS.appearance)
-    .join(resolveCharacterFieldValue(profile, "appearance", 0, baseContext));
-  result = result
-    .split(DEFERRED_CHARACTER_MACRO_TOKENS.scenario)
-    .join(resolveCharacterFieldValue(profile, "scenario", 0, baseContext));
-  result = result
-    .split(DEFERRED_CHARACTER_MACRO_TOKENS.example)
-    .join(resolveCharacterFieldValue(profile, "example", 0, baseContext));
-  result = result
-    .split(DEFERRED_CHARACTER_MACRO_TOKENS.systemPrompt)
-    .join(resolveCharacterFieldValue(profile, "systemPrompt", 0, baseContext));
-  result = result
-    .split(DEFERRED_CHARACTER_MACRO_TOKENS.postHistoryInstructions)
-    .join(resolveCharacterFieldValue(profile, "postHistoryInstructions", 0, baseContext));
+  for (const field of [
+    "description",
+    "personality",
+    "backstory",
+    "appearance",
+    "scenario",
+    "example",
+    "systemPrompt",
+    "postHistoryInstructions",
+  ] as const) {
+    const token = DEFERRED_CHARACTER_MACRO_TOKENS[field];
+    // Unused fields can contain random rolls and variable writes; never evaluate them.
+    if (result.includes(token))
+      result = result.split(token).join(resolveCharacterFieldValue(profile, field, 0, baseContext));
+  }
   result = result
     .split(DEFERRED_CHARACTER_MACRO_TOKENS.convoDisplay)
     .join(scopedContext.convoFields?.charDisplayName ?? "");

@@ -114,7 +114,8 @@ const HEALTH_WORDS = ["hp", "health", "hit points", "vitality"];
  * stat block, or the bare name in a stat block whose label or id is about health. A name is the
  * member's full name or, where no other member shares it, their first. A row keeps the shape it was
  * written in: "36/36" stays "a/b", a number stays a number, and anything else (a word) is left alone.
- * `words` are the ruleset's own names for health ("Grit"), read beside the usual ones.
+ * `words` are the ruleset's own names for health ("Grit"), read beside the usual ones: names of what
+ * remains, never of a track that counts what was taken.
  */
 export function partyHealthWidgetUpdates(
   widgets: HudWidget[],
@@ -125,13 +126,17 @@ export function partyHealthWidgetUpdates(
   const healthWords = new Set(
     [...HEALTH_WORDS, ...words].map((word) => word.trim().toLowerCase().replace(/\s+/g, " ")).filter(Boolean),
   );
-  // A label or id is about health when it holds one of the words whole: "Party Health", "party_hp".
-  const aboutHealthWord = (text: string) => {
-    const plain = ` ${text
+  // A label or id is about health when it holds one of the words whole: "Party Health", "party_hp",
+  // "Santé du groupe". Both sides are read the same way, letters and digits of any script.
+  const plainWords = (text: string) =>
+    text
       .toLowerCase()
-      .replace(/[^a-z0-9]+/g, " ")
-      .trim()} `;
-    return [...healthWords].some((word) => plain.includes(` ${word} `));
+      .replace(/[^\p{L}\p{N}]+/gu, " ")
+      .trim();
+  const plainHealthWords = [...healthWords].map(plainWords).filter(Boolean);
+  const aboutHealthWord = (text: string) => {
+    const plain = ` ${plainWords(text)} `;
+    return plain.trim() !== "" && plainHealthWords.some((word) => plain.includes(` ${word} `));
   };
   const byName = new Map<string, PartyHealthRow | null>();
   const add = (key: string, row: PartyHealthRow, unique: boolean) => {
@@ -149,8 +154,13 @@ export function partyHealthWidgetUpdates(
   for (const widget of widgets) {
     if (widget.type !== "stat_block" || !Array.isArray(widget.config.stats)) continue;
     const aboutHealth = aboutHealthWord(widget.label) || aboutHealthWord(widget.id);
+    // A widget update reaches only the first row of a name, so a later row of the same name is not
+    // one this can bring in step: asking for it again would never settle.
+    const seen = new Set<string>();
     for (const stat of widget.config.stats) {
       const name = stat.name.trim().toLowerCase();
+      if (seen.has(name)) continue;
+      seen.add(name);
       const parts = name.split(/\s+/);
       let who: string | undefined;
       for (let cut = parts.length - 1; cut >= 1 && !who; cut--) {

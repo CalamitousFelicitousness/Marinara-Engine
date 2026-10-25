@@ -174,6 +174,7 @@ export interface SupportedMacroDefinition {
   category: string;
   syntax: string;
   description: string;
+  descriptionKey?: string;
 }
 
 export const CHARACTER_REFERENCE_ID_PATTERN = /\{\{([A-Za-z0-9_-]{21})\}\}/g;
@@ -593,9 +594,24 @@ export const SUPPORTED_MACROS: readonly SupportedMacroDefinition[] = [
   { category: "Time", syntax: "{{datetime}} / {{isotime}}", description: "Current timestamp in the user's timezone" },
   { category: "Time", syntax: "{{weekday}}", description: "Current weekday name in the user's timezone" },
   { category: "Time", syntax: "{{timezone}}", description: "Current user/browser timezone" },
-  { category: "Time", syntax: "{{date.world_state}}", description: "Current date tracked by World State" },
-  { category: "Time", syntax: "{{time.world_state}}", description: "Current time tracked by World State" },
-  { category: "Time", syntax: "{{weekday.world_state}}", description: "Weekday of the tracked world date, when known" },
+  {
+    category: "Time",
+    syntax: "{{date.world_state}}",
+    description: "Current date tracked by World State",
+    descriptionKey: "macros.worldState.date",
+  },
+  {
+    category: "Time",
+    syntax: "{{time.world_state}}",
+    description: "Current time tracked by World State",
+    descriptionKey: "macros.worldState.time",
+  },
+  {
+    category: "Time",
+    syntax: "{{weekday.world_state}}",
+    description: "Weekday of the tracked world date, when known",
+    descriptionKey: "macros.worldState.weekday",
+  },
   { category: "Random", syntax: "{{random}}", description: "Random number from 0 to 100" },
   { category: "Random", syntax: "{{random:X:Y}}", description: "Random number between X and Y" },
   { category: "Random", syntax: "{{random::A::B::C}}", description: "Randomly choose one of the provided options" },

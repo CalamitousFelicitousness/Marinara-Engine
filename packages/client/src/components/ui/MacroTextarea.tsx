@@ -328,7 +328,11 @@ function MacrosReferenceModal({ open, onClose }: MacrosReferenceModalProps) {
                       className="rounded-lg border border-[var(--border)] bg-[var(--background)] p-2"
                     >
                       <code className="text-xs font-semibold text-[var(--foreground)]">{macro.syntax}</code>
-                      <p className="mt-1 text-xs text-[var(--muted-foreground)]">{macro.description}</p>
+                      <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+                        {macro.descriptionKey
+                          ? localizeUi(macro.descriptionKey, { defaultValue: macro.description })
+                          : macro.description}
+                      </p>
                     </div>
                   ))}
                 </div>

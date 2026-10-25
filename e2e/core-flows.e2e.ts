@@ -1659,6 +1659,9 @@ test("Author's Notes keeps its expand and full macro guide inside the field", as
     );
     await expect(macroReference.getByText("{{charPostHistory}}", { exact: true })).toBeVisible();
     await expect(macroReference.getByText("{{agent::TYPE}}", { exact: true })).toBeVisible();
+    for (const field of ["date", "time", "weekday"]) {
+      await expect(macroReference.getByText(`{{${field}.world_state}}`, { exact: true })).toBeVisible();
+    }
     await expect(macroReference.getByText(/Conditional block with/)).toBeVisible();
     const negationSyntax = '{{#if character != "Maukie"}}...{{/if}}';
     await expect(macroReference.getByText(negationSyntax, { exact: true })).toBeVisible();
@@ -1674,6 +1677,7 @@ test("Author's Notes keeps its expand and full macro guide inside the field", as
       return (await match.command.execute("", undefined as never)).feedback ?? "";
     });
     expect(macroHelp).toContain(negationSyntax);
+    expect(macroHelp).toContain("{{date.world_state}} - Current date tracked by World State");
     expect(macroHelp).toContain('"is not", "not contains", and "not includes"');
     await macroReference.getByRole("button", { name: "Close macro reference", exact: true }).click();
     await expect(panel).toBeVisible();

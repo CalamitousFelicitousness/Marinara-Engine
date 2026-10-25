@@ -4296,17 +4296,19 @@ try {
       "the buffered tools round returns its raw parts for replay too",
     );
 
-    // stream:true without a token sink (the agent tool loop) keeps the buffered path.
-    await gemini.chatComplete([{ role: "user", content: "roll" }], {
+    // Quiet agent tool rounds still request upstream streaming for inactivity tracking.
+    geminiResult = await gemini.chatComplete([{ role: "user", content: "roll" }], {
       model: "gemini-2.0-flash",
       stream: true,
       tools: [rollDiceTool],
     });
     assert.match(
       geminiRequestUrls.at(-1) ?? "",
-      /:generateContent$/,
-      "a tools call with no onToken must not be switched to streaming",
+      /:streamGenerateContent\?alt=sse$/,
+      "an explicitly streamed tools call does not require an onToken sink",
     );
+    assert.equal(geminiResult.content, "No roll needed.");
+    assert.deepEqual(geminiResult.toolCalls, []);
   } finally {
     await new Promise<void>((resolve, reject) => geminiServer.close((error) => (error ? reject(error) : resolve())));
   }
@@ -4550,7 +4552,7 @@ try {
     assert.deepEqual(anthropicResult.toolCalls, []);
     assert.equal(anthropicResult.finishReason, "end_turn");
 
-    // stream:true without a token sink (the agent tool loop) keeps the buffered path.
+    // Quiet agent tool rounds still request upstream streaming for inactivity tracking.
     anthropicResult = await anthropic.chatComplete([{ role: "user", content: "roll" }], {
       model: "claude-opus-5",
       stream: true,
@@ -4558,14 +4560,11 @@ try {
     });
     assert.equal(
       anthropicToolRequestBodies.at(-1)?.stream,
-      false,
-      "a tools call with no onToken must not be switched to streaming",
+      true,
+      "an explicitly streamed tools call does not require an onToken sink",
     );
-    assert.equal(anthropicResult.content, "Buffered narration.");
-    assert.deepEqual(
-      anthropicResult.toolCalls.map((call) => call.id),
-      ["toolu_buffered"],
-    );
+    assert.equal(anthropicResult.content, "No roll needed.");
+    assert.deepEqual(anthropicResult.toolCalls, []);
   } finally {
     await new Promise<void>((resolve, reject) =>
       anthropicToolServer.close((error) => (error ? reject(error) : resolve())),

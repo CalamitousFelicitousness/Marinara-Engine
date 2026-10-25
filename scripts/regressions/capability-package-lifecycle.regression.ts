@@ -197,7 +197,13 @@ try {
     [375, "ruleset fight display"],
     [376, "Home browser fullscreen"],
     [377, "the Motion 14 host slot"],
-    [378, "ruleset wording"],
+    [378, "a ruleset's own words"],
+    [379, "ruleset combat styles"],
+    [380, "package-bound reference lorebooks"],
+    [381, "independent browser audio players"],
+    [382, "symbol-pool fights"],
+    [383, "health on a plain track"],
+    [384, "saved gallery image animation"],
     [777, "a ruleset's weight unit"],
     [778, "damage changes by damage type"],
     [779, "package-bound reference lorebooks"],
@@ -751,16 +757,6 @@ try {
     capabilityLanguageModelSource,
     /reasoningEffort:\s*options\.reasoningEffort,/u,
     "Capability model calls must preserve an explicit reasoning effort of none",
-  );
-  assert.match(
-    capabilityLanguageModelSource,
-    /AbortSignal\.any\(\[options\.signal,\s*timeoutSignal\]\)[\s\S]*withLlmRequestTimeout\(\s*timeoutMs,\s*async\s*\(\)\s*=>[\s\S]*provider\.chatComplete\(/u,
-    "Capability model calls must enforce AGENT_CALL_TIMEOUT_MS as a total-duration cap while scoping the transport timeout",
-  );
-  assert.match(
-    capabilityLanguageModelSource,
-    /const\s+timeoutSignal\s*=\s*AbortSignal\.timeout\(\s*timeoutMs\s*\);/u,
-    "Capability model calls must build their deadline signal from AbortSignal.timeout",
   );
   assert.doesNotMatch(
     capabilityLanguageModelSource,

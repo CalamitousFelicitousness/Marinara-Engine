@@ -163,11 +163,10 @@ throw new Error("Unexpected gh call: " + JSON.stringify(args));
     mode: "full",
   });
   run("draft synchronize skips", { action: "synchronize", draft: "true", skip: true });
-  run("ready draft event remains eligible", {
+  run("stale Ready event still marked draft is withheld", {
     draft: "true",
     comments: [walkthrough(previous)],
-    checkpoint: previous,
-    effective: "incremental",
+    skip: true,
   });
   run("draft retarget stays withheld", { action: "edited", draft: "true", priorBase: "main", skip: true });
   run("ready after draft retarget examines the new base", {

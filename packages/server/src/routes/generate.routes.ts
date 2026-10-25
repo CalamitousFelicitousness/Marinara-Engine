@@ -219,6 +219,7 @@ import {
 } from "../services/spatial-context/owner-turn.js";
 import { shouldSuppressIllustratorForegroundForStoryboard } from "../services/game/storyboard-agent-settings.js";
 import {
+  agentCurrentLocationFromProjection,
   formatOwnerSpatialBreadcrumb,
   injectOwnerSpatialPrompt,
   projectGameSnapshotLocation,
@@ -627,6 +628,7 @@ import {
   resolveGroupIndividualHistorySpeaker,
   resolveRoleplaySummaryTail,
   resolveCharacterNameMap,
+  resolveChatSpeakerNames,
   resolvePromptCharacterIdsForTarget,
   resolveRegenerationGameStateFallbackMessageIds,
   resolveRegenerationGameStateAnchor,
@@ -682,8 +684,8 @@ import {
   CONVERSATION_NO_REPEAT_INSTRUCTION,
   conversationPromptHistoryContent,
   formatConversationGroupOutputFormat,
-  formatSentSelfieNotes,
-  formatSentVideoNotes,
+  appendSentMediaNotes,
+  isSentVideoAttachment,
   resolvePresetModePrompt,
 } from "./generate/conversation-prompt-formatting.js";
 import {
@@ -2517,6 +2519,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           .map((message: any) => message.id),
       );
       const initialLatestUserMessageId = [...chatMessages].reverse().find((message) => message.role === "user")?.id;
+      // Names in a sent clip's prompt ("Alice: …") stay in its history note; read once, on the first note.
+      let chatSpeakerNamesPromise: Promise<string[]> | null = null;
+      const getChatSpeakerNames = () => (chatSpeakerNamesPromise ??= resolveChatSpeakerNames(chars, chat));
       const mapChatHistoryMessageForPrompt = async (
         m: any,
         latestUserMessageId = initialLatestUserMessageId,
@@ -2560,17 +2565,13 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           extra.replyTo,
           m.role === "user" && m.id === latestUserMessageId,
         );
-        const userUploadedImages = attachments?.filter((a) => a.type?.startsWith("image/"));
-        if (m.role === "assistant" && userUploadedImages?.length) {
-          const photoName = userUploadedImages[0]?.filename ?? userUploadedImages[0]?.name;
-          content += `\n[Sent a photo${photoName ? `: ${photoName}` : ""}]`;
-        }
-        if (m.role === "assistant") {
-          content += formatSentSelfieNotes(updatedAttachments ?? attachments);
-          const videoNotes = formatSentVideoNotes(attachments);
-          // A video-only message has no text of its own; its note then starts the turn without a blank line.
-          if (videoNotes) content = content.trim() ? content + videoNotes : videoNotes.trimStart();
-        }
+        if (m.role === "assistant")
+          content = appendSentMediaNotes(
+            content,
+            attachments,
+            updatedAttachments ?? attachments,
+            chatMode === "conversation" && attachments?.some(isSentVideoAttachment) ? await getChatSpeakerNames() : [],
+          );
         const hiddenFromAICharacterIds = getMessageHiddenFromAICharacterIds(m);
         const conversationStartForCharacterIds = getMessageConversationStartCharacterIds(m);
 
@@ -6118,6 +6119,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             ),
           mainResponse: null,
           gameState,
+          currentLocation: agentCurrentLocationFromProjection(ownerSpatialProjection),
           characters: charInfo,
           characterTrackerHistory: characterTrackerHistory as unknown as AgentContext["characterTrackerHistory"],
           persona:
@@ -12538,9 +12540,15 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 )
               : undefined;
           const postReplyDecisionContext = postAgentDecisionTexts.length > 0 ? { decisions: postAgentDecisions } : {};
+          // The reply may have moved the party on the map; it is committed before post-reply
+          // agents run, so they see where the story is now, not where the turn started (#8251).
+          const postReplySpatialProjection = hierarchicalMapsEnabledForChat
+            ? await resolveOwnerSpatialProjection(input.chatId, {}, chatMeta)
+            : ownerSpatialProjection;
           const postAgentContext: AgentContext = {
             ...agentContext,
             ...postReplyDecisionContext,
+            currentLocation: agentCurrentLocationFromProjection(postReplySpatialProjection),
             mainResponse: agentCompletedResponse,
             preGenInjections: contextInjections,
             parallelResults,
@@ -12603,6 +12611,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                 ...(await pipeline.postGenerate(agentCompletedResponse, {
                   preGenInjections: contextInjections,
                   parallelResults,
+                  currentLocation: postAgentContext.currentLocation,
                   ...postReplyDecisionContext,
                 })),
                 ...parallelResults,
@@ -14498,7 +14507,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                       const spatialLocationReferenceImage = await resolveSpatialLocationReferenceImage({
                         db: app.db,
                         chatId: input.chatId,
-                        projection: ownerSpatialProjection?.ownerMode === "roleplay" ? ownerSpatialProjection : null,
+                        projection:
+                          postReplySpatialProjection?.ownerMode === "roleplay" ? postReplySpatialProjection : null,
                       });
                       let illustratorRefImages: string[] | undefined;
                       const referenceResolution = await resolveIllustratorCharacterReferences({
@@ -14691,7 +14701,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                             referenceCharacterIds: useAvatarRefs ? referenceResolution.characterIds : [],
                             referencePersonaId: useAvatarRefs ? referenceResolution.personaId : null,
                             locationImageId: spatialLocationReferenceImage
-                              ? ownerSpatialProjection?.referenceImageId
+                              ? postReplySpatialProjection?.referenceImageId
                               : null,
                           }),
                         });

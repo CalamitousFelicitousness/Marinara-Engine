@@ -250,7 +250,7 @@ function defenseText(names: RulesetCombatNames, defense: number): string {
 }
 
 /** A defense raised by what the target has on (Shield, a Parry): the number rolled against, the one it
- *  rose from, and what raised it, each value said once (laptop 2026-10-25: "Armor Class 17 (Parrying
+ *  rose from, and what raised it, each value said once (#8273: "Armor Class 17 (Parrying
  *  (+2) + 2)"). A name that already carries its number is not given it again. */
 function guardedText(
   t: TFunction,

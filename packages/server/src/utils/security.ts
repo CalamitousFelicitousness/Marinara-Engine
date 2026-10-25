@@ -61,6 +61,8 @@ export interface SafeFetchOptions extends Omit<RequestInit, "dispatcher"> {
   allowMissingContentType?: boolean;
   bufferResponse?: boolean;
   decodeCompressedResponse?: boolean;
+  /** Observe nonempty raw response chunks before buffering or decoding. */
+  onResponseData?: () => void;
   agentOptions?: Omit<AgentOptions, "connect">;
   /** Start TCP keepalive probes after this many idle milliseconds without exposing custom DNS/connect hooks. */
   keepAliveInitialDelayMs?: number;
@@ -465,6 +467,7 @@ async function readCappedResponse(
   maxBytes: number,
   dispatcher?: Dispatcher,
   decodeCompressedResponse = false,
+  onResponseData?: () => void,
 ): Promise<Response> {
   if (!response.body) {
     await dispatcher?.close().catch(() => undefined);
@@ -477,6 +480,7 @@ async function readCappedResponse(
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
+      if (value.byteLength) onResponseData?.();
       total += value.byteLength;
       if (total > maxBytes) {
         await reader.cancel().catch(() => undefined);
@@ -520,7 +524,12 @@ function normalizeCompressedBody(body: Buffer, headers: Headers, maxBytes: numbe
   return { body, headers };
 }
 
-function capStreamingResponse(response: Response, maxBytes: number, dispatcher?: Dispatcher): Response {
+function capStreamingResponse(
+  response: Response,
+  maxBytes: number,
+  dispatcher?: Dispatcher,
+  onResponseData?: () => void,
+): Response {
   if (!response.body) {
     void dispatcher?.close().catch(() => undefined);
     return response;
@@ -541,6 +550,7 @@ function capStreamingResponse(response: Response, maxBytes: number, dispatcher?:
             return;
           }
 
+          if (value.byteLength) onResponseData?.();
           total += value.byteLength;
           if (total > maxBytes) {
             await reader.cancel().catch(() => undefined);
@@ -671,6 +681,7 @@ export async function safeFetch(url: string | URL, options: SafeFetchOptions = {
     allowMissingContentType = false,
     bufferResponse = true,
     decodeCompressedResponse = false,
+    onResponseData,
     agentOptions,
     keepAliveInitialDelayMs,
     dispatcher,
@@ -745,8 +756,8 @@ export async function safeFetch(url: string | URL, options: SafeFetchOptions = {
     }
 
     return bufferResponse
-      ? readCappedResponse(response, maxResponseBytes, internalDispatcher, decodeCompressedResponse)
-      : capStreamingResponse(response, maxResponseBytes, internalDispatcher);
+      ? readCappedResponse(response, maxResponseBytes, internalDispatcher, decodeCompressedResponse, onResponseData)
+      : capStreamingResponse(response, maxResponseBytes, internalDispatcher, onResponseData);
   }
 
   throw new Error("Outbound request exceeded redirect limit");

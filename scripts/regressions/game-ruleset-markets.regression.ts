@@ -1284,7 +1284,7 @@ const manifest = (minor: number) => ({
   );
   const taught = buildGmFormatReminder({ ruleset: fixed } as Parameters<typeof buildGmFormatReminder>[0]);
   assert.match(taught, /say the place again with day="new"/);
-  // A buy before any place is refused, so the place comes first (ship readiness 2026-10-25).
+  // A buy before any place is refused, so the place comes first (#8273).
   assert.match(
     taught,
     /Say the place before the first buy or sell there: with no place said, every buy and sell is refused\./,

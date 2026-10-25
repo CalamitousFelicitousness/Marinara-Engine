@@ -188,6 +188,7 @@ import { storedContentForTextlessScanEntries } from "../../services/lorebook/lor
 import { createCustomToolsStorage } from "../../services/storage/custom-tools.storage.js";
 import { syncGameMapMetaPartyPosition } from "../../services/game/map-position.service.js";
 import {
+  agentCurrentLocationFromProjection,
   formatOwnerSpatialBreadcrumb,
   omitAuthoritativeGameLocation,
   projectGameSnapshotLocation,
@@ -1327,6 +1328,7 @@ async function buildRetryAgentContext(args: {
         typeof lastAssistant?.id === "string" ? lastAssistant.id : undefined,
       ),
     gameState: null,
+    currentLocation: agentCurrentLocationFromProjection(retryOwnerSpatialProjection),
     characters: charInfo,
     characterTrackerHistory: characterTrackerHistory as unknown as AgentContext["characterTrackerHistory"],
     persona: buildRetryAgentPersona(

@@ -400,6 +400,18 @@ export interface VideoGenerationResult {
   ext: "mp4";
 }
 
+export interface CapabilityGalleryImageAnimationInput {
+  connectionId: string;
+  galleryImageId: string;
+  prompt: string;
+  durationSeconds?: number;
+  aspectRatio?: "16:9" | "9:16";
+  /** Use the illustration as both endpoints where the selected provider supports it. */
+  loop?: boolean;
+  debugMode?: boolean;
+  signal?: AbortSignal;
+}
+
 export type FallbackConnection = {
   id: string;
   name?: string | null;
@@ -487,6 +499,9 @@ export interface CapabilityIntegrationHost {
     ): Promise<{ characterCount: number; personaCount: number }>;
   };
   videos: {
+    /** Capability API 1.384. Animate a saved Global Gallery image using a saved video connection.
+     *  Requires `network` and `storage`; credentials stay in the host. The package owns the returned video. */
+    animateGalleryImage?(input: CapabilityGalleryImageAnimationInput): Promise<VideoGenerationResult>;
     generate(
       source: string,
       baseUrl: string,

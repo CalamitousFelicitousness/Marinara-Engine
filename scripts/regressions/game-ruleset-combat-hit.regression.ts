@@ -617,7 +617,7 @@ try {
       rulesetCombatEventLine(firstOf(shielded.events, "recheck"), names, t),
       "Against Armor Class 23 (from 18: Shielded + 5), Snag's Scimitar now misses Brenna.",
     );
-    // A guard whose name carries its number says it once (laptop 2026-10-25: "Parrying (+2) + 2").
+    // A guard whose name carries its number says it once (#8273: "Parrying (+2) + 2").
     const recheck = firstOf(shielded.events, "recheck");
     assert.equal(
       rulesetCombatEventLine(

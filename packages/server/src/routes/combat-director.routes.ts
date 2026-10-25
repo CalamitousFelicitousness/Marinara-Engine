@@ -839,8 +839,8 @@ export async function combatDirectorRoutes(
               description: z.string().max(3000),
               ownerName: z.string().max(200).optional(),
               trigger: z.enum(["round_interval", "hp_threshold", "on_hit", "on_attack", "passive"]),
-              // 0 for a mechanic no interval drives (laptop party B fight 2: an hp_threshold one's
-              // `interval: 0` refused the whole fight), which every reader takes as none.
+              // 0 for a mechanic no interval drives (an hp_threshold one's `interval: 0` refused the
+              // whole fight), which every reader takes as none.
               interval: z.number().int().min(0).max(100).optional(),
               hpThreshold: z.number().min(0).max(100).optional(),
               counterplay: z.string().max(3000).optional(),
@@ -868,8 +868,8 @@ export async function combatDirectorRoutes(
       })
       .safeParse(req.body);
     if (!parsed.success) {
-      // Where it went wrong, so a refused fight can be traced to the one value (laptop party B fight
-      // 2: "Number must be greater than or equal to 1", naming nothing).
+      // Where it went wrong, so a refused fight can be traced to the one value ("Number must be
+      // greater than or equal to 1" alone names nothing).
       const issue = parsed.error.issues[0];
       const path = issue?.path.join(".") ?? "";
       logger.warn("[combat-director/start] refused: %s: %s", path || "body", issue?.message ?? "invalid");

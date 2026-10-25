@@ -623,10 +623,10 @@ export function getChatGenerationTimeoutMs() {
 }
 
 /**
- * Per-call timeout for agent LLM requests (trackers, HTML reformatter, …).
- * Unlike the main chat path, these are total-duration caps, so slow local
- * models need a higher value here even when streaming (#3958). Read per
- * request so .env hot reloads apply without a restart.
+ * Maximum silence before or during agent LLM requests (trackers, HTML reformatter, …).
+ * Real provider data renews the timeout, so active streams can outlive this budget.
+ * Bounded memory operations also use this value as their total operation budget.
+ * Read per request so .env hot reloads apply without a restart.
  */
 export function getAgentCallTimeoutMs() {
   return readAgentCallTimeoutMs();

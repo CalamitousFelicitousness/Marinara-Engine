@@ -691,15 +691,10 @@ export class GoogleProvider extends BaseLLMProvider {
         ? normalizeGoogleGenerativeLanguageBaseUrl(this.baseUrl)
         : normalizeGoogleBaseUrl(this.baseUrl);
 
-    // Stream the tools round whenever the caller wired a token sink and did not opt out.
-    // The gate is deliberately narrower than the base `options.stream ?? !!options.onToken`
-    // formula: a caller that sets `stream: true` without a sink (the agent tool loop) keeps
-    // the buffered path it uses today. Only the official endpoint streams thinking;
-    // unrecognized proxies retain the workaround for stripped thought parts.
+    // Internal streaming also keeps quiet tool rounds alive without a UI token sink.
+    // Unrecognized proxies retain the workaround for stripped thought parts.
     const useStream =
-      !!options.onToken &&
-      options.stream !== false &&
-      (!thinkingConfig || supportsGoogleThinkingStreaming(base, model));
+      (options.stream ?? !!options.onToken) && (!thinkingConfig || supportsGoogleThinkingStreaming(base, model));
     const endpoint = useStream ? "streamGenerateContent" : "generateContent";
     const url =
       this.providerKind === "google_vertex"

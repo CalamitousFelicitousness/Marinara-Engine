@@ -213,7 +213,7 @@ async function openSheetEditor(page: Page, chatId: string) {
   await expect(portrait.or(members).first()).toBeVisible({ timeout: 30000 });
   if (await members.isVisible()) await members.click();
   await portrait.first().click();
-  await page.getByRole("button", { name: "Edit sheet", exact: true }).last().click();
+  await page.getByRole("button", { name: "Edit ruleset sheet", exact: true }).last().click();
 }
 
 test("the guided builder applies picks, rolls and buys scores, and saves the sheet", async ({ page, request }) => {
@@ -677,7 +677,7 @@ test("rating stages retain priority purchases, free ranks and manual overrides",
     await page.getByRole("button", { name: "Save sheet", exact: true }).click();
     // Wait for the builder to close, or .last() can land on the character card's Edit sheet button.
     await expect(steps).toBeHidden();
-    await page.getByRole("button", { name: "Edit sheet", exact: true }).last().click();
+    await page.getByRole("button", { name: "Edit ruleset sheet", exact: true }).last().click();
     await steps.getByRole("button", { name: /^Dots/ }).click();
     await expect(page.getByLabel("Notes for Strength (optional)", { exact: true })).toHaveValue("Heritage specialty");
     await expect(page.getByText("Base/prior 1 · Free 0 · Bought 4 · Total 5", { exact: true })).toBeVisible();
@@ -824,7 +824,7 @@ test("priced builder purchases preserve free dots and preview career repricing",
     await page.getByRole("button", { name: "Save sheet", exact: true }).click();
     // Wait for the builder to close, or .last() can land on the character card's Edit sheet button.
     await expect(steps).toBeHidden();
-    await page.getByRole("button", { name: "Edit sheet", exact: true }).last().click();
+    await page.getByRole("button", { name: "Edit ruleset sheet", exact: true }).last().click();
     await steps.getByRole("button", { name: /^Purchases/ }).click();
     await expect(
       page.getByText("Starting/free 2 · Bought 4 · Requested total 6 · Paid 8", { exact: true }),

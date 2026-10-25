@@ -21,7 +21,7 @@
  *   - A hold on the strongest foe is not traded for one on a lesser foe, and a rage is not entered
  *     with nothing to strike this turn (cloud AI fights 2026-10-25).
  *   - A creature called after the fight began is weighed like any other, not handed the first thing
- *     on its menu (cloud AI fights 2026-10-25).
+ *     on its menu, and a bolt along a line is not thrown through a friend (cloud AI fights 2026-10-25).
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -589,6 +589,49 @@ try {
     assert.notEqual(pickRulesetChoice(definition, scene.state, next, "mira")?.option.id, "hold", "the wolves are kept");
   }
 
+  // ── A bolt along a line is not thrown through a friend (cloud AI fights 2026-10-25: a Javelin of
+  //    Lightning's bolt through Vex and the called horses) ──
+  {
+    const javelin = {
+      id: "jav",
+      name: "Javelin",
+      budget: "action",
+      toHit: 6,
+      reach: 60,
+      damage: { count: 1, sides: 6, flat: 2 },
+    };
+    const thrown = (vexAt: { x: number; y: number }) => {
+      const scene = fight([
+        { id: "grak", name: "grak", side: "party", block: block([javelin]), at: { x: 2, y: 5 } },
+        { id: "vex", name: "vex", side: "party", block: block([poke]), at: vexAt },
+        { id: "orc", name: "orc", side: "enemy", block: block([smash]), at: { x: 9, y: 5 } },
+      ]);
+      rulesetCombatant(scene.encounter, "grak")!.actions.find((one) => one.id === "jav")!.modes = [
+        {
+          id: "bolt",
+          label: "Bolt",
+          plus: [{ count: 4, sides: 6, flat: 0, type: "lightning" }],
+          line: {
+            amount: { count: 4, sides: 6, flat: 0 },
+            type: "lightning",
+            save: { save: "dex_save", difficulty: 13, onSuccess: "half" },
+          },
+        },
+      ];
+      return pickRulesetChoice(definition, scene.state, scene.encounter, "grak");
+    };
+    const clear = thrown({ x: 5, y: 8 });
+    assert.equal(
+      clear?.choice.mode,
+      "bolt",
+      `with nobody of its own between, the bolt: ${JSON.stringify(clear?.choice)}`,
+    );
+    const through = thrown({ x: 5, y: 5 });
+    assert.ok(
+      through?.option.id === "jav" && through.choice.mode !== "bolt",
+      `a friend between, it throws the plain javelin: ${JSON.stringify(through?.choice)}`,
+    );
+  }
   // ── A creature called after the fight began is weighed, not handed the first thing it could do
   //    (cloud AI fights 2026-10-25: Draft Horses idled two cells from the Gladiator) ──
   {
@@ -1088,7 +1131,7 @@ try {
   }
 
   console.info(
-    "AI class re-test: turning by kind, chosen-use heals, granted dodges, twinned, exhaustion priced, no Slow as support, held summons kept, a one-blow potion kept, a called creature weighed.",
+    "AI class re-test: turning by kind, chosen-use heals, granted dodges, twinned, exhaustion priced, no Slow as support, held summons kept, a one-blow potion kept, a called creature weighed, no bolt through a friend.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

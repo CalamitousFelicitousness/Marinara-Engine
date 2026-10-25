@@ -110,6 +110,8 @@ import {
   rulesetWalkingDistances,
   rulesetFootprint,
   rulesetFootprintAt,
+  rulesetNearestCell,
+  rulesetPathCells,
   rulesetCellBlocked,
   rulesetSees,
   rulesetSpanOf,
@@ -2231,6 +2233,36 @@ const RULESET_FOCUS_ALIKE = 0.97;
  * The menu is the only source of legality, so the picker can never choose something a player could
  * not, and the option's own forecast is the only thing it is allowed to know about the dice.
  */
+/** Whether a choice's bolt along a line (1.190) would run through somebody on its wielder's own side:
+ *  from where it is thrown, nearest cell to nearest cell, as the bolt itself is laid. */
+function rulesetLineCatchesFriend(
+  encounter: RulesetEncounterState,
+  actor: RulesetCombatant,
+  candidate: CombatAiCandidate<RulesetCandidate>,
+): boolean {
+  const mode = candidate.action.choice.mode;
+  if (mode === undefined || !encounter.board?.grid) return false;
+  const line = actor.actions
+    .find((one) => one.id === candidate.action.option.id)
+    ?.modes?.find((one) => one.id === mode)?.line;
+  const targetId = candidate.action.choice.targetIds[0] ?? candidate.targetId;
+  const target = targetId ? rulesetCombatant(encounter, targetId) : undefined;
+  const standing = candidate.action.to ?? rulesetPositionOf(actor);
+  if (!line || !target || !standing) return false;
+  const from = rulesetNearestCell({ ...actor, x: standing.x, y: standing.y }, rulesetPositionOf(target));
+  const to = rulesetNearestCell(target, from);
+  if (!from || !to) return false;
+  const cells = new Set(rulesetPathCells(from, to).map((cell) => `${cell.x},${cell.y}`));
+  return encounter.combatants.some(
+    (one) =>
+      one.id !== actor.id &&
+      one.id !== target.id &&
+      one.side === actor.side &&
+      !one.defeated &&
+      rulesetFootprint(one).some((at) => cells.has(`${at.x},${at.y}`)),
+  );
+}
+
 function rulesetCandidates(
   definition: RulesetDefinition,
   encounter: RulesetEncounterState,
@@ -2339,6 +2371,12 @@ function rulesetCandidates(
           own.splice(index, 1);
       }
   }
+  // A bolt along a line (1.190) catches whoever stands between its wielder and the target, friend or
+  // foe: one that would run through a friend is not thrown that way (cloud AI fights 2026-10-25: a
+  // Javelin of Lightning's bolt through Vex and the called horses).
+  if (actor)
+    for (let index = own.length - 1; index >= 0; index--)
+      if (rulesetLineCatchesFriend(encounter, actor, own[index]!)) own.splice(index, 1);
   // Helping is aiding a friend against an opponent beside its helper: with none beside it, nothing
   // comes of it (a wolf helping from across the field, a companion helping a friend nobody is near).
   const beside = (cell: { x: number; y: number } | null | undefined) =>

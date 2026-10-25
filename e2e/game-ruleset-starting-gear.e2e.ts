@@ -122,14 +122,15 @@ test("starting gear is taken into the bag on the player's word, with its choices
     const take = dialog.getByRole("button", { name: "Take Traveller", exact: true });
     // Every choice needs an option, and every list a pick.
     await expect(take).toBeDisabled();
-    await dialog.getByRole("radio", { name: "A hand axe", exact: true }).check();
-    await dialog.getByRole("radio", { name: "A second weapon", exact: true }).check();
+    // An option shows how many it gives beside its name, which is read with it.
+    await dialog.getByRole("radio", { name: /^A hand axe( \d+)?$/ }).check();
+    await dialog.getByRole("radio", { name: /^A second weapon( \d+)?$/ }).check();
     await expect(take).toBeDisabled();
     const pick = dialog.getByRole("combobox", { name: "Pick one", exact: true });
     await pick.selectOption({ label: "Boar spear" });
     // Another option's lists are its own: switching away and back clears the pick.
-    await dialog.getByRole("radio", { name: "A leather coat", exact: true }).check();
-    await dialog.getByRole("radio", { name: "A second weapon", exact: true }).check();
+    await dialog.getByRole("radio", { name: /^A leather coat( \d+)?$/ }).check();
+    await dialog.getByRole("radio", { name: /^A second weapon( \d+)?$/ }).check();
     await expect(pick).toHaveValue("");
     await expect(take).toBeDisabled();
     await pick.selectOption({ label: "Boar spear" });

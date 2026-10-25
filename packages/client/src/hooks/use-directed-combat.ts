@@ -21,6 +21,8 @@ import { useUIStore } from "../stores/ui.store";
 /** How long the screen holds between two turns nobody human is playing, so the log reads turn by
  *  turn instead of the whole fight arriving in one frame. */
 const RULESET_TURN_PAUSE_MS = 900;
+/** How often a step the screen has waited on for a while is looked in on. */
+const RULESET_CATCH_UP_MS = 8000;
 
 /** The code of a ruleset refusal: the rules saying no to a command, which changed nothing on the
  *  server. Anything else is the command failing, not being refused. */
@@ -65,6 +67,28 @@ export function useDirectedCombat(input: {
     staleTime: 0,
     retry: false,
   });
+  /** The fight as the server has it now, taken when it is further on than the one on screen. True
+   *  when it was (laptop playtest 2026-10-25: a player's reaction prompt that only showed after a
+   *  reload, the fight sitting on "is taking their turn" meanwhile). */
+  const catchUp = useCallback(async () => {
+    const params = new URLSearchParams({ chatId: input.chatId, anchor: input.anchor });
+    const latest = await api
+      .get<{ session: DirectedCombatView }>(`/game/combat/director/state?${params}`)
+      .catch(() => null);
+    const session = latest?.session;
+    const current = qc.getQueryData<DirectedCombatView>(key);
+    if (
+      !session ||
+      !current ||
+      session.id !== current.id ||
+      session.instanceId !== current.instanceId ||
+      session.revision <= current.revision
+    )
+      return false;
+    qc.setQueryData<DirectedCombatView>(key, session);
+    return true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qc, input.chatId, input.anchor]);
   /** The revision a ruleset refusal was answered at, until the fight moves past it. */
   const refusedRevision = useRef<number | null>(null);
   const mutate = useMutation({
@@ -117,7 +141,14 @@ export function useDirectedCombat(input: {
       // A refusal is the rules saying no, not a broken battle: it changed nothing on the server, so
       // it is said once and the fight stays exactly where it was.
       const code = rulesetRefusalCode(error);
-      if (!code) return;
+      if (!code) {
+        // The answer was lost, not the step: the fight is read as the server has it, and one that
+        // moved on is picked up from there instead of waiting for a reload.
+        void catchUp().then((moved) => {
+          if (moved) mutate.reset();
+        });
+        return;
+      }
       toast.warning(rulesetRefusalText(code, (error as Error).message, t));
       // Remember WHICH state was refused before the error is cleared: a refusal changes nothing, so
       // the revision stays where it was, and autoplay must not send the same thing at it again
@@ -155,6 +186,13 @@ export function useDirectedCombat(input: {
     setWaiting(queued.current.length);
     send(command, options);
   }, [mutate.isPending, send, waiting]);
+  // A step the screen waits long on (a boss's decision the model is thinking over) is looked in on
+  // meanwhile, so whatever the fight reached is shown even if its own answer never arrives.
+  useEffect(() => {
+    if (!polling) return;
+    const timer = setInterval(() => void catchUp(), RULESET_CATCH_UP_MS);
+    return () => clearInterval(timer);
+  }, [polling, catchUp]);
   useEffect(() => {
     if (queued.current.length) return;
     if (!query.data?.window || query.data.window.controller !== "gm" || mutate.isPending || mutate.isError) return;

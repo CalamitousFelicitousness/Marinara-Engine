@@ -138,7 +138,7 @@ export const rulesetLiveWoundsSchema = z
   .strict();
 
 function boundedRecord<T extends z.ZodTypeAny>(values: T, maxEntries: number, what: string) {
-  return z.record(values).superRefine((record, ctx) => {
+  return z.record(z.string(), values).superRefine((record, ctx) => {
     const keys = Object.keys(record);
     if (keys.length > maxEntries) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: `At most ${maxEntries} ${what} can be stored` });

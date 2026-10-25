@@ -19,7 +19,7 @@ export const EXPERIENCE_OVERLAY_MAX = Object.freeze({ entries: 1000, rules: 256,
 export const EXPERIENCE_OVERLAY_BESTIARY = "creatures";
 
 const catalogId = z.string().regex(/^[a-z][a-z0-9_]{0,39}$/u, "A catalog is named by its id");
-const objects = (max: number) => z.array(z.record(z.unknown())).max(max).optional();
+const objects = (max: number) => z.array(z.record(z.string(), z.unknown())).max(max).optional();
 
 export const experienceRulesetOverlaySchema = z
   .object({
@@ -53,7 +53,7 @@ export const experienceRulesetOverlaySchema = z
       .optional(),
     /** Entries for any other of its catalogs, by catalog id: `{ "magic_items": [...] }`. */
     catalogs: z
-      .record(catalogId, z.array(z.record(z.unknown())).max(EXPERIENCE_OVERLAY_MAX.entries))
+      .record(catalogId, z.array(z.record(z.string(), z.unknown())).max(EXPERIENCE_OVERLAY_MAX.entries))
       .refine((catalogs) => Object.keys(catalogs).length <= EXPERIENCE_OVERLAY_MAX.catalogs, {
         message: `An overlay adds to ${EXPERIENCE_OVERLAY_MAX.catalogs} catalogs at most`,
       })

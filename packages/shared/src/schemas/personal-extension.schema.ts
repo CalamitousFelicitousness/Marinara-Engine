@@ -2,6 +2,7 @@
 // Personal Extension Schemas
 // ──────────────────────────────────────────────
 import { z } from "zod";
+import { partialInput } from "../utils/zod-input.js";
 import { PERSONAL_EXTENSION_CAPABILITIES, PERSONAL_EXTENSION_UI_LIMITS } from "../types/personal-extension.js";
 import { cssByteLimit, cssByteMessage } from "./css-size.js";
 
@@ -106,8 +107,7 @@ function validateRuntimePayload(
 
 export const createPersonalExtensionSchema = personalExtensionPayloadSchema.superRefine(validateRuntimePayload);
 
-export const updatePersonalExtensionSchema = personalExtensionPayloadSchema
-  .partial()
+export const updatePersonalExtensionSchema = partialInput(personalExtensionPayloadSchema)
   .extend({
     enabled: z.literal(false).optional(),
   })

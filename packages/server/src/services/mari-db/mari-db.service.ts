@@ -1,3 +1,4 @@
+import { partialInput } from "@marinara-engine/shared";
 // ──────────────────────────────────────────────
 // Professor Mari DB service
 // ──────────────────────────────────────────────
@@ -5046,9 +5047,9 @@ export class MariDbService {
         const id = requiredString(args, ["id", "widgetId"], "Home widget id");
         const index = catalog.widgets.findIndex((candidate) => candidate.id === id);
         if (index < 0) throw missingRecord("home widget", id, "home_widget.list");
-        const patch = homeCustomWidgetDraftSchema
-          .partial()
-          .parse(actionDataWithTopLevel(args, ["patch", "data", "widget"], ["title", "description", "accent", "icon"]));
+        const patch = partialInput(homeCustomWidgetDraftSchema).parse(
+          actionDataWithTopLevel(args, ["patch", "data", "widget"], ["title", "description", "accent", "icon"]),
+        );
         if (Object.keys(patch).length === 0)
           throw new Error(
             'home_widget.update needs a non-empty patch. Send at least one of title, description, accent, icon, top-level or inside "patch" or "data".',

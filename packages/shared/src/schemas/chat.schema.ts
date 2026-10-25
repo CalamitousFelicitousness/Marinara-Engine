@@ -2,6 +2,7 @@
 // Chat Zod Schemas
 // ──────────────────────────────────────────────
 import { z } from "zod";
+import { partialInput } from "../utils/zod-input.js";
 import { pendingSpatialTransitionSchema } from "./spatial-context.schema.js";
 
 export const chatModeSchema = z.enum(["conversation", "roleplay", "game"]);
@@ -13,9 +14,9 @@ const agentAttachmentKeySchema = z.string().min(1).max(200);
 export const agentLorebookAttachmentsSchema = z.record(agentAttachmentKeySchema, agentLorebookAttachmentSchema);
 export const agentLorebookAttachmentPatchesSchema = z.record(
   agentAttachmentKeySchema,
-  agentLorebookAttachmentSchema
-    .partial()
-    .refine((entry) => entry.enabled !== undefined || entry.lorebookId !== undefined),
+  partialInput(agentLorebookAttachmentSchema).refine(
+    (entry) => entry.enabled !== undefined || entry.lorebookId !== undefined,
+  ),
 );
 
 /** Merge only the fields a control changed, retaining complete stored entries. */

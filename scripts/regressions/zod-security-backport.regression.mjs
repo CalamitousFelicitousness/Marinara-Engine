@@ -7,14 +7,18 @@ import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const serverRequire = createRequire(new URL("../../packages/server/package.json", import.meta.url));
-const packageRoot = dirname(serverRequire.resolve("zod/package.json"));
+const packageRoot = dirname(serverRequire.resolve("zod-v3/package.json"));
 const manifest = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8"));
-assert.equal(manifest.version, "3.25.76", "Reassess and remove this temporary backport when upgrading Zod");
+assert.equal(manifest.version, "3.25.76", "Reassess the backport before changing the API-1 validator");
+for (const name of ["server", "client", "shared"]) {
+  const require = createRequire(new URL(`../../packages/${name}/package.json`, import.meta.url));
+  assert.equal(require("zod/package.json").version, "4.6.7", `${name} uses the reviewed native core validator`);
+}
 let cases = 0;
 for (const [name, file, specifier, legacy, mini] of [
-  ["root", "index.js", "zod", true, false],
-  ["v4", "v4/index.js", "zod/v4", false, false],
-  ["v4-mini", "v4/mini/index.js", "zod/v4-mini", false, true],
+  ["root", "index.js", "zod-v3", true, false],
+  ["v4", "v4/index.js", "zod-v3/v4", false, false],
+  ["v4-mini", "v4/mini/index.js", "zod-v3/v4-mini", false, true],
 ]) {
   for (const [format, z] of [
     ["ESM", await import(pathToFileURL(join(packageRoot, file)).href)],
@@ -154,7 +158,7 @@ assert.deepEqual(
 const versions = [
   ...new Set([...lock.matchAll(/^  zod@([^:(\s]+)(?:\([^\n]*\))?:/gmu)].map((match) => match[1])),
 ].sort();
-assert.deepEqual(versions, ["3.25.76"], "Reassess the advisory exception before changing any locked Zod version");
+assert.deepEqual(versions, ["3.25.76", "4.6.7"], "Only the reviewed native version and patched API-1 alias are allowed");
 const patch = readFileSync(new URL("../../patches/zod@3.25.76.patch", import.meta.url));
 const patchHash = createHash("sha256").update(patch).digest("hex");
 assert.ok(

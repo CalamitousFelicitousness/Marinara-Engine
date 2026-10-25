@@ -28,7 +28,8 @@ patchedDependencies:
 
 # The advisory matches versions, so it cannot recognize the security backport.
 # The security regression verifies the patch is installed and pins this exception
-# to exactly 3.25.76; remove both when the native Zod 4 migration (#8221) ships.
+# to exactly 3.25.76 in the API-1 compatibility alias. Engine core uses native
+# 4.6.7; retire the patch and exception only when the legacy package API retires.
 audit:
   ignore:
     - GHSA-mrhx-c7xc-m3w5

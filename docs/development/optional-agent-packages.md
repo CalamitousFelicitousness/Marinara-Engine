@@ -124,6 +124,12 @@ read the namespace, so the package renders with the Engine's one React and share
   `tailwind-merge` 3 and `clsx` 2. Replacing the major behind an existing public slot requires a capability API **major**.
   Adding a distinct slot is additive: capability API 1.377 adds `motion/react` without changing `framer-motion`.
   `scripts/regressions/marinara-host-namespace.regression.ts` pins each slot's mapped dependency and major.
+- The Engine validates its own data with native Zod 4. Existing packages keep Zod 3 through the explicit
+  `zod-v3` compatibility dependency, both in the client `zod` slot and in package-server imports. This preserves
+  their existing records, defaults and module exports. The alias carries the reviewed bounded-collection security
+  backport in `patches/zod@3.25.76.patch`; it is not stock Zod 3. These legacy package validators retain Zod 3
+  behavior apart from that documented security repair. The core upgrade does not apply Zod 4's other validation
+  changes to them.
 - Existing installed packages keep their full Motion 13 namespace and do not need rebuilding. A package choosing
   Motion 14 imports `motion/react` through the host shim and declares capability API 1.377 or newer. Older hosts
   reject that declaration rather than silently substituting Motion 13. Keep each animation tree on one version:
@@ -2112,9 +2118,11 @@ copy splits state the Engine keeps in one place. Pure helpers and types may stil
 
 **Shared server libraries.** A package server may leave `zod`, `adm-zip`, `dotenv`, `nanoid` and `jsonrepair` out of
 its bundle and import them by name, as it already may for `@huggingface/transformers`, `onnxruntime-node`,
-`onnxruntime-web`, `sharp`, `pino`, `pino-pretty` and `undici`. Node resolves them from the package's runtime copy
-through two links, `<runtime copy>/node_modules` to `DATA_DIR/capability-packages/node_modules` to the Engine's
-`packages/server/node_modules`, so the package gets the very module instance the Engine uses. pnpm keeps only the
+`onnxruntime-web`, `sharp`, `pino`, `pino-pretty` and `undici`. Node resolves them through managed links in the package's
+runtime copy to `DATA_DIR/capability-packages/node_modules`, which points to the Engine's `packages/server/node_modules`.
+Zod is the compatibility exception: a package's `zod` import resolves to the full `zod-v3` dependency, including its
+default, named, CommonJS and subpath exports. Other libraries keep the very module instance the Engine uses. The
+Engine's own `zod` imports continue to resolve to native Zod 4. pnpm keeps only the
 server's direct dependencies there, so only those names resolve; a dependency of a dependency, such as `ws`, does not.
 The Engine keeps the names above as direct production dependencies of `packages/server`, and every install keeps that
 layout: source and launcher installs, Windows (where the data link is a junction), Android and Termux, and both

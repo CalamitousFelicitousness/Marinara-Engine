@@ -39,13 +39,18 @@ await app.register(importRoutes, { prefix: "/api/import" });
 app.post("/valid-roster-control", chatResourceRequestOptions, (req) => createChatSchema.parse(req.body));
 app.post("/validation-detail-control", (req) => z.array(z.string()).parse(req.body));
 
-const element = createChatSchema.shape.characterIds.removeDefault().element;
-const parseElement = element._parse;
-let elementVisits = 0;
-element._parse = function (...args: Parameters<typeof parseElement>) {
-  elementVisits++;
-  return parseElement.apply(this, args);
+// Observe public entry points, rather than Zod 3's removed private element._parse hook.
+const parseChat = createChatSchema.parse;
+const partialChat = createChatSchema.partial;
+let schemaVisits = 0;
+createChatSchema.parse = (...args: Parameters<typeof parseChat>) => {
+  schemaVisits++;
+  return parseChat(...args);
 };
+createChatSchema.partial = ((...args: Parameters<typeof partialChat>) => {
+  schemaVisits++;
+  return partialChat(...args);
+}) as typeof partialChat;
 const hash = (text: string) => createHash("sha256").update(text).digest("hex");
 
 try {
@@ -67,21 +72,21 @@ try {
     );
     characterIds[invalidIndex] = null;
     for (const method of ["POST", "PATCH"] as const) {
-      elementVisits = 0;
+      schemaVisits = 0;
       const response = await app.inject({
         method,
         url: method === "POST" ? "/api/chats" : `/api/chats/${chatId}`,
         payload: { name: "Malformed roster", mode: "roleplay", characterIds },
       });
       assert.equal(response.statusCode, 400, response.body);
-      assert.equal(elementVisits, 0, "both real controllers reject before Zod visits any roster element");
+      assert.equal(schemaVisits, 0, "both real controllers reject before entering Zod");
       assert.deepEqual(response.json().details, [
         { path: `characterIds.${invalidIndex}`, message: "Each character ID must be a string." },
       ]);
     }
   }
 
-  elementVisits = 0;
+  schemaVisits = 0;
   const validIds = Array.from({ length: 10_001 }, (_, i) => `character-${i}`);
   const valid = await app.inject({
     method: "POST",
@@ -90,7 +95,7 @@ try {
   });
   assert.equal(valid.statusCode, 200, valid.body);
   assert.deepEqual(valid.json().characterIds, validIds, "valid rosters have no new count cap");
-  assert.equal(elementVisits, validIds.length);
+  assert.equal(schemaVisits, 1, "the valid roster enters the real create schema");
 
   for (const method of ["POST", "PATCH"] as const) {
     const oversized = await app.inject({
@@ -190,7 +195,8 @@ try {
     validRosterIds: validIds.length,
   });
 } finally {
-  element._parse = parseElement;
+  createChatSchema.parse = parseChat;
+  createChatSchema.partial = partialChat;
   await app.close();
   await closeDB();
   await rm(dataDir, { recursive: true, force: true });

@@ -131,6 +131,10 @@ function manualChunks(id: string) {
   )
     return "vendor-motion-legacy";
   if (/\/node_modules\/(?:framer-motion|motion-dom|motion-utils)\//u.test(id)) return "vendor-motion";
+  // Installed API-1 packages retain Zod 3 only in the lazy host namespace.
+  if (/\/\.pnpm\/zod@3[^/]*\/node_modules\//u.test(id) || /\/node_modules\/zod-v3\//u.test(id))
+    return "vendor-validation-legacy";
+  if (/\/node_modules\/zod\//u.test(id)) return "vendor-validation";
   if (id.includes("react") || id.includes("scheduler")) return "vendor-react";
   if (id.includes("@tanstack")) return "vendor-tanstack";
   if (id.includes("zustand")) return "vendor-state";
@@ -165,6 +169,8 @@ function bundleBudget(): Plugin {
         if (item?.type !== "chunk") continue;
         if (item.name === "vendor-motion-legacy")
           this.error("Legacy Motion 13 must load only with the dynamic package host");
+        if (item.name === "vendor-validation-legacy")
+          this.error("Legacy Zod 3 must load only with the dynamic package host");
         pending.push(...item.imports);
       }
 

@@ -25,6 +25,7 @@ import { existsSync } from "fs";
 import { mkdir, readFile, writeFile } from "fs/promises";
 import { extname, join } from "path";
 import { logger } from "../lib/logger.js";
+import { validationDetails } from "../middleware/error-handler.js";
 import {
   createLorebookSchema,
   updateLorebookSchema,
@@ -844,7 +845,10 @@ export async function lorebooksRoutes(app: FastifyInstance) {
   /** Bulk editor: field changes plus key add/remove across many entries, all or nothing. */
   app.post<{ Params: { id: string } }>("/:id/entries/bulk-edit", async (req, reply) => {
     const parsed = lorebookBulkEditSchema.safeParse(req.body);
-    if (!parsed.success) return reply.status(400).send({ error: parsed.error.issues[0]?.message ?? "Invalid request" });
+    if (!parsed.success) {
+      const [issue] = validationDetails(parsed.error.issues);
+      return reply.status(400).send({ error: issue?.message ?? "Invalid request" });
+    }
     if (!(await storage.getById(req.params.id))) return reply.status(404).send({ error: "Lorebook not found" });
     try {
       return await app.db.transaction(async (tx) => {

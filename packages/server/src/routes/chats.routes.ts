@@ -3,6 +3,7 @@
 // ──────────────────────────────────────────────
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { z } from "zod";
+import { partialInput } from "@marinara-engine/shared";
 import { chatResourceRequestOptions } from "./chat-request-validation.js";
 import { logger } from "../lib/logger.js";
 import { getMariDbService } from "../services/mari-db/mari-db.service.js";
@@ -1418,7 +1419,7 @@ export async function chatsRoutes(app: FastifyInstance) {
 
   // Update chat
   app.patch<{ Params: { id: string } }>("/:id", chatResourceRequestOptions, async (req, reply) => {
-    const data = createChatSchema.partial().parse(req.body);
+    const data = partialInput(createChatSchema).parse(req.body);
     const existing = await storage.getById(req.params.id);
     if (!existing || isHomeProfessorMariChat(existing)) {
       return reply.status(404).send({ error: "Chat not found" });

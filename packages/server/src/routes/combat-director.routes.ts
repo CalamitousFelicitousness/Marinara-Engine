@@ -146,7 +146,7 @@ const directedCombatantFields = z.object({
   tactics: combatTacticsSchema.optional(),
   aiHints: combatAiHintsSchema.optional(),
   controller: z.enum(["manual", "ai"]).optional(),
-  skillCooldowns: z.record(rounds).optional(),
+  skillCooldowns: z.record(z.string(), rounds).optional(),
   statusEffects: z
     .array(
       z.object({
@@ -443,7 +443,7 @@ export async function combatDirectorRoutes(
             .passthrough(),
           eventSeq: z.number().int().min(0),
           events: z
-            .array(z.object({ seq: z.number().int().min(0), event: z.unknown() }))
+            .array(z.object({ seq: z.number().int().min(0), event: z.unknown().optional() }))
             .max(RULESET_COMBAT_EVENT_LIMIT),
           controllers: z.record(key, z.enum(["manual", "ai"])),
           bosses: z.array(key).max(40),

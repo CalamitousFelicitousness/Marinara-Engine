@@ -82,8 +82,8 @@ try {
   refuses((d) => (d.resolution.boost.die = "missing"), /Unknown die/);
   refuses((d) => (d.resolution.success.symbol = "missing"), /Unknown success symbol/);
   refuses((d) => (d.resolution.criticalFailure = "missing"), /Unknown critical symbol/);
-  refuses((d) => (d.resolution.pool.max = 13), /less than or equal to 12/);
-  refuses((d) => (d.resolution.dice[0].faces[0] = ["s", "s", "s", "s"]), /at most 3/);
+  refuses((d) => (d.resolution.pool.max = 13), /resolution\.pool\.max: Too big: expected number to be <=12/);
+  refuses((d) => (d.resolution.dice[0].faces[0] = ["s", "s", "s", "s"]), /Too big: expected array to have <=3 items/);
   refuses((d) => (d.resolution.difficultyLadder[0].dc = -1), /Difficulty dice/);
   refuses((d) => (d.resolution.difficultyLadder[0].dc = 6), /Difficulty dice/);
   refuses((d) => (d.combat = ember.combat), /fights as a "symbol-pool" fight/);

@@ -70,7 +70,6 @@
     "adm-zip": "^0.6.1",
     "esbuild": "^0.28.1",
     "prettier": "^3.9.10",
-    "typescript": "~6.0.3",
-    "zod-to-json-schema": "^3.25.2"
+    "typescript": "~6.0.3"
   }
 }

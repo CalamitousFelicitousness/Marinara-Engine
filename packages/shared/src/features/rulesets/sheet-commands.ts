@@ -356,7 +356,14 @@ export function applySheetCommandTags(
     const targets = findTargets(parsed.who);
     if ("refusal" in targets) return record(named, { ok: false, reason: targets.refusal });
 
-    const op = parsed.op;
+    // A pool left out is health's, where the ruleset keeps health in a pool.
+    const health = ctx.definition.combat?.health;
+    const healthPool = health && "pool" in health ? health.pool : undefined;
+    if ("pool" in parsed.op && !parsed.op.pool && !healthPool)
+      return record(named, { ok: false, reason: "unknown-pool" });
+    const op = "pool" in parsed.op && !parsed.op.pool ? { ...parsed.op, pool: healthPool! } : parsed.op;
+    // The saved reply says which pool it was.
+    parsed.op = op;
     // Damage or a spend whose `now` is what the sheet already reads was already paid: by the fight
     // the reply follows, or a command before it. Paying it again would count it twice (a crossbow
     // hit a fight already took, written again after the fight was left).

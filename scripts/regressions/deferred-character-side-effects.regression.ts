@@ -151,15 +151,16 @@ try {
   });
   const chats = createChatsStorage(db);
   for (const [mode, group] of [
-    ["roleplay", true],
-    ["roleplay", false],
-    ["conversation", false],
-    ["game", false],
+    ["roleplay", "individual"],
+    ["roleplay", "merged"],
+    ["roleplay", null],
+    ["conversation", null],
+    ["game", null],
   ] as const) {
     prompts.length = 0;
     agentPrompts.length = 0;
     const chat = await chats.create({
-      name: `One memory per turn: ${mode} ${group ? "preset group" : "default"}`,
+      name: `One memory per turn: ${mode} ${group ?? "default"}`,
       mode,
       characterIds: group ? [hangover.id, witness.id] : [hangover.id],
       connectionId: connection.id,
@@ -173,14 +174,18 @@ try {
       activeAgentIds: [agent.type],
       enableTools: false,
       enableMemoryRecall: false,
-      groupChatMode: "individual",
+      groupChatMode: group ?? "individual",
       groupResponseOrder: "sequential",
     });
     await chats.createMessage({ chatId: chat.id, role: "user", content: "What do you remember?", characterId: null });
     const response = await app.inject({ method: "POST", url: "/api/generate/", payload: { chatId: chat.id } });
     assert.equal(response.statusCode, 200, response.body);
     assert(!response.body.includes('"type":"error"'), response.body);
-    assert.equal(prompts.length, group ? 2 : 1, "each responder makes its normal single provider request");
+    assert.equal(
+      prompts.length,
+      group === "individual" ? 2 : 1,
+      "each responder makes its normal single provider request",
+    );
     for (const prompt of prompts) {
       assert.match(prompt, /Memory: PROMISE\./u);
       assert.doesNotMatch(prompt, /Memory: BEGINNING\.|MARINARA_DEFERRED/u);

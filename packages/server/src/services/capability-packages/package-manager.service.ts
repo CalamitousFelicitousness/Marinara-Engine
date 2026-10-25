@@ -12627,6 +12627,19 @@ export function getCapabilityPackageInstallIssue(
   ) {
     return "A ruleset whose attack rows choose the best of several abilities (abilityChoices) requires schemaVersion 2 and capabilityApi 1.782 or newer";
   }
+  // A number off the sheet added to hit on an attack list's rows, 1.789.
+  if (
+    !declaresApi(789) &&
+    (() => {
+      const attacks = plainRecord(plainRecord(ruleset)?.combat)?.attacks;
+      return (
+        Array.isArray(attacks) &&
+        attacks.some((source) => plainRecord(plainRecord(source)?.toHit)?.sheetBonus !== undefined)
+      );
+    })()
+  ) {
+    return "A ruleset whose attack rows add a number off the sheet to hit (toHit.sheetBonus) requires schemaVersion 2 and capabilityApi 1.789 or newer";
+  }
   // A sheet migration that sets a column on the list rows it matches, 1.783.
   if (
     !declaresApi(783) &&

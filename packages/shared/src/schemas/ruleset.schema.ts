@@ -12803,6 +12803,19 @@ const combatAttackSourceSchema = z
         proficiency: combatColumnSchema.optional(),
         /** A number column, added as it stands. */
         bonus: combatColumnSchema.optional(),
+        /** A number off the sheet added to every row, or only to rows whose `when` column holds the
+         *  value it names (1.789): SRD 5.1's Archery, "+2 bonus to attack rolls you make with ranged
+         *  weapons", the features' sum on rows that reach nobody up close. */
+        sheetBonus: z
+          .object({
+            value: rulesetValueRefSchema,
+            when: z
+              .object({ column: sheetId, equals: z.union([z.number().finite(), z.boolean(), z.string().max(80)]) })
+              .strict()
+              .optional(),
+          })
+          .strict()
+          .optional(),
       })
       .strict()
       .default({}),
@@ -20033,6 +20046,12 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       column(source.strikesCappedBy?.column, "boolean", [...path, "strikesCappedBy", "column"]);
       column(source.toHit.proficiency?.column, "boolean", [...path, "toHit", "proficiency", "column"]);
       column(source.toHit.bonus?.column, "number", [...path, "toHit", "bonus", "column"]);
+      if (source.toHit.sheetBonus) {
+        checkRef(source.toHit.sheetBonus.value, [...path, "toHit", "sheetBonus", "value"], derivedIds);
+        const when = source.toHit.sheetBonus.when;
+        if (when && typeOf(when.column) === undefined)
+          issue([...path, "toHit", "sheetBonus", "when", "column"], `Unknown column "${when.column}"`);
+      }
       column(source.damage.dice.column, "dice", [...path, "damage", "dice", "column"]);
       column(source.damage.ability?.column, "enum", [...path, "damage", "ability", "column"]);
       column(source.damage.bonus?.column, "number", [...path, "damage", "bonus", "column"]);

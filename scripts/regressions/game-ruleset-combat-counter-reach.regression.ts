@@ -188,6 +188,23 @@ try {
     );
   };
 
+  // ── An answer held but not given says why (laptop party A 2026-10-25: a silent Counterspell) ──
+  {
+    const state = fight(definition);
+    rulesetCombatant(state, "corwin")!.budgets.reaction = 0;
+    const option = rulesetCombatOptions(definition, state, "mage").find((entry) => entry.label === "Bolt")!;
+    const cast = applyRulesetCombatChoice(
+      definition,
+      state,
+      { actorId: "mage", optionId: option.id, targetIds: ["corwin"] },
+      () => 10,
+    );
+    assert.equal(cast.state.window, undefined, "nobody is asked");
+    assert.deepEqual(cast.unanswered, [{ actorId: "corwin", label: "Counter", because: "cost" }]);
+    const asked = bolt(fight(definition));
+    assert.equal(asked.unanswered, undefined, "one who can answer is asked, and nothing is said");
+  }
+
   // ── Levels ──
   {
     const state = fight(definition);

@@ -179,6 +179,7 @@ import {
   type RulesetCombatChoice,
   type RulesetWindowTrigger,
   type RulesetCombatEvent,
+  type RulesetCombatStep,
   type RulesetCombatOption,
   type RulesetCombatant,
   type RulesetCombatantInput,
@@ -7025,10 +7026,12 @@ function absorb(
   definition: RulesetDefinition,
   state: CombatDirectorState,
   fight: RulesetFightState,
-  step: { state: RulesetEncounterState; events: readonly RulesetCombatEvent[] },
+  step: Pick<RulesetCombatStep, "state" | "unanswered"> & { events: readonly RulesetCombatEvent[] },
 ): void {
   fight.encounter = step.state;
   record(fight, step.events);
+  for (const one of step.unanswered ?? [])
+    recordReasons(fight, one.actorId, [{ why: "couldNotAnswer", label: one.label, because: one.because }]);
   if (step.events.some((event) => event.type === "round")) state.gmCalls = 0;
   syncRulesetCombatants(definition, state);
 }
@@ -7338,6 +7341,12 @@ function playRulesetTurn(
       applyChoice(definition, state, fight, { actorId, optionId: RULESET_MOVE_OPTION, targetIds: [], to: away });
   }
   const stays = orders?.posture === "hold" || orders?.posture === "retreat";
+  // One that can harm nobody (a familiar) does what it can from where it is, or walks up to help, and
+  // never wades in with nothing to do there (laptop party A 2026-10-25: an owl charged and died).
+  const harmless =
+    !!actor &&
+    !!definition.combat &&
+    rulesetCombatEffects(definition, definition.combat, actor, fight.encounter).has("cannot-harm");
   // A proud legend near its end takes to the sky and fights from there (combat AI T5).
   const aloof = !stays && retreatAloft(definition, state, fight, actorId);
   letGoOfTheDown(definition, state, fight, actorId);
@@ -7413,6 +7422,10 @@ function playRulesetTurn(
       )
         break;
       if (defended || stays || aloof || feeding) break;
+      if (harmless) {
+        if (action === 0) recordReasons(fight, actorId, [{ why: "harmless" }]);
+        break;
+      }
       // Nothing to do yet with the one dropping areas on the party out of reach: it heads for them.
       if (pressing && walkTowardsTrouble(definition, state, fight, actorId, undefined, pressing)) continue;
       if (!walkTowardsTrouble(definition, state, fight, actorId, leash)) {
@@ -7448,6 +7461,7 @@ function playRulesetTurn(
       !picked.defensive &&
       !stays &&
       !shotFromAfar &&
+      !harmless &&
       walkTowardsTrouble(definition, state, fight, actorId, leash)
     )
       continue;
@@ -7550,9 +7564,11 @@ function playRulesetTurn(
           ? { why: "noWay" }
           : stays
             ? { why: "holding" }
-            : ordered && rulesetClosingMove(definition, fight.encounter, actorId)
-              ? { why: "guarding", targetId: ordered.charge.id }
-              : { why: "nothingWorth" },
+            : harmless
+              ? { why: "harmless" }
+              : ordered && rulesetClosingMove(definition, fight.encounter, actorId)
+                ? { why: "guarding", targetId: ordered.charge.id }
+                : { why: "nothingWorth" },
     ]);
   advanceTurn(definition, state, fight);
 }

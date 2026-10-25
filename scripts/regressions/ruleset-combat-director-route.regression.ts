@@ -1025,6 +1025,35 @@ try {
     assert.equal(await encounterRulesetBrief(plainRuleset.definition, null), null);
   }
 
+  // ── Who plays a companion is kept for the chat's next fight (laptop party A 2026-10-25) ──
+  {
+    const kept = await newGame({ ruleset: true });
+    const fightBody = (anchor: string) => ({
+      chatId: kept.chat.id,
+      anchor,
+      style: "ruleset",
+      party: [unit("brenna", "Brenna", "player"), unit("corwin", "Corwin", "player")],
+      enemies: [unit("hound", "Cinder Hound", "enemy")],
+    });
+    const first = (await post("/combat/start", fightBody(kept.anchor.id))).json().session as DirectedCombatView;
+    const handed = await post("/combat/command", {
+      chatId: kept.chat.id,
+      anchor: kept.anchor.id,
+      id: first.id,
+      instanceId: first.instanceId,
+      revision: first.revision,
+      requestId: crypto.randomUUID(),
+      command: { type: "control", unitId: "corwin", controller: "ai" },
+    });
+    assert.equal(handed.statusCode, 200, handed.body);
+    const meta = JSON.parse((await chats.getById(kept.chat.id))!.metadata || "{}");
+    assert.deepEqual(meta.combatControllers, { corwin: "ai" });
+    const later = await chats.createMessage({ chatId: kept.chat.id, role: "assistant", content: "[state: combat]" });
+    const next = (await post("/combat/start", fightBody(later.id))).json().session as DirectedCombatView;
+    assert.equal(next.party.find((one) => one.id === "corwin")?.controller, "ai", "the Engine plays Corwin again");
+    assert.notEqual(next.party.find((one) => one.id === "brenna")?.controller, "ai", "Brenna stays the player's");
+  }
+
   console.log(
     "Ruleset combat director route: start, idempotency, refusal codes, the live sheet write-back, the board, an unchanged classic fight, the boss window, a named opponent the Game Master plays and the blueprint prompt passed.",
   );

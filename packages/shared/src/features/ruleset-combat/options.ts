@@ -194,6 +194,7 @@ import type {
   RulesetCombatAgainst,
   RulesetConditionBonus,
   RulesetCombatAction,
+  RulesetUnansweredBecause,
   RulesetCombatAlter,
   RulesetCombatAlterOffer,
   RulesetCombatCell,
@@ -6733,35 +6734,43 @@ export function rulesetReactionsAt(
   /** The catalog and entry behind what caused the moment, when there is one (a reaction that answers
    *  only some answers nothing without them), and for a hit, the kind of blow (1.118). */
   cause: RulesetMomentCause = {},
+  /** Told of each answer to this very moment that is held but cannot be given, and why: for the
+   *  log, where an opponent's Counterspell never came. */
+  missed?: (action: RulesetCombatAction, because: RulesetUnansweredBecause) => void,
 ): RulesetCombatAction[] {
   if (!rulesetCombatStanding(actor)) return [];
   const effects = rulesetCombatEffects(definition, combat, actor, state);
-  if (effects.has("cannot-act")) return [];
+  const helpless = effects.has("cannot-act");
+  if (helpless && !missed) return [];
   return actor.actions.filter((action) => {
     if (!action.reaction) return false;
     // Its own moment, or any it is also taken at, each read with its own `against`.
     const moments = [action.reaction, ...(action.reaction.also ?? [])];
+    const answers = moments.some(
+      (one) =>
+        one.on === moment &&
+        momentAnswers(state, actor, sourceId, one, cause) &&
+        // A hand free to catch it in (1.400).
+        (!one.freeSlot || rulesetSlotFree(definition, actor, one.freeSlot)) &&
+        // Whoever caused it is what it says (1.406): Giant Killer's Large or larger.
+        (!one.sourceIs || sourceIsOf(definition, state, sourceId, one.sourceIs)),
+    );
     // Choosing what one's own hit does is part of making it, not a reaction to it (1.241).
-    if (effects.has("cannot-react") && !moments.every((one) => one.by === "self")) return false;
-    if (
-      !moments.some(
-        (one) =>
-          one.on === moment &&
-          momentAnswers(state, actor, sourceId, one, cause) &&
-          // A hand free to catch it in (1.400).
-          (!one.freeSlot || rulesetSlotFree(definition, actor, one.freeSlot)) &&
-          // Whoever caused it is what it says (1.406): Giant Killer's Large or larger.
-          (!one.sourceIs || sourceIsOf(definition, state, sourceId, one.sourceIs)),
-      )
-    )
+    if (helpless || (effects.has("cannot-react") && !moments.every((one) => one.by === "self"))) {
+      if (answers) missed?.(action, "cannot-react");
       return false;
+    }
+    if (!answers) return false;
     const target = rulesetReactionTarget(state, actor, action, moment, sourceId, cause);
     if ((moment === "aimed" || moment === "hit") && !target) return false;
     // A strike of its own to make (1.406), and somebody else for a missed attack to go to.
     if (action.strikesWith && !rulesetOpportunityAttack(actor)) return false;
     if (action.redirects && rulesetRedirectTargets(state, actor, sourceId, cause.attackOption).length === 0)
       return false;
-    if (optionFrom(definition, combat, state, actor, action, true) === null) return false;
+    if (optionFrom(definition, combat, state, actor, action, true) === null) {
+      missed?.(action, "cost");
+      return false;
+    }
     // A bystander's distance is to the creature it protects. An explicit range still limits the
     // answer, but an omitted range does not invent a melee reach to a distant attacker.
     const nearby =
@@ -6797,7 +6806,13 @@ export function rulesetReactionsAt(
       return rulesetFallTargets(definition, state, actor, action).length > 0;
     // Somebody using something is answered only from where the answer reaches them, whether or not
     // it is aimed back at them: a counter that simply calls it off still has to reach it.
-    if (moment === "used" && rulesetTargetRefusal(state, actor.id, action.id, sourceId) !== null) return false;
+    if (moment === "used") {
+      const refused = rulesetTargetRefusal(state, actor.id, action.id, sourceId);
+      if (refused !== null) {
+        missed?.(action, refused === "no-line-of-sight" ? "sight" : "reach");
+        return false;
+      }
+    }
     if (moment !== "falls" && !rulesetReactionPointsAtSource(action)) return true;
     return rulesetOptionTargets(definition, state, actor.id, action, nearby).includes(sourceId);
   });

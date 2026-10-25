@@ -1505,7 +1505,9 @@ const capabilityPackageManifestBaseSchema = z
 // 1.788: a guided-builder rows step's `countFrom`: how many of the player's own rows it wants, read off
 //        the sheet (5e's hit point rolls, one per level after 1st). The step starts with that many and
 //        waits on that many whole rows, as its `min` does.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 788 } as const);
+// 1.789: an attack list's `toHit.sheetBonus`: a number off the sheet added to hit on its rows, or on
+//        only the rows whose `when` column holds a value (5e's Archery on ranged weapons).
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 789 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

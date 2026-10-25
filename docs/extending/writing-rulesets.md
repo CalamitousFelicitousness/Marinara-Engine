@@ -3719,6 +3719,10 @@ same keys for a d20 system:
   its damage with that same one. SRD 5.1's Finesse is the sentence it exists for, written
   `{ "finesse": ["str", "dex"] }` with `finesse` among the column's values. The value is refused
   where it is itself an ability, names one your sheet lacks, or is not offered by an ability column.
+  `toHit.sheetBonus` (Capability API 1.789) adds a number off the sheet to hit: `value` is any value
+  reference, and `when: { "column": ..., "equals": ... }` holds it to the rows whose column holds that
+  value. SRD 5.1's Archery, "+2 bonus to attack rolls you make with ranged weapons", reads a features
+  column's `listSum` on rows whose `reach` is 0, so a thrown dagger gets none.
   `strikes` is an optional value reference saying how many strikes ONE spend of this list's budget
   buys: taking a row with none in hand spends the budget and puts the rest in hand, and while any
   are in hand every row that declares `strikes` costs no budget at all, so a different weapon, a

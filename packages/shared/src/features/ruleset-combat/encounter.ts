@@ -2366,6 +2366,21 @@ function rowAbilityAndSkill(
   );
 }
 
+/** What the sheet adds to hit on this row (1.789): its `sheetBonus`, where the row's `when` column
+ *  holds the value it names. Archery's +2 on a bow, and nothing on a thrown dagger. */
+function rowSheetBonus(
+  definition: RulesetDefinition,
+  build: RulesetSheetBuild,
+  evaluated: EvaluatedRulesetSheet,
+  source: RulesetCombatAttackSource,
+  row: Record<string, unknown>,
+): number {
+  const bonus = source.toHit.sheetBonus;
+  if (!bonus || (bonus.when && columnValue(row, bonus.when.column) !== bonus.when.equals)) return 0;
+  const value = Math.trunc(resolveRulesetValueRef(definition, build, bonus.value, evaluated));
+  return Number.isFinite(value) ? value : 0;
+}
+
 /** One attack row with a choice of abilities (1.782) in its ability columns read as the one of them
  *  that adds the most to hit, with the row's skill: a finesse blade swung with the better of
  *  Strength and Dexterity, for its damage too. Any other row is returned as it is. */
@@ -2634,7 +2649,8 @@ function attackActions(
       toHit:
         rowAbilityAndSkill(definition, build, source, row, evaluated) +
         (proficient ? evaluated.proficiencyBonus : 0) +
-        numberFromColumn(row, source.toHit.bonus?.column),
+        numberFromColumn(row, source.toHit.bonus?.column) +
+        rowSheetBonus(definition, build, evaluated, source, row),
       damage: pooled
         ? {
             // Dice of the ruleset's own die: the column's count and the ability's rating. What is

@@ -519,6 +519,8 @@ interface RulesetCombatContext {
   };
   /** Who the use being resolved attacked, hit or missed (1.406), for the moment once it is over. */
   attacked?: RulesetAttackedRecord;
+  /** Answers to an opponent using something held but not given, and why (see `RulesetCombatStep`). */
+  unanswered?: NonNullable<RulesetCombatStep["unanswered"]>;
 }
 
 /** Set while a legendary cast (1.284) resolves as its maker's turn would, so each step begun inside
@@ -646,7 +648,7 @@ function begin(
         });
       }
       next.cursor = state.cursor + rolls;
-      return { state: next, events: ctx.events };
+      return { state: next, events: ctx.events, ...(ctx.unanswered?.length ? { unanswered: ctx.unanswered } : {}) };
     },
   };
 }
@@ -13292,24 +13294,35 @@ function openMoment(
     )
     .filter(
       (one) =>
-        rulesetReactionsAt(ctx.definition, ctx.combat, ctx.state, one, moment, trigger.sourceId, {
-          ...("targetIds" in trigger ? { targetIds: trigger.targetIds } : {}),
-          ...("optionId" in trigger
-            ? {
-                qualities: rulesetActionQualities(source?.actions.find((entry) => entry.id === trigger.optionId)),
-              }
-            : {}),
-          ...(trigger.kind === "falls" && trigger.fallerIds ? { targetIds: trigger.fallerIds } : {}),
-          ...(trigger.kind === "aimed" && trigger.blow ? { blow: trigger.blow } : {}),
-          ...("optionId" in trigger && source?.block && !("catalog" in trigger && trigger.catalog)
-            ? { action: trigger.label }
-            : {}),
-          ...("catalog" in trigger && trigger.catalog ? { catalog: trigger.catalog } : {}),
-          ...("entry" in trigger && trigger.entry ? { entry: trigger.entry } : {}),
-          ...(trigger.kind === "attacked"
-            ? { missedIds: trigger.missedIds, blows: trigger.blows, attackOption: trigger.optionId }
-            : {}),
-        }).length > 0,
+        rulesetReactionsAt(
+          ctx.definition,
+          ctx.combat,
+          ctx.state,
+          one,
+          moment,
+          trigger.sourceId,
+          {
+            ...("targetIds" in trigger ? { targetIds: trigger.targetIds } : {}),
+            ...("optionId" in trigger
+              ? {
+                  qualities: rulesetActionQualities(source?.actions.find((entry) => entry.id === trigger.optionId)),
+                }
+              : {}),
+            ...(trigger.kind === "falls" && trigger.fallerIds ? { targetIds: trigger.fallerIds } : {}),
+            ...(trigger.kind === "aimed" && trigger.blow ? { blow: trigger.blow } : {}),
+            ...("optionId" in trigger && source?.block && !("catalog" in trigger && trigger.catalog)
+              ? { action: trigger.label }
+              : {}),
+            ...("catalog" in trigger && trigger.catalog ? { catalog: trigger.catalog } : {}),
+            ...("entry" in trigger && trigger.entry ? { entry: trigger.entry } : {}),
+            ...(trigger.kind === "attacked"
+              ? { missedIds: trigger.missedIds, blows: trigger.blows, attackOption: trigger.optionId }
+              : {}),
+          },
+          moment === "used"
+            ? (action, because) => (ctx.unanswered ??= []).push({ actorId: one.id, label: action.label, because })
+            : undefined,
+        ).length > 0,
     )
     .map((one) => one.id);
   if (waiting.length === 0) return false;

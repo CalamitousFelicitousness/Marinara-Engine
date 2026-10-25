@@ -4715,9 +4715,16 @@ export interface RulesetCombatChoice {
   heightens?: string;
 }
 
+/** Why somebody holding an answer to an opponent using something could not give it: unable to
+ *  react, unable to pay for it, out of its reach, or with no line to whoever used it. */
+export type RulesetUnansweredBecause = "cannot-react" | "cost" | "reach" | "sight";
+
 export interface RulesetCombatStep {
   state: RulesetEncounterState;
   events: RulesetCombatEvent[];
+  /** Answers to an opponent using something that were held but could not be given in this step
+   *  (laptop party A 2026-10-25: a Counterspell that silently never came), for the Debug log. */
+  unanswered?: Array<{ actorId: string; label: string; because: RulesetUnansweredBecause }>;
 }
 
 export interface RulesetEncounterSummary {

@@ -99,6 +99,19 @@ import { buildPartyNpcId } from "../services/generation/game-party-utils.js";
 import { logger } from "../lib/logger.js";
 import { resolveVisibleGameStateAnchor } from "./generate/generate-route-utils.js";
 
+/** Where a chat keeps who plays each of its party in a fight (the player or the Engine). */
+const COMBAT_CONTROLLERS_KEY = "combatControllers";
+
+function rememberedControllers(meta: Record<string, unknown>): Record<string, "manual" | "ai"> {
+  const kept = meta[COMBAT_CONTROLLERS_KEY];
+  if (!kept || typeof kept !== "object" || Array.isArray(kept)) return {};
+  return Object.fromEntries(
+    Object.entries(kept as Record<string, unknown>).filter(
+      (entry): entry is [string, "manual" | "ai"] => entry[1] === "manual" || entry[1] === "ai",
+    ),
+  );
+}
+
 // Host-owned Experience namespace: existing branch/checkpoint/export paths preserve these rows,
 // while turn-game readers and resets already exclude the entire experience: prefix.
 export const COMBAT_DIRECTOR_NAMESPACE = "experience:marinara-engine.combat";
@@ -1095,6 +1108,12 @@ export async function combatDirectorRoutes(
               ...(template?.controller ? { controller: template.controller } : {}),
             });
           }
+          // Who the player last gave the Engine, or kept, in this chat's fights.
+          const kept = rememberedControllers(meta);
+          for (const member of input.party) {
+            const controller = kept[member.id];
+            if (controller) built.fight.controllers[member.id] = controller;
+          }
           state.rulesetFight = built.fight;
           // A party the Engine plays all of has nobody for the player to set down.
           if (built.fight.deploy && rulesetDeployers(state, built.fight).length === 0) rulesetBeginFight(built.fight);
@@ -1178,6 +1197,9 @@ export async function combatDirectorRoutes(
       .safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message });
     const input = parsed.data;
+    // Who the player hands to the Engine, or takes back, is kept for the chat's next fights too
+    // (laptop party A 2026-10-25: companions back on Player at every fight).
+    let controlled: { unitId: string; controller: "manual" | "ai" } | undefined;
     try {
       const result = await serialized(input.chatId, async () => {
         const found = await load(input.chatId, input.anchor);
@@ -1264,6 +1286,7 @@ export async function combatDirectorRoutes(
         const refused = step(input.command as DirectedCommand);
         // A refusal changed nothing, so nothing is saved and no request id is spent on it.
         if (refused) return { refusal: refused };
+        if (input.command.type === "control" && ruleset) controlled = input.command;
         state.requests = [...state.requests, input.requestId].slice(-256);
         // What it spends is kept only while the step is saved: a save that fails takes it back.
         if (storySpend && "spend" in storySpend) {
@@ -1273,6 +1296,18 @@ export async function combatDirectorRoutes(
         }
         return await saveLettingGo(row.id, input.chatId, state, session, ruleset);
       });
+      if (controlled) {
+        const { unitId, controller } = controlled;
+        await chats
+          .patchMetadata(
+            input.chatId,
+            (current) => ({
+              [COMBAT_CONTROLLERS_KEY]: { ...rememberedControllers(current), [unitId]: controller },
+            }),
+            { touchUpdatedAt: false },
+          )
+          .catch((err) => logger.warn(err, "Unable to remember a combat controller"));
+      }
       if ("refusal" in result && result.refusal)
         return reply.code(400).send({ error: result.refusal.error, code: result.refusal.code });
       if ("session" in result) return result;

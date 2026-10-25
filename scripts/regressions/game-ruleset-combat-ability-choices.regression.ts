@@ -142,4 +142,94 @@ assert.match(refusal(withChoices({ finesse: ["str", "str"] })), /An ability is n
   }
 }
 
-console.log("Ruleset combat ability choices: a row's choice of abilities swings with the best, for damage too.");
+// A number off the sheet to hit on the rows a column picks out (1.789): Archery's +2 on a bow, and
+// none on a thrown dagger, which reaches up close.
+{
+  const archery = parsed(
+    variant((doc) => {
+      doc.sheet.lists
+        .find((entry: { id: string }) => entry.id === "features")
+        .columns.push({ id: "ranged_to_hit", label: "Ranged to hit", type: "number", min: 0, max: 10, default: 0 });
+      doc.combat.attacks[0].toHit.sheetBonus = {
+        value: { listSum: { list: "features", column: "ranged_to_hit" } },
+        when: { column: "reach", equals: 0 },
+      };
+    }),
+  );
+  const state = createRulesetEncounter({
+    definition: archery,
+    seed: 7,
+    roller: () => 10,
+    combatants: [
+      {
+        id: "ira",
+        name: "Ira",
+        side: "party",
+        build: rulesetSheetBuildSchema.parse({
+          abilities: { str: 10, dex: 18, con: 12, int: 10, wis: 10, cha: 10 },
+          fields: { level: 1, ac: 14, speed: 30, hp_max: 10 },
+          lists: {
+            features: [{ name: "Fighting Style: Archery", text: "", ranged_to_hit: 2 }],
+            attacks: [
+              {
+                name: "Longbow",
+                ability: "dex",
+                proficient: true,
+                damage: "1d8",
+                reach: 0,
+                range: 150,
+                long_range: 600,
+              },
+              { name: "Dagger", ability: "dex", proficient: true, damage: "1d4", reach: 5, range: 20, long_range: 60 },
+            ],
+          },
+        }),
+        live: {},
+        catalogs: {},
+      },
+      sack,
+    ],
+  });
+  const toHit = (label: string) =>
+    rulesetCombatant(state, "ira")!.actions.find((action) => action.label === label)!.toHit;
+  assert.equal(toHit("Longbow"), 4 + 2 + 2, "DEX, proficiency and Archery");
+  assert.equal(toHit("Dagger"), 4 + 2, "a thrown dagger takes none");
+  assert.match(
+    refusal(
+      variant((doc) => {
+        doc.combat.attacks[0].toHit.sheetBonus = { value: { const: 1 }, when: { column: "nope", equals: 0 } };
+      }),
+    ),
+    /Unknown column "nope"/,
+  );
+  const dataDir = mkdtempSync(join(tmpdir(), "marinara-ruleset-sheet-bonus-"));
+  process.env.DATA_DIR = dataDir;
+  process.env.FILE_STORAGE_DIR = join(dataDir, "storage");
+  try {
+    const { getCapabilityPackageInstallIssue } =
+      await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
+    const manifest = (minor: number) =>
+      ({
+        schemaVersion: 2,
+        capabilityApi: { major: 1, minor },
+        id: "ruleset-test",
+        kind: ["ruleset"],
+        permissions: [],
+        restartRequired: false,
+        contributions: { assets: { paths: ["ruleset.json"] } },
+      }) as never;
+    const ruleset = {
+      combat: { attacks: [{ list: "attacks", toHit: { sheetBonus: { value: { const: 2 } } } }] },
+    } as never;
+    const issue =
+      /add a number off the sheet to hit \(toHit\.sheetBonus\) requires schemaVersion 2 and capabilityApi 1\.789/;
+    assert.match(getCapabilityPackageInstallIssue(manifest(788), ruleset) ?? "", issue);
+    assert.doesNotMatch(getCapabilityPackageInstallIssue(manifest(789), ruleset) ?? "", issue);
+  } finally {
+    rmSync(dataDir, { recursive: true, force: true });
+  }
+}
+
+console.log(
+  "Ruleset combat ability choices: a row's choice of abilities swings with the best, for damage too; a sheet bonus to hit on the rows a column picks out.",
+);

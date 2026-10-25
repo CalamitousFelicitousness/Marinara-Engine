@@ -10,6 +10,7 @@ import type {
   RulesetCombatOption,
   RulesetCombatSide,
   RulesetEncounterSummary,
+  RulesetUnansweredBecause,
 } from "./ruleset-combat/types.js";
 import type {
   TacticalAction,
@@ -350,9 +351,13 @@ export type DirectedRulesetReason =
         | "cornered"
         | "liesInWait"
         | "wards"
+        | "harmless"
         | "letGo";
     }
   | { why: "keptBack"; label: string; targetId?: string }
+  /** An answer it held to an opponent using something, which it could not give (laptop party A
+   *  2026-10-25): a Counterspell out of reach, or with no line to the caster. */
+  | { why: "couldNotAnswer"; label: string; because: RulesetUnansweredBecause }
   | { why: "gmPick"; rank?: number };
 /** One option of the legal menu, with the combatants it may be pointed at right now. */
 export interface DirectedRulesetOption extends RulesetCombatOption {

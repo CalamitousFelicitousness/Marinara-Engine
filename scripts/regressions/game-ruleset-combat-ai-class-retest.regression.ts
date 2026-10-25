@@ -125,6 +125,7 @@ try {
     { id: "frenzied", label: "Frenzied" },
     { id: "fierce", label: "Fierce" },
     { id: "unseen", label: "Unseen" },
+    { id: "tame", label: "Tame" },
   );
   doc.combat.conditions.push(
     {
@@ -144,6 +145,8 @@ try {
     { condition: "fierce", effects: [], modifiers: [{ to: "damage", flat: 4 }] },
     // 5e's invisible as the SRD data writes it: not seen.
     { condition: "unseen", unseen: {} },
+    // A familiar's: it harms nobody.
+    { condition: "tame", effects: ["cannot-harm"] },
   );
   const parsed = parseRulesetDefinition(doc);
   assert.ok(parsed.ok, parsed.ok ? "" : parsed.issues.join("; "));
@@ -319,6 +322,29 @@ try {
       pickRulesetChoice(definition, whole.state, whole.encounter, "mei")?.option.id,
       "standard:dodge@bonus",
       "whole, it does not",
+    );
+  }
+
+  // ── One that can harm nobody keeps out of the fight (laptop party A 2026-10-25: the owl) ──
+  {
+    const scene = fight(
+      [
+        { id: "owl", name: "owl", side: "party", block: block([poke], { health: 1, speed: 60 }), at: { x: 2, y: 5 } },
+        // Ada fights alone, where a guard would go to her.
+        sheetOf("ada", sheet({ level: 5 }), { x: 10, y: 5 }),
+        { id: "orc", name: "orc", side: "enemy", block: block([smash]), at: { x: 11, y: 5 } },
+      ],
+      { owl: "ai" },
+    );
+    rulesetCombatant(scene.encounter, "owl")!.tracked.push({ condition: "tame" } as never);
+    assert.ok(commandRulesetCombatDirector(definition, scene.state, { type: "continue" }).ok);
+    const owl = rulesetCombatant(scene.state.rulesetFight!.encounter, "owl")!;
+    assert.deepEqual([owl.x, owl.y], [2, 5], "it stays where it is");
+    assert.ok(
+      scene.state.rulesetFight!.events.some(
+        (one) => one.event.type === "reasoning" && one.event.reasons.some((reason) => reason.why === "harmless"),
+      ),
+      "and says why",
     );
   }
 

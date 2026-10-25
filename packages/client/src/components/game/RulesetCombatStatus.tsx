@@ -40,7 +40,12 @@ export function RulesetCombatStatus({
   // changed mid-battle, prints in the language on screen now. The running number is the key, so a
   // re-render adds only the lines that are new and a reader is told only about those.
   const debugMode = useUIStore((state) => state.debugMode);
-  const lines = rulesetCombatLogLines(view.events, names, t, -1, debugMode);
+  // With Debug on, how the opponents were built goes first: a number held to its tier is why a save
+  // in play is not the one its proposed sheet says (laptop party A 2026-10-25: DC 11, not 15).
+  const lines = [
+    ...(debugMode ? view.adjustments.map((text, index) => ({ seq: index - view.adjustments.length - 1, text })) : []),
+    ...rulesetCombatLogLines(view.events, names, t, -1, debugMode),
+  ];
   const [orderOpen, setOrderOpen] = useState(
     () => typeof window === "undefined" || window.matchMedia("(min-width: 640px)").matches,
   );

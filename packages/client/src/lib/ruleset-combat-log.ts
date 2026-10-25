@@ -1859,6 +1859,8 @@ function rulesetReasonText(reason: DirectedRulesetReason, names: RulesetCombatNa
       });
     case "approach":
       return say(reason.sprinted ? "approachSprint" : "approach", { target: target(reason.targetId) });
+    case "couldNotAnswer":
+      return say(`couldNotAnswer_${reason.because.replace("-", "_")}`, { label: reason.label });
     case "gmPick":
       return reason.rank ? say("gmPickSuggested", { rank: reason.rank }) : say("gmPick");
     default:

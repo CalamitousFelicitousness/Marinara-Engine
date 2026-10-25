@@ -308,6 +308,11 @@ export function rulesetEffectPhrase(fact: RulesetItemEffectFact, t: TFunction): 
     ]
       .filter(Boolean)
       .join(", ");
+    if ("criticalDice" in fact.change)
+      return (
+        t("ui.game.gameinventory.damageCriticalDice", { count: fact.change.criticalDice }) +
+        (scope ? ` (${scope})` : "")
+      );
     const change =
       "times" in fact.change
         ? t(fact.change.times === 0.5 ? "ui.game.gameinventory.damageHalf" : "ui.game.gameinventory.damageDouble")
@@ -349,7 +354,9 @@ export function rulesetEffectPhrase(fact: RulesetItemEffectFact, t: TFunction): 
             ? "ui.game.gameinventory.effectAdvantage"
             : "ui.game.gameinventory.effectDisadvantage",
         )
-      : fact.change.value;
+      : "value" in fact.change
+        ? fact.change.value
+        : "";
   if (fact.to === "checks") {
     return names
       ? t("ui.game.gameinventory.effectOnNamedChecks", { change, names })

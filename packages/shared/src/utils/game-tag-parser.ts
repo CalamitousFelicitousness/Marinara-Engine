@@ -726,7 +726,8 @@ export function parseGmTags(content: string): ParsedGmTags {
         const v = pair.slice(colonIdx + 1).trim();
         const stripped = v.replace(/^["']|["']$/g, "");
         if (k === "value") {
-          const parsed = parseFloat(stripped);
+          // A number only when that is all it is: "44/44" keeps its maximum (laptop 2026-10-25).
+          const parsed = /^[-+]?\d+(?:\.\d+)?%?$/.test(stripped) ? parseFloat(stripped) : NaN;
           changes.value = isNaN(parsed) ? stripped : parsed;
         } else if (k === "stat") changes.statName = stripped;
         else if (k === "add") changes.add = stripped;

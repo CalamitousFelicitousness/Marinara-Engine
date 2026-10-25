@@ -113,7 +113,9 @@ export interface RulesetItemEffectFact {
     | { floor: string }
     | { times: 0.5 | 2 }
     | { effect: string }
-    | { hide: "resist" | "vulnerable" | "immune" };
+    | { hide: "resist" | "vulnerable" | "immune" }
+    /** More weapon dice on a critical hit (Brutal Critical), summed over the levels that give them. */
+    | { criticalDice: number };
 }
 
 /** A fight effect's own words, for the Game Master, by effect id. The ones about the holder's own
@@ -845,6 +847,8 @@ export function rulesetItemEffectFacts(
       });
     }
     if (modifier.mode) facts.push({ to, names: narrowed, ...against, change: { mode: modifier.mode } });
+    if (modifier.criticalDice)
+      facts.push({ to, names: [], ...damage, change: { criticalDice: modifier.criticalDice } });
     if (modifier.atLeast !== undefined)
       facts.push({ to, names: [], change: { floor: floorLabel(definition, modifier.atLeast) } });
   }

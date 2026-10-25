@@ -165,6 +165,9 @@ export function rulesetCheckSources(
       const label = active.get(entry.condition);
       if (label !== undefined) sources.push({ ...entry, name: label });
     }
+    // Levels of one value that each add the same weapon dice on a critical are one line, their dice
+    // summed (ship readiness 2026-10-25: Brutal Critical read four "one more weapon die" lines).
+    const folded = new Map<string, RulesetCheckSource>();
     for (const level of combat.levels ?? []) {
       const value =
         level.derived !== undefined
@@ -175,6 +178,23 @@ export function rulesetCheckSources(
         level.derived !== undefined
           ? (definition.sheet.derived.find((entry) => entry.id === level.derived)?.label ?? level.derived)
           : (definition.sheet.live.tracks.find((track) => track.id === level.track)?.label ?? level.track!);
+      const { at: _at, ...rest } = level;
+      const only = level.modifiers?.length === 1 ? level.modifiers[0]! : undefined;
+      const plain = Object.entries(rest).every(
+        ([key, one]) =>
+          ["derived", "track", "modifiers"].includes(key) || (key === "effects" && Array.isArray(one) && !one.length),
+      );
+      if (only?.criticalDice && plain) {
+        const { criticalDice, label: _said, ...kind } = only;
+        const key = JSON.stringify([level.derived, level.track, kind]);
+        const had = folded.get(key);
+        const dice = (had?.modifiers?.[0]?.criticalDice ?? 0) + criticalDice;
+        const source = { ...rest, name: label, modifiers: [{ ...kind, criticalDice: dice }] } as RulesetCheckSource;
+        if (!had) sources.push(source);
+        else sources[sources.indexOf(had)] = source;
+        folded.set(key, source);
+        continue;
+      }
       sources.push({ ...level, name: `${label} ${level.at}` });
     }
   }

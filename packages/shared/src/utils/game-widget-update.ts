@@ -59,7 +59,16 @@ export function applyGameWidgetUpdate(widgets: HudWidget[], update: WidgetUpdate
       if (targetName && newValue !== undefined) {
         const stats = Array.isArray(newConfig.stats) ? [...newConfig.stats] : [];
         const targetKey = targetName.toLowerCase();
-        const statIndex = stats.findIndex((stat) => stat.name.trim().toLowerCase() === targetKey);
+        const exact = stats.findIndex((stat) => stat.name.trim().toLowerCase() === targetKey);
+        // "Aldric" is the row "Aldric HP", where it is the only one it could be (laptop 2026-10-25:
+        // every Game Master update added a second row beside the one the setup wrote).
+        const near = stats.flatMap((stat, index) => {
+          const name = stat.name.trim().toLowerCase();
+          const longer = name.length > targetKey.length ? name : targetKey;
+          const shorter = longer === name ? targetKey : name;
+          return longer.startsWith(`${shorter} `) && !longer.slice(shorter.length + 1).includes(" ") ? [index] : [];
+        });
+        const statIndex = exact >= 0 ? exact : near.length === 1 ? near[0]! : -1;
         if (statIndex >= 0) {
           stats[statIndex] = { ...stats[statIndex]!, value: newValue };
         } else {

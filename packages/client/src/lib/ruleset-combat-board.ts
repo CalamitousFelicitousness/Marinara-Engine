@@ -453,6 +453,22 @@ export function rulesetDistanceText(cells: number, distance: RulesetBoardDistanc
   return t("game.combat.ruleset.board.distance", { amount: cells * distance.perCell, unit: distance.label });
 }
 
+/** Why somebody is not offered as a target now (2026-10-25), in words: "Ogre: 61 ft away, reach 60
+ *  ft", "Ogre: no line to them", "Ogre: out of sight". */
+export function rulesetBeyondText(
+  beyond: { why: "out-of-reach" | "no-line-of-sight" | "unseen"; cells?: number; reach?: number },
+  name: string,
+  distance: RulesetBoardDistance | undefined,
+  t: TFunction,
+): string {
+  const said = (cells: number) => rulesetDistanceText(Math.round(cells * 10) / 10, distance, t);
+  if (beyond.why === "unseen") return t("game.combat.ruleset.target.beyondUnseen", { name });
+  if (beyond.why === "no-line-of-sight") return t("game.combat.ruleset.target.beyondSight", { name });
+  if (beyond.cells !== undefined && beyond.reach !== undefined)
+    return t("game.combat.ruleset.target.beyondFar", { name, away: said(beyond.cells), reach: said(beyond.reach) });
+  return t("game.combat.ruleset.target.beyondReach", { name });
+}
+
 /**
  * Whether this fight offers nothing that can be pointed at the other side, while the other side is
  * still standing. It is the one line the board says out loud, because a menu with an attack on it

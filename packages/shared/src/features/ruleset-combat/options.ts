@@ -2493,6 +2493,8 @@ export function rulesetOptionTargets(
   /** `range` is a weapon mode's own (1.190). */
   option: { id: string; targets: RulesetCombatAction["targets"]; range?: { normal: number; long?: number } },
   ignoreRange = false,
+  /** Whom it could be pointed at but for seeing them, for the reason a screen gives (2026-10-25). */
+  ignoreSight = false,
 ): string[] {
   const actor = rulesetCombatant(state, actorId);
   if (!actor || option.targets.count <= 0) return [];
@@ -2506,6 +2508,7 @@ export function rulesetOptionTargets(
       lent.called.id,
       { id: lent.attack.id, targets: lent.attack.targets },
       ignoreRange,
+      ignoreSight,
     );
   }
   // An area is aimed at a CELL, so nobody is named: which combatants it catches follows from where
@@ -2570,7 +2573,7 @@ export function rulesetOptionTargets(
         // Only somebody who has taken their turn this round (1.327): the Hour Bell.
         if (cure?.actedOnly && !rulesetActedThisRound(state, combatant.id)) return false;
         // "A creature you can see" (1.178).
-        if (cure?.seen && !rulesetCanSee(definition, state, actor, combatant)) return false;
+        if (cure?.seen && !ignoreSight && !rulesetCanSee(definition, state, actor, combatant)) return false;
         // Only on somebody holding what it names (1.235): grappled by its maker, or restrained.
         if (cure?.targetHolds && !rulesetHoldsFor(definition, combatant, actor.id, cure.targetHolds)) return false;
         // Behind a ward it cannot reach (1.179). One that may be paid higher is offered, and its
@@ -2654,6 +2657,45 @@ export function rulesetOptionTargets(
       })
       .map((combatant) => combatant.id)
   );
+}
+
+/** Why one it would be pointed at is not offered now (2026-10-25): too far, by how far it is and
+ *  how far the option reaches, both in cells; no line to them; or not seen, for one that wants it. */
+export interface RulesetTargetBeyond {
+  id: string;
+  why: "out-of-reach" | "no-line-of-sight" | "unseen";
+  cells?: number;
+  reach?: number;
+}
+
+/**
+ * Whom an option would be pointed at on a board but cannot be now, and why (laptop playtest
+ * 2026-10-25: Hold Person read "Nobody in reach" at 61 feet with a range of 60, and a foe out of
+ * sight simply dropped off the list). Nobody off a board, and nobody for an area.
+ */
+export function rulesetTargetsBeyond(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  actorId: string,
+  option: { id: string; targets: RulesetCombatAction["targets"]; range?: { normal: number; long?: number } },
+  offered: readonly string[],
+): RulesetTargetBeyond[] {
+  const actor = rulesetCombatant(state, actorId);
+  if (!actor || !positioned(state) || option.targets.count <= 0 || option.targets.side === "self") return [];
+  const action = actionOf(actor, option.id);
+  if (action?.area) return [];
+  const reach = rulesetOptionReach(state, actorId, option.id, option.range);
+  const have = new Set(offered);
+  return rulesetOptionTargets(definition, state, actorId, option, true, true).flatMap((id): RulesetTargetBeyond[] => {
+    if (have.has(id) || id === actorId) return [];
+    const target = rulesetCombatant(state, id);
+    if (!target) return [];
+    const cells = rulesetPositionOf(target) ? rulesetCombatantDistance(state, actor, target) : undefined;
+    const far = { ...(cells !== undefined ? { cells } : {}), ...(reach ? { reach: reach.max } : {}) };
+    if (action?.seen && !rulesetCanSee(definition, state, actor, target)) return [{ id, why: "unseen", ...far }];
+    const refused = rulesetTargetRefusal(state, actorId, option.id, id, option.range, definition);
+    return refused ? [{ id, why: refused, ...far }] : [];
+  });
 }
 
 function firstTarget(

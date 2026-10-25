@@ -2256,7 +2256,13 @@ export function RulesetSheetBuilder({
                       ` · ${t("game.ruleset.sheet.poolLevel", { level: poolLevels[pool.key]! })}`}
                   </dt>
                   <dd className="text-xs font-semibold tabular-nums text-[var(--foreground)]">
-                    {pool.start === "empty" ? t("ui.rulesets.sheet.poolStartsEmpty", { max: pool.max }) : pool.max}
+                    {/* A tally counts uses (1.790), as the game sheet says it (ship readiness 2026-10-25:
+                        Relentless Rage read "20"). */}
+                    {pool.tally
+                      ? t("game.ruleset.sheet.tallyUsed", { count: 0 })
+                      : pool.start === "empty"
+                        ? t("ui.rulesets.sheet.poolStartsEmpty", { max: pool.max })
+                        : pool.max}
                   </dd>
                 </div>
               ))}

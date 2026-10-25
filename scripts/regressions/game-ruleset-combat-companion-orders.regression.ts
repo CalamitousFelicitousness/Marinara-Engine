@@ -257,6 +257,9 @@ try {
     };
     const spared = pick(field(), { posture: "hold", spare: true }, [], wounded);
     assert.notEqual(spared?.option.id, "bolt", `2d6 can roll 12: ${JSON.stringify(spared?.choice)}`);
+    // Its own end of turn kept beside what it may still do says it spared them (cloud 2026-10-25).
+    assert.equal(spared?.option.kind, "end-turn", JSON.stringify(spared?.choice));
+    assert.equal(spared?.spares, true);
   }
 
   // ── Spare counts every dart on the one it drops (re-test round 2) ──

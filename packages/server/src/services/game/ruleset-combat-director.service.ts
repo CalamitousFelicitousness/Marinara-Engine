@@ -94,6 +94,8 @@ import {
   rulesetEncounterSummary,
   rulesetOpportunityAttack,
   rulesetOptionTargets,
+  rulesetTargetsBeyond,
+  rulesetCombatantDistance,
   rulesetAroundTargets,
   rulesetReactionPointsAtSource,
   rulesetReactionTarget,
@@ -1715,6 +1717,20 @@ export function rulesetMenu(
       targetIds.length > 0 && action?.save && option.forecast?.hitChance === undefined
         ? rulesetSaveFailChances(definition, encounter, actorId, option.id, targetIds)
         : undefined;
+    // How far each one is, and whom it cannot reach or see now and why (laptop 2026-10-25).
+    const positioned = !!encounter.board && !!actor && option.targets.count > 0 && !option.area;
+    const distances = positioned
+      ? Object.fromEntries(
+          targetIds.flatMap((id) => {
+            const target = rulesetCombatant(encounter, id);
+            return target && id !== actorId && rulesetPositionOf(target)
+              ? [[id, rulesetCombatantDistance(encounter, actor!, target)] as const]
+              : [];
+          }),
+        )
+      : undefined;
+    const beyond =
+      positioned && !fallers ? rulesetTargetsBeyond(definition, encounter, actorId, option, targetIds) : [];
     // What each way of paying is worth in levels, for an alteration that counts them (Sculpt Spells).
     const levels =
       payWith && actor && action && option.alters?.some((offer) => offer.sparesByLevel)
@@ -1740,6 +1756,8 @@ export function rulesetMenu(
       ...(aim.length > 0 ? { aim } : {}),
       ...(hitChances && Object.keys(hitChances).length > 0 ? { hitChances } : {}),
       ...(saveChances && Object.keys(saveChances).length > 0 ? { saveChances } : {}),
+      ...(distances && Object.keys(distances).length > 0 ? { distances } : {}),
+      ...(beyond.length > 0 ? { beyond } : {}),
     };
   });
   // Treating somebody with nobody to treat is no choice: pulling a friend out of a cube nobody is
@@ -3275,6 +3293,9 @@ function biggerWays(
       payWith: pool,
       price: paid.cost.reduce((total, entry) => total + entry.amount, 0) + steps,
     });
+    // What grows no bigger is paid from the least pool that can pay for it, and no other (laptop
+    // 2026-10-25: an Entangle out of a 3rd-level slot with a 2nd-level one left).
+    if (!grows) break;
   }
   return ways;
 }
@@ -6657,8 +6678,13 @@ function weighRulesetOrders(
       return !knocksOut;
     };
     const kind = candidates.filter((candidate) => !kills(candidate));
-    if (kind.length > 0 && kind.length < candidates.length) candidates.splice(0, candidates.length, ...kind);
-    else if (kind.length === 0) {
+    if (kind.length > 0 && kind.length < candidates.length) {
+      // Its turn ended with a blow that would kill left out says so (cloud re-test 2026-10-25: a
+      // sparing Professor's plain end of turn read "nothing worth the price").
+      for (const candidate of kind)
+        if (candidate.action.option.kind === "end-turn") candidate.action = { ...candidate.action, spares: true };
+      candidates.splice(0, candidates.length, ...kind);
+    } else if (kind.length === 0) {
       // Everything it could do kills: it ends its turn rather than finish anybody off.
       const end = rulesetCombatOptions(definition, encounter, actor.id).find((option) => option.kind === "end-turn");
       if (end)
@@ -7215,17 +7241,22 @@ function absorb(
   fight.encounter = step.state;
   record(fight, step.events);
   for (const one of step.unanswered ?? []) {
-    // A reaction already used is said once a round, not at every window after it (cloud probe
-    // 2026-10-25: a Mage logged it on every hit after its own Counterspell).
-    if (one.because === "used" && rulesetSaidThisRound(fight, one.actorId, one.label)) continue;
+    // Why a reaction could not answer is said once a round, not at every window after it (cloud
+    // probes 2026-10-25: a Mage logged "used", and then out of reach or sight, up to four a round).
+    if (rulesetSaidThisRound(fight, one.actorId, one.label, one.because)) continue;
     recordReasons(fight, one.actorId, [{ why: "couldNotAnswer", label: one.label, because: one.because }]);
   }
   if (step.events.some((event) => event.type === "round")) state.gmCalls = 0;
   syncRulesetCombatants(definition, state);
 }
 
-/** Whether this round's log already says this one's reaction was used when `label` could answer. */
-function rulesetSaidThisRound(fight: RulesetFightState, actorId: string, label: string): boolean {
+/** Whether this round's log already says why this one's `label` could not answer. */
+function rulesetSaidThisRound(
+  fight: RulesetFightState,
+  actorId: string,
+  label: string,
+  because: Extract<DirectedRulesetReason, { why: "couldNotAnswer" }>["because"],
+): boolean {
   for (let index = fight.events.length - 1; index >= 0; index--) {
     const event = fight.events[index]!.event;
     if (event.type === "round") return false;
@@ -7233,7 +7264,7 @@ function rulesetSaidThisRound(fight: RulesetFightState, actorId: string, label: 
       event.type === "reasoning" &&
       event.actorId === actorId &&
       event.reasons.some(
-        (reason) => reason.why === "couldNotAnswer" && reason.because === "used" && reason.label === label,
+        (reason) => reason.why === "couldNotAnswer" && reason.because === because && reason.label === label,
       )
     )
       return true;

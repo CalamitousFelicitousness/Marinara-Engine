@@ -617,6 +617,41 @@ try {
       return choice!.choice.payWith ?? "slots_1";
     };
     assert.equal(paid(11), "slots_1", "4d6 drops a wolf at 11: the 1st-level slot");
+    // One that grows no bigger, with no 1st-level slot left, comes out of the least slot that can pay
+    // (laptop 2026-10-25: an Entangle from a 3rd-level slot with 2nd-level ones free).
+    const flat = {
+      ...lance,
+      id: "flat",
+      label: "Flat",
+      rows: [{ list: "spells", values: { name: "Flat", level: 1, prepared: true } }],
+      mechanics: { ...(lance as unknown as { mechanics: Record<string, unknown> }).mechanics, perCostStep: undefined },
+    } as unknown as RulesetCatalogEntry;
+    const empty = rulesetSheetBuildSchema.parse({
+      ...build,
+      fields: { ...build.fields, slots_max_1: 0 },
+      lists: { spells: rowsFromCatalogEntry("spells", flat).map((one) => one.row) },
+    });
+    const scene = fight([
+      {
+        id: "hessa",
+        name: "hessa",
+        side: "party",
+        build: empty,
+        live: {},
+        catalogs: { spells: [flat] },
+        at: { x: 2, y: 5 },
+      },
+      { id: "wolf", name: "wolf", side: "enemy", block: block([poke], { health: 11 }), at: { x: 8, y: 5 } },
+    ]);
+    const ways = ranked(scene, "hessa").filter(
+      (one) => one.candidate.action.option.id.includes("flat") || one.candidate.action.option.label.startsWith("Flat"),
+    );
+    assert.ok(ways.length > 0, "it is offered");
+    assert.deepEqual(
+      [...new Set(ways.map((one) => one.candidate.action.choice.payWith))],
+      ["slots_2"],
+      JSON.stringify(ways.map((one) => one.candidate.action.option.label)),
+    );
   }
 
   // ── An aura held that harms the foes in it, not let go for a buff (laptop playtest 2026-10-24:

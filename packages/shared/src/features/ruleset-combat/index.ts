@@ -302,6 +302,8 @@ export {
   rulesetGrantedStandard,
   rulesetOptionReach,
   rulesetOptionTargets,
+  rulesetTargetsBeyond,
+  type RulesetTargetBeyond,
   rulesetHelpCounts,
   rulesetUsedOn,
   rulesetUsedOnKey,

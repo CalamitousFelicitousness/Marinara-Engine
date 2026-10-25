@@ -20,6 +20,7 @@ import type { TFunction } from "i18next";
 import {
   rulesetAimSoFar,
   rulesetDistanceText,
+  rulesetBeyondText,
   rulesetAimTurning,
   type RulesetCellChoice,
   rulesetOptionHasAim,
@@ -1382,6 +1383,21 @@ export function RulesetCombatMenu({
                 )
               : t("game.combat.ruleset.target.prompt", { label: rulesetOptionLabel(option, t) })}
           </p>
+          {/* Whom it cannot be pointed at now, and why: too far, no line, out of sight. */}
+          {(option.beyond?.length ?? 0) > 0 && (
+            <ul className={`m-0 list-none p-0 text-[0.65rem] ${ink.faint}`}>
+              {option.beyond!.map((one) => (
+                <li key={one.id}>
+                  {rulesetBeyondText(
+                    one,
+                    view.combatants.find((combatant) => combatant.id === one.id)?.name ?? one.id,
+                    view.grid?.distance,
+                    t,
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
           <div className="flex flex-wrap gap-2" role="group" aria-labelledby="ruleset-target-prompt">
             {targets.map((combatant, index) => {
               const picked = step.targets.includes(combatant.id);
@@ -1419,6 +1435,15 @@ export function RulesetCombatMenu({
                     {option.saveChances?.[combatant.id] !== undefined &&
                       ` · ${t("game.combat.ruleset.option.forecastFailSave", {
                         percent: Math.round(option.saveChances[combatant.id]! * 100),
+                      })}`}
+                    {/* How far, on a board (laptop 2026-10-25: the list said only the odds). */}
+                    {option.distances?.[combatant.id] !== undefined &&
+                      ` · ${t("game.combat.ruleset.target.distance", {
+                        distance: rulesetDistanceText(
+                          Math.round(option.distances[combatant.id]! * 10) / 10,
+                          view.grid?.distance,
+                          t,
+                        ),
                       })}`}
                   </span>
                   {/* Its odds against this one, as the server worked them out, so targets compare. */}
@@ -1860,7 +1885,19 @@ export function RulesetCombatMenu({
           fold(
             "game.combat.ruleset.screen.outOfReachFold",
             unreachable,
-            unreachable.map((option) => rulesetOptionLabel(option, t)).join(", "),
+            unreachable
+              .map((option) => {
+                // Its nearest one it cannot reach, and why (laptop 2026-10-25: "Nobody in reach" at
+                // 61 ft with a range of 60 said nothing of either).
+                const nearest = [...(option.beyond ?? [])].sort(
+                  (a, b) => (a.cells ?? Infinity) - (b.cells ?? Infinity),
+                )[0];
+                const name = nearest && view.combatants.find((combatant) => combatant.id === nearest.id)?.name;
+                return nearest && name
+                  ? `${rulesetOptionLabel(option, t)} (${rulesetBeyondText(nearest, name, view.grid?.distance, t)})`
+                  : rulesetOptionLabel(option, t);
+              })
+              .join(", "),
           )}
         {readied.length > 0 &&
           fold(

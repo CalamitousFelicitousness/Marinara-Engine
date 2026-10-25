@@ -394,6 +394,11 @@ export interface DirectedRulesetOption extends RulesetCombatOption {
   hitChances?: Record<string, number>;
   /** The chance each target fails the option's save, for one that calls for a save (playtest). */
   saveChances?: Record<string, number>;
+  /** How far each of `targetIds` is, in cells, on a board (2026-10-25). */
+  distances?: Record<string, number>;
+  /** Whom it would be pointed at but cannot be now, and why: too far (how far, and its reach, in
+   *  cells), no line to them, or not seen (laptop 2026-10-25: "Nobody in reach" at 61 ft of 60). */
+  beyond?: Array<{ id: string; why: "out-of-reach" | "no-line-of-sight" | "unseen"; cells?: number; reach?: number }>;
   /** The level it is paid at as it is, and at each pool `payWith` offers, where a level changes
    *  what it does (Sculpt Spells spares one more a level). */
   levels?: { base: number; pay: Record<string, number> };

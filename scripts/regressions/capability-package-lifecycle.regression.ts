@@ -204,6 +204,7 @@ try {
     [382, "symbol-pool fights"],
     [383, "health on a plain track"],
     [384, "saved gallery image animation"],
+    [385, "shared gallery image saving"],
     [386, "Home browser openConnection and raw generation debug logging"],
   ];
   for (const [minor, label] of supportedMinors) {

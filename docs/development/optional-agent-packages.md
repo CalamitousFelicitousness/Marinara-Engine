@@ -82,22 +82,28 @@ update, for example), each package shows its existing load error and the rest of
 TypeScript type is `MarinaraHostV1` in `packages/client/src/lib/marinara-host-contract.ts`, together with the lists on
 this page. Package builds declare matching structural types instead of importing Engine source.
 
-| Member              | Value                                                                                                                                                                         |
-| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `version`           | `1`. It changes only when the shape breaks.                                                                                                                                   |
-| `capabilityApi`     | The Engine's `supportedCapabilityApi`, for example `{ major: 1, minor: 341 }`.                                                                                                |
-| `stores`            | The live zustand stores `ui`, `chat`, `agent`, `sidecar`, `dialog`, `gallery`, `encounter`, `gameState` and `backfill`. `chat` includes the pending spatial transition slice. |
-| `services.tts`      | The `lib/tts-service.ts` module (`ttsService`, `playWhenAvailable`, ...).                                                                                                     |
-| `services.audio`    | From capability API 1.381, the `lib/audio-service.ts` module: independent music/SFX players, the shared asset manifest and default music selection. See [Package audio](#package-audio). |
-| `services.dialogs`  | The `lib/app-dialogs.ts` module (`showAlertDialog`, `showConfirmDialog`, `showPromptDialog`, `showChoiceDialog`).                                                             |
-| `modules`           | Library modules, keyed by bare specifier (below).                                                                                                                             |
-| `queryClient`       | The one React Query `QueryClient` the Engine renders with.                                                                                                                    |
-| `components.Modal`  | The Engine's `Modal`, with its overlay order, Escape and back-button handling.                                                                                                |
-| `data.emojiCatalog` | The `lib/emoji-catalog.generated.ts` module.                                                                                                                                  |
-| `api`               | The `lib/api-client.ts` module (`api`, `ApiError`, `getApiErrorMessage`, ...).                                                                                                |
+| Member                    | Value                                                                                                                                                                                    |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `version`                 | `1`. It changes only when the shape breaks.                                                                                                                                              |
+| `capabilityApi`           | The Engine's `supportedCapabilityApi`, for example `{ major: 1, minor: 341 }`.                                                                                                           |
+| `stores`                  | The live zustand stores `ui`, `chat`, `agent`, `sidecar`, `dialog`, `gallery`, `encounter`, `gameState` and `backfill`. `chat` includes the pending spatial transition slice.            |
+| `services.tts`            | The `lib/tts-service.ts` module (`ttsService`, `playWhenAvailable`, ...).                                                                                                                |
+| `services.audio`          | From capability API 1.381, the `lib/audio-service.ts` module: independent music/SFX players, the shared asset manifest and default music selection. See [Package audio](#package-audio). |
+| `services.dialogs`        | The `lib/app-dialogs.ts` module (`showAlertDialog`, `showConfirmDialog`, `showPromptDialog`, `showChoiceDialog`).                                                                        |
+| `services.imageDownloads` | From capability API 1.385, the gallery's existing `downloadUrlToDevice`, `shouldUseIosImageShare`, `prepareImageSave` and `savePreparedImageToDevice` helpers.                           |
+| `modules`                 | Library modules, keyed by bare specifier (below).                                                                                                                                        |
+| `queryClient`             | The one React Query `QueryClient` the Engine renders with.                                                                                                                               |
+| `components.Modal`        | The Engine's `Modal`, with its overlay order, Escape and back-button handling.                                                                                                           |
+| `data.emojiCatalog`       | The `lib/emoji-catalog.generated.ts` module.                                                                                                                                             |
+| `api`                     | The `lib/api-client.ts` module (`api`, `ApiError`, `getApiErrorMessage`, ...).                                                                                                           |
 
 A package reads a member only after checking it, for example
 `const host = globalThis.__MARINARA_HOST__; if (host?.version === 1 && typeof host.stores?.ui?.getState === "function")`.
+For image downloads, use `shouldUseIosImageShare()` to follow the gallery's platform policy. On iPhone,
+prepare the image with `prepareImageSave(url, filename)` before the user's save gesture, then call
+`savePreparedImageToDevice(prepared)` directly from that gesture. It handles cancelled sharing silently and
+does not replace a failed share with a WebKit download preview. Other platforms use `downloadUrlToDevice`.
+These helpers save to the client device, including when the Engine server runs in Docker.
 The namespace only grows: a new member comes with a capability API minor, and a package that needs it requires that
 minor. Packages built for the namespace require the capability API version that added it, so an older Engine never
 installs them and keeps the version it has. When a member is missing anyway, the package never falls back to a bundled

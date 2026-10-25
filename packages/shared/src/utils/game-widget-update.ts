@@ -106,3 +106,77 @@ export function applyGameWidgetUpdate(widgets: HudWidget[], update: WidgetUpdate
     return { ...w, config: newConfig };
   });
 }
+
+/** One party member's health as their sheet has it. */
+export interface PartyHealthRow {
+  name: string;
+  value: number;
+  max: number;
+}
+
+const HEALTH_WORDS = ["hp", "health", "hit points", "vitality"];
+
+/**
+ * The widget updates that bring a party health widget's rows to what the sheets say (laptop playtest
+ * 2026-10-25: "Ulfgar HP" stayed at 50 while the sheet said 48, because the Game Master wrote no
+ * widget tag). A row is a member's when it is "<name> HP" (or Health, Hit points, Vitality) in any
+ * stat block, or the bare name in a stat block whose label or id is about health. A name is the
+ * member's full name or, where no other member shares it, their first. A row keeps the shape it was
+ * written in: "36/36" stays "a/b", a number stays a number, and anything else (a word) is left alone.
+ * `words` are the ruleset's own names for health ("Grit"), read beside the usual ones.
+ */
+export function partyHealthWidgetUpdates(
+  widgets: HudWidget[],
+  rows: PartyHealthRow[],
+  words: string[] = [],
+): WidgetUpdate[] {
+  if (rows.length === 0) return [];
+  const healthWords = new Set(
+    [...HEALTH_WORDS, ...words].map((word) => word.trim().toLowerCase().replace(/\s+/g, " ")).filter(Boolean),
+  );
+  // A label or id is about health when it holds one of the words whole: "Party Health", "party_hp".
+  const aboutHealthWord = (text: string) => {
+    const plain = ` ${text
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim()} `;
+    return [...healthWords].some((word) => plain.includes(` ${word} `));
+  };
+  const byName = new Map<string, PartyHealthRow | null>();
+  const add = (key: string, row: PartyHealthRow, unique: boolean) => {
+    if (!key) return;
+    const existing = byName.get(key);
+    if (existing === undefined) byName.set(key, row);
+    else if (unique && existing !== row) byName.set(key, null);
+  };
+  for (const row of rows) add(row.name.trim().toLowerCase(), row, false);
+  for (const row of rows) {
+    const first = row.name.trim().toLowerCase().split(/\s+/)[0] ?? "";
+    if (first !== row.name.trim().toLowerCase()) add(first, row, true);
+  }
+  const updates: WidgetUpdate[] = [];
+  for (const widget of widgets) {
+    if (widget.type !== "stat_block" || !Array.isArray(widget.config.stats)) continue;
+    const aboutHealth = aboutHealthWord(widget.label) || aboutHealthWord(widget.id);
+    for (const stat of widget.config.stats) {
+      const name = stat.name.trim().toLowerCase();
+      const parts = name.split(/\s+/);
+      let who: string | undefined;
+      for (let cut = parts.length - 1; cut >= 1 && !who; cut--) {
+        if (healthWords.has(parts.slice(cut).join(" "))) who = parts.slice(0, cut).join(" ");
+      }
+      if (!who && aboutHealth) who = name;
+      const row = who ? byName.get(who) : undefined;
+      if (!row) continue;
+      const value = Math.max(0, Math.round(row.value));
+      const max = Math.max(0, Math.round(row.max));
+      let next: number | string | undefined;
+      if (typeof stat.value === "number") next = value;
+      else if (/^\s*-?\d+\s*\/\s*\d+\s*$/.test(stat.value)) next = `${value}/${max}`;
+      else if (/^\s*-?\d+\s*$/.test(stat.value)) next = String(value);
+      if (next === undefined || next === stat.value) continue;
+      updates.push({ widgetId: widget.id, changes: { statName: stat.name, value: next } });
+    }
+  }
+  return updates;
+}

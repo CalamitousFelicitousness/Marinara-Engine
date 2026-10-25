@@ -850,8 +850,11 @@ export function ConnectionEditor() {
       const next = current
         ? sanitizeVideoGenerationProfile({ ...current, service: selectedVideoDefaultsService })
         : createDefaultVideoGenerationProfile(selectedVideoDefaultsService);
-      if (selectedVideoDefaultsService === "openrouter" && effectiveVideoGenerationSource !== "nanogpt") {
-        next.openrouter = resolveOpenRouterVideoModelDefaults(localModel, next.openrouter);
+      if (selectedVideoDefaultsService === "openrouter") {
+        next.openrouter = resolveOpenRouterVideoModelDefaults(
+          effectiveVideoGenerationSource === "nanogpt" ? "" : localModel,
+          next.openrouter,
+        );
       }
       return next;
     });

@@ -143,6 +143,16 @@ try {
   assert.equal(saved.statusCode, 200, saved.body);
   const reloaded = (await app.inject({ method: "GET", url: `/connections/${id}` })).json();
   assert.equal(resolveGameVideoRuntime(reloaded).resolution, "768p");
+  assert.equal(
+    resolveGameVideoRuntime({ ...reloaded, model: "google/veo-3.1" }).resolution,
+    "720p",
+    "switching away from H3 Max clears its saved 768p resolution",
+  );
+  assert.equal(
+    resolveGameVideoRuntime({ ...reloaded, videoGenerationSource: "nanogpt", videoService: "nanogpt" }).resolution,
+    "720p",
+    "NanoGPT's shared defaults never inherit H3 Max's 768p resolution",
+  );
 
   const generate = (model: string, durationSeconds: number, resolution: "480p" | "720p" | "768p" | "1080p") =>
     generateVideo("openrouter", "https://openrouter.ai/api/v1", "fixture-key", "openrouter", {
@@ -160,6 +170,7 @@ try {
     ["bytedance/seedance-2.5", 60, "1080p", 30, "720p"],
     ["bytedance/seedance-2.5", 4, "480p", 4, "480p"],
     ["future/video", 25, "1080p", 25, "1080p"],
+    ["google/veo-3.1", 8, "768p", 8, "720p"],
   ] as const) {
     const result = await generate(model, duration, resolution);
     assert.equal(result.base64, mp4.toString("base64"));

@@ -1035,7 +1035,7 @@ async function generateOpenRouterVideo(
 ): Promise<VideoGenerationResult> {
   if (!apiKey.trim()) throw new Error("OpenRouter video generation requires an OpenRouter API key");
   const model = request.model?.trim() || DEFAULT_OPENROUTER_VIDEO_MODEL;
-  if (getOpenRouterVideoModelLimits(model)) {
+  if (getOpenRouterVideoModelLimits(model) || request.resolution === "768p") {
     request = {
       ...request,
       ...resolveOpenRouterVideoModelDefaults(model, {
@@ -1223,7 +1223,7 @@ async function generateNanoGptVideo(
     duration: `${Math.max(1, Math.trunc(request.durationSeconds))}s`,
     aspect_ratio: request.aspectRatio,
   };
-  if (request.resolution) body.resolution = request.resolution;
+  if (request.resolution) body.resolution = request.resolution === "768p" ? "720p" : request.resolution;
   if (request.referenceImage) body.imageDataUrl = referenceImageToDataUri(request.referenceImage);
   const debugBody = request.referenceImage ? { ...body, imageDataUrl: "[redacted reference image]" } : body;
   logDebugOverride(
@@ -1451,7 +1451,7 @@ async function generateAtlasCloudVideo(
     prompt: request.prompt,
     durationSeconds: request.durationSeconds,
     aspectRatio: request.aspectRatio,
-    resolution: request.resolution,
+    resolution: request.resolution === "768p" ? undefined : request.resolution,
     referenceImageDataUrl,
     modelOptions: request.atlasModelOptions,
   };

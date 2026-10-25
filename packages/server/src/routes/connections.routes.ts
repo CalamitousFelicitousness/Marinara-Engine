@@ -1135,7 +1135,8 @@ export async function connectionsRoutes(app: FastifyInstance) {
               decodeCompressedResponse: true,
             });
             if (response.ok) {
-              const models = normalizeModelsResponse("openrouter", await response.json());
+              const json: unknown = await response.json();
+              const models = isRecord(json) ? normalizeModelsResponse("openrouter", json) : [];
               if (models.length) return { models };
             }
           } catch (error) {

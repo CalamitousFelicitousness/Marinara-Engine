@@ -155,6 +155,13 @@ for (const theme of ["dark", "light"] as const) {
         await resolution.scrollIntoViewIfNeeded();
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
         await page.screenshot({ path: info.outputPath(`${model.id.split("/")[1]}-saved.png`), animations: "disabled" });
+        if (model.resolution === "768p") {
+          await page.getByText("MiniMax: H3 Max (OpenRouter) (minimax/hailuo-3-max)", { exact: true }).click();
+          await page.getByPlaceholder("Search models…").fill("google/veo-3.1");
+          await page.getByRole("button").filter({ hasText: "google/veo-3.1" }).click();
+          await expect(resolution).toHaveValue("720p");
+          await expect(resolution.locator('option[value="768p"]')).toHaveCount(0);
+        }
       } finally {
         await request.delete(`/api/connections/${id}`);
       }

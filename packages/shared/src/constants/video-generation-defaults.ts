@@ -73,7 +73,11 @@ export function resolveOpenRouterVideoModelDefaults(
   defaults: OpenRouterVideoDefaults,
 ): OpenRouterVideoDefaults {
   const limits = getOpenRouterVideoModelLimits(model);
-  if (!limits) return defaults;
+  if (!limits) {
+    return defaults.resolution === "768p"
+      ? { ...defaults, resolution: DEFAULT_OPENROUTER_VIDEO_DEFAULTS.resolution }
+      : defaults;
+  }
   return {
     ...defaults,
     durationSeconds: Math.max(limits.minDurationSeconds, Math.min(limits.maxDurationSeconds, defaults.durationSeconds)),

@@ -113,8 +113,11 @@ export function resolveGameVideoRuntime(connection: VideoRuntimeConnection): Gam
   const isSwarmUi = source === "swarmui" || serviceHint === "swarmui";
   const isComfyUi = source === "comfyui" || serviceHint === "comfyui" || isSwarmUi;
   const openRouterLimits = isOpenRouter ? getOpenRouterVideoModelLimits(connection.model ?? "") : null;
-  if (isOpenRouter) {
-    videoDefaults.openrouter = resolveOpenRouterVideoModelDefaults(connection.model ?? "", videoDefaults.openrouter);
+  if (isOpenRouter || isNanoGpt) {
+    videoDefaults.openrouter = resolveOpenRouterVideoModelDefaults(
+      isNanoGpt ? "" : (connection.model ?? ""),
+      videoDefaults.openrouter,
+    );
   }
   const activeDefaults = isXai
     ? videoDefaults.xai

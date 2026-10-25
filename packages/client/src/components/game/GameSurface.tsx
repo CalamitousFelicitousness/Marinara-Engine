@@ -275,6 +275,7 @@ import {
   normalizeCharacterLookupName,
   partyHealthWidgetUpdates,
   readRulesetSheetEnvelope,
+  rulesetHealthWords,
   rulesetSheetBuildsByName,
   rulesetSheetHealth,
   defaultRulesetSheetBuild,
@@ -3185,13 +3186,7 @@ function GameSurfaceComponent({
       return health ? [{ name, ...health }] : [];
     });
     // The ruleset's own name for what a fight damages ("Grit") names a row as well as "HP" does.
-    const health = healthDefinition.battle.health;
-    const live = healthDefinition.sheet.live;
-    const word =
-      "pool" in health
-        ? live?.pools?.find((pool) => pool.id === health.pool)?.label
-        : live?.tracks?.find((track) => track.id === health.track)?.label;
-    const updates = partyHealthWidgetUpdates(hudWidgets, rows, word ? [word] : []);
+    const updates = partyHealthWidgetUpdates(hudWidgets, rows, rulesetHealthWords(healthDefinition));
     if (updates.length === 0) return;
     let next = hudWidgets;
     for (const update of updates) next = applyWidgetUpdate(update);

@@ -3177,20 +3177,37 @@ function rulesetCandidatesAfterMoving(
   if (!encounter.board?.grid || !actor || typeof actor.x !== "number" || typeof actor.y !== "number") return [];
   const cells = rulesetWalkableCells(definition, encounter, actorId).slice(0, RULESET_MOVE_CANDIDATE_CELLS);
   if (cells.length === 0) return [];
-  const home = { x: actor.x, y: actor.y, movementLeft: actor.movementLeft };
+  const home = {
+    x: actor.x,
+    y: actor.y,
+    movementLeft: actor.movementLeft,
+    span: actor.span,
+    squeezedFrom: actor.squeezedFrom,
+  };
   const span = rulesetSpanOf(actor);
   const candidates: Array<CombatAiCandidate<RulesetCandidate>> = [];
   const deadline = Date.now() + RULESET_MOVE_PLAN_MS;
   for (const cell of cells) {
     // The places nearest an opponent come first, so what a long think leaves out mattered least.
     if (Date.now() > deadline) break;
-    // Standing the actor in the cell for exactly as long as the menu is read from it. Nothing else
-    // is touched, and everything is put straight back, so the fight is the one it was. The
-    // allowance is emptied for the pass because a candidate that walks here has spent it getting
-    // here, and the picker never chains a second walk onto one.
+    // Squeezed into a gap there, it fills less of itself, and reaches only from what it fills (cloud
+    // AI fights 2026-10-25: a Draft Horse walked to strike a bandit from beside the water, squeezed
+    // to one cell on arriving, could no longer reach him, and readied a Shove instead).
+    const squeeze = span > 1 || actor.squeezedFrom ? rulesetSqueezeAt(definition, encounter, actor, cell) : undefined;
+    // Standing the actor in the cell, as much of itself as fits there, for exactly as long as the
+    // menu is read from it. Nothing else is touched, and everything is put straight back, so the
+    // fight is the one it was. The allowance is emptied for the pass because a candidate that walks
+    // here has spent it getting here, and the picker never chains a second walk onto one.
     actor.x = cell.x;
     actor.y = cell.y;
     actor.movementLeft = 0;
+    if (squeeze) {
+      actor.squeezedFrom = home.squeezedFrom ?? span;
+      actor.span = squeeze.span;
+    } else if (home.squeezedFrom !== undefined) {
+      actor.span = home.squeezedFrom;
+      delete actor.squeezedFrom;
+    }
     let from: Array<CombatAiCandidate<RulesetCandidate>> = [];
     try {
       from = rulesetCandidatesFrom(definition, encounter, actorId, cell);
@@ -3198,6 +3215,10 @@ function rulesetCandidatesAfterMoving(
       actor.x = home.x;
       actor.y = home.y;
       actor.movementLeft = home.movementLeft;
+      if (home.span === undefined) delete actor.span;
+      else actor.span = home.span;
+      if (home.squeezedFrom === undefined) delete actor.squeezedFrom;
+      else actor.squeezedFrom = home.squeezedFrom;
     }
     // A blow it walks into may break what it holds as well (laptop party A: a warlock walked out of
     // reach and lost her Hypnotic Pattern to the parting blow): about half the time it is lost.
@@ -3209,8 +3230,7 @@ function rulesetCandidatesAfterMoving(
     // Blows from a gap it squeezes into are at a disadvantage the menu read here does not know of
     // yet; blows from open ground, once squeezed, are out of the one it has (re-test 17: a
     // crocodile biting from a gap for fifty rounds with open ground beside Brom).
-    const squeezes = (span > 1 || !!actor.squeezedFrom) && !!rulesetSqueezeAt(definition, encounter, actor, cell);
-    const scale = squeezes ? RULESET_SQUEEZED_BLOWS : actor.squeezedFrom ? 1 / RULESET_SQUEEZED_BLOWS : 1;
+    const scale = squeeze ? RULESET_SQUEEZED_BLOWS : actor.squeezedFrom ? 1 / RULESET_SQUEEZED_BLOWS : 1;
     for (const candidate of from) {
       if (candidate.damage !== undefined) candidate.damage = Math.max(0, candidate.damage * scale - penalty);
       if (candidate.healing !== undefined) candidate.healing = Math.max(0, candidate.healing - penalty);

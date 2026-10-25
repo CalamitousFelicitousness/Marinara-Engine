@@ -341,8 +341,74 @@ try {
     assert.ok(best?.to && best.to.x >= 13, `from open ground: ${JSON.stringify(best?.to)}`);
   }
 
+  // ── A blow planned from a gap is reached from as much of it as fits there (cloud AI fights
+  //    2026-10-25: a Draft Horse walked up to strike beside the water, squeezed on arriving, could not
+  //    reach, and readied instead) ──
+  {
+    const definition = parsed(fiveE());
+    const state = fight(definition);
+    const claw = { id: "claw", name: "Claw", budget: "action", toHit: 4, reach: 1, damage: { count: 1, sides: 6 } };
+    const ogre = rulesetCombatant(state, "ogre")!;
+    ogre.actions.push(
+      structuredClone(
+        createRulesetEncounter({
+          definition,
+          seed: 1,
+          roller: () => 10,
+          combatants: [
+            {
+              id: "x",
+              name: "x",
+              side: "enemy",
+              block: { health: 1, defense: 1, initiativeModifier: 0, speed: 30, actions: [claw] } as never,
+            },
+          ],
+        }).combatants[0]!.actions.find((one) => one.id === "claw")!,
+      ),
+    );
+    ogre.x = 3;
+    ogre.y = 4;
+    // In the corridor: whole, the ogre's nearest corner is in the wall, and squeezed it fills one cell.
+    const hero = rulesetCombatant(state, "hero")!;
+    hero.x = 10;
+    hero.y = 5;
+    const unit = (id: string, side: "player" | "enemy") => ({
+      id,
+      name: id,
+      side,
+      hp: 20,
+      maxHp: 20,
+      attack: 8,
+      defense: 6,
+      speed: 6,
+      level: 9,
+      skills: [],
+      aiHints: { proficiency: "master" as const },
+    });
+    const director = createCombatDirector({
+      id: "fight",
+      anchor: "anchor",
+      style: "ruleset",
+      party: [unit("hero", "player")],
+      enemies: [unit("ogre", "enemy")],
+      gm: false,
+      difficulty: "normal",
+      seed: 3,
+    } as never);
+    const best = rankRulesetChoices(definition, director, state, "ogre", 5)[0]?.candidate.action;
+    assert.equal(best?.choice.optionId, "claw", "it strikes");
+    assert.ok(best?.to, "after a walk");
+    const there = walk(definition, state, best.to);
+    assert.deepEqual(holds(there), ["squeezed"]);
+    const struck = applyRulesetCombatChoice(definition, there, { ...best.choice, actorId: "ogre" }, () => 10);
+    assert.ok(
+      struck.events.some((one) => one.type === "attack"),
+      `the blow it walked for still reaches from ${JSON.stringify(best.to)}: ${JSON.stringify(struck.events)}`,
+    );
+  }
+
   console.log(
-    "Squeezing: double steps between walls as one size smaller, squeezed while there; Amorphous freely; a getaway never into a squeeze; gated at 1.666.",
+    "Squeezing: double steps between walls as one size smaller, squeezed while there; Amorphous freely; a getaway never into a squeeze; a blow planned from a gap reaches from what fits there; gated at 1.666.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

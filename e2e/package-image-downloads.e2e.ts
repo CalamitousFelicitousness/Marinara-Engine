@@ -8,7 +8,7 @@ const png = Buffer.from(
   "base64",
 );
 
-async function openImagePackage(page: Page) {
+async function openImagePackage(page: Page, prepared = false) {
   await preparePackagePage(page);
   await seedUIState(page, { hasCompletedOnboarding: true });
   await installPackageClient(
@@ -18,7 +18,8 @@ async function openImagePackage(page: Page) {
 const service = globalThis.__MARINARA_HOST__.services.imageDownloads;
 const button = document.createElement("button");
 button.style.cssText = "position:fixed;bottom:12px;left:12px;z-index:99999";
-if (service.shouldUseIosImageShare()) {
+if (${prepared}) {
+  if (!service.shouldUseIosImageShare()) throw new Error("iPhone policy was not used");
   const prepared = await service.prepareImageSave(${JSON.stringify(imageUrl)}, "prepared-background.png");
   button.id = "package-share-image";
   button.textContent = "Share prepared package image";
@@ -103,7 +104,7 @@ test("package prepared iPhone image sharing stays on the tap and never falls bac
       },
     });
   });
-  await openImagePackage(page);
+  await openImagePackage(page, true);
   const downloads: string[] = [];
   page.on("download", (item) => downloads.push(item.suggestedFilename()));
 

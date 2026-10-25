@@ -1077,7 +1077,7 @@ export function RulesetCombatBoard({
                       <div className="absolute -right-1.5 top-1/2 flex -translate-y-1/2 flex-col gap-px">
                         {combatant.concentrating && (
                           <span className="flex h-3 w-3 items-center justify-center rounded-full border border-sky-300 bg-sky-500/80 text-[0.45rem] font-black leading-none text-white">
-                            C
+                            {t("game.combat.ruleset.board.concentratingBadge")}
                           </span>
                         )}
                         {stances.slice(0, 3).map((stance) => (

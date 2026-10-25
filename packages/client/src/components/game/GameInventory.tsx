@@ -1243,7 +1243,9 @@ export function GameInventory({
                       className="flex flex-1 items-center justify-center gap-1 rounded border border-amber-500/20 bg-amber-500/10 py-1.5 text-[0.7rem] font-semibold text-amber-400 transition-colors hover:bg-amber-500/15"
                     >
                       <Wand2 size={12} />
-                      {pick ? `${more.label} (${pick.label})` : more.label}
+                      {pick
+                        ? localizeUi("game.inventory.actionWithPick", { label: more.label, pick: pick.label })
+                        : more.label}
                     </button>
                   ));
                 })}

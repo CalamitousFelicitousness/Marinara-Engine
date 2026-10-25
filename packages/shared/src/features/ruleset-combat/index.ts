@@ -54,6 +54,7 @@ export * from "./board-events.js";
 export * from "./calls.js";
 export * from "./sight.js";
 export * from "./mind.js";
+export * from "./budget.js";
 export * from "./deploy.js";
 export { RULESET_SHAPE_REVERT_ID } from "./shape.js";
 export {

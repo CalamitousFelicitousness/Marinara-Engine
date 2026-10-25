@@ -4114,6 +4114,25 @@ same keys for a d20 system:
   Every creature you ship names one of these tiers, and an opponent nobody wrote is pulled onto the
   one the Game Master asked for, so nothing lands off your scale. The `damagePerRound` band is read
   as what a creature does to ONE target in a round, its whole sequence included.
+  A tier may carry `worth`, what a creature of it counts for against an encounter budget (5e's
+  experience points by challenge rating), and `threat` may carry `budget`, what a fight may hold for
+  the party that meets it (Capability API 1.793):
+  - `level`: the number fields whose sum is a member's level (5e: one per class).
+  - `steps`: the difficulty steps, lowest first, each `{ "id", "label" }`.
+  - `byLevel`: `[{ "level": 5, "worth": [500, 750, 1100] }]`, one worth a step for one member at
+    that level and up, levels rising.
+  - `crowd`: optional, `[{ "from": 2, "times": 1.5 }]`, what the opponents' worth is multiplied by
+    once there are that many; `smallParty` and `largeParty` read a row up for a party smaller than
+    one and a row down for one larger than the other (5e 2014's multipliers). Leave it out for SRD
+    5.2's budget, which adds worths as they are.
+  - `forGame`: optional, the step each game difficulty (`casual`, `normal`, `hard`, `brutal`) plays
+    at. Unsaid, they take the steps in order, and any past the last plays at the last.
+
+  The Game Master is told each tier's worth and the party's budget before writing a fight. A fight it
+  makes up that is worth more is brought down: the invented opponent worth the most comes down a tier,
+  and again, until it fits; one with a boss in it may reach the next step up. A bestiary creature and
+  one that comes back from an earlier fight are counted as they are, and a story's fight is its
+  author's. What came down is said in the fight's adjustments.
 
 ### Saves against conditions, damage or magic (Capability API 1.134)
 

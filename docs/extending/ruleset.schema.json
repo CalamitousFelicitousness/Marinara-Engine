@@ -259403,6 +259403,11 @@
                     "minimum": 0,
                     "maximum": 100
                   },
+                  "worth": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 100000000
+                  },
                   "$comment": {}
                 },
                 "required": [
@@ -259418,6 +259423,140 @@
               },
               "minItems": 1,
               "maxItems": 40
+            },
+            "budget": {
+              "type": "object",
+              "properties": {
+                "level": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "maxLength": 40,
+                    "pattern": "^[a-z][a-z0-9_]*$"
+                  },
+                  "minItems": 1,
+                  "maxItems": 30
+                },
+                "steps": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      "label": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 80
+                      },
+                      "$comment": {}
+                    },
+                    "required": [
+                      "id",
+                      "label"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "minItems": 1,
+                  "maxItems": 6
+                },
+                "byLevel": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "level": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 1000
+                      },
+                      "worth": {
+                        "type": "array",
+                        "items": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 100000000
+                        },
+                        "minItems": 1,
+                        "maxItems": 6
+                      },
+                      "$comment": {}
+                    },
+                    "required": [
+                      "level",
+                      "worth"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "minItems": 1,
+                  "maxItems": 100
+                },
+                "crowd": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "from": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 1000
+                      },
+                      "times": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 100
+                      },
+                      "$comment": {}
+                    },
+                    "required": [
+                      "from",
+                      "times"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "minItems": 1,
+                  "maxItems": 20
+                },
+                "smallParty": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100
+                },
+                "largeParty": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100
+                },
+                "forGame": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string",
+                    "maxLength": 40,
+                    "pattern": "^[a-z][a-z0-9_]*$"
+                  },
+                  "propertyNames": {
+                    "enum": [
+                      "casual",
+                      "normal",
+                      "hard",
+                      "brutal"
+                    ]
+                  },
+                  "properties": {
+                    "$comment": {}
+                  }
+                },
+                "$comment": {}
+              },
+              "required": [
+                "level",
+                "steps",
+                "byLevel"
+              ],
+              "additionalProperties": false
             },
             "$comment": {}
           },

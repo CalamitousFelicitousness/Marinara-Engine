@@ -12673,6 +12673,20 @@ export function getCapabilityPackageInstallIssue(
   ) {
     return "A ruleset whose attack rows choose the best of several abilities (abilityChoices) requires schemaVersion 2 and capabilityApi 1.783 or newer";
   }
+  // An encounter budget and the worth of a threat tier, 1.793.
+  if (
+    !declaresApi(793) &&
+    (() => {
+      const threat = plainRecord(plainRecord(plainRecord(ruleset)?.combat)?.threat);
+      const tiers = threat?.tiers;
+      return (
+        threat?.budget !== undefined ||
+        (Array.isArray(tiers) && tiers.some((tier) => plainRecord(tier)?.worth !== undefined))
+      );
+    })()
+  ) {
+    return "A ruleset with an encounter budget (combat.threat.budget, or a threat tier's worth) requires schemaVersion 2 and capabilityApi 1.793 or newer";
+  }
   // A list's pools counted up rather than spent, 1.791.
   if (
     !declaresApi(791) &&

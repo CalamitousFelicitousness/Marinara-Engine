@@ -22,6 +22,12 @@ import {
   WORLD_DEFAULT_BATTLEFIELDS,
   gameWorldBattlefields,
   type WorldBattlefields,
+  normalizeGameDifficulty,
+  rulesetBudgetLevel,
+  rulesetEncounterBudget,
+  rulesetSheetBuildsByName,
+  type GameDifficulty,
+  type RulesetEncounterBudget,
 } from "@marinara-engine/shared";
 import { loadGameFightItems } from "../services/game/game-inventory.service.js";
 import { loadRulesetCatalogEntries } from "../services/game/ruleset-catalog.service.js";
@@ -553,7 +559,9 @@ export interface EncounterSheetBrief {
 /** What a ruleset that resolves its own fights lends the blueprint prompt: the rungs an opponent is
  *  picked from, the names already written, and the ids a proposed stat block has to be written in. */
 export interface EncounterRulesetBrief {
-  tiers: Array<{ id: string; label: string }>;
+  tiers: Array<{ id: string; label: string; worth?: number }>;
+  /** What a fight may be worth for this party (1.793), when the ruleset has a budget. */
+  budget?: RulesetEncounterBudget | null;
   bestiary: Array<{ label: string; tier: string }>;
   budgets: string[];
   saves: string[];
@@ -645,6 +653,8 @@ async function encounterSheetBrief(
 export async function encounterRulesetBrief(
   definition: RulesetDefinition,
   packageId: string | null,
+  /** The party's sheet cards and the game's difficulty, for the encounter budget (1.793). */
+  party?: { cards: unknown; difficulty: GameDifficulty },
 ): Promise<EncounterRulesetBrief | null> {
   const combat = definition.combat;
   if (!combat) return null;
@@ -668,7 +678,21 @@ export async function encounterRulesetBrief(
     }
   }
   return {
-    tiers: (combat.threat?.tiers ?? []).map((tier) => ({ id: tier.id, label: tier.label })),
+    tiers: (combat.threat?.tiers ?? []).map((tier) => ({
+      id: tier.id,
+      label: tier.label,
+      ...(tier.worth !== undefined ? { worth: tier.worth } : {}),
+    })),
+    budget:
+      party && combat.threat?.budget
+        ? rulesetEncounterBudget(
+            definition,
+            [...rulesetSheetBuildsByName(definition, party.cards).values()].map((build) =>
+              rulesetBudgetLevel(combat.threat!.budget!, build.fields),
+            ),
+            party.difficulty,
+          )
+        : null,
     bestiary,
     // A budget of no count is one only a condition fills, so it is not one an invented creature spends.
     budgets: combat.economy.budgets.filter((budget) => budget.count > 0).map((budget) => budget.id),
@@ -859,7 +883,11 @@ export function buildInitPrompt(
   inst += `- Surprise: give "surprised": true to every party member or enemy the scene shows was caught unaware (it did not notice the ambush or the attackers before the fight began). Leave it out for anyone who saw it coming, and for everybody when nobody was caught off guard.\n`;
   if (ruleset) {
     inst += `\nTHIS GAME'S RULESET RESOLVES ITS OWN FIGHTS. Describe every enemy in the ruleset's own terms as well:\n`;
-    inst += `- Threat tiers, hardest rung last. Use an id exactly as written: ${ruleset.tiers.map((tier) => `${tier.id} (${tier.label})`).join(", ") || "this ruleset declares none"}.\n`;
+    inst += `- Threat tiers, hardest rung last. Use an id exactly as written: ${ruleset.tiers.map((tier) => `${tier.id} (${tier.label}${tier.worth !== undefined ? `, worth ${tier.worth}` : ""})`).join(", ") || "this ruleset declares none"}.\n`;
+    const budget = ruleset.budget;
+    if (budget) {
+      inst += `- Budget: this game is played at ${budget.step.label} for a party of ${budget.members} (level${budget.levels.length === 1 ? "" : "s"} ${budget.levels.join(", ")}), so the enemies' worths together should come to at most ${budget.worth}${budget.bossWorth > budget.worth ? `, or ${budget.bossWorth} for a fight with a boss in it` : ""}. Many weak enemies or a few strong ones, never more than that. A party that has not rested since its last fight is weaker than its levels say: spend less. An invented enemy is brought down a tier by the Engine while the fight is over budget; a bestiary creature is counted as it is, so choose fewer of them.\n`;
+    }
     inst += `- Bestiary this ruleset already ships: ${ruleset.bestiary.map((entry) => `${entry.label} [${entry.tier}]`).join(", ") || "it ships none"}.\n`;
     inst += `- For each enemy, give "creature" with a bestiary name when one of them IS this enemy. One of a kind on the list with its own name, a rank or a flourish of gear is still that creature: a raider, a chief or an armoured one of a listed kind is that kind, named in "creature" while its own name stays in "name". Only an enemy that is no kind on the list goes without "creature": then give "tier" with the rung this enemy belongs on, judged from the scene and the party, never from its hp.\n`;
     inst += `- Add "proposed" only for an enemy that is in no bestiary and needs its own numbers. The Engine pulls a proposal onto the tier's scale, so write what the enemy IS and let it be adjusted.\n`;
@@ -1171,7 +1199,10 @@ export async function encounterRoutes(app: FastifyInstance) {
       if (chatMeta && resolvedRuleset?.status === "ok") {
         const resolved = resolvedRuleset;
         fightRuleset = { definition: resolved.definition, packageId: resolved.packageId };
-        rulesetBrief = await encounterRulesetBrief(resolved.definition, resolved.packageId);
+        rulesetBrief = await encounterRulesetBrief(resolved.definition, resolved.packageId, {
+          cards: chatMeta.gameCharacterCards,
+          difficulty: normalizeGameDifficulty(setupConfig?.difficulty),
+        });
         items.guess = resolved.definition.items?.native !== false;
         if (resolved.definition.items) {
           items.ruleset = gameInventoryFightLines(normalizeGameInventoryStacks(chatMeta.gameInventory)).flatMap(

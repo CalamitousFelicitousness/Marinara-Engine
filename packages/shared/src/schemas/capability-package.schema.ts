@@ -1508,7 +1508,10 @@ const capabilityPackageManifestBaseSchema = z
 //        waits on that many whole rows, as its `min` does.
 // 1.790: an attack list's `toHit.sheetBonus`: a number off the sheet added to hit on its rows, or on
 //        only the rows whose `when` column holds a value (5e's Archery on ranged weapons).
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 792 } as const);
+// 1.793: an encounter budget, `combat.threat.budget`, and a threat tier's `worth`: what a fight may hold
+//        for a party by level and game difficulty. The Game Master is told it, and invented opponents
+//        are brought down a rung while a fight is over it.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 793 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

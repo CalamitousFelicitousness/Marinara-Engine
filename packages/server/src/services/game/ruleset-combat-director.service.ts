@@ -13,6 +13,10 @@
 
 import {
   applyRulesetSheetOp,
+  rulesetBudgetLevel,
+  rulesetBudgetedTiers,
+  rulesetEncounterBudget,
+  type GameDifficulty,
   rulesetActionAvailable,
   rulesetSealedApart,
   parseRulesetCombatDice,
@@ -497,6 +501,10 @@ export interface RulesetFightSeed {
   standing?: RulesetStandingZone[];
   /** The scene's time of day as the game tracks it (1.291), which sets the light outdoors. */
   time?: string | null;
+  /** The game's difficulty, for the ruleset's encounter budget (1.793): invented opponents are brought
+   *  down a rung while the fight is over it. `kept` are opponents never moved (those that come back).
+   *  Left out (a story's fight, a test), nothing is moved. */
+  budget?: { difficulty: GameDifficulty; kept?: string[] };
 }
 
 export type RulesetFightSeedResult = { ok: true; fight: RulesetFightState } | { ok: false; error: string };
@@ -623,7 +631,55 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
       }
     return best?.type;
   };
-  for (const opponent of input.enemies) {
+  // The encounter budget (1.793): an invented opponent is brought down a rung at a time, the one worth
+  // the most first, while the fight is worth more than the party's budget at the game's difficulty (one
+  // step higher with a boss in it). A bestiary creature is counted as it is (laptop party B, 2026-10-25:
+  // four CR 3 winter wolves and an invented CR 8 against a level 5 party, wiped in seven rounds).
+  const budget = input.budget
+    ? rulesetEncounterBudget(
+        definition,
+        combatants.flatMap((one) =>
+          one.side === "party" && "build" in one && one.build && combat.threat?.budget
+            ? [rulesetBudgetLevel(combat.threat.budget, one.build.fields)]
+            : [],
+        ),
+        input.budget.difficulty,
+      )
+    : null;
+  let enemies = input.enemies;
+  if (budget && input.budget) {
+    const keep = new Set(input.budget.kept ?? []);
+    const foes = enemies.map((opponent) => {
+      const found = opponent.creature
+        ? findRulesetCreature(input.bestiary, opponent.creature)
+        : findRulesetCreature(input.bestiary, opponent.name);
+      if (found) return { tier: found.entry.creature?.tier, kept: true };
+      const proposedTier = (opponent.proposed as { tier?: unknown } | undefined)?.tier;
+      return {
+        tier: opponent.tier ?? (typeof proposedTier === "string" ? proposedTier : undefined),
+        kept: keep.has(opponent.id),
+      };
+    });
+    const allowed = enemies.some((opponent) => opponent.boss) ? budget.bossWorth : budget.worth;
+    const moved = rulesetBudgetedTiers(definition, foes, allowed, budget.members);
+    const scale = combat.threat?.tiers ?? [];
+    const label = (id: string | undefined) => scale.find((tier) => tier.id === id)?.label ?? id;
+    enemies = enemies.map((opponent, index) => {
+      const tier = moved.tiers[index];
+      if (tier === foes[index]!.tier || tier === undefined) return opponent;
+      adjustments.push(
+        `${opponent.name} was brought down from ${label(foes[index]!.tier)} to ${label(tier)}: the fight was worth more than this party's ${budget.step.label} budget.`,
+      );
+      const proposed =
+        opponent.proposed && typeof opponent.proposed === "object" ? { ...opponent.proposed, tier } : opponent.proposed;
+      return { ...opponent, tier, ...(proposed !== undefined ? { proposed } : {}) };
+    });
+    if (moved.worth.after > allowed)
+      adjustments.push(
+        `This fight is worth ${moved.worth.after}, more than this party's ${budget.step.label} budget of ${allowed}, with nothing left to bring down.`,
+      );
+  }
+  for (const opponent of enemies) {
     opponentName = opponent.name;
     // By the reference the Game Master named, then by the opponent's own name, and no further: a
     // fight built on a near miss is worse than one the Engine says it could not build.
@@ -1054,8 +1110,9 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
     adjustments: adjustments.slice(0, RULESET_ADJUSTMENT_LIMIT),
     ...(Object.keys(lootTables).length > 0 ? { lootTables } : {}),
     ...(deploy ? { deploy } : {}),
+    // As it was fought, its tier brought down by the budget included.
     made: Object.fromEntries(
-      input.enemies.map((opponent) => [
+      enemies.map((opponent) => [
         opponent.id,
         {
           name: opponent.name,

@@ -97,6 +97,7 @@ import {
 } from "../services/game/story-held-ground.service.js";
 import { gameNoncombatants, gamePartyLevel } from "../services/game/experience-companions.service.js";
 import {
+  latestStoryFight,
   latestStoryFightAdjusts,
   latestStoryHeldGround,
   storyFightAdjustsFor,
@@ -1091,6 +1092,7 @@ export async function combatDirectorRoutes(
             await gamePartyLevel(app.db, input.chatId, meta, definition),
           );
           const enemyAdjusts = storyFightAdjustsFor(input.enemies, adjusts);
+          const storyFight = await latestStoryFight(app.db, input.chatId, meta);
           // Whether death is held where it is fought (1.366): the story's Held Ground (1.323).
           const heldGround = await latestStoryHeldGround(app.db, input.chatId, meta);
           // One that got away from an earlier fight comes back as it was made then, whatever this
@@ -1183,6 +1185,16 @@ export async function combatDirectorRoutes(
             ...(heldGround ? { heldGround } : {}),
             // The scene's time of day, for the light it is fought in (1.291).
             time: liveRow?.time ?? null,
+            // The ruleset's encounter budget (1.793), for a fight the Game Master made up: a story's
+            // fight is its author's, and one that comes back is as it was.
+            ...(storyFight
+              ? {}
+              : {
+                  budget: {
+                    difficulty: normalizeGameDifficulty(setup.difficulty),
+                    kept: input.enemies.flatMap((enemy, index) => (backAs[index] ? [enemy.id] : [])),
+                  },
+                }),
           });
           if (!built.ok) return reply.code(400).send({ error: built.error });
           backAs.forEach((back, index) => {

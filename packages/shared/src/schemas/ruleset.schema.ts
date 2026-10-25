@@ -16015,6 +16015,53 @@ const combatThreatTierSchema = z
     toHit: z.number().int().min(-20).max(50),
     damagePerRound: z.tuple([z.number().int().min(0).max(10000), z.number().int().min(0).max(10000)]),
     saveDifficulty: z.number().int().min(0).max(100),
+    /** What a creature of this tier counts for against an encounter budget (Capability API 1.793): 5e's
+     *  experience points by challenge rating. */
+    worth: z.number().min(0).max(100000000).optional(),
+  })
+  .strict();
+
+/** How much a fight may hold for the party that meets it (Capability API 1.793). A member's level is
+ *  the sum of the sheet's `level` fields (5e: one per class). `byLevel` gives what one member at a
+ *  level adds at each of `steps`, lowest step first; the fight's opponents' tier `worth`, times the
+ *  `crowd` row their number reaches, should be no more than the party's sum at the step its game's
+ *  difficulty plays at: `forGame`'s, else casual, normal, hard and brutal take the steps in order. A
+ *  party smaller than `smallParty` reads a `crowd` row up, one larger than `largeParty` a row down.
+ *  The Game Master is told the budget, and the Engine brings invented opponents down a rung while a
+ *  fight is over it (one with a boss may reach the next step). SRD 5.2: Low, Moderate and High per
+ *  character, no crowd. */
+const combatThreatBudgetSchema = z
+  .object({
+    level: z.array(sheetId).min(1).max(30),
+    steps: z
+      .array(z.object({ id: sheetId, label }).strict())
+      .min(1)
+      .max(6),
+    byLevel: z
+      .array(
+        z
+          .object({
+            level: z.number().int().min(0).max(1000),
+            worth: z.array(z.number().min(0).max(100000000)).min(1).max(6),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(100)
+      .refine((rows) => rows.every((row, i) => i === 0 || row.level > rows[i - 1]!.level), {
+        message: "Each level is above the one before it",
+      }),
+    crowd: z
+      .array(z.object({ from: z.number().int().min(0).max(1000), times: z.number().min(0).max(100) }).strict())
+      .min(1)
+      .max(20)
+      .refine((rows) => rows.every((row, i) => i === 0 || row.from > rows[i - 1]!.from), {
+        message: "Each row starts above the one before it",
+      })
+      .optional(),
+    smallParty: z.number().int().min(1).max(100).optional(),
+    largeParty: z.number().int().min(1).max(100).optional(),
+    forGame: z.record(z.enum(["casual", "normal", "hard", "brutal"]), sheetId).optional(),
   })
   .strict();
 
@@ -16561,7 +16608,7 @@ const combatObjectSchema = z
       )
       .optional(),
     threat: z
-      .object({ tiers: z.array(combatThreatTierSchema).min(1).max(40) })
+      .object({ tiers: z.array(combatThreatTierSchema).min(1).max(40), budget: combatThreatBudgetSchema.optional() })
       .strict()
       .optional(),
     /** How much thought a combatant the Engine plays puts into a fight (Capability API 1.746), read
@@ -21010,6 +21057,27 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
             issue(at("threat", "tiers", index, key, 0), "The lowest is above the highest");
         }
       });
+      const budget = combat.threat.budget;
+      if (budget) {
+        const stepIds = unique(budget.steps, at("threat", "budget", "steps"), "budget step");
+        for (const [index, field] of budget.level.entries()) {
+          const found = def.sheet.fields.find((one) => one.id === field);
+          if (!found) issue(at("threat", "budget", "level", index), `Unknown sheet field "${field}"`);
+          else if (found.type !== "number")
+            issue(at("threat", "budget", "level", index), `"${field}" is not a number field`);
+        }
+        budget.byLevel.forEach((row, index) => {
+          if (row.worth.length !== budget.steps.length)
+            issue(
+              at("threat", "budget", "byLevel", index, "worth"),
+              `Give one worth for each of the ${budget.steps.length} steps`,
+            );
+        });
+        for (const [game, step] of Object.entries(budget.forGame ?? {}))
+          if (!stepIds.has(step)) issue(at("threat", "budget", "forGame", game), `Unknown budget step "${step}"`);
+        if (!combat.threat.tiers.some((tier) => tier.worth !== undefined))
+          issue(at("threat", "budget"), "A budget needs a worth on the threat tiers to spend it on");
+      }
     }
   }
 

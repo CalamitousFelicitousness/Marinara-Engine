@@ -160,7 +160,7 @@ for (const theme of ["dark", "light"] as const) {
       await expect(limit).toHaveValue("10");
       await expect(limit.locator("option")).toHaveCount(11);
       await limit.selectOption("2");
-      await expect(page.getByText("Reduce extension revision history?", { exact: true })).toBeVisible();
+      await expect(page.getByText("Remove older extension revisions?", { exact: true })).toBeVisible();
       await page.getByRole("button", { name: "Cancel", exact: true }).click();
       await expect(limit).toHaveValue("10");
       expect((await (await request.get("/api/personal-extensions/revision-history")).json()).limit).toBe(10);
@@ -175,10 +175,47 @@ for (const theme of ["dark", "light"] as const) {
       });
       await limit.selectOption("5");
       await expect(limit).toHaveValue("5");
-      await expect(page.getByText("Reduce extension revision history?", { exact: true })).toHaveCount(0);
+      await expect(page.getByText("Remove older extension revisions?", { exact: true })).toHaveCount(0);
     } finally {
       await request.patch("/api/personal-extensions/revision-history", { data: { limit: 10 } });
     }
+  });
+
+  test(`extension revision retention confirms restored surplus before an increase (${theme})`, async ({
+    page,
+  }, testInfo) => {
+    let storedLimit = 3;
+    const changes: Array<{ limit: number; confirmPrune?: boolean }> = [];
+    await page.route("**/api/personal-extensions/revision-history", async (route) => {
+      if (route.request().method() === "PATCH") {
+        const input = route.request().postDataJSON() as { limit: number; confirmPrune?: boolean };
+        changes.push(input);
+        if (!input.confirmPrune) {
+          await route.fulfill({ status: 409, json: { error: "Confirmation required", code: "confirmation_required" } });
+          return;
+        }
+        storedLimit = input.limit;
+      }
+      await route.fulfill({ json: { limit: storedLimit } });
+    });
+    await prepare(page, theme, { rightPanelOpen: true, rightPanel: "settings", settingsTab: "addons" });
+    await page.goto("/");
+    const limit = page.getByLabel("Previous revisions to keep", { exact: true });
+    await expect(limit).toHaveValue("3");
+    await limit.selectOption("5");
+    await expect(page.getByText("Remove older extension revisions?", { exact: true })).toBeVisible();
+    await testInfo.attach(`retention-restored-surplus-${theme}`, {
+      body: await page.screenshot(),
+      contentType: "image/png",
+    });
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(limit).toHaveValue("3");
+    expect(changes).toEqual([{ limit: 5 }]);
+    await expect(page.getByText("Could not update extension revision history.", { exact: true })).toHaveCount(0);
+    await limit.selectOption("5");
+    await page.getByRole("button", { name: "Remove older revisions", exact: true }).click();
+    await expect(limit).toHaveValue("5");
+    expect(changes).toEqual([{ limit: 5 }, { limit: 5 }, { limit: 5, confirmPrune: true }]);
   });
 
   test(`mobile connection name stays inside the editor after keyboard pan (${theme})`, async ({

@@ -194,17 +194,28 @@ export function ExtensionRevisionHistorySettings() {
   const update = useSetPersonalExtensionRevisionRetention();
   const changeLimit = async (limit: number) => {
     const reducing = data !== undefined && limit < data.limit;
-    if (
-      reducing &&
-      !(await showConfirmDialog({
+    const confirmRemoval = () =>
+      showConfirmDialog({
         title: t("settings.extensions.revisionHistory.confirmTitle"),
         message: t("settings.extensions.revisionHistory.confirmMessage", { limit }),
         confirmLabel: t("settings.extensions.revisionHistory.confirmLabel"),
-      }))
-    )
-      return;
+      });
+    if (reducing && !(await confirmRemoval())) return;
     try {
-      await update.mutateAsync({ limit, ...(reducing ? { confirmPrune: true } : {}) });
+      try {
+        await update.mutateAsync({ limit, ...(reducing ? { confirmPrune: true } : {}) });
+      } catch (saveError) {
+        const confirmationRequired =
+          saveError instanceof ApiError &&
+          saveError.status === 409 &&
+          typeof saveError.payload === "object" &&
+          saveError.payload !== null &&
+          "code" in saveError.payload &&
+          saveError.payload.code === "confirmation_required";
+        if (reducing || !confirmationRequired) throw saveError;
+        if (!(await confirmRemoval())) return;
+        await update.mutateAsync({ limit, confirmPrune: true });
+      }
       toast.success(t("settings.extensions.revisionHistory.saved"));
     } catch (saveError) {
       toast.error(getPrivilegedActionErrorMessage(saveError, t("settings.extensions.revisionHistory.saveFailed")));

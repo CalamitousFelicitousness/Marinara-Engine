@@ -5167,7 +5167,7 @@
   "settings.customGenerationParameters.valuePlaceholder": "min_p",
   "settings.extensions.revisionHistory.confirmLabel": "Remove older revisions",
   "settings.extensions.revisionHistory.confirmMessage": "Set the revision history limit to {{limit}}? Older revisions of every extension will be permanently removed. Current code and saved extension data will be kept.",
-  "settings.extensions.revisionHistory.confirmTitle": "Reduce extension revision history?",
+  "settings.extensions.revisionHistory.confirmTitle": "Remove older extension revisions?",
   "settings.extensions.revisionHistory.description": "Choose how many previous code versions to keep for every Personal and External Extension. Set 0 to disable history. Current code and saved extension data are kept.",
   "settings.extensions.revisionHistory.limit": "Previous revisions to keep",
   "settings.extensions.revisionHistory.loadFailed": "Could not load extension revision history.",

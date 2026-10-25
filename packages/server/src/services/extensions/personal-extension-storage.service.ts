@@ -181,8 +181,13 @@ export function createPersonalExtensionsStorage(db: DB) {
     async setRevisionRetention(input: PersonalExtensionRevisionRetentionInput) {
       const { limit, confirmPrune } = personalExtensionRevisionRetentionSchema.parse(input);
       return db.transaction(async () => {
-        if (limit < (await getRevisionRetention()) && !confirmPrune) return null;
-        for (const extension of await list()) {
+        const extensions = await list();
+        if (
+          !confirmPrune &&
+          (limit < (await getRevisionRetention()) || extensions.some((extension) => extension.revisions.length > limit))
+        )
+          return null;
+        for (const extension of extensions) {
           if (extension.revisions.length <= limit) continue;
           await db
             .update(installedExtensions)

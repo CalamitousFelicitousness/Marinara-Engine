@@ -273,7 +273,10 @@ import {
   type MusicEnemyTier,
   scoreAmbient,
   normalizeCharacterLookupName,
+  partyHealthWidgetUpdates,
   readRulesetSheetEnvelope,
+  rulesetSheetBuildsByName,
+  rulesetSheetHealth,
   defaultRulesetSheetBuild,
   type RulesetSheetBuild,
   type RulesetCatalogEntriesById,
@@ -3163,6 +3166,46 @@ function GameSurfaceComponent({
     () => gameInventoryFightEffects(fightInventoryLines, combatItemEffects),
     [fightInventoryLines, combatItemEffects],
   );
+  // A party health widget follows the sheets (laptop playtest 2026-10-25: "Ulfgar HP" stayed at 50
+  // while the sheet said 48, as the Game Master wrote no widget tag that turn). Whenever a sheet's
+  // health or the widgets change, a row that belongs to a member is brought to what the sheet says.
+  const healthDefinition = gameRuleset.status === "ok" ? gameRuleset.definition : null;
+  const healthCards = chatMeta.gameCharacterCards;
+  const healthLive = gameSnapshot?.rulesetLive;
+  const healthPlayer = personaInfo?.name;
+  useEffect(() => {
+    if (!healthDefinition?.battle || !healthLive || replaySessionNumber !== null || hudWidgets.length === 0) return;
+    const builds = rulesetSheetBuildsByName(healthDefinition, healthCards, healthPlayer);
+    if (builds.size === 0) return;
+    const rows = (Array.isArray(healthCards) ? (healthCards as Array<{ name?: unknown }>) : []).flatMap((card) => {
+      const name = typeof card?.name === "string" ? card.name.trim() : "";
+      const key = name ? normalizeCharacterLookupName(name) : "";
+      const build = key ? builds.get(key) : undefined;
+      const health = build ? rulesetSheetHealth(healthDefinition, build, healthLive[key]) : undefined;
+      return health ? [{ name, ...health }] : [];
+    });
+    // The ruleset's own name for what a fight damages ("Grit") names a row as well as "HP" does.
+    const health = healthDefinition.battle.health;
+    const live = healthDefinition.sheet.live;
+    const word =
+      "pool" in health
+        ? live?.pools?.find((pool) => pool.id === health.pool)?.label
+        : live?.tracks?.find((track) => track.id === health.track)?.label;
+    const updates = partyHealthWidgetUpdates(hudWidgets, rows, word ? [word] : []);
+    if (updates.length === 0) return;
+    let next = hudWidgets;
+    for (const update of updates) next = applyWidgetUpdate(update);
+    syncHudWidgetsToChatCache(next);
+  }, [
+    healthDefinition,
+    healthCards,
+    healthLive,
+    healthPlayer,
+    hudWidgets,
+    replaySessionNumber,
+    applyWidgetUpdate,
+    syncHudWidgetsToChatCache,
+  ]);
   /** What the inventory just did, shown for a moment: gains in green, everything else in red. */
   const [inventoryNotifications, setInventoryNotifications] = useState<Array<{ text: string; gain: boolean }>>([]);
   const [removingPartyMemberId, setRemovingPartyMemberId] = useState<string | null>(null);
@@ -5231,6 +5274,9 @@ function GameSurfaceComponent({
     setPendingSegmentEffects([]);
     setPendingInventorySegmentUpdates([]);
     appliedSegmentsRef.current = new Set();
+    // A new turn's inventory is announced afresh: a segment told last turn would otherwise keep this
+    // turn's buys and refusals at the same segment silent (laptop playtest 2026-10-25).
+    appliedInventorySegmentsRef.current = new Set();
     // Cancel any pending segment persist timer to prevent it from overwriting our reset
     if (segmentPersistTimer.current) {
       clearTimeout(segmentPersistTimer.current);

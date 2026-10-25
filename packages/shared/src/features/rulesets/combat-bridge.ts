@@ -166,6 +166,19 @@ export function carryHealthShare(value: number, fromMax: number, toMax: number):
   return Math.max(1, Math.round((toMax * value) / fromMax));
 }
 
+/** A sheet's health as it stands, read from the pool or track the ruleset's `battle` block names, or
+ *  undefined for a ruleset with none. What a party health widget is kept in step with. */
+export function rulesetSheetHealth(
+  definition: RulesetDefinition,
+  build: RulesetSheetBuild,
+  storedLive: unknown,
+): { value: number; max: number } | undefined {
+  const battle = definition.battle;
+  if (!battle) return undefined;
+  const health = liveHealth(readRulesetLive(definition, build, storedLive), battle.health);
+  return health ? { value: health.value, max: health.max } : undefined;
+}
+
 /**
  * What the party combatant for this sheet starts the battle with, or null when the ruleset has no
  * `battle` block or the sheet has no health pool to read.

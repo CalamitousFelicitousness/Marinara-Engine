@@ -512,6 +512,55 @@ try {
     assert.equal(stopped.state.window, undefined, "no aimed window for something that was called off");
     assert.equal(eventsOf(stopped.events, "cancelled")[0]?.label, "Coldfire Toss");
     assert.deepEqual(eventsOf(stopped.events, "window"), [], "and nothing more is asked");
+    // The Kindler smothers Pell's Smother instead: only Pell's is stopped, and the toss goes on to be
+    // aimed (laptop playtest 2026-10-25: a log that said both counters stopped what they answered).
+    const kindlerSmother = rulesetCombatant(smothering.state, "kindler")!.actions.find(
+      (action) => action.label === "Smother",
+    )!;
+    const countered = act(
+      variant,
+      smothering.state,
+      {
+        actorId: "kindler",
+        optionId: kindlerSmother.id,
+        targetIds: [],
+        window: smothering.state.window!.id,
+      },
+      4,
+      3,
+      4,
+      3,
+      4,
+      3,
+    );
+    const allEvents = [...countered.events];
+    let after = countered;
+    for (let guard = 0; guard < 6 && after.state.window; guard++) {
+      const waiter = after.state.window.waiting[0];
+      if (!waiter) break;
+      after = act(
+        variant,
+        after.state,
+        {
+          actorId: waiter,
+          optionId: RULESET_PASS_OPTION,
+          targetIds: [],
+          window: after.state.window.id,
+        },
+        4,
+        3,
+        4,
+        3,
+        4,
+        3,
+      );
+      allEvents.push(...after.events);
+    }
+    const cancels = eventsOf(allEvents, "cancelled");
+    assert.equal(cancels.length, 1, `one thing stopped: ${JSON.stringify(cancels)}`);
+    assert.equal(cancels[0]!.label, "Smother", "Pell's Smother");
+    assert.equal(cancels[0]!.actorId, "pell");
+    assert.equal(cancels[0]!.byId, "kindler");
   }
 
   // ── What the screen says ──

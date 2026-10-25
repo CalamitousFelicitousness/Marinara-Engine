@@ -7,7 +7,12 @@
 // never reach the screen. Every number is still the event's own.
 import type { DirectedRulesetView, RulesetDefinition } from "@marinara-engine/shared";
 import type { TFunction } from "i18next";
-import { rulesetCombatEventLine, rulesetCombatNames, type RulesetCombatNames } from "./ruleset-combat-log";
+import {
+  rulesetCombatEventLine,
+  rulesetCombatNames,
+  rulesetQuietEvents,
+  type RulesetCombatNames,
+} from "./ruleset-combat-log";
 
 const PARTY_OPEN = "\uE001";
 const ENEMY_OPEN = "\uE002";
@@ -153,6 +158,7 @@ export function rulesetRichLogLines(
   const trimmed = (view.events[0]?.seq ?? 1) > 1;
   let round = firstRound?.type !== "round" ? Math.max(1, view.round) : trimmed ? 0 : Math.max(1, firstRound.round - 1);
   let turnOf: string | undefined;
+  const quiet = rulesetQuietEvents(view.events);
   for (const entry of view.events) {
     // A new round ends the last turn too: its opening line belongs to nobody's turn.
     if (entry.event.type === "round") {
@@ -160,7 +166,7 @@ export function rulesetRichLogLines(
       turnOf = undefined;
     }
     if (entry.event.type === "turn") turnOf = entry.event.actorId;
-    if (entry.event.type === "budget") continue;
+    if (entry.event.type === "budget" || quiet(entry)) continue;
     const reason = entry.event.type === "reasoning";
     if (reason && !reasons) continue;
     tone = undefined;

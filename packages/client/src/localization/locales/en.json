@@ -2465,6 +2465,7 @@
   "game.combat.ruleset.event.reason.spread": "it stopped apart from its side rather than nearest, so one blast cannot catch them all",
   "game.combat.ruleset.event.reason.stops": "stops what {{target}} was about to do",
   "game.combat.ruleset.event.reason.support": "helps {{target}}",
+  "game.combat.ruleset.event.reason.supportSelf": "makes itself stronger",
   "game.combat.ruleset.event.reason.supportSide": "helps its side",
   "game.combat.ruleset.event.reason.takesTurn": "keeps {{target}} from acting",
   "game.combat.ruleset.event.reason.walked": "walked {{distance}} first to act from there",

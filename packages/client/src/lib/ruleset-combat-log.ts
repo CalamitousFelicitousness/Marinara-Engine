@@ -1822,7 +1822,7 @@ export function rulesetCombatEventLine(
       return event.reasons.length
         ? key("reasoning", {
             actor: names.combatant(event.actorId),
-            reasons: event.reasons.map((reason) => rulesetReasonText(reason, names, t)).join("; "),
+            reasons: event.reasons.map((reason) => rulesetReasonText(reason, names, t, event.actorId)).join("; "),
           })
         : null;
     default:
@@ -1831,7 +1831,12 @@ export function rulesetCombatEventLine(
 }
 
 /** One reason the Engine gives for an AI combatant's step, in no ruleset's own words. */
-function rulesetReasonText(reason: DirectedRulesetReason, names: RulesetCombatNames, t: TFunction): string {
+function rulesetReasonText(
+  reason: DirectedRulesetReason,
+  names: RulesetCombatNames,
+  t: TFunction,
+  actorId?: string,
+): string {
   const say = (name: string, params: Record<string, unknown> = {}) =>
     t(`game.combat.ruleset.event.reason.${name}`, params) as string;
   const target = (id?: string) => (id ? names.combatant(id) : "") || say("itsTarget");
@@ -1845,7 +1850,11 @@ function rulesetReasonText(reason: DirectedRulesetReason, names: RulesetCombatNa
         : say(`damage_${reason.strength}`, { target: target(reason.targetId) });
     case "healing":
     case "support":
-      // Untargeted, it is its own (healing) or its side's (support): never "its target".
+      // Untargeted, it is its own (healing) or its side's (support): never "its target". On itself it
+      // is said as its own, not as helping itself by name (laptop playtest 2026-10-25: a Rage read
+      // "helps Ulfgar").
+      if (reason.targetId && reason.targetId === actorId)
+        return say(reason.why === "healing" ? "healingSelf" : "supportSelf");
       return reason.targetId
         ? say(reason.why, { target: target(reason.targetId) })
         : say(reason.why === "healing" ? "healingSelf" : "supportSide");
@@ -1932,6 +1941,28 @@ function poolHarmLines(
 }
 
 /** The lines a screen prints, newest last, for every event it has not printed yet. */
+/**
+ * What no log says. A moment everybody let go by is no moment at all: neither the offer nor the
+ * passing is said, so a fight with a dozen unanswered openings does not read as a dozen of each. A
+ * pass on its own is said nowhere, since what somebody did not do is the absence of a line, and nor is
+ * why a moment was let go (laptop playtest 2026-10-25: "let the moment go by" over and over).
+ */
+export function rulesetQuietEvents(
+  events: DirectedRulesetView["events"],
+): (entry: DirectedRulesetView["events"][number]) => boolean {
+  const passed = new Map<string, Set<string>>();
+  for (const { event } of events)
+    if (event.type === "pass") passed.set(event.window, (passed.get(event.window) ?? new Set()).add(event.actorId));
+  return ({ event }) => {
+    if (event.type === "pass") return true;
+    if (event.type === "window" && !event.readied && event.waiting.every((id) => passed.get(event.window)?.has(id)))
+      return true;
+    return (
+      event.type === "reasoning" && event.reasons.length > 0 && event.reasons.every((reason) => reason.why === "letGo")
+    );
+  };
+}
+
 export function rulesetCombatLogLines(
   events: DirectedRulesetView["events"],
   names: RulesetCombatNames,
@@ -1941,17 +1972,10 @@ export function rulesetCombatLogLines(
   reasons = false,
 ): Array<{ seq: number; text: string }> {
   const lines: Array<{ seq: number; text: string }> = [];
-  // A moment everybody let go by is no moment at all: neither the offer nor the passing is said, so
-  // a fight with a dozen unanswered openings does not read as a dozen of each. A pass on its own is
-  // said nowhere, since what somebody did not do is the absence of a line.
-  const passed = new Map<string, Set<string>>();
-  for (const { event } of events)
-    if (event.type === "pass") passed.set(event.window, (passed.get(event.window) ?? new Set()).add(event.actorId));
+  const quiet = rulesetQuietEvents(events);
   for (const entry of events) {
     if (entry.seq <= afterSeq) continue;
-    if (entry.event.type === "pass") continue;
-    const window = entry.event.type === "window" ? entry.event : undefined;
-    if (window && !window.readied && window.waiting.every((id) => passed.get(window.window)?.has(id))) continue;
+    if (quiet(entry)) continue;
     // What is left of a budget is a number the status panel already shows, and the resolver reports
     // it BEFORE the action it paid for, so in a log it read as "0 Action left" and then the blow.
     if (entry.event.type === "budget") continue;

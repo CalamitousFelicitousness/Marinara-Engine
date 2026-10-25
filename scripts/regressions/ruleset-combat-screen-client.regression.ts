@@ -504,6 +504,18 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     assert.ok(!hidden.some((text) => text.startsWith("Why ")), "no reasons without Debug");
     const shown = rulesetCombatLogLines(reasoned, names, t, -1, true).map((entry) => entry.text);
     assert.equal(shown.at(-1), "Why Brenna did that: nothing in reach, so it sprinted toward Thorn Lurker.");
+    // Its own strengthening is said as its own, never as helping itself by name; and why it let a
+    // moment go, the reason for a line the log never prints, is not said either.
+    const more = [
+      ...reasoned,
+      {
+        seq: reasoned.length + 1,
+        event: { type: "reasoning", actorId: "brenna", reasons: [{ why: "support", targetId: "brenna" }] },
+      },
+      { seq: reasoned.length + 2, event: { type: "reasoning", actorId: "brenna", reasons: [{ why: "letGo" }] } },
+    ] as typeof reasoned;
+    const told = rulesetCombatLogLines(more, names, t, -1, true).map((entry) => entry.text);
+    assert.equal(told.at(-1), "Why Brenna did that: makes itself stronger.");
     const richView = viewOf(
       swing.state,
       reasoned.map((entry) => entry.event),

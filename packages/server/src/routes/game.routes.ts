@@ -53,6 +53,7 @@ import { buildGameDataEditPatch, sameGameDataValue } from "../services/game/game
 // Routes: Game Mode
 // ──────────────────────────────────────────────
 import type { FastifyInstance, FastifyReply } from "fastify";
+import { validationDetails } from "../middleware/error-handler.js";
 import { createHash, randomInt, randomUUID } from "crypto";
 import { existsSync, readFileSync } from "fs";
 import { basename, extname, join } from "path";
@@ -6833,8 +6834,9 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     logger.info("[game/create] Received request");
     const parsed = createGameSchema.safeParse(input);
     if (!parsed.success) {
+      const [issue] = validationDetails(parsed.error.issues);
       return rejectGenerationOutput(reply, 400, {
-        error: `Invalid game setup: ${parsed.error.issues[0]?.message ?? "invalid settings"}`,
+        error: `Invalid game setup: ${issue?.message ?? "invalid settings"}`,
       });
     }
     const parsedCreateGameInput = parsed.data;

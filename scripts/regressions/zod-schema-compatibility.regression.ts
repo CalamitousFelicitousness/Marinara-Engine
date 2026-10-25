@@ -111,6 +111,23 @@ try {
   assert.equal(storedConnection?.maxContext, 65536);
   assert.equal(storedConnection?.baseUrl, "https://example.com/v1");
 
+  for (const [payload, issue] of [
+    [{ temperature: "hot" }, { path: "temperature", message: "Invalid input: expected number, received string" }],
+    [
+      { customThinkingTags: [{ open: 5, close: "x" }] },
+      { path: "customThinkingTags.0.open", message: "Invalid input: expected string, received number" },
+    ],
+    [{ temperature: 3 }, { path: "temperature", message: "Too big: expected number to be <=2" }],
+  ]) {
+    const invalidDefaults = await app.inject({
+      method: "PUT",
+      url: `/api/connections/${connection.id}/default-parameters`,
+      payload,
+    });
+    assert.equal(invalidDefaults.statusCode, 400, invalidDefaults.body);
+    assert.deepEqual(invalidDefaults.json(), { error: "Invalid generation parameters", issues: [issue] });
+  }
+
   const characters = createCharactersStorage(db);
   const character = await characters.create(
     schemas.characterDataSchema.parse({

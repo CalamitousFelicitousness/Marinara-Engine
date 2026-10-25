@@ -8,7 +8,7 @@ import { failureLevel } from "../lib/log-context.js";
 
 const MAX_VALIDATION_DETAILS = 50;
 
-function* validationDetails(
+export function* validationDetails(
   issues: ZodError["issues"] | LegacyZodError["issues"],
   prefix: PropertyKey[] = [],
 ): Generator<{ path: string; message: string }> {

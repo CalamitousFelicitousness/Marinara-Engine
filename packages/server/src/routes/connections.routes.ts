@@ -14,6 +14,7 @@ import {
 // Routes: Connections
 // ──────────────────────────────────────────────
 import type { FastifyInstance, FastifyReply } from "fastify";
+import { validationDetails } from "../middleware/error-handler.js";
 import { existsSync } from "fs";
 import { mkdir, readFile, writeFile } from "fs/promises";
 import { extname, join } from "path";
@@ -623,10 +624,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
       if (!parsed.success) {
         return reply.status(400).send({
           error: "Invalid generation parameters",
-          issues: parsed.error.issues.map((issue) => ({
-            path: issue.path.join("."),
-            message: issue.message,
-          })),
+          issues: [...validationDetails(parsed.error.issues)],
         });
       }
       params = { ...parsed.data };

@@ -3450,6 +3450,8 @@ export type RulesetCombatEvent =
       defense: number;
       /** What the target's conditions added to its defense, already inside `defense`. */
       guards?: RulesetConditionBonus[];
+      /** With `guards`: the defense they rose from, where `defense` is that plus them (#8273). */
+      unguarded?: number;
       outcome: RulesetCombatAttackOutcome;
       /** Under `dice-pool`: the pool as it was thrown. `total` is its net successes and `defense` the
        *  successes it needed. */
@@ -4276,6 +4278,8 @@ export type RulesetCombatEvent =
       total: number;
       defense: number;
       guards?: RulesetConditionBonus[];
+      /** With `guards`: the defense they rose from, where `defense` is that plus them (#8273). */
+      unguarded?: number;
       outcome: RulesetCombatAttackOutcome;
     }
   /** What the ground the target stands on added to the defense the next attack is rolled against. */

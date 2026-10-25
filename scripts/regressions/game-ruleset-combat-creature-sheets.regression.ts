@@ -1141,6 +1141,47 @@ const spellbook = parsedOrThrow(
   );
   assert.ok(planRulesetCombatCost(spellbook, built, lance, "slots_3"), "and it may still pay out of the bigger slot");
 
+  // A reaction the Game Master named that this ruleset has as a spell, not a bestiary reaction
+  // (laptop playtest 2026-10-25: a cult mage's Counterspell never countered): it goes on the sheet as
+  // that spell, once, and nobody is told the ruleset has no such reaction.
+  for (const listed of [false, true]) {
+    const counterer = started({
+      definition: spellbook,
+      cards: [card("Brenna", fighterBuild())],
+      party: [{ id: "brenna", name: "Brenna" }],
+      enemies: [
+        {
+          id: "warder",
+          name: "Cult Warder",
+          tier: "cr_2",
+          boss: true,
+          attacks: [{ name: "hex counter", reaction: "counter" }],
+          proposed: {
+            tier: "cr_2",
+            sheet: {
+              fields: { class: "Sorcerer", level: 5, spellcasting_ability: "int", slots_max_1: 2 },
+              lists: {
+                spells: [
+                  { name: "Spark Lash", prepared: true },
+                  ...(listed ? [{ name: "Hex Counter", prepared: true }] : []),
+                ],
+              },
+            },
+          },
+        },
+      ],
+    }).rulesetFight!;
+    const warder = who(counterer.encounter, "warder");
+    const counters = warder.actions.filter((action) => action.label === "Hex Counter");
+    assert.equal(counters.length, 1, `the named reaction is its spell, once: ${warder.actions.map((a) => a.label)}`);
+    assert.equal(
+      warder.sheet!.build.lists.spells?.filter((row) => row._catalog === "spells/hex-counter").length,
+      1,
+      "one row on its spell list",
+    );
+    assert.ok(!counterer.adjustments.some((line) => /no reaction called/.test(line)), counterer.adjustments.join("; "));
+  }
+
   // On Ember Roads, whose health adds its Toughness to a constant and its Brawn: the one field in
   // the sum is the one moved.
   const roadFight = started({

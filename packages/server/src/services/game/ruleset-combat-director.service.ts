@@ -140,6 +140,7 @@ import {
   rulesetSheetBuildsByName,
   rulesetCardCreaturesByName,
   readProposedRulesetSheet,
+  rulesetProposedSheetWithEntries,
   restrictRulesetSheetEntries,
   RULESET_PROPOSED_SHEET_REPLACES,
   rulesetProposedStatBlock,
@@ -339,6 +340,19 @@ function settled(state: CombatDirectorState): RulesetCommandResult {
     else delete fight.encounter.askSpends;
     // With nobody left for the player to set down (each handed to the Engine), the fight begins.
     if (fight.deploy && rulesetDeployers(state, fight).length === 0) rulesetBeginFight(fight);
+    // A window waiting on somebody comes before any Game Master's decision for anybody else: one left
+    // open over it hides the question from the player asked, and the fight stands still (laptop
+    // playtest 2026-10-25: Mara's Hellish Rebuke under Grak's decision). It is asked again after.
+    const waiting = fight.encounter.window?.waiting[0];
+    if (waiting && state.window && state.window.actorId !== waiting) {
+      logger.warn(
+        "[game/combat:ruleset] A decision for %s was open over window %s waiting on %s; it is put away",
+        state.window.actorId,
+        fight.encounter.window!.id,
+        waiting,
+      );
+      closeWindow(state);
+    }
   }
   combatDirectorView(state);
   if (state.outcome) {
@@ -597,6 +611,8 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
     // An invented one's reactions, written as the Engine's own attacks (laptop playtest 2026-10-25: a
     // duelist's "Parry" never fired), are each the reaction this ruleset's bestiary has by that name;
     // one it has nowhere is said, since nothing in the fight could take it.
+    // Put on its sheet already as the entry of that name (a Counterspell that is a spell here).
+    const onSheet = new Set<string>();
     const withReactions = <T extends RulesetStatBlock>(block: T): T => {
       const has = new Set(block.actions.flatMap((one) => [one.id, one.name.toLowerCase()]));
       const lent: RulesetStatBlockAction[] = [];
@@ -604,7 +620,7 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
         if ((!attack.reaction && !attack.kind) || has.has(attack.name.toLowerCase())) continue;
         const reaction = rulesetBestiaryReaction(definition, input.bestiary, attack.name);
         if (!reaction || has.has(reaction.id)) {
-          if (!reaction && attack.reaction)
+          if (!reaction && attack.reaction && !onSheet.has(attack.name.toLowerCase()))
             adjustments.push(`${opponent.name}: this ruleset has no reaction called "${attack.name}".`);
           continue;
         }
@@ -622,7 +638,15 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
       );
       if (beside.length > 0)
         said(`its sheet says its ${beside.join(", ")}, so the numbers written beside it were not used.`);
-      const read = readProposedRulesetSheet(definition, proposed.data.sheet, input.bestiary);
+      // A reaction its writer named that this ruleset has as one of its entries rather than a
+      // bestiary's (laptop playtest 2026-10-25: a cult mage's Counterspell, a spell in the SRD, never
+      // countered) goes on its sheet as that entry, which the fight then casts as it casts any.
+      const reactionNames = (opponent.attacks ?? [])
+        .filter((attack) => attack.reaction && !rulesetBestiaryReaction(definition, input.bestiary, attack.name))
+        .map((attack) => attack.name);
+      const named = rulesetProposedSheetWithEntries(definition, proposed.data.sheet, reactionNames, input.bestiary);
+      for (const name of reactionNames) if (!named.missing.includes(name)) onSheet.add(name.toLowerCase());
+      const read = readProposedRulesetSheet(definition, named.sheet, input.bestiary);
       read.adjusted.forEach(said);
       // A boss is the Game Master's to write in full, as the exception it may be. Anything else keeps
       // only what the ruleset opens to its sheet (a Sorcerer's spells, not every spell) and has the
@@ -7395,6 +7419,20 @@ function absorb(
 ): void {
   fight.encounter = step.state;
   record(fight, step.events);
+  // Every window opened, and every one let go, is said in the server's log: a fight standing on one
+  // that nobody was shown is otherwise untraceable (laptop playtest 2026-10-25).
+  for (const event of step.events) {
+    if (event.type === "window")
+      logger.info(
+        "[game/combat:ruleset] Window %s (%s%s) opened, waiting on %s",
+        event.window,
+        event.kind,
+        event.label ? `: ${event.label}` : "",
+        event.waiting.join(", "),
+      );
+    else if (event.type === "pass")
+      logger.info("[game/combat:ruleset] %s let window %s go by", event.actorId, event.window);
+  }
   for (const one of step.unanswered ?? []) {
     // Why a reaction could not answer is said once a round, not at every window after it (cloud
     // probes 2026-10-25: a Mage logged "used", and then out of reach or sight, up to four a round).
@@ -8832,9 +8870,14 @@ function windowOptions(
   /** Told whether anything on the list is worth doing this turn (see below). */
   worthy?: (any: boolean) => void,
 ): CombatDecisionOption[] {
-  const candidates = menu
-    ? rulesetCandidatesFrom(definition, encounter, actorId, null, menu)
-    : withRulesetPlanMemo(() => rulesetCandidates(definition, encounter, actorId, true));
+  const actor = rulesetCombatant(encounter, actorId);
+  // Never a walk that ends where somebody stands (laptop playtest 2026-10-25: a war-chief offered only
+  // walks onto his own archer's cell, and the fight stood on his turn).
+  const candidates = (
+    menu
+      ? rulesetCandidatesFrom(definition, encounter, actorId, null, menu)
+      : withRulesetPlanMemo(() => rulesetCandidates(definition, encounter, actorId, true))
+  ).filter((candidate) => !candidate.action.to || !rulesetCellTakenFor(encounter, actor, candidate.action.to));
   const worth = (candidate: (typeof candidates)[number]) =>
     (candidate.damage ?? 0) + (candidate.healing ?? 0) + (candidate.support ?? 0) + (candidate.setup ?? 0);
   const ending = candidates.filter((candidate) => candidate.action.option.kind === "end-turn");
@@ -8850,6 +8893,32 @@ function windowOptions(
     ),
   );
   return [...rest, ...ending].map((candidate, index) => decisionOptionOf(candidate, actorId, String(index)));
+}
+
+/** Whether a Game Master's decision open now is one a window waiting on somebody else stands over:
+ *  it is put away rather than asked (see `settled`). */
+export function rulesetDecisionUnderWindow(state: CombatDirectorState): boolean {
+  const waiting = state.rulesetFight?.encounter.window?.waiting[0];
+  return !!waiting && !!state.window && state.window.actorId !== waiting;
+}
+
+/** Whether a walk ending at `cell` would stand `actor` where somebody else is: anybody still in the
+ *  fight, up or down, or a prisoner, who fills one of the cells it would fill. */
+export function rulesetCellTakenFor(
+  encounter: RulesetEncounterState,
+  actor: RulesetCombatant | undefined,
+  cell: { x: number; y: number },
+): boolean {
+  if (!actor) return false;
+  const lands = new Set(rulesetFootprintAt(cell, rulesetSpanOf(actor)).map((at) => `${at.x},${at.y}`));
+  return encounter.combatants.some(
+    (other) =>
+      other.id !== actor.id &&
+      (!other.defeated || !!other.away?.surrendered) &&
+      !other.insideOf &&
+      !other.mountedOn &&
+      rulesetFootprint(other).some((at) => lands.has(`${at.x},${at.y}`)),
+  );
 }
 
 /** One candidate as a Game Master's decision offers it. */
@@ -9023,6 +9092,8 @@ function openRulesetWindow(
    *  then its turn is settled here when there is nothing left to ask. */
   turnStart?: { walked?: boolean },
 ): boolean {
+  // Never over a window still waiting on somebody: their question comes first.
+  if (fight.encounter.window) return false;
   const seen = { worthy: true };
   let shortlist = windowOptions(definition, fight.encounter, actorId, undefined, (worthy) => (seen.worthy = worthy));
   // Nobody in its reach and nothing it could do from anywhere it can walk to: it closes on the
@@ -9073,6 +9144,13 @@ function continueBossTurn(
   fight: RulesetFightState,
   actorId: string,
 ): void {
+  // What it did opened a window (a blow that hurt somebody who may answer): that is answered first,
+  // and a decision of its own opened over it would hide the question from the player who is asked
+  // (laptop playtest 2026-10-25: Mara's Hellish Rebuke never drew, and the fight stood on Grak).
+  if (fight.encounter.window) {
+    answerRulesetWindows(definition, state, fight);
+    if (fight.encounter.window) return;
+  }
   if (
     rulesetEncounterOutcome(fight.encounter) === "ongoing" &&
     currentRulesetActor(fight.encounter)?.id === actorId &&
@@ -9336,26 +9414,49 @@ function runRulesetCommand(
       answerRulesetWindows(definition, state, fight);
       return settled(state);
     }
-    const picked = chosen ? null : pickRulesetChoice(definition, state, fight.encounter, actorId);
-    const walkTo = chosen ? chosen.to : picked?.to;
-    const choice: RulesetCombatChoice | null = chosen
-      ? {
-          actorId,
-          optionId: chosen.optionId ?? "end-turn",
-          targetIds: [...(chosen.targetIds ?? [])],
-          ...(chosen.payWith !== undefined ? { payWith: chosen.payWith } : {}),
-          ...(chosen.style !== undefined ? { style: chosen.style } : {}),
-          ...(chosen.mode !== undefined ? { mode: chosen.mode } : {}),
-          ...(chosen.at ? { at: { ...chosen.at } } : {}),
-          ...(chosen.zoneTo ? { to: { ...chosen.zoneTo } } : {}),
-          ...(chosen.alters?.length ? { alters: [...chosen.alters] } : {}),
-        }
-      : // The local picker is the fallback, so a Game Master that answered nothing usable costs the
-        // fight nothing but the model call.
-        (picked?.choice ?? null);
+    // A pick that walks onto somebody now (the board moved under the question) is the local
+    // picker's to answer instead, said in the log, so the turn is played rather than lost.
+    const blocked =
+      !!chosen?.to && rulesetCellTakenFor(fight.encounter, rulesetCombatant(fight.encounter, actorId), chosen.to);
+    if (blocked) {
+      logger.warn(
+        "[game/combat:ruleset] A %s decision for %s walked onto an occupied cell (%d,%d); the Engine's own pick plays it",
+        source,
+        actorId,
+        chosen!.to!.x,
+        chosen!.to!.y,
+      );
+    }
+    const picked = chosen && !blocked ? null : pickRulesetChoice(definition, state, fight.encounter, actorId);
+    const walkTo = chosen && !blocked ? chosen.to : picked?.to;
+    const choice: RulesetCombatChoice | null =
+      chosen && !blocked
+        ? {
+            actorId,
+            optionId: chosen.optionId ?? "end-turn",
+            targetIds: [...(chosen.targetIds ?? [])],
+            ...(chosen.payWith !== undefined ? { payWith: chosen.payWith } : {}),
+            ...(chosen.style !== undefined ? { style: chosen.style } : {}),
+            ...(chosen.mode !== undefined ? { mode: chosen.mode } : {}),
+            ...(chosen.at ? { at: { ...chosen.at } } : {}),
+            ...(chosen.zoneTo ? { to: { ...chosen.zoneTo } } : {}),
+            ...(chosen.alters?.length ? { alters: [...chosen.alters] } : {}),
+          }
+        : // The local picker is the fallback, so a Game Master that answered nothing usable costs the
+          // fight nothing but the model call.
+          (picked?.choice ?? null);
     // A candidate that walks first walks first, exactly as the local picker's would: one step, one
     // refusal of its own, and the strikes on the way land before the thing it walked to do.
     if (choice && walkTo && !stepBefore(definition, state, fight, actorId, walkTo)) {
+      logger.warn(
+        "[game/combat:ruleset] A %s decision for %s could not walk to (%d,%d) and the turn was ended",
+        source,
+        actorId,
+        walkTo.x,
+        walkTo.y,
+      );
+      // A blow on the way may have opened a window: it is answered, and the turn ends once it closes.
+      answerRulesetWindows(definition, state, fight);
       if (currentRulesetActor(fight.encounter)?.id === actorId) advanceTurn(definition, state, fight);
       return settled(state);
     }
@@ -9382,8 +9483,9 @@ function runRulesetCommand(
     return settled(state);
   }
 
-  // `continue`: one whole turn of whoever the player is not playing.
-  if (state.window) return { ok: true };
+  // `continue`: one whole turn of whoever the player is not playing. A decision still open waits for
+  // its answer, unless a window waiting on somebody else stands over it, which puts it away.
+  if (state.window) return settled(state);
   // A window comes first: the turn behind it is standing still, and everybody in it who is not a
   // person's to play answers here. One that is theirs is left for them to answer.
   if (fight.encounter.window) {

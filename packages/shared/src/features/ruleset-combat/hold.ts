@@ -113,6 +113,42 @@ function entryFor(
   return null;
 }
 
+/**
+ * A Game Master's sheet with each of `names` on it as the catalog entry of that name (laptop playtest
+ * 2026-10-25: an invented cult mage given a Counterspell reaction, which this ruleset has as a spell,
+ * never countered): a row naming it on the first list a catalog holding it feeds, unless a row there
+ * names it already. Returns the names it found nowhere, for the caller to say.
+ */
+export function rulesetProposedSheetWithEntries(
+  definition: RulesetDefinition,
+  proposed: RulesetSheetBuild,
+  names: readonly string[],
+  catalogs: RulesetCatalogEntriesById,
+): { sheet: RulesetSheetBuild; missing: string[] } {
+  const lists: Record<string, Array<Record<string, unknown>>> = Object.fromEntries(
+    Object.entries(proposed.lists ?? {}).map(([id, rows]) => [id, Array.isArray(rows) ? [...rows] : []]),
+  );
+  const missing: string[] = [];
+  for (const name of names) {
+    const placed = definition.sheet.lists.some((list) => {
+      const nameColumn = nameColumnOf(list);
+      if (!nameColumn || !(definition.catalogs ?? []).some((catalog) => catalog.feeds?.includes(list.id))) return false;
+      const found = entryFor(definition, list, { [nameColumn.id]: name }, catalogs);
+      if (!found) return false;
+      const rows = (lists[list.id] ??= []);
+      const mark = `${found.catalogId}/${found.entry.id}`;
+      const already = rows.some(
+        (row) =>
+          row[RULESET_CATALOG_ROW_KEY] === mark || entryFor(definition, list, row, catalogs)?.entry === found.entry,
+      );
+      if (!already) rows.push({ [nameColumn.id]: name });
+      return true;
+    });
+    if (!placed) missing.push(name);
+  }
+  return { sheet: { ...proposed, lists: lists as RulesetSheetBuild["lists"] }, missing };
+}
+
 /** The rows an entry writes onto OTHER lists than the one it was named or filled in on, such as the
  *  counter that tracks a feature beside the feature itself, added once each, the way picking the
  *  entry adds them to a character's sheet. Without them a feature whose uses a counter tracks

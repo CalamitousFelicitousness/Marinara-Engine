@@ -144,8 +144,12 @@ export function useDirectedCombat(input: {
       if (!code) {
         // The answer was lost, not the step: the fight is read as the server has it, and one that
         // moved on is picked up from there instead of waiting for a reload.
+        // One that did not is driven again after a pause all the same: an error left standing stops
+        // every turn the screen plays by itself, and the fight would stand on "is taking their turn"
+        // until a reload (laptop playtest 2026-10-25, a boss's turn).
         void catchUp().then((moved) => {
           if (moved) mutate.reset();
+          else setTimeout(() => mutate.reset(), RULESET_CATCH_UP_MS);
         });
         return;
       }

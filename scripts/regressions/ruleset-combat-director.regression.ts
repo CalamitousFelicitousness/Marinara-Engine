@@ -52,6 +52,7 @@ import {
   createRulesetFight,
   directedRulesetView,
   rankRulesetChoices,
+  rulesetCellTakenFor,
   rulesetDirectorStage,
   rulesetFightLiveStates,
   RULESET_COMBAT_EVENT_LIMIT,
@@ -907,6 +908,101 @@ for (const setup of [
   assert.notEqual(after.order[after.turn], "sentinel", "and the turn has moved on");
 }
 
+// ── A boss on a board never walks onto somebody, and a pick that would is played anyway ──
+// (laptop playtest 2026-10-25: a war-chief offered only walks onto his own archer's cell stood on his
+// turn for good.)
+{
+  const state = started({
+    definition: fiveE,
+    cards: fiveECards,
+    partyCatalogs: spellCatalogs,
+    party: [fiveEParty[0]!],
+    enemies: [{ id: "sentinel", name: "Hollow Sentinel", boss: true }],
+    gm: true,
+    positioned: true,
+    seed: 11,
+  });
+  commandRulesetCombatDirector(fiveE, state, { type: "control", unitId: "brenna", controller: "ai" });
+  for (let guard = 0; guard < 6 && !state.window; guard++) {
+    assert.ok(commandRulesetCombatDirector(fiveE, state, { type: "continue" }).ok);
+  }
+  assert.equal(state.window?.actorId, "sentinel", "the boss's turn is a decision");
+  const encounter = state.rulesetFight!.encounter;
+  const boss = rulesetCombatant(encounter, "sentinel")!;
+  for (const option of state.window!.options) {
+    if (option.to) assert.ok(!rulesetCellTakenFor(encounter, boss, option.to), `option ${option.id} walks onto nobody`);
+  }
+  // The board moves under the question: whatever the pick walks to, Brenna now stands there.
+  const brenna = rulesetCombatant(encounter, "brenna")!;
+  const pick = state.window!.options.find((option) => option.to) ?? state.window!.options[0]!;
+  const home = { x: brenna.x, y: brenna.y };
+  if (pick.to) {
+    brenna.x = pick.to.x;
+    brenna.y = pick.to.y;
+    assert.ok(rulesetCellTakenFor(encounter, boss, pick.to));
+  }
+  const turn = encounter.turn;
+  const round = encounter.round;
+  assert.ok(commandRulesetCombatDirector(fiveE, state, { type: "choose", candidateId: pick.id }).ok);
+  const now = state.rulesetFight!.encounter;
+  const moved = rulesetCombatant(now, "sentinel")!;
+  assert.ok(
+    !(pick.to && moved.x === pick.to.x && moved.y === pick.to.y),
+    "it never ends in the cell somebody stands in",
+  );
+  assert.ok(
+    state.window !== undefined || now.turn !== turn || now.round !== round || !!now.window,
+    "and the fight is not left standing on its turn",
+  );
+  void home;
+}
+
+// ── A boss that walks onto a fallen friend's cell finishes its turn (laptop playtest 2026-10-25:
+// Grak's pick onto his dead archer's cell never answered, and the fight stood on his turn) ──
+{
+  const state = started({
+    definition: fiveE,
+    cards: fiveECards,
+    partyCatalogs: spellCatalogs,
+    party: [fiveEParty[0]!],
+    enemies: [
+      { id: "sentinel", name: "Hollow Sentinel", boss: true },
+      { id: "lurker", name: "Thorn Lurker" },
+    ],
+    gm: true,
+    positioned: true,
+    seed: 11,
+  });
+  commandRulesetCombatDirector(fiveE, state, { type: "control", unitId: "brenna", controller: "ai" });
+  {
+    // Brenna four cells off, so the boss walks before it strikes.
+    const board = state.rulesetFight!.encounter;
+    const boss = rulesetCombatant(board, "sentinel")!;
+    const brenna = rulesetCombatant(board, "brenna")!;
+    const width = board.board!.grid!.width;
+    brenna.x = boss.x! + 4 < width ? boss.x! + 4 : boss.x! - 4;
+    brenna.y = boss.y!;
+    brenna.movementLeft = 0;
+  }
+  for (let guard = 0; guard < 8 && !state.window; guard++) {
+    assert.ok(commandRulesetCombatDirector(fiveE, state, { type: "continue" }).ok);
+  }
+  assert.equal(state.window?.actorId, "sentinel", "the boss's turn is a decision");
+  const encounter = state.rulesetFight!.encounter;
+  const pick = state.window!.options.find((option) => option.to);
+  assert.ok(pick?.to, "the boss is offered a walk first");
+  {
+    const lurker = rulesetCombatant(encounter, "lurker")!;
+    lurker.x = pick.to!.x;
+    lurker.y = pick.to!.y;
+    lurker.down = true;
+    lurker.defeated = true;
+    const started = Date.now();
+    assert.ok(commandRulesetCombatDirector(fiveE, state, { type: "choose", candidateId: pick.id }).ok);
+    assert.ok(Date.now() - started < 20_000, "the pick is answered");
+  }
+}
+
 // ── A finished fight says so once ──
 {
   const state = started({
@@ -1752,6 +1848,65 @@ console.log(
     assert.ok(hits.deflected > 0, "the Engine raised it when it turned the hit aside");
     assert.ok(hits.letGo > 0, "and let a blow it could not stop land");
     assert.ok(hits.shownRaised > 0, "and the screen showed the raised defense while Shield held");
+
+    // A boss's blow that a player's Shield may answer is heldAsked of the player, never hidden under the
+    // boss's next decision (laptop playtest 2026-10-25: Mara's Hellish Rebuke never drew, and the
+    // fight stood on Grak's turn).
+    let heldAsked = 0;
+    for (let seed = 1; seed <= 30 && heldAsked === 0; seed++) {
+      const state = started({
+        definition: shielding,
+        cards: [card("Corwin", guarded)],
+        partyCatalogs: { spells: [...spellEntries, shield] },
+        party: [{ id: "corwin", name: "Corwin" }],
+        enemies: [{ id: "a", name: "Thorn Lurker", boss: true }],
+        gm: true,
+        seed,
+      });
+      for (let step = 0; step < 12 && !state.outcome && heldAsked === 0; step++) {
+        const encounter = state.rulesetFight!.encounter;
+        if (encounter.window) {
+          // Corwin's to answer: shown to the player, with nothing of the boss's opened over it.
+          assert.equal(state.window, undefined, `seed ${seed}: a boss decision opened over Corwin's window`);
+          assert.ok(view(shielding, state).options?.length, `seed ${seed}: Corwin is shown the question`);
+          // And a boss decision found open over it (however it got there) is put away, so he is.
+          state.window = {
+            id: `${state.id}:stray`,
+            kind: "ordinary",
+            actorId: "a",
+            controller: "gm",
+            options: [{ id: "0", kind: "end-turn", actorId: "a", mpCost: 0, legendaryCost: 0, optionId: "end-turn" }],
+          } as NonNullable<typeof state.window>;
+          assert.ok(commandRulesetCombatDirector(shielding, state, { type: "continue" }).ok);
+          assert.equal(state.window, undefined, `seed ${seed}: the stray decision is put away`);
+          assert.ok(state.rulesetFight!.encounter.window, `seed ${seed}: and Corwin's window still waits on him`);
+          assert.ok(view(shielding, state).options?.length, `seed ${seed}: so he is shown the question`);
+          heldAsked++;
+          break;
+        }
+        if (state.window?.actorId === "a") {
+          const blow =
+            state.window.options.find((option) => option.targetIds?.includes("corwin") && !option.to) ??
+            state.window.options.find((option) => option.targetIds?.includes("corwin"));
+          const pick = blow ?? state.window.options[0]!;
+          assert.ok(commandRulesetCombatDirector(shielding, state, { type: "choose", candidateId: pick.id }).ok);
+          continue;
+        }
+        const actor = currentRulesetActor(encounter);
+        if (actor?.id === "corwin") {
+          assert.ok(
+            commandRulesetCombatDirector(shielding, state, {
+              type: "ruleset",
+              optionId: "end-turn",
+              targetIds: [],
+            } as Parameters<typeof commandRulesetCombatDirector>[2]).ok,
+          );
+          continue;
+        }
+        assert.ok(commandRulesetCombatDirector(shielding, state, { type: "continue" }).ok);
+      }
+    }
+    assert.ok(heldAsked > 0, "a boss's blow held for Corwin's Shield was heldAsked of him");
 
     // A raise that lasts only through the hit it answers (a Parry's, gone once the attack is done) is
     // weighed by what the hit came to once looked at again, not by the defense left after it: taken

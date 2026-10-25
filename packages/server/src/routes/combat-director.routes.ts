@@ -68,6 +68,7 @@ import {
 import { chooseGmCombatOption } from "../services/game/combat-boss.service.js";
 import {
   commandRulesetCombatDirector,
+  rulesetDecisionUnderWindow,
   createRulesetFight,
   directedRulesetView,
   releaseRulesetHeldGround,
@@ -1263,6 +1264,12 @@ export async function combatDirectorRoutes(
           const answered = commandRulesetCombatDirector(ruleset, state, command, source);
           return answered.ok ? null : answered;
         };
+        // A Game Master's decision a window waiting on somebody else stands over is put away, not asked.
+        if (input.command.type === "continue" && ruleset && rulesetDecisionUnderWindow(state)) {
+          step({ type: "continue" });
+          state.requests = [...state.requests, input.requestId].slice(-256);
+          return await saveLettingGo(row.id, input.chatId, state, session, ruleset);
+        }
         const w = state.window;
         if (input.command.type === "continue" && w?.controller === "gm") {
           if (w.requestedAt && Date.now() - w.requestedAt < 12000) return { session: sessionView(state, session) };
@@ -1388,15 +1395,33 @@ export async function combatDirectorRoutes(
           current.state.revision !== job.revision ||
           current.state.window?.id !== job.windowId ||
           (current.state.style === "ruleset" && !ruleset)
-        )
+        ) {
+          // Said, so a fight that stands still after a Game Master's answer is never a silent one.
+          logger.info(
+            "[game/combat] A boss decision for chat %s arrived after the fight moved on (revision %d, now %d) and was dropped",
+            input.chatId,
+            job.revision,
+            current.state.revision,
+          );
           return { session: sessionView(current.state, session) };
+        }
         const answer: DirectedCommand = candidateId ? { type: "choose", candidateId } : { type: "fallback" };
         const source = candidateId ? "gm" : "fallback";
         if (ruleset) {
           // An answer the menu does not hold costs the model its turn, not the fight: the Engine's
           // own picker takes it instead.
           const answered = commandRulesetCombatDirector(ruleset, current.state, answer, source);
-          if (!answered.ok) commandRulesetCombatDirector(ruleset, current.state, { type: "fallback" }, "fallback");
+          if (!answered.ok) {
+            logger.warn(
+              "[game/combat] The boss decision %s for chat %s was refused (%s); the Engine's own pick plays it",
+              candidateId ?? "fallback",
+              input.chatId,
+              answered.code,
+            );
+            const fallback = commandRulesetCombatDirector(ruleset, current.state, { type: "fallback" }, "fallback");
+            if (!fallback.ok)
+              logger.warn("[game/combat] The fallback for chat %s was refused too (%s)", input.chatId, fallback.code);
+          }
         } else commandCombatDirector(current.state, answer, source);
         current.state.requests = [...current.state.requests, input.requestId].slice(-256);
         return await saveLettingGo(current.row.id, input.chatId, current.state, session, ruleset);

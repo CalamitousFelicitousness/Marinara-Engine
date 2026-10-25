@@ -111,6 +111,7 @@ export {
   holdRulesetSheetHealth,
   readProposedRulesetSheet,
   restrictRulesetSheetEntries,
+  rulesetProposedSheetWithEntries,
 } from "./hold.js";
 export {
   clampRulesetStatBlock,

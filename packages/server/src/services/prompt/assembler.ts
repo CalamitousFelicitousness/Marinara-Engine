@@ -355,7 +355,7 @@ export async function assemblePrompt(input: AssemblerInput): Promise<AssemblerOu
   // Build macro context (character names and primary card fields resolved from IDs)
   const macroCtx = await buildPromptMacroContext({
     db: input.db,
-    worldState: input.worldState === undefined ? (input.gameState ?? null) : input.worldState,
+    worldState: input.worldState === undefined ? input.gameState : input.worldState,
     model: input.model,
     reasoning: input.reasoning,
     characterIds: input.characterIds,

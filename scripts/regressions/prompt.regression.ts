@@ -9448,6 +9448,7 @@ Use HTML sparingly and diegetically. Do not replace normal prose/dialogue unless
       ) =>
         assemblePrompt({
           db,
+          worldState: null, // This card-only fixture has no snapshot store.
           preset: {
             id: `preset-example-fallback-${wrapFormat}`,
             name: "Example Dialogue Fallback Fixture",

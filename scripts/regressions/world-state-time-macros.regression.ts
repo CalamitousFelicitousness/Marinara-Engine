@@ -27,6 +27,7 @@ const { createConnectionsStorage } = await import("../../packages/server/src/ser
 const { createCharactersStorage } = await import("../../packages/server/src/services/storage/characters.storage.js");
 const { createPromptsStorage } = await import("../../packages/server/src/services/storage/prompts.storage.js");
 const { buildPromptMacroContext } = await import("../../packages/server/src/services/prompt/macro-context.js");
+const { assemblePrompt } = await import("../../packages/server/src/services/prompt/assembler.js");
 const { renderAgentPromptTemplate } = await import("../../packages/server/src/services/agents/agent-executor.js");
 
 const db = await getDB();
@@ -156,6 +157,33 @@ try {
   const contextArgs = { db, characterIds: [], personaName: "Mari", chatId: chat.id };
   assert.equal(resolveMacros(template, await buildPromptMacroContext(contextArgs)), "2026-10-24|22:10|Saturday");
   assert.equal(resolveMacros(template, await buildPromptMacroContext({ ...contextArgs, worldState: null })), "||");
+
+  const assemblyPreset = await prompts.getById(preset.id);
+  assert(assemblyPreset);
+  const assemblyInput: Parameters<typeof assemblePrompt>[0] = {
+    db,
+    preset: assemblyPreset,
+    sections: await prompts.listSections(preset.id),
+    groups: [],
+    choiceBlocks: [],
+    chatChoices: {},
+    chatId: chat.id,
+    characterIds: [],
+    personaName: "Mari",
+    personaDescription: "",
+    chatMessages: [],
+    disableLorebooks: true,
+  };
+  const assembledText = (value: Awaited<ReturnType<typeof assemblePrompt>>) =>
+    value.messages.map((message) => message.content).join("\n");
+  assert.ok(
+    assembledText(await assemblePrompt(assemblyInput)).includes("2026-10-24|22:10|Saturday"),
+    "Assembly-only preview callers load the stored scene clock when neither state input is supplied",
+  );
+  for (const empty of [{ worldState: null }, { gameState: null }]) {
+    const text = assembledText(await assemblePrompt({ ...assemblyInput, ...empty }));
+    assert.ok(text.includes("||") && !text.includes(tracked.date), "Explicit empty state suppresses the lookup");
+  }
 
   const agentContext = {
     chatId: chat.id,

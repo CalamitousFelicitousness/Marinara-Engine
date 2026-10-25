@@ -848,6 +848,39 @@ try {
     );
   }
 
+  // ── Never an area over a friend at grips with the foes, harm or hold (laptop 2026-10-25: a
+  // Hypnotic Pattern and a Call Lightning over the fighter beside the Alpha) ──
+  for (const area of [
+    {
+      id: "blast",
+      name: "Blast",
+      budget: "action",
+      range: { normal: 150 },
+      area: { shape: "burst", size: 20 },
+      save: { save: "dex_save", difficulty: 15, onSuccess: "half" },
+      damage: { count: 8, sides: 6, flat: 0 },
+    },
+    {
+      id: "pattern",
+      name: "Pattern",
+      budget: "action",
+      range: { normal: 120 },
+      area: { shape: "burst", size: 20 },
+      save: { save: "wis_save", difficulty: 16, onSuccess: "negates" },
+      applies: [{ condition: "paralyzed", duration: { rounds: 10 } }],
+    },
+  ]) {
+    const { encounter, state } = fight({
+      mage: { side: "enemy", block: block([area, flick]), at: { x: 2, y: 4 } },
+      guard: { side: "enemy", block: block([smash]), at: { x: 10, y: 4 } },
+      brute: { side: "party", block: block([smash]), at: { x: 11, y: 4 } },
+      second: { side: "party", block: block([smash]), at: { x: 11, y: 3 } },
+      third: { side: "party", block: block([smash]), at: { x: 12, y: 5 } },
+    });
+    const picked = pickRulesetChoice(definition, state, encounter, "mage");
+    assert.notEqual(picked?.option.id, area.id, `no ${area.name} over its guard: ${JSON.stringify(picked?.choice)}`);
+  }
+
   console.log(
     "Spell worth: a hold goes on the most dangerous opponent and never on one that cannot be held; healing is worth what is missing; oil waits for a fire; a Counterspell is worth what it stops.",
   );

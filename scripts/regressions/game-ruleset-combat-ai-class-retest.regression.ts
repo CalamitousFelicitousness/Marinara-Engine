@@ -654,6 +654,57 @@ try {
     );
   }
 
+  // ── One that grows every second step is never paid one step up for nothing (cloud pass
+  //    2026-10-25: a Spiritual Weapon out of a 3rd-level slot, every 2nd-level one free) ──
+  {
+    const every = {
+      id: "every",
+      label: "Every",
+      rows: [{ list: "spells", values: { name: "Every", level: 1, prepared: true } }],
+      mechanics: {
+        kind: "attack",
+        autoHit: true,
+        range: 120,
+        amount: { dice: "1d8" },
+        damageType: "force",
+        cost: [{ pool: "slots_1", amount: 1 }],
+        perCostStep: { dice: "1d8" },
+        perCostStepsEvery: 2,
+      },
+    } as unknown as RulesetCatalogEntry;
+    const sheet = rulesetSheetBuildSchema.parse({
+      abilities: { str: 10, dex: 10, con: 14, int: 10, wis: 16, cha: 10 },
+      fields: {
+        level: 5,
+        ac: 16,
+        speed: 30,
+        hp_max: 38,
+        spellcasting_ability: "wis",
+        slots_max_1: 4,
+        slots_max_2: 3,
+        slots_max_3: 2,
+      },
+      lists: { spells: rowsFromCatalogEntry("spells", every).map((one) => one.row) },
+    });
+    const scene = fight([
+      {
+        id: "hessa",
+        name: "hessa",
+        side: "party",
+        build: sheet,
+        live: {},
+        catalogs: { spells: [every] },
+        at: { x: 2, y: 5 },
+      },
+      { id: "wolf", name: "wolf", side: "enemy", block: block([poke], { health: 40 }), at: { x: 8, y: 5 } },
+    ]);
+    const pools = ranked(scene, "hessa")
+      .filter((one) => one.candidate.action.option.label.startsWith("Every"))
+      .map((one) => one.candidate.action.choice.payWith ?? "slots_1");
+    assert.ok(pools.includes("slots_3"), `a 3rd-level slot adds a step: ${pools.join(", ")}`);
+    assert.ok(!pools.includes("slots_2"), `a 2nd-level slot adds nothing: ${pools.join(", ")}`);
+  }
+
   // ── An aura held that harms the foes in it, not let go for a buff (laptop playtest 2026-10-24:
   //    Spirit Guardians around the goblins dropped for a Bless) ──
   {

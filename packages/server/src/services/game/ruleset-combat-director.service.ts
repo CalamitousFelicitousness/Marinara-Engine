@@ -3272,9 +3272,13 @@ function biggerWays(
   for (const pool of option.payWith ?? []) {
     const steps = rulesetCostSteps(definition, action, pool, actor);
     if (steps < 1 && !option.upcastOnly) continue;
+    // What it grows by comes every so many steps (cloud pass 2026-10-25: a Spiritual Weapon out of a
+    // 3rd-level slot, which adds nothing until the 4th): a pool that reaches no new step adds nothing.
+    const grown = action.use?.stepsEvery ? Math.floor(steps / action.use.stepsEvery) : steps;
+    if (grown < 1 && !action.use?.targetsPerStep && !option.upcastOnly) continue;
     const paid = planRulesetCombatCost(definition, actor, action, pool);
     if (!paid) continue;
-    const extra = action.use?.perCostStep ? steps * rulesetAverageAmount(action.use.perCostStep) : 0;
+    const extra = action.use?.perCostStep ? grown * rulesetAverageAmount(action.use.perCostStep) : 0;
     const forecast = option.forecast ? { ...option.forecast } : undefined;
     if (forecast?.averageDamage !== undefined) {
       forecast.averageDamage = Math.round((forecast.averageDamage + extra) * 100) / 100;
@@ -5139,6 +5143,26 @@ function weighCaught(
     !!action?.zone && action.zone.atCast === false && action.zone.triggers.every((trigger) => trigger === "enter");
   const foes = onEntryOnly ? [] : caught.filter((target) => target.side !== actor.side && !target.down);
   let friends = caught.filter((target) => target.side === actor.side);
+  // Never one that lands on a friend standing in it, whatever it would take from the other side
+  // (laptop 2026-10-25: Hypnotic Pattern over the fighter at grips with the Alpha, and Call Lightning
+  // on the square beside him): a tactician aims it elsewhere or uses something else.
+  const struck = onEntryOnly
+    ? []
+    : friends.filter((target) => target.id !== actor.id && !target.down && rulesetCombatStanding(target));
+  if (!option.heals && option.targets.side !== "ally" && option.targets.side !== "self" && struck.length > 0) {
+    if (average > 0) return false;
+    if (
+      struck.some((target) => {
+        const harm = rulesetEffectWorth(definition, combat, encounter, actor, action, target, true);
+        return (
+          harm === undefined ||
+          harm > 0 ||
+          rulesetDeniedHarm(definition, combat, encounter, actor, action, target, true) > 0
+        );
+      })
+    )
+      return false;
+  }
   // A hazard that stays (lamp oil set alight, ball bearings) catches whoever walks into it later, and
   // its own side is who is fighting beside it (re-test 2026-10-23: the party burnt and tripped on
   // its own rogue's): a friend within a step of where it lands counts as caught.

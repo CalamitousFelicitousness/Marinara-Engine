@@ -55,6 +55,8 @@ export interface MacroContext {
   idleDuration?: string;
   /** IANA timezone name from the active browser/session, used by time macros */
   timeZone?: string;
+  /** Scene clock tracked by World State; values may use a fictional calendar. */
+  worldState?: { date?: unknown; time?: unknown; worldCustomFields?: unknown } | null;
   /** Agent data keyed by agent type (for {{agent::TYPE}}) */
   agentData?: Record<string, string>;
   /** Referenced character names keyed by exact card ID (for {{CHARACTER_ID}}) */
@@ -341,6 +343,37 @@ function readMacroVariable(map: Record<string, string> | undefined, name: string
  * existed may define their own `reasoning` variable, so the variable keeps the name. `name` is the spelling as
  * written: the macro matches any case, but variables match exactly, as in the catch-all pass.
  */
+function worldStateWeekday(state: MacroContext["worldState"]): string {
+  let customFields = state?.worldCustomFields;
+  if (typeof customFields === "string") {
+    try {
+      customFields = JSON.parse(customFields);
+    } catch {
+      customFields = [];
+    }
+  }
+  if (Array.isArray(customFields)) {
+    const weekday = customFields.find(
+      (field) =>
+        field &&
+        typeof field.name === "string" &&
+        ["weekday", "dayofweek"].includes(field.name.toLowerCase().replace(/[\s_-]/gu, "")),
+    );
+    if (typeof weekday?.value === "string" && weekday.value.trim()) return weekday.value;
+  }
+  if (typeof state?.date !== "string") return "";
+  const weekdays = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const named = state.date.match(/\b(Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday)\b/iu);
+  if (named) return weekdays.find((day) => day.toLowerCase() === named[1]!.toLowerCase())!;
+  const date = state.date.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/u.test(date)) return "";
+  const parsed = new Date(`${date}T00:00:00Z`);
+  // A fictional or invalid date has no Gregorian weekday. Never borrow the real clock.
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === date
+    ? weekdays[parsed.getUTCDay()]!
+    : "";
+}
+
 function readReasoningMacro(ctx: MacroContext, name: string): string | undefined {
   if (
     readMacroVariable(ctx.variables, name) !== undefined ||
@@ -560,6 +593,9 @@ export const SUPPORTED_MACROS: readonly SupportedMacroDefinition[] = [
   { category: "Time", syntax: "{{datetime}} / {{isotime}}", description: "Current timestamp in the user's timezone" },
   { category: "Time", syntax: "{{weekday}}", description: "Current weekday name in the user's timezone" },
   { category: "Time", syntax: "{{timezone}}", description: "Current user/browser timezone" },
+  { category: "Time", syntax: "{{date.world_state}}", description: "Current date tracked by World State" },
+  { category: "Time", syntax: "{{time.world_state}}", description: "Current time tracked by World State" },
+  { category: "Time", syntax: "{{weekday.world_state}}", description: "Weekday of the tracked world date, when known" },
   { category: "Random", syntax: "{{random}}", description: "Random number from 0 to 100" },
   { category: "Random", syntax: "{{random:X:Y}}", description: "Random number between X and Y" },
   { category: "Random", syntax: "{{random::A::B::C}}", description: "Randomly choose one of the provided options" },
@@ -3512,6 +3548,13 @@ export function resolveMacros(template: string, ctx: MacroContext, options: Reso
     if (ctx.deferredPresetVariableNames?.has(name)) return match;
     const chatValue = readMacroVariable(ctx.localVariables, name);
     return chatValue !== undefined ? chatValue : match; // leave unknown macros as-is
+  });
+
+  // Tracked values are model-authored data, not another executable macro template.
+  result = result.replace(/\{\{(date|time|weekday)\.world_state\}\}/gi, (_, field: string) => {
+    if (field.toLowerCase() === "weekday") return worldStateWeekday(ctx.worldState);
+    const value = ctx.worldState?.[field.toLowerCase() as "date" | "time"];
+    return typeof value === "string" ? value : "";
   });
 
   // ── Agent data ──

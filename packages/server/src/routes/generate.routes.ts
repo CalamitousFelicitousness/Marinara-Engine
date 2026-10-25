@@ -3351,6 +3351,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         });
         const promptMacroContext = await buildPromptMacroContext({
           db: app.db,
+          worldState: await selectedGameStateSnapshotPromise,
           characterIds: promptCharacterIds,
           groupCharacterIds: promptTargetCharacterId ? characterIds : undefined,
           personaName,

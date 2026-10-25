@@ -280,6 +280,45 @@ export interface RulesetFightState {
    *  they may stand on, and who of the party the Game Master already placed, which stay where the
    *  story put them. Gone once the player begins the fight. */
   deploy?: { cells: Array<{ x: number; y: number }>; placed: string[] };
+  /** What each opponent was made from, by combatant id: what one that gets away comes back as. */
+  made?: Record<string, RulesetReturningFoe>;
+}
+
+/** An opponent as it was made for a fight, kept for when it gets away and comes back (laptop playtest
+ *  2026-10-25: a Cult Mage that fled at CR 3 with 32 health came back at CR 4 with 65). */
+export interface RulesetReturningFoe {
+  name: string;
+  creature?: string;
+  tier?: string;
+  proposed?: unknown;
+  attacks?: RulesetFightOpponent["attacks"];
+  /** The most health it had, where its dice threw it (a block with no sheet): thrown once, kept. */
+  health?: number;
+}
+
+/** The key a returning opponent is kept and found under: its name, any case and spacing. */
+export function rulesetReturningFoeKey(name: string): string {
+  return normalizeCharacterLookupName(name);
+}
+
+/** The opponents of a finished fight that got away alive, as they were made, and the names of those
+ *  beaten for good: the first come back as they were, the second are forgotten. Called ones and
+ *  ones that gave up are neither. */
+export function rulesetFightReturningFoes(fight: RulesetFightState): {
+  fled: RulesetReturningFoe[];
+  beaten: string[];
+} {
+  const fled: RulesetReturningFoe[] = [];
+  const beaten: string[] = [];
+  for (const one of fight.encounter.combatants) {
+    if (one.side !== "enemy" || one.calledBy !== undefined || one.object) continue;
+    const made = fight.made?.[one.id];
+    if (!made) continue;
+    if (one.away?.left && !one.away.surrendered)
+      fled.push({ ...made, ...(!one.sheet && one.health ? { health: one.health.max } : {}) });
+    else if (one.down || (one.defeated && !one.away)) beaten.push(made.name);
+  }
+  return { fled, beaten };
 }
 
 export type RulesetCommandResult = { ok: true } | { ok: false; error: string; code: string };
@@ -1003,6 +1042,18 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
     adjustments: adjustments.slice(0, RULESET_ADJUSTMENT_LIMIT),
     ...(Object.keys(lootTables).length > 0 ? { lootTables } : {}),
     ...(deploy ? { deploy } : {}),
+    made: Object.fromEntries(
+      input.enemies.map((opponent) => [
+        opponent.id,
+        {
+          name: opponent.name,
+          ...(opponent.creature !== undefined ? { creature: opponent.creature } : {}),
+          ...(opponent.tier !== undefined ? { tier: opponent.tier } : {}),
+          ...(opponent.proposed !== undefined ? { proposed: structuredClone(opponent.proposed) } : {}),
+          ...(opponent.attacks?.length ? { attacks: structuredClone(opponent.attacks) } : {}),
+        },
+      ]),
+    ),
   };
   // Whose turn it is is said once the player begins it, not while they set the party down (re-test
   // 2026-10-24: "Brom takes their turn" was logged before Begin).

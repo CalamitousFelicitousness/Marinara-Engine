@@ -76,10 +76,13 @@ import {
   rulesetDeployers,
   rulesetDirectorStage,
   rulesetFightLiveStates,
+  rulesetFightReturningFoes,
+  rulesetReturningFoeKey,
   syncRulesetCombatants,
   RULESET_COMBAT_EVENT_LIMIT,
   RULESET_COMBAT_REASON_LIMIT,
   type RulesetFightState,
+  type RulesetReturningFoe,
 } from "../services/game/ruleset-combat-director.service.js";
 import { loadRulesetRegistry, resolveGameRuleset } from "../services/game/ruleset-registry.service.js";
 import { loadRulesetCatalogEntries } from "../services/game/ruleset-catalog.service.js";
@@ -815,6 +818,26 @@ export async function combatDirectorRoutes(
             return { stacks: applied.stacks, journal: applied.journal, value: null };
           });
         if (s.style === "ruleset" && s.rulesetFight) live = await writeRulesetLive(chatId, s.anchor, s.rulesetFight);
+        // The fight just ended: one that got away is remembered by name as it was made, so a later fight
+        // that names it brings it back the same; one beaten here is forgotten.
+        if (s.style === "ruleset" && s.rulesetFight && s.outcome && !previous.state.outcome) {
+          const { fled, beaten } = rulesetFightReturningFoes(s.rulesetFight);
+          if (fled.length || beaten.length)
+            await chats.patchMetadata(
+              chatId,
+              (current) => {
+                const kept = {
+                  ...((current.gameReturningFoes && typeof current.gameReturningFoes === "object"
+                    ? current.gameReturningFoes
+                    : {}) as Record<string, RulesetReturningFoe>),
+                };
+                for (const name of beaten) delete kept[rulesetReturningFoeKey(name)];
+                for (const foe of fled) kept[rulesetReturningFoeKey(foe.name)] = foe;
+                return { gameReturningFoes: kept };
+              },
+              { metadataQueueHeld: true, touchUpdatedAt: false },
+            );
+        }
         // A win already saved has dropped its loot: this one keeps what that one dropped.
         if (won) {
           const dropped = previous.state.loot
@@ -1060,6 +1083,13 @@ export async function combatDirectorRoutes(
           const enemyAdjusts = storyFightAdjustsFor(input.enemies, adjusts);
           // Whether death is held where it is fought (1.366): the story's Held Ground (1.323).
           const heldGround = await latestStoryHeldGround(app.db, input.chatId, meta);
+          // One that got away from an earlier fight comes back as it was made then, whatever this
+          // fight's tag says of it (laptop playtest 2026-10-25: a Cult Mage that fled at CR 3 with 32
+          // health came back at CR 4 with 65).
+          const returning = (
+            meta.gameReturningFoes && typeof meta.gameReturningFoes === "object" ? meta.gameReturningFoes : {}
+          ) as Record<string, RulesetReturningFoe>;
+          const backAs = input.enemies.map((enemy) => returning[rulesetReturningFoeKey(enemy.name)]);
           const built = createRulesetFight({
             definition,
             seed: battlefield.seed,
@@ -1078,10 +1108,18 @@ export async function combatDirectorRoutes(
             enemies: input.enemies.map((enemy, index) => ({
               id: enemy.id,
               name: enemy.name,
-              ...(enemy.creature !== undefined ? { creature: enemy.creature } : {}),
-              ...(enemy.tier !== undefined ? { tier: enemy.tier } : {}),
+              ...(backAs[index]
+                ? {
+                    ...(backAs[index]!.creature !== undefined ? { creature: backAs[index]!.creature } : {}),
+                    ...(backAs[index]!.tier !== undefined ? { tier: backAs[index]!.tier } : {}),
+                    ...(backAs[index]!.proposed !== undefined ? { proposed: backAs[index]!.proposed } : {}),
+                  }
+                : {
+                    ...(enemy.creature !== undefined ? { creature: enemy.creature } : {}),
+                    ...(enemy.tier !== undefined ? { tier: enemy.tier } : {}),
+                    ...(enemy.proposed !== undefined ? { proposed: enemy.proposed } : {}),
+                  }),
               ...(enemy.creatureType !== undefined ? { creatureType: enemy.creatureType } : {}),
-              ...(enemy.proposed !== undefined ? { proposed: enemy.proposed } : {}),
               ...(enemy.tactics ? { tactics: enemy.tactics } : {}),
               ...(enemyAdjusts[index] ? { adjust: enemyAdjusts[index] } : {}),
               boss: !!enemy.boss,
@@ -1126,6 +1164,13 @@ export async function combatDirectorRoutes(
             time: liveRow?.time ?? null,
           });
           if (!built.ok) return reply.code(400).send({ error: built.error });
+          backAs.forEach((back, index) => {
+            if (!back) return;
+            const one = built.fight.encounter.combatants.find((c) => c.id === input.enemies[index]!.id);
+            if (one && !one.sheet && one.health && back.health)
+              one.health = { value: back.health, max: back.health, temp: 0 };
+            built.fight.adjustments.push(`${input.enemies[index]!.name} is the same one that got away before.`);
+          });
           // The Engine's own party array follows the fight's: a sheet the setup left out joins it, a
           // member with no sheet leaves it, and a stand-in carries its card's name (2026-10-23 playtest).
           const fought = new Map(

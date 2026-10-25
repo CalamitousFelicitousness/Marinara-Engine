@@ -105,7 +105,6 @@ import {
 import { fetchAtlasCloudModels } from "../services/media/atlas-cloud.js";
 import {
   buildNanoGptVideoUrl,
-  buildOpenRouterVideosUrl,
   fetchNanoGptVideoModels,
   normalizeVideoService,
 } from "../services/video/video-generation.js";
@@ -1123,30 +1122,6 @@ export async function connectionsRoutes(app: FastifyInstance) {
             conn.apiKey || "",
           );
           return { models };
-        }
-        if (videoSource === "openrouter") {
-          try {
-            const response = await safeFetch(buildOpenRouterVideosUrl(conn.baseUrl || "", "videos/models"), {
-              headers: conn.apiKey ? { Authorization: `Bearer ${conn.apiKey}` } : {},
-              signal: AbortSignal.timeout(15_000),
-              // Match the OpenRouter generation transport; an API key never goes to a cleartext endpoint.
-              policy: { allowLocal: false, allowLoopback: false, allowMdns: false, allowedProtocols: ["https:"] },
-              maxResponseBytes: 5 * 1024 * 1024,
-              decodeCompressedResponse: true,
-            });
-            if (response.ok) {
-              const json: unknown = await response.json();
-              const models = isRecord(json) ? normalizeModelsResponse("openrouter", json) : [];
-              if (models.length) return { models };
-            }
-          } catch (error) {
-            logger.debug(error, "OpenRouter video catalogue unavailable; using curated models");
-          }
-          return {
-            models: MODEL_LISTS.video_generation
-              .filter((model) => inferVideoSource(model.id, "") === "openrouter")
-              .map(({ id, name }) => ({ id, name })),
-          };
         }
         if (videoSource !== "comfyui" && videoSource !== "swarmui") {
           const models = MODEL_LISTS.video_generation.map((m) => ({ id: m.id, name: m.name }));

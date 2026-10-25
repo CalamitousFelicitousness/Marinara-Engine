@@ -14,12 +14,9 @@ const originalFetch = globalThis.fetch;
 const originalLookup = dns.lookup;
 dns.lookup = (async () => [{ address: "8.8.8.8", family: 4 }]) as typeof dns.lookup;
 const requests: Array<{ url: URL; body: Record<string, unknown> | null }> = [];
-let failCatalogue = false;
-let stallCatalogue = false;
 const models = [
   { id: "minimax/hailuo-3-max", name: "MiniMax: H3 Max", supported_resolutions: ["480p", "768p"] },
   { id: "bytedance/seedance-2.5", name: "ByteDance: Seedance 2.5", supported_resolutions: ["480p", "720p"] },
-  { id: "future/video", name: "Future Video" },
 ];
 const mp4 = Buffer.from("000000186674797069736f6d0000020069736f6d6d703432", "hex");
 const json = (value: unknown, status = 200) =>
@@ -33,14 +30,6 @@ globalThis.fetch = async (input, init) => {
   const body = typeof init?.body === "string" ? (JSON.parse(init.body) as Record<string, unknown>) : null;
   requests.push({ url, body });
   assert.equal(new Headers(init?.headers).get("Authorization"), "Bearer fixture-key");
-  if (url.pathname === "/api/v1/videos/models" && stallCatalogue) {
-    assert.ok(init?.signal, "model discovery has a deadline");
-    return new Promise<Response>((_resolve, reject) => {
-      init.signal!.addEventListener("abort", () => reject(init.signal!.reason), { once: true });
-    });
-  }
-  if (url.pathname === "/api/v1/videos/models")
-    return json(failCatalogue ? { error: "fixture unavailable" } : { data: models }, failCatalogue ? 503 : 200);
   if (url.pathname.endsWith("/content")) return new Response(mp4, { headers: { "content-type": "video/mp4" } });
   if (init?.method === "POST") return json({ id: "fixture-job" });
   return json({ id: "fixture-job", status: "completed" });
@@ -57,7 +46,7 @@ const app = Fastify();
 app.decorate("db", await getDB());
 try {
   await app.register(connectionsRoutes, { prefix: "/connections" });
-  for (const model of models.slice(0, 2)) {
+  for (const model of models) {
     assert.ok(MODEL_LISTS.video_generation.some((entry) => entry.id === model.id));
     assert.equal(inferVideoSource(model.id, ""), "openrouter");
   }
@@ -78,51 +67,8 @@ try {
   const id = created.json().id as string;
   const discovery = await app.inject({ method: "GET", url: `/connections/${id}/models?refresh=true` });
   assert.equal(discovery.statusCode, 200, discovery.body);
-  assert.deepEqual(
-    discovery.json().models.map((model: { id: string }) => model.id),
-    models.map((model) => model.id),
-    "Fetch Models reads the live video-specific catalogue",
-  );
-  failCatalogue = true;
-  const fallback = await app.inject({ method: "GET", url: `/connections/${id}/models?refresh=true` });
-  assert.equal(fallback.statusCode, 200, fallback.body);
-  for (const model of models.slice(0, 2))
-    assert.ok(fallback.json().models.some((entry: { id: string }) => entry.id === model.id));
-  failCatalogue = false;
-
-  const timeout = AbortSignal.timeout;
-  stallCatalogue = true;
-  let requestedTimeout: number | undefined;
-  AbortSignal.timeout = (milliseconds) => {
-    requestedTimeout = milliseconds;
-    return timeout(5);
-  };
-  try {
-    const timedOut = await app.inject({ method: "GET", url: `/connections/${id}/models?refresh=true` });
-    assert.equal(timedOut.statusCode, 200, timedOut.body);
-    assert.equal(requestedTimeout, 15_000);
-    assert.ok(timedOut.json().models.some((model: { id: string }) => model.id === "minimax/hailuo-3-max"));
-  } finally {
-    AbortSignal.timeout = timeout;
-    stallCatalogue = false;
-  }
-  await app.inject({ method: "PATCH", url: `/connections/${id}`, payload: { baseUrl: "http://openrouter.ai/api/v1" } });
-  const beforeHttp = requests.length;
-  const cleartext = await app.inject({ method: "GET", url: `/connections/${id}/models?refresh=true` });
-  assert.equal(cleartext.statusCode, 200, cleartext.body);
-  assert.equal(requests.length, beforeHttp, "HTTP discovery never sends the API key and keeps the curated fallback");
-  await app.inject({
-    method: "PATCH",
-    url: `/connections/${id}`,
-    payload: { baseUrl: "https://openrouter.ai/api/v1/videos" },
-  });
-  const endpointRoot = await app.inject({ method: "GET", url: `/connections/${id}/models?refresh=true` });
-  assert.equal(endpointRoot.statusCode, 200, endpointRoot.body);
-  assert.equal(
-    requests.at(-1)!.url.pathname,
-    "/api/v1/videos/models",
-    "discovery and generation share URL normalization",
-  );
+  for (const model of models) assert.ok(discovery.json().models.some((entry: { id: string }) => entry.id === model.id));
+  assert.equal(requests.length, 0, "curated discovery adds no network request or unknown model capability contract");
 
   const profile = normalizeVideoGenerationProfile({
     service: "openrouter",

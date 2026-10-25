@@ -1560,7 +1560,7 @@ function buildXaiVideosUrl(baseUrl: string, path: string): string {
   }
 }
 
-export function buildOpenRouterVideosUrl(baseUrl: string, path: string): string {
+function buildOpenRouterVideosUrl(baseUrl: string, path: string): string {
   const fallback = "https://openrouter.ai/api/v1";
   const raw = (baseUrl || fallback).trim().replace(/\/+$/, "") || fallback;
   try {

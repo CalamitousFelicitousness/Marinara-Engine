@@ -6,6 +6,7 @@ import {
   createPersonalExtensionSchema,
   externalExtensionsPolicyUpdateSchema,
   personalExtensionStoragePatchSchema,
+  personalExtensionRevisionRetentionSchema,
   rollbackPersonalExtensionSchema,
   updatePersonalExtensionSchema,
   PERSONAL_EXTENSION_CONTRIBUTION_KINDS,
@@ -1152,6 +1153,24 @@ export async function personalExtensionsRoutes(app: FastifyInstance) {
   const chatsStorage = createChatsStorage(app.db);
 
   app.get("/policy", async () => getPersonalExtensionPolicy(app.db));
+
+  app.get("/revision-history", async (req, reply) => {
+    if (!privileged(req, reply)) return;
+    return { limit: await storage.getRevisionRetention() };
+  });
+
+  app.patch("/revision-history", async (req, reply) => {
+    if (!privileged(req, reply)) return;
+    const input = personalExtensionRevisionRetentionSchema.parse(req.body);
+    const result = await storage.setRevisionRetention(input);
+    if (!result) {
+      return reply.status(409).send({
+        error: "Confirm permanently removing older extension revisions before reducing retention.",
+        code: "confirmation_required",
+      });
+    }
+    return result;
+  });
 
   app.patch("/policy/external", async (req, reply) => {
     if (!privileged(req, reply)) return;

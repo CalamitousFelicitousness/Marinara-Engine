@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import {
   AlertTriangle,
   Activity,
@@ -35,6 +35,8 @@ import {
   useCreatePersonalExtension,
   useDeletePersonalExtension,
   usePersonalExtensions,
+  usePersonalExtensionRevisionRetention,
+  useSetPersonalExtensionRevisionRetention,
   useRollbackPersonalExtension,
   useUpdatePersonalExtension,
 } from "../../../hooks/use-personal-extensions";
@@ -182,6 +184,60 @@ function normalizeImportedName(fileName: string) {
 }
 
 type ExtensionSettingsMode = "personal" | "external";
+
+export function ExtensionRevisionHistorySettings() {
+  const { t } = useTranslation();
+  const limitId = useId();
+  const { data, error, refetch } = usePersonalExtensionRevisionRetention();
+  const update = useSetPersonalExtensionRevisionRetention();
+  const changeLimit = async (limit: number) => {
+    const reducing = data !== undefined && limit < data.limit;
+    if (
+      reducing &&
+      !(await showConfirmDialog({
+        title: t("settings.extensions.revisionHistory.confirmTitle"),
+        message: t("settings.extensions.revisionHistory.confirmMessage", { limit }),
+        confirmLabel: t("settings.extensions.revisionHistory.confirmLabel"),
+      }))
+    )
+      return;
+    try {
+      await update.mutateAsync({ limit, ...(reducing ? { confirmPrune: true } : {}) });
+      toast.success(t("settings.extensions.revisionHistory.saved"));
+    } catch (saveError) {
+      toast.error(getPrivilegedActionErrorMessage(saveError, t("settings.extensions.revisionHistory.saveFailed")));
+    }
+  };
+  return (
+    <SettingsSection title={t("settings.extensions.revisionHistory.title")} icon={<History size="0.875rem" />}>
+      <p className="text-xs text-[var(--muted-foreground)]">{t("settings.extensions.revisionHistory.description")}</p>
+      <div className="flex items-center justify-between gap-3 text-xs">
+        <label htmlFor={limitId}>{t("settings.extensions.revisionHistory.limit")}</label>
+        <select
+          id={limitId}
+          value={data?.limit ?? 10}
+          disabled={!data || update.isPending}
+          onChange={(event) => void changeLimit(Number(event.target.value))}
+          className="rounded-lg bg-[var(--secondary)] px-3 py-2 ring-1 ring-[var(--border)] disabled:opacity-50"
+        >
+          {Array.from({ length: 11 }, (_, limit) => (
+            <option key={limit} value={limit}>
+              {limit}
+            </option>
+          ))}
+        </select>
+      </div>
+      {error && (
+        <p role="alert" className="text-xs text-[var(--destructive)]">
+          {t("settings.extensions.revisionHistory.loadFailed")}{" "}
+          <button type="button" className="underline" onClick={() => void refetch()}>
+            {t("settings.extensions.revisionHistory.retry")}
+          </button>
+        </p>
+      )}
+    </SettingsSection>
+  );
+}
 
 export function PersonalExtensionsSettings({ showIntro = true }: { showIntro?: boolean }) {
   return <ExtensionSettings showIntro={showIntro} mode="personal" />;

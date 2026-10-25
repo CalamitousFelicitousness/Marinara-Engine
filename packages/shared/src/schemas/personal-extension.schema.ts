@@ -128,6 +128,11 @@ export const externalExtensionsPolicyUpdateSchema = z.object({
   enabled: z.boolean(),
 });
 
+export const personalExtensionRevisionRetentionSchema = z.object({
+  limit: z.number().int().min(0).max(10),
+  confirmPrune: z.literal(true).optional(),
+});
+
 export const rollbackPersonalExtensionSchema = z.object({
   contentHash: z.string().regex(/^sha256:[a-f0-9]{64}$/),
 });
@@ -147,3 +152,4 @@ export const personalExtensionStoragePatchSchema = z.record(z.string(), z.unknow
 export type CreatePersonalExtensionInput = z.input<typeof createPersonalExtensionSchema>;
 export type UpdatePersonalExtensionInput = z.infer<typeof updatePersonalExtensionSchema>;
 export type PersonalExtensionStoragePatchInput = z.infer<typeof personalExtensionStoragePatchSchema>;
+export type PersonalExtensionRevisionRetentionInput = z.infer<typeof personalExtensionRevisionRetentionSchema>;

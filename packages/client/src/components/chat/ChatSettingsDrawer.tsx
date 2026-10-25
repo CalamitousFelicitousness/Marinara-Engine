@@ -5468,72 +5468,77 @@ export function ChatSettingsDrawer({
       )}
     </>
   );
-  const cardThemingControls = (
-    <div className="mt-2 space-y-2">
-      {isRoleplayMode && (
-        <SettingsSwitch
-          label={localizeUi("ui.chat.chatsettingsdrawer.colorCharacterNamesInText")}
-          description={localizeUi("ui.chat.chatsettingsdrawer.colorCharacterNamesInTextDescription")}
-          checked={colorInlineNames}
-          onChange={(checked) => updateMeta.mutate({ id: chat.id, colorInlineNames: checked })}
-          labelPosition="start"
-          className={cn(
-            "justify-between rounded-md px-3 py-2.5 text-left",
-            colorInlineNames
-              ? "bg-[var(--primary)]/10 ring-1 ring-[var(--primary)]/30"
-              : "bg-[var(--secondary)] hover:bg-[var(--accent)]",
-          )}
-          labelClassName="text-[0.6875rem] font-medium"
-        />
-      )}
-      {activeCardsHaveCss && (
-        <div className={cn("space-y-2", isRoleplayMode && "mt-2")}>
-          <div className="flex rounded-lg ring-1 ring-[var(--border)]">
-            <button
-              onClick={() => updateMeta.mutate({ id: chat.id, cardCssMode: "disabled" })}
-              className={cn(
-                "flex-1 px-3 py-2 text-[0.6875rem] font-medium transition-colors rounded-l-lg",
-                cardCssMode === "disabled"
-                  ? "bg-[var(--primary)] text-white"
-                  : "text-[var(--muted-foreground)] hover:bg-[var(--accent)]",
-              )}
+  const cardThemingControls =
+    isRoleplayMode || activeCardsHaveCss ? (
+      <div className="mt-2 space-y-2">
+        {isRoleplayMode && (
+          <SettingsSwitch
+            label={localizeUi("ui.chat.chatsettingsdrawer.colorCharacterNamesInText")}
+            description={localizeUi("ui.chat.chatsettingsdrawer.colorCharacterNamesInTextDescription")}
+            checked={colorInlineNames}
+            onChange={(checked) => updateMeta.mutate({ id: chat.id, colorInlineNames: checked })}
+            labelPosition="start"
+            className={cn(
+              "justify-between rounded-md px-3 py-2.5 text-left",
+              colorInlineNames
+                ? "bg-[var(--primary)]/10 ring-1 ring-[var(--primary)]/30"
+                : "bg-[var(--secondary)] hover:bg-[var(--accent)]",
+            )}
+            labelClassName="text-[0.6875rem] font-medium"
+          />
+        )}
+        {activeCardsHaveCss && (
+          <div className={cn("space-y-2", isRoleplayMode && "mt-2")}>
+            <div
+              className="flex rounded-lg ring-1 ring-[var(--border)]"
+              role="group"
+              aria-label={localizeUi("ui.chat.chatsettingsdrawer.cardTheming")}
             >
-              {localizeUi("ui.agents.agenteditor.disabled")}
-            </button>
-            <button
-              onClick={() => updateMeta.mutate({ id: chat.id, cardCssMode: "exclusive" })}
-              className={cn(
-                "flex-1 px-3 py-2 text-[0.6875rem] font-medium transition-colors",
-                cardCssMode === "exclusive"
-                  ? "bg-[var(--primary)] text-white"
-                  : "text-[var(--muted-foreground)] hover:bg-[var(--accent)]",
-              )}
-            >
-              {localizeUi("ui.chat.chatsettingsdrawer.exclusive")}
-            </button>
-            <button
-              onClick={() => updateMeta.mutate({ id: chat.id, cardCssMode: "chat" })}
-              className={cn(
-                "flex-1 px-3 py-2 text-[0.6875rem] font-medium transition-colors rounded-r-lg",
-                cardCssMode === "chat"
-                  ? "bg-[var(--primary)] text-white"
-                  : "text-[var(--muted-foreground)] hover:bg-[var(--accent)]",
-              )}
-            >
-              {localizeUi("ui.chat.chatsettingsdrawer.chat")}
-            </button>
+              <button
+                onClick={() => updateMeta.mutate({ id: chat.id, cardCssMode: "disabled" })}
+                className={cn(
+                  "flex-1 px-3 py-2 text-[0.6875rem] font-medium transition-colors rounded-l-lg",
+                  cardCssMode === "disabled"
+                    ? "bg-[var(--primary)] text-white"
+                    : "text-[var(--muted-foreground)] hover:bg-[var(--accent)]",
+                )}
+              >
+                {localizeUi("ui.agents.agenteditor.disabled")}
+              </button>
+              <button
+                onClick={() => updateMeta.mutate({ id: chat.id, cardCssMode: "exclusive" })}
+                className={cn(
+                  "flex-1 px-3 py-2 text-[0.6875rem] font-medium transition-colors",
+                  cardCssMode === "exclusive"
+                    ? "bg-[var(--primary)] text-white"
+                    : "text-[var(--muted-foreground)] hover:bg-[var(--accent)]",
+                )}
+              >
+                {localizeUi("ui.chat.chatsettingsdrawer.exclusive")}
+              </button>
+              <button
+                onClick={() => updateMeta.mutate({ id: chat.id, cardCssMode: "chat" })}
+                className={cn(
+                  "flex-1 px-3 py-2 text-[0.6875rem] font-medium transition-colors rounded-r-lg",
+                  cardCssMode === "chat"
+                    ? "bg-[var(--primary)] text-white"
+                    : "text-[var(--muted-foreground)] hover:bg-[var(--accent)]",
+                )}
+              >
+                {localizeUi("ui.chat.chatsettingsdrawer.chat")}
+              </button>
+            </div>
+            <p className="text-[0.625rem] text-[var(--muted-foreground)]">
+              {cardCssMode === "disabled"
+                ? localizeUi("ui.chat.chatsettingsdrawer.cardCssIsOffNoCharacterStylingIsApplied")
+                : cardCssMode === "exclusive"
+                  ? localizeUi("ui.chat.chatsettingsdrawer.eachCharacterSCssOnlyAffectsTheirOwnMessages")
+                  : localizeUi("ui.chat.chatsettingsdrawer.allCardCssAffectsTheEntireChatAreaIncluding")}
+            </p>
           </div>
-          <p className="text-[0.625rem] text-[var(--muted-foreground)]">
-            {cardCssMode === "disabled"
-              ? localizeUi("ui.chat.chatsettingsdrawer.cardCssIsOffNoCharacterStylingIsApplied")
-              : cardCssMode === "exclusive"
-                ? localizeUi("ui.chat.chatsettingsdrawer.eachCharacterSCssOnlyAffectsTheirOwnMessages")
-                : localizeUi("ui.chat.chatsettingsdrawer.allCardCssAffectsTheEntireChatAreaIncluding")}
-          </p>
-        </div>
-      )}
-    </div>
-  );
+        )}
+      </div>
+    ) : null;
 
   return (
     <>

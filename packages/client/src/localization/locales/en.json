@@ -15337,5 +15337,15 @@
   "window.controls.pinHint": "Keep this window open when you click elsewhere.",
   "window.controls.resize": "Resize window with the arrow keys",
   "window.controls.unlockHint": "Let this window move and resize, and its button move again.",
-  "window.controls.unpinHint": "Let this window close when you click elsewhere."
+  "window.controls.unpinHint": "Let this window close when you click elsewhere.",
+  "settings.extensions.revisionHistory.title": "Extension revision history",
+  "settings.extensions.revisionHistory.description": "Choose how many previous code versions to keep for every Personal and External Extension. Set 0 to disable history. Current code and saved extension data are kept.",
+  "settings.extensions.revisionHistory.limit": "Previous revisions to keep",
+  "settings.extensions.revisionHistory.confirmTitle": "Reduce extension revision history?",
+  "settings.extensions.revisionHistory.confirmMessage": "Keep only the most recent {{limit}} previous revisions of every extension? Older revisions will be permanently removed. Current code and saved extension data will be kept.",
+  "settings.extensions.revisionHistory.confirmLabel": "Remove older revisions",
+  "settings.extensions.revisionHistory.saved": "Extension revision history updated.",
+  "settings.extensions.revisionHistory.saveFailed": "Could not update extension revision history.",
+  "settings.extensions.revisionHistory.loadFailed": "Could not load extension revision history.",
+  "settings.extensions.revisionHistory.retry": "Retry"
 }

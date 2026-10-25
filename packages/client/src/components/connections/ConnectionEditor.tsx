@@ -13,6 +13,7 @@ import {
 } from "@marinara-engine/shared";
 import { isConnectionFlagFalse, isLanguageGenerationConnection } from "../../lib/connection-filters";
 import { useEffectiveGenerationParameters } from "../../hooks/use-effective-generation-parameters";
+import { CHAT_VISUAL_VIEWPORT_CHANGE_EVENT } from "../../hooks/use-visual-viewport-chat-bottom";
 // ──────────────────────────────────────────────
 // Full-Page Connection Editor
 // Click a connection → opens this editor (like presets/characters)
@@ -403,6 +404,48 @@ export function ConnectionEditor() {
   const [showUnsavedWarning, setShowUnsavedWarning] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savedFlash, setSavedFlash] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let frame = 0;
+    const revealFocusedField = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const content = contentRef.current;
+        const field = document.activeElement;
+        if (
+          !window.matchMedia("(any-pointer: coarse)").matches ||
+          !content ||
+          !(field instanceof HTMLElement) ||
+          !field.matches("input, textarea, select") ||
+          !content.contains(field)
+        )
+          return;
+        // A software keyboard may pan an already focused field above the editor.
+        // Scroll its own body only, so the header and Save action stay in place.
+        const bounds = content.getBoundingClientRect();
+        const rect = field.getBoundingClientRect();
+        const viewport = window.visualViewport;
+        const top = Math.max(bounds.top, viewport?.offsetTop ?? 0) + 8;
+        const bottom =
+          Math.min(bounds.bottom, (viewport?.offsetTop ?? 0) + (viewport?.height ?? window.innerHeight)) - 8;
+        if (bottom <= top) return;
+        if (rect.height > bottom - top) {
+          content.scrollTop += rect.top - top;
+          return;
+        }
+        if (rect.top < top) content.scrollTop += rect.top - top;
+        else if (rect.bottom > bottom) content.scrollTop += rect.bottom - bottom;
+      });
+    };
+    document.addEventListener("focusin", revealFocusedField);
+    window.addEventListener(CHAT_VISUAL_VIEWPORT_CHANGE_EVENT, revealFocusedField);
+    return () => {
+      cancelAnimationFrame(frame);
+      document.removeEventListener("focusin", revealFocusedField);
+      window.removeEventListener(CHAT_VISUAL_VIEWPORT_CHANGE_EVENT, revealFocusedField);
+    };
+  }, []);
 
   // Local editable state
   const [localName, setLocalName] = useState("");
@@ -1994,7 +2037,7 @@ export function ConnectionEditor() {
       )}
 
       {/* ── Body ── */}
-      <div className="mari-editor-content max-md:p-4">
+      <div ref={contentRef} className="mari-editor-content max-md:p-4">
         <div className="mari-editor-content-inner space-y-6">
           {/* ── Connection Name ── */}
           <FieldGroup

@@ -826,7 +826,7 @@ export async function combatDirectorRoutes(
             return { stacks: applied.stacks, journal: applied.journal, value: null };
           });
         if (s.style === "ruleset" && s.rulesetFight) live = await writeRulesetLive(chatId, s.anchor, s.rulesetFight);
-        // The fight just ended: one that got away is remembered by name as it was made, so a later fight
+        // The fight just ended: one that got away, or won, is remembered by name as it was made, so a later fight
         // that names it brings it back the same; one beaten here is forgotten.
         if (s.style === "ruleset" && s.rulesetFight && s.outcome && !previous.state.outcome) {
           const { fled, beaten } =
@@ -1217,7 +1217,7 @@ export async function combatDirectorRoutes(
                 if (hurt.ok) one.sheet.live = hurt.live;
               }
             }
-            built.fight.adjustments.push(`${input.enemies[index]!.name} is the same one that got away before.`);
+            built.fight.adjustments.push(`${input.enemies[index]!.name} is the same one the party met before.`);
           });
           // The Engine's own party array follows the fight's: a sheet the setup left out joins it, a
           // member with no sheet leaves it, and a stand-in carries its card's name (2026-10-23 playtest).

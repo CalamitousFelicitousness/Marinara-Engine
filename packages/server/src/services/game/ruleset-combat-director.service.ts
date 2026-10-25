@@ -310,9 +310,9 @@ export function rulesetReturningFoeKey(name: string): string {
   return normalizeCharacterLookupName(name);
 }
 
-/** The opponents of a finished fight that got away alive, as they were made, and the names of those
- *  beaten for good: the first come back as they were, the second are forgotten. Called ones and
- *  ones that gave up are neither. */
+/** The opponents of a finished fight that got away alive or were still standing as it ended, as they
+ *  were made, and the names of those beaten for good: the first come back as they were, the second
+ *  are forgotten. Called ones and ones that gave up are neither. */
 export function rulesetFightReturningFoes(
   definition: RulesetDefinition,
   fight: RulesetFightState,
@@ -326,7 +326,10 @@ export function rulesetFightReturningFoes(
     if (one.side !== "enemy" || one.calledBy !== undefined || one.object) continue;
     const made = fight.made?.[one.id];
     if (!made) continue;
-    if (one.away?.left && !one.away.surrendered) {
+    // One that got away, or was still standing as the fight ended (it won: laptop playtest 2026-10-25,
+    // a War-mage that beat the party came back rebuilt at 40 health from 65), is the same one next time.
+    const standing = !one.away && !one.down && !one.defeated;
+    if ((one.away?.left && !one.away.surrendered) || standing) {
       const health = definition.combat ? rulesetCombatHealth(definition, definition.combat, one) : undefined;
       const taken = health ? Math.max(0, Math.round(health.max - health.value)) : 0;
       fled.push({

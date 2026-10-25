@@ -1174,6 +1174,23 @@ try {
       }
       if (one.id === "hound") Object.assign(one, { defeated: true, down: true });
     }
+    // One still standing as a fight ends (it won: laptop playtest 2026-10-25, a War-mage that beat
+    // the party came back rebuilt at 40 health from 65) is remembered as one that got away is.
+    {
+      const { rulesetFightReturningFoes } =
+        await import("../../packages/server/src/services/game/ruleset-combat-director.service.js");
+      const won = structuredClone(doc.rulesetFight);
+      const hound = won.encounter.combatants.find((one: { id: string }) => one.id === "hound");
+      delete hound.defeated;
+      delete hound.down;
+      const kept = rulesetFightReturningFoes(definition, won);
+      assert.deepEqual(kept.fled.map((one: { name: string }) => one.name).sort(), [
+        "Cinder Hound",
+        "Cult Mage",
+        "Hedge Mender",
+      ]);
+      assert.deepEqual(kept.beaten, []);
+    }
     await engineStates.updateStateById(row.id, JSON.stringify(doc), undefined, away.chat.id);
     const ended = await post("/combat/command", {
       chatId: away.chat.id,
@@ -1201,7 +1218,7 @@ try {
     assert.equal(back.statusCode, 200, back.body);
     const again = back.json().session as DirectedCombatView;
     assert.equal(again.ruleset!.combatants.find((one) => one.id === "mage2")!.health.max, madeMax, "made as before");
-    assert.ok(again.ruleset!.adjustments.includes("Cult Mage is the same one that got away before."));
+    assert.ok(again.ruleset!.adjustments.includes("Cult Mage is the same one the party met before."));
     assert.equal(
       again.ruleset!.combatants.find((one) => one.id === "mage2")!.health.value,
       madeMax - 3,

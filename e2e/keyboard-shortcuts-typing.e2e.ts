@@ -71,7 +71,7 @@ for (const theme of ["dark", "light"] as const) {
       );
     });
     const fixture = page.locator("[data-keyboard-typing-fixture]");
-    const help = page.getByRole("dialog", { name: "Keyboard Shortcuts", exact: true });
+    const help = page.getByRole("dialog", { name: "Keyboard shortcuts", exact: true });
     const results: unknown[] = [];
     try {
       for (const scope of [

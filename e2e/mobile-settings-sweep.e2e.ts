@@ -148,6 +148,8 @@ for (const theme of ["dark", "light"] as const) {
     page,
     request,
   }, testInfo) => {
+    // Both mobile projects share one installation; exercise this global setting in WebKit only.
+    test.skip(testInfo.project.name === "mobile-chromium", "The mobile WebKit project owns revision retention state.");
     expect(
       (await request.patch("/api/personal-extensions/revision-history", { data: { limit: 10 } })).ok(),
     ).toBeTruthy();

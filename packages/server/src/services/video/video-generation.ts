@@ -1105,10 +1105,19 @@ async function generateOpenRouterVideo(
   }
   const startRecord = asRecord(startJson);
   const jobId = readString(startRecord.id);
-  const pollingUrl =
+  const pollingReference =
     readString(startRecord.polling_url) ?? (jobId ? buildOpenRouterVideosUrl(baseUrl, `videos/${jobId}`) : null);
-  if (!jobId || !pollingUrl) {
+  if (!jobId || !pollingReference) {
     throw new Error("OpenRouter video generation response did not include a job id");
+  }
+  let pollingUrl: URL;
+  try {
+    pollingUrl = new URL(pollingReference, startUrl);
+  } catch {
+    throw new Error("OpenRouter video generation returned an invalid polling URL");
+  }
+  if (pollingUrl.origin !== new URL(startUrl).origin || pollingUrl.username || pollingUrl.password) {
+    throw new Error("OpenRouter video polling URL must use the configured API origin without credentials");
   }
 
   while (true) {

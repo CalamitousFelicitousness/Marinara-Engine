@@ -4200,6 +4200,9 @@ function rulesetCandidatesFrom(
         // Barely scratched it is not given at all, even with nothing else to do (laptop playtest
         // 2026-10-24: a potion drunk at 34 of 44).
         if (limited && !target.down && health.value > health.max * 0.75) continue;
+        // A creature somebody called into the fight is not worth a slot or a potion (laptop playtest
+        // 2026-10-25: Wren spent two 1st level slots healing the Draft Horses she had conjured).
+        if (limited && target.calledBy !== undefined) continue;
         if (limited && !target.down && health.value > health.max / 2) candidate.healing *= 0.2;
       } else if (average > 0) {
         // Never its own side, and never somebody who is already down: the rules let a blow land on
@@ -4768,6 +4771,11 @@ export function rulesetEffectWorth(
   for (const applied of action.applies) {
     worth ??= 0;
     if (held.has(applied.condition)) continue;
+    // One its user's sheet does not put on, or one that goes with a condition the target holds (5e's
+    // Rage's damage, Mindless Rage beside raging), comes of nothing new (laptop playtest 2026-10-25:
+    // Ulfgar raged again while raging, for a Mindless Rage his level never gives).
+    if (!rulesetSheetWithin(definition, actor, applied.when)) continue;
+    if (applied.endsWith !== undefined && held.has(applied.endsWith)) continue;
     if (rulesetImmuneToCondition(target, applied.condition, definition, encounter, actor)) continue;
     const rule = combat.conditions?.find((one) => one.condition === applied.condition);
     let each = 0;

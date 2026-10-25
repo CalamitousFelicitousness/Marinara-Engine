@@ -316,6 +316,24 @@ try {
     assert.ok((hands.candidate.healing ?? 0) > 0.5, `weighed at the points that heal her: ${hands.candidate.healing}`);
   }
 
+  // ── Never a slot or a use on a creature somebody called (laptop playtest 2026-10-25: Wren spent two
+  //    1st level slots healing the Draft Horses she had conjured) ──
+  {
+    const scene = fight(
+      [
+        sheetOf("pal", sheet({ level: 5 }), { x: 2, y: 5 }),
+        sheetOf("ada", sheet({ level: 5 }), { x: 3, y: 5 }, 6),
+        { id: "orc", name: "orc", side: "enemy", block: block([smash]), at: { x: 12, y: 5 } },
+      ],
+      { ada: "manual" },
+    );
+    rulesetCombatant(scene.encounter, "ada")!.calledBy = "pal";
+    assert.ok(
+      !ranked(scene, "pal").some((one) => one.candidate.action.option.label === "Lay on Hands"),
+      "no Lay on Hands on a called creature",
+    );
+  }
+
   // ── A granted dodge, hurt and beside its foes with its action spent ──
   {
     const scene = (hp: number) => {
@@ -757,6 +775,24 @@ try {
       ranked(near, "grak").some((one) => one.candidate.action.option.id === "fury"),
       "fury beside a foe",
     );
+    // Already furious, raging again puts on nothing new: what goes with the fury (its damage) is
+    // the fury's own (laptop playtest 2026-10-25: Ulfgar raged again while raging).
+    const again = fight([
+      { id: "grak", name: "grak", side: "party", block: block([smash]), at: { x: 2, y: 5 } },
+      { id: "orc", name: "orc", side: "enemy", block: block([smash]), at: { x: 3, y: 5 } },
+    ]);
+    const grak = rulesetCombatant(again.encounter, "grak")!;
+    grak.actions.push({
+      ...fury,
+      applies: [
+        { condition: "furious", duration: { rounds: 10 } },
+        { condition: "fierce", duration: { rounds: 10 }, endsWith: "furious" },
+      ],
+    } as unknown as RulesetCombatAction);
+    grak.tracked.push({ condition: "furious", source: "grak", rounds: 9 } as never);
+    const choices = ranked(again, "grak");
+    assert.equal(choices.find((one) => one.candidate.action.option.id === "fury")?.candidate.setup ?? 0, 0);
+    assert.notEqual(choices[0]?.candidate.action.option.id, "fury", "no fury while furious");
   }
 
   // ── A spell that grows with its slot is cast from the lowest slot that drops its target (laptop

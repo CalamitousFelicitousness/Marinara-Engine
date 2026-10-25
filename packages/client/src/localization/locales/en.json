@@ -2459,6 +2459,7 @@
   "game.combat.ruleset.event.reason.risk": "worth the danger it puts itself in",
   "game.combat.ruleset.event.reason.routed": "its nerve broke, so it ran for the edge of the field",
   "game.combat.ruleset.event.reason.setup": "sets up what comes next against {{target}}",
+  "game.combat.ruleset.event.reason.spareYields": "the last of its side still standing, it stopped sparing them to survive",
   "game.combat.ruleset.event.reason.sparing": "told to spare them, it held back, since every blow it had might kill",
   "game.combat.ruleset.event.reason.spread": "it stopped apart from its side rather than nearest, so one blast cannot catch them all",
   "game.combat.ruleset.event.reason.stops": "stops what {{target}} was about to do",

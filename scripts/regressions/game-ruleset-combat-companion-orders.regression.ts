@@ -245,6 +245,16 @@ try {
     assert.notEqual(spared?.option.id, "bolt", `no killing bolt: ${JSON.stringify(spared?.choice)}`);
     // It says it held back to spare them, not that nothing was worth the price (laptop 2026-10-25).
     assert.equal(spared?.spares, true, `its turn ends to spare them: ${spared?.option.kind}`);
+    // The last of its side still up, it stops sparing them to survive (cloud AI fights 2026-10-25:
+    // a sparing Professor shot dead over ten rounds by a Cultist at full health).
+    const alone = pick(field(), { posture: "hold", spare: true }, [], (encounter) => {
+      frail(encounter);
+      const ada = rulesetCombatant(encounter, "ada")!;
+      ada.health = { ...ada.health!, value: 0 };
+      ada.down = true;
+    });
+    assert.equal(alone?.option.id, "bolt", `it fights for its life: ${JSON.stringify(alone?.choice)}`);
+    assert.equal(alone?.spareYields, true);
   }
 
   // ── Spare counts a blow lethal by the most its dice can roll (re-test 2026-10-23) ──

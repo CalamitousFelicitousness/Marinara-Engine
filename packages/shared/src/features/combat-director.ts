@@ -352,6 +352,7 @@ export type DirectedRulesetReason =
       why:
         | "nothingWorth"
         | "sparing"
+        | "spareYields"
         | "cannotAct"
         | "noWay"
         | "holding"

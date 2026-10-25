@@ -2186,6 +2186,8 @@ interface RulesetCandidate {
   /** An end of its turn because every blow it had would kill, under orders to spare (laptop
    *  2026-10-25: such a turn read "nothing worth the price"). */
   spares?: true;
+  /** A blow that might kill, taken under orders to spare because it is the last of its side up. */
+  spareYields?: true;
   /** Why it is worth more against its target than its forecast says (I1), for its reasons. */
   edge?: RulesetBlowEdge;
   /** A limited use thrown at worse than even odds: whom it would like to hit adds nothing to it. */
@@ -4045,9 +4047,18 @@ function rulesetCandidatesFrom(
   // re-test 2026-10-24). Whatever way it is weighed: a shape, a blow, something on itself.
   if (actor.concentrating) {
     const letGo = rulesetHeldWorth(definition, combat, encounter, actor);
+    // What its own side gains from a new hold is gained by those still there: creatures the old one
+    // keeps go with it (cloud AI fights 2026-10-25: Draft Horses sent away for a Hold Person).
+    const held = actor.concentrating.actionId;
+    const friends = encounter.combatants.filter(
+      (one) => one.id !== actor.id && one.side === actor.side && rulesetCombatStanding(one),
+    );
+    const leaving = friends.filter((one) => one.calledBy === actor.id && one.calledWith === held && !one.dismissed);
+    const staying = friends.length > 0 ? (friends.length - leaving.length) / friends.length : 1;
     for (const candidate of candidates) {
       const id = candidate.action.option.id;
       const holds = actor.actions.find((one) => one.id === id)?.concentration;
+      if (holds && candidate.setup) candidate.setup *= staying;
       // Weighed as the harm it gives up, not as a price: a caster's prices count for less than
       // what it does, and eight creatures went for a Hold Person (cloud class re-test round 2).
       // Cast again, the same one lets go of itself as well: what it holds now is given up for what
@@ -5935,6 +5946,7 @@ function rulesetPickReasons(
     (reason, index) => reasons.findIndex((other) => JSON.stringify(other) === JSON.stringify(reason)) === index,
   );
   reasons.splice(0, reasons.length, ...once);
+  if (candidate.action.spareYields) reasons.unshift({ why: "spareYields" });
   if (walked) reasons.push({ why: "walked", cells: walked });
   if (reasons.length === 0 && candidate.action.option.kind === "end-turn")
     reasons.push({ why: candidate.action.spares ? "sparing" : "nothingWorth" });
@@ -6690,7 +6702,16 @@ function weighRulesetOrders(
   // and Spirit Guardians all killed under spare): only one in melee by somebody pulling their blows
   // knocks out instead. Any of the rest is never taken while something that kills nobody is there: a
   // knockout, a healthier target, a hold or a Dodge. With nothing else, it is worth no harm.
-  if (orders.spare) {
+  // The last of its side still up gives way (cloud AI fights 2026-10-25: a sparing Professor, the
+  // last investigator standing, stood ten rounds while a Cultist shot him dead).
+  const lastUp = !encounter.combatants.some(
+    (one) => one.id !== actor.id && one.side === actor.side && rulesetCombatStanding(one),
+  );
+  if (orders.spare && lastUp)
+    for (const candidate of candidates)
+      if ((candidate.finish ?? 0) > 0 || candidate.action.drops?.length)
+        candidate.action = { ...candidate.action, spareYields: true };
+  if (orders.spare && !lastUp) {
     const kills = (candidate: CombatAiCandidate<RulesetCandidate>) => {
       const target = candidate.targetId ? rulesetCombatant(encounter, candidate.targetId) : undefined;
       const harms =
@@ -6781,6 +6802,9 @@ const RULESET_TRIFLING_HELP = 0.05;
 
 /** What letting go of the spell an actor holds up costs it: what holding it does, up to 0.4 for one
  *  that harms (a zone, a blow held up) or whose worth cannot be read. */
+/** How many rounds ahead what a summons held up would still do is counted when letting it go. */
+const RULESET_HELD_ROUNDS = 3;
+
 function rulesetHeldWorth(
   definition: RulesetDefinition,
   combat: NonNullable<RulesetDefinition["combat"]>,
@@ -6798,7 +6822,9 @@ function rulesetHeldWorth(
     if (foes.length === 0) return 0;
     const foeMean = rulesetSideHealthMean(definition, combat, encounter, foes[0]!.side);
     const harm = called.reduce((sum, one) => sum + rulesetEveryTurnBlow(one) * 0.6, 0);
-    return 2 * (1 - Math.exp(-(2 * harm) / Math.max(1, foeMean) / 2));
+    // A round's harm for each of the next few rounds they would go on fighting (cloud AI fights
+    // 2026-10-25: five Draft Horses sent away for a Hold Person on the Assassin, who saved).
+    return RULESET_HELD_ROUNDS * 2 * (1 - Math.exp(-harm / Math.max(1, foeMean)));
   }
   const action = actor.actions.find((one) => one.id === held.actionId);
   // A lasting area of its own that harms, by the harm it does each round to those it catches now
@@ -7659,6 +7685,8 @@ function playRulesetTurn(
   // What it picked and could not carry out this turn: it picks again without it, rather than ending a
   // turn it did nothing with (laptop playtest 2026-10-23: two turns of nothing, with no reason).
   const tried = new Set<string>();
+  // Whether it ended a turn rather than kill under a spare order: said as that, however the turn ends.
+  let spared = false;
   for (let action = 0; action < RULESET_TURN_ACTION_LIMIT; action++) {
     if (rulesetEncounterOutcome(fight.encounter) !== "ongoing") break;
     remember();
@@ -7672,6 +7700,7 @@ function playRulesetTurn(
     const ranked = pickRulesetRanked(definition, state, fight.encounter, actorId, undefined, tried);
     const picked = ranked?.candidate.action ?? null;
     const idle = !picked || picked.option.kind === "end-turn";
+    if (idle && ranked?.candidate.action.spares) spared = true;
     if (idle) {
       // Standing where a lasting area strikes it, it gets out first.
       if (!stays && stepOutOfHarm(definition, state, fight, actorId)) continue;
@@ -7836,9 +7865,11 @@ function playRulesetTurn(
             ? { why: "holding" }
             : harmless
               ? { why: "harmless" }
-              : ordered && rulesetClosingMove(definition, fight.encounter, actorId)
-                ? { why: "guarding", targetId: ordered.charge.id }
-                : { why: "nothingWorth" },
+              : spared
+                ? { why: "sparing" }
+                : ordered && rulesetClosingMove(definition, fight.encounter, actorId)
+                  ? { why: "guarding", targetId: ordered.charge.id }
+                  : { why: "nothingWorth" },
     ]);
   advanceTurn(definition, state, fight);
 }

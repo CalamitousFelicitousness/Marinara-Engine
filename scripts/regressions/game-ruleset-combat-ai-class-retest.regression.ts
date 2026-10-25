@@ -565,6 +565,21 @@ try {
       "storm",
       "the wolves are kept",
     );
+    // Nor for a hold on the foe (cloud AI fights 2026-10-25: five Draft Horses sent away for a Hold
+    // Person on the Assassin, who saved).
+    const hold = {
+      id: "hold",
+      label: "Hold",
+      kind: "ability",
+      budget: "action",
+      concentration: true,
+      targets: { side: "enemy", count: 1 },
+      range: 60,
+      save: { save: "wis_save", difficulty: 14, onSuccess: "negates" },
+      applies: [{ condition: "paralyzed", duration: { rounds: 10 } }],
+    } as unknown as RulesetCombatAction;
+    rulesetCombatant(next, "mira")!.actions.splice(-1, 1, hold);
+    assert.notEqual(pickRulesetChoice(definition, scene.state, next, "mira")?.option.id, "hold", "the wolves are kept");
   }
 
   // ── A spell that grows with its slot is cast from the lowest slot that drops its target (laptop

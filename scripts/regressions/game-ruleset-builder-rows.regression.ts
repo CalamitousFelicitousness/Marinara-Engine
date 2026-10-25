@@ -123,14 +123,15 @@ try {
   assert.deepEqual(rowsOf(applied.build, "retainers"), [{ name: "Ser Ash", role: "Hireling", loyalty: 7 }]);
   assert.equal(rulesetBuilderRemaining(definition, applied.build, applied.state, catalogs).retainers, 1);
 
-  // A row whose required cell is empty counts for nothing and is one more thing to do.
+  // A row whose required cell is empty is the one thing left to do, counted once: filling it in is
+  // the row the step waits on (laptop 2026-10-25: four unrolled rows read "8 choices left").
   applied = applyRulesetBuilder(
     definition,
     withRows(applied.build, "retainers", [...rowsOf(applied.build, "retainers"), { name: "", role: "Hireling" }]),
     applied.state,
     catalogs,
   );
-  assert.equal(rulesetBuilderRemaining(definition, applied.build, applied.state, catalogs).retainers, 2);
+  assert.equal(rulesetBuilderRemaining(definition, applied.build, applied.state, catalogs).retainers, 1);
 
   // Rows a pick wrote are the pick's: they are not the player's own, and unpicking takes back only them.
   const picked = applyRulesetBuilder(
@@ -241,11 +242,11 @@ try {
   assert.equal(rowsOf(applied.build, "hp_rolls").length, 19, "Applying the builder keeps the rows");
   assert.equal(
     rulesetBuilderRemaining(countedDefinition, applied.build, applied.state, countedCatalogs).hit_point_rolls,
-    38,
+    19,
   );
   const rolled = rowsOf(applied.build, "hp_rolls").map((row, index) => (index < 18 ? { ...row, roll: 5 } : row));
   hp = withRows(applied.build, "hp_rolls", rolled);
-  assert.equal(rulesetBuilderRemaining(countedDefinition, hp, applied.state, countedCatalogs).hit_point_rolls, 2);
+  assert.equal(rulesetBuilderRemaining(countedDefinition, hp, applied.state, countedCatalogs).hit_point_rolls, 1);
   hp = withRows(
     hp,
     "hp_rolls",

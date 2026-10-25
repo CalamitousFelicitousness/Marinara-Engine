@@ -4717,7 +4717,7 @@ export interface RulesetCombatChoice {
 
 /** Why somebody holding an answer to an opponent using something could not give it: unable to
  *  react, unable to pay for it, out of its reach, or with no line to whoever used it. */
-export type RulesetUnansweredBecause = "cannot-react" | "cost" | "reach" | "sight";
+export type RulesetUnansweredBecause = "cannot-react" | "used" | "cost" | "reach" | "sight";
 
 export interface RulesetCombatStep {
   state: RulesetEncounterState;

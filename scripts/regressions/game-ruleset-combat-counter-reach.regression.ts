@@ -200,7 +200,7 @@ try {
       () => 10,
     );
     assert.equal(cast.state.window, undefined, "nobody is asked");
-    assert.deepEqual(cast.unanswered, [{ actorId: "corwin", label: "Counter", because: "cost" }]);
+    assert.deepEqual(cast.unanswered, [{ actorId: "corwin", label: "Counter", because: "used" }]);
     const asked = bolt(fight(definition));
     assert.equal(asked.unanswered, undefined, "one who can answer is asked, and nothing is said");
     // One that does not have it ready is not said to have failed to pay for it (laptop 2026-10-25).

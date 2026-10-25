@@ -114,11 +114,19 @@ export function rulesetTakeShape(
   form: RulesetShapeForm,
   roll: RulesetCombatRoller,
 ): RulesetShaped | null {
+  // A form's health is its creature's listed average, not thrown (cloud batch 2026-10-25: a kept Wolf
+  // rolled 5 of its 2d8+2, where the form takes the 11 a stat block lists).
+  const block = structuredClone(form.block);
+  if (block.healthDice) {
+    const dice = block.healthDice;
+    block.health = Math.max(1, Math.floor((dice.count * (dice.sides + 1)) / 2) + dice.flat);
+    delete block.healthDice;
+  }
   const built = createRulesetEncounter({
     definition,
     seed: state.seed,
     roller: roll,
-    combatants: [{ id: target.id, name: form.name, side: "enemy", block: structuredClone(form.block) }],
+    combatants: [{ id: target.id, name: form.name, side: "enemy", block }],
   }).combatants[0];
   if (!built) return null;
   if (target.shape) rulesetLeaveShape(target);

@@ -2426,6 +2426,7 @@
   "game.combat.ruleset.event.reason.couldNotAnswer_cost": "held {{label}}, but could not pay for it",
   "game.combat.ruleset.event.reason.couldNotAnswer_reach": "held {{label}}, but whoever it answers was out of its reach",
   "game.combat.ruleset.event.reason.couldNotAnswer_sight": "held {{label}}, but had no line of sight to whoever it answers",
+  "game.combat.ruleset.event.reason.couldNotAnswer_used": "held {{label}}, but had already used its reaction",
   "game.combat.ruleset.event.reason.damage_heavy": "heavy damage to {{target}}",
   "game.combat.ruleset.event.reason.damage_solid": "solid damage to {{target}}",
   "game.combat.ruleset.event.reason.damage_some": "some damage to {{target}}",

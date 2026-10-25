@@ -21,6 +21,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   applySheetCommandTags,
+  liftRulesetFightEffects,
   parseRulesetDefinition,
   renderRulesetSheetBlock,
   rowsFromCatalogEntry,
@@ -65,7 +66,7 @@ try {
   const creatures = doc.catalogs.find((catalog: { holds?: string }) => catalog.holds === "creatures");
   creatures.filters.push({ id: "cr", label: "Challenge", type: "number" });
   creatures.entries.push(
-    beast("wolf", "Wolf", 0.25),
+    beast("wolf", "Wolf", 0.25, { health: { dice: "2d8+2" } }),
     beast("brown-bear", "Brown Bear", 1),
     beast("giant-elk", "Giant Elk", 2),
     beast("eagle", "Eagle", 0, { speeds: { fly: 60 } }),
@@ -170,12 +171,59 @@ try {
   const fight = fightWith(shaped.live, [{ casterId: "rook", entry: "Wild Shape" }]);
   const rook = rookOf(fight);
   assert.equal(rook.shape?.name, "Wolf", "the fight starts with them a wolf");
+  assert.deepEqual(
+    [rook.shape?.health?.value, rook.shape?.health?.max],
+    [11, 11],
+    "the form's listed average health, 2d8+2, not a roll",
+  );
   assert.equal(
     (rook.sheet!.live as RulesetLiveStates[string]).pools?.slots_1?.value,
     1,
     "not paid for again, though the Game Master listed it too",
   );
   assert.deepEqual(fight.adjustments, []);
+
+  // ── The fight's end does not run out a shape of their own they are still in ──
+  {
+    const ending = fightWith(shaped.live);
+    const lifted = liftRulesetFightEffects(definition, ending.encounter);
+    assert.ok(
+      !lifted.some((event) => event.type === "condition" && event.condition === "wild_shaped"),
+      JSON.stringify(lifted),
+    );
+    assert.ok(rookOf(ending).tracked.some((entry) => entry.condition === "wild_shaped"));
+    assert.deepEqual(rulesetKeptForm(rulesetFightLiveStates(ending).rook), {
+      entry: "Wild Shape",
+      as: "Wolf",
+      health: 11,
+      max: 11,
+    });
+  }
+
+  // ── A shape's condition on one in no shape holds them in nothing, and is taken off as it starts ──
+  {
+    const stray = fightWith({ rook: { conditions: ["wild_shaped"] } } as RulesetLiveStates);
+    const one = rookOf(stray);
+    assert.equal(one.shape, undefined);
+    assert.ok(!one.tracked.some((entry) => entry.condition === "wild_shaped"));
+    assert.ok(!(one.sheet!.live as RulesetLiveStates[string]).conditions?.includes("wild_shaped"));
+  }
+
+  // ── Naming the pool it pays from anyway asks for nothing different ──
+  {
+    const counted = rulesetSheetBuildSchema.parse({
+      ...build,
+      lists: { ...build.lists, counters: [{ name: "Wild Shape", max: 2, recharge: "short" }] },
+    });
+    const named = applySheetCommandTags(`[sheet: op="use" name="Wild Shape" as="Wolf" pool="Wild Shape"]`, {
+      definition,
+      cards: [{ name: "Rook", build: counted }],
+      playerName: "Rook",
+      live: {},
+      catalogs: { spells, ...bestiary },
+    });
+    assert.equal(named.outcomes[0]!.ok, true, named.outcomes[0]!.reason);
+  }
 
   // ── Still in it as the fight ends: kept, with the form's health and its condition ──
   rook.shape!.health!.value = 12;

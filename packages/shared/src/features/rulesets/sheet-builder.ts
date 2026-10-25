@@ -2602,8 +2602,10 @@ export function rulesetBuilderRemaining(
       const missing = rows.filter(({ row }) =>
         (step.required ?? []).some((id) => row[id] === undefined || row[id] === ""),
       ).length;
-      // countFrom (1.788) asks for that many whole rows as min does, the larger of the two.
-      add(step.id, rulesetBuilderRowsMin(definition, step, build) - (rows.length - missing));
+      // countFrom (1.788) asks for that many whole rows as min does, the larger of the two: the rows
+      // still to add, and each one there not yet whole, counted once (laptop 2026-10-25: four unrolled
+      // hit-point rows read "8 choices left").
+      add(step.id, rulesetBuilderRowsMin(definition, step, build) - rows.length);
       add(step.id, missing);
     } else if (step.kind === "roll") {
       if (!state.describing) add(step.id, step.rolls.filter((roll) => !state.rolls?.[step.id]?.[roll.id]).length);

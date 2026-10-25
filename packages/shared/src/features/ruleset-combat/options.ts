@@ -6770,7 +6770,9 @@ export function rulesetReactionsAt(
     if (optionFrom(definition, combat, state, actor, action, true) === null) {
       // Not said for one its holder does not have ready (laptop 2026-10-25: "held Counterspell, but
       // could not pay for it", again and again, for one who had not prepared it).
-      if (missed && rulesetActionAvailable(actor, action, state, definition)) missed(action, "cost");
+      // One whose budget is spent this round says that, not that it could not pay (cloud probe 2026-10-25).
+      if (missed && rulesetActionAvailable(actor, action, state, definition))
+        missed(action, (actor.budgets[action.budget] ?? 0) < 1 ? "used" : "cost");
       return false;
     }
     // A bystander's distance is to the creature it protects. An explicit range still limits the

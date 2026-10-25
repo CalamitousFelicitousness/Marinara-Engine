@@ -814,6 +814,13 @@ try {
       pickRulesetChoice(definition, scene.state, scene.encounter, "rowan")?.option.id,
       RULESET_SHAPE_REVERT_ID,
     );
+    // Nearly spent, the form still has its holder's own health behind it: it goes on biting rather
+    // than hiding or dodging (cloud batch 2026-10-25: a kept Wolf at 2 of 5 hid, then dodged).
+    rowan.shape!.health!.value = 2;
+    // As a beast thinks: it minds itself once it is hurt.
+    (scene.state.party.find((unit) => unit.id === "rowan") as { tactics?: unknown }).tactics = { mind: "instinct" };
+    const pick = pickRulesetChoice(definition, scene.state, scene.encounter, "rowan");
+    assert.equal(pick?.option.id, "bite", JSON.stringify(pick?.option.id));
   }
 
   // ── What ends with another put on with it lasts as that one does: Hideous Laughter's incapacitated,

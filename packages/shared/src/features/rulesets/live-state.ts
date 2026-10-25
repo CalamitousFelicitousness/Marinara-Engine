@@ -2728,7 +2728,11 @@ export function planRulesetUse(
   };
   const terms = borrowed ? borrowed.cost : (entry.mechanics?.cost ?? []);
   let costs: Array<{ pool: string; amount: number }> = [...terms];
-  if (op.pool !== undefined) {
+  // The entry's own counter named as its pool asks for nothing different: it is spent as it always is
+  // (laptop 2026-10-25: a Game Master's Wild Shape refused for naming its uses).
+  const paidAnyway = (named: string) =>
+    resolved.pools.some((pool) => !!pool.listId && sameName(pool.label, named) && sameName(pool.label, entry.label));
+  if (op.pool !== undefined && !paidAnyway(op.pool.trim())) {
     // An upcast: one price, paid out of another pool of the same family. Anything else is refused
     // rather than reinterpreted, because paying a different bill is not what was asked for.
     const named = op.pool.trim();

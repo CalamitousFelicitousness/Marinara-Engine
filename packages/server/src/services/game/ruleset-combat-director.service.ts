@@ -12,6 +12,7 @@
 // party's live sheet state back, live in the route.
 
 import {
+  applyRulesetSheetOp,
   rulesetActionAvailable,
   rulesetSealedApart,
   parseRulesetCombatDice,
@@ -820,6 +821,34 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
       if (shaped.max !== undefined) one.shape.health.max = shaped.max;
       if (shaped.health === undefined) continue;
       one.shape.health.value = Math.max(1, Math.min(one.shape.health.max, shaped.health));
+    }
+  }
+  // A shape's condition on a member who starts the fight in no shape holds them in nothing: it is
+  // taken off, sheet and all (laptop 2026-10-25: a bare Wild Shape on a druid's token after the wolf
+  // was dismissed).
+  const shapes = new Set(
+    (definition.combat?.conditions ?? []).flatMap((entry) => (entry.shape ? [entry.condition] : [])),
+  );
+  for (const one of encounter.combatants) {
+    if (one.side !== "party" || !one.sheet || one.shape || shapes.size === 0) continue;
+    const live = one.sheet.live as RulesetLiveState | undefined;
+    // A kept form that could not be taken here is still theirs, and so is what holds them in it.
+    if (live?.shaped) continue;
+    const stray = [
+      ...new Set([
+        ...(live?.conditions ?? []).filter((id) => shapes.has(id)),
+        ...one.tracked.filter((entry) => shapes.has(entry.condition)).map((entry) => entry.condition),
+      ]),
+    ];
+    if (!stray.length) continue;
+    one.tracked = one.tracked.filter((entry) => !shapes.has(entry.condition));
+    for (const condition of stray) {
+      const off = applyRulesetSheetOp(definition, one.sheet.build, one.sheet.live as never, {
+        op: "condition",
+        condition,
+        active: false,
+      });
+      if (off.ok) one.sheet.live = off.live;
     }
   }
   // A lair whose count comes before everybody's acts before the first turn (1.315).
@@ -2302,6 +2331,20 @@ function rulesetKeepsGrantedDefensive(
  *  good share of what it has left, any of them and an animal once it is down to half, and one told to
  *  keep back wherever it is in danger. Never a mindless one, and never a whole one: a creature at full
  *  health fights on rather than dodging all fight. */
+/** The health a combatant has to lose before it is in danger: a form with health of its own (1.379)
+ *  stands in front of its holder's, which is still there once the form is spent (cloud batch
+ *  2026-10-25: a druid's Wolf at 2 of its 5 hid and dodged, with all of the druid's 38 behind it). */
+function rulesetHealthToSpend(
+  definition: RulesetDefinition,
+  combat: NonNullable<RulesetDefinition["combat"]>,
+  actor: RulesetCombatant,
+): ReturnType<typeof rulesetCombatHealth> {
+  const health = rulesetCombatHealth(definition, combat, actor);
+  if (!actor.shape?.health) return health;
+  const own = rulesetCombatHealth(definition, combat, { ...actor, shape: undefined });
+  return { value: health.value + own.value, max: health.max + own.max, temp: health.temp + own.temp };
+}
+
 function rulesetKeepsDefensive(
   definition: RulesetDefinition,
   encounter: RulesetEncounterState,
@@ -2320,7 +2363,7 @@ function rulesetKeepsDefensive(
     tactics.adjective === "cowardly" ||
     tactics.adjective === "patient";
   if (!careful && tactics.mind !== "instinct") return false;
-  const health = rulesetCombatHealth(definition, definition.combat, actor);
+  const health = rulesetHealthToSpend(definition, definition.combat, actor);
   if (health.value < health.max * 0.5) return true;
   // An animal minds itself once it is hurt, not before: a wolf beside its prey bites rather than
   // dodging because the prey could hit back.
@@ -2435,7 +2478,7 @@ function rulesetDangerAt(
   const combat = definition.combat;
   if (!combat) return 0;
   const perCell = combat.distance?.perCell;
-  const health = rulesetCombatHealth(definition, combat, actor);
+  const health = rulesetHealthToSpend(definition, combat, actor);
   const pool = Math.max(1, health.value + health.temp);
   const span = rulesetSpanOf(actor);
   let harm = 0;
@@ -3877,9 +3920,10 @@ function rulesetCandidatesFrom(
         const level = rulesetPaidLevel(definition, actor, fallingAction, way.payWith);
         const stoppedLevel = rulesetStoppedLevel(definition, encounter);
         // A slot is never spent on a cantrip but to keep its spender alive (re-test round 2: a
-        // 3rd-level Counterspell on a cult fanatic's Sacred Flame).
-        if (level > 0 && stoppedLevel === 0 && !rulesetStoppedDropsSpender(definition, combat, encounter, actor))
-          continue;
+        // 3rd-level Counterspell on a cult fanatic's Sacred Flame), nor a stat block's answer of only
+        // so many uses or one that has to recharge (laptop 2026-10-25: a battle-mage's on a Fire Bolt).
+        const dear = level > 0 || !!fallingAction.uses || !!fallingAction.recharge;
+        if (dear && stoppedLevel === 0 && !rulesetStoppedDropsSpender(definition, combat, encounter, actor)) continue;
         const above = Math.max(0, level - stoppedLevel);
         const saved =
           Math.max(0, rulesetStoppedWorth(definition, combat, encounter, actor) - 0.25 - 0.1 * level - 0.15 * above) *
@@ -7136,10 +7180,31 @@ function absorb(
 ): void {
   fight.encounter = step.state;
   record(fight, step.events);
-  for (const one of step.unanswered ?? [])
+  for (const one of step.unanswered ?? []) {
+    // A reaction already used is said once a round, not at every window after it (cloud probe
+    // 2026-10-25: a Mage logged it on every hit after its own Counterspell).
+    if (one.because === "used" && rulesetSaidThisRound(fight, one.actorId, one.label)) continue;
     recordReasons(fight, one.actorId, [{ why: "couldNotAnswer", label: one.label, because: one.because }]);
+  }
   if (step.events.some((event) => event.type === "round")) state.gmCalls = 0;
   syncRulesetCombatants(definition, state);
+}
+
+/** Whether this round's log already says this one's reaction was used when `label` could answer. */
+function rulesetSaidThisRound(fight: RulesetFightState, actorId: string, label: string): boolean {
+  for (let index = fight.events.length - 1; index >= 0; index--) {
+    const event = fight.events[index]!.event;
+    if (event.type === "round") return false;
+    if (
+      event.type === "reasoning" &&
+      event.actorId === actorId &&
+      event.reasons.some(
+        (reason) => reason.why === "couldNotAnswer" && reason.because === "used" && reason.label === label,
+      )
+    )
+      return true;
+  }
+  return false;
 }
 
 /** How many answers one window may take before the fight is let go. A window asks each waiting

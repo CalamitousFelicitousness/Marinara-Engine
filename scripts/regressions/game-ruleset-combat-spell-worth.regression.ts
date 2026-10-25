@@ -774,6 +774,32 @@ try {
     assert.notEqual(priced("zap", { targetIds: ["mage"] }, 40), "counter", "a cantrip it lives through is let by");
     assert.equal(priced("zap", { targetIds: ["mage"] }, 20), "counter", "a cantrip that would kill it is stopped");
     assert.equal(priced("blast", { at: { x: 10, y: 4 } }, 60), "counter", "the 3rd-level blast is stopped");
+    // A stat block's answer of no level but only so many uses is as dear (laptop 2026-10-25: a
+    // battle-mage's Counterspell thrown at a Fire Bolt it would have lived through).
+    {
+      const { encounter, state } = fight({
+        caster: { side: "enemy", block: block([zap]), at: { x: 2, y: 4 } },
+        mage: { side: "party", block: block([{ ...own, uses: { count: 1, per: "day" } }, flick]), at: { x: 10, y: 3 } },
+        fighter: { side: "party", block: block([smash]), at: { x: 10, y: 5 } },
+      });
+      state.party.find((one) => one.id === "mage")!.aiHints = { proficiency: "master", temperament: "disciplined" };
+      const mage = rulesetCombatant(encounter, "mage")!;
+      // Out of reach of the most the zap can roll (40).
+      mage.health = { value: 50, max: 60, temp: 0 };
+      encounter.order = ["caster", "mage", "fighter"];
+      const step = applyRulesetCombatChoice(
+        definition,
+        encounter,
+        { actorId: "caster", optionId: "zap", targetIds: ["mage"] },
+        () => 10,
+      );
+      const menu = rulesetWindowOptions(definition, step.state, "mage");
+      assert.ok(
+        menu.some((one) => one.id === "counter"),
+        "it may answer",
+      );
+      assert.notEqual(pickRulesetChoice(definition, state, step.state, "mage", menu)?.choice.optionId, "counter");
+    }
     // Held down itself weighs half again what holding a friend does.
     const holding = (target: string) => {
       const { encounter } = fight({

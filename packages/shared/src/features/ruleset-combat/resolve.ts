@@ -10478,6 +10478,17 @@ export function liftRulesetFightEffects(
     }
     for (const entry of [...combatant.tracked]) {
       if (!combatant.tracked.includes(entry)) continue;
+      // A shape of their own they are still in is kept on their sheet as the fight ends (1.790), so
+      // it does not run out here (laptop 2026-10-25: the card said Wild Shape ran out, the sheet that
+      // they were still a wolf).
+      if (
+        combatant.sheet &&
+        !combatant.defeated &&
+        combatant.shape?.condition === entry.condition &&
+        !entry.concentration &&
+        (entry.source === undefined || entry.source === combatant.id)
+      )
+        continue;
       if (entry.rounds !== null || entry.endsAfter || entry.endsWhenHolder || entry.concentration) {
         lift(combatant, entry.condition, "expired");
         // A clock the fight's end lets run out turns into what it `expires` into (1.261).

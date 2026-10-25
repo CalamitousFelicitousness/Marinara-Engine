@@ -69,21 +69,33 @@ export function TypedInput({
       />
     );
   if (spec.type === "number") {
+    const shown = typeof value === "number" && Number.isFinite(value) ? value : spec.default;
+    const shared = {
+      min: spec.min,
+      max: spec.max,
+      integer: spec.integer,
+      disabled,
+      title,
+      ariaLabel,
+      ariaDescribedBy: describedBy,
+      className: `${inputClass} text-center`,
+    };
+    // A cell nobody filled in, with no default, shows empty rather than its lowest allowed number
+    // (Ruleset 2026-10-25: an unrolled hit-point row read "1"), and stays empty until one is typed.
+    if (shown === undefined)
+      return (
+        <DraftNumberInput
+          {...shared}
+          allowEmpty
+          value={null}
+          placeholder="—"
+          onCommit={(next) => {
+            if (next !== null) onChange(clamp(next, spec.min, spec.max));
+          }}
+        />
+      );
     return (
-      <DraftNumberInput
-        value={
-          typeof value === "number" && Number.isFinite(value) ? value : (spec.default ?? clamp(0, spec.min, spec.max))
-        }
-        onCommit={(next) => onChange(clamp(next, spec.min, spec.max))}
-        min={spec.min}
-        max={spec.max}
-        integer={spec.integer}
-        disabled={disabled}
-        title={title}
-        ariaLabel={ariaLabel}
-        ariaDescribedBy={describedBy}
-        className={`${inputClass} text-center`}
-      />
+      <DraftNumberInput {...shared} value={shown} onCommit={(next) => onChange(clamp(next, spec.min, spec.max))} />
     );
   }
   if (spec.type === "boolean") {

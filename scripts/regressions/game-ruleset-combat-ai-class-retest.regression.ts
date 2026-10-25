@@ -18,6 +18,8 @@
  *   - A held buff is not cast again over itself, and nothing is paid for on its own side while every
  *     foe is sealed away (cloud batch 2026-10-25).
  *   - A form held is not turned back from on its first turn to strike harder in its own shape.
+ *   - A hold on the strongest foe is not traded for one on a lesser foe, and a rage is not entered
+ *     with nothing to strike this turn (cloud AI fights 2026-10-25).
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -134,6 +136,7 @@ try {
     { id: "sphered", label: "Sphered" },
     { id: "beast_shaped", label: "Beast shape" },
     { id: "laughing", label: "Laughing" },
+    { id: "furious", label: "Furious" },
   );
   doc.combat.conditions.push(
     {
@@ -160,6 +163,8 @@ try {
     // Wild Shape's: a form taken, turned back from as a bonus action.
     { condition: "beast_shaped", effects: [], shape: { revert: "bonus" } },
     { condition: "laughing", effects: [] },
+    // Rage's: it comes off as a turn ends with nobody struck.
+    { condition: "furious", effects: [], modifiers: [{ to: "damage", flat: 2 }], endsIdle: true },
   );
   const parsed = parseRulesetDefinition(doc);
   assert.ok(parsed.ok, parsed.ok ? "" : parsed.issues.join("; "));
@@ -580,6 +585,83 @@ try {
     } as unknown as RulesetCombatAction;
     rulesetCombatant(next, "mira")!.actions.splice(-1, 1, hold);
     assert.notEqual(pickRulesetChoice(definition, scene.state, next, "mira")?.option.id, "hold", "the wolves are kept");
+  }
+
+  // ── A hold on the strongest foe is kept, not traded for a hold on a lesser one (cloud AI fights
+  //    2026-10-25: a Hold Person on the paralysed Gladiator let go to hold a Bandit) ──
+  {
+    const hold = {
+      id: "hold",
+      label: "Hold",
+      kind: "ability",
+      budget: "action",
+      concentration: true,
+      targets: { side: "enemy", count: 1 },
+      range: 60,
+      save: { save: "wis_save", difficulty: 14, onSuccess: "negates" },
+      applies: [{ condition: "paralyzed", duration: { rounds: 10 } }],
+    } as unknown as RulesetCombatAction;
+    const scene = fight([
+      { id: "mira", name: "mira", side: "party", block: block([poke]), at: { x: 2, y: 5 } },
+      { id: "ada", name: "ada", side: "party", block: block([smash]), at: { x: 3, y: 5 } },
+      { id: "boss", name: "boss", side: "enemy", block: block([smash, smash], { health: 100 }), at: { x: 9, y: 5 } },
+      { id: "thug", name: "thug", side: "enemy", block: block([poke], { health: 14 }), at: { x: 9, y: 7 } },
+    ]);
+    rulesetCombatant(scene.encounter, "mira")!.actions.push(hold);
+    const cast = applyRulesetCombatChoice(
+      definition,
+      scene.encounter,
+      { actorId: "mira", optionId: "hold", targetIds: ["boss"] },
+      () => 10,
+    );
+    assert.ok(!cast.refused, JSON.stringify(cast.refused));
+    const next = cast.state;
+    assert.ok(
+      rulesetCombatant(next, "boss")!.tracked.some((one) => one.condition === "paralyzed"),
+      "the boss is held",
+    );
+    rulesetCombatant(next, "mira")!.budgets.action = 1;
+    (scene.state.rulesetFight as { encounter: RulesetEncounterState }).encounter = next;
+    const choice = pickRulesetChoice(definition, scene.state, next, "mira");
+    assert.ok(
+      !(choice?.option.id === "hold" && choice.choice.targetIds.includes("thug")),
+      `the boss stays held: ${JSON.stringify(choice)}`,
+    );
+  }
+
+  // ── Rage is not entered when nothing this turn can strike a foe: it ends with the turn (cloud AI
+  //    fights 2026-10-25: a Frenzy entered for a one-cell step) ──
+  {
+    const fury = {
+      id: "fury",
+      label: "Fury",
+      kind: "ability",
+      budget: "bonus",
+      targets: { side: "self", count: 0 },
+      applies: [{ condition: "furious", duration: { rounds: 10 } }],
+    } as unknown as RulesetCombatAction;
+    const far = fight([
+      { id: "grak", name: "grak", side: "party", block: block([smash]), at: { x: 0, y: 0 } },
+      { id: "orc", name: "orc", side: "enemy", block: block([smash]), at: { x: 15, y: 9 } },
+    ]);
+    rulesetCombatant(far.encounter, "grak")!.actions.push(fury);
+    assert.ok(
+      rulesetCombatOptions(definition, far.encounter, "grak").some((one) => one.id === "fury"),
+      "fury is on offer",
+    );
+    assert.ok(
+      ranked(far, "grak").every((one) => one.candidate.action.option.id !== "fury"),
+      "no fury with nobody in reach",
+    );
+    const near = fight([
+      { id: "grak", name: "grak", side: "party", block: block([smash]), at: { x: 2, y: 5 } },
+      { id: "orc", name: "orc", side: "enemy", block: block([smash]), at: { x: 3, y: 5 } },
+    ]);
+    rulesetCombatant(near.encounter, "grak")!.actions.push(fury);
+    assert.ok(
+      ranked(near, "grak").some((one) => one.candidate.action.option.id === "fury"),
+      "fury beside a foe",
+    );
   }
 
   // ── A spell that grows with its slot is cast from the lowest slot that drops its target (laptop

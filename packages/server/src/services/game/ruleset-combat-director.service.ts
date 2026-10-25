@@ -2313,6 +2313,32 @@ function rulesetCandidates(
     }
     return true;
   });
+  // What comes off as its holder ends a turn having struck nobody (1.421, 5e's Rage) is wasted when
+  // nothing it could do this turn harms an opponent: the use is spent and it ends with the turn
+  // (cloud AI fights 2026-10-25: a Frenzy entered for a one-cell step, an Exhaustion for nothing).
+  if (actor && !actor.stirred) {
+    const strikes = [...here, ...moved].some((candidate) => {
+      const target = candidate.targetId ? rulesetCombatant(encounter, candidate.targetId) : undefined;
+      return (candidate.damage ?? 0) > 0 && !!target && target.side !== actor.side;
+    });
+    const idle = new Set(
+      (definition.combat?.conditions ?? []).filter((rule) => rule.endsIdle).map((rule) => rule.condition),
+    );
+    if (!strikes && idle.size > 0)
+      for (let index = own.length - 1; index >= 0; index--) {
+        const option = own[index]!.action.option;
+        const action = actor.actions.find((one) => one.id === option.id);
+        const puts = [...(action?.applies ?? []), ...(action?.appliesSelf ?? [])];
+        const onSelf = option.targets.side === "self" || (action?.appliesSelf ?? []).length > 0;
+        if (
+          onSelf &&
+          puts.some(
+            (one) => idle.has(one.condition) && !actor.tracked.some((entry) => entry.condition === one.condition),
+          )
+        )
+          own.splice(index, 1);
+      }
+  }
   // Helping is aiding a friend against an opponent beside its helper: with none beside it, nothing
   // comes of it (a wolf helping from across the field, a companion helping a friend nobody is near).
   const beside = (cell: { x: number; y: number } | null | undefined) =>
@@ -6849,7 +6875,17 @@ function rulesetHeldWorth(
     return Math.max(0.4, 2 * (1 - Math.exp(-harm / Math.max(1, foeMean))));
   }
   if (!action || action.damage || action.zone || action.heal) return 0.4;
-  const on = (held.targets ?? [actor.id])
+  // Whom it holds now: whoever carries what it put on them, else whom a repeat was aimed at, else
+  // its caster. A held spell keeps no list of its targets unless it repeats, so a Hold Person on the
+  // boss read as one on the caster herself, let go to hold a bandit (cloud AI fights 2026-10-25).
+  const holding = encounter.combatants
+    .filter((one) =>
+      one.tracked.some(
+        (entry) => entry.source === actor.id && entry.concentration && entry.action?.includes(held.actionId),
+      ),
+    )
+    .map((one) => one.id);
+  const on = (holding.length > 0 ? holding : (held.targets ?? [actor.id]))
     .map((id) => rulesetCombatant(encounter, id))
     .filter((one): one is RulesetCombatant => !!one && rulesetCombatStanding(one));
   if (on.length === 0) return 0;

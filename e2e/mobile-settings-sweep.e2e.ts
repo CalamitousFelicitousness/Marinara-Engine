@@ -91,6 +91,8 @@ for (const theme of ["dark", "light"] as const) {
       await expect(coloring).toBeChecked();
       await expect(characters.getByRole("group", { name: "Card Theming" })).toBeVisible();
       await characters.getByRole("button", { name: "Chat", exact: true }).click();
+      await expect(characters.getByRole("button", { name: "Chat", exact: true })).toHaveAttribute("aria-pressed", "true");
+      await expect(characters.getByRole("button", { name: "Exclusive", exact: true })).toHaveAttribute("aria-pressed", "false");
       const metadata = async () => {
         const current = await (await request.get(`/api/chats/${chat.id}`)).json();
         return typeof current.metadata === "string" ? JSON.parse(current.metadata) : current.metadata;

@@ -5496,6 +5496,7 @@ export function ChatSettingsDrawer({
             >
               <button
                 onClick={() => updateMeta.mutate({ id: chat.id, cardCssMode: "disabled" })}
+                aria-pressed={cardCssMode === "disabled"}
                 className={cn(
                   "flex-1 px-3 py-2 text-[0.6875rem] font-medium transition-colors rounded-l-lg",
                   cardCssMode === "disabled"
@@ -5507,6 +5508,7 @@ export function ChatSettingsDrawer({
               </button>
               <button
                 onClick={() => updateMeta.mutate({ id: chat.id, cardCssMode: "exclusive" })}
+                aria-pressed={cardCssMode === "exclusive"}
                 className={cn(
                   "flex-1 px-3 py-2 text-[0.6875rem] font-medium transition-colors",
                   cardCssMode === "exclusive"
@@ -5518,6 +5520,7 @@ export function ChatSettingsDrawer({
               </button>
               <button
                 onClick={() => updateMeta.mutate({ id: chat.id, cardCssMode: "chat" })}
+                aria-pressed={cardCssMode === "chat"}
                 className={cn(
                   "flex-1 px-3 py-2 text-[0.6875rem] font-medium transition-colors rounded-r-lg",
                   cardCssMode === "chat"

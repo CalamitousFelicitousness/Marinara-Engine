@@ -18,6 +18,7 @@ import {
   rulesetCombatHide,
   rulesetCombatOptions,
   rulesetHideLines,
+  rulesetTagWords,
   rulesetItemFacts,
   rulesetItemPromptFacts,
   rulesetSheetBuildSchema,
@@ -353,7 +354,7 @@ try {
   });
   const sheet = who(visible).sheet!;
   const lines = rulesetHideLines(definition, rulesetCheckSources(definition, sheet.build, sheet.live, sheet.items));
-  for (const word of ["bludgeoning except magical", "poison", "fire", "Frightened"])
+  for (const word of ["bludgeoning (not from magical)", "poison", "fire", "Frightened"])
     assert.ok(lines.join("; ").includes(word), word);
   const prompt = renderRulesetSheetBlock(
     definition,
@@ -362,9 +363,12 @@ try {
     {},
     sheet.items,
   );
-  for (const word of ["bludgeoning except magical", "poison", "fire", "Frightened"])
+  for (const word of ["bludgeoning (not from magical)", "poison", "fire", "Frightened"])
     assert.ok(prompt.includes(word), word);
   assert.match(rulesetItemPromptFacts(rulesetItemFacts(definition, armor.item)), /bludgeoning except magical/);
+  // Several tags read as words, by the ruleset's labels where it gives them (ship readiness 2026-10-25).
+  assert.equal(rulesetTagWords(undefined, ["magic_weapon", "silvered"]), "magic weapon or silvered");
+  assert.equal(rulesetTagWords(undefined, ["a", "b", "c"]), "a, b or c");
   const view = directedRulesetView(definition, {
     style: "ruleset",
     party: [],
@@ -415,7 +419,7 @@ try {
     const html = renderToStaticMarkup(
       createElement(QueryClientProvider, { client: queryClient }, createElement(I18nextProvider, { i18n }, component)),
     );
-    for (const word of ["bludgeoning except magical", "Resists:", "Condition immunities: Frightened"])
+    for (const word of ["bludgeoning (not from magical)", "Resists:", "Condition immunities: Frightened"])
       assert.ok(html.includes(word), `rendered defenses include ${word}`);
   }
 

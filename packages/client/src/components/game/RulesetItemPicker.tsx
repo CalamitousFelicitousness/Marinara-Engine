@@ -16,6 +16,7 @@ import {
   type RulesetItemBookEntry,
   type RulesetItemEffectFact,
   type RulesetItemFacts,
+  rulesetTagWords,
 } from "@marinara-engine/shared";
 import { ArtIcon } from "./ArtIcon";
 import { useRulesetCatalog } from "../../hooks/use-capability-packages";
@@ -278,7 +279,7 @@ export function rulesetEffectPhrase(fact: RulesetItemEffectFact, t: TFunction): 
   const names = fact.names
     .map((name, index) =>
       fact.except?.[index]?.length
-        ? t("game.ruleset.hides.except", { type: name, tags: fact.except[index]!.join(" ") })
+        ? t("game.ruleset.hides.except", { type: name, tags: rulesetTagWords(undefined, fact.except[index]!) })
         : name,
     )
     .join(", ");

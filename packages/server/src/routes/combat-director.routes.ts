@@ -1074,6 +1074,19 @@ export async function combatDirectorRoutes(
               ...(enemy.aiHints?.leader ? { leader: true } : {}),
               ...(enemy.start ? { start: enemy.start } : {}),
               ...(enemy.carrying ? { items: enemy.carrying } : {}),
+              // Its attacks by name and its reactions, from the Game Master's own skills: a heal or a
+              // ward names no strike.
+              ...(enemy.skills?.some((skill) => skill.type === "attack" || skill.reaction)
+                ? {
+                    attacks: enemy.skills.flatMap((skill) =>
+                      skill.reaction
+                        ? [{ name: skill.name, reaction: skill.reaction }]
+                        : skill.type === "attack"
+                          ? [{ name: skill.name }]
+                          : [],
+                    ),
+                  }
+                : {}),
             })),
             cards,
             playerName: persona?.name ?? null,

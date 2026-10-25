@@ -76,7 +76,11 @@ export function rulesetCombatRecapLines(definition: RulesetDefinition, summary: 
   // both outrank plain "down": the ruleset's own dying rule is what put them there.
   const standing = (member: RulesetEncounterSummary["party"][number]) =>
     member.stable ? "stable" : member.dying ? "dying" : member.down ? "down" : "";
-  const party = summary.party.map((member) => {
+  // What was called into the fight is no member of the party (laptop 2026-10-25: Conjure Animals'
+  // horses joined the story's party, still Squeezing): said apart, for the story to end.
+  const members = summary.party.filter((member) => !member.called);
+  const called = summary.party.filter((member) => member.called && member.health > 0 && !member.left);
+  const party = members.map((member) => {
     const notes = [
       member.left ? "left the fight" : "",
       standing(member),
@@ -87,6 +91,10 @@ export function rulesetCombatRecapLines(definition: RulesetDefinition, summary: 
     return `${member.name}: ${member.health}/${member.maxHealth} ${healthLabel}${suffix}`;
   });
   const lines = [`Party on ${definition.name} rules: ${party.join("; ")}`];
+  if (called.length > 0)
+    lines.push(
+      `Called into the fight, not party members: ${called.map((member) => member.name).join(", ")}. They go when what called them ends; do not add them to the party.`,
+    );
   const alive = summary.enemies.filter((enemy) => !enemy.defeated);
   if (alive.length > 0) {
     const left = alive.map((enemy) => `${enemy.name} (${enemy.health}/${enemy.maxHealth})`).join(", ");
@@ -121,7 +129,7 @@ export function rulesetCombatRecapLines(definition: RulesetDefinition, summary: 
   const dyingCondition = combat?.dying?.condition;
   const lingeringOf = (member: RulesetEncounterSummary["party"][number]) =>
     member.conditions.filter((id) => id !== dyingCondition);
-  const lingering = summary.party.filter((member) => lingeringOf(member).length > 0);
+  const lingering = members.filter((member) => lingeringOf(member).length > 0);
   if (lingering.length > 0) {
     const who = lingering
       .map(

@@ -598,12 +598,21 @@ export function rulesetContextualCheck(items: readonly RulesetContextualItem[]):
   return out;
 }
 
+/** Item tags as words: each by the ruleset's label for it (its id read as words without one),
+ *  lowercased, joined with "or". */
+export function rulesetTagWords(definition: RulesetDefinition | undefined, tags: readonly string[]): string {
+  const words = tags.map((id) =>
+    (definition?.items?.tags?.find((tag) => tag.id === id)?.label ?? id.replace(/_/g, " ")).toLowerCase(),
+  );
+  return words.length > 1 ? `${words.slice(0, -1).join(", ")} or ${words.at(-1)}` : (words[0] ?? "");
+}
+
 /** Typed defenses, in the same words on the sheet, battle status and Game Master prompt (1.132). */
 export function rulesetHideLines(
   definition: RulesetDefinition,
   sources: readonly Pick<RulesetCheckSource, "resist" | "vulnerable" | "immune" | "conditionImmunities">[],
   text: (key: string, values: Record<string, string>) => string = (key, values) => {
-    if (key === "game.ruleset.hides.except") return `${values.type} except ${values.tags}`;
+    if (key === "game.ruleset.hides.except") return `${values.type} (not from ${values.tags})`;
     const labels: Record<string, string> = {
       resist: "Resists",
       vulnerable: "Vulnerable to",
@@ -616,8 +625,13 @@ export function rulesetHideLines(
   return (["resist", "vulnerable", "immune", "conditionImmunities"] as const).flatMap((kind) => {
     const names = sources.flatMap((source) =>
       (source[kind] ?? []).map((entry) => {
+        // The tags a blow is let through by, by the ruleset's own words for them (ship readiness
+        // 2026-10-25: "fire except magic_weapon silvered").
         if (typeof entry !== "string")
-          return text("game.ruleset.hides.except", { type: entry.type, tags: entry.except.join(" ") });
+          return text("game.ruleset.hides.except", {
+            type: entry.type,
+            tags: rulesetTagWords(definition, entry.except),
+          });
         return kind === "conditionImmunities"
           ? (definition.sheet.live.conditions.find((condition) => condition.id === entry)?.label ?? entry)
           : entry;

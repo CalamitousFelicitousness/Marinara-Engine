@@ -299,6 +299,7 @@ export interface DirectedRulesetCallout {
  *   - `approach`: nothing in reach, so it closed on the nearest opponent (`sprinted` with a sprint).
  *   - `driven`: a condition drove it toward or away from somebody.
  *   - `nothingWorth`: nothing it could do was worth its price, so it ended its turn.
+ *   - `sparing`: told to spare them, it ended its turn, since every blow it had might kill.
  *   - `noWay`: what it meant to do could not be carried out from where it got to, so it ended its turn.
  *   - `holding`: told to hold or fall back, it stayed where it was with nothing in reach.
  *   - `leavesHarm`: with nothing worth doing, it stepped out of a lasting area striking it there.
@@ -350,6 +351,7 @@ export type DirectedRulesetReason =
   | {
       why:
         | "nothingWorth"
+        | "sparing"
         | "cannotAct"
         | "noWay"
         | "holding"

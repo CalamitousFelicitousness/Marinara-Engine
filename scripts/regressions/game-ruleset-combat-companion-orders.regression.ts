@@ -243,6 +243,8 @@ try {
     };
     const spared = pick(field(), { posture: "hold", spare: true }, [], frail);
     assert.notEqual(spared?.option.id, "bolt", `no killing bolt: ${JSON.stringify(spared?.choice)}`);
+    // It says it held back to spare them, not that nothing was worth the price (laptop 2026-10-25).
+    assert.equal(spared?.spares, true, `its turn ends to spare them: ${spared?.option.kind}`);
   }
 
   // ── Spare counts a blow lethal by the most its dice can roll (re-test 2026-10-23) ──

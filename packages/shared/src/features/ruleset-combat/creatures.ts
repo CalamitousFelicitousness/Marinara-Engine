@@ -445,6 +445,9 @@ export function rulesetStatBlockFromCreature(
 export function rulesetTierStatBlock(
   definition: RulesetDefinition,
   tierId: string | undefined,
+  /** What the Game Master called its attacks, each one the tier's numbers under that name (laptop
+   *  playtest 2026-10-25: an invented duelist's Rapier and Dagger both read "Attack"). */
+  names: readonly string[] = [],
 ): { block: RulesetStatBlock; tier: RulesetCombatThreatTier } | null {
   const combat = definition.combat;
   const tiers = combat?.threat?.tiers ?? [];
@@ -453,6 +456,7 @@ export function rulesetTierStatBlock(
   // belongs: too weak is a disappointing fight, too strong is a dead party.
   const tier = tiers.find((entry) => entry.id === tierId) ?? tiers[0]!;
   const middle = (band: readonly [number, number]) => Math.floor((band[0] + band[1]) / 2);
+  const named = [...new Set(names.map((name) => name.trim()).filter(Boolean))].slice(0, RULESET_TIER_ATTACK_NAMES_MAX);
   return {
     tier,
     block: {
@@ -460,18 +464,56 @@ export function rulesetTierStatBlock(
       defense: tier.defense,
       initiativeModifier: 0,
       tier: tier.id,
-      actions: [
-        {
-          id: "strike",
-          // Its own name is on the log beside it already: "Orc Raider 2 readies Orc Raider 2: attack".
-          name: "Attack",
-          budget: combat.economy.budgets[0]!.id,
-          toHit: tier.toHit,
-          damage: { count: 0, sides: 0, flat: Math.max(1, middle(tier.damagePerRound)) },
-        },
-      ],
+      actions: (named.length > 0 ? named : ["Attack"]).map((name, index) => ({
+        id: index === 0 ? "strike" : `strike-${index + 1}`,
+        // Its own name is on the log beside it already: "Orc Raider 2 readies Orc Raider 2: attack".
+        name,
+        budget: combat.economy.budgets[0]!.id,
+        toHit: tier.toHit,
+        damage: { count: 0, sides: 0, flat: Math.max(1, middle(tier.damagePerRound)) },
+      })),
     },
   };
+}
+
+/** How many named attacks an opponent built off its tier keeps. */
+export const RULESET_TIER_ATTACK_NAMES_MAX = 4;
+
+/**
+ * A reaction a creature of this ruleset's bestiaries has, found by its name, as a stat block takes it
+ * (laptop playtest 2026-10-25: the Game Master gave an invented duelist a "Parry", which nothing in the
+ * fight could read). The first creature holding one of that name lends it; null when none does.
+ */
+export function rulesetBestiaryReaction(
+  definition: RulesetDefinition,
+  catalogs: RulesetCatalogEntriesById,
+  name: string,
+): RulesetStatBlockAction | null {
+  const combat = definition.combat;
+  const wanted = plainly(name);
+  if (!combat || !wanted) return null;
+  const budgets = new Set(combat.economy.budgets.map((budget) => budget.id));
+  for (const entries of Object.values(catalogs))
+    for (const entry of entries)
+      for (const action of entry.creature?.actions ?? [])
+        if (
+          action.reaction &&
+          budgets.has(action.budget) &&
+          (plainly(action.name) === wanted || plainly(action.id) === wanted)
+        )
+          return creatureAction(action);
+  return null;
+}
+
+/** The names of the reactions this ruleset's bestiaries hold, once each, for the Game Master. */
+export function rulesetBestiaryReactionNames(catalogs: RulesetCatalogEntriesById, max = 40): string[] {
+  const names = new Map<string, string>();
+  for (const entries of Object.values(catalogs))
+    for (const entry of entries)
+      for (const action of entry.creature?.actions ?? [])
+        if (action.reaction && !names.has(plainly(action.name)) && names.size < max)
+          names.set(plainly(action.name), action.name);
+  return [...names.values()].sort((a, b) => a.localeCompare(b));
 }
 
 /** A sequence's steps with some left out (1.627), a step made after another's hit still pointing at

@@ -140,6 +140,7 @@ import {
   RULESET_PROPOSED_SHEET_REPLACES,
   rulesetProposedStatBlock,
   rulesetTierStatBlock,
+  rulesetBestiaryReaction,
   rulesetWindowMoment,
   rulesetZonesShown,
   rulesetBoardShading,
@@ -188,6 +189,7 @@ import {
   type RulesetCombatant,
   type RulesetCombatantInput,
   type RulesetStatBlock,
+  type RulesetStatBlockAction,
   type RulesetCombatBehavior,
   type RulesetDefinition,
   type RulesetTargetPreference,
@@ -373,6 +375,9 @@ export interface RulesetFightOpponent {
   items?: string[];
   /** What an invented one is, by the ruleset's creature type id: a humanoid cultist. */
   creatureType?: string;
+  /** The attacks the Game Master wrote for it in the Engine's own terms, by name, and whether each is
+   *  a reaction: what names an invented one's strikes, and which bestiary reactions it borrows. */
+  attacks?: Array<{ name: string; reaction?: string }>;
 }
 
 export interface RulesetFightSeed {
@@ -585,6 +590,24 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
     }
     const proposed =
       opponent.proposed === undefined ? null : rulesetProposedCreatureSchema.safeParse(opponent.proposed);
+    // An invented one's reactions, written as the Engine's own attacks (laptop playtest 2026-10-25: a
+    // duelist's "Parry" never fired), are each the reaction this ruleset's bestiary has by that name;
+    // one it has nowhere is said, since nothing in the fight could take it.
+    const withReactions = <T extends RulesetStatBlock>(block: T): T => {
+      const has = new Set(block.actions.flatMap((one) => [one.id, one.name.toLowerCase()]));
+      const lent: RulesetStatBlockAction[] = [];
+      for (const attack of opponent.attacks ?? []) {
+        if (!attack.reaction || has.has(attack.name.toLowerCase())) continue;
+        const reaction = rulesetBestiaryReaction(definition, input.bestiary, attack.name);
+        if (!reaction || has.has(reaction.id)) {
+          if (!reaction) adjustments.push(`${opponent.name}: this ruleset has no reaction called "${attack.name}".`);
+          continue;
+        }
+        has.add(reaction.id).add(attack.name.toLowerCase());
+        lent.push(reaction);
+      }
+      return lent.length > 0 ? { ...block, actions: [...block.actions, ...lent] } : block;
+    };
     // A creature invented for this fight in the ruleset's own terms: a mage with slots and spells.
     // Read leniently, held to its tier the way a plain invention is, and held again once it is built.
     if (proposed?.success && proposed.data.sheet) {
@@ -647,7 +670,10 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
         id: opponent.id,
         name: opponent.name,
         side: "enemy",
-        block: typed({ ...extras, sheet: held.sheet, ...(tier ? { tier: tier.id } : {}) }, opponent.creatureType),
+        block: typed(
+          withReactions({ ...extras, sheet: held.sheet, ...(tier ? { tier: tier.id } : {}) }),
+          opponent.creatureType,
+        ),
       });
       if (tier) heldToTier.set(opponent.id, tier);
       continue;
@@ -661,7 +687,7 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
           id: opponent.id,
           name: opponent.name,
           side: "enemy",
-          block: typed(withUsualSpeed(clamped.block), opponent.creatureType),
+          block: typed(withUsualSpeed(withReactions(clamped.block)), opponent.creatureType),
         });
         continue;
       }
@@ -669,7 +695,11 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
     if (proposed && !proposed.success) {
       adjustments.push(`The proposed stat block for ${opponent.name} could not be read, so its tier was used.`);
     }
-    const built = rulesetTierStatBlock(definition, opponent.tier);
+    const built = rulesetTierStatBlock(
+      definition,
+      opponent.tier,
+      (opponent.attacks ?? []).filter((one) => !one.reaction).map((one) => one.name),
+    );
     if (!built) {
       return {
         ok: false,
@@ -684,7 +714,7 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
       id: opponent.id,
       name: opponent.name,
       side: "enemy",
-      block: typed(withUsualSpeed(built.block), opponent.creatureType),
+      block: typed(withUsualSpeed(withReactions(built.block)), opponent.creatureType),
     });
   }
 
@@ -2134,6 +2164,9 @@ interface RulesetCandidate {
   expected?: number;
   /** Whom of the other side it would likely drop, for orders that spare them. */
   drops?: string[];
+  /** An end of its turn because every blow it had would kill, under orders to spare (laptop
+   *  2026-10-25: such a turn read "nothing worth the price"). */
+  spares?: true;
   /** Why it is worth more against its target than its forecast says (I1), for its reasons. */
   edge?: RulesetBlowEdge;
   /** A limited use thrown at worse than even odds: whom it would like to hit adds nothing to it. */
@@ -5854,7 +5887,8 @@ function rulesetPickReasons(
   );
   reasons.splice(0, reasons.length, ...once);
   if (walked) reasons.push({ why: "walked", cells: walked });
-  if (reasons.length === 0 && candidate.action.option.kind === "end-turn") reasons.push({ why: "nothingWorth" });
+  if (reasons.length === 0 && candidate.action.option.kind === "end-turn")
+    reasons.push({ why: candidate.action.spares ? "sparing" : "nothingWorth" });
   return reasons;
 }
 
@@ -6629,7 +6663,7 @@ function weighRulesetOrders(
       const end = rulesetCombatOptions(definition, encounter, actor.id).find((option) => option.kind === "end-turn");
       if (end)
         candidates.splice(0, candidates.length, {
-          action: { choice: { actorId: actor.id, optionId: end.id, targetIds: [] }, option: end },
+          action: { choice: { actorId: actor.id, optionId: end.id, targetIds: [] }, option: end, spares: true },
           hold: true,
         });
       else

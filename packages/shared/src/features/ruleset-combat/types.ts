@@ -4746,6 +4746,8 @@ export interface RulesetEncounterSummary {
     conditions: string[];
     /** Gone from the fight alive, by a teleport that leaves it (1.279). */
     left?: true;
+    /** Called into the fight (a summon) and kept by no sheet: no member of the story's party. */
+    called?: true;
   }>;
   enemies: Array<{
     id: string;

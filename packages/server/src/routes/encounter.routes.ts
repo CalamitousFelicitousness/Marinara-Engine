@@ -11,6 +11,8 @@ import {
   normalizeGameInventoryStacks,
   rulesetCombatStyle,
   rulesetProposedCreatureSchema,
+  rulesetBestiaryReactionNames,
+  type RulesetCatalogEntriesById,
   type CombatItemEffect,
   type RulesetDefinition,
   type WorldElementSet,
@@ -529,6 +531,8 @@ export interface EncounterRulesetBrief {
   /** The creature types an invented enemy is one of (Hold Person holds only a humanoid). */
   creatureTypes: string[];
   sheet: EncounterSheetBrief;
+  /** The reactions its bestiaries hold, by name: the only ones an invented enemy can take. */
+  reactions?: string[];
 }
 
 /** The sheet brief, with the names each catalog-fed list offers read out of the catalogs that feed
@@ -615,14 +619,16 @@ export async function encounterRulesetBrief(
   const combat = definition.combat;
   if (!combat) return null;
   const bestiary: EncounterRulesetBrief["bestiary"] = [];
+  const creatures: RulesetCatalogEntriesById = {};
   for (const catalog of definition.catalogs ?? []) {
-    if (catalog.holds !== "creatures" || bestiary.length >= ENCOUNTER_BESTIARY_INDEX_MAX) continue;
+    if (catalog.holds !== "creatures") continue;
     try {
       const read = await loadRulesetCatalogEntries(packageId, definition, catalog);
       if (!read.ok) {
         logger.warn("[game/combat:init] Bestiary %s of %s could not be read", catalog.id, definition.id);
         continue;
       }
+      creatures[catalog.id] = read.entries;
       for (const entry of read.entries) {
         if (!entry.creature || bestiary.length >= ENCOUNTER_BESTIARY_INDEX_MAX) break;
         bestiary.push({ label: entry.label, tier: entry.creature.tier });
@@ -640,6 +646,7 @@ export async function encounterRulesetBrief(
     damageTypes: [...(combat.damageTypes ?? [])],
     creatureTypes: (combat.creatureTypes?.types ?? []).map((type) => type.id),
     sheet: await encounterSheetBrief(definition, packageId),
+    reactions: rulesetBestiaryReactionNames(creatures),
   };
 }
 
@@ -829,6 +836,9 @@ export function buildInitPrompt(
     inst += `- Inside "proposed", every id must come from this ruleset: budgets are ${ruleset.budgets.join(", ") || "none"}; saves are ${ruleset.saves.join(", ") || "none"}; damage types are ${ruleset.damageTypes.join(", ") || "untyped only"}. A name this ruleset does not have is dropped.\n`;
     inst += `- Keep the hp, attack, defense, speed and level fields as well. They are the Engine's own numbers and are used outside the fight.\n`;
     inst += `- Gear: an enemy has on it only what its bestiary entry rolls for, which is often nothing. Give any enemy things to carry whenever it fits who they are and where the fight is: a bandit with a healing potion, a guard with the cell key, a cultist with the letter that names their master, a scout with a horn. Not every enemy needs something, but an encounter where nobody carries anything is the exception. To decide what it carries yourself (a bandit with two healing potions, a guard with the cell key), give "carrying": ["item name", "item name"], one line an item, named exactly as this ruleset's items are; it then has exactly those, and [] means nothing at all. It uses what it can in the fight, and what is left drops when it is beaten. Leave it out to let its bestiary decide. Whatever the scene or your own narration says an enemy has (the stolen salves, the key on a belt) goes in its "carrying", or the fight never knows it is there.\n`;
+    inst += ruleset.reactions?.length
+      ? `- Reactions: an enemy's reaction goes in its "attacks" with "reaction" set, and only one this ruleset's bestiary has works, named exactly as it is there: ${ruleset.reactions.join(", ")}. Write no other reaction for it.\n`
+      : `- Reactions: this ruleset's bestiary has none, so write no reaction for an enemy.\n`;
     inst += `- Lair: give "inLair": true to an enemy the party is fighting inside its own lair (a dragon in its cave, a lich in its tomb). Its lair then acts each round. Leave it out anywhere else.\n`;
     if (tactical) {
       inst += `- Where each begins on the board: you place every enemy. Give an enemy "start" when the scene says where it is: "front" or "rear" of its own side, "ahead" of it alone, on the party's "flank", "behind" the party, "among" them, or "hidden" in cover. Leave it out to keep it in its side's formation. The players place their own characters, so give a party member "start" ONLY when the story put them somewhere as the fight began (the wizard who walked into the cavern first is at the "front" when the goblins spring); leave it out for everybody else.\n`;

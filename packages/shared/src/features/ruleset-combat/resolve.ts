@@ -10468,6 +10468,15 @@ export function liftRulesetFightEffects(
     const dazed = combatant.dazed;
     delete combatant.dazed;
     if (dazed?.condition) lift(combatant, dazed.condition, "expired");
+    // Squeezed between the board's walls (1.665): out of the fight there are none (laptop 2026-10-25:
+    // a party member left the fight still Squeezing).
+    if (combatant.squeezedFrom !== undefined) {
+      combatant.span = combatant.squeezedFrom;
+      delete combatant.squeezedFrom;
+      const squeezing = definition.combat?.sizes?.squeezing?.condition;
+      if (squeezing && combatant.tracked.some((entry) => entry.condition === squeezing))
+        lift(combatant, squeezing, "expired");
+    }
     // What an aura spread or the fight kept on (1.263) was never on a sheet, so it simply goes.
     if (combatant.tracked.some((entry) => entry.aura || entry.kept)) {
       combatant.tracked = combatant.tracked.filter((entry) => !entry.aura && !entry.kept);
@@ -19359,6 +19368,7 @@ export function rulesetEncounterSummary(
           stable: combatant.stable,
           conditions: rulesetCombatConditions(definition, combatant),
           ...(combatant.away?.left ? { left: true as const } : {}),
+          ...(combatant.calledBy !== undefined && !combatant.calledKept ? { called: true as const } : {}),
         };
       }),
     enemies: state.combatants

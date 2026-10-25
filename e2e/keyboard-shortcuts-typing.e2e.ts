@@ -73,16 +73,20 @@ for (const theme of ["dark", "light"] as const) {
     });
     const fixture = page.locator("[data-keyboard-typing-fixture]");
     const help = page.getByRole("dialog", { name: "Keyboard shortcuts", exact: true });
+    const outside = fixture.getByRole("button", { name: "Outside text fields" });
     const results: unknown[] = [];
     try {
       // Verify the real global listener has attached before testing fields during initial app startup.
-      await fixture.getByRole("button", { name: "Outside text fields" }).click();
+      await outside.focus();
       await expect(async () => {
         await page.keyboard.press("?");
         await expect(help).toBeVisible({ timeout: 500 });
       }).toPass({ timeout: 10_000 });
+      await expect.poll(() => help.evaluate((dialog) => dialog.contains(document.activeElement))).toBe(true);
       await page.keyboard.press("Escape");
       await expect(help).toHaveCount(0);
+      // Modal restores its opener on the next animation frame; finish that before focusing an editor.
+      await expect(outside).toBeFocused();
       for (const scope of [
         fixture.locator("[data-light-fields]"),
         fixture.locator("marinara-keyboard-shadow-fixture"),
@@ -90,6 +94,7 @@ for (const theme of ["dark", "light"] as const) {
         for (const name of ["Textarea", "Input", "Editable"]) {
           const field = scope.getByRole("textbox", { name, exact: true });
           await field.focus();
+          await expect(field).toBeFocused();
           await page.keyboard.press("?");
           try {
             if (name === "Editable") await expect(field).toHaveText("?");
@@ -110,7 +115,7 @@ for (const theme of ["dark", "light"] as const) {
         }
       }
       // The help binding must remain available when focus is outside an editable field.
-      await fixture.getByRole("button", { name: "Outside text fields" }).click();
+      await outside.focus();
       await page.keyboard.press("?");
       await expect(help).toBeVisible();
       await page.screenshot({ path: info.outputPath("outside-field-help.png") });

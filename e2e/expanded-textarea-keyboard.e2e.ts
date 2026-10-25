@@ -55,6 +55,8 @@ for (const theme of ["dark", "light"] as const) {
     });
     await page.addInitScript((v) => localStorage.setItem("marinara:whats-new:seen-version", v), version);
     await page.goto("/");
+    // AppShell re-baselines landscape at 80/320ms after an orientation event, including the initial device rotation.
+    if (mobile) await page.waitForTimeout(400);
     // Exercise the real shared component with a caller-supplied footer, as package prompt editors use it.
     await page.evaluate(async () => {
       const { ensureMarinaraHost } = await import("/src/lib/marinara-host.ts" as string);

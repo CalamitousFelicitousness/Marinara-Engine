@@ -120,6 +120,26 @@ try {
   assert.deepEqual(metadataConverted.effectiveConnection, withMetadata.effectiveConnection);
   assert.equal(await formatGeneratedImageForStorage(metadataConverted), metadataConverted, "WebP is not re-encoded");
 
+  const jpeg = await sharp(png).jpeg({ quality: 45 }).toBuffer();
+  const tinyPng = await sharp(png).resize(1, 1).png().toBuffer();
+  for (const [input, mimeType, ext] of [
+    [jpeg, "image/jpeg", "jpg"],
+    [tinyPng, "image/png", "png"],
+  ] as const) {
+    const encoded = await sharp(input).keepMetadata().webp({ quality: 95, alphaQuality: 100 }).toBuffer();
+    assert.ok(encoded.length > input.length, `${ext} fixture must produce a larger WebP`);
+    const source = { ...withMetadata, base64: input.toString("base64"), mimeType, ext };
+    const selected = await formatGeneratedImageForStorage(source);
+    assert.equal(selected.mimeType, "image/webp", "the explicit format selection also applies when WebP is larger");
+    assert.equal(selected.ext, "webp");
+    assert.deepEqual(Buffer.from(selected.base64, "base64"), encoded);
+    assert.equal(selected.effectivePrompt, source.effectivePrompt);
+    assert.deepEqual(selected.effectiveConnection, source.effectiveConnection);
+    const filePath = saveImageToDisk("chat", selected.base64, selected.ext, { shared: true });
+    assert.ok(filePath.endsWith(".webp"));
+    assert.deepEqual(readFileSync(join(directory, "gallery", filePath)), encoded);
+  }
+
   // Invalid quality never breaks generation. Boundary values are clamped and smaller quality reduces this fixture.
   await settings.set("ui", JSON.stringify({ saveGeneratedImagesAsWebp: true, generatedImageWebpQuality: -100 }));
   const smallest = await generate();

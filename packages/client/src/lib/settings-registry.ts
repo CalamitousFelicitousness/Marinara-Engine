@@ -734,7 +734,7 @@ export const SETTINGS_SEARCHABLE_CONTROLS: readonly SettingsSearchableControlMet
     labelKey: "settings.controls.generatedImageWebp.label",
     label: "Save generated images as WebP",
     description:
-      "Store new generated images as smaller WebP files. Existing images stay unchanged. When conversion is unavailable, keep the original image.",
+      "Store new generated images as WebP. This can reduce storage, depending on the image and quality. Existing images stay unchanged. When conversion is unavailable, keep the original image.",
     descriptionKey: "settings.controls.generatedImageWebp.help",
     aliases: ["webp", "png", "image", "format", "storage"],
     kind: "Toggle",

@@ -3,7 +3,7 @@
 // came from, and never in Game Mode), a video attachment never reaches a model prompt as an image or a
 // readable file, and attaching one does not change Advanced Memory's history fingerprint.
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
@@ -20,6 +20,8 @@ const requireServer = createRequire(new URL("../../packages/server/package.json"
 const Fastify = requireServer("fastify") as typeof import("fastify").default;
 const { getDB, closeDB } = await import("../../packages/server/src/db/connection.js");
 const { galleryRoutes } = await import("../../packages/server/src/routes/gallery.routes.js");
+const { gameRoutes } = await import("../../packages/server/src/routes/game.routes.js");
+const { getSharp } = await import("../../packages/server/src/services/image/sharp-runtime.js");
 const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
 const { createConnectionsStorage } = await import("../../packages/server/src/services/storage/connections.storage.js");
 const { createGalleryStorage } = await import("../../packages/server/src/services/storage/gallery.storage.js");
@@ -84,6 +86,7 @@ const db = await getDB();
 const app = Fastify();
 app.decorate("db", db);
 await app.register(galleryRoutes, { prefix: "/api/gallery" });
+await app.register(gameRoutes, { prefix: "/api/game" });
 
 try {
   await new Promise<void>((resolve) => provider.listen(0, "127.0.0.1", resolve));
@@ -229,6 +232,48 @@ try {
   const gameClip = await generate({ chatId: game.id, galleryImageId: gameImage.id });
   assert.equal(gameClip.messageId, null, "a Game clip is not attached to a message");
   assert.equal((await videoAttachments(gameTurn.id)).message.length, 0);
+
+  // Game scene animation also accepts opt-in WebP saves, converting only the provider reference to PNG.
+  await chats.patchMetadata(game.id, { gameVideoConnectionId: video.id });
+  const sharp = await getSharp();
+  const scene = sharp({
+    create: { width: 32, height: 32, channels: 4, background: { r: 20, g: 30, b: 40, alpha: 0.5 } },
+  });
+  const webpScene = await scene.clone().webp().toBuffer();
+  const generateGameClip = async (input: Record<string, unknown>) => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/game/generate-scene-video",
+      payload: { chatId: game.id, promptOverride: "The lantern sways in the wind.", ...input },
+    });
+    assert.equal(response.statusCode, 200, response.body);
+    const sent = JSON.parse(comfyPrompts.at(-1)!) as { prompt: { "1": { inputs: { image: string } } } };
+    return Buffer.from(sent.prompt["1"].inputs.image, "base64");
+  };
+  for (const [ext, bytes] of [
+    ["png", await scene.clone().png().toBuffer()],
+    ["jpg", await scene.clone().jpeg().toBuffer()],
+    ["webp", webpScene],
+  ] as const) {
+    const filePath = `${game.id}/scene.${ext}`;
+    writeFileSync(join(fixtureDir, "gallery", filePath), bytes);
+    const picture = await gallery.create({ chatId: game.id, filePath, prompt: "A lantern" });
+    assert.ok(picture);
+    const reference = await generateGameClip({ galleryImageId: picture.id });
+    if (ext === "webp") {
+      assert.equal((await sharp(reference).metadata()).format, "png");
+      assert.deepEqual(await sharp(reference).raw().toBuffer(), await sharp(bytes).raw().toBuffer());
+    } else {
+      assert.deepEqual(reference, bytes, "existing PNG/JPEG references retain their original bytes");
+    }
+    assert.deepEqual(readFileSync(join(fixtureDir, "gallery", filePath)), bytes, "the saved image is unchanged");
+  }
+  const illustrationDir = join(fixtureDir, "game-assets", "backgrounds", "illustrations");
+  mkdirSync(illustrationDir, { recursive: true });
+  writeFileSync(join(illustrationDir, "webp-scene.webp"), webpScene);
+  const currentReference = await generateGameClip({ illustrationTag: "backgrounds:illustrations:webp-scene" });
+  assert.equal((await sharp(currentReference).metadata()).format, "png");
+  assert.deepEqual(await sharp(currentReference).raw().toBuffer(), await sharp(webpScene).raw().toBuffer());
 
   // The newest reply's shown swipe gets the clip.
   assert.deepEqual(

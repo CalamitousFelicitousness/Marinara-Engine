@@ -124,7 +124,9 @@ export function shiftCombatTemperament(
  * companion's default), `follow` the leader onto whoever they are attacking, `protect` one friend
  * (`protectId`), `hold` its ground, stay `back` out of harm's way, or `retreat` from the fight.
  */
-export const COMBAT_POSTURES = ["guard", "follow", "protect", "hold", "back", "retreat"] as const;
+/** `free` fights on its own: whoever it judges best, anywhere on the board, with nobody to stay by
+ *  (laptop playtest 2026-10-25). `guard` stays the default. */
+export const COMBAT_POSTURES = ["guard", "follow", "free", "protect", "hold", "back", "retreat"] as const;
 export type CombatPosture = (typeof COMBAT_POSTURES)[number];
 /** A companion's standing orders: its posture, and whether it keeps its best for when it matters
  *  (`conserve`), heals and helps before anything else (`heal`), and beats opponents without killing

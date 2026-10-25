@@ -1957,6 +1957,7 @@
   "game.combat.ai.orderSummary": "{{name}}: {{posture}}",
   "game.combat.ai.posture.back": "Stay back",
   "game.combat.ai.posture.follow": "Attack my target",
+  "game.combat.ai.posture.free": "Fight on its own",
   "game.combat.ai.posture.guard": "Guard me",
   "game.combat.ai.posture.hold": "Hold position",
   "game.combat.ai.posture.protect": "Protect {{name}}",

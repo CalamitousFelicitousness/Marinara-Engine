@@ -6597,7 +6597,8 @@ function rulesetPartyLeader(
 
 /**
  * What a companion's orders say it goes for (P7), onto each candidate: whoever the leader is
- * attacking (`follow`), an opponent beside the one it guards or protects, and help for that one;
+ * attacking (`follow`), an opponent beside the one it guards or protects, and help for that one
+ * (fighting on its own, `free`, it has no charge and no leash and picks as an opponent does);
  * never finishing anybody with a blow that would kill rather than knock out (`spare`); and nowhere
  * to walk to while it holds its ground. The weights its orders change are `chooseCombatCandidate`'s.
  */

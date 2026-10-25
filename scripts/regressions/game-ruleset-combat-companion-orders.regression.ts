@@ -193,6 +193,9 @@ try {
     const picked = pick(loose);
     const gap = (to: { x: number; y: number }) => Math.max(Math.abs(to.x - 8), Math.abs(to.y - 2));
     assert.ok(!picked?.to || gap(picked.to) <= 3, `it stays by Ada: ${JSON.stringify(picked?.choice)}`);
+    // Fighting on its own it has no leash: it goes after a foe however far that takes it from Ada.
+    const roaming = pick(loose, { posture: "free" });
+    assert.ok(roaming?.to && gap(roaming.to) > 3, `it goes after them: ${JSON.stringify(roaming?.choice)}`);
     // Strayed off it with nobody in reach, it neither hides nor waits where it is: it walks back.
     const strayed = field([smash], {
       mira: { side: "party", block: block([smash]), at: { x: 1, y: 9 } },

@@ -7,23 +7,30 @@ const originalFetch = globalThis.fetch;
 const originalLookup = dns.lookup;
 dns.lookup = (async () => [{ address: "8.8.8.8", family: 4 }]) as typeof dns.lookup;
 let pollingReference: unknown;
+let contentReference: string | undefined;
 let origin = "https://openrouter.ai";
-const requests: Array<{ method: string; url: URL }> = [];
+const requests: Array<{ method: string; url: URL; authorization: string | null }> = [];
 const mp4 = Buffer.from("000000186674797069736f6d0000020069736f6d6d703432", "hex");
 globalThis.fetch = async (input, init) => {
   const url = new URL(String(input));
-  assert.equal(url.origin, origin, "Only the configured API origin may receive authorization");
-  assert.equal(new Headers(init?.headers).get("authorization"), "Bearer synthetic-fixture-key");
+  const authorization = new Headers(init?.headers).get("authorization");
+  assert.equal(
+    authorization,
+    url.origin === origin ? "Bearer synthetic-fixture-key" : null,
+    "Only the configured API origin may receive authorization, including the initial content request",
+  );
+  assert.ok([origin, "https://cdn.example"].includes(url.origin), "All HTTP responses are synthetic");
   const method = init?.method || "GET";
-  requests.push({ method, url });
+  requests.push({ method, url, authorization });
   if (method === "POST") {
     return Response.json({
       id: "fixture",
       ...(pollingReference === undefined ? {} : { polling_url: pollingReference }),
     });
   }
-  if (url.pathname.endsWith("/content")) return new Response(mp4, { headers: { "content-type": "video/mp4" } });
-  return Response.json({ status: "completed", unsigned_urls: [`${origin}/api/v1/videos/fixture/content`] });
+  if (url.pathname.endsWith("/content") || url.origin === "https://cdn.example")
+    return new Response(mp4, { headers: { "content-type": "video/mp4" } });
+  return Response.json({ status: "completed", ...(contentReference ? { unsigned_urls: [contentReference] } : {}) });
 };
 const { generateVideo } = await import("../../packages/server/src/services/video/video-generation.js");
 const generate = () =>
@@ -72,8 +79,42 @@ try {
   requests.length = 0;
   assert.equal((await generate()).base64, mp4.toString("base64"));
   assert.equal(requests[1].url.origin, origin, "Resolve against the configured API, not a hardcoded public origin");
+  for (const reference of [
+    "https://cdn.example/clip.mp4?token=synthetic-public",
+    "//cdn.example/clip.mp4",
+    "/api/v1/videos/fixture/content?token=synthetic-public",
+    "videos/fixture/content",
+    `${origin}/api/v1/videos/fixture/content`,
+  ]) {
+    contentReference = reference;
+    requests.length = 0;
+    assert.equal((await generate()).base64, mp4.toString("base64"));
+    assert.deepEqual(
+      requests.map((request) => request.method),
+      ["POST", "GET", "GET"],
+    );
+    const target = new URL(reference, `${origin}/api/v1/videos`);
+    assert.equal(requests[2].url.href, target.href);
+    assert.equal(requests[2].authorization, target.origin === origin ? "Bearer synthetic-fixture-key" : null);
+  }
+  for (const reference of [
+    `${origin.replace("https://", "https://user:password@")}/api/v1/videos/fixture/content`,
+    "https://user:password@cdn.example/clip.mp4",
+    "http://cdn.example/clip.mp4",
+    "data:video/mp4;base64,AAAA",
+    "https://[invalid",
+  ]) {
+    contentReference = reference;
+    requests.length = 0;
+    await assert.rejects(generate());
+    assert.deepEqual(
+      requests.map((request) => request.method),
+      ["POST", "GET"],
+      "Reject unsafe content URLs before download without resubmitting the job",
+    );
+  }
 } finally {
   globalThis.fetch = originalFetch;
   dns.lookup = originalLookup;
 }
-console.info("OpenRouter video polling regression passed (11 cases)");
+console.info("OpenRouter video polling/content regression passed (21 cases)");

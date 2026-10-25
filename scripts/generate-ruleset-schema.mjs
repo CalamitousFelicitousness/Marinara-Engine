@@ -38,6 +38,12 @@ function allowAnnotations(node, isRoot = true) {
     // Any value, not just text: the Engine drops the key whatever it holds.
     node.properties = { ...node.properties, $comment: {} };
     if (isRoot) node.properties.$schema = {};
+    // A map's name constraints also see explicitly declared annotation properties.
+    if (node.propertyNames !== undefined) {
+      node.propertyNames = {
+        anyOf: [node.propertyNames, { enum: isRoot ? ["$comment", "$schema"] : ["$comment"] }],
+      };
+    }
   }
 }
 

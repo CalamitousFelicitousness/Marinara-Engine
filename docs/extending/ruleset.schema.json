@@ -946,7 +946,16 @@
                   "set": {
                     "type": "object",
                     "propertyNames": {
-                      "type": "string"
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "enum": [
+                            "$comment"
+                          ]
+                        }
+                      ]
                     },
                     "additionalProperties": {},
                     "properties": {
@@ -2175,7 +2184,16 @@
                   "set": {
                     "type": "object",
                     "propertyNames": {
-                      "type": "string"
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "enum": [
+                            "$comment"
+                          ]
+                        }
+                      ]
                     },
                     "additionalProperties": {},
                     "properties": {
@@ -3556,7 +3574,16 @@
                   "set": {
                     "type": "object",
                     "propertyNames": {
-                      "type": "string"
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "enum": [
+                            "$comment"
+                          ]
+                        }
+                      ]
                     },
                     "additionalProperties": {},
                     "properties": {
@@ -4574,7 +4601,16 @@
                   "set": {
                     "type": "object",
                     "propertyNames": {
-                      "type": "string"
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "enum": [
+                            "$comment"
+                          ]
+                        }
+                      ]
                     },
                     "additionalProperties": {},
                     "properties": {
@@ -5573,7 +5609,16 @@
                   "set": {
                     "type": "object",
                     "propertyNames": {
-                      "type": "string"
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "enum": [
+                            "$comment"
+                          ]
+                        }
+                      ]
                     },
                     "additionalProperties": {},
                     "properties": {
@@ -7445,7 +7490,16 @@
                   "valueLabels": {
                     "type": "object",
                     "propertyNames": {
-                      "type": "string"
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "enum": [
+                            "$comment"
+                          ]
+                        }
+                      ]
                     },
                     "additionalProperties": {
                       "type": "string",
@@ -9551,7 +9605,16 @@
                   "table": {
                     "type": "object",
                     "propertyNames": {
-                      "type": "string"
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "enum": [
+                            "$comment"
+                          ]
+                        }
+                      ]
                     },
                     "additionalProperties": {
                       "type": "number"
@@ -10113,7 +10176,16 @@
                         "valueLabels": {
                           "type": "object",
                           "propertyNames": {
-                            "type": "string"
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "enum": [
+                                  "$comment"
+                                ]
+                              }
+                            ]
                           },
                           "additionalProperties": {
                             "type": "string",
@@ -12052,7 +12124,16 @@
                   "valueLabels": {
                     "type": "object",
                     "propertyNames": {
-                      "type": "string"
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "enum": [
+                            "$comment"
+                          ]
+                        }
+                      ]
                     },
                     "additionalProperties": {
                       "type": "string",
@@ -13215,9 +13296,18 @@
                   "budgets": {
                     "type": "object",
                     "propertyNames": {
-                      "type": "string",
-                      "maxLength": 40,
-                      "pattern": "^[a-z][a-z0-9_]*$"
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        {
+                          "enum": [
+                            "$comment"
+                          ]
+                        }
+                      ]
                     },
                     "additionalProperties": {
                       "type": "object",
@@ -14118,9 +14208,18 @@
                       "stamp": {
                         "type": "object",
                         "propertyNames": {
-                          "type": "string",
-                          "maxLength": 40,
-                          "pattern": "^[a-z][a-z0-9_]*$"
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            {
+                              "enum": [
+                                "$comment"
+                              ]
+                            }
+                          ]
                         },
                         "additionalProperties": {
                           "anyOf": [
@@ -14164,7 +14263,16 @@
                       "filters": {
                         "type": "object",
                         "propertyNames": {
-                          "type": "string"
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "enum": [
+                                "$comment"
+                              ]
+                            }
+                          ]
                         },
                         "additionalProperties": {
                           "anyOf": [
@@ -15028,9 +15136,18 @@
                       "shownWhen": {
                         "type": "object",
                         "propertyNames": {
-                          "type": "string",
-                          "maxLength": 40,
-                          "pattern": "^[a-z][a-z0-9_]*$"
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            {
+                              "enum": [
+                                "$comment"
+                              ]
+                            }
+                          ]
                         },
                         "additionalProperties": {
                           "type": "object",
@@ -20449,9 +20566,18 @@
                       "defaults": {
                         "type": "object",
                         "propertyNames": {
-                          "type": "string",
-                          "maxLength": 40,
-                          "pattern": "^[a-z][a-z0-9_]*$"
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            {
+                              "enum": [
+                                "$comment"
+                              ]
+                            }
+                          ]
                         },
                         "additionalProperties": {
                           "anyOf": [
@@ -22686,7 +22812,16 @@
                   "valueLabels": {
                     "type": "object",
                     "propertyNames": {
-                      "type": "string"
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "enum": [
+                            "$comment"
+                          ]
+                        }
+                      ]
                     },
                     "additionalProperties": {
                       "type": "string",
@@ -24044,7 +24179,16 @@
                         "valueLabels": {
                           "type": "object",
                           "propertyNames": {
-                            "type": "string"
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "enum": [
+                                  "$comment"
+                                ]
+                              }
+                            ]
                           },
                           "additionalProperties": {
                             "type": "string",
@@ -25419,9 +25563,18 @@
                   "budgets": {
                     "type": "object",
                     "propertyNames": {
-                      "type": "string",
-                      "maxLength": 40,
-                      "pattern": "^[a-z][a-z0-9_]*$"
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        {
+                          "enum": [
+                            "$comment"
+                          ]
+                        }
+                      ]
                     },
                     "additionalProperties": {
                       "type": "object",
@@ -26322,9 +26475,18 @@
                       "stamp": {
                         "type": "object",
                         "propertyNames": {
-                          "type": "string",
-                          "maxLength": 40,
-                          "pattern": "^[a-z][a-z0-9_]*$"
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            {
+                              "enum": [
+                                "$comment"
+                              ]
+                            }
+                          ]
                         },
                         "additionalProperties": {
                           "anyOf": [
@@ -26368,7 +26530,16 @@
                       "filters": {
                         "type": "object",
                         "propertyNames": {
-                          "type": "string"
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "enum": [
+                                "$comment"
+                              ]
+                            }
+                          ]
                         },
                         "additionalProperties": {
                           "anyOf": [
@@ -27232,9 +27403,18 @@
                       "shownWhen": {
                         "type": "object",
                         "propertyNames": {
-                          "type": "string",
-                          "maxLength": 40,
-                          "pattern": "^[a-z][a-z0-9_]*$"
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            {
+                              "enum": [
+                                "$comment"
+                              ]
+                            }
+                          ]
                         },
                         "additionalProperties": {
                           "type": "object",
@@ -32653,9 +32833,18 @@
                       "defaults": {
                         "type": "object",
                         "propertyNames": {
-                          "type": "string",
-                          "maxLength": 40,
-                          "pattern": "^[a-z][a-z0-9_]*$"
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "maxLength": 40,
+                              "pattern": "^[a-z][a-z0-9_]*$"
+                            },
+                            {
+                              "enum": [
+                                "$comment"
+                              ]
+                            }
+                          ]
                         },
                         "additionalProperties": {
                           "anyOf": [
@@ -36417,7 +36606,16 @@
                 "filters": {
                   "type": "object",
                   "propertyNames": {
-                    "type": "string"
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "enum": [
+                          "$comment"
+                        ]
+                      }
+                    ]
                   },
                   "additionalProperties": {
                     "anyOf": [
@@ -36457,7 +36655,16 @@
                       "values": {
                         "type": "object",
                         "propertyNames": {
-                          "type": "string"
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "enum": [
+                                "$comment"
+                              ]
+                            }
+                          ]
                         },
                         "additionalProperties": {
                           "anyOf": [
@@ -36480,7 +36687,16 @@
                       "scaled": {
                         "type": "object",
                         "propertyNames": {
-                          "type": "string"
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "enum": [
+                                "$comment"
+                              ]
+                            }
+                          ]
                         },
                         "additionalProperties": {
                           "type": "object",
@@ -37018,9 +37234,18 @@
                         "abilityAtMost": {
                           "type": "object",
                           "propertyNames": {
-                            "type": "string",
-                            "maxLength": 40,
-                            "pattern": "^[a-z][a-z0-9_]*$"
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              {
+                                "enum": [
+                                  "$comment"
+                                ]
+                              }
+                            ]
                           },
                           "additionalProperties": {
                             "type": "integer",
@@ -37034,9 +37259,18 @@
                         "abilityAtLeast": {
                           "type": "object",
                           "propertyNames": {
-                            "type": "string",
-                            "maxLength": 40,
-                            "pattern": "^[a-z][a-z0-9_]*$"
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              {
+                                "enum": [
+                                  "$comment"
+                                ]
+                              }
+                            ]
                           },
                           "additionalProperties": {
                             "type": "integer",
@@ -45750,7 +45984,16 @@
                     "abilities": {
                       "type": "object",
                       "propertyNames": {
-                        "type": "string"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "enum": [
+                              "$comment"
+                            ]
+                          }
+                        ]
                       },
                       "additionalProperties": {
                         "type": "integer",
@@ -45764,7 +46007,16 @@
                     "saves": {
                       "type": "object",
                       "propertyNames": {
-                        "type": "string"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "enum": [
+                              "$comment"
+                            ]
+                          }
+                        ]
                       },
                       "additionalProperties": {
                         "type": "integer",
@@ -45778,7 +46030,16 @@
                     "checks": {
                       "type": "object",
                       "propertyNames": {
-                        "type": "string"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "enum": [
+                              "$comment"
+                            ]
+                          }
+                        ]
                       },
                       "additionalProperties": {
                         "type": "integer",
@@ -46041,7 +46302,16 @@
                         "byKind": {
                           "type": "object",
                           "propertyNames": {
-                            "type": "string"
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "enum": [
+                                  "$comment"
+                                ]
+                              }
+                            ]
                           },
                           "additionalProperties": {
                             "type": "integer",
@@ -46230,9 +46500,18 @@
                     "senses": {
                       "type": "object",
                       "propertyNames": {
-                        "type": "string",
-                        "maxLength": 40,
-                        "pattern": "^[a-z][a-z0-9_]*$"
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "maxLength": 40,
+                            "pattern": "^[a-z][a-z0-9_]*$"
+                          },
+                          {
+                            "enum": [
+                              "$comment"
+                            ]
+                          }
+                        ]
                       },
                       "additionalProperties": {
                         "type": "number",
@@ -51433,7 +51712,16 @@
                           "default": {},
                           "type": "object",
                           "propertyNames": {
-                            "type": "string"
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "enum": [
+                                  "$comment"
+                                ]
+                              }
+                            ]
                           },
                           "additionalProperties": {
                             "type": "number"
@@ -51446,7 +51734,16 @@
                           "default": {},
                           "type": "object",
                           "propertyNames": {
-                            "type": "string"
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "enum": [
+                                  "$comment"
+                                ]
+                              }
+                            ]
                           },
                           "additionalProperties": {
                             "type": "string",
@@ -51460,7 +51757,16 @@
                           "default": {},
                           "type": "object",
                           "propertyNames": {
-                            "type": "string"
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "enum": [
+                                  "$comment"
+                                ]
+                              }
+                            ]
                           },
                           "additionalProperties": {
                             "type": "string",
@@ -51474,7 +51780,16 @@
                           "default": {},
                           "type": "object",
                           "propertyNames": {
-                            "type": "string"
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "enum": [
+                                  "$comment"
+                                ]
+                              }
+                            ]
                           },
                           "additionalProperties": {
                             "type": "number"
@@ -51487,7 +51802,16 @@
                           "default": {},
                           "type": "object",
                           "propertyNames": {
-                            "type": "string"
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "enum": [
+                                  "$comment"
+                                ]
+                              }
+                            ]
                           },
                           "additionalProperties": {
                             "anyOf": [
@@ -51511,7 +51835,16 @@
                           "default": {},
                           "type": "object",
                           "propertyNames": {
-                            "type": "string"
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "enum": [
+                                  "$comment"
+                                ]
+                              }
+                            ]
                           },
                           "additionalProperties": {
                             "maxItems": 500,
@@ -51519,7 +51852,16 @@
                             "items": {
                               "type": "object",
                               "propertyNames": {
-                                "type": "string"
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "enum": [
+                                      "$comment"
+                                    ]
+                                  }
+                                ]
                               },
                               "additionalProperties": {
                                 "anyOf": [
@@ -51669,7 +52011,16 @@
                     "stats": {
                       "type": "object",
                       "propertyNames": {
-                        "type": "string"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "enum": [
+                              "$comment"
+                            ]
+                          }
+                        ]
                       },
                       "additionalProperties": {
                         "anyOf": [
@@ -51692,7 +52043,16 @@
                     "slots": {
                       "type": "object",
                       "propertyNames": {
-                        "type": "string"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "enum": [
+                              "$comment"
+                            ]
+                          }
+                        ]
                       },
                       "additionalProperties": {
                         "type": "integer",
@@ -52372,9 +52732,18 @@
                         "abilities": {
                           "type": "object",
                           "propertyNames": {
-                            "type": "string",
-                            "maxLength": 40,
-                            "pattern": "^[a-z][a-z0-9_]*$"
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              {
+                                "enum": [
+                                  "$comment"
+                                ]
+                              }
+                            ]
                           },
                           "additionalProperties": {
                             "anyOf": [
@@ -52522,9 +52891,18 @@
                         "senses": {
                           "type": "object",
                           "propertyNames": {
-                            "type": "string",
-                            "maxLength": 40,
-                            "pattern": "^[a-z][a-z0-9_]*$"
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              {
+                                "enum": [
+                                  "$comment"
+                                ]
+                              }
+                            ]
                           },
                           "additionalProperties": {
                             "anyOf": [
@@ -53293,9 +53671,18 @@
                         "abilities": {
                           "type": "object",
                           "propertyNames": {
-                            "type": "string",
-                            "maxLength": 40,
-                            "pattern": "^[a-z][a-z0-9_]*$"
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              {
+                                "enum": [
+                                  "$comment"
+                                ]
+                              }
+                            ]
                           },
                           "additionalProperties": {
                             "anyOf": [
@@ -53443,9 +53830,18 @@
                         "senses": {
                           "type": "object",
                           "propertyNames": {
-                            "type": "string",
-                            "maxLength": 40,
-                            "pattern": "^[a-z][a-z0-9_]*$"
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              {
+                                "enum": [
+                                  "$comment"
+                                ]
+                              }
+                            ]
                           },
                           "additionalProperties": {
                             "anyOf": [
@@ -54403,9 +54799,18 @@
                               "abilities": {
                                 "type": "object",
                                 "propertyNames": {
-                                  "type": "string",
-                                  "maxLength": 40,
-                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    {
+                                      "enum": [
+                                        "$comment"
+                                      ]
+                                    }
+                                  ]
                                 },
                                 "additionalProperties": {
                                   "anyOf": [
@@ -54553,9 +54958,18 @@
                               "senses": {
                                 "type": "object",
                                 "propertyNames": {
-                                  "type": "string",
-                                  "maxLength": 40,
-                                  "pattern": "^[a-z][a-z0-9_]*$"
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "maxLength": 40,
+                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                    },
+                                    {
+                                      "enum": [
+                                        "$comment"
+                                      ]
+                                    }
+                                  ]
                                 },
                                 "additionalProperties": {
                                   "anyOf": [
@@ -58486,9 +58900,18 @@
                             "abilityAtMost": {
                               "type": "object",
                               "propertyNames": {
-                                "type": "string",
-                                "maxLength": 40,
-                                "pattern": "^[a-z][a-z0-9_]*$"
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  {
+                                    "enum": [
+                                      "$comment"
+                                    ]
+                                  }
+                                ]
                               },
                               "additionalProperties": {
                                 "type": "integer",
@@ -58502,9 +58925,18 @@
                             "abilityAtLeast": {
                               "type": "object",
                               "propertyNames": {
-                                "type": "string",
-                                "maxLength": 40,
-                                "pattern": "^[a-z][a-z0-9_]*$"
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "maxLength": 40,
+                                    "pattern": "^[a-z][a-z0-9_]*$"
+                                  },
+                                  {
+                                    "enum": [
+                                      "$comment"
+                                    ]
+                                  }
+                                ]
                               },
                               "additionalProperties": {
                                 "type": "integer",
@@ -67895,9 +68327,18 @@
                                   "abilityAtMost": {
                                     "type": "object",
                                     "propertyNames": {
-                                      "type": "string",
-                                      "maxLength": 40,
-                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                      "anyOf": [
+                                        {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        {
+                                          "enum": [
+                                            "$comment"
+                                          ]
+                                        }
+                                      ]
                                     },
                                     "additionalProperties": {
                                       "type": "integer",
@@ -67911,9 +68352,18 @@
                                   "abilityAtLeast": {
                                     "type": "object",
                                     "propertyNames": {
-                                      "type": "string",
-                                      "maxLength": 40,
-                                      "pattern": "^[a-z][a-z0-9_]*$"
+                                      "anyOf": [
+                                        {
+                                          "type": "string",
+                                          "maxLength": 40,
+                                          "pattern": "^[a-z][a-z0-9_]*$"
+                                        },
+                                        {
+                                          "enum": [
+                                            "$comment"
+                                          ]
+                                        }
+                                      ]
                                     },
                                     "additionalProperties": {
                                       "type": "integer",
@@ -77446,7 +77896,16 @@
                         "add": {
                           "type": "object",
                           "propertyNames": {
-                            "type": "string"
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "enum": [
+                                  "$comment"
+                                ]
+                              }
+                            ]
                           },
                           "additionalProperties": {
                             "type": "integer",
@@ -78020,7 +78479,16 @@
                     "sets": {
                       "type": "object",
                       "propertyNames": {
-                        "type": "string"
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "enum": [
+                              "$comment"
+                            ]
+                          }
+                        ]
                       },
                       "additionalProperties": {
                         "anyOf": [
@@ -78336,7 +78804,16 @@
                               "filters": {
                                 "type": "object",
                                 "propertyNames": {
-                                  "type": "string"
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "enum": [
+                                        "$comment"
+                                      ]
+                                    }
+                                  ]
                                 },
                                 "additionalProperties": {
                                   "anyOf": [
@@ -78626,9 +79103,18 @@
                   "fields": {
                     "type": "object",
                     "propertyNames": {
-                      "type": "string",
-                      "maxLength": 40,
-                      "pattern": "^[a-z][a-z0-9_]*$"
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        {
+                          "enum": [
+                            "$comment"
+                          ]
+                        }
+                      ]
                     },
                     "additionalProperties": {
                       "anyOf": [
@@ -78649,15 +79135,33 @@
                   "values": {
                     "type": "object",
                     "propertyNames": {
-                      "type": "string",
-                      "maxLength": 40,
-                      "pattern": "^[a-z][a-z0-9_]*$"
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        {
+                          "enum": [
+                            "$comment"
+                          ]
+                        }
+                      ]
                     },
                     "additionalProperties": {
                       "type": "object",
                       "propertyNames": {
-                        "type": "string",
-                        "maxLength": 80
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "maxLength": 80
+                          },
+                          {
+                            "enum": [
+                              "$comment"
+                            ]
+                          }
+                        ]
                       },
                       "additionalProperties": {
                         "type": "string",
@@ -78674,9 +79178,18 @@
                   "tiers": {
                     "type": "object",
                     "propertyNames": {
-                      "type": "string",
-                      "maxLength": 40,
-                      "pattern": "^[a-z][a-z0-9_]*$"
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        {
+                          "enum": [
+                            "$comment"
+                          ]
+                        }
+                      ]
                     },
                     "additionalProperties": {
                       "type": "string",
@@ -78690,9 +79203,18 @@
                   "refs": {
                     "type": "object",
                     "propertyNames": {
-                      "type": "string",
-                      "maxLength": 40,
-                      "pattern": "^[a-z][a-z0-9_]*$"
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        {
+                          "enum": [
+                            "$comment"
+                          ]
+                        }
+                      ]
                     },
                     "additionalProperties": {
                       "type": "object",
@@ -78880,9 +79402,18 @@
                   "slots": {
                     "type": "object",
                     "propertyNames": {
-                      "type": "string",
-                      "maxLength": 40,
-                      "pattern": "^[a-z][a-z0-9_]*$"
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 40,
+                          "pattern": "^[a-z][a-z0-9_]*$"
+                        },
+                        {
+                          "enum": [
+                            "$comment"
+                          ]
+                        }
+                      ]
                     },
                     "additionalProperties": {
                       "type": "string",
@@ -79187,7 +79718,16 @@
                   "valueLabels": {
                     "type": "object",
                     "propertyNames": {
-                      "type": "string"
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "enum": [
+                            "$comment"
+                          ]
+                        }
+                      ]
                     },
                     "additionalProperties": {
                       "type": "string",
@@ -79934,7 +80474,16 @@
               "stats": {
                 "type": "object",
                 "propertyNames": {
-                  "type": "string"
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "enum": [
+                        "$comment"
+                      ]
+                    }
+                  ]
                 },
                 "additionalProperties": {
                   "type": "number"
@@ -82653,7 +83202,16 @@
                 "byKind": {
                   "type": "object",
                   "propertyNames": {
-                    "type": "string"
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "enum": [
+                          "$comment"
+                        ]
+                      }
+                    ]
                   },
                   "additionalProperties": {
                     "type": "object",
@@ -83255,7 +83813,16 @@
                 "byKind": {
                   "type": "object",
                   "propertyNames": {
-                    "type": "string"
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "enum": [
+                          "$comment"
+                        ]
+                      }
+                    ]
                   },
                   "additionalProperties": {
                     "type": "object",
@@ -85906,9 +86473,18 @@
                 "items": {
                   "type": "object",
                   "propertyNames": {
-                    "type": "string",
-                    "maxLength": 40,
-                    "pattern": "^[a-z][a-z0-9_]*$"
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 40,
+                        "pattern": "^[a-z][a-z0-9_]*$"
+                      },
+                      {
+                        "enum": [
+                          "$comment"
+                        ]
+                      }
+                    ]
                   },
                   "additionalProperties": {
                     "anyOf": [
@@ -86361,7 +86937,16 @@
                   "values": {
                     "type": "object",
                     "propertyNames": {
-                      "type": "string"
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "enum": [
+                            "$comment"
+                          ]
+                        }
+                      ]
                     },
                     "additionalProperties": {
                       "type": "object",
@@ -87050,9 +87635,18 @@
               "senses": {
                 "type": "object",
                 "propertyNames": {
-                  "type": "string",
-                  "maxLength": 40,
-                  "pattern": "^[a-z][a-z0-9_]*$"
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 40,
+                      "pattern": "^[a-z][a-z0-9_]*$"
+                    },
+                    {
+                      "enum": [
+                        "$comment"
+                      ]
+                    }
+                  ]
                 },
                 "additionalProperties": {
                   "anyOf": [
@@ -89573,9 +90167,18 @@
                         "abilityAtMost": {
                           "type": "object",
                           "propertyNames": {
-                            "type": "string",
-                            "maxLength": 40,
-                            "pattern": "^[a-z][a-z0-9_]*$"
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              {
+                                "enum": [
+                                  "$comment"
+                                ]
+                              }
+                            ]
                           },
                           "additionalProperties": {
                             "type": "integer",
@@ -89589,9 +90192,18 @@
                         "abilityAtLeast": {
                           "type": "object",
                           "propertyNames": {
-                            "type": "string",
-                            "maxLength": 40,
-                            "pattern": "^[a-z][a-z0-9_]*$"
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "maxLength": 40,
+                                "pattern": "^[a-z][a-z0-9_]*$"
+                              },
+                              {
+                                "enum": [
+                                  "$comment"
+                                ]
+                              }
+                            ]
                           },
                           "additionalProperties": {
                             "type": "integer",
@@ -95108,7 +95720,16 @@
             "byType": {
               "type": "object",
               "propertyNames": {
-                "type": "string"
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "enum": [
+                      "$comment"
+                    ]
+                  }
+                ]
               },
               "additionalProperties": {
                 "type": "string",

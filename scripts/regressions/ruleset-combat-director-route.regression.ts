@@ -1154,6 +1154,21 @@ try {
     assert.notEqual(next.party.find((one) => one.id === "brenna")?.controller, "ai", "Brenna stays the player's");
   }
 
+  // ── A word in the setup the Engine has none of never refuses the fight (laptop playtest 2026-10-25:
+  //    a mechanic's trigger "charge") ──
+  {
+    const loose = await newGame({ ruleset: true });
+    const started = await post("/combat/start", {
+      chatId: loose.chat.id,
+      anchor: loose.anchor.id,
+      style: "ruleset",
+      party: [unit("brenna", "Brenna", "player")],
+      enemies: [{ ...unit("hound", "Cinder Hound", "enemy"), movementMode: "burrow", start: "rooftop" }],
+      mechanics: [{ name: "Bull Rush", description: "It charges.", trigger: "charge", effectType: "trample" }],
+    });
+    assert.equal(started.statusCode, 200, started.body);
+  }
+
   // ── One that got away comes back as it was (laptop playtest 2026-10-25: a Cult Mage that fled at
   //    CR 3 with 32 health came back at CR 4 with 65) ──
   {
@@ -1208,16 +1223,16 @@ try {
         "Hedge Mender",
       ]);
       assert.deepEqual(kept.beaten, []);
-      // Two nameless ones of a name are nobody to know again (laptop playtest 2026-10-25: a second
-      // Cult Guard came back as an old crossbow guard), and the name is forgotten.
+      // Two nameless ones of a name are both kept, each to come back where the Game Master marks it
+      // ("Cult Thug (Scarred)", laptop playtest 2026-10-25), never to an unmarked pair of the name.
       const pair = structuredClone(won);
       const twin = structuredClone(pair.encounter.combatants.find((one: { id: string }) => one.id === "hound"));
       twin.id = "hound2";
       pair.encounter.combatants.push(twin);
       pair.made.hound2 = structuredClone(pair.made.hound);
       const twins = rulesetFightReturningFoes(definition, pair);
-      assert.ok(!twins.fled.some((one: { name: string }) => one.name === "Cinder Hound"));
-      assert.deepEqual(twins.beaten, ["Cinder Hound", "Cinder Hound"]);
+      assert.equal(twins.fled.filter((one: { name: string }) => one.name === "Cinder Hound").length, 2);
+      assert.deepEqual(twins.beaten, []);
     }
     await engineStates.updateStateById(row.id, JSON.stringify(doc), undefined, away.chat.id);
     const ended = await post("/combat/command", {
@@ -1238,6 +1253,8 @@ try {
       "those that got away",
     );
     assert.equal(meta.gameReturningFoes["cult mage"].creature, "creatures/thorn-lurker");
+    // With the temperament it fought with, to come back the same (cloud re-test 2026-10-25).
+    assert.equal(typeof meta.gameReturningFoes["cult mage"].temperament, "string");
     const later = await chats.createMessage({ chatId: away.chat.id, role: "assistant", content: "[state: combat]" });
     const back = await post(
       "/combat/start",

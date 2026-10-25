@@ -95,8 +95,17 @@ export function rulesetCallCreatures(
     const placed = built.combatants.filter((one) => placements[one.id] && rulesetPositionOf(one));
     for (const combatant of [...placed].sort((a, b) => rulesetSpanOf(b) - rulesetSpanOf(a))) {
       const span = rulesetSpanOf(combatant);
-      const at = rulesetFitCell(grid, { x: combatant.x!, y: combatant.y! }, span, taken);
-      if (!at || (only && !(cells ?? []).some((cell) => cell.x === at.x && cell.y === at.y))) {
+      const inArea = (at: { x: number; y: number }) => (cells ?? []).some((cell) => cell.x === at.x && cell.y === at.y);
+      let at = rulesetFitCell(grid, { x: combatant.x!, y: combatant.y! }, span, taken);
+      // Where the nearest room falls outside the area, any room inside it, in the area's own order
+      // (Ruleset 0.435 proof 2026-10-25: of Giant Insect's three Large spiders, one was dropped).
+      if (only && (!at || !inArea(at)))
+        at =
+          (cells ?? []).find((cell) => {
+            const fit = rulesetFitCell(grid, cell, span, taken);
+            return fit?.x === cell.x && fit.y === cell.y;
+          }) ?? null;
+      if (!at || (only && !inArea(at))) {
         delete placements[combatant.id];
         continue;
       }

@@ -1502,7 +1502,11 @@ function renderRulesetSheetSection(
       : []),
     `- [sheet: who="Name" op="note" field="Field" value="text"] - an empty value clears it.`,
     ...(ruleset.rests.length > 0
-      ? [`- [sheet: who="Name" op="rest" rest="Rest"] - rests: ${names(ruleset.rests)}.`]
+      ? [
+          // Narrated without the tag, a rest gives back nothing (laptop playtest 2026-10-25: "a full eight
+          // hours... spells are prepared" twice, the sheets still at 1 health).
+          `- [sheet: who="party" op="rest" rest="Rest"] - rests: ${names(ruleset.rests)}. Write it in the same reply whenever the story says they rest; a rest told without it restores nothing.`,
+        ]
       : []),
     // Days of game time (1.430): rows that recharge after so many days count them.
     ...(ruleset.sheet.lists.some((list) => list.pools?.rechargeDays)

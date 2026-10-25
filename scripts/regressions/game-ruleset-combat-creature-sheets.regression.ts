@@ -1894,6 +1894,15 @@ const dataDir = mkdtempSync(join(tmpdir(), "marinara-creature-sheets-"));
     ),
     plain.adjustments.join("; "),
   );
+  // Kept as it was filled in, so one that comes back has the same spells (cloud re-test 2026-10-25).
+  assert.deepEqual((plain.made!.mage!.proposed as { sheet: unknown }).sheet, who(plain.encounter, "mage").sheet!.build);
+  const again = started({
+    definition: spellbook,
+    cards: [card("Brenna", fighterBuild())],
+    party: [{ id: "brenna", name: "Brenna" }],
+    enemies: [{ id: "mage", name: "Ash Mage", tier: "cr_2", proposed: plain.made!.mage!.proposed }],
+  }).rulesetFight!;
+  assert.deepEqual(spellsOf(again, "mage"), spellsOf(plain, "mage"), "the same spells again");
   // Past the most it keeps, the first ones written stay and the rest go, said.
   const sheet = who(plain.encounter, "mage").sheet!.build;
   const two = capRulesetCasterSheet(spellbook, sheet, fightCatalogs(spellbook), 2);

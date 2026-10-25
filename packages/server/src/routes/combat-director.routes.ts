@@ -2,6 +2,7 @@ import { createGameStateStorage, parseStoredRulesetLive } from "../services/stor
 import {
   normalizeGameDifficulty,
   COMBAT_START_PLACES,
+  COMBAT_ADJECTIVES,
   DECISION_TIMEOUT_MS,
   combatWeatherSchema,
   applyGameInventoryOps,
@@ -144,7 +145,8 @@ const slots = z.record(z.string().regex(/^[1-9]$/), z.number().int().min(0).max(
 const skill = z.object({
   id: key,
   name: z.string().min(1).max(200),
-  type: z.enum(["attack", "heal", "buff", "debuff"]),
+  // A word the Engine has none of is an attack, never a refused fight (laptop playtest 2026-10-25).
+  type: z.enum(["attack", "heal", "buff", "debuff"]).catch("attack"),
   mpCost: num,
   power: num.max(20),
   cooldown: rounds.optional(),
@@ -162,14 +164,14 @@ const directedCombatantFields = z.object({
   /** Fights in its own lair (1.315): read by a ruleset fight only. */
   inLair: z.boolean().optional(),
   /** Where the Game Master starts it on the board (2026-10-24): read by a ruleset fight only. */
-  start: z.enum(COMBAT_START_PLACES).optional(),
+  start: z.enum(COMBAT_START_PLACES).optional().catch(undefined),
   /** What it set up before the fight, standing as it begins (1.447): read by a ruleset fight only. */
   standing: z
     .array(
       z
         .object({
           entry: z.string().min(1).max(200),
-          at: z.enum(["self", "between"]).optional(),
+          at: z.enum(["self", "between"]).optional().catch(undefined),
           stores: z.string().min(1).max(200).optional(),
           on: z.array(z.string().min(1).max(200)).max(12).optional(),
           kind: z.string().min(1).max(80).optional(),
@@ -196,7 +198,7 @@ const directedCombatantFields = z.object({
   skills: z.array(skill).max(64).optional(),
   tactics: combatTacticsSchema.optional(),
   aiHints: combatAiHintsSchema.optional(),
-  controller: z.enum(["manual", "ai"]).optional(),
+  controller: z.enum(["manual", "ai"]).optional().catch(undefined),
   orders: combatOrdersSchema.optional(),
   skillCooldowns: z.record(rounds).optional(),
   statusEffects: z
@@ -204,7 +206,7 @@ const directedCombatantFields = z.object({
       z.object({
         name: z.string().max(200),
         modifier: z.number().finite().min(-100000).max(100000),
-        stat: z.enum(["hp", "attack", "defense", "speed"]),
+        stat: z.enum(["hp", "attack", "defense", "speed"]).catch("attack"),
         turnsLeft: rounds,
       }),
     )
@@ -213,7 +215,7 @@ const directedCombatantFields = z.object({
   projectile: z.boolean().optional(),
   requiresSight: z.boolean().optional(),
   combatClass: z.string().max(100).optional(),
-  movementMode: z.enum(["walk", "fly", "teleport"]).optional(),
+  movementMode: z.enum(["walk", "fly", "teleport"]).optional().catch(undefined),
   element: z.string().max(100).optional(),
   sprite: z.string().max(3000).optional(),
 });
@@ -240,8 +242,8 @@ const rulesetOpponentSchema = directedCombatantFields
 const coord = z.object({ x: z.number().int().min(0).max(63), y: z.number().int().min(0).max(63) });
 const itemEffect = z.object({
   name: key,
-  target: z.enum(["self", "ally", "enemy", "any"]),
-  type: z.enum(["heal", "damage", "buff", "debuff", "status", "utility"]),
+  target: z.enum(["self", "ally", "enemy", "any"]).catch("any"),
+  type: z.enum(["heal", "damage", "buff", "debuff", "status", "utility"]).catch("utility"),
   description: z.string().max(3000),
   // An item's power past the most a fight reads is that most, as a long duration is.
   power: num.transform((value) => Math.min(value, COMBAT_DIRECTOR_MOST_POWER)).optional(),
@@ -255,7 +257,7 @@ const itemEffect = z.object({
       // default length, as a missing one is.
       duration: rounds,
       modifier: z.number().finite().min(-100000).max(100000).optional(),
-      stat: z.enum(["hp", "attack", "defense", "speed"]).optional(),
+      stat: z.enum(["hp", "attack", "defense", "speed"]).optional().catch(undefined),
     })
     .optional(),
 });
@@ -846,7 +848,11 @@ export async function combatDirectorRoutes(
         if (s.style === "ruleset" && s.rulesetFight && s.outcome && !previous.state.outcome) {
           const { fled, beaten } =
             session && "definition" in session
-              ? rulesetFightReturningFoes(session.definition, s.rulesetFight)
+              ? rulesetFightReturningFoes(
+                  session.definition,
+                  s.rulesetFight,
+                  (id) => s.enemies.find((unit) => unit.id === id)?.tactics?.adjective,
+                )
               : { fled: [], beaten: [] };
           if (fled.length || beaten.length)
             await chats.patchMetadata(
@@ -857,11 +863,19 @@ export async function combatDirectorRoutes(
                     ? current.gameReturningFoes
                     : {}) as Record<string, RulesetReturningFoe>),
                 };
-                for (const name of beaten) delete kept[rulesetReturningFoeKey(name)];
+                // Each name this fight had starts over: several that got away of one name ("Cult Thug
+                // (Scarred)", "Cult Thug (Highwayman)") are kept one after another, as "<name>#2" on.
+                const names = new Set([...beaten, ...fled.map((foe) => foe.name)].map(rulesetReturningFoeKey));
+                for (const key of Object.keys(kept)) if (names.has(key.replace(/#\d+$/, ""))) delete kept[key];
                 // Stamped with the game clock, so the rests it takes before it comes back are counted.
                 const clock = gameClockMinutes(current.gameTime);
-                for (const foe of fled)
-                  kept[rulesetReturningFoeKey(foe.name)] = clock === undefined ? foe : { ...foe, clock };
+                const counted = new Map<string, number>();
+                for (const foe of fled) {
+                  const key = rulesetReturningFoeKey(foe.name);
+                  const nth = (counted.get(key) ?? 0) + 1;
+                  counted.set(key, nth);
+                  kept[nth === 1 ? key : `${key}#${nth}`] = clock === undefined ? foe : { ...foe, clock };
+                }
                 return { gameReturningFoes: kept };
               },
               { metadataQueueHeld: true, touchUpdatedAt: false },
@@ -906,7 +920,9 @@ export async function combatDirectorRoutes(
               name: key,
               description: z.string().max(3000),
               ownerName: z.string().max(200).optional(),
-              trigger: z.enum(["round_interval", "hp_threshold", "on_hit", "on_attack", "passive"]),
+              // A trigger the Engine has none of ("charge") goes off as an attack does, never refusing the
+              // fight (laptop playtest 2026-10-25).
+              trigger: z.enum(["round_interval", "hp_threshold", "on_hit", "on_attack", "passive"]).catch("on_attack"),
               // 0 for a mechanic no interval drives (an hp_threshold one's `interval: 0` refused the
               // whole fight), which every reader takes as none.
               interval: rounds.optional(),
@@ -914,7 +930,8 @@ export async function combatDirectorRoutes(
               counterplay: z.string().max(3000).optional(),
               effectType: z
                 .enum(["damage_all", "damage_one", "buff_self", "debuff_party", "status_party", "status_enemy"])
-                .optional(),
+                .optional()
+                .catch(undefined),
               power: num.max(20).optional(),
               element: z.string().max(100).optional(),
               status: itemEffect.shape.status,
@@ -1121,27 +1138,25 @@ export async function combatDirectorRoutes(
           ) as Record<string, RulesetReturningFoe>;
           // One of a name comes back once: the second Bandit of a fight where one Bandit got away is a
           // fresh one (cloud re-test 2026-10-25: both came back at 1 of 13).
-          const claimed = new Set<string>();
-          const backAs = input.enemies.map((enemy, index) => {
-            const key = rulesetReturningFoeKey(enemy.name);
-            if (claimed.has(key) || !returning[key]) return undefined;
-            // Of several of the name, the one the Game Master marked ("Cult Thug (Wounded)") is the one
-            // that comes back; a nameless one comes back only where it is the one of its name or the
-            // one marked (2026-10-25: of two Cult Guards, neither is the guard that got away before).
+          // Each kept one of a name goes to one of the fight's of that name: those the Game Master marked
+          // ("Cult Thug (Wounded)") first, in order, then the one of its name, or any of a named one's.
+          // A nameless one of several unmarked is a fresh one (2026-10-25: of two Cult Guards, neither
+          // is the guard that got away before).
+          const backAs: Array<RulesetReturningFoe | undefined> = input.enemies.map(() => undefined);
+          const keys = [...new Set(input.enemies.map((enemy) => rulesetReturningFoeKey(enemy.name)))];
+          for (const key of keys) {
+            const stored: RulesetReturningFoe[] = [];
+            for (let nth = 1; returning[nth === 1 ? key : `${key}#${nth}`]; nth++)
+              stored.push(returning[nth === 1 ? key : `${key}#${nth}`]!);
+            if (stored.length === 0) continue;
             const same = input.enemies.flatMap((other, at) => (rulesetReturningFoeKey(other.name) === key ? [at] : []));
             const marked = same.filter((at) => rulesetReturningFoeMarked(input.enemies[at]!.name));
-            const pick =
-              same.length === 1
-                ? same[0]
-                : marked.length === 1
-                  ? marked[0]
-                  : returning[key].named
-                    ? same[0]
-                    : undefined;
-            if (pick !== index) return undefined;
-            claimed.add(key);
-            return returning[key];
-          });
+            const plain = same.filter((at) => !marked.includes(at));
+            const takers = [...marked, ...(same.length === 1 || stored[0]!.named ? plain : [])];
+            takers.forEach((at, index) => {
+              if (stored[index]) backAs[at] = stored[index];
+            });
+          }
           const built = createRulesetFight({
             definition,
             seed: battlefield.seed,
@@ -1245,6 +1260,13 @@ export async function combatDirectorRoutes(
             // Still missing what it got away without, never down for it, and its spent slots still
             // spent until it has rested (2026-10-25).
             if (one) rulesetBringBackFoe(definition, one, back, clockNow);
+            // With the temperament it had, unless the story gives it another now.
+            const unit = state.enemies.find((one) => one.id === input.enemies[index]!.id);
+            const temperament = COMBAT_ADJECTIVES.find((word) => word === back.temperament);
+            if (unit && temperament && !unit.aiHints?.temperament) {
+              unit.aiHints = { ...unit.aiHints, temperament };
+              if (unit.tactics) unit.tactics.adjective = temperament;
+            }
             built.fight.adjustments.push(`${input.enemies[index]!.name} is the same one the party met before.`);
           });
           // The Engine's own party array follows the fight's: a sheet the setup left out joins it, a

@@ -10846,8 +10846,8 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
           itemEffect: z
             .object({
               name: generatedRequiredStringSchema,
-              target: z.enum(["self", "ally", "enemy", "any"]),
-              type: z.enum(["heal", "damage", "buff", "debuff", "status", "utility"]),
+              target: z.enum(["self", "ally", "enemy", "any"]).catch("any"),
+              type: z.enum(["heal", "damage", "buff", "debuff", "status", "utility"]).catch("utility"),
               description: generatedRequiredStringSchema,
               power: z.number().optional(),
               element: generatedOptionalStringSchema,
@@ -10857,7 +10857,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
                   emoji: generatedRequiredStringSchema,
                   duration: z.number(),
                   modifier: z.number().optional(),
-                  stat: z.enum(["attack", "defense", "speed", "hp"]).optional(),
+                  stat: z.enum(["attack", "defense", "speed", "hp"]).optional().catch(undefined),
                 })
                 .optional(),
               consumes: z.boolean().optional(),
@@ -10871,13 +10871,15 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
             name: generatedRequiredStringSchema,
             description: generatedRequiredStringSchema,
             ownerName: generatedOptionalStringSchema,
-            trigger: z.enum(["round_interval", "hp_threshold", "on_hit", "on_attack", "passive"]),
+            // A word the Engine has none of ("charge") goes off as an attack does (laptop playtest 2026-10-25).
+            trigger: z.enum(["round_interval", "hp_threshold", "on_hit", "on_attack", "passive"]).catch("on_attack"),
             interval: z.number().optional(),
             hpThreshold: z.number().optional(),
             counterplay: generatedOptionalStringSchema,
             effectType: z
               .enum(["damage_all", "damage_one", "buff_self", "debuff_party", "status_party", "status_enemy"])
-              .optional(),
+              .optional()
+              .catch(undefined),
             power: z.number().optional(),
             element: generatedOptionalStringSchema,
             status: z
@@ -10886,7 +10888,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
                 emoji: generatedRequiredStringSchema,
                 duration: z.number(),
                 modifier: z.number().optional(),
-                stat: z.enum(["attack", "defense", "speed", "hp"]).optional(),
+                stat: z.enum(["attack", "defense", "speed", "hp"]).optional().catch(undefined),
               })
               .optional(),
           }),

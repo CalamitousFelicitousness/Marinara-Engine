@@ -309,6 +309,9 @@ export interface RulesetReturningFoe {
   /** The health it got away without (laptop playtest 2026-10-25: Kallian fled at 21 of 32 and came
    *  back whole): it comes back still missing it. */
   taken?: number;
+  /** The temperament it fought with (cloud re-test 2026-10-25: a returning Ilse was opportunistic,
+   *  then disciplined, then reckless). */
+  temperament?: string;
   /** A named one of the story, or a boss (2026-10-25): it comes back by its name whatever else is
    *  called so. One that is not comes back only as the one of its name in a fight. */
   named?: true;
@@ -321,6 +324,15 @@ export interface RulesetReturningFoe {
   slotsLeft?: Record<string, number>;
   /** The game clock in minutes as it got away (2026-10-25), against which its rests are counted. */
   clock?: number;
+}
+
+/** A proposal with its sheet as the fight built it, where it had one. */
+function rulesetProposedAsBuilt(proposed: unknown, combatant: RulesetCombatant | undefined): unknown {
+  const kept = structuredClone(proposed);
+  if (!combatant?.sheet || !kept || typeof kept !== "object" || Array.isArray(kept)) return kept;
+  const sheet = (kept as { sheet?: unknown }).sheet;
+  if (!sheet || typeof sheet !== "object") return kept;
+  return { ...kept, sheet: structuredClone(combatant.sheet.build) };
 }
 
 /** The key a returning opponent is kept and found under: its name, any case and spacing. */
@@ -341,32 +353,18 @@ export function rulesetReturningFoeMarked(name: string): boolean {
 export function rulesetFightReturningFoes(
   definition: RulesetDefinition,
   fight: RulesetFightState,
+  /** The temperament each was fought with, by id, kept so it comes back the same. */
+  temperamentOf?: (id: string) => string | undefined,
 ): {
   fled: RulesetReturningFoe[];
   beaten: string[];
 } {
   const fled: RulesetReturningFoe[] = [];
   const beaten: string[] = [];
-  // A nameless foe that was one of several called the same (two Cult Guards) is no one to know again:
-  // the next of that name is a fresh one (laptop playtest 2026-10-25: a second Cult Guard came back as
-  // an old crossbow guard).
-  const called = new Map<string, number>();
-  for (const one of fight.encounter.combatants) {
-    const made = one.side === "enemy" ? fight.made?.[one.id] : undefined;
-    if (made) called.set(rulesetReturningFoeKey(made.name), (called.get(rulesetReturningFoeKey(made.name)) ?? 0) + 1);
-  }
   for (const one of fight.encounter.combatants) {
     if (one.side !== "enemy" || one.calledBy !== undefined || one.object) continue;
     const made = fight.made?.[one.id];
     if (!made) continue;
-    if (
-      !made.named &&
-      !rulesetReturningFoeMarked(made.name) &&
-      (called.get(rulesetReturningFoeKey(made.name)) ?? 0) > 1
-    ) {
-      beaten.push(made.name);
-      continue;
-    }
     // One that got away, or was still standing as the fight ended (it won: laptop playtest 2026-10-25,
     // a War-mage that beat the party came back rebuilt at 40 health from 65), is the same one next time.
     const standing = !one.away && !one.down && !one.defeated;
@@ -386,8 +384,10 @@ export function rulesetFightReturningFoes(
               key.startsWith("slot:") && typeof left === "number" ? [[key.slice(5), left] as const] : [],
             ),
           );
+      const temperament = temperamentOf?.(one.id);
       fled.push({
         ...made,
+        ...(temperament ? { temperament } : {}),
         ...(!one.sheet && one.health ? { health: one.health.max } : {}),
         ...(taken > 0 ? { taken } : {}),
         ...(coins?.length ? { coins } : {}),
@@ -1278,7 +1278,11 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
           ...(opponent.named || opponent.boss ? { named: true as const } : {}),
           ...(opponent.creature !== undefined ? { creature: opponent.creature } : {}),
           ...(opponent.tier !== undefined ? { tier: opponent.tier } : {}),
-          ...(opponent.proposed !== undefined ? { proposed: structuredClone(opponent.proposed) } : {}),
+          // An invented one's sheet as it was filled in, so it comes back with the same spells (cloud
+          // re-test 2026-10-25: a returning Ilse drew a new spell list each time).
+          ...(opponent.proposed !== undefined
+            ? { proposed: rulesetProposedAsBuilt(opponent.proposed, rulesetCombatant(encounter, opponent.id)) }
+            : {}),
           ...(opponent.attacks?.length ? { attacks: structuredClone(opponent.attacks) } : {}),
         },
       ]),

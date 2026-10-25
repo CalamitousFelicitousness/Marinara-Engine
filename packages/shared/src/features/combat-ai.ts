@@ -35,12 +35,14 @@ const INSTINCT_ADJECTIVES: readonly (typeof COMBAT_ADJECTIVES)[number][] = [
   "cowardly",
   "coordinated",
 ];
+// A word it does not know is left out, and the Engine deals its own (laptop playtest 2026-10-25: a
+// temperament "cunning" refused a whole fight).
 export const combatAiHintsSchema = z.object({
-  category: z.enum(["beast", "monstrosity", "other", "unknown"]).optional(),
-  proficiency: z.enum(["novice", "trained", "veteran", "master"]).optional(),
-  temperament: z.enum(COMBAT_ADJECTIVES).optional(),
+  category: z.enum(["beast", "monstrosity", "other", "unknown"]).optional().catch(undefined),
+  proficiency: z.enum(["novice", "trained", "veteran", "master"]).optional().catch(undefined),
+  temperament: z.enum(COMBAT_ADJECTIVES).optional().catch(undefined),
   /** Its mind, where the story says what the creature's own data cannot: one dominated, one enraged. */
-  mind: z.enum(COMBAT_MINDS).optional(),
+  mind: z.enum(COMBAT_MINDS).optional().catch(undefined),
   /** A named individual of the story rather than a nameless foe (combat AI P9): one the Game Master
    *  may play itself, as it plays a boss. */
   named: z.boolean().optional(),

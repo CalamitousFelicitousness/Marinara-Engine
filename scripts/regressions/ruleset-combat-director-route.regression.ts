@@ -1054,6 +1054,20 @@ try {
     );
     assert.equal((kinded.data!.party[0] as { attacks: Array<Record<string, unknown>> }).attacks[0]!.kind, "heal");
     assert.equal(combatInterruptFields.reaction.safeParse("counterattack").success, false);
+    // So is a temperament or proficiency it has no word for (laptop 2026-10-25: "cunning").
+    const tempered = encounterBlueprintSchema.safeParse({
+      party: [{ name: "Brannoc", hp: 10, maxHp: 10 }],
+      enemies: [
+        { name: "Fox", hp: 6, maxHp: 6, aiHints: { temperament: "cunning", proficiency: "elite", leader: true } },
+      ],
+      environment: "a wood",
+    });
+    assert.ok(tempered.success, JSON.stringify(tempered.error?.issues));
+    assert.deepEqual((tempered.data!.enemies[0] as { aiHints: Record<string, unknown> }).aiHints, {
+      temperament: undefined,
+      proficiency: undefined,
+      leader: true,
+    });
     assert.ok(withBrief.at(-1)!.content.includes('"surprised": true'), "the prompt asks who was caught unaware");
     // An invention may be a sheet in the ruleset's own terms, and numbers written beside it go.
     const caster = blueprint({

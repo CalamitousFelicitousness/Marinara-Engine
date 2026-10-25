@@ -245,6 +245,29 @@ function replyUsesCatalogEntry(content: string): boolean {
   return false;
 }
 
+/** The catalogs what this reply uses outside a fight reads from, beyond the party's own rows: what
+ *  a kept call calls (1.787), and the forms a kept shape takes (1.790), so the one named is checked
+ *  against what it may take now. Without them any form at all was taken (cloud probes 2026-10-25: a
+ *  5th-level druid's Brown Bear and Giant Eagle). */
+export function rulesetTurnCalledCatalogs(catalogs: RulesetCatalogEntriesById, content: string): string[] {
+  const used = new Set(
+    [...content.matchAll(createSheetCommandTagRegex())].flatMap((match) => {
+      const op = parseSheetCommandTagBody(match[1] ?? "").op;
+      return op?.op === "use" ? [op.name.trim().toLowerCase()] : [];
+    }),
+  );
+  return Object.values(catalogs).flatMap((entries) =>
+    entries.flatMap((entry) => {
+      if (!used.has(entry.label.trim().toLowerCase())) return [];
+      const mechanics = entry.mechanics;
+      return [
+        ...(mechanics?.beforeFight && mechanics.calls?.from ? [mechanics.calls.from.catalog] : []),
+        ...(mechanics?.forms?.from && mechanics.targets === "self" ? [mechanics.forms.from.catalog] : []),
+      ];
+    }),
+  );
+}
+
 /** The catalog entries this reply's `use` commands need: nothing at all unless the reply carries
  *  one, and then only the catalogs the party's own rows point at. A catalog that cannot be read is
  *  logged and left out, and the command is refused as naming something the Engine does not know,
@@ -264,19 +287,7 @@ export async function loadTurnRulesetCatalogs(
   // And the ones the party's calls kept outside a fight call from (1.787), to name the creature.
   for (const pass of [0, 1]) {
     if (pass === 1) {
-      const used = new Set(
-        [...content.matchAll(createSheetCommandTagRegex())].flatMap((match) => {
-          const op = parseSheetCommandTagBody(match[1] ?? "").op;
-          return op?.op === "use" ? [op.name.trim().toLowerCase()] : [];
-        }),
-      );
-      const calledFrom = Object.values(catalogs).flatMap((entries) =>
-        entries.flatMap((entry) =>
-          entry.mechanics?.beforeFight && entry.mechanics.calls?.from && used.has(entry.label.trim().toLowerCase())
-            ? [entry.mechanics.calls.from.catalog]
-            : [],
-        ),
-      );
+      const calledFrom = rulesetTurnCalledCatalogs(catalogs, content);
       wanted.clear();
       for (const id of calledFrom) if (!catalogs[id]) wanted.add(id);
     }

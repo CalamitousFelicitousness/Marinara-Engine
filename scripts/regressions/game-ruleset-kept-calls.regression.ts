@@ -262,6 +262,8 @@ try {
     imp.outcomes[0]!.reason ?? "",
     /cannot call "Imp"; it calls Owl, Cat; use "Find Familiar \(Pact of the Chain\)" for that/,
   );
+  // The tag written back keeps the whole reason, pointer and all (Vex's was cut off at its list).
+  assert.match(imp.outcomes[0]!.tag, /reason="[^"]*use Find Familiar \(Pact of the Chain\) for that"/);
 
   // The plain spell's row on such a sheet, never prepared, keeps what it calls all the same, and the
   // fight brings it through the Pact's row, the one it reads: Vex's owl never came.

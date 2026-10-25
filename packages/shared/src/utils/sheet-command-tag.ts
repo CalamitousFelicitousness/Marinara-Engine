@@ -380,7 +380,9 @@ export function serializeSheetCommandTag(
     attribute("now", outcome.now, SHEET_COMMAND_NOW_MAX_LENGTH);
   } else {
     attribute("result", "refused");
-    attribute("reason", outcome.reason);
+    // Whole, as a result's is: what a refusal says it may do instead comes after its list (Vex's
+    // "use \"Find Familiar (Pact of the Chain)\" for that", cut off at 120).
+    attribute("reason", outcome.reason, SHEET_COMMAND_NOW_MAX_LENGTH);
   }
   return `[sheet: ${parts.join(" ")}]`;
 }

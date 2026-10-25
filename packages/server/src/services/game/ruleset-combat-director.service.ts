@@ -157,6 +157,7 @@ import {
   RULESET_ZONE_OPTION_PREFIX,
   RULESET_ZONE_TURN_OPTION_PREFIX,
   RULESET_PASS_OPTION,
+  RULESET_SHAPE_REVERT_ID,
   RULESET_ENGINE_SPENDS_OPTION,
   RULESET_STAND_OPTION,
   RULESET_CLIMB_OUT_OPTION,
@@ -814,7 +815,10 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
         one.side === "party" && one.sheet
           ? rulesetKeptForm(input.live?.[normalizeCharacterLookupName(one.name)])
           : undefined;
-      if (shaped?.health === undefined || !one.shape?.health || !sameRulesetName(one.shape.name, shaped.as)) continue;
+      if (!shaped || !one.shape?.health || !sameRulesetName(one.shape.name, shaped.as)) continue;
+      // Its whole health as first rolled, not rolled again each fight (cloud probes 2026-10-25).
+      if (shaped.max !== undefined) one.shape.health.max = shaped.max;
+      if (shaped.health === undefined) continue;
       one.shape.health.value = Math.max(1, Math.min(one.shape.health.max, shaped.health));
     }
   }
@@ -1259,7 +1263,7 @@ export function rulesetFightLiveStates(fight: RulesetFightState): RulesetLiveSta
         shaped: {
           entry: state?.shaped?.entry ?? entry!.label,
           as: state?.shaped?.as ?? shape.name,
-          ...(shape.health ? { health: Math.max(0, shape.health.value) } : {}),
+          ...(shape.health ? { health: Math.max(0, shape.health.value), max: shape.health.max } : {}),
         },
       };
     } else if (state?.shaped) {
@@ -3944,6 +3948,16 @@ function rulesetCandidatesFrom(
       // it would hold, so a Bless on the same three is worth nothing more (cloud batch 2026-10-25).
       if (holds) candidate.damage = (candidate.damage ?? 0) - letGo;
     }
+  }
+  // Turning back gives up the form while it holds: what it was paid for and what health it has left
+  // between its holder and harm (cloud probes 2026-10-25: a druid's kept Wolf let go on its first turn
+  // to cast). Worth little once the form is nearly spent.
+  if (actor.shape) {
+    const health = actor.shape.health;
+    const left = health ? health.value / Math.max(1, health.max) : 0.5;
+    for (const candidate of candidates)
+      if (candidate.action.option.id === RULESET_SHAPE_REVERT_ID)
+        candidate.damage = (candidate.damage ?? 0) - (0.4 + left);
   }
   // Every foe sealed away (a Resilient Sphere): nothing done to its own side changes the fight until
   // one comes out, so nothing is paid for on it but mending (cloud batch 2026-10-25: a buff cast

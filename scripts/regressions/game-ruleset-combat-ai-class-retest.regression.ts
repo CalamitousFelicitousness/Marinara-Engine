@@ -17,6 +17,7 @@
  *     aura that harms the foes in it is not let go for a buff (laptop playtest 2026-10-24).
  *   - A held buff is not cast again over itself, and nothing is paid for on its own side while every
  *     foe is sealed away (cloud batch 2026-10-25).
+ *   - A form held is not turned back from on its first turn to strike harder in its own shape.
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -24,6 +25,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  RULESET_SHAPE_REVERT_ID,
   applyRulesetCombatChoice,
   createRulesetEncounter,
   parseRulesetDefinition,
@@ -38,6 +40,7 @@ import {
   type RulesetEncounterState,
   type RulesetStatBlock,
 } from "../../packages/shared/src/index.js";
+import { rulesetTakeShape } from "../../packages/shared/src/features/ruleset-combat/shape.js";
 
 const dataDir = mkdtempSync(join(tmpdir(), "marinara-ai-class-retest-"));
 process.env.DATA_DIR = dataDir;
@@ -129,6 +132,7 @@ try {
     { id: "unseen", label: "Unseen" },
     { id: "tame", label: "Tame" },
     { id: "sphered", label: "Sphered" },
+    { id: "beast_shaped", label: "Beast shape" },
   );
   doc.combat.conditions.push(
     {
@@ -152,6 +156,8 @@ try {
     { condition: "tame", effects: ["cannot-harm"] },
     // Resilient Sphere's: nothing reaches in or out.
     { condition: "sphered", effects: [], sealed: {} },
+    // Wild Shape's: a form taken, turned back from as a bonus action.
+    { condition: "beast_shaped", effects: [], shape: { revert: "bonus" } },
   );
   const parsed = parseRulesetDefinition(doc);
   assert.ok(parsed.ok, parsed.ok ? "" : parsed.issues.join("; "));
@@ -761,6 +767,51 @@ try {
       sourceId: "mira",
     } as never);
     assert.equal(blessing(sealed), undefined, "no Bless while the only foe is sealed in a sphere");
+  }
+
+  // ── A form kept from before the fight is not turned back from on its first turn to strike harder
+  //    in its own (cloud probes 2026-10-25: a druid's Wolf let go at once for Conjure Animals) ──
+  {
+    const storm = {
+      id: "storm",
+      name: "Storm",
+      budget: "action",
+      toHit: 8,
+      reach: 5,
+      damage: { count: 3, sides: 8, flat: 2 },
+    };
+    const bite = {
+      id: "bite",
+      name: "Bite",
+      budget: "action",
+      toHit: 4,
+      reach: 5,
+      damage: { count: 2, sides: 4, flat: 2 },
+    };
+    const scene = fight([
+      { id: "rowan", name: "rowan", side: "party", block: block([storm]), at: { x: 4, y: 5 } },
+      { id: "orc", name: "orc", side: "enemy", block: block([smash]), at: { x: 5, y: 5 } },
+    ]);
+    const rowan = rulesetCombatant(scene.encounter, "rowan")!;
+    const rule = definition.combat!.conditions!.find((one) => one.condition === "beast_shaped")!.shape!;
+    assert.ok(
+      rulesetTakeShape(
+        definition,
+        scene.encounter,
+        rowan,
+        "beast_shaped",
+        rule,
+        { name: "Wolf", block: block([bite], { health: 11 }) } as never,
+        () => 4,
+      ),
+    );
+    rowan.tracked.push({ condition: "beast_shaped", rounds: 600, source: "rowan" } as never);
+    const choices = () => ranked(scene, "rowan").map((one) => one.candidate.action.option.id);
+    assert.ok(choices().includes(RULESET_SHAPE_REVERT_ID), "turning back is on offer");
+    assert.notEqual(
+      pickRulesetChoice(definition, scene.state, scene.encounter, "rowan")?.option.id,
+      RULESET_SHAPE_REVERT_ID,
+    );
   }
 
   console.info(

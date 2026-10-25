@@ -573,6 +573,16 @@ const fighter = buildFor({ level: 1, hp_max: 12 });
     { ok: true, now: "ok" },
   );
   assert.equal(hostile.match(/\[sheet:/g)!.length, 1, "no value can close the tag and open another");
+  // A refusal's reason is kept whole, as a result's is: what it says to use instead comes last
+  // (cloud batch 2026-10-25: Vex's pointer to the Pact's Find Familiar was cut off at 120).
+  const pointed = `bad-amount: Find Familiar cannot call "Imp"; it calls ${"Bat, Cat, Crab, Frog, Hawk, Lizard, Octopus, ".repeat(2)}...; use "Find Familiar (Pact of the Chain)" for that`;
+  assert.match(
+    serializeSheetCommandTag(
+      { who: "Vex", op: { op: "use", name: "Find Familiar", as: "Imp" }, raw: "" },
+      { ok: false, reason: pointed },
+    ),
+    /reason="[^"]*use Find Familiar \(Pact of the Chain\) for that"\]$/,
+  );
 
   // A `use` round-trips through the canonical spelling: `cast` and `spell=` come back as `use` and
   // `name=`, exactly as `heal` comes back as `restore`.

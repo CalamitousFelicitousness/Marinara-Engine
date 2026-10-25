@@ -11,7 +11,8 @@
  *     of it (beaten out of the form, or turned back): gone from the sheet. Taken in a fight and held
  *     as it ends: kept from then on.
  *   - The form's health carries into the next fight.
- *   - The `dismiss` sheet command ends it.
+ *   - The `dismiss` sheet command ends it, and the condition holding them in it; the form's whole
+ *     health is kept with what it has left, not rolled again; a story turn reads the forms' catalog.
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -36,6 +37,8 @@ process.env.DATA_DIR = dataDir;
 process.env.FILE_STORAGE_DIR = join(dataDir, "storage");
 const { createRulesetFight, rulesetFightLiveStates } =
   await import("../../packages/server/src/services/game/ruleset-combat-director.service.js");
+const { rulesetTurnCalledCatalogs } =
+  await import("../../packages/server/src/services/game/ruleset-sheet-turn.service.js");
 
 try {
   const doc = JSON.parse(
@@ -134,6 +137,12 @@ try {
     "Brown Bear",
   );
 
+  // A story turn that uses it reads the forms' catalog too, so the form named is checked there.
+  assert.deepEqual(rulesetTurnCalledCatalogs({ spells }, `[sheet: op="use" name="Wild Shape" as="Wolf"]`), [
+    "creatures",
+  ]);
+  assert.deepEqual(rulesetTurnCalledCatalogs({ spells }, `[sheet: op="spend" pool="hp" amount="1"]`), []);
+
   // ── The Game Master reads it ──
   assert.match(
     renderRulesetSheetBlock(definition, cards[0]!, shaped.live.rook),
@@ -171,11 +180,13 @@ try {
   // ── Still in it as the fight ends: kept, with the form's health and its condition ──
   rook.shape!.health!.value = 12;
   rook.tracked = rook.tracked.filter((entry) => entry.condition !== "wild_shaped");
+  rook.shape!.health!.max = 33;
   const kept = rulesetFightLiveStates(fight).rook!;
-  assert.deepEqual(rulesetKeptForm(kept), { entry: "Wild Shape", as: "Wolf", health: 12 });
+  assert.deepEqual(rulesetKeptForm(kept), { entry: "Wild Shape", as: "Wolf", health: 12, max: 33 });
   assert.ok(kept.conditions?.includes("wild_shaped"), "the condition holding it stays on the sheet");
   // The form's health carries into the next fight.
   assert.equal(rookOf(fightWith({ rook: kept })).shape?.health?.value, 12);
+  assert.equal(rookOf(fightWith({ rook: kept })).shape?.health?.max, 33, "its whole health is not rolled again");
 
   // ── Out of it as the fight ends: gone ──
   {
@@ -195,6 +206,7 @@ try {
       entry: "Wild Shape",
       as: "Wolf",
       health: rookOf(taken).shape!.health!.value,
+      max: rookOf(taken).shape!.health!.max,
     });
   }
 
@@ -203,6 +215,9 @@ try {
   assert.equal(ended.outcomes[0]!.ok, true, ended.outcomes[0]!.reason);
   assert.match(ended.outcomes[0]!.now ?? "", /Wolf shape ended/);
   assert.equal(rulesetKeptForm(ended.live.rook), undefined);
+  // The condition holding them in it (a fight's write-back, or the Game Master's tag) goes with it.
+  const held = { rook: { ...shaped.live.rook, conditions: ["wild_shaped"] } } as RulesetLiveStates;
+  assert.ok(!say(`[sheet: op="dismiss" name="Wolf"]`, held).live.rook?.conditions?.includes("wild_shaped"));
   assert.equal(say(`[sheet: op="dismiss" name="Wild Shape"]`, shaped.live).outcomes[0]!.ok, true);
   assert.equal(rookOf(fightWith(ended.live)).shape, undefined, "the next fight starts them in their own shape");
 

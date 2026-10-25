@@ -123,6 +123,8 @@ export interface RulesetLiveShaped {
   entry: string;
   as: string;
   health?: number;
+  /** The form's whole health as its first fight rolled it, kept so the next does not roll it again. */
+  max?: number;
 }
 
 /** A save a held condition is made against as days pass (Capability API 1.510). */
@@ -223,6 +225,7 @@ const liveShapedSchema = z
     entry: z.string().min(1).max(MAX_LIVE_KEY_LENGTH),
     as: z.string().min(1).max(MAX_LIVE_KEY_LENGTH),
     health: z.number().int().min(0).max(MAX_LIVE_NUMBER).optional(),
+    max: z.number().int().min(1).max(MAX_LIVE_NUMBER).optional(),
   })
   .strict();
 
@@ -1919,6 +1922,13 @@ export function applyRulesetSheetOp(
     const shape = next.shaped;
     if (wanted && shape && (sameName(shape.entry, wanted) || sameName(shape.as, wanted))) {
       delete next.shaped;
+      // And what held them in it: a condition that is a shape, as a fight ends it (cloud probes
+      // 2026-10-25: Wild Shape stayed on the sheet after it was dismissed).
+      const shapes = new Set(
+        (definition.combat?.conditions ?? []).flatMap((entry) => (entry.shape ? [entry.condition] : [])),
+      );
+      if (next.conditions?.some((id) => shapes.has(id)))
+        next.conditions = next.conditions.filter((id) => !shapes.has(id));
       return done(`${shape.as} shape ended`);
     }
     const key = Object.keys(next.called ?? {}).find(

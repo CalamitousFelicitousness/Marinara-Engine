@@ -13,6 +13,8 @@
 
 import {
   applyRulesetSheetOp,
+  capRulesetCasterSheet,
+  RULESET_INVENTED_CASTER_MOST,
   rulesetBudgetLevel,
   rulesetBudgetedTiers,
   rulesetEncounterBudget,
@@ -849,6 +851,19 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
         filled.adjusted.forEach(said);
         sheet = filled.sheet;
       }
+      // Every invented caster casts only what its sheet can pay for, and keeps a few spells for its one
+      // role; a legendary one (a boss with legendary actions or Legendary Resistance) keeps them all.
+      const legendary =
+        opponent.boss &&
+        (proposed.data.signaturePoints !== undefined || proposed.data.legendaryResistance !== undefined);
+      const capped = capRulesetCasterSheet(
+        definition,
+        sheet,
+        input.bestiary,
+        legendary ? Number.POSITIVE_INFINITY : RULESET_INVENTED_CASTER_MOST,
+      );
+      capped.adjusted.forEach(said);
+      sheet = capped.sheet;
       const tiers = combat.threat?.tiers ?? [];
       const wanted = opponent.tier ?? proposed.data.tier;
       const tier = tiers.find((entry) => entry.id === wanted) ?? tiers[0];

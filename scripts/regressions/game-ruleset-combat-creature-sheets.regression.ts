@@ -38,6 +38,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   applyRulesetCombatChoice,
+  capRulesetCasterSheet,
   createRulesetEncounter,
   holdRulesetSheetHealth,
   normalizeCharacterLookupName,
@@ -1848,6 +1849,73 @@ const spellbook = parsedOrThrow(
 
 // ── Capability API 1.34 ──
 const dataDir = mkdtempSync(join(tmpdir(), "marinara-creature-sheets-"));
+// ── An invented caster casts what its sheet pays for, and keeps a few spells for its one role ──
+// (Alyssa, 2026-10-25: at most 6 leveled spells, "unless it's supposed to be some legendary Elminster
+// or Daurgothoth level entity or literal Deity".)
+{
+  const caster = (spells: string[], extra: Record<string, unknown> = {}) => ({
+    tier: "cr_2",
+    ...extra,
+    sheet: {
+      fields: { class: "Sorcerer", level: 3, spellcasting_ability: "cha", slots_max_1: 4 },
+      lists: { spells: spells.map((name) => ({ name, prepared: true })) },
+    },
+  });
+  const many = [
+    "Frost Mote",
+    "Ember Lance",
+    "Spark Lash",
+    "Warding Word",
+    "Kindle Heart",
+    "Binding Glare",
+    "Hex Counter",
+  ];
+  const spellsOf = (fight: NonNullable<ReturnType<typeof started>["rulesetFight"]>, id: string) =>
+    who(fight.encounter, id).sheet!.build.lists.spells!.map((row) => row.name);
+  const plain = started({
+    definition: spellbook,
+    cards: [card("Brenna", fighterBuild())],
+    party: [{ id: "brenna", name: "Brenna" }],
+    enemies: [{ id: "mage", name: "Ash Mage", tier: "cr_2", boss: true, proposed: caster(many) }],
+  }).rulesetFight!;
+  // No 2nd level slots, so Ember Lance goes; the cantrip is no slot's and stays; five 1st level ones fit.
+  assert.deepEqual(spellsOf(plain, "mage"), [
+    "Frost Mote",
+    "Spark Lash",
+    "Warding Word",
+    "Kindle Heart",
+    "Binding Glare",
+    "Hex Counter",
+  ]);
+  assert.ok(
+    plain.adjustments.some((line) =>
+      /Ash Mage: "Ember Lance" is beyond what this sheet can pay for, so dropped\./.test(line),
+    ),
+    plain.adjustments.join("; "),
+  );
+  // Past the most it keeps, the first ones written stay and the rest go, said.
+  const sheet = who(plain.encounter, "mage").sheet!.build;
+  const two = capRulesetCasterSheet(spellbook, sheet, fightCatalogs(spellbook), 2);
+  assert.deepEqual(
+    two.sheet.lists.spells!.map((row) => row.name),
+    ["Frost Mote", "Spark Lash", "Warding Word"],
+  );
+  assert.deepEqual(two.adjusted, [
+    '"Kindle Heart", "Binding Glare", "Hex Counter" went: an invented caster keeps 2 of what it pays for out of its pools.',
+  ]);
+  // A legendary one (a boss with Legendary Resistance) keeps all it can cast; uncastable still goes.
+  const legend = started({
+    definition: spellbook,
+    cards: [card("Brenna", fighterBuild())],
+    party: [{ id: "brenna", name: "Brenna" }],
+    enemies: [
+      { id: "arch", name: "Archmage", tier: "cr_2", boss: true, proposed: caster(many, { legendaryResistance: 3 }) },
+    ],
+  }).rulesetFight!;
+  assert.equal(spellsOf(legend, "arch").length, 6);
+  assert.ok(!legend.adjustments.some((line) => /an invented caster keeps/.test(line)));
+}
+
 const previousDataDir = process.env.DATA_DIR;
 process.env.DATA_DIR = dataDir;
 try {

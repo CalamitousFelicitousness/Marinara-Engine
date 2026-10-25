@@ -107,8 +107,10 @@ export {
   rulesetCombatRoller,
 } from "./dice.js";
 export {
+  capRulesetCasterSheet,
   fillRulesetSheetChoices,
   holdRulesetCombatant,
+  RULESET_INVENTED_CASTER_MOST,
   holdRulesetSheetHealth,
   readProposedRulesetSheet,
   restrictRulesetSheetEntries,

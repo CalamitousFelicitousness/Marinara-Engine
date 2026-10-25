@@ -234,6 +234,8 @@ try {
     prompt,
     /played at Moderate for a party of 2 \(levels 2, 2\).*at most 300, or 400 for a fight with a boss/,
   );
+  // An invented caster's guidance (Alyssa, 2026-10-25): one role, six that spend its pools at most.
+  assert.match(prompt, /A caster you make up has one role .* at most 6 that spend its pools/);
   // A ruleset with no budget says nothing of one.
   const plain = parsed(JSON.parse(text));
   const none = await encounterRulesetBrief(plain, null, { cards, difficulty: "normal" });

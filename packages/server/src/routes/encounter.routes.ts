@@ -28,6 +28,7 @@ import {
   rulesetSheetBuildsByName,
   type GameDifficulty,
   type RulesetEncounterBudget,
+  RULESET_INVENTED_CASTER_MOST,
 } from "@marinara-engine/shared";
 import { loadGameFightItems } from "../services/game/game-inventory.service.js";
 import { loadRulesetCatalogEntries } from "../services/game/ruleset-catalog.service.js";
@@ -918,6 +919,7 @@ export function buildInitPrompt(
       }
     }
     inst += `  - An enemy that is not a boss may only have what this ruleset opens to its sheet, and only needs the entries it should certainly have: the Engine fills its other choices from its aiHints, by temperament and proficiency. A boss is written in full by you and may be the exception: it may have anything this ruleset offers, and nothing is filled in for it.\n`;
+    inst += `  - A caster you make up has one role (it blasts, heals, or holds the party back) and spells that fit its theme and tier: two or three that cost nothing and at most ${RULESET_INVENTED_CASTER_MOST} that spend its pools, its class level about what its tier would have. At most one or two that take somebody out of the fight on one failed save, and a spell that stops another spell only on a boss. A spell its sheet cannot pay for is dropped, and past ${RULESET_INVENTED_CASTER_MOST} the rest go, unless it is a boss of legend (with legendaryResistance or signature actions): a famed archmage, a god. Prefer a caster from the bestiary above when one fits, and give a caster others to stand in front of it, or make it the boss.\n`;
   }
 
   msgs.push({ role: "user", content: inst });

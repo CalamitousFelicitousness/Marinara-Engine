@@ -32,7 +32,7 @@ import {
   type RulesetSheetBuild,
 } from "../../schemas/ruleset.schema.js";
 import { combatAiHash, type CombatTactics } from "../combat-ai.js";
-import { readRulesetLive } from "../rulesets/live-state.js";
+import { applyRulesetSheetOp, planRulesetUse, readRulesetLive } from "../rulesets/live-state.js";
 import { sheetFieldMatchTexts } from "../rulesets/scaled-rows.js";
 import { resolveRulesetValueRef } from "../rulesets/sheet-math.js";
 import { heaviestRider, RULESET_CLAMP_HEADROOM, rulesetStepAverageTimes, smallerDie } from "./creatures.js";
@@ -593,6 +593,86 @@ function healthField(definition: RulesetDefinition, poolId: string): Extract<Rul
   }
   const field = definition.sheet.fields.find((candidate) => candidate.id === fieldId);
   return field?.type === "number" ? field : null;
+}
+
+/** How many entries paid for out of a pool family (5e's leveled spells, off its spell slots) an
+ *  invented caster keeps (Alyssa, 2026-10-25): enough for one role, "unless it's supposed to be some
+ *  legendary Elminster or Daurgothoth level entity or literal Deity". */
+export const RULESET_INVENTED_CASTER_MOST = 6;
+
+/**
+ * An invented caster held to what it can cast: an entry its fresh sheet could never pay for (a 5th
+ * level spell on a sheet with no 5th level slots) goes, and of those paid for out of a pool family
+ * (spell slots, as against a cantrip or a ki feature) it keeps the first `most`, in the order they
+ * were written. Rows not out of a catalog are untouched. What went is said.
+ */
+export function capRulesetCasterSheet(
+  definition: RulesetDefinition,
+  proposed: RulesetSheetBuild,
+  catalogs: RulesetCatalogEntriesById,
+  most = RULESET_INVENTED_CASTER_MOST,
+): { sheet: RulesetSheetBuild; adjusted: string[] } {
+  const sheet = structuredClone(proposed);
+  const families = new Set(
+    definition.sheet.live.pools.flatMap((pool) => (pool.group !== undefined ? [pool.id, pool.group] : [])),
+  );
+  const pays = (name: string, pool?: string) => {
+    const plan = planRulesetUse(definition, proposed, {}, catalogs, { op: "use", name, ...(pool ? { pool } : {}) });
+    if (!plan.ok) return null;
+    let live: unknown = {};
+    for (const step of plan.steps) {
+      const result = applyRulesetSheetOp(definition, proposed, live, step.op);
+      if (!result.ok) return null;
+      live = result.live;
+    }
+    return plan;
+  };
+  const uncastable: string[] = [];
+  const over: string[] = [];
+  let kept = 0;
+  for (const [listId, rows] of Object.entries(sheet.lists)) {
+    sheet.lists[listId] = rows.filter((row) => {
+      const mark = row[RULESET_CATALOG_ROW_KEY];
+      if (typeof mark !== "string") return true;
+      const catalogId = mark.slice(0, mark.indexOf("/"));
+      const entry = catalogs[catalogId]?.find((candidate) => candidate.id === mark.slice(mark.indexOf("/") + 1));
+      if (!entry?.mechanics) return true;
+      const asked = planRulesetUse(definition, proposed, {}, catalogs, { op: "use", name: entry.label });
+      const fromFamily = (plan: typeof asked) =>
+        plan.ok && plan.steps.some((step) => step.op.op === "spend" && families.has(step.op.pool));
+      if (!asked.ok || !fromFamily(asked)) return true;
+      // Out of its own pool, or a bigger one of the same family (a 2nd level spell off a 3rd level
+      // slot), never a smaller one.
+      const spent = asked.steps.find((step) => step.op.op === "spend")!.op as { pool: string };
+      const pools = definition.sheet.live.pools;
+      const own = pools.find((pool) => pool.id === spent.pool);
+      const family = own?.group !== undefined ? pools.filter((pool) => pool.group === own.group) : [];
+      const paid =
+        pays(entry.label) ??
+        family
+          .slice(family.indexOf(own!) + 1)
+          .map((pool) => pays(entry.label, pool.id))
+          .find((plan) => plan);
+      if (!paid) {
+        uncastable.push(entry.label);
+        return false;
+      }
+      if (kept >= most) {
+        over.push(entry.label);
+        return false;
+      }
+      kept += 1;
+      return true;
+    });
+  }
+  const adjusted: string[] = [];
+  if (uncastable.length > 0)
+    adjusted.push(
+      `${listed(uncastable)} ${uncastable.length === 1 ? "is" : "are"} beyond what this sheet can pay for, so dropped.`,
+    );
+  if (over.length > 0)
+    adjusted.push(`${listed(over)} went: an invented caster keeps ${most} of what it pays for out of its pools.`);
+  return { sheet, adjusted };
 }
 
 /**

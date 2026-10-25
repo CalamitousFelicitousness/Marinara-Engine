@@ -84,6 +84,45 @@ for (const sheets of [true, false]) {
   assert.equal(/sheet spend and use commands/.test(note), sheets);
 }
 
+// The trades kept are made where the draft said they were: its place goes in front of them.
+const atMarket = `We reach Elm Street. [place: name="Elm Street" size="town"] ${buyLantern}`;
+assert.equal(
+  keepDraftCosts(atMarket, "The shopkeeper warms to you.", "Mira"),
+  `[place: name="Elm Street" size="town"]\n${buyLantern}\nThe shopkeeper warms to you.`,
+);
+// A place said after the trade is not where it was made, and a draft with no trade keeps no place.
+assert.equal(keepDraftCosts(`${buyLantern} [place: name="Gate"]`, rewrite, "Mira"), `${buyLantern}\n${rewrite}`);
+assert.equal(keepDraftCosts(`[place: name="Gate"] Quiet.`, rewrite, "Mira"), rewrite);
+// A new day the draft began is begun once, before the trades, however the rewrite says the place.
+assert.equal(
+  keepDraftCosts(
+    `[place: name="Elm Street" size="town" day="new"] ${buyLantern}`,
+    `[place: name="Elm Street" day="new"] Done.`,
+    "Mira",
+  ),
+  `[place: name="Elm Street" size="town" day="new"]\n${buyLantern}\n[place: name="Elm Street"] Done.`,
+);
+// However either writes it: single quotes, bare, spaced, and on every place the rewrite says.
+for (const day of [`day='new'`, "day=new", `day = "New"`]) {
+  assert.equal(
+    keepDraftCosts(
+      `[place: name="Elm Street" ${day}] ${buyLantern}`,
+      `[place: name="Elm Street" day='new'] Then [place: name="Gate" day=new size="town"] home.`,
+      "Mira",
+    ),
+    `[place: name="Elm Street" ${day}]\n${buyLantern}\n[place: name="Elm Street"] Then [place: name="Gate" size="town"] home.`,
+  );
+}
+// A rewrite's own new day stands where the draft began none, and a name that reads like one is a name.
+assert.equal(
+  keepDraftCosts(`[place: name="Elm Street"] ${buyLantern}`, `[place: name="Gate" day="new"] Done.`, "Mira"),
+  `[place: name="Elm Street"]\n${buyLantern}\n[place: name="Gate" day="new"] Done.`,
+);
+assert.equal(
+  keepDraftCosts(`[place: name="The day=new inn"] ${buyLantern}`, `[place: name="Gate" day="new"] Done.`, "Mira"),
+  `[place: name="The day=new inn"]\n${buyLantern}\n[place: name="Gate" day="new"] Done.`,
+);
+
 // A draft with no costs leaves the rewrite exactly as it is.
 assert.equal(keepDraftCosts("No tags at all.", rewrite), rewrite);
 

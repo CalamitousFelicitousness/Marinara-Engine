@@ -35,31 +35,56 @@ const INSTINCT_ADJECTIVES: readonly (typeof COMBAT_ADJECTIVES)[number][] = [
   "cowardly",
   "coordinated",
 ];
-// A word it does not know is left out, and the Engine deals its own (laptop playtest 2026-10-25: a
-// temperament "cunning" refused a whole fight).
-export const combatAiHintsSchema = z.object({
-  category: z.enum(["beast", "monstrosity", "other", "unknown"]).optional().catch(undefined),
-  proficiency: z.enum(["novice", "trained", "veteran", "master"]).optional().catch(undefined),
-  temperament: z.enum(COMBAT_ADJECTIVES).optional().catch(undefined),
-  /** Its mind, where the story says what the creature's own data cannot: one dominated, one enraged. */
-  mind: z.enum(COMBAT_MINDS).optional().catch(undefined),
-  /** A named individual of the story rather than a nameless foe (combat AI P9): one the Game Master
-   *  may play itself, as it plays a boss. */
-  named: z.boolean().optional(),
-  /** How steady it is when a fight turns against it, on the old games' 2 to 12 morale scale: 2 breaks
-   *  at the first scare, 12 never does. Read off its mind and temperament when absent. */
-  morale: z.number().int().min(2).max(12).optional().catch(undefined),
-  /** Its side follows it (a bandit chief, a pack's alpha): its fall shakes the rest. */
-  leader: z.boolean().optional().catch(undefined),
-  /** What turns its temperament into another, once (combat AI T7): a proud one methodical once
-   *  bloodied, a desperate one reckless once cornered. The first that happens wins. */
-  shifts: z
-    .array(z.object({ on: z.enum(COMBAT_SHIFT_TRIGGERS), to: z.enum(COMBAT_TEMPERAMENTS) }).strict())
-    .min(1)
-    .max(4)
-    .optional()
-    .catch(undefined),
-});
+/** A mind written as its temperament, or a temperament as its mind, moved where it belongs (laptop
+ *  playtest 2026-10-25: temperament "cunning", and mind "disciplined"), in any case. */
+function combatAiHintsSorted(input: unknown): unknown {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return input;
+  const hints = { ...(input as Record<string, unknown>) };
+  const word = (value: unknown) => (typeof value === "string" ? value.trim().toLowerCase() : value);
+  const minds: readonly unknown[] = COMBAT_MINDS;
+  const tempers: readonly unknown[] = COMBAT_ADJECTIVES;
+  const mind = word(hints.mind);
+  const temperament = word(hints.temperament);
+  if (mind !== undefined) hints.mind = mind;
+  if (temperament !== undefined) hints.temperament = temperament;
+  if (!tempers.includes(temperament) && minds.includes(temperament)) {
+    if (hints.mind === undefined || !minds.includes(mind)) hints.mind = temperament;
+    delete hints.temperament;
+  }
+  if (!minds.includes(mind) && tempers.includes(mind)) {
+    if (hints.temperament === undefined || !tempers.includes(temperament)) hints.temperament = mind;
+    if (hints.mind === mind) delete hints.mind;
+  }
+  return hints;
+}
+// A word it does not know at all is left out, and the Engine deals its own (laptop playtest
+// 2026-10-25: a temperament "cunning" refused a whole fight).
+export const combatAiHintsSchema = z.preprocess(
+  combatAiHintsSorted,
+  z.object({
+    category: z.enum(["beast", "monstrosity", "other", "unknown"]).optional().catch(undefined),
+    proficiency: z.enum(["novice", "trained", "veteran", "master"]).optional().catch(undefined),
+    temperament: z.enum(COMBAT_ADJECTIVES).optional().catch(undefined),
+    /** Its mind, where the story says what the creature's own data cannot: one dominated, one enraged. */
+    mind: z.enum(COMBAT_MINDS).optional().catch(undefined),
+    /** A named individual of the story rather than a nameless foe (combat AI P9): one the Game Master
+     *  may play itself, as it plays a boss. */
+    named: z.boolean().optional(),
+    /** How steady it is when a fight turns against it, on the old games' 2 to 12 morale scale: 2 breaks
+     *  at the first scare, 12 never does. Read off its mind and temperament when absent. */
+    morale: z.number().int().min(2).max(12).optional().catch(undefined),
+    /** Its side follows it (a bandit chief, a pack's alpha): its fall shakes the rest. */
+    leader: z.boolean().optional().catch(undefined),
+    /** What turns its temperament into another, once (combat AI T7): a proud one methodical once
+     *  bloodied, a desperate one reckless once cornered. The first that happens wins. */
+    shifts: z
+      .array(z.object({ on: z.enum(COMBAT_SHIFT_TRIGGERS), to: z.enum(COMBAT_TEMPERAMENTS) }).strict())
+      .min(1)
+      .max(4)
+      .optional()
+      .catch(undefined),
+  }),
+);
 export const combatTacticsSchema = z
   .object({
     version: z.literal(1),

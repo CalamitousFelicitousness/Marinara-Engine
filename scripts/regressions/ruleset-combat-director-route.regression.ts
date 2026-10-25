@@ -1054,20 +1054,22 @@ try {
     );
     assert.equal((kinded.data!.party[0] as { attacks: Array<Record<string, unknown>> }).attacks[0]!.kind, "heal");
     assert.equal(combatInterruptFields.reaction.safeParse("counterattack").success, false);
-    // So is a temperament or proficiency it has no word for (laptop 2026-10-25: "cunning").
+    // So is a temperament or proficiency it has no word for, and a mind written as its temperament
+    // or back is moved where it belongs (laptop 2026-10-25: temperament "cunning", mind "disciplined").
     const tempered = encounterBlueprintSchema.safeParse({
       party: [{ name: "Brannoc", hp: 10, maxHp: 10 }],
       enemies: [
-        { name: "Fox", hp: 6, maxHp: 6, aiHints: { temperament: "cunning", proficiency: "elite", leader: true } },
+        { name: "Fox", hp: 6, maxHp: 6, aiHints: { temperament: "Cunning", proficiency: "elite", leader: true } },
+        { name: "Sergeant", hp: 9, maxHp: 9, aiHints: { mind: "disciplined" } },
+        { name: "Hound", hp: 9, maxHp: 9, aiHints: { mind: "reckless" } },
       ],
       environment: "a wood",
     });
     assert.ok(tempered.success, JSON.stringify(tempered.error?.issues));
-    assert.deepEqual((tempered.data!.enemies[0] as { aiHints: Record<string, unknown> }).aiHints, {
-      temperament: undefined,
-      proficiency: undefined,
-      leader: true,
-    });
+    const hintsOf = (index: number) => (tempered.data!.enemies[index] as { aiHints: Record<string, unknown> }).aiHints;
+    assert.deepEqual(hintsOf(0), { mind: "cunning", proficiency: undefined, leader: true });
+    assert.deepEqual(hintsOf(1), { temperament: "disciplined" });
+    assert.deepEqual(hintsOf(2), { temperament: "reckless" });
     assert.ok(withBrief.at(-1)!.content.includes('"surprised": true'), "the prompt asks who was caught unaware");
     // An invention may be a sheet in the ruleset's own terms, and numbers written beside it go.
     const caster = blueprint({

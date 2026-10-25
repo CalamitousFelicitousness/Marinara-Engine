@@ -13,13 +13,18 @@
 // its trades and handling of gear: a buy, a sale, a payment, a gift, gear worn
 // or bound, an item used (a rewrite dropped a whole shopping trip the same day,
 // and the player was never told). An item found or coin earned is the dice's.
+// The place the trades were made at goes in front of them: a rewrite that left
+// out the draft's place had every kept buy refused as made nowhere.
 // ──────────────────────────────────────────────
 
 import {
   createInventoryTagRegex,
+  createPlaceTagRegex,
   createSheetCommandTagRegex,
+  gamePlaceTagBeginsDay,
   parseInventoryTagBody,
   parseSheetCommandTagBody,
+  withoutGamePlaceNewDays,
 } from "@marinara-engine/shared";
 
 /** The sheet ops that pay for doing something, which the dice outcome cannot take back. */
@@ -104,5 +109,19 @@ export function keepDraftCosts(draft: string, rewrite: string, playerName?: stri
     if (left > 0) carried.set(key, left - 1);
     else missing.push(tag);
   }
-  return missing.length ? [...missing, ...(rewrite ? [rewrite] : [])].join("\n") : rewrite;
+  let told = rewrite;
+  // The trades kept were made where the draft last said the scene was before them.
+  const trades = missing.filter((tag) => /^\[inventory:/i.test(tag));
+  if (trades.length > 0) {
+    const last = Math.max(...trades.map((tag) => draft.lastIndexOf(tag)));
+    let place: string | undefined;
+    for (const match of draft.matchAll(createPlaceTagRegex())) if ((match.index ?? 0) < last) place = match[0];
+    if (place) {
+      missing.unshift(place);
+      // A new market day the draft began is begun once: by the place carried, not again by the
+      // rewrite's own telling of it, which would start another day after the trades.
+      if (gamePlaceTagBeginsDay(place)) told = withoutGamePlaceNewDays(told);
+    }
+  }
+  return missing.length ? [...missing, ...(told ? [told] : [])].join("\n") : told;
 }

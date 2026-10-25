@@ -1077,8 +1077,21 @@ async function buildRetryAgentContext(args: {
       : characterIds;
   const initialMacroVariables = normalizeChatMacroVariables(chatMeta.macroVariables);
   const retryMacroVariables = { ...initialMacroVariables };
+  const promptWorldState = historicalGameStateAnchor
+    ? await gameStateStore.getByChatAndMessage(
+        chatId,
+        historicalGameStateAnchor.messageId,
+        historicalGameStateAnchor.swipeIndex,
+      )
+    : useLatestGameStateFallback
+      ? await gameStateStore.getForGeneration(chatId, {
+          preferLatestVisible: true,
+          visibleAnchor: lastAssistant ? resolveVisibleGameStateAnchor([lastAssistant]) : null,
+        })
+      : null;
   const promptMacroContext = await buildPromptMacroContext({
     db,
+    worldState: promptWorldState,
     characterIds,
     personaName: personaContext.personaName,
     personaDescription: personaContext.personaDescription,

@@ -3486,6 +3486,9 @@ export async function chatsRoutes(app: FastifyInstance) {
       chatMode === "roleplay" && normalizeAdvancedMemorySettings(chatMeta.advancedMemory).enabled;
     const chatSummaryFingerprint = fingerprintChatSummary(chatMeta.summary);
     const visibleGameStateAnchor = resolveVisibleGameStateAnchor(chatMessages);
+    let gameSnapshot: ReturnType<typeof loadLatestChatGameSnapshot> | undefined;
+    const readGameSnapshot = () =>
+      (gameSnapshot ??= loadLatestChatGameSnapshot(app, req.params.id, visibleGameStateAnchor));
     const supportsHiddenFromAI = chatMode === "conversation" || chatMode === "roleplay";
 
     const readCachedPrompt = async (
@@ -3770,6 +3773,7 @@ export async function chatsRoutes(app: FastifyInstance) {
             : undefined;
           const promptMacroContext = await buildPromptMacroContext({
             db: app.db,
+            worldState: await readGameSnapshot(),
             model: connection?.model,
             reasoning: promptReasoning,
             // Chat variables win over built-in macros of the same name, as in generation.
@@ -3985,10 +3989,7 @@ export async function chatsRoutes(app: FastifyInstance) {
               },
               ...mappedMessages,
             ];
-            const latestGameState = projectGameSnapshotLocation(
-              await loadLatestChatGameSnapshot(app, req.params.id, visibleGameStateAnchor),
-              ownerSpatialProjection,
-            );
+            const latestGameState = projectGameSnapshotLocation(await readGameSnapshot(), ownerSpatialProjection);
             const lorebookResult = await processLorebooks(
               app.db,
               mappedMessages,
@@ -4088,6 +4089,7 @@ export async function chatsRoutes(app: FastifyInstance) {
 
           const assembled = await assemblePrompt({
             db: app.db,
+            worldState: promptMacroContext.worldState,
             model: connection?.model,
             reasoning: promptReasoning,
             localVariables: chatMacroVariables,
@@ -4375,7 +4377,7 @@ export async function chatsRoutes(app: FastifyInstance) {
           });
           if (chatEnableAgents && activeAgentIds.length > 0) {
             const [gameSnapshot, beholderRun] = await Promise.all([
-              loadLatestChatGameSnapshot(app, req.params.id, visibleGameStateAnchor),
+              readGameSnapshot(),
               activeAgentIds.includes("beholder")
                 ? createAgentsStorage(app.db).getLastSuccessfulRunByType("beholder", req.params.id)
                 : Promise.resolve(null),

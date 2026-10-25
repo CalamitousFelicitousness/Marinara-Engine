@@ -293,12 +293,16 @@ function parseReminder(input: string): { ms: number; timeStr: string; message: s
   return { ms, timeStr: parts.join(""), message };
 }
 
-function buildMacroHelpText(): string {
+async function buildMacroHelpText(): Promise<string> {
+  const { translate } = await import("../localization/i18n");
   const sections = new Map<string, string[]>();
 
   for (const macro of SUPPORTED_MACROS) {
     const lines = sections.get(macro.category) ?? [];
-    lines.push(`${macro.syntax} - ${macro.description}`);
+    const description = macro.descriptionKey
+      ? translate(macro.descriptionKey, { defaultValue: macro.description })
+      : macro.description;
+    lines.push(`${macro.syntax} - ${description}`);
     sections.set(macro.category, lines);
   }
 
@@ -316,7 +320,6 @@ function buildMacroHelpText(): string {
   ].join("\n");
 }
 
-const MACRO_HELP_TEXT = buildMacroHelpText();
 const ILLUSTRATE_SLASH_TIMEOUT_MS = 1_800_000;
 
 function withSlashCommandTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
@@ -1592,7 +1595,7 @@ const COMMANDS: SlashCommand[] = [
     usage: "/macros",
     local: true,
     async execute() {
-      return { handled: true, feedback: MACRO_HELP_TEXT };
+      return { handled: true, feedback: await buildMacroHelpText() };
     },
   },
 ];

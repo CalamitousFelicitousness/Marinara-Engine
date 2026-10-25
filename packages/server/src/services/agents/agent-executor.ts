@@ -279,6 +279,16 @@ export function buildAgentPromptMacroContext(
     characters: characters.map(value),
     variables: {},
     agentData: context.previousOutput ? { [context.previousOutput.agentType]: value(context.previousOutput.text) } : {},
+    worldState: context.gameState
+      ? {
+          date: value(context.gameState.date),
+          time: value(context.gameState.time),
+          worldCustomFields: context.gameState.worldCustomFields?.map((field) => ({
+            ...field,
+            value: value(field.value),
+          })),
+        }
+      : null,
     lastInput: latestUserMessage ? value(latestUserMessage.content) : "",
     chatId: value(context.chatId),
     characterProfiles: context.characters.map((character) => ({

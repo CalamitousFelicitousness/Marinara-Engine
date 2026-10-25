@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import {
   AlertTriangle,
   Activity,
@@ -25,6 +25,8 @@ import { toast } from "sonner";
 import {
   PERSONAL_EXTENSION_CAPABILITIES,
   PERSONAL_EXTENSION_FULL_PAGE_CAPABILITY,
+  PERSONAL_EXTENSION_DEFAULT_REVISIONS,
+  PERSONAL_EXTENSION_MAX_REVISIONS,
   type PersonalExtensionListItem,
 } from "@marinara-engine/shared";
 import { ApiError, getPrivilegedActionErrorMessage } from "../../../lib/api-client";
@@ -35,6 +37,8 @@ import {
   useCreatePersonalExtension,
   useDeletePersonalExtension,
   usePersonalExtensions,
+  usePersonalExtensionRevisionRetention,
+  useSetPersonalExtensionRevisionRetention,
   useRollbackPersonalExtension,
   useUpdatePersonalExtension,
 } from "../../../hooks/use-personal-extensions";
@@ -182,6 +186,71 @@ function normalizeImportedName(fileName: string) {
 }
 
 type ExtensionSettingsMode = "personal" | "external";
+
+export function ExtensionRevisionHistorySettings() {
+  const { t } = useTranslation();
+  const limitId = useId();
+  const { data, error, refetch } = usePersonalExtensionRevisionRetention();
+  const update = useSetPersonalExtensionRevisionRetention();
+  const changeLimit = async (limit: number) => {
+    const reducing = data !== undefined && limit < data.limit;
+    const confirmRemoval = () =>
+      showConfirmDialog({
+        title: t("settings.extensions.revisionHistory.confirmTitle"),
+        message: t("settings.extensions.revisionHistory.confirmMessage", { limit }),
+        confirmLabel: t("settings.extensions.revisionHistory.confirmLabel"),
+      });
+    if (reducing && !(await confirmRemoval())) return;
+    try {
+      try {
+        await update.mutateAsync({ limit, ...(reducing ? { confirmPrune: true } : {}) });
+      } catch (saveError) {
+        const confirmationRequired =
+          saveError instanceof ApiError &&
+          saveError.status === 409 &&
+          typeof saveError.payload === "object" &&
+          saveError.payload !== null &&
+          "code" in saveError.payload &&
+          saveError.payload.code === "confirmation_required";
+        if (reducing || !confirmationRequired) throw saveError;
+        if (!(await confirmRemoval())) return;
+        await update.mutateAsync({ limit, confirmPrune: true });
+      }
+      toast.success(t("settings.extensions.revisionHistory.saved"));
+    } catch (saveError) {
+      toast.error(getPrivilegedActionErrorMessage(saveError, t("settings.extensions.revisionHistory.saveFailed")));
+    }
+  };
+  return (
+    <SettingsSection title={t("settings.extensions.revisionHistory.title")} icon={<History size="0.875rem" />}>
+      <p className="text-xs text-[var(--muted-foreground)]">{t("settings.extensions.revisionHistory.description")}</p>
+      <div className="flex items-center justify-between gap-3 text-xs">
+        <label htmlFor={limitId}>{t("settings.extensions.revisionHistory.limit")}</label>
+        <select
+          id={limitId}
+          value={data?.limit ?? PERSONAL_EXTENSION_DEFAULT_REVISIONS}
+          disabled={!data || update.isPending}
+          onChange={(event) => void changeLimit(Number(event.target.value))}
+          className="rounded-lg bg-[var(--secondary)] px-3 py-2 ring-1 ring-[var(--border)] disabled:opacity-50"
+        >
+          {Array.from({ length: PERSONAL_EXTENSION_MAX_REVISIONS + 1 }, (_, limit) => (
+            <option key={limit} value={limit}>
+              {limit}
+            </option>
+          ))}
+        </select>
+      </div>
+      {error && (
+        <p role="alert" className="text-xs text-[var(--destructive)]">
+          {t("settings.extensions.revisionHistory.loadFailed")}{" "}
+          <button type="button" className="underline" onClick={() => void refetch()}>
+            {t("settings.extensions.revisionHistory.retry")}
+          </button>
+        </p>
+      )}
+    </SettingsSection>
+  );
+}
 
 export function PersonalExtensionsSettings({ showIntro = true }: { showIntro?: boolean }) {
   return <ExtensionSettings showIntro={showIntro} mode="personal" />;

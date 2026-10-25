@@ -13,6 +13,7 @@ import {
 } from "@marinara-engine/shared";
 import { isConnectionFlagFalse, isLanguageGenerationConnection } from "../../lib/connection-filters";
 import { useEffectiveGenerationParameters } from "../../hooks/use-effective-generation-parameters";
+import { useKeepFocusedFieldAboveKeyboard } from "../../hooks/use-keep-focused-field-above-keyboard";
 // ──────────────────────────────────────────────
 // Full-Page Connection Editor
 // Click a connection → opens this editor (like presets/characters)
@@ -403,6 +404,8 @@ export function ConnectionEditor() {
   const [showUnsavedWarning, setShowUnsavedWarning] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savedFlash, setSavedFlash] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
+  useKeepFocusedFieldAboveKeyboard(contentRef);
 
   // Local editable state
   const [localName, setLocalName] = useState("");
@@ -1994,7 +1997,7 @@ export function ConnectionEditor() {
       )}
 
       {/* ── Body ── */}
-      <div className="mari-editor-content max-md:p-4">
+      <div ref={contentRef} className="mari-editor-content max-md:p-4">
         <div className="mari-editor-content-inner space-y-6">
           {/* ── Connection Name ── */}
           <FieldGroup

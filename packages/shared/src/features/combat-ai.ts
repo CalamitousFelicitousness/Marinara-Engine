@@ -465,8 +465,11 @@ export function rankCombatCandidates<T>(
     else if (profile.role === "controller") weights.setup = Math.max(weights.setup, 1.2);
     else if (profile.role === "supporter") weights.support = Math.max(weights.support, 0.8);
     else if (profile.role === "solo") {
-      // Save an arrogant one (T5), which holds its best back until the fight proves worth it.
-      if (adjective !== "arrogant") weights.cost = 0;
+      // Save an arrogant one (T5), which holds its best back until the fight proves worth it. It still
+      // minds a little what it spends, so a bigger slot buys what it is worth and no more (cloud
+      // archetypes 2026-10-25: a legendary priest cast 13 Healing Words out of its 6th to 3rd level
+      // slots, the biggest first, as each was free to it).
+      if (adjective !== "arrogant") weights.cost = Math.min(weights.cost, 0.15);
       weights.damage *= 1.2;
       weights.risk = Math.min(weights.risk, 0.4);
     }

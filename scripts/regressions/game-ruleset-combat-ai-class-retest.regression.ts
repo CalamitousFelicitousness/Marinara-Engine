@@ -415,6 +415,20 @@ try {
     });
     assert.deepEqual(said, ["cannotAct"]);
   }
+  // ── Caught unaware, the same (laptop playtest 2026-10-25: a surprised Serath "nothing worth the price") ──
+  {
+    const scene = fight([
+      { id: "o1", name: "o1", side: "enemy", block: block([smash]), at: { x: 5, y: 5 } },
+      sheetOf("mei", sheet({ level: 5 }), { x: 4, y: 5 }),
+    ]);
+    rulesetCombatant(scene.encounter, "o1")!.surprised = true;
+    assert.ok(commandRulesetCombatDirector(definition, scene.state, { type: "continue" }).ok);
+    const said = scene.state.rulesetFight!.events.flatMap((entry) => {
+      const event = entry.event as { type: string; actorId?: string; reasons?: Array<{ why: string }> };
+      return event.type === "reasoning" && event.actorId === "o1" ? event.reasons!.map((one) => one.why) : [];
+    });
+    assert.deepEqual(said, ["cannotAct"]);
+  }
 
   // ── Twinned: one point, two foes ──
   {

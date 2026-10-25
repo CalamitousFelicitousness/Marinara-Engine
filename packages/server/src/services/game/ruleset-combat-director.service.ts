@@ -8478,14 +8478,16 @@ function playRulesetTurn(
   if (silent && territory) record(fight, [{ type: "holdsGround", actorId }]);
   else if (silent && rulesetCombatStanding(rulesetCombatant(fight.encounter, actorId)!))
     recordReasons(fight, actorId, [
-      // Held helpless (paralysed, stunned): not a choice it made (cloud AI fights 2026-10-24).
-      definition.combat &&
-      rulesetCombatEffects(
-        definition,
-        definition.combat,
-        rulesetCombatant(fight.encounter, actorId)!,
-        fight.encounter,
-      ).has("cannot-act")
+      // Held helpless (paralysed, stunned), or caught unaware: not a choice it made (cloud AI fights
+      // 2026-10-24; laptop playtest 2026-10-25, a surprised Serath "nothing worth the price").
+      rulesetCombatant(fight.encounter, actorId)!.surprised ||
+      (definition.combat &&
+        rulesetCombatEffects(
+          definition,
+          definition.combat,
+          rulesetCombatant(fight.encounter, actorId)!,
+          fight.encounter,
+        ).has("cannot-act"))
         ? { why: "cannotAct" }
         : tried.size > 0
           ? { why: "noWay" }

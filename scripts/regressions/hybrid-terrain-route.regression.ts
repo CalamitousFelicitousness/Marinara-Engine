@@ -183,8 +183,10 @@ try {
   assert.equal(state.units[0].movementMode, "fly");
   assert.deepEqual(state.battlefield, {
     kind: "generated",
-    generatorVersion: 2,
+    generatorVersion: 3,
     size: "large",
+    // Shaped boards (generator 3): this seed draws a broken outline.
+    outline: "broken",
     brief: {
       size: "large",
       features: [{ terrain: "forest", placement: "center", shape: "patch" }],

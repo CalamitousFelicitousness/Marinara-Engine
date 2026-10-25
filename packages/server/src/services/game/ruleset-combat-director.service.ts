@@ -140,6 +140,7 @@ import {
   rulesetSheetBuildsByName,
   rulesetCardCreaturesByName,
   readProposedRulesetSheet,
+  planRulesetUse,
   rulesetProposedSheetWithEntries,
   restrictRulesetSheetEntries,
   RULESET_PROPOSED_SHEET_REPLACES,
@@ -625,7 +626,10 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
           // One this ruleset has as an entry that answers (a Counterspell that is a spell here),
           // on a block with no sheet to write it on: cast as its own, once this fight (laptop
           // playtest 2026-10-25: an invented Cult Mage's Counterspell never countered).
-          const entry = block.sheet ? undefined : rulesetAnsweringEntryRef(input.bestiary, attack.name);
+          // Its sheet's own when it could pay for it there; one it could not (laptop playtest
+          // 2026-10-25: a Cult Mage's sheet with no slots "held Counterspell, but could not pay for
+          // it") is left off the sheet, and comes here.
+          const entry = rulesetAnsweringEntryRef(input.bestiary, attack.name);
           if (entry && !cast.includes(entry)) {
             cast.push(entry);
             has.add(attack.name.toLowerCase());
@@ -674,8 +678,39 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
       const reactionNames = (opponent.attacks ?? [])
         .filter((attack) => attack.reaction && !rulesetBestiaryReaction(definition, input.bestiary, attack.name))
         .map((attack) => attack.name);
-      const named = rulesetProposedSheetWithEntries(definition, proposed.data.sheet, reactionNames, input.bestiary);
-      for (const name of reactionNames) if (!named.missing.includes(name)) onSheet.add(name.toLowerCase());
+      const placed = rulesetProposedSheetWithEntries(definition, proposed.data.sheet, reactionNames, input.bestiary);
+      const trial = readProposedRulesetSheet(definition, placed.sheet, input.bestiary).sheet;
+      // Whether a fresh sheet could pay for it, at its own price or out of a bigger pool of the family.
+      const paysWith = (name: string, pool?: string) => {
+        const plan = planRulesetUse(definition, trial, {}, input.bestiary, {
+          op: "use",
+          name,
+          ...(pool ? { pool } : {}),
+        });
+        if (!plan.ok) return false;
+        let live: unknown = {};
+        for (const step of plan.steps) {
+          const result = applyRulesetSheetOp(definition, trial, live, step.op);
+          if (!result.ok) return false;
+          live = result.live;
+        }
+        return true;
+      };
+      const pays = (name: string) =>
+        paysWith(name) ||
+        definition.sheet.live.pools.some((pool) => pool.group !== undefined && paysWith(name, pool.id));
+      const unpaid = reactionNames.filter((name) => !placed.missing.includes(name) && !pays(name));
+      const named =
+        unpaid.length > 0
+          ? rulesetProposedSheetWithEntries(
+              definition,
+              proposed.data.sheet,
+              reactionNames.filter((name) => !unpaid.includes(name)),
+              input.bestiary,
+            )
+          : placed;
+      for (const name of reactionNames)
+        if (!named.missing.includes(name) && !unpaid.includes(name)) onSheet.add(name.toLowerCase());
       const read = readProposedRulesetSheet(definition, named.sheet, input.bestiary);
       read.adjusted.forEach(said);
       // A boss is the Game Master's to write in full, as the exception it may be. Anything else keeps

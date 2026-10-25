@@ -20,6 +20,8 @@
  *   - A form held is not turned back from on its first turn to strike harder in its own shape.
  *   - A hold on the strongest foe is not traded for one on a lesser foe, and a rage is not entered
  *     with nothing to strike this turn (cloud AI fights 2026-10-25).
+ *   - A creature called after the fight began is weighed like any other, not handed the first thing
+ *     on its menu (cloud AI fights 2026-10-25).
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -587,6 +589,56 @@ try {
     assert.notEqual(pickRulesetChoice(definition, scene.state, next, "mira")?.option.id, "hold", "the wolves are kept");
   }
 
+  // ── A creature called after the fight began is weighed, not handed the first thing it could do
+  //    (cloud AI fights 2026-10-25: Draft Horses idled two cells from the Gladiator) ──
+  {
+    const call = {
+      id: "call",
+      label: "Call",
+      kind: "utility",
+      budget: "action",
+      concentration: true,
+      targets: { side: "self", count: 0 },
+      calls: {
+        block: block(
+          [
+            { id: "nip", name: "Nip", budget: "action", toHit: 6, reach: 5, damage: { count: 0, sides: 0, flat: 1 } },
+            { id: "bite", name: "Bite", budget: "action", toHit: 6, reach: 5, damage: { count: 0, sides: 0, flat: 7 } },
+          ],
+          { health: 15 },
+        ),
+        name: "Wolf",
+        creature: { catalogId: "creatures", entryId: "wolf" },
+        count: { count: 0, sides: 0, flat: 1 },
+        rounds: 10,
+      },
+    } as unknown as RulesetCombatAction;
+    const scene = fight([
+      { id: "mira", name: "mira", side: "party", block: block([poke]), at: { x: 2, y: 5 } },
+      { id: "orc", name: "orc", side: "enemy", block: block([smash]), at: { x: 5, y: 5 } },
+    ]);
+    rulesetCombatant(scene.encounter, "mira")!.actions.push(call);
+    const called = applyRulesetCombatChoice(
+      definition,
+      scene.encounter,
+      { actorId: "mira", optionId: "call", targetIds: [] },
+      () => 10,
+    );
+    assert.ok(!called.refused, JSON.stringify(called.refused));
+    const wolf = called.state.combatants.find((one) => one.calledBy === "mira")!;
+    assert.ok(wolf, "a wolf is called");
+    assert.ok(
+      ![...scene.state.party, ...scene.state.enemies].some((unit) => unit.id === wolf.id),
+      "the wolf has no unit of its own",
+    );
+    (scene.state.rulesetFight as { encounter: RulesetEncounterState }).encounter = called.state;
+    assert.ok(called.state.order.includes(wolf.id), "the wolf takes turns");
+    called.state.turn = called.state.order.indexOf(wolf.id);
+    const choice = pickRulesetChoice(definition, scene.state, called.state, wolf.id);
+    assert.equal(choice?.option.id, "bite", `the wolf walks up and bites, not nips: ${JSON.stringify(choice?.choice)}`);
+    assert.ok(choice?.to ?? choice?.choice.to, "after a walk");
+  }
+
   // ── A hold on the strongest foe is kept, not traded for a hold on a lesser one (cloud AI fights
   //    2026-10-25: a Hold Person on the paralysed Gladiator let go to hold a Bandit) ──
   {
@@ -1036,7 +1088,7 @@ try {
   }
 
   console.info(
-    "AI class re-test: turning by kind, chosen-use heals, granted dodges, twinned, exhaustion priced, no Slow as support, held summons kept, a one-blow potion kept.",
+    "AI class re-test: turning by kind, chosen-use heals, granted dodges, twinned, exhaustion priced, no Slow as support, held summons kept, a one-blow potion kept, a called creature weighed.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

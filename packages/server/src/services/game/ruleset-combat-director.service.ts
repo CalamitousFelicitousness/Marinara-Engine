@@ -6039,6 +6039,21 @@ export function rankRulesetChoices(
   });
 }
 
+/** A unit for a combatant the Engine keeps none for, read afresh from the fight at each pick. */
+function rulesetPassingUnit(actor: RulesetCombatant): CombatDirectorState["party"][number] {
+  return {
+    id: actor.id,
+    name: actor.name,
+    side: actor.side === "party" ? "player" : "enemy",
+    hp: 1,
+    maxHp: 1,
+    attack: 0,
+    defense: 0,
+    speed: 0,
+    level: 1,
+  };
+}
+
 /** The candidates of a pick, weighed by everything the unit is and was told; `only` where there is
  *  nothing to weigh. */
 function weighChoices(
@@ -6059,8 +6074,13 @@ function weighChoices(
       opening: boolean;
     }
   | null {
-  const unit = [...state.party, ...state.enemies].find((entry) => entry.id === actorId);
   const actor = rulesetCombatant(encounter, actorId);
+  // One that came into the fight after it began (a summons) has no unit of the Engine's own: it is
+  // weighed with one made for this pick, not handed the first thing it could do (cloud AI fights
+  // 2026-10-25: Draft Horses called by Conjure Animals idled two cells from the Gladiator).
+  const unit =
+    [...state.party, ...state.enemies].find((entry) => entry.id === actorId) ??
+    (actor ? rulesetPassingUnit(actor) : undefined);
   // Its mind as its own data says (1.746), unless the Game Master said otherwise for this fight: a
   // profile made before that was read is made again with it.
   if (unit && actor) {

@@ -21,8 +21,10 @@ import {
   createInventoryTagRegex,
   createPlaceTagRegex,
   createSheetCommandTagRegex,
+  gamePlaceTagBeginsDay,
   parseInventoryTagBody,
   parseSheetCommandTagBody,
+  withoutGamePlaceNewDays,
 } from "@marinara-engine/shared";
 
 /** The sheet ops that pay for doing something, which the dice outcome cannot take back. */
@@ -107,14 +109,19 @@ export function keepDraftCosts(draft: string, rewrite: string, playerName?: stri
     if (left > 0) carried.set(key, left - 1);
     else missing.push(tag);
   }
-  // The trades kept were made where the draft last said the scene was before them (laptop playtest
-  // 2026-10-25: a rolled turn's buys refused as made nowhere, the rewrite having left the place out).
+  let told = rewrite;
+  // The trades kept were made where the draft last said the scene was before them.
   const trades = missing.filter((tag) => /^\[inventory:/i.test(tag));
   if (trades.length > 0) {
     const last = Math.max(...trades.map((tag) => draft.lastIndexOf(tag)));
     let place: string | undefined;
-    for (const match of draft.matchAll(createPlaceTagRegex())) if (match.index < last) place = match[0];
-    if (place) missing.unshift(place);
+    for (const match of draft.matchAll(createPlaceTagRegex())) if ((match.index ?? 0) < last) place = match[0];
+    if (place) {
+      missing.unshift(place);
+      // A new market day the draft began is begun once: by the place carried, not again by the
+      // rewrite's own telling of it, which would start another day after the trades.
+      if (gamePlaceTagBeginsDay(place)) told = withoutGamePlaceNewDays(told);
+    }
   }
-  return missing.length ? [...missing, ...(rewrite ? [rewrite] : [])].join("\n") : rewrite;
+  return missing.length ? [...missing, ...(told ? [told] : [])].join("\n") : told;
 }

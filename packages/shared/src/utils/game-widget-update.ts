@@ -46,6 +46,12 @@ export function applyGameWidgetUpdate(widgets: HudWidget[], update: WidgetUpdate
     const changes = update.changes;
     const newConfig = { ...w.config };
 
+    // A stat_block's row taken out by its name, any case (a member's second health row).
+    if (changes.remove && !changes.statName && w.type === "stat_block") {
+      const gone = changes.remove.trim().toLowerCase();
+      const stats = Array.isArray(newConfig.stats) ? newConfig.stats : [];
+      return { ...w, config: { ...newConfig, stats: stats.filter((stat) => stat.name.trim().toLowerCase() !== gone) } };
+    }
     // Handle stat_block: update a specific stat by name, creating it when needed.
     if (changes.statName && w.type === "stat_block") {
       const targetName = changes.statName.trim();
@@ -166,10 +172,22 @@ export function partyHealthWidgetUpdates(
     // A widget update reaches only the first row of a name, so a later row of the same name is not
     // one this can bring in step: asking for it again would never settle.
     const seen = new Set<string>();
+    const names = new Set(widget.config.stats.map((stat) => stat.name.trim().toLowerCase().replace(/\s+/g, " ")));
     for (const stat of widget.config.stats) {
       const name = stat.name.trim().toLowerCase();
       if (seen.has(name)) continue;
       seen.add(name);
+      // A member's bare name beside their "<name> HP" row is the same health twice (laptop playtest
+      // 2026-10-25: "Aldric 44/44" under a stale "Aldric HP 36/36", left by older builds): it goes,
+      // and the "HP" row follows the sheet.
+      if (
+        aboutHealth &&
+        byName.get(name) &&
+        [...healthWords].some((word) => names.has(`${name.replace(/\s+/g, " ")} ${word}`))
+      ) {
+        updates.push({ widgetId: widget.id, changes: { remove: stat.name } });
+        continue;
+      }
       const parts = name.split(/\s+/);
       let who: string | undefined;
       for (let cut = parts.length - 1; cut >= 1 && !who; cut--) {

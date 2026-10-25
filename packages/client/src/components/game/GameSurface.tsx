@@ -3175,14 +3175,15 @@ function GameSurfaceComponent({
   const healthLive = gameSnapshot?.rulesetLive;
   const healthPlayer = personaInfo?.name;
   useEffect(() => {
-    if (!healthDefinition?.battle || !healthLive || replaySessionNumber !== null || hudWidgets.length === 0) return;
+    // A game whose sheets have taken nothing yet has no live state: their health is the sheet's own.
+    if (!healthDefinition?.battle || replaySessionNumber !== null || hudWidgets.length === 0) return;
     const builds = rulesetSheetBuildsByName(healthDefinition, healthCards, healthPlayer);
     if (builds.size === 0) return;
     const rows = (Array.isArray(healthCards) ? (healthCards as Array<{ name?: unknown }>) : []).flatMap((card) => {
       const name = typeof card?.name === "string" ? card.name.trim() : "";
       const key = name ? normalizeCharacterLookupName(name) : "";
       const build = key ? builds.get(key) : undefined;
-      const health = build ? rulesetSheetHealth(healthDefinition, build, healthLive[key]) : undefined;
+      const health = build ? rulesetSheetHealth(healthDefinition, build, healthLive?.[key]) : undefined;
       return health ? [{ name, ...health }] : [];
     });
     // The ruleset's own name for what a fight damages ("Grit") names a row as well as "HP" does.

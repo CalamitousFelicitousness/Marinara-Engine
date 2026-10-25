@@ -851,7 +851,7 @@ export async function buildPromptMacroContext(input: BuildPromptMacroContextInpu
     worldState:
       input.worldState !== undefined
         ? input.worldState
-        : input.chatId
+        : input.chatId && input.db
           ? await createGameStateStorage(input.db).getForGeneration(input.chatId)
           : null,
     lorebookEntryCounts,

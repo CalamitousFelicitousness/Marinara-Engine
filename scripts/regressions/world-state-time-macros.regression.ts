@@ -14,6 +14,7 @@ process.env.LOG_LEVEL = "silent";
 const { default: Fastify } = await import("../../packages/server/node_modules/fastify/fastify.js");
 const { getDB, closeDB } = await import("../../packages/server/src/db/connection.js");
 const { generateRoutes } = await import("../../packages/server/src/routes/generate.routes.js");
+const { chatsRoutes } = await import("../../packages/server/src/routes/chats.routes.js");
 const { createChatsStorage } = await import("../../packages/server/src/services/storage/chats.storage.js");
 const { createGameStateStorage } = await import("../../packages/server/src/services/storage/game-state.storage.js");
 const { createConnectionsStorage } = await import("../../packages/server/src/services/storage/connections.storage.js");
@@ -26,6 +27,7 @@ const app = Fastify();
 app.decorate("db", db);
 app.decorate("activeGenerations", new Map());
 await app.register(generateRoutes, { prefix: "/api/generate" });
+await app.register(chatsRoutes, { prefix: "/api/chats" });
 
 const template = "{{date.world_state}}|{{time.world_state}}|{{weekday.world_state}}";
 const base: MacroContext = { user: "Mari", char: "Doctor", characters: ["Doctor"], variables: {} };
@@ -66,6 +68,21 @@ try {
   const injected = { ...base, variables: {}, worldState: { date: "{{setvar::injected::yes}}", time: "$&" } };
   assert.equal(resolveMacros("{{date.world_state}}|{{time.world_state}}", injected), "{{setvar::injected::yes}}|$&");
   assert.deepEqual(injected.variables, {}, "Tracked text cannot execute macro writes");
+  assert.equal(
+    resolveMacros(template, {
+      ...base,
+      agentData: { director: "not the tracked date" },
+      outlets: { clock: "not the tracked time" },
+      lorebookEntryCounts: { book: 7 },
+      worldState: {
+        date: "{{agent::director}}",
+        time: "{{outlet::clock}}",
+        worldCustomFields: [{ name: "Weekday", value: "{{lorebooksize::book}}" }],
+      },
+    }),
+    "{{agent::director}}|{{outlet::clock}}|{{lorebooksize::book}}",
+    "Tracked values stay literal through late read passes too",
+  );
 
   const connection = await createConnectionsStorage(db).create({
     name: "Clock fixture",
@@ -159,6 +176,9 @@ try {
       .join("\n");
     assert.ok(text.includes(expected), text);
     assert.ok(!text.includes(".world_state}}"), text);
+    const peek = await app.inject({ method: "POST", url: `/api/chats/${chat.id}/peek-prompt`, payload: {} });
+    assert.equal(peek.statusCode, 200, peek.body);
+    assert.ok(JSON.stringify(peek.json()).includes(expected), peek.body);
   };
   await chats.setActiveSwipe(message.id, 1);
   await dry("2026-10-25|07:00|Sunday");

@@ -3550,13 +3550,6 @@ export function resolveMacros(template: string, ctx: MacroContext, options: Reso
     return chatValue !== undefined ? chatValue : match; // leave unknown macros as-is
   });
 
-  // Tracked values are model-authored data, not another executable macro template.
-  result = result.replace(/\{\{(date|time|weekday)\.world_state\}\}/gi, (_, field: string) => {
-    if (field.toLowerCase() === "weekday") return worldStateWeekday(ctx.worldState);
-    const value = ctx.worldState?.[field.toLowerCase() as "date" | "time"];
-    return typeof value === "string" ? value : "";
-  });
-
   // ── Agent data ──
   // Agent/tracker output is model-generated text. Insert it only after every
   // executable macro pass has finished so `{{agent::TYPE}}` cannot smuggle
@@ -3581,6 +3574,13 @@ export function resolveMacros(template: string, ctx: MacroContext, options: Reso
   result = result.replace(/\{\{lorebooksize::([\w-]+)\}\}/gi, (_, id) => {
     const counts = ctx.lorebookEntryCounts;
     return counts && Object.prototype.hasOwnProperty.call(counts, id) ? String(counts[id]) : "0";
+  });
+
+  // Tracked values are model-authored data, not another macro template, including late read macros.
+  result = result.replace(/\{\{(date|time|weekday)\.world_state\}\}/gi, (_, field: string) => {
+    if (field.toLowerCase() === "weekday") return worldStateWeekday(ctx.worldState);
+    const value = ctx.worldState?.[field.toLowerCase() as "date" | "time"];
+    return typeof value === "string" ? value : "";
   });
 
   if (options.trimResult !== false) {

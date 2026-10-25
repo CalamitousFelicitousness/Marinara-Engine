@@ -3770,6 +3770,7 @@ export async function chatsRoutes(app: FastifyInstance) {
             : undefined;
           const promptMacroContext = await buildPromptMacroContext({
             db: app.db,
+            worldState: await loadLatestChatGameSnapshot(app, req.params.id, visibleGameStateAnchor),
             model: connection?.model,
             reasoning: promptReasoning,
             // Chat variables win over built-in macros of the same name, as in generation.
@@ -4088,6 +4089,7 @@ export async function chatsRoutes(app: FastifyInstance) {
 
           const assembled = await assemblePrompt({
             db: app.db,
+            worldState: promptMacroContext.worldState,
             model: connection?.model,
             reasoning: promptReasoning,
             localVariables: chatMacroVariables,

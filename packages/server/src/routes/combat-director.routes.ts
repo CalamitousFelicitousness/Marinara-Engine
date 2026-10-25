@@ -48,7 +48,9 @@ import {
   rulesetReadsItems,
   rulesetCatalogIdsForBuild,
   rulesetCellBlocked,
+  rulesetCombatHealth,
   rulesetSheetBuildsByName,
+  applyRulesetSheetOp,
   type Combatant,
   type DirectedCombatView,
   type DirectedCommand,
@@ -826,7 +828,10 @@ export async function combatDirectorRoutes(
         // The fight just ended: one that got away is remembered by name as it was made, so a later fight
         // that names it brings it back the same; one beaten here is forgotten.
         if (s.style === "ruleset" && s.rulesetFight && s.outcome && !previous.state.outcome) {
-          const { fled, beaten } = rulesetFightReturningFoes(s.rulesetFight);
+          const { fled, beaten } =
+            session && "definition" in session
+              ? rulesetFightReturningFoes(session.definition, s.rulesetFight)
+              : { fled: [], beaten: [] };
           if (fled.length || beaten.length)
             await chats.patchMetadata(
               chatId,
@@ -1155,7 +1160,18 @@ export async function combatDirectorRoutes(
             // The ruleset's items, for what its opponents have on them (1.785).
             ...(itemBook ? { itemBook } : {}),
             partyCatalogs: await loadFightCatalogs(resolved.packageId, definition, (c) => partyLists.has(c.id)),
-            bestiary: await loadBestiary(resolved.packageId, definition, proposedSheetLists(definition, input.enemies)),
+            bestiary: await loadBestiary(
+              resolved.packageId,
+              definition,
+              proposedSheetLists(
+                definition,
+                // A foe that comes back is read off the sheet it was made with (laptop playtest
+                // 2026-10-25: a returning Kallian's Dagger "in no catalog").
+                input.enemies.map((enemy, index) =>
+                  backAs[index]?.proposed !== undefined ? { ...enemy, proposed: backAs[index]!.proposed } : enemy,
+                ),
+              ),
+            ),
             // Who the scene caught unaware (1.237).
             surprised: [...input.party, ...input.enemies].flatMap((one) => (one.surprised ? [one.id] : [])),
             // Who fights in its own lair (1.315).
@@ -1174,6 +1190,21 @@ export async function combatDirectorRoutes(
             const one = built.fight.encounter.combatants.find((c) => c.id === input.enemies[index]!.id);
             if (one && !one.sheet && one.health && back.health)
               one.health = { value: back.health, max: back.health, temp: 0 };
+            // Still missing what it got away without, never down for it.
+            const combat = definition.combat;
+            if (one && back.taken && combat) {
+              const health = rulesetCombatHealth(definition, combat, one);
+              const taken = Math.min(back.taken, Math.max(0, health.max - 1));
+              if (taken > 0 && !one.sheet && one.health) one.health = { ...one.health, value: one.health.max - taken };
+              else if (taken > 0 && one.sheet && "pool" in combat.health) {
+                const hurt = applyRulesetSheetOp(definition, one.sheet.build, one.sheet.live as never, {
+                  op: "damage",
+                  pool: combat.health.pool,
+                  amount: taken,
+                });
+                if (hurt.ok) one.sheet.live = hurt.live;
+              }
+            }
             built.fight.adjustments.push(`${input.enemies[index]!.name} is the same one that got away before.`);
           });
           // The Engine's own party array follows the fight's: a sheet the setup left out joins it, a

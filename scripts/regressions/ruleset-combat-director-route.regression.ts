@@ -1152,6 +1152,7 @@ try {
       "/combat/start",
       fightBody(away.anchor.id, [
         { ...unit("mage", "Cult Mage", "enemy"), creature: "creatures/thorn-lurker" },
+        { ...unit("mender", "Hedge Mender", "enemy"), creature: "creatures/hedge-mender" },
         unit("hound", "Cinder Hound", "enemy"),
       ]),
     );
@@ -1162,7 +1163,15 @@ try {
     const row = (await engineStates.getByChatAndMessage(away.chat.id, away.anchor.id, 0, COMBAT_DIRECTOR_NAMESPACE))!;
     const doc = JSON.parse(row.state);
     for (const one of doc.rulesetFight.encounter.combatants) {
-      if (one.id === "mage") Object.assign(one, { defeated: true, away: { by: "mage", label: "Fled", left: true } });
+      if (one.id === "mage") {
+        Object.assign(one, { defeated: true, away: { by: "mage", label: "Fled", left: true } });
+        one.health.value = one.health.max - 3;
+      }
+      // One made from a sheet keeps its health on the sheet: 10 of its 22 left.
+      if (one.id === "mender") {
+        Object.assign(one, { defeated: true, away: { by: "mender", label: "Fled", left: true } });
+        one.sheet.live = { ...one.sheet.live, pools: { ...one.sheet.live?.pools, hp: { value: 10 } } };
+      }
       if (one.id === "hound") Object.assign(one, { defeated: true, down: true });
     }
     await engineStates.updateStateById(row.id, JSON.stringify(doc), undefined, away.chat.id);
@@ -1178,14 +1187,28 @@ try {
     assert.equal(ended.statusCode, 200, ended.body);
     assert.equal(ended.json().session.outcome, "victory", ended.body);
     const meta = JSON.parse((await chats.getById(away.chat.id))!.metadata || "{}");
-    assert.deepEqual(Object.keys(meta.gameReturningFoes ?? {}), ["cult mage"], "only the one that got away");
+    assert.deepEqual(
+      Object.keys(meta.gameReturningFoes ?? {}).sort(),
+      ["cult mage", "hedge mender"],
+      "those that got away",
+    );
     assert.equal(meta.gameReturningFoes["cult mage"].creature, "creatures/thorn-lurker");
     const later = await chats.createMessage({ chatId: away.chat.id, role: "assistant", content: "[state: combat]" });
-    const back = await post("/combat/start", fightBody(later.id, [unit("mage2", "Cult Mage", "enemy")]));
+    const back = await post(
+      "/combat/start",
+      fightBody(later.id, [unit("mage2", "Cult Mage", "enemy"), unit("mender2", "Hedge Mender", "enemy")]),
+    );
     assert.equal(back.statusCode, 200, back.body);
     const again = back.json().session as DirectedCombatView;
     assert.equal(again.ruleset!.combatants.find((one) => one.id === "mage2")!.health.max, madeMax, "made as before");
     assert.ok(again.ruleset!.adjustments.includes("Cult Mage is the same one that got away before."));
+    assert.equal(
+      again.ruleset!.combatants.find((one) => one.id === "mage2")!.health.value,
+      madeMax - 3,
+      "still missing what it got away without",
+    );
+    const mender = again.ruleset!.combatants.find((one) => one.id === "mender2")!.health;
+    assert.deepEqual([mender.value, mender.max], [10, 22], "on its sheet too");
   }
 
   console.log(

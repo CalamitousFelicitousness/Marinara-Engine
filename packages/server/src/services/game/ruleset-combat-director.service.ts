@@ -294,6 +294,9 @@ export interface RulesetReturningFoe {
   attacks?: RulesetFightOpponent["attacks"];
   /** The most health it had, where its dice threw it (a block with no sheet): thrown once, kept. */
   health?: number;
+  /** The health it got away without (laptop playtest 2026-10-25: Kallian fled at 21 of 32 and came
+   *  back whole): it comes back still missing it. */
+  taken?: number;
 }
 
 /** The key a returning opponent is kept and found under: its name, any case and spacing. */
@@ -304,7 +307,10 @@ export function rulesetReturningFoeKey(name: string): string {
 /** The opponents of a finished fight that got away alive, as they were made, and the names of those
  *  beaten for good: the first come back as they were, the second are forgotten. Called ones and
  *  ones that gave up are neither. */
-export function rulesetFightReturningFoes(fight: RulesetFightState): {
+export function rulesetFightReturningFoes(
+  definition: RulesetDefinition,
+  fight: RulesetFightState,
+): {
   fled: RulesetReturningFoe[];
   beaten: string[];
 } {
@@ -314,9 +320,15 @@ export function rulesetFightReturningFoes(fight: RulesetFightState): {
     if (one.side !== "enemy" || one.calledBy !== undefined || one.object) continue;
     const made = fight.made?.[one.id];
     if (!made) continue;
-    if (one.away?.left && !one.away.surrendered)
-      fled.push({ ...made, ...(!one.sheet && one.health ? { health: one.health.max } : {}) });
-    else if (one.down || (one.defeated && !one.away)) beaten.push(made.name);
+    if (one.away?.left && !one.away.surrendered) {
+      const health = definition.combat ? rulesetCombatHealth(definition, definition.combat, one) : undefined;
+      const taken = health ? Math.max(0, Math.round(health.max - health.value)) : 0;
+      fled.push({
+        ...made,
+        ...(!one.sheet && one.health ? { health: one.health.max } : {}),
+        ...(taken > 0 ? { taken } : {}),
+      });
+    } else if (one.down || (one.defeated && !one.away)) beaten.push(made.name);
   }
   return { fled, beaten };
 }

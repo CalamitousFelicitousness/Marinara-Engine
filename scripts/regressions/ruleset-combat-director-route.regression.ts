@@ -45,7 +45,7 @@ const { createGameRulesetsStorage } =
   await import("../../packages/server/src/services/storage/game-rulesets.storage.js");
 const { createGameEngineStateStorage } =
   await import("../../packages/server/src/services/storage/game-engine-state.storage.js");
-const { combatDirectorRoutes, COMBAT_DIRECTOR_NAMESPACE } =
+const { combatDirectorRoutes, COMBAT_DIRECTOR_NAMESPACE, proposedSheetLists } =
   await import("../../packages/server/src/routes/combat-director.routes.js");
 const { buildInitPrompt, encounterBlueprintSchema, encounterRulesetBrief } =
   await import("../../packages/server/src/routes/encounter.routes.js");
@@ -116,6 +116,23 @@ const parsed = parseRulesetDefinition(JSON.parse(JSON.stringify(document)));
 assert.ok(parsed.ok, `the fixture ruleset must import: ${parsed.ok ? "" : parsed.issues.join("; ")}`);
 const definition: RulesetDefinition = parsed.definition;
 const fixtureText = JSON.stringify(document);
+
+// An invented sheet that sets fields wants the catalogs of rows that set them (a class), read off the
+// PARSED ruleset, whose catalogs of rows say `holds: "rows"` (cloud re-test 2026-10-25: an invented
+// Cleric 5 never loaded the classes catalog, and cast only cantrips).
+{
+  const rows = (definition.catalogs ?? []).filter(
+    (catalog) => catalog.holds !== "items" && catalog.holds !== "creatures",
+  );
+  assert.ok(
+    rows.length > 0 && rows.every((catalog) => catalog.holds !== undefined),
+    "parsed catalogs say what they hold",
+  );
+  const lists = proposedSheetLists(definition, [{ proposed: { tier: "cr_1", sheet: { fields: { level: 3 } } } }]);
+  for (const catalog of rows) for (const list of catalog.feeds ?? []) assert.ok(lists.has(list), list);
+  assert.ok(lists.has(":fields"));
+  assert.ok(!proposedSheetLists(definition, [{ proposed: { tier: "cr_1", sheet: {} } }]).has(":fields"));
+}
 
 const fighterBuild = build({
   abilities: { str: 18, dex: 14, con: 16, int: 10, wis: 10, cha: 10 },
@@ -1213,7 +1230,13 @@ try {
     const later = await chats.createMessage({ chatId: away.chat.id, role: "assistant", content: "[state: combat]" });
     const back = await post(
       "/combat/start",
-      fightBody(later.id, [unit("mage2", "Cult Mage", "enemy"), unit("mender2", "Hedge Mender", "enemy")]),
+      fightBody(later.id, [
+        unit("mage2", "Cult Mage", "enemy"),
+        unit("mender2", "Hedge Mender", "enemy"),
+        // A second of the name is a fresh one (cloud re-test 2026-10-25: two Bandits came back as the
+        // one that fled).
+        { ...unit("mage3", "Cult Mage", "enemy"), creature: "creatures/thorn-lurker" },
+      ]),
     );
     assert.equal(back.statusCode, 200, back.body);
     const again = back.json().session as DirectedCombatView;
@@ -1223,6 +1246,16 @@ try {
       again.ruleset!.combatants.find((one) => one.id === "mage2")!.health.value,
       madeMax - 3,
       "still missing what it got away without",
+    );
+    assert.equal(
+      again.ruleset!.adjustments.filter((line) => line === "Cult Mage is the same one the party met before.").length,
+      1,
+      "only one Cult Mage comes back",
+    );
+    assert.equal(
+      again.ruleset!.combatants.find((one) => one.id === "mage3")!.health.value,
+      again.ruleset!.combatants.find((one) => one.id === "mage3")!.health.max,
+      "the other is fresh",
     );
     const mender = again.ruleset!.combatants.find((one) => one.id === "mender2")!.health;
     assert.deepEqual([mender.value, mender.max], [10, 22], "on its sheet too");

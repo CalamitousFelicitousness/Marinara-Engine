@@ -369,16 +369,25 @@ async function loadBestiary(
 ): Promise<RulesetCatalogEntriesById> {
   const creatures = await loadFightCatalogs(packageId, definition, (c) => c.holds === "creatures");
   const marked = new Set(rulesetBestiarySheetCatalogIds(definition, creatures));
+  // A proposal that sets fields reads them off the entries that set them (a class), whatever list
+  // those feed (cloud re-test 2026-10-25: an invented Cleric 5 never loaded the classes catalog), so
+  // every catalog of rows is loaded for it.
   const wanted = (c: NonNullable<RulesetDefinition["catalogs"]>[number]) =>
-    marked.has(c.id) || (c.feeds ?? []).some((list) => proposedLists.has(list));
+    marked.has(c.id) ||
+    (c.feeds ?? []).some((list) => proposedLists.has(list)) ||
+    (proposedLists.has(RULESET_PROPOSED_FIELDS) && c.holds !== "items" && c.holds !== "creatures");
   if (marked.size === 0 && proposedLists.size === 0) return creatures;
   return { ...creatures, ...(await loadFightCatalogs(packageId, definition, wanted)) };
 }
 
+/** Among `proposedSheetLists`: some proposal sets fields, so the entries that set them are wanted. No
+ *  list id has a colon in it. */
+const RULESET_PROPOSED_FIELDS = ":fields";
+
 /** The lists the Game Master's invented sheets fill, read off the raw proposals: which catalogs a
  *  fight needs is decided before any proposal is parsed. Every list a creature CHOOSES from is among
  *  them too, whether a proposal wrote it or not, because its open choices are filled from there. */
-function proposedSheetLists(
+export function proposedSheetLists(
   definition: RulesetDefinition,
   enemies: ReadonlyArray<{ proposed?: unknown; attacks?: ReadonlyArray<{ reaction?: unknown }> }>,
 ): Set<string> {
@@ -392,9 +401,13 @@ function proposedSheetLists(
     if (sheet.lists && typeof sheet.lists === "object") for (const id of Object.keys(sheet.lists)) lists.add(id);
     // A level it gives itself is read off the entry that sets it (a class), which may set more.
     const fields = (sheet as { fields?: unknown }).fields;
-    if (fields && typeof fields === "object" && Object.keys(fields).length > 0)
+    // A parsed catalog of rows says so (`holds: "rows"`), so it is told apart from items and creatures.
+    if (fields && typeof fields === "object" && Object.keys(fields).length > 0) {
+      lists.add(RULESET_PROPOSED_FIELDS);
       for (const catalog of definition.catalogs ?? [])
-        if (!catalog.holds) for (const list of catalog.feeds ?? []) lists.add(list);
+        if (catalog.holds !== "items" && catalog.holds !== "creatures")
+          for (const list of catalog.feeds ?? []) lists.add(list);
+    }
     for (const source of definition.combat?.abilities ?? []) if (source.onlyWhen) lists.add(source.list);
   }
   return lists;
@@ -1102,7 +1115,15 @@ export async function combatDirectorRoutes(
           const returning = (
             meta.gameReturningFoes && typeof meta.gameReturningFoes === "object" ? meta.gameReturningFoes : {}
           ) as Record<string, RulesetReturningFoe>;
-          const backAs = input.enemies.map((enemy) => returning[rulesetReturningFoeKey(enemy.name)]);
+          // One of a name comes back once: the second Bandit of a fight where one Bandit got away is a
+          // fresh one (cloud re-test 2026-10-25: both came back at 1 of 13).
+          const claimed = new Set<string>();
+          const backAs = input.enemies.map((enemy) => {
+            const key = rulesetReturningFoeKey(enemy.name);
+            if (claimed.has(key) || !returning[key]) return undefined;
+            claimed.add(key);
+            return returning[key];
+          });
           const built = createRulesetFight({
             definition,
             seed: battlefield.seed,

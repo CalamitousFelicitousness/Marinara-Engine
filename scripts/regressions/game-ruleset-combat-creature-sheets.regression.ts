@@ -1179,9 +1179,36 @@ const spellbook = parsedOrThrow(
           default: 0,
           section: "combat",
         });
+        // A build that moves health by itself, as a creature's own hit die does: never a reason to
+        // set anything back.
+        doc.sheet.fields.push({
+          id: "hp_build",
+          label: "Build",
+          type: "enum",
+          values: ["slight", "average"],
+          default: "average",
+          section: "combat",
+        });
+        // And a choice of method that reads no typed number at all, as 5e's "Average" does.
+        doc.sheet.fields.push({
+          id: "hp_mode",
+          label: "Hit points method",
+          type: "enum",
+          values: ["auto", "fixed"],
+          default: "auto",
+          section: "combat",
+        });
         doc.sheet.derived.push(
           {
-            id: "hp_on",
+            id: "hp_mode_auto",
+            label: "Auto method",
+            op: "enumTable",
+            from: { field: "hp_mode" },
+            table: { auto: 1 },
+            default: 0,
+          },
+          {
+            id: "hp_on_raw",
             label: "Typed",
             op: "stepTable",
             from: { field: "hp_typed" },
@@ -1191,13 +1218,27 @@ const spellbook = parsedOrThrow(
             ],
           },
           {
+            id: "hp_on",
+            label: "Typed, by Auto",
+            op: "multiply",
+            of: [{ derived: "hp_on_raw" }, { derived: "hp_mode_auto" }],
+          },
+          {
             id: "hp_off_less",
             label: "Not typed, less one",
             op: "multiply",
             of: [{ derived: "hp_on" }, { const: -1 }],
           },
           { id: "hp_off", label: "Not typed", op: "sum", of: [{ const: 1 }, { derived: "hp_off_less" }] },
-          { id: "hp_fixed", label: "Fixed", op: "multiply", of: [{ field: "level" }, { const: 7 }] },
+          {
+            id: "hp_per_level",
+            label: "Per level",
+            op: "enumTable",
+            from: { field: "hp_build" },
+            table: { slight: 4, average: 7 },
+            default: 7,
+          },
+          { id: "hp_fixed", label: "Fixed", op: "multiply", of: [{ field: "level" }, { derived: "hp_per_level" }] },
           {
             id: "hp_typed_part",
             label: "Typed part",
@@ -1250,6 +1291,35 @@ const spellbook = parsedOrThrow(
       held.adjusted.join("\n"),
       /Health 28 was pulled into the 45 to 82 of CR 3 through its Hit points by hand, and is now 45\./,
     );
+    // Written with the method that never reads the typed number (laptop playtest 2026-10-25: a mage on
+    // 5e's "Average" stayed at 38 below 45): the method goes back to the ruleset's default, and is said.
+    const average = rulesetSheetBuildSchema.parse({ fields: { level: 4, hp_mode: "fixed" } });
+    const heldAverage = holdRulesetSheetHealth(typedElseFixed, average, tier);
+    assert.equal(max(heldAverage.sheet), 45, heldAverage.adjusted.join("; "));
+    assert.equal(heldAverage.sheet.fields.hp_mode, undefined);
+    assert.match(
+      heldAverage.adjusted.join("\n"),
+      /Health 28 was pulled into the 45 to 82 of CR 3 through its Hit points by hand with its Hit points method set back to the ruleset's default, and is now 45\./,
+    );
+    // A slight build on that method: setting the build back would land health too, but the build is the
+    // creature's own and the method is what keeps the typed number out, so only the method goes back.
+    const slight = rulesetSheetBuildSchema.parse({ fields: { level: 7, hp_mode: "fixed", hp_build: "slight" } });
+    assert.equal(max(slight), 28);
+    const heldSlight = holdRulesetSheetHealth(typedElseFixed, slight, tier);
+    assert.equal(max(heldSlight.sheet), 45, heldSlight.adjusted.join("; "));
+    assert.equal(heldSlight.sheet.fields.hp_build, "slight");
+    assert.equal(heldSlight.sheet.fields.hp_mode, undefined);
+    // A typed number that counts but runs out of room sets nothing back.
+    const roomless = parsedOrThrow(
+      variant(JSON.stringify(typedElseFixed), (doc) => {
+        doc.sheet.fields.find((one: { id: string }) => one.id === "hp_typed").max = 30;
+      }),
+      "the typed number capped at 30",
+    );
+    const capped = holdRulesetSheetHealth(roomless, fixed, tier);
+    assert.equal(capped.sheet.fields.hp_mode, undefined);
+    assert.equal(capped.sheet.fields.hp_build, undefined);
+    assert.doesNotMatch(capped.adjusted.join("\n"), /set back/);
   }
 
   // Strikes bought by one spend wait in hand and may go to ANY striking row, so a round is one spend

@@ -1934,7 +1934,7 @@ export function ConnectionEditor() {
             }}
             aria-label={localizeUi("ui.noodle.noodlehome.save")}
             disabled={updateConnection.isPending || saveConnectionDefaults.isPending || !!swarmUiWorkflowError}
-            className="mari-editor-action mari-editor-action--primary inline-flex disabled:opacity-50"
+            className="mari-editor-action mari-editor-action--primary inline-flex max-md:order-first disabled:opacity-50"
           >
             <Save size="0.8125rem" /> <span className="max-md:hidden">{localizeUi("ui.noodle.noodlehome.save")}</span>
           </button>

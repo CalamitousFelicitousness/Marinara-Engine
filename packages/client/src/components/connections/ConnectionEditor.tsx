@@ -3515,7 +3515,11 @@ export function ConnectionEditor() {
                 markDirty();
               }}
               onReset={() => {
-                setLocalVideoDefaults(createDefaultVideoGenerationProfile(selectedVideoDefaultsService));
+                const defaults = createDefaultVideoGenerationProfile(selectedVideoDefaultsService);
+                if (selectedVideoDefaultsService === "openrouter" && effectiveVideoGenerationSource !== "nanogpt") {
+                  defaults.openrouter = resolveOpenRouterVideoModelDefaults(localModel, defaults.openrouter);
+                }
+                setLocalVideoDefaults(defaults);
                 markDirty();
               }}
             />

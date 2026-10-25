@@ -127,6 +127,8 @@ for (const theme of ["dark", "light"] as const) {
         if (!(await resolution.count())) await page.getByRole("button", { name: /OpenRouter Video setup/ }).click();
         await expect(resolution).toHaveValue(model.resolution);
         await expect(resolution.locator("option")).toHaveText(model.resolutions);
+        await page.getByRole("button", { name: "Reset", exact: true }).click();
+        await expect(resolution).toHaveValue(model.resolution);
         const duration = page.getByRole("spinbutton", { name: "Duration Seconds", exact: true });
         await duration.fill(model.duration);
         await duration.blur();

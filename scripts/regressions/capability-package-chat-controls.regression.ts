@@ -40,6 +40,29 @@ assert.match(
   homeBrowserHub,
   /openCharacter: \(characterId: string, options\?: \{ tab\?: string \}\) => \{[\s\S]*?openCharacterDetail\(characterId, \{\s*initialTab:/u,
 );
+// Capability API 1.386: it can open a connection in the editor and comes back to its tab. Home is asked
+// for the tab first, because the desktop shell unmounts Home while the editor is open; the request
+// outlives the editor and the remounted Home consumes it.
+assert.match(
+  homeBrowserHub,
+  /openConnection: \(connectionId: string\) => \{\s*if \(typeof connectionId !== "string" \|\| !connectionId\) return;[\s\S]*?\.requestHome\(\{ kind: "tab", tab: activeTab \}\);\s*\S+\.openConnectionDetail\(connectionId\);/u,
+);
+const storage = new Map<string, string>();
+Object.defineProperty(globalThis, "localStorage", {
+  configurable: true,
+  value: {
+    getItem: (key: string) => storage.get(key) ?? null,
+    setItem: (key: string, value: string) => storage.set(key, value),
+    removeItem: (key: string) => storage.delete(key),
+  },
+});
+const { useUIStore, pickPersistedUIState } = await import("../../packages/client/src/stores/ui.store.js");
+useUIStore.getState().requestHome({ kind: "tab", tab: "story-writer" });
+useUIStore.getState().openConnectionDetail("connection-1");
+assert.equal(useUIStore.getState().connectionDetailId, "connection-1");
+useUIStore.getState().closeConnectionDetail();
+assert.deepEqual(useUIStore.getState().homeRequest, { kind: "tab", tab: "story-writer" });
+assert.ok(!("homeRequest" in pickPersistedUIState(useUIStore.getState())), "a Home request is never saved");
 
 // Package prompt context carries the wrap format.
 assert.match(promptContext, /wrapFormat\?: "xml" \| "markdown" \| "none";/u);

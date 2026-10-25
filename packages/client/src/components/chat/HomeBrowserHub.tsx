@@ -2094,6 +2094,15 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
                     initialTab: typeof options?.tab === "string" ? options.tab : undefined,
                   });
                 },
+                // Capability API 1.386: open a connection in the editor, and come back to this tab once it
+                // closes. The request goes first: the desktop shell unmounts Home while an editor is open,
+                // and the remounted Home consumes it; the mobile shell keeps Home mounted and reselects this tab.
+                openConnection: (connectionId: string) => {
+                  if (typeof connectionId !== "string" || !connectionId) return;
+                  const ui = useUIStore.getState();
+                  ui.requestHome({ kind: "tab", tab: activeTab });
+                  ui.openConnectionDetail(connectionId);
+                },
               }}
             />
           ) : activeTab === "professor" ? (

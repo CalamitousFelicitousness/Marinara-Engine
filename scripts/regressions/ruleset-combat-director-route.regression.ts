@@ -1243,7 +1243,10 @@ try {
       "/combat/start",
       fightBody(later.id, [
         unit("mage2", "Cult Mage", "enemy"),
-        unit("mender2", "Hedge Mender", "enemy"),
+        // Of two of its name, the one marked is the one that got away (laptop playtest 2026-10-25: a
+        // fresh "Cult Thug" took the sheet of "Cult Thug (Wounded)").
+        { ...unit("mender4", "Hedge Mender", "enemy"), creature: "creatures/hedge-mender" },
+        unit("mender2", "Hedge Mender (Wounded)", "enemy"),
         // A second of the name is a fresh one (cloud re-test 2026-10-25: two Bandits came back as the
         // one that fled).
         { ...unit("mage3", "Cult Mage", "enemy"), creature: "creatures/thorn-lurker" },
@@ -1270,6 +1273,8 @@ try {
     );
     const mender = again.ruleset!.combatants.find((one) => one.id === "mender2")!.health;
     assert.deepEqual([mender.value, mender.max], [10, 22], "on its sheet too");
+    const fresh = again.ruleset!.combatants.find((one) => one.id === "mender4")!.health;
+    assert.equal(fresh.value, fresh.max, "the unmarked one is a fresh one");
   }
 
   console.log(

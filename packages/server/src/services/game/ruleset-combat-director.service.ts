@@ -232,8 +232,9 @@ import { combatDirectorView, type CombatDirectorState } from "./combat-director.
 /** How many events a session keeps. A screen prints the tail and asks for nothing older, so the
  *  ledger row stays small however long a fight runs.
  *  ponytail: a fixed window. A fight that needs its whole history on screen wants the events in
- *  their own paged store, which is the upgrade path. */
-export const RULESET_COMBAT_EVENT_LIMIT = 200;
+ *  their own paged store, which is the upgrade path. Enough for a long fight whole (laptop playtest
+ *  2026-10-25: a ten-round fight kept only its last seven rounds at 200). */
+export const RULESET_COMBAT_EVENT_LIMIT = 600;
 /** How many of the AI's reasons a session keeps beside them, newest first. */
 export const RULESET_COMBAT_REASON_LIMIT = 60;
 
@@ -324,7 +325,14 @@ export interface RulesetReturningFoe {
 
 /** The key a returning opponent is kept and found under: its name, any case and spacing. */
 export function rulesetReturningFoeKey(name: string): string {
-  return normalizeCharacterLookupName(name);
+  // Less what the Game Master writes after it in brackets (laptop playtest 2026-10-25: the Cult Thug
+  // that got away came back as "Cult Thug (Wounded)").
+  return normalizeCharacterLookupName(name.replace(/\s*[([][^()[\]]*[)\]]\s*$/, "") || name);
+}
+
+/** Whether a name carries a bracketed word after it, as a Game Master marks one it means: "(Wounded)". */
+export function rulesetReturningFoeMarked(name: string): boolean {
+  return /\s*[([][^()[\]]*[)\]]\s*$/.test(name) && rulesetReturningFoeKey(name) !== normalizeCharacterLookupName(name);
 }
 
 /** The opponents of a finished fight that got away alive or were still standing as it ended, as they
@@ -351,7 +359,11 @@ export function rulesetFightReturningFoes(
     if (one.side !== "enemy" || one.calledBy !== undefined || one.object) continue;
     const made = fight.made?.[one.id];
     if (!made) continue;
-    if (!made.named && (called.get(rulesetReturningFoeKey(made.name)) ?? 0) > 1) {
+    if (
+      !made.named &&
+      !rulesetReturningFoeMarked(made.name) &&
+      (called.get(rulesetReturningFoeKey(made.name)) ?? 0) > 1
+    ) {
       beaten.push(made.name);
       continue;
     }
@@ -1637,7 +1649,15 @@ export function trimRulesetFightEvents<T extends { event: { type: string } }>(ev
   let reasonsOver = reasons - RULESET_COMBAT_REASON_LIMIT;
   let eventsOver = events.length - reasons - RULESET_COMBAT_EVENT_LIMIT;
   if (reasonsOver <= 0 && eventsOver <= 0) return events;
-  return events.filter((entry) => (entry.event.type === "reasoning" ? !(reasonsOver-- > 0) : !(eventsOver-- > 0)));
+  const eventsCut = eventsOver > 0;
+  const kept = events.filter((entry) =>
+    entry.event.type === "reasoning" ? !(reasonsOver-- > 0) : !(eventsOver-- > 0),
+  );
+  // A reason older than the oldest event kept is about a turn no longer shown (laptop playtest
+  // 2026-10-25: rounds 1 to 3 survived only as "Why..." lines).
+  const first = kept.findIndex((entry) => entry.event.type !== "reasoning");
+  const cut = eventsCut ? first : 0;
+  return cut > 0 ? kept.slice(cut) : kept;
 }
 
 /** Who plays this combatant: the player, the Engine's own picker, or the Game Master. */

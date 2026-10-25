@@ -1153,6 +1153,15 @@ const manifest = (minor: number) => ({
     { item: "Lantern-keeper's coat", action: "sold", quantity: 1 },
     { item: "shillings", action: "acquired", quantity: 4 },
   ]);
+  // Paid in the coin its price is said in, never a bigger one (laptop playtest 2026-10-25: a 60 gold
+  // sale came in as 6 platinum).
+  const threeSold = dayTags(
+    '[inventory: action="sell" item="Lantern-keeper\'s coat" count="3"]',
+    coats(3),
+    dayQuoter(dayTown),
+  );
+  assert.match(threeSold.content, /result="ok"/, threeSold.content);
+  assert.deepEqual(held(threeSold.stacks), [["shillings", 12, ""]]);
   // Sold by its ref, it is the coat; and a fake sold by ref is seen through as one sold by name (#8271).
   assert.match(
     dayTags('[inventory: action="sell" item="kit/lantern-coat"]', coats(1), dayQuoter(dayHamlet)).content,

@@ -2492,4 +2492,8 @@ console.log(
   assert.equal(next.at(-1)!.seq, RULESET_COMBAT_EVENT_LIMIT * 2 + 1, "a new reason is never cut as it is written");
   const over = [...real, entry(RULESET_COMBAT_EVENT_LIMIT * 2, "attack")];
   assert.deepEqual(trimRulesetFightEvents(over), over.slice(1), "the oldest event of the fight goes");
+  // And a reason about a turn no longer shown goes with it (laptop playtest 2026-10-25: orphan "Why..."
+  // lines for rounds 1 to 3).
+  const orphan = [entry(-1, "reasoning"), ...over];
+  assert.deepEqual(trimRulesetFightEvents(orphan), over.slice(1));
 }

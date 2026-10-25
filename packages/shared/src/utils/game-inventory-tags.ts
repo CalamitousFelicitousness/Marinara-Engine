@@ -31,7 +31,7 @@ import {
   releaseGameInventoryUnmetBindings,
   markGameInventoryInspected,
 } from "./game-inventory-stacks.js";
-import { payGameInventoryCoins, type GameInventoryPayment } from "./game-inventory-coins.js";
+import { payGameInventoryCoinsTogether, type GameInventoryPayment } from "./game-inventory-coins.js";
 import {
   createInventoryTagRegex,
   createLootTagRegex,
@@ -156,6 +156,8 @@ export interface GameInventoryMarket {
         familyId: string;
         worth: number;
         price: string;
+        /** The coin the price is said in: the seller pays in it and smaller, never in bigger ones. */
+        paidIn?: string;
         seller?: string;
         /** An honest buyer spotted a fake: what it truly is, which it now is, sold at that worth. */
         revealed?: { item: string; name: string };
@@ -370,6 +372,9 @@ export function applyGameInventoryTags(
     if (!request) return serializeInventoryTag({ raw: body.trim() }, { ok: false, reason: "unreadable" });
 
     const who = resolveGameInventoryHolder(request.who, party, current);
+    // who="party" pays out of everyone's purse, the player's first, then each member's in turn.
+    const payers = (holder: string | undefined): Array<string | undefined> =>
+      request.who && normalizeCharacterLookupName(request.who) === "party" ? [undefined, ...party.members] : [holder];
     const to = request.action === "give" ? resolveGameInventoryHolder(request.to, party, current) : null;
     // One item whose name holds a comma is that item, not a list (#8271: "Rope, hempen (50 feet)"
     // bought as "Rope" and "hempen (50 feet)"); and so is each such item in a list, the longest run of
@@ -494,7 +499,7 @@ export function applyGameInventoryTags(
             return addAnswered(coin.name, { item: coin.item }, request.count, request.who, who.bag, undefined, "earn");
           }
           const holder = who.bag?.holder;
-          const paid = payGameInventoryCoins(current, holder, named.family, request.count * coin.value);
+          const paid = payGameInventoryCoinsTogether(current, payers(holder), named.family, request.count * coin.value);
           const answered = { ...shown, item: coin.name };
           if (!paid.ok) return serializeInventoryTag(answered, { ok: false, reason: paid.reason });
           current = paid.stacks;
@@ -547,7 +552,7 @@ export function applyGameInventoryTags(
             );
           }
           const holder = who.bag?.holder;
-          const paid = payGameInventoryCoins(current, holder, quote.family, quote.owed);
+          const paid = payGameInventoryCoinsTogether(current, payers(holder), quote.family, quote.owed);
           if (!paid.ok) return serializeInventoryTag(answered, { ok: false, reason: paid.reason });
           let after = paid.stacks;
           const bought: GameInventoryJournalEntry[] = [];
@@ -645,7 +650,11 @@ export function applyGameInventoryTags(
             if (took.count !== count) return serializeInventoryTag(answered, { ok: false, reason: "none-held" });
             let left = sale.worth;
             const coinOps: GameInventoryOp[] = [];
+            // In the coin the price is said in and smaller (laptop playtest 2026-10-25: a 60 gold sale
+            // came in as 6 platinum).
+            const top = sale.family.find((coin) => coin.item === sale.paidIn)?.value ?? Number.POSITIVE_INFINITY;
             for (const coin of sale.family) {
+              if (coin.value > top) continue;
               const count = Math.floor(left / coin.value);
               if (count < 1) continue;
               left -= count * coin.value;

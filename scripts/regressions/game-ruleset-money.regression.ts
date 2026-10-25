@@ -308,6 +308,33 @@ const withoutMarket = (doc: Record<string, any>) => {
   assert.equal(pay([], 0 + 1), "cannot-afford");
 }
 
+// ── who="party" pays out of every purse, the player's first (laptop playtest 2026-10-25: "the
+//    party's coin" charged only one purse) ──
+{
+  const party = { members: ["Bram"] };
+  const both = coins([
+    ["shillings", "shilling", 1],
+    ["shillings", "shilling", 2, "Bram"],
+  ]);
+  const together = applyGameInventoryTags(
+    '[inventory: action="pay" amount="3 shillings" who="party"]',
+    both,
+    party,
+    undefined,
+    graveBook,
+  );
+  assert.match(together.content, /action="pay" item="shillings" count="3" who="party" result="ok"/, together.content);
+  assert.deepEqual(held(together.stacks), []);
+  const alone = applyGameInventoryTags(
+    '[inventory: action="pay" amount="3 shillings"]',
+    both,
+    party,
+    undefined,
+    graveBook,
+  );
+  assert.match(alone.content, /reason="cannot-afford"/, "the player alone cannot");
+}
+
 // ── The Game Master's pay and earn ──
 {
   const party = { members: ["Bram"] };

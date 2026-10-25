@@ -132,7 +132,7 @@ export function rulesetMarketPrice(
   times: number,
   count: number,
   layerOptions?: RulesetLayerOptions | null,
-): { owed: number; family: GameInventoryCoin[]; familyId: string; said: string } | undefined {
+): { owed: number; family: GameInventoryCoin[]; familyId: string; said: string; saidIn: string } | undefined {
   const full = definition.items?.currencies?.find((family) => family.units.some((unit) => unit.id === cost.unit));
   const unit = full?.units.find((each) => each.id === cost.unit);
   const left = full
@@ -159,6 +159,7 @@ export function rulesetMarketPrice(
     family,
     familyId: full.id,
     said: rulesetCoinAmount({ label: shown.name, one: shown.one }, owed / shown.value),
+    saidIn: shown.item,
   };
 }
 
@@ -460,6 +461,7 @@ export function rulesetMarketQuoter(
         familyId: price.familyId,
         worth: price.owed,
         price: price.said,
+        paidIn: price.saidIn,
         ...(revealed ? { revealed } : {}),
         ...(seller ? { seller: seller.label } : {}),
       };

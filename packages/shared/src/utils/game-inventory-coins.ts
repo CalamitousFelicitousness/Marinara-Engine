@@ -111,3 +111,38 @@ export function payGameInventoryCoins(
     });
   return { ok: true, stacks: next, paid: named(taken), change: named(given) };
 }
+
+/**
+ * Pay `owed` out of several bags in turn (laptop playtest 2026-10-25: "the party's coin" took it all
+ * from one purse, or refused): out of the first alone where it can, else each bag's coins of `family`
+ * in turn, the first first, until it is paid. Refused when all of them together are worth less.
+ */
+export function payGameInventoryCoinsTogether(
+  stacks: readonly GameInventoryStack[],
+  holders: ReadonlyArray<string | undefined>,
+  family: readonly GameInventoryCoin[],
+  owed: number,
+): ({ ok: true; stacks: GameInventoryStack[] } & GameInventoryPayment) | { ok: false; reason: "cannot-afford" } {
+  const [first, ...rest] = holders;
+  const alone = payGameInventoryCoins(stacks, first, family, owed);
+  if (alone.ok || rest.length === 0) return alone;
+  const total = holders.reduce((sum, holder) => sum + gameInventoryCoinWorth(stacks, holder, family), 0);
+  if (total < owed) return { ok: false, reason: "cannot-afford" };
+  let current: GameInventoryStack[] = [...stacks];
+  let left = owed;
+  const paid = new Map<string, number>();
+  const change = new Map<string, number>();
+  for (const holder of holders) {
+    if (left <= 0) break;
+    const share = Math.min(left, gameInventoryCoinWorth(current, holder, family));
+    if (share <= 0) continue;
+    const part = payGameInventoryCoins(current, holder, family, share);
+    if (!part.ok) return part;
+    current = part.stacks;
+    left -= share;
+    for (const each of part.paid) paid.set(each.name, (paid.get(each.name) ?? 0) + each.count);
+    for (const each of part.change) change.set(each.name, (change.get(each.name) ?? 0) + each.count);
+  }
+  const listed = (counts: Map<string, number>) => [...counts].map(([name, count]) => ({ name, count }));
+  return { ok: true, stacks: current, paid: listed(paid), change: listed(change) };
+}

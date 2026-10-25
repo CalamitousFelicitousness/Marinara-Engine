@@ -80,6 +80,7 @@ import {
   rulesetFightReturningFoes,
   rulesetBringBackFoe,
   rulesetReturningFoeKey,
+  rulesetReturningFoeMarked,
   syncRulesetCombatants,
   RULESET_COMBAT_EVENT_LIMIT,
   RULESET_COMBAT_REASON_LIMIT,
@@ -1121,17 +1122,23 @@ export async function combatDirectorRoutes(
           // One of a name comes back once: the second Bandit of a fight where one Bandit got away is a
           // fresh one (cloud re-test 2026-10-25: both came back at 1 of 13).
           const claimed = new Set<string>();
-          const calledSo = new Map<string, number>();
-          for (const enemy of input.enemies) {
-            const key = rulesetReturningFoeKey(enemy.name);
-            calledSo.set(key, (calledSo.get(key) ?? 0) + 1);
-          }
-          const backAs = input.enemies.map((enemy) => {
+          const backAs = input.enemies.map((enemy, index) => {
             const key = rulesetReturningFoeKey(enemy.name);
             if (claimed.has(key) || !returning[key]) return undefined;
-            // A nameless one comes back only where it is the one of its name (2026-10-25): of two
-            // Cult Guards, neither is the guard that got away before.
-            if (!returning[key].named && (calledSo.get(key) ?? 0) > 1) return undefined;
+            // Of several of the name, the one the Game Master marked ("Cult Thug (Wounded)") is the one
+            // that comes back; a nameless one comes back only where it is the one of its name or the
+            // one marked (2026-10-25: of two Cult Guards, neither is the guard that got away before).
+            const same = input.enemies.flatMap((other, at) => (rulesetReturningFoeKey(other.name) === key ? [at] : []));
+            const marked = same.filter((at) => rulesetReturningFoeMarked(input.enemies[at]!.name));
+            const pick =
+              same.length === 1
+                ? same[0]
+                : marked.length === 1
+                  ? marked[0]
+                  : returning[key].named
+                    ? same[0]
+                    : undefined;
+            if (pick !== index) return undefined;
             claimed.add(key);
             return returning[key];
           });

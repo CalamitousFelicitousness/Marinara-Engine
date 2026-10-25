@@ -1183,6 +1183,8 @@ const VIDEO_GEN_MODELS: KnownModel[] = [
   { id: "grok-imagine-video", name: "Grok Imagine Video", context: 0, maxOutput: 0 },
   { id: "google/veo-3.1", name: "Google Veo 3.1 (OpenRouter)", context: 0, maxOutput: 0 },
   { id: "alibaba/wan-2.7", name: "Alibaba WAN 2.7 (OpenRouter)", context: 0, maxOutput: 0 },
+  { id: "minimax/hailuo-3-max", name: "MiniMax: H3 Max (OpenRouter)", context: 0, maxOutput: 0 },
+  { id: "bytedance/seedance-2.5", name: "ByteDance: Seedance 2.5 (OpenRouter)", context: 0, maxOutput: 0 },
   { id: "seedance-2-0", name: "Seedance 2.0", context: 0, maxOutput: 0 },
   { id: "seedance-2-0-fast", name: "Seedance 2.0 Fast", context: 0, maxOutput: 0 },
   ...ATLAS_CLOUD_VIDEO_MODELS,
@@ -1226,7 +1228,11 @@ export function inferVideoSource(model: string, baseUrl: string): string {
     return "nanogpt";
   }
   if (m === "openrouter" || isProviderHost(hostname, "openrouter.ai")) return "openrouter";
-  if (m.includes("/") && (m.includes("veo") || m.includes("wan"))) return "openrouter";
+  if (
+    m.includes("/") &&
+    (m.includes("veo") || m.includes("wan") || m.startsWith("minimax/hailuo-") || m.startsWith("bytedance/seedance-"))
+  )
+    return "openrouter";
   if (m === "google_veo" || m === "veo" || /^veo-[\d.]+/.test(m)) return "google_veo";
   if (m === "xai" || isProviderHost(hostname, "x.ai")) return "xai";
   if (m.includes("grok") && m.includes("imagine") && m.includes("video")) return "xai";

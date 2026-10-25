@@ -4102,6 +4102,19 @@ details[open] > .mari-disclosure .mari-disclosure__chevron {
   margin-inline: auto;
 }
 
+/* On a sideways phone, an overlaid composer covers most of the transcript's
+   touch scroll target. Reserve its real height in the column instead. */
+@media (any-pointer: coarse) and (orientation: landscape) {
+  .mari-workspace-composer-dock {
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  .mari-workspace-transcript {
+    --mari-dock-h: 0px;
+  }
+}
+
 .mari-workspace-answer-strip {
   min-width: 0;
   overflow: hidden;

@@ -1753,6 +1753,73 @@ console.log(
     assert.ok(hits.letGo > 0, "and let a blow it could not stop land");
     assert.ok(hits.shownRaised > 0, "and the screen showed the raised defense while Shield held");
 
+    // A raise that lasts only through the hit it answers (a Parry's, gone once the attack is done) is
+    // weighed by what the hit came to once looked at again, not by the defense left after it: taken
+    // when it turns the hit, and a hit no raise could turn is let go without a word (cloud AI fights
+    // 2026-10-25: "letGo" on a Longsword 24 against 16, which Parry's 19 could never turn).
+    const parry = {
+      ...shield,
+      id: "parry-ward",
+      label: "Parry Ward",
+      rows: [{ list: "spells", values: { name: "Parry Ward", level: 0, prepared: true } }],
+      mechanics: {
+        ...shield.mechanics,
+        applies: [{ condition: "shielded", duration: { rounds: 1 }, endsAfter: "attacked" }],
+      },
+    } as unknown as RulesetCatalogEntry;
+    const parryRows = rowsFromCatalogEntry("spells", parry).map((row) => row.row);
+    const parrying = { ...base, lists: { ...base.lists, spells: [...(base.lists?.spells ?? []), ...parryRows] } };
+    const parries = { deflected: 0, hopeless: 0 };
+    for (let seed = 1; seed <= 40; seed++) {
+      const state = started({
+        definition: shielding,
+        cards: [card("Corwin", parrying)],
+        partyCatalogs: { spells: [...spellEntries, parry] },
+        party: [{ id: "corwin", name: "Corwin" }],
+        enemies: [
+          { id: "a", name: "Thorn Lurker" },
+          { id: "b", name: "Thorn Lurker" },
+        ],
+        seed,
+      });
+      commandRulesetCombatDirector(shielding, state, { type: "control", unitId: "corwin", controller: "ai" });
+      for (let turn = 0; turn < 10 && !state.outcome; turn++) {
+        const before = state.rulesetFight!.events.length;
+        assert.ok(commandRulesetCombatDirector(shielding, state, { type: "continue" }).ok);
+        const events = state.rulesetFight!.events.slice(before).map((entry) => entry.event);
+        for (const [index, event] of events.entries()) {
+          if (event.type !== "window" || event.moment !== "hit" || event.total === undefined) continue;
+          const next = events.slice(index + 1).findIndex((later) => later.type === "attack" || later.type === "window");
+          const after = next < 0 ? events.slice(index + 1) : events.slice(index + 1, index + 1 + next);
+          const raised = after.some(
+            (later) => later.type === "condition" && later.condition === "shielded" && later.active,
+          );
+          if (raised) {
+            parries.deflected++;
+            const recheck = after.find((later) => later.type === "recheck");
+            assert.equal(
+              recheck?.type === "recheck" && recheck.outcome,
+              "miss",
+              `seed ${seed}: a Parry Ward spent for nothing`,
+            );
+          } else if (event.defense !== undefined && event.total >= event.defense + 5) {
+            parries.hopeless++;
+            assert.ok(
+              !after.some(
+                (later) =>
+                  later.type === "reasoning" &&
+                  later.actorId === "corwin" &&
+                  later.reasons.some((one) => one.why === "letGo"),
+              ),
+              `seed ${seed}: a hit no Parry Ward could turn was said to be let go`,
+            );
+          }
+        }
+      }
+    }
+    assert.ok(parries.deflected > 0, "the Engine raised a Parry Ward when it turned the hit aside");
+    assert.ok(parries.hopeless > 0, "and met a hit it could not turn");
+
     // Played by hand, the held hit's answer says what it does: Shield raises the defense by 5, and
     // says whether that turns the hit aside; the question says what rides on it.
     let asked = 0;

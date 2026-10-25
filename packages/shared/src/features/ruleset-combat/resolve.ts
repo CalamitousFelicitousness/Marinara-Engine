@@ -12177,15 +12177,6 @@ export function rulesetStandingAtStart(
         .filter((ref): ref is string => typeof ref === "string"),
     );
     const aliases = rows.filter((row) => refs.has(rulesetRowEntryRef(row) as string)).flatMap(cells);
-    const action =
-      caster.actions.find((entry) => !!entry.zone && named(entry, one.entry)) ??
-      // Any other entry of theirs (1.449), done as the fight starts.
-      caster.actions.find((entry) => named(entry, one.entry)) ??
-      caster.actions.find((entry) => aliases.some((alias) => named(entry, alias)));
-    if (!action) {
-      skipped.push(`${caster.name} has no entry called "${one.entry}", so nothing stands for it.`);
-      continue;
-    }
     // The mode it is done in (1.471), by id or name, or the kind it names.
     const lower = (text: string) => text.trim().toLowerCase();
     // Or by the creature it calls or the form it takes, without its count or its kind (class pass
@@ -12196,6 +12187,25 @@ export function rulesetStandingAtStart(
         .replace(/^.*:\s*/, "")
         .split(",")[0]!
         .trim();
+    const action =
+      caster.actions.find((entry) => !!entry.zone && named(entry, one.entry)) ??
+      // Any other entry of theirs (1.449), done as the fight starts.
+      caster.actions.find((entry) => named(entry, one.entry)) ??
+      caster.actions.find((entry) => aliases.some((alias) => named(entry, alias))) ??
+      // What their sheet keeps, through any entry of theirs that calls it or takes its form (cloud
+      // batch 2026-10-25: a warlock's plain Find Familiar row, never prepared, beside the Pact's own
+      // that the fight reads, and the owl it kept never came).
+      (one.kept !== undefined && one.mode
+        ? caster.actions.find((entry) =>
+            entry.modes?.some((mode) =>
+              [mode.call?.name, mode.form?.name].some((name) => name !== undefined && bare(name) === bare(one.mode!)),
+            ),
+          )
+        : undefined);
+    if (!action) {
+      skipped.push(`${caster.name} has no entry called "${one.entry}", so nothing stands for it.`);
+      continue;
+    }
     const picked = one.mode
       ? (action.modes?.find((entry) => entry.id === one.mode || lower(entry.label) === lower(one.mode!)) ??
         // Its creature and type without its count (1.787): "Owl, Fey" for "Owl ×1, Fey".

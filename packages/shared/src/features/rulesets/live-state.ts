@@ -309,6 +309,9 @@ export interface RulesetLivePoolSpec {
   startAt?: number;
   recharge?: string;
   listId?: string;
+  /** Counted up rather than spent (1.790): its row's `tallyColumn` is set, and it reads as how many
+   *  times it has been used, `max - value`. */
+  tally?: true;
 }
 
 /** A sheet id can never contain ":", so a list row's pool key can never collide with a declared one. */
@@ -370,7 +373,7 @@ export function listRulesetLivePools(
     if (!list.pools || isRulesetItemHidden(list, build, definition)) continue;
     const rows = build.lists?.[list.id];
     if (!Array.isArray(rows)) continue;
-    const { nameColumn, maxColumn, rechargeColumn } = list.pools;
+    const { nameColumn, maxColumn, rechargeColumn, tallyColumn } = list.pools;
     for (const row of rows) {
       if (pools.length >= MAX_LIVE_POOLS) break;
       if (!row || typeof row !== "object") continue;
@@ -384,6 +387,7 @@ export function listRulesetLivePools(
       if (seen.has(key)) continue;
       seen.add(key);
       const recharge = rechargeColumn ? own(row as Record<string, unknown>, rechargeColumn) : undefined;
+      const tally = tallyColumn ? own(row as Record<string, unknown>, tallyColumn) : undefined;
       pools.push({
         key,
         label: name,
@@ -392,6 +396,7 @@ export function listRulesetLivePools(
         start: "full",
         listId: list.id,
         ...(typeof recharge === "string" && recharge ? { recharge } : {}),
+        ...(tally === true || (typeof tally === "number" && tally > 0) ? { tally: true as const } : {}),
       });
     }
   }

@@ -11687,6 +11687,11 @@
                       "$comment": {}
                     }
                   },
+                  "tallyColumn": {
+                    "type": "string",
+                    "maxLength": 40,
+                    "pattern": "^[a-z][a-z0-9_]*$"
+                  },
                   "$comment": {}
                 },
                 "required": [
@@ -26866,6 +26871,11 @@
                     "properties": {
                       "$comment": {}
                     }
+                  },
+                  "tallyColumn": {
+                    "type": "string",
+                    "maxLength": 40,
+                    "pattern": "^[a-z][a-z0-9_]*$"
                   },
                   "$comment": {}
                 },

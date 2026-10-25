@@ -135,7 +135,10 @@ try {
   );
 
   // ── The Game Master reads it ──
-  assert.match(renderRulesetSheetBlock(definition, cards[0]!, shaped.live.rook), /In the shape of: Wolf \(Wild Shape\)/);
+  assert.match(
+    renderRulesetSheetBlock(definition, cards[0]!, shaped.live.rook),
+    /In the shape of: Wolf \(Wild Shape\)/,
+  );
 
   // ── The next fight starts with them in it, not paid for again ──
   const fightWith = (live: RulesetLiveStates, standing?: Array<{ casterId: string; entry: string }>) => {

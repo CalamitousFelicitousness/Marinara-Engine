@@ -134,6 +134,24 @@ try {
           },
         ],
       },
+      {
+        // As a real warlock's sheet has them (cloud batch 2026-10-25): the plain spell's row first,
+        // unprepared, standing for the plain spell, then the Pact's own, prepared.
+        id: "chain-reversed",
+        label: "Pact of the Chain (older sheet)",
+        rows: [
+          {
+            list: "spells",
+            values: { name: "Find Familiar", level: 1, prepared: false },
+            standsFor: "spells/find-familiar",
+          },
+          {
+            list: "spells",
+            values: { name: "Find Familiar (Pact of the Chain)", level: 1, prepared: true },
+            standsFor: "spells/find-familiar-chain",
+          },
+        ],
+      },
     ],
   });
   const parsed = parseRulesetDefinition(doc);
@@ -184,7 +202,11 @@ try {
   const pacts = definition.catalogs!.find((entry) => entry.id === "pacts")!.entries! as RulesetCatalogEntry[];
   const chained = rulesetSheetBuildSchema.parse({
     ...build,
-    lists: { spells: pacts.flatMap((entry) => rowsFromCatalogEntry("pacts", entry).map((row) => row.row)) },
+    lists: {
+      spells: pacts
+        .filter((entry) => entry.id === "chain")
+        .flatMap((entry) => rowsFromCatalogEntry("pacts", entry).map((row) => row.row)),
+    },
   });
   const pact = applySheetCommandTags(`[sheet: who="Mara" op="use" name="Find Familiar" as="Owl, Fey"]`, {
     definition,
@@ -240,6 +262,57 @@ try {
     imp.outcomes[0]!.reason ?? "",
     /cannot call "Imp"; it calls Owl, Cat; use "Find Familiar \(Pact of the Chain\)" for that/,
   );
+
+  // The plain spell's row on such a sheet, never prepared, keeps what it calls all the same, and the
+  // fight brings it through the Pact's row, the one it reads: Vex's owl never came.
+  {
+    const reversed = rulesetSheetBuildSchema.parse({
+      ...build,
+      lists: {
+        spells: rowsFromCatalogEntry(
+          "pacts",
+          pacts.find((entry) => entry.id === "chain-reversed")!,
+        ).map((row) => row.row),
+      },
+    });
+    const ctx = {
+      definition,
+      cards: [{ name: "Vex", build: reversed }],
+      playerName: "Wren",
+      catalogs: { spells, pacts, ...bestiary },
+    };
+    const owl = applySheetCommandTags(`[sheet: who="Vex" op="use" name="Find Familiar" as="Owl"]`, {
+      ...ctx,
+      live: {},
+    });
+    assert.equal(owl.outcomes[0]!.ok, true, owl.outcomes[0]!.reason);
+    const vexFight = createRulesetFight({
+      definition,
+      seed: 3,
+      party: [{ id: "vex", name: "Vex" }],
+      enemies: [{ id: "rat", name: "Giant Rat", creature: "creatures/rat" }],
+      cards: [{ name: "Vex", rulesetSheet: { v: 1, build: reversed } }],
+      playerName: "Vex",
+      live: owl.live,
+      partyCatalogs: { spells, pacts },
+      bestiary,
+    });
+    assert.ok(vexFight.ok, vexFight.ok ? "" : vexFight.error);
+    assert.deepEqual(vexFight.fight.adjustments, [], "nothing said to be missing");
+    const called = vexFight.fight.encounter.combatants.filter((one) => one.calledBy === "vex");
+    assert.deepEqual(
+      called.map((one) => [one.name, one.calledKept?.entry]),
+      [["Owl", "Find Familiar"]],
+      "the owl comes, kept",
+    );
+    // And the Imp only the Pact's row calls is pointed there.
+    const vexImp = applySheetCommandTags(`[sheet: who="Vex" op="use" name="Find Familiar" as="Imp"]`, {
+      ...ctx,
+      live: {},
+    });
+    assert.equal(vexImp.outcomes[0]!.ok, false);
+    assert.match(vexImp.outcomes[0]!.reason ?? "", /use "Find Familiar \(Pact of the Chain\)" for that/);
+  }
 
   // ── The Game Master reads it ──
   assert.match(renderRulesetSheetBlock(definition, cards[0]!, cast.live.wren), /With them: Owl, Fey \(Find Familiar\)/);

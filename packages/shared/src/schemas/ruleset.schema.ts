@@ -1255,6 +1255,11 @@ const listSchema = z
          *  passed (Capability API 1.429), counted by the sheet's `pass` command: 5e's Divine
          *  Intervention, `{"week": 7}`. */
         rechargeDays: z.record(sheetId, z.number().int().min(1).max(3650)).optional(),
+        /** A yes-or-no or number column (Capability API 1.790): a row with it set (true, or above 0)
+         *  is a tally rather than something to spend, its pool read as how many times it has been
+         *  used since its recharge, its maximum only how far it may count. 5e's Relentless Rage,
+         *  whose save a `tally` raises each time it works. */
+        tallyColumn: sheetId.optional(),
       })
       .strict()
       .optional(),
@@ -18151,6 +18156,10 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
         issue([...path, "pools", "maxColumn"], "Must name a number column");
       if (list.pools.rechargeColumn && typeOf(list.pools.rechargeColumn) !== "enum") {
         issue([...path, "pools", "rechargeColumn"], "Must name an enum column");
+      }
+      const tally = list.pools.tallyColumn ? typeOf(list.pools.tallyColumn) : undefined;
+      if (list.pools.tallyColumn && tally !== "boolean" && tally !== "number") {
+        issue([...path, "pools", "tallyColumn"], "Must name a yes-or-no or number column");
       }
       // Days only for a recharge the column offers (1.429).
       if (list.pools.rechargeDays) {

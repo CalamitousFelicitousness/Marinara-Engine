@@ -164,7 +164,12 @@ export function renderRulesetSheetBlock(
 
   push(
     live.pools
-      .map((pool) => `${pool.label} ${pool.value}/${pool.max}${pool.temp > 0 ? ` +${pool.temp} temp` : ""}`)
+      .map((pool) =>
+        // A tally reads as the times it has been used (1.790), not as something left to spend.
+        pool.tally
+          ? `${pool.label} used ${pool.max - pool.value} times`
+          : `${pool.label} ${pool.value}/${pool.max}${pool.temp > 0 ? ` +${pool.temp} temp` : ""}`,
+      )
       .join(", "),
   );
 

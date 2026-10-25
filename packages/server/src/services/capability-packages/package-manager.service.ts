@@ -12627,6 +12627,18 @@ export function getCapabilityPackageInstallIssue(
   ) {
     return "A ruleset whose attack rows choose the best of several abilities (abilityChoices) requires schemaVersion 2 and capabilityApi 1.782 or newer";
   }
+  // A list's pools counted up rather than spent, 1.790.
+  if (
+    !declaresApi(790) &&
+    (() => {
+      const lists = plainRecord(plainRecord(ruleset)?.sheet)?.lists;
+      return (
+        Array.isArray(lists) && lists.some((list) => plainRecord(plainRecord(list)?.pools)?.tallyColumn !== undefined)
+      );
+    })()
+  ) {
+    return "A ruleset whose list pools count uses (pools.tallyColumn) requires schemaVersion 2 and capabilityApi 1.790 or newer";
+  }
   // A number off the sheet added to hit on an attack list's rows, 1.789.
   if (
     !declaresApi(789) &&

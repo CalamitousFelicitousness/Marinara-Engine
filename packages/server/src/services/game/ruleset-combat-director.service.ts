@@ -13,6 +13,7 @@
 
 import {
   rulesetActionAvailable,
+  rulesetSealedApart,
   parseRulesetCombatDice,
   advanceRulesetTurn,
   applyRulesetCombatChoice,
@@ -130,7 +131,7 @@ import {
   RULESET_FLY_UP_OPTION,
   shiftCombatTemperament,
   withRulesetPlanMemo,
-  withOwnRulesetPlanMemo,
+  withoutRulesetPlanMemo,
   rulesetSheetBuildsByName,
   rulesetCardCreaturesByName,
   readProposedRulesetSheet,
@@ -1814,11 +1815,15 @@ function heldHitAnswer(
   const resisted = (one: RulesetCombatant) =>
     rulesetCombatEffects(definition, combat, one, encounter).has("resist-all");
   // The one struck leads, when the answer may go to them: a reaction shielding an ally.
-  const aimed = targetIds.includes(struckId) ? [struckId, ...targetIds.filter((id) => id !== struckId)] : targetIds;
+  // Named by nobody (a window weighed as a whole): on its holder when it is one they take on
+  // themselves, else on the one struck. Sent at nobody, a Parry was put on the attacker and read as
+  // turning nothing (cloud AI fights 2026-10-25).
+  const named = targetIds.length > 0 ? targetIds : option.targets.side === "self" ? [actorId] : [struckId];
+  const aimed = named.includes(struckId) ? [struckId, ...named.filter((id) => id !== struckId)] : named;
   try {
-    // In a planning pass of its own: the view's pass remembers each sheet as it stands, and this
-    // answer changes what the struck one holds.
-    const step = withOwnRulesetPlanMemo(() =>
+    // In no planning pass at all: the view's pass remembers each sheet as it stands, and this answer
+    // changes what the struck one holds, then reads it again within the same step.
+    const step = withoutRulesetPlanMemo(() =>
       applyRulesetCombatChoice(
         definition,
         encounter,
@@ -1833,8 +1838,19 @@ function heldHitAnswer(
       ? hit.optionId.slice(RULESET_LAIR_OPTION_PREFIX.length)
       : hit.optionId;
     const action = source?.actions.find((one) => one.id === heldId);
-    const to = rulesetDefenseAgainst(definition, combat, step.state, struck, source, action).defense;
-    if (to > hit.defense) return { to, ...(hit.total < to ? { misses: true as const } : {}) };
+    // The hit looked at again once the answer is up says what it came to: a Parry's +3 is gone again
+    // by the time the step ends, so the defense read after it is the old one (cloud AI fights
+    // 2026-10-25: "letGo" on a Longsword 24 against 16, which Parry's 19 could never turn).
+    const rechecked = step.events.find(
+      (event): event is Extract<RulesetCombatEvent, { type: "recheck" }> =>
+        event.type === "recheck" && event.targetId === struckId && event.actorId === hit.sourceId,
+    );
+    const to = Math.max(
+      rulesetDefenseAgainst(definition, combat, step.state, struck, source, action).defense,
+      rechecked?.defense ?? -Infinity,
+    );
+    const missed = rechecked ? rechecked.outcome === "miss" : hit.total < to;
+    if (to > hit.defense) return { to, ...(missed ? { misses: true as const } : {}) };
     // One that halves the hit's harm instead (Uncanny Dodge) says about what it comes to (laptop
     // playtest 2026-10-23), as a raised defense says whether the hit misses.
     if (before && !resisted(before) && rulesetCombatEffects(definition, combat, struck, step.state).has("resist-all")) {
@@ -3924,7 +3940,22 @@ function rulesetCandidatesFrom(
       const holds = actor.actions.find((one) => one.id === id)?.concentration;
       // Weighed as the harm it gives up, not as a price: a caster's prices count for less than
       // what it does, and eight creatures went for a Hold Person (cloud class re-test round 2).
-      if (holds && id !== actor.concentrating.actionId) candidate.damage = (candidate.damage ?? 0) - letGo;
+      // Cast again, the same one lets go of itself as well: what it holds now is given up for what
+      // it would hold, so a Bless on the same three is worth nothing more (cloud batch 2026-10-25).
+      if (holds) candidate.damage = (candidate.damage ?? 0) - letGo;
+    }
+  }
+  // Every foe sealed away (a Resilient Sphere): nothing done to its own side changes the fight until
+  // one comes out, so nothing is paid for on it but mending (cloud batch 2026-10-25: a buff cast
+  // again and again on a party nobody could reach).
+  const foes = encounter.combatants.filter((one) => one.side !== actor.side && !one.down);
+  if (foes.length > 0 && foes.every((one) => rulesetSealedApart(definition, encounter, actor, one))) {
+    const own = (id: string) => rulesetCombatant(encounter, id)?.side === actor.side;
+    for (let index = candidates.length - 1; index >= 0; index--) {
+      const { cost, healing, action } = candidates[index]!;
+      const targets = action.choice.targetIds;
+      if ((cost ?? 0) > 0 && !(healing && healing > 0) && targets.length > 0 && targets.every(own))
+        candidates.splice(index, 1);
     }
   }
   // A legendary action that moves after what it does (1.285): on to where a teleport would go, or

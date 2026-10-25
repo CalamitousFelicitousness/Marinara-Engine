@@ -15,6 +15,8 @@
  *   - A potion that ends on its drinker's next attack is worth one blow, not an hour of them.
  *   - A spell that grows with its slot is cast from the lowest slot that drops its target, and an
  *     aura that harms the foes in it is not let go for a buff (laptop playtest 2026-10-24).
+ *   - A held buff is not cast again over itself, and nothing is paid for on its own side while every
+ *     foe is sealed away (cloud batch 2026-10-25).
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -126,6 +128,7 @@ try {
     { id: "fierce", label: "Fierce" },
     { id: "unseen", label: "Unseen" },
     { id: "tame", label: "Tame" },
+    { id: "sphered", label: "Sphered" },
   );
   doc.combat.conditions.push(
     {
@@ -147,6 +150,8 @@ try {
     { condition: "unseen", unseen: {} },
     // A familiar's: it harms nobody.
     { condition: "tame", effects: ["cannot-harm"] },
+    // Resilient Sphere's: nothing reaches in or out.
+    { condition: "sphered", effects: [], sealed: {} },
   );
   const parsed = parseRulesetDefinition(doc);
   assert.ok(parsed.ok, parsed.ok ? "" : parsed.issues.join("; "));
@@ -698,6 +703,64 @@ try {
     rulesetCombatant(scene.encounter, "pip")!.actions.push(potion);
     const pick = pickRulesetChoice(definition, scene.state, scene.encounter, "pip");
     assert.notEqual(pick?.option.id, "potion", "the potion is not drunk for one blow at advantage");
+  }
+
+  // ── A held buff is not cast again over itself, nor any paid buff while every foe is sealed away
+  //    (cloud batch 2026-10-25: Bless cast again on the same three, and over a Resilient Sphere) ──
+  {
+    const bless = {
+      id: "bless",
+      label: "Bless",
+      rows: [{ list: "spells", values: { name: "Bless", level: 1, prepared: true } }],
+      mechanics: {
+        kind: "buff",
+        targets: "ally",
+        count: 3,
+        range: 30,
+        budget: "action",
+        concentration: true,
+        cost: [{ pool: "slots_1", amount: 1 }],
+        applies: [{ condition: "fierce", duration: { rounds: 10 } }],
+      },
+    } as unknown as RulesetCatalogEntry;
+    const build = rulesetSheetBuildSchema.parse({
+      abilities: { str: 10, dex: 10, con: 14, int: 10, wis: 16, cha: 10 },
+      fields: { level: 5, ac: 15, speed: 30, hp_max: 40, spellcasting_ability: "wis", slots_max_1: 4 },
+      lists: { attacks: [], spells: rowsFromCatalogEntry("spells", bless).map((one) => one.row) },
+    });
+    const scene = () =>
+      fight([
+        { id: "mira", name: "mira", side: "party", build, live: {}, catalogs: { spells: [bless] }, at: { x: 2, y: 5 } },
+        { id: "ada", name: "ada", side: "party", block: block([smash]), at: { x: 3, y: 4 } },
+        { id: "bram", name: "bram", side: "party", block: block([smash]), at: { x: 3, y: 6 } },
+        { id: "orc", name: "orc", side: "enemy", block: block([smash]), at: { x: 9, y: 5 } },
+      ]);
+    const blessing = (one: ReturnType<typeof fight>) =>
+      ranked(one, "mira").find((entry) => entry.candidate.action.option.label === "Bless");
+    const fresh = scene();
+    const first = blessing(fresh);
+    assert.ok(first, "Bless is weighed");
+    const again = scene();
+    const mira = rulesetCombatant(again.encounter, "mira")!;
+    const blessId = mira.actions.find((one) => one.label === "Bless")!.id;
+    mira.concentrating = { actionId: blessId, label: "Bless", targets: ["mira", "ada"] } as never;
+    for (const id of ["mira", "ada"])
+      rulesetCombatant(again.encounter, id)!.tracked.push({
+        condition: "fierce",
+        rounds: 10,
+        sourceId: "mira",
+      } as never);
+    const held = blessing(again);
+    assert.ok(!held || held.score < first.score, "a Bless held is not worth casting again");
+    assert.notEqual(pickRulesetChoice(definition, again.state, again.encounter, "mira")?.option.label, "Bless");
+    // Every foe sealed away: nothing paid for on its own side.
+    const sealed = scene();
+    rulesetCombatant(sealed.encounter, "orc")!.tracked.push({
+      condition: "sphered",
+      rounds: 10,
+      sourceId: "mira",
+    } as never);
+    assert.equal(blessing(sealed), undefined, "no Bless while the only foe is sealed in a sphere");
   }
 
   console.info(

@@ -3458,6 +3458,8 @@
   "game.ruleset.sheet.spendAria": "Spend one {{name}} for {{who}}",
   "game.ruleset.sheet.stateAria": "{{name}} for {{who}}",
   "game.ruleset.sheet.stateNotReady": "The sheet change could not be saved. Try again in a moment.",
+  "game.ruleset.sheet.tallyUsed_one": "Used {{count}} time",
+  "game.ruleset.sheet.tallyUsed_other": "Used {{count}} times",
   "game.ruleset.sheet.temp": "Temp",
   "game.ruleset.sheet.tempAria": "Temporary {{name}} for {{who}}",
   "game.ruleset.sheet.title": "Ruleset sheet",

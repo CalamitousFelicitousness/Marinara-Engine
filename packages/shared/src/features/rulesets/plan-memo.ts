@@ -44,6 +44,19 @@ export function withRulesetPlanMemoIn<T>(memo: Map<unknown, unknown>, plan: () =
   }
 }
 
+/** Runs `plan` with no pass open, whatever pass is, and goes back to that one after: for a step of
+ *  the fight taken on a copy to see what it comes to, which changes what its reads read as it goes
+ *  (a Parry Ward put on and then looked for, cloud AI fights 2026-10-25). */
+export function withoutRulesetPlanMemo<T>(plan: () => T): T {
+  const outer = pass;
+  pass = null;
+  try {
+    return plan();
+  } finally {
+    pass = outer;
+  }
+}
+
 /** `make()`, remembered under `keys` while a planning pass is open. */
 export function rulesetPlanMemo<T>(keys: readonly unknown[], make: () => T): T {
   if (!pass) return make();

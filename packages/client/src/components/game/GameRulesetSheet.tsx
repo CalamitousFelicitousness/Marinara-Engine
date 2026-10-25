@@ -970,38 +970,49 @@ export function GameRulesetSheet({
                           </span>
                         )}
                       </span>
-                      <div className="flex shrink-0 items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => apply({ op: "spend", pool: pool.key, amount: 1 })}
-                          disabled={readOnly || pool.value <= 0}
-                          aria-label={localizeUi("game.ruleset.sheet.spendAria", { name: pool.label, who: cardName })}
-                          className={stepButtonClass}
-                        >
-                          <Minus size={12} aria-hidden="true" />
-                        </button>
-                        <DraftNumberInput
-                          value={pool.value}
-                          onCommit={(next) => setPoolValue(pool, next)}
-                          min={0}
-                          max={pool.max}
-                          integer
-                          disabled={readOnly}
-                          selectOnFocus
-                          ariaLabel={localizeUi("game.ruleset.sheet.valueAria", { name: pool.label, who: cardName })}
-                          className={numberInputClass}
-                        />
-                        <span className="text-xs tabular-nums text-[var(--muted-foreground)]">/{pool.max}</span>
-                        <button
-                          type="button"
-                          onClick={() => apply({ op: "restore", pool: pool.key, amount: 1 })}
-                          disabled={readOnly || pool.value >= pool.max}
-                          aria-label={localizeUi("game.ruleset.sheet.restoreAria", { name: pool.label, who: cardName })}
-                          className={stepButtonClass}
-                        >
-                          <Plus size={12} aria-hidden="true" />
-                        </button>
-                      </div>
+                      {/* A tally counts the times it was used (1.790): nothing to spend, only read,
+                          and its recharge starts it over. */}
+                      {pool.tally ? (
+                        <span className="shrink-0 text-xs tabular-nums text-[var(--muted-foreground)]">
+                          {localizeUi("game.ruleset.sheet.tallyUsed", { count: pool.max - pool.value })}
+                        </span>
+                      ) : (
+                        <div className="flex shrink-0 items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => apply({ op: "spend", pool: pool.key, amount: 1 })}
+                            disabled={readOnly || pool.value <= 0}
+                            aria-label={localizeUi("game.ruleset.sheet.spendAria", { name: pool.label, who: cardName })}
+                            className={stepButtonClass}
+                          >
+                            <Minus size={12} aria-hidden="true" />
+                          </button>
+                          <DraftNumberInput
+                            value={pool.value}
+                            onCommit={(next) => setPoolValue(pool, next)}
+                            min={0}
+                            max={pool.max}
+                            integer
+                            disabled={readOnly}
+                            selectOnFocus
+                            ariaLabel={localizeUi("game.ruleset.sheet.valueAria", { name: pool.label, who: cardName })}
+                            className={numberInputClass}
+                          />
+                          <span className="text-xs tabular-nums text-[var(--muted-foreground)]">/{pool.max}</span>
+                          <button
+                            type="button"
+                            onClick={() => apply({ op: "restore", pool: pool.key, amount: 1 })}
+                            disabled={readOnly || pool.value >= pool.max}
+                            aria-label={localizeUi("game.ruleset.sheet.restoreAria", {
+                              name: pool.label,
+                              who: cardName,
+                            })}
+                            className={stepButtonClass}
+                          >
+                            <Plus size={12} aria-hidden="true" />
+                          </button>
+                        </div>
+                      )}
                       {pool.allowTemp && (
                         <div className="flex shrink-0 items-center gap-1">
                           <span className="text-[0.6875rem] text-[var(--muted-foreground)]">
@@ -1189,12 +1200,16 @@ export function GameRulesetSheet({
               )}
               {checkSources.flatMap((source, index) => {
                 const modifiers = source.modifiers?.filter((one) => one.to === "damage");
-                return modifiers?.length ? (
-                  <p key={`damage-${index}`} className="text-xs text-[var(--muted-foreground)]">
-                    {source.name}:{" "}
-                    {rulesetItemEffectFacts(definition, { modifiers })
+                // One with nothing it can say (a critical's extra dice, which only a fight reads) is
+                // left out rather than shown as its name alone (class pass 2026-10-25).
+                const said = modifiers?.length
+                  ? rulesetItemEffectFacts(definition, { modifiers })
                       .map((fact) => rulesetEffectPhrase(fact, localizeUi))
-                      .join("; ")}
+                      .filter(Boolean)
+                  : [];
+                return said.length ? (
+                  <p key={`damage-${index}`} className="text-xs text-[var(--muted-foreground)]">
+                    {source.name}: {said.join("; ")}
                   </p>
                 ) : (
                   []

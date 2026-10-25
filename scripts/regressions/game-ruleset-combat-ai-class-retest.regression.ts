@@ -970,6 +970,42 @@ try {
     assert.ok(empty && full && full.score < empty.score, "dearer to let go of with foes in it");
   }
 
+  // ── A lasting area that harms whoever is in it each turn is worth more than one round of its harm
+  //    (laptop playtest 2026-10-25: a druid with Moonbeam cast only cantrips) ──
+  {
+    const flash = {
+      id: "flash",
+      name: "Flash",
+      budget: "action",
+      range: { normal: 60 },
+      targets: "enemy",
+      area: { shape: "burst", size: 1 },
+      save: { save: "con_save", difficulty: 13 },
+      saveDifficulty: 13,
+      damage: { count: 2, sides: 10, flat: 0 },
+    };
+    const beam = {
+      ...flash,
+      id: "beam",
+      name: "Beam",
+      concentration: true,
+      zone: { rounds: 10, triggers: ["enter", "turn-start"], anchor: "point", atCast: false },
+    };
+    const scene = fight([
+      { id: "mira", name: "mira", side: "party", block: block([poke, beam, flash]), at: { x: 2, y: 5 } },
+      { id: "o1", name: "o1", side: "enemy", block: block([poke], { health: 40 }), at: { x: 8, y: 5 } },
+    ]);
+    const damageOf = (id: string) =>
+      Math.max(
+        0,
+        ...ranked(scene, "mira")
+          .filter((one) => one.candidate.action.option.id === id)
+          .map((one) => one.candidate.damage ?? 0),
+      );
+    assert.ok(damageOf("flash") > 0, "the plain burst is weighed");
+    assert.ok(damageOf("beam") > 1.5 * damageOf("flash"), `${damageOf("beam")} against ${damageOf("flash")}`);
+  }
+
   // ── A potion that ends on the next attack: worth one blow, so a fighter beside its foe strikes ──
   {
     const potion = {

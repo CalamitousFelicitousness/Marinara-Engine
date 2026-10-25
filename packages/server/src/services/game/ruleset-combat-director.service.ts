@@ -4155,7 +4155,10 @@ function rulesetCandidatesFrom(
         // against keeping it for a fair throw: below even, its chance counts twice over (re-test
         // 2026-10-24: flasks thrown at disadvantage from beside a troll, 5 of 16 landing).
         const odds = rulesetFairOdds(candidate, price, fallingAction, chance);
-        candidate.damage = Math.min(2, (worth / weighed) * (1 + others.length + again)) * chance * odds;
+        candidate.damage =
+          Math.min(2, (worth / weighed) * (1 + others.length + again) * rulesetZoneRepeats(fallingAction)) *
+          chance *
+          odds;
         candidate.action.expected = average * chance * (1 + others.length + again);
         if (average >= pool) candidate.finish = chance;
         // Everybody it could drop, the others it spreads to included: by its average, and by the most
@@ -4837,6 +4840,16 @@ function rulesetWithOnHit(action: RulesetCombatAction | undefined, average: numb
  * alchemist's fire never thrown, its blow doing nothing up front), over the turns it is weighed for,
  * against their health, as likely as its save is to fail. Weighed as harm.
  */
+/** How many rounds' harm a lasting area that harms whoever is in it each turn is worth as it is laid
+ *  (laptop playtest 2026-10-25: a druid's Moonbeam weighed as one round's harm, and never cast): the
+ *  rounds it is likely held for, each counted at less than a full round, since they may walk out of
+ *  it or the spell may break. One for anything else. */
+function rulesetZoneRepeats(action: RulesetCombatAction | undefined): number {
+  const zone = action?.zone;
+  if (!zone || zone.rounds <= 1 || !zone.triggers.some((one) => one === "turn-start" || one === "turn-end")) return 1;
+  return Math.max(1, Math.min(RULESET_HELD_ROUNDS, zone.rounds) * 0.7);
+}
+
 function rulesetLingeringHarm(
   definition: RulesetDefinition,
   combat: NonNullable<RulesetDefinition["combat"]>,
@@ -5645,7 +5658,7 @@ function weighCaught(
     // friend is one no tactician throws. A lasting hazard's worth is mostly what it puts on those
     // who walk in (caltrops that stop them), so that counts beside the harm.
     if (hurt > 0 && share + (walkers.length ? Math.max(0, rider) : 0) < 2 * hurt) return false;
-    candidate.damage = Math.max(0, Math.min(2, share - hurt)) * chance;
+    candidate.damage = Math.max(0, Math.min(2, (share - hurt) * rulesetZoneRepeats(action))) * chance;
     if (candidate.damage <= 0 && !(walkers.length && rider > 0)) return false;
     // Whom of the other side it could drop, for orders that spare them: by the most it can do, as a
     // single blow is weighed (K6 re-test 2026-10-24: a duellist under orders to spare killed an

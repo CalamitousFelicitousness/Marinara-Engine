@@ -5402,7 +5402,7 @@ function VideoGenerationDefaultsPanel({
                         (option) =>
                           (service !== "google_veo" || option.value !== "480p") &&
                           (service !== "comfyui" || option.value !== "1080p") &&
-                          (option.value !== "768p" || (service === "openrouter" && !isNanoGpt)) &&
+                          (option.value !== "768p" || !!openRouterLimits?.resolutions.includes("768p")) &&
                           (!openRouterLimits || openRouterLimits.resolutions.includes(option.value)),
                       ).map((option) => (
                         <option key={option.value} value={option.value}>

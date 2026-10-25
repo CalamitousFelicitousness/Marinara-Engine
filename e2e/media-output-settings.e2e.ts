@@ -163,6 +163,7 @@ for (const theme of ["dark", "light"] as const) {
           await page.getByRole("button").filter({ hasText: "google/veo-3.1" }).click();
           await expect(resolution).toHaveValue("720p");
           await expect(resolution.locator('option[value="768p"]')).toHaveCount(0);
+          await page.getByRole("button", { name: "Save", exact: true }).click();
         }
       } finally {
         await request.delete(`/api/connections/${id}`);

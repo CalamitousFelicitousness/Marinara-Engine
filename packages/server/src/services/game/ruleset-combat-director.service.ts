@@ -940,7 +940,19 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
           for (const name of missing)
             adjustments.push(`${opponent.name}: this ruleset has no entry called "${name}", so it was not given.`);
           adjustments.push(`${opponent.name} was given a sheet for ${given.join(", ")}.`);
-          proposed = { success: true, data: { ...numbersOnly, sheet } } as unknown as typeof proposed;
+          // A spell also written among its numbers is cast from its entry, with that entry's save and
+          // area, not thrown as the attack written beside it (laptop pass 7 2026-10-26: an Archlich's
+          // Cone of Cold rolled to hit).
+          const cast = new Set(
+            given.flatMap((name) =>
+              [name, name.replace(/\s*\([^)]*\)\s*$/, "").trim()].map((one) => one.toLowerCase()),
+            ),
+          );
+          const kept = numbersOnly.actions.filter(
+            (action) => action.signature || !cast.has(action.name.trim().toLowerCase()),
+          );
+          const actions = kept.length > 0 ? kept : numbersOnly.actions;
+          proposed = { success: true, data: { ...numbersOnly, actions, sheet } } as unknown as typeof proposed;
         }
         const tiered = numbersOnly ? null : rulesetTierStatBlock(definition, opponent.tier, weapons);
         if (tiered) {
@@ -998,6 +1010,17 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
         );
       }
     }
+    // A boss given points and nothing to spend them on is said to have no legendary actions, so a
+    // fight that has none reads as weighed (laptop pass 7 2026-10-26: an Archlich brought down from CR 17
+    // to CR 4 fought without them, and nothing said why).
+    if (
+      opponent.boss &&
+      (opponent.points ?? 0) > 0 &&
+      !(proposed?.success && proposed.data.actions.some((action) => action.signature))
+    )
+      adjustments.push(
+        `${opponent.name} was given ${opponent.points} points but nothing priced out of them, so it has no legendary actions.`,
+      );
     // An invented one's reactions, written as the Engine's own attacks (laptop playtest 2026-10-25: a
     // duelist's "Parry" never fired), are each the reaction this ruleset's bestiary has by that name;
     // one it has nowhere is said, since nothing in the fight could take it.

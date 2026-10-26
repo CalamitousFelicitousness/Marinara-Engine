@@ -112,10 +112,14 @@ test("starting gear is taken into the bag on the player's word, with its choices
     };
     await openInventory(page, chatId);
     const slot = (label: string) => page.getByRole("button", { name: label, exact: true });
+    // The nudge toast carries a button of the same name; the one in the bag is the one under test.
+    const gearButton = page
+      .getByRole("button", { name: "Starting gear", exact: true })
+      .and(page.locator(":not([data-sonner-toast] *)"));
 
     // Nothing is in the bag until the player asks.
     await expect(slot("Hand axe")).toHaveCount(0);
-    await page.getByRole("button", { name: "Starting gear", exact: true }).click();
+    await gearButton.click();
     const dialog = page.getByRole("dialog", { name: "Starting gear" });
     await expect(dialog).toBeVisible();
     await dialog.getByRole("radio", { name: /Traveller/ }).check();
@@ -145,7 +149,7 @@ test("starting gear is taken into the bag on the player's word, with its choices
     await expect.poll(async () => (await metadata()).gameStartingGearTaken).toEqual({ "": ["traveller"] });
 
     // The calling's gear is taken; the background's is still there to take.
-    await page.getByRole("button", { name: "Starting gear", exact: true }).click();
+    await gearButton.click();
     await expect(dialog.getByText("Taken", { exact: true })).toBeVisible();
     await dialog.getByRole("radio", { name: /Pilgrim/ }).check();
     await dialog.getByRole("button", { name: "Take Pilgrim", exact: true }).click();

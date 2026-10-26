@@ -2063,7 +2063,7 @@ const dataDir = mkdtempSync(join(tmpdir(), "marinara-creature-sheets-"));
     // its numbers; a boss's spell priced out of its points is a Cantrip bought with them (laptop pass
     // 6 2026-10-26: a legendary Archmage with Ray of Frost and Chill Touch at a cost of 1 only swung
     // its staff).
-    const numbered = (boss: boolean) =>
+    const numbered = (boss: boolean, priced = true) =>
       started({
         definition: classed,
         cards: [card("Brenna", fighterBuild())],
@@ -2089,11 +2089,20 @@ const dataDir = mkdtempSync(join(tmpdir(), "marinara-creature-sheets-"));
                   reach: 5,
                   damage: { dice: "1d8", flat: 2, type: "bludgeoning" },
                 },
+                // Its spell written among its numbers too, as an attack.
+                {
+                  id: "spark_written",
+                  name: "Spark Lash",
+                  budget: "action",
+                  toHit: 5,
+                  reach: 60,
+                  damage: { dice: "2d6", type: "fire" },
+                },
               ],
             },
             attacks: [
               { name: "Staff" },
-              { name: "Frost Mote", spell: true, legendary: 1 },
+              { name: "Frost Mote", spell: true, ...(priced ? { legendary: 1 } : {}) },
               { name: "Spark Lash", spell: true },
               { name: "Grave Bolt", spell: true },
             ],
@@ -2117,8 +2126,22 @@ const dataDir = mkdtempSync(join(tmpdir(), "marinara-creature-sheets-"));
     assert.match(lines, /Archmage Veyl: this ruleset has no entry called "Grave Bolt", so it was not given\./);
     assert.equal(veyl.actions.find((one) => one.id.endsWith("legendary_cantrip"))?.signature?.cost, 1);
     assert.equal(rulesetCombatHealth(classed, classed.combat!, veyl).max, 40, "its own health kept");
+    // Its Spark Lash is cast from the entry, not thrown as the attack written beside it (laptop pass 7
+    // 2026-10-26: an Archlich's Cone of Cold rolled to hit).
+    assert.ok(
+      !veyl.actions.some((one) => one.id.includes("spark_written")),
+      veyl.actions.map((one) => one.id).join(", "),
+    );
+    assert.doesNotMatch(lines, /no legendary actions/);
     // Not a boss, nothing is bought with points.
     assert.ok(!who(numbered(false).encounter, "veyl").actions.some((one) => one.signature));
+    // A boss given points and nothing priced out of them is said to have none (laptop pass 7).
+    const unpriced = numbered(true, false);
+    assert.ok(!who(unpriced.encounter, "veyl").actions.some((one) => one.signature));
+    assert.match(
+      unpriced.adjustments.join("; "),
+      /Archmage Veyl was given 3 points but nothing priced out of them, so it has no legendary actions\./,
+    );
   }
   // What reaches more than one is held as if it hit two (laptop pass 6 2026-10-26: a wizard 11
   // brought down to CR 8 kept a Chain Lightning of 45 on each of four heroes, under a cap read for one).

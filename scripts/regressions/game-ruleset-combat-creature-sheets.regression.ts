@@ -2178,6 +2178,29 @@ const dataDir = mkdtempSync(join(tmpdir(), "marinara-creature-sheets-"));
     const gazeSaid = gazer.adjustments.join("; ");
     assert.doesNotMatch(gazeSaid, /no entry called "Watchful strike"/);
     assert.match(gazeSaid, /Archmage Veyl may spend 3 points between turns on [^;]*Watchful strike/);
+    // A spell priced above 1 is still only a Cantrip, never a spell of a slot cast between turns
+    // (laptop Archlich fight 2026-10-26: Finger of Death and upcast Fireballs as legendary actions).
+    const dearCaster = started({
+      definition: classed,
+      cards: [card("Brenna", fighterBuild())],
+      party: [{ id: "brenna", name: "Brenna" }],
+      enemies: [
+        {
+          id: "veyl",
+          name: "Archmage Veyl",
+          tier: "cr_2",
+          boss: true,
+          points: 3,
+          attacks: [{ name: "Spark Lash", spell: true, legendary: 2 }],
+        },
+      ],
+    }).rulesetFight!;
+    const dearOnes = who(dearCaster.encounter, "veyl").actions.filter((one) => one.signature);
+    assert.deepEqual(
+      dearOnes.map((one) => [one.id.replace(/^.*?legendary_/, "legendary_"), one.signature?.cost]),
+      [["legendary_cantrip", 2]],
+      dearCaster.adjustments.join("; "),
+    );
   }
   // A boss named for a creature of the bestiary buys that creature's legendary actions, held to its own
   // tier; one priced its writer's way buys each as itself, a strike its sheet has under another name as

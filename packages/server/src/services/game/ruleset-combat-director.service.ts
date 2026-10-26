@@ -1038,8 +1038,9 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
     }
     // What a boss's writer gave a price out of its points is bought with them between turns, as a
     // bestiary's legendary actions are (laptop pass 6 2026-10-26: a legendary Archmage's Ray of Frost
-    // and Chill Touch at a cost of 1 were never cast): a spell at 1 as a lich's Cantrip, a dearer one as
-    // any spell of its own, and a strike as itself.
+    // and Chill Touch at a cost of 1 were never cast): its spells as a lich's Cantrip, at the least any of
+    // them was priced, and a strike as itself. Never a spell of a slot between turns (laptop Archlich
+    // fight 2026-10-26: a CR 4 boss cast Finger of Death and upcast Fireballs as legendary actions).
     const pricedOut = (opponent.attacks ?? []).filter((one) => !one.reaction && (one.legendary ?? 0) > 0);
     if (proposed?.success && opponent.boss && (opponent.points ?? 0) > 0 && pricedOut.length > 0) {
       const points = Math.min(20, opponent.points!);
@@ -1050,23 +1051,13 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
       // A spell only where it is one: a "debuff" its writer named is no spell (laptop level-4 pass
       // 2026-10-26: Varkas the Wyvern-Knight's Terrifying Glare was bought as a Cantrip).
       const spells = pricedOut.filter((one) => one.spell);
-      const cheap = spells.filter((one) => cost(one) === 1);
-      if (cheap.length > 0)
+      if (spells.length > 0)
         bought.push({
           id: "legendary_cantrip",
           name: "Cantrip",
           budget: rulesetStandardBudget(combat),
           casting: { cantripsOnly: true },
-          signature: { cost: 1 },
-        } as Bought);
-      const dear = spells.filter((one) => cost(one) > 1);
-      if (dear.length > 0)
-        bought.push({
-          id: "legendary_spell",
-          name: "Cast a Spell",
-          budget: rulesetStandardBudget(combat),
-          casting: {},
-          signature: { cost: Math.min(...dear.map(cost)) },
+          signature: { cost: Math.min(...spells.map(cost)) },
         } as Bought);
       // A strike or a skill as itself: its own action of that name, else a creature's of this ruleset by
       // that name, else (a strike) its best attack under that name (laptop level-4 pass 2026-10-26:
@@ -1319,6 +1310,15 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
       const legendary =
         opponent.boss &&
         (proposed.data.signaturePoints !== undefined || proposed.data.legendaryResistance !== undefined);
+      const tiers = combat.threat?.tiers ?? [];
+      const wanted = opponent.tier ?? proposed.data.tier;
+      const tier = tiers.find((entry) => entry.id === wanted) ?? tiers[0];
+      // Held to its tier's damage first, so no class level is raised to pay for a spell that goes.
+      if (tier) {
+        const damage = holdRulesetCasterSpellDamage(sheet, input.bestiary, tier);
+        damage.adjusted.forEach(said);
+        sheet = damage.sheet;
+      }
       // Sent with no pools its spells are paid out of (no class level), it is given the one that pays.
       const pooled = raiseRulesetCasterPools(definition, sheet, input.bestiary);
       pooled.adjusted.forEach(said);
@@ -1331,14 +1331,8 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
       );
       capped.adjusted.forEach(said);
       sheet = capped.sheet;
-      const tiers = combat.threat?.tiers ?? [];
-      const wanted = opponent.tier ?? proposed.data.tier;
-      const tier = tiers.find((entry) => entry.id === wanted) ?? tiers[0];
       // Written with no scores, the ability it casts with is raised to its tier (2026-10-25).
       if (tier) {
-        const damage = holdRulesetCasterSpellDamage(sheet, input.bestiary, tier);
-        damage.adjusted.forEach(said);
-        sheet = damage.sheet;
         const raised = raiseRulesetSheetAbilities(definition, sheet, tier);
         raised.adjusted.forEach(said);
         sheet = raised.sheet;

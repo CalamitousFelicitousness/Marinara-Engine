@@ -214,6 +214,10 @@ try {
     said.join("\n---\n"),
   );
   assert.ok(!said.some((block) => /THE PLAYER'S OWN/.test(block) && /plays Kesh/.test(block)), "never one gone");
+  // With no character of their own the player directs them all, so nobody dead is the player's own
+  // (laptop 2026-10-26: "no character of their own" beside "THE PLAYER'S OWN CHARACTER ... IS DEAD").
+  const directed = renderGameRulesetSheetBlocks(context.definition, three, live, {}, undefined, undefined, null);
+  assert.ok(!directed.some((block) => /THE PLAYER'S OWN|EVERYONE/.test(block)), directed.join("\n---\n"));
   const alive = renderGameRulesetSheetBlocks(
     context.definition,
     three,
@@ -257,6 +261,16 @@ try {
   assert.ok(
     wiped.some((block) => /^EVERYONE IN THE PARTY IS DEAD\. The player may go back to a checkpoint\./.test(block)),
   );
+  const wipedDirected = renderGameRulesetSheetBlocks(
+    context.definition,
+    three,
+    { aldric: dead, kesh: dead, mara: dead },
+    {},
+    undefined,
+    undefined,
+    null,
+  );
+  assert.ok(wipedDirected.some((block) => /^EVERYONE IN THE PARTY IS DEAD\./.test(block)));
 
   // A party list member the Engine cannot name drops nobody.
   await chats.patchMetadata(chat.id, { gamePartyCharacterIds: [aldric.id, mara.id, "missing-id"] });

@@ -161,17 +161,22 @@ export function renderGameRulesetSheetBlocks(
   const dead = (card: SheetCommandCard) =>
     rulesetSheetDead(definition, card.build, live?.[normalizeCharacterLookupName(card.name)], itemsOf?.(card.name));
   const named = playerName ? normalizeCharacterLookupName(playerName) : null;
-  const lead = built.find((card) => named !== null && normalizeCharacterLookupName(card.name) === named) ?? built[0];
+  // With no character of their own the player directs the whole party, so nobody is their own and only
+  // the whole party dead is said (laptop 2026-10-26: "no character of their own" beside "THE PLAYER'S
+  // OWN CHARACTER, Rook Hallow, IS DEAD").
+  const own = named !== null ? built.find((card) => normalizeCharacterLookupName(card.name) === named) : undefined;
+  const lead = named !== null ? (own ?? built[0]) : built.find((card) => dead(card));
   if (lead && dead(lead)) {
     const gone = new Set(away.map((name) => normalizeCharacterLookupName(name)));
     const standIn = built.find(
       (card) => card !== lead && !dead(card) && !gone.has(normalizeCharacterLookupName(card.name)),
     );
-    blocks.push(
-      standIn
-        ? `THE PLAYER'S OWN CHARACTER, ${lead.name}, IS DEAD. Until ${lead.name} lives again, the player plays ${standIn.name}: write ${standIn.name} as the one the player speaks and acts as, and the rest of the party as before. Offer a way to bring ${lead.name} back that the story can reach: a Revivify while it can still work, a temple's Raise Dead, or a quest for one. Once ${lead.name} is raised, the player plays them again.`
-        : "EVERYONE IN THE PARTY IS DEAD. The player may go back to a checkpoint. If the story goes on instead, it is the story's to say what follows (taken by the foe, found and saved, woken somewhere), told as it would happen; nobody is raised without a cause the story gives.",
-    );
+    if (named !== null || !standIn)
+      blocks.push(
+        standIn
+          ? `THE PLAYER'S OWN CHARACTER, ${lead.name}, IS DEAD. Until ${lead.name} lives again, the player plays ${standIn.name}: write ${standIn.name} as the one the player speaks and acts as, and the rest of the party as before. Offer a way to bring ${lead.name} back that the story can reach: a Revivify while it can still work, a temple's Raise Dead, or a quest for one. Once ${lead.name} is raised, the player plays them again.`
+          : "EVERYONE IN THE PARTY IS DEAD. The player may go back to a checkpoint. If the story goes on instead, it is the story's to say what follows (taken by the foe, found and saved, woken somewhere), told as it would happen; nobody is raised without a cause the story gives.",
+      );
   }
   const worn = rulesetPartyWornLine(
     definition,

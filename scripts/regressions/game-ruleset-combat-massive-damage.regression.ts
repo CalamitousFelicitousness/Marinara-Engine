@@ -21,6 +21,7 @@ import {
   rulesetCombatant,
   rulesetCombatOptions,
   rulesetSheetBuildSchema,
+  rulesetSheetDead,
   supportedCapabilityApi,
   type RulesetCombatEvent,
   type RulesetDefinition,
@@ -135,6 +136,18 @@ try {
     const hero = who(step.state, "hero");
     assert.equal(hero.defeated, true);
     assert.ok(!hero.dying);
+    // Dead on the sheet it goes back to, as three failed saves are (laptop pass 6 2026-10-26: a hero
+    // killed outright was healed back to 1 after the fight).
+    assert.ok(rulesetSheetDead(definition, hero.sheet!.build, hero.sheet!.live), JSON.stringify(hero.sheet!.live));
+    // And three blows while down, each a failure, the same.
+    let down = hit(definition, fight(definition), "heavy");
+    for (let blow = 0; blow < 3; blow++) down = hit(definition, down.state, "small");
+    const fallen = who(down.state, "hero");
+    assert.equal(fallen.defeated, true);
+    assert.ok(
+      rulesetSheetDead(definition, fallen.sheet!.build, fallen.sheet!.live),
+      JSON.stringify(fallen.sheet!.live),
+    );
     const lighter = hit(definition, fight(definition), "heavy");
     assert.deepEqual(of(lighter.events, "massiveDeath"), []);
     assert.equal(who(lighter.state, "hero").dying, true);

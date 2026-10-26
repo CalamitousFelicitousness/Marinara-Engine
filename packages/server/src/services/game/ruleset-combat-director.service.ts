@@ -4665,6 +4665,15 @@ function rulesetCandidatesFrom(
           candidate.action.combo = combo;
         }
       } else if (ally) {
+        // Steadying is for the dying only, and does nothing else (cloud caster batch 2026-10-26: a
+        // legendary priest's Cantrip picked Spare the Dying on itself 144 times, each refused).
+        if (
+          fallingAction?.stabilizes &&
+          !fallingAction.heal &&
+          !fallingAction.applies?.length &&
+          !(target.dying && !target.stable)
+        )
+          continue;
         // Giving back a pool that is already full, or one somebody without a sheet does not have,
         // gives nothing.
         if (option.restores && !rulesetPoolHasRoom(definition, target, option.restores)) continue;
@@ -7011,6 +7020,16 @@ function weighChoices(
   // party, every blow on the held a critical): while one of them still stands free, a blow on the
   // held counts for less than the best blow on the free (half, with none in reach), and is not
   // followed through. A cruel one, and a hard table, still take it.
+  // One who heals, its blows next to nothing, does not walk up to throw them (cloud neutral pass
+  // 2026-10-26: a Call of Cthulhu Doctor out of First Aid crossed the board 25 times to punch for 1d3 at
+  // one in four, into revolver range): it keeps back, and dodges or waits there instead.
+  if (actor.actions.some((action) => action.heal)) {
+    const kept = candidates.filter(
+      (one) => !(one.action.to && (one.damage ?? 0) > 0 && one.damage! < RULESET_FEEBLE_BLOW && !(one.healing ?? 0)),
+    );
+    if (kept.length < candidates.length) rulesetKeptBack.add(actor.id);
+    candidates.splice(0, candidates.length, ...kept);
+  }
   const spared = rulesetSparedHelpless(definition, state, encounter, actor);
   if (spared.size > 0) {
     const free = Math.max(
@@ -7697,6 +7716,49 @@ function rulesetPoolDamageMost(damage: RulesetCombatAction["damage"] | undefined
 
 /** Help worth less than this is not worth a turn: an ability check's die in a fight. */
 const RULESET_TRIFLING_HELP = 0.05;
+/** A blow worth less than this is not walked up to by one who heals: a punch for a few points at long
+ *  odds. */
+const RULESET_FEEBLE_BLOW = 0.1;
+/** Who, on the pick just made, left a feeble blow it would have walked up for: it stays where it is
+ *  rather than walking towards the fight. Read and cleared around each pick of a turn. */
+const rulesetKeptBack = new Set<string>();
+
+/** One who heals with no heal it can give now that anybody needs, whose every blow is feeble against
+ *  every foe (cloud neutral pass 2026-10-26: a Doctor out of First Aid walking across the board to
+ *  punch): it keeps back rather than walking towards the fight. */
+function rulesetFeebleHealer(
+  definition: RulesetDefinition,
+  encounter: RulesetEncounterState,
+  actor: RulesetCombatant,
+): boolean {
+  const combat = definition.combat;
+  if (!combat || !actor.actions.some((action) => action.heal)) return false;
+  const needed = encounter.combatants.some((one) => {
+    if (one.side !== actor.side || one.defeated) return false;
+    const health = rulesetCombatHealth(definition, combat, one);
+    return one.down || health.value < health.max;
+  });
+  if (needed && rulesetCombatOptions(definition, encounter, actor.id).some((option) => option.heals)) return false;
+  const foes = encounter.combatants.filter((one) => one.side !== actor.side && !one.defeated && !one.down);
+  for (const action of actor.actions) {
+    if (!action.damage || action.heal) continue;
+    const forecasts = rulesetForecastsByTarget(
+      definition,
+      encounter,
+      actor.id,
+      action.id,
+      foes.map((one) => one.id),
+    );
+    for (const foe of foes) {
+      const forecast = forecasts[foe.id];
+      if (!forecast?.averageDamage) continue;
+      const health = rulesetCombatHealth(definition, combat, foe);
+      const worth = (forecast.averageDamage / Math.max(1, health.value + health.temp)) * (forecast.hitChance ?? 1);
+      if (worth >= RULESET_FEEBLE_BLOW) return false;
+    }
+  }
+  return true;
+}
 
 /** What letting go of the spell an actor holds up costs it: what holding it does, up to 0.4 for one
  *  that harms (a zone, a blow held up) or whose worth cannot be read. */
@@ -8676,7 +8738,10 @@ function playRulesetTurn(
       (option) => option.id === RULESET_STAND_OPTION,
     );
     if (standUp) applyChoice(definition, state, fight, { actorId, optionId: standUp.id, targetIds: [] });
+    rulesetKeptBack.delete(actorId);
     const ranked = pickRulesetRanked(definition, state, fight.encounter, actorId, undefined, tried);
+    const keptBack =
+      rulesetKeptBack.delete(actorId) || (!!actor && rulesetFeebleHealer(definition, fight.encounter, actor));
     const picked = ranked?.candidate.action ?? null;
     const idle = !picked || picked.option.kind === "end-turn";
     if (idle && ranked?.candidate.action.spares) spared = true;
@@ -8699,7 +8764,7 @@ function playRulesetTurn(
         keepRulesetRange(definition, state, fight, actorId, false)
       )
         break;
-      if (defended || stays || aloof || feeding) break;
+      if (defended || stays || aloof || feeding || keptBack) break;
       if (harmless) {
         if (action === 0) recordReasons(fight, actorId, [{ why: "harmless" }]);
         break;
@@ -8740,6 +8805,7 @@ function playRulesetTurn(
       !stays &&
       !shotFromAfar &&
       !harmless &&
+      !keptBack &&
       walkTowardsTrouble(definition, state, fight, actorId, leash)
     )
       continue;

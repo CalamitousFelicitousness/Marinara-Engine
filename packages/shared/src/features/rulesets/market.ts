@@ -123,7 +123,9 @@ export function rulesetSellerSells(seller: RulesetMarketSeller, item: RulesetCat
  * What `count` of an item costs at a level: owed in the smallest coin of its cost's family (rounded
  * there, at least one where the cost is above nothing), the coins of that family the game's layers
  * leave, and the price said in the coin its cost is written in where that coin pays it exactly (a 5e
- * potion's "50 gold pieces", not "5 platinum pieces"), else the largest that does. Undefined when the
+ * potion's "50 gold pieces", not "5 platinum pieces"), in that coin and smaller ones where it is worth
+ * more than that coin but not a whole number of it ("12 gold pieces and 5 silver pieces"), else in the
+ * largest that pays it exactly. Undefined when the
  * family's coins are all gone.
  */
 export function rulesetMarketPrice(
@@ -157,6 +159,31 @@ export function rulesetMarketPrice(
   // (laptop playtest 2026-10-25: a Mace sold for "5 electrum pieces", a coin no 5e price uses).
   const own = family.find((coin) => coin.item === gameInventoryCoinRef(cost.unit));
   const exact = (coin: GameInventoryCoin) => owed % coin.value === 0;
+  // Where its own coin is too big to say it alone, it is said in that coin and the smaller ones
+  // prices are written in (laptop pass 6 2026-10-26: a sale for 12.5 gold came in as 125 silver).
+  if (own && !exact(own) && owed >= own.value) {
+    const split = (coins: readonly GameInventoryCoin[]) => {
+      let rest = owed;
+      const parts: Array<{ coin: GameInventoryCoin; count: number }> = [];
+      for (const coin of coins) {
+        const count = Math.floor(rest / coin.value);
+        if (count > 0) parts.push({ coin, count });
+        rest -= count * coin.value;
+      }
+      return rest === 0 ? parts : undefined;
+    };
+    const below = family.filter((coin) => coin.value <= own.value);
+    const parts =
+      (priced?.size ? split(below.filter((coin) => coin === own || priced.has(coin.item))) : undefined) ??
+      split(below)!;
+    return {
+      owed,
+      family,
+      familyId: full.id,
+      said: parts.map(({ coin, count }) => rulesetCoinAmount({ label: coin.name, one: coin.one }, count)).join(" and "),
+      saidIn: own.item,
+    };
+  }
   const shown =
     (own && exact(own)
       ? own

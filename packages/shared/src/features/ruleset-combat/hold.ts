@@ -1073,7 +1073,7 @@ interface SheetRound {
   parts: RulesetCombatAction[];
 }
 
-/** The heaviest round one spend buys against one target: every strike it buys, the biggest payment
+/** The heaviest round one spend buys against one target (two, for what reaches more): every strike it buys, the biggest payment
  *  it can afford, and the heaviest rider counted once on top, exactly as the plain clamp counts.
  *  Strikes bought by one spend wait in hand and may go to ANY row that declares strikes, so a
  *  striking round is the row spent on and then the rest of its strikes on the heaviest such row. */
@@ -1086,7 +1086,11 @@ function bestSheetRound(definition: RulesetDefinition, combatant: RulesetCombata
     if (!action?.damage) return 0;
     const steps = stepsAffordable(definition, combatant, action, pools);
     const grown = steps > 0 ? steps * rulesetAverageAmount(action.use!.perCostStep!) : 0;
-    return Math.max(0, rulesetAverageDamage(action.damage) + grown);
+    // What reaches more than one is counted on two of them, as a tier's damage a round is meant
+    // (laptop pass 6 2026-10-26: a wizard 11 brought down to CR 8 kept a Chain Lightning of 45 on each
+    // of four heroes, under a cap read for one).
+    const reach = action.area || action.targets.count > 1 ? 2 : 1;
+    return Math.max(0, (rulesetAverageDamage(action.damage) + grown) * reach);
   };
   const striking = combatant.actions.filter((action) => action.strikes !== undefined);
   const heaviestStrike = striking.reduce<RulesetCombatAction | null>(

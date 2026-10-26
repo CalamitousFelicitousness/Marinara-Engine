@@ -256,13 +256,13 @@ const night = { "layer.long_night": true };
   assert.deepEqual(rulesetMarketPrice(gravewatch, coat, 1.5, 1)?.said, "12 shillings", "8 shillings, dear");
   assert.deepEqual(rulesetMarketPrice(gravewatch, coat, 0.75, 1)?.said, "6 shillings");
   assert.equal(rulesetMarketPrice(gravewatch, coat, 1, 2)?.owed, 192, "two coats in pennies");
-  // Said in the coin the cost is written in where that coin pays it exactly, else the largest that does.
+  // Said in the coin the cost is written in where that coin pays it exactly, else in it and smaller ones.
   assert.equal(rulesetMarketPrice(gravewatch, coat, 1, 10)?.said, "80 shillings", "ten coats, in the coat's own coin");
   assert.equal(rulesetMarketPrice(gravewatch, coat, 1.5, 1)?.said, "12 shillings");
   assert.equal(
     rulesetMarketPrice(gravewatch, { amount: 5, unit: "shilling" }, 1.5, 1)?.said,
-    "90 pennies",
-    "7.5 shillings: the shilling does not pay it, the penny does",
+    "7 shillings and 6 pennies",
+    "7.5 shillings: in shillings and the pennies left over (laptop pass 6: 12.5 gold said as 125 silver)",
   );
   assert.equal(
     rulesetMarketPrice(gravewatch, { amount: 15, unit: "penny" }, 1, 4)?.said,

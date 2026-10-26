@@ -1326,6 +1326,40 @@ try {
     assert.equal(pick?.option.id, "bite", JSON.stringify(pick?.option.id));
   }
 
+  // ── One who heals does not walk up for a blow worth next to nothing (cloud neutral pass 2026-10-26:
+  //    a Doctor out of First Aid crossed the board 25 times to punch for 1d3) ──
+  {
+    const fist = {
+      id: "fist",
+      name: "Fist",
+      budget: "action",
+      toHit: 1,
+      reach: 5,
+      damage: { count: 1, sides: 3, flat: 0 },
+    };
+    const mend = {
+      id: "mend",
+      name: "Mend",
+      budget: "action",
+      targets: "ally",
+      heal: { count: 1, sides: 8, flat: 3 },
+    };
+    const walked = (actions: unknown[]) => {
+      const scene = fight(
+        [
+          { id: "doc", name: "doc", side: "party", block: block(actions), at: { x: 1, y: 5 } },
+          { id: "orc", name: "orc", side: "enemy", block: block([smash]), at: { x: 9, y: 5 } },
+        ],
+        { doc: "ai" },
+      );
+      assert.ok(commandRulesetCombatDirector(definition, scene.state, { type: "continue" }).ok);
+      const doc = rulesetCombatant(scene.state.rulesetFight!.encounter, "doc")!;
+      return doc.x !== 1 || doc.y !== 5;
+    };
+    assert.equal(walked([fist]), true, "a fighter walks up");
+    assert.equal(walked([fist, mend]), false, "one who heals keeps back");
+  }
+
   // ── A party half held helpless is not finished off through the held at a usual table (laptop pass 6
   //    2026-10-26: ghoul paralysis and a Hold Person wiped a party in a Moderate fight) ──
   {

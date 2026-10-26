@@ -16156,6 +16156,13 @@ function dieNow(ctx: RulesetCombatContext, target: RulesetCombatant): void {
   target.dying = false;
   target.stable = false;
   target.diedRound = ctx.state.round;
+  // Its sheet says so as three failed saves do, so it stays dead once the fight is over (laptop pass 6
+  // 2026-10-26: a hero killed outright by massive damage was healed back to 1 after it).
+  const failures = ctx.combat.dying?.failures;
+  if (failures && target.sheet) {
+    const most = trackMax(ctx, target, failures);
+    if (most > 0) writeRulesetSheet(ctx.definition, target, { op: "track", track: failures, to: most });
+  }
   endSummons(ctx, target);
   endZones(ctx, target);
   unconjureAll(ctx, target);

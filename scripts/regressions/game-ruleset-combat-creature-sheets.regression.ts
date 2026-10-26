@@ -2119,6 +2119,45 @@ const dataDir = mkdtempSync(join(tmpdir(), "marinara-creature-sheets-"));
     // Not a boss, nothing is bought with points.
     assert.ok(!who(numbered(false).encounter, "veyl").actions.some((one) => one.signature));
   }
+  // What reaches more than one is held as if it hit two (laptop pass 6 2026-10-26: a wizard 11
+  // brought down to CR 8 kept a Chain Lightning of 45 on each of four heroes, under a cap read for one).
+  {
+    const burst = structuredClone(spellbook);
+    burst
+      .catalogs!.find((catalog) => catalog.id === "spells")!
+      .entries!.push({
+        id: "cinder-burst",
+        label: "Cinder Burst",
+        filters: { classes: ["Sorcerer"] },
+        rows: [{ list: "spells", values: { name: "Cinder Burst", level: 1, prepared: false } }],
+        mechanics: {
+          kind: "attack",
+          area: { shape: "burst", size: 10 },
+          range: 60,
+          amount: { dice: "2d6" },
+          damageType: "fire",
+          save: { save: "dex_save", onSuccess: "half" },
+          cost: [{ pool: "slots_1", amount: 1 }],
+        },
+      } as never);
+    const fight = started({
+      definition: burst,
+      cards: [card("Brenna", fighterBuild())],
+      party: [{ id: "brenna", name: "Brenna" }],
+      enemies: [{ id: "pyro", name: "Pyromancer", tier: "cr_2", proposed: caster(["Cinder Burst"]) }],
+    }).rulesetFight!;
+    const spell = who(fight.encounter, "pyro").actions.find((one) => one.label === "Cinder Burst")!;
+    assert.ok(
+      spell.damage!.count * ((spell.damage!.sides + 1) / 2) + spell.damage!.flat <= 4.5,
+      JSON.stringify(spell.damage),
+    );
+    assert.ok(
+      fight.adjustments.some((line) =>
+        /Pyromancer: The damage was scaled down until the best round averages/.test(line),
+      ),
+      fight.adjustments.join("; "),
+    );
+  }
   // A legendary one (a boss with Legendary Resistance) keeps all it can cast; uncastable still goes.
   const legend = started({
     definition: spellbook,

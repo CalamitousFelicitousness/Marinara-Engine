@@ -11986,6 +11986,14 @@ function GameSurfaceComponent({
         // cosmetic italic prefix. State is flipped above via transitionGameState so no
         // [state:] tag is needed here.
         sendMessage(`${prefix}\n\n[combat_result]\n${recap}\n[/combat_result]`);
+        // The whole party fallen (Alyssa 2026-10-26): both ways on offer, a checkpoint or the story.
+        if (outcome === "defeat" && !summary.yielded)
+          toast.info(localizeUi("game.combat.partyFallen"), {
+            action: {
+              label: localizeUi("game.combat.partyFallenCheckpoint"),
+              onClick: () => useUIStore.getState().openModal("game-checkpoints", { chatId: activeChatId }),
+            },
+          });
 
         // Journal: record combat outcome. The server's addCombatEntry only persists
         // (description, outcome) into JournalEntry.content, so fold the structured recap

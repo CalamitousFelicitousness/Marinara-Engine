@@ -37,6 +37,7 @@ import {
   rulesetUseKeptCall,
   rulesetUseKeptForm,
   rulesetPoolNowText,
+  rulesetPoolKeyNamed,
 } from "./live-state.js";
 import { rulesetSheetDead } from "./combat-bridge.js";
 
@@ -399,11 +400,25 @@ export function applySheetCommandTags(
     // The dead are not healed, rested or shielded back to life by a plain command (laptop pass 6
     // 2026-10-26: a Game Master's restore of 1 hit point stood a dead hero up as the story went on).
     // What raises the dead is a use of what does (a Revivify), which comes another way.
-    const raisesDead = op.op === "rest" || ((op.op === "restore" || op.op === "temp") && op.pool === healthPool);
+    // Health by any name the command finds it by (laptop 2026-10-26: pool="hit_points" restored a dead
+    // hero to 1 of 38), and a condition taken off (her Unconscious and Prone).
+    const raisesDead = (card: SheetCommandCard) =>
+      op.op === "rest" ||
+      (op.op === "condition" && !op.active) ||
+      ((op.op === "restore" || op.op === "temp") &&
+        healthPool !== undefined &&
+        (op.pool === healthPool ||
+          rulesetPoolKeyNamed(
+            ctx.definition,
+            card.build,
+            live[normalizeCharacterLookupName(card.name)],
+            op.pool,
+            card.items,
+          ) === healthPool));
     const results = targets.cards.map((card) => ({
       card,
       result:
-        raisesDead && deadOnSheet(card)
+        raisesDead(card) && deadOnSheet(card)
           ? ({ ok: false, reason: "dead" } as const)
           : (paidAlready(card) ?? applyTo(card, op)),
     }));

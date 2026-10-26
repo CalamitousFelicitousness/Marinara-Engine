@@ -113,6 +113,10 @@ export function renderGameRulesetSheetBlocks(
   catalogs: RulesetCatalogEntriesById = {},
   items?: { book: Pick<RulesetItemBook, "itemOf">; stacks: readonly GameInventoryStack[]; playerName?: string | null },
   partySheet?: unknown,
+  /** Who the chat plays as: their card is the player's own, else the first card is. */
+  playerName?: string | null,
+  /** Cards whose member left the party (see `gameRulesetCardsAway`): never the player's stand-in. */
+  away: readonly string[] = [],
 ): string[] {
   const party = Array.isArray(cards) ? (cards as Array<Record<string, unknown>>) : [];
   const built = sheetCommandCards(definition, party);
@@ -147,6 +151,24 @@ export function renderGameRulesetSheetBlocks(
       ? `${block}\nDEAD: healing, rest and potions do nothing for them; only what raises the dead brings them back. Say so in the story, and do not spend an item on them.`
       : block;
   });
+  // The player's own character dead (Alyssa 2026-10-26): while somebody of the party lives, the player
+  // plays one of them and the Game Master offers a way back; with everybody dead, the player may go
+  // back to a checkpoint, or the story says what follows.
+  const dead = (card: SheetCommandCard) =>
+    rulesetSheetDead(definition, card.build, live?.[normalizeCharacterLookupName(card.name)], itemsOf?.(card.name));
+  const named = playerName ? normalizeCharacterLookupName(playerName) : null;
+  const lead = built.find((card) => named !== null && normalizeCharacterLookupName(card.name) === named) ?? built[0];
+  if (lead && dead(lead)) {
+    const gone = new Set(away.map((name) => normalizeCharacterLookupName(name)));
+    const standIn = built.find(
+      (card) => card !== lead && !dead(card) && !gone.has(normalizeCharacterLookupName(card.name)),
+    );
+    blocks.push(
+      standIn
+        ? `THE PLAYER'S OWN CHARACTER, ${lead.name}, IS DEAD. Until ${lead.name} lives again, the player plays ${standIn.name}: write ${standIn.name} as the one the player speaks and acts as, and the rest of the party as before. Offer a way to bring ${lead.name} back that the story can reach: a Revivify while it can still work, a temple's Raise Dead, or a quest for one. Once ${lead.name} is raised, the player plays them again.`
+        : "EVERYONE IN THE PARTY IS DEAD. The player may go back to a checkpoint. If the story goes on instead, it is the story's to say what follows (taken by the foe, found and saved, woken somewhere), told as it would happen; nobody is raised without a cause the story gives.",
+    );
+  }
   const partyDefinition = rulesetPartyDefinition(definition);
   const envelope = readRulesetPartySheet(
     definition,
@@ -236,6 +258,20 @@ export async function loadGameRulesetSheetContext(
  *  command to the whole party must not reach them (laptop pass 6, 2026-10-26: a party long rest
  *  rested two removed companions). Nobody is counted away unless every member of the stored party
  *  list could be named, so a list the Engine cannot read in full never drops anyone. */
+/** The cards of a game's party whose member left it, as its sheet context counts them. */
+export async function gameRulesetCardsAway(
+  db: DB,
+  chatId: string,
+  definition: RulesetDefinition,
+  meta: Record<string, unknown>,
+  playerName: string | null,
+): Promise<string[]> {
+  const cards = Array.isArray(meta.gameCharacterCards)
+    ? (meta.gameCharacterCards as Array<Record<string, unknown>>)
+    : [];
+  return cardsAwayFromParty(db, chatId, meta, sheetCommandCards(definition, cards), playerName);
+}
+
 async function cardsAwayFromParty(
   db: DB,
   chatId: string,

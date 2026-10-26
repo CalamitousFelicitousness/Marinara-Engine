@@ -1597,6 +1597,22 @@ export function rulesetPoolNowText(
   return "refusal" in match ? null : poolNow(match.pool, match.pool.value, match.pool.temp);
 }
 
+/** The key of the pool a written name finds on this sheet, as a command finds it ("hit_points" for
+ *  "hp"), or null for none. */
+export function rulesetPoolKeyNamed(
+  definition: RulesetDefinition,
+  build: RulesetSheetBuild,
+  stored: unknown,
+  pool: string,
+  items?: ReadonlyArray<RulesetSheetItem>,
+): string | null {
+  const match = findPool(
+    resolveLive(definition, build, readStoredLiveState(definition, build, stored), items).pools,
+    pool,
+  );
+  return "refusal" in match ? null : match.pool.key;
+}
+
 /** The condition held on this sheet that keeps a heal off health (1.261), by its label: any heal
  *  for "cannot-heal", one that is not magical for "cannot-heal-nonmagical". */
 function healKeptOffBy(definition: RulesetDefinition, conditions: readonly string[], magical: boolean): string | null {

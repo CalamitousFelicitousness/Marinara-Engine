@@ -89,6 +89,19 @@ try {
       [false, "dead"],
     ],
   );
+  // Nor by health's other names, nor by taking a condition off them (laptop 2026-10-26: pool="hit_points"
+  // restored a dead hero to 1 of 38, and her Unconscious and Prone came off).
+  assert.deepEqual(
+    applyGameRulesetSheetTurn(
+      context,
+      `[sheet: who="Aldric" op="restore" pool="hit_points" amount="1"] [sheet: who="Aldric" op="condition" condition="Prone" state="off"]`,
+      live,
+    ).outcomes.map((one) => [one.ok, one.reason]),
+    [
+      [false, "dead"],
+      [false, "dead"],
+    ],
+  );
   // A damage or a note still reaches them.
   assert.equal(
     applyGameRulesetSheetTurn(context, `[sheet: who="Aldric" op="damage" pool="hp" amount="1"]`, live).outcomes[0]?.ok,
@@ -129,6 +142,46 @@ try {
   );
   assert.match(blocks[0]!, /^Aldric[\s\S]*\nDEAD: healing, rest and potions do nothing for them/);
   assert.doesNotMatch(blocks[1]!, /DEAD/);
+  // The player's own character dead (Alyssa 2026-10-26): the player plays one still living and not
+  // gone from the party, and the Game Master offers a way back; with everyone dead, a checkpoint or
+  // the story.
+  const three = ["Aldric", "Kesh", "Mara"].map((name) => ({
+    name,
+    rulesetSheet: { v: 1, build: context.cards[0]!.build },
+  }));
+  const said = renderGameRulesetSheetBlocks(context.definition, three, live, {}, undefined, undefined, "Aldric", [
+    "Kesh",
+  ]);
+  assert.ok(
+    said.some((block) =>
+      /^THE PLAYER'S OWN CHARACTER, Aldric, IS DEAD\. Until Aldric lives again, the player plays Mara:/.test(block),
+    ),
+    said.join("\n---\n"),
+  );
+  assert.ok(!said.some((block) => /THE PLAYER'S OWN/.test(block) && /plays Kesh/.test(block)), "never one gone");
+  const alive = renderGameRulesetSheetBlocks(
+    context.definition,
+    three,
+    { mara: hurt },
+    {},
+    undefined,
+    undefined,
+    "Aldric",
+  );
+  assert.ok(!alive.some((block) => /IS DEAD|EVERYONE/.test(block)), "a living lead says nothing");
+  const dead = { pools: { hp: { value: 0 } }, tracks: { death_save_failures: 3 } };
+  const wiped = renderGameRulesetSheetBlocks(
+    context.definition,
+    three,
+    { aldric: dead, kesh: dead, mara: dead },
+    {},
+    undefined,
+    undefined,
+    "Aldric",
+  );
+  assert.ok(
+    wiped.some((block) => /^EVERYONE IN THE PARTY IS DEAD\. The player may go back to a checkpoint\./.test(block)),
+  );
 
   // A party list member the Engine cannot name drops nobody.
   await chats.patchMetadata(chat.id, { gamePartyCharacterIds: [aldric.id, mara.id, "missing-id"] });

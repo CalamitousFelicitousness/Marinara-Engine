@@ -2048,6 +2048,8 @@
   "game.combat.event.statusHeal": "{{target}} recovers {{amount}} HP from {{effect}}.",
   "game.combat.event.surrendered": "{{actor}} throws down its arms and gives up.",
   "game.combat.event.wait": "{{actor}} waits.",
+  "game.combat.partyFallen": "The party has fallen. Go back to a checkpoint, or play on and let the story say what happens.",
+  "game.combat.partyFallenCheckpoint": "Go back to a checkpoint",
   "game.combat.preference.classicDescription": "Cinematic menu battles",
   "game.combat.preference.tacticalDescription": "Grid battles with movement, terrain, and attack forecasts",
   "game.combat.preference.tacticalLabel": "Tactical: grid battles with movement and terrain",

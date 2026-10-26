@@ -386,6 +386,7 @@ import {
   loadGameRulesetSheetContext,
   loadTurnRulesetCatalogs,
   renderGameRulesetSheetBlocks,
+  gameRulesetCardsAway,
   sheetCommandCards,
   type GameRulesetSheetContext,
   type GameRulesetSheetTurn,
@@ -5695,6 +5696,14 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                               }
                             : undefined,
                           turnSheetMetadata.gamePartySheet,
+                          personaName || null,
+                          await gameRulesetCardsAway(
+                            app.db,
+                            input.chatId,
+                            pinnedGameRuleset.definition,
+                            turnSheetMetadata as Record<string, unknown>,
+                            personaName || null,
+                          ),
                         ),
                       }
                     : {}),

@@ -3944,7 +3944,7 @@ export function priced(
   for (const option of menu ?? rulesetCombatOptions(definition, encounter, actor.id)) {
     const base =
       (option.cost ?? []).reduce((total, entry) => total + share(entry.pool, entry.amount), 0) +
-      (option.signature?.cost ?? 0) +
+      rulesetSignaturePrice(encounter, actor, option) +
       // An item used up by using it (a flask of oil, a vial of acid) is not thrown for nothing, and
       // dearer the easier the fight looks (class re-test 2026-10-24: a one-off Potion of
       // Invisibility drunk in round one against every orc band).
@@ -3959,6 +3959,35 @@ export function priced(
     out.push(...ways.flatMap(modedWays).flatMap((way) => styledWays(definition, way)));
   }
   return out;
+}
+
+/**
+ * What a signature action's points cost (a legendary action): nothing once there are no more moments
+ * left before its own turn than points to spend in them, since what is not spent by then is lost; a
+ * fifth of a point each before that, so the last point is not spent on nothing early in the round.
+ * (Cloud batch 2026-10-26: a point priced as a whole foe's health let a legendary priest pass 110 of
+ * 151 moments with Sacred Flame on offer.)
+ */
+function rulesetSignaturePrice(
+  encounter: RulesetEncounterState,
+  actor: RulesetCombatant,
+  option: RulesetCombatOption,
+): number {
+  const signature = option.signature;
+  if (!signature) return 0;
+  const order = encounter.order;
+  const own = order.indexOf(actor.id);
+  let left = 0;
+  if (own >= 0 && order.length > 0) {
+    // The moment at the end of this turn, and one at the end of every other turn before its own.
+    for (let step = 0; step < order.length; step++) {
+      const id = order[(encounter.turn + step) % order.length]!;
+      if (id === actor.id) break;
+      const one = rulesetCombatant(encounter, id);
+      if (one && !one.defeated) left += 1;
+    }
+  }
+  return left <= signature.points ? 0 : signature.cost * 0.2;
 }
 
 /**

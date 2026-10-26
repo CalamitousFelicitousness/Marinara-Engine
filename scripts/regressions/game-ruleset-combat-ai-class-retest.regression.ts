@@ -1437,6 +1437,31 @@ try {
     assert.ok(rulesetGap(rulesetCombatant(after, "orc"), rulesetCombatant(after, "fen")) < gap, "it walked for fen");
   }
 
+  // ── A thinking foe goes for the healer first (Alyssa 2026-10-26: "No point in focusing Ulfgar if a
+  //    Cleric is just going to Healing Word him every round and pick him right back up") ──
+  {
+    const mend = {
+      id: "mend",
+      name: "Mend",
+      budget: "action",
+      targets: "ally",
+      heal: { count: 1, sides: 8, flat: 3 },
+    };
+    const struck = (mind: string, heals = true) => {
+      const scene = fight([
+        { id: "pell", name: "pell", side: "party", block: block([poke], { defense: 8 }), at: { x: 5, y: 5 } },
+        { id: "clr", name: "clr", side: "party", block: block(heals ? [poke, mend] : [poke]), at: { x: 6, y: 4 } },
+        { id: "orc", name: "orc", side: "enemy", block: block([smash]), at: { x: 6, y: 5 } },
+      ]);
+      (scene.state.enemies.find((one) => one.id === "orc") as { tactics?: unknown }).tactics = { mind };
+      scene.encounter.turn = 2;
+      return pickRulesetChoice(definition, scene.state, scene.encounter, "orc")?.targetId;
+    };
+    assert.equal(struck("instinct"), "pell", "a beast hits whom it hits best");
+    assert.equal(struck("genius"), "clr", "a genius hits the healer");
+    assert.equal(struck("genius", false), "pell", "with no healer, whom it hits best");
+  }
+
   // ── What ends with another put on with it lasts as that one does: Hideous Laughter's incapacitated,
   //    as long as its laughing (laptop 2026-10-25: a Counterspell let it go at its own caster) ──
   {

@@ -7166,6 +7166,7 @@ function weighChoices(
   if (behavior && !menu) weighRulesetBehavior(definition, encounter, actor, behavior, candidates, opening);
   if (!menu && !behavior?.targets?.length)
     weighRulesetMindFocus(definition, encounter, actor, unit.tactics!, candidates);
+  if (!menu) weighRulesetPickedUp(definition, encounter, actor, unit.tactics!, candidates);
   if (!menu) weighRulesetReserve(definition, encounter, actor, unit.tactics!, candidates);
   if (!menu) weighRulesetPrepare(definition, encounter, actor, unit.tactics!, candidates);
   if (!menu && unit.tactics!.mind !== "mindless")
@@ -8103,6 +8104,57 @@ function weighRulesetReserve(
     }
     if (drains) candidate.cost = (candidate.cost ?? 0) + RULESET_RESERVE_PRICE;
   }
+}
+
+/** What a blow on one an opposing healer would pick back up is worth to a tactician and a genius, against
+ *  the same blow on the healer (Alyssa 2026-10-26). */
+const RULESET_PICKED_UP = { tactical: 0.8, genius: 0.7 } as const;
+
+/** Whether this one could heal somebody now: free to act, with a heal it can still pay for. */
+function rulesetFreeHealer(definition: RulesetDefinition, encounter: RulesetEncounterState, one: RulesetCombatant) {
+  if (one.down || !rulesetCombatStanding(one) || rulesetSetUpWay(definition, encounter, one) === "critical")
+    return false;
+  const pools = one.sheet
+    ? readRulesetLive(definition, one.sheet.build, one.sheet.live, one.sheet.items).pools.map((pool) => pool.key)
+    : [];
+  return one.actions.some((action) => {
+    if (!action.heal || action.reaction) return false;
+    const healed = rulesetAverageAmount(action.heal);
+    if (!Number.isFinite(healed) || healed <= 0) return false;
+    if (action.innate?.slot) return rulesetInnateSlot(one, action, encounter) !== undefined;
+    if (action.uses && rulesetActionUses(one, action, encounter) < 1) return false;
+    if (!action.use || !one.sheet) return true;
+    return [undefined, ...pools].some((pool) => planRulesetCombatCost(definition, one, action, pool) !== null);
+  });
+}
+
+/**
+ * A tactician or a genius goes for the healer first (Alyssa 2026-10-26: "No point in focusing Ulfgar if
+ * a Cleric is just going to Healing Word him every round and pick him right back up"): while an
+ * opponent free to act could heal the others, and a blow at that healer is on its menu, its blows at
+ * anybody else count for less, the harm being undone at the healer's next turn.
+ */
+function weighRulesetPickedUp(
+  definition: RulesetDefinition,
+  encounter: RulesetEncounterState,
+  actor: RulesetCombatant,
+  tactics: CombatTactics,
+  candidates: Array<CombatAiCandidate<RulesetCandidate>>,
+): void {
+  if (tactics.mind !== "tactical" && tactics.mind !== "genius") return;
+  const foes = encounter.combatants.filter((one) => one.side !== actor.side && rulesetCombatStanding(one));
+  if (foes.length < 2) return;
+  const healers = new Set(foes.filter((one) => rulesetFreeHealer(definition, encounter, one)).map((one) => one.id));
+  if (healers.size === 0) return;
+  const harms = (candidate: CombatAiCandidate<RulesetCandidate>) =>
+    candidate.targetId !== undefined &&
+    foes.some((one) => one.id === candidate.targetId) &&
+    (candidate.damage ?? 0) > 0 &&
+    !((candidate.healing ?? 0) > 0);
+  if (!candidates.some((candidate) => harms(candidate) && healers.has(candidate.targetId!))) return;
+  const by = RULESET_PICKED_UP[tactics.mind];
+  for (const candidate of candidates)
+    if (harms(candidate) && !healers.has(candidate.targetId!)) candidate.damage = candidate.damage! * by;
 }
 
 /** What a tactician gives a lasting help to its own side while the fight is still coming (combat AI P8). */

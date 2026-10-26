@@ -2099,6 +2099,8 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
                 // and the remounted Home consumes it; the mobile shell keeps Home mounted and reselects this tab.
                 openConnection: (connectionId: string) => {
                   if (typeof connectionId !== "string" || !connectionId) return;
+                  // A retained callback cannot act for a package that is no longer the active tab.
+                  if (activeBrowserPackageIdRef.current !== activeTab) return;
                   const ui = useUIStore.getState();
                   ui.requestHome({ kind: "tab", tab: activeTab });
                   ui.openConnectionDetail(connectionId);

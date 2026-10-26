@@ -67,7 +67,7 @@ A book you write together with the model. Set up the story, its cast and its lor
 
 - **Integration**: App; it opens in its own **Story Writer** tab in **Home**.
 - **Where it works**: Home.
-- **Availability**: needs an Engine with capability API **1.386** or newer; older Engines do not offer it.
+- **Availability**: needs a Marinara Engine newer than **v2.5.1** (the next release, or a current staging build). Older Engines do not offer it in **Download Agents**.
 - **Key settings**: install it from **Agents → Download Agents**, restart Marinara Engine when prompted, then open **Home → Story Writer** and pick a text connection in its sidebar. Every story is saved on your Marinara Engine server, and you can start new ones, return to old ones, and download them as Markdown or plain text.
 - **Full guide**: [Story Writer package guide](https://github.com/Pasta-Devs/Marinara-Agents/blob/staging/packages/story-writer/README.md).
 

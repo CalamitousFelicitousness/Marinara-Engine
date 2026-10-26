@@ -21,6 +21,7 @@ process.env.LOG_LEVEL = "silent";
 delete process.env.DEBUG_AGENTS;
 
 let hungRequestClosed = false;
+let hungRequestArrived: () => void = () => {};
 const provider = createServer(async (request, response) => {
   const chunks: Buffer[] = [];
   for await (const chunk of request) chunks.push(Buffer.from(chunk));
@@ -30,6 +31,7 @@ const provider = createServer(async (request, response) => {
     response.on("close", () => {
       hungRequestClosed = true;
     });
+    hungRequestArrived();
     return;
   }
   const content = "The quill scratched on.";
@@ -133,6 +135,9 @@ try {
   assert(engineAddress && typeof engineAddress === "object");
   for (const streaming of [true, false]) {
     hungRequestClosed = false;
+    const arrived = new Promise<void>((resolve) => {
+      hungRequestArrived = resolve;
+    });
     const client = new AbortController();
     const pending = fetch(`http://127.0.0.1:${engineAddress.port}/api/generate/raw`, {
       method: "POST",
@@ -148,7 +153,8 @@ try {
       (response) => response.text(),
       () => null,
     );
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    // Leave only once the provider holds the request, so its close listener is in place.
+    await arrived;
     client.abort();
     await pending.catch(() => null);
     for (let waited = 0; !hungRequestClosed && waited < 3000; waited += 50) {

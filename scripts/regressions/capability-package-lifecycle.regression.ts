@@ -223,6 +223,8 @@ try {
     [795, "an encounter budget"],
     [796, "rests that clear temporary points"],
     [797, "signature actions at a turn's start"],
+    [385, "shared gallery image saving"],
+    [386, "Home browser openConnection and raw generation debug logging"],
   ];
   for (const [minor, label] of supportedMinors) {
     assert.equal(

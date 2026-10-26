@@ -135,6 +135,10 @@ export type RoleplayChatPosition = "left" | "center" | "right";
 export function normalizeRoleplayChatPosition(value: unknown): RoleplayChatPosition {
   return value === "left" || value === "right" ? value : "center";
 }
+/** Null retains the automatic column width used before custom sizing was introduced. */
+export function normalizeRoleplayChatWidthPercent(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? Math.max(40, Math.min(100, Math.round(value))) : null;
+}
 export type GameDialogueDisplayMode = "classic" | "stacked";
 /** How much of the chat list shows each chat's background as a row banner. */
 export type ChatListBackgroundMode = "hover" | "always" | "off";
@@ -711,6 +715,8 @@ interface UIState {
   settingsTargetSectionId: string | null;
   /** Not saved: a Home surface to open once Home mounts (see `requestHome`). */
   homeRequest: HomeRequest | null;
+  /** Not saved: the Home tab a package opened the connection editor from; closing that editor returns there. */
+  connectionDetailReturnTab: string | null;
   /** Not saved: the What's New window should open again (see `requestWhatsNew`). */
   whatsNewRequested: boolean;
   modal: { type: string; props?: Record<string, unknown> } | null;
@@ -934,6 +940,8 @@ interface UIState {
   queueImageGenerationRequests: boolean;
   /** When true, generated image prompts are shown for review before supported provider calls are sent. */
   reviewImagePromptsBeforeSend: boolean;
+  saveGeneratedImagesAsWebp: boolean;
+  generatedImageWebpQuality: number;
   autoSaveGeneratedImagesToGalleries: boolean;
   imageBackgroundWidth: number;
   imageBackgroundHeight: number;
@@ -1086,6 +1094,8 @@ interface UIState {
   roleplayDisplayStyle: "classic" | "visual-novel";
   /** Where the Roleplay messages and input sit on wide screens. Phones always use the full width. */
   roleplayChatPosition: RoleplayChatPosition;
+  /** Null preserves the automatic Roleplay column width. */
+  roleplayChatWidthPercent: number | null;
   roleplayVnAutoPlay: boolean;
   roleplayVnAutoPlayDelay: number;
   roleplayVnPortraitScale: number;
@@ -1300,7 +1310,7 @@ interface UIState {
   setLorebookLinkClipboard: (links: NonNullable<UIState["lorebookLinkClipboard"]>) => void;
   openPresetDetail: (id: string, options?: { initialTab?: string }) => void;
   closePresetDetail: () => void;
-  openConnectionDetail: (id: string) => void;
+  openConnectionDetail: (id: string, options?: { returnToHomeTab?: string }) => void;
   closeConnectionDetail: () => void;
   openAgentDetail: (agentType: string) => void;
   closeAgentDetail: () => void;
@@ -1370,6 +1380,8 @@ interface UIState {
   setGameAutoPlayDelay: (v: number) => void;
   setQueueImageGenerationRequests: (v: boolean) => void;
   setReviewImagePromptsBeforeSend: (v: boolean) => void;
+  setSaveGeneratedImagesAsWebp: (v: boolean) => void;
+  setGeneratedImageWebpQuality: (v: number) => void;
   setAutoSaveGeneratedImagesToGalleries: (v: boolean) => void;
   setImageBackgroundDimensions: (width: number, height: number) => void;
   setImageIllustrationDimensions: (width: number, height: number) => void;
@@ -1453,6 +1465,7 @@ interface UIState {
   setRoleplaySpriteScale: (v: number) => void;
   setRoleplayDisplayStyle: (v: "classic" | "visual-novel") => void;
   setRoleplayChatPosition: (v: RoleplayChatPosition) => void;
+  setRoleplayChatWidthPercent: (v: number | null) => void;
   setRoleplayVnAutoPlay: (v: boolean) => void;
   setRoleplayVnAutoPlayDelay: (v: number) => void;
   setRoleplayVnPortraitScale: (v: number) => void;
@@ -1644,6 +1657,8 @@ export function pickSyncedSettings(state: UIState) {
     gameAutoPlayDelay: state.gameAutoPlayDelay,
     queueImageGenerationRequests: state.queueImageGenerationRequests,
     reviewImagePromptsBeforeSend: state.reviewImagePromptsBeforeSend,
+    saveGeneratedImagesAsWebp: state.saveGeneratedImagesAsWebp,
+    generatedImageWebpQuality: state.generatedImageWebpQuality,
     autoSaveGeneratedImagesToGalleries: state.autoSaveGeneratedImagesToGalleries,
     imageBackgroundWidth: state.imageBackgroundWidth,
     imageBackgroundHeight: state.imageBackgroundHeight,
@@ -1744,6 +1759,7 @@ export function pickSyncedSettings(state: UIState) {
     roleplaySpriteScale: state.roleplaySpriteScale,
     roleplayDisplayStyle: state.roleplayDisplayStyle,
     roleplayChatPosition: state.roleplayChatPosition,
+    roleplayChatWidthPercent: normalizeRoleplayChatWidthPercent(state.roleplayChatWidthPercent),
     roleplayVnAutoPlay: state.roleplayVnAutoPlay,
     roleplayVnAutoPlayDelay: state.roleplayVnAutoPlayDelay,
     roleplayVnPortraitScale: state.roleplayVnPortraitScale,
@@ -1906,6 +1922,8 @@ export function pickPersistedUIState(state: UIState) {
     gameAutoPlayDelay: state.gameAutoPlayDelay,
     queueImageGenerationRequests: state.queueImageGenerationRequests,
     reviewImagePromptsBeforeSend: state.reviewImagePromptsBeforeSend,
+    saveGeneratedImagesAsWebp: state.saveGeneratedImagesAsWebp,
+    generatedImageWebpQuality: state.generatedImageWebpQuality,
     autoSaveGeneratedImagesToGalleries: state.autoSaveGeneratedImagesToGalleries,
     imageBackgroundWidth: state.imageBackgroundWidth,
     imageBackgroundHeight: state.imageBackgroundHeight,
@@ -1993,6 +2011,7 @@ export function pickPersistedUIState(state: UIState) {
     roleplaySpriteScale: state.roleplaySpriteScale,
     roleplayDisplayStyle: state.roleplayDisplayStyle,
     roleplayChatPosition: state.roleplayChatPosition,
+    roleplayChatWidthPercent: normalizeRoleplayChatWidthPercent(state.roleplayChatWidthPercent),
     roleplayVnAutoPlay: state.roleplayVnAutoPlay,
     roleplayVnAutoPlayDelay: state.roleplayVnAutoPlayDelay,
     roleplayVnPortraitScale: state.roleplayVnPortraitScale,
@@ -2090,6 +2109,7 @@ export const useUIStore = create<UIState>()(
         lastAppError: null,
         settingsTargetControlId: null,
         homeRequest: null,
+        connectionDetailReturnTab: null,
         whatsNewRequested: false,
         settingsTargetSectionId: null,
         modal: null,
@@ -2204,6 +2224,8 @@ export const useUIStore = create<UIState>()(
         gameAutoPlayDelay: 3000,
         queueImageGenerationRequests: true,
         reviewImagePromptsBeforeSend: false,
+        saveGeneratedImagesAsWebp: false,
+        generatedImageWebpQuality: 95,
         autoSaveGeneratedImagesToGalleries: true,
         imageBackgroundWidth: 1280,
         imageBackgroundHeight: 720,
@@ -2293,6 +2315,7 @@ export const useUIStore = create<UIState>()(
         roleplaySpriteScale: 1,
         roleplayDisplayStyle: "classic",
         roleplayChatPosition: "center",
+        roleplayChatWidthPercent: null,
         roleplayVnAutoPlay: false,
         roleplayVnAutoPlayDelay: 3000,
         roleplayVnPortraitScale: 1,
@@ -2629,9 +2652,13 @@ export const useUIStore = create<UIState>()(
             editorDirty: false,
             ...restoreMobileDetailReturnPanel(s.detailReturnRightPanel),
           })),
-        openConnectionDetail: (id) =>
+        openConnectionDetail: (id, options) =>
           set((s) => ({
             connectionDetailId: id,
+            // Switching the open editor to another connection keeps the package tab it returns to; an editor
+            // opened afresh starts without one.
+            connectionDetailReturnTab:
+              options?.returnToHomeTab || (s.connectionDetailId ? s.connectionDetailReturnTab : null),
             characterLibraryOpen: false,
             agentCatalogOpen: false,
             botBrowserOpen: false,
@@ -2650,8 +2677,14 @@ export const useUIStore = create<UIState>()(
         closeConnectionDetail: () =>
           set((s) => ({
             connectionDetailId: null,
+            connectionDetailReturnTab: null,
             editorDirty: false,
             ...restoreMobileDetailReturnPanel(s.detailReturnRightPanel),
+            // Only closing the editor itself returns Home to the package tab that opened it. Leaving it any other
+            // way (a chat, another editor, closeAllDetails) queues nothing, so Home never jumps to that tab later.
+            ...(s.connectionDetailId && s.connectionDetailReturnTab
+              ? { homeRequest: { kind: "tab" as const, tab: s.connectionDetailReturnTab } }
+              : {}),
           })),
         openAgentDetail: (agentType) =>
           set((s) => ({
@@ -2977,6 +3010,7 @@ export const useUIStore = create<UIState>()(
         },
         closeAllDetails: () =>
           set({
+            connectionDetailReturnTab: null,
             characterDetailId: null,
             lorebookDetailId: null,
             presetDetailId: null,
@@ -3069,6 +3103,9 @@ export const useUIStore = create<UIState>()(
         setGameAutoPlayDelay: (v) => set({ gameAutoPlayDelay: Math.max(200, Math.min(10000, Math.round(v))) }),
         setQueueImageGenerationRequests: (v) => set({ queueImageGenerationRequests: v }),
         setReviewImagePromptsBeforeSend: (v) => set({ reviewImagePromptsBeforeSend: v }),
+        setSaveGeneratedImagesAsWebp: (v) => set({ saveGeneratedImagesAsWebp: v }),
+        setGeneratedImageWebpQuality: (v) =>
+          set({ generatedImageWebpQuality: Number.isFinite(v) ? Math.max(1, Math.min(100, Math.round(v))) : 95 }),
         setAutoSaveGeneratedImagesToGalleries: (v) => set({ autoSaveGeneratedImagesToGalleries: v }),
         setImageBackgroundDimensions: (width, height) =>
           set({
@@ -3243,6 +3280,7 @@ export const useUIStore = create<UIState>()(
         setGameAvatarScale: (v) => set({ gameAvatarScale: Math.max(0.75, Math.min(1.75, v)) }),
         setRoleplayDisplayStyle: (v) => set({ roleplayDisplayStyle: v }),
         setRoleplayChatPosition: (v) => set({ roleplayChatPosition: normalizeRoleplayChatPosition(v) }),
+        setRoleplayChatWidthPercent: (v) => set({ roleplayChatWidthPercent: normalizeRoleplayChatWidthPercent(v) }),
         setRoleplayVnAutoPlay: (v) => set({ roleplayVnAutoPlay: v }),
         setRoleplayVnAutoPlayDelay: (v) =>
           set({ roleplayVnAutoPlayDelay: Math.max(200, Math.min(10000, Math.round(v))) }),
@@ -3328,6 +3366,7 @@ export const useUIStore = create<UIState>()(
             roleplaySpriteScale: 1,
             roleplayDisplayStyle: "classic",
             roleplayChatPosition: "center",
+            roleplayChatWidthPercent: null,
             roleplayVnAutoPlay: false,
             roleplayVnAutoPlayDelay: 3000,
             roleplayVnPortraitScale: 1,
@@ -4156,6 +4195,7 @@ export const useUIStore = create<UIState>()(
           ),
           chatWidgetPreset: normalizeChatWidgetPreset(persisted.chatWidgetPreset),
           roleplayChatPosition: normalizeRoleplayChatPosition(persisted.roleplayChatPosition),
+          roleplayChatWidthPercent: normalizeRoleplayChatWidthPercent(persisted.roleplayChatWidthPercent),
           chatWidgetFont: normalizeChatWidgetFont(persisted.chatWidgetFont),
           chatWidgetShape: normalizeChatWidgetShape(persisted.chatWidgetShape),
           chatWidgetButtonSize: normalizeChatWidgetButtonSize(persisted.chatWidgetButtonSize),

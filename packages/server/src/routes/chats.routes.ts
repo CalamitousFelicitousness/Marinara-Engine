@@ -3,6 +3,7 @@
 // ──────────────────────────────────────────────
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { z } from "zod";
+import { partialInput } from "@marinara-engine/shared";
 import { chatResourceRequestOptions } from "./chat-request-validation.js";
 import { logger } from "../lib/logger.js";
 import { getMariDbService } from "../services/mari-db/mari-db.service.js";
@@ -1419,7 +1420,7 @@ export async function chatsRoutes(app: FastifyInstance) {
 
   // Update chat
   app.patch<{ Params: { id: string } }>("/:id", chatResourceRequestOptions, async (req, reply) => {
-    const data = createChatSchema.partial().parse(req.body);
+    const data = partialInput(createChatSchema).parse(req.body);
     const existing = await storage.getById(req.params.id);
     if (!existing || isHomeProfessorMariChat(existing)) {
       return reply.status(404).send({ error: "Chat not found" });
@@ -3511,6 +3512,9 @@ export async function chatsRoutes(app: FastifyInstance) {
       chatMode === "roleplay" && normalizeAdvancedMemorySettings(chatMeta.advancedMemory).enabled;
     const chatSummaryFingerprint = fingerprintChatSummary(chatMeta.summary);
     const visibleGameStateAnchor = resolveVisibleGameStateAnchor(chatMessages);
+    let gameSnapshot: ReturnType<typeof loadLatestChatGameSnapshot> | undefined;
+    const readGameSnapshot = () =>
+      (gameSnapshot ??= loadLatestChatGameSnapshot(app, req.params.id, visibleGameStateAnchor));
     const supportsHiddenFromAI = chatMode === "conversation" || chatMode === "roleplay";
 
     const readCachedPrompt = async (
@@ -3795,6 +3799,7 @@ export async function chatsRoutes(app: FastifyInstance) {
             : undefined;
           const promptMacroContext = await buildPromptMacroContext({
             db: app.db,
+            worldState: await readGameSnapshot(),
             model: connection?.model,
             reasoning: promptReasoning,
             // Chat variables win over built-in macros of the same name, as in generation.
@@ -4010,10 +4015,7 @@ export async function chatsRoutes(app: FastifyInstance) {
               },
               ...mappedMessages,
             ];
-            const latestGameState = projectGameSnapshotLocation(
-              await loadLatestChatGameSnapshot(app, req.params.id, visibleGameStateAnchor),
-              ownerSpatialProjection,
-            );
+            const latestGameState = projectGameSnapshotLocation(await readGameSnapshot(), ownerSpatialProjection);
             const lorebookResult = await processLorebooks(
               app.db,
               mappedMessages,
@@ -4113,6 +4115,7 @@ export async function chatsRoutes(app: FastifyInstance) {
 
           const assembled = await assemblePrompt({
             db: app.db,
+            worldState: promptMacroContext.worldState,
             model: connection?.model,
             reasoning: promptReasoning,
             localVariables: chatMacroVariables,
@@ -4400,7 +4403,7 @@ export async function chatsRoutes(app: FastifyInstance) {
           });
           if (chatEnableAgents && activeAgentIds.length > 0) {
             const [gameSnapshot, beholderRun] = await Promise.all([
-              loadLatestChatGameSnapshot(app, req.params.id, visibleGameStateAnchor),
+              readGameSnapshot(),
               activeAgentIds.includes("beholder")
                 ? createAgentsStorage(app.db).getLastSuccessfulRunByType("beholder", req.params.id)
                 : Promise.resolve(null),

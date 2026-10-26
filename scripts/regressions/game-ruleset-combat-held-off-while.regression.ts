@@ -87,7 +87,7 @@ try {
   refused(document({}), /Say what holds it off/);
   refused(document({ conditions: ["nowhere"] }), /Unknown condition "nowhere"/);
   refused(document({ conditions: ["displaced"] }), /held off by others, not itself/);
-  refused(document({ effects: ["sparkles"] }), /Invalid enum value|sparkles/);
+  refused(document({ effects: ["sparkles"] }), /Invalid option|sparkles/);
 
   // ── The install gate ──
   {

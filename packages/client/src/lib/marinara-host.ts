@@ -17,7 +17,7 @@ import * as reactDomClient from "react-dom/client";
 import * as reactI18next from "react-i18next";
 import * as sonner from "sonner";
 import * as tailwindMerge from "tailwind-merge";
-import * as zod from "zod";
+import * as zod from "zod-v3";
 import * as zustand from "zustand";
 import * as zustandMiddleware from "zustand/middleware";
 import { supportedCapabilityApi } from "@marinara-engine/shared";
@@ -35,6 +35,12 @@ import * as api from "./api-client";
 import * as audio from "./audio-service";
 import * as dialogs from "./app-dialogs";
 import * as emojiCatalog from "./emoji-catalog.generated";
+import {
+  downloadUrlToDevice,
+  prepareImageSave,
+  savePreparedImageToDevice,
+  shouldUseIosImageShare,
+} from "./file-download";
 import {
   MARINARA_HOST_MODULE_SPECIFIERS,
   MARINARA_HOST_STORE_NAMES,
@@ -91,7 +97,17 @@ function defineMarinaraHost(): MarinaraHostV1 {
     version: MARINARA_HOST_VERSION,
     capabilityApi: supportedCapabilityApi,
     stores,
-    services: Object.freeze({ tts, dialogs, audio }),
+    services: Object.freeze({
+      tts,
+      dialogs,
+      audio,
+      imageDownloads: Object.freeze({
+        downloadUrlToDevice,
+        prepareImageSave,
+        savePreparedImageToDevice,
+        shouldUseIosImageShare,
+      }),
+    }),
     modules,
     queryClient,
     components: Object.freeze({ Modal }),

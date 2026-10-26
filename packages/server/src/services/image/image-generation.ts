@@ -87,6 +87,7 @@ import {
   runAtlasCloudPrediction,
 } from "../media/atlas-cloud.js";
 import { generateToAPIsImage, isToAPIsMediaUrl, ToAPIsSubmittedTaskError } from "../media/toapis-media.js";
+import { formatGeneratedImageForStorage } from "./generated-image-format.js";
 import {
   OPENAI_CHATGPT_CODEX_BASE_URL,
   buildOpenAIChatGPTHeaders,
@@ -450,9 +451,12 @@ export async function generateImage(
         }),
     });
     outcome = "completed";
+    const storedResult = request.preserveProviderOutput
+      ? primaryResult
+      : await formatGeneratedImageForStorage(primaryResult);
     return flattenedPrompt
-      ? { ...primaryResult, effectivePrompt: primaryResult.effectivePrompt ?? flattenedPrompt }
-      : primaryResult;
+      ? { ...storedResult, effectivePrompt: storedResult.effectivePrompt ?? flattenedPrompt }
+      : storedResult;
   } catch (error) {
     const fallback = request.fallback;
     if (error instanceof ToAPIsSubmittedTaskError) throw error;

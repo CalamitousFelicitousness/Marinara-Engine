@@ -1,3 +1,4 @@
+import { partialInput } from "@marinara-engine/shared";
 import { filterAudioGenerationConnections, matchesAudioGenerationConnectionId } from "./connection-filters";
 import {
   worldGeneratorReads,
@@ -130,7 +131,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
-const importedGenerationParametersSchema = generationParametersSchema.partial().strict();
+const importedGenerationParametersSchema = partialInput(generationParametersSchema).strict();
 
 function parseGenerationParameters(value: unknown): Partial<GenerationParameters> | undefined {
   if (value === undefined) return undefined;

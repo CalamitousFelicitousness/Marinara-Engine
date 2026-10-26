@@ -30,7 +30,7 @@ export const advancedMemorySettingsSchema = z.object({
   /** Each scene participant's short first-person memory of a recalled scene. Off keeps saved ones, unused. */
   characterRecollections: z.boolean().default(false),
   /** A null value explicitly confirms knowledge from the beginning. Missing means unconfirmed. */
-  knowledgeStarts: z.record(z.string().nullable()).default({}),
+  knowledgeStarts: z.record(z.string(), z.string().nullable()).prefault({}),
   knowledgeConfirmed: z.boolean().default(false),
 });
 

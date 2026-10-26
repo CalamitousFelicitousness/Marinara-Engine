@@ -33,6 +33,7 @@ import type { DB } from "../../db/connection.js";
 import { loadLorebookIncludes, processLorebooks, type LorebookScanResult } from "../lorebook/index.js";
 import { createCharactersStorage, type PersonaStorageRow } from "../storage/characters.storage.js";
 import { createLorebooksStorage } from "../storage/lorebooks.storage.js";
+import { createGameStateStorage } from "../storage/game-state.storage.js";
 import { wrapContent } from "./format-engine.js";
 import { sanitizePromptLeaf } from "./prompt-escaping.js";
 import { logger } from "../../lib/logger.js";
@@ -58,6 +59,8 @@ export interface BuildPromptMacroContextInput {
   lastGenerationType?: string;
   idleDuration?: string;
   timeZone?: string;
+  /** The generation's selected snapshot; explicit null means there is no scene clock. */
+  worldState?: MacroContext["worldState"];
   /** Extra prompt templates that may contain macros outside card/persona fields. */
   macroSources?: readonly string[];
   /**
@@ -845,6 +848,12 @@ export async function buildPromptMacroContext(input: BuildPromptMacroContextInpu
     lastGenerationType: input.lastGenerationType,
     idleDuration: input.idleDuration,
     timeZone: input.timeZone,
+    worldState:
+      input.worldState !== undefined
+        ? input.worldState
+        : input.chatId && input.db
+          ? await createGameStateStorage(input.db).getForGeneration(input.chatId)
+          : null,
     lorebookEntryCounts,
     ...(lorebookIncludes ? { lorebookIncludes } : {}),
     characterFields: {
@@ -1031,6 +1040,7 @@ export async function collectCharacterPostHistoryEntries(
   characterIds: string[],
   macroCtx: MacroContext,
   wrapFormat: WrapFormat,
+  onResolved?: (characterId: string, content: string) => void,
 ): Promise<PromptDepthEntry[]> {
   if (characterIds.length === 0) return [];
 
@@ -1061,6 +1071,7 @@ export async function collectCharacterPostHistoryEntries(
       },
     }).trim();
 
+    onResolved?.(id, content);
     if (content) {
       const label = multiCharacter
         ? `${data.name ?? "Character"} post-history instructions`
@@ -1081,10 +1092,11 @@ export async function collectCharacterAdvancedPromptEntries(
   characterIds: string[],
   macroCtx: MacroContext,
   wrapFormat: WrapFormat,
+  onPostHistoryResolved?: (characterId: string, content: string) => void,
 ): Promise<PromptDepthEntry[]> {
   const [depthEntries, postHistoryEntries] = await Promise.all([
     collectCharacterDepthPromptEntries(db, characterIds, macroCtx),
-    collectCharacterPostHistoryEntries(db, characterIds, macroCtx, wrapFormat),
+    collectCharacterPostHistoryEntries(db, characterIds, macroCtx, wrapFormat, onPostHistoryResolved),
   ]);
   return [...depthEntries, ...postHistoryEntries];
 }

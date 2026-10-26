@@ -1488,6 +1488,8 @@ const capabilityPackageManifestBaseSchema = z
 //        `battle.health` naming a track with neither levels nor boxes): Genesys's Wounds, read as the
 //        room left above its value, damage adding points and a heal taking them off. Upstream's 1.383.
 // 1.384: animate a saved Global Gallery image through a saved video connection, without exposing its credentials.
+// 1.385: package clients save images through the Engine gallery's existing platform-aware helpers.
+// 1.386: the Home browser view's openConnection(connectionId), and /api/generate/raw's debugMode prompt logging.
 // 1.785: an attack list's `abilityChoices`: a value of a row's ability column that stands for the
 //        best of several abilities, for its damage too (5e's Finesse, the better of STR and DEX).
 // 1.786: a sheet migration's `setColumn`: one column set on every list row its `where` columns match,

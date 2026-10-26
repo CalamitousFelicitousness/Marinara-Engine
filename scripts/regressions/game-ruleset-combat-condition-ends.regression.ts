@@ -624,9 +624,9 @@ try {
           "damaged",
         ],
       }),
-      /at most 6/,
+      /endsWhen: Too big: expected array to have <=6 items/,
     );
-    refused(withKeys({ shakeOff: {} }), /Required/);
+    refused(withKeys({ shakeOff: {} }), /shakeOff\.budget: Invalid input: expected string, received undefined/);
     for (const value of [false, "true", 1, null]) refused(withKeys({ saveWhenDamaged: value }), /saveWhenDamaged/);
     for (const value of [
       {},

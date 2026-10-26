@@ -729,6 +729,27 @@ export const SETTINGS_SEARCHABLE_CONTROLS: readonly SettingsSearchableControlMet
     kind: "Toggle",
   },
   {
+    id: "generated-image-webp",
+    sectionId: "overall-generations",
+    labelKey: "settings.controls.generatedImageWebp.label",
+    label: "Save generated images as WebP",
+    description:
+      "Store new generated images as WebP. This can reduce storage, depending on the image and quality. Existing images stay unchanged. When conversion is unavailable, keep the original image.",
+    descriptionKey: "settings.controls.generatedImageWebp.help",
+    aliases: ["webp", "png", "image", "format", "storage"],
+    kind: "Toggle",
+  },
+  {
+    id: "generated-image-webp-quality",
+    sectionId: "overall-generations",
+    labelKey: "settings.controls.generatedImageWebpQuality.label",
+    label: "WebP quality",
+    description: "Higher values preserve more detail and use more disk space. Transparency is preserved.",
+    descriptionKey: "settings.controls.generatedImageWebpQuality.help",
+    aliases: ["webp", "image", "quality", "compression"],
+    kind: "Slider",
+  },
+  {
     id: "image-background-size",
     sectionId: "image-generation",
     labelKey: "settings.search.imageBackgroundSize.label",
@@ -1297,6 +1318,17 @@ export const SETTINGS_SEARCHABLE_CONTROLS: readonly SettingsSearchableControlMet
     description: "Adjust Roleplay Visual Novel full-body sprites.",
     descriptionKey: "settings.search.roleplayVnSpriteScale.description",
     aliases: ["roleplay", "vn", "sprite", "scale"],
+    kind: "Slider",
+  },
+  {
+    id: "roleplay-chat-width",
+    sectionId: "roleplay-messages",
+    labelKey: "settings.controls.roleplayChatWidth.label",
+    label: "Chat area width",
+    description:
+      "Set text width while leaving room for avatars and Tracker Panel, or turn this off to restore the default.",
+    descriptionKey: "settings.controls.roleplayChatWidth.help",
+    aliases: ["roleplay", "text", "width", "resize", "reading", "column", "percentage"],
     kind: "Slider",
   },
   {

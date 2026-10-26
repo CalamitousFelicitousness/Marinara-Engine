@@ -1139,6 +1139,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
     });
     const promptMacroContext = await buildPromptMacroContext({
       db: app.db,
+      worldState: await loadLatestGameSnapshot(app, chatId, visibleGameStateAnchor, regenerateMessageId),
       characterIds: promptCharacterIds,
       groupCharacterIds: promptTargetCharacterId ? characterIds : undefined,
       personaName,
@@ -1802,6 +1803,7 @@ export async function registerDryRunRoute(app: FastifyInstance) {
       );
 
       const assemblerInput: AssemblerInput = {
+        worldState: promptMacroContext.worldState,
         model: conn.model,
         reasoning: promptReasoning,
         deferMessagePostProcessing: true,

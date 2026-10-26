@@ -13,6 +13,7 @@ import {
 } from "@marinara-engine/shared";
 import { isConnectionFlagFalse, isLanguageGenerationConnection } from "../../lib/connection-filters";
 import { useEffectiveGenerationParameters } from "../../hooks/use-effective-generation-parameters";
+import { useKeepFocusedFieldAboveKeyboard } from "../../hooks/use-keep-focused-field-above-keyboard";
 // ──────────────────────────────────────────────
 // Full-Page Connection Editor
 // Click a connection → opens this editor (like presets/characters)
@@ -130,6 +131,8 @@ import {
   SD_WEBUI_SCHEDULER_OPTIONS,
   createDefaultImageGenerationProfile,
   createDefaultVideoGenerationProfile,
+  getOpenRouterVideoModelLimits,
+  resolveOpenRouterVideoModelDefaults,
   imageSourceToDefaultsService,
   normalizeImageGenerationProfile,
   normalizeVideoGenerationProfile,
@@ -191,6 +194,7 @@ const DEFAULT_VIDEO_MODELS: Record<VideoDefaultsService, string> = {
 const VIDEO_RESOLUTION_OPTIONS: Array<{ value: VideoResolution; label: string }> = [
   { value: "480p", label: "480p" },
   { value: "720p", label: "720p" },
+  { value: "768p", label: "768p" },
   { value: "1080p", label: "1080p" },
 ];
 const VIDEO_REFERENCE_UPLOAD_EXPIRY_OPTIONS: Array<{ value: VideoReferenceUploadExpiry; label: string }> = [
@@ -403,6 +407,8 @@ export function ConnectionEditor() {
   const [showUnsavedWarning, setShowUnsavedWarning] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savedFlash, setSavedFlash] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
+  useKeepFocusedFieldAboveKeyboard(contentRef);
 
   // Local editable state
   const [localName, setLocalName] = useState("");
@@ -843,12 +849,19 @@ export function ConnectionEditor() {
       setLocalVideoDefaults(null);
       return;
     }
-    setLocalVideoDefaults((current) =>
-      current
+    setLocalVideoDefaults((current) => {
+      const next = current
         ? sanitizeVideoGenerationProfile({ ...current, service: selectedVideoDefaultsService })
-        : createDefaultVideoGenerationProfile(selectedVideoDefaultsService),
-    );
-  }, [localProvider, selectedVideoDefaultsService]);
+        : createDefaultVideoGenerationProfile(selectedVideoDefaultsService);
+      if (selectedVideoDefaultsService === "openrouter") {
+        next.openrouter = resolveOpenRouterVideoModelDefaults(
+          effectiveVideoGenerationSource === "nanogpt" ? "" : localModel,
+          next.openrouter,
+        );
+      }
+      return next;
+    });
+  }, [localProvider, selectedVideoDefaultsService, effectiveVideoGenerationSource, localModel]);
 
   // Model list for current provider
   const providerModels = useMemo(() => {
@@ -1921,7 +1934,7 @@ export function ConnectionEditor() {
             }}
             aria-label={localizeUi("ui.noodle.noodlehome.save")}
             disabled={updateConnection.isPending || saveConnectionDefaults.isPending || !!swarmUiWorkflowError}
-            className="mari-editor-action mari-editor-action--primary inline-flex disabled:opacity-50"
+            className="mari-editor-action mari-editor-action--primary inline-flex max-md:order-first disabled:opacity-50"
           >
             <Save size="0.8125rem" /> <span className="max-md:hidden">{localizeUi("ui.noodle.noodlehome.save")}</span>
           </button>
@@ -1994,7 +2007,7 @@ export function ConnectionEditor() {
       )}
 
       {/* ── Body ── */}
-      <div className="mari-editor-content max-md:p-4">
+      <div ref={contentRef} className="mari-editor-content max-md:p-4">
         <div className="mari-editor-content-inner space-y-6">
           {/* ── Connection Name ── */}
           <FieldGroup
@@ -3505,7 +3518,11 @@ export function ConnectionEditor() {
                 markDirty();
               }}
               onReset={() => {
-                setLocalVideoDefaults(createDefaultVideoGenerationProfile(selectedVideoDefaultsService));
+                const defaults = createDefaultVideoGenerationProfile(selectedVideoDefaultsService);
+                if (selectedVideoDefaultsService === "openrouter" && effectiveVideoGenerationSource !== "nanogpt") {
+                  defaults.openrouter = resolveOpenRouterVideoModelDefaults(localModel, defaults.openrouter);
+                }
+                setLocalVideoDefaults(defaults);
                 markDirty();
               }}
             />
@@ -5118,6 +5135,7 @@ function VideoGenerationDefaultsPanel({
     value.service === "google_veo"
       ? value.service
       : "gemini_omni";
+  const openRouterLimits = service === "openrouter" && !isNanoGpt ? getOpenRouterVideoModelLimits(model) : null;
   const summary =
     service === "xai"
       ? `${value.xai.durationSeconds}s, ${value.xai.aspectRatio}, ${value.xai.resolution}`
@@ -5291,8 +5309,14 @@ function VideoGenerationDefaultsPanel({
                                 ? value.comfyui.durationSeconds
                                 : value.openrouter.durationSeconds
                     }
-                    min={service === "google_veo" || service === "seedance" ? 4 : 1}
-                    max={service === "xai" || service === "seedance" ? 15 : service === "google_veo" ? 8 : 60}
+                    min={
+                      openRouterLimits?.minDurationSeconds ??
+                      (service === "google_veo" || service === "seedance" ? 4 : 1)
+                    }
+                    max={
+                      openRouterLimits?.maxDurationSeconds ??
+                      (service === "xai" || service === "seedance" ? 15 : service === "google_veo" ? 8 : 60)
+                    }
                     onCommit={(durationSeconds) => {
                       if (service === "xai") updateXai({ durationSeconds });
                       else if (service === "google_veo") {
@@ -5380,7 +5404,9 @@ function VideoGenerationDefaultsPanel({
                       {VIDEO_RESOLUTION_OPTIONS.filter(
                         (option) =>
                           (service !== "google_veo" || option.value !== "480p") &&
-                          (service !== "comfyui" || option.value !== "1080p"),
+                          (service !== "comfyui" || option.value !== "1080p") &&
+                          (option.value !== "768p" || !!openRouterLimits?.resolutions.includes("768p")) &&
+                          (!openRouterLimits || openRouterLimits.resolutions.includes(option.value)),
                       ).map((option) => (
                         <option key={option.value} value={option.value}>
                           {option.label}

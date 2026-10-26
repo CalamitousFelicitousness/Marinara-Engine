@@ -130,9 +130,9 @@ try {
       [(doc: Record<string, any>) => (gear(doc).lines[0].coins = "crown"), /Unknown currency unit "crown"/],
       [
         (doc: Record<string, any>) => (gear(doc).choices[1].options[1].lines[0].oneOf = ["outfitter/hand-axe"]),
-        /at least 2/,
+        /Too small: expected array to have >=2 items/,
       ],
-      [(doc: Record<string, any>) => gear(doc).choices[0].options.pop(), /at least 2/],
+      [(doc: Record<string, any>) => gear(doc).choices[0].options.pop(), /Too small: expected array to have >=2 items/],
       [(doc: Record<string, any>) => (doc.items.startingGear[1].lines = []), /Starting gear gives something/],
       [(doc: Record<string, any>) => (doc.items.freeform = "refuse"), /refuses plain items/],
       [(doc: Record<string, any>) => (gear(doc).lines[0].equip = true), /Only one of the ruleset's items is put on/],

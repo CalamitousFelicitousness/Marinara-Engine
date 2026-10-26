@@ -179,6 +179,11 @@ await app.register(gameRoutes, { prefix: "/api/game" });
 try {
   const create = (setupConfig: Record<string, unknown>) =>
     app.inject({ method: "POST", url: "/api/game/create", payload: { name: "Ruleset setup", setupConfig } });
+  const invalidParameters = await create({ ...baseConfig, generationParameters: { temperature: "hot" } });
+  assert.equal(invalidParameters.statusCode, 400, invalidParameters.body);
+  assert.deepEqual(invalidParameters.json(), {
+    error: "Invalid game setup: Invalid input: expected number, received string",
+  });
 
   // The client's version and package are not trusted: the pin is rebuilt from what is installed.
   const pinned = await create({ ...baseConfig, ruleset: { id: "5e-2014", version: 99, packageId: "someone-else" } });

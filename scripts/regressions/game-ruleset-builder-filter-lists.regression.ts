@@ -78,7 +78,7 @@ try {
   assert.deepEqual(offered(parsed(fiveE({ level: [0, 3], kind: ["cantrip"] }))), ["light"]);
 
   // ── Refusals ──
-  refused(fiveE({ kind: [] }), /at least 1/);
+  refused(fiveE({ kind: [] }), /Too small: expected array to have >=1 items/);
   refused(fiveE({ level: [0, "three"] }), /Filter "level" takes a number/);
   refused(fiveE({ kind: ["spell", 3] }), /Filter "kind" takes a word/);
 

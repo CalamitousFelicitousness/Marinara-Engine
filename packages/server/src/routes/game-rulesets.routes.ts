@@ -182,7 +182,7 @@ const gameVersionRequestSchema = z
 const partySheetRequestSchema = z
   .object({
     chatId: z.string().min(1).max(200),
-    sheet: z.unknown(),
+    sheet: z.unknown().optional(),
     revision: z.number().int().min(0).max(1_000_000_000),
   })
   .strict();

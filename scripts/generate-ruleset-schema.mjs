@@ -6,7 +6,6 @@
 // The JSON Schema is editor help, not the validator: the cross-reference checks (a skill naming an
 // ability that exists) only run in `parseRulesetDefinition`, which the import uses.
 import { readFile, writeFile } from "node:fs/promises";
-import { zodToJsonSchema } from "zod-to-json-schema";
 import {
   BUILT_IN_GAME_COMBAT_STYLES,
   RULESET_CHECK_SCOPED_EFFECTS,
@@ -39,6 +38,12 @@ function allowAnnotations(node, isRoot = true) {
     // Any value, not just text: the Engine drops the key whatever it holds.
     node.properties = { ...node.properties, $comment: {} };
     if (isRoot) node.properties.$schema = {};
+    // A map's name constraints also see explicitly declared annotation properties.
+    if (node.propertyNames !== undefined) {
+      node.propertyNames = {
+        anyOf: [node.propertyNames, { enum: isRoot ? ["$comment", "$schema"] : ["$comment"] }],
+      };
+    }
   }
 }
 
@@ -774,7 +779,7 @@ function boundSpellcastingRecords(node) {
   }
 }
 
-const schema = zodToJsonSchema(rulesetDefinitionSchema, { $refStrategy: "none", target: "jsonSchema7" });
+const schema = rulesetDefinitionSchema.toJSONSchema({ target: "draft-7", io: "input", reused: "inline" });
 // Zod refinements are not emitted, but JSON Schema can express unique clock sizes directly.
 schema.properties.clocks.properties.sizes.uniqueItems = true;
 schema.properties.party.anyOf = [

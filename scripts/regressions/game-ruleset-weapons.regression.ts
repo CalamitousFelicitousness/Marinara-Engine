@@ -653,7 +653,7 @@ try {
       restartRequired: false,
     });
     const diceless = variant(emberText, (doc) => (itemEntry(doc, "hand-axe").item.attack.damage = { bonus: 1 }));
-    assert.equal(getCapabilityPackageInstallIssue(at(495) as never, diceless), gate1458);
+    assert.equal(getCapabilityPackageInstallIssue(at(497) as never, diceless), gate1458);
     // And a ruleset file holding them is read (a bonus alone, or only an onHit), not refused.
     const readOk = (doc: unknown) => {
       const result = parseRulesetDefinition(doc);
@@ -667,13 +667,13 @@ try {
         attack.onHit = [{ condition: "pinned", atLeast: 0, checkEnds: { check: "brawn", difficulty: 10 } }];
       }),
     );
-    assert.notEqual(getCapabilityPackageInstallIssue(at(496) as never, diceless), gate1458);
+    assert.notEqual(getCapabilityPackageInstallIssue(at(498) as never, diceless), gate1458);
     const anyHit = variant(
       emberText,
       (doc) => (itemEntry(doc, "hand-axe").item.attack.onHit = [{ condition: "pinned", atLeast: 0 }]),
     );
-    assert.equal(getCapabilityPackageInstallIssue(at(495) as never, anyHit), gate1458);
-    assert.notEqual(getCapabilityPackageInstallIssue(at(495) as never, variant(emberText)), gate1458);
+    assert.equal(getCapabilityPackageInstallIssue(at(497) as never, anyHit), gate1458);
+    assert.notEqual(getCapabilityPackageInstallIssue(at(497) as never, variant(emberText)), gate1458);
     refused(
       emberText,
       (doc) =>

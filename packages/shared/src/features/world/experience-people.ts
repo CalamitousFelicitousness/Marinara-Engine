@@ -75,7 +75,7 @@ export const experiencePersonSchema = z
     person: z.string().regex(/^[a-z0-9]{1,16}-e?\d{1,4}$/u, "A person is a person id of the world"),
     portrait: image.optional(),
     /** A picture per expression, for the lines they speak. */
-    expressions: z.record(z.enum(STORY_EXPRESSIONS), image).optional(),
+    expressions: z.partialRecord(z.enum(STORY_EXPRESSIONS), image).optional(),
     /** The walking look they wear on town and place maps: a character of the map pack's own tiles. */
     sprite: z.string().min(1).max(80).optional(),
     /** Who they are, for the journal and the Game Master. */

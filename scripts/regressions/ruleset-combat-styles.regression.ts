@@ -52,7 +52,7 @@ try {
   assert.notEqual(issuesOf(fixture([])), "", "an empty list says nothing and is refused");
   assert.equal(
     issuesOf(fixture(["classic", "Tactical"])),
-    "combat.styles.1: Invalid",
+    "combat.styles.1: Invalid string: must match pattern /^[a-z][a-z0-9_-]{0,47}$/",
     "only the lower-case ID check fails",
   );
   assert.match(
@@ -64,7 +64,7 @@ try {
   assert.deepEqual(parse(fixture(eightStyles)).combat?.styles, eightStyles, "exactly eight styles are accepted");
   assert.equal(
     issuesOf(fixture([...eightStyles, "style-7"])),
-    "combat.styles: Array must contain at most 8 element(s)",
+    "combat.styles: Too big: expected array to have <=8 items",
     "only the nine-item length check fails",
   );
 
@@ -134,7 +134,7 @@ try {
     getCapabilityPackageInstallIssue(manifest(minor) as never, doc as never, undefined as never) ?? "";
   assert.doesNotMatch(issueAt(378, fixture()), gate, "the example asks for nothing new");
   assert.match(issueAt(378, fixture(["tactical"])), gate);
-  assert.doesNotMatch(issueAt(776, fixture(["tactical"])), gate);
+  assert.doesNotMatch(issueAt(778, fixture(["tactical"])), gate);
 
   // ── Where it is read ──
   const wizard = readSource("packages/client/src/components/game/GameSetupWizard.tsx");

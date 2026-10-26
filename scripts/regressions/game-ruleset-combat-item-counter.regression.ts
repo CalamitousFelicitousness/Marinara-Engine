@@ -190,7 +190,7 @@ try {
   };
   refusedUse(scrollUse({ level: undefined }), /reads the level it casts at, so it has "level"/);
   refusedUse(scrollUse({ reaction: { on: "used", against: { catalogs: ["spells"] } } }), /A utility use leaves/);
-  refusedUse(scrollUse({ level: 21 }), /less than or equal to 20/);
+  refusedUse(scrollUse({ level: 21 }), /Too big: expected number to be <=20/);
 
   // ── The install gate ──
   const gate =

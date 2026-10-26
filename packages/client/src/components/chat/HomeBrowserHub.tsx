@@ -2094,6 +2094,15 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
                     initialTab: typeof options?.tab === "string" ? options.tab : undefined,
                   });
                 },
+                // Capability API 1.386: open a connection in the editor, and come back to this tab once it
+                // closes. The desktop shell unmounts Home while an editor is open, so the store remembers the
+                // tab and queues it for the remounted Home only when the editor itself closes.
+                openConnection: (connectionId: string) => {
+                  if (typeof connectionId !== "string" || !connectionId) return;
+                  // A retained callback cannot act for a package that is no longer the active tab.
+                  if (activeBrowserPackageIdRef.current !== activeTab) return;
+                  useUIStore.getState().openConnectionDetail(connectionId, { returnToHomeTab: activeTab });
+                },
               }}
             />
           ) : activeTab === "professor" ? (

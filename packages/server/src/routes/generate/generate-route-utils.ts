@@ -1,3 +1,4 @@
+import { partialInput } from "@marinara-engine/shared";
 import { isDeepStrictEqual } from "node:util";
 import type { ChatMessage } from "../../services/llm/base-provider.js";
 import {
@@ -1530,7 +1531,7 @@ export function parseStoredGenerationParameters(raw: unknown): StoredGenerationP
 
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
 
-  const result = generationParametersSchema.partial().safeParse(parsed);
+  const result = partialInput(generationParametersSchema).safeParse(parsed);
   if (result.success) return result.data;
 
   // Older installs or extension callers may leave one malformed field in an

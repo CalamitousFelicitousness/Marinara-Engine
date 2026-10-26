@@ -202,7 +202,11 @@ import { AccessStatusSettings } from "./settings/AccessStatusSettings";
 import { RequestTimeoutSettings } from "./settings/RequestTimeoutSettings";
 import { FEATURE_SWITCHES_CONTROL_ID, FeatureSwitchesSettings } from "./settings/FeatureSwitchesSettings";
 import { CustomGenerationParametersSettings } from "./settings/CustomGenerationParametersSettings";
-import { ExternalExtensionsSettings, PersonalExtensionsSettings } from "./settings/PersonalExtensionsSettings";
+import {
+  ExternalExtensionsSettings,
+  ExtensionRevisionHistorySettings,
+  PersonalExtensionsSettings,
+} from "./settings/PersonalExtensionsSettings";
 import { usePersonalExtensionPolicy, useSetExternalExtensionsEnabled } from "../../hooks/use-personal-extensions";
 import { useAgentImportPolicy, useSetAgentImportsEnabled } from "../../hooks/use-agents";
 import { DraftNumberInput } from "../ui/DraftNumberInput";
@@ -2757,6 +2761,10 @@ function OverallGenerationSettings() {
   const setQueueImageGenerationRequests = useUIStore((s) => s.setQueueImageGenerationRequests);
   const reviewImagePromptsBeforeSend = useUIStore((s) => s.reviewImagePromptsBeforeSend);
   const setReviewImagePromptsBeforeSend = useUIStore((s) => s.setReviewImagePromptsBeforeSend);
+  const saveGeneratedImagesAsWebp = useUIStore((s) => s.saveGeneratedImagesAsWebp);
+  const setSaveGeneratedImagesAsWebp = useUIStore((s) => s.setSaveGeneratedImagesAsWebp);
+  const generatedImageWebpQuality = useUIStore((s) => s.generatedImageWebpQuality);
+  const setGeneratedImageWebpQuality = useUIStore((s) => s.setGeneratedImageWebpQuality);
 
   return (
     <SettingsSection
@@ -2780,6 +2788,35 @@ function OverallGenerationSettings() {
           onChange={setReviewImagePromptsBeforeSend}
           help={localizeUi("settings.controls.reviewMediaPrompts.help")}
         />
+        <ToggleSetting
+          anchorId={getSettingsControlAnchorId("generated-image-webp")}
+          label={localizeUi("settings.controls.generatedImageWebp.label")}
+          checked={saveGeneratedImagesAsWebp}
+          onChange={setSaveGeneratedImagesAsWebp}
+          help={localizeUi("settings.controls.generatedImageWebp.help")}
+        />
+        {saveGeneratedImagesAsWebp && (
+          <label
+            id={getSettingsControlAnchorId("generated-image-webp-quality")}
+            className="flex scroll-mt-3 flex-col gap-1.5 rounded-lg p-1"
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-xs">{localizeUi("settings.controls.generatedImageWebpQuality.label")}</span>
+              <span className="text-xs tabular-nums text-[var(--muted-foreground)]">{generatedImageWebpQuality}</span>
+              <HelpTooltip text={localizeUi("settings.controls.generatedImageWebpQuality.help")} />
+            </div>
+            <input
+              type="range"
+              min={1}
+              max={100}
+              step={1}
+              aria-label={localizeUi("settings.controls.generatedImageWebpQuality.label")}
+              value={generatedImageWebpQuality}
+              onChange={(event) => setGeneratedImageWebpQuality(Number(event.target.value))}
+              className="w-full accent-[var(--primary)]"
+            />
+          </label>
+        )}
       </div>
     </SettingsSection>
   );
@@ -3681,6 +3718,8 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
   const roleplayDisplayStyle = useUIStore((s) => s.roleplayDisplayStyle);
   const setRoleplayDisplayStyle = useUIStore((s) => s.setRoleplayDisplayStyle);
   const roleplayChatPosition = useUIStore((s) => s.roleplayChatPosition);
+  const roleplayChatWidthPercent = useUIStore((s) => s.roleplayChatWidthPercent);
+  const setRoleplayChatWidthPercent = useUIStore((s) => s.setRoleplayChatWidthPercent);
   const setRoleplayChatPosition = useUIStore((s) => s.setRoleplayChatPosition);
   const roleplayVnPortraitScale = useUIStore((s) => s.roleplayVnPortraitScale);
   const setRoleplayVnPortraitScale = useUIStore((s) => s.setRoleplayVnPortraitScale);
@@ -4861,6 +4900,39 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
                   })}
                 </div>
               </div>
+              <div id={getSettingsControlAnchorId("roleplay-chat-width")} className="grid scroll-mt-3 gap-2">
+                <ToggleSetting
+                  label={localizeUi("settings.controls.roleplayChatWidth.enabled")}
+                  help={localizeUi("settings.controls.roleplayChatWidth.help")}
+                  checked={roleplayChatWidthPercent !== null}
+                  onChange={(enabled) => setRoleplayChatWidthPercent(enabled ? 75 : null)}
+                />
+                {roleplayChatWidthPercent !== null && (
+                  <div className="grid gap-1 text-xs">
+                    <label htmlFor="roleplay-chat-width-percent">
+                      {localizeUi("settings.controls.roleplayChatWidth.label")}
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        id="roleplay-chat-width-percent"
+                        type="range"
+                        min={40}
+                        max={100}
+                        step={1}
+                        value={roleplayChatWidthPercent}
+                        onChange={(event) => setRoleplayChatWidthPercent(Number(event.target.value))}
+                        className="min-w-0 flex-1 accent-[var(--primary)]"
+                      />
+                      <output
+                        htmlFor="roleplay-chat-width-percent"
+                        className="w-12 text-right tabular-nums text-[var(--muted-foreground)]"
+                      >
+                        {roleplayChatWidthPercent}%
+                      </output>
+                    </div>
+                  </div>
+                )}
+              </div>
               <ToggleSetting
                 anchorId={getSettingsControlAnchorId("roleplay-vn-display")}
                 label={localizeUi("settings.roleplayVn.enabled")}
@@ -5389,6 +5461,7 @@ function AddonsSettings() {
       <SettingsIntro>
         {localizeUi("ui.panels.addonssettings.privateCustomBehaviorAndAppearanceSyncedByThisMarinara")}
       </SettingsIntro>
+      <ExtensionRevisionHistorySettings />
       <PersonalExtensionsSettings showIntro={false} />
       {extensionPolicy?.externalExtensionsEnabled && <ExternalExtensionsSettings />}
       <ThemesSettings showIntro={false} />

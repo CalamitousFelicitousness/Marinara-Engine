@@ -218,7 +218,7 @@ const directedCombatantFields = z.object({
   aiHints: combatAiHintsSchema.optional(),
   controller: z.enum(["manual", "ai"]).optional().catch(undefined),
   orders: combatOrdersSchema.optional(),
-  skillCooldowns: z.record(rounds).optional(),
+  skillCooldowns: z.record(z.string(), rounds).optional(),
   statusEffects: z
     .array(
       z.object({
@@ -596,7 +596,7 @@ export async function combatDirectorRoutes(
             .passthrough(),
           eventSeq: z.number().int().min(0),
           events: z
-            .array(z.object({ seq: z.number().int().min(0), event: z.unknown() }))
+            .array(z.object({ seq: z.number().int().min(0), event: z.unknown().optional() }))
             // The fight's own and the AI's reasons beside them, each kept to its own window.
             .max(RULESET_COMBAT_EVENT_LIMIT + RULESET_COMBAT_REASON_LIMIT),
           controllers: z.record(key, z.enum(["manual", "ai"])),

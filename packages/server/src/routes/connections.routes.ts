@@ -1,3 +1,4 @@
+import { partialInput } from "@marinara-engine/shared";
 import { resolveDecisionConnection } from "../services/decision/decision-connection.js";
 import { migrateGenerativeAudioConnections } from "../services/connections/generative-audio-connection-migration.js";
 import { validateSunoMusicCallback } from "../services/audio/generative-audio-providers.js";
@@ -13,6 +14,7 @@ import {
 // Routes: Connections
 // ──────────────────────────────────────────────
 import type { FastifyInstance, FastifyReply } from "fastify";
+import { validationDetails } from "../middleware/error-handler.js";
 import { existsSync } from "fs";
 import { mkdir, readFile, writeFile } from "fs/promises";
 import { extname, join } from "path";
@@ -570,7 +572,7 @@ export async function connectionsRoutes(app: FastifyInstance) {
   });
 
   app.patch<{ Params: { id: string } }>("/:id", async (req, reply) => {
-    const data = createConnectionSchema.partial().parse(req.body);
+    const data = partialInput(createConnectionSchema).parse(req.body);
     const current = await storage.getById(req.params.id);
     if (!current) return reply.status(404).send({ error: "Connection not found" });
     const merged = { ...current, ...data };
@@ -618,14 +620,11 @@ export async function connectionsRoutes(app: FastifyInstance) {
     }
     let params: Record<string, unknown> | null = null;
     if (raw !== null) {
-      const parsed = generationParametersSchema.partial().safeParse(raw);
+      const parsed = partialInput(generationParametersSchema).safeParse(raw);
       if (!parsed.success) {
         return reply.status(400).send({
           error: "Invalid generation parameters",
-          issues: parsed.error.issues.map((issue) => ({
-            path: issue.path.join("."),
-            message: issue.message,
-          })),
+          issues: [...validationDetails(parsed.error.issues)],
         });
       }
       params = { ...parsed.data };

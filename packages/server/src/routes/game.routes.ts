@@ -58,10 +58,12 @@ import { buildGameDataEditPatch, sameGameDataValue } from "../services/game/game
 // Routes: Game Mode
 // ──────────────────────────────────────────────
 import type { FastifyInstance, FastifyReply } from "fastify";
+import { validationDetails } from "../middleware/error-handler.js";
 import { createHash, randomInt, randomUUID } from "crypto";
 import { existsSync, readFileSync } from "fs";
 import { basename, extname, join } from "path";
 import { z } from "zod";
+import { partialInput } from "@marinara-engine/shared";
 import { estimateTextTokens, sliceTextToTokenBudget } from "@marinara-engine/shared";
 import { carryGameInventory, rulesetInventedItemRef } from "@marinara-engine/shared";
 import { eq } from "../db/file-query.js";
@@ -470,6 +472,7 @@ import {
   type VideoReferenceImage,
 } from "../services/video/video-generation.js";
 import { resolveGameVideoRuntime, type GameVideoRuntime } from "../services/video/game-video-runtime.js";
+import { toVideoReferenceImage } from "../services/video/chat-video-generation.js";
 import {
   buildStoryboardAnimationRefinementMessages,
   compactStoryboardAnimationPrompt,
@@ -1872,17 +1875,8 @@ function resolveGeneratedIllustrationAssetPath(tag: unknown): string | null {
   );
 }
 
-function imageMimeTypeForPath(path: string): VideoReferenceImage["mimeType"] | null {
-  const ext = extname(path).toLowerCase();
-  if (ext === ".png") return "image/png";
-  if (ext === ".jpg" || ext === ".jpeg") return "image/jpeg";
-  return null;
-}
-
-function readOmniReferenceImage(path: string, url?: string | null): VideoReferenceImage {
-  const mimeType = imageMimeTypeForPath(path);
-  if (!mimeType) throw new Error("Scene videos require a PNG or JPEG scene illustration");
-  return { base64: readFileSync(path).toString("base64"), mimeType, url };
+async function readOmniReferenceImage(path: string, url?: string | null): Promise<VideoReferenceImage> {
+  return toVideoReferenceImage(readFileSync(path).toString("base64"), url);
 }
 
 function titleCaseSlug(value: string): string {
@@ -2106,7 +2100,7 @@ const hudWidgetSchema = z.object({
   icon: z.string().trim().max(16).optional(),
   position: z.enum(["hud_left", "hud_right"]),
   accent: z.string().trim().max(32).optional(),
-  config: z.record(z.unknown()).default({}),
+  config: z.record(z.string(), z.unknown()).prefault({}),
 });
 
 /**
@@ -2207,7 +2201,7 @@ const gameSetupConfigSchema = z.object({
   language: z.string().min(1).max(100).optional(),
   autoTranslate: z.boolean().optional(),
   translationOutputTargetLang: z.string().trim().min(1).max(100).optional(),
-  generationParameters: generationParametersSchema.partial().optional(),
+  generationParameters: partialInput(generationParametersSchema).optional(),
   promptPresetId: z.string().nullable().optional(),
   gameSystemPrompt: z.string().max(50_000).nullable().optional(),
   gameSpecialInstructions: z.string().max(2000).nullable().optional(),
@@ -3509,7 +3503,7 @@ function parseStoredGenerationParameters(raw: unknown): StoredGenerationParamete
     }
   }
 
-  const result = generationParametersSchema.partial().safeParse(parsed);
+  const result = partialInput(generationParametersSchema).safeParse(parsed);
   return result.success ? result.data : null;
 }
 
@@ -6872,6 +6866,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
 
     if (setupData.blueprint) {
       const blueprintSchema = gameSetupBlueprintSchema;
+
       const normalizeStatBlocks = (widgets: Array<{ type: string; config: Record<string, unknown> }>) => {
         for (const w of widgets) {
           if (w.type === "stat_block" && w.config.stats) {
@@ -6950,8 +6945,9 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     logger.info("[game/create] Received request");
     const parsed = createGameSchema.safeParse(input);
     if (!parsed.success) {
+      const [issue] = validationDetails(parsed.error.issues);
       return rejectGenerationOutput(reply, 400, {
-        error: `Invalid game setup: ${parsed.error.issues[0]?.message ?? "invalid settings"}`,
+        error: `Invalid game setup: ${issue?.message ?? "invalid settings"}`,
       });
     }
     const parsedCreateGameInput = parsed.data;
@@ -10798,7 +10794,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
           side: z.enum(["player", "enemy"]).optional(),
           tactics: combatTacticsSchema.optional(),
           controller: z.enum(["manual", "ai"]).optional(),
-          skillCooldowns: z.record(z.number().int().min(0).max(10000)).optional(),
+          skillCooldowns: z.record(z.string(), z.number().int().min(0).max(10000)).optional(),
           skills: z
             .array(
               z.object({
@@ -11104,7 +11100,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       round: z.number().int().min(1).max(10000),
       seed: tacticalBattlefieldSeedSchema,
       actionCounter: z.number().int().min(0).max(1_000_000),
-      log: z.array(z.record(z.unknown())).max(2000),
+      log: z.array(z.record(z.string(), z.unknown())).max(2000),
       difficulty: z.string(),
       outcome: z.enum(["victory", "defeat", "fled"]).optional(),
       // The order a fight by initiative takes turns in (combat C6c): ids, at most one a unit.
@@ -11450,7 +11446,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     const schema = z.object({
       chatId: z.string().min(1),
       type: z.enum(["location", "npc", "combat", "quest", "item", "event", "note"]),
-      data: z.record(z.unknown()),
+      data: z.record(z.string(), z.unknown()),
     });
     const { chatId, type, data } = schema.parse(req.body);
     const chats = createChatsStorage(app.db);
@@ -12638,7 +12634,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     async (req, reply) => {
       const body = z
         .object({
-          state: z.unknown(),
+          state: z.unknown().optional(),
           schemaVersion: z.number().int().min(1).max(1_000_000).default(1),
           // Experience saves are player-confirmed world state, not mid-turn
           // provisional snapshots, so they default to committed (regen fallback
@@ -12846,7 +12842,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         /** "" is the live anchor the PUT uses before the first assistant message exists. */
         messageId: z.string().max(200),
         swipeIndex: z.number().int().min(0).max(1_000_000),
-        state: z.unknown(),
+        state: z.unknown().optional(),
         schemaVersion: z.number().int().min(1).max(1_000_000).default(1),
         committed: z.boolean().default(true),
         /** Accepted so an export round-trips without stripping fields, but never stored —
@@ -13918,7 +13914,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     chatId: z.string().min(1),
     narration: z.string().max(50000).optional().default(""),
     playerAction: z.string().max(5000).optional(),
-    context: z.record(z.unknown()).optional().default({}),
+    context: z.record(z.string(), z.unknown()).prefault({}),
     limit: z.number().min(1).max(50).optional().default(50),
   });
 
@@ -15302,7 +15298,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
             try {
               const galleryImagePath = resolveGalleryImagePath(galleryImage);
               if (!galleryImagePath) throw new Error("Storyboard keyframe image file could not be found.");
-              const referenceImage = readOmniReferenceImage(
+              const referenceImage = await readOmniReferenceImage(
                 galleryImagePath,
                 sourceGalleryImagePathForMetadata(galleryImage),
               );
@@ -15708,7 +15704,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       }
       try {
         sourceIllustrationPath = sourceGalleryImagePathForMetadata(galleryImage);
-        referenceImage = readOmniReferenceImage(galleryImagePath, sourceIllustrationPath);
+        referenceImage = await readOmniReferenceImage(galleryImagePath, sourceIllustrationPath);
       } catch (err) {
         const message = err instanceof Error ? err.message : "The selected gallery illustration cannot be used.";
         return reply.status(400).send({ error: message });
@@ -15729,7 +15725,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       }
       try {
         sourceIllustrationPath = sourceIllustrationPathForMetadata(sourceIllustrationAssetPath);
-        referenceImage = readOmniReferenceImage(sourceIllustrationAssetPath, sourceIllustrationPath);
+        referenceImage = await readOmniReferenceImage(sourceIllustrationAssetPath, sourceIllustrationPath);
       } catch (err) {
         const message = err instanceof Error ? err.message : "The current scene illustration cannot be used.";
         return reply.status(400).send({ error: message });

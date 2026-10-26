@@ -77,12 +77,17 @@ const typesMatch: [
   Equal<keyof MarinaraHostV1, (typeof MEMBERS)[number]>,
   Equal<keyof MarinaraHostV1["stores"], (typeof MARINARA_HOST_STORE_NAMES)[number]>,
   Equal<keyof MarinaraHostV1["modules"], MarinaraHostModuleSpecifier>,
-  Equal<keyof MarinaraHostV1["services"], "tts" | "dialogs" | "audio">,
+  Equal<keyof MarinaraHostV1["services"], "tts" | "dialogs" | "audio" | "imageDownloads">,
   Equal<keyof MarinaraHostV1["components"], "Modal">,
   Equal<keyof MarinaraHostV1["data"], "emojiCatalog">,
   Equal<keyof MarinaraHostStoreFields, (typeof MARINARA_HOST_STORE_NAMES)[number]>,
 ] = [true, true, true, true, true, true, true];
 assert.ok(typesMatch.every(Boolean));
+const imageDownloadTypesMatch: Equal<
+  keyof MarinaraHostV1["services"]["imageDownloads"],
+  "downloadUrlToDevice" | "prepareImageSave" | "savePreparedImageToDevice" | "shouldUseIosImageShare"
+> = true;
+assert.ok(imageDownloadTypesMatch);
 // Each Pick<> in MarinaraHostStoreFields fails this compile when a store drops a field packages read.
 const pinnedFields: { [K in keyof MarinaraHostStoreFields]: Array<keyof MarinaraHostStoreFields[K]> } = {
   ui: [...MARINARA_HOST_STORE_FIELDS.ui],
@@ -120,6 +125,9 @@ assert.equal(
 assert.equal(MARINARA_HOST_MODULE_MAJORS.motion, 14, "the opt-in slot has its own major");
 assert.equal(MARINARA_HOST_MODULE_IMPORTS["framer-motion"], "framer-motion-v13");
 assert.equal(MARINARA_HOST_MODULE_IMPORTS["motion/react"], "framer-motion");
+assert.equal(MARINARA_HOST_MODULE_MAJORS.zod, 3, "installed API-1 packages retain their Zod 3 contract");
+assert.equal(MARINARA_HOST_MODULE_IMPORTS.zod, "zod-v3");
+assert.match(clientPackage.dependencies.zod!, /^\^4\./u, "the Engine's primary validator stays native Zod 4");
 assert.deepEqual(Object.keys(MARINARA_HOST_MODULE_IMPORTS), MODULE_SPECIFIERS);
 for (const [name, major] of Object.entries(MARINARA_HOST_MODULE_MAJORS)) {
   const specifier = MODULE_SPECIFIERS.find((entry) => packageOf(entry) === name)! as MarinaraHostModuleSpecifier;
@@ -159,6 +167,7 @@ const hostSource = readSource("packages/client/src/lib/marinara-host.ts");
 assert.match(hostSource, /import \{ queryClient \} from "\.\/query-client";/u);
 assert.match(hostSource, /import \* as framerMotion from "framer-motion-v13";/u);
 assert.match(hostSource, /import \* as motion14 from "framer-motion";/u);
+assert.match(hostSource, /import \* as zod from "zod-v3";/u);
 assert.match(hostSource, /"framer-motion": framerMotion/u);
 assert.match(hostSource, /"motion\/react": motion14/u);
 assert.match(hostSource, /writable: false,\s*configurable: false,/u);

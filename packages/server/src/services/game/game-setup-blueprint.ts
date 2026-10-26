@@ -80,7 +80,7 @@ export const gameSetupBlueprintSchema = z.object({
         icon: z.string().optional(),
         position: z.enum(["hud_left", "hud_right"]),
         accent: z.string().optional(),
-        config: z.record(z.unknown()),
+        config: z.record(z.string(), z.unknown()),
       }),
     )
     .default([]),
@@ -91,7 +91,7 @@ export const gameSetupBlueprintSchema = z.object({
         duration: z.number().optional(),
         intensity: z.number().min(0).max(1).optional(),
         target: z.enum(["background", "content", "all"]).optional(),
-        params: z.record(z.string()).optional(),
+        params: z.record(z.string(), z.string()).optional(),
       }),
     )
     .default([]),

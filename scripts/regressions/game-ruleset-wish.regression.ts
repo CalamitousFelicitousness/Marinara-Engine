@@ -234,7 +234,7 @@ try {
 
   // ── Refused ──
   refused(fiveE({ change: { atMost: 3, add: 1 } }), /abilities/);
-  refused(fiveE({ entries: [stress({ dice: "2d4", restingCounts: 1 })] }), /restingCounts/);
+  refused(fiveE({ entries: [stress({ dice: "2d4", restingCounts: 1 })] }), /lastsDays: Invalid input/);
   refused(fiveE({ entries: [stress({ dice: "lots" })] }), /lastsDays/);
   refused(fiveE({ entries: [restore({ kind: "buff" })] }), /"healsAll" heals all the health/);
   refused(

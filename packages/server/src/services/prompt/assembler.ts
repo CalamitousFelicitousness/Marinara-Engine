@@ -130,6 +130,8 @@ export interface AssemblerInput {
   chatChoices: Record<string, string | string[]>;
   /** SillyTavern-compatible local variables persisted in this chat. */
   localVariables?: Record<string, string>;
+  /** Reuse the injected instructions in derived character profiles without rerunning their macros. */
+  onCharacterPostHistoryResolved?: (characterId: string, content: string) => void;
   /** Chat context */
   chatId: string;
   characterIds: string[];
@@ -195,6 +197,8 @@ export interface AssemblerInput {
   lorebookTokenBudget?: number;
   /** Current game state for lorebook conditions and schedules. */
   gameState?: Record<string, unknown> | null;
+  /** Same selected scene clock used by the route and agent prompts. */
+  worldState?: MacroContext["worldState"];
   /** Generation trigger labels used by per-entry lorebook include/exclude filters. */
   generationTriggers?: string[];
   /** Preview/debug assembly: lorebook markers should not consume timing or ephemeral state. */
@@ -353,6 +357,7 @@ export async function assemblePrompt(input: AssemblerInput): Promise<AssemblerOu
   // Build macro context (character names and primary card fields resolved from IDs)
   const macroCtx = await buildPromptMacroContext({
     db: input.db,
+    worldState: input.worldState === undefined ? input.gameState : input.worldState,
     model: input.model,
     reasoning: input.reasoning,
     characterIds: input.characterIds,
@@ -772,6 +777,7 @@ export async function assemblePrompt(input: AssemblerInput): Promise<AssemblerOu
     input.characterIds,
     macroCtx,
     wrapFormat,
+    input.onCharacterPostHistoryResolved,
   );
   if (characterAdvancedPromptEntries.length > 0) {
     allDepthEntries.push(characterAdvancedPromptEntries);

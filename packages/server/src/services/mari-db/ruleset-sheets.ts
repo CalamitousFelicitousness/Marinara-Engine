@@ -39,26 +39,26 @@ const clearable = z.union([scalar, z.null()]);
 const listPatchSchema = z
   .object({
     /** Every row of the list, replacing what it held. */
-    set: z.array(z.record(scalar)).max(500).optional(),
+    set: z.array(z.record(z.string(), scalar)).max(500).optional(),
     /** Cells changed on rows the list already holds, by index; a `null` cell is cleared. */
     update: z
-      .array(z.object({ index: z.number().int().min(0), cells: z.record(clearable) }).strict())
+      .array(z.object({ index: z.number().int().min(0), cells: z.record(z.string(), clearable) }).strict())
       .max(500)
       .optional(),
     /** Rows taken out, by their index before this patch. */
     remove: z.array(z.number().int().min(0)).max(500).optional(),
     /** Rows added at the end. */
-    add: z.array(z.record(scalar)).max(500).optional(),
+    add: z.array(z.record(z.string(), scalar)).max(500).optional(),
   })
   .strict();
 export const rulesetSheetPatchSchema = z
   .object({
-    abilities: z.record(z.number().finite().nullable()).optional(),
-    skills: z.record(z.string().max(40).nullable()).optional(),
-    saves: z.record(z.string().max(40).nullable()).optional(),
-    bonuses: z.record(z.number().finite().nullable()).optional(),
-    fields: z.record(clearable).optional(),
-    lists: z.record(listPatchSchema).optional(),
+    abilities: z.record(z.string(), z.number().finite().nullable()).optional(),
+    skills: z.record(z.string(), z.string().max(40).nullable()).optional(),
+    saves: z.record(z.string(), z.string().max(40).nullable()).optional(),
+    bonuses: z.record(z.string(), z.number().finite().nullable()).optional(),
+    fields: z.record(z.string(), clearable).optional(),
+    lists: z.record(z.string(), listPatchSchema).optional(),
   })
   .strict();
 export type RulesetSheetPatch = z.infer<typeof rulesetSheetPatchSchema>;

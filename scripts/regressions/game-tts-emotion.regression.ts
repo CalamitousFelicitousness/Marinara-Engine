@@ -10,6 +10,7 @@ import { normalizeSpriteExpressionKey } from "../../packages/client/src/lib/spri
 import {
   buildTTSVoiceRequests,
   extractDialogueUtterances,
+  getTTSPersonaVoice,
   resolveTTSNarratorVoice,
   resolveTTSVoiceForSpeaker,
   splitTTSChunks,
@@ -56,6 +57,7 @@ const dependencies = {
   normalizeTextForMatch,
   normalizeSpriteExpressionKey,
   splitTTSChunks,
+  getTTSPersonaVoice,
   resolveTTSNarratorVoice,
   resolveTTSVoiceForSpeaker,
   ttsService,
@@ -101,7 +103,7 @@ const game = new Function(
     segment: NarrationSegment,
     config: TTSConfig,
     npcs?: GameNpc[],
-    options?: { playerSpeakerNames?: ReadonlySet<string> },
+    options?: { playerSpeakerNames?: ReadonlySet<string>; persona?: { id?: string; name: string } | null },
   ) => VoiceRequest | null;
   jobs: (key: string, requests: VoiceRequest[], config: TTSConfig) => VoiceJob[];
   generate: (job: VoiceJob, controller: AbortController) => Promise<Blob>;
@@ -203,6 +205,64 @@ for (const segment of [
 ] satisfies NarrationSegment[]) {
   assert.equal(game.request(segment, config, [], options), null, "Game voice exclusions still apply");
 }
+
+const personaVoiceConfig: TTSConfig = {
+  ...config,
+  voiceMode: "per-character",
+  voiceAssignments: [{ characterId: "mari-persona-id", characterName: "Mari", voice: "mari-persona-voice" }],
+};
+const personaOptions = {
+  ...options,
+  persona: { id: "mari-persona-id", name: "Mari" },
+};
+for (const speaker of ["Mari", "You", "Player"]) {
+  const request = game.request({ ...main, speaker }, personaVoiceConfig, [], personaOptions);
+  assert.ok(request, "generated Game dialogue for an explicitly voiced persona must be spoken");
+  assert.equal(request.voice, "mari-persona-voice");
+  assert.deepEqual(request.chunks, [main.content]);
+}
+for (const segment of [
+  { ...main, speaker: "Mari", sourceRole: "user" },
+  { ...main, speaker: "Mari", sourceRole: "system" },
+  { ...main, speaker: "Mari", partyType: "thought" },
+] satisfies NarrationSegment[]) {
+  assert.equal(
+    game.request(segment, personaVoiceConfig, [], personaOptions),
+    null,
+    "Game prefetch keeps committed user, system and thought lines quiet even when the persona is assigned",
+  );
+}
+for (const current of [
+  { ...personaVoiceConfig, voiceMode: "single" as const },
+  { ...personaVoiceConfig, voiceAssignments: [] },
+]) {
+  for (const sourceRole of ["assistant", "user"] as const) {
+    assert.equal(
+      game.request({ ...main, sourceRole, speaker: "Mari" }, current, [], personaOptions),
+      null,
+      "an unassigned or inactive persona never uses the global voice",
+    );
+  }
+}
+assert.equal(
+  game.request({ ...main, speaker: "Mari" }, personaVoiceConfig, [], {
+    ...personaOptions,
+    persona: { id: "unassigned-persona-id", name: "Mari" },
+  }),
+  null,
+  "Game cannot borrow a different persona's matching-name assignment",
+);
+assert.equal(game.request(main, personaVoiceConfig, [], personaOptions)?.voice, config.voice);
+assert.equal(
+  game.request(
+    { ...main, type: "narration", content: "The room grows quiet." },
+    { ...personaVoiceConfig, narratorVoiceEnabled: true, narratorVoice: "game-narrator-voice" },
+    [],
+    personaOptions,
+  )?.voice,
+  "game-narrator-voice",
+  "Game narration keeps its dedicated voice alongside the assigned persona",
+);
 
 const jobs = game.jobs("turn-voice", [mainRequest, sideRequest], config);
 assert.deepEqual(

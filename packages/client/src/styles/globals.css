@@ -6388,8 +6388,9 @@ strong {
     --mari-roleplay-message-column-width: min(
       var(--mari-roleplay-custom-column-width),
       100cqw - 2 * var(--tracker-panel-column-room, 0px),
-      100cqw - 2 * var(--mari-roleplay-transcript-gutter) - 2 * var(--mari-roleplay-row-gutter) - 2 *
-        var(--mari-roleplay-custom-avatar-room) - var(--mari-roleplay-scrollbar-width, 0px)
+      100cqw - var(--mari-chat-position-clearance, 0px) - 2 * var(--mari-roleplay-transcript-gutter) - 2 *
+        var(--mari-roleplay-row-gutter) - 2 * var(--mari-roleplay-custom-avatar-room) -
+        var(--mari-roleplay-scrollbar-width, 0px)
     );
   }
 

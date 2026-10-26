@@ -226,7 +226,7 @@ for (const theme of ["dark", "light"] as const)
           const tracker = page.locator(`[data-component="TrackerDataSidebarDesktop.${side}"]`);
           await expect(tracker).toBeVisible();
           await expect(async () => {
-            const boxes = await withinPane(page, false);
+            const boxes = await withinPane(page, true);
             const panel = (await tracker.boundingBox())!;
             for (const box of [boxes.composer, ...boxes.bodies, ...boxes.avatars])
               if (side === "left") expect(box.left).toBeGreaterThanOrEqual(panel.x + panel.width - 1);

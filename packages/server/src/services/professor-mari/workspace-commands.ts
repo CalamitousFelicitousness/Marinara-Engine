@@ -1191,7 +1191,7 @@ ${missingApplyMessage(action, args)}`
         ? result.ok === false && typeof result.error === "string"
           ? { error: result.error, output: result.output }
           : result.output
-        : compactMutationResult(result);
+        : compactMutationResult(result, { dropCommand: true });
     const truncationNote = formatMariReadTruncation(result.truncation);
     const dryRun = isRecord(result) && result.mode === "dry-run" && result.ok !== false;
     const output =

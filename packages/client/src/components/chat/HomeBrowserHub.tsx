@@ -89,6 +89,9 @@ import { RecentChats } from "./RecentChats";
 import { HomeCharacterLibrary } from "./HomeCharacterLibrary";
 
 const HOME_BROWSER_PANEL_ID = "marinara-home-browser-panel";
+// Outside homeBrowserTabId's `marinara-home-tab-` namespace, so no package id can produce them.
+const HOME_BROWSER_TAB_MENU_ID = "marinara-home-browser-tab-menu";
+const HOME_BROWSER_TAB_MENU_ACTIVITY_ID = "marinara-home-browser-tab-menu-activity";
 
 function homeBrowserTabId(tabId: string) {
   return `marinara-home-tab-${tabId.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
@@ -674,7 +677,8 @@ function BrowserBookmark({
   );
 }
 
-// A header menu closes on Escape or on a press outside it and its trigger.
+// A header menu closes on Escape or on a press outside it and its trigger. Escape from inside the menu hands
+// focus back to the trigger, or to the Home tab if the trigger has gone.
 function useHeaderMenuDismiss(
   open: boolean,
   setOpen: (open: boolean) => void,
@@ -690,7 +694,10 @@ function useHeaderMenuDismiss(
       setOpen(false);
     };
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key !== "Escape") return;
+      const focusWasInside = Boolean(menuRef.current?.contains(document.activeElement));
+      setOpen(false);
+      if (focusWasInside) (triggerRef.current ?? document.getElementById(homeBrowserTabId("home")))?.focus();
     };
     document.addEventListener("pointerdown", closeOnOutsidePointer);
     document.addEventListener("keydown", closeOnEscape);
@@ -1279,6 +1286,8 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
     tabStripWidth,
     mobileShell,
     activeTab,
+    t("home.browser.homeTab"),
+    t("home.browser.professorTab"),
     ...localizedBrowserPackages.map(
       ({ item, display }) => `${item.id}:${display.homeBrowserTab?.label ?? display.name}`,
     ),
@@ -1289,7 +1298,9 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
     if (!strip) return;
     setTabStripWidth(strip.clientWidth);
     if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(() => setTabStripWidth(strip.clientWidth));
+    // Observers run after layout and before paint. Rendering here, not later, keeps a rotation or a header
+    // that reappears (fullscreen exit, keyboard closing) from painting the unfolded row for a frame.
+    const observer = new ResizeObserver(() => flushSync(() => setTabStripWidth(strip.clientWidth)));
     observer.observe(strip);
     return () => observer.disconnect();
   }, []);
@@ -1394,6 +1405,26 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
     [sceneOriginFocus, setSceneOriginFocus],
   );
   const openProfessor = () => requestProfessorMariOpen();
+  // The picked entry leaves with the menu, so focus moves on to the tab it opened (Professor opens a panel,
+  // not a tab: back to the trigger), unless the opened view has already taken focus.
+  const pickFromTabMenu = (tab: string) => {
+    if (tab === "professor") {
+      setTabMenuOpen(false);
+      openProfessor();
+    } else {
+      selectTab(tab);
+    }
+    requestAnimationFrame(() => {
+      const focused = document.activeElement;
+      // The closing menu stays mounted while it animates out, still holding focus on the picked entry.
+      if (focused && focused !== document.body && !tabMenuRef.current?.contains(focused)) return;
+      const target =
+        tab === "professor"
+          ? (tabMenuTriggerRef.current ?? document.getElementById(homeBrowserTabId("home")))
+          : document.getElementById(homeBrowserTabId(tab));
+      target?.focus();
+    });
+  };
   // The omnibar and Command Center ask Home for a surface through `requestHome`; Home opens it here.
   const homeRequest = useUIStore((state) => state.homeRequest);
   useEffect(() => {
@@ -1703,7 +1734,7 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
           hidden={browserFullscreen}
           className="mari-home-browser-chrome relative z-40 shrink-0 border-b border-[var(--marinara-topbar-border)] bg-[var(--marinara-topbar-surface)] shadow-[0_8px_28px_-26px_rgba(0,0,0,0.8)] backdrop-blur-sm"
         >
-          <div className="mari-home-browser-tab-row flex h-10 min-w-0 items-end gap-1 border-b border-[var(--border)]/45 px-2 sm:gap-2 sm:px-3">
+          <div className="mari-home-browser-tab-row relative flex h-10 min-w-0 items-end gap-1 border-b border-[var(--border)]/45 px-2 sm:gap-2 sm:px-3">
             <div
               className="relative z-10 flex shrink-0 self-center items-center gap-2 pr-1 sm:pr-3"
               data-component="HomeBrowserHub.Brand"
@@ -1737,7 +1768,10 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
                 title={t("home.browser.bookmarksCompact")}
                 aria-expanded={mobileBookmarksOpen}
                 aria-controls="marinara-mobile-bookmarks"
-                onClick={() => setMobileBookmarksOpen((open) => !open)}
+                onClick={() => {
+                  setTabMenuOpen(false);
+                  setMobileBookmarksOpen((open) => !open);
+                }}
                 data-component="HomeBrowserHub.MobileBookmarksTrigger"
               >
                 <Bookmark size="1rem" aria-hidden="true" />
@@ -1871,9 +1905,12 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
                   aria-label={t("home.browser.tabMenu")}
                   title={t("home.browser.tabMenu")}
                   aria-expanded={tabMenuOpen}
-                  aria-controls="marinara-home-tab-menu"
-                  aria-describedby={noodleRefreshUnread ? "marinara-home-tab-menu-activity" : undefined}
-                  onClick={() => setTabMenuOpen((open) => !open)}
+                  aria-controls={HOME_BROWSER_TAB_MENU_ID}
+                  aria-describedby={noodleRefreshUnread ? HOME_BROWSER_TAB_MENU_ACTIVITY_ID : undefined}
+                  onClick={() => {
+                    setMobileBookmarksOpen(false);
+                    setTabMenuOpen((open) => !open);
+                  }}
                   data-component="HomeBrowserHub.TabMenuTrigger"
                 >
                   <span aria-hidden="true" className="flex items-center gap-[3px]">
@@ -1883,7 +1920,7 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
                   </span>
                   {noodleRefreshUnread ? (
                     <span
-                      id="marinara-home-tab-menu-activity"
+                      id={HOME_BROWSER_TAB_MENU_ACTIVITY_ID}
                       aria-label={t("home.browser.newTimelineRefresh")}
                       className="mari-chrome-accent-tile mari-accent-animated absolute right-0 top-0 inline-flex h-3.5 min-w-3.5 items-center justify-center rounded-full px-0.5 text-[0.5rem] font-black leading-none ring-1 ring-[var(--marinara-chat-chrome-button-border-active)]"
                     >
@@ -1892,6 +1929,65 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
                   ) : null}
                 </button>
               ) : null}
+              {/* Right after its trigger, so the keyboard reaches the entries next. */}
+              <AnimatePresence initial={false}>
+                {tabsCollapsed && tabMenuOpen ? (
+                  <motion.div
+                    ref={tabMenuRef}
+                    id={HOME_BROWSER_TAB_MENU_ID}
+                    initial={reduceMotion ? false : { opacity: 0, y: -8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -8 }}
+                    transition={{ duration: reduceMotion ? 0 : 0.18, ease: [0.16, 1, 0.3, 1] }}
+                    className="absolute z-50 left-2 right-2 top-[calc(100%+0.35rem)] grid max-h-[calc(100dvh-8rem)] gap-1 overflow-y-auto rounded-xl border border-[var(--border)] bg-[color-mix(in_srgb,var(--card)_96%,var(--background))] p-1.5 shadow-[0_22px_60px_-24px_rgba(0,0,0,0.72)] ring-1 ring-[color-mix(in_srgb,var(--foreground)_7%,transparent)] sm:left-auto sm:w-72"
+                    data-component="HomeBrowserHub.TabMenu"
+                  >
+                    <MobileBrowserBookmark
+                      onClick={() => pickFromTabMenu("professor")}
+                      icon={
+                        <img
+                          src={mariPoses.profile}
+                          {...mariImgLoading(MARI_ASSET_TIER.poses.profile)}
+                          width={16}
+                          height={16}
+                          alt=""
+                          className="h-4 w-4 rounded-sm object-cover"
+                        />
+                      }
+                      tone={HOME_TAB_MENU_TONES[0]}
+                      current={activeTab === "professor"}
+                    >
+                      {t("home.browser.professorTab")}
+                    </MobileBrowserBookmark>
+                    {localizedBrowserPackages.map(({ item, display }, index) => {
+                      const tab = display.homeBrowserTab;
+                      return (
+                        <MobileBrowserBookmark
+                          key={item.id}
+                          onClick={() => pickFromTabMenu(item.id)}
+                          icon={
+                            <BrowserPackageTabIcon
+                              packageId={item.id}
+                              version={item.version}
+                              iconPaths={tab?.iconPaths}
+                            />
+                          }
+                          tone={HOME_TAB_MENU_TONES[(index + 1) % HOME_TAB_MENU_TONES.length]!}
+                          current={activeTab === item.id}
+                        >
+                          {tab?.label ?? display.name}
+                          {item.id === "noodle" && noodleRefreshUnread ? (
+                            <span className="mari-chrome-accent-tile mari-accent-animated ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 align-middle text-[0.58rem] font-black leading-none ring-1 ring-[var(--marinara-chat-chrome-button-border-active)]">
+                              <span aria-hidden="true">1</span>
+                              <span className="sr-only">{t("home.browser.newTimelineRefresh")}</span>
+                            </span>
+                          ) : null}
+                        </MobileBrowserBookmark>
+                      );
+                    })}
+                  </motion.div>
+                ) : null}
+              </AnimatePresence>
             </div>
           </div>
 
@@ -2130,64 +2226,6 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
                 >
                   {t("home.browser.widgets")}
                 </MobileBrowserBookmark>
-              </motion.div>
-            ) : null}
-          </AnimatePresence>
-
-          <AnimatePresence initial={false}>
-            {tabsCollapsed && tabMenuOpen ? (
-              <motion.div
-                ref={tabMenuRef}
-                id="marinara-home-tab-menu"
-                initial={reduceMotion ? false : { opacity: 0, y: -8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -8 }}
-                transition={{ duration: reduceMotion ? 0 : 0.18, ease: [0.16, 1, 0.3, 1] }}
-                className="absolute left-2 right-2 top-[calc(100%+0.35rem)] grid max-h-[calc(100dvh-8rem)] gap-1 overflow-y-auto rounded-xl border border-[var(--border)] bg-[color-mix(in_srgb,var(--card)_96%,var(--background))] p-1.5 shadow-[0_22px_60px_-24px_rgba(0,0,0,0.72)] ring-1 ring-[color-mix(in_srgb,var(--foreground)_7%,transparent)] sm:left-auto sm:w-72"
-                data-component="HomeBrowserHub.TabMenu"
-              >
-                <MobileBrowserBookmark
-                  onClick={() => {
-                    setTabMenuOpen(false);
-                    openProfessor();
-                  }}
-                  icon={
-                    <img
-                      src={mariPoses.profile}
-                      {...mariImgLoading(MARI_ASSET_TIER.poses.profile)}
-                      width={16}
-                      height={16}
-                      alt=""
-                      className="h-4 w-4 rounded-sm object-cover"
-                    />
-                  }
-                  tone={HOME_TAB_MENU_TONES[0]}
-                  current={activeTab === "professor"}
-                >
-                  {t("home.browser.professorTab")}
-                </MobileBrowserBookmark>
-                {localizedBrowserPackages.map(({ item, display }, index) => {
-                  const tab = display.homeBrowserTab;
-                  return (
-                    <MobileBrowserBookmark
-                      key={item.id}
-                      onClick={() => selectTab(item.id)}
-                      icon={
-                        <BrowserPackageTabIcon packageId={item.id} version={item.version} iconPaths={tab?.iconPaths} />
-                      }
-                      tone={HOME_TAB_MENU_TONES[(index + 1) % HOME_TAB_MENU_TONES.length]!}
-                      current={activeTab === item.id}
-                    >
-                      {tab?.label ?? display.name}
-                      {item.id === "noodle" && noodleRefreshUnread ? (
-                        <span className="mari-chrome-accent-tile mari-accent-animated ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 align-middle text-[0.58rem] font-black leading-none ring-1 ring-[var(--marinara-chat-chrome-button-border-active)]">
-                          <span aria-hidden="true">1</span>
-                          <span className="sr-only">{t("home.browser.newTimelineRefresh")}</span>
-                        </span>
-                      ) : null}
-                    </MobileBrowserBookmark>
-                  );
-                })}
               </motion.div>
             ) : null}
           </AnimatePresence>

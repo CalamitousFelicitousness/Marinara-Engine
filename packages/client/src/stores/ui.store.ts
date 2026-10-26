@@ -711,6 +711,8 @@ interface UIState {
   settingsTargetSectionId: string | null;
   /** Not saved: a Home surface to open once Home mounts (see `requestHome`). */
   homeRequest: HomeRequest | null;
+  /** Not saved: the Home tab a package opened the connection editor from; closing that editor returns there. */
+  connectionDetailReturnTab: string | null;
   /** Not saved: the What's New window should open again (see `requestWhatsNew`). */
   whatsNewRequested: boolean;
   modal: { type: string; props?: Record<string, unknown> } | null;
@@ -1302,7 +1304,7 @@ interface UIState {
   setLorebookLinkClipboard: (links: NonNullable<UIState["lorebookLinkClipboard"]>) => void;
   openPresetDetail: (id: string, options?: { initialTab?: string }) => void;
   closePresetDetail: () => void;
-  openConnectionDetail: (id: string) => void;
+  openConnectionDetail: (id: string, options?: { returnToHomeTab?: string }) => void;
   closeConnectionDetail: () => void;
   openAgentDetail: (agentType: string) => void;
   closeAgentDetail: () => void;
@@ -2098,6 +2100,7 @@ export const useUIStore = create<UIState>()(
         lastAppError: null,
         settingsTargetControlId: null,
         homeRequest: null,
+        connectionDetailReturnTab: null,
         whatsNewRequested: false,
         settingsTargetSectionId: null,
         modal: null,
@@ -2639,9 +2642,13 @@ export const useUIStore = create<UIState>()(
             editorDirty: false,
             ...restoreMobileDetailReturnPanel(s.detailReturnRightPanel),
           })),
-        openConnectionDetail: (id) =>
+        openConnectionDetail: (id, options) =>
           set((s) => ({
             connectionDetailId: id,
+            // Switching the open editor to another connection keeps the package tab it returns to; an editor
+            // opened afresh starts without one.
+            connectionDetailReturnTab:
+              options?.returnToHomeTab || (s.connectionDetailId ? s.connectionDetailReturnTab : null),
             characterLibraryOpen: false,
             agentCatalogOpen: false,
             botBrowserOpen: false,
@@ -2660,8 +2667,14 @@ export const useUIStore = create<UIState>()(
         closeConnectionDetail: () =>
           set((s) => ({
             connectionDetailId: null,
+            connectionDetailReturnTab: null,
             editorDirty: false,
             ...restoreMobileDetailReturnPanel(s.detailReturnRightPanel),
+            // Only closing the editor itself returns Home to the package tab that opened it. Leaving it any other
+            // way (a chat, another editor, closeAllDetails) queues nothing, so Home never jumps to that tab later.
+            ...(s.connectionDetailId && s.connectionDetailReturnTab
+              ? { homeRequest: { kind: "tab" as const, tab: s.connectionDetailReturnTab } }
+              : {}),
           })),
         openAgentDetail: (agentType) =>
           set((s) => ({
@@ -2987,6 +3000,7 @@ export const useUIStore = create<UIState>()(
         },
         closeAllDetails: () =>
           set({
+            connectionDetailReturnTab: null,
             characterDetailId: null,
             lorebookDetailId: null,
             presetDetailId: null,

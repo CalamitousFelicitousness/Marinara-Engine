@@ -1787,6 +1787,41 @@ exit button available on every package screen and use `aria-pressed` to reflect 
 must update the button without replacing unfinished forms. Packages depending on this control
 declare capability API 1.376 or newer; older packages can keep their existing layouts.
 
+### Capability API 1.386: open a connection, and raw generation for packages
+
+The browser view gets `openConnection(connectionId)`. It opens the connection editor on that saved
+connection, so a package that lets the user pick a connection can offer "Edit connection" instead of
+its own provider settings. When the editor closes, Home comes back to the package's tab; leaving the
+editor another way, such as opening a chat, does not. The desktop layout unmounts Home, and the
+package view with it, while the editor is open: save what the user typed first. Older Engines do not
+have it: check that `openConnection` exists before you show the button.
+
+```ts
+if (typeof props.openConnection === "function") props.openConnection(connectionId);
+```
+
+A browser package can also write text with a saved connection, without a server part of its own:
+`POST /api/generate/raw` through the host api client, which adds the CSRF and admin headers.
+
+- `connectionId`: the saved connection. Its saved parameters apply, and `parameters` (`temperature`,
+  `maxTokens`, `maxContext`, `topP`, `topK`, `minP`, `frequencyPenalty`, `presencePenalty`,
+  `reasoningEffort`, `verbosity`, `serviceTier`, `customParameters`, `enabledParameters`) overrides
+  them one field at a time.
+- `messages`: 1 to 200 `{ role: "system" | "user" | "assistant", content }`. Adjacent messages of one
+  role are merged and the prompt is fitted to the model's context, as for the Engine's own generations.
+- `streaming`: `true` answers with server-sent events; otherwise the answer is `{ content, runId }`, or
+  `{ aborted: true, runId }`.
+- `runId`: your id for the run. `POST /api/generate/raw/abort` with `{ runId }` stops it, and so does
+  closing the request.
+- `debugMode` (1.386): pass the browser view's `debugMode`. When it is true, or the server runs with
+  `DEBUG_AGENTS`, the server logs the final messages sent to the provider and the reply. The body is
+  strict, so an older Engine refuses the field: send it only when it is true, from a package that
+  declares 1.386.
+
+The events are `raw_started` (`{ runId }`), `token` (the next piece of text), `result` (`{ content }`,
+the whole text), `aborted`, `error` (the message), `fallback_used` when the Engine's fallback connection
+answered instead, and `done`, always last.
+
 ### Capability API 1.50: Professor Mari actions
 
 A package holding the new `mari-actions` permission can offer named actions to Professor Mari. It

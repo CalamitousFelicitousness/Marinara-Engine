@@ -6,9 +6,8 @@ const wizard = readFileSync("packages/client/src/components/game/GameSetupWizard
 
 // Library rows are { id, data } with the card as JSON: handing them to the wizard raw left every name undefined,
 // and typing in the character search threw on name.toLowerCase().
-assert.match(prepared, /parseCharacterDisplayData\(\{ data: parsed, comment: row\.comment \}\)/);
+assert.match(prepared, /parseCharacterDisplayData\(\{ data: row\.data, comment: row\.comment \}\)/);
 assert.match(prepared, /name: display\.name/);
-assert.match(prepared, /row\.id === PROFESSOR_MARI_ID/);
 assert.doesNotMatch(prepared, /characters=\{characters as /);
 
 // The wizard's searches tolerate a nameless entry from any other caller.

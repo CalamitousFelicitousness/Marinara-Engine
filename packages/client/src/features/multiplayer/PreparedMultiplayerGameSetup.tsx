@@ -1,6 +1,5 @@
 import { lazy, Suspense, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { PROFESSOR_MARI_ID } from "@marinara-engine/shared";
 import type { Chat, MultiplayerHostAction, MultiplayerPlayer } from "@marinara-engine/shared";
 import { useCharacters } from "../../hooks/use-characters";
 import { parseCharacterDisplayData } from "../../lib/character-display";
@@ -30,26 +29,18 @@ export function PreparedMultiplayerGameSetup({
   // Library rows carry the card as JSON; the wizard needs display names and avatars, as ChatArea hands them.
   const characters = useMemo<GameSetupWizardProps["characters"]>(
     () =>
-      (
-        (rows ?? []) as Array<{ id: string; data: unknown; comment?: string | null; avatarPath?: string | null }>
-      ).flatMap((row) => {
-        if (row.id === PROFESSOR_MARI_ID) return [];
-        try {
-          const parsed = typeof row.data === "string" ? JSON.parse(row.data) : row.data;
-          const display = parseCharacterDisplayData({ data: parsed, comment: row.comment });
-          return [
-            {
-              id: row.id,
-              name: display.name,
-              comment: display.comment,
-              avatarUrl: row.avatarPath ?? undefined,
-              avatarCrop: display.avatarCrop ?? null,
-            },
-          ];
-        } catch {
-          return [{ id: row.id, name: "Unknown" }];
-        }
-      }),
+      ((rows ?? []) as Array<{ id: string; data: unknown; comment?: string | null; avatarPath?: string | null }>).map(
+        (row) => {
+          const display = parseCharacterDisplayData({ data: row.data, comment: row.comment });
+          return {
+            id: row.id,
+            name: display.name,
+            comment: display.comment,
+            avatarUrl: row.avatarPath ?? undefined,
+            avatarCrop: display.avatarCrop ?? null,
+          };
+        },
+      ),
     [rows],
   );
   const loading = (

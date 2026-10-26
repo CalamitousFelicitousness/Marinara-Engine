@@ -36,7 +36,7 @@ A character card is JSON in `characters.data`, snake_case. Keep the meanings apa
 - `avatarPath`, `spriteFolderPath`, `folderId`, ids, timestamps are row columns — a patch value sits in `data` unread.
 - Extensions such as `nameColor` and `convoBehavior` are reachable only as `patch.extensions.<key>`. A `nameColor` inside `patch` lands at `data.nameColor`, which the client never reads; at the envelope's top level it is ignored outright. `onboarding` is the exception: write it with `character.onboarding.update`, because a raw `patch.extensions.onboarding` bypasses `buildOnboardingUpdate` and its validation.
 
-**Personas are columns, not extensions:** `description`, `personality`, `scenario`, `backstory`, `appearance`, `imageAppearance`, `imageAppearanceEnabled` (a boolean), `aboutMe`, `creator`, `creatorNotes`, `convoBehavior`, `tags`, `comment` (aliases like `creator_notes`). A plain-string `convoBehavior` becomes `{instruction, insertionStrategy: "constant_after"}`; `avatarPath` is not settable here.
+**Personas are columns, not extensions:** `description`, `personality`, `scenario`, `backstory`, `appearance`, `imageAppearance`, `imageAppearanceEnabled` (a boolean), `aboutMe`, `summary`, `mes_example`, `phoneticName`, `convoDisplayName`, `creator`, `creatorNotes`, `convoBehavior`, `tags`, `comment` (aliases like `creator_notes`, `phonetic_name`). A plain-string `convoBehavior` becomes `{instruction, insertionStrategy: "constant_after"}`; `avatarPath` is not settable here.
 
 ## About Me
 

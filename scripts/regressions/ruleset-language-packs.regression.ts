@@ -171,6 +171,18 @@ try {
     refused((entry) => (entry.locales.ru.bytes = 0), /bytes/, "a size");
     refused((entry) => (entry.locales.ru.bytes = 8 * 1024 * 1024 + 1), /bytes/, "within 8 MB");
     refused((entry) => (entry.locales.ru.extra = 1), /unrecognized|Unrecognized/, "nothing else in a pack");
+    // A card name or description the Engine cannot show is dropped, so that language's card reads in
+    // English while the package and its pack stay listed.
+    {
+      const entry = structuredClone(raw);
+      entry.locales.ru.description = "д".repeat(2001);
+      entry.locales.ru.name = "";
+      const read = capabilityCatalogPackageSchema.safeParse(entry);
+      assert.ok(read.success, "an over-long card description keeps the package");
+      assert.equal(read.data.locales?.ru?.description, undefined);
+      assert.equal(read.data.locales?.ru?.name, undefined);
+      assert.equal(read.data.locales?.ru?.sha256, raw.locales.ru.sha256);
+    }
     refused(
       (entry) => (entry.locales.ru.url = `${ARTIFACTS}/${ID}-0.9.0.ru.json`),
       /is not ember-roads-tongues-1\.0\.0\.ru\.json/,
@@ -425,6 +437,11 @@ try {
       (({ name, description }) => ({ name, description }))(resolveCapabilityCatalogEntryDisplay(listed, "ru-RU")),
       { name: "Угольные дороги", description: "Дороги углей." },
     );
+    const tooLong = structuredClone(listed) as Record<string, any>;
+    tooLong.locales.ru.description = "д".repeat(2001);
+    const kept = capabilityCatalogPackageSchema.parse(tooLong);
+    assert.equal(resolveCapabilityCatalogEntryDisplay(kept, "ru").description, "Roads of embers.");
+    assert.equal(resolveCapabilityCatalogEntryDisplay(kept, "ru").name, "Угольные дороги");
     assert.equal(resolveCapabilityCatalogEntryDisplay(listed, "de").name, "Ember Roads (tongues)");
     assert.equal(resolveCapabilityCatalogEntryDisplay(listed, "en").description, "Roads of embers.");
   }

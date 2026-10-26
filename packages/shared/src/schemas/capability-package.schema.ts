@@ -2009,8 +2009,10 @@ const capabilityCatalogLocalePackSchema = z
       .refine((url) => url.startsWith("https://"), { message: "A language pack is fetched over https" }),
     sha256: z.string().regex(/^[a-f0-9]{64}$/),
     bytes: z.number().int().positive().max(RULESET_LOCALE_MAX_BYTES),
-    name: z.string().min(1).max(120).optional(),
-    description: z.string().max(2000).optional(),
+    // The store card's text in this language. One that is not usable (empty, too long, not text) is
+    // left out, so the card reads in English rather than hiding the whole package.
+    name: z.string().min(1).max(120).optional().catch(undefined),
+    description: z.string().max(2000).optional().catch(undefined),
   })
   .strict();
 

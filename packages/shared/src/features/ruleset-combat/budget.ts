@@ -151,7 +151,7 @@ export function rulesetBudgetStandIns<
   budget: RulesetEncounterBudget,
   kept: ReadonlySet<string> = new Set(),
 ): {
-  enemies: Array<T | (Omit<T, "creature" | "tier" | "boss"> & { creature: string; boss: false })>;
+  enemies: Array<T | (Omit<T, "creature" | "tier" | "boss"> & { creature: string; boss: T["boss"] | false })>;
   lines: string[];
 } {
   const scale = definition.combat?.threat?.tiers ?? [];
@@ -163,12 +163,13 @@ export function rulesetBudgetStandIns<
   );
   const tierOf = (index: number) => found[index]?.entry.creature?.tier ?? enemies[index]!.tier;
   const lines: string[] = [];
-  const out: Array<T | (Omit<T, "creature" | "tier" | "boss"> & { creature: string; boss: false })> = [];
+  const out: Array<T | (Omit<T, "creature" | "tier" | "boss"> & { creature: string; boss: T["boss"] | false })> = [];
   enemies.forEach((enemy, index) => {
     const own = found[index];
     const creature = own?.entry.creature;
     const others = enemies.flatMap((_, at) => (at === index ? [] : [tierOf(at)]));
-    const bossed = enemies.some((one, at) => at !== index && !!one.boss);
+    // A boss fight, this one the boss or another, is held to the boss budget (cloud re-test SB1).
+    const bossed = enemies.some((one) => !!one.boss);
     const allowed = bossed ? budget.bossWorth : budget.worth;
     const step = (bossed ? budget.bossStep : budget.step).label;
     const alone = rulesetFightWorth(definition, [...others, creature?.tier], budget.members);
@@ -210,10 +211,11 @@ export function rulesetBudgetStandIns<
         id: at === 0 ? enemy.id : `${enemy.id}-${at + 1}`,
         name: best.count === 1 ? best.entry.label : `${best.entry.label} ${at + 1}`,
         creature: `${best.catalogId}/${best.entry.id}`,
-        boss: false,
+        // The first that comes in a boss's place is the fight's boss in its stead (cloud re-test SB2).
+        boss: at === 0 && enemy.boss ? enemy.boss : false,
       });
     lines.push(
-      `${own.entry.label} is far beyond this party (worth ${alone}, against its ${step} budget of ${allowed}), so its servants come instead: ${best.count === 1 ? best.entry.label : `${best.count} ${best.entry.label}`}. ${enemy.name} stays out of this fight, for the story to keep.`,
+      `${own.entry.label} is far beyond this party (worth ${alone}, against its ${step} budget of ${allowed}), so lesser ones of its kind come instead: ${best.count === 1 ? best.entry.label : `${best.count} ${best.entry.label}`}. ${enemy.name} stays out of this fight, for the story to keep.`,
     );
   });
   return { enemies: out, lines };

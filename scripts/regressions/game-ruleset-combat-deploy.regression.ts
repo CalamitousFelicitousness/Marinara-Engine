@@ -224,6 +224,12 @@ try {
     const placed = rulesetStartPlacements(grid, placements, stands, { x: "behind", y: "among" });
     const party = centre([placements.a, placements.b, placements.c]);
     assert.ok(placed.x!.x < party.x, `one started behind the party stands past it: ${JSON.stringify(placed.x)}`);
+    // And a step clear of its back, not beside a hero (laptop e8bd 2026-10-26).
+    for (const hero of [placements.a, placements.b, placements.c])
+      assert.ok(
+        Math.max(Math.abs(hero.x - placed.x!.x), Math.abs(hero.y - placed.x!.y)) > 2,
+        `one started behind stands clear of ${JSON.stringify(hero)}: ${JSON.stringify(placed.x)}`,
+      );
     assert.ok(gap(placed.y!, party) <= 1, `one started among them stands in their middle: ${JSON.stringify(placed.y)}`);
     assert.deepEqual(placed.z, placements.z, "one with no place keeps its formation's");
     const keys = Object.values(placed).map((cell) => `${cell.x},${cell.y}`);

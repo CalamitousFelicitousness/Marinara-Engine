@@ -1538,6 +1538,12 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
     else if (input.deploy && deployers.length > 0)
       adjustments.push("No room to set the party down clear of the opponents, so the fight begins where it stands.");
   }
+  // The mind the Game Master gave an opponent is the one the rules read too, its morale among them
+  // (laptop v3b 2026-10-26: a husk written mindless lost heart and surrendered).
+  for (const opponent of enemies) {
+    const built = opponent.mind ? rulesetCombatant(encounter, opponent.id) : undefined;
+    if (built?.block) built.block.mind = opponent.mind;
+  }
   for (const [id, tier] of heldToTier) {
     const built = rulesetCombatant(encounter, id);
     if (!built) continue;

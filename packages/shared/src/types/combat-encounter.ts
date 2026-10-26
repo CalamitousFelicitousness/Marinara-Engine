@@ -180,6 +180,8 @@ export interface RulesetEncounterBlueprint {
    *  ruleset fight reads it in place of what its bestiary entry rolls for. */
   carrying?: string[];
   creature?: string;
+  /** What an invented one is (a ruleset's creature type id); a ruleset fight reads it. */
+  creatureType?: string;
   tier?: string;
   proposed?: unknown;
 }

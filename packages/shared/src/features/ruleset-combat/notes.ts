@@ -25,7 +25,7 @@ export const RULESET_FIGHT_NOTES = {
     "This fight is worth {{worth}}, more than this party's {{step}} budget of {{budget}}, with nothing left to bring down.",
   budgetWithin: "This fight is worth {{worth}}, within this party's {{step}} budget of {{budget}}.",
   standIns:
-    "{{creature}} is far beyond this party (worth {{worth}}, against its {{step}} budget of {{budget}}), so its servants come instead: {{foes}}. {{name}} stays out of this fight, for the story to keep.",
+    "{{creature}} is far beyond this party (worth {{worth}}, against its {{step}} budget of {{budget}}), so lesser ones of its kind come instead: {{foes}}. {{name}} stays out of this fight, for the story to keep.",
   // ── An opponent ──
   byName: 'No bestiary holds "{{creature}}", so {{name}} was looked up by name.',
   noBestiary: 'No bestiary of this ruleset holds "{{creature}}".',

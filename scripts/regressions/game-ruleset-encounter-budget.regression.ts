@@ -347,14 +347,15 @@ try {
     assert.deepEqual(
       swapped.enemies.map((one) => [one.id, one.name, one.creature, one.boss]),
       [
-        ["e1", "Skeleton 1", "foes/skeleton", false],
+        ["e1", "Skeleton 1", "foes/skeleton", true],
         ["e1-2", "Skeleton 2", "foes/skeleton", false],
         ["e1-3", "Skeleton 3", "foes/skeleton", false],
+        ["e1-4", "Skeleton 4", "foes/skeleton", false],
       ],
     );
     assert.match(
       swapped.lines[0]!,
-      /^Lich is far beyond this party \(worth 1800, against its Moderate budget of 150\), so its servants come instead: 3 Skeleton\. Lich Morrow stays out of this fight/,
+      /^Lich is far beyond this party \(worth 1800, against its High budget of 200\), so lesser ones of its kind come instead: 4 Skeleton\. Lich Morrow stays out of this fight/,
     );
     // One that fits, or one kept, comes as it is.
     const zombie = rulesetBudgetStandIns(definition, bestiary, [{ id: "z", name: "Zombie" }], party);

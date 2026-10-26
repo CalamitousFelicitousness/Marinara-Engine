@@ -1162,6 +1162,8 @@ export function rulesetItemBook(
   const visible: RulesetItemBookEntry[] = [];
   const offered = new Set<string>();
   const byName = new Map<string, RulesetItemBookEntry>();
+  /** The names (own or other) two of the ruleset's items have. */
+  const sharedNames = new Set<string>();
   const aliased: Array<{ read: RulesetItemBookEntry; aliases: readonly string[] }> = [];
   for (const catalog of definition.catalogs ?? []) {
     if (catalog.holds !== "items") continue;
@@ -1175,6 +1177,7 @@ export function rulesetItemBook(
       // Two items of one name: the first the ruleset lists is the one the name finds.
       const key = gameInventoryNameKey(entry.label);
       if (!byName.has(key)) byName.set(key, read);
+      else if (byName.get(key)!.item !== read.item) sharedNames.add(key);
       if (entry.aliases) aliased.push({ read, aliases: entry.aliases });
     }
   }
@@ -1183,6 +1186,7 @@ export function rulesetItemBook(
     for (const alias of aliases) {
       const key = gameInventoryNameKey(alias);
       if (!byName.has(key)) byName.set(key, read);
+      else if (byName.get(key)!.item !== read.item) sharedNames.add(key);
     }
   // And last, any of those names with its words in another order or counted many ("Heavy Crossbow",
   // "Crossbows, heavy" for Crossbow, heavy: laptop playtest 2026-10-25). A loose name two items share
@@ -1297,6 +1301,24 @@ export function rulesetItemBook(
         }
       : undefined;
   };
+  /** The ruleset's item a name's last words are, after a word or more in front of them that only say
+   *  what it is like: "Wooden Shield" is 5e's Shield (laptop 2026-10-26: the Game Master gave a
+   *  "Wooden Shield", which was no item, so it stayed a plain one nobody could equip). The longest
+   *  such run that is exactly one item's own or other name finds it; a name two items have finds
+   *  neither. Only a name of plain words: one with a comma is a list, and a bracket or a "+1" says more
+   *  than a word in front does; and a number in front is a count ("2 Javelin"), not a word. */
+  const byLastWords = (name: string): RulesetItemBookEntry | undefined => {
+    const words = name.trim().split(/\s+/u);
+    if (words.length < 2 || !/^[\p{L}\p{N}' -]+$/u.test(name.trim())) return undefined;
+    for (let from = 1; from < words.length; from++) {
+      if (!/\p{L}/u.test(words[from - 1]!)) return undefined;
+      const key = gameInventoryNameKey(words.slice(from).join(" "));
+      if (sharedNames.has(key)) return undefined;
+      const found = byName.get(key);
+      if (found) return found;
+    }
+    return undefined;
+  };
   const itemNamed = (name: string): RulesetItemBookEntry | undefined => {
     const key = gameInventoryNameKey(name);
     const made = inventedByName.get(key)?.at(-1);
@@ -1310,7 +1332,7 @@ export function rulesetItemBook(
       (offered.has(ref) ? all.get(ref) : undefined) ??
       byLoose.get(gameInventoryLooseNameKey(name)) ??
       byBare.get(bare(name)) ??
-      undefined
+      byLastWords(name)
     );
   };
   /** The ruleset's own weapon of this category whose name shares the most words with `name` (a word

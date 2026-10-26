@@ -13,7 +13,11 @@ import type {
   RulesetStartingGear,
   RulesetStartingGearLine,
 } from "../../schemas/ruleset.schema.js";
-import { gameInventoryCoinRef } from "../../utils/game-inventory-stacks.js";
+import {
+  gameInventoryBagKey,
+  gameInventoryCoinRef,
+  type GameInventoryStack,
+} from "../../utils/game-inventory-stacks.js";
 import { rulesetLayeredCurrencies, type RulesetLayerOptions } from "./layers.js";
 import type { RulesetItemBook } from "./item-book.js";
 import { parseDiceNotation } from "../../utils/dice-notation.js";
@@ -292,4 +296,36 @@ export function resolveRulesetStartingGear(
   }
   if (adds.size === 0) return { ok: false, reason: "empty", detail: `Nothing of "${gear.label}" is in this game` };
   return { ok: true, gear, adds: [...adds.values()], dropped };
+}
+
+/**
+ * What of the gear a bag still takes, given what it already holds (laptop 2026-10-26: the Game Master
+ * handed out a shield, a quarterstaff and a shortbow before the party had taken its kits, so a druid
+ * who then took the Druid kit carried two of each). A thing worn (one of the ruleset's items with
+ * slots) is taken only as far as the bag does not already hold that item: the count the gear gives,
+ * less what the bag holds of it. Everything else (coins, torches, rations, plain items) is taken as it
+ * is. `held` names what was left out, whole or in part. A caller taking the gear again on purpose
+ * takes all of it and does not ask.
+ */
+export function rulesetStartingGearUnheld(
+  adds: readonly RulesetStartingGearAdd[],
+  stacks: readonly GameInventoryStack[],
+  holder: string | undefined,
+  book: Pick<RulesetItemBook, "itemOf">,
+): { adds: RulesetStartingGearAdd[]; held: string[] } {
+  const bagKey = gameInventoryBagKey(holder);
+  const held: string[] = [];
+  const out: RulesetStartingGearAdd[] = [];
+  for (const add of adds) {
+    const worn = !!add.item && Object.values(book.itemOf(add.item)?.slots ?? {}).some((count) => count > 0);
+    const has = worn
+      ? stacks
+          .filter((stack) => stack.item === add.item && gameInventoryBagKey(stack.holder) === bagKey)
+          .reduce((total, stack) => total + stack.quantity, 0)
+      : 0;
+    if (has > 0) held.push(add.name);
+    const count = add.count - has;
+    if (count > 0) out.push(has > 0 ? { ...add, count } : add);
+  }
+  return { adds: out, held };
 }

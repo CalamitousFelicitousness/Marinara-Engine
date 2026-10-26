@@ -2858,7 +2858,7 @@
   "game.combat.ruleset.note.sheetSays": "its sheet says its {{keys}}, so the numbers written beside it were not used.",
   "game.combat.ruleset.note.soakDropped": "An opponent made up for one fight soaks nothing, so its soak was dropped.",
   "game.combat.ruleset.note.spellListDropped": "Spellcasting carried a spell list the threat scale cannot bound, so it was dropped.",
-  "game.combat.ruleset.note.standIns": "{{creature}} is far beyond this party (worth {{worth}}, against its {{step}} budget of {{budget}}), so its servants come instead: {{foes}}. {{name}} stays out of this fight, for the story to keep.",
+  "game.combat.ruleset.note.standIns": "{{creature}} is far beyond this party (worth {{worth}}, against its {{step}} budget of {{budget}}), so lesser ones of its kind come instead: {{foes}}. {{name}} stays out of this fight, for the story to keep.",
   "game.combat.ruleset.note.standsCannotHold": "{{name}}'s {{action}} cannot hold \"{{stores}}\", so nothing stands for it.",
   "game.combat.ruleset.note.standsCannotName": "{{name}}'s {{action}} cannot name \"{{kind}}\", so it is not done.",
   "game.combat.ruleset.note.standsEverybody": "{{name}}'s {{action}} cannot be set on \"{{kind}}\", so it works on everybody.",

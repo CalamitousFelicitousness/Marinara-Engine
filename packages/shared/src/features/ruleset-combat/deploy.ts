@@ -186,7 +186,12 @@ export function rulesetStartPlacements(
       // One on a flank starts out of the other side's reach (laptop pass 8 2026-10-26: a zombie began
       // beside a hero), well back where the sides stand apart and a step clear of it in a ring (laptop
       // 0706 Party B: bandits sent round both flanks began beside the party's line).
-      if (target) move(one, target, place === "flank" ? (apart ? Math.min(back, wide) : 2) : 0);
+      // So does one sent behind the other side, a step clear of its back (laptop e8bd 2026-10-26: a wolf
+      // sent "behind" a party standing in defense began beside two heroes, with no ambush in the scene), and
+      // one at its rear; one at its front is out of the other side's reach (laptop v3b 2026-10-26: a
+      // hero started "rear" in a skirmish began beside three husks, two of them started "front").
+      if (target)
+        move(one, target, place === "flank" ? (apart ? Math.min(back, wide) : 2) : place === "behind" || place === "rear" ? 2 : place === "front" ? 1 : 0);
       else {
         // In cover: the nearest wood or ruin within six cells of its side, else where it stands.
         const cover = [...open].flatMap((cellKey) => {

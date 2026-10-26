@@ -334,9 +334,15 @@ export function applyGameInventoryTags(
   ): { outcome: InventoryTagOutcome; revealed?: string; note?: string } => {
     const flag = wear === "equip" || wear === "unequip" ? "equipped" : "bound";
     const on = wear === "equip" || wear === "bind";
-    const items = gameInventoryItemsNamed(current, item, bag);
+    let items = gameInventoryItemsNamed(current, item, bag);
     const mine = (stack: GameInventoryStack) =>
       items.has(gameInventoryItemId(stack)) && gameInventoryBagKey(stack.holder) === gameInventoryBagKey(bag.holder);
+    // Else the ruleset's item the name finds, held under that item's own name: a "Wooden Shield" added
+    // as 5e's Shield is put on by the name it was given by (laptop 2026-10-26).
+    if (!current.some(mine)) {
+      const ruled = rules?.itemNamed(item)?.item;
+      if (ruled) items = new Set([ruled]);
+    }
     if (!current.some(mine)) return { outcome: { ok: false, reason: "none-held" } };
     // What goes together is kept together: putting on prefers the item already bound, binding the
     // one already worn; taking off and unbinding leave the other state alone where they can.

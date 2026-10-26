@@ -1218,6 +1218,11 @@ export function generatedEnemyToCombatant(enemy: CombatEnemy, index: number, fal
     // uses; a fight on any other style never reads them.
     ...(typeof enemy.creature === "string" && enemy.creature.trim() ? { creature: enemy.creature.trim() } : {}),
     ...(typeof enemy.tier === "string" && enemy.tier.trim() ? { tier: enemy.tier.trim() } : {}),
+    // What an invented one is (laptop v3b 2026-10-26: husks written as undead fought as humanoids, and
+    // Turn Undead did nothing to them).
+    ...(typeof enemy.creatureType === "string" && enemy.creatureType.trim()
+      ? { creatureType: enemy.creatureType.trim() }
+      : {}),
     ...(enemy.proposed !== undefined ? { proposed: enemy.proposed } : {}),
     ...(enemy.surprised === true ? { surprised: true } : {}),
     ...(enemy.inLair === true ? { inLair: true } : {}),

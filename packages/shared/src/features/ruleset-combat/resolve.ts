@@ -19208,7 +19208,7 @@ function moraleTurn(ctx: RulesetCombatContext, actor: RulesetCombatant): boolean
   if (mind === "mindless") return false;
   // A fanatic never loses heart (combat AI T2): as the Engine plays it, else as its own data says.
   const temperament = actor.temperament ?? rulesetCombatantBehavior(ctx.definition, actor)?.temperament;
-  if (temperament === "fanatical") return false;
+  if (temperament === "fanatical" || temperament === "mindless") return false;
   if (morale.unlessImmune && rulesetImmuneToCondition(actor, morale.unlessImmune, ctx.definition, ctx.state))
     return false;
   const side = ctx.state.combatants.filter(

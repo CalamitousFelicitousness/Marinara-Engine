@@ -1,5 +1,5 @@
 /**
- * Turned back on a die (Capability API 1.708): a tarrasque's Reflective Carapace.
+ * Turned back on a die (Capability API 1.710): a tarrasque's Reflective Carapace.
  *
  *   - A foe's entry it names, of an area shape it names, or a ranged attack roll, rolls its die: its
  *     holder is untouched, and on its top face the entry is turned back at its maker.
@@ -35,7 +35,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 708);
+  assert.ok(supportedCapabilityApi.minor >= 710);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -193,7 +193,7 @@ try {
       /Unknown catalog "prayers"/,
     );
     const gate =
-      "A ruleset with a condition that turns entries back on a die (combat.conditions[].reflects) requires schemaVersion 2 and capabilityApi 1.708 or newer";
+      "A ruleset with a condition that turns entries back on a die (combat.conditions[].reflects) requires schemaVersion 2 and capabilityApi 1.710 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -207,12 +207,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(707) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(708) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(709) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(710) as never, fiveE()), gate);
   }
 
   console.log(
-    "Reflective Carapace: Magic Missile, a ranged ray and a line leave it untouched, turned back on a 6; a melee spell lands; gated at 1.708.",
+    "Reflective Carapace: Magic Missile, a ranged ray and a line leave it untouched, turned back on a 6; a melee spell lands; gated at 1.710.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

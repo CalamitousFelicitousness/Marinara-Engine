@@ -161,7 +161,7 @@ export function migrateRulesetSheetBuild(
       const target = named.size === 1 ? [...named][0]! : step.else;
       if (!own(next.fields, target)) next.fields[target] = value;
     } else if ("setColumn" in step) {
-      // The one step that overwrites (1.784): a fix to rows made before the ruleset knew better.
+      // The one step that overwrites (1.786): a fix to rows made before the ruleset knew better.
       const { list, where, column, to } = step.setColumn;
       const rows = next.lists?.[list];
       if (!Array.isArray(rows)) continue;
@@ -257,7 +257,7 @@ export interface EvaluatedRulesetSheet {
    *  caps again, so swapping an ability can never lift a check past its cap. */
   skillCaps: Record<string, { cap: number; uncapped: number }>;
   saveCaps: Record<string, { cap: number; uncapped: number }>;
-  /** What a check made with each ability alone adds (1.404), for the abilities that declare one. */
+  /** What a check made with each ability alone adds (1.406), for the abilities that declare one. */
   abilityCheckAdds?: Record<string, number>;
   /** The live state this sheet was worked out with, so a reference resolved against it later (a
    *  modifier off the sheet, a spend's limit, a fight's defense) reads the same values. */
@@ -275,18 +275,18 @@ export interface RulesetSheetLiveValues {
   states?: ReadonlyArray<{ id: string; value: string }>;
   /** The items the character holds, which an `itemStat` reads. None outside a game. */
   items?: ReadonlyArray<RulesetSheetItem>;
-  /** What the conditions they hold do to their abilities (Capability API 1.500), one per condition. */
+  /** What the conditions they hold do to their abilities (Capability API 1.502), one per condition. */
   conditionAbilities?: ReadonlyArray<Readonly<RulesetConditionAbilities>>;
-  /** What the conditions they hold do to their derived values (Capability API 1.647), one per
+  /** What the conditions they hold do to their derived values (Capability API 1.649), one per
    *  condition. */
   conditionDerived?: ReadonlyArray<Readonly<RulesetConditionDerivedChanges>>;
-  /** Abilities raised for good (Capability API 1.501): onto the score, and onto its most. */
+  /** Abilities raised for good (Capability API 1.503): onto the score, and onto its most. */
   abilityRaises?: Readonly<Record<string, { score: number; max: number }>>;
 }
 
 /** One stack of the ruleset's items a character holds, as the sheet reads it: what the item is, how
  *  many, and whether it is worn (on, and bound where it must be). */
-/** An entry stored in an item or a creature (Capability API 1.509): which, the level it was paid at,
+/** An entry stored in an item or a creature (Capability API 1.511): which, the level it was paid at,
  *  and its caster's numbers, which whoever casts it from there uses. */
 export interface RulesetStoredEntry {
   entry: string;
@@ -297,14 +297,14 @@ export interface RulesetStoredEntry {
   toHit?: number;
 }
 
-/** An item's rolled call kept over its existence (Capability API 1.576): an Efreeti Bottle. `kept` is
+/** An item's rolled call kept over its existence (Capability API 1.578): an Efreeti Bottle. `kept` is
  *  the option it first rolled, from 1; `ever` how many times it has been used; `spent` that it is
  *  spent for good. */
 export interface RulesetItemCallRoll {
   kept?: number;
   ever?: number;
   spent?: true;
-  /** Rounds the creature it called still stays (1.597), for a wait that starts at its departure. */
+  /** Rounds the creature it called still stays (1.599), for a wait that starts at its departure. */
   outRounds?: number;
 }
 
@@ -316,30 +316,30 @@ export interface RulesetSheetItem {
   name?: string;
   /** Which inventory stack this is, so what a fight shoots or loads can be written back to it. */
   stack?: { id: string; ref: string; holder?: string };
-  /** Held for what a cast makes (1.706): the item it makes, by reference, none of it held yet. */
+  /** Held for what a cast makes (1.708): the item it makes, by reference, none of it held yet. */
   made?: string;
-  /** What it holds was made to last only so long (1.745), so it is a place of its own. */
+  /** What it holds was made to last only so long (1.747), so it is a place of its own. */
   madeLasting?: true;
-  /** Wielded only while what an item's use (`by`, its action id) called stands (1.724), first taken
+  /** Wielded only while what an item's use (`by`, its action id) called stands (1.726), first taken
    *  on `takes` where it says: a goat of terror's horns. Never written to the bag. */
   lent?: { by: string; takes?: string };
   /** What a weapon with a clip has loaded, as the stack keeps it. Absent reads as full. */
   loaded?: number;
   /** The charges an item holds, as the stack keeps them. Absent reads as full. */
   charges?: number;
-  /** What a weapon has taken off its damage rolls for good (1.536), corroded, as the stack keeps it. */
+  /** What a weapon has taken off its damage rolls for good (1.538), corroded, as the stack keeps it. */
   corroded?: number;
-  /** The levels it has ever taken in (1.556), as the stack keeps them. */
+  /** The levels it has ever taken in (1.558), as the stack keeps them. */
   absorbedEver?: number;
-  /** Its rolled call's lasting state (1.576), as the stack keeps it. */
+  /** Its rolled call's lasting state (1.578), as the stack keeps it. */
   callRoll?: RulesetItemCallRoll;
-  /** What is left of its further uses that count their own (1.504), as the stack keeps them. */
+  /** What is left of its further uses that count their own (1.506), as the stack keeps them. */
   usesLeft?: Record<string, number>;
-  /** What is stored in it (1.509), as the stack keeps it. */
+  /** What is stored in it (1.511), as the stack keeps it. */
   storedEntries?: RulesetStoredEntry[];
   /** Its switch is on, as the stack keeps it (1.170). */
   on?: true;
-  /** The form it is in (1.560), from 1 in its `forms.into`, as the stack keeps it; `item` is already
+  /** The form it is in (1.562), from 1 in its `forms.into`, as the stack keeps it; `item` is already
    *  read in that form. Absent, it is as it was made. */
   form?: number;
   /** A fake (Capability API 1.79): what it truly is, which `item` passes for. The sheet reads it as
@@ -347,7 +347,7 @@ export interface RulesetSheetItem {
   truly?: { item: RulesetCatalogItem; name: string };
 }
 
-/** An item in another form (1.560): that form's item's attack, worn effect and switch in place of its
+/** An item in another form (1.562): that form's item's attack, worn effect and switch in place of its
  *  own, and all else its own. */
 export function rulesetFormedItem(base: RulesetCatalogItem, other: RulesetCatalogItem): RulesetCatalogItem {
   const { attack: _attack, worn: _worn, toggle: _toggle, ...rest } = base;
@@ -372,7 +372,7 @@ export function rulesetHeldItemDoes(held: RulesetSheetItem): RulesetSheetItem["i
   return rulesetItemWhileLeft(held.truly?.item ?? held.item, held);
 }
 
-/** An item without the parts of its effects that hold only while something of it is left (1.717),
+/** An item without the parts of its effects that hold only while something of it is left (1.719),
  *  once that has run out: its charges, or a further use's own count, as `left` keeps them (absent
  *  reads as full). The item itself where nothing has run out. */
 export function rulesetItemWhileLeft(
@@ -419,13 +419,13 @@ function itemAbilityChanges(
     seen.add(effect);
     effects.push(effect.abilities);
   }
-  // And what the conditions they hold do, the same way (1.500).
+  // And what the conditions they hold do, the same way (1.502).
   for (const abilities of [...effects, ...conditions]) {
     for (const [id, change] of Object.entries(abilities)) {
       const current = changes.get(id) ?? { add: 0, topped: [] };
-      // Made a number whatever it was (1.500): the lowest of them, Feeblemind's 1.
+      // Made a number whatever it was (1.502): the lowest of them, Feeblemind's 1.
       if ("to" in change) current.to = Math.min(current.to ?? change.to, change.to);
-      // Lowered to a number only where it is higher (1.741): the lowest of them.
+      // Lowered to a number only where it is higher (1.743): the lowest of them.
       else if ("atMost" in change) current.atMost = Math.min(current.atMost ?? change.atMost, change.atMost);
       else if ("set" in change) current.set = Math.max(current.set ?? change.set, change.set);
       // On top of the score sets leave, up to its most (1.313).
@@ -437,7 +437,7 @@ function itemAbilityChanges(
   return changes;
 }
 
-/** What a character's items add to their proficiency bonus (1.624), from each worn item's `worn` effect
+/** What a character's items add to their proficiency bonus (1.626), from each worn item's `worn` effect
  *  and each other item's `carried` one, one item once. */
 function itemProficiencyBonus(items: ReadonlyArray<RulesetSheetItem> | undefined): number {
   const seen = new Set<unknown>();
@@ -615,7 +615,7 @@ export function rulesetSectionGroups<T extends { section?: string }>(
   return loose.length > 0 ? [...groups, { section: null, entries: loose }] : groups;
 }
 
-/** A creature's own scores as the conditions it holds change them (1.500), as a sheet's are: for a
+/** A creature's own scores as the conditions it holds change them (1.502), as a sheet's are: for a
  *  stat block with no sheet. A score past the sheet's most stays where it was printed. */
 export function rulesetChangedAbilityScores(
   definition: RulesetDefinition,
@@ -645,7 +645,7 @@ function rulesetFieldNumber(definition: RulesetDefinition, build: RulesetSheetBu
   return finite(build.fields?.[id]) ?? field.default ?? Math.min(Math.max(0, field.min), field.max);
 }
 
-/** A number field's most (1.657): its own, lowered by every sheet total it is in by what the others
+/** A number field's most (1.659): its own, lowered by every sheet total it is in by what the others
  *  there hold, never below its own least. */
 export function rulesetFieldMax(definition: RulesetDefinition, build: RulesetSheetBuild, id: string): number {
   const field = definition.sheet.fields.find((entry) => entry.id === id);
@@ -662,7 +662,7 @@ export function rulesetFieldMax(definition: RulesetDefinition, build: RulesetShe
   return Math.max(field.min, most);
 }
 
-/** The sheet totals a build holds more than (1.657), each with what it holds and its most. */
+/** The sheet totals a build holds more than (1.659), each with what it holds and its most. */
 export function rulesetSheetTotalsOver(
   definition: RulesetDefinition,
   build: RulesetSheetBuild,
@@ -754,7 +754,7 @@ function evaluateRulesetSheetUncached(
   // a `set` is a floor a higher score keeps, the `add`s go on top, and the ability's own range holds.
   const fromItems = itemAbilityChanges(live?.items, live?.conditionAbilities);
   for (const ability of sheet.abilities) {
-    // Raised for good (1.501): onto the score, and onto the most it may be.
+    // Raised for good (1.503): onto the score, and onto the most it may be.
     const raise = live?.abilityRaises?.[ability.id];
     const most = ability.max + (raise?.max ?? 0);
     const own = finite(build.abilities?.[ability.id]) ?? ability.default;
@@ -767,9 +767,9 @@ function evaluateRulesetSheetUncached(
     for (const top of change?.topped ?? []) {
       score = Math.max(score, Math.min(score + top.add, top.max, most));
     }
-    // A condition that makes it a number makes it that, last (1.500).
+    // A condition that makes it a number makes it that, last (1.502).
     if (change?.to !== undefined) score = Math.min(most, Math.max(ability.min, change.to));
-    // One lowered to a number only where it is higher (1.741), Wish's stress, after that.
+    // One lowered to a number only where it is higher (1.743), Wish's stress, after that.
     if (change?.atMost !== undefined) score = Math.max(Math.min(score, ability.min), Math.min(score, change.atMost));
     abilityScores[ability.id] = score;
     abilityMods[ability.id] = rulesetAbilityModifier(definition, score);
@@ -791,7 +791,7 @@ function evaluateRulesetSheetUncached(
   // Validation guarantees the value feeding the proficiency bonus never reads a skill or save
   // modifier, so resolving it lazily, the first time a modifier is asked for, cannot recurse.
   let proficiencyBonus: number | null = null;
-  // What items add to it (1.624): onto the derived value it reads where it reads one, so everything
+  // What items add to it (1.626): onto the derived value it reads where it reads one, so everything
   // else reading that value (a spell save DC) has it too; else onto the bonus itself.
   const itemProficiency = itemProficiencyBonus(live?.items);
   const bonusRef = resolution.proficiency?.bonus as Record<string, unknown> | undefined;
@@ -875,7 +875,7 @@ function evaluateRulesetSheetUncached(
         derived[entry.id] = key !== undefined ? entry.table[key]! : entry.default;
       } else derived[entry.id] = Math.max(...entry.of.map(resolveRef));
       if (entry.id === proficiencyDerived && itemProficiency) derived[entry.id] = derived[entry.id]! + itemProficiency;
-      // As the conditions they hold change it (1.647), before anything after it reads it: every
+      // As the conditions they hold change it (1.649), before anything after it reads it: every
       // multiplier, then every addition. Bull's Strength's doubled carrying capacity.
       const changes = live?.conditionDerived?.flatMap((one) => (one[entry.id] ? [one[entry.id]!] : [])) ?? [];
       if (changes.length) {
@@ -920,7 +920,7 @@ function evaluateRulesetSheetUncached(
     saveTiers[save.id] = tierById.has(build.saves?.[save.id] ?? "") ? build.saves[save.id]! : firstTier.id;
     saveMods[save.id] = trainedModifier(save, build.saves, saveCaps);
   }
-  // What a check with an ability alone adds (1.404): Jack of All Trades on a raw Strength check.
+  // What a check with an ability alone adds (1.406): Jack of All Trades on a raw Strength check.
   const abilityCheckAdds: Record<string, number> = {};
   for (const ability of sheet.abilities)
     if (ability.checkAdd) abilityCheckAdds[ability.id] = Math.floor(resolveRef(ability.checkAdd));
@@ -1029,7 +1029,7 @@ interface RulesetTrainedCheckTarget {
   withAbility?: string;
   /** A row of a list that is a check of its own (1.161), rather than a skill the sheet declares. */
   row?: true;
-  /** What the check is made for, as the Game Master's tag says (`for="climb"`, 1.737), for a change
+  /** What the check is made for, as the Game Master's tag says (`for="climb"`, 1.739), for a change
    *  narrowed to it. */
   purpose?: string;
 }
@@ -1041,7 +1041,7 @@ interface RulesetAbilityCheckTarget {
   id: string;
   label: string;
   withAbility?: string;
-  /** What the check is made for (1.737). */
+  /** What the check is made for (1.739). */
   purpose?: string;
 }
 
@@ -1204,7 +1204,7 @@ export function matchRulesetCheckTarget(
 export function rulesetCheckModifier(evaluated: EvaluatedRulesetSheet, target: RulesetCheckTarget | null): number {
   if (!target) return 0;
   if (target.type === "ability") {
-    // Two abilities rolled together are simply both of them, each with what its check adds (1.404).
+    // Two abilities rolled together are simply both of them, each with what its check adds (1.406).
     const adds = evaluated.abilityCheckAdds;
     const second = target.withAbility
       ? (evaluated.abilityMods[target.withAbility] ?? 0) + (adds?.[target.withAbility] ?? 0)
@@ -1357,9 +1357,9 @@ export function rollDiceSumCheck(
     advantage?: boolean;
     disadvantage?: boolean;
     preRolled?: number;
-    /** A single die's face below this counts as this (1.403): Reliable Talent's 10. */
+    /** A single die's face below this counts as this (1.405): Reliable Talent's 10. */
     faceFloor?: number;
-    /** A total below this counts as this (1.403): Indomitable Might's Strength score. */
+    /** A total below this counts as this (1.405): Indomitable Might's Strength score. */
     totalFloor?: number;
   },
   rollDie: (sides: number) => number,
@@ -1415,7 +1415,7 @@ export function rollDiceSumCheck(
       : second.worth < first.worth
         ? second
         : first;
-  // A floor under a single die (1.403) lifts the face that counted, and so its natural too.
+  // A floor under a single die (1.405) lifts the face that counted, and so its natural too.
   const floor = single && input.faceFloor !== undefined && kept.thrown[0]! < input.faceFloor ? input.faceFloor : 0;
   const usedRoll = floor ? Math.max(kept.worth, faceWorth(floor)) : kept.worth;
   const rolls = second ? [...first.thrown, ...second.thrown] : first.thrown;

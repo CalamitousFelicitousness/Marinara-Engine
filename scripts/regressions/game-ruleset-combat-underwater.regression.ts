@@ -1,11 +1,11 @@
 /**
- * Fighting under water and holding breath (Capability API 1.483).
+ * Fighting under water and holding breath (Capability API 1.485).
  *
  *   - A melee swing under water takes disadvantage unless the attacker swims or the weapon is named;
  *     a shot never reaches past its normal range, and within it takes disadvantage unless named.
  *   - Fire is halved on whoever is under water.
  *   - Breath: held for 1 + Con turns, then lasted Con turns more, then 0; exempt conditions breathe.
- *   - Water-only breathers (1.497) hold it out of the water instead.
+ *   - Water-only breathers (1.499) hold it out of the water instead.
  *   - Refusals and the install gate.
  */
 import assert from "node:assert/strict";
@@ -35,7 +35,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 483);
+  assert.ok(supportedCapabilityApi.minor >= 485);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -262,7 +262,7 @@ try {
     assert.deepEqual(breaths(fight(noBreath, { a: 2, b: 25 }, { shore: 10 }), noBreath).seen, []);
   }
   {
-    // Breathing only water (1.497): a shark on the bank holds its breath, and in the sea breathes.
+    // Breathing only water (1.499): a shark on the bank holds its breath, and in the sea breathes.
     const sharks = parsed(
       fiveE({ ...rule, breath: { ...rule.breath, exempt: undefined, waterOnly: { tags: ["gills"] } } }),
     );
@@ -278,7 +278,7 @@ try {
     assert.ok(breaths(fight(sharks, { a: 2, b: 25 }, { shore: 10 }), sharks).seen.length > 0, "others still drown");
     refused(fiveE({ ...rule, breath: { ...rule.breath, waterOnly: { tags: [] } } }), /tags/);
     const gate =
-      "A ruleset whose creatures breathe only water (underwater breath waterOnly) requires schemaVersion 2 and capabilityApi 1.497 or newer";
+      "A ruleset whose creatures breathe only water (underwater breath waterOnly) requires schemaVersion 2 and capabilityApi 1.499 or newer";
     const doc = fiveE({ ...rule, breath: { ...rule.breath, waterOnly: { tags: ["gills"] } } });
     const manifest = (minor: number) => ({
       schemaVersion: 2,
@@ -293,9 +293,9 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(496) as never, doc), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(497) as never, doc), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(496) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(498) as never, doc), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(499) as never, doc), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(498) as never, fiveE()), gate);
   }
 
   // ── Refusals ──
@@ -308,7 +308,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose fights go on under water (combat underwater) requires schemaVersion 2 and capabilityApi 1.483 or newer";
+      "A ruleset whose fights go on under water (combat underwater) requires schemaVersion 2 and capabilityApi 1.485 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -324,13 +324,13 @@ try {
     });
     const only = JSON.parse(fiveEText) as Record<string, any>;
     only.combat.underwater = { terrain: ["water"], resist: ["fire"] };
-    assert.equal(getCapabilityPackageInstallIssue(manifest(482) as never, only), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(483) as never, only), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(482) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(484) as never, only), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(485) as never, only), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(484) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Underwater: swings and shots lean as the rule says, shots stop at normal range, fire is halved, breath runs out to 0 unless exempt, and out of the water for water-only breathers; gated at 1.483 and 1.497.",
+    "Underwater: swings and shots lean as the rule says, shots stop at normal range, fire is halved, breath runs out to 0 unless exempt, and out of the water for water-only breathers; gated at 1.485 and 1.499.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

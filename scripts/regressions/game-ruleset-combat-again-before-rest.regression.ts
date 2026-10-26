@@ -1,5 +1,5 @@
 /**
- * A cost for using an item again before a rest (Capability API 1.729): 5e's Ring of X-ray Vision,
+ * A cost for using an item again before a rest (Capability API 1.731): 5e's Ring of X-ray Vision,
  * "if you use the ring again before taking a long rest, you must succeed on a DC 15 Constitution
  * saving throw or gain one level of exhaustion".
  *
@@ -42,7 +42,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 729);
+  assert.ok(supportedCapabilityApi.minor >= 731);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -262,7 +262,7 @@ try {
 
   // ── The install gate ──
   const gate =
-    "A ruleset with an item that costs something used again before a rest (use.againBeforeRest) requires schemaVersion 2 and capabilityApi 1.729 or newer";
+    "A ruleset with an item that costs something used again before a rest (use.againBeforeRest) requires schemaVersion 2 and capabilityApi 1.731 or newer";
   const manifest = (minor: number) => ({
     schemaVersion: 2,
     capabilityApi: { major: 1, minor },
@@ -276,12 +276,12 @@ try {
     permissions: [],
     restartRequired: false,
   });
-  assert.equal(getCapabilityPackageInstallIssue(manifest(728) as never, document()), gate);
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(729) as never, document()), gate);
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(728) as never, document(null)), gate);
+  assert.equal(getCapabilityPackageInstallIssue(manifest(730) as never, document()), gate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(731) as never, document()), gate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(730) as never, document(null)), gate);
 
   console.log(
-    "Again before rest: a Ring of X-ray Vision's second use before a long rest asks a DC 15 Constitution save, failed a level of exhaustion, in a fight and out; the count kept on its stack and cleared by a long rest; gated at 1.729.",
+    "Again before rest: a Ring of X-ray Vision's second use before a long rest asks a DC 15 Constitution save, failed a level of exhaustion, in a fight and out; the count kept on its stack and cleared by a long rest; gated at 1.731.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

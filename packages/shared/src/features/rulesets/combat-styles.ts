@@ -1,4 +1,4 @@
-// Which combat styles a game on a ruleset may play (Capability API 1.776): `combat.styles`.
+// Which combat styles a game on a ruleset may play (Capability API 1.778): `combat.styles`.
 //
 // A ruleset whose rules need a board (areas, reach, cover) loses them when its fights are played
 // without one, so it may name the styles its games play. Everything here is pure and reads only the

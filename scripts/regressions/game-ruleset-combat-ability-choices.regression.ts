@@ -1,5 +1,5 @@
 /**
- * Ruleset combat: an attack list's `abilityChoices` (Capability API 1.783).
+ * Ruleset combat: an attack list's `abilityChoices` (Capability API 1.785).
  *
  * A value of a row's ability column may stand for several abilities: the row swings with whichever
  * adds the most to hit and deals its damage with that one too (SRD 5.1 Finesse: "you can use your
@@ -109,7 +109,7 @@ assert.match(
 );
 assert.match(refusal(withChoices({ finesse: ["str", "str"] })), /An ability is named twice/);
 
-// Installing a ruleset that declares choices needs 1.783.
+// Installing a ruleset that declares choices needs 1.785.
 {
   const dataDir = mkdtempSync(join(tmpdir(), "marinara-ruleset-ability-choices-"));
   const previousDataDir = process.env.DATA_DIR;
@@ -132,9 +132,9 @@ assert.match(refusal(withChoices({ finesse: ["str", "str"] })), /An ability is n
       combat: { attacks: [{ list: "attacks", abilityChoices: { finesse: ["str", "dex"] } }] },
     } as never;
     const issue =
-      /choose the best of several abilities \(abilityChoices\) requires schemaVersion 2 and capabilityApi 1\.783/;
-    assert.match(getCapabilityPackageInstallIssue(manifest(782), ruleset) ?? "", issue);
-    assert.doesNotMatch(getCapabilityPackageInstallIssue(manifest(783), ruleset) ?? "", issue);
+      /choose the best of several abilities \(abilityChoices\) requires schemaVersion 2 and capabilityApi 1\.785/;
+    assert.match(getCapabilityPackageInstallIssue(manifest(784), ruleset) ?? "", issue);
+    assert.doesNotMatch(getCapabilityPackageInstallIssue(manifest(785), ruleset) ?? "", issue);
   } finally {
     rmSync(dataDir, { recursive: true, force: true });
     if (previousDataDir === undefined) delete process.env.DATA_DIR;
@@ -142,7 +142,7 @@ assert.match(refusal(withChoices({ finesse: ["str", "str"] })), /An ability is n
   }
 }
 
-// A number off the sheet to hit on the rows a column picks out (1.790): Archery's +2 on a bow, and
+// A number off the sheet to hit on the rows a column picks out (1.792): Archery's +2 on a bow, and
 // none on a thrown dagger, which reaches up close.
 {
   const archery = parsed(
@@ -222,9 +222,9 @@ assert.match(refusal(withChoices({ finesse: ["str", "str"] })), /An ability is n
       combat: { attacks: [{ list: "attacks", toHit: { sheetBonus: { value: { const: 2 } } } }] },
     } as never;
     const issue =
-      /add a number off the sheet to hit \(toHit\.sheetBonus\) requires schemaVersion 2 and capabilityApi 1\.790/;
-    assert.match(getCapabilityPackageInstallIssue(manifest(789), ruleset) ?? "", issue);
-    assert.doesNotMatch(getCapabilityPackageInstallIssue(manifest(790), ruleset) ?? "", issue);
+      /add a number off the sheet to hit \(toHit\.sheetBonus\) requires schemaVersion 2 and capabilityApi 1\.792/;
+    assert.match(getCapabilityPackageInstallIssue(manifest(791), ruleset) ?? "", issue);
+    assert.doesNotMatch(getCapabilityPackageInstallIssue(manifest(792), ruleset) ?? "", issue);
   } finally {
     rmSync(dataDir, { recursive: true, force: true });
   }

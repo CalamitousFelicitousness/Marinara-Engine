@@ -1,5 +1,5 @@
 /**
- * A contest that takes what its target holds (Capability API 1.653): 5e's Telekinesis on "an object
+ * A contest that takes what its target holds (Capability API 1.655): 5e's Telekinesis on "an object
  * worn or carried by a creature".
  *
  *   - Won, the first thing the target holds in a named slot (or with a named tag) lies at the
@@ -35,7 +35,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 653);
+  assert.ok(supportedCapabilityApi.minor >= 655);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -182,7 +182,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a contest that takes what its target holds (contest.takes) requires schemaVersion 2 and capabilityApi 1.653 or newer";
+      "A ruleset with a contest that takes what its target holds (contest.takes) requires schemaVersion 2 and capabilityApi 1.655 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -196,13 +196,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(652) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(653) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(652) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(654) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(655) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(654) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Contest takes: Telekinesis won takes the cleric's mace to the wizard's feet, lost takes nothing; gated at 1.653.",
+    "Contest takes: Telekinesis won takes the cleric's mace to the wizard's feet, lost takes nothing; gated at 1.655.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

@@ -1,5 +1,5 @@
 /**
- * A walk magic may not lower, and slipping free (Capability API 1.471).
+ * A walk magic may not lower, and slipping free (Capability API 1.473).
  *
  *   - Freedom of Movement: a spell's slowing and a spell's restraint leave its holder's walk whole;
  *     the same slowing from anything else still halves it.
@@ -36,7 +36,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 471);
+  assert.ok(supportedCapabilityApi.minor >= 473);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -222,7 +222,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose conditions or items keep a walk from being lowered or slip free (speedKeptFrom, slipsFree, or conditionImmunitiesFrom on an item) requires schemaVersion 2 and capabilityApi 1.471 or newer";
+      "A ruleset whose conditions or items keep a walk from being lowered or slip free (speedKeptFrom, slipsFree, or conditionImmunitiesFrom on an item) requires schemaVersion 2 and capabilityApi 1.473 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -236,8 +236,8 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(470) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(471) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(472) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(473) as never, fiveE()), gate);
     const ring = fiveE({});
     ring.items = { categories: [{ id: "gear", label: "Gear" }] };
     ring.catalogs.push({
@@ -255,12 +255,12 @@ try {
         },
       ],
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(470) as never, ring), gate, "a ring's immunities");
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(470) as never, fiveE({})), gate, "nothing new");
+    assert.equal(getCapabilityPackageInstallIssue(manifest(472) as never, ring), gate, "a ring's immunities");
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(472) as never, fiveE({})), gate, "nothing new");
   }
 
   console.log(
-    "Freedom of movement: a spell's slowing and stop leave the walk whole, another's does not; grappled or a creature's restraint slipped for 5 feet with the walk given back, a spell's not, too dear not offered; on items too; refusals; gated at 1.471.",
+    "Freedom of movement: a spell's slowing and stop leave the walk whole, another's does not; grappled or a creature's restraint slipped for 5 feet with the walk given back, a spell's not, too dear not offered; on items too; refusals; gated at 1.473.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

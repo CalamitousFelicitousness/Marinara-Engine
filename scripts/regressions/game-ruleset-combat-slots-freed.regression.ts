@@ -1,5 +1,5 @@
 /**
- * An item that hovers (Capability API 1.691): 5e's Animated Shield, "it hovers in your space to
+ * An item that hovers (Capability API 1.693): 5e's Animated Shield, "it hovers in your space to
  * protect you as if you were wielding it, leaving your hands free".
  *
  *   - Beside a shield, a versatile longsword deals its one-handed die; with the shield switched on
@@ -41,7 +41,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 691);
+  assert.ok(supportedCapabilityApi.minor >= 693);
   const fiveE = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -233,7 +233,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with an item switch that frees its slots or stays on only so long (toggle.freesSlots or toggle.rounds) requires schemaVersion 2 and capabilityApi 1.691 or newer";
+      "A ruleset with an item switch that frees its slots or stays on only so long (toggle.freesSlots or toggle.rounds) requires schemaVersion 2 and capabilityApi 1.693 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -255,16 +255,16 @@ try {
           entries: [{ id: "shield", label: "Shield", item: { ...shieldItem, toggle } }],
         });
       });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(690) as never, withShield(shieldItem.toggle!)), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(691) as never, withShield(shieldItem.toggle!)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(692) as never, withShield(shieldItem.toggle!)), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(693) as never, withShield(shieldItem.toggle!)), gate);
     assert.notEqual(
-      getCapabilityPackageInstallIssue(manifest(690) as never, withShield({ label: "Animate", budget: "bonus" })),
+      getCapabilityPackageInstallIssue(manifest(692) as never, withShield({ label: "Animate", budget: "bonus" })),
       gate,
     );
   }
 
   console.log(
-    "Slots freed: the hovering shield frees a hand for the longsword's versatile die, goes off after its rounds, falls with no room, leaves the inventory room; gated at 1.691.",
+    "Slots freed: the hovering shield frees a hand for the longsword's versatile die, goes off after its rounds, falls with no room, leaves the inventory room; gated at 1.693.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

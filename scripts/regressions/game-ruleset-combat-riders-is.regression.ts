@@ -1,5 +1,5 @@
 /**
- * A creature's action whose riders go only on some targets (Capability API 1.683): a merrow's
+ * A creature's action whose riders go only on some targets (Capability API 1.685): a merrow's
  * Harpoon, "If the target is Huge or smaller, it must succeed on a Strength contest against the
  * merrow or be pulled up to 20 feet toward the merrow".
  *
@@ -33,7 +33,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 683);
+  assert.ok(supportedCapabilityApi.minor >= 685);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -166,7 +166,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a creature's action whose riders go only on a target that is something (ridersIs) requires schemaVersion 2 and capabilityApi 1.683 or newer";
+      "A ruleset with a creature's action whose riders go only on a target that is something (ridersIs) requires schemaVersion 2 and capabilityApi 1.685 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -180,12 +180,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(682) as never, withHarpoon()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(683) as never, withHarpoon()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(682) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(684) as never, withHarpoon()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(685) as never, withHarpoon()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(684) as never, JSON.parse(fiveEText)), gate);
   }
 
-  console.log("Riders by size: the Harpoon pulls a Medium target, only strikes a Gargantuan one; gated at 1.683.");
+  console.log("Riders by size: the Harpoon pulls a Medium target, only strikes a Gargantuan one; gated at 1.685.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

@@ -1,5 +1,5 @@
 /**
- * An area of only its own cell (Capability API 1.687): 5e's Sphere of Annihilation, a 2-foot sphere.
+ * An area of only its own cell (Capability API 1.689): 5e's Sphere of Annihilation, a 2-foot sphere.
  *
  *   - Made, it covers one cell, not the cells around it.
  *   - Moved beside somebody, it catches nobody; moved onto them, it does.
@@ -35,7 +35,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 687);
+  assert.ok(supportedCapabilityApi.minor >= 689);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -220,7 +220,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with an area of only the cell it is at (area.oneCell) requires schemaVersion 2 and capabilityApi 1.687 or newer";
+      "A ruleset with an area of only the cell it is at (area.oneCell) requires schemaVersion 2 and capabilityApi 1.689 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -234,12 +234,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(686) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(687) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(686) as never, document({})), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(688) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(689) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(688) as never, document({})), gate);
   }
 
-  console.log("One cell: the Sphere covers only its own cell, catching only whoever it is moved onto; gated at 1.687.");
+  console.log("One cell: the Sphere covers only its own cell, catching only whoever it is moved onto; gated at 1.689.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

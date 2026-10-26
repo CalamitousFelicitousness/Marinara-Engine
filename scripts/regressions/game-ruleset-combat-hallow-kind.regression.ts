@@ -1,5 +1,5 @@
 /**
- * A kind chosen inside (Capability API 1.451).
+ * A kind chosen inside (Capability API 1.453).
  *
  *   - Hallow's fear set on fiends as it is cast: the fiend walking in is frightened, the humanoid
  *     untouched; cast with no kind chosen, on everybody; set up before a fight with a kind.
@@ -36,7 +36,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 451);
+  assert.ok(supportedCapabilityApi.minor >= 453);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -170,7 +170,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose zones work inside on a kind chosen as they are cast (inside chooses) requires schemaVersion 2 and capabilityApi 1.451 or newer";
+      "A ruleset whose zones work inside on a kind chosen as they are cast (inside chooses) requires schemaVersion 2 and capabilityApi 1.453 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -184,16 +184,16 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(450) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(451) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(452) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(453) as never, fiveE()), gate);
     assert.notEqual(
-      getCapabilityPackageInstallIssue(manifest(450) as never, fiveE({ conditions: ["frightened"] })),
+      getCapabilityPackageInstallIssue(manifest(452) as never, fiveE({ conditions: ["frightened"] })),
       gate,
     );
   }
 
   console.log(
-    "Hallow kind: its fear set on the kind chosen as it is cast, on everybody with none chosen, and on a kind set up before the fight; gated at 1.451.",
+    "Hallow kind: its fear set on the kind chosen as it is cast, on everybody with none chosen, and on a kind set up before the fight; gated at 1.453.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

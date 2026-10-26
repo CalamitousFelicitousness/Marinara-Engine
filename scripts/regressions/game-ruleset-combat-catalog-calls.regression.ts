@@ -255,7 +255,7 @@ try {
     assert.equal(of(taken.events, "called")[0]?.ids.length, 4, "a d4 thrown at its most");
   }
 
-  // ── Read from a catalog (1.387): any beast, capped by challenge, picked as it is cast ──
+  // ── Read from a catalog (1.389): any beast, capped by challenge, picked as it is cast ──
   {
     const ranked = (calls: Record<string, unknown>) =>
       parsed(
@@ -321,7 +321,7 @@ try {
     );
   }
 
-  // ── Twice as many with a 5th-level slot, three times with 7th (1.387) ──
+  // ── Twice as many with a 5th-level slot, three times with 7th (1.389) ──
   {
     const upcast = conjure({ creature: "creatures/dire-wolf", count: { flat: 1 }, timesPerSteps: 2 });
     const scaled = parsed(
@@ -347,7 +347,7 @@ try {
     assert.equal(wolves(undefined), 1, "its own 3rd-level slot");
     assert.equal(wolves("slots_5"), 2);
     assert.equal(wolves("slots_7"), 3);
-    // Eight at a time, picked among options read from the bestiary: more than eight come (1.388).
+    // Eight at a time, picked among options read from the bestiary: more than eight come (1.390).
     const pack = conjure({
       options: [
         { creature: "creatures/cinder-hound", count: { flat: 2 } },
@@ -638,18 +638,18 @@ try {
         calls: { creature: "creatures/cinder-hound", count: { flat: 1 } },
       });
     assert.notEqual(getCapabilityPackageInstallIssue(manifest(380) as never, creatureCall), gate);
-    // Read from a catalog or scaled by cost: 1.387.
+    // Read from a catalog or scaled by cost: 1.389.
     const later =
-      "A ruleset with calls read from a catalog or scaled by cost, or an attack mode on melee attacks, requires schemaVersion 2 and capabilityApi 1.387 or newer";
+      "A ruleset with calls read from a catalog or scaled by cost, or an attack mode on melee attacks, requires schemaVersion 2 and capabilityApi 1.389 or newer";
     for (const calls of [
       { from: { catalog: "creatures" }, count: { flat: 1 } },
       { creature: "creatures/dire-wolf", count: { flat: 1 }, timesPerSteps: 2 },
       { options: [{ from: { catalog: "creatures" }, count: { flat: 1 } }] },
     ]) {
-      assert.equal(getCapabilityPackageInstallIssue(manifest(386) as never, document([conjure(calls)])), later);
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(387) as never, document([conjure(calls)])), later);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(388) as never, document([conjure(calls)])), later);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(389) as never, document([conjure(calls)])), later);
     }
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(386) as never, document([conjure(options)])), later);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(388) as never, document([conjure(options)])), later);
   }
 
   console.log(

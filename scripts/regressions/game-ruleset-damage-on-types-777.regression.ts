@@ -1,4 +1,4 @@
-/** Damage changes by the blow's damage type, and spent once they add (Capability API 1.778): 5e's oil,
+/** Damage changes by the blow's damage type, and spent once they add (Capability API 1.780): 5e's oil,
  *  5 more fire damage taken only from a blow that deals fire, and only once. */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -247,17 +247,17 @@ try {
     restartRequired: false,
   });
   const gate =
-    "A ruleset whose damage changes count only on some damage types (onTypes) or are spent once they add (spentOnUse) requires schemaVersion 2 and capabilityApi 1.778 or newer";
+    "A ruleset whose damage changes count only on some damage types (onTypes) or are spent once they add (spentOnUse) requires schemaVersion 2 and capabilityApi 1.780 or newer";
   for (const id of ["oiled", "kindled", "spark"]) {
     const doc = JSON.parse(fiveE);
     doc.sheet.live.conditions.push({ id, label: id });
     doc.combat.conditions.push({ condition: id, modifiers: [structuredClone(modifiers[id])] });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(777) as any, doc), gate, id);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(778) as any, doc), gate, id);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(779) as any, doc), gate, id);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(780) as any, doc), gate, id);
   }
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(777) as any, JSON.parse(fiveE)), gate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(779) as any, JSON.parse(fiveE)), gate);
   console.info(
-    "Damage on types (1.778): oil burns only on fire, once; a fire clause and a halved save count; own damage by type with its forecast; spent once; the AI's worth; the gate.",
+    "Damage on types (1.780): oil burns only on fire, once; a fire clause and a halved save count; own damage by type with its forecast; spent once; the AI's worth; the gate.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

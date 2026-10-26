@@ -1,6 +1,6 @@
 /**
  * A creature's call commanded through one of its caller's own actions, ending as its caller is
- * incapacitated (Capability API 1.721): a chain devil's Animate Chains, which attack "when the devil
+ * incapacitated (Capability API 1.723): a chain devil's Animate Chains, which attack "when the devil
  * uses Multiattack on its turn".
  *
  *   - The chains come right after the devil and pass their turns until it makes its Multiattack.
@@ -33,7 +33,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 721);
+  assert.ok(supportedCapabilityApi.minor >= 723);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -194,7 +194,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a creature's call commanded through one of its caller's actions or ending as its caller is incapacitated (calls.commandedBy, or calls.endsWithCaller \"incapacitated\" on a creature) requires schemaVersion 2 and capabilityApi 1.721 or newer";
+      "A ruleset with a creature's call commanded through one of its caller's actions or ending as its caller is incapacitated (calls.commandedBy, or calls.endsWithCaller \"incapacitated\" on a creature) requires schemaVersion 2 and capabilityApi 1.723 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -210,14 +210,14 @@ try {
     });
     const incapacitatedOnly = fiveE(calls({ commandedBy: undefined }));
     const plain = fiveE(calls({ commandedBy: undefined, endsWithCaller: true }));
-    assert.equal(getCapabilityPackageInstallIssue(manifest(720) as never, fiveE()), gate);
-    assert.equal(getCapabilityPackageInstallIssue(manifest(720) as never, incapacitatedOnly), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(721) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(720) as never, plain), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(722) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(722) as never, incapacitatedOnly), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(723) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(722) as never, plain), gate);
   }
 
   console.log(
-    "Call commanded by: a chain devil's chains pass their turns until its Multiattack and leave as it is incapacitated; gated at 1.721.",
+    "Call commanded by: a chain devil's chains pass their turns until its Multiattack and leave as it is incapacitated; gated at 1.723.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

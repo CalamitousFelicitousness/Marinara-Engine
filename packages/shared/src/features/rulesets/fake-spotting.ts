@@ -1,5 +1,5 @@
 /**
- * Spotting fakes (Capability API 1.792): what a character can tell about an item a dishonest seller may
+ * Spotting fakes (Capability API 1.794): what a character can tell about an item a dishonest seller may
  * pass off. A fake's `tells` are the checks that can give it away, each with its difficulty and what a
  * success sees; a dishonest seller's `manner` is a check on the seller instead. Anyone may make any of
  * them, a tell's `needs` and `carries` aside (a tool check needs the kit). The Engine knows none of the
@@ -238,7 +238,7 @@ export function noticeRulesetFake(input: {
 }
 
 /**
- * What a way of seeing through fakes shows of an item (1.792), one of `items.revealsFakes` cast on it:
+ * What a way of seeing through fakes shows of an item (1.794), one of `items.revealsFakes` cast on it:
  * a fake it reads (any fake when it names no `tags` or `items`, else one carrying one of the tags or
  * being one of the items) is named, unless the fake's `foolsReveal` lists it, when it shows as what it
  * passes for. A real item, or a fake it cannot read, shows nothing of the kind: genuine for a way that

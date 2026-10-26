@@ -1,5 +1,5 @@
 /**
- * An item's use that casts other entries (Capability API 1.625): 5e's Ring of Three Wishes, "expend 1
+ * An item's use that casts other entries (Capability API 1.627): 5e's Ring of Three Wishes, "expend 1
  * of its 3 charges to cast the wish spell from it."
  *
  *   - Each spell from 1st to 8th level is on its wearer's menu, though they know none of them; cast,
@@ -32,7 +32,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 625);
+  assert.ok(supportedCapabilityApi.minor >= 627);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -173,7 +173,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with an item use that casts other entries (use.duplicates) requires schemaVersion 2 and capabilityApi 1.625 or newer";
+      "A ruleset with an item use that casts other entries (use.duplicates) requires schemaVersion 2 and capabilityApi 1.627 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -187,12 +187,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(624) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(625) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(626) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(627) as never, document()), gate);
   }
 
   console.log(
-    "Ring of Three Wishes: an item use casts every 1st- to 8th-level spell, paid with a charge; gated at 1.625.",
+    "Ring of Three Wishes: an item use casts every 1st- to 8th-level spell, paid with a charge; gated at 1.627.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

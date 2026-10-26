@@ -75,7 +75,7 @@ export function rulesetSenseRanges(
 }
 
 /**
- * Whether a sense that sees through only so much of each material (1.744) sees from `a` to `b`: the
+ * Whether a sense that sees through only so much of each material (1.746) sees from `a` to `b`: the
  * walls on the line between them added up by what they are made of, a cast wall by its own
  * `material`, the board's own (a solid tile, a prop, risen ground) by `combat.sight.boardWalls`, and
  * none past what it names. A wall of nothing it knows stops it. The Ring of X-ray Vision's 1 foot of
@@ -149,7 +149,7 @@ function magicalDarkness(state: RulesetEncounterState): Set<string> {
   return cells;
 }
 
-/** The cells obscuring zones cover now, each with the senses that see through it, and (1.594) the
+/** The cells obscuring zones cover now, each with the senses that see through it, and (1.596) the
  *  caster who sees through it whatever their senses. */
 function obscured(
   state: RulesetEncounterState,
@@ -555,14 +555,14 @@ export function rulesetCanSee(
 ): boolean {
   // Nobody sees somebody hidden from them (1.287).
   if (!rulesetHiddenFrom(viewer, seen) && sees(definition, state, viewer, seen, false)) return true;
-  // Or through the eyes of somebody they put a condition on that lends its holder's senses (1.466): a
+  // Or through the eyes of somebody they put a condition on that lends its holder's senses (1.468): a
   // familiar, Gaze of Two Minds.
   return lendersOf(definition, state, viewer).some(
     (lender) => !rulesetHiddenFrom(lender, seen) && sees(definition, state, lender, seen, false),
   );
 }
 
-/** Whether `viewer` sees `seen` as it truly is (1.634): with a sense that `seesTrue`, `seen` within
+/** Whether `viewer` sees `seen` as it truly is (1.636): with a sense that `seesTrue`, `seen` within
  *  its range, and in sight. 5e's Witch Sight, which no image or duplicate fools. */
 export function rulesetSeesTrue(
   definition: RulesetDefinition,
@@ -578,7 +578,7 @@ export function rulesetSeesTrue(
   return rulesetCanSee(definition, state, viewer, seen);
 }
 
-/** Who lends `viewer` their senses now (1.466): standing, holding a condition `viewer` put on them
+/** Who lends `viewer` their senses now (1.468): standing, holding a condition `viewer` put on them
  *  whose rule lends its holder's senses. */
 function lendersOf(
   definition: RulesetDefinition,
@@ -674,7 +674,7 @@ export function rulesetHidingTraits(
   };
   for (const action of who.actions) add(action.hiding, true);
   add(who.block?.hiding, false);
-  // While a condition or level of theirs says so (1.424): Divine Sense, Primeval Awareness.
+  // While a condition or level of theirs says so (1.426): Divine Sense, Primeval Awareness.
   if (definition.combat) {
     for (const entry of rulesetActiveConditions(definition, definition.combat, who)) {
       if (entry.aware) add({ aware: entry.aware }, false);
@@ -696,7 +696,7 @@ export function rulesetAwareOf(
   const own = new Set(rulesetCombatConditions(definition, viewer));
   const gap = rulesetGap(viewer, seen);
   const grid = state.board.grid;
-  // Only of some kinds (1.424), and only with a line between them that total cover does not block.
+  // Only of some kinds (1.426), and only with a line between them that total cover does not block.
   return aware.some(
     (one) =>
       gap <= one.within &&
@@ -826,7 +826,7 @@ function sees(
   }
   if (!positioned) return true;
   // A light obscurement hides nobody (1.286): it only keeps them from being seen clearly.
-  // What its caster sees through (1.594) keeps nothing from them.
+  // What its caster sees through (1.596) keeps nothing from them.
   const fogs = obscured(state).filter((fog) => (clearly || !fog.light) && fog.casterSees !== viewer.id);
   // The dark (1.294), for eyes: nobody in darkness is seen, nor anybody in dim light clearly, but by
   // a sense that sees in the dark (one step brighter) or whatever the light, within its range.
@@ -855,8 +855,8 @@ function sees(
     if (light === "dim") return dark.seeIn || !clearly;
     return dark.seeIn && !clearly;
   };
-  // A sense that sees through solid matter (1.704) looks past the walls within its range; one that
-  // sees through only so much of each material (1.744), past as much as it does.
+  // A sense that sees through solid matter (1.706) looks past the walls within its range; one that
+  // sees through only so much of each material (1.746), past as much as it does.
   const piercing = (combat.senses ?? []).filter(
     (sense) => sense.throughWalls && (!sightless || sense.blind) && (ranges[sense.id] ?? 0) >= away,
   );

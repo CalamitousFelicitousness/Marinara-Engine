@@ -38,7 +38,7 @@ export function rulesetStandingZones(
   );
 }
 
-/** The light a zone sheds now (1.297): what it `becomes` sheds once it has gone off (1.438). */
+/** The light a zone sheds now (1.297): what it `becomes` sheds once it has gone off (1.440). */
 export function rulesetZoneLights(
   zone: RulesetCombatZone,
   action: RulesetCombatAction,
@@ -46,7 +46,7 @@ export function rulesetZoneLights(
   return zone.became ? action.zone?.detonates?.becomes?.lights : action.zone?.lights;
 }
 
-/** A zone's cells, and for a wall laid as a ring (1.588) every cell it rings: Forcecage's cage. */
+/** A zone's cells, and for a wall laid as a ring (1.590) every cell it rings: Forcecage's cage. */
 export function rulesetZoneHold(
   state: RulesetEncounterState,
   caster: RulesetCombatant,
@@ -116,7 +116,7 @@ export function rulesetSyncZoneWalls(state: RulesetEncounterState): void {
     const blocks = action.zone?.blocks;
     if (!blocks || zone.anchor !== "point") continue;
     const bits = (blocks.move ? 1 : 0) | (blocks.sight ? 2 : 0);
-    // One that blocks only spells (1.587) closes no cell.
+    // One that blocks only spells (1.589) closes no cell.
     if (bits === 0) continue;
     // A broken section closes nothing (1.200).
     const broken = new Set(
@@ -144,7 +144,7 @@ export function rulesetSyncZoneWalls(state: RulesetEncounterState): void {
 }
 
 /** The zones a fight shows: each one's caster, label, rounds left and cells, and a wall's side. */
-/** Whether a side sees a zone (1.440): its caster's own always, others once one of them found it. */
+/** Whether a side sees a zone (1.442): its caster's own always, others once one of them found it. */
 export function rulesetZoneSeenBy(
   caster: RulesetCombatant,
   zone: RulesetCombatZone,
@@ -154,7 +154,7 @@ export function rulesetZoneSeenBy(
   return !action.zone?.hidden || caster.side === side || !!zone.foundBy?.includes(side);
 }
 
-/** The zones a side sees (the party's by default): a hidden one of its foes' only once found (1.440). */
+/** The zones a side sees (the party's by default): a hidden one of its foes' only once found (1.442). */
 export function rulesetZonesShown(
   state: RulesetEncounterState,
   side = "party",
@@ -217,7 +217,7 @@ export function rulesetStandingSections(state: RulesetEncounterState): Array<{
   );
 }
 
-/** Every layered wall standing (1.475), with its cells: struck at, it stands in for one blow. */
+/** Every layered wall standing (1.477), with its cells: struck at, it stands in for one blow. */
 export function rulesetStandingLayers(state: RulesetEncounterState): Array<{
   caster: RulesetCombatant;
   zone: RulesetCombatZone;

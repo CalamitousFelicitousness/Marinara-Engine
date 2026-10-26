@@ -1,5 +1,5 @@
 /**
- * Mounted combat (Capability API 1.481).
+ * Mounted combat (Capability API 1.483).
  *
  *   - Mounting a willing creature of its side beside it, a size larger, for half its speed; the rider
  *     goes where the mount walks and walks no way of its own; getting down costs half its speed.
@@ -38,7 +38,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 481);
+  assert.ok(supportedCapabilityApi.minor >= 483);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -225,7 +225,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose combatants ride one another (combat mounts, mountIndependent) requires schemaVersion 2 and capabilityApi 1.481 or newer";
+      "A ruleset whose combatants ride one another (combat mounts, mountIndependent) requires schemaVersion 2 and capabilityApi 1.483 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -239,13 +239,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(480) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(481) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(480) as never, fiveE(null)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(482) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(483) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(482) as never, fiveE(null)), gate);
   }
 
   console.log(
-    "Mounts: a knight mounts a larger horse for half their speed and rides where it walks; a controlled horse moves after its rider, dashing or dodging only; one that already acted waits; an intelligent one acts as it will; knocked prone it throws its rider unless they save; gated at 1.481.",
+    "Mounts: a knight mounts a larger horse for half their speed and rides where it walks; a controlled horse moves after its rider, dashing or dodging only; one that already acted waits; an intelligent one acts as it will; knocked prone it throws its rider unless they save; gated at 1.483.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

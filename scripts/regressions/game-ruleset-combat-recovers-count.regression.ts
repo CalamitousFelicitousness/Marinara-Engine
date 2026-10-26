@@ -1,5 +1,5 @@
 /**
- * Spent pools given back by count (Capability API 1.641): 5e's Pearl of Power, "you can use an action
+ * Spent pools given back by count (Capability API 1.643): 5e's Pearl of Power, "you can use an action
  * to speak its command word and regain one expended spell slot of up to 3rd level".
  *
  *   - Out of a fight, the item's use gives back the highest spent slot of 3rd level or lower, one.
@@ -36,7 +36,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 641);
+  assert.ok(supportedCapabilityApi.minor >= 643);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -201,7 +201,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose uses give back spent pools by count (recovers.count) requires schemaVersion 2 and capabilityApi 1.641 or newer";
+      "A ruleset whose uses give back spent pools by count (recovers.count) requires schemaVersion 2 and capabilityApi 1.643 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -215,12 +215,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(640) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(641) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(642) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(643) as never, document()), gate);
   }
 
   console.log(
-    "Pearl of Power: an item gives back its user's highest spent slot of 3rd level or lower; gated at 1.641.",
+    "Pearl of Power: an item gives back its user's highest spent slot of 3rd level or lower; gated at 1.643.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

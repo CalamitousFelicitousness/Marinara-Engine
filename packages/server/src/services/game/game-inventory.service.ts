@@ -291,7 +291,7 @@ export async function gameRulesetTurnsNativeItemsOff(db: DB, metadata: Record<st
  * it may throw to refuse the whole change. Null when the chat does not exist.
  */
 /**
- * Game time passing on the chat's clock (Capability API 1.541): the items whose charges or uses come
+ * Game time passing on the chat's clock (Capability API 1.543): the items whose charges or uses come
  * back after a wait count it, and get them back once they have waited it all. Logged, never thrown:
  * the clock moved either way.
  */
@@ -302,7 +302,7 @@ export async function passGameInventoryTime(db: DB, chatId: string, minutes: num
     if (!chat) return;
     const metadata = readMetadata(chat.metadata);
     if (metadata.gameRuleset == null) return;
-    // Only items that wait for something to come back, or that vanish (1.745), count it.
+    // Only items that wait for something to come back, or that vanish (1.747), count it.
     if (
       !normalizeGameInventoryStacks(metadata.gameInventory).some(
         (stack) => (stack.item && stack.quantity === 1) || stack.vanishesIn,
@@ -325,7 +325,7 @@ export async function passGameInventoryTime(db: DB, chatId: string, minutes: num
         ...(passed.recharged.length > 0
           ? [{ title: "Items recharged", content: rulesetItemRechargeLine(passed.recharged) }]
           : []),
-        // What was made to last only so long (1.745): Creation's.
+        // What was made to last only so long (1.747): Creation's.
         ...(passed.vanished.length > 0
           ? [{ title: "Items vanished", content: rulesetItemVanishedLine(passed.vanished) }]
           : []),
@@ -383,7 +383,7 @@ export async function applyGameInventoryChangeHeld<T>(
   if (outcome.stacks === before && outcome.journal.length === 0 && !outcome.events?.length && !outcome.metadata) {
     return { stacks: before, value: outcome.value };
   }
-  // What an item deals whoever it comes into the hands of (1.686), said in the same write and taken
+  // What an item deals whoever it comes into the hands of (1.688), said in the same write and taken
   // off their sheet once it is saved. Never at the cost of the change itself.
   let touched: Awaited<ReturnType<typeof harmWhoTouched>> = null;
   if (outcome.stacks !== before) {
@@ -419,7 +419,7 @@ export async function applyGameInventoryChangeHeld<T>(
       logger.warn(error, "[game/inventory] Could not take what an item dealt off a sheet in chat %s", chatId);
     }
   }
-  // What only a worn item kept on (1.649) comes off with the change that took the item off. Never at
+  // What only a worn item kept on (1.651) comes off with the change that took the item off. Never at
   // the cost of the change itself.
   if (outcome.stacks !== before) {
     try {
@@ -437,7 +437,7 @@ export async function applyGameInventoryChangeHeld<T>(
 }
 
 /**
- * The conditions an item's use kept on only while that item is worn (1.649, Armor of Invulnerability),
+ * The conditions an item's use kept on only while that item is worn (1.651, Armor of Invulnerability),
  * taken off every sheet whose item is no longer worn, or no longer there, on the row the sheet shows.
  */
 async function endWhatWornItemsKept(
@@ -480,7 +480,7 @@ async function endWhatWornItemsKept(
 }
 
 /**
- * What an item deals whoever it comes into the hands of (Capability API 1.686): every stack that is new,
+ * What an item deals whoever it comes into the hands of (Capability API 1.688): every stack that is new,
  * changed hands, or grew, of an item with `touchHarms`, rolled for whoever now carries it on the row the
  * sheet shows. The journal's lines, and the write that takes it off their sheets.
  */

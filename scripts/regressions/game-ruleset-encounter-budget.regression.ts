@@ -1,8 +1,8 @@
 /**
- * The encounter budget (Capability API 1.793).
+ * The encounter budget (Capability API 1.795).
  *
  *   - Schema and gate: a threat tier's `worth` and `combat.threat.budget`, its level fields, one worth
- *     a step on every row, `forGame` naming its steps; gated at 1.793.
+ *     a step on every row, `forGame` naming its steps; gated at 1.795.
  *   - What a party may meet: each member's row by level, the step its game difficulty plays at (in
  *     order, or `forGame`'s), one step higher with a boss; a crowd row up for a small party.
  *   - A fight over it: invented opponents come down a rung at a time, the one worth the most first; a
@@ -272,7 +272,7 @@ try {
     /Budget:|worth \d/,
   );
 
-  // ── The 1.793 gate ──
+  // ── The 1.795 gate ──
   const manifest = (minor: number) => ({
     schemaVersion: 2,
     capabilityApi: { major: 1, minor },
@@ -289,19 +289,19 @@ try {
     permissions: [],
     restartRequired: false,
   });
-  const gate = /encounter budget.*capabilityApi 1\.793/;
+  const gate = /encounter budget.*capabilityApi 1\.795/;
   const issue = (minor: number, one: Record<string, any>) =>
     getCapabilityPackageInstallIssue(manifest(minor) as any, one);
-  assert.match(issue(792, doc()) ?? "", gate);
-  assert.equal(issue(793, doc()), null);
+  assert.match(issue(794, doc()) ?? "", gate);
+  assert.equal(issue(795, doc()), null);
   assert.match(
     issue(
-      792,
+      794,
       doc((one) => delete one.combat.threat.budget),
     ) ?? "",
     gate,
   );
-  assert.doesNotMatch(issue(792, JSON.parse(text)) ?? "", gate);
+  assert.doesNotMatch(issue(794, JSON.parse(text)) ?? "", gate);
 
   console.log("The encounter budget brings invented foes down to what the party may meet.");
 } finally {

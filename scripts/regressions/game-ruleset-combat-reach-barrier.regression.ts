@@ -1,6 +1,6 @@
 /**
  * A barrier that stops reach, and ends as it is carried over one it keeps out (Capability API
- * 1.580): 5e's Antilife Shell.
+ * 1.582): 5e's Antilife Shell.
  *
  *   - `keepsOut.reach`: a kept-out creature outside cannot stab whoever stands inside with the least
  *     reach, nor strike them leaving it; a pike's reach and a shot still do. Without it they may.
@@ -37,7 +37,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 580);
+  assert.ok(supportedCapabilityApi.minor >= 582);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -225,7 +225,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a barrier that stops reach or ends as it is carried over one it keeps out (keepsOut reach, endsOnSweep) requires schemaVersion 2 and capabilityApi 1.580 or newer";
+      "A ruleset with a barrier that stops reach or ends as it is carried over one it keeps out (keepsOut reach, endsOnSweep) requires schemaVersion 2 and capabilityApi 1.582 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -239,16 +239,16 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(579) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(581) as never, fiveE()), gate);
     assert.equal(
-      getCapabilityPackageInstallIssue(manifest(579) as never, fiveE({ is: { types: ["giant"] }, reach: true })),
+      getCapabilityPackageInstallIssue(manifest(581) as never, fiveE({ is: { types: ["giant"] }, reach: true })),
       gate,
     );
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(580) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(582) as never, fiveE()), gate);
   }
 
   console.log(
-    "Reach barrier: no stab or strike in passing through it, a shot and a pike still; carried over one it keeps out, it ends; gated at 1.580.",
+    "Reach barrier: no stab or strike in passing through it, a shot and a pike still; carried over one it keeps out, it ends; gated at 1.582.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

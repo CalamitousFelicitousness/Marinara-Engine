@@ -1,5 +1,5 @@
 /**
- * Double damage to objects (Capability API 1.545): 5e's Siege Monster.
+ * Double damage to objects (Capability API 1.547): 5e's Siege Monster.
  *
  *   - A creature with `doubleToObjects` deals twice its damage to a board's prop, struck as a wall's
  *     section is; one without deals it as rolled. Creatures are dealt it as rolled either way.
@@ -29,7 +29,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 545);
+  assert.ok(supportedCapabilityApi.minor >= 547);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -110,7 +110,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a creature that deals double damage to objects (doubleToObjects) requires schemaVersion 2 and capabilityApi 1.545 or newer";
+      "A ruleset with a creature that deals double damage to objects (doubleToObjects) requires schemaVersion 2 and capabilityApi 1.547 or newer";
     const document = () => {
       const doc = JSON.parse(fiveEText);
       doc.catalogs
@@ -141,12 +141,12 @@ try {
     });
     const checked = parseRulesetDefinition(document());
     assert.ok(checked.ok, checked.ok ? "" : checked.issues.join("; "));
-    assert.equal(getCapabilityPackageInstallIssue(manifest(544) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(545) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(544) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(546) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(547) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(546) as never, JSON.parse(fiveEText)), gate);
   }
 
-  console.log("Siege monster: twice its damage to a door, as rolled to a creature; gated at 1.545.");
+  console.log("Siege monster: twice its damage to a door, as rolled to a creature; gated at 1.547.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

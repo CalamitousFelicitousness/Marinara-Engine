@@ -1,5 +1,5 @@
 /**
- * Stepping in front of an attack, and defense against one kind of attack (Capability API 1.494).
+ * Stepping in front of an attack, and defense against one kind of attack (Capability API 1.496).
  *
  *   - `takesAim`: taken as a ranged attack is aimed at an ally within 5 feet, its holder becomes the
  *     target instead. Not for a melee attack, nor an ally farther off.
@@ -35,7 +35,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 494);
+  assert.ok(supportedCapabilityApi.minor >= 496);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -198,7 +198,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose reactions step in front of an attack aimed at somebody else, or whose defense counts against one kind of attack (takesAim, blow on a defense modifier or an aimed moment) requires schemaVersion 2 and capabilityApi 1.494 or newer";
+      "A ruleset whose reactions step in front of an attack aimed at somebody else, or whose defense counts against one kind of attack (takesAim, blow on a defense modifier or an aimed moment) requires schemaVersion 2 and capabilityApi 1.496 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -214,18 +214,18 @@ try {
     });
     const shield = JSON.parse(fiveEText) as Record<string, any>;
     shield.catalogs.push({ id: "gear", label: "Gear", feeds: ["features"], entries: structuredClone(features) });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(493) as never, shield), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(494) as never, shield), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(495) as never, shield), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(496) as never, shield), gate);
     const guard = JSON.parse(fiveEText) as Record<string, any>;
     guard.combat.conditions[0].modifiers = [{ to: "defense", flat: 2, blow: "ranged" }];
-    assert.equal(getCapabilityPackageInstallIssue(manifest(493) as never, guard), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(495) as never, guard), gate);
     const hit = JSON.parse(fiveEText) as Record<string, any>;
     hit.combat.conditions[0].modifiers = [{ to: "damage", flat: 2, blow: "ranged" }];
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(493) as never, hit), gate, "damage had blow before");
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(495) as never, hit), gate, "damage had blow before");
   }
 
   console.log(
-    "Arrow-Catching Shield: its holder steps in to take a ranged attack aimed at an ally within 5 feet, not a melee one or a farther ally; +2 defense against ranged attacks only; gated at 1.494.",
+    "Arrow-Catching Shield: its holder steps in to take a ranged attack aimed at an ally within 5 feet, not a melee one or a farther ally; +2 defense against ranged attacks only; gated at 1.496.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

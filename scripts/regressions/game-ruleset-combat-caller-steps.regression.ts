@@ -1,5 +1,5 @@
 /**
- * A called creature's actions and its caller (Capability API 1.571): 5e's Arcane Hand.
+ * A called creature's actions and its caller (Capability API 1.573): 5e's Arcane Hand.
  *
  *   - `callerAdds: false`: the Clenched Fist takes nothing of its caller's added modifier; another
  *     action of the hand still does.
@@ -33,7 +33,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 571);
+  assert.ok(supportedCapabilityApi.minor >= 573);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -172,7 +172,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a called creature's action that keeps its caller's number off or grows with the call (callerAdds, perCallerStep) requires schemaVersion 2 and capabilityApi 1.571 or newer";
+      "A ruleset with a called creature's action that keeps its caller's number off or grows with the call (callerAdds, perCallerStep) requires schemaVersion 2 and capabilityApi 1.573 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -186,13 +186,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(570) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(571) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(570) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(572) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(573) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(572) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Caller steps: Arcane Hand's Clenched Fist takes no modifier and 2d8 more for each slot level above 5th; gated at 1.571.",
+    "Caller steps: Arcane Hand's Clenched Fist takes no modifier and 2d8 more for each slot level above 5th; gated at 1.573.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

@@ -1,5 +1,5 @@
 /**
- * Massive damage (Capability API 1.694): 5e's instant death.
+ * Massive damage (Capability API 1.696): 5e's instant death.
  *
  *   - `dying.instantDeath: "overflow-at-least-max"`: a blow whose damage left past 0 is at least the
  *     hit point maximum kills one who would lie dying outright; one less leaves them dying.
@@ -36,7 +36,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 694);
+  assert.ok(supportedCapabilityApi.minor >= 696);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -217,7 +217,7 @@ try {
   );
   {
     const gate =
-      "A ruleset whose massive damage kills outright (combat.dying.instantDeath) requires schemaVersion 2 and capabilityApi 1.694 or newer";
+      "A ruleset whose massive damage kills outright (combat.dying.instantDeath) requires schemaVersion 2 and capabilityApi 1.696 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -231,13 +231,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(693) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(694) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(693) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(695) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(696) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(695) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Massive damage: 20 past 0 on a maximum of 20 kills outright, 19 leaves them dying, temporary points soak first, 20 while down kills; Death Ward holds and Relentless Endurance does not; gated at 1.694.",
+    "Massive damage: 20 past 0 on a maximum of 20 kills outright, 19 leaves them dying, temporary points soak first, 20 while down kills; Death Ward holds and Relentless Endurance does not; gated at 1.696.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

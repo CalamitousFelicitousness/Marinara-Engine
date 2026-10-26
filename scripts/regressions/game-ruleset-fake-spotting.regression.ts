@@ -1,8 +1,8 @@
 /**
- * Spotting fakes (Capability API 1.792).
+ * Spotting fakes (Capability API 1.794).
  *
  *   - Schema and gate: a fake's `tells` and `foolsReveal`, a dishonest seller's `manner`, and the items
- *     block's `namesItAt`, `passiveBase`, `warnBy` and `revealsFakes`, gated at 1.792; tells only on a
+ *     block's `namesItAt`, `passiveBase`, `warnBy` and `revealsFakes`, gated at 1.794; tells only on a
  *     fake, a way of seeing through fakes reading only fakes, foolsReveal naming only such ways.
  *   - About to be bought: a fake is weighed by every other member of the party with no dice, and a buy
  *     somebody noticed is held unpaid for their warning; asked again that day, it goes through.
@@ -120,7 +120,7 @@ try {
     }
   }
 
-  // ── The 1.792 gate ──
+  // ── The 1.794 gate ──
   {
     const manifest = (minor: number) => ({
       schemaVersion: 2,
@@ -138,18 +138,18 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    const gate = /fakes can be spotted.*capabilityApi 1\.792/;
+    const gate = /fakes can be spotted.*capabilityApi 1\.794/;
     const issue = (minor: number, doc: Record<string, any>) =>
       getCapabilityPackageInstallIssue(manifest(minor) as any, doc);
-    assert.match(issue(791, spotting()) ?? "", gate);
-    assert.equal(issue(792, spotting()), null);
-    // Each key alone is 1.792's.
+    assert.match(issue(793, spotting()) ?? "", gate);
+    assert.equal(issue(794, spotting()), null);
+    // Each key alone is 1.794's.
     const bare = (doc: Record<string, any>) => {
       delete entryOf(doc, "bitter-tonic").item.tells;
       delete doc.items.market.sellers.find((seller: { id: string }) => seller.id === "fence").manner;
       for (const key of ["passiveBase", "namesItAt", "revealsFakes"]) delete doc.items[key];
     };
-    assert.equal(issue(791, spotting(bare)), null);
+    assert.equal(issue(793, spotting(bare)), null);
     for (const edit of [
       (doc: Record<string, any>) =>
         (entryOf(doc, "bitter-tonic").item.tells = [{ check: { ability: "nerve" }, dc: 4, says: "x" }]),
@@ -164,7 +164,7 @@ try {
     ]) {
       assert.match(
         issue(
-          791,
+          793,
           spotting((doc) => {
             bare(doc);
             edit(doc);
@@ -176,7 +176,7 @@ try {
     // Tells read only a fake; a way reads only fakes; foolsReveal names only such ways.
     assert.match(
       issue(
-        792,
+        794,
         spotting(
           (doc) => (entryOf(doc, "warming-tonic").item.tells = [{ check: { ability: "nerve" }, dc: 4, says: "x" }]),
         ),
@@ -185,21 +185,21 @@ try {
     );
     assert.match(
       issue(
-        792,
+        794,
         spotting((doc) => (doc.items.revealsFakes[1].items = ["kit/warming-tonic"])),
       ) ?? "",
       /reads "kit\/warming-tonic": it is no fake/,
     );
     assert.match(
       issue(
-        792,
+        794,
         spotting((doc) => (entryOf(doc, "bitter-tonic").item.foolsReveal = ["sight"])),
       ) ?? "",
       /fools "sight": it is none of items.revealsFakes/,
     );
     assert.match(
       issue(
-        792,
+        794,
         spotting((doc) => (entryOf(doc, "bitter-tonic").item.tells[0].carries = { anyOf: ["kit/bottled-sunlight"] })),
       ) ?? "",
       /carries "kit\/bottled-sunlight": it is no item/,

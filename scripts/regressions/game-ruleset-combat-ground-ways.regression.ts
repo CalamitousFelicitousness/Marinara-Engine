@@ -1,5 +1,5 @@
 /**
- * Ways over the ground (Capability API 1.417).
+ * Ways over the ground (Capability API 1.419).
  *
  *   - `ignoresHardGround` (Land's Stride, kept on by a feature): forest and growth cost a plain step,
  *     and the hard going a lasting area makes still counts in full.
@@ -42,7 +42,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 417);
+  assert.ok(supportedCapabilityApi.minor >= 419);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -242,7 +242,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose conditions or levels ignore ground hard going of itself (ignoresHardGround) or run up heights and across water (runsAcross) requires schemaVersion 2 and capabilityApi 1.417 or newer";
+      "A ruleset whose conditions or levels ignore ground hard going of itself (ignoresHardGround) or run up heights and across water (runsAcross) requires schemaVersion 2 and capabilityApi 1.419 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -256,13 +256,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(416) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(417) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(416) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(418) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(419) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(418) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Ground ways: Land's Stride walks forest and growth for a plain step while an area's hard going still counts; Unarmored Movement at 9th level runs up a ledge and across water, never stops on it, and a walk held on the water comes ashore; gated at 1.417.",
+    "Ground ways: Land's Stride walks forest and growth for a plain step while an area's hard going still counts; Unarmored Movement at 9th level runs up a ledge and across water, never stops on it, and a walk held on the water comes ashore; gated at 1.419.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

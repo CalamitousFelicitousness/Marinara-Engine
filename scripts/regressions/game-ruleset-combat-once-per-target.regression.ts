@@ -173,7 +173,7 @@ try {
     });
   refusedDoc(withSpell(spell("odd", { oncePerTarget: { until: "nap" } })), /Unknown rest "nap"/);
   refusedDoc(withSpell(spell("odd", { targets: "self", oncePerTarget: { until: "long" } })), /oncePerTarget/);
-  // Since 1.613 an area may be spent once on each creature it catches.
+  // Since 1.615 an area may be spent once on each creature it catches.
   parsed(withSpell(spell("odd", { area: { shape: "burst", size: 10 }, oncePerTarget: { until: "long" } })));
 
   // ── The gate ──

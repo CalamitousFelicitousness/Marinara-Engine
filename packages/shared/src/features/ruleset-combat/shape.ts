@@ -54,7 +54,7 @@ export function rulesetFormAllowed(
 }
 
 /**
- * The saves and contest checks `target`'s sheet is proficient in (1.390), each with the ability it
+ * The saves and contest checks `target`'s sheet is proficient in (1.392), each with the ability it
  * reads and what its proficiency adds: a check by the skill its value reads. Nothing without a sheet.
  */
 function rulesetProficiencies(
@@ -89,7 +89,7 @@ function rulesetProficiencies(
 }
 
 /** Whether a shape's `keeps` names this action (1.379): by id, by entry (`"catalog/entry"`, or the
- *  entry's own id), or by its whole catalog (`"catalog/*"`, 1.420). */
+ *  entry's own id), or by its whole catalog (`"catalog/*"`, 1.422). */
 export function rulesetKeepsAction(keeps: ReadonlySet<string>, one: RulesetCombatAction): boolean {
   return (
     keeps.has(one.id) ||
@@ -137,7 +137,7 @@ export function rulesetTakeShape(
     else (was as Record<string, unknown>)[key] = structuredClone(target[key]);
   }
   // What it keeps of its own: actions by id or entry ("catalog/entry", or the entry's own id), or a
-  // whole catalog ("catalog/*", 1.420), saves and checks by id.
+  // whole catalog ("catalog/*", 1.422), saves and checks by id.
   const keeps = new Set(rule.keeps ?? []);
   const kept = target.actions.filter((one) => rulesetKeepsAction(keeps, one));
   const keptIds = new Set(kept.map((one) => one.id));
@@ -164,7 +164,7 @@ export function rulesetTakeShape(
   target.speed = built.speed;
   const pick = (from: Record<string, number> | undefined, ids: readonly string[] | undefined) =>
     Object.fromEntries(Object.entries(from ?? {}).filter(([id]) => ids?.includes(id)));
-  // Where the rule says so (1.389, 1.390), each save and check its holder is proficient in is the
+  // Where the rule says so (1.391, 1.392), each save and check its holder is proficient in is the
   // better of the form's own and the form's ability with the holder's proficiency.
   const proficient = rule.betterOf ? rulesetProficiencies(definition, target) : undefined;
   const better = (

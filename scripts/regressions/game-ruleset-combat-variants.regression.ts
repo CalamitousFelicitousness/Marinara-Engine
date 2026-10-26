@@ -1,5 +1,5 @@
 /**
- * Catalog variants (Capability API 1.754).
+ * Catalog variants (Capability API 1.756).
  *
  *   - A catalog entry lists `variants`, other entries of its catalog that each say `variantOf` back:
  *     Chromatic Orb's fire and cold.
@@ -40,7 +40,7 @@ const t = ((key: string, params: Record<string, unknown> = {}) =>
   `${key}${Object.keys(params).length ? JSON.stringify(params) : ""}`) as never;
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 754);
+  assert.ok(supportedCapabilityApi.minor >= 756);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -295,14 +295,14 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with a catalog entry that has variants (variants, variantOf) requires schemaVersion 2 and capabilityApi 1.754 or newer";
-    assert.equal(getCapabilityPackageInstallIssue(manifest(753) as never, document(entries())), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(754) as never, document(entries())), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(753) as never, document([])), gate);
+      "A ruleset with a catalog entry that has variants (variants, variantOf) requires schemaVersion 2 and capabilityApi 1.756 or newer";
+    assert.equal(getCapabilityPackageInstallIssue(manifest(755) as never, document(entries())), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(756) as never, document(entries())), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(755) as never, document([])), gate);
   }
 
   console.log(
-    "Catalog variants: a builder offers only the parent, a parent's row is each variant in a fight by its own label, the fight keeps them; refusals; gated at 1.754.",
+    "Catalog variants: a builder offers only the parent, a parent's row is each variant in a fight by its own label, the fight keeps them; refusals; gated at 1.756.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

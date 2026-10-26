@@ -1,5 +1,5 @@
 /**
- * Losing heart in a fight (Capability API 1.747).
+ * Losing heart in a fight (Capability API 1.749).
  *
  *   - A rolled check against a creature's morale score, once per trigger: broken, it runs; one at the
  *     board's edge is gone at once; one that holds is not asked again for the same thing.
@@ -39,7 +39,7 @@ const { commandRulesetCombatDirector, createRulesetFight, rulesetDirectorStage, 
   await import("../../packages/server/src/services/game/ruleset-combat-director.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 747);
+  assert.ok(supportedCapabilityApi.minor >= 749);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -483,7 +483,7 @@ try {
     );
   }
 
-  // ── Caught unaware, helpless, half down unanswered (1.760) ──
+  // ── Caught unaware, helpless, half down unanswered (1.762) ──
   {
     const definition = parsed(fiveE({ check: { roll: "2d6" }, on: ["surprised", "helpless"] }));
     const caught = fight(definition, { gob: { block: block({ morale: 7 }), at: { x: 6, y: 4 } } });
@@ -539,7 +539,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with losing heart in a fight (combat.morale, or a creature's morale score or leader) requires schemaVersion 2 and capabilityApi 1.747 or newer";
+      "A ruleset with losing heart in a fight (combat.morale, or a creature's morale score or leader) requires schemaVersion 2 and capabilityApi 1.749 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -553,29 +553,29 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(746) as never, fiveE(saved)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(748) as never, fiveE(saved)), gate);
     const scored = fiveE();
     scored.catalogs.find((one: { holds?: string }) => one.holds === "creatures").entries[0].creature.morale = 8;
-    assert.equal(getCapabilityPackageInstallIssue(manifest(746) as never, scored), gate, "a morale score alone");
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(747) as never, fiveE(saved)), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(746) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(748) as never, scored), gate, "a morale score alone");
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(749) as never, fiveE(saved)), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(748) as never, fiveE()), gate);
     const gate759 =
-      "A ruleset whose fighters lose heart when surprised or helpless (combat.morale.on), or only when half down unanswered (combat.morale.halfDownUnanswered), requires schemaVersion 2 and capabilityApi 1.760 or newer";
+      "A ruleset whose fighters lose heart when surprised or helpless (combat.morale.on), or only when half down unanswered (combat.morale.halfDownUnanswered), requires schemaVersion 2 and capabilityApi 1.762 or newer";
     for (const newer of [
       { ...saved, on: ["hurt", "surprised"] },
       { ...saved, on: ["helpless"] },
       { ...rolled, halfDownUnanswered: true },
     ]) {
       assert.equal(
-        getCapabilityPackageInstallIssue(manifest(759) as never, fiveE(newer)),
+        getCapabilityPackageInstallIssue(manifest(761) as never, fiveE(newer)),
         gate759,
         JSON.stringify(newer),
       );
-      assert.notEqual(getCapabilityPackageInstallIssue(manifest(760) as never, fiveE(newer)), gate759);
+      assert.notEqual(getCapabilityPackageInstallIssue(manifest(762) as never, fiveE(newer)), gate759);
     }
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(759) as never, fiveE(saved)), gate759);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(761) as never, fiveE(saved)), gate759);
 
-    // ── Kinds that never give themselves up (1.770) ──
+    // ── Kinds that never give themselves up (1.772) ──
     const typed = (morale: unknown) => {
       const doc = fiveE(morale);
       doc.combat.creatureTypes = {
@@ -599,13 +599,13 @@ try {
     refused(typed({ ...saved, neverSurrender: ["fiend"] }), /Unknown creature type "fiend"/);
     refused(typed({ ...saved, neverSurrender: ["undead", "undead"] }), /Name each once/);
     const gate769 =
-      "A ruleset with creature types that never surrender (combat.morale.neverSurrender) requires schemaVersion 2 and capabilityApi 1.770 or newer";
-    assert.equal(getCapabilityPackageInstallIssue(manifest(769) as never, typed(stubborn)), gate769);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(770) as never, typed(stubborn)), gate769);
+      "A ruleset with creature types that never surrender (combat.morale.neverSurrender) requires schemaVersion 2 and capabilityApi 1.772 or newer";
+    assert.equal(getCapabilityPackageInstallIssue(manifest(771) as never, typed(stubborn)), gate769);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(772) as never, typed(stubborn)), gate769);
   }
 
   console.log(
-    "Combat morale: a broken goblin runs and gets away off the edge, one that holds is not asked again, a hurt thinker beside the hero surrenders, the fearless and the mindless never check; the director runs it off the board; surprised, helpless and half down unanswered (1.760); the undead never surrender (1.770); gated at 1.747, 1.760 and 1.770.",
+    "Combat morale: a broken goblin runs and gets away off the edge, one that holds is not asked again, a hurt thinker beside the hero surrenders, the fearless and the mindless never check; the director runs it off the board; surprised, helpless and half down unanswered (1.762); the undead never surrender (1.772); gated at 1.749, 1.762 and 1.772.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

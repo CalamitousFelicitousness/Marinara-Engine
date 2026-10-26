@@ -1,5 +1,5 @@
 /**
- * Casting over rounds (Capability API 1.446).
+ * Casting over rounds (Capability API 1.448).
  *
  *   - A three-round cast: paid and begun, concentrated on; its user's action spent on it as their
  *     next turn starts; landing as the last is spent, and nothing lands before.
@@ -36,7 +36,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 446);
+  assert.ok(supportedCapabilityApi.minor >= 448);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -176,7 +176,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose entries take rounds to cast (castingRounds) requires schemaVersion 2 and capabilityApi 1.446 or newer";
+      "A ruleset whose entries take rounds to cast (castingRounds) requires schemaVersion 2 and capabilityApi 1.448 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -190,12 +190,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(445) as never, fiveE(3)), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(446) as never, fiveE(3)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(447) as never, fiveE(3)), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(448) as never, fiveE(3)), gate);
   }
 
   console.log(
-    "Casting rounds: begun and paid, its action spent each turn, landing on the last; lost with the slot given back when its caster cannot act; gated at 1.446.",
+    "Casting rounds: begun and paid, its action spent each turn, landing on the last; lost with the slot given back when its caster cannot act; gated at 1.448.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

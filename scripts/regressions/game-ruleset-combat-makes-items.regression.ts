@@ -1,5 +1,5 @@
 /**
- * Items a cast makes (Capability API 1.706): 5e's Goodberry.
+ * Items a cast makes (Capability API 1.708): 5e's Goodberry.
  *
  *   - A character's entry with `makesItems` puts that many of the item into their hand as it is cast;
  *     each is used there by the item's own `use`, and what is left is written to their bag.
@@ -39,7 +39,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 706);
+  assert.ok(supportedCapabilityApi.minor >= 708);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -210,7 +210,7 @@ try {
     refused(fiveE({ item: "spells/goodberry", count: 10 }), /"spells\/goodberry" is not an item/);
     refused(fiveE({ item: "food/goodberry", count: 0 }), /makesItems/);
     const gate =
-      "A ruleset with an entry that makes items (makesItems) requires schemaVersion 2 and capabilityApi 1.706 or newer";
+      "A ruleset with an entry that makes items (makesItems) requires schemaVersion 2 and capabilityApi 1.708 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -224,12 +224,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(705) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(706) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(707) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(708) as never, fiveE()), gate);
   }
 
   console.log(
-    "Goodberry: ten berries into the caster's hand, each eaten heals 1, the rest written to their bag or the stack they carry; gated at 1.706.",
+    "Goodberry: ten berries into the caster's hand, each eaten heals 1, the rest written to their bag or the stack they carry; gated at 1.708.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

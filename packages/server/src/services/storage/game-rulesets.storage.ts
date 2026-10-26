@@ -193,7 +193,7 @@ function assertStorableRuleset(input: PutGameRulesetInput): void {
       entries: [...(entriesById[catalog.id] ?? catalog.entries ?? [])],
     })),
   };
-  // The pools hang-ons name off list rows, now every catalog's rows are here (1.390).
+  // The pools hang-ons name off list rows, now every catalog's rows are here (1.392).
   const rowIssues = rulesetHangsOnRowIssues(complete);
   if (rowIssues.length) throw new RulesetRefusedError(`The ruleset is not usable: ${rowIssues.slice(0, 5).join("; ")}`);
   for (const catalog of complete.catalogs ?? []) {

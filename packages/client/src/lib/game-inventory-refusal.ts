@@ -28,7 +28,7 @@ export function gameInventoryRefusalKeys(
 ): { message: string; reason: string } | null {
   if (update.ok || (update.action !== "buy" && update.action !== "sell")) return null;
   if (update.action === "sell" && update.revealed) return null;
-  // A buy held for a companion's warning (1.792) is the companion's to tell, in the story.
+  // A buy held for a companion's warning (1.794) is the companion's to tell, in the story.
   if (update.action === "buy" && update.reason === "held") return null;
   const reason = update.reason && SAID.has(update.reason) ? update.reason : "other";
   return {

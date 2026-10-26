@@ -1,5 +1,5 @@
 /**
- * Choices on the sheet, and values off it on attacks, checks and saves (Capability API 1.414).
+ * Choices on the sheet, and values off it on attacks, checks and saves (Capability API 1.416).
  *
  *   - Foe Slayer: the Wisdom modifier onto an attack against a favored enemy that falls short, or
  *     onto its damage when it hits without it, once on each of the ranger's turns; nothing against
@@ -44,7 +44,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 414);
+  assert.ok(supportedCapabilityApi.minor >= 416);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -395,7 +395,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose changes read choices on the sheet (atTypesIn, resistIn, damageTypeIn), come once a turn or onto damage (oncePer, orDamage), narrow to proficient checks (proficient) or add a value off the sheet to attacks, checks or saves (add) requires schemaVersion 2 and capabilityApi 1.414 or newer";
+      "A ruleset whose changes read choices on the sheet (atTypesIn, resistIn, damageTypeIn), come once a turn or onto damage (oncePer, orDamage), narrow to proficient checks (proficient) or add a value off the sheet to attacks, checks or saves (add) requires schemaVersion 2 and capabilityApi 1.416 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -409,18 +409,18 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(413) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(414) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(415) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(416) as never, fiveE()), gate);
     const resistOnly = fiveE((doc) => {
       doc.combat.levels.splice(-2, 2);
       doc.catalogs.splice(-3, 3);
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(413) as never, resistOnly), gate, "resistIn alone");
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(413) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(415) as never, resistOnly), gate, "resistIn alone");
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(415) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Sheet choices: Foe Slayer turns a near miss on a favored enemy into a hit or adds to its damage, once a turn, never on another; Elemental Affinity adds to the ancestry's type only and resists it; Natural Explorer adds the proficiency bonus to proficient Intelligence and Wisdom checks; gated at 1.414.",
+    "Sheet choices: Foe Slayer turns a near miss on a favored enemy into a hit or adds to its damage, once a turn, never on another; Elemental Affinity adds to the ancestry's type only and resists it; Natural Explorer adds the proficiency bonus to proficient Intelligence and Wisdom checks; gated at 1.416.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

@@ -47,11 +47,11 @@ export interface RulesetSaveAgainst {
   action?: readonly string[];
   /** The catalog the entry it is against came from, or the one an item's use casts from (1.265). */
   catalog?: string;
-  /** Aimed at the saver alone, not an area (1.508). */
+  /** Aimed at the saver alone, not an area (1.510). */
   alone?: boolean;
-  /** What its save says it is (1.637): a gas. */
+  /** What its save says it is (1.639): a gas. */
   qualities?: readonly string[];
-  /** The declared filters of the entry it is against (1.772), for a rescue's `against.where`. */
+  /** The declared filters of the entry it is against (1.774), for a rescue's `against.where`. */
   filters?: Record<string, unknown>;
 }
 
@@ -69,7 +69,7 @@ export function rulesetSaveAgainstMatches(
   }
   // As do the catalogs it is cast from (1.265): a spell, and then whoever cast it.
   if (against.casts && !(source.catalog !== undefined && against.casts.includes(source.catalog))) return false;
-  // And aimed at its holder alone (1.508): a Ring of Spell Turning.
+  // And aimed at its holder alone (1.510): a Ring of Spell Turning.
   if (against.alone && !source.alone) return false;
   if (
     (against.actions || against.casts || against.alone) &&
@@ -115,27 +115,27 @@ export interface RulesetCheckSource {
   light?: Readonly<{ bright: number; dim: number }>;
   /** How near it gives away whoever moves unseen (Capability API 1.319). */
   alerts?: number;
-  /** Attacks at others near its holder are made at its holder instead (Capability API 1.643). */
+  /** Attacks at others near its holder are made at its holder instead (Capability API 1.645). */
   drawsAim?: Readonly<{ within: number; blow?: "melee" | "ranged"; weapon?: true }>;
-  /** A fall does its holder no harm (Capability API 1.462 on an item; a condition's since 1.124). */
+  /** A fall does its holder no harm (Capability API 1.464 on an item; a condition's since 1.124). */
   fallsSafely?: true | Readonly<{ upTo: number; unless?: readonly string[] }>;
-  /** Conditions on its holder it holds off, not ends (Capability API 1.462 on an item). */
+  /** Conditions on its holder it holds off, not ends (Capability API 1.464 on an item). */
   suppresses?: readonly string[];
-  /** Hard going costs no more than plain ground (Capability API 1.474 on an item). */
+  /** Hard going costs no more than plain ground (Capability API 1.476 on an item). */
   ignoresHardGround?: true;
-  /** How much further its holder jumps (Capability API 1.498 on an item). */
+  /** How much further its holder jumps (Capability API 1.500 on an item). */
   jumps?: Readonly<RulesetConditionJumps>;
-  /** The conditions it keeps on its holder in a fight (Capability API 1.498 on an item). */
+  /** The conditions it keeps on its holder in a fight (Capability API 1.500 on an item). */
   keepsOn?: readonly string[];
-  /** Conditions kept off by who or what would put them on (Capability API 1.471 on an item). */
+  /** Conditions kept off by who or what would put them on (Capability API 1.473 on an item). */
   conditionImmunitiesFrom?: readonly RulesetConditionImmunityFrom[];
-  /** What entries of these catalogs put on its holder does not lower their speed (Capability API 1.471). */
+  /** What entries of these catalogs put on its holder does not lower their speed (Capability API 1.473). */
   speedKeptFrom?: Readonly<{ catalogs: readonly string[] }>;
-  /** Conditions its holder may slip free of for some of their walk (Capability API 1.471). */
+  /** Conditions its holder may slip free of for some of their walk (Capability API 1.473). */
   slipsFree?: Readonly<{ conditions: readonly string[]; cost: number; unlessCatalogs?: readonly string[] }>;
-  /** Held off while its holder has any of these, conditions or effects (Capability API 1.402). */
+  /** Held off while its holder has any of these, conditions or effects (Capability API 1.404). */
   notWhile?: readonly string[];
-  /** A floor under its holder's checks (Capability API 1.403). */
+  /** A floor under its holder's checks (Capability API 1.405). */
   checkFloor?: RulesetCheckFloor;
 }
 
@@ -203,7 +203,7 @@ export function rulesetCheckSources(
     ...rulesetItemSources(definition, build, items, sheet),
     ...rulesetSheetHideSources(definition, build),
   ];
-  // Held off while its holder has something it names (1.402), as in a fight.
+  // Held off while its holder has something it names (1.404), as in a fight.
   if (!all.some((source) => source.notWhile)) return all;
   const live = readRulesetLive(definition, build, stored);
   const has = new Set<string>([
@@ -268,7 +268,7 @@ export function rulesetItemSources(
 ): RulesetCheckSource[] {
   const sources: RulesetCheckSource[] = [];
   const seen = new Set<unknown>();
-  // What an effect keeps on (1.498), and a line with a `when` only while it reads above zero (1.638).
+  // What an effect keeps on (1.500), and a line with a `when` only while it reads above zero (1.640).
   const asSource = (
     effect: Omit<RulesetCheckSource, "keepsOn" | "name"> & { keepsOn?: readonly RulesetKeptOn[] },
     name: string,
@@ -288,7 +288,7 @@ export function rulesetItemSources(
     // A fake does what it truly does (1.79), under the name it is shown by.
     const does = rulesetHeldItemDoes(held);
     const effect = held.worn ? does.worn : does.carried;
-    // Worn by the mount its holder rides (1.702): nothing of it on them.
+    // Worn by the mount its holder rides (1.704): nothing of it on them.
     if (effect && !seen.has(effect) && !effect.wornBy) {
       seen.add(effect);
       sources.push(asSource(effect, name));
@@ -313,12 +313,12 @@ export interface RulesetCheckEffects {
   disadvantage: string[];
   /** A save these make fail without a roll. Empty for a check. */
   fails: string[];
-  /** Floors under a check (Capability API 1.403), each from a source, its `total` not yet read off
+  /** Floors under a check (Capability API 1.405), each from a source, its `total` not yet read off
    *  the sheet and its `proficient` not yet weighed. Left out where there are none. */
   floors?: Array<{ from: string; floor: RulesetCheckFloor }>;
 }
 
-/** Whether a skill trained to this tier adds its holder's whole proficiency (1.403): a tier above
+/** Whether a skill trained to this tier adds its holder's whole proficiency (1.405): a tier above
  *  the first whose multiplier is at least 1. Half proficiency is not "your proficiency bonus". */
 export function rulesetTierAddsProficiency(definition: RulesetDefinition, tier: string | undefined): boolean {
   const tiers = definition.resolution.proficiencyTiers;
@@ -337,7 +337,7 @@ export function rulesetTierAddsProficiency(definition: RulesetDefinition, tier: 
 export function rulesetCheckEffects(
   sources: readonly RulesetCheckSource[],
   target: RulesetCheckTarget | null,
-  /** Whether the roller adds their whole proficiency to this check's skill (1.414), for a change
+  /** Whether the roller adds their whole proficiency to this check's skill (1.416), for a change
    *  narrowed to such checks: Natural Explorer. */
   trained = false,
   /** What the save is made against, where the Engine knows (1.364): a modifier narrowed with `against`
@@ -371,7 +371,7 @@ export function rulesetCheckEffects(
       if (effects.includes("own-checks-advantage")) lean("advantage", source.name);
       if (effects.includes("own-checks-disadvantage")) lean("disadvantage", source.name);
     }
-    // A floor under a check (1.403), narrowed by its own abilities and skills.
+    // A floor under a check (1.405), narrowed by its own abilities and skills.
     const floor = source.checkFloor;
     if (floor && save === undefined && about(floor.skills, skill) && about(floor.abilities, ability))
       (found.floors ??= []).push({ from: source.name, floor });
@@ -382,7 +382,7 @@ export function rulesetCheckEffects(
           : modifier.to === "checks" &&
             about(modifier.skills ?? source.skills, skill) &&
             about(modifier.abilities, ability) &&
-            // Only a check made for one of its purposes (1.737): climbing or swimming.
+            // Only a check made for one of its purposes (1.739): climbing or swimming.
             about(modifier.for, target?.purpose);
       if (!applies || !rulesetSaveAgainstMatches(modifier.against, against)) continue;
       if (modifier.proficient && (skill === undefined || !trained)) continue;
@@ -411,7 +411,7 @@ export function rulesetCheckRollMode(
 export function rollRulesetCheckModifiers(
   modifiers: RulesetCheckEffects["modifiers"],
   rollDie: (sides: number) => number,
-  /** A value off the roller's sheet (1.414), for a change that adds one; without it, such adds
+  /** A value off the roller's sheet (1.416), for a change that adds one; without it, such adds
    *  nothing. */
   read?: (ref: RulesetValueRef) => number | undefined,
 ): { total: number; rolls: number[] } {
@@ -573,7 +573,7 @@ export function rulesetContextualItems(
           ...(contextual.skills ? { skills: contextual.skills } : {}),
           ...(contextual.saves ? { saves: contextual.saves } : {}),
         };
-        // Trained in the skill rolled (1.414), for a change only to those: Natural Explorer.
+        // Trained in the skill rolled (1.416), for a change only to those: Natural Explorer.
         const trained = target?.type === "skill" && rulesetTierAddsProficiency(definition, build.skills?.[target.id]);
         const effects = rulesetCheckEffects([source], target, trained);
         const leans = effects.modifiers.length + effects.advantage.length + effects.disadvantage.length > 0;

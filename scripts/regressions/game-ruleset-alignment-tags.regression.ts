@@ -1,5 +1,5 @@
 /**
- * Tags read off an alignment in words (Capability API 1.684): a creature's `alignment` and a
+ * Tags read off an alignment in words (Capability API 1.686): a creature's `alignment` and a
  * character's `creatureTypes.tagsFrom` field name the tags a target test reads, so the Talisman of
  * Pure Good's fissure slays only the evil.
  *
@@ -34,7 +34,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 684);
+  assert.ok(supportedCapabilityApi.minor >= 686);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -145,7 +145,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with tags read off an alignment in words (a creature's alignment, creatureTypes.tagsFrom) requires schemaVersion 2 and capabilityApi 1.684 or newer";
+      "A ruleset with tags read off an alignment in words (a creature's alignment, creatureTypes.tagsFrom) requires schemaVersion 2 and capabilityApi 1.686 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -159,12 +159,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(683) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(684) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(683) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(685) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(686) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(685) as never, JSON.parse(fiveEText)), gate);
   }
 
-  console.log("Alignment tags: a devil's lawful evil and a paladin's Neutral Good read as tags; gated at 1.684.");
+  console.log("Alignment tags: a devil's lawful evil and a paladin's Neutral Good read as tags; gated at 1.686.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

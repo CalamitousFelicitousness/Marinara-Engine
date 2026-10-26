@@ -1,6 +1,6 @@
 /**
  * A catalog entry's long range, and a caught missile thrown back with a die of its own (Capability
- * API 1.405).
+ * API 1.407).
  *
  *   - Deflect Missiles' throw back reaches 20 feet and 60 long.
  *   - The missile counts as a monk weapon: Martial Arts' die in place of the arrow's 1d8 where it is
@@ -41,7 +41,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 405);
+  assert.ok(supportedCapabilityApi.minor >= 407);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -260,7 +260,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose catalog entries carry a long range (longRange) or throw a caught missile back with a die of their own (throwsCaught die) requires schemaVersion 2 and capabilityApi 1.405 or newer";
+      "A ruleset whose catalog entries carry a long range (longRange) or throw a caught missile back with a die of their own (throwsCaught die) requires schemaVersion 2 and capabilityApi 1.407 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -274,17 +274,17 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(404) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(405) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(406) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(407) as never, document()), gate);
     const onlyLong = document((doc) => {
       doc.catalogs.at(-1).entries = [throwBack({}, { throwsCaught: true })];
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(404) as never, onlyLong), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(404) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(406) as never, onlyLong), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(406) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Thrown die: the throw back reaches 20 feet and 60 long; Martial Arts' die in place of the arrow's where it is the better, the arrow's own where not; gated at 1.405.",
+    "Thrown die: the throw back reaches 20 feet and 60 long; Martial Arts' die in place of the arrow's where it is the better, the arrow's own where not; gated at 1.407.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

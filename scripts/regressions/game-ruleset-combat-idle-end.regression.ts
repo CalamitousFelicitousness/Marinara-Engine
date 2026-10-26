@@ -1,5 +1,5 @@
 /**
- * A condition that ends on an idle turn (Capability API 1.421).
+ * A condition that ends on an idle turn (Capability API 1.423).
  *
  *   - Rage: kept through a turn its holder attacked a foe, or one after they took damage; gone as a
  *     turn ends with neither since their last.
@@ -34,7 +34,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 421);
+  assert.ok(supportedCapabilityApi.minor >= 423);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -163,7 +163,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose conditions end on an idle turn (endsIdle) requires schemaVersion 2 and capabilityApi 1.421 or newer";
+      "A ruleset whose conditions end on an idle turn (endsIdle) requires schemaVersion 2 and capabilityApi 1.423 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -177,13 +177,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(420) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(421) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(420) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(422) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(423) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(422) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Idle end: Rage holds through a turn that attacked a foe or followed damage, ends on an idle turn, and Persistent Rage keeps it from barbarian 15; gated at 1.421.",
+    "Idle end: Rage holds through a turn that attacked a foe or followed damage, ends on an idle turn, and Persistent Rage keeps it from barbarian 15; gated at 1.423.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

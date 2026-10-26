@@ -1,5 +1,5 @@
 /**
- * Elemental forms, and landing from a fallen mount (Capability API 1.489).
+ * Elemental forms, and landing from a fallen mount (Capability API 1.491).
  *
  *   - `stopsInFoes`: into a hostile creature's space and stopping there; never in a friend's.
  *   - `entering`: the first time in a turn its holder enters a creature's space, harm and a condition.
@@ -32,7 +32,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 489);
+  assert.ok(supportedCapabilityApi.minor >= 491);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -234,7 +234,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose combatants stop in a foe's space, harm whoever's space they enter, or land from a fallen mount (stopsInFoes, entering, mounts fall landsWith) requires schemaVersion 2 and capabilityApi 1.489 or newer";
+      "A ruleset whose combatants stop in a foe's space, harm whoever's space they enter, or land from a fallen mount (stopsInFoes, entering, mounts fall landsWith) requires schemaVersion 2 and capabilityApi 1.491 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -254,19 +254,19 @@ try {
       return one;
     };
     const air = doc((one) => (one.combat.conditions[0].stopsInFoes = true));
-    assert.equal(getCapabilityPackageInstallIssue(manifest(488) as never, air), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(489) as never, air), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(490) as never, air), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(491) as never, air), gate);
     const fire = doc((one) => (one.combat.conditions[0].entering = entering));
-    assert.equal(getCapabilityPackageInstallIssue(manifest(488) as never, fire), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(490) as never, fire), gate);
     const lands = doc(
       (one) => (one.combat.mounts = { larger: 1, fall: { save: "dex_save", difficulty: 10, landsWith: "reaction" } }),
     );
-    assert.equal(getCapabilityPackageInstallIssue(manifest(488) as never, lands), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(488) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(490) as never, lands), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(490) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Elemental forms: Air Form stops in a foe's space, Fire Form burns and sets alight each it enters once a turn, a rider lands on their feet for a reaction; gated at 1.489.",
+    "Elemental forms: Air Form stops in a foe's space, Fire Form burns and sets alight each it enters once a turn, a rider lands on their feet for a reaction; gated at 1.491.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

@@ -252,7 +252,7 @@ function readPackage(value: unknown): RulesetPackageRead {
       entries: [...(entriesById[catalog.id] ?? catalog.entries ?? [])],
     })),
   };
-  // The pools hang-ons name off list rows, now every catalog's rows are here (1.390).
+  // The pools hang-ons name off list rows, now every catalog's rows are here (1.392).
   const rowIssues = rulesetHangsOnRowIssues(complete);
   if (rowIssues.length) return refused(...rowIssues.slice(0, 10).map((issue) => `ruleset.json ${issue}`));
   for (const catalog of complete.catalogs ?? []) {

@@ -1,5 +1,5 @@
 /**
- * A contest's winner moves with the one it pushes (Capability API 1.583): Arcane Hand's Forceful
+ * A contest's winner moves with the one it pushes (Capability API 1.585): Arcane Hand's Forceful
  * Hand, "moves with the target to remain within 5 feet of it".
  *
  *   - `onWin.follows`: pushed two squares, the pusher steps into the last cell the target left.
@@ -33,7 +33,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 583);
+  assert.ok(supportedCapabilityApi.minor >= 585);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -154,7 +154,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a contest whose winner moves with the one it pushes (onWin.follows) requires schemaVersion 2 and capabilityApi 1.583 or newer";
+      "A ruleset with a contest whose winner moves with the one it pushes (onWin.follows) requires schemaVersion 2 and capabilityApi 1.585 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -168,12 +168,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(582) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(583) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(584) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(585) as never, document()), gate);
   }
 
   console.log(
-    "Contest follows: the winner steps into the last cell the one it pushed left; refused without a push; gated at 1.583.",
+    "Contest follows: the winner steps into the last cell the one it pushed left; refused without a push; gated at 1.585.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

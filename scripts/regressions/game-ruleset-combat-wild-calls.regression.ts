@@ -1,6 +1,6 @@
 /**
  * Called creatures under nobody's control, tamed while they hold a condition (Capability API
- * 1.600): Pipes of the Sewers, "Called swarms move toward the music by the shortest available route
+ * 1.602): Pipes of the Sewers, "Called swarms move toward the music by the shortest available route
  * but aren't under your control otherwise".
  *
  *   - One to three swarms, one a charge spent (`chargeStep` with the call's `perStep`).
@@ -36,7 +36,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 600);
+  assert.ok(supportedCapabilityApi.minor >= 602);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -215,7 +215,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      'A ruleset with a call whose creatures are under nobody\'s control (calls.side "none", calls.tamedWhile) requires schemaVersion 2 and capabilityApi 1.600 or newer';
+      'A ruleset with a call whose creatures are under nobody\'s control (calls.side "none", calls.tamedWhile) requires schemaVersion 2 and capabilityApi 1.602 or newer';
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -229,12 +229,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(599) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(600) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(601) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(602) as never, document()), gate);
   }
 
   console.log(
-    "Pipes of the Sewers: a swarm a charge, untamed only walking to the piper, tamed while piped; gated at 1.600.",
+    "Pipes of the Sewers: a swarm a charge, untamed only walking to the piper, tamed while piped; gated at 1.602.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

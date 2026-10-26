@@ -182,7 +182,7 @@ export async function gameMarketDayFor(
   const warned = new Set<string>();
   const inspected = new Set<string>();
   // What the replies from `from` on bought and sold (the first read from `offset` on), the fakes'
-  // buys held for a warning, and who inspected which seller's ware (1.792).
+  // buys held for a warning, and who inspected which seller's ware (1.794).
   const count = (from: { text: number; end: number }) => {
     texts.forEach((text, index) => {
       if (index < from.text) return;
@@ -293,7 +293,7 @@ export async function loadGameMarket(
   };
   const at = place?.size ? (rulesetMarketPlace(market, place.size) ?? null) : null;
   const layerOptions = gameRulesetLayerOptions(resolved);
-  // Who may spot a fake (1.792): every card, the player's first, each with their own bag and live state.
+  // Who may spot a fake (1.794): every card, the player's first, each with their own bag and live state.
   const spotter = (card: (typeof cards)[number]): RulesetSpotter => ({
     name: card.name,
     build: card.build,

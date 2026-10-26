@@ -1,6 +1,6 @@
 /**
  * A creature's call commanded on a budget, striking with its caller's own attack (Capability API
- * 1.692): a solar's Flying Sword, which attacks "using the solar's own greatsword attack" on its
+ * 1.694): a solar's Flying Sword, which attacks "using the solar's own greatsword attack" on its
  * bonus action.
  *
  *   - The sword comes commanded on the bonus action, its attack the solar's greatsword's bonus to hit
@@ -31,7 +31,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 692);
+  assert.ok(supportedCapabilityApi.minor >= 694);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -151,7 +151,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a creature's call commanded on a budget or striking with its caller's attack (calls.commandedWith or calls.fromCaller on a creature) requires schemaVersion 2 and capabilityApi 1.692 or newer";
+      "A ruleset with a creature's call commanded on a budget or striking with its caller's attack (calls.commandedWith or calls.fromCaller on a creature) requires schemaVersion 2 and capabilityApi 1.694 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -166,13 +166,13 @@ try {
       restartRequired: false,
     });
     const plain = fiveE(calls({ commandedWith: undefined, fromCaller: undefined }));
-    assert.equal(getCapabilityPackageInstallIssue(manifest(691) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(692) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(691) as never, plain), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(693) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(694) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(693) as never, plain), gate);
   }
 
   console.log(
-    "Creature call commanded: the solar's Flying Sword comes on the bonus action, striking with the greatsword's +15 and 4d6+8; gated at 1.692.",
+    "Creature call commanded: the solar's Flying Sword comes on the bonus action, striking with the greatsword's +15 and 4d6+8; gated at 1.694.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

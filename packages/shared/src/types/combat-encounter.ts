@@ -60,7 +60,7 @@ export interface CombatItemEffect {
   ruleset?: true;
   /** One of the ruleset's items that holds charges: what a use spends of the most it holds. A fight
    *  offers it while a use is left, and spends charges rather than the item. */
-  /** `rolled` (1.558): the dice a stack is found holding, rather than full. */
+  /** `rolled` (1.560): the dice a stack is found holding, rather than full. */
   charges?: { cost: number; max: number; rolled?: string };
   /** Set by the Engine on the one use whose gate its user failed: the item is spent and does nothing,
    *  and this is what the log says. */
@@ -122,17 +122,17 @@ export interface CombatVisualRequest {
   slug?: string;
 }
 
-/** A lasting entry somebody set up before a fight (1.447): a ward, a glyph, hallowed ground. `at`
+/** A lasting entry somebody set up before a fight (1.449): a ward, a glyph, hallowed ground. `at`
  *  is where they stand, or between them and their foes; `stores` names what a spell glyph holds. */
 export interface CombatStandingEntry {
   entry: string;
   at?: "self" | "between";
   stores?: string;
-  /** Who a standing entry with no zone was cast on (1.450), by name. */
+  /** Who a standing entry with no zone was cast on (1.452), by name. */
   on?: string[];
-  /** The creature type a ward that works on one sort works on (1.451), or an entry names (1.472). */
+  /** The creature type a ward that works on one sort works on (1.453), or an entry names (1.474). */
   kind?: string;
-  /** The way an entry done one of several ways is done (1.472): the creature Find Familiar calls. */
+  /** The way an entry done one of several ways is done (1.474): the creature Find Familiar calls. */
   mode?: string;
 }
 
@@ -142,7 +142,7 @@ export interface CombatPartyMember {
   surprised?: boolean;
   /** Where the story put them as it begins (2026-10-24), when it did; a ruleset fight reads it. */
   start?: CombatStartPlace;
-  /** What they set up before the fight, standing as it begins (1.447); a ruleset fight reads it. */
+  /** What they set up before the fight, standing as it begins (1.449); a ruleset fight reads it. */
   standing?: CombatStandingEntry[];
   projectile?: boolean;
   requiresSight?: boolean;
@@ -170,13 +170,13 @@ export interface CombatPartyMember {
 export interface RulesetEncounterBlueprint {
   /** Caught unaware as the fight begins (1.237); a ruleset fight reads it. */
   surprised?: boolean;
-  /** What it set up before the fight, standing as it begins (1.447); a ruleset fight reads it. */
+  /** What it set up before the fight, standing as it begins (1.449); a ruleset fight reads it. */
   standing?: CombatStandingEntry[];
   /** Fights in its own lair (1.315): its lair actions are taken. A ruleset fight reads it. */
   inLair?: boolean;
   /** Where the Game Master starts it on the board (2026-10-24); a ruleset fight reads it. */
   start?: CombatStartPlace;
-  /** What the Game Master gave it to have on it (1.785), the ruleset's items by name, one a line; a
+  /** What the Game Master gave it to have on it (1.787), the ruleset's items by name, one a line; a
    *  ruleset fight reads it in place of what its bestiary entry rolls for. */
   carrying?: string[];
   creature?: string;

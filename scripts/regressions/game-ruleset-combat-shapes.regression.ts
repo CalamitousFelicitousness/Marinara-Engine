@@ -7,8 +7,8 @@
  *     action; a blow past the form's health ends the shape and the rest carries on to their own.
  *   - Polymorph on a creature: `upTo.targetLevel` refuses a form above its own number; held by
  *     concentration, the shape ends when it breaks.
- *   - Forms read from a catalog (1.386): `from` with `filters` and `notFilters`.
- *   - Beast Spells and Archdruid (1.420): a level whose `shapeKeeps` names a whole catalog keeps the
+ *   - Forms read from a catalog (1.388): `from` with `filters` and `notFilters`.
+ *   - Beast Spells and Archdruid (1.422): a level whose `shapeKeeps` names a whole catalog keeps the
  *     druid's spells in any shape from 18th level, and one whose `waives` names components keeps a
  *     gag from stopping them at 20th.
  *   - Refused shapes; the install gates.
@@ -168,7 +168,7 @@ try {
     definition: RulesetDefinition,
     entries: RulesetCatalogEntry[],
     level = 8,
-    /** Proficiencies, and a better Dexterity, for `betterOf` (1.390). */
+    /** Proficiencies, and a better Dexterity, for `betterOf` (1.392). */
     trained?: { saves: Record<string, string>; skills: Record<string, string>; dex: number },
   ) => {
     const bestiary: RulesetCatalogEntriesById = {
@@ -287,7 +287,7 @@ try {
       "a way back",
     );
     assert.equal(wolfDruid.saves.wis_save, ownSaves.wis_save, "its own wisdom save, kept");
-    // Where the druid is proficient (1.389, 1.390), the better of the wolf's own and the wolf's ability
+    // Where the druid is proficient (1.391, 1.392), the better of the wolf's own and the wolf's ability
     // with the druid's proficiency (+3 at 8th level); everything else the wolf's, a better Dexterity
     // of the druid's own included.
     {
@@ -457,7 +457,7 @@ try {
     assert.deepEqual(piperBack.creature, { catalogId: "creatures", entryId: "grave-piper" });
   }
 
-  // ── Beast Spells and Archdruid (1.420) ──
+  // ── Beast Spells and Archdruid (1.422) ──
   {
     const archdruid = (doc: Record<string, any>) => {
       doc.combat.components = [
@@ -513,7 +513,7 @@ try {
     };
     assert.equal(gagged(19), false, "a gag stops a spoken spell");
     assert.equal(gagged(20), true, "but not one whose words are waived");
-    // Only the druid's own spells (1.422): a wizard's stays behind in the shape, and stays gagged.
+    // Only the druid's own spells (1.424): a wizard's stays behind in the shape, and stays gagged.
     {
       const scoped = (doc: Record<string, any>) => {
         archdruid(doc);
@@ -558,7 +558,7 @@ try {
       const labels = rulesetCombatOptions(scopedDefinition, gag, "druid").map((one) => one.label);
       assert.ok(labels.includes("Polymorph"), "a druid spell's words waived");
       assert.ok(!labels.includes("Shield"), "a wizard spell's not");
-      // A row with no cell for the column reads its default (1.423): spells the builder added from a
+      // A row with no cell for the column reads its default (1.425): spells the builder added from a
       // catalog carry no class, and 5e's column says "any".
       {
         const defaulted = (doc: Record<string, any>) => {
@@ -584,7 +584,7 @@ try {
         /List "spells" has no column "nope"/,
       );
       const gate421 =
-        "A ruleset whose conditions or levels narrow what they keep or waive to some rows (rowsWhere) requires schemaVersion 2 and capabilityApi 1.422 or newer";
+        "A ruleset whose conditions or levels narrow what they keep or waive to some rows (rowsWhere) requires schemaVersion 2 and capabilityApi 1.424 or newer";
       const manifest421 = (minor: number) => ({
         schemaVersion: 2,
         capabilityApi: { major: 1, minor },
@@ -610,7 +610,7 @@ try {
       /Unknown component "material"/,
     );
     const gate =
-      "A ruleset whose conditions or levels keep actions in any shape (shapeKeeps) or waive components (waives) requires schemaVersion 2 and capabilityApi 1.420 or newer";
+      "A ruleset whose conditions or levels keep actions in any shape (shapeKeeps) or waive components (waives) requires schemaVersion 2 and capabilityApi 1.422 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -625,9 +625,9 @@ try {
       restartRequired: false,
     });
     const withLevels = document([wolfOnly, spoken], archdruid);
-    assert.equal(getCapabilityPackageInstallIssue(manifest(419) as never, withLevels), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(420) as never, withLevels), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(419) as never, document([wolfOnly])), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(421) as never, withLevels), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(422) as never, withLevels), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(421) as never, document([wolfOnly])), gate);
   }
 
   // ── Refused shapes ──
@@ -677,7 +677,7 @@ try {
     );
   }
 
-  // ── Forms read from a catalog (1.386): every beast, or everything but constructs and undead ──
+  // ── Forms read from a catalog (1.388): every beast, or everything but constructs and undead ──
   {
     const modesOf = (forms: Record<string, unknown>) => {
       const definition = parsed(document([wildShape(forms)]));
@@ -713,7 +713,7 @@ try {
       ["form-creatures-giant-eagle", "form-creatures-cinder-hound", "form-creatures-dire-wolf"],
     );
     refused(document([wildShape({ upTo: { filter: "cr", at: { const: 1 } } })]), /read "from" a catalog/);
-    // Gated at 1.386; named forms alone stay 1.379's.
+    // Gated at 1.388; named forms alone stay 1.379's.
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -728,11 +728,11 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with shape forms read from a catalog requires schemaVersion 2 and capabilityApi 1.386 or newer";
+      "A ruleset with shape forms read from a catalog requires schemaVersion 2 and capabilityApi 1.388 or newer";
     const reading = document([wildShape({ from: { catalog: "creatures", filters: { kind: "Beast" } } })]);
-    assert.equal(getCapabilityPackageInstallIssue(manifest(385) as never, reading), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(386) as never, reading), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(385) as never, document([wolfOnly])), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(387) as never, reading), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(388) as never, reading), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(387) as never, document([wolfOnly])), gate);
   }
 
   // ── Taken by the Engine once its slots are spent, or hurt (laptop pass 6 2026-10-26: a druid 4 with

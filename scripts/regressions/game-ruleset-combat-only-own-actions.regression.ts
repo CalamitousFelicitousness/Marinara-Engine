@@ -1,5 +1,5 @@
 /**
- * A behavior's `only` keeping the condition's own actions (Capability API 1.586): 5e's Wind Walk,
+ * A behavior's `only` keeping the condition's own actions (Capability API 1.588): 5e's Wind Walk,
  * "The only actions a creature can take in this form are the Dash action or to revert to its normal
  * form".
  *
@@ -32,7 +32,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 586);
+  assert.ok(supportedCapabilityApi.minor >= 588);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -143,7 +143,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a behavior that keeps its condition's own actions (behavior.actions) requires schemaVersion 2 and capabilityApi 1.586 or newer";
+      "A ruleset with a behavior that keeps its condition's own actions (behavior.actions) requires schemaVersion 2 and capabilityApi 1.588 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -157,12 +157,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(585) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(586) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(587) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(588) as never, document()), gate);
   }
 
   console.log(
-    "Only, with its own actions: Dash and Wind Walk's revert offered, a spell not; refusals; gated at 1.586.",
+    "Only, with its own actions: Dash and Wind Walk's revert offered, a spell not; refusals; gated at 1.588.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

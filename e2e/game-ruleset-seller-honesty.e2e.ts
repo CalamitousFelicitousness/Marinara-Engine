@@ -10,7 +10,7 @@ import { openGame, savedInventory, withImports } from "./game-ruleset-fight-fixt
  * show a warming tonic and never the bitter tonic it truly is, while the next prompt tells the Game
  * Master the truth. Sold to the honest chandler, it is seen through: the notification says what it
  * really was and what it fetched, and it leaves the bag. Before it is bought, Juno notices it with no
- * dice (Capability API 1.792): the first buy is held unpaid for her warning, and the Game Master is told
+ * dice (Capability API 1.794): the first buy is held unpaid for her warning, and the Game Master is told
  * to have her warn the buyer; asked again, it goes through.
  */
 

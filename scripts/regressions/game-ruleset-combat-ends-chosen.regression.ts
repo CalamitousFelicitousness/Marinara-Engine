@@ -1,5 +1,5 @@
 /**
- * Picking what endsSpells ends, ending a lasting area, and endsSpells on an item (Capability API 1.412).
+ * Picking what endsSpells ends, ending a lasting area, and endsSpells on an item (Capability API 1.414).
  *
  *   - Cleansing Touch (`chosen`): the menu offers each of the target's spells, and the one picked ends
  *     rather than the highest; nothing picked, the highest.
@@ -40,7 +40,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 412);
+  assert.ok(supportedCapabilityApi.minor >= 414);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -331,7 +331,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose entries end a spell their user picks (endsSpells chosen) or a lasting area (endsSpells zones) requires schemaVersion 2 and capabilityApi 1.412 or newer";
+      "A ruleset whose entries end a spell their user picks (endsSpells chosen) or a lasting area (endsSpells zones) requires schemaVersion 2 and capabilityApi 1.414 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -345,13 +345,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(411) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(412) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(411) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(413) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(414) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(413) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Ends chosen: Cleansing Touch ends the spell picked, the highest when none is; Dispel Magic ends a lasting area, outright or on a check, with its concentration; a scroll ends spells too; gated at 1.412.",
+    "Ends chosen: Cleansing Touch ends the spell picked, the highest when none is; Dispel Magic ends a lasting area, outright or on a check, with its concentration; a scroll ends spells too; gated at 1.414.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

@@ -1,5 +1,5 @@
 /**
- * A condition that ends once its source takes another action (Capability API 1.584): 5e's Arcane
+ * A condition that ends once its source takes another action (Capability API 1.586): 5e's Arcane
  * Hand's Interposing Hand, "until you give the hand a different command".
  *
  *   - `endsWhenSource.acts`: on until its source acts again; a move or a turn ended leaves it on.
@@ -33,7 +33,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 584);
+  assert.ok(supportedCapabilityApi.minor >= 586);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -130,9 +130,9 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a condition that ends when its source is stopped or unheard (endsWhenSource) requires schemaVersion 2 and capabilityApi 1.569 or newer";
+      "A ruleset with a condition that ends when its source is stopped or unheard (endsWhenSource) requires schemaVersion 2 and capabilityApi 1.571 or newer";
     const acts =
-      "A ruleset with a condition that ends once its source takes another action (endsWhenSource.acts) requires schemaVersion 2 and capabilityApi 1.584 or newer";
+      "A ruleset with a condition that ends once its source takes another action (endsWhenSource.acts) requires schemaVersion 2 and capabilityApi 1.586 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -146,13 +146,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(583) as never, document()), acts);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(584) as never, document()), acts);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(584) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(585) as never, document()), acts);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(586) as never, document()), acts);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(586) as never, document()), gate);
   }
 
   console.log(
-    "Ends when its source acts: on until another action of theirs, put on afresh by the same; gated at 1.584.",
+    "Ends when its source acts: on until another action of theirs, put on afresh by the same; gated at 1.586.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

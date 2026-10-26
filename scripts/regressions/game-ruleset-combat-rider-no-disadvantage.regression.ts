@@ -80,7 +80,7 @@ try {
     const definition = parsedOrThrow(document(kind, all));
     const carried = definition.catalogs!.find((catalog) => catalog.id === "sneak")!.entries![0]!;
     assert.deepEqual(kind === "catalog" ? carried.mechanics!.rider!.when : carried.creature!.riders![0]!.when, all);
-    // Six at most since 1.529's surprised and not-yet-acted targets.
+    // Six at most since 1.531's surprised and not-yet-acted targets.
     for (const when of [[], ["adjacent"], [...all, "target-hurt", "target-surprised", "target-not-yet-acted", word]]) {
       const parsed = parseRulesetDefinition(document(kind, when));
       assert.equal(parsed.ok, false, `${kind}: invalid when ${JSON.stringify(when)} should be refused`);
@@ -95,7 +95,7 @@ try {
     if (!node || typeof node !== "object") return;
     if (node.properties?.on?.const === "hit" && node.properties?.oncePer && node.properties?.when) {
       shapes++;
-      // With 1.529's surprised and not-yet-acted targets.
+      // With 1.531's surprised and not-yet-acted targets.
       assert.deepEqual(node.properties.when.items.enum, [
         "advantage",
         "ally-adjacent",

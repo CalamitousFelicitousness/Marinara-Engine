@@ -596,7 +596,7 @@ export interface RulesetFightOpponent {
   tactics?: Pick<CombatTactics, "proficiency" | "adjective">;
   /** How a story fight has it (1.363): its Legendary Resistance and health, when it is a bestiary's. */
   adjust?: { legendaryResistance?: number; maxHp?: number; calls?: Array<{ action: string; creature: string }> };
-  /** What the Game Master gave it to have on it (1.785), one line an item by its name or reference:
+  /** What the Game Master gave it to have on it (1.787), one line an item by its name or reference:
    *  in place of what its bestiary entry rolls for, and none at all when empty. */
   items?: string[];
   /** Coins it comes back with, from an earlier fight it got away from. */
@@ -646,9 +646,9 @@ export interface RulesetFightSeed {
   live: RulesetLiveStates | null;
   /** What each party member holds, by name, when the ruleset's sheet reads items. */
   items?: (name: string) => RulesetSheetItem[];
-  /** Whose bag each party member's items are in, by name (1.706): null for the player's own. */
+  /** Whose bag each party member's items are in, by name (1.708): null for the player's own. */
   holders?: (name: string) => string | null;
-  /** The ruleset's items (1.785), for what its opponents have on them: none read without it. */
+  /** The ruleset's items (1.787), for what its opponents have on them: none read without it. */
   itemBook?: Pick<RulesetItemBook, "entries" | "coins" | "itemOf"> & Partial<Pick<RulesetItemBook, "itemNamed">>;
   /** The catalogs the party's own rows came from, so the fight knows what an ability costs. */
   partyCatalogs: RulesetCatalogEntriesById;
@@ -661,11 +661,11 @@ export interface RulesetFightSeed {
   /** Held Ground (1.323): whoever reaches no health in this fight is felled instead. The story's
    *  region rule decides it; the fight only keeps it. */
   heldGround?: RulesetHeldGround;
-  /** What was set up before the fight (1.447), standing as it begins. */
+  /** What was set up before the fight (1.449), standing as it begins. */
   standing?: RulesetStandingZone[];
   /** The scene's time of day as the game tracks it (1.291), which sets the light outdoors. */
   time?: string | null;
-  /** The game's difficulty, for the ruleset's encounter budget (1.793): invented opponents are brought
+  /** The game's difficulty, for the ruleset's encounter budget (1.795): invented opponents are brought
    *  down a rung while the fight is over it. `kept` are opponents never moved (those that come back).
    *  Left out (a story's fight, a test), nothing is moved. */
   budget?: { difficulty: GameDifficulty; kept?: string[] };
@@ -702,7 +702,7 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
 
   const adjustments: string[] = [];
   const lootTables: Record<string, string> = {};
-  /** What each bestiary opponent may have on it (1.785), by combatant id. */
+  /** What each bestiary opponent may have on it (1.787), by combatant id. */
   const inventories = new Map<string, NonNullable<RulesetCreature["inventory"]>>();
   /** Invented opponents written as sheets, and the tier each is held to once it is built. */
   const heldToTier = new Map<string, NonNullable<typeof combat.threat>["tiers"][number]>();
@@ -808,7 +808,7 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
       }
     return best?.type;
   };
-  // The encounter budget (1.793): an invented opponent is brought down a rung at a time, the one worth
+  // The encounter budget (1.795): an invented opponent is brought down a rung at a time, the one worth
   // the most first, while the fight is worth more than the party's budget at the game's difficulty (one
   // step higher with a boss in it). A bestiary creature is counted as it is (laptop party B, 2026-10-25:
   // four CR 3 winter wolves and an invented CR 8 against a level 5 party, wiped in seven rounds).
@@ -1265,7 +1265,7 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
     });
   }
 
-  // What each opponent has on it as it begins (1.785): what the Game Master gave it, else what its
+  // What each opponent has on it as it begins (1.787): what the Game Master gave it, else what its
   // bestiary entry rolls for, by the fight's own seed so the same fight has the same.
   const purses: Record<string, Array<{ ref: string; name: string; count: number }>> = {};
   if (input.itemBook) {
@@ -1370,8 +1370,8 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
     for (const line of holdRulesetCombatant(definition, built, tier)) adjustments.push(`${built.name}: ${line}`);
   }
   // What a member's sheet keeps from a use outside a fight comes along on its own, paid for then
-  // (1.788): their familiar. The Game Master's own listing of the same entry is left out for it.
-  // And the shape one keeps them in (1.791): a druid who went into the fight a wolf starts it one.
+  // (1.790): their familiar. The Game Master's own listing of the same entry is left out for it.
+  // And the shape one keeps them in (1.793): a druid who went into the fight a wolf starts it one.
   const kept = encounter.combatants.flatMap((one) => {
     if (one.side !== "party" || !one.sheet) return [];
     const stored = input.live?.[normalizeCharacterLookupName(one.name)];
@@ -1396,7 +1396,7 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
     ),
     ...kept,
   ];
-  // What was set up before it stands as it begins (1.447).
+  // What was set up before it stands as it begins (1.449).
   if (standing.length) {
     const stood = rulesetStandingAtStart(definition, encounter, standing);
     encounter = stood.state;
@@ -1498,10 +1498,10 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
   return { ok: true, fight, ...(standInId ? { standIn: standInId } : {}) };
 }
 
-/** Where the dice for what opponents have on them (1.785) start, apart from the board's and the fight's. */
+/** Where the dice for what opponents have on them (1.787) start, apart from the board's and the fight's. */
 const RULESET_CARRIED_CURSOR = 17840;
 
-/** The items the Game Master gave an opponent (1.785), each line one of the ruleset's by its reference
+/** The items the Game Master gave an opponent (1.787), each line one of the ruleset's by its reference
  *  or its name, any case: lines naming one item are added together, and one naming none is told. */
 function rulesetGivenItems(
   book: Pick<RulesetItemBook, "entries" | "coins"> & Partial<Pick<RulesetItemBook, "itemNamed">>,
@@ -1899,7 +1899,7 @@ export function rulesetController(
   // party's side (1.325) is the Engine's unless the player took them.
   if (combatant.side === "party") {
     const chosen = fight.controllers[combatant.id];
-    // Out of their caller's command (1.605), they act on their own, whoever took them.
+    // Out of their caller's command (1.607), they act on their own, whoever took them.
     if (combatant.calledOnOwn) return "ai";
     return chosen === "ai" || (combatant.calledBy && chosen !== "manual") ? "ai" : "manual";
   }
@@ -1937,7 +1937,7 @@ export function rulesetFightLiveStates(fight: RulesetFightState): RulesetLiveSta
     }
     if (!combatant.sheet) continue;
     let state = combatant.sheet.live as RulesetLiveState;
-    // A kept call killed or dismissed in the fight is gone from its caller's sheet (1.788).
+    // A kept call killed or dismissed in the fight is gone from its caller's sheet (1.790).
     if (state?.called) {
       const lost = Object.keys(state.called).filter((entry) =>
         fight.encounter.combatants.some(
@@ -1953,7 +1953,7 @@ export function rulesetFightLiveStates(fight: RulesetFightState): RulesetLiveSta
         if (!Object.keys(called).length) delete state.called;
       }
     }
-    // So is a kept shape that ended in it (1.791), and one still held keeps its form's health and the
+    // So is a kept shape that ended in it (1.793), and one still held keeps its form's health and the
     // condition holding it, which the fight's end took off; a shape they took in the fight by an
     // entry of their own and still hold as it ends is kept from then on.
     const shape = combatant.shape;
@@ -2049,7 +2049,7 @@ export function syncRulesetCombatants(definition: RulesetDefinition, state: Comb
 }
 
 /** What a fighter is for, read once off what its ruleset sheet or block can do (a priest supports, a
- *  mage casts), or as its own data says (1.748). The ruleset is what it fights with, so a game card's
+ *  mage casts), or as its own data says (1.750). The ruleset is what it fights with, so a game card's
  *  class or skills say nothing here. */
 function rulesetReadRole(
   definition: RulesetDefinition,
@@ -2173,11 +2173,11 @@ function spentPoolsOf(definition: RulesetDefinition, combatant: RulesetCombatant
     .map((pool) => ({ id: pool.key, label: pool.label, value: pool.value, max: pool.max, ...unitOf(pool.key) }));
   return pools.length ? pools : undefined;
 }
-/** What is done by praying whatever the ruleset marks (1.771): a Channel Divinity, a turning, a prayer. */
+/** What is done by praying whatever the ruleset marks (1.773): a Channel Divinity, a turning, a prayer. */
 const PRAYED_BY_NAME =
   /\b(?:channel divinity|turn(?:s|ing)? (?:the )?(?:undead|faithless|unholy)|divine intervention|pray(?:s|ers?|ing)?|worship)\b/i;
 
-/** The ids of what a combatant casts by praying (1.771), in a ruleset with `combat.poses` only. */
+/** The ids of what a combatant casts by praying (1.773), in a ruleset with `combat.poses` only. */
 function rulesetPrayedOptions(definition: RulesetDefinition, combatant: RulesetCombatant): string[] {
   if (!definition.combat?.poses) return [];
   return combatant.actions
@@ -2185,7 +2185,7 @@ function rulesetPrayedOptions(definition: RulesetDefinition, combatant: RulesetC
     .map((action) => action.id);
 }
 
-/** Who has prayed since their own turn last began (1.771): a "prayed" of theirs after their last "turn". */
+/** Who has prayed since their own turn last began (1.773): a "prayed" of theirs after their last "turn". */
 function rulesetPraying(fight: RulesetFightState): Set<string> {
   const praying = new Set<string>();
   for (const { event } of fight.events) {
@@ -2201,7 +2201,7 @@ function projectCombatant(
   state: RulesetEncounterState,
   /** Whose turn it is, when one is taking it. */
   attacker: RulesetCombatant | undefined,
-  /** Who has prayed since their turn began (1.771). */
+  /** Who has prayed since their turn began (1.773). */
   praying?: ReadonlySet<string>,
 ): DirectedRulesetCombatant {
   const combat = definition.combat!;
@@ -2214,7 +2214,7 @@ function projectCombatant(
       saves: source.saves,
     }),
   );
-  // Sneaking (1.771): hidden by Hide or by one of the ruleset's hiding conditions. Only the party's own
+  // Sneaking (1.773): hidden by Hide or by one of the ruleset's hiding conditions. Only the party's own
   // are told, which says nothing of an opponent the screen should not know.
   const sneaking =
     !!combat.poses &&
@@ -2305,7 +2305,7 @@ function projectCombatant(
     ...(combatant.span !== undefined ? { span: combatant.span } : {}),
     // Drawn in its flying art (1.352): never read by the rules.
     ...(rulesetCombatantFlying(state.board?.grid, combatant) ? { flying: true as const } : {}),
-    // Drawn praying as it casts these, and sneaking while hidden (1.771): never read by the rules. Only
+    // Drawn praying as it casts these, and sneaking while hidden (1.773): never read by the rules. Only
     // the party's own are told hidden, which says nothing of an opponent the screen should not know.
     ...(() => {
       const prays = rulesetPrayedOptions(definition, combatant);
@@ -2824,7 +2824,7 @@ interface RulesetCandidate {
   choice: RulesetCombatChoice;
   option: RulesetCombatOption;
   targetId?: string;
-  /** A dodge, a getaway or a hide taken in place of an attack (1.746): made where it stands, and a
+  /** A dodge, a getaway or a hide taken in place of an attack (1.748): made where it stands, and a
    *  getaway walks off to `to` once it is taken. */
   defensive?: "dodge" | "disengage" | "hide";
   /** Where the actor walks to before doing it, on a board. The move is its own step, resolved
@@ -2921,7 +2921,7 @@ function rulesetCandidates(
   actorId: string,
   /** The Game Master's window is shown everything; the Engine's own picker is not (see the end). */
   everything = false,
-  /** Who it is (1.746): a careful, cowardly or patient one keeps its dodge, getaway and hide. */
+  /** Who it is (1.748): a careful, cowardly or patient one keeps its dodge, getaway and hide. */
   tactics?: CombatTactics,
   /** A companion's standing orders: one told to hold its ground weighs nowhere else to stand. */
   orders?: CombatOrders,
@@ -2932,7 +2932,7 @@ function rulesetCandidates(
   // Standing still is preferred when it can already do its best from where it is: a candidate that
   // walks first has to be strictly better than every one that does not, not merely as good.
   const staying = here.reduce((most, candidate) => Math.max(most, worth(candidate)), 0);
-  // One that stands by its friends or fights beside them (1.746) also weighs walking to an opponent it
+  // One that stands by its friends or fights beside them (1.748) also weighs walking to an opponent it
   // cannot reach from here, where it is worth anything: whoever is on a friend.
   const roams = tactics?.adjective === "protective" || tactics?.adjective === "coordinated";
   const reachable = new Set(here.map((candidate) => candidate.targetId));
@@ -2986,7 +2986,7 @@ function rulesetCandidates(
   // action or an empty turn is what is left when there is nothing better, never a rival. Judged over
   // the WHOLE list, walks included, so a creature that has to take a step first still takes it.
   if (everything) return candidates;
-  // A free trait taken before an attack (1.591) is taken as the attack is made, never in its place.
+  // A free trait taken before an attack (1.593) is taken as the attack is made, never in its place.
   const own = candidates.filter((candidate) => {
     const action = actor?.actions.find((one) => one.id === candidate.action.option.id);
     if (action?.free && action.beforeAttack) return false;
@@ -2997,7 +2997,7 @@ function rulesetCandidates(
     }
     return true;
   });
-  // What comes off as its holder ends a turn having struck nobody (1.421, 5e's Rage) is wasted when
+  // What comes off as its holder ends a turn having struck nobody (1.423, 5e's Rage) is wasted when
   // nothing it could do this turn harms an opponent: the use is spent and it ends with the turn
   // (cloud AI fights 2026-10-25: a Frenzy entered for a one-cell step, an Exhaustion for nothing).
   if (actor && !actor.stirred) {
@@ -3084,7 +3084,7 @@ function rulesetCandidates(
   );
 }
 
-/** The standard actions a creature may take in place of an attack to keep itself whole (1.746). */
+/** The standard actions a creature may take in place of an attack to keep itself whole (1.748). */
 function rulesetDefensiveName(option: RulesetCombatOption): RulesetCandidate["defensive"] {
   if (option.kind !== "standard") return undefined;
   const name = rulesetStandardName(option.id);
@@ -3112,7 +3112,7 @@ function rulesetKeepsGrantedDefensive(
   return !home || rulesetDangerAt(definition, encounter, actor, home) >= 0.3;
 }
 
-/** Whether a creature weighs dodging, getting away or hiding against its attacks (1.746): a careful,
+/** Whether a creature weighs dodging, getting away or hiding against its attacks (1.748): a careful,
  *  cowardly or patient one once it has lost a quarter and stands where a turn of blows would take a
  *  good share of what it has left, any of them and an animal once it is down to half, and one told to
  *  keep back wherever it is in danger. Never a mindless one, and never a whole one: a creature at full
@@ -3164,7 +3164,7 @@ function rulesetKeepsDefensive(
 }
 
 /**
- * The harm a combatant would stand in at a cell (1.746), as a share of what it has left: for every
+ * The harm a combatant would stand in at a cell (1.748), as a share of what it has left: for every
  * opponent still standing, the worst of its blows that could reach it there next turn, in full from
  * where it is and at half from a walk away. What the cautious weigh against standing there.
  */
@@ -3445,7 +3445,7 @@ function rulesetTooCloseUnderBlast(
   );
 }
 
-/** The harm a zone at a cell does whoever starts or ends a turn in it, whoever left it (1.746):
+/** The harm a zone at a cell does whoever starts or ends a turn in it, whoever left it (1.748):
  *  burning oil, a Cloud of Daggers, its own side's Spirit Guardians aside (it spares them). */
 function rulesetZoneHarmAt(
   encounter: RulesetEncounterState,
@@ -3528,7 +3528,7 @@ function rulesetZoneKillsAt(
   return harm >= health.value + health.temp;
 }
 
-/** The cell furthest from every opponent a combatant may walk to (1.746), its danger breaking ties:
+/** The cell furthest from every opponent a combatant may walk to (1.748), its danger breaking ties:
  *  where a getaway goes. Null when no cell is further than where it stands. */
 function rulesetRetreatCell(
   definition: RulesetDefinition,
@@ -3563,7 +3563,7 @@ function rulesetRetreatCell(
 }
 
 /**
- * The rest of what a creature weighs beside harm and help (1.746), onto each candidate: the danger it
+ * The rest of what a creature weighs beside harm and help (1.748), onto each candidate: the danger it
  * would stand in (`risk`), less for a dodge or a hide, and a getaway's from the cell it would run to;
  * standing up for a friend an opponent is on (`protection`), more for one who is hurt or who it
  * guards; and going at whoever its own side is already on (`coordination`).
@@ -3727,7 +3727,7 @@ function weighRulesetTeam(
   }
 }
 
-/** What a mindless creature does (1.746): whoever it went for, while they stand, else whoever is
+/** What a mindless creature does (1.748): whoever it went for, while they stand, else whoever is
  *  nearest, and nothing between turns but strike at one walking away. */
 function mindlessCandidates(
   encounter: RulesetEncounterState,
@@ -4271,7 +4271,7 @@ function rulesetCandidatesFrom(
       actor.zones?.some((one) => one.actionId === (option.castOf?.optionId ?? option.id))
     )
       continue;
-    // A cast that takes many rounds (1.446) is begun before a fight, not in one: the fight is often
+    // A cast that takes many rounds (1.448) is begun before a fight, not in one: the fight is often
     // over before it lands (re-test 2026-10-24: Animate Dead opening fights with its 10 rounds).
     if (
       (actor.actions.find((entry) => entry.id === (option.castOf?.optionId ?? option.id))?.castingRounds ?? 0) >=
@@ -4297,7 +4297,7 @@ function rulesetCandidatesFrom(
       continue;
     }
     // A legendary move (1.283) the same way, by where it would take them, and a creature's move on
-    // its own turn (1.592): an orc's Aggressive.
+    // its own turn (1.594): an orc's Aggressive.
     if (
       option.cells &&
       !option.moveAfter &&
@@ -4312,7 +4312,7 @@ function rulesetCandidatesFrom(
     if (option.kind === "move") continue;
     // Averting the eyes is settled as the turn starts (see `playRulesetTurn`), and so is slipping free.
     if (option.avert || option.slip) continue;
-    // An attack given up for a called creature's (1.473) is its player's own call: the Engine keeps
+    // An attack given up for a called creature's (1.475) is its player's own call: the Engine keeps
     // its own attacks.
     if (option.lend) continue;
     // Putting away a weapon put in hand (1.308) is its player's own call: the Engine keeps it.
@@ -4555,7 +4555,7 @@ function rulesetCandidatesFrom(
         1,
         health.value + health.temp - (lands ? rulesetPendingBlow(encounter, actor, fallingAction) : 0),
       );
-      // A symbol fight's forecast hangs on who is aimed at (1.781): their soak, their side's allies,
+      // A symbol fight's forecast hangs on who is aimed at (1.783): their soak, their side's allies,
       // the conditions they already have.
       const aimed =
         !sequenced && option.forecast?.worth !== undefined
@@ -4690,7 +4690,7 @@ function rulesetCandidatesFrom(
         // of its side's mean.
         const mean = rulesetSideHealthMean(definition, combat, encounter, target.side);
         const weighed = average >= pool ? Math.max(pool, mean * 0.75) : mean;
-        // A symbol fight's hit is weighed with what either side's spends buy (1.781). Harm past what
+        // A symbol fight's hit is weighed with what either side's spends buy (1.783). Harm past what
         // drops them, with a margin for a low roll, is spent for nothing (laptop playtest 2026-10-24:
         // a Guiding Bolt cast from a 3rd-level slot at a wolf the 1st-level one would drop, four
         // 1st-level slots still free).
@@ -5294,7 +5294,7 @@ export function rulesetEffectWorth(
       each += standsUp ? (effect === "own-attacks-disadvantage" ? 0 : one * before) : one;
     }
     if (standsUp) each += 0.1;
-    // What it makes them do (1.264, 1.528): run, wander, strike whoever is nearest, waste a turn.
+    // What it makes them do (1.264, 1.530): run, wander, strike whoever is nearest, waste a turn.
     const behavior = rule?.behavior;
     if (foe && behavior) {
       if (behavior.table || behavior.only) each += 0.6;
@@ -5304,7 +5304,7 @@ export function rulesetEffectWorth(
     }
     // A number added or taken off, whichever way it points, is worth a little; more damage of one
     // type taken only when somebody on the other side deals that type (lamp oil wants a fire), and
-    // one that counts only on blows of some types (1.778) only when somebody deals one of them.
+    // one that counts only on blows of some types (1.780) only when somebody deals one of them.
     // Only those that point its way: a defense lowered (Slow's) helps no friend, and a bonus no foe
     // (class re-test 2026-10-24: Slow cast over the party as support).
     const lifts = (modifier: { to: string; flat?: number; times?: number; dice?: string; mode?: string }) => {
@@ -5326,7 +5326,7 @@ export function rulesetEffectWorth(
     );
     // One that only touches ability checks is nothing in a fight (re-test 2026-10-23: a cleric spent
     // six actions on Guidance; cloud caster bosses 2026-10-26: a priest's legendary actions on it);
-    // one spent the first time it adds (1.778) is worth half.
+    // one spent the first time it adds (1.780) is worth half.
     each += Math.min(
       0.3,
       counted.reduce(
@@ -6697,7 +6697,7 @@ function rulesetDrivenFrom(
   for (const entry of rulesetActiveConditions(definition, definition.combat, actor, encounter)) {
     const moves = entry.behavior?.moves;
     if (!moves) continue;
-    // From whoever put it on, or the point it was put on from (1.442).
+    // From whoever put it on, or the point it was put on from (1.444).
     const source = rulesetBehaviorAnchor(encounter, actor, entry.condition, entry.behavior);
     if (source) return { source, moves };
   }
@@ -7015,7 +7015,7 @@ function weighChoices(
   const unit =
     [...state.party, ...state.enemies].find((entry) => entry.id === actorId) ??
     (actor ? rulesetPassingUnit(actor) : undefined);
-  // Its mind as its own data says (1.746), unless the Game Master said otherwise for this fight: a
+  // Its mind as its own data says (1.748), unless the Game Master said otherwise for this fight: a
   // profile made before that was read is made again with it.
   if (unit && actor) {
     // How hurt it is, as the fight has it now: what a coward or a hurt animal weighs.
@@ -7035,7 +7035,7 @@ function weighChoices(
       if (home) unit.tactics.home = home;
     }
     rulesetReadRole(definition, unit, actor, encounter);
-    // How its own data says it goes about a fight (1.748): its temperament, unless the Game Master
+    // How its own data says it goes about a fight (1.750): its temperament, unless the Game Master
     // gave it one for this fight, and its role.
     const behavior = rulesetCombatantBehavior(definition, actor);
     if (behavior && unit.tactics.mind !== "mindless") {
@@ -7408,7 +7408,7 @@ function rulesetOrdersFor(
 }
 
 /**
- * Whom a bodyguard (a `behavior.guards`, combat AI A5, 1.762) stands up for: the nearest friend still
+ * Whom a bodyguard (a `behavior.guards`, combat AI A5, 1.764) stands up for: the nearest friend still
  * standing of the kinds it names (its side's leader, a caster, one who heals others), as a companion
  * told to protect them: a standing order, so a mindless one (a Shield Guardian, a zombie) keeps it
  * too. None once nobody of those kinds is left.
@@ -8301,7 +8301,7 @@ function weighRulesetMindFocus(
 }
 
 /**
- * What a creature's own data says it goes for (1.748), onto each candidate as `focus`: whom it goes
+ * What a creature's own data says it goes for (1.750), onto each candidate as `focus`: whom it goes
  * for first (`targets`, the first named most), a friend's opponent for a `pack` hunter, and on its
  * first turns the opener it names, ahead of anything else worth doing.
  */
@@ -8439,7 +8439,7 @@ function applyChoiceOnly(
   fight: RulesetFightState,
   choice: RulesetCombatChoice,
 ): { refused: RulesetCombatEvent | null } {
-  // Cast by praying (1.771): read before the step, which may spend what it was.
+  // Cast by praying (1.773): read before the step, which may spend what it was.
   const user = rulesetCombatant(fight.encounter, choice.actorId);
   const prayed =
     user && rulesetPrayedOptions(definition, user).includes(choice.optionId)
@@ -8745,7 +8745,7 @@ function playRulesetTurn(
   // Somebody on the ground gets up before anything else, when the rules offer it. Fighting from
   // the floor is worse in every ruleset that has a floor, walking is not offered until they are up,
   // and a creature that never stood would lie where it fell for the rest of the fight.
-  // Out of a fallen holder first (1.390), where it was inside one: nothing else is offered in there.
+  // Out of a fallen holder first (1.392), where it was inside one: nothing else is offered in there.
   const climb = rulesetCombatOptions(definition, fight.encounter, actorId).find(
     (option) => option.id === RULESET_CLIMB_OUT_OPTION,
   );
@@ -8759,7 +8759,7 @@ function playRulesetTurn(
     (option) => option.pickUp && !option.budget,
   );
   if (pickUp) applyChoice(definition, state, fight, { actorId, optionId: pickUp.id, targetIds: [] });
-  // Slips free of whatever holds it that it may (1.471): staying held never helps it.
+  // Slips free of whatever holds it that it may (1.473): staying held never helps it.
   for (let tries = 0; tries < 12; tries += 1) {
     const slip = rulesetCombatOptions(definition, fight.encounter, actorId).find((option) => option.slip);
     if (!slip) break;
@@ -8787,7 +8787,7 @@ function playRulesetTurn(
   // Its temperament turned by what has happened (combat AI T7).
   const turned = actor ? shiftRulesetTemperament(definition, state, fight.encounter, actor) : undefined;
   if (turned) record(fight, [{ type: "temperamentShift", actorId, ...turned }]);
-  // Broken (1.747): its whole turn is getting away.
+  // Broken (1.749): its whole turn is getting away.
   if (actor?.routed) {
     // With no way left to the edge it fights on, as cornered things do (laptop re-test 2026-10-24: a
     // bugbear in a cavern with no way out dashed on the spot for fifteen turns).
@@ -8800,7 +8800,7 @@ function playRulesetTurn(
     }
     recordReasons(fight, actorId, [{ why: "cornered" }]);
   }
-  // Lying in wait (1.748): it hides where it can and keeps still until its prey comes to it.
+  // Lying in wait (1.750): it hides where it can and keeps still until its prey comes to it.
   if (actor && rulesetLiesInWait(definition, state, fight.encounter, actor)) {
     const hide = rulesetCombatOptions(definition, fight.encounter, actorId).find(
       (option) => option.kind === "standard" && rulesetStandardName(option.id) === "hide",
@@ -8870,7 +8870,7 @@ function playRulesetTurn(
     fight.turnSoFar.turn === fight.encounter.turn
       ? fight.turnSoFar
       : undefined;
-  // Once it has dodged, got away or hidden (1.746), it does not walk back into the fight this turn.
+  // Once it has dodged, got away or hidden (1.748), it does not walk back into the fight this turn.
   let defended = earlier?.defended ?? false;
   // Whether its last blow was thrown from afar (combat AI P8), and whether it keeps its distance after.
   let shotFromAfar: "stay" | "kite" | false = earlier?.shotFromAfar ?? false;
@@ -8988,7 +8988,7 @@ function playRulesetTurn(
       (picked.option.ready || rulesetStandardName(picked.option.id) === "search")
     )
       break;
-    // A getaway is taken where it stands, and then it runs (1.746).
+    // A getaway is taken where it stands, and then it runs (1.748).
     if (picked.defensive === "disengage") {
       if (applyChoice(definition, state, fight, picked.choice).refused) break;
       recordReasons(
@@ -9022,7 +9022,7 @@ function playRulesetTurn(
       }
       continue;
     }
-    // Reckless first (1.591), as it is about to make a melee weapon attack.
+    // Reckless first (1.593), as it is about to make a melee weapon attack.
     takeBeforeMelee(definition, state, fight, actorId, picked.choice);
     const afar = rulesetShotFromAfar(definition, state, fight.encounter, actorId, picked.choice);
     // A refusal here would be an Engine bug rather than a player's mistake, so the turn ends
@@ -9541,7 +9541,7 @@ function keepAloft(
 }
 
 /**
- * Whether an ambusher (a `behavior.ambush`, 1.748) still lies in wait: until an opponent stands where
+ * Whether an ambusher (a `behavior.ambush`, 1.750) still lies in wait: until an opponent stands where
  * it could strike them this turn, walking first, or it has been hurt. Once it springs it never waits
  * again. Never a mindless one, and never one the Game Master or a player decides for.
  */
@@ -9582,7 +9582,7 @@ function rulesetLiesInWait(
 }
 
 /**
- * A broken creature's turn (1.747): it gets away from an opponent beside it, else dashes, and runs
+ * A broken creature's turn (1.749): it gets away from an opponent beside it, else dashes, and runs
  * for the nearest edge of the board, where it is out of the fight as its next turn starts.
  */
 function runForTheEdge(
@@ -9617,7 +9617,7 @@ function runForTheEdge(
   }
 }
 
-/** Every cell of the board's edge a running creature leaves by (1.747): its sides, and on a shaped
+/** Every cell of the board's edge a running creature leaves by (1.749): its sides, and on a shaped
  *  board (2026-10-24) its outline too, the cells beside one off the map. */
 function rulesetExitCells(grid: TacticalGrid): Array<{ x: number; y: number }> {
   const outside = grid.outside;
@@ -9655,7 +9655,7 @@ function rulesetHasWayOut(
     : false;
 }
 
-/** The cell a running creature may walk to nearest the board's edge by the walk (1.747), furthest
+/** The cell a running creature may walk to nearest the board's edge by the walk (1.749), furthest
  *  from its opponents among those as near: null when none is nearer the edge than where it stands.
  *  The way round counts, not the line: out of a cavern is back along its passage. */
 function rulesetEdgeCell(
@@ -9720,7 +9720,7 @@ function mountUp(
 }
 
 /**
- * A free trait of its own taken before its first attack of the turn (1.591), when what it is about
+ * A free trait of its own taken before its first attack of the turn (1.593), when what it is about
  * to do is a melee weapon attack: a berserker's or a minotaur's Reckless, landing on itself.
  */
 function takeBeforeMelee(

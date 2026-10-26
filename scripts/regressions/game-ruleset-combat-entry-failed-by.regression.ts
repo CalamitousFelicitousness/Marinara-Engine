@@ -1,5 +1,5 @@
 /**
- * An entry's save failed by a margin (Capability API 1.577): a Wand of Wonder's petrification.
+ * An entry's save failed by a margin (Capability API 1.579): a Wand of Wonder's petrification.
  *
  *   - `save.failedBy`: a failure by 5 or more petrifies in place of the entry's `applies`; any other
  *     failure restrains; a success does nothing.
@@ -32,7 +32,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 577);
+  assert.ok(supportedCapabilityApi.minor >= 579);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -150,7 +150,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with an entry's or item use's save failed by a margin (save.failedBy) requires schemaVersion 2 and capabilityApi 1.577 or newer";
+      "A ruleset with an entry's or item use's save failed by a margin (save.failedBy) requires schemaVersion 2 and capabilityApi 1.579 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -164,12 +164,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(576) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(577) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(578) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(579) as never, document()), gate);
   }
 
   console.log(
-    "Entry failedBy: petrified on a save failed by 5 or more, restrained on any other failure, nothing on a success; refusals; gated at 1.577.",
+    "Entry failedBy: petrified on a save failed by 5 or more, restrained on any other failure, nothing on a success; refusals; gated at 1.579.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

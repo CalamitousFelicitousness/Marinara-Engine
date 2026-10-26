@@ -648,7 +648,7 @@ export function GameSetupWizard({
   const [customTone, setCustomTone] = useState("");
   const [difficulty, setDifficulty] = useState("Normal");
   const [pickedCombatStyle, setCombatStyle] = useState<GameCombatStyle>("classic");
-  // The chosen ruleset may name the styles its games play (1.776): only those are offered, and a pick it
+  // The chosen ruleset may name the styles its games play (1.778): only those are offered, and a pick it
   // leaves out is shown and sent as the first it lists. The pick itself is kept for another ruleset.
   const combatStyles = rulesetCombatStyles(activeRuleset?.definition);
   const combatStyle = rulesetCombatStyle(activeRuleset?.definition, pickedCombatStyle, listCombatStyles());

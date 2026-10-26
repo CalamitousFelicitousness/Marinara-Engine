@@ -1,5 +1,5 @@
 /**
- * 5e's ship-readiness asks of 2026-10-23 (Capability API 1.773):
+ * 5e's ship-readiness asks of 2026-10-23 (Capability API 1.775):
  *
  *   - A fields step's `unansweredAtDefault`: its badge waits while a field holds its default (a dragon
  *     ancestor of "none").
@@ -38,7 +38,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 773);
+  assert.ok(supportedCapabilityApi.minor >= 775);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -280,15 +280,15 @@ try {
       restartRequired: false,
     });
     const gate =
-      "A ruleset with a fields step's unansweredAtDefault, a grant's entries.add, a heal's outsideFight, or an item's aliases requires schemaVersion 2 and capabilityApi 1.773 or newer";
+      "A ruleset with a fields step's unansweredAtDefault, a grant's entries.add, a heal's outsideFight, or an item's aliases requires schemaVersion 2 and capabilityApi 1.775 or newer";
     const asks = builderDoc();
-    assert.equal(getCapabilityPackageInstallIssue(manifest(772) as never, asks), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(773) as never, asks), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(772) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(774) as never, asks), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(775) as never, asks), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(774) as never, fiveE()), gate);
   }
 
   console.log(
-    "Engine asks 1.773: none is no dragon yet, an elf's languages given and never offered again, Second Wind out of a fight, a shovel for the grave spade; refused where unsaid; gated at 1.773.",
+    "Engine asks 1.775: none is no dragon yet, an elf's languages given and never offered again, Second Wind out of a fight, a shovel for the grave spade; refused where unsaid; gated at 1.775.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

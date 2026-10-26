@@ -1,5 +1,5 @@
 /**
- * Rests that do nothing (Capability API 1.707): a rakshasa's curse.
+ * Rests that do nothing (Capability API 1.709): a rakshasa's curse.
  *
  *   - While the sheet holds a condition with `blocksRests`, the rests it names (or all) do nothing,
  *     and say so; other rests, and the same rest without it, do as always.
@@ -26,7 +26,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 707);
+  assert.ok(supportedCapabilityApi.minor >= 709);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -89,7 +89,7 @@ try {
     refused(fiveE(["nap"]), /Unknown rest "nap"/);
     refused(fiveE([]), /blocksRests/);
     const gate =
-      "A ruleset with a condition that bars rests (combat.conditions[].blocksRests) requires schemaVersion 2 and capabilityApi 1.707 or newer";
+      "A ruleset with a condition that bars rests (combat.conditions[].blocksRests) requires schemaVersion 2 and capabilityApi 1.709 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -103,11 +103,11 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(706) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(707) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(708) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(709) as never, fiveE()), gate);
   }
 
-  console.log("Rests barred: cursed, a long rest does nothing and says so; only the rests named; gated at 1.707.");
+  console.log("Rests barred: cursed, a long rest does nothing and says so; only the rests named; gated at 1.709.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

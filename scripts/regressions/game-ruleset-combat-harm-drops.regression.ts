@@ -1,5 +1,5 @@
 /**
- * A condition's harm its saves wear down (Capability API 1.620): 5e's Potion of Poison, "At the start
+ * A condition's harm its saves wear down (Capability API 1.622): 5e's Potion of Poison, "At the start
  * of each of your turns ... 3d6 poison damage ... On a successful save, the poison damage ...
  * decreases by 1d6. The poison ends when the damage decreases to 0."
  *
@@ -32,7 +32,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 620);
+  assert.ok(supportedCapabilityApi.minor >= 622);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -124,7 +124,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a condition's harm its saves wear down (harms.save.drops) requires schemaVersion 2 and capabilityApi 1.620 or newer";
+      "A ruleset with a condition's harm its saves wear down (harms.save.drops) requires schemaVersion 2 and capabilityApi 1.622 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -138,12 +138,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(619) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(620) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(621) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(622) as never, document()), gate);
   }
 
   console.log(
-    "harms.save.drops: a Potion of Poison's 3d6 loses a die with each save and ends at none; gated at 1.620.",
+    "harms.save.drops: a Potion of Poison's 3d6 loses a die with each save and ends at none; gated at 1.622.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

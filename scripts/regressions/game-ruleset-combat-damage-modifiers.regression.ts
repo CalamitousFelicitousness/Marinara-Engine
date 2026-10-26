@@ -217,7 +217,7 @@ try {
   delete who(sourceless, "target").tracked[0]!.source;
   assert.equal(dealt(use(sourceless, "Sword", [10, 4]).events), 8, "source is required");
   assert.equal(dealt(use(marked("hex"), "bolt", [10, 5]).events), 13, "Hex includes spell attacks");
-  // With no attack roll too (1.456): Bestow Curse's "your attacks and spells".
+  // With no attack roll too (1.458): Bestow Curse's "your attacks and spells".
   assert.equal(dealt(use(marked("hex"), "save", [1]).events), 8, "Hex excludes save spells");
   assert.equal(dealt(use(marked("curse"), "save", [1, 5]).events), 13, "a curse counts on a save spell");
   assert.equal(dealt(use(marked("curse"), "automatic", [5]).events), 13, "and on one that simply lands");
@@ -329,7 +329,7 @@ try {
       if (key === "ability" && to === "attacks") continue;
       // Attacks are narrowed by kind of attack and blow since 1.247 (game-ruleset-combat-reckless).
       if ((key === "attacks" || key === "blow") && to === "attacks") continue;
-      // Defense is narrowed by blow since 1.494 (game-ruleset-combat-arrow-catching).
+      // Defense is narrowed by blow since 1.496 (game-ruleset-combat-arrow-catching).
       if (key === "blow" && to === "defense") continue;
       const doc = document((one) => {
         one.combat.conditions.at(-1).modifiers = [
@@ -462,10 +462,10 @@ try {
   assert.equal(getCapabilityPackageInstallIssue(manifest(132) as any, JSON.parse(fiveE)), null);
   {
     const gate455 =
-      "A ruleset whose damage changes count with no attack roll too (alsoUnrolled) requires schemaVersion 2 and capabilityApi 1.456 or newer";
+      "A ruleset whose damage changes count with no attack roll too (alsoUnrolled) requires schemaVersion 2 and capabilityApi 1.458 or newer";
     const doc = document();
-    assert.equal(getCapabilityPackageInstallIssue(manifest(455) as any, doc), gate455);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(456) as any, doc), gate455);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(457) as any, doc), gate455);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(458) as any, doc), gate455);
   }
   console.info(
     "Damage modifiers: hit filters, source-bound marks, criticals, typed resistance, once per hit, forecasts, summaries and 1.133 gate.",

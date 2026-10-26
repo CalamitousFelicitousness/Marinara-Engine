@@ -1,5 +1,5 @@
 /**
- * Abilities a condition changes (Capability API 1.500).
+ * Abilities a condition changes (Capability API 1.502).
  *
  *   - On the sheet: a Potion of Hill Giant Strength sets Strength to 21, a higher score stays;
  *     Feeblemind makes Intelligence 1.
@@ -37,7 +37,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 500);
+  assert.ok(supportedCapabilityApi.minor >= 502);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -245,7 +245,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose conditions change their holder's abilities (a combat condition's abilities) requires schemaVersion 2 and capabilityApi 1.500 or newer";
+      "A ruleset whose conditions change their holder's abilities (a combat condition's abilities) requires schemaVersion 2 and capabilityApi 1.502 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -259,13 +259,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(499) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(500) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(499) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(501) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(502) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(501) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Condition abilities: a giant-strength potion sets Strength and a higher score stays, Feeblemind makes Intelligence 1, and a fighter's attacks and saves are worked out again as it comes and goes; gated at 1.500.",
+    "Condition abilities: a giant-strength potion sets Strength and a higher score stays, Feeblemind makes Intelligence 1, and a fighter's attacks and saves are worked out again as it comes and goes; gated at 1.502.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

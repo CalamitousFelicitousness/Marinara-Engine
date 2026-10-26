@@ -530,7 +530,7 @@ export interface GameRulesetSheetProps {
     diceFrom?: Record<string, number>,
     recover?: Array<{ name: string; recover: RulesetUseRecover[] }>,
   ) => Promise<string | null>;
-  /** The features a rest offers to use as it ends (1.774): Arcane Recovery on a Short rest. */
+  /** The features a rest offers to use as it ends (1.776): Arcane Recovery on a Short rest. */
   onRestOffers?: (rest: string) => Promise<RulesetRestRecovery[]>;
 }
 
@@ -566,7 +566,7 @@ export function GameRulesetSheet({
   const [resting, setResting] = useState(false);
   // The dice a rest spends to heal first (a Short rest's hit dice), picked pool by pool before it.
   const [restDice, setRestDice] = useState<Record<string, number>>({});
-  // What each rest offers to use as it ends (1.774), by rest, and what the player picked of it: on or
+  // What each rest offers to use as it ends (1.776), by rest, and what the player picked of it: on or
   // off, and how many of each spent pool, keyed "rest/feature".
   const [restOffers, setRestOffers] = useState<Record<string, RulesetRestRecovery[]>>({});
   const [restRecover, setRestRecover] = useState<Record<string, { on: boolean; counts: Record<string, number> }>>({});
@@ -575,7 +575,7 @@ export function GameRulesetSheet({
 
   const build = useMemo(() => envelope?.build ?? defaultRulesetSheetBuild(definition), [definition, envelope]);
   const resolved = useMemo(() => readRulesetLive(definition, build, live, items), [definition, build, live, items]);
-  // What a use outside a fight called and keeps (1.788): a familiar, until it is dismissed or killed.
+  // What a use outside a fight called and keeps (1.790): a familiar, until it is dismissed or killed.
   const keptCalls = useMemo(() => rulesetKeptCalls(live), [live]);
   const keptForm = useMemo(() => rulesetKeptForm(live), [live]);
   // Against the live state as it stands, so a value that reads a track or a pool shows what it is now,
@@ -970,7 +970,7 @@ export function GameRulesetSheet({
                           </span>
                         )}
                       </span>
-                      {/* A tally counts the times it was used (1.791): nothing to spend, only read,
+                      {/* A tally counts the times it was used (1.793): nothing to spend, only read,
                           and its recharge starts it over. */}
                       {pool.tally ? (
                         <span className="shrink-0 text-xs tabular-nums text-[var(--muted-foreground)]">

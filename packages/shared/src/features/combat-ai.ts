@@ -97,11 +97,11 @@ export const combatTacticsSchema = z
     holds: z.number().int().min(0).max(2).optional(),
     /** Its mind (see `COMBAT_MINDS`); one saved before minds were read is played as `tactical`. */
     mind: z.enum(COMBAT_MINDS).optional(),
-    /** It has made its opening move (a ruleset creature's `behavior.opens`, 1.748). */
+    /** It has made its opening move (a ruleset creature's `behavior.opens`, 1.750). */
     opened: z.literal(true).optional(),
-    /** It lay in wait and has sprung (a ruleset creature's `behavior.ambush`, 1.748). */
+    /** It lay in wait and has sprung (a ruleset creature's `behavior.ambush`, 1.750). */
     sprung: z.literal(true).optional(),
-    /** Its role was read off what its ruleset sheet or block can do (1.748). */
+    /** Its role was read off what its ruleset sheet or block can do (1.750). */
     roleRead: z.literal(true).optional(),
     /** Its temperament has turned, as its `shifts` say (combat AI T7): it turns only once. */
     shifted: z.literal(true).optional(),
@@ -298,7 +298,7 @@ export interface CombatAiCandidate<T> {
   cost?: number;
   protection?: number;
   coordination?: number;
-  /** What its own data says it goes for first (a ruleset creature's `behavior`, 1.748). */
+  /** What its own data says it goes for first (a ruleset creature's `behavior`, 1.750). */
   focus?: number;
   hold?: boolean;
 }

@@ -80,15 +80,15 @@ export interface InventoryItem {
   loaded?: number;
   /** What an item that holds charges has left, as a fight left it. Absent reads as full. */
   charges?: number;
-  /** What is left of its further uses that count their own (1.504), by place. Absent reads as full. */
+  /** What is left of its further uses that count their own (1.506), by place. Absent reads as full. */
   usesLeft?: Record<string, number>;
-  /** What it stores to be cast later (1.509), as a fight left it. */
+  /** What it stores to be cast later (1.511), as a fight left it. */
   storedEntries?: Array<{ entry: string; label?: string; level: number }>;
   /** An item with a switch turned on, as the player or a fight left it (1.170). Only ever one item. */
   on?: true;
-  /** The form an item with forms is in (1.560), from 1; absent as it was made. Only ever one item. */
+  /** The form an item with forms is in (1.562), from 1; absent as it was made. Only ever one item. */
   form?: number;
-  /** Who looked it over and thinks it is a fake (1.792), while it is still called what it passes for. */
+  /** Who looked it over and thinks it is a fake (1.794), while it is still called what it passes for. */
   suspect?: string;
 }
 
@@ -132,12 +132,12 @@ interface GameInventoryProps {
   onWearItem?: (stackId: string, wear: GameInventoryWear) => Promise<string | null> | string | null;
   /** Called when the user turns an item with a switch on or off (1.170). Resolves to the stack's id. */
   onSwitchItem?: (stackId: string, on: boolean) => Promise<string | null> | string | null;
-  /** Called when the user turns an item into another of its forms (1.560), 0 as it was made. Resolves
+  /** Called when the user turns an item into another of its forms (1.562), 0 as it was made. Resolves
    *  to the stack's id. */
   onFormItem?: (stackId: string, form: number) => Promise<string | null> | string | null;
   /** Called when the user wants to use an item during input phase */
   onUseItem?: (stackId: string, itemName: string, more?: number, lasts?: number) => void;
-  /** Called when the user wants a ruleset item looked over before trusting it (1.792), during input
+  /** Called when the user wants a ruleset item looked over before trusting it (1.794), during input
    *  phase; offered only by a ruleset whose fakes can be spotted. */
   onInspectItem?: (stackId: string, itemName: string) => void;
   /** Called when the user gives a stack a nickname, or its own name back. Resolves to the stack's id. */
@@ -180,7 +180,7 @@ const KEEPS_ESCAPE_SELECTOR =
 
 /** A drop's change is fire-and-forget: whoever handles it says what went wrong, and a rejection it
  *  did not catch is not left unhandled here. */
-/** How long what a use makes may last (Capability API 1.745), each a button of its own picked by its
+/** How long what a use makes may last (Capability API 1.747), each a button of its own picked by its
  *  place from 1, when there are several to pick from; one plain button otherwise. */
 function lastsPicks(
   lasts: ReadonlyArray<{ label?: string; minutes: number }> | undefined,
@@ -1179,7 +1179,7 @@ export function GameInventory({
                     {selectedRulesetItem.toggle.label}
                   </button>
                 )}
-              {/* Its forms (1.560): what it is as made, then each other form. */}
+              {/* Its forms (1.562): what it is as made, then each other form. */}
               {selectedInventoryItem &&
                 selectedRulesetItem?.forms &&
                 selectedInventoryItem.quantity === 1 &&
@@ -1205,7 +1205,7 @@ export function GameInventory({
               {selectedInventoryItem &&
                 canInteract &&
                 onUseItem &&
-                // What it makes lasting as long as its user picks (1.745): one button for each.
+                // What it makes lasting as long as its user picks (1.747): one button for each.
                 lastsPicks(selectedRulesetItem?.entry.item?.use?.makesItems?.lasts).map((pick) => (
                   <button
                     key={pick?.label ?? "use"}
@@ -1248,13 +1248,13 @@ export function GameInventory({
                   {localizeUi("ui.game.gameinventory.inspect")}
                 </button>
               )}
-              {/* Its further uses (Capability API 1.504), each its own button. */}
+              {/* Its further uses (Capability API 1.506), each its own button. */}
               {selectedInventoryItem &&
                 canInteract &&
                 onUseItem &&
                 (selectedRulesetItem?.entry.item?.use || selectedRulesetItem?.entry.item?.moreUsesRolled) &&
                 selectedRulesetItem.entry.item.moreUses?.map((more, n) => {
-                  // A count rolled to none for this stack (1.731) is never offered.
+                  // A count rolled to none for this stack (1.733) is never offered.
                   const item = selectedRulesetItem.entry.item!;
                   const at = more.usesOf ? rulesetMoreUsesOf(item, more) : n;
                   const counted = at >= 0 ? item.moreUses?.[at]?.uses : undefined;
@@ -1385,7 +1385,7 @@ function BearerStatusLine({
 }: {
   status: GameInventoryBearerStatus;
   bindingLabel?: string;
-  /** What weights are counted in (1.777). */
+  /** What weights are counted in (1.779). */
   unit?: string;
 }) {
   const { t: localizeUi } = useUiTranslation();
@@ -1443,7 +1443,7 @@ function RulesetItemDetails({
   loaded?: number;
   charges?: number;
   usesLeft?: Record<string, number>;
-  /** Its stack, whose own rolled counts it reads (1.521). */
+  /** Its stack, whose own rolled counts it reads (1.523). */
   stackId?: string;
   storedEntries?: Array<{ entry: string; label?: string; level: number }>;
 }) {
@@ -1480,7 +1480,7 @@ function RulesetItemDetails({
       {chargesMax !== undefined && (
         <div className="text-[0.65rem] leading-tight text-white/70">
           {localizeUi("ui.game.gameinventory.chargesLeft", {
-            // Found with rolled charges (1.558) until something changed them.
+            // Found with rolled charges (1.560) until something changed them.
             now: Math.min(charges ?? rulesetChargesStart(facts.use!.charges!, chargesMax, stackId), chargesMax),
             max: chargesMax,
           })}
@@ -1499,8 +1499,8 @@ function RulesetItemDetails({
           </div>
         );
       })}
-      {/* What it stores to be cast later (1.509): a Ring of Spell Storing's spells, or what it was found
-          holding (1.561) until a fight changed them. */}
+      {/* What it stores to be cast later (1.511): a Ring of Spell Storing's spells, or what it was found
+          holding (1.563) until a fight changed them. */}
       {details.entry.item?.stores && (
         <div className="text-[0.65rem] leading-tight text-white/70">
           {heldStored?.length

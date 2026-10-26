@@ -1,5 +1,5 @@
 /**
- * Ruleset combat: the `symbol-pool` kind (Capability API 1.781), a fight thrown in the ruleset's own
+ * Ruleset combat: the `symbol-pool` kind (Capability API 1.783), a fight thrown in the ruleset's own
  * symbol dice.
  *
  * What is pinned here, on Ember Roads with the guide's own narrative dice, with scripted faces:
@@ -14,7 +14,7 @@
  *     uses them up.
  *   - Initiative thrown as a pool of symbol dice.
  *   - The forecast: the hit chance exact against every face, and the AI's worth.
- *   - Every import refusal, the 1.781 install gate and the log lines.
+ *   - Every import refusal, the 1.783 install gate and the log lines.
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -654,7 +654,7 @@ try {
     );
   }
 
-  // ── Every new key needs 1.781 to install ──
+  // ── Every new key needs 1.783 to install ──
   {
     const manifest = (minor: number) =>
       ({
@@ -667,7 +667,7 @@ try {
         contributions: { assets: { paths: ["ruleset.json"] } },
       }) as never;
     const issue =
-      /throw its symbol dice, or a creature with upgraded attack dice, requires schemaVersion 2 and capabilityApi 1\.781/;
+      /throw its symbol dice, or a creature with upgraded attack dice, requires schemaVersion 2 and capabilityApi 1\.783/;
     const cases: Array<[string, unknown]> = [
       ["a symbol fight", { combat: { kind: "symbol-pool" } }],
       ["a symbols block", { combat: { symbols: {} } }],
@@ -677,8 +677,8 @@ try {
       ],
     ];
     for (const [what, ruleset] of cases) {
-      assert.match(getCapabilityPackageInstallIssue(manifest(780), ruleset as never) ?? "", issue, what);
-      assert.equal(getCapabilityPackageInstallIssue(manifest(781), ruleset as never), null, what);
+      assert.match(getCapabilityPackageInstallIssue(manifest(782), ruleset as never) ?? "", issue, what);
+      assert.equal(getCapabilityPackageInstallIssue(manifest(783), ruleset as never), null, what);
     }
   }
 

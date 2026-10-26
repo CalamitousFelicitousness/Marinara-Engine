@@ -1,5 +1,5 @@
 /**
- * Items made by an item's use (Capability API 1.730): a scroll of Goodberry, whose spell makes ten
+ * Items made by an item's use (Capability API 1.732): a scroll of Goodberry, whose spell makes ten
  * berries.
  *
  *   - In a fight: read, the scroll is spent and ten berries land in its reader's hand, each one's use
@@ -39,7 +39,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 730);
+  assert.ok(supportedCapabilityApi.minor >= 732);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -196,7 +196,7 @@ try {
 
   // ── The install gate ──
   const gate =
-    "A ruleset with an item whose use makes items (use.makesItems) requires schemaVersion 2 and capabilityApi 1.730 or newer";
+    "A ruleset with an item whose use makes items (use.makesItems) requires schemaVersion 2 and capabilityApi 1.732 or newer";
   const manifest = (minor: number) => ({
     schemaVersion: 2,
     capabilityApi: { major: 1, minor },
@@ -210,12 +210,12 @@ try {
     permissions: [],
     restartRequired: false,
   });
-  assert.equal(getCapabilityPackageInstallIssue(manifest(729) as never, document()), gate);
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(730) as never, document()), gate);
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(729) as never, document(null)), gate);
+  assert.equal(getCapabilityPackageInstallIssue(manifest(731) as never, document()), gate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(732) as never, document()), gate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(731) as never, document(null)), gate);
 
   console.log(
-    "Use makes items: a scroll of Goodberry read in a fight puts ten berries in hand, written to the bag; outside one, into the bag; gated at 1.730.",
+    "Use makes items: a scroll of Goodberry read in a fight puts ten berries in hand, written to the bag; outside one, into the bag; gated at 1.732.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

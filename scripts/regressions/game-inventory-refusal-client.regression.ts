@@ -40,7 +40,7 @@ assert.equal(
 assert.equal(
   gameInventoryRefusalKeys({ action: "buy", ok: false, reason: "held" }),
   null,
-  "a buy held for a companion's warning is theirs to tell (1.792)",
+  "a buy held for a companion's warning is theirs to tell (1.794)",
 );
 // Every key it can return is in the locale.
 const reasons = [

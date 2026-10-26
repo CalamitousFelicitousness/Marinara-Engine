@@ -28,14 +28,14 @@ export function rollRulesetDice(roll: RulesetCombatRoller, count: number, sides:
   return rolls;
 }
 
-/** How many uses one item of its stack has in all (1.521): its `rolled` dice where it has them, thrown
+/** How many uses one item of its stack has in all (1.523): its `rolled` dice where it has them, thrown
  *  once for that stack and the same at every reading after (each die's face from the stack's id and
  *  the use's place), never past `max`; otherwise `max`. A Helm of Brilliance's 1d10 diamonds. */
 export function rulesetOwnUsesMax(
   uses: { max: number; rolled?: string },
   stackId: string | undefined,
   place: number | string,
-  /** Its item's `moreUsesRolled` (1.731): its count is how many of the pieces rolled for the stack
+  /** Its item's `moreUsesRolled` (1.733): its count is how many of the pieces rolled for the stack
    *  were picked for it, none at all where none was. A Necklace of Prayer Beads' beads. */
   rolledKinds?: { dice: string; weights: readonly number[] },
 ): number {
@@ -55,7 +55,7 @@ export function rulesetOwnUsesMax(
   return Math.max(1, Math.min(uses.max, total));
 }
 
-/** The place in `moreUses` (from 0) of the further use whose count one spends (1.732), by its
+/** The place in `moreUses` (from 0) of the further use whose count one spends (1.734), by its
  *  `usesOf` label: one that counts its own. -1 where there is none. */
 export function rulesetMoreUsesOf(
   item: { moreUses?: ReadonlyArray<{ label: string; uses?: unknown; usesOf?: string }> },
@@ -68,7 +68,7 @@ export function rulesetMoreUsesOf(
   );
 }
 
-/** The pieces rolled for one stack of an item with `moreUsesRolled` (1.731), each the place (from 0) of
+/** The pieces rolled for one stack of an item with `moreUsesRolled` (1.733), each the place (from 0) of
  *  the further use it was picked for: the count thrown and each pick made from the stack's id, so the
  *  stack keeps what it was made with. */
 export function rulesetRolledPieces(
@@ -95,7 +95,7 @@ export function rulesetRolledPieces(
   return pieces;
 }
 
-/** What a stack of an item with charges starts with (1.558): its `rolled` dice where it has them,
+/** What a stack of an item with charges starts with (1.560): its `rolled` dice where it has them,
  *  thrown once for that stack as its own uses' are (none below 0, none past `max`); otherwise `max`.
  *  A Rod of Absorption's 1d10. */
 export function rulesetChargesStart(charges: { rolled?: string }, max: number, stackId: string | undefined): number {
@@ -111,7 +111,7 @@ export function rulesetChargesStart(charges: { rolled?: string }, max: number, s
   return Math.max(0, Math.min(max, total));
 }
 
-/** What a stack of an item that stores is found holding (1.561): its `found.levels` dice, thrown once
+/** What a stack of an item that stores is found holding (1.563): its `found.levels` dice, thrown once
  *  for that stack as its rolled charges are (never past what it holds), filled out of `found.from` in
  *  an order drawn for that stack too, each that still fits, up to how many it holds. */
 export function rulesetFoundStored(

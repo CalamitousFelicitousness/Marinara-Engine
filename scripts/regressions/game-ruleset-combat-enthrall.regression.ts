@@ -1,5 +1,5 @@
 /**
- * A check mode narrowed to finding anybody but whoever put the condition on (Capability API 1.552):
+ * A check mode narrowed to finding anybody but whoever put the condition on (Capability API 1.554):
  * 5e's Enthrall, disadvantage on Wisdom (Perception) checks made to perceive any creature other than
  * the caster.
  *
@@ -32,7 +32,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 552);
+  assert.ok(supportedCapabilityApi.minor >= 554);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -118,7 +118,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a check modifier for finding anybody but whoever put the condition on (exceptSource) requires schemaVersion 2 and capabilityApi 1.552 or newer";
+      "A ruleset with a check modifier for finding anybody but whoever put the condition on (exceptSource) requires schemaVersion 2 and capabilityApi 1.554 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -132,13 +132,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(551) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(552) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(551) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(553) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(554) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(553) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Enthrall: a Search finds the caster on a plain throw and everybody else with disadvantage; nothing else changes; gated at 1.552.",
+    "Enthrall: a Search finds the caster on a plain throw and everybody else with disadvantage; nothing else changes; gated at 1.554.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

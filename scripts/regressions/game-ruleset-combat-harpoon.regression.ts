@@ -1,5 +1,5 @@
 /**
- * A creature's action whose riders wait on a contest (Capability API 1.680): a merrow's Harpoon, "a
+ * A creature's action whose riders wait on a contest (Capability API 1.682): a merrow's Harpoon, "a
  * Strength contest against the merrow or be pulled up to 20 feet toward the merrow".
  *
  *   - Hit, its damage lands either way; the pull only where the creature wins the contest.
@@ -31,7 +31,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 680);
+  assert.ok(supportedCapabilityApi.minor >= 682);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -159,7 +159,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a creature's action whose riders wait on a contest (actions[].contest) requires schemaVersion 2 and capabilityApi 1.680 or newer";
+      "A ruleset with a creature's action whose riders wait on a contest (actions[].contest) requires schemaVersion 2 and capabilityApi 1.682 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -173,13 +173,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(679) as never, withHarpoon()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(680) as never, withHarpoon()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(679) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(681) as never, withHarpoon()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(682) as never, withHarpoon()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(681) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Harpoon: struck either way, pulled beside the lurker only on a contest it wins, a tie the target's; gated at 1.680.",
+    "Harpoon: struck either way, pulled beside the lurker only on a contest it wins, a tie the target's; gated at 1.682.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

@@ -1,6 +1,6 @@
 /**
  * Walls that give cover, speeds that are the only ones, regeneration kept off somewhere, and target
- * tests of fliers, conditions held and alternatives (Capability API 1.540).
+ * tests of fliers, conditions held and alternatives (Capability API 1.542).
  *
  *   - Blade Barrier: a zone's `cover` is three-quarters cover against what crosses it, gone where a
  *     section is broken.
@@ -41,7 +41,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 540);
+  assert.ok(supportedCapabilityApi.minor >= 542);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -270,7 +270,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a wall that gives cover, speeds that are the only ones, regeneration kept off somewhere, or a target test of fliers, conditions held or alternatives (zone.cover, onlySpeeds, regenerates.notIn, flying, holding, anyOf) requires schemaVersion 2 and capabilityApi 1.540 or newer";
+      "A ruleset with a wall that gives cover, speeds that are the only ones, regeneration kept off somewhere, or a target test of fliers, conditions held or alternatives (zone.cover, onlySpeeds, regenerates.notIn, flying, holding, anyOf) requires schemaVersion 2 and capabilityApi 1.542 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -284,16 +284,16 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(539) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(540) as never, fiveE()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(541) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(542) as never, fiveE()), gate);
     const plain = fiveE();
     plain.combat.conditions.at(-1).onlySpeeds = undefined;
     plain.catalogs.at(-1).entries[0].mechanics.zone.cover = undefined;
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(539) as never, JSON.parse(JSON.stringify(plain))), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(541) as never, JSON.parse(JSON.stringify(plain))), gate);
   }
 
   console.log(
-    "Wall cover: Blade Barrier gives three-quarters cover across it; Gaseous Form leaves only its flight; a vampire regenerates nothing in sunlight; Wind Wall's test takes tiny fliers and gases; gated at 1.540.",
+    "Wall cover: Blade Barrier gives three-quarters cover across it; Gaseous Form leaves only its flight; a vampire regenerates nothing in sunlight; Wind Wall's test takes tiny fliers and gases; gated at 1.542.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

@@ -1,5 +1,5 @@
 /**
- * Advantage for whoever put a condition on, spent by their attack (Capability API 1.487).
+ * Advantage for whoever put a condition on, spent by their attack (Capability API 1.489).
  *
  *   - `fromSource` on an attacks-taken mode: only its source's attacks at the holder roll twice.
  *   - `endsAfter: "attacked-by-source"`: another's attack leaves it on, its source's takes it off.
@@ -30,7 +30,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 487);
+  assert.ok(supportedCapabilityApi.minor >= 489);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -137,7 +137,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose conditions answer only their source's attacks (endsAfter attacked-by-source, fromSource on attacks-taken) requires schemaVersion 2 and capabilityApi 1.487 or newer";
+      "A ruleset whose conditions answer only their source's attacks (endsAfter attacked-by-source, fromSource on attacks-taken) requires schemaVersion 2 and capabilityApi 1.489 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -153,11 +153,11 @@ try {
     });
     const only = JSON.parse(fiveEText) as Record<string, any>;
     only.combat.conditions[0].modifiers = [struck];
-    assert.equal(getCapabilityPackageInstallIssue(manifest(486) as never, only), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(487) as never, only), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(488) as never, only), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(489) as never, only), gate);
     assert.equal(
       getCapabilityPackageInstallIssue(
-        manifest(486) as never,
+        manifest(488) as never,
         JSON.parse(fiveEText),
         new Map([
           ["catalogs/spells.json", { entries: [{ mechanics: { applies: [{ endsAfter: "attacked-by-source" }] } }] }],
@@ -165,11 +165,11 @@ try {
       ),
       gate,
     );
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(486) as never, JSON.parse(fiveEText)), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(488) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "True Strike: only the condition's source attacks its holder with advantage, and only its attack spends it; gated at 1.487.",
+    "True Strike: only the condition's source attacks its holder with advantage, and only its attack spends it; gated at 1.489.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

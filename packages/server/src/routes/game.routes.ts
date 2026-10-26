@@ -7037,7 +7037,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       if (layerIssue) {
         return rejectGenerationOutput(reply, 400, { error: layerIssue.message, code: layerIssue.code });
       }
-      // A ruleset may name the combat styles its games play (1.776): one it leaves out is refused, as a
+      // A ruleset may name the combat styles its games play (1.778): one it leaves out is refused, as a
       // layer it cannot honour is, rather than played on rules the ruleset said it does not fit.
       if (!rulesetAllowsCombatStyle(registered.definition, parsedCreateGameInput.setupConfig.combatStyle)) {
         return rejectGenerationOutput(reply, 400, {
@@ -10226,7 +10226,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
        *  fallback asks the ruleset the same question generation would have. Each is ignored where the
        *  ruleset does not take it. */
       withAbility: z.string().trim().min(1).max(100).optional(),
-      /** `for=` (1.737): what the check is made for, "climb" or "swim". */
+      /** `for=` (1.739): what the check is made for, "climb" or "swim". */
       purpose: z.string().trim().min(1).max(40).optional(),
       threshold: z.number().int().min(1).max(1000).optional(),
       bonusDice: z.number().int().min(-20).max(20).optional(),
@@ -11316,7 +11316,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       return { gameTime: newTime };
     });
     if (!updated || !newTime) throw new Error("Chat not found");
-    // What waits on game time counts it (1.541).
+    // What waits on game time counts it (1.543).
     await passGameInventoryTime(app.db, chatId, passed);
 
     // Also update the game state snapshot so WeatherEffects picks it up

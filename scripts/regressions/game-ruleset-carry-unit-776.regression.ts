@@ -1,5 +1,5 @@
 /**
- * What a ruleset's weights are counted in (Capability API 1.777), and the playtest's polish around
+ * What a ruleset's weights are counted in (Capability API 1.779), and the playtest's polish around
  * carrying of 2026-10-23:
  *
  *   - `items.carry.unit` ("lb") is said after a weight: the inventory's load, the starting gear
@@ -7,7 +7,7 @@
  *   - The picker says what a kit weighs even where nobody has a limit.
  *   - Past the most they can carry (Free edit's heavy starting gear), the inventory and the sheet say
  *     "Over limit"; encumbered, the sheet says so too.
- *   - Refused where too long, and gated at 1.777.
+ *   - Refused where too long, and gated at 1.779.
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -33,7 +33,7 @@ const { getCapabilityPackageInstallIssue } =
 const read = (path: string) => readFileSync(fileURLToPath(new URL(path, import.meta.url)), "utf8");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 777);
+  assert.ok(supportedCapabilityApi.minor >= 779);
   const document = (unit?: string) => {
     const doc = JSON.parse(read("../../docs/development/ruleset-5e-2014.example.json")) as Record<string, any>;
     doc.sheet.fields.push({ id: "carry_max", label: "Carry", type: "number", min: 0, max: 9999, default: 150 });
@@ -119,13 +119,13 @@ try {
     restartRequired: false,
   });
   const gate =
-    "A ruleset that names what its weights are counted in (items.carry.unit) requires schemaVersion 2 and capabilityApi 1.777 or newer";
-  assert.equal(getCapabilityPackageInstallIssue(manifest(776) as never, document("lb")), gate);
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(777) as never, document("lb")), gate);
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(776) as never, document()), gate);
+    "A ruleset that names what its weights are counted in (items.carry.unit) requires schemaVersion 2 and capabilityApi 1.779 or newer";
+  assert.equal(getCapabilityPackageInstallIssue(manifest(778) as never, document("lb")), gate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(779) as never, document("lb")), gate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(778) as never, document()), gate);
 
   console.log(
-    "Carry unit 1.777: said after every weight, each kit option's weight, Over limit on the bag and the sheet, gated at 1.777.",
+    "Carry unit 1.779: said after every weight, each kit option's weight, Over limit on the bag and the sheet, gated at 1.779.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

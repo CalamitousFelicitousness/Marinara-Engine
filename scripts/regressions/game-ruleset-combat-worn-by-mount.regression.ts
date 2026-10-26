@@ -1,5 +1,5 @@
 /**
- * Worn by a mount (Capability API 1.702): 5e's Horseshoes of a Zephyr, carried by the rider and worn
+ * Worn by a mount (Capability API 1.704): 5e's Horseshoes of a Zephyr, carried by the rider and worn
  * by the horse.
  *
  *   - An item's worn effect `{wornBy: "mount", keepsOn}`: what it keeps on goes on the creature its
@@ -35,7 +35,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 702);
+  assert.ok(supportedCapabilityApi.minor >= 704);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -130,7 +130,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with an item worn by its holder's mount (wornBy) requires schemaVersion 2 and capabilityApi 1.702 or newer";
+      "A ruleset with an item worn by its holder's mount (wornBy) requires schemaVersion 2 and capabilityApi 1.704 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -144,13 +144,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(701) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(702) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(701) as never, fiveE({ keepsOn: ["zephyr"] })), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(703) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(704) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(703) as never, fiveE({ keepsOn: ["zephyr"] })), gate);
   }
 
   console.log(
-    "Worn by a mount: the rider's Horseshoes of a Zephyr keep the horse walking on water while ridden, never the rider, and come off as they dismount; gated at 1.702.",
+    "Worn by a mount: the rider's Horseshoes of a Zephyr keep the horse walking on water while ridden, never the rider, and come off as they dismount; gated at 1.704.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

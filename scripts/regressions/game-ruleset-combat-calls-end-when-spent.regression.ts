@@ -1,5 +1,5 @@
 /**
- * A call that ends once it is spent (Capability API 1.727): a Dancing Sword, which returns to hand
+ * A call that ends once it is spent (Capability API 1.729): a Dancing Sword, which returns to hand
  * "after the hovering sword attacks for the fourth time".
  *
  *   - Tossed, the sword becomes the hovering sword; its fourth attack sends it away, back in hand.
@@ -33,7 +33,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 727);
+  assert.ok(supportedCapabilityApi.minor >= 729);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -177,7 +177,7 @@ try {
 
   // ── The install gate ──
   const gate =
-    "A ruleset with a call that ends once its creatures' counted actions are spent (calls.endsWhenSpent) requires schemaVersion 2 and capabilityApi 1.727 or newer";
+    "A ruleset with a call that ends once its creatures' counted actions are spent (calls.endsWhenSpent) requires schemaVersion 2 and capabilityApi 1.729 or newer";
   const manifest = (minor: number) => ({
     schemaVersion: 2,
     capabilityApi: { major: 1, minor },
@@ -191,12 +191,12 @@ try {
     permissions: [],
     restartRequired: false,
   });
-  assert.equal(getCapabilityPackageInstallIssue(manifest(726) as never, document()), gate);
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(727) as never, document()), gate);
-  assert.notEqual(getCapabilityPackageInstallIssue(manifest(726) as never, document(false)), gate);
+  assert.equal(getCapabilityPackageInstallIssue(manifest(728) as never, document()), gate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(729) as never, document()), gate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(728) as never, document(false)), gate);
 
   console.log(
-    "Calls end when spent: a Dancing Sword's hovering sword returns to hand after its fourth attack; gated at 1.727.",
+    "Calls end when spent: a Dancing Sword's hovering sword returns to hand after its fourth attack; gated at 1.729.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

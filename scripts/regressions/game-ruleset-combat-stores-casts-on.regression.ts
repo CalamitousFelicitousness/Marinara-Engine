@@ -1,5 +1,5 @@
 /**
- * What is stored cast by itself when its moment comes (Capability API 1.554): 5e's Contingency, and a
+ * What is stored cast by itself when its moment comes (Capability API 1.556): 5e's Contingency, and a
  * shield guardian's stored spell cast at a moment set beforehand.
  *
  *   - `stores.castsOn {on: "harmed", at: "source"}`: a bolt stored in a shield guardian goes off at
@@ -40,7 +40,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 554);
+  assert.ok(supportedCapabilityApi.minor >= 556);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -232,7 +232,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with something stored that is cast by itself when its moment comes (stores.castsOn) requires schemaVersion 2 and capabilityApi 1.554 or newer";
+      "A ruleset with something stored that is cast by itself when its moment comes (stores.castsOn) requires schemaVersion 2 and capabilityApi 1.556 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -249,13 +249,13 @@ try {
     const withCastsOn = document((doc) => {
       doc.catalogs.find((one: { id: string }) => one.id === "gear").entries[0].item.stores.castsOn = { on: "down" };
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(553) as never, withCastsOn), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(554) as never, withCastsOn), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(553) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(555) as never, withCastsOn), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(556) as never, withCastsOn), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(555) as never, document()), gate);
   }
 
   console.log(
-    "Stores castsOn: a bolt stored in a shield guardian goes off by itself at the foe that harms it, once, never by hand; gated at 1.554.",
+    "Stores castsOn: a bolt stored in a shield guardian goes off by itself at the foe that harms it, once, never by hand; gated at 1.556.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

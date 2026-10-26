@@ -104,7 +104,7 @@ try {
   const legacyManifest = capabilityPackageManifestSchema.parse(installedPackage("legacy", ["agent"]).manifest);
   assert.equal(legacyManifest.schemaVersion, 1, "Existing manifest v1 packages must remain readable");
   assert.equal(getCapabilityApiCompatibilityIssue(legacyManifest), null);
-  assert.deepEqual(supportedCapabilityApi, { major: 1, minor: 795 });
+  assert.deepEqual(supportedCapabilityApi, { major: 1, minor: 797 });
 
   const manifestV2 = capabilityPackageManifestSchema.parse({
     ...legacyManifest,
@@ -140,11 +140,11 @@ try {
   });
   assert.match(
     getCapabilityApiCompatibilityIssue(unsupportedMajorManifest) ?? "",
-    /requires capability API 2\.0; this Engine supports 1\.795/,
+    /requires capability API 2\.0; this Engine supports 1\.797/,
   );
   const currentMinorManifest = capabilityPackageManifestSchema.parse({
     ...manifestV2,
-    capabilityApi: { major: 1, minor: 795 },
+    capabilityApi: { major: 1, minor: 797 },
   });
   assert.equal(getCapabilityApiCompatibilityIssue(currentMinorManifest), null);
   assert.equal(
@@ -204,25 +204,25 @@ try {
     [382, "symbol-pool fights"],
     [383, "health on a plain track"],
     [384, "saved gallery image animation"],
-    [777, "a ruleset's weight unit"],
-    [778, "damage changes by damage type"],
-    [779, "package-bound reference lorebooks"],
-    [780, "independent browser audio players"],
-    [781, "symbol-pool fights"],
-    [782, "health on a plain track"],
-    [783, "attack ability choices"],
-    [784, "sheet migrations that set a column"],
-    [785, "what a creature has on it"],
-    [786, "text field suggestions"],
-    [787, "how many text suggestions to pick"],
-    [788, "calls kept on the sheet"],
-    [789, "rows steps that count their rows"],
-    [790, "a sheet bonus to hit on attack rows"],
-    [791, "a pool's tally column"],
-    [792, "spotting fakes"],
-    [793, "an encounter budget"],
-    [794, "rests that clear temporary points"],
-    [795, "signature actions at a turn's start"],
+    [779, "a ruleset's weight unit"],
+    [780, "damage changes by damage type"],
+    [781, "package-bound reference lorebooks"],
+    [782, "independent browser audio players"],
+    [783, "symbol-pool fights"],
+    [784, "health on a plain track"],
+    [785, "attack ability choices"],
+    [786, "sheet migrations that set a column"],
+    [787, "what a creature has on it"],
+    [788, "text field suggestions"],
+    [789, "how many text suggestions to pick"],
+    [790, "calls kept on the sheet"],
+    [791, "rows steps that count their rows"],
+    [792, "a sheet bonus to hit on attack rows"],
+    [793, "a pool's tally column"],
+    [794, "spotting fakes"],
+    [795, "an encounter budget"],
+    [796, "rests that clear temporary points"],
+    [797, "signature actions at a turn's start"],
   ];
   for (const [minor, label] of supportedMinors) {
     assert.equal(
@@ -239,7 +239,7 @@ try {
   });
   assert.match(
     getCapabilityApiCompatibilityIssue(unsupportedMinorManifest) ?? "",
-    /requires capability API 1\.796; this Engine supports 1\.795/,
+    /requires capability API 1\.796; this Engine supports 1\.797/,
   );
   const startupManifest = {
     ...currentMinorManifest,

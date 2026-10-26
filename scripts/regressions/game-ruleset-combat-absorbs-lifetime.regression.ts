@@ -1,5 +1,5 @@
 /**
- * What an item takes in over its whole existence (Capability API 1.556): a Rod of Absorption's 50.
+ * What an item takes in over its whole existence (Capability API 1.558): a Rod of Absorption's 50.
  *
  *   - `absorbs.lifetime`: a rod with room left takes the bolt in and counts its levels for good; the
  *     count goes back to its stack after the fight and is read again next time. Spending charges never
@@ -40,7 +40,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 556);
+  assert.ok(supportedCapabilityApi.minor >= 558);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -253,7 +253,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with an item that takes in only so much over its whole existence (absorbs.lifetime) requires schemaVersion 2 and capabilityApi 1.556 or newer";
+      "A ruleset with an item that takes in only so much over its whole existence (absorbs.lifetime) requires schemaVersion 2 and capabilityApi 1.558 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -267,13 +267,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(555) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(556) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(555) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(557) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(558) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(557) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Absorbs lifetime: a rod counts what it takes in for good, writes it back to its stack, and lets a bolt through once it would pass its total; gated at 1.556.",
+    "Absorbs lifetime: a rod counts what it takes in for good, writes it back to its stack, and lets a bolt through once it would pass its total; gated at 1.558.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

@@ -1,6 +1,6 @@
 /**
  * A use offered only while its user holds a condition, and a condition its source keeps only while
- * holding one (Capability API 1.602): 5e's Pipes of the Sewers, whose call and sway work only while
+ * holding one (Capability API 1.604): 5e's Pipes of the Sewers, whose call and sway work only while
  * their user plays them.
  *
  *   - `userHolds`: the sway is not offered until "Play" puts `piping` on its user.
@@ -34,7 +34,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 602);
+  assert.ok(supportedCapabilityApi.minor >= 604);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -202,7 +202,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a use offered only while its user holds a condition (userHolds), or a condition its source keeps only while holding one (endsWhenSource.lacks), requires schemaVersion 2 and capabilityApi 1.602 or newer";
+      "A ruleset with a use offered only while its user holds a condition (userHolds), or a condition its source keeps only while holding one (endsWhenSource.lacks), requires schemaVersion 2 and capabilityApi 1.604 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -216,12 +216,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(601) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(602) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(603) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(604) as never, document()), gate);
   }
 
   console.log(
-    "userHolds and endsWhenSource.lacks: the Pipes' sway only while played, its hold gone once the playing stops; usableWhen for who may play; refusals; gated at 1.602.",
+    "userHolds and endsWhenSource.lacks: the Pipes' sway only while played, its hold gone once the playing stops; usableWhen for who may play; refusals; gated at 1.604.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

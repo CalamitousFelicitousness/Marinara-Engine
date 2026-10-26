@@ -1,5 +1,5 @@
 /**
- * Harming nobody, and fleeing a point (Capability API 1.442).
+ * Harming nobody, and fleeing a point (Capability API 1.444).
  *
  *   - Hopelessness (`cannot-harm`): no attack offered, other actions still are, and no strike at
  *     somebody leaving its reach.
@@ -41,7 +41,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 442);
+  assert.ok(supportedCapabilityApi.minor >= 444);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -254,7 +254,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose conditions keep their holder from harming anybody (cannot-harm) or measure a behavior from a point (from) requires schemaVersion 2 and capabilityApi 1.442 or newer";
+      "A ruleset whose conditions keep their holder from harming anybody (cannot-harm) or measure a behavior from a point (from) requires schemaVersion 2 and capabilityApi 1.444 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -275,14 +275,14 @@ try {
     const onlyFled = fiveE((doc) => {
       doc.combat.conditions.find((one: { condition: string }) => one.condition === "hopeless").effects = [];
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(441) as never, onlyHopeless), gate);
-    assert.equal(getCapabilityPackageInstallIssue(manifest(441) as never, onlyFled), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(442) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(441) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(443) as never, onlyHopeless), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(443) as never, onlyFled), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(444) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(443) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Hopeless and fear: cannot-harm takes every harm off the menu and every opportunity strike, and a fear measured from its point flees the glyph; gated at 1.442.",
+    "Hopeless and fear: cannot-harm takes every harm off the menu and every opportunity strike, and a fear measured from its point flees the glyph; gated at 1.444.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

@@ -1,5 +1,5 @@
 /**
- * A use whose user saves against what it puts on them (Capability API 1.678): 5e's Dust of Sneezing
+ * A use whose user saves against what it puts on them (Capability API 1.680): 5e's Dust of Sneezing
  * and Choking, its thrower caught in the cloud with everybody else, saving at the same difficulty.
  *
  *   - Failing the save, the user takes `appliesSelf`; making it, they do not, and the log shows the save.
@@ -33,7 +33,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 678);
+  assert.ok(supportedCapabilityApi.minor >= 680);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -173,7 +173,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a use whose user saves against what it puts on them (appliesSelfSaves) requires schemaVersion 2 and capabilityApi 1.678 or newer";
+      "A ruleset with a use whose user saves against what it puts on them (appliesSelfSaves) requires schemaVersion 2 and capabilityApi 1.680 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -187,13 +187,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(677) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(678) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(677) as never, document({})), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(679) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(680) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(679) as never, document({})), gate);
   }
 
   console.log(
-    "Self save: the thrower saves against its own dust at its difficulty, spared on a success; gated at 1.678.",
+    "Self save: the thrower saves against its own dust at its difficulty, spared on a success; gated at 1.680.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

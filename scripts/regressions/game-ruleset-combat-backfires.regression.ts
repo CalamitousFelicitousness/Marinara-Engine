@@ -1,5 +1,5 @@
 /**
- * An item use that may backfire on its user (Capability API 1.615): 5e's Horn of Blasting, "Each use
+ * An item use that may backfire on its user (Capability API 1.617): 5e's Horn of Blasting, "Each use
  * of the horn's magic has a 20 percent chance of causing the horn to explode. The explosion deals 10d6
  * fire damage to the blower and destroys the horn."
  *
@@ -35,7 +35,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 615);
+  assert.ok(supportedCapabilityApi.minor >= 617);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -190,7 +190,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with an item use that may backfire on its user (use.backfires) requires schemaVersion 2 and capabilityApi 1.615 or newer";
+      "A ruleset with an item use that may backfire on its user (use.backfires) requires schemaVersion 2 and capabilityApi 1.617 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -204,11 +204,11 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(614) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(615) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(616) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(617) as never, document()), gate);
   }
 
-  console.log("Horn of Blasting: glass saves at disadvantage and takes 10d6 instead of 5d6; gated at 1.614.");
+  console.log("Horn of Blasting: glass saves at disadvantage and takes 10d6 instead of 5d6; gated at 1.616.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });
 }

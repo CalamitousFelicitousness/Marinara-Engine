@@ -1,5 +1,5 @@
 /**
- * Defense against an attacker that has hit, and opportunity attacks only (Capability API 1.415).
+ * Defense against an attacker that has hit, and opportunity attacks only (Capability API 1.417).
  *
  *   - Multiattack Defense: after a creature hits the ranger, its later attacks that turn meet 4 more
  *     defense; another creature's do not, and the next turn it is gone.
@@ -37,7 +37,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 415);
+  assert.ok(supportedCapabilityApi.minor >= 417);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -208,7 +208,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose defense changes count only against an attacker that has hit already (afterHitBy) or whose attacks-taken changes count only on opportunity attacks (opportunity) requires schemaVersion 2 and capabilityApi 1.415 or newer";
+      "A ruleset whose defense changes count only against an attacker that has hit already (afterHitBy) or whose attacks-taken changes count only on opportunity attacks (opportunity) requires schemaVersion 2 and capabilityApi 1.417 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -222,13 +222,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(414) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(415) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(414) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(416) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(417) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(416) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Hit defense: Multiattack Defense adds 4 against a creature that hit already this turn, not another, gone the next turn; Escape the Horde gives opportunity attacks disadvantage, not a claw on the foe's turn; gated at 1.415.",
+    "Hit defense: Multiattack Defense adds 4 against a creature that hit already this turn, not another, gone the next turn; Escape the Horde gives opportunity attacks disadvantage, not a claw on the foe's turn; gated at 1.417.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

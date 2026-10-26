@@ -1,5 +1,5 @@
 /**
- * Target tests with an exception (Capability API 1.515).
+ * Target tests with an exception (Capability API 1.517).
  *
  *   - A net's "no effect on creatures that are formless": `except` turns away whoever it passes,
  *     beside the rest of the test or alone.
@@ -27,7 +27,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 515);
+  assert.ok(supportedCapabilityApi.minor >= 517);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -104,7 +104,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a target test that excepts what it is never (targetIs except) requires schemaVersion 2 and capabilityApi 1.515 or newer";
+      "A ruleset with a target test that excepts what it is never (targetIs except) requires schemaVersion 2 and capabilityApi 1.517 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -118,13 +118,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(514) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(515) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(514) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(516) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(517) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(516) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Target except: a net passes a wolf, never a formless ooze; except alone passes anybody else; gated at 1.515.",
+    "Target except: a net passes a wolf, never a formless ooze; except alone passes anybody else; gated at 1.517.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

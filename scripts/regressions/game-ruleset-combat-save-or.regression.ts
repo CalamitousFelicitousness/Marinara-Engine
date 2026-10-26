@@ -1,5 +1,5 @@
 /**
- * The target's choice of save (Capability API 1.709): a bulette's Deadly Leap.
+ * The target's choice of save (Capability API 1.711): a bulette's Deadly Leap.
  *
  *   - A save with `or` is made with whichever of the two its target is better at, by a creature's
  *     action and by a catalog entry alike, and the log names the one made.
@@ -31,7 +31,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 709);
+  assert.ok(supportedCapabilityApi.minor >= 711);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -159,7 +159,7 @@ try {
     beasts.entries[0].creature.actions.push({ ...leap, save: { ...leap.save, or: "luck_save" } });
     refused(creatureDoc, /Unknown save "luck_save"/);
     const gate =
-      "A ruleset with a save its target may make with another (save.or) requires schemaVersion 2 and capabilityApi 1.709 or newer";
+      "A ruleset with a save its target may make with another (save.or) requires schemaVersion 2 and capabilityApi 1.711 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -173,13 +173,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(708) as never, fiveE("dex_save")), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(709) as never, fiveE("dex_save")), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(708) as never, fiveE(null)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(710) as never, fiveE("dex_save")), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(711) as never, fiveE("dex_save")), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(710) as never, fiveE(null)), gate);
   }
 
   console.log(
-    "Deadly Leap: a save with `or` is made with the better of the two, by a spell and a creature; gated at 1.709.",
+    "Deadly Leap: a save with `or` is made with the better of the two, by a spell and a creature; gated at 1.711.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

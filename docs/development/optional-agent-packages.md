@@ -88,7 +88,7 @@ this page. Package builds declare matching structural types instead of importing
 | `capabilityApi`     | The Engine's `supportedCapabilityApi`, for example `{ major: 1, minor: 341 }`.                                                                                                |
 | `stores`            | The live zustand stores `ui`, `chat`, `agent`, `sidecar`, `dialog`, `gallery`, `encounter`, `gameState` and `backfill`. `chat` includes the pending spatial transition slice. |
 | `services.tts`      | The `lib/tts-service.ts` module (`ttsService`, `playWhenAvailable`, ...).                                                                                                     |
-| `services.audio`    | From capability API 1.780, the `lib/audio-service.ts` module: independent music/SFX players, the shared asset manifest and default music selection. See [Package audio](#package-audio). |
+| `services.audio`    | From capability API 1.782, the `lib/audio-service.ts` module: independent music/SFX players, the shared asset manifest and default music selection. See [Package audio](#package-audio). |
 | `services.dialogs`  | The `lib/app-dialogs.ts` module (`showAlertDialog`, `showConfirmDialog`, `showPromptDialog`, `showChoiceDialog`).                                                             |
 | `modules`           | Library modules, keyed by bare specifier (below).                                                                                                                             |
 | `queryClient`       | The one React Query `QueryClient` the Engine renders with.                                                                                                                    |
@@ -2021,11 +2021,11 @@ Shared request/result types are exported by `@marinara-engine/shared`. Keep pack
 
 ### Package audio
 
-From capability API **1.780**, `__MARINARA_HOST__.services.audio` provides Engine-owned playback and
+From capability API **1.782**, `__MARINARA_HOST__.services.audio` provides Engine-owned playback and
 asset selection. Declare that minor in the package manifest, and update the Engine alongside the package.
 Speech remains in `services.tts`; music and sound effects use `services.audio`.
 `services.tts.ttsService.speakSequence(requests, id?, options?)` accepts `options.audioConnectionId`
-from 1.780, applying that selected speech connection to every chunk while retaining each request's
+from 1.782, applying that selected speech connection to every chunk while retaining each request's
 voice. Leave it undefined for the normal default, or pass `""` to explicitly use legacy TTS settings.
 An unknown, deleted, quarantined or non-speech `audioConnectionId` is ignored and normal speech
 resolution runs: the saved speech selection, then the default/fallback connection, then legacy settings.

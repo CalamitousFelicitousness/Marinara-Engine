@@ -1,5 +1,5 @@
 /**
- * A condition that counts as another (Capability API 1.570): Enthrall as charmed.
+ * A condition that counts as another (Capability API 1.572): Enthrall as charmed.
  *
  *   - An immunity to charmed keeps enthralled off.
  *   - What holds charmed off holds enthralled off.
@@ -37,7 +37,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 570);
+  assert.ok(supportedCapabilityApi.minor >= 572);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -165,7 +165,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a condition that counts as another (countsAs) requires schemaVersion 2 and capabilityApi 1.570 or newer";
+      "A ruleset with a condition that counts as another (countsAs) requires schemaVersion 2 and capabilityApi 1.572 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -179,13 +179,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(569) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(570) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(569) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(571) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(572) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(571) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Counts as: enthralled counts as charmed for immunity, suppression, save advantage and what ends it; gated at 1.570.",
+    "Counts as: enthralled counts as charmed for immunity, suppression, save advantage and what ends it; gated at 1.572.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

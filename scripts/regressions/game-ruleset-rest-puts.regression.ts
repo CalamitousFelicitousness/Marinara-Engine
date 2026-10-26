@@ -1,5 +1,5 @@
 /**
- * A rest that puts a condition on (Capability API 1.411).
+ * A rest that puts a condition on (Capability API 1.413).
  *
  *   - Tranquility: a long rest puts it on an 18th-level monk's sheet, and not before; the next long
  *     rest puts it back fresh.
@@ -40,7 +40,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 411);
+  assert.ok(supportedCapabilityApi.minor >= 413);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -259,7 +259,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose rests put a condition on (puts) or whose conditions' rules end on their holder's attack or cast (endsWhenHolder attacks, casts) requires schemaVersion 2 and capabilityApi 1.411 or newer";
+      "A ruleset whose rests put a condition on (puts) or whose conditions' rules end on their holder's attack or cast (endsWhenHolder attacks, casts) requires schemaVersion 2 and capabilityApi 1.413 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -273,17 +273,17 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(410) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(411) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(412) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(413) as never, document()), gate);
     const putsOnly = document((doc) => {
       doc.combat.conditions.at(-1).endsWhenHolder = { acts: true };
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(410) as never, putsOnly), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(410) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(412) as never, putsOnly), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(412) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Rest puts: a long rest puts Tranquility on an 18th-level sheet and back fresh; held on the sheet it keeps a claw off with its difficulty off the sheet; its rule ends it on a cast at a foe and takes it off the sheet, a heal on a friend keeps it; gated at 1.411.",
+    "Rest puts: a long rest puts Tranquility on an 18th-level sheet and back fresh; held on the sheet it keeps a claw off with its difficulty off the sheet; its rule ends it on a cast at a foe and takes it off the sheet, a heal on a friend keeps it; gated at 1.413.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

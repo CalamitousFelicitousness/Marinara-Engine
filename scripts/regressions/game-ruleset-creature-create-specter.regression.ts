@@ -1,5 +1,5 @@
 /**
- * Calls raised from a corpse, and held to a most (Capability API 1.539).
+ * Calls raised from a corpse, and held to a most (Capability API 1.541).
  *
  *   - A wraith's Create Specter: offered only with a humanoid corpse that died no more than 10
  *     rounds ago; the specter rises in the corpse's space, on the wraith's side, and the corpse is
@@ -33,7 +33,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 539);
+  assert.ok(supportedCapabilityApi.minor >= 541);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -206,7 +206,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset with a call raised from a corpse or held to a most (calls.atCorpse, calls.atMost) requires schemaVersion 2 and capabilityApi 1.539 or newer";
+      "A ruleset with a call raised from a corpse or held to a most (calls.atCorpse, calls.atMost) requires schemaVersion 2 and capabilityApi 1.541 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -220,12 +220,12 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(538) as never, document()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(539) as never, document()), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(540) as never, document()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(541) as never, document()), gate);
   }
 
   console.log(
-    "Create Specter: offered only with a fresh humanoid corpse, the specter rises in its space on the wraith's side and the corpse is gone, never past seven at once; gated at 1.539.",
+    "Create Specter: offered only with a fresh humanoid corpse, the specter rises in its space on the wraith's side and the corpse is gone, never past seven at once; gated at 1.541.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

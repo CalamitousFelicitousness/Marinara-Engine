@@ -1,5 +1,5 @@
 /**
- * A sense of presence only (Capability API 1.429).
+ * A sense of presence only (Capability API 1.431).
  *
  *   - Primeval Awareness: said as it comes on, and again as its holder's turn starts, which of its
  *     kinds are within reach; nothing of where or how many, and a hidden fiend stays hidden.
@@ -31,7 +31,7 @@ const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 
 try {
-  assert.ok(supportedCapabilityApi.minor >= 429);
+  assert.ok(supportedCapabilityApi.minor >= 431);
   const fiveEText = readFileSync(
     fileURLToPath(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url)),
     "utf8",
@@ -142,7 +142,7 @@ try {
   // ── The install gate ──
   {
     const gate =
-      "A ruleset whose conditions sense only the presence of some kinds of creature (presence) requires schemaVersion 2 and capabilityApi 1.429 or newer";
+      "A ruleset whose conditions sense only the presence of some kinds of creature (presence) requires schemaVersion 2 and capabilityApi 1.431 or newer";
     const manifest = (minor: number) => ({
       schemaVersion: 2,
       capabilityApi: { major: 1, minor },
@@ -156,13 +156,13 @@ try {
       permissions: [],
       restartRequired: false,
     });
-    assert.equal(getCapabilityPackageInstallIssue(manifest(428) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(429) as never, fiveE()), gate);
-    assert.notEqual(getCapabilityPackageInstallIssue(manifest(428) as never, JSON.parse(fiveEText)), gate);
+    assert.equal(getCapabilityPackageInstallIssue(manifest(430) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(431) as never, fiveE()), gate);
+    assert.notEqual(getCapabilityPackageInstallIssue(manifest(430) as never, JSON.parse(fiveEText)), gate);
   }
 
   console.log(
-    "Presence: Primeval Awareness says which kinds are near as it comes on and at each of its holder's turns, never where or how many, and none out of reach; gated at 1.429.",
+    "Presence: Primeval Awareness says which kinds are near as it comes on and at each of its holder's turns, never where or how many, and none out of reach; gated at 1.431.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

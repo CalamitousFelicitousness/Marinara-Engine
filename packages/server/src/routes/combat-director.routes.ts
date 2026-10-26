@@ -1430,6 +1430,11 @@ export async function combatDirectorRoutes(
                   }
                 : {}),
               ...(enemy.boss?.points ? { points: enemy.boss.points } : {}),
+              // Hurt in the story before the fight, by the hp the Game Master gave it; one that comes back
+              // keeps the wounds it left with instead.
+              ...(!backAs[index] && enemy.maxHp > 0 && enemy.hp > 0 && enemy.hp < enemy.maxHp
+                ? { hurt: enemy.hp / enemy.maxHp }
+                : {}),
             })),
             cards,
             playerName: persona?.name ?? null,

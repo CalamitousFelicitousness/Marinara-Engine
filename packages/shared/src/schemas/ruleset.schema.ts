@@ -2701,23 +2701,44 @@ export function isRulesetCatalogAssetPath(path: string): boolean {
   return RULESET_CATALOG_ASSET_PATTERN.test(path);
 }
 
-/** A ruleset's translation into one language (Capability API 1.798): `locales/<lang>.json`, named by
- *  the language's code as the Engine's own language packs name theirs ("ru", "pt-BR", "zh-Hans"). */
-const RULESET_LOCALE_ASSET_PATTERN = /^locales\/([a-z]{2,3}(?:-[A-Za-z0-9]{2,8}){0,2})\.json$/;
+/** A ruleset's translation into one language: what a language pack holds (Capability API 1.803), and what a
+ *  ruleset package file a player shares may carry as `locales/<lang>.json`. Named by the language's code as
+ *  the Engine's own language packs name theirs ("ru", "pt-BR", "zh-Hans"). */
+const RULESET_LOCALE_CODE = "[a-z]{2,3}(?:-[A-Za-z0-9]{2,8}){0,2}";
+const RULESET_LOCALE_ASSET_PATTERN = new RegExp(`^locales\\/(${RULESET_LOCALE_CODE})\\.json$`);
+const RULESET_LOCALE_CODE_PATTERN = new RegExp(`^${RULESET_LOCALE_CODE}$`);
+
+/** Whether a code is one a ruleset translation is named by. */
+export function isRulesetLocaleCode(code: string): boolean {
+  return RULESET_LOCALE_CODE_PATTERN.test(code);
+}
 
 /** The language a ruleset translation asset is in, or null for a path that is none. */
 export function rulesetLocaleOfAssetPath(path: string): string | null {
   return RULESET_LOCALE_ASSET_PATTERN.exec(path)?.[1] ?? null;
 }
 
-/** Whether a declared package asset path is one of a ruleset's translations (1.798). */
+/** Whether a declared package asset path is one of a ruleset file's translations (1.803). */
 export function isRulesetLocaleAssetPath(path: string): boolean {
   return RULESET_LOCALE_ASSET_PATTERN.test(path);
 }
 
-/** The asset path a ruleset ships its translation into `locale` under. */
+/** The asset path a ruleset package file carries its translation into `locale` under. */
 export function rulesetLocaleAssetPath(locale: string): string {
   return `locales/${locale}.json`;
+}
+
+/** The languages a translation for a reader of `language` may be under: the language, then the one it is
+ *  a kind of ("pt" for "pt-BR"). None for English, which a ruleset is written in. */
+export function rulesetTranslationLanguages(language: string): string[] {
+  const base = language.split("-")[0]!;
+  return base === "en" ? [] : base !== language ? [language, base] : [language];
+}
+
+/** A catalog ruleset's language pack (1.803): `<id>-<version>.<lang>.json`, published beside its
+ *  `<id>-<version>.ruleset.json` and fetched only in the language the Engine is set to. */
+export function rulesetLocalePackFileName(packageId: string, version: string, locale: string): string {
+  return `${packageId}-${version}.${locale}.json`;
 }
 
 /** How large one translation may be: every display string of the 5e SRD, its English as the keys and a
@@ -2732,16 +2753,18 @@ export const RULESET_LOCALE_KEY_MAX = 8000;
 export const RULESET_LOCALE_VALUE_MAX = 16000;
 
 /**
- * A ruleset translation as a package ships it (1.798): the package localization catalog the Agents
- * repository writes (`_meta`, `package`) with a `ruleset` section, each key a display string of the
- * ruleset's data word for word and its value that string in the file's language. Display only: the
- * rules go on reading the English. Read to the strings it translates, or the reason it does not read.
+ * A ruleset translation, as a language pack (1.803) or a package file's `locales/<lang>.json` holds it: the
+ * package localization catalog the Agents repository writes (`_meta`, `package`) with a `ruleset` section,
+ * each key a display string of the ruleset's data word for word and its value that string in the file's
+ * language. Display only: the rules go on reading the English. Read to the strings it translates, or the
+ * reason it does not read. A pack (`pack`) must have its `ruleset` section: it exists only to translate.
  */
 export function readRulesetLocaleFile(
   document: unknown,
   locale: string,
+  options: { name?: string; pack?: boolean } = {},
 ): { ok: true; strings: Record<string, string> } | { ok: false; issue: string } {
-  const where = rulesetLocaleAssetPath(locale);
+  const where = options.name ?? rulesetLocaleAssetPath(locale);
   if (!document || typeof document !== "object" || Array.isArray(document))
     return { ok: false, issue: `${where} is not a JSON object` };
   const file = document as Record<string, unknown>;
@@ -2764,6 +2787,7 @@ export function readRulesetLocaleFile(
     )
       return { ok: false, issue: `${where} package is not a few lines of text` };
   }
+  if (options.pack && file.ruleset === undefined) return { ok: false, issue: `${where} has no ruleset section` };
   // A package's own catalog listing in English (locales/en.json) has no ruleset section: it translates nothing.
   const section = file.ruleset ?? {};
   if (!section || typeof section !== "object" || Array.isArray(section))

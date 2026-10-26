@@ -276,6 +276,10 @@ try {
     prompt,
     /played at Moderate for a party of 2 \(levels 2, 2\).*at most 300, or 400 for a fight with a boss/,
   );
+  // The highest tier one enemy alone fits at, said beside it (laptop 2026-10-26: every invented boss
+  // was asked at CR 5 and brought down to CR 3): cr_1's 200 fits 400, cr_2's 450 does not.
+  assert.deepEqual(brief.budgetTop, { id: "cr_1", label: "CR 1" });
+  assert.match(prompt, /One enemy alone, a boss too, fits it at cr_1 at most: give no invented enemy a higher tier\./);
   // An invented caster's guidance (Alyssa, 2026-10-25): one role, six that spend its pools at most.
   assert.match(prompt, /A caster you make up has one role .* at most 6 that spend its pools/);
   // A ruleset with no budget says nothing of one.
@@ -286,7 +290,7 @@ try {
     buildInitPrompt("Ulfgar", "", "", [], "", "", false, undefined, none)
       .map((message) => message.content)
       .join("\n"),
-    /Budget:|worth \d/,
+    /Budget:|worth \d|fits it at/,
   );
 
   // ── The 1.795 gate ──

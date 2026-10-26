@@ -15,6 +15,10 @@ import type { GameDicePoolSlotName, SkillCheckResult } from "../types/game.js";
 import { parsePoolSlotName } from "./dice-pool.js";
 import { isWithinDiceLimits, parseDiceNotation } from "./dice-notation.js";
 
+/** Why the Engine did not roll a check it was asked for: the character cannot attempt it untrained,
+ *  or the check picks out no one party member to roll it. */
+export type SkillCheckRefusalReason = "untrained" | "unknown-roller";
+
 export interface SkillCheckTag {
   skill: string;
   /**
@@ -40,8 +44,10 @@ export interface SkillCheckTag {
   /** `reason="untrained"`: the Engine did not roll this check, because the ruleset does not let
    *  the character attempt it untrained. Settled, not owed: the client's fallback and the roll
    *  endpoint's record never roll it later. Only the Engine writes it, but the Game Master could
-   *  copy it, so a turn's own pass ignores it and decides again from the sheet. */
-  reason?: "untrained";
+   *  copy it, so a turn's own pass ignores it and decides again from the sheet. `"unknown-roller"`:
+   *  not rolled because its `who=` named nobody in the party, or several, or it named nobody where a
+   *  party member had to be named; settled on the same terms. */
+  reason?: SkillCheckRefusalReason;
   advantage?: boolean;
   disadvantage?: boolean;
   resolvedResult?: SkillCheckResult;
@@ -504,7 +510,8 @@ export function parseSkillCheckTagBody(body: string): SkillCheckTag | null {
   }
   const rerollName = values.get("reroll")?.trim();
   if (rerollName) tag.reroll = rerollName.slice(0, 40);
-  if (values.get("reason")?.trim().toLowerCase() === "untrained") tag.reason = "untrained";
+  const reason = values.get("reason")?.trim().toLowerCase();
+  if (reason === "untrained" || reason === "unknown-roller") tag.reason = reason;
   // A face, so a whole number or nothing, on the same terms as `bonus=`.
   for (const key of ["explode", "double"] as const) {
     const written = values.get(key)?.trim();

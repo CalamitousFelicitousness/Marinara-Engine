@@ -16,7 +16,13 @@
 import { gameInventoryDrawPlan, type GameInventoryDrawPlan } from "../../utils/game-inventory-stacks.js";
 import type { RulesetDefinition } from "../../schemas/ruleset.schema.js";
 import type { RulesetSheetItem } from "../rulesets/sheet-math.js";
-import { rulesetActionItemIndex, rulesetAmmoFirst, rulesetItemOn, rulesetStackLeft } from "./ammo.js";
+import {
+  rulesetActionItemIndex,
+  rulesetAmmoFirst,
+  rulesetHeldDrawPlan,
+  rulesetItemOn,
+  rulesetStackLeft,
+} from "./ammo.js";
 import { rulesetSyncHeldItems } from "./encounter.js";
 import type { RulesetCombatAction, RulesetCombatant, RulesetCombatEvent } from "./types.js";
 
@@ -207,6 +213,37 @@ export function rulesetDrawInHand(
       label: heldName(definition, items[index]!),
       stowed: plan.stow.map((at) => heldName(definition, items[at]!)),
     },
+  };
+}
+
+/**
+ * The item at `index`, drawn as it is used (1.800), goes in its user's hands as they use it: taken in
+ * hand as `rulesetDrawInHand` takes it, the fewest weapons in its slots put away (playtest 2026-10-26:
+ * a Longsword drawn past Shield and Shortsword left all three in hand by the next fight), and the menu
+ * read again from what they hold now. It is a free swap, so the turn's free interaction stays theirs.
+ * The fighter is changed in place; undefined, and nothing changed, for one already in hand, one not
+ * drawn as it is used, or one that could not be drawn (which the menu never offers).
+ */
+export function rulesetDrawAsUsed(
+  definition: RulesetDefinition,
+  actor: RulesetCombatant,
+  index: number,
+): Extract<RulesetCombatEvent, { type: "drew" }> | undefined {
+  const items = actor.sheet?.items ?? [];
+  const held = items[index];
+  if (!held?.drawOnUse || held.lent || wornNow(actor, index)) return undefined;
+  // In its user's hands: as the In hand row takes it. Anything else (1.800): as the bag draws it.
+  const plan = carriedForHand(actor, index, handSlots(items))
+    ? inHandPlan(definition, actor, index)
+    : rulesetHeldDrawPlan(definition, items, index, actor.drawn);
+  if ("blockedBy" in plan) return undefined;
+  actor.drawn = { ...actor.drawn, [index]: true, ...Object.fromEntries(plan.stow.map((at) => [at, false])) };
+  rulesetSyncHeldItems(definition, actor);
+  return {
+    type: "drew",
+    actorId: actor.id,
+    label: heldName(definition, held),
+    stowed: plan.stow.map((at) => heldName(definition, items[at]!)),
   };
 }
 

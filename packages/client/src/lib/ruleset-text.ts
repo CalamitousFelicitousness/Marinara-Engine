@@ -1,9 +1,11 @@
 // ──────────────────────────────────────────────
-// A ruleset's translation on screen (Capability API 1.798)
+// A ruleset's translation on screen (Capability API 1.803)
 //
-// A ruleset package may ship `locales/<language>.json`: its display strings, each keyed by its English
-// word for word. The rules read the English and the Game Master is told the English; only what a
-// player reads in a fight is swapped, here, as it is drawn. Anything with no translation stays English.
+// A catalog ruleset may list a language pack per language, fetched in the Engine's language, and a
+// ruleset package file may carry `locales/<language>.json`, of which its import keeps that language:
+// its display strings, each keyed by its English word for word. The rules read the English and the Game
+// Master is told the English; only what a player reads in a fight is swapped, here, as it is drawn.
+// Anything with no translation stays English.
 // ──────────────────────────────────────────────
 import { createContext, useContext } from "react";
 import type { DirectedRulesetView } from "@marinara-engine/shared";

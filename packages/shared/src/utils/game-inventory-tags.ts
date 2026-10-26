@@ -13,6 +13,7 @@ import {
   type GameInventoryOpResult,
 } from "./game-inventory-ops.js";
 import {
+  gameInventoryAddedItem,
   gameInventoryBagKey,
   gameInventoryCountItems,
   gameInventoryGiveRefusal,
@@ -403,6 +404,7 @@ export function applyGameInventoryTags(
   const requests = [...content.matchAll(createInventoryTagRegex())].map((match) => ({
     request: parseInventoryTagBody(match[1] ?? ""),
     sourced: /\b(?:source|from)\s*=/i.test(match[1] ?? ""),
+    story: /\bsource\s*=\s*["']?story\b/i.test(match[1] ?? ""),
   }));
   requests.forEach(({ request, sourced }, index) => {
     if (request?.action !== "add" || request.to || sourced) return;
@@ -499,6 +501,13 @@ export function applyGameInventoryTags(
           }
           const note = invented?.notes.join(" ") || undefined;
           const ref = invented ? { item: invented.item } : {};
+          // An item a use spends comes into a bag only by a way the Engine checks (a buy, a loot roll, a
+          // won fight, a give), never by the Game Master's word (cheap-GM playtest 2026-10-26: a potion
+          // "from the captain's belt", added from nowhere, then healed).
+          const adds = invented?.item ?? gameInventoryAddedItem(current, item, who.bag?.holder, rules)?.item;
+          if (adds && rules?.sourcedOnly?.(adds) && !requests[tagIndex]?.story) {
+            return serializeInventoryTag(shown, { ok: false, reason: "no-source" });
+          }
           return addAnswered(item, ref, request.count, request.who, who.bag, note, "add", request.lasts);
         }
         if (
@@ -941,6 +950,14 @@ export function refuseGameInventoryTags(content: string, reason: string): string
       const request = parseLootTagBody(body);
       return serializeLootTag(request ?? { raw: body.trim() }, reason);
     });
+}
+
+/** A reply's inventory tags without a `source="story"` the Game Master wrote: only the Engine marks an
+ *  Experience's own gift, which an item only a checked source may add is still given by. */
+export function dropForgedStorySources(content: string): string {
+  return content.replace(createInventoryTagRegex(), (tag) =>
+    tag.replace(/\s*\bsource\s*=\s*(["']?)story\1(?=[\s\]])/gi, ""),
+  );
 }
 
 /** The line a won fight's recap names what dropped on, already in the bags. */

@@ -19,14 +19,7 @@ import { rulesetDistanceText } from "../../lib/ruleset-combat-board";
 import { rulesetEffectPhrase } from "./RulesetItemPicker";
 import { cn } from "../../lib/utils";
 import { useUIStore } from "../../stores/ui.store";
-
-/** The ruleset's own words for what a combatant is (1.168): "Fiend (devil)". */
-function kindLine(kind: { type?: string; tags?: string[]; alignment?: string }): string {
-  const tags = (kind.tags ?? []).join(", ");
-  const what = !kind.type ? tags : tags ? `${kind.type} (${tags})` : kind.type;
-  // Its alignment as the stat block writes it, after what it is: "Humanoid (Goblinoid), neutral evil".
-  return [what, kind.alignment].filter(Boolean).join(", ");
-}
+import { rulesetKindLine } from "./RulesetTurnOrder";
 
 export function RulesetCombatStatus({
   definition,
@@ -104,7 +97,7 @@ export function RulesetCombatStatus({
               .map((budget) => (
                 <span key={budget.id}>
                   {t("game.combat.ruleset.status.budget", {
-                    label: budget.label,
+                    label: names.budget(budget.id),
                     left: actor.budgets[budget.id] ?? 0,
                   })}
                 </span>
@@ -253,7 +246,7 @@ export function RulesetCombatStatus({
                   )}
                   {combatant.kind && (
                     <span className="mt-0.5 block break-words text-[0.65rem] text-[var(--muted-foreground)]">
-                      {kindLine(combatant.kind)}
+                      {rulesetKindLine(combatant.kind, text, true)}
                     </span>
                   )}
                   {combatant.hides &&

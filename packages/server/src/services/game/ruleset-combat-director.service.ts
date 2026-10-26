@@ -640,6 +640,9 @@ export interface RulesetFightOpponent {
   }>;
   /** A boss's points to spend between turns, as the Game Master wrote it. */
   points?: number;
+  /** The share of its health it still has, above 0 and below 1, where the story hurt it before the
+   *  fight (the Game Master's `hp` under its `maxHp`): it begins with that share of what it is built with. */
+  hurt?: number;
 }
 
 export interface RulesetFightSeed {
@@ -1856,14 +1859,35 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
       ...(shaped ? [{ casterId: one.id, entry: shaped.entry, mode: shaped.as, kept: shaped.entry }] : []),
     ];
   });
+  // A member's change of their own shape is never set up by the fight's listing: only the shape their
+  // sheet keeps starts a fight, as the form it names (laptop 2026-10-26: a druid listed as a Swarm of
+  // Spiders came into a fight in it with nothing in the story that turned him).
+  const ownShape = (one: { casterId: string; entry: string }) => {
+    const caster = rulesetCombatant(encounter, one.casterId);
+    if (!caster || caster.side !== "party" || !caster.sheet) return undefined;
+    return caster.actions.find(
+      (action) =>
+        (action.id === one.entry || sameRulesetName(action.label, one.entry)) &&
+        action.targets.side === "self" &&
+        !!action.modes?.some((mode) => mode.form),
+    );
+  };
   const standing = [
-    ...(input.standing ?? []).filter(
-      (one) =>
-        !kept.some(
+    ...(input.standing ?? []).filter((one) => {
+      if (
+        kept.some(
           (call) =>
             call.casterId === one.casterId && call.entry.trim().toLowerCase() === one.entry.trim().toLowerCase(),
-        ),
-    ),
+        )
+      )
+        return false;
+      const shape = ownShape(one);
+      if (!shape) return true;
+      adjustments.push(
+        `${rulesetCombatant(encounter, one.casterId)!.name}'s ${shape.label} changes their own shape, which only their sheet keeps, so it is not done.`,
+      );
+      return false;
+    }),
     ...kept,
   ];
   // What was set up before it stands as it begins (1.449).
@@ -1883,6 +1907,19 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
       if (shaped.health === undefined) continue;
       one.shape.health.value = Math.max(1, Math.min(one.shape.health.max, shaped.health));
     }
+  }
+  // What the story took off an opponent before the fight stays off it (cheap-GM playtest 2026-10-26:
+  // a foe hurt in the narration came onto the board whole): the share of its health the Game Master
+  // left it, never under 1. One whose health lives on a sheet keeps it as the sheet has it.
+  for (const opponent of input.enemies) {
+    const share = opponent.hurt;
+    if (share === undefined || !(share > 0 && share < 1)) continue;
+    const one = rulesetCombatant(encounter, opponent.id);
+    if (!one || one.side !== "enemy" || one.sheet || !one.health) continue;
+    one.health.value = Math.max(1, Math.min(one.health.value, Math.round(one.health.max * share)));
+    adjustments.push(
+      `${opponent.name} begins hurt, at ${one.health.value} of ${one.health.max} health, as the story left it.`,
+    );
   }
   // A shape's condition on a member who starts the fight in no shape holds them in nothing: it is
   // taken off, sheet and all (laptop 2026-10-25: a bare Wild Shape on a druid's token after the wolf
@@ -2709,16 +2746,17 @@ export function rulesetFightLiveStates(fight: RulesetFightState): RulesetLiveSta
           ),
         )
       : undefined;
-    const held =
-      shape && !combatant.defeated && (state?.shaped ? sameRulesetName(state.shaped.as, shape.name) : !!entry);
+    // The one it kept, or another they took in the fight by an entry of their own in its place.
+    const same = !!shape && !!state?.shaped && sameRulesetName(state.shaped.as, shape.name);
+    const held = shape && !combatant.defeated && (same || !!entry);
     if (held) {
       const conditions = state?.conditions ?? [];
       state = {
         ...state,
         ...(conditions.includes(shape.condition) ? {} : { conditions: [...conditions, shape.condition] }),
         shaped: {
-          entry: state?.shaped?.entry ?? entry!.label,
-          as: state?.shaped?.as ?? shape.name,
+          entry: same ? state!.shaped!.entry : entry!.label,
+          as: same ? state!.shaped!.as : shape.name,
           ...(shape.health ? { health: Math.max(0, shape.health.value), max: shape.health.max } : {}),
         },
       };
@@ -4299,6 +4337,15 @@ function rulesetPathZoneHarm(
   return harm;
 }
 
+/** What the blows drawn by leaving these opponents' reach come to, each its best strike's average. */
+function rulesetPartingHarm(encounter: RulesetEncounterState, provokers: readonly string[]): number {
+  return provokers.reduce((sum, id) => {
+    const foe = rulesetCombatant(encounter, id);
+    const blow = foe && rulesetCombatStanding(foe) ? rulesetOpportunityAttack(foe) : null;
+    return sum + (blow?.damage ? rulesetSafeAverage(blow.damage) : 0);
+  }, 0);
+}
+
 /** Whether a lasting area or aura there would likely finish it (playtest: a mage at 4 health that Misty
  *  Stepped into Spirit Guardians): no cell to step or teleport to, whatever it would gain there. */
 function rulesetZoneKillsAt(
@@ -4451,6 +4498,18 @@ function weighRulesetTeam(
           if (crossed > 0) {
             const own = rulesetCombatHealth(definition, combat, actor);
             candidate.risk += Math.min(3, crossed / Math.max(1, own.value + own.temp));
+          }
+        }
+        // And the blows it draws leaving somebody's reach on the way, weighed as that harm against the
+        // health it has left: a scratch to one who is whole, its end to one nearly down (cheap-GM
+        // playtest 2026-10-26: a companion at 5 health walked out of melee and was struck twice), so it
+        // walks out through them only when nothing it could do from where it stands is worth as much.
+        const provokers = (candidate.action.to as { provokes?: readonly string[] } | undefined)?.provokes;
+        if (!defensive && provokers?.length) {
+          const parting = rulesetPartingHarm(encounter, provokers);
+          if (parting > 0) {
+            const own = rulesetCombatHealth(definition, combat, actor);
+            candidate.risk += Math.min(3, parting / Math.max(1, own.value + own.temp));
           }
         }
         // A throw or a shot made from inside an opponent's reach (I1b re-test 2026-10-24: a thrower
@@ -7038,11 +7097,10 @@ function weighCaught(
     }, 0);
   } else if (average > 0) {
     if (foes.length === 0 && walkers.length === 0) return false;
-    // Never a blast that could kill its own maker: a mage's Fireball at its own feet.
-    if (caught.some((target) => target.id === actor.id)) {
-      const own = rulesetCombatHealth(definition, combat, actor);
-      if (average >= own.value + own.temp) return false;
-    }
+    // Never a blast that catches its own maker: one whose area spares it never has it among those
+    // caught, so here it would take the blow it throws (cheap-GM playtest 2026-10-26: a bard's
+    // Shatter caught herself). A tactician aims it elsewhere or does something else.
+    if (caught.some((target) => target.id === actor.id && !target.down)) return false;
     // Each foe counts for at most what dropping it is worth, weighed against what its side stands up
     // with as a blow is: a cleric at 3 health is not worth a Fireball over its own two mages.
     const share = [...foes, ...walkers].reduce((total, target) => {
@@ -7244,7 +7302,15 @@ function teleportCandidate(
       };
     }
   }
-  const picked = repositionCell(definition, combat, encounter, actor, cells);
+  const picked = repositionCell(
+    definition,
+    combat,
+    encounter,
+    actor,
+    cells,
+    // Paid for out of a pool, or out of uses it has only so many of.
+    !!option.cost?.length || !!actor.actions.find((one) => one.id === option.id)?.uses,
+  );
   if (!picked) return null;
   const { best, worth } = picked;
   return {
@@ -7288,6 +7354,8 @@ function repositionCell(
   encounter: RulesetEncounterState,
   actor: RulesetCombatant,
   cells: ReadonlyArray<{ x: number; y: number }>,
+  /** Paid for (a spell's slot, a use of a few a day): it closes in by it only where its walk would not get it there. */
+  paid = false,
 ): { best: { x: number; y: number }; worth: number } | null {
   const span = rulesetSpanOf(actor);
   const foes = encounter.combatants.filter(
@@ -7319,7 +7387,19 @@ function repositionCell(
       if (!best || clearOf(cell) > clearOf(best) || (clearOf(cell) === clearOf(best) && nearest(cell) > nearest(best)))
         best = cell;
     if (best && clearOf(best) > 0) worth = 0.6;
-  } else if (reaches.length > 0 && nearest(here) > Math.max(...reaches)) {
+  } else if (
+    reaches.length > 0 &&
+    nearest(here) > Math.max(...reaches) &&
+    // A slot spent where its own walk would do (cheap-GM playtest 2026-10-26: Misty Step cast with
+    // nobody near and nobody threatening) is a slot wasted: paid for, it closes in only past its walk.
+    (!paid ||
+      nearest(here) >
+        Math.max(...reaches) +
+          (actor.movementLeft ??
+            (definition.combat?.distance?.perCell
+              ? rulesetInCells(actor.speed, definition.combat.distance.perCell)
+              : 6)))
+  ) {
     // Closing: the cell nearest an enemy that puts one in reach.
     const reach = Math.max(...reaches);
     for (const cell of cells) {
@@ -7455,6 +7535,10 @@ export function rulesetClosingMove(
       rulesetZoneHarmAt(encounter, actor, cell, true) > 0
     )
       continue;
+    // Nor out through blows that would likely drop it on the way (cheap-GM playtest 2026-10-26: a
+    // companion at 5 health walked out of melee toward another foe and was struck down): it stays
+    // and does what it can where it stands.
+    if (combat && cell.provokes.length > 0 && rulesetPartingHarm(encounter, cell.provokes) >= pool) continue;
     const beats = (than: Stop, away: number) =>
       !than ||
       away < than.away ||

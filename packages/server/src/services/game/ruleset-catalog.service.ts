@@ -189,9 +189,10 @@ async function storedCatalog(
 }
 
 /**
- * A ruleset's translation into a language (1.798): its strings, each its English display text word for
- * word to that text in the language, or null when it ships none in that language or the one it is a
- * kind of ("pt" for "pt-BR"). A package's installed file, or the one kept with an imported package file.
+ * A ruleset's translation into a language: its strings, each its English display text word for word to
+ * that text in the language, or null when none is kept in that language or the one it is a kind of ("pt"
+ * for "pt-BR"). A catalog package's language pack (1.803), or the one language kept with an imported
+ * package file.
  */
 export async function openRulesetLocale(
   packageId: string | null,
@@ -246,9 +247,9 @@ export async function openRulesetLocale(
         try {
           document = JSON.parse(data.data.toString("utf8"));
         } catch {
-          return { ok: false, issue: `locales/${language}.json is not valid JSON` };
+          return { ok: false, issue: `The ${language} translation is not valid JSON` };
         }
-        const read = readRulesetLocaleFile(document, language);
+        const read = readRulesetLocaleFile(document, language, { name: `The ${language} translation` });
         return read.ok ? { ok: true, strings: read.strings } : { ok: false, issue: read.issue };
       },
     };

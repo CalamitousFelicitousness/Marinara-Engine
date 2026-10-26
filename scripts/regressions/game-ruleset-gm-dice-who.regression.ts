@@ -4,7 +4,8 @@
  *   6 successes) or a sparse `rolls="N"` the Engine adopted as the player's die;
  * - `who="Lethariel"` for the card "Lethariel Moonwhisper" rolled with no modifier and said nothing;
  * - in a game with no persona, a check that named nobody rolled the first card's sheet (Dorra's +1)
- *   for the sneak the narration gave Pip (+8).
+ *   for the sneak the narration gave Pip (+8); now it rolls for whom the narration names, and is
+ *   refused when the narration names nobody.
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -215,11 +216,11 @@ try {
     // Named only after the tag, in the same paragraph.
     const later = await run(`The hall is dark. [skill_check: skill="Stealth" dc="13"] Pip holds her breath.`);
     assert.match(later.content, /who="Pip Tumblewick"/);
-    // Nobody named: the member best at it, said in the record.
-    const nobody = await run(`The party creeps on. [skill_check: skill="Stealth" dc="13"]`);
-    assert.match(nobody.content, /modifier="8".*who="Pip Tumblewick"/);
+    // Nobody named: nobody is picked (cheap-GM playtest 2026-10-26); the check is refused, and says why.
+    const nobody = await run(`The party creeps on. [skill_check: skill="Stealth" dc="13"]`, directed, []);
+    assert.match(nobody.content, /reason="unknown-roller"\]$/);
     const reread = parseSkillCheckTagBody(nobody.content.slice(nobody.content.indexOf("[skill_check:") + 13, -1));
-    assert.equal(reread?.who, "Pip Tumblewick");
+    assert.deepEqual([reread?.who, reread?.reason], [undefined, "unknown-roller"]);
     // A player with a card of their own is still the one a nameless check is for.
     const owned = await run(`Pip slips into the shadows. [skill_check: skill="Stealth" dc="13"]`, {
       ...directed,

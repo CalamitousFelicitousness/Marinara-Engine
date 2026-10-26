@@ -1136,11 +1136,16 @@ function formatSkillCheckLogContent(
   const checkSegments: NarrationSegment[] = skillChecks.map((skillCheck, index) => {
     const result = skillCheck.resolvedResult;
     // Not rolled because the character could not attempt it: said as that, never as a check still owed.
-    if (!result && skillCheck.reason === "untrained") {
+    if (!result && skillCheck.reason) {
       return {
         id: `${message.id}-skill-check-log-${index}`,
         type: "system",
-        content: localizeUi("game.narration.skillCheckUntrained", { skill: skillCheck.skill }),
+        content: localizeUi(
+          skillCheck.reason === "untrained"
+            ? "game.narration.skillCheckUntrained"
+            : "game.narration.skillCheckUnknownRoller",
+          { skill: skillCheck.skill },
+        ),
       };
     }
     if (!result) {

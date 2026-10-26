@@ -77,7 +77,7 @@ export function DirectedCombatUI(props: Props) {
   }, [definition]);
   // What the ruleset calls the number an attack is rolled against, for the one prompt that shows it.
   const defenseLabel = definition ? rulesetValueLabel(definition, definition.combat?.defense) : "";
-  // What the player reads of the ruleset is in their language where it ships a translation (1.798);
+  // What the player reads of the ruleset is in their language where it ships a translation (1.803);
   // what goes back to the story (the summary, the choices sent) stays the ruleset's own English.
   const strings = useRulesetStrings(definition?.id, definition?.version, i18n.resolvedLanguage ?? i18n.language);
   const rulesetText = useMemo(() => rulesetTextLookup(strings.data?.strings), [strings.data]);

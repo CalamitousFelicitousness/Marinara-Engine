@@ -22,6 +22,7 @@ import {
   rulesetEntryNamed,
   createSkillCheckTagRegex,
   formatPoolSlotName,
+  formatSkillCheckResultSummary,
   readGmTagAttributes,
   isEngineRollableSkillCheckTag,
   parseSkillCheckTagBody,
@@ -114,6 +115,14 @@ export class SkillCheckUntrainedError extends Error {
   constructor(skill: string) {
     super(`The check ${skill} cannot be attempted untrained under this game's rules`);
     this.name = "SkillCheckUntrainedError";
+  }
+}
+
+/** A check whose `who=` looks like a party member but picks out no one of them, in a ruleset game. */
+export class SkillCheckRollerError extends Error {
+  constructor(who: string) {
+    super(`"${who}" does not name one party member`);
+    this.name = "SkillCheckRollerError";
   }
 }
 
@@ -1487,16 +1496,15 @@ function lastCheckTagEnd(text: string): number {
  * 2026-10-26: with no persona the first card stood in for the player, and Dorra's +1 Stealth was
  * rolled for the sneak the narration gave Pip (+8). So: the party member the narration names last
  * before the tag, since the check before it; else the one it names first after the tag, up to the
- * paragraph's end; else the member with the best number for the check, which is
- * who a party sends. Undefined wherever the player has a card of their own or there is one card to
- * roll for: there the check is the player's, as it always was.
+ * paragraph's end. Undefined when the narration names nobody (cheap-GM playtest 2026-10-26: picking
+ * someone there rolled for a hero the story never sent; `rulesetCheckRollerRefused` refuses it), and
+ * wherever the player has a card of their own or there is one card to roll for: there the check is
+ * the player's, as it always was.
  */
 export function inferRulesetCheckWho(
   ruleset: SkillCheckRulesetContext,
   content: string,
   span: { start: number; end: number },
-  skill: string,
-  withAbility?: string,
 ): string | undefined {
   if (!ruleset.playerByPosition || ruleset.sheets.size < 2) return undefined;
   const keys = [...ruleset.sheets.keys()];
@@ -1528,15 +1536,53 @@ export function inferRulesetCheckWho(
   const after = content.slice(span.end);
   const stops = [after.indexOf("\n\n"), after.search(/\[skill_check\b/i)].filter((at) => at >= 0);
   const key =
-    named(before.slice(from), true) ??
-    named(stops.length ? after.slice(0, Math.min(...stops)) : after, false) ??
-    keys.reduce((best, candidate) =>
-      rulesetCheckModifierFor(ruleset, skill, candidate, withAbility) + rulesetCheckPenaltyFor(ruleset, candidate) >
-      rulesetCheckModifierFor(ruleset, skill, best, withAbility) + rulesetCheckPenaltyFor(ruleset, best)
-        ? candidate
-        : best,
-    );
-  return ruleset.names?.get(key) ?? key;
+    named(before.slice(from), true) ?? named(stops.length ? after.slice(0, Math.min(...stops)) : after, false);
+  return key === undefined ? undefined : (ruleset.names?.get(key) ?? key);
+}
+
+/** Words a `who=` uses for the whole party, which is nobody's sheet. */
+const WHOLE_PARTY_WORDS: ReadonlySet<string> = new Set(["party", "everyone"]);
+
+/**
+ * Whether a `who=` that picks out no card still reads as a party member: it says the party, or shares
+ * a word of a member's name or nickname ("Pip" for two Pips, "Mars Hollow" for `Marigold "Mars"
+ * Thimblewick`). Anybody else, "A Guard", is somebody outside the party.
+ */
+function whoReadsAsPartyMember(ruleset: SkillCheckRulesetContext, who: string): boolean {
+  const words = normalizeCharacterLookupName(who)
+    .split(" ")
+    .filter((word) => word.length >= 2 && !CHARACTER_NAME_PARTICLES.has(word));
+  if (words.some((word) => WHOLE_PARTY_WORDS.has(word))) return true;
+  const cardWords = new Set([...ruleset.sheets.keys(), ...(ruleset.ambiguous ?? [])].flatMap((key) => key.split(" ")));
+  return words.some((word) => cardWords.has(word));
+}
+
+/**
+ * Whether a ruleset check is refused for want of one party member to roll it (cheap-GM playtest
+ * 2026-10-26): its `who=` reads as a party member but picks out no one card (a name or nickname
+ * several share, a name half-right, the party), which used to roll a silent flat die for a hero; or
+ * it names nobody where nobody is the player's own and the party has several members, which used to
+ * pick one. A `who=` naming somebody outside the party (an NPC) is still rolled, on a plain die.
+ * Never for a game with no party cards at all.
+ */
+export function rulesetCheckRollerRefused(ruleset: SkillCheckRulesetContext, who?: string): boolean {
+  if (ruleset.sheets.size === 0) return false;
+  if (who?.trim()) return !ruleset.sheets.has(rulesetNamedKey(ruleset, who)) && whoReadsAsPartyMember(ruleset, who);
+  return !!ruleset.playerByPosition && ruleset.sheets.size >= 2;
+}
+
+/**
+ * The d20 faces a check record written into this turn may stand on. In a ruleset game, only the
+ * player's own and the ones a branch check rolled: the Game Master is told never to roll a check
+ * with the dice tool, and a tool die is one it can throw again until the face suits it. Elsewhere the
+ * tool's and the placeholders' d20s too, as the brief for those games asks.
+ */
+export function checkIssuedD20s(
+  rulesetPinned: boolean,
+  thrown: readonly number[],
+  engineRolls: ReadonlyArray<{ notation: string; rolls: number[] }>,
+): number[] {
+  return rulesetPinned ? [...thrown] : [...thrown, ...engineIssuedD20Faces(engineRolls)];
 }
 
 /**
@@ -1712,6 +1758,10 @@ export async function resolveChatSkillCheck(
   rollD20?: () => number,
 ): Promise<SkillCheckResult> {
   const context = await loadSkillCheckModifierContext(db, chatId);
+  // Only a name nobody answers to: a check naming nobody is the player's, as a roll they ask for is.
+  if (context.ruleset && request.who?.trim() && rulesetCheckRollerRefused(context.ruleset, request.who)) {
+    throw new SkillCheckRollerError(request.who.trim());
+  }
   return resolveSkillCheckWithContext(context, request, rollD20);
 }
 
@@ -1827,6 +1877,12 @@ export interface SkillCheckTagResolution {
    */
   untrained?: number;
   /**
+   * How many were not rolled because they pick out no one party member to roll them (`reason=
+   * "unknown-roller"`), with the `who=` each wrote ("" for none). Counted inside `left` and `sparse`,
+   * and settled like an untrained one: the Game Master names a party member and asks again.
+   */
+  unknownRoller?: { count: number; written: string[] };
+  /**
    * The live sheet state after every purchase this pass paid for, when any did.
    *
    * Absent when nothing was bought, which is every game that does not use `spend=`. The caller
@@ -1858,6 +1914,31 @@ export function skillCheckCorrectionLine(result: SkillCheckResult, claimed: bool
   const numbers = result.resolution === "sum" ? ` (${result.total} against ${result.dc})` : "";
   const outcome = result.success ? "a success" : "a failure";
   return `(Correction: ${whose}${result.skill} check is ${outcome}${numbers}, not the ${claimed ? "success" : "failure"} first written. The Engine's roll stands.)`;
+}
+
+/**
+ * An earlier turn as the Game Master reads it back: each check the Engine settled is a plain line
+ * saying what it came to, not the record it was saved as. Cheap-GM playtest 2026-10-26: models copied
+ * the saved `rolls=`/`total=`/`result=` records into new turns, picking their own dice. A check still
+ * owed is left as written, and so is anything that does not read as a check.
+ */
+export function checkRecordsAsHistoryNotes(content: string): string {
+  if (!content || !/\[skill_check\b/i.test(content)) return content;
+  return content.replace(createSkillCheckTagRegex(), (whole, body: string | undefined) => {
+    const tag = parseSkillCheckTagBody(body ?? "");
+    if (!tag) return whole;
+    const who = tag.who?.trim();
+    if (tag.resolvedResult) {
+      return `(Engine roll${who ? ` for ${who}` : ""}: ${formatSkillCheckResultSummary(tag.resolvedResult)})`;
+    }
+    if (tag.reason === "untrained") {
+      return `(Engine: ${who ? `${who}'s ` : ""}${tag.skill} check not rolled: untrained.)`;
+    }
+    if (tag.reason === "unknown-roller") {
+      return `(Engine: ${tag.skill} check not rolled: ${who ? `"${who}" does not name` : "it named no"} one party member.)`;
+    }
+    return whole;
+  });
 }
 
 /**
@@ -2173,16 +2254,22 @@ export async function resolveSkillCheckTagsInContent(
         let { tag } = entry;
         // A check that names nobody, where nobody is the player's own card, is rolled for the party
         // member the narration gives it to, and the record says so.
-        const inferredWho =
-          ruleset && !tag.who ? inferRulesetCheckWho(ruleset, content, entry, tag.skill, tag.withAbility) : undefined;
+        const inferredWho = ruleset && !tag.who ? inferRulesetCheckWho(ruleset, content, entry) : undefined;
         if (inferredWho) tag = { ...tag, who: inferredWho };
         const request = toRequest(tag, ruleset?.definition);
         // A record claiming a save failed without a roll carries no dice to vouch for and a label no
         // ruleset throws, so it is always the Engine's to decide again from the sheet.
         const claimsNoRoll = !!tag.resolvedResult?.automatic;
         // The numbers must be the sheet's, and the dice somebody else's: the player's, or the Engine's.
+        // A check with no one party member to roll it is refused below, whatever it carries: a flat die
+        // is not the roll the story asked of a hero.
+        const noRoller =
+          !!ruleset &&
+          isRulesetRollableSkillCheckTag(tag, ruleset.definition) &&
+          rulesetCheckRollerRefused(ruleset, tag.who);
         const vouched =
           !!ruleset &&
+          !noRoller &&
           rulesetVouchesFor(ruleset, tag) &&
           (!issued || takeIssuedD20s(issued, tag.resolvedResult!.rolls));
         const owesRoll = ruleset
@@ -2191,7 +2278,7 @@ export async function resolveSkillCheckTagsInContent(
         // A check the character cannot attempt untrained is refused below whatever it carries: no
         // numbers, dice or difficulty the Game Master wrote on it gets it past the sheet.
         const refused = !!ruleset && rulesetRefusesUntrained(ruleset, request);
-        if (refused || (owesRoll && isResolvableSkillCheckRequest(request, ruleset?.definition))) {
+        if (noRoller || refused || (owesRoll && isResolvableSkillCheckRequest(request, ruleset?.definition))) {
           pending.push({ start: entry.start, end: entry.end, request, tag });
         } else if ((owesRoll || claimsNoRoll) && tag.resolvedResult) {
           // This ruleset's own kind of check, carrying numbers the sheet does not vouch for, that
@@ -2250,11 +2337,34 @@ export async function resolveSkillCheckTagsInContent(
     // Checks the character may not attempt untrained. Saved as the ask with the reason on it, which
     // settles them: nothing later rolls a check the Engine said could not be made.
     let untrained = 0;
+    // Checks that pick out no one party member to roll them, by the `who=` each wrote.
+    const unknownRoller: string[] = [];
     const rolled = rewrite((entry) => {
       // A pool check bound before the ruleset was loaded may have named its difficulty by a ladder
       // step; it is read now, with the ruleset in hand, so the pool serves it like any other check.
-      const request =
+      let request =
         entry.poolBody != null ? readRulesetDifficulty(entry.request, context.ruleset?.definition) : entry.request;
+      // And names its roller now, as the other checks did above, when it names nobody.
+      if (entry.poolBody != null && context.ruleset && !request.who) {
+        const inferred = inferRulesetCheckWho(context.ruleset, content, entry);
+        if (inferred) {
+          request = { ...request, who: inferred };
+          entry.tag = { ...entry.tag, who: inferred };
+        }
+      }
+      if (context.ruleset && rulesetCheckRollerRefused(context.ruleset, request.who)) {
+        unknownRoller.push(request.who?.trim() ?? "");
+        return serializeSparseSkillCheckTag(
+          {
+            skill: request.skill,
+            dc: entry.request.dc,
+            advantage: request.advantage,
+            disadvantage: request.disadvantage,
+            declaredDice: entry.tag.declaredDice,
+          },
+          { ...(askExtras(entry.tag) ?? {}), reason: "unknown-roller" },
+        );
+      }
       if (context.ruleset && rulesetRefusesUntrained(context.ruleset, request)) {
         untrained += 1;
         return serializeSparseSkillCheckTag(
@@ -2320,14 +2430,24 @@ export async function resolveSkillCheckTagsInContent(
         options.chatId ?? "unknown",
       );
     }
+    const refusedRoller = unknownRoller.length;
+    if (refusedRoller > 0) {
+      logger.info(
+        "[game/skill-check] %d check(s) pick out no one party member to roll them for chat %s (%s); not rolled",
+        refusedRoller,
+        options.chatId ?? "unknown",
+        unknownRoller.map((who) => who || "nobody").join(", "),
+      );
+    }
     return {
       content: rolled,
       results,
-      resolved: pending.length - overflowed - unread - untrained,
+      resolved: pending.length - overflowed - unread - untrained - refusedRoller,
       trusted,
-      left: left + overflowed + unread + untrained,
-      sparse: overflowed + unread + untrained + stripped.length,
+      left: left + overflowed + unread + untrained + refusedRoller,
+      sparse: overflowed + unread + untrained + refusedRoller + stripped.length,
       ...(untrained > 0 ? { untrained } : {}),
+      ...(refusedRoller > 0 ? { unknownRoller: { count: refusedRoller, written: unknownRoller } } : {}),
       ...(corrected > 0 ? { corrected } : {}),
       ...(spentLive ? { live: spentLive } : {}),
     };

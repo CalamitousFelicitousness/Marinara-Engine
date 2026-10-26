@@ -206,6 +206,12 @@ export function rulesetTakeShape(
   }
   const health =
     rule.health === "own" || !built.health ? undefined : { value: built.health.value, max: built.health.max, temp: 0 };
+  // What the form keeps on (1.263), as a creature of it would hold from the start: a swarm's sharing
+  // of spaces, without which its bite of no reach reaches nobody.
+  const keptOn = built.tracked.filter(
+    (entry) => entry.kept && !target.tracked.some((own) => own.condition === entry.condition),
+  );
+  target.tracked.push(...keptOn.map((entry) => structuredClone(entry)));
   target.shape = {
     condition,
     form: { ...form.creature },
@@ -213,6 +219,7 @@ export function rulesetTakeShape(
     ...(health ? { health } : {}),
     was,
     lacked,
+    ...(keptOn.length ? { keptOn: keptOn.map((entry) => entry.condition) } : {}),
   };
   return target.shape;
 }
@@ -222,6 +229,9 @@ export function rulesetLeaveShape(target: RulesetCombatant): RulesetShaped | nul
   const shape = target.shape;
   if (!shape) return null;
   delete target.shape;
+  // What the form kept on goes with it.
+  if (shape.keptOn?.length)
+    target.tracked = target.tracked.filter((entry) => !(entry.kept && shape.keptOn!.includes(entry.condition)));
   // The form's own actions, and the shape's way back, go with it; what was kept was always theirs.
   const own = new Set((shape.was.actions ?? []).map((one) => one.id));
   const keptUses = Object.fromEntries(Object.entries(target.uses).filter(([id]) => own.has(id)));

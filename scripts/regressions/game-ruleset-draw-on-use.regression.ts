@@ -8,6 +8,10 @@
  *     weapons in two hands leave no room to equip a third.
  *   - Using it puts it on as a free swap: the fewest other drawn-as-used items in its slots are put
  *     away. Nothing else (a buckler, gauntlets, a cursed weapon) ever is: then the use is refused.
+ *   - In a ruleset fight it is taken in hand as the In hand row takes it (playtest 2026-10-26: a
+ *     Longsword drawn past Shield and Shortsword left all three in hand by the next fight): what it
+ *     replaces is put away, the fight says so in the line the row's draw says, the menu is read again,
+ *     and the bag holds two in hand for the next fight. The turn's free interaction stays unspent.
  *   - A ruleset without it is unchanged. Checked at import, and the install gate asks for 1.800.
  */
 import assert from "node:assert/strict";
@@ -31,6 +35,7 @@ import {
   rulesetCombatant,
   rulesetCombatOptions,
   rulesetFightItemChanges,
+  rulesetInHand,
   rulesetItemBook,
   rulesetItemFightEffect,
   rulesetItemUseLine,
@@ -313,6 +318,95 @@ try {
     assert.equal(optionIds(drawing, fight(drawing, bag("bow", "arrows", "gauntlets+"))).includes("item:0"), false);
     // Without the option, a carried bow is never offered.
     assert.equal(optionIds(plain, fight(plain, bag("bow", "arrows"))).includes("item:0"), false);
+  }
+
+  // ── A ruleset fight takes it in hand as the In hand row does: what it replaces is put away ──
+  {
+    // Kaela's hands: a shield (the buckler) and a shortsword (the axe), a longsword (the spear) carried.
+    const en = JSON.parse(
+      readFileSync(
+        fileURLToPath(new URL("../../packages/client/src/localization/locales/en.json", import.meta.url)),
+        "utf8",
+      ),
+    ) as Record<string, string>;
+    const line = (key: string, params: Record<string, string>) =>
+      en[`game.combat.ruleset.event.${key}`]!.replace(/\{\{\s*(\w+)\s*\}\}/gu, (_, name: string) => params[name] ?? "");
+    const fight = (stacks: GameInventoryStack[]) =>
+      createRulesetEncounter({
+        definition: drawing,
+        seed: 5,
+        roller: () => 4,
+        combatants: [
+          {
+            id: "ada",
+            name: "Ada",
+            side: "party",
+            build: defaultRulesetSheetBuild(drawing),
+            items: rulesetSheetItems(book, stacks, undefined),
+          },
+          {
+            id: "foe",
+            name: "Foe",
+            side: "enemy",
+            block: { health: 60, defense: 1, initiativeModifier: -20, actions: [] },
+          },
+        ],
+      });
+    const holding = (state: ReturnType<typeof fight>) =>
+      rulesetInHand(drawing, rulesetCombatant(state, "ada")!)!.holding.map((one) => one.name);
+    const stacks = bag("spear", "buckler+", "axe+");
+    const start = fight(stacks);
+    assert.deepEqual(holding(start), [names.buckler, names.axe]);
+    assert.ok(
+      rulesetCombatOptions(drawing, start, "ada").some((option) => option.id === "item:0"),
+      "spear offered",
+    );
+    const step = applyRulesetCombatChoice(
+      drawing,
+      start,
+      { actorId: "ada", optionId: "item:0", targetIds: ["foe"] },
+      () => 4,
+    );
+    assert.equal(
+      step.events.some((event) => event.type === "refused"),
+      false,
+    );
+    // The draw is said ahead of the blow, as the row's draw says it.
+    assert.deepEqual(step.events[0], { type: "drew", actorId: "ada", label: names.spear, stowed: [names.axe] });
+    assert.equal(
+      line("drewStowing", { actor: "Ada", item: names.spear!, stowed: names.axe! }),
+      "Ada takes Boar spear in hand, putting away Hand axe.",
+    );
+    const ada = rulesetCombatant(step.state, "ada")!;
+    assert.deepEqual(ada.drawn, { 0: true, 2: false }, "the shortsword is put away");
+    assert.deepEqual(holding(step.state), [names.spear, names.buckler], "two in two hands");
+    assert.equal(ada.flags.pickedUp ?? false, false, "a free swap: the free interaction stays theirs");
+    // The fight it was given is untouched.
+    assert.equal(rulesetCombatant(start, "ada")!.drawn, undefined);
+    // Written to the bag, the next fight holds the same two.
+    const written = applyRulesetFightItemChanges(stacks, rulesetFightItemChanges(start, step.state))!;
+    assert.deepEqual(worn(written.stacks), ["buckler", "spear"]);
+    assert.deepEqual(holding(fight(written.stacks)), [names.spear, names.buckler], "next fight: two in hand");
+    // Struck with again, nothing more is drawn or said.
+    const again = applyRulesetCombatChoice(
+      drawing,
+      step.state,
+      { actorId: "ada", optionId: "item:0", targetIds: ["foe"] },
+      () => 4,
+    );
+    assert.equal(
+      again.events.some((event) => event.type === "drew"),
+      false,
+    );
+    // A free hand: drawn with nothing put away, and said so.
+    const free = applyRulesetCombatChoice(
+      drawing,
+      fight(bag("spear", "buckler+")),
+      { actorId: "ada", optionId: "item:0", targetIds: ["foe"] },
+      () => 4,
+    );
+    assert.deepEqual(free.events[0], { type: "drew", actorId: "ada", label: names.spear, stowed: [] });
+    assert.deepEqual(holding(free.state), [names.spear, names.buckler]);
   }
 
   // ── Without the option, nothing changes ──

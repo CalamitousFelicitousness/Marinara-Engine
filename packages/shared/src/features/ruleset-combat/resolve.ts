@@ -62,7 +62,6 @@ import {
   spendRulesetShots,
   rulesetShotsAvailable,
   rulesetStoredNow,
-  rulesetHeldDrawPlan,
 } from "./ammo.js";
 import { parseRulesetCombatDice, rollRulesetDice, rulesetCombatRoller, sumOf } from "./dice.js";
 import { blocksSight, elevationAt } from "../tactical-combat/math.js";
@@ -413,6 +412,7 @@ import {
 import { rulesetChangeGround, rulesetClearGrowth, rulesetGrowthRule, rulesetRunBoardEvents } from "./board-events.js";
 import { RULESET_CALL_MAX, RULESET_CALLED_FIGHT_MAX, rulesetCallCreatures, rulesetTurnAfterCalls } from "./calls.js";
 import { rulesetFormAllowed, rulesetKeepsAction, rulesetLeaveShape, rulesetTakeShape } from "./shape.js";
+import { rulesetDrawAsUsed } from "./in-hand.js";
 
 /** Everything one step of the fight needs: the rules, the state it is changing, its dice and the
  *  events it has produced so far. */
@@ -7592,9 +7592,11 @@ export function applyRulesetCombatChoice(
 
 /**
  * A choice made with a held item drawn as it is used (Capability API 1.800), a blow or a use, puts it
- * in its user's hands once it is made, as a free swap: the fewest other such items in its slots are
- * put away (`rulesetHeldDrawPlan`), and both are written to the bag as the step is saved. A refused
- * choice draws nothing; nor does one whose item could not be drawn, which the menu never offers.
+ * in its user's hands once it is made, as a free swap: taken in hand as the In hand row takes it
+ * (`rulesetDrawAsUsed`), the fewest weapons in its slots put away, the menu read again from what they
+ * hold, and the fight's line for the draw said ahead of the blow. Both are written to the bag as the
+ * step is saved. A refused choice draws nothing; nor does one whose item could not be drawn, which the
+ * menu never offers.
  */
 function withItemDrawn(
   definition: RulesetDefinition,
@@ -7605,17 +7607,18 @@ function withItemDrawn(
     return step;
   const index = rulesetActionItemIndex({ id: choice.optionId });
   const actor = rulesetCombatant(step.state, choice.actorId);
-  const items = actor?.sheet?.items;
-  const held = index !== undefined ? items?.[index] : undefined;
-  if (!actor || !items || index === undefined || !held?.drawOnUse || (actor.drawn?.[index] ?? held.worn)) return step;
-  const plan = rulesetHeldDrawPlan(definition, items, index, actor.drawn);
-  if (!("stow" in plan)) return step;
-  const drawn = { ...actor.drawn, [index]: true, ...Object.fromEntries(plan.stow.map((at) => [at, false])) };
+  const held = index !== undefined ? actor?.sheet?.items?.[index] : undefined;
+  if (!actor || index === undefined || !held?.drawOnUse || (actor.drawn?.[index] ?? held.worn)) return step;
+  // Its own copy, so the state the step was given is never changed under it.
+  const drawing: RulesetCombatant = { ...actor, uses: { ...actor.uses } };
+  const drew = rulesetDrawAsUsed(definition, drawing, index);
+  if (!drew) return step;
   return {
     ...step,
+    events: [drew, ...step.events],
     state: {
       ...step.state,
-      combatants: step.state.combatants.map((one) => (one.id === actor.id ? { ...one, drawn } : one)),
+      combatants: step.state.combatants.map((one) => (one.id === actor.id ? drawing : one)),
     },
   };
 }

@@ -26,6 +26,7 @@ import { RulesetSideBadge, RulesetTurnOrder, rulesetHealthTone, rulesetStateWord
 import { rulesetDistanceText, rulesetHealthPercent, rulesetHeldCaught } from "../../lib/ruleset-combat-board";
 import type { RulesetMenuStep } from "../../lib/ruleset-combat-menu";
 import { rulesetFoeFates } from "../../lib/ruleset-combat-log";
+import { useRulesetText } from "../../lib/ruleset-text";
 import { useCombatScreenStore } from "../../stores/combat-screen.store";
 import { useMatchMedia } from "../../hooks/use-match-media";
 import { cn } from "../../lib/utils";
@@ -131,7 +132,9 @@ export function RulesetCombatScreen({
   }, [view.round, setRound]);
   useEffect(() => () => setRound(null), [setRound]);
 
-  const marks = useMemo(() => rulesetBudgetMarks(definition), [definition]);
+  // The budgets' names in the player's language (1.798), as the rest of the fight's words are.
+  const text = useRulesetText();
+  const marks = useMemo(() => rulesetBudgetMarks(definition, text), [definition, text]);
   const byId = new Map(view.combatants.map((combatant) => [combatant.id, combatant]));
   const actor = view.actorId ? byId.get(view.actorId) : undefined;
   const window = view.window;

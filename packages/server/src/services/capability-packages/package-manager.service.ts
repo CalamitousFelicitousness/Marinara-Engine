@@ -30,8 +30,9 @@ import {
   RULESET_EARLIER_MAX_BYTES,
   RULESET_LOCALE_MAX_BYTES,
   readRulesetLocaleFile,
-  rulesetLocaleAssetPath,
-  rulesetLocaleOfAssetPath,
+  isRulesetLocaleCode,
+  rulesetLocalePackFileName,
+  rulesetTranslationLanguages,
   RULESET_MAX_BYTES,
   rulesetCatalogAssetPath,
   isRulesetCatalogAssetPath,
@@ -12702,15 +12703,16 @@ export function getCapabilityPackageInstallIssue(
   ) {
     return "A ruleset whose rest clears temporary points (clear.temp) requires schemaVersion 2 and capabilityApi 1.796 or newer";
   }
-  // A ruleset's translations beside it, 1.798 (the manifest schema says so too; an editor's check reads this).
+  // A ruleset package file's translations beside it, 1.803 (the manifest schema says so too; an editor's
+  // check reads this). The catalog's rulesets carry none: theirs are language packs.
   if (
-    !declaresApi(798) &&
+    !declaresApi(803) &&
     declaresRuleset &&
     (manifest.contributions?.assets?.paths ?? []).some((path) =>
       isRulesetLocaleAssetPath(tryNormalizeArchivePath(path) ?? ""),
     )
   ) {
-    return "A ruleset's translations (locales/<language>.json) require schemaVersion 2 and capabilityApi 1.798 or newer";
+    return "A ruleset file's translations (locales/<language>.json) require schemaVersion 2 and capabilityApi 1.803 or newer";
   }
   // A list whose rows may be used as rituals, 1.799.
   if (
@@ -13888,18 +13890,49 @@ export function getCapabilityAgentDetailDefinitionIssue(
     : `Agent detail contribution ${agentId} must identify a feature or host agent from this package`;
 }
 
+/** The names an official entry's artifact may be published under: a ruleset's as its ruleset package file
+ *  (1.374) and an Experience's as its Experience file (1.373), each first, else `<id>-<version>.zip`. A zip
+ *  of either stays a name the catalog may list (the install refuses it, with the reason), so an official
+ *  catalog that still lists one keeps loading. */
+function officialArtifactNames(entry: CapabilityCatalogPackage): string[] {
+  const base = `${entry.manifest.id}-${entry.manifest.version}`;
+  return [
+    ...(entry.manifest.kind.includes("ruleset") ? [`${base}${RULESET_PACKAGE_FILE_EXTENSION}`] : []),
+    ...(isCatalogExperience(entry) ? [`${base}${EXPERIENCE_FILE_EXTENSION}`] : []),
+    `${base}.zip`,
+  ];
+}
+
+/** Which of its canonical names an official entry's artifact URL is under, on either official branch. */
+function officialArtifactName(entry: CapabilityCatalogPackage, branch: OfficialAgentBranch): string | null {
+  return (
+    officialArtifactNames(entry).find(
+      (name) =>
+        entry.artifact.url === `${officialArtifactRoot("main")}/${name}` ||
+        entry.artifact.url === `${officialArtifactRoot(branch)}/${name}`,
+    ) ?? null
+  );
+}
+
 export function getCapabilityPackageArtifactSourceIssue(
   entry: CapabilityCatalogPackage,
   catalogUrl = CATALOG_URL,
 ): string | null {
   const branch = getOfficialAgentBranchFromCatalogUrl(catalogUrl);
   if (!branch) return null;
-  const artifactName = `${entry.manifest.id}-${entry.manifest.version}.zip`;
-  const stableUrl = `${officialArtifactRoot("main")}/${artifactName}`;
-  const channelUrl = `${officialArtifactRoot(branch)}/${artifactName}`;
-  return entry.artifact.url === stableUrl || entry.artifact.url === channelUrl
-    ? null
-    : `Official package ${entry.manifest.id} must use its canonical Marinara-Agents artifact URL`;
+  if (!officialArtifactName(entry, branch)) {
+    return `Official package ${entry.manifest.id} must use its canonical Marinara-Agents artifact URL`;
+  }
+  // Its language packs (1.803) sit beside it, each under its own canonical name.
+  for (const [locale, pack] of Object.entries(entry.locales ?? {})) {
+    const packName = rulesetLocalePackFileName(entry.manifest.id, entry.manifest.version, locale);
+    if (
+      pack.url !== `${officialArtifactRoot("main")}/${packName}` &&
+      pack.url !== `${officialArtifactRoot(branch)}/${packName}`
+    )
+      return `Official package ${entry.manifest.id} must use its canonical Marinara-Agents ${locale} language pack URL`;
+  }
+  return null;
 }
 
 function getOfficialAgentBranchFromCatalogUrl(catalogUrl: string): OfficialAgentBranch | null {
@@ -13912,7 +13945,26 @@ function getOfficialAgentBranchFromCatalogUrl(catalogUrl: string): OfficialAgent
 export function resolveCapabilityPackageArtifactUrl(entry: CapabilityCatalogPackage, catalogUrl = CATALOG_URL): string {
   const branch = getOfficialAgentBranchFromCatalogUrl(catalogUrl);
   if (!branch) return entry.artifact.url;
-  return `${officialArtifactRoot(branch)}/${entry.manifest.id}-${entry.manifest.version}.zip`;
+  // On the catalog's own branch, under the name it is published as.
+  return `${officialArtifactRoot(branch)}/${officialArtifactName(entry, branch) ?? officialArtifactNames(entry)[0]}`;
+}
+
+/** Each language pack's URL (1.803), on the catalog's own branch as the artifact's is. */
+function resolveCapabilityPackageLocaleUrls(
+  entry: CapabilityCatalogPackage,
+  catalogUrl = CATALOG_URL,
+): CapabilityCatalogPackage["locales"] {
+  const branch = getOfficialAgentBranchFromCatalogUrl(catalogUrl);
+  if (!branch || !entry.locales) return entry.locales;
+  return Object.fromEntries(
+    Object.entries(entry.locales).map(([locale, pack]) => [
+      locale,
+      {
+        ...pack,
+        url: `${officialArtifactRoot(branch)}/${rulesetLocalePackFileName(entry.manifest.id, entry.manifest.version, locale)}`,
+      },
+    ]),
+  );
 }
 
 export function resolveCapabilityPackageIconUrl(
@@ -14128,8 +14180,190 @@ function readRulesetFileEntries(bytes: Buffer): PackageEntry[] {
   ];
 }
 
+// ── A ruleset's language packs (Capability API 1.803) ──
+// A catalog ruleset's translations are not in its file: the catalog lists one pack per language,
+// `<id>-<version>.<lang>.json`, pinned by sha256 and size. Only the pack in the language the Engine is
+// set to is fetched, kept in the installed version's folder under that name. Each install and each
+// change of language fetches the one wanted and removes every other, so a version kept for rollback
+// holds none. Without a pack (offline, none listed, one that is not the file listed) the ruleset reads
+// in English, as it always could; the next install or change of language tries again.
+
+const RULESET_LANGUAGE = join(ROOT, "ruleset-language-v1.json");
+/** One change of language at a time, so two pages cannot interleave their fetches and removals. */
+let rulesetLanguageQueue: Promise<unknown> = Promise.resolve();
+
+/** The language the Engine was last set to, for the packs: English until a page says otherwise. */
+async function readRulesetLanguage(): Promise<string> {
+  try {
+    const parsed = JSON.parse(await readFile(RULESET_LANGUAGE, "utf8")) as {
+      schemaVersion?: unknown;
+      language?: unknown;
+    };
+    return parsed.schemaVersion === 1 && typeof parsed.language === "string" && isRulesetLocaleCode(parsed.language)
+      ? parsed.language
+      : "en";
+  } catch {
+    return "en";
+  }
+}
+
+async function writeRulesetLanguage(language: string) {
+  await mkdir(ROOT, { recursive: true });
+  const temporary = `${RULESET_LANGUAGE}.tmp-${process.pid}-${Date.now()}`;
+  await writeFile(temporary, JSON.stringify({ schemaVersion: 1, language }), { mode: 0o600 });
+  await rename(temporary, RULESET_LANGUAGE);
+}
+
+function rulesetLocalePackFile(packageId: string, version: string, locale: string): string {
+  const packageRoot = inside(VERSIONS, join(VERSIONS, packageId, version));
+  return inside(packageRoot, join(packageRoot, rulesetLocalePackFileName(packageId, version, locale)));
+}
+
+/** The packs kept in one installed version's folder, by language. */
+async function keptRulesetLocalePacks(packageId: string, version: string): Promise<Map<string, string>> {
+  const prefix = `${packageId}-${version}.`;
+  const kept = new Map<string, string>();
+  const entries = await readdir(inside(VERSIONS, join(VERSIONS, packageId, version)), { withFileTypes: true }).catch(
+    () => [],
+  );
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.startsWith(prefix) || !entry.name.endsWith(".json")) continue;
+    const locale = entry.name.slice(prefix.length, -".json".length);
+    if (isRulesetLocaleCode(locale)) kept.set(locale, rulesetLocalePackFile(packageId, version, locale));
+  }
+  return kept;
+}
+
+/** A downloaded pack, held to what the catalog lists for it and read as a translation; throws why not. */
+function verifyRulesetLocalePack(
+  data: Buffer,
+  pack: { sha256: string; bytes: number },
+  locale: string,
+  name: string,
+): Record<string, string> {
+  if (data.byteLength !== pack.bytes) throw new Error(`${name} is not the size the catalog lists`);
+  if (createHash("sha256").update(data).digest("hex") !== pack.sha256)
+    throw new Error(`${name} does not match the checksum the catalog lists`);
+  let document: unknown;
+  try {
+    document = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(data));
+  } catch {
+    throw new Error(`${name} is not valid JSON`);
+  }
+  const read = readRulesetLocaleFile(document, locale, { name, pack: true });
+  if (!read.ok) throw new Error(read.issue);
+  return read.strings;
+}
+
+export type RulesetLocalePackOutcome = "stored" | "kept" | "none" | "failed";
+
+/**
+ * Brings one installed ruleset's pack to `language`: the pack the catalog entry lists for it (or for the
+ * language it is a kind of) is fetched, checked and kept, unless the very file is already there; then every
+ * other pack of the package, in any of its versions, is removed. Without an entry for the installed version
+ * (the catalog unread, or no longer listing that version) a pack already kept in the language stays, the
+ * rest go. Never throws.
+ */
+async function syncRulesetLocalePack(
+  installed: InstalledCapabilityPackage,
+  language: string,
+  entry: CapabilityCatalogPackage | null,
+  download: (url: string, maximum: number) => Promise<Buffer> = fetchBytes,
+): Promise<RulesetLocalePackOutcome> {
+  let outcome: RulesetLocalePackOutcome = "none";
+  let keep: string | null = null;
+  try {
+    const kept = await keptRulesetLocalePacks(installed.id, installed.version);
+    const languages = rulesetTranslationLanguages(language);
+    if (!entry || entry.manifest.id !== installed.id || entry.manifest.version !== installed.version) {
+      keep = languages.map((each) => kept.get(each)).find((file) => file !== undefined) ?? null;
+      if (keep) outcome = "kept";
+    } else {
+      const locale = languages.find((each) => entry.locales?.[each]);
+      const pack = locale ? entry.locales![locale]! : null;
+      if (locale && pack) {
+        const file = rulesetLocalePackFile(installed.id, installed.version, locale);
+        const name = rulesetLocalePackFileName(installed.id, installed.version, locale);
+        const existing = kept.has(locale) ? await readFile(file).catch(() => null) : null;
+        let already = false;
+        if (existing) {
+          try {
+            verifyRulesetLocalePack(existing, pack, locale, name);
+            already = true;
+          } catch {
+            // Not the file listed now: fetched again below.
+          }
+        }
+        if (already) {
+          keep = file;
+          outcome = "kept";
+        } else {
+          try {
+            const data = await download(pack.url, Math.min(pack.bytes + 1, RULESET_LOCALE_MAX_BYTES + 1));
+            verifyRulesetLocalePack(data, pack, locale, name);
+            const temporary = `${file}.tmp-${process.pid}-${Date.now()}`;
+            await writeFile(temporary, data, { mode: 0o600 });
+            await rename(temporary, file);
+            keep = file;
+            outcome = "stored";
+          } catch (error) {
+            logger.warn(
+              error,
+              "[capability/rulesets] The %s language pack of %s %s was not kept; it reads in English",
+              locale,
+              installed.id,
+              installed.version,
+            );
+            outcome = "failed";
+          }
+        }
+      }
+    }
+    await pruneRulesetLocalePacks(installed.id, keep);
+  } catch (error) {
+    logger.warn(error, "[capability/rulesets] Could not bring the language packs of %s up to date", installed.id);
+    return "failed";
+  }
+  return outcome;
+}
+
+/** Removes every pack of a package, in every version kept, but `keep`. */
+async function pruneRulesetLocalePacks(packageId: string, keep: string | null) {
+  const versions = await readdir(inside(VERSIONS, join(VERSIONS, packageId)), { withFileTypes: true }).catch(() => []);
+  for (const version of versions) {
+    if (!version.isDirectory()) continue;
+    for (const file of (await keptRulesetLocalePacks(packageId, version.name)).values()) {
+      if (file !== keep) await rm(file, { force: true });
+    }
+  }
+}
+
+/** The pack an installed ruleset keeps in `locale`, read: null when none is kept in that language. */
+async function readRulesetLocalePack(
+  installed: InstalledCapabilityPackage,
+  locale: string,
+): Promise<{ sha256: string; data: Buffer } | { issue: string } | null> {
+  if (!isRulesetLocaleCode(locale)) return null;
+  const name = rulesetLocalePackFileName(installed.id, installed.version, locale);
+  let data: Buffer;
+  try {
+    const file = rulesetLocalePackFile(installed.id, installed.version, locale);
+    const stats = await lstat(file);
+    if (!stats.isFile()) return null;
+    if (stats.size > RULESET_LOCALE_MAX_BYTES)
+      return { issue: `${name} is ${stats.size} bytes, over the ${RULESET_LOCALE_MAX_BYTES}-byte limit` };
+    data = await readFile(file);
+  } catch {
+    return null;
+  }
+  return { sha256: createHash("sha256").update(data).digest("hex"), data };
+}
+
 /** Installs a catalog entry through the caller's download rather than the network, for regressions. */
-export function installCatalogPackageForTests(entry: CapabilityCatalogPackage, download: () => Promise<Buffer>) {
+export function installCatalogPackageForTests(
+  entry: CapabilityCatalogPackage,
+  download: (url: string, maximum: number) => Promise<Buffer>,
+) {
   return installCatalogPackage(entry, false, download);
 }
 
@@ -14160,6 +14394,12 @@ async function installCatalogPackage(
   ) {
     throw new Error(
       `A ruleset published as a ruleset file needs Capability API 1.${RULESET_FILE_CAPABILITY_MINOR} or newer`,
+    );
+  }
+  // A catalog ruleset's translations are its language packs (1.803), never files inside it.
+  if (isRuleset && (manifest.contributions?.assets?.paths ?? []).some(isRulesetLocaleAssetPath)) {
+    throw new Error(
+      `${manifest.name} carries its translations inside its file. A catalog ruleset lists them as language packs.`,
     );
   }
 
@@ -14279,21 +14519,6 @@ async function installCatalogPackage(
     }
     const rulesetIssue = getCapabilityPackageInstallIssue(installedManifest, rulesetDocument, catalogDocuments);
     if (rulesetIssue) throw new Error(rulesetIssue);
-    // Its translations (1.798), each one the strings it translates and nothing else, within its cap.
-    for (const [name, data] of verifiedFiles) {
-      const locale = rulesetLocaleOfAssetPath(name);
-      if (!locale) continue;
-      if (data.length > RULESET_LOCALE_MAX_BYTES)
-        throw new Error(`${name} is ${data.length} bytes, over the ${RULESET_LOCALE_MAX_BYTES}-byte limit`);
-      let document: unknown;
-      try {
-        document = JSON.parse(data.toString("utf8"));
-      } catch {
-        throw new Error(`${name} is not valid JSON`);
-      }
-      const read = readRulesetLocaleFile(document, locale);
-      if (!read.ok) throw new Error(read.issue);
-    }
   }
 
   const temporary = join(ROOT, `.install-${manifest.id}-${Date.now()}`);
@@ -14306,7 +14531,10 @@ async function installCatalogPackage(
       await mkdir(dirname(output), { recursive: true });
       await writeFile(output, data, { mode: 0o600 });
     }
-    return { ...(await commitPackageInstall(manifest, temporary, activateDuringStartup)), usesDecisions };
+    const installed = await commitPackageInstall(manifest, temporary, activateDuringStartup);
+    // Then its pack in the Engine's language, if the catalog lists one; the version before it keeps none.
+    if (isRuleset) await syncRulesetLocalePack(installed, await readRulesetLanguage(), entry, download);
+    return { ...installed, usesDecisions };
   } finally {
     await rm(temporary, { recursive: true, force: true });
   }
@@ -14702,6 +14930,7 @@ export const capabilityPackageManager = {
         ...entry.artifact,
         url: resolveCapabilityPackageArtifactUrl(entry, sourceUrl),
       },
+      ...(entry.locales ? { locales: resolveCapabilityPackageLocaleUrls(entry, sourceUrl) } : {}),
     });
 
     return {
@@ -15254,39 +15483,58 @@ export const capabilityPackageManager = {
     };
   },
 
-  /** An installed ruleset package's translation into one language (1.798), as `rulesetCatalogAsset`
-   *  reads a catalog: null when the package does not ship that language. */
+  /** An installed ruleset package's translation into one language: its language pack (1.803), as
+   *  `rulesetCatalogAsset` reads a catalog. Null when none is kept in that language. */
   async rulesetLocaleAsset(
     packageId: string,
     locale: string,
   ): Promise<{ sha256: string; read: () => Promise<{ data: Buffer } | { issue: string }> } | { issue: string } | null> {
-    const assetPath = rulesetLocaleAssetPath(locale);
-    if (rulesetLocaleOfAssetPath(assetPath) !== locale) return null;
     const installed = (await readRegistry()).packages.find((item) => item.id === packageId);
-    if (!installed || !isInstalledCapabilityReady(installed)) return null;
-    const declared = installed.manifest.contributions?.assets?.paths ?? [];
-    if (!declared.some((path) => tryNormalizeArchivePath(path) === assetPath)) return null;
-    const declaration = installed.manifest.files.find((item) => tryNormalizeArchivePath(item.path) === assetPath);
-    if (!declaration) return { issue: `${assetPath} is not listed in the package file manifest` };
-    if (declaration.bytes > RULESET_LOCALE_MAX_BYTES) {
-      return { issue: `${assetPath} is ${declaration.bytes} bytes, over the ${RULESET_LOCALE_MAX_BYTES}-byte limit` };
-    }
-    return {
-      sha256: declaration.sha256,
-      read: async () => {
+    if (!installed || !isInstalledCapabilityReady(installed) || installed.id !== installed.manifest.id) return null;
+    const pack = await readRulesetLocalePack(installed, locale);
+    if (!pack || "issue" in pack) return pack;
+    return { sha256: pack.sha256, read: async () => ({ data: pack.data }) };
+  },
+
+  /** The language the Engine was last set to (English until a page says otherwise). */
+  async rulesetLanguage(): Promise<string> {
+    return readRulesetLanguage();
+  },
+
+  /** The language the Engine is set to, for the rulesets' packs (1.803): recorded, then each installed
+   *  catalog ruleset brought to it (its pack fetched, the old language's removed). Offline, or with a pack
+   *  that does not check out, a ruleset reads in English and the next change or install tries again. */
+  async setRulesetLanguage(
+    language: string,
+    loadCatalog: () => Promise<CapabilityCatalog> = () => this.catalog(),
+    download: (url: string, maximum: number) => Promise<Buffer> = fetchBytes,
+  ): Promise<Record<string, RulesetLocalePackOutcome>> {
+    if (!isRulesetLocaleCode(language)) throw new Error(`"${language}" is not a language code`);
+    const run = rulesetLanguageQueue.then(async () => {
+      await writeRulesetLanguage(language);
+      const rulesets = (await readRegistry()).packages.filter(
+        (item) =>
+          item.manifest.kind.includes("ruleset") && isInstalledCapabilityReady(item) && item.id === item.manifest.id,
+      );
+      const outcomes: Record<string, RulesetLocalePackOutcome> = {};
+      if (!rulesets.length) return outcomes;
+      // The catalog only when a pack may be wanted: English needs none, and removes them all.
+      let catalog: CapabilityCatalog | undefined;
+      if (rulesetTranslationLanguages(language).length) {
         try {
-          return { data: (await readVerifiedInstalledPackageFile(installed, assetPath)).data };
+          catalog = await loadCatalog();
         } catch (error) {
-          logger.error(
-            error,
-            "[capability/rulesets] Translation %s for %s failed integrity verification",
-            assetPath,
-            packageId,
-          );
-          return { issue: `${assetPath} is not the file that was installed` };
+          logger.warn(error, "[capability/rulesets] The catalog could not be read for the rulesets' language packs");
         }
-      },
-    };
+      }
+      for (const installed of rulesets) {
+        const entry = catalog?.packages.find((candidate) => candidate.manifest.id === installed.id) ?? null;
+        outcomes[installed.id] = await syncRulesetLocalePack(installed, language, entry, download);
+      }
+      return outcomes;
+    });
+    rulesetLanguageQueue = run.catch(() => undefined);
+    return run;
   },
 
   async markRuntimeStatus(
@@ -15471,7 +15719,11 @@ export const capabilityPackageManager = {
     return declined.map(({ id }) => id);
   },
 
-  async install(packageId: string, expectedVersion: string, expectedArtifactSha256: string) {
+  async install(packageId: string, expectedVersion: string, expectedArtifactSha256: string, language?: string) {
+    // The page's language, so a ruleset's pack comes in it (1.803).
+    if (language && isRulesetLocaleCode(language) && language !== (await readRulesetLanguage())) {
+      await writeRulesetLanguage(language);
+    }
     const catalog = await this.catalog();
     const entry = catalog.packages.find((candidate) => candidate.manifest.id === packageId);
     if (!entry) throw new Error("Package is not present in the configured catalog");

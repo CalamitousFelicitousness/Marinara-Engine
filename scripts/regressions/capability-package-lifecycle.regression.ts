@@ -104,7 +104,7 @@ try {
   const legacyManifest = capabilityPackageManifestSchema.parse(installedPackage("legacy", ["agent"]).manifest);
   assert.equal(legacyManifest.schemaVersion, 1, "Existing manifest v1 packages must remain readable");
   assert.equal(getCapabilityApiCompatibilityIssue(legacyManifest), null);
-  assert.deepEqual(supportedCapabilityApi, { major: 1, minor: 802 });
+  assert.deepEqual(supportedCapabilityApi, { major: 1, minor: 803 });
 
   const manifestV2 = capabilityPackageManifestSchema.parse({
     ...legacyManifest,
@@ -140,11 +140,11 @@ try {
   });
   assert.match(
     getCapabilityApiCompatibilityIssue(unsupportedMajorManifest) ?? "",
-    /requires capability API 2\.0; this Engine supports 1\.802/,
+    /requires capability API 2\.0; this Engine supports 1\.803/,
   );
   const currentMinorManifest = capabilityPackageManifestSchema.parse({
     ...manifestV2,
-    capabilityApi: { major: 1, minor: 802 },
+    capabilityApi: { major: 1, minor: 803 },
   });
   assert.equal(getCapabilityApiCompatibilityIssue(currentMinorManifest), null);
   assert.equal(
@@ -223,11 +223,11 @@ try {
     [795, "an encounter budget"],
     [796, "rests that clear temporary points"],
     [797, "signature actions at a turn's start"],
-    [798, "a ruleset's translations"],
     [799, "rituals that cost no slot"],
     [800, "weapons drawn on use"],
     [801, "rituals only for those who may"],
     [802, "rests only so often"],
+    [803, "a ruleset's language packs"],
     [385, "shared gallery image saving"],
     [386, "Home browser openConnection and raw generation debug logging"],
   ];

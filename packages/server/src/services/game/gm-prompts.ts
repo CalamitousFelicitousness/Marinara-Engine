@@ -988,8 +988,8 @@ function renderRulesetKindCheckLine(
     : [];
   // With no character of their own, a check without a roller would be rolled off a blank sheet.
   const whoClause = playerIsParty
-    ? `Always add who="Character Name" naming the party member who rolls: the player has no character of their own.`
-    : `Add who="Character Name" to roll for a party member; without it the player is checked.`;
+    ? `Always add who="Character Name" naming the party member who rolls: the player has no character of their own. A who that could be several party members, or the party, is not rolled; anyone outside the party rolls a plain die.`
+    : `Add who="Character Name" to roll for a party member; without it the player is checked. A who that could be several party members, or the party, is not rolled; anyone outside the party rolls a plain die.`;
   // Every ruleset has a ladder, so every ruleset can be asked for a step by name.
   const difficultyClause = `Or name a step with difficulty="Label" in place of dc.`;
   // What having no training does, named by the section that says it or the skill or save that says
@@ -2189,6 +2189,12 @@ export function buildGmFormatReminder(
             ...(ctx.ruleset?.catalogs?.some((catalog) => catalog.holds === "items")
               ? [
                   `  This game's ruleset has its own items: an item named exactly as one of them becomes that item, and what an item of the ruleset is shows in [brackets] after it in the inventory below (never write the brackets in item).`,
+                  // The book refuses an add of one a use spends where it can check another source.
+                  ...(ctx.ruleset.items?.market || ctx.ruleset.items?.lootTables?.length
+                    ? [
+                        `  One of its items that a use spends (a potion, a scroll) is never added: it comes by buying or looting it.`,
+                      ]
+                    : []),
                 ]
               : []),
             ...(ctx.ruleset?.items?.native === false

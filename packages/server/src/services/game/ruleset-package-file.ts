@@ -4,7 +4,7 @@
 // module): its manifest, and its ruleset.json and catalogs/<id>.json documents, each as its exact bytes in
 // base64. There is no archive to open and nothing compressed, so nothing in it is ever larger than the
 // file itself. It is read in memory and never written anywhere: what comes out is the text of its
-// manifest, its ruleset, its catalogs and its translations (1.798), each read through the strict schemas,
+// manifest, its ruleset, its catalogs and its translations (1.803), each read through the strict schemas,
 // or the reasons it was refused. Nothing else in a file is accepted, and nothing in one is ever run, served or loaded as code:
 // a ruleset is data.
 //
@@ -37,7 +37,7 @@ import {
   type RulesetDefinition,
 } from "@marinara-engine/shared";
 
-/** Its ruleset, at most 12 catalogs (a ruleset declares no more) and its translations (1.798). */
+/** Its ruleset, at most 12 catalogs (a ruleset declares no more) and its translations (1.803). */
 const MAX_FILES = 13 + RULESET_LOCALE_MAX_FILES;
 const MANIFEST_MAX_BYTES = 64 * 1024;
 /** The ruleset and its catalogs within 16 MB, as before translations, and room for a translation into
@@ -56,7 +56,7 @@ export type RulesetPackageRead =
       /** Each document as it was read (re-serialized: no repeated keys, padding or byte-order mark). */
       ruleset: string;
       catalogs: Record<string, string>;
-      /** Its translations (1.798), by language: the JSON of the strings each translates, English to it. */
+      /** Its translations (1.803), by language: the JSON of the strings each translates, English to it. */
       locales: Record<string, string>;
       manifest: string;
     }
@@ -285,7 +285,7 @@ function readPackage(value: unknown): RulesetPackageRead {
   );
   if (unnamed.length) return refused(`${unnamed[0]} is not a catalog the ruleset names`);
 
-  // Its translations (1.798), each the strings it translates and nothing else: display only, never read
+  // Its translations (1.803), each the strings it translates and nothing else: display only, never read
   // by a rule.
   const locales: Record<string, string> = {};
   for (const name of contents) {

@@ -13,6 +13,12 @@
  *   - The form's health carries into the next fight.
  *   - The `dismiss` sheet command ends it, and the condition holding them in it; the form's whole
  *     health is kept with what it has left, not rolled again; a story turn reads the forms' catalog.
+ *   - Only the shape the sheet keeps starts a fight (laptop 2026-10-26: a druid came into a fight as a
+ *     Swarm of Spiders with nothing in the story that turned him): the fight's own listing of a
+ *     member's Wild Shape is not done, and the condition holding them in it taken off in the story
+ *     ends it. Another form taken in a fight in its place and held as it ends is kept in its place.
+ *   - A form keeps on what its creature keeps on, and gives it up with the shape: a swarm's sharing
+ *     of spaces, without which its bite of no reach reached nobody.
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -31,7 +37,7 @@ import {
   type RulesetDefinition,
   type RulesetLiveStates,
 } from "../../packages/shared/src/index.js";
-import { rulesetLeaveShape } from "../../packages/shared/src/features/ruleset-combat/shape.js";
+import { rulesetLeaveShape, rulesetTakeShape } from "../../packages/shared/src/features/ruleset-combat/shape.js";
 
 const dataDir = mkdtempSync(join(tmpdir(), "marinara-kept-form-"));
 process.env.DATA_DIR = dataDir;
@@ -70,9 +76,15 @@ try {
     beast("brown-bear", "Brown Bear", 1),
     beast("giant-elk", "Giant Elk", 2),
     beast("eagle", "Eagle", 0, { speeds: { fly: 60 } }),
+    beast("swarm-of-spiders", "Swarm of Spiders", 0.5, {
+      keepsOn: ["swarming"],
+      actions: [{ id: "bites", name: "Bites", budget: "action", toHit: 3, damage: { dice: "4d4" }, reach: 0 }],
+    }),
   );
   doc.sheet.live.conditions.push({ id: "wild_shaped", label: "Wild Shape" });
   doc.combat.conditions.push({ condition: "wild_shaped", effects: [], shape: { revert: "bonus" } });
+  doc.sheet.live.conditions.push({ id: "swarming", label: "Swarm (shares spaces)", pickable: false });
+  doc.combat.conditions.push({ condition: "swarming", sharesSpace: true });
   doc.catalogs.push({
     id: "spells",
     label: "Spells",
@@ -164,7 +176,7 @@ try {
   );
 
   // ── The next fight starts with them in it, not paid for again ──
-  const fightWith = (live: RulesetLiveStates, standing?: Array<{ casterId: string; entry: string }>) => {
+  const fightWith = (live: RulesetLiveStates, standing?: Array<{ casterId: string; entry: string; mode?: string }>) => {
     const built = createRulesetFight({
       definition,
       seed: 3,
@@ -281,6 +293,58 @@ try {
   assert.ok(!say(`[sheet: op="dismiss" name="Wolf"]`, held).live.rook?.conditions?.includes("wild_shaped"));
   assert.equal(say(`[sheet: op="dismiss" name="Wild Shape"]`, shaped.live).outcomes[0]!.ok, true);
   assert.equal(rookOf(fightWith(ended.live)).shape, undefined, "the next fight starts them in their own shape");
+
+  // ── Only the shape the sheet keeps starts a fight ──
+  {
+    const listed = fightWith({}, [{ casterId: "rook", entry: "Wild Shape", mode: "Brown Bear" }]);
+    assert.equal(rookOf(listed).shape, undefined, "a listed Wild Shape does not turn them");
+    assert.deepEqual(listed.adjustments, [
+      "Rook's Wild Shape changes their own shape, which only their sheet keeps, so it is not done.",
+    ]);
+    assert.equal((rookOf(listed).sheet!.live as RulesetLiveStates[string]).pools?.slots_1?.value, undefined);
+    // Kept as a wolf, the listing of another form changes nothing: a wolf it is.
+    const kept = fightWith(shaped.live, [{ casterId: "rook", entry: "Wild Shape", mode: "Brown Bear" }]);
+    assert.equal(rookOf(kept).shape?.name, "Wolf");
+  }
+  // The condition holding them in it, taken off in the story, ends it.
+  {
+    const held = { rook: { ...shaped.live.rook, conditions: ["wild_shaped"] } } as RulesetLiveStates;
+    const off = say(`[sheet: op="condition" condition="Wild Shape" state="off"]`, held);
+    assert.equal(off.outcomes[0]!.ok, true, off.outcomes[0]!.reason);
+    assert.match(off.outcomes[0]!.now ?? "", /Wild Shape off, Wolf shape ended/);
+    assert.equal(rulesetKeptForm(off.live.rook), undefined);
+    assert.equal(rookOf(fightWith(off.live)).shape, undefined, "the next fight starts them in their own shape");
+    // Another condition off leaves it be.
+    assert.ok(rulesetKeptForm(say(`[sheet: op="condition" condition="prone" state="off"]`, held).live.rook));
+  }
+  // Another form taken in the fight in its place, held as it ends, is kept in its place.
+  {
+    const swapped = fightWith(shaped.live);
+    const one = rookOf(swapped);
+    const form = [...(one.shape!.was.actions ?? [])]
+      .flatMap((action) => action.modes ?? [])
+      .find((mode) => mode.form?.name === "Brown Bear")!.form!;
+    const rule = definition.combat!.conditions!.find((entry) => entry.condition === "wild_shaped")!.shape!;
+    assert.ok(rulesetTakeShape(definition, swapped.encounter, one, "wild_shaped", rule, form, () => 1));
+    assert.equal(rulesetKeptForm(rulesetFightLiveStates(swapped).rook)?.as, "Brown Bear");
+  }
+
+  // ── A form keeps on what its creature keeps on (laptop 2026-10-26: a swarm that never bit) ──
+  {
+    const swarm = say(`[sheet: op="use" name="Wild Shape" as="Swarm of Spiders"]`);
+    assert.equal(swarm.outcomes[0]!.ok, true, swarm.outcomes[0]!.reason);
+    const fought = fightWith(swarm.live);
+    const one = rookOf(fought);
+    assert.equal(one.shape?.name, "Swarm of Spiders");
+    assert.ok(
+      one.tracked.some((entry) => entry.condition === "swarming" && entry.kept),
+      "it shares spaces, as a swarm does",
+    );
+    assert.deepEqual(one.shape?.keptOn, ["swarming"]);
+    assert.ok(!rulesetFightLiveStates(fought).rook?.conditions?.includes("swarming"), "never written to the sheet");
+    rulesetLeaveShape(one);
+    assert.ok(!one.tracked.some((entry) => entry.condition === "swarming"), "and gives it up with the shape");
+  }
 
   console.log("game-ruleset-kept-form: ok");
 } finally {

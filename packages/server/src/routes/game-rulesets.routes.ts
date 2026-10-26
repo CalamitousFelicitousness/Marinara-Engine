@@ -28,7 +28,9 @@ import {
   RULESET_LOCAL_NAMESPACE,
   RULESET_MAX_BYTES,
   RULESET_PACKAGE_FILE_MAX_BYTES,
+  isRulesetLocaleCode,
   rulesetLocaleAssetPath,
+  rulesetTranslationLanguages,
   supportedCapabilityApi,
   type RulesetDefinition,
 } from "@marinara-engine/shared";
@@ -68,7 +70,18 @@ const removeRulesetQuery = z.object({
 const PACKAGE_BODY_LIMIT = RULESET_PACKAGE_FILE_MAX_BYTES + 16_384;
 // The package file is checked whole by its reader; here it only has to be an object.
 const packageFile = z.record(z.string(), z.unknown());
-const importPackageBody = z.object({ package: packageFile, dryRun: z.boolean().optional() }).strict();
+const importPackageBody = z
+  .object({
+    package: packageFile,
+    dryRun: z.boolean().optional(),
+    /** The page's language: of the translations a file carries, the one kept (1.803). */
+    locale: z
+      .string()
+      .max(30)
+      .refine((locale) => isRulesetLocaleCode(locale))
+      .optional(),
+  })
+  .strict();
 /** A ruleset to check: its text alone, or a whole package file (catalogs and all). */
 const checkBody = z.union([
   z.object({ definition: z.string().min(1) }).strict(),
@@ -92,7 +105,7 @@ function leastCapabilityApi(
   catalogs: Record<string, string>,
   /** The ruleset's own text, whose size a package of it declares (a larger one needs 1.340). */
   rulesetText: string,
-  /** The languages it is translated into (a translation needs 1.798). */
+  /** The languages a package file of it carries (a translation in the file needs 1.803). */
   locales: readonly string[] = [],
 ) {
   const paths = [
@@ -292,7 +305,7 @@ export async function gameRulesetsRoutes(app: FastifyInstance) {
       if (!body.success) {
         return reply.status(400).send({ error: "Send the ruleset package file (.ruleset.json) as the body's package" });
       }
-      const { package: file, dryRun } = body.data;
+      const { package: file, dryRun, locale } = body.data;
       const read = readRulesetPackageFile(file);
       if (!read.ok) return reply.status(400).send({ error: read.issues.slice(0, 5).join("; "), issues: read.issues });
       let rulesetId: string;
@@ -310,6 +323,13 @@ export async function gameRulesetsRoutes(app: FastifyInstance) {
       );
       const locales = Object.keys(read.locales).sort();
       if (dryRun) return { status: "checked", rulesetId, version, ruleset: read.ruleset, catalogs, locales };
+      // Of the languages the file carries, only the Engine's is kept, and it replaces whatever language
+      // was kept before; to read the ruleset in another, import the file again in it. A file carrying none
+      // leaves what was kept.
+      const language = rulesetTranslationLanguages(locale ?? (await capabilityPackageManager.rulesetLanguage())).find(
+        (each) => read.locales[each] !== undefined,
+      );
+      const kept = !locales.length ? undefined : language ? { [language]: read.locales[language]! } : {};
       try {
         const { status } = await createGameRulesetsStorage(app.db).put({
           rulesetId,
@@ -317,17 +337,17 @@ export async function gameRulesetsRoutes(app: FastifyInstance) {
           sourceKind: "local",
           definition: read.ruleset,
           catalogs: read.catalogs,
-          locales: read.locales,
+          locales: kept,
         });
         logger.info(
-          "[game/rulesets] Package import of %s version %d (%d catalog files, %d translations): %s",
+          "[game/rulesets] Package import of %s version %d (%d catalog files, translation kept: %s): %s",
           rulesetId,
           version,
           Object.keys(catalogs).length,
-          locales.length,
+          language ?? "none",
           status,
         );
-        return { status, rulesetId, version, catalogs, locales };
+        return { status, rulesetId, version, catalogs, locales: language ? [language] : [] };
       } catch (error) {
         if (error instanceof RulesetVersionConflictError) {
           return reply.status(409).send({ error: error.message, code: "ruleset_version_conflict" });

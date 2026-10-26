@@ -2031,7 +2031,16 @@ export function applyRulesetSheetOp(
     else active.delete(condition.id);
     next.conditions = [...active].slice(0, MAX_LIVE_CONDITIONS);
     const restored = !op.active && was ? giveBackLowered(condition.id) : "";
-    return done(`${condition.label} ${op.active ? "on" : "off"}${restored}`);
+    // A shape's condition taken off ends the shape it held them in (1.793), as `dismiss` does, so
+    // the next fight does not start them in a form the story already ended.
+    const ended =
+      !op.active &&
+      next.shaped &&
+      definition.combat?.conditions?.some((entry) => entry.shape && entry.condition === condition.id)
+        ? next.shaped.as
+        : undefined;
+    if (ended) delete next.shaped;
+    return done(`${condition.label} ${op.active ? "on" : "off"}${restored}${ended ? `, ${ended} shape ended` : ""}`);
   }
 
   if (op.op === "raise") {

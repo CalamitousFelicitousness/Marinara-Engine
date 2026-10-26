@@ -13,7 +13,7 @@ export const RULESET_PACKAGE_FILE_FORMAT = "marinara-ruleset";
 export const RULESET_PACKAGE_FILE_VERSION = 1;
 export const RULESET_PACKAGE_FILE_EXTENSION = ".ruleset.json";
 /** The most a ruleset package file may be: its documents (16 MB at most, and up to 96 MB with its
- *  translations, 1.798) as base64, and its manifest. */
+ *  translations, 1.803) as base64, and its manifest. */
 export const RULESET_PACKAGE_FILE_MAX_BYTES = 132 * 1024 * 1024;
 
 /** Whether a parsed JSON document is a ruleset package file (as opposed to a ruleset on its own). */

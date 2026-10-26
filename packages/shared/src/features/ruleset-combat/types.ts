@@ -1783,6 +1783,10 @@ export interface RulesetShaped {
   was: Partial<Pick<RulesetCombatant, (typeof RULESET_SHAPE_KEYS)[number]>>;
   /** Of `was`, what they did not have at all. */
   lacked: Array<(typeof RULESET_SHAPE_KEYS)[number]>;
+  /** What the form keeps on through the fight (1.263), put on with the shape and taken off with it:
+   *  a swarm's sharing of spaces (laptop 2026-10-26: a druid as a Swarm of Spiders could never get
+   *  into a foe's space to bite, and did nothing). */
+  keptOn?: string[];
 }
 
 /** What a shape takes the place of on whoever takes it (1.379). */

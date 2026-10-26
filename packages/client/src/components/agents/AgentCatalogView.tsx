@@ -37,6 +37,7 @@ import { AgentArtwork } from "./AgentArtwork";
 import { AgentModeFilter, type AgentModeFilterValue } from "./AgentModeFilter";
 import { CustomAgentRepositoriesModal } from "./CustomAgentRepositoriesModal";
 import { useTranslation as useUiTranslation } from "react-i18next";
+import { resolveCapabilityCatalogEntryDisplay } from "../../lib/capability-package-localization";
 
 const CATEGORY_SECTIONS = [
   { id: "app", labelKey: "ui.agents.agentcatalogview.apps" },
@@ -151,7 +152,8 @@ function packageModes(packageId: string): readonly CatalogMode[] {
 }
 
 export function AgentCatalogView() {
-  const { t: localizeUi } = useUiTranslation();
+  const { t: localizeUi, i18n } = useUiTranslation();
+  const uiLanguage = i18n.resolvedLanguage ?? i18n.language;
   const closeAgentCatalog = useUIStore((state) => state.closeAgentCatalog);
   const initialPackageId = useUIStore((state) => state.agentCatalogInitialPackageId);
   const catalog = useCapabilityCatalog();
@@ -173,12 +175,16 @@ export function AgentCatalogView() {
   const packages = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return (catalog.data?.packages ?? []).filter(
-      ({ manifest, category }) =>
+      ({ manifest, category, locales }) =>
         (modeFilter === "all" || packageModes(manifest.id).includes(modeFilter)) &&
         (!needle ||
           [
             manifest.name,
             manifest.description,
+            ...(() => {
+              const shown = resolveCapabilityCatalogEntryDisplay({ manifest, locales }, uiLanguage);
+              return [shown.name, shown.description];
+            })(),
             manifest.id,
             catalogCategory({ manifest, category }),
             localizeUi(
@@ -192,7 +198,7 @@ export function AgentCatalogView() {
             .toLowerCase()
             .includes(needle)),
     );
-  }, [catalog.data, localizeUi, modeFilter, query]);
+  }, [catalog.data, localizeUi, modeFilter, query, uiLanguage]);
   const packageGroups = useMemo(
     () => [
       {
@@ -647,7 +653,9 @@ export function AgentCatalogView() {
                                       </span>
                                       <span className="min-w-0 flex-1">
                                         <span className="flex items-center gap-2">
-                                          <span className="truncate text-sm font-semibold">{entry.manifest.name}</span>
+                                          <span className="truncate text-sm font-semibold">
+                                            {resolveCapabilityCatalogEntryDisplay(entry, uiLanguage).name}
+                                          </span>
                                           {group.id === "installed" && (
                                             <span className="mari-chrome-tag bg-[var(--marinara-chat-chrome-highlight-bg)] px-1.5 py-0.5 text-[0.6rem] font-semibold text-[var(--marinara-chat-chrome-highlight-text)]">
                                               {localizeUi("ui.agents.agentcatalogview.installed_7bb4405")}
@@ -655,7 +663,7 @@ export function AgentCatalogView() {
                                           )}
                                         </span>
                                         <span className="mt-0.5 line-clamp-2 text-xs text-[var(--muted-foreground)]">
-                                          {entry.manifest.description}
+                                          {resolveCapabilityCatalogEntryDisplay(entry, uiLanguage).description}
                                         </span>
                                         {modes.length > 0 && (
                                           <span data-agent-catalog-mode-badges className="mt-1 flex flex-wrap gap-1">
@@ -715,9 +723,11 @@ export function AgentCatalogView() {
                         "ui.agents.agentcatalogview.miscAgents",
                     )}
                   </p>
-                  <h2 className="mt-1 text-xl font-bold md:text-2xl">{selected.manifest.name}</h2>
+                  <h2 className="mt-1 text-xl font-bold md:text-2xl">
+                    {resolveCapabilityCatalogEntryDisplay(selected, uiLanguage).name}
+                  </h2>
                   <p className="mt-2 max-w-[70ch] text-sm leading-6 text-[var(--muted-foreground)]">
-                    {selected.manifest.description}
+                    {resolveCapabilityCatalogEntryDisplay(selected, uiLanguage).description}
                   </p>
                   <div className="mt-3 flex flex-wrap gap-1.5">
                     {selected.manifest.kind.filter(isAgentCatalogKindBadgeVisible).map((kind) => (

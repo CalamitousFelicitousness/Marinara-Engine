@@ -389,6 +389,9 @@ function joinBareThoughtLines(lines: string[]): string[] {
   return joined;
 }
 
+/** A line of markdown marks alone: `---`, `***`, `* * *`, `__`, `**`, `~~`, `##`. */
+const MARKUP_ONLY_LINE_RE = /^(?=.*[*_~#=-])[*_~#=\-\s]+$/;
+
 /** Split a Game turn into the narration, dialogue and readable beats the narration screen shows. */
 export function parseGameNarrationSegments(
   message: { id: string; content: string },
@@ -459,6 +462,9 @@ export function parseGameNarrationSegments(
 
   for (const rawLine of lines) {
     const line = repairGameSpeakerLine(rawLine.trim());
+    // Markdown left with nothing to mark (a `---` rule, the `**` around a note lifted out as a
+    // readable) is no beat of the story (cheap-GM playtest 2026-10-26: lone `---` and `**` segments).
+    if (MARKUP_ONLY_LINE_RE.test(line)) continue;
     if (!line) {
       if (fallbackText.trim()) {
         parsed.push({

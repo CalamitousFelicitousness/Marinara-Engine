@@ -246,6 +246,7 @@ import {
   isRoleplayCommandAllowed,
   getRoleplayCommandActivity,
   applyGameInventoryTags,
+  dropForgedStorySources,
   dropGameLootRepeats,
   applyGamePlaceTags,
   worldKitSize,
@@ -901,7 +902,8 @@ import {
   resolveGameDiceRequests,
 } from "../services/game/dice.service.js";
 import {
-  engineIssuedD20Faces,
+  checkIssuedD20s,
+  checkRecordsAsHistoryNotes,
   loadSkillCheckModifierContext,
   playerSubmittedD20Faces,
   resolveSkillCheckTagsInContent,
@@ -2677,6 +2679,11 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
       // sees the corrected text in its conversation history.
       if (chatMode === "game") {
         applyAllSegmentEdits(mappedMessages, chatMeta as Record<string, unknown>, chatMessages);
+        // Settled checks read back as what they came to, never as records to copy (after the edits,
+        // which find their segments by those records).
+        for (const message of mappedMessages) {
+          if (message.role !== "user") message.content = checkRecordsAsHistoryNotes(message.content);
+        }
       }
 
       // User-message regeneration removes the target turn from real chat history,
@@ -9950,11 +9957,13 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               ...(chatMeta.gameRuleset != null ? { rulesetPinned: true } : {}),
               ...(dicePoolSession ? { pool: dicePoolSession } : {}),
               // A die the Game Master wrote stands only when the player or the Engine threw it this
-              // turn: the player's own, a branch check's above, the dice tool's or a placeholder's.
-              issuedD20s: [
-                ...(gameChanceSession?.issuedD20s ?? playerD20s),
-                ...engineIssuedD20Faces(toolDiceRollResults),
-              ],
+              // turn: the player's own, a branch check's above, and outside a ruleset game the dice
+              // tool's or a placeholder's.
+              issuedD20s: checkIssuedD20s(
+                chatMeta.gameRuleset != null,
+                gameChanceSession?.issuedD20s ?? playerD20s,
+                toolDiceRollResults,
+              ),
               // The prompt, check and sheet passes share the same catalog entries for this turn.
               loadCatalogs: async () => {
                 if (turnRulesetCatalogs) return turnRulesetCatalogs;
@@ -10002,7 +10011,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               definedIntro?.mode !== "defined" &&
               shouldNarrateGameDiceOutcome(
                 chatMeta,
-                Boolean(rolled.resolved || rolled.untrained || generalRolls.rolled),
+                Boolean(rolled.resolved || rolled.untrained || rolled.unknownRoller || generalRolls.rolled),
               )
             ) {
               // The first draft predates these results. Rewrite it with the real
@@ -10040,7 +10049,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   draftTurn,
                   {
                     role: "user",
-                    content: `${resolvedSummary ? `The engine has now rolled the requested dice:\n${resolvedSummary}` : "The engine has now read the requested checks:\nNo dice were rolled."}${paidCheckCosts.length ? `\nReported check-purchase payments (other check-entry costs may also have been paid): ${JSON.stringify(paidCheckCosts)}` : ""}${generalRolls.unresolved.length ? `\nUnresolved requests:\n${generalRolls.unresolved.join("\n")}` : ""}${rolled.sparse - (rolled.untrained ?? 0) > 0 ? "\nSome checks could not be rolled and remain unresolved." : ""}${rolled.untrained ? "\nSome checks were not rolled because the character has no training in them: narrate that they could not attempt them." : ""}\n${addressMode === "gm" ? "Rewrite your entire last out-of-character answer using these real results, correcting any contradictory outcome before or after a check. Answer the player's question now." : "Rewrite your entire last narration using these real results, correcting any contradictory outcome before or after a check. Narrate the consequences now."} Do not repeat this player's action, invent numbers, request more rolls, or include dice/check tags: the engine keeps their records. For unresolved requests, leave the outcome open and explain what the player needs to clarify in supported notation. Re-emit every original movement or package command still justified by these outcomes; omit commands invalidated by them.${rewriteKeptCommandsNote(chatMeta.gameRuleset != null)} ${addressMode === "gm" ? "Return only the complete revised out-of-character answer in the game's language, starting directly with the answer" : "Return only the complete revised GM narration in the game's language, starting directly with the scene"}: any planning goes inside one <think>...</think> block at the very start, never in the narration.`,
+                    content: `${resolvedSummary ? `The engine has now rolled the requested dice:\n${resolvedSummary}` : "The engine has now read the requested checks:\nNo dice were rolled."}${paidCheckCosts.length ? `\nReported check-purchase payments (other check-entry costs may also have been paid): ${JSON.stringify(paidCheckCosts)}` : ""}${generalRolls.unresolved.length ? `\nUnresolved requests:\n${generalRolls.unresolved.join("\n")}` : ""}${rolled.sparse - (rolled.untrained ?? 0) - (rolled.unknownRoller?.count ?? 0) > 0 ? "\nSome checks could not be rolled and remain unresolved." : ""}${rolled.untrained ? "\nSome checks were not rolled because the character has no training in them: narrate that they could not attempt them." : ""}${rolled.unknownRoller ? "\nSome checks were not rolled because they did not name one party member: leave their outcome open; ask again next turn with who= set to the party member's name." : ""}\n${addressMode === "gm" ? "Rewrite your entire last out-of-character answer using these real results, correcting any contradictory outcome before or after a check. Answer the player's question now." : "Rewrite your entire last narration using these real results, correcting any contradictory outcome before or after a check. Narrate the consequences now."} Do not repeat this player's action, invent numbers, request more rolls, or include dice/check tags: the engine keeps their records. For unresolved requests, leave the outcome open and explain what the player needs to clarify in supported notation. Re-emit every original movement or package command still justified by these outcomes; omit commands invalidated by them.${rewriteKeptCommandsNote(chatMeta.gameRuleset != null)} ${addressMode === "gm" ? "Return only the complete revised out-of-character answer in the game's language, starting directly with the answer" : "Return only the complete revised GM narration in the game's language, starting directly with the scene"}: any planning goes inside one <think>...</think> block at the very start, never in the narration.`,
                   },
                 ],
                 { tools: undefined },
@@ -10244,6 +10253,14 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
              *  each reading, since a market counts what the reply buys and sells. */
             market?: () => GameInventoryMarket;
           } | null = null;
+          // Before the story's own gifts join the reply: a mark of one the Game Master wrote is dropped.
+          if (chatMode === "game" && /\bsource\s*=\s*["']?story/i.test(fullResponse)) {
+            const unmarked = dropForgedStorySources(fullResponse);
+            if (unmarked !== fullResponse) {
+              fullResponse = unmarked;
+              contentReplaced = true;
+            }
+          }
           // ── Place tags (#6917) ──
           // Where the scene is, for a ruleset with a market or a game with a world: the last place the
           // player's visible messages said (not the telling a regeneration replaces), then the reply's

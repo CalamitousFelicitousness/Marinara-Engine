@@ -14,8 +14,9 @@
 // once each in `game_ruleset_catalogs`, by content, and the row names them `{ <id>: <sha256> }`. The
 // map is part of the version: the same ruleset text with other catalogs is another version.
 //
-// Its translations (1.798) are kept the same way, `{ <language>: <sha256> }`, but are display only and so
-// no part of the version: importing the same version with other translations replaces them.
+// Its translation is kept the same way, `{ <language>: <sha256> }`, but is display only and so no part of
+// the version: the import keeps the one in the Engine's language (1.803), and importing the same version
+// again in another language replaces it.
 // ──────────────────────────────────────────────
 
 import { createHash } from "node:crypto";
@@ -53,8 +54,8 @@ export interface GameRulesetRow {
   definition: string;
   /** `{ <catalog id>: <sha256> }` as JSON, for a package file's catalog files; null otherwise. */
   catalogs: string | null;
-  /** `{ <language>: <sha256> }` as JSON, for a package file's translations (1.798); null (or absent, on a
-   *  row stored before them) otherwise. */
+  /** `{ <language>: <sha256> }` as JSON, for the translation kept of a package file's (1.803); null (or
+   *  absent, on a row stored before them) otherwise. */
   locales?: string | null;
   createdAt: string;
 }
@@ -71,7 +72,8 @@ export interface PutGameRulesetInput {
   /** A package file's catalog files, by catalog id, exactly as they arrived (RM). Only the package import
    *  sends them; every other import keeps its catalogs inline. */
   catalogs?: Record<string, string>;
-  /** A package file's translations (1.798), by language: the JSON of the strings each translates. */
+  /** The translation kept of a package file's (1.803), by language: the JSON of the strings it translates.
+   *  Given, it replaces what the version kept (`{}` keeps none); absent, that stays. */
   locales?: Record<string, string>;
 }
 
@@ -336,9 +338,9 @@ export function createGameRulesetsStorage(db: DB) {
           if (existing.sha256 !== sha256 || (existing.catalogs ?? null) !== catalogs) {
             throw new RulesetVersionConflictError(input.rulesetId, input.version);
           }
-          // Its translations are the package's latest: a package file imported again with new or
-          // corrected ones brings them, and one with none leaves those it had.
-          if (input.locales !== undefined && locales !== null && (existing.locales ?? null) !== locales) {
+          // Its translation is the latest import's: a package file imported again in another language, or
+          // with a corrected translation, brings it; one carrying none leaves what it had.
+          if (input.locales !== undefined && (existing.locales ?? null) !== locales) {
             await keep(tx, input.locales);
             await tx
               .update(gameRulesets)
@@ -411,7 +413,7 @@ export function createGameRulesetsStorage(db: DB) {
       return text !== undefined && sha256Of(text) === sha256 ? { sha256, text } : null;
     },
 
-    /** A stored version's translation into one language (1.798), checked against the sha256 its row
+    /** A stored version's translation into one language (1.803), checked against the sha256 its row
      *  names; null when the version has none in that language. */
     async localeText(
       rulesetId: string,

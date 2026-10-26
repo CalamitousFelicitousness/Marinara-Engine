@@ -25,11 +25,20 @@ import { initialsOf } from "../../lib/tactical-board-look";
 import { rulesetHealthPercent } from "../../lib/ruleset-combat-board";
 import { cn } from "../../lib/utils";
 
-/** The ruleset's own words for what a combatant is (1.168): "Fiend (devil)". */
-export function rulesetKindLine(kind: { type?: string; tags?: string[] }): string {
-  const tags = (kind.tags ?? []).join(", ");
-  if (!kind.type) return tags;
-  return tags ? `${kind.type} (${tags})` : kind.type;
+/** The ruleset's own words for what a combatant is (1.168): "Fiend · Devil", its tags beside its type
+ *  rather than inside it, since a ruleset's tags are as often traits ("Headless") as subtypes. In the
+ *  player's language where the ruleset has it: its type, tags and alignment are the stat block's own
+ *  words, which the fight's view keeps as they are written (`kind`, `type`), so they are put in that
+ *  language here. */
+export function rulesetKindLine(
+  kind: { type?: string; tags?: string[]; alignment?: string },
+  text: (english: string) => string = (english) => english,
+  withAlignment = false,
+): string {
+  const tags = (kind.tags ?? []).map((tag) => text(tag)).join(", ");
+  const what = [kind.type ? text(kind.type) : undefined, tags].filter(Boolean).join(" · ");
+  // Its alignment as the stat block writes it, after what it is: "Humanoid · Goblinoid, neutral evil".
+  return [what, withAlignment && kind.alignment ? text(kind.alignment) : undefined].filter(Boolean).join(", ");
 }
 
 /** The one word for how a combatant stands, when it is anything but simply in the fight. The order is
@@ -48,9 +57,13 @@ export function rulesetStateWord(combatant: DirectedRulesetCombatant, t: TFuncti
 
 /** The defense column's heading: what the ruleset says (1.375), else its defense's own name made
  *  short, "Armor Class" read as "AC" and a short word kept as it is. */
-export function rulesetDefenseShort(definition: RulesetDefinition, names: RulesetCombatNames): string {
+export function rulesetDefenseShort(
+  definition: RulesetDefinition,
+  names: RulesetCombatNames,
+  text: (english: string) => string = (english) => english,
+): string {
   const own = definition.combat?.display?.defense?.short;
-  if (own) return own;
+  if (own) return text(own);
   const label = names.defense.trim();
   if (!label) return "";
   if (label.length <= 6) return label;
@@ -135,7 +148,7 @@ export function RulesetTurnOrder({
   );
   const companionControllers = new Set(companions.map((combatant) => unitById.get(combatant.id)?.controller ?? "ai"));
   const companionsValue = companionControllers.size === 1 ? [...companionControllers][0]! : "mixed";
-  const defenseShort = rulesetDefenseShort(definition, names);
+  const defenseShort = rulesetDefenseShort(definition, names, text);
   const showDefense = !definition.combat?.display?.defense?.hide;
   const answering = view.window?.actorId;
   const columns = showDefense
@@ -208,7 +221,7 @@ export function RulesetTurnOrder({
             : "";
           const second = [
             playedBy,
-            combatant.kind ? rulesetKindLine(combatant.kind) : "",
+            combatant.kind ? rulesetKindLine(combatant.kind, text) : "",
             combatant.tier ? t("game.combat.ruleset.status.tier", { label: names.tier(combatant.tier) }) : "",
             // Its legendary points as they stand, on the board's table too (laptop 2026-10-26: shown
             // only on the classic status list).

@@ -26,6 +26,7 @@ import {
   normalizeGameDifficulty,
   rulesetBudgetLevel,
   rulesetEncounterBudget,
+  rulesetFightWorth,
   rulesetSheetBuildsByName,
   type GameDifficulty,
   type RulesetEncounterBudget,
@@ -565,6 +566,9 @@ export interface EncounterRulesetBrief {
   tiers: Array<{ id: string; label: string; worth?: number }>;
   /** What a fight may be worth for this party (1.795), when the ruleset has a budget. */
   budget?: RulesetEncounterBudget | null;
+  /** The highest tier one enemy alone fits that budget at, a boss's included (laptop 2026-10-26:
+   *  every invented boss was asked at CR 5 and brought down to CR 3). */
+  budgetTop?: { id: string; label: string };
   bestiary: Array<{ label: string; tier: string }>;
   budgets: string[];
   saves: string[];
@@ -705,22 +709,32 @@ export async function encounterRulesetBrief(
       logger.warn(error, "[game/combat:init] Could not read bestiary %s of %s", catalog.id, definition.id);
     }
   }
+  const budget =
+    party && combat.threat?.budget
+      ? rulesetEncounterBudget(
+          definition,
+          [...rulesetSheetBuildsByName(definition, party.cards).values()].map((build) =>
+            rulesetBudgetLevel(combat.threat!.budget!, build.fields),
+          ),
+          party.difficulty,
+        )
+      : null;
+  const top = budget
+    ? (combat.threat?.tiers ?? [])
+        .filter(
+          (tier) =>
+            tier.worth !== undefined && rulesetFightWorth(definition, [tier.id], budget.members) <= budget.bossWorth,
+        )
+        .at(-1)
+    : undefined;
   return {
     tiers: (combat.threat?.tiers ?? []).map((tier) => ({
       id: tier.id,
       label: tier.label,
       ...(tier.worth !== undefined ? { worth: tier.worth } : {}),
     })),
-    budget:
-      party && combat.threat?.budget
-        ? rulesetEncounterBudget(
-            definition,
-            [...rulesetSheetBuildsByName(definition, party.cards).values()].map((build) =>
-              rulesetBudgetLevel(combat.threat!.budget!, build.fields),
-            ),
-            party.difficulty,
-          )
-        : null,
+    budget,
+    ...(top ? { budgetTop: { id: top.id, label: top.label } } : {}),
     bestiary,
     // A budget of no count is one only a condition fills, so it is not one an invented creature spends.
     budgets: combat.economy.budgets.filter((budget) => budget.count > 0).map((budget) => budget.id),
@@ -914,7 +928,7 @@ export function buildInitPrompt(
     inst += `- Threat tiers, hardest rung last. Use an id exactly as written: ${ruleset.tiers.map((tier) => `${tier.id} (${tier.label}${tier.worth !== undefined ? `, worth ${tier.worth}` : ""})`).join(", ") || "this ruleset declares none"}.\n`;
     const budget = ruleset.budget;
     if (budget) {
-      inst += `- Budget: this game is played at ${budget.step.label} for a party of ${budget.members} (level${budget.levels.length === 1 ? "" : "s"} ${budget.levels.join(", ")}), so the enemies' worths together should come to at most ${budget.worth}${budget.bossWorth > budget.worth ? `, or ${budget.bossWorth} for a fight with a boss in it` : ""}. Many weak enemies or a few strong ones, never more than that. A party that has not rested since its last fight is weaker than its levels say: spend less. An invented enemy is brought down a tier by the Engine while the fight is over budget; a bestiary creature is counted as it is, so choose fewer of them, and one far beyond the budget alone does not come: lesser creatures of its kind that fit come in its place, and it stays out of the fight for the story to keep.\n`;
+      inst += `- Budget: this game is played at ${budget.step.label} for a party of ${budget.members} (level${budget.levels.length === 1 ? "" : "s"} ${budget.levels.join(", ")}), so the enemies' worths together should come to at most ${budget.worth}${budget.bossWorth > budget.worth ? `, or ${budget.bossWorth} for a fight with a boss in it` : ""}.${ruleset.budgetTop ? ` One enemy alone, a boss too, fits it at ${ruleset.budgetTop.id} at most: give no invented enemy a higher tier.` : ""} Many weak enemies or a few strong ones, never more than that. A party that has not rested since its last fight is weaker than its levels say: spend less. An invented enemy is brought down a tier by the Engine while the fight is over budget; a bestiary creature is counted as it is, so choose fewer of them, and one far beyond the budget alone does not come: lesser creatures of its kind that fit come in its place, and it stays out of the fight for the story to keep.\n`;
     }
     inst += `- Bestiary this ruleset already ships: ${ruleset.bestiary.map((entry) => `${entry.label} [${entry.tier}]`).join(", ") || "it ships none"}.\n`;
     inst += `- For each enemy, give "creature" with a bestiary name when one of them IS this enemy. One of a kind on the list with its own name, a rank or a flourish of gear is still that creature: a raider, a chief or an armoured one of a listed kind is that kind, named in "creature" while its own name stays in "name". Only an enemy that is no kind on the list goes without "creature": then give "tier" with the rung this enemy belongs on, judged from the scene and the party, never from its hp.\n`;
@@ -922,6 +936,7 @@ export function buildInitPrompt(
     inst += `- Inside "proposed", every id must come from this ruleset: budgets are ${ruleset.budgets.join(", ") || "none"}; saves are ${ruleset.saves.join(", ") || "none"}; damage types are ${ruleset.damageTypes.join(", ") || "untyped only"}. A name this ruleset does not have is dropped.\n`;
     inst += `- A breath, or an attack that lands in a cone, a line or an area, is one of its "attacks" named for what it is (a breath has Breath in its name), with "areaRadius" or the word cone or line in its "description": the Engine makes it an area its targets save against for half, back on a recharge, as this ruleset's bestiary breaths are. Inside "proposed", such an action may give its own "area" ({"shape":"cone|line|burst","size":N}), "save" ({"save":"save id","difficulty":N,"onSuccess":"half"}) and "recharge" ({"dice":{"count":1,"sides":N},"from":N}) in place of "toHit".\n`;
     inst += `- Keep the hp, attack, defense, speed and level fields as well. They are the Engine's own numbers and are used outside the fight.\n`;
+    inst += `- An enemy the story already hurt before this fight (a blow, a spell or a fall that landed on it in the narration, not one only tried or refused) is the one exception to starting at full HP: give it hp below its maxHp by the share it lost, and the Engine begins it with that share of its health. Every other enemy has hp equal to maxHp. The party's health comes from their sheets.\n`;
     inst += `- Gear: an enemy has on it only what its bestiary entry rolls for, which is often nothing. Give any enemy things to carry whenever it fits who they are and where the fight is: a bandit with a healing potion, a guard with the cell key, a cultist with the letter that names their master, a scout with a horn. Not every enemy needs something, but an encounter where nobody carries anything is the exception. To decide what it carries yourself (a bandit with two healing potions, a guard with the cell key), give "carrying": ["item name", "item name"], one line an item, named exactly as this ruleset's items are, and coins as one line with how many ("9 gold pieces": the purse a thief took, which drops when it is beaten); it then has exactly those, and [] means nothing at all. It uses what it can in the fight, and what is left drops when it is beaten. Leave it out to let its bestiary decide. Whatever the scene or your own narration says an enemy has (the stolen salves, the key on a belt) goes in its "carrying", or the fight never knows it is there.\n`;
     inst += ruleset.reactions?.length
       ? `- Reactions: an enemy's reaction is one of its "attacks" with "kind": "buff", named exactly as this ruleset's bestiary has it, and only these work: ${ruleset.reactions.join(", ")}. Write no other reaction for it.\n`
@@ -933,7 +948,7 @@ export function buildInitPrompt(
     if (tactical) {
       inst += `- Where each begins on the board: you place every enemy. Give an enemy "start" when the scene says where it is: "front" or "rear" of its own side, "ahead" of it alone, on the party's "flank", "behind" the party, "among" them, or "hidden" in cover. Leave it out to keep it in its side's formation. The players place their own characters, so give a party member "start" ONLY when the story put them somewhere as the fight began (the wizard who walked into the cavern first is at the "front" when the goblins spring); leave it out for everybody else.\n`;
     }
-    inst += `- Set up beforehand: give "standing": [{"entry": "its own spell's name", "at": "between" or "self"}] to a party member or enemy the scene shows set up a lasting ward, glyph or hallowed ground before the fight began (a Glyph of Warding on the door, Hallow over the shrine). "between" puts it between them and their foes, "self" where they stand; for a glyph holding a spell, add "stores": "that spell's name". A spell cast beforehand that is not a ward on the ground (Heroes' Feast, Foresight, a buff) may be listed the same way with "on": ["names of those it was cast on"], and is in effect as the fight starts. A ward that works on one sort of creature (Hallow's extra effect) may add "kind": "that creature type". A spell cast beforehand that is done one of several ways (the creature Find Familiar calls, or the damage type Forbiddance deals) adds "mode": "that way's name". A ward that strikes the sorts of creature its caster named (Forbiddance's) adds "kinds": ["those creature types"]. A creature a party member's sheet already keeps ("With them") comes into the fight on its own, so it is not listed. A spell cast beforehand into something that stores it (a Ring of Spell Storing, a shield guardian) adds "into": "that item's or creature's name", with "on": ["its holder's name"] when somebody else holds it. Only for what the scene says was really done; leave it out otherwise.\n`;
+    inst += `- Set up beforehand: give "standing": [{"entry": "its own spell's name", "at": "between" or "self"}] to a party member or enemy the scene shows set up a lasting ward, glyph or hallowed ground before the fight began (a Glyph of Warding on the door, Hallow over the shrine). "between" puts it between them and their foes, "self" where they stand; for a glyph holding a spell, add "stores": "that spell's name". A spell cast beforehand that is not a ward on the ground (Heroes' Feast, Foresight, a buff) may be listed the same way with "on": ["names of those it was cast on"], and is in effect as the fight starts. A ward that works on one sort of creature (Hallow's extra effect) may add "kind": "that creature type". A spell cast beforehand that is done one of several ways (the creature Find Familiar calls, or the damage type Forbiddance deals) adds "mode": "that way's name". A ward that strikes the sorts of creature its caster named (Forbiddance's) adds "kinds": ["those creature types"]. A creature a party member's sheet already keeps ("With them") comes into the fight on its own, and so does a shape it keeps ("In the shape of"), so neither is listed; never list a party member's change of their own shape (Wild Shape). A spell cast beforehand into something that stores it (a Ring of Spell Storing, a shield guardian) adds "into": "that item's or creature's name", with "on": ["its holder's name"] when somebody else holds it. Only for what the scene says was really done; leave it out otherwise.\n`;
     const sheet = ruleset.sheet;
     inst += `- An enemy whose power comes from this ruleset's own lists and pools (a spellcaster, say) may be proposed as a SHEET instead of numbers: "proposed": {"tier":"tier id","sheet":{"abilities":{},"skills":{},"saves":{},"fields":{},"lists":{}}}. Give no health, defense, initiativeModifier, speed, abilities or saves beside a sheet: the Engine builds it exactly as it builds a character, fills in anything left out with the ruleset's defaults, and then holds it to the tier. Every id must come from this sheet:\n`;
     inst += `  - abilities: ${sheet.abilities.join(", ") || "none"}\n`;

@@ -1,7 +1,14 @@
 import { z } from "zod";
 import { experienceSetupDefaultsSchema } from "../features/world/game-intro.js";
 import { agentResultTypeSchema } from "./agent.schema.js";
-import { isRulesetCatalogAssetPath, isRulesetLocaleAssetPath, RULESET_ASSET_PATH } from "./ruleset.schema.js";
+import {
+  isRulesetCatalogAssetPath,
+  isRulesetLocaleAssetPath,
+  isRulesetLocaleCode,
+  RULESET_ASSET_PATH,
+  RULESET_LOCALE_MAX_BYTES,
+  RULESET_LOCALE_MAX_FILES,
+} from "./ruleset.schema.js";
 
 /** Caps mirrored by the Marinara-Agents catalog build. Kept here so a hostile or
  *  broken notes document cannot push an unbounded string into a modal. */
@@ -1524,7 +1531,10 @@ const capabilityPackageManifestBaseSchema = z
 //        rituals (5e's Ritual Casting).
 // 1.802: a rest's `every`: the hours of the game's clock before it may be taken again (5e's one long
 //        rest in 24 hours).
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 802 } as const);
+// 1.803: a ruleset's language packs: a catalog entry's `locales`, one `<id>-<version>.<lang>.json` per
+//        language, fetched only in the Engine's language; and a ruleset package file a player shares may
+//        carry `locales/<lang>.json`, of which an import keeps the Engine's language alone.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 803 } as const);
 
 const capabilityApiVersionSchema = z
   .object({
@@ -1970,23 +1980,39 @@ export const capabilityPackageManifestSchema = z
         });
       }
     }
-    // A ruleset's translations (1.798) ship beside its ruleset. Only a ruleset package's are: another
-    // package's locales/ folder is its own business.
+    // A ruleset package file's translations (1.803) ship beside its ruleset. Only a ruleset package's are:
+    // another package's locales/ folder is its own business. The catalog never carries them inside the
+    // file: its rulesets list language packs instead.
     if (
       manifest.contributions?.assets?.paths.includes(RULESET_ASSET_PATH) &&
       manifest.contributions.assets.paths.some(isRulesetLocaleAssetPath)
     ) {
       const api = manifest.schemaVersion === 2 ? manifest.capabilityApi : null;
-      if (!api || api.major < 1 || (api.major === 1 && api.minor < 798)) {
+      if (!api || api.major < 1 || (api.major === 1 && api.minor < 803)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["contributions", "assets", "paths"],
           message:
-            "A ruleset's translations (locales/<language>.json) require schemaVersion 2 and capabilityApi 1.798 or newer",
+            "A ruleset file's translations (locales/<language>.json) require schemaVersion 2 and capabilityApi 1.803 or newer",
         });
       }
     }
   });
+
+/** One language pack of a catalog ruleset (1.803): where it is, pinned by its sha256 and size, and the
+ *  store card's name and description in its language. */
+const capabilityCatalogLocalePackSchema = z
+  .object({
+    url: z
+      .string()
+      .url()
+      .refine((url) => url.startsWith("https://"), { message: "A language pack is fetched over https" }),
+    sha256: z.string().regex(/^[a-f0-9]{64}$/),
+    bytes: z.number().int().positive().max(RULESET_LOCALE_MAX_BYTES),
+    name: z.string().min(1).max(120).optional(),
+    description: z.string().max(2000).optional(),
+  })
+  .strict();
 
 export const capabilityCatalogPackageSchema = z
   .object({
@@ -2005,8 +2031,52 @@ export const capabilityCatalogPackageSchema = z
       .strict(),
     iconUrl: z.string().url().optional(),
     documentationUrl: z.string().url().optional(),
+    /** A ruleset's language packs (1.803), by language: each `<id>-<version>.<lang>.json`, fetched only in
+     *  the Engine's language, with the store card's name and description in it. English is the ruleset. */
+    locales: z
+      .record(z.string(), capabilityCatalogLocalePackSchema)
+      .refine((locales) => Object.keys(locales).length <= RULESET_LOCALE_MAX_FILES, {
+        message: `A ruleset lists at most ${RULESET_LOCALE_MAX_FILES} language packs`,
+      })
+      .optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((entry, ctx) => {
+    if (!entry.locales) return;
+    const { manifest } = entry;
+    const api = manifest.schemaVersion === 2 ? manifest.capabilityApi : null;
+    if (!manifest.kind.includes("ruleset") || !api || api.major < 1 || (api.major === 1 && api.minor < 803)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["locales"],
+        message: "Language packs belong to a ruleset of schemaVersion 2 and capabilityApi 1.803 or newer",
+      });
+    }
+    for (const [locale, pack] of Object.entries(entry.locales)) {
+      if (locale === "en" || !isRulesetLocaleCode(locale)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["locales", locale],
+          message: `"${locale}" is not a language a pack is listed under (English is the ruleset itself)`,
+        });
+        continue;
+      }
+      // The pack is the ruleset version's own, named as the catalog build names it.
+      let pathname = "";
+      try {
+        pathname = new URL(pack.url).pathname;
+      } catch {
+        // The url schema has already said so.
+      }
+      if (!pathname.endsWith(`/${manifest.id}-${manifest.version}.${locale}.json`)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["locales", locale, "url"],
+          message: `The ${locale} pack is not ${manifest.id}-${manifest.version}.${locale}.json`,
+        });
+      }
+    }
+  });
 
 export const capabilityCatalogSchema = z
   .object({

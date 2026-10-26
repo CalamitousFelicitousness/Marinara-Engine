@@ -80,6 +80,7 @@ import {
   readRulesetDifficulty,
   loadSkillCheckModifierContext,
   resolveSkillCheckWithContext,
+  rulesetCheckRollerRefused,
   rulesetRefusesUntrained,
   takeIssuedD20s,
   type SkillCheckModifierContext,
@@ -207,7 +208,9 @@ export type GameBranchArmRefusal =
   | "ambiguous-label"
   /** The claimed tag is not a check this engine rolls, is out of bounds, or already carries a result. */
   | "unrollable-check"
-  | "untrained-check";
+  | "untrained-check"
+  /** The claimed check picks out no one party member to roll it. */
+  | "unknown-roller";
 
 /** Plain words for each refusal, so the log says what the model wrote rather than what a flag is called. */
 const BRANCH_REFUSAL_REASONS: Record<GameBranchArmRefusal, string> = {
@@ -220,6 +223,7 @@ const BRANCH_REFUSAL_REASONS: Record<GameBranchArmRefusal, string> = {
   "ambiguous-label": "the label was claimed more than once, so it decides nothing",
   "unrollable-check": "the claimed check is not one this engine rolls",
   "untrained-check": "the claimed check is one the character cannot attempt untrained",
+  "unknown-roller": "the claimed check picks out no one party member to roll it",
 };
 
 /** What the arm decided about one block, before anything is spliced. */
@@ -371,18 +375,20 @@ export async function resolveGameTurnBranches(
       }
       // The same roller the tag pass picks for a check that names nobody.
       const inferredWho =
-        context.ruleset && !asked.who
-          ? inferRulesetCheckWho(context.ruleset, content, plan.check, asked.skill, asked.withAbility)
-          : undefined;
+        context.ruleset && !asked.who ? inferRulesetCheckWho(context.ruleset, content, plan.check) : undefined;
       if (inferredWho) asked = { ...asked, who: inferredWho };
       const request = readRulesetDifficulty(asked, definition);
       // Only a named difficulty is read here; a check that wrote its own number was bounded above.
       if (plan.check.request.dc === undefined && !isResolvableSkillCheckRequest(request, definition)) {
         refusal = "unrollable-check";
-      } else if (context.ruleset && rulesetRefusesUntrained(context.ruleset, request)) {
+      } else if (
+        context.ruleset &&
+        (rulesetCheckRollerRefused(context.ruleset, request.who) || rulesetRefusesUntrained(context.ruleset, request))
+      ) {
         // Not rolled, and so neither half happened. The ask is written back with the reason on it,
         // which settles it: the client's own fallback never rolls it a second time.
-        refusal = "untrained-check";
+        const noRoller = rulesetCheckRollerRefused(context.ruleset, request.who);
+        refusal = noRoller ? "unknown-roller" : "untrained-check";
         edits.push({
           start: plan.check.start,
           end: plan.check.end,
@@ -405,7 +411,7 @@ export async function resolveGameTurnBranches(
               ...(request.withAbility ? { with: request.withAbility } : {}),
               ...(request.bonusDice != null ? { bonus: request.bonusDice } : {}),
               ...(request.purpose ? { for: request.purpose } : {}),
-              reason: "untrained",
+              reason: noRoller ? "unknown-roller" : "untrained",
             },
           ),
         });

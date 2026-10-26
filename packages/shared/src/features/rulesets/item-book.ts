@@ -1439,6 +1439,9 @@ export function rulesetItemBook(
     ...(options.actor === "game-master" && definition.items ? { invent } : {}),
     plain: options.plain ?? "allow",
     ...(options.actor ? { actor: options.actor } : {}),
+    ...(options.actor === "game-master" && (definition.items?.market || definition.items?.lootTables?.length)
+      ? { sourcedOnly: (item: string) => all.get(item)?.entry.item?.use?.consumes === true }
+      : {}),
     ...(definition.items?.slots?.length
       ? { slots: definition.items.slots.map(({ id, label, count }) => ({ id, label, count })) }
       : {}),

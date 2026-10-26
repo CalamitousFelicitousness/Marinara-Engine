@@ -166,8 +166,8 @@ export interface SkillCheckTagExtras {
   /** `reroll="rote"` — the standing re-throw the check applied, or the ask for one. */
   reroll?: string;
   /** `reason="untrained"` — the Engine did not roll the check, because the character cannot attempt
-   *  it untrained. Only ever on an ask. */
-  reason?: "untrained";
+   *  it untrained; `reason="unknown-roller"`, because it picks out no one party member. Only ever on an ask. */
+  reason?: "untrained" | "unknown-roller";
   /** `effects="-1"` — what the character's conditions and worn or carried items added or took. */
   effects?: number;
   /** `from="Poisoned; Leather coat"` — the conditions and items that changed the check. */

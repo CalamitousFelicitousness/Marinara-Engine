@@ -239,6 +239,7 @@ import { getCustomAgentImportPolicy } from "../services/agents/custom-agent-impo
 import {
   resolveChatSkillCheck,
   SkillCheckDifficultyError,
+  SkillCheckRollerError,
   SkillCheckUntrainedError,
 } from "../services/game/skill-check-resolution.service.js";
 import { applyAllSegmentEdits, stripGmCommandTags } from "../services/game/segment-edits.js";
@@ -3775,7 +3776,12 @@ export async function runGameChatComplete(
   };
 
   try {
-    return await Promise.race([provider.chatComplete(messages, watchedOptions), watchdog.promise]);
+    const result = await Promise.race([provider.chatComplete(messages, watchedOptions), watchdog.promise]);
+    // A provider whose stream was aborted ends it quietly with what it had, often nothing. That is no
+    // reply to parse (cheap-GM playtest 2026-10-26: a world setup whose stream was cut came back as an
+    // empty world): the call fails at once, with why it was stopped.
+    if (controller.signal.aborted) throw abortReasonAsError(controller.signal, `${label} was cancelled`);
+    return result;
   } finally {
     watchdog.clear();
     parentSignal?.removeEventListener("abort", abortFromParent);
@@ -7738,6 +7744,8 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         }
 
         if (!parseError) break;
+        // A reply cut off before its JSON closed comes back cut off again: the same wait twice for nothing.
+        if (isLikelyTruncatedJsonResponse(responseText, setupFinishReason)) break;
         if (attempt === 1) {
           logger.warn("[game/setup] Setup JSON failed parse/validation; retrying world setup once");
         }
@@ -7751,8 +7759,9 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       logger.error("[game/setup] Returning 422: %s", parseError);
       if (isLikelyTruncatedJsonResponse(responseText, setupFinishReason)) {
         rejectGenerationOutput(reply, 422, {
-          error:
-            "World generation response was cut off before the setup JSON completed. Increase this connection's max output tokens or use a model with a larger output limit, then try again.",
+          error: isLengthFinishReason(setupFinishReason)
+            ? "World generation response was cut off before the setup JSON completed. Increase this connection's max output tokens or use a model with a larger output limit, then try again."
+            : "World generation stopped before the setup JSON completed: the model's reply ended mid-way, without saying it was finished, as when a provider or proxy cuts a long reply off. Try again, or use a lower reasoning effort or a different model.",
           rawResponse: responseText,
           finishReason: setupFinishReason ?? null,
         });
@@ -10291,6 +10300,9 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       // A check the character cannot attempt untrained is not there to roll.
       if (err instanceof SkillCheckUntrainedError) {
         return reply.status(400).send({ error: err.message, code: "skill_check_untrained" });
+      }
+      if (err instanceof SkillCheckRollerError) {
+        return reply.status(400).send({ error: err.message, code: "skill_check_unknown_roller" });
       }
       throw err;
     }

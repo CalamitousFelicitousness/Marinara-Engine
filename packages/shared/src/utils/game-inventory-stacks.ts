@@ -235,6 +235,10 @@ export interface GameInventoryItemRules {
   /** Whose change this is. The player's own leave a bound cursed item bound and where it is; the
    *  Game Master can end a curse in the story. */
   actor?: "player" | "game-master";
+  /** Whether the Game Master's bare `[inventory: add]` of this item is refused (cheap-GM playtest
+   *  2026-10-26: a potion added from nowhere healed twice): an item a use spends, in a game whose
+   *  ruleset sells or drops its items, so it comes by a buy, a loot roll, a won fight or a give. */
+  sourcedOnly?(item: string): boolean;
   /** The item a Game Master's proposal makes (or the one of that name it made before, while any of it
    *  is held), with what the Engine changed. Absent where the ruleset has no items to invent. */
   invent?(

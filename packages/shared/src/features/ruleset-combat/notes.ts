@@ -28,6 +28,7 @@ export const RULESET_FIGHT_NOTES = {
     "This fight is worth {{worth}}, more than this party's {{step}} budget of {{budget}}, with nothing left to bring down.",
   budgetWithin: "This fight is worth {{worth}}, within this party's {{step}} budget of {{budget}}.",
   budgetUntiered: "{{name}} was given no tier, so it was built at {{tier}}, what this party's {{step}} budget allows.",
+  beginsHurt: "{{name}} begins hurt, at {{value}} of {{max}} health, as the story left it.",
   standIns:
     "{{creature}} is far beyond this party (worth {{worth}}, against its {{step}} budget of {{budget}}), so lesser ones of its kind come instead: {{foes}}. {{name}} stays out of this fight, for the story to keep.",
   // ── An opponent ──
@@ -147,6 +148,7 @@ export const RULESET_FIGHT_NOTES = {
   standsUnpaid: "{{name}} has nothing left to pay for {{action}} with, so it is not done.",
   standsEverybody: '{{name}}\'s {{action}} cannot be set on "{{kind}}", so it works on everybody.',
   standsOwnEffect: '{{name}}\'s {{action}} cannot hold "{{stores}}", so it stands with its own effect.',
+  standsOwnShape: "{{name}}'s {{action}} changes their own shape, which only their sheet keeps, so it is not done.",
   standsCannotHold: '{{name}}\'s {{action}} cannot hold "{{stores}}", so nothing stands for it.',
   standsUnpaidStand: "{{name}} has nothing left to pay for {{action}} with, so it does not stand.",
   standsNotAgainst: '{{name}}\'s {{action}} cannot be set against "{{against}}", so it is not.',

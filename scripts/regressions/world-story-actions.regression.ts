@@ -164,10 +164,10 @@ const reply = (turn: ReturnType<typeof turnOf>, words = "The Game Master speaks.
 // ── Turn 1: the gifts, by id and by name; an id the ruleset lacks is refused ──
 const first = turnOf([]);
 assert.deepEqual(first.tripped, ["gift"]);
-assert.match(first.prepend, /\[inventory: action="add" item="Hempen Rope" count="2"\]/);
+assert.match(first.prepend, /\[inventory: action="add" item="Hempen Rope" count="2" source="story"\]/);
 assert.match(
   first.prepend,
-  /\[inventory: action="add" item="A corn-dolly" count="1" summary="A doll of plaited straw"\]/,
+  /\[inventory: action="add" item="A corn-dolly" count="1" summary="A doll of plaited straw" source="story"\]/,
 );
 assert.match(
   first.prepend,
@@ -295,7 +295,7 @@ assert.match(storyTurnPromptText(story, sixth), /The story has ended \("The Year
 const gmAnswered = applyStoryTags('[story: event="spare"]', story, game, third.state, [], (ref) => items[ref]);
 assert.match(
   gmAnswered,
-  /\[story: event="spare" fight="granary" result="ok"\]\[inventory: action="add" item="Hempen Rope" count="1"\]\[state: combat\]/,
+  /\[story: event="spare" fight="granary" result="ok"\]\[inventory: action="add" item="Hempen Rope" count="1" source="story"\]\[state: combat\]/,
 );
 const late = applyStoryTags('[story: event="spare"]', story, game, fifth.state, [], (ref) => items[ref]);
 assert.match(late, /result="refused" reason="ended"/);
@@ -344,9 +344,9 @@ assert.deepEqual(
   });
   const gives = turn.prepend.match(/\[inventory: [^\]]*\]/g) ?? [];
   assert.deepEqual(gives, [
-    '[inventory: action="add" item="Fennick\'s Hymnal" count="1"]',
-    '[inventory: action="add" item="Fennick\'s Hymnal" count="1"]',
-    '[inventory: action="add" item="A Straw Hat" count="1"]',
+    '[inventory: action="add" item="Fennick\'s Hymnal" count="1" source="story"]',
+    '[inventory: action="add" item="Fennick\'s Hymnal" count="1" source="story"]',
+    '[inventory: action="add" item="A Straw Hat" count="1" source="story"]',
   ]);
   assert.match(turn.prepend, /give="magic_items\/none\|equipment\/none" result="refused"/, "none offered");
   // A lone bare id nothing offers is a name, as it always was.
@@ -385,7 +385,7 @@ assert.deepEqual(
     fight: null,
     item: () => undefined,
   });
-  assert.match(namesTurn.prepend, /\[inventory: action="add" item="rope" count="1"\]/);
+  assert.match(namesTurn.prepend, /\[inventory: action="add" item="rope" count="1" source="story"\]/);
 }
 
 // A boss fight with no boss marked: the named leader is the boss (laptop pass 8 2026-10-26).

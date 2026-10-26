@@ -3170,4 +3170,24 @@ function drawn(...rows: string[]): TacticalGrid {
   assert.ok(messages["ui.game.gamesurfacecomponent.setupNotFinished"]);
 }
 
+// ── A directed fight already over goes straight to its end (laptop playtest 2026-10-26) ──
+{
+  // The party fell and the server restarted before "Continue story": the same fight was set up again
+  // behind "Combat starting", and only a second press showed the fall notice. The setup now looks the
+  // fight up by its message first, and one already over is ended from its own summary, once.
+  const surface = readSource("packages/client/src/components/game/GameSurface.tsx");
+  const setup = surface.slice(
+    surface.indexOf("const generateCombatStateForMessage = useCallback("),
+    surface.indexOf('.post<EncounterInitResponse>("/encounter/init"'),
+  );
+  assert.match(setup, /\/game\/combat\/director\/state\?\$\{params\}/u);
+  assert.match(setup, /if \(session\?\.outcome && session\.summary\) \{/u);
+  assert.match(setup, /handleCombatEndRef\.current\(\s*session\.summary\.outcome,/u);
+  assert.match(setup, /if \(endedDirectedFightRef\.current === directedFight\) \{/u);
+  assert.match(
+    surface,
+    /if \(activeChatId && fightKey\) endedDirectedFightRef\.current = `\$\{activeChatId\}:\$\{fightKey\}`;/u,
+  );
+}
+
 console.log("ruleset-combat-screen-client regression passed");

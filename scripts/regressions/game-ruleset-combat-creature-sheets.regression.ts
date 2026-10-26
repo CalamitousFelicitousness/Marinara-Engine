@@ -2304,6 +2304,13 @@ const dataDir = mkdtempSync(join(tmpdir(), "marinara-creature-sheets-"));
       hound.actions.map((one) => one.label).join(", "),
     );
 
+    // A bestiary boss with legendary actions of its own has them said (laptop 2026-10-26).
+    const sentinelBoss = fight({ id: "warden", name: "Hollow Sentinel", tier: "cr_3", boss: true, points: 2 });
+    assert.match(
+      sentinelBoss.adjustments.join("; "),
+      /Hollow Sentinel may spend 2 points between turns on Watchful strike\./,
+    );
+
     // A one-word bestiary name fits a word ending in it: an Archlich borrows a Lich's (cloud re-test
     // 2026-10-26: an "Archlich" found no lich).
     const sentinel5e = creatureEntry(fiveE, "creatures", "hollow-sentinel");

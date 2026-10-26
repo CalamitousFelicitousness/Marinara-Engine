@@ -33,6 +33,7 @@ import {
   type RulesetRestRecovery,
   type RulesetUseRecover,
   type CreaturePack,
+  type DirectedCombatView,
   rulesetCardHolder,
   rulesetCardItems,
   rulesetReadsItems,
@@ -3071,6 +3072,12 @@ function GameSurfaceComponent({
   const combatGenerationInFlightRef = useRef(false);
   // The message whose fight a registered combat style took over (#8109), so it is started once.
   const combatStyleStartedMessageIdRef = useRef<string | null>(null);
+  /** The directed fight (chat and starting message) this screen last ended, so a fight already over
+   *  is never ended twice, and the one directed fight just looked up and found not over yet, so the
+   *  setup after the look goes ahead. */
+  const endedDirectedFightRef = useRef<string | null>(null);
+  const directedFightLookedUpRef = useRef<string | null>(null);
+  const handleCombatEndRef = useRef<(outcome: "victory" | "defeat" | "flee", summary: CombatSummary) => void>(() => {});
   /** Monotonic id for the CURRENT combat request; a stale completion whose id no longer matches bails.
    *  Bumped on every new request, on chat switch, and when a turn retry abandons a generation. #5094. */
   const combatGenerationRequestIdRef = useRef(0);
@@ -9839,6 +9846,50 @@ function GameSurfaceComponent({
         useGameModeStore.getState().setGameState("combat");
         return;
       }
+      // A directed fight is kept on the server under the message that started it, and it may already
+      // be over there (laptop playtest 2026-10-26: the party fell, the server restarted before
+      // "Continue story", and the same fight was set up again behind "Combat starting", only to come
+      // back to its end). A fight already over goes straight to its end, the fall notice and the
+      // recap, and the model is asked for nothing. One this screen already ended is not ended again.
+      const directedFight = `${activeChatId}:${messageId}`;
+      const lookedUp = directedFightLookedUpRef.current === directedFight;
+      directedFightLookedUpRef.current = null;
+      if (combatSetupConfig?.combatDirector === true && !lookedUp) {
+        if (endedDirectedFightRef.current === directedFight) {
+          setQueuedCombatGeneration(null);
+          setPreparedCombatState(null);
+          return;
+        }
+        const requestChatId = activeChatId;
+        const requestId = ++combatGenerationRequestIdRef.current;
+        combatGenerationInFlightRef.current = true;
+        const params = new URLSearchParams({ chatId: requestChatId, anchor: messageId });
+        void api
+          .get<{ session: DirectedCombatView }>(`/game/combat/director/state?${params}`)
+          .then(
+            (answer) => answer.session,
+            () => null,
+          )
+          .then((session) => {
+            if (combatGenerationRequestIdRef.current !== requestId || activeChatIdRef.current !== requestChatId) return; // superseded
+            combatGenerationInFlightRef.current = false;
+            if (session?.outcome && session.summary) {
+              setQueuedCombatGeneration(null);
+              setPreparedCombatState(null);
+              const fought = session.ruleset?.summary;
+              endedDirectedFightRef.current = directedFight;
+              handleCombatEndRef.current(
+                session.summary.outcome,
+                fought ? { ...session.summary, ruleset: fought } : session.summary,
+              );
+              return;
+            }
+            // No fight yet, or one still going, which the screen picks up again by its message.
+            directedFightLookedUpRef.current = directedFight;
+            generateCombatRef.current(messageId, notify);
+          });
+        return;
+      }
       const debugMode = useUIStore.getState().debugMode;
       if (debugMode) {
         console.warn("[game-combat] Starting combat state generation", { chatId: activeChatId, messageId });
@@ -10052,6 +10103,7 @@ function GameSurfaceComponent({
       ensureContextMusicTrack,
       playContextCombatMusic,
       chatMeta.gameSetupConfig,
+      combatSetupConfig?.combatDirector,
       localizeUi,
       combatStyleSurface,
       effectiveCombatStyle,
@@ -11803,6 +11855,7 @@ function GameSurfaceComponent({
     (outcome: "victory" | "defeat" | "flee", summary: CombatSummary) => {
       // The message that started the fight names it, so a win reported twice drops its loot once.
       const fightKey = combatStartMessageId;
+      if (activeChatId && fightKey) endedDirectedFightRef.current = `${activeChatId}:${fightKey}`;
       // A fight a registered style took over has ended, so its message may start one again.
       combatStyleStartedMessageIdRef.current = null;
       setCombatParty(null);
@@ -12064,6 +12117,9 @@ function GameSurfaceComponent({
       transitionGameState,
     ],
   );
+  useEffect(() => {
+    handleCombatEndRef.current = handleCombatEnd;
+  });
 
   // Toggle audio mute
   const handleToggleMute = useCallback(() => {

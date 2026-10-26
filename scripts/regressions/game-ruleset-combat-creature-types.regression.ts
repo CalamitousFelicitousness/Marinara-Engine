@@ -316,6 +316,9 @@ try {
         { id: "cultist", name: "Cultist", tier: "cr_1" },
         { id: "wight", name: "Wight", tier: "cr_3", creatureType: "Undead" },
         { id: "rotter", name: "Rotting Zombie 2", tier: "cr_1" },
+        // A word that ends in a one-word creature's name is that creature (laptop 2026-10-26: an
+        // Archlich with a Lich's legendary actions was a Humanoid); a short one is not.
+        { id: "archzombie", name: "Archzombie Vel", tier: "cr_1" },
       ],
       cards: [{ name: "Hero", rulesetSheet: { v: 1, build: build() } }],
       playerName: "Hero",
@@ -340,6 +343,7 @@ try {
     assert.equal(kind("cultist"), "humanoid");
     assert.equal(kind("wight"), "undead");
     assert.equal(kind("rotter"), "undead", "a Zombie by its name");
+    assert.equal(kind("archzombie"), "undead", "an Archzombie by the word its name ends in");
   }
 
   console.log("Creature types: slayer dice, holy water, beasts only, Sleep past the undead, gated at 1.168.");

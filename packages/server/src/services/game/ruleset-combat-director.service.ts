@@ -807,8 +807,12 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
           .replace(/[^\p{L}\p{N}]+/gu, " ")
           .trim();
         const type = entry.creature?.type;
-        if (type && label && words.includes(` ${label} `) && label.length > (best?.length ?? 0))
-          best = { length: label.length, type };
+        // A one-word name also fits a word that ends in it, as a boss borrows its legendary actions
+        // (laptop 2026-10-26: an Archlich with a Lich's was a Humanoid).
+        const fits =
+          words.includes(` ${label} `) ||
+          (label.length >= 4 && !label.includes(" ") && words.split(" ").some((word) => word.endsWith(label)));
+        if (type && label && fits && label.length > (best?.length ?? 0)) best = { length: label.length, type };
       }
     return best?.type;
   };
@@ -907,6 +911,14 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
               actions: own,
             })
           : null;
+      // One with its own says what they are, as an invented boss's are said (laptop 2026-10-26: a Lich
+      // with 3 points and no word of what they buy).
+      const signature = own.filter((action) => action.signature && !action.lair);
+      const ownPoints = found.entry.creature?.signaturePoints ?? 0;
+      if (!legendary && signature.length > 0 && ownPoints > 0)
+        adjustments.push(
+          `${opponent.name} may spend ${ownPoints} points between turns on ${signature.map((one) => one.name).join(", ")}.`,
+        );
       if (legendary?.actions.length) {
         adjustments.push(
           legendary.from

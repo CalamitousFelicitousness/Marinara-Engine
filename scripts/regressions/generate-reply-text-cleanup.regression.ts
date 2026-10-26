@@ -64,6 +64,24 @@ const rows: Array<{
     expected: { dropped: "wrong_speaker" },
   },
   {
+    name: "restored OOC text cannot bypass the individual wrong-speaker gate",
+    text: "<OOC>Bob: Not Alice's turn.</OOC>",
+    o: { ...individual, chatMode: "roleplay", connectedChatId: "conv-1" },
+    expected: { dropped: "wrong_speaker" },
+  },
+  {
+    name: "restored OOC text strips the target's individual speaker prefix",
+    text: "<OOC>Alice: Keep this answer.</OOC>",
+    o: { ...individual, chatMode: "roleplay", connectedChatId: "conv-1" },
+    expected: { text: "Keep this answer.", changed: true },
+  },
+  {
+    name: "restored OOC text honors incomplete-ending cleanup",
+    text: "<OOC>First sentence. Second sentence is cut</OOC>",
+    o: { ...roleplay, connectedChatId: "conv-1", trimIncompleteEnding: true },
+    expected: { text: "First sentence.", changed: true },
+  },
+  {
     name: "an unclosed OOC block remains visible",
     text: "<OOC>Keep this unfinished block.",
     o: { ...roleplay, connectedChatId: "conv-1" },

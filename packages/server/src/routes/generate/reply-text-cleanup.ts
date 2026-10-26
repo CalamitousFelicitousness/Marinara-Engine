@@ -173,7 +173,10 @@ export function cleanGeneratedReply(
   // Keep an OOC-only answer visible: an empty reply is discarded before linked-chat
   // posting runs. Check after speaker/ending cleanup, which can remove the last prose.
   if (!fullResponse.trim() && oocMessages.length > 0) {
-    fullResponse = oocMessages.join("\n\n");
+    // Reuse cleanup once without extraction so recovered text still obeys the speaker gate.
+    const recovered = cleanGeneratedReply(oocMessages.join("\n\n"), { ...o, connectedChatId: null });
+    if ("dropped" in recovered || !recovered.text.trim()) return recovered;
+    fullResponse = recovered.text;
     logger.warn(
       { chatId: o.chatId, connectedChatId: o.connectedChatId, oocCount: oocMessages.length },
       "[generate] Kept OOC-only reply visible in roleplay after post-processing removed all prose",

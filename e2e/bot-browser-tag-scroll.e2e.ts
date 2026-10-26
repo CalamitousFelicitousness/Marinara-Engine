@@ -4,6 +4,7 @@ import { isolateSyncedUISettings, seedUIState } from "./ui-state-fixture.js";
 
 const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version as string;
 const tags = Array.from({ length: 120 }, (_, index) => `scroll-tag-${String(index).padStart(3, "0")}`);
+const wyvernTags = tags.map((tag) => tag.replace("scroll-tag", "wyvern-tag"));
 
 for (const theme of ["dark", "light"] as const) {
   test(`tag picker preserves selection and scroll after reopening in ${theme} mode`, async ({ page }, info) => {
@@ -28,6 +29,11 @@ for (const theme of ["dark", "light"] as const) {
             nodes: [{ fullPath: "fixture/tag-scroll", name: "Tag scroll fixture", topics: tags, nTokens: 80 }],
           },
         },
+      }),
+    );
+    await page.route("**/api/bot-browser/wyvern/search?*", (route) =>
+      route.fulfill({
+        json: { results: [{ id: "tag-scroll", name: "Wyvern tag fixture", tags: wyvernTags }], total: 1 },
       }),
     );
     await page.goto("/");
@@ -70,5 +76,21 @@ for (const theme of ["dark", "light"] as const) {
     await expect(list.getByText(tags[60]!, { exact: true })).toHaveCount(0);
     await search.clear();
     await expect(list.getByText(tags[60]!, { exact: true })).toBeAttached();
+
+    // A different provider has a different tag list, so it must start at the top.
+    await list.getByText(tags[60]!, { exact: true }).scrollIntoViewIfNeeded();
+    expect(await list.evaluate((element) => element.scrollTop)).toBeGreaterThan(500);
+    await browser.getByRole("button", { name: /ChubAI/u }).click();
+    await page.getByRole("button", { name: /Wyvern/u }).click();
+    await expect(search).toBeHidden();
+    // Let the replacement tags arrive while hidden: laying out an empty visible list would mask the bug.
+    await expect(list.getByText(wyvernTags[119]!, { exact: true })).toBeAttached();
+    await expect(browser.getByRole("button", { name: "Tags", exact: true })).toBeVisible();
+    await toggle.click();
+    await expect(search).toBeVisible();
+    await expect(panel.getByText(`+ ${tags[60]}`, { exact: true })).toHaveCount(0);
+    await expect(list.getByText(tags[60]!, { exact: true })).toHaveCount(0);
+    await page.screenshot({ path: info.outputPath("tag-picker-after-provider-switch.png") });
+    await expect.poll(() => list.evaluate((element) => element.scrollTop)).toBe(0);
   });
 }

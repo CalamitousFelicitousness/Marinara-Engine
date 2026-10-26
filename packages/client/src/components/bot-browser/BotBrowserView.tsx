@@ -2396,6 +2396,7 @@ export function BotBrowserView() {
       <div className="flex flex-1 overflow-hidden">
         {/* ═══ Tag Sidebar ═══ */}
         <div
+          key={sourceId}
           className={cn(
             "w-[260px] flex-shrink-0 flex-col border-r border-[var(--marinara-chat-chrome-panel-divider)] bg-[var(--marinara-chat-chrome-panel-bg)]/80",
             showTagPanel ? "flex" : "hidden",

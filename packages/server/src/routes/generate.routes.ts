@@ -1445,8 +1445,8 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
     // turn sent right after it would be refused and lost. Give a stopped run a moment to let go first.
     const stoppedGeneration = activeGenerations.get(input.chatId);
     if (stoppedGeneration?.abortController.signal.aborted) {
-      const deadline = Date.now() + STOPPED_GENERATION_RELEASE_WAIT_MS;
-      while (activeGenerations.get(input.chatId) === stoppedGeneration && Date.now() < deadline) {
+      const deadline = performance.now() + STOPPED_GENERATION_RELEASE_WAIT_MS;
+      while (activeGenerations.get(input.chatId) === stoppedGeneration && performance.now() < deadline) {
         await new Promise((resolve) => setTimeout(resolve, 100));
       }
     }

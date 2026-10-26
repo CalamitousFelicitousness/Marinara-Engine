@@ -24,7 +24,7 @@ import {
 import { cn } from "../../../lib/utils";
 import { toast } from "sonner";
 import { useTTSConfig, useUpdateTTSConfig, useTTSModels, useTTSVoices } from "../../../hooks/use-tts";
-import { useCharacters } from "../../../hooks/use-characters";
+import { useCharacters, usePersonas } from "../../../hooks/use-characters";
 import { useConnections } from "../../../hooks/use-connections";
 import { ttsService } from "../../../lib/tts-service";
 import {
@@ -896,10 +896,10 @@ function CharacterSelect({
         disabled: assignedCharacterIds.has(option.id) && option.id !== value,
       }))}
       disabled={options.length === 0}
-      placeholder={localizeUi("ui.panels.ttsconfigcard.selectCharacter")}
-      ariaLabel={localizeUi("ui.panels.ttsconfigcard.selectCharacter")}
-      searchPlaceholder={localizeUi("ui.panels.ttsconfigcard.searchCharacters")}
-      emptyText={localizeUi("ui.panels.ttsconfigcard.noMatchingCharacters")}
+      placeholder={localizeUi("tts.assignments.selectSpeaker")}
+      ariaLabel={localizeUi("tts.assignments.selectSpeaker")}
+      searchPlaceholder={localizeUi("tts.assignments.searchSpeakers")}
+      emptyText={localizeUi("tts.assignments.noMatchingSpeakers")}
       optionKind="character"
       testId="tts-character-options"
       compact
@@ -1018,6 +1018,7 @@ export function TTSConfigCard() {
   const { data: savedConfig, isLoading } = useTTSConfig();
   const updateConfig = useUpdateTTSConfig();
   const { data: characters } = useCharacters();
+  const { data: personas } = usePersonas();
   const { data: connections } = useConnections();
 
   // Local draft state
@@ -1528,7 +1529,7 @@ export function TTSConfigCard() {
     [elevenLabsMatchedFemaleVoiceOptions, voiceOptions],
   );
   const characterOptions = useMemo<CharacterOption[]>(() => {
-    return ((characters ?? []) as Array<{ id?: string; data?: unknown; comment?: string | null }>)
+    const characterCards = ((characters ?? []) as Array<{ id?: string; data?: unknown; comment?: string | null }>)
       .map((character) => {
         if (!character.id) return null;
         const info = parseCharacterDisplayData({ data: character.data, comment: character.comment });
@@ -1538,9 +1539,18 @@ export function TTSConfigCard() {
           label: info.comment ? `${info.name} — ${info.comment}` : info.name,
         };
       })
-      .filter((option): option is CharacterOption => Boolean(option))
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [characters]);
+      .filter((option): option is CharacterOption => Boolean(option));
+    const personaCards = (personas ?? [])
+      .filter((persona) => Boolean(persona.id))
+      .map((persona) => ({
+        id: persona.id,
+        name: persona.name,
+        label: localizeUi("tts.assignments.personaOption", {
+          name: persona.comment ? `${persona.name} (${persona.comment})` : persona.name,
+        }),
+      }));
+    return [...characterCards, ...personaCards].sort((a, b) => a.name.localeCompare(b.name));
+  }, [characters, personas, localizeUi]);
   const languageConnectionOptions = useMemo(
     () => (connections ?? []).filter(isTTSLanguageConnectionOption).sort((a, b) => a.name.localeCompare(b.name)),
     [connections],
@@ -1553,7 +1563,8 @@ export function TTSConfigCard() {
     () => new Set(voiceAssignments.map((assignment) => assignment.characterId).filter(Boolean)),
     [voiceAssignments],
   );
-  const allCharactersAssigned = characterOptions.length > 0 && assignedCharacterIds.size >= characterOptions.length;
+  const allCharactersAssigned =
+    characterOptions.length > 0 && characterOptions.every((option) => assignedCharacterIds.has(option.id));
   const customVoiceCount = voiceAssignments.filter((assignment) => assignment.characterId && assignment.voice).length;
   const selectedSource = TTS_SOURCE_DEFAULTS[source];
   const selectedVoiceLabel =

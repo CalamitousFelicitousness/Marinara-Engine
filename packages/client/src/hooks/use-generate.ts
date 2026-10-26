@@ -37,6 +37,7 @@ import {
 } from "../lib/generation-stream-policy";
 import { requestChatScrollToBottom } from "../lib/chat-scroll-events";
 import {
+  notifyTTSUserMessageReady,
   TTS_AUTOPLAY_MESSAGE_READY_EVENT,
   type TTSAutoplayMessage,
   type TTSAutoplayMessageReadyDetail,
@@ -2721,6 +2722,7 @@ export function useGenerate() {
             case "message_saved": {
               flushLeadingSpeakerPrefix();
               const savedMessage = event.data as Message;
+              if (params.userMessage?.trim()) notifyTTSUserMessageReady(params.chatId, savedMessage);
               // An earlier part of a reply split at a scene break (#7481). It joins the chat above the live
               // reply, which goes on with the rest and keeps the stream, so nothing shows twice.
               const remainingContent = typeof event.remainingContent === "string" ? event.remainingContent : null;

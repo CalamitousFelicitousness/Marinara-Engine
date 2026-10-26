@@ -102,6 +102,8 @@ export function GlobalOmnibar() {
     const preload = () =>
       void GlobalOmnibarDialog.preload()
         .then(() => import("./GlobalOmnibar"))
+        // Her pane's code too, so the first ⌘J does not fetch and run it before her chat can load.
+        .then((module) => module.OmnibarMariPane.preload())
         .catch(() => undefined);
     if (typeof window.requestIdleCallback === "function") {
       const id = window.requestIdleCallback(preload, { timeout: 5_000 });

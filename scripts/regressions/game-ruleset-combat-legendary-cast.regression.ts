@@ -411,6 +411,85 @@ try {
     );
   }
 
+  // ── Nor a cantrip that only helps ability checks, again and again on itself (cloud caster bosses
+  // 2026-10-26: a priest's legendary Cantrip started Guidance 27 times in one fight) ──
+  {
+    const withGuide = parsed(
+      fiveE((doc) => {
+        doc.catalogs
+          .find((one: { id: string }) => one.id === "spells")
+          .entries.push(
+            spell("guide", 0, {
+              kind: "buff",
+              targets: "ally",
+              range: 0,
+              concentration: true,
+              applies: [{ condition: "guided", duration: { rounds: 10 } }],
+            }),
+          );
+        doc.sheet.live.conditions.push({ id: "guided", label: "Guided", pickable: false });
+        doc.combat.conditions.push({ condition: "guided", modifiers: [{ to: "checks", dice: "1d4", rescue: true }] });
+        const creatures = doc.catalogs.find((one: { holds?: string }) => one.holds === "creatures");
+        const entry = structuredClone(creatures.entries.find((one: { id: string }) => one.id === "thorn-lurker"));
+        entry.id = "lich";
+        entry.label = "Lich";
+        entry.creature.signaturePoints = 3;
+        entry.creature.spellcasting = { toHit: 12, spells: [{ entry: "spells/guide" }] };
+        entry.creature.actions = [{ ...touch, damage: { dice: "1d4" } }, cantrip];
+        creatures.entries.push(entry);
+      }),
+    );
+    const bestiary = Object.fromEntries(
+      (withGuide.catalogs ?? []).flatMap((catalog) => (catalog.entries ? [[catalog.id, catalog.entries]] : [])),
+    );
+    const creaturesId = (withGuide.catalogs ?? []).find((catalog) => catalog.holds === "creatures")!.id;
+    const built = createRulesetFight({
+      definition: withGuide,
+      seed: 3,
+      positioned: true,
+      party: [{ id: "ada", name: "Ada" }],
+      enemies: [{ id: "lich", name: "Lich", creature: `${creaturesId}/lich` }],
+      cards: [{ name: "Ada", rulesetSheet: { v: 1, build: defaultRulesetSheetBuild(withGuide) } }],
+      playerName: null,
+      live: {},
+      items: () => [],
+      partyCatalogs: {},
+      bestiary,
+    } as never);
+    assert.ok(built.ok, built.ok ? "" : (built as { error: string }).error);
+    const unit = (id: string, name: string, side: "player" | "enemy") => ({
+      id,
+      name,
+      side,
+      hp: 30,
+      maxHp: 30,
+      attack: 8,
+      defense: 6,
+      speed: 6,
+      level: 3,
+      skills: [],
+    });
+    const state = createCombatDirector({
+      id: "fight",
+      anchor: "anchor",
+      style: "ruleset",
+      party: [unit("ada", "Ada", "player")],
+      enemies: [unit("lich", "Lich", "enemy")],
+      gm: false,
+      difficulty: "normal",
+      seed: 3,
+    } as never);
+    state.rulesetFight = (built as { fight: never }).fight;
+    syncRulesetCombatants(withGuide, state);
+    state.stage = rulesetDirectorStage(state);
+    assert.ok(commandRulesetCombatDirector(withGuide, state, { type: "control", unitId: "ada", controller: "ai" }).ok);
+    for (let guard = 0; guard < 8 && !state.outcome; guard++) {
+      assert.ok(commandRulesetCombatDirector(withGuide, state, { type: "continue" }).ok);
+    }
+    const said = JSON.stringify(state.rulesetFight!.events.map((entry) => entry.event));
+    assert.doesNotMatch(said, /Cantrip: Guide|"label":"Guide"/, "no Guide cast");
+  }
+
   // ── Import refusals ──
   {
     const withCreature = (action: Record<string, unknown>) => (doc: Record<string, any>) => {

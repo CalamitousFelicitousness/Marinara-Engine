@@ -4113,16 +4113,23 @@ function rulesetCandidatesFrom(
     // slot on it: a Spiritual Weapon strikes again instead, and a standing zone stays where it is.
     if (
       !menu &&
-      (actor.summons?.some((one) => one.actionId === option.id) ||
-        actor.zones?.some((one) => one.actionId === option.id))
+      (actor.summons?.some((one) => one.actionId === (option.castOf?.optionId ?? option.id)) ||
+        actor.zones?.some((one) => one.actionId === (option.castOf?.optionId ?? option.id)))
     )
       continue;
     // Nor an area it holds up still standing, whatever the menu offers (laptop 2026-10-25: a second,
     // bigger Entangle cast while the first held).
-    if (actor.concentrating?.actionId === option.id && actor.zones?.some((one) => one.actionId === option.id)) continue;
+    if (
+      actor.concentrating?.actionId === (option.castOf?.optionId ?? option.id) &&
+      actor.zones?.some((one) => one.actionId === (option.castOf?.optionId ?? option.id))
+    )
+      continue;
     // A cast that takes many rounds (1.446) is begun before a fight, not in one: the fight is often
     // over before it lands (re-test 2026-10-24: Animate Dead opening fights with its 10 rounds).
-    if ((actor.actions.find((entry) => entry.id === option.id)?.castingRounds ?? 0) >= RULESET_LONG_CAST_ROUNDS)
+    if (
+      (actor.actions.find((entry) => entry.id === (option.castOf?.optionId ?? option.id))?.castingRounds ?? 0) >=
+      RULESET_LONG_CAST_ROUNDS
+    )
       continue;
     // Turning a line or cone the actor carries (1.182) is weighed the same way, before any walk.
     if (option.id.startsWith(RULESET_ZONE_TURN_OPTION_PREFIX)) {
@@ -4147,7 +4154,7 @@ function rulesetCandidatesFrom(
     if (
       option.cells &&
       !option.moveAfter &&
-      (option.signature || actor.actions.find((one) => one.id === option.id)?.move)
+      (option.signature || actor.actions.find((one) => one.id === (option.castOf?.optionId ?? option.id))?.move)
     ) {
       const moved = standing ? null : legendaryMoveCandidate(definition, combat, encounter, actor, option, price);
       if (moved) candidates.push(moved);
@@ -4168,7 +4175,7 @@ function rulesetCandidatesFrom(
     // item turned on (a flame tongue lit) is still weighed, once. A lantern only where it is dark
     // enough to want one: lit in daylight it is a turn spent on nothing.
     if (option.on !== undefined) {
-      const switches = actor.actions.find((entry) => entry.id === option.id)?.switches;
+      const switches = actor.actions.find((entry) => entry.id === (option.castOf?.optionId ?? option.id))?.switches;
       if (option.on || !switches || !("item" in switches)) continue;
       const item = actor.sheet?.items?.[switches.item]?.item;
       const at = rulesetPositionOf(actor);
@@ -4184,7 +4191,7 @@ function rulesetCandidatesFrom(
     }
     // A weapon put in hand (1.306), once, before it fights: the one that hits hardest of those it
     // may make or bind. With one in hand already it is never taken again.
-    const conjuring = actor.actions.find((entry) => entry.id === option.id);
+    const conjuring = actor.actions.find((entry) => entry.id === (option.castOf?.optionId ?? option.id));
     if (conjuring?.conjures) {
       if (standing || actor.conjured?.[option.id]) continue;
       const average = (mode: string) =>
@@ -4222,7 +4229,7 @@ function rulesetCandidatesFrom(
     // target, and kept modest: a grab or a shove sets something up, and an opponent that wrestled
     // instead of fighting would be played badly. Breaking free is worth most, and only while held.
     if (option.kind === "contest") {
-      const contest = actor.actions.find((entry) => entry.id === option.id)?.contest;
+      const contest = actor.actions.find((entry) => entry.id === (option.castOf?.optionId ?? option.id))?.contest;
       if (!contest) continue;
       for (const targetId of rulesetOptionTargets(definition, encounter, actorId, option)) {
         const target = rulesetCombatant(encounter, targetId);
@@ -4282,7 +4289,7 @@ function rulesetCandidatesFrom(
     // In a window, an option that asks for nobody may still land on somebody: whoever is walking
     // away, or whoever caused the moment. It is weighed by what it would do to THEM, and its answer
     // still names nobody, because the rules fill that target in.
-    const fallingAction = actor.actions.find((entry) => entry.id === option.id);
+    const fallingAction = actor.actions.find((entry) => entry.id === (option.castOf?.optionId ?? option.id));
     if (menu && encounter.window?.trigger.kind === "falls" && option.targets.count > 1 && fallingAction) {
       const targetIds = rulesetFallTargets(definition, encounter, actor, fallingAction).slice(0, option.targets.count);
       candidates.push({
@@ -4310,7 +4317,7 @@ function rulesetCandidatesFrom(
     const lands = menu ? rulesetWindowTargetOf(encounter, actor, option) : undefined;
     if (option.targets.count <= 0 && !lands) {
       // Holding the thing it is already holding would end it and start it again for the same price.
-      if (actor.concentrating?.actionId === option.id) continue;
+      if (actor.concentrating?.actionId === (option.castOf?.optionId ?? option.id)) continue;
       const self: CombatAiCandidate<RulesetCandidate> = {
         action: { choice: { actorId, optionId: option.id, targetIds: [], ...paying(way) }, option },
         cost: price,
@@ -4383,7 +4390,7 @@ function rulesetCandidatesFrom(
     // An action made of other actions sends all of them at one opponent. Anything else that may
     // take several targets takes as many as it is allowed: a breath that could catch three people
     // and is pointed at one is an opponent played badly, not an opponent played kindly.
-    const sequenced = !!actor.actions.find((entry) => entry.id === option.id)?.sequence;
+    const sequenced = !!actor.actions.find((entry) => entry.id === (option.castOf?.optionId ?? option.id))?.sequence;
     const spreads = option.targets.count > 1 && !sequenced;
     for (const targetId of legal) {
       const target = rulesetCombatant(encounter, targetId);
@@ -4725,7 +4732,7 @@ function rulesetCandidatesFrom(
     const leaving = friends.filter((one) => one.calledBy === actor.id && one.calledWith === held && !one.dismissed);
     const staying = friends.length > 0 ? (friends.length - leaving.length) / friends.length : 1;
     for (const candidate of candidates) {
-      const id = candidate.action.option.id;
+      const id = candidate.action.option.castOf?.optionId ?? candidate.action.option.id;
       const holds = actor.actions.find((one) => one.id === id)?.concentration;
       if (holds && candidate.setup) candidate.setup *= staying;
       // Weighed as the harm it gives up, not as a price: a caster's prices count for less than
@@ -4742,7 +4749,7 @@ function rulesetCandidatesFrom(
     // holding two of the party).
     if (rulesetHeldFoes(encounter, actor).length > 0)
       for (let index = candidates.length - 1; index >= 0; index--) {
-        const id = candidates[index]!.action.option.id;
+        const id = candidates[index]!.action.option.castOf?.optionId ?? candidates[index]!.action.option.id;
         if (id === held || actor.actions.find((one) => one.id === id)?.concentration) candidates.splice(index, 1);
       }
     // Holding help on its own side (a Bless), it is not cast again while it holds anyone, nor let go
@@ -4752,7 +4759,7 @@ function rulesetCandidatesFrom(
     else if (rulesetHeldFriends(encounter, actor).length > 0)
       for (let index = candidates.length - 1; index >= 0; index--) {
         const candidate = candidates[index]!;
-        const id = candidate.action.option.id;
+        const id = candidate.action.option.castOf?.optionId ?? candidate.action.option.id;
         const action = actor.actions.find((one) => one.id === id);
         const targets = candidate.action.choice.targetIds;
         const helps =
@@ -4767,7 +4774,8 @@ function rulesetCandidatesFrom(
   // a slot each).
   for (const candidate of candidates) {
     const target = candidate.targetId ? rulesetCombatant(encounter, candidate.targetId) : undefined;
-    const times = target?.shookOff?.[`${actor.id}/${candidate.action.option.id}`] ?? 0;
+    const times =
+      target?.shookOff?.[`${actor.id}/${candidate.action.option.castOf?.optionId ?? candidate.action.option.id}`] ?? 0;
     if (times === 0) continue;
     const kept = 0.5 ** times;
     if (candidate.setup) candidate.setup *= kept;

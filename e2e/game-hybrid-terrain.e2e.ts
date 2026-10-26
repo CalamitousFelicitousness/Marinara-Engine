@@ -252,6 +252,9 @@ test("Hybrid battlefield preserves landmarks through a flying move, reload and r
       .find(
         (tile) =>
           tile.terrain === "wall" &&
+          // Off the shaped board a tile is drawn as nothing, with no button (ship readiness 2026-10-26:
+          // seed 341014229 put the first wall in reach off it).
+          !start.grid.outside?.[tile.y]?.[tile.x] &&
           Math.abs(tile.x - scout.x) + Math.abs(tile.y - scout.y) <= scout.movement &&
           !start.units.some((unit) => unit.x === tile.x && unit.y === tile.y),
       )!;

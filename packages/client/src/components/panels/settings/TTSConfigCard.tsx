@@ -206,6 +206,8 @@ function readTTSAudioConnectionOptions(connections: unknown[] | undefined): TTSA
 }
 
 const ELEVENLABS_TTS_MODELS = [
+  "eleven_v4",
+  "eleven_v4_turbo",
   "eleven_v3",
   "eleven_multilingual_v2",
   "eleven_flash_v2_5",
@@ -1847,7 +1849,7 @@ export function TTSConfigCard() {
                 label={localizeUi("ui.panels.ttsconfigcard.model")}
                 help={
                   source === "elevenlabs"
-                    ? localizeUi("ui.panels.ttsconfigcard.elevenlabsModelIdToUseUseElevenV3For")
+                    ? localizeUi("ui.panels.ttsconfigcard.elevenlabsModelIdHelp")
                     : source === "pockettts"
                       ? localizeUi("ui.panels.ttsconfigcard.pocketttsSelectsItsLanguageModelWhenYouStartThe")
                       : source === "xai"
@@ -1898,6 +1900,7 @@ export function TTSConfigCard() {
                       </p>
                     )}
                     <p className="text-[0.625rem] leading-relaxed text-[var(--muted-foreground)]">
+                      {localizeUi("ui.panels.ttsconfigcard.elevenV4SpeechUses")}{" "}
                       {localizeUi("ui.panels.ttsconfigcard.elevenV3SpeechUses")}{" "}
                       <code className="font-mono">{"eleven_v3"}</code>
                       {localizeUi("ui.panels.ttsconfigcard.idsContaining")} <code className="font-mono">{"ttv"}</code>{" "}

@@ -114,6 +114,19 @@ try {
   const compacted = compactMutationResult(updated);
   const serialized = JSON.stringify(compacted, null, 2);
   assert.match(serialized, /"readBack":\s*\{\s*"status":\s*"verified"/u, "Mari must see the read-back detail");
+  // An applied write's review is the card's undo window: Mari sees changeCard.undoUntil, never a "pending"
+  // approval she would read as "waiting for the user". The raw result keeps the review for the engine.
+  assert.equal(updated.approval?.status, "pending", "the raw result still carries the applied review");
+  const compactedRecord = compacted as Record<string, unknown>;
+  assert.equal("approval" in compactedRecord, false, "an applied write must not show Mari a pending approval");
+  assert.deepEqual(compactedRecord.changeCard, { undoUntil: updated.approval?.expiresAt });
+  assert.doesNotMatch(serialized, /"pending"/u, "nothing in an applied write's view may say pending");
+  // validation sits before the bulky summary, so a truncated tail cannot cut the notices the message points at.
+  const keyOrder = Object.keys(compactedRecord);
+  assert.ok(
+    keyOrder.indexOf("validation") < keyOrder.indexOf("summary"),
+    "validation must precede summary in Mari's view",
+  );
   const commandOutput = [
     READ_BACK_VERIFIED_SENTINEL,
     "Command: app_data character.update",

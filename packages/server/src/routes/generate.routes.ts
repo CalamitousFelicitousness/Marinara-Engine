@@ -803,7 +803,7 @@ import {
 } from "../services/generation/provider-generation-runtime.js";
 import { applyContextMessageLimitWithPins, supportsNativeToolCalls } from "@marinara-engine/shared";
 import { planGameToolCalls } from "../services/generation/game-tool-planning.js";
-import { extractLeadingGmPlanning } from "../services/game/gm-planning.js";
+import { extractLeadingGmPlanning, stripStrayRuleLines } from "../services/game/gm-planning.js";
 import {
   countProfessorMariCommands,
   handleProfessorMariCommand,
@@ -9533,6 +9533,15 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               contentReplaced = true;
             }
           }
+          // A markdown rule between an OOC note and the scene is no story (cheap-GM playtest 2026-10-26: a lone
+          // `---` stood where an OOC answer was).
+          if (chatMode === "game" && !input.impersonate) {
+            const unruled = stripStrayRuleLines(fullResponse);
+            if (unruled !== fullResponse) {
+              fullResponse = unruled;
+              contentReplaced = true;
+            }
+          }
 
           // ── LOG_LEVEL=debug or Settings -> Advanced -> Debug mode: log full response + usage to server console ──
           if (isDebug || requestDebug) {
@@ -10056,6 +10065,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
                   if (writtenPlan.planning)
                     fullThinking = [fullThinking, writtenPlan.planning].filter(Boolean).join("\n\n");
                 }
+                narration = stripStrayRuleLines(narration);
               } catch (err) {
                 if (generationSignal.aborted) return null;
                 geminiResponseParts = null;

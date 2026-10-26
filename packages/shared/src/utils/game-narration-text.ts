@@ -65,6 +65,43 @@ export function stripUnknownBracketTags(text: string, keep?: (tagName: string) =
   return out;
 }
 
+/** The head of an out-of-character tag: `[OOC:`, any case, spaced or not. */
+const OOC_TAG_HEAD = /\[[^\S\r\n]*ooc[^\S\r\n]*:/gi;
+
+/**
+ * Turn the Game Master's `[OOC: ...]` answers into the plain out-of-character note they are, so the
+ * tag strippers do not drop them as an unknown tag (cheap-GM playtest 2026-10-26: OOC answers to the
+ * player vanished and left a lone `---`, so the questions looked ignored). The note keeps its words
+ * and reads `(OOC: ...)`; an empty one, or one never closed, is left for the strippers as before.
+ */
+export function renderOocNotes(text: string): string {
+  if (!/\[[^\S\r\n]*ooc[^\S\r\n]*:/i.test(text)) return text;
+  let out = "";
+  let from = 0;
+  for (const head of text.matchAll(OOC_TAG_HEAD)) {
+    if (head.index < from) continue;
+    let depth = 1;
+    let end = -1;
+    for (let at = head.index + head[0].length; at < text.length; at++) {
+      if (text[at] === "[") depth++;
+      else if (text[at] === "]" && --depth === 0) {
+        end = at;
+        break;
+      }
+    }
+    // Unclosed: no later head can close either, so the rest is left as it is.
+    if (end < 0) break;
+    const note = text
+      .slice(head.index + head[0].length, end)
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!note) continue;
+    out += `${text.slice(from, head.index)}(OOC: ${note})`;
+    from = end + 1;
+  }
+  return out + text.slice(from);
+}
+
 /**
  * `[whisper:Target]` in a speaker line (`[Name] [whisper:Target] [expression]: text`) is the line's
  * type, not a command: only bracket groups stand before it on its line, the speaker's first, and it
@@ -169,7 +206,7 @@ function stripResultBlocks(content: string, tags: RegExp): string {
  * story position.
  */
 export function stripGmTagsKeepReadables(content: string): string {
-  let text = stripEngineResultBlocks(content).replace(/\[(?:party-turn|party-chat)\]/gi, "");
+  let text = renderOocNotes(stripEngineResultBlocks(content)).replace(/\[(?:party-turn|party-chat)\]/gi, "");
   // The one-request dice branch delimiters. Three of the four are unreachable by
   // everything below: `stripUnknownBracketTags` and the `[\w+:` catch-all both require a
   // `:` after the name, and `[on success]` has a space before its `]` while `[/branch]`

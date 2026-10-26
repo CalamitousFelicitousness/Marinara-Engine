@@ -553,10 +553,17 @@ const fighter = buildFor({ level: 1, hp_max: 12 });
     `op="spend" amount="1"`,
     `op="rest"`,
     `op="use"`,
-    `op="cast" pool="4th-level slots"`,
+    `op="cast" pool="4th-level slots" amount="many"`,
   ]) {
     assert.equal(parseSheetCommandTagBody(body).op, null, body || "(empty)");
   }
+  // A cast that names only the slot it pays is that slot's spend (cheap-GM playtest 2026-10-26: a
+  // pool-only use was refused, so the spell cost nothing).
+  assert.deepEqual(parseSheetCommandTagBody(`op="cast" pool="4th-level slots"`).op, {
+    op: "spend",
+    pool: "4th-level slots",
+    amount: 1,
+  });
 
   // The attribute reader is linear; a body with no `=` at all used to be quadratic. The bodies are
   // sized so the two cannot be confused on any machine: linear work on 400,000 characters is

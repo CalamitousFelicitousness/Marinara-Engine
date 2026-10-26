@@ -16,6 +16,8 @@ import { currentRoomGeneration, roomHostIdentity } from "../multiplayer/generati
 
 import {
   applyRulesetSheetOp,
+  CHARACTER_NAME_PARTICLES,
+  uniqueCharacterKeyFor,
   planRulesetUse,
   rulesetEntryNamed,
   createSkillCheckTagRegex,
@@ -335,22 +337,16 @@ async function findPlayerCharacterCardMatch(
 }
 
 /** Words a name may carry that pick out nobody on their own. */
-const CARD_NAME_PARTICLES = new Set(["the", "of", "and", "von", "van", "der", "de", "del", "la", "le", "du"]);
+const CARD_NAME_PARTICLES = CHARACTER_NAME_PARTICLES;
 
 /**
  * The one card key a name picks out: the card's whole name, or a name every word of which is one of
- * a single card's words ("Lethariel" for "Lethariel Moonwhisper", "Moonwhisper" too). Null when no
- * card answers, when two do, and for a name made only of particles like "the".
+ * a single card's words ("Lethariel" for "Lethariel Moonwhisper", "Moonwhisper" too), read without a
+ * nickname written inside it where that is what finds the card. Null when no card answers, when two
+ * do, and for a name made only of particles like "the". Shared with the sheet commands.
  */
 export function uniqueCardKeyFor(keys: Iterable<string>, name: string): string | null {
-  const wanted = normalizeCharacterLookupName(name);
-  if (!wanted) return null;
-  const all = [...keys].filter(Boolean);
-  if (all.includes(wanted)) return all.indexOf(wanted) === all.lastIndexOf(wanted) ? wanted : null;
-  const words = wanted.split(" ");
-  if (!words.some((word) => word.length >= 3 && !CARD_NAME_PARTICLES.has(word))) return null;
-  const matches = [...new Set(all.filter((key) => words.every((word) => key.split(" ").includes(word))))];
-  return matches.length === 1 && all.indexOf(matches[0]!) === all.lastIndexOf(matches[0]!) ? matches[0]! : null;
+  return uniqueCharacterKeyFor(keys, name);
 }
 
 /**
@@ -784,7 +780,8 @@ export function rulesetNamedKey(ruleset: SkillCheckRulesetContext, who: string):
   const key = normalizeCharacterLookupName(who);
   if (!key || ruleset.sheets.has(key) || ruleset.ambiguous?.has(key)) return key;
   const keys = [...ruleset.sheets.keys(), ...(ruleset.ambiguous ?? [])];
-  const found = uniqueCardKeyFor(keys, key);
+  // The name as written, so a nickname in quotes inside it can be read past.
+  const found = uniqueCardKeyFor(keys, who);
   return found && ruleset.sheets.has(found) ? found : key;
 }
 
@@ -1054,7 +1051,7 @@ function resolveRulesetSkillCheck(
   // A stranger rolls with no modifier, which is right for the guard and wrong for a party member the
   // Game Master misnamed, so it is said rather than done silently (laptop 2026-10-26).
   if (request.who && rollerKey && !ruleset.sheets.has(rollerKey)) {
-    logger.info(
+    logger.warn(
       '[game/skill-check] who="%s" names no party card%s; rolling %s with no sheet modifier',
       request.who,
       ruleset.ambiguous?.has(rollerKey) ? " (two cards share it)" : "",
@@ -1799,6 +1796,9 @@ export interface SkillCheckTagResolutionOptions {
 
 export interface SkillCheckTagResolution {
   content: string;
+  /** Re-rolled checks whose outcome was not the one the model's own `result=` claimed; each has a
+   *  correction line after its record. */
+  corrected?: number;
   /** Newly rolled checks, for narration that must wait for these outcomes. */
   results?: SkillCheckResult[];
   /** How many tags this pass rewrote. */
@@ -1835,6 +1835,29 @@ export interface SkillCheckTagResolution {
    * narration's own `[sheet: ...]` commands run.
    */
   live?: RulesetLiveStates;
+}
+
+/** The outcome a check tag's own `result=` claims: true for a success, false for a failure, undefined
+ *  for none or one this cannot read. */
+function claimedCheckOutcome(body: string): boolean | undefined {
+  if (!/\bresult\s*=/i.test(body)) return undefined;
+  const value = readGmTagAttributes(body)
+    .find((attribute) => attribute.key.toLowerCase() === "result")
+    ?.rawValue.replace(/^['"]|['"]$/g, "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+  if (value === "success" || value === "critical_success") return true;
+  if (value === "failure" || value === "critical_failure") return false;
+  return undefined;
+}
+
+/** The visible line that says a check came out unlike the outcome the model wrote. */
+export function skillCheckCorrectionLine(result: SkillCheckResult, claimed: boolean): string {
+  const whose = result.who ? `${result.who}'s ` : "";
+  const numbers = result.resolution === "sum" ? ` (${result.total} against ${result.dc})` : "";
+  const outcome = result.success ? "a success" : "a failure";
+  return `(Correction: ${whose}${result.skill} check is ${outcome}${numbers}, not the ${claimed ? "success" : "failure"} first written. The Engine's roll stands.)`;
 }
 
 /**
@@ -1978,10 +2001,28 @@ export async function resolveSkillCheckTagsInContent(
 
   /** What is left of the dice issued for this turn, spent one check at a time. */
   const issued = options.issuedD20s ? [...options.issuedD20s] : null;
+  /** The outcome each tag's own `result=` claimed, by where the tag starts, for the correction below. */
+  const claims = new Map<number, boolean>();
+  let corrected = 0;
+  /** The record the Engine writes, and where its outcome is not the one the model wrote and narrated,
+   *  a line saying so right after it (cheap-GM playtest 2026-10-26: a check re-rolled for a wrong
+   *  modifier came out 22, a success, and the reply still told it as the failure the model had
+   *  written). The narration is the model's and is not rewritten; the record and this line are the
+   *  Engine's, and the next turn reads both. */
+  const withCorrection = (entry: { start: number; end: number }, result: SkillCheckResult, record: string) => {
+    const claimed = claims.get(entry.start);
+    if (claimed === undefined || claimed === result.success) return record;
+    corrected += 1;
+    const note = skillCheckCorrectionLine(result, claimed);
+    const after = content.slice(entry.end, entry.end + 2);
+    return `${record}\n\n${note}${after === "" || after.startsWith("\n") ? "" : "\n\n"}`;
+  };
 
   try {
     const regex = createSkillCheckTagRegex();
     for (let match = regex.exec(content); match; match = regex.exec(content)) {
+      const claimed = claimedCheckOutcome(match[1] ?? "");
+      if (claimed !== undefined) claims.set(match.index, claimed);
       let tag = parseSkillCheckTagBody(match[1] ?? "");
       // Not a check at all (no skill or DC) — leave whatever the model wrote.
       if (!tag) {
@@ -2250,7 +2291,7 @@ export async function resolveSkillCheckTagsInContent(
         poolTagIndex += 1;
         if (spent) {
           results.push(spent.result);
-          return spent.record;
+          return withCorrection(entry, spent.result, spent.record);
         }
         // Overflow: no value exists, so nothing is written. The ask is kept, every number
         // is dropped, and the outcome is owed to the next turn — never a second request.
@@ -2270,8 +2311,15 @@ export async function resolveSkillCheckTagsInContent(
       results.push(result);
       // The result carries what the roll applied (who, the other ability, the dice added), so a
       // saved turn says exactly that. None of it is set outside a ruleset game, byte for byte.
-      return serializeResolvedSkillCheckTag(result);
+      return withCorrection(entry, result, serializeResolvedSkillCheckTag(result));
     });
+    if (corrected > 0) {
+      logger.info(
+        "[game/skill-check] %d re-rolled check(s) came out unlike the outcome the model wrote for chat %s; a correction line follows each",
+        corrected,
+        options.chatId ?? "unknown",
+      );
+    }
     return {
       content: rolled,
       results,
@@ -2280,6 +2328,7 @@ export async function resolveSkillCheckTagsInContent(
       left: left + overflowed + unread + untrained,
       sparse: overflowed + unread + untrained + stripped.length,
       ...(untrained > 0 ? { untrained } : {}),
+      ...(corrected > 0 ? { corrected } : {}),
       ...(spentLive ? { live: spentLive } : {}),
     };
   } catch (err) {

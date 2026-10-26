@@ -96,7 +96,10 @@ export function parseSheetCommandTagBody(body: string): ParsedSheetCommandTag {
   const whoValue = values.get("who")?.trim();
   const who = whoValue ? whoValue.slice(0, MAX_WHO_LENGTH) : undefined;
   const sheet = values.get("sheet");
-  const claimed = values.get("now")?.trim().slice(0, MAX_ATTRIBUTE_LENGTH);
+  // A `now=` beside a `result=` is an Engine record the model copied into its own tag, not a claim
+  // about this command, so it never marks the command as already paid (cheap-GM playtest 2026-10-26:
+  // models copy the Engine's outcome fields into new tags). The command is read as a fresh request.
+  const claimed = values.has("result") ? undefined : values.get("now")?.trim().slice(0, MAX_ATTRIBUTE_LENGTH);
   const parsed: ParsedSheetCommandTag = {
     op: null,
     ...(who ? { who } : {}),
@@ -203,8 +206,13 @@ export function parseSheetCommandTagBody(body: string): ParsedSheetCommandTag {
   if (name === "use") {
     // `spell=` is the word that goes with `cast=`; both are read as the general `name=`.
     const entry = (values.get("name") ?? values.get("spell"))?.trim();
-    if (!entry) return parsed;
     const pool = values.get("pool")?.trim();
+    // A use that names only the pool it pays is that pool's spend (cheap-GM playtest 2026-10-26: a
+    // slot written as `op="use" pool="spell_slots_2"` was refused, so the spell cost nothing).
+    if (!entry) {
+      const amount = values.has("amount") ? readInteger(values.get("amount")) : 1;
+      return pool && amount !== null ? { ...parsed, op: { op: "spend", pool, amount } } : parsed;
+    }
     // What it gives back (1.397): `recover="Level 1 Slot:2, Level 2 Slot:1"`, a count after each pool.
     const rawRecover = values.get("recover");
     const recover = rawRecover === undefined ? [] : readRecover(rawRecover);

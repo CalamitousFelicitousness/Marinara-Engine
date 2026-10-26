@@ -14,7 +14,7 @@ import {
 } from "../../schemas/ruleset.schema.js";
 import { defaultRulesetSheetBuild, type RulesetSheetItem } from "./sheet-math.js";
 import { rulesetMaterialFor } from "./material.js";
-import { normalizeCharacterLookupName } from "../../utils/character-lookup-name.js";
+import { normalizeCharacterLookupName, uniqueCharacterKeyFor } from "../../utils/character-lookup-name.js";
 import {
   createSheetCommandTagRegex,
   joinSheetSummary,
@@ -163,7 +163,11 @@ export function applySheetCommandTags(
       );
       return members.length > 0 ? { cards: members, who: PARTY_TARGET } : { refusal: "unknown-character" };
     }
-    const group = byName.get(key) ?? [];
+    // A shorter name only one card answers to, or the name with a nickname written inside it, as a
+    // check's `who=` is read (cheap-GM playtest 2026-10-26: a short rest for
+    // `who="Marigold "Mars" Thimblewick"` was refused as nobody).
+    const shortKey = byName.has(key) ? key : uniqueCharacterKeyFor(byName.keys(), who);
+    const group = byName.get(shortKey ?? key) ?? [];
     if (group.length === 0) return { refusal: "unknown-character" };
     // Two cards under one name: only the player's own card breaks the tie, because that is the one
     // the game knows it has. Anything else would be picking a character at random.
@@ -181,11 +185,47 @@ export function applySheetCommandTags(
     changed = true;
   };
 
+  // A use the Engine cannot price, because what it names is not on the sheet, still pays the pool it
+  // names, by `pool=` or as its name (cheap-GM playtest 2026-10-26: Invisibility and Pass without
+  // Trace written with `pool="spell_slots_2"` were refused, so the spells cost nothing). One of it,
+  // never health, and never for a ritual, which pays none.
+  const payNamedPool = (
+    card: SheetCommandCard,
+    key: string,
+    op: Extract<RulesetSheetOp, { op: "use" }>,
+  ): RulesetSheetOpResult | null => {
+    if (op.ritual) return null;
+    const health = ctx.definition.combat?.health;
+    const healthPool = health && "pool" in health ? health.pool : undefined;
+    for (const named of [op.pool, op.name]) {
+      if (!named?.trim()) continue;
+      const pool = rulesetPoolKeyNamed(ctx.definition, card.build, live[key], named, card.items);
+      if (!pool || pool === healthPool) continue;
+      const result = applyRulesetSheetOp(
+        ctx.definition,
+        card.build,
+        live[key],
+        { op: "spend", pool, amount: 1 },
+        ctx.roll,
+        card.items,
+      );
+      if (!result.ok) return result;
+      store(key, result.live);
+      const paid = `${named.trim()} ${result.now}`;
+      return { ...result, now: named === op.name ? paid : `${op.name.trim()} (not on the sheet): ${paid}` };
+    }
+    return null;
+  };
+
   // `use` is several spends at once, so it is all or nothing: every step goes onto a working copy
   // and the first refusal refuses the whole command, with the sheet exactly as it was.
   const useOn = (card: SheetCommandCard, key: string, op: Extract<RulesetSheetOp, { op: "use" }>) => {
     const plan = planRulesetUse(ctx.definition, card.build, live[key], ctx.catalogs ?? {}, op);
-    if (!plan.ok) return { ok: false, reason: plan.reason } as const;
+    if (!plan.ok)
+      return (
+        (plan.reason === "unknown-entry" && payNamedPool(card, key, op)) ||
+        ({ ok: false, reason: plan.reason } as const)
+      );
     // The creature a call that stays calls (1.790), named before anything is paid for it.
     const kept = rulesetUseKeptCall(ctx.definition, card.build, ctx.catalogs ?? {}, op);
     if (kept && !kept.ok) return kept;

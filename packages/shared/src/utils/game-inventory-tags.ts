@@ -5,7 +5,7 @@
  * carrying what really happened, so the Game Master reads its refusals back next turn and the client
  * only has to announce what the tags say. Pure: the caller saves the stacks and the journal.
  */
-import { normalizeCharacterLookupName } from "./character-lookup-name.js";
+import { normalizeCharacterLookupName, uniqueCharacterKeyFor } from "./character-lookup-name.js";
 import {
   applyGameInventoryOps,
   type GameInventoryJournalEntry,
@@ -208,7 +208,20 @@ export function resolveGameInventoryHolder(
   if (members.length > 1) return { ok: false, reason: "ambiguous-character" };
   if (members.length === 1) return { ok: true, bag: { holder: members[0]! } };
   const former = stacks.find((stack) => stack.holder && normalizeCharacterLookupName(stack.holder) === key)?.holder;
-  return former ? { ok: true, bag: { holder: former } } : { ok: false, reason: "unknown-character" };
+  if (former) return { ok: true, bag: { holder: former } };
+  // A shorter name only one member answers to, or the name with a nickname written inside it, as a
+  // sheet command's `who=` is read (cheap-GM playtest 2026-10-26).
+  const everyone = [...(party.player ? [party.player] : []), ...party.members];
+  const short = uniqueCharacterKeyFor(
+    everyone.map((member) => normalizeCharacterLookupName(member)),
+    name!,
+  );
+  if (short !== null) {
+    if (party.player && normalizeCharacterLookupName(party.player) === short) return { ok: true, bag: {} };
+    const member = party.members.find((one) => normalizeCharacterLookupName(one) === short);
+    if (member) return { ok: true, bag: { holder: member } };
+  }
+  return { ok: false, reason: "unknown-character" };
 }
 
 export interface GameInventoryTagsOutcome {

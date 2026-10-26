@@ -224,6 +224,42 @@ const WORD_CHARACTER = /\w/;
 const SPACE_CHARACTER = /\s/;
 
 /**
+ * The quote that closes a value opened at `at`. A quote inside a word (`'O'Brien'`) is not the close,
+ * and nor is one that stands where an inner quote would open, after a space and right before a word:
+ * it and its partner are skipped, so a value holding a quoted nickname is read whole (cheap-GM
+ * playtest 2026-10-26: `who="Marigold "Mars" Thimblewick"` read as `Marigold `, so her checks rolled
+ * flat and her Hit Dice were refused). Where no candidate closes it, the first quote does, as before.
+ * Only a few quotes are passed over, so a body made of quotes costs no scan to its end per attribute.
+ */
+const MAX_PASSED_QUOTES = 6;
+/** Whether a `key=` starts at `at`. Bounded by the key's own run. */
+function startsKey(body: string, at: number): boolean {
+  let cursor = at;
+  while (cursor < body.length && WORD_CHARACTER.test(body[cursor]!)) cursor += 1;
+  while (cursor < body.length && SPACE_CHARACTER.test(body[cursor]!)) cursor += 1;
+  return cursor > at && body[cursor] === "=";
+}
+function closingQuoteAt(body: string, at: number, quote: string): number {
+  const first = body.indexOf(quote, at + 1);
+  let close = first;
+  for (let passed = 0; close >= 0 && passed < MAX_PASSED_QUOTES; passed += 1) {
+    const before = close - 1 > at ? (body[close - 1] ?? "") : "";
+    const after = body[close + 1] ?? "";
+    if (!WORD_CHARACTER.test(after) || !(SPACE_CHARACTER.test(before) || WORD_CHARACTER.test(before))) return close;
+    // Right against the next attribute (`"Stealth"dc=15`) it is the close all the same.
+    if (startsKey(body, close + 1)) return close;
+    if (WORD_CHARACTER.test(before)) {
+      close = body.indexOf(quote, close + 1);
+      continue;
+    }
+    const partner = body.indexOf(quote, close + 1);
+    if (partner < 0) return first;
+    close = body.indexOf(quote, partner + 1);
+  }
+  return first;
+}
+
+/**
  * Read the value half at `at`: a quoted string, or an unquoted run.
  *
  * An unterminated quote is not a quoted value; it falls through to the unquoted
@@ -238,7 +274,7 @@ const SPACE_CHARACTER = /\s/;
 function readSkillCheckTagValue(body: string, at: number): { rawValue: string; end: number } | null {
   const opener = body[at];
   if (opener === '"' || opener === "'") {
-    const close = body.indexOf(opener, at + 1);
+    const close = closingQuoteAt(body, at, opener);
     if (close >= 0) return { rawValue: body.slice(at, close + 1), end: close + 1 };
   }
 

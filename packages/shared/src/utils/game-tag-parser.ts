@@ -15,6 +15,7 @@ import {
   stripMapUpdateTag,
   stripDanglingTagClosers,
   stripEngineResultBlocks,
+  renderOocNotes,
 } from "./game-narration-text.js";
 import { stripGameBranchDelimiters } from "./dice-branch.js";
 import { stripClockCommandTags } from "./clock-command-tag.js";
@@ -550,7 +551,8 @@ export function parseSegmentInventoryUpdates(content: string): SegmentInventoryU
 
 /** Extract all command tags from GM narration and return clean content. */
 export function parseGmTags(content: string): ParsedGmTags {
-  let text = content;
+  // An OOC answer is shown, not stripped as an unknown tag.
+  let text = renderOocNotes(content);
   const result: ParsedGmTags = {
     cleanContent: "",
     music: null,
@@ -840,7 +842,7 @@ export function parseGmTags(content: string): ParsedGmTags {
 
 /** Strip all GM command tags from text, returning clean display content. */
 export function stripGmTags(content: string): string {
-  let text = stripEngineResultBlocks(content);
+  let text = renderOocNotes(stripEngineResultBlocks(content));
   text = extractFlatTags(text, /\[music:/gi).remaining;
   text = extractFlatTags(text, /\[sfx:/gi).remaining;
   text = extractFlatTags(text, /\[bg:/gi).remaining;

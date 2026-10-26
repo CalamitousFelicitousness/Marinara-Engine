@@ -1489,8 +1489,48 @@ function poolLooselyNamed(pool: { key: string; label?: string }, wanted: string)
   const looseWanted = loose(wanted);
   return (
     loose(pool.key) === looseWanted ||
-    (!!pool.label && (loose(pool.label) === looseWanted || initials(pool.label) === looseWanted))
+    (!!pool.label && (loose(pool.label) === looseWanted || initials(pool.label) === looseWanted)) ||
+    poolNamedByLevel(pool, wanted)
   );
+}
+
+/** Words a name of a numbered pool carries that say nothing about which family it is in. */
+const POOL_LEVEL_WORDS = new Set(["level", "lvl", "lv", "spell", "spells"]);
+
+/** A name read for its one number and its family words: "spell_slots_2" is 2 and "slot". */
+function poolLevelName(text: string): { level: number; words: string[]; saysLevel: boolean } | null {
+  const tokens = text
+    .toLowerCase()
+    .replace(/(\d+)(?:st|nd|rd|th)\b/g, "$1")
+    .replace(/(\d)(?=[a-z])|([a-z])(?=\d)/g, "$1$2 ")
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
+  const numbers = tokens.filter((token) => /^\d{1,2}$/.test(token));
+  if (numbers.length !== 1) return null;
+  return {
+    level: Number(numbers[0]),
+    words: tokens
+      .filter((token) => !/^\d+$/.test(token) && !POOL_LEVEL_WORDS.has(token))
+      .map((token) => token.replace(/s$/, "")),
+    saysLevel: tokens.some((token) => token === "level" || token === "lvl" || token === "lv"),
+  };
+}
+
+/**
+ * A numbered pool named by its number and a word of its family, however the words around them are
+ * written (cheap-GM playtest 2026-10-26: `pool="spell_slots_2"` for the pool "2nd-level slots" was
+ * refused, so Invisibility and Pass without Trace cost nothing). A name that only says its level
+ * ("level 2") finds it too. Used only where one pool alone fits.
+ */
+function poolNamedByLevel(pool: { key: string; label?: string }, wanted: string): boolean {
+  const asked = poolLevelName(wanted);
+  if (!asked) return false;
+  return [pool.key, pool.label ?? ""].some((name) => {
+    const own = poolLevelName(name);
+    if (!own || own.level !== asked.level) return false;
+    if (asked.words.length === 0) return asked.saysLevel;
+    return asked.words.some((word) => own.words.includes(word));
+  });
 }
 
 /** The one pool of `pools` a name finds: by its key or label exactly, else loosely where one alone

@@ -33,13 +33,65 @@ export function extractLeadingGmPlanning(text: string): LeadingPlanningExtractio
   let planned = 0;
   // Paragraphs sit at even indexes, the blank lines between them at odd ones.
   while (planned < paragraphs.length && PLAN_PART_LABEL.test(paragraphs[planned] ?? "")) planned += 2;
+  if (planned === 0) return extractLabelledPlanBlock(text);
+  const planning = paragraphs
+    .slice(0, planned - 1)
+    .join("")
+    .trim();
+  const content = paragraphs.slice(planned).join("").trimStart();
+  if (!PLAN_ONLY_LABEL.test(planning)) return extractLabelledPlanBlock(text);
+  return { content, planning };
+}
+
+/** One short `Label: ...` line, the label a few capitalized words; never a speaker's quoted line. */
+const LABELLED_LINE = /^\s*(?:[*_#>-]+\s*)?([A-Z][\p{L}'’]*(?:[ /&][\p{L}'’]+){0,2})(?:[*_]+)?\s*:(?:[*_]+)?\s*(.*)$/u;
+/** A numbered or bulleted beat under a label: "(1) ...", "2. ...", "- ...". */
+const BEAT_LINE = /^\s*(?:\(?\d{1,2}[.)]|[-*•])\s+\S/;
+/** What only a plan talks about: the reply's commands and tags, its beats, numbered steps. */
+const PLAN_MENTION = /\b(?:commands?|tags?|beats?)\b|\[\w+:|\(\d{1,2}\)/i;
+/** The longest line a plan's label line is read as. A long line is prose, whatever opens it. */
+const MAX_PLAN_LINE = 400;
+
+/**
+ * A plan written with labels of its own (cheap-GM playtest 2026-10-26: "Location: ... / Beats: (1)...
+ * / Commands: place, branch nature check..." opened the narration). The leading run of paragraphs
+ * whose every line is a short `Label: ...` line or a beat under one is lifted when it carries at
+ * least three different labels and talks like a plan: numbered beats, or the reply's commands or
+ * tags. A scene that opens with a speaker's line, a single labelled line or a run of dialogue that
+ * says nothing about commands, tags or beats stays, and so does a reply that would be left empty.
+ */
+function extractLabelledPlanBlock(text: string): LeadingPlanningExtraction {
+  const paragraphs = text.trimStart().split(/(\n\s*\n)/);
+  const labels = new Set<string>();
+  let beats = false;
+  let planned = 0;
+  for (; planned < paragraphs.length; planned += 2) {
+    const lines = (paragraphs[planned] ?? "").split("\n").filter((line) => line.trim());
+    let labelled = 0;
+    const ok =
+      lines.length > 0 &&
+      lines.every((line, index) => {
+        if (line.length > MAX_PLAN_LINE) return false;
+        const label = LABELLED_LINE.exec(line);
+        // A speaker's quoted words are dialogue, whatever their name looks like.
+        if (label && !/^["“«「『]/.test(label[2] ?? "")) {
+          labels.add(label[1]!.toLowerCase());
+          labelled += 1;
+          return true;
+        }
+        if (index > 0 && BEAT_LINE.test(line)) return (beats = true);
+        return false;
+      });
+    if (!ok || labelled === 0) break;
+  }
   if (planned === 0) return { content: text, planning: "" };
   const planning = paragraphs
     .slice(0, planned - 1)
     .join("")
     .trim();
   const content = paragraphs.slice(planned).join("").trimStart();
-  if (!PLAN_ONLY_LABEL.test(planning)) return { content: text, planning: "" };
+  const talksLikePlan = beats || PLAN_MENTION.test(planning);
+  if (labels.size < 3 || !talksLikePlan || !content.trim()) return { content: text, planning: "" };
   return { content, planning };
 }
 

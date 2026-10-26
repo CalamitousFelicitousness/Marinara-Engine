@@ -1017,6 +1017,26 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
     );
     return written.opponent;
   });
+  // An opponent in no bestiary and given no tier is never built at the scale's bottom (laptop pass 11
+  // 2026-10-26: "Giant Crocodile [cr_5]" missed, then fought as a 7-health CR 0): the tier a tag beside
+  // its name says, else the top of the scale for the budget below to bring down to what this party
+  // can face.
+  const untiered = new Set<string>();
+  const scaleIds = combat.threat?.tiers?.map((tier) => tier.id) ?? [];
+  if (scaleIds.length > 0)
+    enemies = enemies.map((opponent) => {
+      const proposedTier = (opponent.proposed as { tier?: unknown } | undefined)?.tier;
+      if (opponent.tier || typeof proposedTier === "string") return opponent;
+      if (findRulesetCreature(input.bestiary, opponent.creature ?? opponent.name)) return opponent;
+      if (opponent.creature && findRulesetCreature(input.bestiary, opponent.name)) return opponent;
+      const tagged = [opponent.creature, opponent.name]
+        .flatMap((text) => [...(text ?? "").matchAll(/\[([^\]]+)\]/gu)].map((match) => match[1]!.trim()))
+        .find((tag) => scaleIds.includes(tag));
+      if (tagged) return { ...opponent, tier: tagged };
+      if (!budget || !input.budget) return opponent;
+      untiered.add(opponent.id);
+      return { ...opponent, tier: scaleIds[scaleIds.length - 1]! };
+    });
   if (budget && input.budget) {
     const keep = new Set(input.budget.kept ?? []);
     const foes = enemies.map((opponent) => {
@@ -1047,6 +1067,13 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
     const label = (id: string | undefined) => scale.find((tier) => tier.id === id)?.label ?? id;
     enemies = enemies.map((opponent, index) => {
       const tier = moved.tiers[index];
+      if (untiered.has(opponent.id)) {
+        adjustments.push(
+          `${opponent.name} was given no tier, so it was built at ${label(tier ?? foes[index]!.tier)}, what this party's ${stepLabel} budget allows.`,
+        );
+        if (tier === foes[index]!.tier || tier === undefined) return opponent;
+        return { ...opponent, tier };
+      }
       if (tier === foes[index]!.tier || tier === undefined) return opponent;
       adjustments.push(
         `${opponent.name} was brought down from ${label(foes[index]!.tier)} to ${label(tier)}: the fight was worth more than this party's ${stepLabel} budget.`,

@@ -2758,15 +2758,25 @@ export function rulesetUseKeptForm(
     if (Object.entries(from!.notFilters ?? {}).some(([id, want]) => holds(one.filters?.[id], want))) continue;
     refs.push(ref);
   }
+  // Why a form it names is not one it takes now, so a refusal can say so.
+  const barred = new Map<string, string>();
   const offered = refs.flatMap((ref) => {
     const [catalogId, entryId] = ref.split("/");
     const one = catalogs[catalogId ?? ""]?.find((candidate) => candidate.id === entryId);
     if (!one?.creature) return [];
     const ranked = forms.upTo ? one.filters?.[forms.upTo.filter] : undefined;
-    if (cap !== undefined && typeof ranked === "number" && ranked > cap) return [];
-    const speeds = (one.creature as { speeds?: Record<string, number> }).speeds;
-    if (forms.without?.some((bar) => (speeds?.[bar.speed] ?? 0) > 0 && !(bar.unless && read(bar.unless) > 0)))
+    if (cap !== undefined && typeof ranked === "number" && ranked > cap) {
+      barred.set(one.label, `is above the most it takes now (${ranked} against ${cap})`);
       return [];
+    }
+    const speeds = (one.creature as { speeds?: Record<string, number> }).speeds;
+    const bar = forms.without?.find(
+      (each) => (speeds?.[each.speed] ?? 0) > 0 && !(each.unless && read(each.unless) > 0),
+    );
+    if (bar) {
+      barred.set(one.label, `has a ${bar.speed} speed, which it cannot take yet`);
+      return [];
+    }
     return [one.label];
   });
   // Only what can be read is checked: forms from a catalog not to hand are taken as named.
@@ -2779,10 +2789,30 @@ export function rulesetUseKeptForm(
       : "";
     return { ok: false, reason: `bad-amount: name the form ${entry} takes, as as="Name"${listed}` };
   }
-  const named = offered.find((one) => sameName(one, wanted)) ?? (known ? undefined : wanted);
+  // Its kind said after it is not part of its name (laptop 2026-10-26: as="Reef Shark, Beast").
+  const bare = wanted
+    .replace(/\s*\([^)]*\)\s*$/u, "")
+    .replace(/\s*,[^,]*$/u, "")
+    .trim();
+  const match = (name: string) => sameName(name, wanted) || (!!bare && sameName(name, bare));
+  const named = offered.find(match) ?? (known ? undefined : wanted);
   if (!named) {
-    const listed = offered.length
-      ? `; it takes ${offered.slice(0, MAX_KEPT_CALL_NAMES).join(", ")}${offered.length > MAX_KEPT_CALL_NAMES ? ", ..." : ""}`
+    const why = [...barred.entries()].find(([name]) => match(name));
+    if (why) return { ok: false, reason: `bad-amount: ${entry} cannot take the form ${why[0]} now: it ${why[1]}` };
+    // The forms nearest what was asked, by a word they share, else the first few it takes.
+    const asked = new Set(
+      plain(bare || wanted)
+        .split(/[^\p{L}\p{N}]+/u)
+        .filter((word) => word.length > 2),
+    );
+    const near = offered.filter((one) =>
+      plain(one)
+        .split(/[^\p{L}\p{N}]+/u)
+        .some((word) => asked.has(word)),
+    );
+    const shown = (near.length ? near : offered).slice(0, near.length ? 3 : MAX_KEPT_CALL_NAMES);
+    const listed = shown.length
+      ? `; ${near.length ? "nearest" : "it takes"} ${shown.join(", ")}${!near.length && offered.length > MAX_KEPT_CALL_NAMES ? ", ..." : ""}`
       : "";
     return { ok: false, reason: `bad-amount: ${entry} cannot take the form "${wanted}" now${listed}` };
   }

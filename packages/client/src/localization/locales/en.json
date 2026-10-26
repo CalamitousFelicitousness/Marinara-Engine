@@ -2802,6 +2802,7 @@
   "game.combat.ruleset.note.budgetOnlyCondition": "\"{{action}}\" spent a budget only a condition fills, so it spends {{budget}}.",
   "game.combat.ruleset.note.budgetOver": "This fight is worth {{worth}}, more than this party's {{step}} budget of {{budget}}, with nothing left to bring down.",
   "game.combat.ruleset.note.budgetUnknown": "\"{{action}}\" spent a budget this ruleset does not have, so it spends {{budget}}.",
+  "game.combat.ruleset.note.budgetUntiered": "{{name}} was given no tier, so it was built at {{tier}}, what this party's {{step}} budget allows.",
   "game.combat.ruleset.note.budgetWithin": "This fight is worth {{worth}}, within this party's {{step}} budget of {{budget}}.",
   "game.combat.ruleset.note.builtFrom": "{{name}} was built from the numbers of {{tier}}.",
   "game.combat.ruleset.note.byName": "No bestiary holds \"{{creature}}\", so {{name}} was looked up by name.",

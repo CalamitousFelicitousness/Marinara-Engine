@@ -27,6 +27,7 @@ export const RULESET_FIGHT_NOTES = {
   budgetOver:
     "This fight is worth {{worth}}, more than this party's {{step}} budget of {{budget}}, with nothing left to bring down.",
   budgetWithin: "This fight is worth {{worth}}, within this party's {{step}} budget of {{budget}}.",
+  budgetUntiered: "{{name}} was given no tier, so it was built at {{tier}}, what this party's {{step}} budget allows.",
   standIns:
     "{{creature}} is far beyond this party (worth {{worth}}, against its {{step}} budget of {{budget}}), so lesser ones of its kind come instead: {{foes}}. {{name}} stays out of this fight, for the story to keep.",
   // ── An opponent ──

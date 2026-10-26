@@ -369,6 +369,26 @@ try {
     assert.deepEqual(rulesetBudgetStandIns(definition, alone, [{ id: "e1", name: "Lich" }], party).lines, []);
   }
 
+  // A bestiary name with a tag beside it is the bestiary's; one in no bestiary is built at its tag's
+  // tier, else sized to the budget, never the scale's bottom (laptop pass 11 2026-10-26: "Giant
+  // Crocodile [cr_5]" fought as a 7-health CR 0).
+  const tagged = fight({
+    enemies: [{ id: "s", name: "Sentinel", creature: "Hollow Sentinel [cr_5]" }],
+    budget: { difficulty: "hard" },
+  });
+  assert.ok(!tagged.adjustments.some((line) => /No bestiary/.test(line)), tagged.adjustments.join("; "));
+  const atTag = fight({ enemies: [{ id: "croc", name: "Mire Croc", creature: "Mire Croc [cr_1]" }] });
+  assert.equal(atTag.made?.croc?.tier, "cr_1");
+  const sized = fight({ enemies: [{ id: "croc", name: "Mire Croc" }], budget: { difficulty: "normal" } });
+  assert.notEqual(sized.made?.croc?.tier, undefined);
+  assert.ok(
+    sized.adjustments.some((line) =>
+      /Mire Croc was given no tier, so it was built at CR \S+, what this party's Moderate budget allows\./.test(line),
+    ),
+    sized.adjustments.join("; "),
+  );
+  assert.ok(!sized.adjustments.some((line) => /brought down from/.test(line)));
+
   console.log("The encounter budget brings invented foes down to what the party may meet.");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

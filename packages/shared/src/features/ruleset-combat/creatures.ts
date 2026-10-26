@@ -104,7 +104,7 @@ export function findRulesetCreatureEntry(
 /**
  * The creature a Game Master named, looked up three ways and no more: the exact
  * `<catalogId>/<entryId>`, then a label or an id that matches once case and punctuation are set
- * aside, then nothing. Never fuzzy beyond that, because a fight built on a near miss is worse than
+ * aside (with any tag or kind said beside the name, too), then nothing. Never fuzzy beyond that, because a fight built on a near miss is worse than
  * one the Engine says it could not build.
  */
 export function findRulesetCreature(
@@ -120,12 +120,20 @@ export function findRulesetCreature(
     const exact = findRulesetCreatureEntry(catalogs, { catalogId, entryId });
     if (exact) return { catalogId, entry: exact };
   }
-  const plain = plainly(wanted);
-  if (!plain) return null;
-  for (const [catalogId, entries] of Object.entries(catalogs)) {
-    for (const entry of entries) {
-      if (!entry.creature) continue;
-      if (plainly(entry.label) === plain || plainly(entry.id) === plain) return { catalogId, entry };
+  // A tag or a kind said beside the name is no part of it (laptop 2026-10-26: "Giant Crocodile [cr_5]",
+  // "Reef Shark, Beast", "Wolf (Beast)").
+  const bare = wanted
+    .replace(/\s*\[[^\]]*\]\s*/gu, " ")
+    .replace(/\s*\([^)]*\)\s*$/u, "")
+    .replace(/\s*,[^,]*$/u, "")
+    .trim();
+  for (const plain of [...new Set([plainly(wanted), plainly(bare)])]) {
+    if (!plain) continue;
+    for (const [catalogId, entries] of Object.entries(catalogs)) {
+      for (const entry of entries) {
+        if (!entry.creature) continue;
+        if (plainly(entry.label) === plain || plainly(entry.id) === plain) return { catalogId, entry };
+      }
     }
   }
   return null;
@@ -514,8 +522,8 @@ export function rulesetWrittenArea(written: RulesetWrittenAttack): { breath: boo
  * An invented action its writer said lands in an area, built as this ruleset's bestiary builds its
  * breaths: the bestiary's own area action nearest it (the same shape, one that recharges, a breath
  * for a breath, then the nearest tier) lends its shape, size, save, recharge and how many it catches
- * off a board, and the tier its difficulty. Half on a success; its damage stays its own, and it no
- * longer rolls to hit. With no such action in the bestiary, a cone of three cells against the save its
+ * off a board, and the tier its difficulty. Half on a success; its damage is halved for the area, and it
+ * no longer rolls to hit. With no such action in the bestiary, a cone of three cells against the save its
  * creatures roll most, back on what their recharges usually are, else a 5 or 6. Null where it cannot be
  * one: it deals no damage, already lands in an area or asks for a save, or the sheet has no save to roll.
  */
@@ -597,6 +605,14 @@ export function rulesetWrittenAreaAction<
   } = action as T & { toHit?: unknown; autoHit?: unknown; upgrades?: unknown; range?: unknown; targetCount?: unknown };
   return {
     ...rest,
+    ...(rest.damage !== undefined
+      ? {
+          damage: halvedForArea(
+            rest.damage,
+            parseRulesetCombatDice((model?.damage as { dice?: unknown } | undefined)?.dice)?.sides || 6,
+          ),
+        }
+      : {}),
     area: borrowed
       ? {
           shape,
@@ -611,6 +627,44 @@ export function rulesetWrittenAreaAction<
     recharge: { dice: { ...recharge.dice }, from: recharge.from },
     ...(model?.targetCount !== undefined ? { targetCount: model.targetCount } : { targetCount: 2 }),
   } as unknown as T;
+}
+
+/** An invented area's damage as half what it was written or built at for one target: a tier's damage
+ *  a round counts what reaches more than one on two of them (laptop re-test 2026-10-26: a breath built
+ *  at CR 3's single-target round dealt 37 to each of three heroes against a round of 43). Dice first,
+ *  then the flat part; each amount keeps at least what it rolls once. A flat amount (a tier's numbers)
+ *  is rolled as the dice its model breath rolls, about the same on average (cloud re-test 2026-10-26: a
+ *  flat 28 every time). */
+function halvedForArea<D>(damage: D, sides: number): D {
+  const half = (amount: unknown): unknown => {
+    if (!amount || typeof amount !== "object") return amount;
+    const one = amount as { count?: unknown; sides?: unknown; flat?: unknown; dice?: unknown; plus?: unknown };
+    // A block as written says its dice ("4d6+2"); a built one counts them.
+    const written = typeof one.dice === "string" ? parseRulesetCombatDice(one.dice) : null;
+    if (!written && (typeof one.count !== "number" || typeof one.sides !== "number" || typeof one.flat !== "number"))
+      return amount;
+    const next = written ?? { count: one.count as number, sides: one.sides as number, flat: one.flat as number };
+    const want = rulesetAverageAmount(next) / 2;
+    while (rulesetAverageAmount(next) > want) {
+      if (next.count > 1 && next.sides > 0) next.count -= 1;
+      else if (next.flat > (next.count > 0 && next.sides > 0 ? 0 : 1)) next.flat -= 1;
+      else break;
+    }
+    if ((next.count === 0 || next.sides === 0) && next.flat >= (sides + 1) / 2) {
+      const count = Math.max(1, Math.floor(next.flat / ((sides + 1) / 2)));
+      next.flat = Math.round(next.flat - (count * (sides + 1)) / 2);
+      next.count = count;
+      next.sides = sides;
+    }
+    const plus = Array.isArray(one.plus) ? { plus: one.plus.map(half) } : {};
+    if (written) {
+      const dice = next.count > 0 && next.sides > 0 ? `${next.count}d${next.sides}` : "";
+      const flat = next.flat === 0 && dice ? "" : dice && next.flat > 0 ? `+${next.flat}` : `${next.flat}`;
+      return { ...one, dice: `${dice}${flat}`, ...plus };
+    }
+    return { ...one, ...next, ...plus };
+  };
+  return half(damage) as D;
 }
 
 /**

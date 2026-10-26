@@ -118,11 +118,24 @@ try {
   assert.match(unnamed.outcomes[0]!.reason ?? "", /name the form Wild Shape takes.*Wolf, Brown Bear/);
   assert.doesNotMatch(unnamed.outcomes[0]!.reason ?? "", /Giant Elk|Eagle/, "none above the cap, none that flies");
   assert.equal(unnamed.changed, false, "nothing is paid for a refused shape");
-  for (const form of ["Giant Elk", "Eagle", "Dragon"]) {
+  // A form it knows but may not take yet is refused with why (laptop 2026-10-26).
+  for (const [form, why] of [
+    ["Giant Elk", /cannot take the form Giant Elk now: it is above the most it takes now/],
+    ["Eagle", /cannot take the form Eagle now: it has a fly speed, which it cannot take yet/],
+    ["Dragon", /cannot take the form "Dragon" now/],
+  ] as const) {
     const refused = say(`[sheet: op="use" name="Wild Shape" as="${form}"]`);
     assert.equal(refused.outcomes[0]!.ok, false, `${form} is refused`);
-    assert.match(refused.outcomes[0]!.reason ?? "", new RegExp(`cannot take the form "${form}"`));
+    assert.match(refused.outcomes[0]!.reason ?? "", why);
   }
+  // Its kind said after its name is no part of it (laptop 2026-10-26: as="Reef Shark, Beast").
+  for (const form of ["Wolf, Beast", "wolf (Beast)"])
+    assert.equal(say(`[sheet: op="use" name="Wild Shape" as="${form}"]`).outcomes[0]!.ok, true, form);
+  // An unknown one names the nearest it takes, not the whole list.
+  assert.match(
+    say(`[sheet: op="use" name="Wild Shape" as="Dire Wolf"]`).outcomes[0]!.reason ?? "",
+    /cannot take the form "Dire Wolf" now; nearest Wolf$/,
+  );
   const shaped = say(`[sheet: op="use" name="Wild Shape" as="wolf"]`);
   assert.equal(shaped.outcomes[0]!.ok, true, shaped.outcomes[0]!.reason);
   assert.match(shaped.outcomes[0]!.now ?? "", /in the shape of Wolf/);

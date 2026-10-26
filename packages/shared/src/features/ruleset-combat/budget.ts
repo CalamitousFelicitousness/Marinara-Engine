@@ -177,7 +177,24 @@ export function rulesetBudgetStandIns<
       out.push(enemy);
       return;
     }
-    let best: { catalogId: string; entry: RulesetCatalogEntry; count: number; worth: number } | undefined;
+    // Nearest kin first: the words its name shares with the other's, the rarer in the bestiary the
+    // nearer (cloud re-test 2026-10-26: a Young Red Dragon's place went to a Young Black Dragon, not a
+    // red wyrmling), then the most worth that fits.
+    const words = (label: string) =>
+      new Set(
+        label
+          .toLowerCase()
+          .split(/[^\p{L}\p{N}]+/u)
+          .filter(Boolean),
+      );
+    const seen = new Map<string, number>();
+    for (const entries of Object.values(bestiary))
+      for (const entry of entries)
+        if (entry.creature) for (const word of words(entry.label)) seen.set(word, (seen.get(word) ?? 0) + 1);
+    const ownWords = words(own.entry.label);
+    const nearness = (label: string) =>
+      [...words(label)].reduce((sum, word) => sum + (ownWords.has(word) ? 1 / (seen.get(word) ?? 1) : 0), 0);
+    let best: { catalogId: string; entry: RulesetCatalogEntry; count: number; worth: number; near: number } | undefined;
     for (const [catalogId, entries] of Object.entries(bestiary))
       for (const entry of entries) {
         const kin = entry.creature;
@@ -191,12 +208,14 @@ export function rulesetBudgetStandIns<
           );
           if (worth > allowed) continue;
           const total = count * worthOf(kin.tier);
+          const near = nearness(entry.label);
+          const bestTotal = best ? best.count * worthOf(best.entry.creature!.tier) : 0;
           if (
             !best ||
-            total > best.count * worthOf(best.entry.creature!.tier) ||
-            (total === best.count * worthOf(best.entry.creature!.tier) && entry.label < best.entry.label)
+            near > best.near ||
+            (near === best.near && (total > bestTotal || (total === bestTotal && entry.label < best.entry.label)))
           )
-            best = { catalogId, entry, count, worth };
+            best = { catalogId, entry, count, worth, near };
           break;
         }
       }

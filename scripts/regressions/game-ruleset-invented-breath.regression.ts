@@ -29,6 +29,7 @@ import {
   type RulesetCatalogEntriesById,
   type RulesetDefinition,
   type RulesetEncounterState,
+  rulesetAverageDamage,
   rulesetWrittenArea,
 } from "../../packages/shared/src/index.js";
 
@@ -309,6 +310,14 @@ try {
     assert.equal(breath.area!.shape, "cone");
     assert.equal(breath.targets.count, 3);
     assert.notEqual(action(made.encounter, "cindermaw", "Bite")!.toHit, undefined, "the bite still rolls to hit");
+    // Built at its tier's round for one, it reaches two: half of what the bite deals.
+    const bite = rulesetAverageDamage(action(made.encounter, "cindermaw", "Bite")!.damage!);
+    // Rolled, as the wyrmling's breath is, never the tier's flat number (cloud re-test 2026-10-26).
+    assert.ok(breath.damage!.count > 0 && breath.damage!.sides === 6, JSON.stringify(breath.damage));
+    assert.ok(
+      rulesetAverageDamage(breath.damage!) <= bite / 2 + 1,
+      `${rulesetAverageDamage(breath.damage!)} vs ${bite}`,
+    );
     const said = notes(made.adjustments);
     assert.deepEqual(said, [
       'Cindermaw: "Rot Breath" was written as a breath or an area, so it lands in an area against a save and comes back on a recharge.',
@@ -398,6 +407,8 @@ try {
     ]);
     const breath = isBreath(made.encounter, "cindermaw", "Rot Breath", "dex_save", 13);
     assert.equal(breath.damage?.type, "necrotic", "its own damage");
+    // Half of it, as it reaches more than one (laptop re-test 2026-10-26: 37 to each of three heroes).
+    assert.deepEqual([breath.damage?.count, breath.damage?.sides, breath.damage?.flat], [2, 6, 0]);
     const own = action(made.encounter, "cindermaw", "Ash Breath")!;
     assert.equal(own.save?.save, "con_save", "an area written as one is left as written");
     assert.equal(own.area?.shape, "burst");

@@ -350,6 +350,17 @@ const buy = (tag: string, stacks: GameInventoryStack[], market = quoter()) =>
     ["shillings", 5, ""],
     ["Warming tonic", 3, "Bram"],
   ]);
+  // A member short of coin pays the rest out of the party's (laptop pass 5 2026-10-26: "Hessa buys
+  // with the party's coin" refused with 62 gp in another's purse).
+  const broke = buy(
+    '[inventory: action="buy" item="Warming tonic" count="3" who="Bram"]',
+    coins([["shillings", "shilling", 5]]),
+  );
+  assert.match(broke.content, /who="Bram"[^\]]*result="ok" now="3"/, broke.content);
+  assert.deepEqual(held(broke.stacks), [
+    ["shillings", 4, ""],
+    ["Warming tonic", 3, "Bram"],
+  ]);
   // By its ref; and a name with a comma in it is one item, not two
   // (#8271: "Rope, hempen (50 feet)" and "Lantern, hooded").
   for (const item of ["kit/warming-tonic"]) {

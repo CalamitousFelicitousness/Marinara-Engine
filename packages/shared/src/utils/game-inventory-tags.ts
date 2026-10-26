@@ -377,6 +377,20 @@ export function applyGameInventoryTags(
     // who="party" pays out of everyone's purse, the player's first, then each member's in turn.
     const payers = (holder: string | undefined): Array<string | undefined> =>
       request.who && normalizeCharacterLookupName(request.who) === "party" ? [undefined, ...party.members] : [holder];
+    // A buyer named buys out of their own purse first and then the party's: the Game Master never
+    // writes who="party" for a buy (laptop pass 5 2026-10-26: "Hessa buys with the party's coin"
+    // refused with 62 gp in Brannoc's purse).
+    const buyers = (holder: string | undefined): Array<string | undefined> =>
+      request.who
+        ? [
+            ...new Set([
+              ...payers(holder),
+              ...[undefined, ...party.members].filter(
+                (one) => gameInventoryBagKey(one) !== gameInventoryBagKey(holder),
+              ),
+            ]),
+          ]
+        : payers(holder);
     const to = request.action === "give" ? resolveGameInventoryHolder(request.to, party, current) : null;
     // One item whose name holds a comma is that item, not a list (#8271: "Rope, hempen (50 feet)"
     // bought as "Rope" and "hempen (50 feet)"); and so is each such item in a list, the longest run of
@@ -554,7 +568,7 @@ export function applyGameInventoryTags(
             );
           }
           const holder = who.bag?.holder;
-          const paid = payGameInventoryCoinsTogether(current, payers(holder), quote.family, quote.owed);
+          const paid = payGameInventoryCoinsTogether(current, buyers(holder), quote.family, quote.owed);
           if (!paid.ok) return serializeInventoryTag(answered, { ok: false, reason: paid.reason });
           let after = paid.stacks;
           const bought: GameInventoryJournalEntry[] = [];

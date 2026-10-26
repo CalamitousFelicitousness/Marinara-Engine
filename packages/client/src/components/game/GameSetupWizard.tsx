@@ -421,9 +421,16 @@ function filterCustomLearnedValues(values: string[], builtIns: string[]) {
 function RememberedTextNote({ onClear }: { onClear: () => void }) {
   const { t: localizeUi } = useUiTranslation();
   return (
-    <div className="mt-1 flex items-center gap-2 text-[0.625rem] text-[var(--muted-foreground)]">
+    <div className="mt-1 flex items-center gap-2 text-[0.6875rem] text-[var(--muted-foreground)]">
       <span>{localizeUi("ui.game.gamesetupwizard.fromYourLastGame")}</span>
-      <button type="button" onClick={onClear} className="underline transition-colors hover:text-[var(--primary)]">
+      {/* A button that reads as one, under each field it empties (laptop pass 5 2026-10-26: the
+          second, a bare underlined word, was easy to miss). */}
+      <button
+        type="button"
+        onClick={onClear}
+        className="flex items-center gap-1 rounded-md bg-[var(--secondary)] px-2 py-0.5 font-medium text-[var(--foreground)] ring-1 ring-[var(--border)] transition-colors hover:bg-[var(--primary)]/10 hover:text-[var(--primary)]"
+      >
+        <X size={10} />
         {localizeUi("ui.game.gamesetupwizard.clearRememberedText")}
       </button>
     </div>

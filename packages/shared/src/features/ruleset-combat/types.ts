@@ -2224,6 +2224,10 @@ export interface RulesetCombatant {
   calledFrom?: string;
   /** The action that called them (1.381), whose concentration ending sends them away. */
   calledWith?: string;
+  /** How often it threw off by its own save or check what someone put on it, by `<source id>/<action
+   *  id>`: what was cast at it before and did not hold is worth less cast again (laptop pass 5
+   *  2026-10-26: a Hold Person cast four times at one who saved each time). */
+  shookOff?: Record<string, number>;
   /** Kept on their caller's sheet (1.788), by the entry's name there: `gone` once their caller
    *  dismissed them, so the sheet drops them as the fight ends, as it does once they are killed. */
   calledKept?: { entry: string; gone?: true };

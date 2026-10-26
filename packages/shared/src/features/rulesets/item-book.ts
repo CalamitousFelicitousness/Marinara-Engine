@@ -1193,15 +1193,27 @@ export function rulesetItemBook(
   const byBare = new Map<string, RulesetItemBookEntry | null>();
   // A bracket that is only a number is a count ("Poultices (2)"), which its reader takes off itself.
   const bare = (name: string) => gameInventoryLooseNameKey(name.replace(/\((?!\s*\d+\s*\))[^)]*\)/g, " "));
+  // Of those a bare name finds, the plainest: "Arrow (bow)" for "Arrows", not "Arrow (+1)" (cloud
+  // re-test 2026-10-26). The one of the ruleset's first rarity, or of none, is it, where only one is.
+  const rarities = (definition.items?.rarities ?? []).map((one) => one.label);
+  const rank = (read: RulesetItemBookEntry) => (read.facts.rarity ? rarities.indexOf(read.facts.rarity) : -1);
+  const bareAll = new Map<string, RulesetItemBookEntry[]>();
   for (const [key, read] of byName) {
-    for (const [map, loose] of [
-      [byLoose, gameInventoryLooseNameKey(key)],
-      [byBare, bare(key)],
-    ] as const) {
-      if (!loose) continue;
-      const had = map.get(loose);
-      map.set(loose, had === undefined || had?.item === read.item ? read : null);
+    const loose = gameInventoryLooseNameKey(key);
+    if (loose) {
+      const had = byLoose.get(loose);
+      byLoose.set(loose, had === undefined || had?.item === read.item ? read : null);
     }
+    const stripped = bare(key);
+    if (!stripped) continue;
+    const found = bareAll.get(stripped) ?? [];
+    if (!found.some((one) => one.item === read.item)) found.push(read);
+    bareAll.set(stripped, found);
+  }
+  for (const [key, found] of bareAll) {
+    const least = Math.min(...found.map(rank));
+    const plain = found.filter((one) => rank(one) === least);
+    byBare.set(key, plain.length === 1 ? plain[0]! : null);
   }
   // The items the Game Master invented, found by name after the ruleset's own. One name may have
   // several: each telling of a turn that proposed it made its own, and a switch back to an older

@@ -369,7 +369,9 @@ export type DirectedRulesetReason =
   /** An answer it held to an opponent using something, which it could not give (laptop party A
    *  2026-10-25): a Counterspell out of reach, or with no line to the caster. */
   | { why: "couldNotAnswer"; label: string; because: RulesetUnansweredBecause }
-  | { why: "gmPick"; rank?: number };
+  /** The Game Master's own pick: which of the Engine's suggestions it was, and, when it was not the
+   *  first, what the first was (laptop pass 5 2026-10-26: "choice number 3" told the player nothing). */
+  | { why: "gmPick"; rank?: number; over?: { label: string; targetId?: string } };
 /** One option of the legal menu, with the combatants it may be pointed at right now. */
 export interface DirectedRulesetOption extends RulesetCombatOption {
   targetIds: string[];

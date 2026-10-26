@@ -670,6 +670,27 @@ try {
     // Without what a name says in brackets, last of all (cloud re-test 2026-10-25: "Arrows" for 5e's
     // "Arrow (bow)" was a new item).
     assert.equal(book.itemNamed("Hand axes (sharp)")?.item, "outfitter/hand-axe");
+    // Of several a bare name finds, the one of the first rarity, where only one is: "Arrows" for 5e's
+    // "Arrow (bow)" beside "Arrow (+1)" (cloud re-test 2026-10-26).
+    {
+      const quivers = (magic: string) => {
+        const doc = variant(emberText, (one) => {
+          itemEntry(one, "arrows").label = "Arrows (yew)";
+          const fine = structuredClone(itemEntry(one, "arrows"));
+          itemCatalog(one).entries.push({
+            ...fine,
+            id: "arrows-plus",
+            label: "Arrows (+1)",
+            item: { ...fine.item, rarity: magic },
+          });
+        });
+        const read = parseRulesetDefinition(doc);
+        assert.ok(read.ok, read.ok ? "" : read.issues.join("; "));
+        return rulesetItemBook(read.definition, entriesOf(read.definition)).itemNamed("Arrows")?.item;
+      };
+      assert.equal(quivers("uncommon"), "outfitter/arrows");
+      assert.equal(quivers("common"), undefined, "two as plain find neither");
+    }
     assert.equal(book.itemOf("outfitter/arrows")?.stack, 20);
     assert.equal(book.itemOf("outfitter/hand-axe")?.stack, undefined);
     assert.equal(book.plain, "allow");

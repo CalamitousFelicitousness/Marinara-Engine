@@ -1193,18 +1193,24 @@ for (const setup of [
     now.board!.grid!.tiles = tiles;
   }
   {
-    const pick = state.window!.options.find((option) => option.suggested?.rank === 1) ?? state.window!.options[0]!;
+    // A pick other than the Engine's first says what the first was (laptop pass 5 2026-10-26: "choice
+    // number 3" told the player nothing).
+    const first = state.window!.options.find((option) => option.suggested?.rank === 1);
+    assert.ok(first?.label, "the Engine has a first choice");
+    const pick = state.window!.options.find((option) => option !== first)!;
+    assert.ok(pick, "and another");
     const before = state.rulesetFight!.eventSeq;
     assert.ok(commandRulesetCombatDirector(fiveE, state, { type: "choose", candidateId: pick.id }).ok);
-    assert.ok(
-      state.rulesetFight!.events.some(
-        (entry) =>
-          entry.seq > before &&
-          entry.event.type === "reasoning" &&
-          entry.event.reasons.some((one) => one.why === "gmPick"),
-      ),
-      "the Game Master's pick has its why",
+    const why = state.rulesetFight!.events.flatMap((entry) =>
+      entry.seq > before && entry.event.type === "reasoning"
+        ? entry.event.reasons.filter((one) => one.why === "gmPick")
+        : [],
     );
+    assert.equal(why.length, 1, "the Game Master's pick has its why");
+    assert.deepEqual((why[0] as { over?: unknown }).over, {
+      label: first!.label,
+      ...(first!.targetId ? { targetId: first!.targetId } : {}),
+    });
   }
 }
 

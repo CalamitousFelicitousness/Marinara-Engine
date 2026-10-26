@@ -924,6 +924,28 @@ try {
     } as never);
     const again = pickRulesetChoice(definition, state, encounter, "mage");
     assert.notEqual(again?.option.label, "Pattern", `not cast over itself: ${JSON.stringify(again?.choice)}`);
+    // ── Nor any other held spell, which would let them go just the same (cloud caster re-test
+    // 2026-10-26: Greater Invisibility cast over a Hypnotic Pattern still holding two) ──
+    const held = rankRulesetChoices(definition, state, encounter, "mage", 50).map(
+      (one) => one.candidate.action.option.label,
+    );
+    assert.ok(
+      !held.includes("Pattern") && !held.includes("Single"),
+      `no held spell over one that holds a foe: ${held.join(", ")}`,
+    );
+    // ── What one threw off before is worth half as much cast at it again by the same caster, each
+    // time (laptop pass 5 2026-10-26: Hold Person cast four times at one who saved each time) ──
+    delete (mage as { concentrating?: unknown }).concentrating;
+    rulesetCombatant(encounter, "wolf1")!.tracked = [];
+    const singleId = mage.actions.find((one) => one.label === "Single")!.id;
+    const setupOn = () =>
+      rankRulesetChoices(definition, state, encounter, "mage", 50).find(
+        (one) => one.candidate.action.option.label === "Single" && one.candidate.targetId === "duelist",
+      )?.candidate.setup ?? 0;
+    const fresh = setupOn();
+    assert.ok(fresh > 0, "a hold on the duelist is worth something");
+    rulesetCombatant(encounter, "duelist")!.shookOff = { [`mage/${singleId}`]: 2 };
+    assert.ok(Math.abs(setupOn() - fresh / 4) < 1e-9, `thrown off twice, a quarter: ${setupOn()} of ${fresh}`);
   }
 
   console.log(

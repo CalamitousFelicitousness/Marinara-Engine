@@ -939,6 +939,76 @@ try {
     );
   }
 
+  // ── A heal comes out of the least slot that pays for it, grown or not (cloud caster re-test
+  //    2026-10-26: Healing Word from 8th, 5th and 4th level slots with 2nd and 3rd left, and from a
+  //    2nd with a 1st left) ──
+  {
+    const mend = {
+      id: "mend",
+      label: "Mend",
+      rows: [{ list: "spells", values: { name: "Mend", level: 1, prepared: true } }],
+      mechanics: {
+        kind: "heal",
+        targets: "ally",
+        range: 60,
+        amount: { dice: "3d8" },
+        cost: [{ pool: "slots_1", amount: 1 }],
+        perCostStep: { dice: "1d8" },
+      },
+    } as unknown as RulesetCatalogEntry;
+    const paidFrom = (first: number) => {
+      const healer = rulesetSheetBuildSchema.parse({
+        abilities: { str: 10, dex: 10, con: 14, int: 10, wis: 16, cha: 10 },
+        fields: {
+          level: 9,
+          ac: 16,
+          speed: 30,
+          hp_max: 60,
+          spellcasting_ability: "wis",
+          slots_max_1: first,
+          slots_max_2: 3,
+          slots_max_3: 3,
+          slots_max_4: 3,
+          slots_max_5: 1,
+        },
+        lists: { spells: rowsFromCatalogEntry("spells", mend).map((one) => one.row) },
+      });
+      // Whose side it is changes nothing: the rule is the heal's.
+      for (const side of ["party"] as const) {
+        const scene = fight([
+          {
+            id: "priest",
+            name: "priest",
+            side,
+            build: healer,
+            live: {},
+            catalogs: { spells: [mend] },
+            at: { x: 2, y: 5 },
+          },
+          { id: "hurt", name: "hurt", side, block: block([poke], { health: 30 }), at: { x: 3, y: 5 } },
+          {
+            id: "foe",
+            name: "foe",
+            side: side === "party" ? "enemy" : "party",
+            block: block([poke], { health: 11 }),
+            at: { x: 12, y: 5 },
+          },
+        ]);
+        const hurt = rulesetCombatant(scene.encounter, "hurt")!;
+        hurt.health = { ...hurt.health!, value: 3 };
+        const ways = ranked(scene, "priest").filter((one) => one.candidate.action.option.label.startsWith("Mend"));
+        assert.ok(ways.length > 0, "it is offered");
+        assert.deepEqual(
+          [...new Set(ways.map((one) => one.candidate.action.choice.payWith ?? "slots_1"))],
+          [first > 0 ? "slots_1" : "slots_2"],
+          `${side}: ${JSON.stringify(ways.map((one) => one.candidate.action.option.label))}`,
+        );
+      }
+    };
+    paidFrom(4);
+    paidFrom(0);
+  }
+
   // ── One that grows every second step is never paid one step up for nothing (cloud pass
   //    2026-10-25: a Spiritual Weapon out of a 3rd-level slot, every 2nd-level one free) ──
   {

@@ -5250,6 +5250,14 @@ function leanInSight(
  * `successes` it takes (1.258); a failure counts towards `failures`, which puts on what it `becomes`
  * in its place, with no clock, once there are enough (Contagion's disease). Whether it is gone.
  */
+/** What its holder threw off, counted against whoever put it on with what. */
+function noteShookOff(holder: RulesetCombatant, entry: RulesetTrackedCondition): void {
+  const actionId = entry.action?.[0];
+  if (!entry.source || !actionId || entry.source === holder.id) return;
+  const key = `${entry.source}/${actionId}`;
+  holder.shookOff = { ...holder.shookOff, [key]: (holder.shookOff?.[key] ?? 0) + 1 };
+}
+
 function savedAgainst(
   ctx: RulesetCombatContext,
   holder: RulesetCombatant,
@@ -5261,6 +5269,7 @@ function savedAgainst(
     entry.passes = (entry.passes ?? 0) + 1;
     if (ends.successes !== undefined && entry.passes < ends.successes) return false;
     removeCondition(ctx, holder, entry.condition, "save");
+    noteShookOff(holder, entry);
     return true;
   }
   if (!ends.failures) return false;
@@ -8381,6 +8390,7 @@ function applyChoice(
       });
       if (success) {
         removeCondition(ctx, holder, entry.condition, "save");
+        noteShookOff(holder, entry);
         // The spell ends with it: its concentration too, where that is what held it.
         endHoldingConcentration(ctx, entry);
         // And the item that put it on is spent (1.621): Iron Bands of Binding.

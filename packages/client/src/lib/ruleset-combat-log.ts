@@ -1905,11 +1905,13 @@ function rulesetReasonText(
     case "couldNotAnswer":
       return say(`couldNotAnswer_${reason.because.replace("-", "_")}`, { label: reason.label });
     case "gmPick":
-      return reason.rank === 1
-        ? say("gmPickTop")
-        : reason.rank
-          ? say("gmPickSuggested", { rank: reason.rank })
-          : say("gmPick");
+      if (reason.rank === 1) return say("gmPickTop");
+      return reason.over
+        ? say(reason.over.targetId ? "gmPickOverOn" : "gmPickOver", {
+            label: reason.over.label,
+            target: target(reason.over.targetId),
+          })
+        : say("gmPick");
     default:
       return say(reason.why);
   }

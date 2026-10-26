@@ -3877,6 +3877,10 @@ function biggerWays(
   // What grows paid bigger, or what can only be paid out of another pool now (1.171).
   const grows = !!action?.use?.perCostStep || !!action?.use?.targetsPerStep;
   if (!action || (!grows && !option.upcastOnly)) return [];
+  // A heal is paid from the least pool that pays for it, whose few points more are seldom worth a
+  // bigger one (cloud caster re-test 2026-10-26: Healing Word from 8th, 5th and 4th level slots with
+  // 2nd and 3rd left, and from a 2nd with a 1st left).
+  if (option.heals && !option.upcastOnly) return [];
   const ways: PricedOption[] = [];
   for (const pool of option.payWith ?? []) {
     const steps = rulesetCostSteps(definition, action, pool, actor);
@@ -3906,18 +3910,15 @@ function biggerWays(
       },
       payWith: pool,
       // An opponent's each step above its own rung a little dearer again, on its share of the pool,
-      // so the small one is still cast when it does; a heal's twice that, whose few points more are
-      // seldom worth a bigger slot (cloud caster re-test 2026-10-25: Healing Word from 4th and 5th
-      // level slots with 1st level ones left).
+      // so the small one is still cast when it does.
       price:
         actor.side === "enemy"
-          ? paid.cost.reduce((total, entry) => total + share(entry.pool, entry.amount), 0) *
-            (1 + (option.heals ? 0.5 : 0.25) * steps)
+          ? paid.cost.reduce((total, entry) => total + share(entry.pool, entry.amount), 0) * (1 + 0.25 * steps)
           : paid.cost.reduce((total, entry) => total + entry.amount, 0) + steps,
     });
     // What grows no bigger is paid from the least pool that can pay for it, and no other (laptop
-    // 2026-10-25: an Entangle out of a 3rd-level slot with a 2nd-level one left).
-    if (!grows) break;
+    // 2026-10-25: an Entangle out of a 3rd-level slot with a 2nd-level one left), and so is a heal.
+    if (!grows || option.heals) break;
   }
   return ways;
 }
@@ -4689,9 +4690,25 @@ function rulesetCandidatesFrom(
     // The same held spell cast again while it still holds a foe is not cast (cloud caster re-test
     // 2026-10-25: an Enchanter cast Hypnotic Pattern over its own pattern in five rounds of seven,
     // aimed at one it already held). What it holds would go, and it already holds them.
+    // Nor is another held spell, which would let them go just the same (cloud caster re-test
+    // 2026-10-26: a restrained Enchanter cast Greater Invisibility over a Hypnotic Pattern still
+    // holding two of the party).
     if (rulesetHeldFoes(encounter, actor).length > 0)
-      for (let index = candidates.length - 1; index >= 0; index--)
-        if (candidates[index]!.action.option.id === held) candidates.splice(index, 1);
+      for (let index = candidates.length - 1; index >= 0; index--) {
+        const id = candidates[index]!.action.option.id;
+        if (id === held || actor.actions.find((one) => one.id === id)?.concentration) candidates.splice(index, 1);
+      }
+  }
+  // What a target threw off before, cast at it again by the same one, is worth half as much again
+  // for each time (laptop pass 5 2026-10-26: Hold Person cast four times at one who saved each time,
+  // a slot each).
+  for (const candidate of candidates) {
+    const target = candidate.targetId ? rulesetCombatant(encounter, candidate.targetId) : undefined;
+    const times = target?.shookOff?.[`${actor.id}/${candidate.action.option.id}`] ?? 0;
+    if (times === 0) continue;
+    const kept = 0.5 ** times;
+    if (candidate.setup) candidate.setup *= kept;
+    if ((candidate.damage ?? 0) > 0 && !candidate.action.option.forecast?.averageDamage) candidate.damage! *= kept;
   }
   // Turning back gives up the form while it holds: what it was paid for and what health it has left
   // between its holder and harm (cloud probes 2026-10-25: a druid's kept Wolf let go on its first turn
@@ -9998,8 +10015,17 @@ function runRulesetCommand(
     closeWindow(state);
     // Its debug log says the Game Master chose, and which of the Engine's suggestions it took, so a
     // turn it played is not one with no why (laptop playtest 2026-10-24).
+    const first = open.options.find((option) => option.suggested?.rank === 1);
     const gmPick: DirectedRulesetReason[] = chosen
-      ? [{ why: "gmPick", ...(chosen.suggested ? { rank: chosen.suggested.rank } : {}) }]
+      ? [
+          {
+            why: "gmPick",
+            ...(chosen.suggested ? { rank: chosen.suggested.rank } : {}),
+            ...(first && first !== chosen && first.label
+              ? { over: { label: first.label, ...(first.targetId ? { targetId: first.targetId } : {}) } }
+              : {}),
+          },
+        ]
       : [];
     // A decision opened over a ruleset WINDOW is answered into that window, not onto a turn: the
     // one being asked is not the one acting, and there is no turn of theirs to go on with.

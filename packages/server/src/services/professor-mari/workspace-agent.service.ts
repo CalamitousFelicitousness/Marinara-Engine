@@ -4573,7 +4573,6 @@ export class ProfessorMariWorkspaceService {
             : workspaceCommandProtocolPrompt(mariMaxOutputTokens(connection)),
         contextKind: "prompt",
       },
-      { role: "system", content: workspaceInfo, contextKind: "prompt" },
     ];
     if (skillsPrompt) messages.push({ role: "system", content: skillsPrompt, contextKind: "prompt" });
     if (instructionsPrompt) messages.push({ role: "system", content: instructionsPrompt, contextKind: "prompt" });
@@ -4608,6 +4607,9 @@ export class ProfessorMariWorkspaceService {
         contextKind: "prompt",
       });
     }
+    // #8375: last of the prompt blocks. It carries currentTime and this turn's message id, so anything after it
+    // is re-sent uncached on every turn and every new chat; everything before it stays a stable cached prefix.
+    messages.push({ role: "system", content: workspaceInfo, contextKind: "prompt" });
 
     for (const row of history) {
       const extra = parseExtra(row.extra);

@@ -1435,6 +1435,19 @@ try {
     assert.match(system, /peek-prompt/u);
     assert.match(system, /named subject/u);
     assert.doesNotMatch(system, /workspace_command_protocol/u);
+    // #8375: the per-turn lines (currentTime, this turn's message id) come after every stable block, so a new chat
+    // or a new turn re-sends only them uncached.
+    const contextAt = system.indexOf("<workspace_context>");
+    assert.ok(contextAt > system.indexOf("</workspace_tools>"), "workspace_context follows the tool rules");
+    assert.ok(
+      contextAt > system.indexOf("</professor_mari_custom_skills>"),
+      "workspace_context follows the skill index",
+    );
+    assert.match(
+      system.slice(contextAt),
+      /<\/workspace_context>(?:\n\n<cwd>\n[^\n]*\n<\/cwd>)?$/u,
+      "only pi's own <cwd> line comes after workspace_context",
+    );
     const history = requests[0]!.messages.filter((message) => message.role !== "system");
     assert.deepEqual(
       history.map((message) => [message.role, message.content]),

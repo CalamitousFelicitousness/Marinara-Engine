@@ -1437,6 +1437,27 @@ try {
     assert.ok(rulesetGap(rulesetCombatant(after, "orc"), rulesetCombatant(after, "fen")) < gap, "it walked for fen");
   }
 
+  // ── Nothing put on a hero already down is worth anything (cloud re-test 2026-10-26: a legendary
+  //    Frightening Gaze spent twice on an unconscious hero) ──
+  {
+    const gaze = {
+      id: "gaze",
+      name: "Gaze",
+      budget: "action",
+      applies: [{ condition: "slowed", duration: "instant" }],
+    };
+    const scene = fight([
+      { id: "pell", name: "pell", side: "party", block: block([poke]), at: { x: 5, y: 5 } },
+      { id: "orc", name: "orc", side: "enemy", block: block([smash, gaze]), at: { x: 6, y: 5 } },
+    ]);
+    const orc = rulesetCombatant(scene.encounter, "orc")!;
+    const pell = rulesetCombatant(scene.encounter, "pell")!;
+    const action = orc.actions.find((one) => one.id === "gaze")!;
+    assert.ok((rulesetEffectWorth(definition, definition.combat!, scene.encounter, orc, action, pell) ?? 0) > 0);
+    pell.down = true;
+    assert.equal(rulesetEffectWorth(definition, definition.combat!, scene.encounter, orc, action, pell), 0);
+  }
+
   // ── A thinking foe goes for the healer first (Alyssa 2026-10-26: "No point in focusing Ulfgar if a
   //    Cleric is just going to Healing Word him every round and pick him right back up") ──
   {

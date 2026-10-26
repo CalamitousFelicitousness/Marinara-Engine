@@ -1512,7 +1512,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   assert.equal(printed.get("pass"), "Thorn Lurker lets the moment go by.");
   assert.equal(
     line(fiveE, state, { type: "window", window: "w2", kind: "signature", waiting: ["lurker"] }),
-    "The fight pauses between turns, and Thorn Lurker may act.",
+    "The fight pauses between turns, and Thorn Lurker may take a legendary action.",
   );
   assert.equal(printed.get("initiative"), "Initiative: Brenna 14.");
   assert.equal(printed.get("round"), "Round 3.");
@@ -1539,7 +1539,7 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
   assert.equal(printed.get("uses"), "Thorns: 1 of 3 left.");
   assert.equal(printed.get("prayed"), "Corwin prays: Bless.");
   assert.equal(printed.get("recharge"), "Thorns is ready again: 5, needing 5.");
-  assert.equal(printed.get("signature"), "Thorn Lurker spends 2 on Wail, with 1 left.");
+  assert.equal(printed.get("signature"), "Thorn Lurker takes a legendary action: Wail, for 2 points, with 1 left.");
   assert.equal(printed.get("strikes"), "Brenna swings with Longsword, with 1 strike left.");
   assert.equal(printed.get("gives"), "Brenna uses Second Wind and has 1 Action.");
   assert.equal(printed.get("rider"), "Thorn Lurker also takes Sly Strike.");

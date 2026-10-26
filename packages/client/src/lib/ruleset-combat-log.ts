@@ -1494,10 +1494,12 @@ export function rulesetCombatEventLine(
     case "lair":
       return key("lair", { actor: names.combatant(event.actorId), label: event.label });
     case "signature":
+      // Named for what it is (Alyssa 2026-10-26: "is it clear that what they are doing is a legendary
+      // action?").
       return key("signature", {
         actor: names.combatant(event.actorId),
         label: event.label,
-        cost: event.cost,
+        count: event.cost,
         left: event.left,
       });
     case "strikes":

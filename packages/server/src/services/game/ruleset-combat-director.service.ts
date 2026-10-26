@@ -2271,6 +2271,9 @@ function projectCombatant(
       ? { carrying: rulesetCarriedLeft(combatant).map((one) => ({ name: one.name, count: one.count })) }
       : {}),
     ...(deathTrack ? { deathTrack } : {}),
+    ...(combatant.signature && combatant.signature.max > 0 && !combatant.defeated
+      ? { legendary: { points: combatant.signature.points, max: combatant.signature.max } }
+      : {}),
     ...((pools) => (pools ? { pools } : {}))(spentPoolsOf(definition, combatant)),
     ...(saveModifiers.length ? { saveModifiers } : {}),
     ...(() => {
@@ -5261,6 +5264,9 @@ export function rulesetEffectWorth(
 ): number | undefined {
   if (!action) return undefined;
   const foe = asHarm || target.side !== actor.side;
+  // Nothing put on an opponent already down holds them any further (cloud re-test 2026-10-26: a
+  // legendary Frightening Gaze spent twice on an unconscious hero).
+  if (foe && !asHarm && target.down && (action.dismisses || action.applies?.length)) return 0;
   let worth: number | undefined;
   // Sent out of the fight (1.236): its turns are gone while it is away.
   if (action.dismisses && foe) worth = 1;

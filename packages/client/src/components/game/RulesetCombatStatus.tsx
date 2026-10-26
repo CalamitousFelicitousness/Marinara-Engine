@@ -270,6 +270,14 @@ export function RulesetCombatStatus({
                       })}
                     </span>
                   )}
+                  {combatant.legendary && (
+                    <span className="mt-0.5 block text-[0.65rem] tabular-nums text-[var(--muted-foreground)]">
+                      {t("game.combat.ruleset.status.legendary", {
+                        points: combatant.legendary.points,
+                        max: combatant.legendary.max,
+                      })}
+                    </span>
+                  )}
                   {(!!combatant.tier ||
                     (combatant.traits?.length ?? 0) > 0 ||
                     (combatant.saveModifiers?.length ?? 0) > 0) && (

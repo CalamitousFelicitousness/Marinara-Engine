@@ -349,6 +349,7 @@ import { HISTORY_PAGER_BUTTON_CLASS } from "../chat/TranscriptWindowControls";
 import { NEUTRAL_PANEL_SCROLL_AREA, NEUTRAL_PANEL_SUBTITLE } from "../ui/neutral-surface-styles";
 import type { ReadableTag } from "../../lib/game-tag-parser";
 import type { DirectionCommand, GameNpc, GameStoryboardViewerDisplayMode } from "@marinara-engine/shared";
+import { GAME_CHECKPOINT_LOADED_EVENT } from "../../lib/game-checkpoint-events";
 
 type JournalReadable = ReadableTag & {
   sourceMessageId?: string | null;
@@ -11985,19 +11986,41 @@ function GameSurfaceComponent({
         // the user-visible bubble by stripGmTags / stripGmTagsKeepReadables, leaving only the
         // cosmetic italic prefix. State is flipped above via transitionGameState so no
         // [state:] tag is needed here.
-        sendMessage(`${prefix}\n\n[combat_result]\n${recap}\n[/combat_result]`);
-        // The whole party fallen (Alyssa 2026-10-26): both ways on offer, a checkpoint or the story.
-        if (outcome === "defeat" && !summary.yielded)
-          toast.info(localizeUi("game.combat.partyFallen"), {
+        const result = `${prefix}\n\n[combat_result]\n${recap}\n[/combat_result]`;
+        // The whole party fallen (Alyssa 2026-10-26): both ways on offer, a checkpoint or the story, and
+        // the story told only once the player has picked it (laptop pass 8 2026-10-26: the Game Master
+        // was already writing on while the checkpoints were open). Closing the notice is playing on; a
+        // checkpoint loaded puts it away with nothing sent.
+        if (outcome === "defeat" && !summary.yielded) {
+          let settled = false;
+          const playOn = () => {
+            if (settled) return;
+            settled = true;
+            window.removeEventListener(GAME_CHECKPOINT_LOADED_EVENT, loaded);
+            sendMessage(result);
+          };
+          const loaded = () => {
+            settled = true;
+            window.removeEventListener(GAME_CHECKPOINT_LOADED_EVENT, loaded);
+            toast.dismiss(notice);
+          };
+          window.addEventListener(GAME_CHECKPOINT_LOADED_EVENT, loaded);
+          const notice = toast.info(localizeUi("game.combat.partyFallen"), {
             action: {
               label: localizeUi("game.combat.partyFallenCheckpoint"),
-              onClick: () => useUIStore.getState().openModal("game-checkpoints", { chatId: activeChatId }),
+              onClick: (event) => {
+                // Kept up while the list is open, so playing on is still there if none is loaded.
+                event.preventDefault();
+                useUIStore
+                  .getState()
+                  .openModal("game-checkpoints", { chatId: activeChatId, highlight: "combat_start" });
+              },
             },
-            // Playing on is the other way, and the choice stays up until one is taken (laptop pass 8
-            // 2026-10-26: a lone button that faded before it was read).
-            cancel: { label: localizeUi("game.combat.partyFallenPlayOn"), onClick: () => {} },
+            cancel: { label: localizeUi("game.combat.partyFallenPlayOn"), onClick: playOn },
+            onDismiss: playOn,
             duration: Number.POSITIVE_INFINITY,
           });
+        } else sendMessage(result);
 
         // Journal: record combat outcome. The server's addCombatEntry only persists
         // (description, outcome) into JournalEntry.content, so fold the structured recap

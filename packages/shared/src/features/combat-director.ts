@@ -227,6 +227,8 @@ export interface DirectedRulesetCombatant {
   carrying?: Array<{ name: string; count: number }>;
   /** The two counts of the ruleset's dying rule, for a member the fight is still rolling for. */
   deathTrack?: { successes: number; failures: number; successesMax: number; failuresMax: number };
+  /** The points it buys its legendary actions with between turns, as they stand. */
+  legendary?: { points: number; max: number };
   /** What this combatant is holding together, when the ruleset has concentration. */
   concentrating?: string;
   /** A party member's pools their actions spend, as they stand (spell slots, ki): the fight's HUD. */

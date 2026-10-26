@@ -219,14 +219,8 @@ export function GlobalOmnibarDialog({ onClose }: { onClose: () => void }) {
   // writing that pane and then opening; resetting it on read would kill that.
   const [session, setSession] = useState<CommandCenterSessionState>(() => readCommandCenterSessionState());
   const initialQueryRef = useRef(session.query);
-  const mariEnabled = useUIStore((state) => state.commandCenterMariEnabled);
   const { query, filter, activeResultId, mariReturnResultId, mariHandoff } = session;
-  // Mari can be switched off from the omnibar's settings menu, the Settings panel
-  // or a result row, and the first of those is reachable from inside her own pane.
-  // Reading the pane through the flag strands nobody: the persisted `mari` pane
-  // resolves to the list until Mari is switched back on. Derived rather than an
-  // effect, so there is no frame where the disabled pane is still on screen.
-  const pane = !mariEnabled && session.pane === "mari" ? "results" : session.pane;
+  const pane = session.pane;
   const mariFinished = mariHandoff?.status === "finished";
   const setSessionValue = <K extends keyof CommandCenterSessionState>(key: K, value: CommandCenterSessionState[K]) =>
     setSession((current) => (current[key] === value ? current : { ...current, [key]: value }));
@@ -452,7 +446,6 @@ export function GlobalOmnibarDialog({ onClose }: { onClose: () => void }) {
         frecencyEntries,
         getFaqSearchText,
         localize,
-        mariEnabled,
         mariHasModel,
         omnibarContext,
         t,
@@ -467,7 +460,6 @@ export function GlobalOmnibarDialog({ onClose }: { onClose: () => void }) {
       docs.results,
       frecencyEntries,
       localize,
-      mariEnabled,
       mariHasModel,
       omnibarContext,
       t,
@@ -478,7 +470,7 @@ export function GlobalOmnibarDialog({ onClose }: { onClose: () => void }) {
   const [mariOpenChatId, setMariOpenChatId] = useState<string | null>(null);
   // Fetched on open rather than on the first keystroke, so the rows are ready
   // before typing instead of arriving late and pushing the list down.
-  const mariChats = useProfessorMariChats(mariEnabled);
+  const mariChats = useProfessorMariChats();
   const mariChatResults = useMemo<OmnibarResult[]>(
     () => buildOmnibarMariChatResults({ deferredQuery, mariChats: mariChats.data ?? [], t }),
     [deferredQuery, mariChats.data, t],
@@ -522,7 +514,6 @@ export function GlobalOmnibarDialog({ onClose }: { onClose: () => void }) {
       connectionById,
       lastAppError,
       lorebooks: lorebooks.data,
-      mariEnabled,
       omnibarSuggestionsEnabled,
       openAgentId,
       openCharacterId,
@@ -574,7 +565,6 @@ export function GlobalOmnibarDialog({ onClose }: { onClose: () => void }) {
     lastAppError,
     lastReplyFindings,
     lorebooks.data,
-    mariEnabled,
     openAgentId,
     openCharacterId,
     openConnectionId,
@@ -599,7 +589,6 @@ export function GlobalOmnibarDialog({ onClose }: { onClose: () => void }) {
     gameSetupStep,
     lastAppError,
     lorebooks: lorebooks.data,
-    mariEnabled,
     omnibarContext,
     openAgentId,
     personas: personas.data,
@@ -702,8 +691,8 @@ export function GlobalOmnibarDialog({ onClose }: { onClose: () => void }) {
     [removalSuggestions],
   );
   const continueResult = useMemo<OmnibarResult | null>(
-    () => buildOmnibarContinueResult({ mariEnabled, t, workspaceStatus: mariWorkspaceStatus.data, mariFinished }),
-    [mariEnabled, mariWorkspaceStatus.data, t, mariFinished],
+    () => buildOmnibarContinueResult({ t, workspaceStatus: mariWorkspaceStatus.data, mariFinished }),
+    [mariWorkspaceStatus.data, t, mariFinished],
   );
   const { recentChatResults, frecentIdleResults, tryResults, nowResult, setupTryRow, continueResults, markTry } =
     useOmnibarEmptyState({
@@ -720,7 +709,6 @@ export function GlobalOmnibarDialog({ onClose }: { onClose: () => void }) {
       lastAppError,
       lorebooks: lorebooks.data,
       mariChats: mariChats.data,
-      mariEnabled,
       mariFinished,
       mariHasModel,
       mariWorkspaceStatus: mariWorkspaceStatus.data,
@@ -1499,7 +1487,6 @@ export function GlobalOmnibarDialog({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
       if (event.defaultPrevented || event.isComposing || !isAskMariShortcut(event)) return;
-      if (!useUIStore.getState().commandCenterMariEnabled) return;
       // A dialog opened above the omnibar (a confirm from Mari, say) keeps the keyboard, as with ⌘K.
       const dialog = event.target instanceof Element ? event.target.closest('[aria-modal="true"]') : null;
       if (dialog && !dialog.closest('[data-component="GlobalOmnibar"]')) return;
@@ -1833,7 +1820,6 @@ export function GlobalOmnibarDialog({ onClose }: { onClose: () => void }) {
         activeChat,
         attachedResultIds,
         connections: connections.data,
-        mariEnabled,
         previewEnterHint,
         updateChat,
         askMariAbout,
@@ -1920,7 +1906,6 @@ export function GlobalOmnibarDialog({ onClose }: { onClose: () => void }) {
     activeResult,
     expandedPreviewId,
     expandedChoiceId,
-    mariEnabled,
     asideSettled,
     setQuery,
     setPane,
@@ -2122,7 +2107,7 @@ export function GlobalOmnibarDialog({ onClose }: { onClose: () => void }) {
                 <X size={13} strokeWidth={2.5} />
               </button>
             ) : null}
-            {!mariSurface && mariEnabled ? (
+            {!mariSurface ? (
               <OmnibarMariDoor
                 onClick={() => askMariAbout(null)}
                 working={mariWorkingInBackground}
@@ -2228,7 +2213,6 @@ export function GlobalOmnibarDialog({ onClose }: { onClose: () => void }) {
             activeResultId={activeResultId}
             expandedPreviewId={expandedPreviewId}
             asideShown={asideShown}
-            mariEnabled={mariEnabled}
             resultVisual={resultVisual}
             selectResult={selectResult}
             handleResultMouseMove={handleResultMouseMove}
@@ -2244,7 +2228,6 @@ export function GlobalOmnibarDialog({ onClose }: { onClose: () => void }) {
         {!mariSurface ? (
           <OmnibarFooter
             inlineSuffix={inlineSuffix}
-            mariEnabled={mariEnabled}
             pane={pane}
             activeResult={activeResult}
             mariSends={mariSends}

@@ -1703,6 +1703,28 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
     if (!built?.signature?.max) continue;
     for (const line of holdRulesetLegendary(definition, built, tier!)) adjustments.push(`${built.name}: ${line}`);
   }
+  // What a boss may spend its points on is said as it is left after the hold (laptop 2026-10-26: the
+  // line named Disrupt Life before the next one took it away).
+  for (const opponent of enemies) {
+    const built = rulesetCombatant(encounter, opponent.id);
+    if (!built?.signature) continue;
+    const lead = `${opponent.name} may spend `;
+    const at = adjustments.findIndex((line) => line.startsWith(lead) && line.includes(" points between turns on "));
+    if (at < 0) continue;
+    const [head, listed] = adjustments[at]!.slice(0, -1).split(" points between turns on ") as [string, string];
+    const kept = new Set(
+      built.actions.filter((action) => action.signature).map((action) => action.label.trim().toLowerCase()),
+    );
+    // Nothing left to buy, no line; names the board reads under other labels are left as written.
+    if (kept.size === 0) {
+      adjustments.splice(at, 1);
+      continue;
+    }
+    const names = listed.split(", ");
+    const left = names.filter((name) => kept.has(name.trim().toLowerCase()));
+    if (left.length === 0 || left.length === names.length) continue;
+    adjustments[at] = `${head} points between turns on ${left.join(", ")}.`;
+  }
   // What a member's sheet keeps from a use outside a fight comes along on its own, paid for then
   // (1.790): their familiar. The Game Master's own listing of the same entry is left out for it.
   // And the shape one keeps them in (1.793): a druid who went into the fight a wolf starts it one.

@@ -2800,11 +2800,23 @@ export function rulesetKeptCalls(stored: unknown): Array<{ entry: string; as: st
 }
 
 /** Whether a row this entry wrote is ticked in its list's `ritual` column (1.799), so it may be used
- *  outside a fight as a ritual. */
+ *  outside a fight as a ritual, by a sheet its list's `ritualNeeds` allows (1.801). */
 export function rulesetRowIsRitual(definition: RulesetDefinition, build: RulesetSheetBuild, ref: string): boolean {
+  const holds = (needs: readonly string[]) =>
+    Object.values(build.lists ?? {}).some(
+      (rows) =>
+        Array.isArray(rows) &&
+        rows.some(
+          (row) =>
+            !!row &&
+            typeof row === "object" &&
+            needs.includes(String(own(row as Record<string, unknown>, RULESET_CATALOG_ROW_KEY))),
+        ),
+    );
   return definition.sheet.lists.some((list) => {
     const rows = build.lists?.[list.id];
     if (!list.ritual || !Array.isArray(rows)) return false;
+    if (list.ritualNeeds && !holds(list.ritualNeeds)) return false;
     return rows.some(
       (row) =>
         !!row &&

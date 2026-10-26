@@ -11895,6 +11895,16 @@
                 "maxLength": 40,
                 "pattern": "^[a-z][a-z0-9_]*$"
               },
+              "ritualNeeds": {
+                "minItems": 1,
+                "maxItems": 20,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 121,
+                  "pattern": "^[a-z][a-z0-9_]*\\/[a-z0-9]+(?:-[a-z0-9]+)*$"
+                }
+              },
               "$comment": {}
             },
             "required": [
@@ -27207,6 +27217,16 @@
                 "type": "string",
                 "maxLength": 40,
                 "pattern": "^[a-z][a-z0-9_]*$"
+              },
+              "ritualNeeds": {
+                "minItems": 1,
+                "maxItems": 20,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 121,
+                  "pattern": "^[a-z][a-z0-9_]*\\/[a-z0-9]+(?:-[a-z0-9]+)*$"
+                }
               },
               "$comment": {}
             },

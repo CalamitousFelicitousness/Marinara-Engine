@@ -1281,6 +1281,13 @@ const listSchema = z
      *  a ritual, the use tag's `ritual="yes"`, paying none of its pools (its slots or its counters).
      *  What else a ritual takes, such as its longer casting time, is the story's. 5e's ritual spells. */
     ritual: sheetId.optional(),
+    /** Who may use its rows as rituals (Capability API 1.801): a sheet holding a row from one of these
+     *  entries, in any list. Left out, anybody whose row is ticked. 5e's Ritual Casting features. */
+    ritualNeeds: z
+      .array(z.lazy(() => catalogEntryRef))
+      .min(1)
+      .max(20)
+      .optional(),
   })
   .strict();
 
@@ -18345,6 +18352,14 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
       const ritual = list.columns.find((column) => column.id === list.ritual);
       if (ritual?.type !== "boolean") issue([...path, "ritual"], "Must name a yes-or-no column");
     }
+    if (list.ritualNeeds && !list.ritual) issue([...path, "ritualNeeds"], "Needs a ritual column");
+    list.ritualNeeds?.forEach((ref, refIndex) => {
+      const catalogId = ref.slice(0, ref.indexOf("/"));
+      const catalog = def.catalogs?.find((each) => each.id === catalogId);
+      if (!catalog) issue([...path, "ritualNeeds", refIndex], `Unknown catalog "${catalogId}"`);
+      else if (catalog.entries && !catalog.from && !catalog.entries.some((one) => `${catalogId}/${one.id}` === ref))
+        issue([...path, "ritualNeeds", refIndex], `Unknown entry "${ref}"`);
+    });
     if (list.pools) {
       const typeOf = (id: string) => list.columns.find((column) => column.id === id)?.type;
       if (typeOf(list.pools.nameColumn) !== "text") issue([...path, "pools", "nameColumn"], "Must name a text column");

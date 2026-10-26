@@ -12722,6 +12722,16 @@ export function getCapabilityPackageInstallIssue(
   ) {
     return "A ruleset whose list rows may be used as rituals (a list's ritual) requires schemaVersion 2 and capabilityApi 1.799 or newer";
   }
+  // Who may use a list's rows as rituals, 1.801.
+  if (
+    !declaresApi(801) &&
+    (() => {
+      const lists = plainRecord(plainRecord(ruleset)?.sheet)?.lists;
+      return Array.isArray(lists) && lists.some((list) => plainRecord(list)?.ritualNeeds !== undefined);
+    })()
+  ) {
+    return "A ruleset whose rituals need an entry on the sheet (a list's ritualNeeds) requires schemaVersion 2 and capabilityApi 1.801 or newer";
+  }
   // Items drawn as they are used, 1.800.
   if (!declaresApi(800) && plainRecord(plainRecord(ruleset)?.items)?.drawOnUse !== undefined) {
     return "A ruleset whose items are drawn as they are used (items.drawOnUse) requires schemaVersion 2 and capabilityApi 1.800 or newer";

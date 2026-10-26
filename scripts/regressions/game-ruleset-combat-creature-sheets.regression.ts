@@ -2144,7 +2144,8 @@ const dataDir = mkdtempSync(join(tmpdir(), "marinara-creature-sheets-"));
       unpricedLines,
       /Archmage Veyl had nothing priced out of its points, so it buys its own actions with them\./,
     );
-    assert.match(unpricedLines, /Archmage Veyl may spend 3 points between turns on Cantrip, Move, Staff\./);
+    // Said as it is left after the hold (laptop re-test 2026-10-26: Disrupt Life was listed, then taken).
+    assert.match(unpricedLines, /Archmage Veyl may spend 3 points between turns on Cantrip, Move\./);
     assert.doesNotMatch(unpricedLines, /no legendary actions/);
     // Its Staff three times between turns on top of its own turn is far past a CR 2's round, so that
     // goes (laptop 2026-10-26: a CR 3 Archlich's Disrupt Life wiped four rested heroes).
@@ -2184,7 +2185,9 @@ const dataDir = mkdtempSync(join(tmpdir(), "marinara-creature-sheets-"));
     }).rulesetFight!;
     const gazeSaid = gazer.adjustments.join("; ");
     assert.doesNotMatch(gazeSaid, /no entry called "Watchful strike"/);
-    assert.match(gazeSaid, /Archmage Veyl may spend 3 points between turns on [^;]*Watchful strike/);
+    // Bought with its points, until the hold takes it; then no line offers it.
+    assert.match(gazeSaid, /Archmage Veyl: Watchful strike went from what its points buy/);
+    assert.doesNotMatch(gazeSaid, /may spend 3 points between turns on [^;]*Watchful strike/);
     // A spell priced above 1 is still only a Cantrip, never a spell of a slot cast between turns
     // (laptop Archlich fight 2026-10-26: Finger of Death and upcast Fireballs as legendary actions).
     const dearCaster = started({

@@ -23,6 +23,7 @@ import {
   parseRulesetDefinition,
   readRulesetLive,
   RULESET_CATALOG_ROW_KEY,
+  rulesetRowIsRitual,
   rulesetSheetBuildSchema,
   supportedCapabilityApi,
   type RulesetDefinition,
@@ -214,6 +215,28 @@ try {
   assert.equal(notRitual.outcomes[0]!.reason, "not-ritual");
   assert.equal(value(notRitual, ilse, "slots_1"), 1);
 
+  // ── Only a sheet holding what the list's ritualNeeds names (1.801): Ritual Casting ──
+  const needing = parsed(
+    fiveE((doc) => {
+      doc.sheet.lists.find((list: { id: string }) => list.id === "spells").ritualNeeds = ["spells/arcane-recovery"];
+    }),
+  );
+  assert.equal(rulesetRowIsRitual(needing, wizard, "spells/detect-magic"), true, "the wizard holds it");
+  const sorcerer = rulesetSheetBuildSchema.parse({ ...wizard, lists: { spells: wizard.lists!.spells } });
+  assert.equal(rulesetRowIsRitual(needing, sorcerer, "spells/detect-magic"), false, "a sheet without it may not");
+  assert.equal(
+    rulesetRowIsRitual(definition, sorcerer, "spells/detect-magic"),
+    true,
+    "nor is anyone held back unasked",
+  );
+  const unknownNeed = parseRulesetDefinition(
+    fiveE((doc) => {
+      doc.sheet.lists.find((list: { id: string }) => list.id === "spells").ritualNeeds = ["spells/nope"];
+    }),
+  );
+  assert.equal(unknownNeed.ok, false);
+  if (!unknownNeed.ok) assert.match(unknownNeed.issues.join("; "), /Unknown entry "spells\/nope"/);
+
   // ── Checked at import, and the install gate ──
   const bad = parseRulesetDefinition(
     fiveE((doc) => (doc.sheet.lists.find((list: { id: string }) => list.id === "spells").ritual = "name")),
@@ -237,6 +260,13 @@ try {
     "A ruleset whose list rows may be used as rituals (a list's ritual) requires schemaVersion 2 and capabilityApi 1.799 or newer";
   assert.equal(getCapabilityPackageInstallIssue(manifest(798) as never, fiveE()), gate);
   assert.notEqual(getCapabilityPackageInstallIssue(manifest(799) as never, fiveE()), gate);
+  const withNeeds = fiveE((doc) => {
+    doc.sheet.lists.find((list: { id: string }) => list.id === "spells").ritualNeeds = ["spells/arcane-recovery"];
+  });
+  const needsGate =
+    "A ruleset whose rituals need an entry on the sheet (a list's ritualNeeds) requires schemaVersion 2 and capabilityApi 1.801 or newer";
+  assert.equal(getCapabilityPackageInstallIssue(manifest(800) as never, withNeeds), needsGate);
+  assert.notEqual(getCapabilityPackageInstallIssue(manifest(801) as never, withNeeds), needsGate);
 
   console.log(
     "Potions and rests: a healing item heals once, a rest-only pool needs its rest or its feature's use, and a ritual pays no slot.",

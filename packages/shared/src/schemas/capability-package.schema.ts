@@ -1520,7 +1520,9 @@ const capabilityPackageManifestBaseSchema = z
 //        ritual, the use tag's ritual="yes", paying none of their pools (5e's ritual spells).
 // 1.800: `items.drawOnUse`: items of some categories or tags used while only carried, each put in hand
 //        as it is used by putting away the fewest other such items in its slots (5e's weapons).
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 800 } as const);
+// 1.801: a sheet list's `ritualNeeds`: the entries a sheet must hold a row from to use its rows as
+//        rituals (5e's Ritual Casting).
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 801 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

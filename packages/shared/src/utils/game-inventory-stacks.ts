@@ -240,7 +240,15 @@ export interface GameInventoryItemRules {
   ): { item: string; notes: string[] } | { refused: "no-invention" | "unreadable" | "too-many" };
   /** The coin a name is (its id or label, one or many of it, any case), with every coin of its family,
    *  largest first. Absent where the ruleset has no currencies. */
-  coinNamed?(name: string): { coin: GameInventoryCoin; family: readonly GameInventoryCoin[] } | undefined;
+  coinNamed?(name: string):
+    | {
+        coin: GameInventoryCoin;
+        family: readonly GameInventoryCoin[];
+        /** The coins of the family some price is written in, which change comes back in where they
+         *  make it. Absent when every coin of it is, or none. */
+        usual?: readonly string[];
+      }
+    | undefined;
 }
 
 /** The most new stacks one change may start, so a small stack size can never flood a bag. */

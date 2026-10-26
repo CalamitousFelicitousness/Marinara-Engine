@@ -1275,13 +1275,26 @@ export function rulesetItemBook(
       families.set(read.item, members);
     }
   }
+  /** The coins some price of the book is written in, which change is given in where they make it. */
+  let pricedIn: Set<string> | undefined;
+  const usualOf = (family: readonly GameInventoryCoin[]) => {
+    pricedIn ??= new Set(
+      visible.flatMap((one) => (one.entry.item?.cost?.unit ? [gameInventoryCoinRef(one.entry.item.cost.unit)] : [])),
+    );
+    const usual = family.filter((coin) => pricedIn!.has(coin.item)).map((coin) => coin.item);
+    return usual.length > 0 && usual.length < family.length ? { usual } : {};
+  };
   /** The coin a name is: its id or label, one of it or many ("penny", "pennies"), any case. */
   const coinNamed = (name: string) => {
     const one = (text: string) => gameInventoryNameKey(text).replace(/ies$/, "y").replace(/s$/, "");
     const wanted = one(name);
     const found = coins.find((coin) => one(coin.entry.id) === wanted || one(coin.name) === wanted);
     return found
-      ? { coin: { item: found.item, name: found.name, value: found.coin!.value }, family: families.get(found.item)! }
+      ? {
+          coin: { item: found.item, name: found.name, value: found.coin!.value },
+          family: families.get(found.item)!,
+          ...usualOf(families.get(found.item)!),
+        }
       : undefined;
   };
   const itemNamed = (name: string): RulesetItemBookEntry | undefined => {

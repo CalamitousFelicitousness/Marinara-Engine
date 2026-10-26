@@ -515,7 +515,13 @@ export function applyGameInventoryTags(
             return addAnswered(coin.name, { item: coin.item }, request.count, request.who, who.bag, undefined, "earn");
           }
           const holder = who.bag?.holder;
-          const paid = payGameInventoryCoinsTogether(current, payers(holder), named.family, request.count * coin.value);
+          const paid = payGameInventoryCoinsTogether(
+            current,
+            payers(holder),
+            named.family,
+            request.count * coin.value,
+            named.usual,
+          );
           const answered = { ...shown, item: coin.name };
           if (!paid.ok) return serializeInventoryTag(answered, { ok: false, reason: paid.reason });
           current = paid.stacks;
@@ -568,7 +574,13 @@ export function applyGameInventoryTags(
             );
           }
           const holder = who.bag?.holder;
-          const paid = payGameInventoryCoinsTogether(current, buyers(holder), quote.family, quote.owed);
+          const paid = payGameInventoryCoinsTogether(
+            current,
+            buyers(holder),
+            quote.family,
+            quote.owed,
+            quote.family[0] ? rules?.coinNamed?.(quote.family[0].name)?.usual : undefined,
+          );
           if (!paid.ok) return serializeInventoryTag(answered, { ok: false, reason: paid.reason });
           let after = paid.stacks;
           const bought: GameInventoryJournalEntry[] = [];

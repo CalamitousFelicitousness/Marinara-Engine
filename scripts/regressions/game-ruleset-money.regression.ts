@@ -305,6 +305,24 @@ const withoutMarket = (doc: Record<string, any>) => {
   const salted = coins([["cakes", "cake", 5]]);
   const coinFamily = emberBook.coinNamed!("bit")!.family;
   assert.equal(payGameInventoryCoins(salted, undefined, coinFamily, 1).ok, false, "salt never pays in coin");
+  // Change comes back in the coins prices are written in, where they make it (laptop pass 6,
+  // 2026-10-26: an inn's 5 silver out of a gold piece came back as an electrum piece).
+  const srdCoins = [
+    { item: "coin:gp", name: "gold pieces", value: 100 },
+    { item: "coin:ep", name: "electrum pieces", value: 50 },
+    { item: "coin:sp", name: "silver pieces", value: 10 },
+    { item: "coin:cp", name: "copper pieces", value: 1 },
+  ];
+  const oneGold = [{ id: "g", name: "gold pieces", item: "coin:gp", quantity: 1 }];
+  const back = (changeIn?: string[]) => {
+    const paid = payGameInventoryCoins(oneGold, undefined, srdCoins, 50, changeIn);
+    return paid.ok ? paid.change : paid.reason;
+  };
+  assert.deepEqual(back(), [{ name: "electrum pieces", count: 1 }]);
+  assert.deepEqual(back(["coin:gp", "coin:sp", "coin:cp"]), [{ name: "silver pieces", count: 5 }]);
+  // Where the usual coins cannot make it, any coin does.
+  assert.deepEqual(back(["coin:gp", "coin:sp"]), [{ name: "silver pieces", count: 5 }]);
+  assert.deepEqual(back(["coin:gp"]), [{ name: "electrum pieces", count: 1 }]);
   assert.equal(pay([], 0 + 1), "cannot-afford");
 }
 

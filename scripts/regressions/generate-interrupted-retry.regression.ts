@@ -92,7 +92,23 @@ assert.match(
   "Retry resends a turn the server never saved",
 );
 assert.equal(surface.match(/sendToken=\{gameInputSendToken\}/gu)?.length, 2, "both inputs take the resend");
+// When the input no longer holds a turn it can send, Retry falls back to asking the Game Master to go on.
+assert.equal(
+  surface.match(/onSendTokenUnsent=\{retryWithoutUnsentTurn\}/gu)?.length,
+  2,
+  "both inputs fall back when nothing is sent",
+);
+assert.match(
+  surface,
+  /const retryWithoutUnsentTurn = useCallback\(\(\) => \{\s*setUnsentTurnChatId\(null\);\s*setGenerationFailed\(false\);\s*generate\(/u,
+);
+// Any generation that starts clears the unsent turn, so a later failure from another path regenerates.
+assert.match(surface, /if \(!isStreaming\) return;\s*setGenerationFailed\(false\);\s*setUnsentTurnChatId\(null\);/u);
 const input = read("packages/client/src/components/game/GameInput.tsx");
-assert.match(input, /lastSendTokenRef\.current = sendToken;\s*void handleSendRef\.current\(\);/u);
+assert.match(input, /if \(!hasTurnContent \|\| disabled \|\| rollingQueuedDice\) return false;/u);
+assert.match(
+  input,
+  /lastSendTokenRef\.current = sendToken;\s*void handleSendRef\.current\(\)\.then\(\(sent\) => \{\s*if \(sent === false\) onSendTokenUnsentRef\.current\?\.\(\);/u,
+);
 
 console.log("generate-interrupted-retry regression passed");

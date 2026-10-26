@@ -1,5 +1,5 @@
 import { prepareViteFixtureDependencies } from "./vite-fixture-dependencies.js";
-import { expect, test, type APIRequestContext, type Page, type TestInfo } from "@playwright/test";
+import { expect, test, type APIRequestContext, type Page, type Route, type TestInfo } from "@playwright/test";
 import type {
   TacticalBattlefieldBrief,
   TacticalCombatState,
@@ -110,13 +110,13 @@ async function delayNextTacticalStart(
   await page.route("**/api/game/combat/tactical/start", async (route) => {
     const payload = (route.request().postDataJSON() ?? {}) as Record<string, unknown>;
     if (delayed || !shouldDelay(payload)) {
-      await route.continue();
+      await route.continue(pinnedStart(route));
       return;
     }
     delayed = true;
     requestSeen.resolve(payload);
     try {
-      const response = await route.fetch();
+      const response = await route.fetch(pinnedStart(route));
       responseReady.resolve();
       await release.promise;
       await route.fulfill({ response });
@@ -147,6 +147,21 @@ async function waitForSettledMutations(page: Page) {
  *  past the 10 s default now and then (ship readiness 2026-10-26: a random test of this file failed
  *  most runs, waiting for "End Turn" or "Use generated terrain"). */
 const BOARD_READY_MS = 30_000;
+
+/** The first start of a mount asks for a random board, and some boards had no wall in reach or no clash
+ *  between the brief's features (ship readiness 2026-10-26: seed 4069513167 laid the wall and the water
+ *  side by side). Seed 1 has both, so a start that names no seed is sent with it; a restart keeps its
+ *  own seed. */
+const PINNED_SEED = 1;
+
+function pinnedStart(route: Route): { postData?: string } {
+  const payload = (route.request().postDataJSON() ?? {}) as Record<string, unknown>;
+  return payload.seed !== undefined ? {} : { postData: JSON.stringify({ ...payload, seed: PINNED_SEED }) };
+}
+
+async function pinFirstStartSeed(page: Page) {
+  await page.route("**/api/game/combat/tactical/start", (route) => route.continue(pinnedStart(route)));
+}
 
 /** Mount the actual battle surface; start, actions and persistence use the real local API. */
 async function mountBattle(
@@ -233,6 +248,7 @@ test("Hybrid battlefield preserves landmarks through a flying move, reload and r
       data: { gameWeather: { type: "rain", wind: "windy", visibility: "reduced" } },
     });
     expect(weatherPatch.ok(), await weatherPatch.text()).toBeTruthy();
+    await pinFirstStartSeed(page);
     await mountBattle(page, testInfo, chatId, brief);
     const battle = page.locator('[data-component="TacticalCombatUI"]');
     await expect(battle.getByRole("button", { name: "End Turn", exact: true })).toBeVisible({
@@ -313,6 +329,7 @@ test("Conflicting terrain requires an explicit generated fallback", async ({ pag
     if (request.url().endsWith("/api/game/combat/tactical/start")) requests.push(request.postDataJSON());
   });
   try {
+    await pinFirstStartSeed(page);
     await mountBattle(page, testInfo, chatId, {
       features: [
         { terrain: "wall", placement: "west", shape: "barrier" },

@@ -42,6 +42,9 @@ process.env.DATA_DIR = dataDir;
 process.env.FILE_STORAGE_DIR = join(dataDir, "storage");
 const { getCapabilityPackageInstallIssue } =
   await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
+const { createCombatDirector } = await import("../../packages/server/src/services/game/combat-director.service.js");
+const { pickRulesetChoice } =
+  await import("../../packages/server/src/services/game/ruleset-combat-director.service.js");
 
 try {
   assert.ok(supportedCapabilityApi.minor >= 379);
@@ -730,6 +733,70 @@ try {
     assert.equal(getCapabilityPackageInstallIssue(manifest(385) as never, reading), gate);
     assert.notEqual(getCapabilityPackageInstallIssue(manifest(386) as never, reading), gate);
     assert.notEqual(getCapabilityPackageInstallIssue(manifest(385) as never, document([wolfOnly])), gate);
+  }
+
+  // ── Taken by the Engine once its slots are spent, or hurt (laptop pass 6 2026-10-26: a druid 4 with
+  //    Wild Shape on offer every turn of six never took it) ──
+  {
+    const thunderClap = {
+      id: "thunder-clap",
+      label: "Thunder Clap",
+      rows: [{ list: "spells", values: { name: "Thunder Clap", level: 1, prepared: true } }],
+      mechanics: {
+        kind: "attack",
+        targets: "enemy",
+        range: 60,
+        budget: "action",
+        attackRoll: true,
+        amount: { dice: "6d8" },
+        damageType: "thunder",
+        cost: [{ pool: "slots_1", amount: 1 }],
+      },
+    };
+    const definition = parsed(document([wolfOnly, thunderClap]));
+    const entries = definition.catalogs!.find((catalog) => catalog.id === "spells")!.entries! as RulesetCatalogEntry[];
+    const scene = (slots: number, hurt?: number) => {
+      const encounter = fight(definition, entries, 8);
+      const druid = who(encounter, "druid");
+      druid.sheet!.build.fields.slots_max_1 = slots;
+      druid.sheet!.build.fields.spellcasting_ability = "wis";
+      if (hurt !== undefined) druid.sheet!.live = { pools: { hp: { value: hurt } } } as never;
+      const unit = (id: string, side: "player" | "enemy") => ({
+        id,
+        name: id,
+        side,
+        hp: 40,
+        maxHp: 40,
+        attack: 8,
+        defense: 6,
+        speed: 6,
+        level: 8,
+        skills: [],
+        aiHints: { proficiency: "master" as const },
+      });
+      const state = createCombatDirector({
+        id: "fight",
+        anchor: "anchor",
+        style: "ruleset",
+        party: [unit("druid", "player")],
+        enemies: [unit("brute", "enemy"), unit("piper", "enemy")],
+        gm: false,
+        difficulty: "normal",
+        seed: 3,
+      } as never);
+      state.rulesetFight = {
+        encounter,
+        events: [],
+        eventSeq: 0,
+        controllers: {},
+        bosses: [],
+        adjustments: [],
+      } as never;
+      return pickRulesetChoice(definition, state, encounter, "druid")?.option.label;
+    };
+    assert.equal(scene(2), "Thunder Clap", "with slots, it casts");
+    assert.match(scene(0) ?? "", /^Wild Shape/, "out of slots, it takes the form");
+    assert.match(scene(2, 15) ?? "", /^Wild Shape/, "hurt, it takes the form's health before its own");
   }
 
   // ── The install gate ──

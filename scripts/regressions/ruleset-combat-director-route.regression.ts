@@ -137,6 +137,11 @@ const fixtureText = JSON.stringify(document);
   const healerSkills = proposedSheetLists(definition, [{ skills: [{ type: "attack" }, { type: "heal" }] }]);
   for (const catalog of rows) for (const list of catalog.feeds ?? []) assert.ok(healerSkills.has(list), list);
   assert.ok(!proposedSheetLists(definition, [{ skills: [{ type: "attack" }] }]).has(":fields"));
+  // And one written with numbers and no sheet, its spells beside them (laptop pass 6 2026-10-26).
+  const numbered = proposedSheetLists(definition, [
+    { proposed: { tier: "cr_1", health: 30 }, skills: [{ type: "attack" }, { type: "attack", spell: true }] },
+  ]);
+  for (const catalog of rows) for (const list of catalog.feeds ?? []) assert.ok(numbered.has(list), list);
 }
 
 const fighterBuild = build({

@@ -8,6 +8,7 @@
  *   - Named, the away are still found; the dead are refused a heal, a rest or temporary health,
  *     which only a use of what raises the dead gives back.
  *   - A fight leaves the dead out, and refuses a party of none but the dead.
+ *   - The Game Master's sheet block says who is dead.
  *   - The sheet context counts away a card whose member left the stored party list, and nobody when
  *     a member of that list cannot be named.
  */
@@ -25,7 +26,7 @@ const { createChatsStorage } = await import("../../packages/server/src/services/
 const { createCharactersStorage } = await import("../../packages/server/src/services/storage/characters.storage.js");
 const { createGameRulesetsStorage } =
   await import("../../packages/server/src/services/storage/game-rulesets.storage.js");
-const { applyGameRulesetSheetTurn, loadGameRulesetSheetContext } =
+const { applyGameRulesetSheetTurn, loadGameRulesetSheetContext, renderGameRulesetSheetBlocks } =
   await import("../../packages/server/src/services/game/ruleset-sheet-turn.service.js");
 const { createRulesetFight } =
   await import("../../packages/server/src/services/game/ruleset-combat-director.service.js");
@@ -118,6 +119,16 @@ try {
   const alone = fight(["Aldric"]);
   assert.equal(alone.ok, false);
   if (!alone.ok) assert.match(alone.error, /is dead, so there is nobody to fight it/);
+
+  // The Game Master reads who is dead on their sheet, so a potion or a rest is not spent on them in
+  // the story (laptop pass 6 2026-10-26: a potion poured into a dead hero was used up).
+  const blocks = renderGameRulesetSheetBlocks(
+    context.definition,
+    ["Aldric", "Mara"].map((name) => ({ name, rulesetSheet: { v: 1, build: context.cards[0]!.build } })),
+    live,
+  );
+  assert.match(blocks[0]!, /^Aldric[\s\S]*\nDEAD: healing, rest and potions do nothing for them/);
+  assert.doesNotMatch(blocks[1]!, /DEAD/);
 
   // A party list member the Engine cannot name drops nobody.
   await chats.patchMetadata(chat.id, { gamePartyCharacterIds: [aldric.id, mara.id, "missing-id"] });

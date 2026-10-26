@@ -412,9 +412,9 @@ export function proposedSheetLists(
   definition: RulesetDefinition,
   enemies: ReadonlyArray<{
     proposed?: unknown;
-    attacks?: ReadonlyArray<{ reaction?: unknown; kind?: unknown }>;
+    attacks?: ReadonlyArray<{ reaction?: unknown; kind?: unknown; spell?: unknown }>;
     /** The Game Master's own skills, which become its attacks: one not an attack is a kind. */
-    skills?: ReadonlyArray<{ reaction?: unknown; type?: unknown }>;
+    skills?: ReadonlyArray<{ reaction?: unknown; type?: unknown; spell?: unknown }>;
   }>,
 ): Set<string> {
   const lists = new Set<string>();
@@ -428,13 +428,18 @@ export function proposedSheetLists(
         ...(given.skills ?? []).map((skill) => ({
           reaction: skill.reaction,
           kind: skill.type !== "attack" ? skill.type : undefined,
+          spell: skill.spell,
         })),
       ],
     };
     // A reaction it was given by name may be an entry of the ruleset's own (a Counterspell that is a
     // spell), read off whichever list that entry's catalog feeds; and so may a spell or a feature
     // written beside the attacks of one with no sheet, which it is given a sheet for, with a class.
-    const sheetless = enemy.proposed === undefined && !!enemy.attacks?.some((attack) => attack.kind);
+    // One written with numbers and no sheet is given one as well (laptop pass 6 2026-10-26).
+    const proposedSheet = (enemy.proposed as { sheet?: unknown } | undefined)?.sheet;
+    const sheetless =
+      (enemy.proposed === undefined || proposedSheet === undefined) &&
+      !!enemy.attacks?.some((attack) => attack.kind || attack.spell);
     if (sheetless || enemy.attacks?.some((attack) => attack.reaction))
       for (const list of definition.sheet.lists) lists.add(list.id);
     if (sheetless) {
@@ -1303,9 +1308,12 @@ export async function combatDirectorRoutes(
                       name: skill.name,
                       ...(skill.reaction ? { reaction: skill.reaction } : {}),
                       ...(skill.type !== "attack" ? { kind: skill.type } : {}),
+                      ...(skill.spell ? { spell: true as const } : {}),
+                      ...(skill.legendaryCost ? { legendary: skill.legendaryCost } : {}),
                     })),
                   }
                 : {}),
+              ...(enemy.boss?.points ? { points: enemy.boss.points } : {}),
             })),
             cards,
             playerName: persona?.name ?? null,

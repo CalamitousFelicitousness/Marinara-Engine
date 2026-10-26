@@ -10,6 +10,7 @@ import { roomHostIdentity } from "../multiplayer/generation-policy.js";
 import {
   applySheetCommandTags,
   RULESET_PARTY_KEY,
+  rulesetSheetDead,
   rulesetPartyDefinition,
   createSheetCommandTagRegex,
   defaultRulesetSheetBuild,
@@ -130,15 +131,22 @@ export function renderGameRulesetSheetBlocks(
       .filter((card) => typeof card.name === "string")
       .map((card) => [normalizeCharacterLookupName((card.name as string).trim()), card.rulesetSheet]),
   );
-  const blocks = built.map((card) =>
-    renderRulesetSheetBlock(
+  const blocks = built.map((card) => {
+    const stored = live?.[normalizeCharacterLookupName(card.name)];
+    const block = renderRulesetSheetBlock(
       definition,
       { ...card, envelope: envelopes.get(normalizeCharacterLookupName(card.name)) },
-      live?.[normalizeCharacterLookupName(card.name)],
+      stored,
       catalogs,
       itemsOf?.(card.name),
-    ),
-  );
+    );
+    // Said where it is read, so a potion or a rest is not spent on them in the story (laptop pass 6
+    // 2026-10-26: a Potion of Healing poured into a dead hero was used up, and the rest asked for with
+    // it never came).
+    return rulesetSheetDead(definition, card.build, stored, itemsOf?.(card.name))
+      ? `${block}\nDEAD: healing, rest and potions do nothing for them; only what raises the dead brings them back. Say so in the story, and do not spend an item on them.`
+      : block;
+  });
   const partyDefinition = rulesetPartyDefinition(definition);
   const envelope = readRulesetPartySheet(
     definition,

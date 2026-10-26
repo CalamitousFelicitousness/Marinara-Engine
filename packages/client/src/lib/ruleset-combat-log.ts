@@ -1262,7 +1262,14 @@ export function rulesetCombatEventLine(
             y: event.to.y,
           });
     case "spend":
-      return key("spend", { actor: names.combatant(event.actorId), amount: event.amount, pool: event.label });
+      return event.on
+        ? key("spendOn", {
+            actor: names.combatant(event.actorId),
+            amount: event.amount,
+            pool: event.label,
+            on: event.on,
+          })
+        : key("spend", { actor: names.combatant(event.actorId), amount: event.amount, pool: event.label });
     case "budget":
       return key("budget", {
         actor: names.combatant(event.actorId),

@@ -3600,7 +3600,14 @@ function payAnswer(
   if (paid.itemCharges) (holder.charges ??= {})[paid.itemCharges.item] = paid.itemCharges.now;
   countRulesetSpend(holder, paid.cost);
   for (const entry of paid.cost) {
-    ctx.events.push({ type: "spend", actorId: holder.id, pool: entry.pool, label: entry.label, amount: entry.amount });
+    ctx.events.push({
+      type: "spend",
+      actorId: holder.id,
+      pool: entry.pool,
+      label: entry.label,
+      amount: entry.amount,
+      on: action.label,
+    });
   }
   if (budget !== undefined) spendBudget(ctx, holder, budget);
   spendAvailability(ctx, holder, action);
@@ -5788,7 +5795,15 @@ function storeChoice(
   if (paid.itemCharges) (working.charges ??= {})[paid.itemCharges.item] = paid.itemCharges.now;
   countRulesetSpend(working, paid.cost);
   for (const entry of paid.cost) {
-    ctx.events.push({ type: "spend", actorId: working.id, pool: entry.pool, label: entry.label, amount: entry.amount });
+    ctx.events.push({
+      type: "spend",
+      actorId: working.id,
+      pool: entry.pool,
+      label: entry.label,
+      amount: entry.amount,
+      // On what, so a cast line names its spell (laptop pass 6 2026-10-26: "spends 1 1st-level slots").
+      on: action.label,
+    });
   }
   spendAvailability(ctx, working, action);
   if (!storeInto(ctx, working, action, holder, place.item, level)) {
@@ -8685,7 +8700,15 @@ function applyChoice(
   if (paid.itemCharges) (working.charges ??= {})[paid.itemCharges.item] = paid.itemCharges.now;
   countRulesetSpend(working, paid.cost);
   for (const entry of paid.cost) {
-    ctx.events.push({ type: "spend", actorId: working.id, pool: entry.pool, label: entry.label, amount: entry.amount });
+    ctx.events.push({
+      type: "spend",
+      actorId: working.id,
+      pool: entry.pool,
+      label: entry.label,
+      amount: entry.amount,
+      // On what, so a cast line names its spell (laptop pass 6 2026-10-26: "spends 1 1st-level slots").
+      on: action.label,
+    });
   }
   // And what it was altered with (1.253), each at the level it was paid at.
   for (const alter of alters ?? []) {
@@ -9129,7 +9152,15 @@ function strikeCut(
   if (paid.itemCharges) (working.charges ??= {})[paid.itemCharges.item] = paid.itemCharges.now;
   countRulesetSpend(working, paid.cost);
   for (const entry of paid.cost) {
-    ctx.events.push({ type: "spend", actorId: working.id, pool: entry.pool, label: entry.label, amount: entry.amount });
+    ctx.events.push({
+      type: "spend",
+      actorId: working.id,
+      pool: entry.pool,
+      label: entry.label,
+      amount: entry.amount,
+      // On what, so a cast line names its spell (laptop pass 6 2026-10-26: "spends 1 1st-level slots").
+      on: action.label,
+    });
   }
   spendAvailability(ctx, working, action);
   const held = holder.tracked.filter((one) => one.condition === offered.condition);
@@ -9221,7 +9252,15 @@ function strikeSection(
   if (paid.itemCharges) (working.charges ??= {})[paid.itemCharges.item] = paid.itemCharges.now;
   countRulesetSpend(working, paid.cost);
   for (const entry of paid.cost) {
-    ctx.events.push({ type: "spend", actorId: working.id, pool: entry.pool, label: entry.label, amount: entry.amount });
+    ctx.events.push({
+      type: "spend",
+      actorId: working.id,
+      pool: entry.pool,
+      label: entry.label,
+      amount: entry.amount,
+      // On what, so a cast line names its spell (laptop pass 6 2026-10-26: "spends 1 1st-level slots").
+      on: action.label,
+    });
   }
   spendAvailability(ctx, working, action);
   const standing = rulesetStandingSections(ctx.state).find(({ section }) => at(section.cells));

@@ -903,14 +903,18 @@ function formationTargets(
       }
       quadrant.sort((a, b) => b.def - a.def || a.dist - b.dist);
       const party = Array.from({ length: partyCount }, (_, i) => quadrant[i]?.c ?? home);
-      // Enemies fan out along the two edges meeting at the opposite corner.
+      // Enemies fan out along the far halves of the two edges meeting at the opposite corner: never
+      // along the party's own half, where a fan to the board's far ends set them two steps from it
+      // (laptop pass 6 2026-10-26: "start far apart" in a huge cavern).
+      const midX = (W - 1) / 2;
+      const midY = (H - 1) / 2;
       const enemies: TacticalCoord[] = [];
       for (let i = 0; i < enemyCount; i++) {
         const t = enemyCount <= 1 ? 0.5 : i / (enemyCount - 1);
         if (i % 2 === 0) {
-          enemies.push({ x: opposite.x, y: Math.round(t * (H - 1)) });
+          enemies.push({ x: opposite.x, y: Math.round(midY + (opposite.y - midY) * t) });
         } else {
-          enemies.push({ x: Math.round((opposite.x === 0 ? t : 1 - t) * (W - 1)), y: opposite.y });
+          enemies.push({ x: Math.round(midX + (opposite.x - midX) * t), y: opposite.y });
         }
       }
       return { party, enemies };

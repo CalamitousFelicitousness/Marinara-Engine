@@ -2058,6 +2058,66 @@ const dataDir = mkdtempSync(join(tmpdir(), "marinara-creature-sheets-"));
     assert.match(said, /Ash Mage was given a sheet for Kindle Heart, Spark Lash \(Twin\), at /);
     assert.match(said, /Ash Mage: this ruleset has no entry called "Moon Dance", so it was not given\./);
     assert.match(said, /so its spells have the pools they are paid out of\./);
+    // Written with numbers and no sheet, its spells beside them, it is given that sheet and keeps
+    // its numbers; a boss's spell priced out of its points is a Cantrip bought with them (laptop pass
+    // 6 2026-10-26: a legendary Archmage with Ray of Frost and Chill Touch at a cost of 1 only swung
+    // its staff).
+    const numbered = (boss: boolean) =>
+      started({
+        definition: classed,
+        cards: [card("Brenna", fighterBuild())],
+        party: [{ id: "brenna", name: "Brenna" }],
+        enemies: [
+          {
+            id: "veyl",
+            name: "Archmage Veyl",
+            tier: "cr_2",
+            boss,
+            points: 3,
+            proposed: {
+              tier: "cr_2",
+              health: 40,
+              defense: 13,
+              initiativeModifier: 2,
+              actions: [
+                {
+                  id: "staff",
+                  name: "Staff",
+                  budget: "action",
+                  toHit: 5,
+                  reach: 5,
+                  damage: { dice: "1d8", flat: 2, type: "bludgeoning" },
+                },
+              ],
+            },
+            attacks: [
+              { name: "Staff" },
+              { name: "Frost Mote", spell: true, legendary: 1 },
+              { name: "Spark Lash", spell: true },
+              { name: "Grave Bolt", spell: true },
+            ],
+          },
+        ],
+      }).rulesetFight!;
+    const legendary = numbered(true);
+    const veyl = who(legendary.encounter, "veyl");
+    const lines = legendary.adjustments.join("; ");
+    assert.deepEqual(
+      veyl.sheet?.build.lists.spells?.map((row) => row.name),
+      ["Frost Mote", "Spark Lash"],
+      lines,
+    );
+    assert.match(lines, /Archmage Veyl was given a sheet for Frost Mote, Spark Lash\./);
+    assert.match(lines, /Archmage Veyl may spend 3 points between turns on Cantrip\./);
+    assert.ok(
+      veyl.actions.some((one) => one.label === "Staff"),
+      veyl.actions.map((one) => one.label).join(", "),
+    );
+    assert.match(lines, /Archmage Veyl: this ruleset has no entry called "Grave Bolt", so it was not given\./);
+    assert.equal(veyl.actions.find((one) => one.id.endsWith("legendary_cantrip"))?.signature?.cost, 1);
+    assert.equal(rulesetCombatHealth(classed, classed.combat!, veyl).max, 40, "its own health kept");
+    // Not a boss, nothing is bought with points.
+    assert.ok(!who(numbered(false).encounter, "veyl").actions.some((one) => one.signature));
   }
   // A legendary one (a boss with Legendary Resistance) keeps all it can cast; uncastable still goes.
   const legend = started({

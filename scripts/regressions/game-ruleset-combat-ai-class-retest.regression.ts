@@ -1326,6 +1326,26 @@ try {
     assert.equal(pick?.option.id, "bite", JSON.stringify(pick?.option.id));
   }
 
+  // ── A party half held helpless is not finished off through the held at a usual table (laptop pass 6
+  //    2026-10-26: ghoul paralysis and a Hold Person wiped a party in a Moderate fight) ──
+  {
+    const scene = fight([
+      { id: "pell", name: "pell", side: "party", block: block([poke]), at: { x: 5, y: 5 } },
+      { id: "fen", name: "fen", side: "party", block: block([poke]), at: { x: 6, y: 4 } },
+      { id: "orc", name: "orc", side: "enemy", block: block([smash]), at: { x: 6, y: 5 } },
+    ]);
+    rulesetCombatant(scene.encounter, "pell")!.tracked.push({
+      condition: "paralyzed",
+      rounds: 10,
+      sourceId: "orc",
+    } as never);
+    scene.encounter.turn = 2;
+    const struck = () => pickRulesetChoice(definition, scene.state, scene.encounter, "orc")?.targetId;
+    assert.equal(struck(), "fen", "the one still free");
+    scene.state.difficulty = "hard" as never;
+    assert.equal(struck(), "pell", "a hard table's foe takes the critical");
+  }
+
   // ── What ends with another put on with it lasts as that one does: Hideous Laughter's incapacitated,
   //    as long as its laughing (laptop 2026-10-25: a Counterspell let it go at its own caster) ──
   {

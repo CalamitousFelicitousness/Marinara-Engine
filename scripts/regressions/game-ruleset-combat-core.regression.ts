@@ -1138,6 +1138,7 @@ const labels = (definition: RulesetDefinition, state: RulesetEncounterState, id:
     pool: "slots_3",
     label: "3rd-level slots",
     amount: 1,
+    on: "Fireball",
   });
   const hits = eventsOf(blast.events, "damage");
   assert.deepEqual(
@@ -1759,6 +1760,7 @@ const labels = (definition: RulesetDefinition, state: RulesetEncounterState, id:
     pool: "luck",
     label: "Luck",
     amount: 1,
+    on: "Hold the Line",
   });
   assert.equal(firstOf(steady.events, "temporary").amount, 2);
   assert.equal(pool(steady.state, "juno", "luck").value, 2, "the sheet is where the price came from");

@@ -3621,7 +3621,8 @@ export type RulesetCombatEvent =
     }
   /** `uncommanded` (1.543): a called creature whose caller did not pay for its turn. */
   | { type: "skip"; actorId: string; reason: "daze" | "uncommanded" | "wild" }
-  | { type: "spend"; actorId: string; pool: string; label: string; amount: number }
+  /** `on`: what it was spent on, by its label. */
+  | { type: "spend"; actorId: string; pool: string; label: string; amount: number; on?: string }
   | { type: "budget"; actorId: string; budget: string; left: number }
   | { type: "uses"; actorId: string; optionId: string; label: string; left: number; of: number }
   /** Cast by praying (1.771, the ruleset's `combat.poses.divine`): told by the fight's director as

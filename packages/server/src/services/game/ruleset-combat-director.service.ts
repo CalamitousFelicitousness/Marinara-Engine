@@ -97,6 +97,7 @@ import {
   rulesetCombatStanding,
   rulesetHiddenFrom,
   rulesetStandardName,
+  rulesetStandardBudget,
   rulesetContestChance,
   rulesetProposedCreatureSchema,
   rulesetEncounterOutcome,
@@ -604,7 +605,17 @@ export interface RulesetFightOpponent {
   creatureType?: string;
   /** The attacks the Game Master wrote for it in the Engine's own terms, by name, and whether each is
    *  a reaction: what names an invented one's strikes, and which bestiary reactions it borrows. */
-  attacks?: Array<{ name: string; reaction?: string; kind?: "heal" | "buff" | "debuff" }>;
+  attacks?: Array<{
+    name: string;
+    reaction?: string;
+    kind?: "heal" | "buff" | "debuff";
+    /** Written as a spell: looked for among this ruleset's entries as a heal or a buff is. */
+    spell?: true;
+    /** What it costs out of a boss's points between turns, as the Game Master wrote it. */
+    legendary?: number;
+  }>;
+  /** A boss's points to spend between turns, as the Game Master wrote it. */
+  points?: number;
 }
 
 export interface RulesetFightSeed {
@@ -889,8 +900,14 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
     // class that pays for them, its tier's numbers, its attacks as written (laptop pass 5 2026-10-26:
     // a Cult Healer, Druid and Enchanter built from a tier's numbers alone cast nothing). What this
     // ruleset has no entry for is said, and left off.
-    if (!proposed && definition.combat?.threat?.tiers?.length) {
-      const named = (opponent.attacks ?? []).filter((attack) => attack.kind && !attack.reaction).map((one) => one.name);
+    // So is one written with numbers and no sheet (laptop pass 6 2026-10-26: an Archmage given health,
+    // defense and saves, with Ray of Frost, Chill Touch and Blight as its spells, only swung its staff),
+    // which keeps the numbers it was written with.
+    const numbersOnly = proposed?.success && !proposed.data.sheet ? proposed.data : undefined;
+    if ((!proposed || numbersOnly) && definition.combat?.threat?.tiers?.length) {
+      const named = (opponent.attacks ?? [])
+        .filter((attack) => (attack.kind || attack.spell) && !attack.reaction)
+        .map((one) => one.name);
       let sheet: RulesetSheetBuild = rulesetSheetBuildSchema.parse({});
       const missing: string[] = [];
       for (const name of named) {
@@ -903,19 +920,73 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
         else missing.push(name);
       }
       if (Object.values(sheet.lists ?? {}).some((rows) => rows.length > 0)) {
-        const weapons = (opponent.attacks ?? []).filter((one) => !one.reaction && !one.kind).map((one) => one.name);
-        const tiered = rulesetTierStatBlock(definition, opponent.tier, weapons);
-        if (tiered) {
+        // A spell it has no entry for is the writer's own word for a strike, as its weapons are.
+        const struck = (one: NonNullable<RulesetFightOpponent["attacks"]>[number]) =>
+          !one.reaction && !one.kind && (!one.spell || missing.includes(one.name));
+        const weapons = (opponent.attacks ?? []).filter(struck).map((one) => one.name);
+        const unknown = missing.filter((name) => !weapons.includes(name));
+        const given = named.filter((name) => !missing.includes(name));
+        if (numbersOnly) {
+          // Its strikes are the ones written in its numbers, so a spell with no entry is no strike here.
           for (const name of missing)
             adjustments.push(`${opponent.name}: this ruleset has no entry called "${name}", so it was not given.`);
-          adjustments.push(
-            `${opponent.name} was given a sheet for ${named.filter((name) => !missing.includes(name)).join(", ")}, at ${tiered.tier.label}.`,
-          );
+          adjustments.push(`${opponent.name} was given a sheet for ${given.join(", ")}.`);
+          proposed = { success: true, data: { ...numbersOnly, sheet } } as unknown as typeof proposed;
+        }
+        const tiered = numbersOnly ? null : rulesetTierStatBlock(definition, opponent.tier, weapons);
+        if (tiered) {
+          for (const name of unknown)
+            adjustments.push(`${opponent.name}: this ruleset has no entry called "${name}", so it was not given.`);
+          adjustments.push(`${opponent.name} was given a sheet for ${given.join(", ")}, at ${tiered.tier.label}.`);
           proposed = {
             success: true,
             data: { tier: tiered.tier.id, actions: tiered.block.actions, sheet },
           } as unknown as typeof proposed;
         }
+      }
+    }
+    // What a boss's writer gave a price out of its points is bought with them between turns, as a
+    // bestiary's legendary actions are (laptop pass 6 2026-10-26: a legendary Archmage's Ray of Frost
+    // and Chill Touch at a cost of 1 were never cast): a spell at 1 as a lich's Cantrip, a dearer one as
+    // any spell of its own, and a strike as itself.
+    const pricedOut = (opponent.attacks ?? []).filter((one) => !one.reaction && (one.legendary ?? 0) > 0);
+    if (proposed?.success && opponent.boss && (opponent.points ?? 0) > 0 && pricedOut.length > 0) {
+      const points = Math.min(20, opponent.points!);
+      const data = proposed.data;
+      type Bought = (typeof data.actions)[number];
+      const bought: Bought[] = [];
+      const cost = (one: (typeof pricedOut)[number]) => Math.min(points, one.legendary!);
+      const spells = pricedOut.filter((one) => one.spell || one.kind);
+      const cheap = spells.filter((one) => cost(one) === 1);
+      if (cheap.length > 0)
+        bought.push({
+          id: "legendary_cantrip",
+          name: "Cantrip",
+          budget: rulesetStandardBudget(combat),
+          casting: { cantripsOnly: true },
+          signature: { cost: 1 },
+        } as Bought);
+      const dear = spells.filter((one) => cost(one) > 1);
+      if (dear.length > 0)
+        bought.push({
+          id: "legendary_spell",
+          name: "Cast a Spell",
+          budget: rulesetStandardBudget(combat),
+          casting: {},
+          signature: { cost: Math.min(...dear.map(cost)) },
+        } as Bought);
+      for (const one of pricedOut.filter((attack) => !spells.includes(attack))) {
+        const own = data.actions.find((action) => action.name.toLowerCase() === one.name.toLowerCase());
+        if (own && !own.signature) bought.push({ ...own, id: `legendary_${own.id}`, signature: { cost: cost(one) } });
+      }
+      if (bought.length > 0) {
+        proposed = {
+          success: true,
+          data: { ...data, signaturePoints: data.signaturePoints ?? points, actions: [...data.actions, ...bought] },
+        } as unknown as typeof proposed;
+        adjustments.push(
+          `${opponent.name} may spend ${points} points between turns on ${bought.map((one) => one.name).join(", ")}.`,
+        );
       }
     }
     // An invented one's reactions, written as the Engine's own attacks (laptop playtest 2026-10-25: a
@@ -5631,9 +5702,23 @@ function rulesetFormWorth(
   const hurt = 1 - health.value / Math.max(1, health.max);
   const foeMean = rulesetSideHealthMean(definition, combat, encounter, foes[0]!.side);
   const gained = Math.max(0, rulesetBlockBlow(form.block) - rulesetEveryTurnBlow(actor));
-  const body = Math.min(1, (form.block.health ?? 0) / Math.max(1, health.max)) * (0.3 + 0.5 * hurt);
-  // A caster with a harmful spell to pay for keeps casting it instead.
-  const casts = actor.actions.some((action) => !!action.use && !!action.damage) ? 0.4 : 0;
+  // Health it loses before its own, as good as as much healing once it is hurt (laptop pass 6
+  // 2026-10-26: a druid 4 with Wild Shape on offer every turn of six never took it).
+  const body = Math.min(1, (form.block.health ?? 0) / Math.max(1, health.max)) * (0.4 + 0.6 * hurt);
+  // A caster with a harmful spell it can still pay for keeps casting it instead; out of slots, the
+  // form is what it has left.
+  const pools = actor.sheet
+    ? readRulesetLive(definition, actor.sheet.build, actor.sheet.live, actor.sheet.items).pools.map((pool) => pool.key)
+    : [];
+  const casts = actor.actions.some(
+    (action) =>
+      !!action.use &&
+      !!action.damage &&
+      (!actor.sheet ||
+        [undefined, ...pools].some((pool) => planRulesetCombatCost(definition, actor, action, pool) !== null)),
+  )
+    ? 0.4
+    : 0;
   return Math.min(1.5, (2 * 0.6 * gained) / Math.max(1, foeMean) + body - casts);
 }
 
@@ -6780,6 +6865,26 @@ function rulesetPassingUnit(actor: RulesetCombatant): CombatDirectorState["party
   };
 }
 
+/** The party members an opponent eases off (laptop pass 6 2026-10-26): at a casual or a normal table,
+ *  for one not cruel, those held open to criticals while half the party or more is so held or down
+ *  and somebody of it still stands free. */
+function rulesetSparedHelpless(
+  definition: RulesetDefinition,
+  state: CombatDirectorState,
+  encounter: RulesetEncounterState,
+  actor: RulesetCombatant,
+): Set<string> {
+  const none = new Set<string>();
+  if (actor.side !== "enemy" || actor.temperament === "cruel") return none;
+  const difficulty = normalizeGameDifficulty(state.difficulty);
+  if (difficulty !== "casual" && difficulty !== "normal") return none;
+  const party = encounter.combatants.filter((one) => one.side === "party" && one.calledBy === undefined);
+  const standing = party.filter((one) => rulesetCombatStanding(one) && !one.down);
+  const held = standing.filter((one) => rulesetSetUpWay(definition, encounter, one) === "critical");
+  if (held.length === 0 || held.length === standing.length) return none;
+  return held.length + (party.length - standing.length) >= party.length / 2 ? new Set(held.map((one) => one.id)) : none;
+}
+
 /** The candidates of a pick, weighed by everything the unit is and was told; `only` where there is
  *  nothing to weigh. */
 function weighChoices(
@@ -6901,13 +7006,33 @@ function weighChoices(
       )
         candidate.focus = (candidate.focus ?? 0) + 0.6;
   }
+  // At an easy or a usual table, a party half held helpless or down is not finished off through those
+  // held (laptop pass 6 2026-10-26: a Moderate fight's ghoul paralysis and a Hold Person wiped the
+  // party, every blow on the held a critical): while one of them still stands free, a blow on the
+  // held counts for less than the best blow on the free (half, with none in reach), and is not
+  // followed through. A cruel one, and a hard table, still take it.
+  const spared = rulesetSparedHelpless(definition, state, encounter, actor);
+  if (spared.size > 0) {
+    const free = Math.max(
+      0,
+      ...candidates
+        .filter(
+          (one) =>
+            one.targetId && !spared.has(one.targetId) && rulesetCombatant(encounter, one.targetId)?.side !== actor.side,
+        )
+        .map((one) => one.damage ?? 0),
+    );
+    for (const candidate of candidates)
+      if (candidate.targetId && spared.has(candidate.targetId) && (candidate.damage ?? 0) > 0)
+        candidate.damage = free > 0 ? Math.min(candidate.damage!, free * 0.9) : candidate.damage! * 0.5;
+  }
   // What its side has set up is followed through (Alyssa 2026-10-24): a blow at an opponent held open
   // to it, every blow from beside it a critical (a paladin's smites on a held foe) or at advantage,
   // the called-out one first. The dice a critical doubles are counted in the blow itself.
   if (unit.tactics!.mind !== "mindless")
     for (const candidate of candidates) {
       const target = candidate.targetId ? rulesetCombatant(encounter, candidate.targetId) : undefined;
-      if (!target || target.side === actor.side || !(candidate.damage ?? 0)) continue;
+      if (!target || target.side === actor.side || !(candidate.damage ?? 0) || spared.has(target.id)) continue;
       const way = rulesetSetUpWay(definition, encounter, target);
       if (way) candidate.focus = (candidate.focus ?? 0) + (way === "critical" ? 0.25 : 0.1);
     }

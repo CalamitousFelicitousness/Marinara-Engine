@@ -22,6 +22,7 @@ import {
   rowsFromCatalogEntry,
   rulesetCombatant,
   rulesetCombatOptions,
+  rulesetOptionTargets,
   rulesetSheetBuildSchema,
   rulesetWindowOptions,
   supportedCapabilityApi,
@@ -66,6 +67,14 @@ try {
       area: { shape: "burst", size: 5 },
       amount: { flat: 3 },
       damageType: "lightning",
+    }),
+    spell("glare", 0, {
+      kind: "attack",
+      autoHit: true,
+      range: 120,
+      amount: { flat: 2 },
+      damageType: "psychic",
+      seen: true,
     }),
     spell("flare", 1, { kind: "attack", autoHit: true, range: 120, amount: { flat: 10 }, damageType: "radiant" }),
     spell("brace", 3, {
@@ -134,6 +143,7 @@ try {
         spells: [
           { entry: "spells/bolt" },
           { entry: "spells/spark" },
+          { entry: "spells/glare" },
           { entry: "spells/flare", level: 1, uses: { per: "day", count: 1 } },
         ],
       },
@@ -217,6 +227,15 @@ try {
     assert.equal(bolt.budget, undefined, "points, not a budget");
     assert.deepEqual(bolt.targets, { side: "enemy", count: 1 }, "aimed as on its turn");
     assert.ok(menu(state).find((one) => one.id === "cantrip>spells/spark")!.area, "a shape to aim");
+  }
+
+  // ── Aimed by the spell's own rules: nobody it cannot see for a spell that needs sight (cloud
+  //    re-test 2026-10-26: a Hold Person bought with points picked an invisible halfling four times) ──
+  {
+    const state = between(fight());
+    who(state, "fighter").hiding = { from: ["lich"] } as never;
+    const glare = menu(state).find((one) => one.id === "cantrip>spells/glare")!;
+    assert.deepEqual(rulesetOptionTargets(definition, state, "lich", glare), ["mage"], "not the hidden fighter");
   }
 
   // ── A cantrip at the fighter: the next turn begins, the lich's own turn untouched ──

@@ -674,7 +674,14 @@ function actionOf(actor: RulesetCombatant, optionId: string): RulesetCombatActio
   const id = optionId.startsWith(RULESET_LAIR_OPTION_PREFIX)
     ? optionId.slice(RULESET_LAIR_OPTION_PREFIX.length)
     : optionId;
-  return actor.actions.find((entry) => entry.id === id);
+  const own = actor.actions.find((entry) => entry.id === id);
+  if (own) return own;
+  // A spell a legendary cast offers (1.284) is aimed as the spell itself: without this its sight,
+  // area and target rules went unread (cloud re-test 2026-10-26: a Hold Person bought with points
+  // picked an invisible halfling four times and was refused each time).
+  const cut = id.indexOf(">");
+  if (cut < 0 || !actor.actions.find((entry) => entry.id === id.slice(0, cut))?.casting) return undefined;
+  return actor.actions.find((entry) => entry.id === id.slice(cut + 1));
 }
 
 /**

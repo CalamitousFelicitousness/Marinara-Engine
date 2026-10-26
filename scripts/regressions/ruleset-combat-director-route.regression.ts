@@ -1358,6 +1358,23 @@ try {
     assert.equal(desperate.value, desperate.max, "only one was kept, so the other is fresh");
     const rewordedRow = (await engineStates.getByChatAndMessage(away.chat.id, third.id, 0, COMBAT_DIRECTOR_NAMESPACE))!;
     assert.deepEqual(JSON.parse(rewordedRow.state).rulesetFight.returnedFrom, ["hedge mender"]);
+    // Several marked of the name are a group told apart, not the one coming back (laptop pass 5
+    // 2026-10-26: two of four "Cult Thug (…)" linked to two kept from earlier fights).
+    const fourth = await chats.createMessage({ chatId: away.chat.id, role: "assistant", content: "[state: combat]" });
+    const group = await post(
+      "/combat/start",
+      fightBody(fourth.id, [
+        { ...unit("mender7", "Hedge Mender (Left)", "enemy"), creature: "creatures/hedge-mender" },
+        { ...unit("mender8", "Hedge Mender (Right)", "enemy"), creature: "creatures/hedge-mender" },
+      ]),
+    );
+    assert.equal(group.statusCode, 200, group.body);
+    const grouped = group.json().session as DirectedCombatView;
+    for (const id of ["mender7", "mender8"]) {
+      const health = grouped.ruleset!.combatants.find((one) => one.id === id)!.health;
+      assert.equal(health.value, health.max, `${id} is a fresh one`);
+    }
+    assert.ok(!grouped.ruleset!.adjustments.some((line) => line.includes("the same one the party met before")));
   }
 
   console.log(

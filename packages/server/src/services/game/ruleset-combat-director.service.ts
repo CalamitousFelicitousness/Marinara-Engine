@@ -156,6 +156,7 @@ import {
   RULESET_PROPOSED_SHEET_REPLACES,
   rulesetProposedStatBlock,
   rulesetTierStatBlock,
+  rulesetSheetBuildSchema,
   rulesetBestiaryReaction,
   rulesetWindowMoment,
   rulesetZonesShown,
@@ -227,6 +228,7 @@ import {
   rulesetCarriedLeft,
   rulesetCombatantFlying,
   withRulesetSheetEvaluationCache,
+  type RulesetSheetBuild,
 } from "@marinara-engine/shared";
 import { logger } from "../../lib/logger.js";
 import { combatDirectorView, type CombatDirectorState } from "./combat-director.service.js";
@@ -872,8 +874,41 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
       if (found.entry.creature?.inventory) inventories.set(opponent.id, found.entry.creature.inventory);
       continue;
     }
-    const proposed =
-      opponent.proposed === undefined ? null : rulesetProposedCreatureSchema.safeParse(opponent.proposed);
+    let proposed = opponent.proposed === undefined ? null : rulesetProposedCreatureSchema.safeParse(opponent.proposed);
+    // One written with no sheet and spells or features by name beside its attacks ("Cure Wounds",
+    // "Wild Shape (Bear)") is given a sheet of those entries, and built as an invented caster is: the
+    // class that pays for them, its tier's numbers, its attacks as written (laptop pass 5 2026-10-26:
+    // a Cult Healer, Druid and Enchanter built from a tier's numbers alone cast nothing). What this
+    // ruleset has no entry for is said, and left off.
+    if (!proposed && definition.combat?.threat?.tiers?.length) {
+      const named = (opponent.attacks ?? []).filter((attack) => attack.kind && !attack.reaction).map((one) => one.name);
+      let sheet: RulesetSheetBuild = rulesetSheetBuildSchema.parse({});
+      const missing: string[] = [];
+      for (const name of named) {
+        const plain = name.replace(/\s*\([^)]*\)\s*$/, "").trim();
+        const tries = plain && plain !== name ? [name, plain] : [name];
+        const found = tries
+          .map((one) => rulesetProposedSheetWithEntries(definition, sheet, [one], input.bestiary))
+          .find((one) => one.missing.length === 0);
+        if (found) sheet = found.sheet;
+        else missing.push(name);
+      }
+      if (Object.values(sheet.lists ?? {}).some((rows) => rows.length > 0)) {
+        const weapons = (opponent.attacks ?? []).filter((one) => !one.reaction && !one.kind).map((one) => one.name);
+        const tiered = rulesetTierStatBlock(definition, opponent.tier, weapons);
+        if (tiered) {
+          for (const name of missing)
+            adjustments.push(`${opponent.name}: this ruleset has no entry called "${name}", so it was not given.`);
+          adjustments.push(
+            `${opponent.name} was given a sheet for ${named.filter((name) => !missing.includes(name)).join(", ")}, at ${tiered.tier.label}.`,
+          );
+          proposed = {
+            success: true,
+            data: { tier: tiered.tier.id, actions: tiered.block.actions, sheet },
+          } as unknown as typeof proposed;
+        }
+      }
+    }
     // An invented one's reactions, written as the Engine's own attacks (laptop playtest 2026-10-25: a
     // duelist's "Parry" never fired), are each the reaction this ruleset's bestiary has by that name;
     // one it has nowhere is said, since nothing in the fight could take it.
@@ -933,7 +968,7 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
     if (proposed?.success && proposed.data.sheet) {
       const said = (line: string) => adjustments.push(`${opponent.name}: ${line}`);
       const beside = RULESET_PROPOSED_SHEET_REPLACES.filter(
-        (key) => (opponent.proposed as Record<string, unknown>)[key] !== undefined,
+        (key) => (opponent.proposed as Record<string, unknown> | undefined)?.[key] !== undefined,
       );
       if (beside.length > 0)
         said(`its sheet says its ${beside.join(", ")}, so the numbers written beside it were not used.`);

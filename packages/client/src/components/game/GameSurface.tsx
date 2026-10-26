@@ -9418,6 +9418,19 @@ function GameSurfaceComponent({
       ),
     );
   }, [chatMeta.gameStartingGearTaken]);
+  // A game whose ruleset offers starting gear, with none taken and an empty inventory, says so once,
+  // with the way to it: never taken for the player (laptop pass 5 2026-10-26: a fighter and a cleric
+  // started at AC 10, the kits never offered).
+  const startingGearNudged = useRef<string | null>(null);
+  const startingGearOffered = gameRuleset.status === "ok" && !!gameRuleset.definition.items?.startingGear?.length;
+  useEffect(() => {
+    if (!startingGearOffered || startingGearNudged.current === chat.id) return;
+    if (Object.keys(startingGearTaken).length > 0 || inventoryItems.length > 0) return;
+    startingGearNudged.current = chat.id;
+    toast.info(localizeUi("game.ruleset.startingGear.nudge"), {
+      action: { label: localizeUi("game.ruleset.startingGear.button"), onClick: () => setInventoryOpen(true) },
+    });
+  }, [startingGearOffered, chat.id, startingGearTaken, inventoryItems, localizeUi]);
   const handleTakeStartingGear = useCallback(
     async (
       holder: string | undefined,

@@ -3525,6 +3525,7 @@
   "game.ruleset.startingGear.fits": "Fits {{who}}'s sheet",
   "game.ruleset.startingGear.for": "For",
   "game.ruleset.startingGear.intro": "Gear to start with, taken only if you want it. Gear this character's sheet fits is listed first; any other gear is theirs to take if the Game Master agrees. Take one kit at a time: once it is taken, pick the next, such as a class kit and then a background kit.",
+  "game.ruleset.startingGear.nudge": "Nobody in the party has taken starting gear yet. The ruleset's kits are in the inventory.",
   "game.ruleset.startingGear.other": "Other gear",
   "game.ruleset.startingGear.otherHint": "Not what this sheet is built for. Take it with the Game Master's agreement.",
   "game.ruleset.startingGear.pickCount_one": "Pick one",

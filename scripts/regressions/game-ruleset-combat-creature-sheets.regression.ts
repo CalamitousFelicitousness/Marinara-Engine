@@ -2010,6 +2010,55 @@ const dataDir = mkdtempSync(join(tmpdir(), "marinara-creature-sheets-"));
     assert.equal(named.sheet.fields.slots_max_2, 1);
     assert.equal(named.sheet.fields.class, "Sorcerer", "what it wrote stays");
   }
+  // Written with no sheet, its spells named beside its attacks, it is given a sheet of them and the
+  // pools they are paid from, and its attacks as written (laptop pass 5 2026-10-26: a Cult Healer and
+  // an Enchanter built from a tier's numbers alone cast nothing).
+  {
+    const classed = structuredClone(spellbook);
+    classed.catalogs!.push({
+      id: "classes",
+      label: "Classes",
+      feeds: ["spells"],
+      entries: [
+        {
+          id: "sorcerer",
+          label: "Sorcerer",
+          grants: { sets: { class: "Sorcerer", spellcasting_ability: "cha", slots_max_1: 2 } },
+        },
+      ],
+    } as never);
+    const sheetless = started({
+      definition: classed,
+      cards: [card("Brenna", fighterBuild())],
+      party: [{ id: "brenna", name: "Brenna" }],
+      enemies: [
+        {
+          id: "mage",
+          name: "Ash Mage",
+          tier: "cr_2",
+          attacks: [
+            { name: "Ash Knife" },
+            { name: "Kindle Heart", kind: "heal" },
+            { name: "Spark Lash (Twin)", kind: "debuff" },
+            { name: "Moon Dance", kind: "buff" },
+          ],
+        },
+      ],
+    }).rulesetFight!;
+    const mage = who(sheetless.encounter, "mage");
+    assert.deepEqual(
+      mage.sheet?.build.lists.spells?.map((row) => row.name),
+      ["Kindle Heart", "Spark Lash"],
+    );
+    assert.ok(
+      mage.actions.some((one) => one.label === "Ash Knife"),
+      mage.actions.map((one) => one.label).join(", "),
+    );
+    const said = sheetless.adjustments.join("; ");
+    assert.match(said, /Ash Mage was given a sheet for Kindle Heart, Spark Lash \(Twin\), at /);
+    assert.match(said, /Ash Mage: this ruleset has no entry called "Moon Dance", so it was not given\./);
+    assert.match(said, /so its spells have the pools they are paid out of\./);
+  }
   // A legendary one (a boss with Legendary Resistance) keeps all it can cast; uncastable still goes.
   const legend = started({
     definition: spellbook,

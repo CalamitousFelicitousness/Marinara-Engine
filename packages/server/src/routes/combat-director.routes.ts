@@ -43,6 +43,7 @@ import {
   combatInterruptFields,
   combatOrdersSchema,
   type CombatOrders,
+  normalizeCharacterLookupName,
   combatTacticsSchema,
   combatAiHintsSchema,
   rulesetBestiarySheetCatalogIds,
@@ -409,13 +410,22 @@ const RULESET_PROPOSED_FIELDS = ":fields";
  *  them too, whether a proposal wrote it or not, because its open choices are filled from there. */
 export function proposedSheetLists(
   definition: RulesetDefinition,
-  enemies: ReadonlyArray<{ proposed?: unknown; attacks?: ReadonlyArray<{ reaction?: unknown }> }>,
+  enemies: ReadonlyArray<{ proposed?: unknown; attacks?: ReadonlyArray<{ reaction?: unknown; kind?: unknown }> }>,
 ): Set<string> {
   const lists = new Set<string>();
   for (const enemy of enemies) {
     // A reaction it was given by name may be an entry of the ruleset's own (a Counterspell that is a
-    // spell), read off whichever list that entry's catalog feeds.
-    if (enemy.attacks?.some((attack) => attack.reaction)) for (const list of definition.sheet.lists) lists.add(list.id);
+    // spell), read off whichever list that entry's catalog feeds; and so may a spell or a feature
+    // written beside the attacks of one with no sheet, which it is given a sheet for, with a class.
+    const sheetless = enemy.proposed === undefined && !!enemy.attacks?.some((attack) => attack.kind);
+    if (sheetless || enemy.attacks?.some((attack) => attack.reaction))
+      for (const list of definition.sheet.lists) lists.add(list.id);
+    if (sheetless) {
+      lists.add(RULESET_PROPOSED_FIELDS);
+      for (const catalog of definition.catalogs ?? [])
+        if (catalog.holds !== "items" && catalog.holds !== "creatures")
+          for (const list of catalog.feeds ?? []) lists.add(list);
+    }
     const sheet = (enemy.proposed as { sheet?: { lists?: unknown } } | undefined)?.sheet;
     if (!sheet || typeof sheet !== "object") continue;
     if (sheet.lists && typeof sheet.lists === "object") for (const id of Object.keys(sheet.lists)) lists.add(id);
@@ -1188,6 +1198,20 @@ export async function combatDirectorRoutes(
             const same = input.enemies.flatMap((other, at) => (rulesetReturningFoeKey(other.name) === key ? [at] : []));
             const marked = same.filter((at) => rulesetReturningFoeMarked(input.enemies[at]!.name));
             const plain = same.filter((at) => !marked.includes(at));
+            // Several marked of a name not of the story are the Game Master telling a group apart
+            // ("Cult Thug (Crossbow)", "Cult Thug (Mace)"), not one coming back: each takes only the
+            // kept one written as it is (laptop pass 5 2026-10-26: two of four Cult Thugs linked).
+            if (marked.length > 1 && !stored[0]!.named) {
+              const left = [...stored];
+              for (const at of marked) {
+                const same = left.findIndex(
+                  (foe) =>
+                    normalizeCharacterLookupName(foe.name) === normalizeCharacterLookupName(input.enemies[at]!.name),
+                );
+                if (same >= 0) backAs[at] = left.splice(same, 1)[0];
+              }
+              continue;
+            }
             const takers = [...marked, ...(same.length === 1 || stored[0]!.named ? plain : [])];
             takers.forEach((at, index) => {
               if (stored[index]) backAs[at] = stored[index];
@@ -1325,6 +1349,7 @@ export async function combatDirectorRoutes(
               if (unit.tactics) unit.tactics.adjective = temperament;
             }
             built.fight.adjustments.push(`${input.enemies[index]!.name} is the same one the party met before.`);
+            logger.info("[combat-director/start] %s comes back as %s", input.enemies[index]!.name, back.name);
           });
           // The Engine's own party array follows the fight's: a sheet the setup left out joins it, a
           // member with no sheet leaves it, and a stand-in carries its card's name (2026-10-23 playtest).

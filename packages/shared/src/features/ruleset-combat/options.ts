@@ -6398,7 +6398,11 @@ function windowOptions(
   const window = state.window;
   if (!combat || !window || window.waiting[0] !== actorId) return [];
   // Points, not a budget, and priced and checked where every other signature option is.
-  if (window.kind === "signature") return rulesetSignatureOptions(definition, state, actorId);
+  // At a turn's start (1.795), a lair's actions keep their own count and are not offered.
+  if (window.kind === "signature")
+    return rulesetSignatureOptions(definition, state, actorId).filter(
+      (option) => window.trigger.kind !== "turn-start" || !option.lairOf,
+    );
   if (window.kind === "spend") return spendWindowOptions(definition, state, window);
 
   const actor = rulesetCombatant(state, actorId);

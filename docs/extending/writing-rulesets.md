@@ -5282,8 +5282,14 @@ Seven things open one, and two of them come out of what you already declared:
   step and asks them. See Strikes at somebody walking away, above.
 - **Between one turn and the next.** When a turn ends, every opponent holding `signaturePoints` who
   can afford one of its own `signature` actions is asked whether to buy one, before the next turn
-  begins. That is the only moment they are bought in: a signature action is on nobody's turn menu,
-  its own included.
+  begins. That is the only moment they are bought in unless `combat.signatureAtTurnStart` says
+  otherwise: a signature action is on nobody's turn menu, its own included.
+- **A foe's turn starts** (Capability API 1.795). With `"combat": {"signatureAtTurnStart": true}`,
+  everybody holding `signaturePoints` is also asked as an opponent's turn starts, once what that
+  start sets off (conditions, saves, reactions) has happened and before the opponent acts: a boss
+  answering the hero about to act, as a generic fight's anticipation does. A lair's actions keep
+  their own count and are not offered there. Left out, signature actions are bought only between
+  turns, as 5e's legendary actions are. A ruleset using it needs Capability API 1.795.
 - **Somebody uses something.** Before it resolves, everybody on the OTHER side holding an entry
   waiting for that moment is asked, whoever it is aimed at, as long as that entry reaches whoever is
   using it. A standard action and a contest open no such moment.

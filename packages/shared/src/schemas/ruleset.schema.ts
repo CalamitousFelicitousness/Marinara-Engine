@@ -16331,6 +16331,10 @@ const combatObjectSchema = z
      *  out, every style is offered. A ruleset whose rules need a board (areas, reach, cover) lists
      *  `["tactical"]`. */
     styles: z.array(z.string().regex(GAME_COMBAT_STYLE_ID_PATTERN)).min(1).max(8).optional(),
+    /** Signature actions also bought as a foe's turn starts (Capability API 1.795): a boss may answer
+     *  the hero about to act, as well as between two turns. Left out, they are bought only between
+     *  turns, as 5e's legendary actions are; a lair's actions keep their own count either way. */
+    signatureAtTurnStart: z.boolean().optional(),
     /** What one cell of a board is worth in this system's own distance, and what that distance is
      *  called. Declaring it is what makes a fight positionable at all: without it every fight stays
      *  theatre of the mind, and everything below is refused. */

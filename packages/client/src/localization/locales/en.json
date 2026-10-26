@@ -2645,6 +2645,7 @@
   "game.combat.ruleset.event.windowReadiedComes": "{{mover}} comes in reach, and {{actor}} may take what they readied.",
   "game.combat.ruleset.event.windowSpend": "{{mover}}'s {{label}} left symbols, and {{actor}} chooses what they buy.",
   "game.combat.ruleset.event.windowTurnStart": "{{mover}} starts their turn, and {{actor}} may answer.",
+  "game.combat.ruleset.event.windowTurnStartLegendary": "{{mover}} starts their turn, and {{actor}} may take a legendary action.",
   "game.combat.ruleset.event.windowUsed": "{{mover}} uses {{label}}, and {{actor}} may answer.",
   "game.combat.ruleset.event.zoneAppeared": "{{actor}}’s {{label}} fills the area.",
   "game.combat.ruleset.event.zoneBurning": "{{actor}}’s {{label}} catches fire.",

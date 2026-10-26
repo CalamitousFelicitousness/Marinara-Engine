@@ -11326,7 +11326,7 @@ function windowClosed(
     if (first) {
       if (!ctx.state.acted?.includes(first.id)) (ctx.state.acted ??= []).push(first.id);
       openMoment(ctx, { kind: "turn-start", sourceId: first.id, label: first.name }, ctx.state.combatants);
-      if (!ctx.state.window) {
+      if (!ctx.state.window && !openTurnStartSignature(ctx, first)) {
         completeDelayed(ctx, first);
         continueCasting(ctx, first);
       }
@@ -11334,6 +11334,8 @@ function windowClosed(
   } else if (!over && trigger.kind === "between-turns") beginNextTurn(definition, combat, ctx);
   if (!over && trigger.kind === "turn-start") {
     const actor = rulesetCombatant(ctx.state, trigger.sourceId);
+    // The reactions at its start answered, the points bought at it are asked for next (1.795).
+    if (actor && window.kind === "reaction" && openTurnStartSignature(ctx, actor)) return;
     if (actor) {
       completeDelayed(ctx, actor);
       continueCasting(ctx, actor);
@@ -11424,7 +11426,7 @@ function applySignature(
   if (workingAction.move && path) {
     legendaryMove(ctx, working, workingAction.move, path);
     // Held behind a strike it provoked: the walk asks the window on once it ends.
-    if (ctx.state.window?.trigger.kind === "between-turns") goOn(definition, combat, ctx);
+    if (ctx.state.window?.kind === "signature") goOn(definition, combat, ctx);
   } else goOn(definition, combat, ctx);
   noteOutcome(ctx);
   return finish();
@@ -18734,6 +18736,29 @@ function openSignatureWindow(ctx: RulesetCombatContext): boolean {
   return true;
 }
 
+/** Signature actions bought as a foe's turn starts (Capability API 1.795), where the ruleset's
+ *  `combat.signatureAtTurnStart` allows it: a boss answering the hero about to act, as well as
+ *  between turns. Only the points' own actions are offered, not a lair's, which keep their count. */
+function openTurnStartSignature(ctx: RulesetCombatContext, actor: RulesetCombatant): boolean {
+  if (!ctx.combat.signatureAtTurnStart || !rulesetCombatStanding(actor)) return false;
+  if (rulesetEncounterOutcome(ctx.state) !== "ongoing") return false;
+  const waiting = [...new Set(ctx.state.order)].filter((id) => {
+    const holder = rulesetCombatant(ctx.state, id);
+    return (
+      !!holder &&
+      holder.side !== actor.side &&
+      rulesetSignatureOptions(ctx.definition, ctx.state, id).some((option) => !option.lairOf)
+    );
+  });
+  if (waiting.length === 0) return false;
+  openWindow(ctx, {
+    kind: "signature",
+    trigger: { kind: "turn-start", sourceId: actor.id, label: actor.name },
+    waiting,
+  });
+  return true;
+}
+
 /** Who acts next, read without moving the fight, and whether their turn begins a new round: the
  *  window between two turns says whose turn it is holding up. */
 function nextTurnActor(ctx: RulesetCombatContext): { combatant: RulesetCombatant; wraps: boolean } | null {
@@ -18981,7 +19006,7 @@ function beginNextTurn(
     compelTurn(ctx, actor);
     // What a delay held over is completed before anything else is done this turn.
     openMoment(ctx, { kind: "turn-start", sourceId: actor.id, label: actor.name }, ctx.state.combatants);
-    if (!ctx.state.window) {
+    if (!ctx.state.window && !openTurnStartSignature(ctx, actor)) {
       completeDelayed(ctx, actor);
       // A cast taking rounds carried on (1.446).
       continueCasting(ctx, actor);

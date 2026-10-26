@@ -12697,6 +12697,10 @@ export function getCapabilityPackageInstallIssue(
   ) {
     return "A ruleset whose rest clears temporary points (clear.temp) requires schemaVersion 2 and capabilityApi 1.794 or newer";
   }
+  // Signature actions bought at a foe's turn start, 1.795.
+  if (!declaresApi(795) && plainRecord(plainRecord(ruleset)?.combat)?.signatureAtTurnStart !== undefined) {
+    return "A ruleset whose signature actions are bought at a turn's start (combat.signatureAtTurnStart) requires schemaVersion 2 and capabilityApi 1.795 or newer";
+  }
   // A list's pools counted up rather than spent, 1.791.
   if (
     !declaresApi(791) &&

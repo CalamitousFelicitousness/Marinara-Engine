@@ -23,8 +23,10 @@ import { rulesetCombatRecapLines } from "../../packages/client/src/lib/ruleset-c
 const dataDir = mkdtempSync(join(tmpdir(), "marinara-fight-end-called-"));
 process.env.DATA_DIR = dataDir;
 process.env.FILE_STORAGE_DIR = join(dataDir, "storage");
-const { createRulesetFight } =
+const { createRulesetFight, syncRulesetCombatants } =
   await import("../../packages/server/src/services/game/ruleset-combat-director.service.js");
+const { combatDirectorView, createCombatDirector } =
+  await import("../../packages/server/src/services/game/combat-director.service.js");
 
 try {
   const doc = JSON.parse(
@@ -86,6 +88,54 @@ try {
   assert.equal(rook.span, 2, "whole again");
   assert.equal(rook.squeezedFrom, undefined);
   assert.ok(!rook.tracked.some((entry) => entry.condition === "restrained"), "no longer squeezing");
+
+  // ── A party all at 0 hit points, one still rolling to live: not lost yet (cloud re-test 2026-10-26) ──
+  {
+    const again = createRulesetFight({
+      definition,
+      seed: 7,
+      party: [{ id: "rook", name: "Rook" }],
+      enemies: [{ id: "thing", name: "Thing", tier: "cr_1" }],
+      cards: [{ name: "Rook", rulesetSheet: { v: 1, build } }],
+      playerName: "Rook",
+      live: null,
+      partyCatalogs: {},
+      bestiary,
+    });
+    assert.ok(again.ok, again.ok ? "" : again.error);
+    const unit = (id: string, name: string, side: "player" | "enemy") => ({
+      id,
+      name,
+      side,
+      hp: 30,
+      maxHp: 30,
+      attack: 8,
+      defense: 6,
+      speed: 6,
+      level: 3,
+      skills: [],
+    });
+    const state = createCombatDirector({
+      id: "fight",
+      anchor: "anchor",
+      style: "ruleset",
+      party: [unit("rook", "Rook", "player")],
+      enemies: [unit("thing", "Thing", "enemy")],
+      gm: false,
+      difficulty: "normal",
+      seed: 3,
+    } as never);
+    state.rulesetFight = again.fight;
+    const fallen = again.fight.encounter.combatants.find((one) => one.id === "rook")!;
+    fallen.down = true;
+    fallen.dying = true;
+    syncRulesetCombatants(definition, state);
+    // What the Engine's own units read at 0: no unit on the party's side has hit points left.
+    state.party[0]!.hp = 0;
+    combatDirectorView(state);
+    assert.equal(state.outcome, undefined, "a dying hero keeps the fight going");
+    assert.notEqual(state.stage, "finished");
+  }
   console.log("game-ruleset-fight-end-called: ok");
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

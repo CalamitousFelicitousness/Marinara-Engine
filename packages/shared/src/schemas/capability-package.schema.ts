@@ -1513,7 +1513,8 @@ const capabilityPackageManifestBaseSchema = z
 //        are brought down a rung while a fight is over it.
 // 1.794: a rest's `clear.temp`: every pool's temporary points go as it ends (5e's temporary hit points
 //        at a long rest).
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 794 } as const);
+// 1.795: `combat.signatureAtTurnStart`: signature actions also bought as a foe's turn starts.
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 795 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

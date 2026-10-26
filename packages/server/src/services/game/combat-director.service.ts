@@ -178,8 +178,12 @@ function sync(s: CombatDirectorState) {
     s.enemies = s.tactical.units.filter((u) => u.side === "enemy").map(convert);
     s.tactical.log = s.log.map((e) => ({ kind: "status", text: e.text, actorId: e.actorId, message: e.message }));
   }
-  if (!living(s).some((u) => side(u) === "enemy")) s.outcome = "victory";
-  else if (!living(s).some((u) => side(u) === "party")) s.outcome = "defeat";
+  // A ruleset fight's outcome is the ruleset's own (syncRulesetCombatants): a hero at 0 who is still
+  // rolling to live keeps it going, though no unit has hit points left (cloud re-test 2026-10-26).
+  if (s.style !== "ruleset") {
+    if (!living(s).some((u) => side(u) === "enemy")) s.outcome = "victory";
+    else if (!living(s).some((u) => side(u) === "party")) s.outcome = "defeat";
+  }
   if (s.outcome) {
     s.stage = "finished";
     s.window = undefined;

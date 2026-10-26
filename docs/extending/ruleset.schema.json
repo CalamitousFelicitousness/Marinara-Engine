@@ -224503,6 +224503,9 @@
             ]
           }
         },
+        "signatureAtTurnStart": {
+          "type": "boolean"
+        },
         "distance": {
           "type": "object",
           "properties": {

@@ -167,12 +167,13 @@ const app = Fastify();
 app.decorate("db", db);
 let bossAnswer: string | null = null;
 let bossCalls = 0;
-let lastBossState: unknown = null;
+let firstBossState: unknown = null;
 await app.register(combatDirectorRoutes, {
   prefix: "/combat",
   chooseBoss: async (_db: unknown, _chat: string, asked: unknown) => {
     bossCalls++;
-    lastBossState = asked;
+    // The first since it was cleared: a hero left dying keeps the fight going (no threat by then).
+    firstBossState ??= asked;
     if (bossAnswer === null) throw new Error("the Game Master answered with garbage");
     return bossAnswer;
   },
@@ -865,7 +866,7 @@ try {
     };
     await send({ type: "control", unitId: "brenna", controller: "ai" });
     const callsBefore = bossCalls;
-    lastBossState = null;
+    firstBossState = null;
     let windows = 0;
     for (let guard = 0; guard < 300 && !fight.outcome; guard++) {
       if (fight.window?.controller === "gm") {
@@ -887,7 +888,7 @@ try {
     }
     assert.ok(windows > 0 && bossCalls > callsBefore, "the named opponent's turns went to the Game Master");
     // What it is told: how the opponent fights, the other side by danger, and the companions' orders.
-    const prompt = JSON.parse(buildRulesetCombatBossPrompt(definition, lastBossState as never)[1]!.content) as Record<
+    const prompt = JSON.parse(buildRulesetCombatBossPrompt(definition, firstBossState as never)[1]!.content) as Record<
       string,
       any
     >;

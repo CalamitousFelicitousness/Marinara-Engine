@@ -1094,6 +1094,7 @@ interface UIState {
   roleplayDisplayStyle: "classic" | "visual-novel";
   /** Where the Roleplay messages and input sit on wide screens. Phones always use the full width. */
   roleplayChatPosition: RoleplayChatPosition;
+  /** Null preserves the automatic Roleplay column width. */
   roleplayChatWidthPercent: number | null;
   roleplayVnAutoPlay: boolean;
   roleplayVnAutoPlayDelay: number;

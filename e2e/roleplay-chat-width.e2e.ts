@@ -6,6 +6,7 @@ import { seedUIState } from "./ui-state-fixture.js";
 const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
 const settingsPath = "/api/app-settings/ui";
 const column = '[data-roleplay-chat-column="true"]';
+type PublicUiHost = { __MARINARA_HOST__?: { stores: { ui: PageUiStoreModule["useUIStore"] } } };
 
 async function fixture(request: APIRequestContext) {
   const created: string[] = [];
@@ -37,6 +38,11 @@ async function fixture(request: APIRequestContext) {
       role: "assistant",
       characterId: character.id,
       content: "A long archive entry. ".repeat(35) + "ARCHIVE_".repeat(35),
+    });
+    await post(`/api/chats/${chat.id}/messages`, {
+      role: "assistant",
+      characterId: character.id,
+      content: "The same archivist adds a second note before you answer.",
     });
     await post(`/api/chats/${chat.id}/messages`, { role: "user", content: "I keep the lantern beside the map." });
     await post(`/api/chats/${chat.id}/messages`, { role: "narrator", content: "Rain crosses the tall windows." });
@@ -101,8 +107,11 @@ async function withinPane(page: Page, desktop: boolean) {
 
 async function ui(page: Page, values: Record<string, unknown>) {
   await page.evaluate(async (next) => {
-    const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
-    useUIStore.setState(next);
+    const { ensureMarinaraHost } = await import("/src/lib/marinara-host.ts" as string);
+    await ensureMarinaraHost();
+    const store = (globalThis as PublicUiHost).__MARINARA_HOST__?.stores.ui;
+    if (!store) throw new Error("The Engine's public UI store is unavailable.");
+    store.setState(next);
   }, values);
 }
 
@@ -143,7 +152,7 @@ for (const theme of ["dark", "light"] as const)
       );
       await page.goto("/");
       await expect(page.locator(column)).toBeVisible();
-      await expect(page.locator(".mari-roleplay-message-body")).toHaveCount(2);
+      await expect(page.locator(".mari-roleplay-message-body")).toHaveCount(3);
       const baseline = await withinPane(page, desktop);
       await appearance(page);
       await expect(page.getByRole("checkbox", { name: "Custom chat width", exact: true })).not.toBeChecked();
@@ -178,24 +187,59 @@ for (const theme of ["dark", "light"] as const)
       await expect(page.locator(column)).toBeVisible();
       expect((await withinPane(page, desktop)).composer.width).toBeCloseTo(wide.composer.width, 0);
       if (desktop) {
+        for (const style of ["panel", "circles", "rectangles", "none"])
+          for (const percent of [100, 95])
+            await test.step(`${style} grouped rows at ${percent}%`, async () => {
+              await ui(page, {
+                roleplayAvatarStyle: style,
+                roleplayAvatarScale: style === "rectangles" ? 1.25 : 1,
+                roleplayChatWidthPercent: percent,
+              });
+              expect(
+                await page.evaluate(() => {
+                  const state = (globalThis as PublicUiHost).__MARINARA_HOST__!.stores.ui.getState();
+                  return [state.roleplayAvatarStyle, state.roleplayAvatarScale, state.roleplayChatWidthPercent];
+                }),
+              ).toEqual([style, style === "rectangles" ? 1.25 : 1, percent]);
+              await expect(page.locator(".mari-roleplay-avatar-spacer")).toHaveCount(style === "none" ? 0 : 1);
+              await expect(page.locator(".mari-roleplay-message-row--rect-avatar")).toHaveCount(
+                style === "rectangles" ? 3 : 0,
+              );
+              await expect(page.locator(".mari-roleplay-message-row--wide")).toHaveCount(
+                style === "panel" ? 2 : style === "none" ? 3 : 0,
+              );
+              if (style === "rectangles")
+                expect((await layout(page)).avatars[0]!.width).toBeGreaterThan(wide.avatars[0]!.width);
+              await withinPane(page, true);
+            });
+        await ui(page, { roleplayAvatarStyle: "rectangles", roleplayAvatarScale: 1.25, roleplayChatWidthPercent: 100 });
         await page.locator('[data-tour="sidebar-toggle"]').click();
+        for (const side of ["left", "right"] as const) {
+          await ui(page, {
+            roleplayChatPosition: side,
+            trackerPanelEnabled: true,
+            trackerPanelOpen: true,
+            trackerPanelOpenByChatId: { [chat.id]: true },
+            trackerPanelSide: side,
+            trackerPanelSizeProfile: "standard",
+          });
+          const tracker = page.locator(`[data-component="TrackerDataSidebarDesktop.${side}"]`);
+          await expect(tracker).toBeVisible();
+          await expect(async () => {
+            const boxes = await withinPane(page, false);
+            const panel = (await tracker.boundingBox())!;
+            for (const box of [boxes.composer, ...boxes.bodies, ...boxes.avatars])
+              if (side === "left") expect(box.left).toBeGreaterThanOrEqual(panel.x + panel.width - 1);
+              else expect(box.right).toBeLessThanOrEqual(panel.x + 1);
+          }).toPass();
+        }
         await ui(page, {
-          roleplayChatPosition: "left",
-          trackerPanelEnabled: true,
-          trackerPanelOpen: true,
-          trackerPanelOpenByChatId: { [chat.id]: true },
-          trackerPanelSide: "left",
-          trackerPanelSizeProfile: "standard",
+          trackerPanelEnabled: false,
+          trackerPanelOpen: false,
+          roleplayChatPosition: "center",
+          roleplayAvatarStyle: "circles",
+          roleplayAvatarScale: 1,
         });
-        const tracker = page.locator('[data-component="TrackerDataSidebarDesktop.left"]');
-        await expect(tracker).toBeVisible();
-        await expect(async () => {
-          const boxes = await withinPane(page, false);
-          const panel = (await tracker.boundingBox())!;
-          for (const box of [boxes.composer, ...boxes.bodies, ...boxes.avatars])
-            expect(box.left).toBeGreaterThanOrEqual(panel.x + panel.width - 1);
-        }).toPass();
-        await ui(page, { trackerPanelEnabled: false, trackerPanelOpen: false, roleplayChatPosition: "center" });
         await page.locator('[data-tour="sidebar-toggle"]').click();
       }
       await appearance(page);

@@ -1732,9 +1732,9 @@ export function ChatRoleplaySurface({
             ...(roleplayChatWidthPercent !== null && {
               "--mari-roleplay-custom-column-width": `${roleplayChatWidthPercent}cqw`,
               "--mari-roleplay-custom-avatar-room":
-                roleplayAvatarStyle === "circles" || roleplayAvatarStyle === "rectangles"
-                  ? `calc(${(roleplayAvatarStyle === "rectangles" ? 2.75 : 2.5) * roleplayAvatarScale}rem + 1.5rem)`
-                  : "0rem",
+                roleplayAvatarStyle === "none"
+                  ? "0rem"
+                  : `calc(${(roleplayAvatarStyle === "rectangles" ? 2.75 : 2.5) * roleplayAvatarScale}rem + 1.5rem)`,
             }),
             // The compact pane keeps the transcript's narrow padding (px-3) at every width.
             ...(centerCompact && { "--mari-roleplay-transcript-gutter": "0.75rem" }),

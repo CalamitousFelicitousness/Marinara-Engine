@@ -4908,8 +4908,10 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
                   onChange={(enabled) => setRoleplayChatWidthPercent(enabled ? 75 : null)}
                 />
                 {roleplayChatWidthPercent !== null && (
-                  <label htmlFor="roleplay-chat-width-percent" className="grid gap-1 text-xs">
-                    <span>{localizeUi("settings.controls.roleplayChatWidth.label")}</span>
+                  <div className="grid gap-1 text-xs">
+                    <label htmlFor="roleplay-chat-width-percent">
+                      {localizeUi("settings.controls.roleplayChatWidth.label")}
+                    </label>
                     <div className="flex items-center gap-2">
                       <input
                         id="roleplay-chat-width-percent"
@@ -4928,7 +4930,7 @@ function AppearanceSettings({ group = "app" }: { group?: AppearanceGroup }) {
                         {roleplayChatWidthPercent}%
                       </output>
                     </div>
-                  </label>
+                  </div>
                 )}
               </div>
               <ToggleSetting

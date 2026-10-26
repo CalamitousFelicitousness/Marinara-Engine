@@ -1929,7 +1929,10 @@ export function GameCombatUI({
           <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/85 animate-in fade-in duration-300">
             <div className="flex flex-col items-center gap-3 px-6 text-center animate-in zoom-in-50 duration-500">
               <Sword className="h-9 w-9 text-red-400" />
-              <AnimatedText html="BATTLE START" className="text-xl font-bold tracking-wide text-white" />
+              <AnimatedText
+                html={localizeUi("game.combat.banner.battleStart")}
+                className="text-xl font-bold tracking-wide text-white"
+              />
               <span className="text-xs text-white/60">{enemies.map((e) => e.name).join(", ")}</span>
             </div>
           </div>
@@ -2011,7 +2014,10 @@ export function GameCombatUI({
           {phase === "victory" && (
             <div className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-black/85 px-6 text-center animate-in fade-in duration-500">
               <Trophy className="h-12 w-12 text-amber-400" />
-              <AnimatedText html="{bounce:Victory!}" className="text-2xl font-bold text-amber-200" />
+              <AnimatedText
+                html={`{bounce:${localizeUi("game.combat.banner.victory")}}`}
+                className="text-2xl font-bold text-amber-200"
+              />
               <button
                 onClick={() => onCombatEnd("victory", buildSummary("victory"))}
                 className="rounded-lg bg-amber-500/20 px-6 py-2.5 text-sm font-semibold text-amber-200 ring-1 ring-amber-400/30 transition-colors hover:bg-amber-500/30"
@@ -2023,8 +2029,14 @@ export function GameCombatUI({
           {phase === "defeat" && (
             <div className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-black/85 px-6 text-center animate-in fade-in duration-500">
               <SkullIcon className="h-12 w-12 text-red-400" />
-              <AnimatedText html="{shake:Defeat...}" className="text-2xl font-bold text-red-200" />
-              <AnimatedText html="{pulse:Your party has fallen.}" className="text-xs text-white/55" />
+              <AnimatedText
+                html={`{shake:${localizeUi("game.combat.banner.defeat")}}`}
+                className="text-2xl font-bold text-red-200"
+              />
+              <AnimatedText
+                html={`{pulse:${localizeUi("game.combat.banner.partyFallen")}}`}
+                className="text-xs text-white/55"
+              />
               <button
                 onClick={() => onCombatEnd("defeat", buildSummary("defeat"))}
                 className="rounded-lg bg-red-500/20 px-6 py-2.5 text-sm font-semibold text-red-200 ring-1 ring-red-400/30 transition-colors hover:bg-red-500/30"
@@ -2607,7 +2619,10 @@ export function GameCombatUI({
           <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 animate-in fade-in duration-300">
             <div className="flex flex-col items-center gap-3 animate-in zoom-in-50 duration-500">
               <Sword className="h-10 w-10 text-red-400" />
-              <AnimatedText html="BATTLE START" className="text-xl font-bold tracking-wide text-white" />
+              <AnimatedText
+                html={localizeUi("game.combat.banner.battleStart")}
+                className="text-xl font-bold tracking-wide text-white"
+              />
               <span className="text-sm text-white/60">{enemies.map((e) => e.name).join(", ")}</span>
             </div>
           </div>
@@ -3109,7 +3124,10 @@ export function GameCombatUI({
         {phase === "victory" && (
           <div className="flex flex-col items-center gap-3 px-3 py-4 animate-in fade-in slide-in-from-bottom-4 duration-500 sm:px-4 sm:py-6">
             <Trophy className="h-8 w-8 text-amber-400" />
-            <AnimatedText html="{bounce:Victory!}" className="text-lg font-bold text-amber-200" />
+            <AnimatedText
+              html={`{bounce:${localizeUi("game.combat.banner.victory")}}`}
+              className="text-lg font-bold text-amber-200"
+            />
             <button
               onClick={() => onCombatEnd("victory", buildSummary("victory"))}
               className="mt-2 rounded-lg bg-amber-500/20 px-6 py-2 text-sm font-semibold text-amber-200 ring-1 ring-amber-400/30 transition-colors hover:bg-amber-500/30"
@@ -3123,8 +3141,14 @@ export function GameCombatUI({
         {phase === "defeat" && (
           <div className="flex flex-col items-center gap-3 px-3 py-4 animate-in fade-in slide-in-from-bottom-4 duration-500 sm:px-4 sm:py-6">
             <SkullIcon className="h-8 w-8 text-red-400" />
-            <AnimatedText html="{shake:Defeat...}" className="text-lg font-bold text-red-200" />
-            <AnimatedText html="{pulse:Your party has fallen.}" className="text-xs text-white/50" />
+            <AnimatedText
+              html={`{shake:${localizeUi("game.combat.banner.defeat")}}`}
+              className="text-lg font-bold text-red-200"
+            />
+            <AnimatedText
+              html={`{pulse:${localizeUi("game.combat.banner.partyFallen")}}`}
+              className="text-xs text-white/50"
+            />
             <button
               onClick={() => onCombatEnd("defeat", buildSummary("defeat"))}
               className="mt-2 rounded-lg bg-red-500/20 px-6 py-2 text-sm font-semibold text-red-200 ring-1 ring-red-400/30 transition-colors hover:bg-red-500/30"

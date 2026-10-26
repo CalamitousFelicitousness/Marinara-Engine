@@ -22,6 +22,7 @@ import type {
   RulesetDefinition,
   RulesetValueRef,
 } from "@marinara-engine/shared";
+import { readRulesetFightNote } from "@marinara-engine/shared";
 import type { TFunction } from "i18next";
 import { rulesetDistanceText } from "./ruleset-combat-board";
 
@@ -306,6 +307,19 @@ export function rulesetRefusalText(code: string | undefined, serverText: string,
   const key = rulesetRefusalKey(code.slice("ruleset_combat_".length));
   const translated = t(key, { defaultValue: "" });
   return translated || serverText;
+}
+
+/** A line of how the fight was built, in the reader's language (2026-10-26): read back into its
+ *  template and shown as that template's translation, the values as they were (each through
+ *  `named`, a ruleset's own words in the reader's language). A line that is no template, or one no
+ *  translation is given for, is shown as written. */
+export function rulesetFightNoteText(line: string, t: TFunction, named: (text: string) => string = (text) => text) {
+  const note = readRulesetFightNote(line);
+  if (!note) return line;
+  const params = Object.fromEntries(Object.entries(note.params).map(([name, value]) => [name, named(value)]));
+  const said = t(`game.combat.ruleset.note.${note.key}`, { ...params, defaultValue: "" });
+  if (!said) return line;
+  return note.of ? t("game.combat.ruleset.note.of", { name: named(note.of), line: said }) : said;
 }
 
 /** A check thrown on its own (1.287), as one side of a contest is written. */

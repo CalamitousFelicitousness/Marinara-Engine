@@ -13,7 +13,7 @@ import { ArtIcon } from "./ArtIcon";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
-import { rulesetCombatLogLines, rulesetCombatNames } from "../../lib/ruleset-combat-log";
+import { rulesetCombatLogLines, rulesetCombatNames, rulesetFightNoteText } from "../../lib/ruleset-combat-log";
 import { rulesetDistanceText } from "../../lib/ruleset-combat-board";
 import { rulesetEffectPhrase } from "./RulesetItemPicker";
 import { cn } from "../../lib/utils";
@@ -43,7 +43,12 @@ export function RulesetCombatStatus({
   // With Debug on, how the opponents were built goes first: a number held to its tier is why a save
   // in play is not the one its proposed sheet says (laptop party A 2026-10-25: DC 11, not 15).
   const lines = [
-    ...(debugMode ? view.adjustments.map((text, index) => ({ seq: index - view.adjustments.length - 1, text })) : []),
+    ...(debugMode
+      ? view.adjustments.map((line, index) => ({
+          seq: index - view.adjustments.length - 1,
+          text: rulesetFightNoteText(line, t),
+        }))
+      : []),
     ...rulesetCombatLogLines(view.events, names, t, -1, debugMode),
   ];
   const [orderOpen, setOrderOpen] = useState(
@@ -322,7 +327,7 @@ export function RulesetCombatStatus({
             <summary className="cursor-pointer py-1 text-xs">{t("game.combat.ruleset.status.adjustments")}</summary>
             <ul className="mt-1 space-y-0.5 text-xs text-[var(--muted-foreground)]">
               {view.adjustments.map((line) => (
-                <li key={line}>{line}</li>
+                <li key={line}>{rulesetFightNoteText(line, t)}</li>
               ))}
             </ul>
           </details>

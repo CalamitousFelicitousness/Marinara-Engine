@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { DirectedRulesetView, RulesetDefinition } from "@marinara-engine/shared";
 import { useTranslation } from "react-i18next";
 import { rulesetRichLogLines, rulesetWindowLineSeq, type RulesetLogPiece } from "../../lib/ruleset-combat-log-rich";
+import { rulesetFightNoteText } from "../../lib/ruleset-combat-log";
 import { cn } from "../../lib/utils";
 import { useUIStore } from "../../stores/ui.store";
 
@@ -74,7 +75,7 @@ export function RulesetCombatLog({
         {adjustmentsOpen && view.adjustments.length > 0 && (
           <ul className="m-0 mb-1.5 list-none space-y-1 rounded-md border border-[var(--border)] p-2 text-xs text-[var(--muted-foreground)]">
             {view.adjustments.map((line) => (
-              <li key={line}>{line}</li>
+              <li key={line}>{rulesetFightNoteText(line, t)}</li>
             ))}
           </ul>
         )}

@@ -394,3 +394,4 @@ export {
   rulesetAtBoardEdge,
   rulesetAreaGrowth,
 } from "./resolve.js";
+export * from "./notes.js";

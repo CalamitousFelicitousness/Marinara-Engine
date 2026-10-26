@@ -637,7 +637,7 @@ export const WORKSPACE_TOOL_DEFINITIONS: WorkspaceToolDefinition[] = [
   {
     name: "app_data",
     description:
-      'Read or change live app data through structured actions, without shell commands. Use this for chats, characters, character folders, personas, lorebooks, lorebook entries, entry folders inside a lorebook, Lorebooks-panel library folders, themes, Personal Extension drafts, agents, prompt presets, and safe data-only Home widgets. lorebook.entries returns one page of entry summaries as { items, total, offset, nextOffset }; when nextOffset is not null, call it again with offset: nextOffset to read the rest. Call lorebook.getEntry with entryId to read one complete entry body. Single-item reads (e.g. character.get) are size-bounded: oversized fields come back elided with a note naming each one — re-read any elided field in full by passing field="<path>" (e.g. field="data.alternate_greetings[0]"), optionally with offset to page through a long value.',
+      'Read or change live app data through structured actions, without shell commands. lorebook.entries returns one page of entry previews as { items, total, offset, nextOffset }; while nextOffset is not null, call it again with offset: nextOffset. lorebook.getEntry with entryId reads one entry in full. Oversized fields in a single-item read (e.g. character.get) come back elided with a note naming each one; re-read one in full with field="<path>".',
     parameters: {
       type: "object",
       properties: {
@@ -1175,14 +1175,14 @@ export function formatMariReadTruncation(truncation: MariDbReadTruncation | unde
   return lines.length > 0 ? lines.join("\n") : null;
 }
 
+// Deep enough for card JSON (data.extensions.<plugin>.<field> is four); past it a record is shown whole.
+const CHANGED_FIELDS_MAX_DEPTH = 8;
+
 /**
  * A preview row that has both sides keeps only what differs, recursing through nested records (a card's `data` fields, and
  * `data.extensions` keys, count one by one). A one-word card edit echoed the whole card twice, ~16k chars of
  * "nothing to see here" around the line that said nothing was saved. Inserts and deletes stay whole.
  */
-// Deep enough for card JSON (data.extensions.<plugin>.<field> is four); past it a record is shown whole.
-const CHANGED_FIELDS_MAX_DEPTH = 8;
-
 function changedFieldsOnly(item: unknown): unknown {
   if (!isRecord(item) || !isRecord(item.before) || !isRecord(item.after)) return item;
   const diff = (before: Record<string, unknown>, after: Record<string, unknown>, depth: number) => {

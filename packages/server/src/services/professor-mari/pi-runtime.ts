@@ -285,14 +285,17 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
   const textualTools =
     isLocalSidecarConnection(input.connection) || !supportsNativeToolCalls(input.connection.provider);
   const systemMessages = input.messages.filter((message) => message.role === "system");
-  const systemPrompt = systemMessages.map((message) => message.content).join("\n\n");
+  const systemSeparator = "\n\n";
+  const systemPrompt = systemMessages.map((message) => message.content).join(systemSeparator);
   // #8375: where the <workspace_context> message (the last prompt block, with the per-turn lines) starts in
   // systemPrompt, or -1. Found by message, not by searching the text: memories and the injections after it can
   // quote the tag.
   const contextMessage = systemMessages.map((message) => message.contextKind).lastIndexOf("prompt");
   const contextAt =
     contextMessage >= 0 && systemMessages[contextMessage]!.content.startsWith("<workspace_context>")
-      ? systemMessages.slice(0, contextMessage).reduce((chars, message) => chars + message.content.length + 2, 0)
+      ? systemMessages
+          .slice(0, contextMessage)
+          .reduce((chars, message) => chars + message.content.length + systemSeparator.length, 0)
       : -1;
   const history = input.messages.filter((message) => message.role !== "system");
   const last = history[history.length - 1];

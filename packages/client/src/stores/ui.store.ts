@@ -2645,7 +2645,10 @@ export const useUIStore = create<UIState>()(
         openConnectionDetail: (id, options) =>
           set((s) => ({
             connectionDetailId: id,
-            connectionDetailReturnTab: options?.returnToHomeTab || null,
+            // Switching the open editor to another connection keeps the package tab it returns to; an editor
+            // opened afresh starts without one.
+            connectionDetailReturnTab:
+              options?.returnToHomeTab || (s.connectionDetailId ? s.connectionDetailReturnTab : null),
             characterLibraryOpen: false,
             agentCatalogOpen: false,
             botBrowserOpen: false,

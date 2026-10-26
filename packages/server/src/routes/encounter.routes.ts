@@ -21,6 +21,7 @@ import {
   COMBAT_START_PLACES,
   WORLD_DEFAULT_BATTLEFIELDS,
   gameWorldBattlefields,
+  worldSceneForPlace,
   type WorldBattlefields,
   normalizeGameDifficulty,
   rulesetBudgetLevel,
@@ -1336,6 +1337,25 @@ export async function encounterRoutes(app: FastifyInstance) {
             rulesetBrief !== null,
           ),
         };
+      }
+      // The board follows the place the Game Master described, not the open plains it named or a word
+      // that is no scene (cheap-GM playtest 2026-10-26: an iron arena and an underground cistern were
+      // fought on Plains boards).
+      {
+        const notes =
+          combatState.styleNotes && typeof combatState.styleNotes === "object"
+            ? (combatState.styleNotes as Record<string, unknown>)
+            : {};
+        const named = typeof notes.environmentType === "string" ? notes.environmentType : "";
+        const scene = worldSceneForPlace(
+          gameWorldBattlefields(chatMeta) ?? WORLD_DEFAULT_BATTLEFIELDS,
+          named,
+          typeof combatState.environment === "string" ? combatState.environment : "",
+        );
+        if (scene && scene !== named) {
+          logger.info("[game/combat:init] chatId=%s scene %s laid out as %s", chatId, named || "(none)", scene);
+          combatState = { ...combatState, styleNotes: { ...notes, environmentType: scene } };
+        }
       }
       {
         const enemies = (combatState.enemies as Array<Record<string, unknown>>) ?? [];

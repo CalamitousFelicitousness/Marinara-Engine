@@ -42,6 +42,8 @@ export const RULESET_FIGHT_NOTES = {
   tierUnknown: 'The tier "{{tier}}" is not on this ruleset\'s scale, so {{used}} was used.',
   builtFrom: "{{name}} was built from the numbers of {{tier}}.",
   metBefore: "{{name}} is the same one the party met before.",
+  writtenWeapons:
+    "{{name}} was written with {{weapons}}, which the {{creature}} of the bestiary has none of, so it was built at {{tier}} instead.",
   // ── Said of one opponent, after its name ──
   noEntry: 'this ruleset has no entry called "{{entry}}", so it was not given.',
   ownSpell: '"{{action}}" is this ruleset\'s own, so it may be cast once this fight.',

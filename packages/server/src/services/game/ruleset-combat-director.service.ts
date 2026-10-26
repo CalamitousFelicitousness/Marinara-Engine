@@ -685,6 +685,58 @@ export type RulesetFightSeedResult =
   /** `standIn`: the party member the player plays while their own character is dead (Alyssa 2026-10-26). */
   { ok: true; fight: RulesetFightState; standIn?: string } | { ok: false; error: string };
 
+/** Words in a strike's name that say nothing of which weapon it is ("Spear Attack" is a spear). */
+const RULESET_PLAIN_STRIKE_WORDS = new Set(["attack", "strike", "melee", "ranged", "weapon", "basic", "hit"]);
+
+/** The words a strike's name says its weapon is, each without a plural's s: "Claws" and "Claw" are one. */
+function rulesetStrikeWords(name: string): string[] {
+  return name
+    .toLowerCase()
+    .replace(/\([^)]*\)/g, " ")
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((word) => word.length >= 3)
+    .map((word) => word.replace(/s$/, ""))
+    .filter((word) => !RULESET_PLAIN_STRIKE_WORDS.has(word));
+}
+
+/**
+ * A foe asked for as a bestiary creature, as its writer described it (cheap-GM playtest 2026-10-26:
+ * spearmen asked for as the SRD Bandit fought with its scimitar and light crossbow). One written with
+ * strikes, none of them a weapon the creature has, and not called by the creature's own name, is built
+ * at the creature's tier under the strikes it was written with, as the creature's kind. Null keeps it
+ * the bestiary's creature.
+ */
+function rulesetFoeAsWritten(
+  bestiary: RulesetCatalogEntriesById,
+  opponent: RulesetFightOpponent,
+): { opponent: RulesetFightOpponent; creature: string; weapons: string[] } | null {
+  if (!opponent.creature) return null;
+  const found = findRulesetCreature(bestiary, opponent.creature);
+  const creature = found?.entry.creature;
+  if (!found || !creature?.tier || creature.sheet) return null;
+  const written = (opponent.attacks ?? []).filter(
+    (one) => !one.reaction && !one.kind && !one.spell && rulesetStrikeWords(one.name).length > 0,
+  );
+  if (written.length === 0) return null;
+  const own = new Set(
+    creature.actions.filter((action) => !action.reaction).flatMap((one) => rulesetStrikeWords(one.name)),
+  );
+  if (written.some((one) => rulesetStrikeWords(one.name).some((word) => own.has(word)))) return null;
+  // Called by the creature's name ("Bandit 2"), it is that creature, whatever it was said to swing.
+  const plain = (text: string) => text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+  if (plain(opponent.name.replace(/\s*#?\d+$/, "")) === plain(found.entry.label)) return null;
+  const { creature: _creature, ...rest } = opponent;
+  return {
+    opponent: {
+      ...rest,
+      tier: opponent.tier ?? creature.tier,
+      ...((opponent.creatureType ?? creature.type) ? { creatureType: opponent.creatureType ?? creature.type } : {}),
+    },
+    creature: found.entry.label,
+    weapons: written.map((one) => one.name),
+  };
+}
+
 /** The walk most of a bestiary's creatures have, or none when no creature in it says a speed. */
 function rulesetUsualBestiarySpeed(bestiary: RulesetCatalogEntriesById): number | undefined {
   const counts = new Map<number, number>();
@@ -837,7 +889,18 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
         input.budget.difficulty,
       )
     : null;
-  let enemies = input.enemies;
+  // A foe asked for as a bestiary creature fights with the weapons it was described with, at that
+  // creature's tier, where the creature has none of them (cheap-GM playtest 2026-10-26: spearmen fought
+  // as SRD Bandits with crossbows).
+  let enemies = input.enemies.map((opponent) => {
+    const written = combat.threat?.tiers?.length ? rulesetFoeAsWritten(input.bestiary, opponent) : null;
+    if (!written) return opponent;
+    const tier = combat.threat!.tiers.find((one) => one.id === written.opponent.tier)?.label ?? written.opponent.tier;
+    adjustments.push(
+      `${opponent.name} was written with ${written.weapons.join(", ")}, which the ${written.creature} of the bestiary has none of, so it was built at ${tier} instead.`,
+    );
+    return written.opponent;
+  });
   if (budget && input.budget) {
     const keep = new Set(input.budget.kept ?? []);
     const foes = enemies.map((opponent) => {
@@ -1035,7 +1098,11 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
     }
     // A boss written with no numbers is built from its tier's here, so what its points buy goes on the
     // same block (laptop level-4 pass 2026-10-26: a Big Grakka given 3 points had nothing to spend them on).
-    if (!proposed && opponent.boss && (opponent.points ?? 0) > 0) {
+    // So is one whose proposed block cannot be read (cheap-GM playtest 2026-10-26: a boss "given 3 points
+    // but nothing priced out of them" was built from its tier further down, with nothing to buy).
+    if (!proposed?.success && opponent.boss && (opponent.points ?? 0) > 0) {
+      if (proposed)
+        adjustments.push(`The proposed stat block for ${opponent.name} could not be read, so its tier was used.`);
       const built = rulesetTierStatBlock(
         definition,
         opponent.tier,

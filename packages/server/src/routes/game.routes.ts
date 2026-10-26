@@ -2326,6 +2326,10 @@ const worldKitWriteSchema = z.object({
   /** The kit the player has chosen so far, written over to fit their setting. */
   start: worldKitSchema.optional(),
   language: z.string().max(100).optional(),
+  /** The generation settings the game's setup chose (its reasoning effort among them), over the connection's
+   *  own (cheap-GM playtest 2026-10-26: a world written at the connection's maximum effort, not the Medium
+   *  the wizard was set to, stalled the game). */
+  generationParameters: z.unknown().optional(),
   debugMode: z.boolean().optional(),
 });
 
@@ -2342,6 +2346,7 @@ const worldBriefWriteSchema = z.object({
   /** Dated events read from the player's lore, kept exactly. */
   canonEvents: worldBriefSchema.shape.events.optional(),
   grounding: z.enum(WORLD_GROUNDINGS).default("expand"),
+  generationParameters: z.unknown().optional(),
   debugMode: z.boolean().optional(),
 });
 
@@ -2352,6 +2357,7 @@ const worldCanonReadSchema = z.object({
   kit: worldKitSchema,
   lorebookIds: z.array(z.string().min(1)).min(1).max(20),
   entryIds: z.array(z.string().min(1)).max(1000).optional(),
+  generationParameters: z.unknown().optional(),
   debugMode: z.boolean().optional(),
 });
 
@@ -10402,13 +10408,20 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
     repair: (issues: string[]) => string;
     /** Room for the reply; a brief with its name lists needs more than a kit. */
     maxTokens?: number;
+    /** The game's own generation settings, over the connection's (`worldKitWriteSchema`). */
+    generationParameters?: unknown;
   }): Promise<{ ok: true; value: T } | { ok: false; status: number; error?: string; issues: string[] }> => {
     const debugLog = (message: string, ...rest: any[]) => logDebugOverride(args.debugMode === true, message, ...rest);
     const connections = createConnectionsStorage(app.db);
-    const { conn, baseUrl, defaultGenerationParameters } = await resolveConnection(
-      connections,
-      args.connectionId,
-      null,
+    const {
+      conn,
+      baseUrl,
+      defaultGenerationParameters: connectionParameters,
+    } = await resolveConnection(connections, args.connectionId, null);
+    // The setup's reasoning effort, not the connection's, as world setup itself sends it.
+    const defaultGenerationParameters = mergeStoredGenerationParameters(
+      connectionParameters,
+      args.generationParameters,
     );
     const provider = await createGameMainProvider(connections, conn, baseUrl);
     const messages: ChatMessage[] = [
@@ -10478,6 +10491,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       reply,
       connectionId: input.connectionId,
       debugMode: input.debugMode,
+      generationParameters: input.generationParameters,
       route: "world-kit",
       title: "Setting kit",
       prompt: buildWorldKitWritingPrompt(input),
@@ -10507,6 +10521,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
       reply,
       connectionId: input.connectionId,
       debugMode: input.debugMode,
+      generationParameters: input.generationParameters,
       route: "world-brief",
       title: "World brief",
       maxTokens: GAME_SETUP_DEFAULT_OUTPUT_TOKENS,
@@ -10559,6 +10574,7 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
         reply,
         connectionId: input.connectionId,
         debugMode: input.debugMode,
+        generationParameters: input.generationParameters,
         route: "world-canon",
         title: `Lore reading ${index + 1}`,
         prompt: buildWorldCanonPrompt(input.kit, batch),

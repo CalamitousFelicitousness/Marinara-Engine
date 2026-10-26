@@ -2482,8 +2482,12 @@ function GameSurfaceComponent({
       tone: setup?.tone || "Heroic",
       ...(setup?.playerGoals ? { playerGoals: setup.playerGoals } : {}),
       ...(setup?.language ? { language: setup.language } : {}),
+      // Written with the game's own reasoning effort, not the connection's (cheap-GM playtest 2026-10-26).
+      ...((chatMeta.chatParameters ?? setup?.generationParameters)
+        ? { generationParameters: chatMeta.chatParameters ?? setup?.generationParameters }
+        : {}),
     };
-  }, [chat.connectionId, chatMeta.gameSetupConfig]);
+  }, [chat.connectionId, chatMeta.gameSetupConfig, chatMeta.chatParameters]);
   const { data: agentConfigs } = useAgentConfigs(storyboardAgentActive || chatMeta.enableSpriteGeneration === true);
   const storyboardAgentConfig = useMemo(
     () => agentConfigs?.find((config) => config.type === STORYBOARD_AGENT_ID) ?? null,

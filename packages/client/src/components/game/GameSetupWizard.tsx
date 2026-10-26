@@ -1285,6 +1285,11 @@ export function GameSetupWizard({
         setting: setting || `A ${(genres[0] ?? "fantasy").toLowerCase()} world`,
         tone: tones.join(", ") || "Heroic",
         language: normalizedLanguage || undefined,
+        // The world is written with the reasoning effort chosen here, as the game is (cheap-GM playtest
+        // 2026-10-26: Medium was chosen and the world was still asked for at the connection's maximum).
+        ...(customizeParameters
+          ? { generationParameters: { ...(importedGenerationParametersRef.current ?? {}), ...generationParameters } }
+          : {}),
       }
     : null;
   const illustratorEnabled = enableAgents && illustratorInstalled && enableSpriteGeneration;

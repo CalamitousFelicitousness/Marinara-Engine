@@ -40,12 +40,12 @@ assert.match(
   homeBrowserHub,
   /openCharacter: \(characterId: string, options\?: \{ tab\?: string \}\) => \{[\s\S]*?openCharacterDetail\(characterId, \{\s*initialTab:/u,
 );
-// Capability API 1.386: it can open a connection in the editor and comes back to its tab. Home is asked
-// for the tab first, because the desktop shell unmounts Home while the editor is open; the request
-// outlives the editor and the remounted Home consumes it.
+// Capability API 1.386: it can open a connection in the editor and comes back to its tab. The desktop
+// shell unmounts Home while the editor is open, so the store remembers the tab and queues it for the
+// remounted Home only when that editor closes; leaving the editor any other way queues nothing.
 assert.match(
   homeBrowserHub,
-  /openConnection: \(connectionId: string\) => \{\s*if \(typeof connectionId !== "string" \|\| !connectionId\) return;[\s\S]*?\.requestHome\(\{ kind: "tab", tab: activeTab \}\);\s*\S+\.openConnectionDetail\(connectionId\);/u,
+  /openConnection: \(connectionId: string\) => \{\s*if \(typeof connectionId !== "string" \|\| !connectionId\) return;[\s\S]*?\.openConnectionDetail\(connectionId, \{ returnToHomeTab: activeTab \}\);/u,
 );
 const storage = new Map<string, string>();
 Object.defineProperty(globalThis, "localStorage", {
@@ -57,12 +57,30 @@ Object.defineProperty(globalThis, "localStorage", {
   },
 });
 const { useUIStore, pickPersistedUIState } = await import("../../packages/client/src/stores/ui.store.js");
-useUIStore.getState().requestHome({ kind: "tab", tab: "story-writer" });
-useUIStore.getState().openConnectionDetail("connection-1");
-assert.equal(useUIStore.getState().connectionDetailId, "connection-1");
-useUIStore.getState().closeConnectionDetail();
-assert.deepEqual(useUIStore.getState().homeRequest, { kind: "tab", tab: "story-writer" });
-assert.ok(!("homeRequest" in pickPersistedUIState(useUIStore.getState())), "a Home request is never saved");
+const ui = () => useUIStore.getState();
+ui().openConnectionDetail("connection-1", { returnToHomeTab: "story-writer" });
+assert.equal(ui().connectionDetailId, "connection-1");
+assert.equal(ui().homeRequest, null, "nothing is queued while the editor is open");
+ui().closeConnectionDetail();
+assert.deepEqual(ui().homeRequest, { kind: "tab", tab: "story-writer" }, "closing the editor returns to the tab");
+ui().consumeHomeRequest();
+// Leaving for a chat (the sidebar closes every detail) or another editor queues nothing.
+ui().openConnectionDetail("connection-1", { returnToHomeTab: "story-writer" });
+ui().closeAllDetails();
+assert.equal(ui().homeRequest, null, "leaving through closeAllDetails queues no return");
+ui().openConnectionDetail("connection-1", { returnToHomeTab: "story-writer" });
+ui().openCharacterDetail("character-1");
+ui().closeCharacterDetail();
+assert.equal(ui().homeRequest, null, "another editor in between queues no return");
+ui().closeConnectionDetail();
+assert.equal(ui().homeRequest, null, "a stale close with no editor open queues nothing");
+// An editor opened the ordinary way never returns to a tab.
+ui().openConnectionDetail("connection-1");
+ui().closeConnectionDetail();
+assert.equal(ui().homeRequest, null);
+const persisted = pickPersistedUIState(ui());
+assert.ok(!("homeRequest" in persisted), "a Home request is never saved");
+assert.ok(!("connectionDetailReturnTab" in persisted), "nor is the editor's return tab");
 
 // Package prompt context carries the wrap format.
 assert.match(promptContext, /wrapFormat\?: "xml" \| "markdown" \| "none";/u);

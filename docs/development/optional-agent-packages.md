@@ -1791,9 +1791,10 @@ declare capability API 1.376 or newer; older packages can keep their existing la
 
 The browser view gets `openConnection(connectionId)`. It opens the connection editor on that saved
 connection, so a package that lets the user pick a connection can offer "Edit connection" instead of
-its own provider settings. When the editor closes, Home comes back to the package's tab. The desktop
-layout unmounts Home, and the package view with it, while the editor is open: save what the user typed
-first. Older Engines do not have it: check that `openConnection` exists before you show the button.
+its own provider settings. When the editor closes, Home comes back to the package's tab; leaving the
+editor another way, such as opening a chat, does not. The desktop layout unmounts Home, and the
+package view with it, while the editor is open: save what the user typed first. Older Engines do not
+have it: check that `openConnection` exists before you show the button.
 
 ```ts
 if (typeof props.openConnection === "function") props.openConnection(connectionId);

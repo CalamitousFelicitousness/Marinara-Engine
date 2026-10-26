@@ -400,6 +400,12 @@ assert.deepEqual(
   assert.equal((bossed[1]!.boss as { points: number }).points, 3);
   // Not a boss fight, or one marked already: as written.
   assert.ok(!blueprintEnemiesWithBoss({ encounterTier: "common" }, [lich]).some((one) => one.boss));
+  assert.ok(!blueprintEnemiesWithBoss({ encounterTier: "miniboss" }, [lich]).some((one) => one.boss));
+  // A boss fight at a lesser tier is still one (laptop 0706 Party B: Captain Mordek Vane, "miniboss").
+  assert.deepEqual(
+    blueprintEnemiesWithBoss({ isBossFight: true, encounterTier: "miniboss" }, [zombie, lich]).map((one) => !!one.boss),
+    [false, true],
+  );
   const marked = { ...zombie, boss: { points: 2 } };
   assert.deepEqual(blueprintEnemiesWithBoss({ encounterTier: "boss" }, [marked, lich]), [marked, lich]);
 }

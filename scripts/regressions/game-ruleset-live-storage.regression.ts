@@ -237,7 +237,9 @@ try {
   // ── The Game Master sees the sheets as they stand, late in the prompt ──
   {
     const blocks = renderGameRulesetSheetBlocks(fiveE, [{ name: "Mira", rulesetSheet: wizard }], second.live);
-    assert.equal(blocks.length, 1);
+    // Her last slot spent, the Game Master hears the party is worn down (Alyssa 2026-10-26).
+    assert.equal(blocks.length, 2);
+    assert.match(blocks[1]!, /^THE PARTY IS WORN DOWN: Mira 32\/32 Hit points, 0 of 2 slots left\./);
     assert.match(blocks[0]!, /^Mira\n/);
     assert.match(blocks[0]!, /3rd-level slots 0\/2/);
     const base = { hasSceneModel: true } as never as Parameters<typeof buildGmFormatReminder>[0];

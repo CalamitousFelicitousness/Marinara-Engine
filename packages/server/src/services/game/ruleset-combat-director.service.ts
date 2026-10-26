@@ -1616,10 +1616,27 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
   for (const line of fight.adjustments) logger.info("[game/combat:ruleset] %s", line);
   // The player's own character dead, they play the first of the party still standing until that one
   // lives again (Alyssa 2026-10-26: "1 and 3 together"), whoever they gave the Engine before.
-  const standInId = deadLead ? combatants.find((one) => one.side === "party")?.id : undefined;
-  if (deadLead && standInId) {
+  // So too when the party sent to the fight leaves them out, dead or not (laptop Party A 2026-10-26: a
+  // dead Aldric no longer in the party list, and nobody played by the player, so the ambush played
+  // itself out to the party's fall).
+  const leadName = (input.playerName ?? firstCard ?? "").trim();
+  const leadBuild = leadKey ? builds.get(leadKey) : undefined;
+  const leadMissing =
+    !deadLead &&
+    !!leadBuild &&
+    !input.party.some((member) => normalizeCharacterLookupName(member.name) === leadKey) &&
+    !combatants.some((one) => one.side === "party" && normalizeCharacterLookupName(one.name) === leadKey);
+  const leadDeadAway =
+    leadMissing && rulesetSheetDead(definition, leadBuild!, input.live?.[leadKey], input.items?.(leadName));
+  const standInId = deadLead || leadMissing ? combatants.find((one) => one.side === "party")?.id : undefined;
+  if (standInId) {
     const name = combatants.find((one) => one.id === standInId)!.name;
-    fight.adjustments.push(`${deadLead} is dead, so the player plays ${name} until ${deadLead} lives again.`);
+    const lead = deadLead ?? leadName;
+    fight.adjustments.push(
+      deadLead || leadDeadAway
+        ? `${lead} is dead, so the player plays ${name} until ${lead} lives again.`
+        : `${lead} is not in this fight, so the player plays ${name}.`,
+    );
   }
   return { ok: true, fight, ...(standInId ? { standIn: standInId } : {}) };
 }

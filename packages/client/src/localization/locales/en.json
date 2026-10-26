@@ -2818,6 +2818,7 @@
   "game.combat.ruleset.note.healthToward": "Health {{from}} was moved toward the {{low}} to {{high}} of {{tier}} as far as its {{field}} goes, and is now {{to}}.",
   "game.combat.ruleset.note.heldDropped": "A held thing with no item tag this ruleset has was dropped.",
   "game.combat.ruleset.note.immunityDropped": "A condition this ruleset does not have was dropped from the immunities.",
+  "game.combat.ruleset.note.leadAway": "{{name}} is not in this fight, so the player plays {{standIn}}.",
   "game.combat.ruleset.note.metBefore": "{{name}} is the same one the party met before.",
   "game.combat.ruleset.note.namesNothing": "\"{{action}}\" named nothing this block still has, so it was dropped.",
   "game.combat.ruleset.note.noBestiary": "No bestiary of this ruleset holds \"{{creature}}\".",

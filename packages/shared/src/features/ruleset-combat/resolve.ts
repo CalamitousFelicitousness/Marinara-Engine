@@ -11504,7 +11504,15 @@ function castWithPoints(
   return {
     state: after.state,
     events: [
-      { type: "signature", actorId: actor.id, optionId: choice.optionId, label: action.label, cost, left },
+      // Named by the spell it cast, not "Cast a Spell" (laptop 2026-10-26).
+      {
+        type: "signature",
+        actorId: actor.id,
+        optionId: choice.optionId,
+        label: actor.actions.find((entry) => entry.id === castOf.optionId)?.label ?? action.label,
+        cost,
+        left,
+      },
       ...cast.events,
       ...after.events,
     ],

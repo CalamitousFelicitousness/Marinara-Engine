@@ -184,7 +184,8 @@ export function storyFightBlueprintEnemies(
 }
 
 /**
- * A fight the model called a boss fight (`visuals.encounterTier: "boss"`) with no enemy marked boss
+ * A fight the model called a boss fight (`visuals.encounterTier: "boss"`, or `isBossFight` whatever its tier:
+ * laptop 0706 Party B, Captain Mordek Vane at "miniboss") with no enemy marked boss
  * (laptop pass 8 2026-10-26: Lich Seraphon, named, a leader and the strongest there, was weighed at a
  * Moderate budget with no legendary block): its strongest enemy, a named or leading one first, is the
  * boss. Returns the enemies unchanged when one is marked already, or the fight is no boss fight.
@@ -193,9 +194,14 @@ export function blueprintEnemiesWithBoss(
   visuals: unknown,
   enemies: ReadonlyArray<Record<string, unknown>>,
 ): Array<Record<string, unknown>> {
-  const tier =
-    visuals && typeof visuals === "object" ? (visuals as { encounterTier?: unknown }).encounterTier : undefined;
-  if (tier !== "boss" || enemies.length === 0 || enemies.some((one) => one.boss)) return [...enemies];
+  const said =
+    visuals && typeof visuals === "object" ? (visuals as { encounterTier?: unknown; isBossFight?: unknown }) : {};
+  if (
+    (said.encounterTier !== "boss" && said.isBossFight !== true) ||
+    enemies.length === 0 ||
+    enemies.some((one) => one.boss)
+  )
+    return [...enemies];
   const hints = (one: Record<string, unknown>) =>
     one.aiHints && typeof one.aiHints === "object" ? (one.aiHints as { named?: unknown; leader?: unknown }) : {};
   const standing = (one: Record<string, unknown>) => (hints(one).named ? 2 : 0) + (hints(one).leader ? 1 : 0);

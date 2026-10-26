@@ -102,6 +102,33 @@ try {
       [false, "dead"],
     ],
   );
+  // Nor are their dying saves wiped, by the track's label or its id (laptop 2026-10-26: "Death save
+  // failures" set to 0 brought a dead hero back dying in the next fight).
+  const failures = context.definition.combat!.dying!.failures!;
+  const failuresLabel = context.definition.sheet.live.tracks.find((track) => track.id === failures)!.label;
+  for (const track of [failuresLabel, failures]) {
+    const wiped = applyGameRulesetSheetTurn(context, `[sheet: who="Aldric" op="track" track="${track}" to="0"]`, live);
+    assert.deepEqual(
+      wiped.outcomes.map((one) => [one.ok, one.reason]),
+      [[false, "dead"]],
+      track,
+    );
+    assert.deepEqual(wiped.live.aldric, live.aldric);
+  }
+  // Both together are a revival the story tells, in either order (laptop 0706 Party B: a Game Master's
+  // revival wrote the failures back to 0 and a restore of 1 hit point).
+  for (const order of [
+    `[sheet: who="Aldric" op="restore" pool="hp" amount="1"] [sheet: who="Aldric" op="track" track="${failuresLabel}" to="0"]`,
+    `[sheet: who="Aldric" op="track" track="${failures}" to="0"] [sheet: who="Aldric" op="restore" pool="hit_points" amount="1"]`,
+  ]) {
+    const raised = applyGameRulesetSheetTurn(context, order, live);
+    assert.deepEqual(
+      raised.outcomes.map((one) => one.ok),
+      [true, true],
+      order,
+    );
+    assert.equal((raised.live.aldric as { pools: { hp: { value: number } } }).pools.hp.value, 1);
+  }
   // A damage or a note still reaches them.
   assert.equal(
     applyGameRulesetSheetTurn(context, `[sheet: who="Aldric" op="damage" pool="hp" amount="1"]`, live).outcomes[0]?.ok,
@@ -133,6 +160,12 @@ try {
   // whoever they gave the Engine before.
   assert.equal(both.standIn, "mara");
   assert.ok(both.fight.adjustments.includes("Aldric is dead, so the player plays Mara until Aldric lives again."));
+  // Left out of the party sent to the fight, dead, it is the same (laptop Party A 2026-10-26: nobody
+  // was the player's, and the ambush played itself out).
+  const without = fight(["Mara"]);
+  assert.ok(without.ok, without.ok ? "" : without.error);
+  assert.equal(without.standIn, "mara");
+  assert.ok(without.fight.adjustments.includes("Aldric is dead, so the player plays Mara until Aldric lives again."));
   const alone = fight(["Aldric"]);
   assert.equal(alone.ok, false);
   if (!alone.ok) assert.match(alone.error, /is dead, so there is nobody to fight it/);
@@ -173,6 +206,26 @@ try {
     "Aldric",
   );
   assert.ok(!alive.some((block) => /IS DEAD|EVERYONE/.test(block)), "a living lead says nothing");
+  // A party worn down is said as a whole, for the Game Master to warn them in the story before a fight
+  // and let the player choose (Alyssa 2026-10-26); a fresh one says nothing.
+  const spent = renderGameRulesetSheetBlocks(
+    context.definition,
+    three,
+    { mara: { pools: { hp: { value: 1 } } } },
+    {},
+    undefined,
+    undefined,
+    "Aldric",
+  );
+  const worn = spent.find((block) => block.startsWith("THE PARTY IS WORN DOWN: "));
+  assert.ok(worn, spent.join("\n---\n"));
+  assert.match(worn!, /Mara 1\/\d+ Hit points/);
+  // Hurt, not badly: nothing said (Mara at 3 of 8, the party at most of its health).
+  assert.ok(!alive.some((block) => block.startsWith("THE PARTY IS WORN DOWN")));
+  assert.match(worn!, /"Are you sure\?"/);
+  assert.match(worn!, /Do not offer a rest or a retreat as a choice/);
+  const fresh = renderGameRulesetSheetBlocks(context.definition, three, {}, {}, undefined, undefined, "Aldric");
+  assert.ok(!fresh.some((block) => block.startsWith("THE PARTY IS WORN DOWN")), fresh.join("\n---\n"));
   const dead = { pools: { hp: { value: 0 } }, tracks: { death_save_failures: 3 } };
   const wiped = renderGameRulesetSheetBlocks(
     context.definition,

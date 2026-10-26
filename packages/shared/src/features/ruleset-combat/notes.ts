@@ -16,6 +16,7 @@ export const RULESET_FIGHT_NOTES = {
   noSheet: "{{name}} has no ruleset sheet and stays out of the fight.",
   deadOut: "{{name}} is dead and stays out of the fight.",
   deadLead: "{{name}} is dead, so the player plays {{standIn}} until {{name}} lives again.",
+  leadAway: "{{name}} is not in this fight, so the player plays {{standIn}}.",
   noRoom: "No room to set the party down clear of the opponents, so the fight begins where it stands.",
   // ── The encounter budget ──
   budgetDown:

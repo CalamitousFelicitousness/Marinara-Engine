@@ -245,7 +245,7 @@ try {
     const step = buy(state, "cantrip>spells/bolt", { targetIds: ["fighter"] });
     assert.equal(refused(step), undefined, JSON.stringify(refused(step)));
     assert.equal(hurt(step, "fighter"), 6);
-    assert.ok(step.events.some((one) => one.type === "signature" && one.label === "Cantrip" && one.left === 2));
+    assert.ok(step.events.some((one) => one.type === "signature" && one.label === "Bolt" && one.left === 2));
     assert.equal(step.state.window, undefined, "the window is done");
     assert.equal(step.state.order[step.state.turn], "mage", "and the next turn begins");
     assert.equal(who(step.state, "lich").signature!.points, 2);
@@ -423,7 +423,8 @@ try {
     }
     const events = state.rulesetFight!.events.map((entry) => entry.event);
     const bought = events.findIndex(
-      (event) => event.type === "signature" && event.actorId === "lich" && event.label === "Cantrip",
+      (event) =>
+        event.type === "signature" && event.actorId === "lich" && String(event.optionId).startsWith("cantrip>"),
     );
     assert.ok(bought >= 0, `the lich bought a cantrip: ${JSON.stringify(events.map((event) => event.type))}`);
     assert.ok(

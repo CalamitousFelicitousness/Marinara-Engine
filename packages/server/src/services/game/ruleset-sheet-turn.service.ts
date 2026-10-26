@@ -11,6 +11,9 @@ import {
   applySheetCommandTags,
   RULESET_PARTY_KEY,
   rulesetSheetDead,
+  rulesetSheetHealth,
+  rulesetSheetSpendables,
+  rulesetHealthWords,
   rulesetPartyDefinition,
   createSheetCommandTagRegex,
   defaultRulesetSheetBuild,
@@ -169,6 +172,13 @@ export function renderGameRulesetSheetBlocks(
         : "EVERYONE IN THE PARTY IS DEAD. The player may go back to a checkpoint. If the story goes on instead, it is the story's to say what follows (taken by the foe, found and saved, woken somewhere), told as it would happen; nobody is raised without a cause the story gives.",
     );
   }
+  const worn = rulesetPartyWornLine(
+    definition,
+    built
+      .filter((card) => !dead(card) && !away.some((name) => sameCharacter(name, card.name)))
+      .map((card) => ({ name: card.name, build: card.build, live: live?.[normalizeCharacterLookupName(card.name)] })),
+  );
+  if (worn) blocks.push(worn);
   const partyDefinition = rulesetPartyDefinition(definition);
   const envelope = readRulesetPartySheet(
     definition,
@@ -184,6 +194,46 @@ export function renderGameRulesetSheetBlocks(
       ),
     );
   return blocks;
+}
+
+const sameCharacter = (a: string, b: string) => normalizeCharacterLookupName(a) === normalizeCharacterLookupName(b);
+
+/**
+ * The party's state said as a whole once it has spent itself (Alyssa 2026-10-26): someone at a quarter
+ * of their health or less, a third or less of someone's slots or energy left, or the party at half its
+ * health. The encounter budget weighs a fight by the rules, never by what the party has left, so a
+ * worn party walking into one is the Game Master's to warn in the story, the way a table's would ("Are
+ * you sure?"), leaving the choice to the player. Null while the party is fresh enough.
+ */
+export function rulesetPartyWornLine(
+  definition: RulesetDefinition,
+  members: ReadonlyArray<{ name: string; build: RulesetSheetBuild; live: unknown }>,
+): string | null {
+  const word = rulesetHealthWords(definition)[0] ?? "health";
+  let value = 0;
+  let max = 0;
+  let low = false;
+  const said: string[] = [];
+  for (const member of members) {
+    const health = rulesetSheetHealth(definition, member.build, member.live);
+    if (!health || health.max <= 0) continue;
+    value += health.value;
+    max += health.max;
+    if (health.value * 4 <= health.max) low = true;
+    const parts = [`${health.value}/${health.max} ${word}`];
+    const spend = rulesetSheetSpendables(definition, member.build, member.live);
+    if (spend.slots) {
+      parts.push(`${spend.slots.value} of ${spend.slots.max} slots left`);
+      if (spend.slots.value * 3 <= spend.slots.max) low = true;
+    }
+    if (spend.energy) {
+      parts.push(`${spend.energy.value}/${spend.energy.max} ${spend.energy.label}`);
+      if (spend.energy.value * 3 <= spend.energy.max) low = true;
+    }
+    said.push(`${member.name} ${parts.join(", ")}`);
+  }
+  if (max === 0 || (!low && value * 2 > max)) return null;
+  return `THE PARTY IS WORN DOWN: ${said.join("; ")}. If they head into a fight like this, warn them in the story first, the way a table's Game Master warns a reckless party ("Are you sure?"): a companion's doubt, the odds plainly seen, what their wounds tell them. Then let the player choose. Do not offer a rest or a retreat as a choice, and do not hold the story back.`;
 }
 
 /** The ruleset, the party's builds and the player's name for one game. Null when the game has no

@@ -318,6 +318,61 @@ export function applySheetCommandTags(
     }
   };
 
+  // The dead are not healed, rested or shielded back to life by a plain command (laptop pass 6
+  // 2026-10-26: a Game Master's restore of 1 hit point stood a dead hero up as the story went on).
+  // What raises the dead is a use of what does (a Revivify), which comes another way.
+  // Health by any name the command finds it by (laptop 2026-10-26: pool="hit_points" restored a dead
+  // hero to 1 of 38), and a condition taken off (her Unconscious and Prone).
+  // Nor are their dying saves wiped (laptop 2026-10-26: a "Death save failures" set to 0 brought Mara
+  // Thorne back dying in the next fight).
+  const failures = ctx.definition.combat?.dying?.failures;
+  const failuresLabel = ctx.definition.sheet.live.tracks.find((track) => track.id === failures)?.label;
+  const healthOf = ctx.definition.combat?.health;
+  const healthPoolOf = healthOf && "pool" in healthOf ? healthOf.pool : undefined;
+  const plain = (text: string) =>
+    text
+      .trim()
+      .toLowerCase()
+      .replace(/[\s_-]+/g, " ");
+  const wipesFailures = (op: RulesetSheetOp) =>
+    op.op === "track" &&
+    failures !== undefined &&
+    (plain(op.track) === plain(failures) || (!!failuresLabel && plain(op.track) === plain(failuresLabel)));
+  const healsHealth = (card: SheetCommandCard, op: RulesetSheetOp) =>
+    (op.op === "restore" || op.op === "temp") &&
+    healthPoolOf !== undefined &&
+    (!op.pool ||
+      op.pool === healthPoolOf ||
+      rulesetPoolKeyNamed(
+        ctx.definition,
+        card.build,
+        live[normalizeCharacterLookupName(card.name)],
+        op.pool,
+        card.items,
+      ) === healthPoolOf);
+  const raisesDead = (card: SheetCommandCard, op: RulesetSheetOp) =>
+    op.op === "rest" || (op.op === "condition" && !op.active) || wipesFailures(op) || healsHealth(card, op);
+  // A reply that both clears a dead hero's dying saves and gives them health back raises them, as the
+  // story says (laptop 0706 Party B: a revival wrote "Death save failures" 0 and a restore of 1 hit
+  // point), whatever order it wrote them in. Either alone is refused.
+  const revived = new Set<string>();
+  {
+    const wiped = new Set<string>();
+    const healed = new Set<string>();
+    for (const match of content.matchAll(createSheetCommandTagRegex())) {
+      const parsed = parseSheetCommandTagBody(match[1] ?? "");
+      if (!parsed.op || parsed.sheet !== undefined) continue;
+      const targets = findTargets(parsed.who);
+      if ("refusal" in targets) continue;
+      for (const card of targets.cards) {
+        const key = normalizeCharacterLookupName(card.name);
+        if (wipesFailures(parsed.op)) wiped.add(key);
+        if (parsed.op.op === "restore" && healsHealth(card, parsed.op)) healed.add(key);
+      }
+    }
+    for (const key of wiped) if (healed.has(key)) revived.add(key);
+  }
+
   const rewritten = content.replace(createSheetCommandTagRegex(), (_match, rawBody: string) => {
     const body = rawBody ?? "";
     const parsed = parseSheetCommandTagBody(body);
@@ -397,28 +452,10 @@ export function applySheetCommandTags(
         now: `${reads} (already paid)`,
       };
     };
-    // The dead are not healed, rested or shielded back to life by a plain command (laptop pass 6
-    // 2026-10-26: a Game Master's restore of 1 hit point stood a dead hero up as the story went on).
-    // What raises the dead is a use of what does (a Revivify), which comes another way.
-    // Health by any name the command finds it by (laptop 2026-10-26: pool="hit_points" restored a dead
-    // hero to 1 of 38), and a condition taken off (her Unconscious and Prone).
-    const raisesDead = (card: SheetCommandCard) =>
-      op.op === "rest" ||
-      (op.op === "condition" && !op.active) ||
-      ((op.op === "restore" || op.op === "temp") &&
-        healthPool !== undefined &&
-        (op.pool === healthPool ||
-          rulesetPoolKeyNamed(
-            ctx.definition,
-            card.build,
-            live[normalizeCharacterLookupName(card.name)],
-            op.pool,
-            card.items,
-          ) === healthPool));
     const results = targets.cards.map((card) => ({
       card,
       result:
-        raisesDead(card) && deadOnSheet(card)
+        raisesDead(card, op) && deadOnSheet(card) && !revived.has(normalizeCharacterLookupName(card.name))
           ? ({ ok: false, reason: "dead" } as const)
           : (paidAlready(card) ?? applyTo(card, op)),
     }));

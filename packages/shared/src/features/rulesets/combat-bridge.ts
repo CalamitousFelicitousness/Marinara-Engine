@@ -203,6 +203,39 @@ export function rulesetSheetHealth(
   return health ? { value: health.value, max: health.max } : undefined;
 }
 
+/** What a sheet has left to spend in a fight, by the ruleset's `battle` block: its energy pool (with that
+ *  pool's label) and its slots taken together, each as value out of max, or undefined for one it has none
+ *  of. What tells a Game Master that a party has spent itself (Alyssa 2026-10-26). */
+export function rulesetSheetSpendables(
+  definition: RulesetDefinition,
+  build: RulesetSheetBuild,
+  storedLive: unknown,
+): {
+  energy?: { value: number; max: number; label: string };
+  slots?: { value: number; max: number };
+} {
+  const battle = definition.battle;
+  if (!battle) return {};
+  const live = readRulesetLive(definition, build, storedLive);
+  const out: ReturnType<typeof rulesetSheetSpendables> = {};
+  const energyPool = battle.energy?.pool;
+  const energy = energyPool ? livePool(live, energyPool) : undefined;
+  if (energyPool && energy && energy.max > 0) {
+    const label = definition.sheet.live?.pools?.find((pool) => pool.id === energyPool)?.label ?? energyPool;
+    out.energy = { value: energy.value, max: energy.max, label };
+  }
+  let value = 0;
+  let max = 0;
+  for (const slot of battle.slots ?? []) {
+    const pool = livePool(live, slot.pool);
+    if (!pool || pool.max <= 0) continue;
+    value += pool.value;
+    max += pool.max;
+  }
+  if (max > 0) out.slots = { value, max };
+  return out;
+}
+
 /**
  * What the party combatant for this sheet starts the battle with, or null when the ruleset has no
  * `battle` block or the sheet has no health pool to read.

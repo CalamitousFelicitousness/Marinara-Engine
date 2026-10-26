@@ -34,6 +34,7 @@ export function rulesetKindLine(kind: { type?: string; tags?: string[] }): strin
 /** The one word for how a combatant stands, when it is anything but simply in the fight. The order is
  *  the order that decides: somebody who left is not also down. */
 export function rulesetStateWord(combatant: DirectedRulesetCombatant, t: TFunction): string {
+  if (combatant.surrendered) return t("game.combat.ruleset.status.surrendered");
   if (combatant.left) return t("game.combat.ruleset.status.left");
   if (combatant.away) return t("game.combat.ruleset.status.away");
   if (combatant.defeated) return t("game.combat.ruleset.status.defeated");
@@ -165,6 +166,14 @@ export function RulesetTurnOrder({
           const second = [
             combatant.kind ? rulesetKindLine(combatant.kind) : "",
             combatant.tier ? t("game.combat.ruleset.status.tier", { label: names.tier(combatant.tier) }) : "",
+            // Its legendary points as they stand, on the board's table too (laptop 2026-10-26: shown
+            // only on the classic status list).
+            combatant.legendary
+              ? t("game.combat.ruleset.status.legendary", {
+                  points: combatant.legendary.points,
+                  max: combatant.legendary.max,
+                })
+              : "",
             state ||
               (asked
                 ? t("game.combat.ruleset.screen.answering")

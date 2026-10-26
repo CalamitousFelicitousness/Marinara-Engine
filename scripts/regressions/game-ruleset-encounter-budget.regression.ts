@@ -226,6 +226,12 @@ try {
   });
   assert.equal(bossed.made?.chief?.tier, "cr_1");
   assert.equal(bossed.made?.guard?.tier, "cr_1_2");
+  // Said at the step it was weighed at (cloud re-test 2026-10-25: "Moderate budget of 4400").
+  assert.ok(
+    bossed.adjustments.some((line) => /this party's High budget\b/.test(line)),
+    bossed.adjustments.join("; "),
+  );
+  assert.deepEqual(four.bossStep, { id: "high", label: "High" });
 
   // ── The brief ──
   const brief = await encounterRulesetBrief(definition, null, { cards, difficulty: "normal" });

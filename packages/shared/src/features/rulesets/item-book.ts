@@ -1188,11 +1188,20 @@ export function rulesetItemBook(
   // "Crossbows, heavy" for Crossbow, heavy: laptop playtest 2026-10-25). A loose name two items share
   // finds neither.
   const byLoose = new Map<string, RulesetItemBookEntry | null>();
+  // And after that, without what a name says in brackets ("Arrows" for 5e's "Arrow (bow)": cloud
+  // re-test 2026-10-25), the same way.
+  const byBare = new Map<string, RulesetItemBookEntry | null>();
+  // A bracket that is only a number is a count ("Poultices (2)"), which its reader takes off itself.
+  const bare = (name: string) => gameInventoryLooseNameKey(name.replace(/\((?!\s*\d+\s*\))[^)]*\)/g, " "));
   for (const [key, read] of byName) {
-    const loose = gameInventoryLooseNameKey(key);
-    if (!loose) continue;
-    const had = byLoose.get(loose);
-    byLoose.set(loose, had === undefined || had?.item === read.item ? read : null);
+    for (const [map, loose] of [
+      [byLoose, gameInventoryLooseNameKey(key)],
+      [byBare, bare(key)],
+    ] as const) {
+      if (!loose) continue;
+      const had = map.get(loose);
+      map.set(loose, had === undefined || had?.item === read.item ? read : null);
+    }
   }
   // The items the Game Master invented, found by name after the ruleset's own. One name may have
   // several: each telling of a turn that proposed it made its own, and a switch back to an older
@@ -1275,6 +1284,7 @@ export function rulesetItemBook(
       (made ? all.get(rulesetInventedItemRef(made.id)) : coin ? all.get(coin.coin.item) : undefined) ??
       (offered.has(ref) ? all.get(ref) : undefined) ??
       byLoose.get(gameInventoryLooseNameKey(name)) ??
+      byBare.get(bare(name)) ??
       undefined
     );
   };

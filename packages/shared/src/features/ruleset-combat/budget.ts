@@ -21,6 +21,9 @@ export interface RulesetEncounterBudget {
   worth: number;
   /** What a fight with a boss in it may be worth: the next step up, or this one at the top. */
   bossWorth: number;
+  /** That step, which a fight with a boss is said to be weighed at (cloud re-test 2026-10-25: "Moderate
+   *  budget of 4400", 4400 being High). */
+  bossStep: { id: string; label: string };
   members: number;
   levels: number[];
 }
@@ -47,6 +50,10 @@ export function rulesetEncounterBudget(
     step: { id: budget.steps[index]!.id, label: budget.steps[index]!.label },
     worth: sum(index),
     bossWorth: sum(Math.min(index + 1, budget.steps.length - 1)),
+    bossStep: {
+      id: budget.steps[Math.min(index + 1, budget.steps.length - 1)]!.id,
+      label: budget.steps[Math.min(index + 1, budget.steps.length - 1)]!.label,
+    },
     members: counted.length,
     levels: counted,
   };

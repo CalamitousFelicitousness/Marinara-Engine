@@ -1995,6 +1995,20 @@ const dataDir = mkdtempSync(join(tmpdir(), "marinara-creature-sheets-"));
     assert.ok(!slotless.adjustments.some((line) => /beyond what this sheet can pay for/.test(line)));
     // One sent with some slots is its own and untouched.
     assert.equal(raiseRulesetCasterPools(spellbook, sheet, fightCatalogs(spellbook)).sheet, sheet);
+    // An entry that sets the field (a class) is taken whole where the sheet names it, its other
+    // fields set where none was written (cloud re-test 2026-10-25: 5e's slots show only with a
+    // casting ability, which a class sets).
+    const classes = {
+      ...fightCatalogs(spellbook),
+      classes: [
+        { id: "sorcerer", label: "Sorcerer", grants: { sets: { slots_max_2: 1, spellcasting_ability: "cha" } } },
+      ],
+    } as never;
+    const named = raiseRulesetCasterPools(spellbook, { ...sheet, fields: { class: "Sorcerer", level: 3 } }, classes);
+    assert.deepEqual(named.adjusted, ["Made a Sorcerer 1, so its spells have the pools they are paid out of."]);
+    assert.equal(named.sheet.fields.spellcasting_ability, "cha");
+    assert.equal(named.sheet.fields.slots_max_2, 1);
+    assert.equal(named.sheet.fields.class, "Sorcerer", "what it wrote stays");
   }
   // A legendary one (a boss with Legendary Resistance) keeps all it can cast; uncastable still goes.
   const legend = started({

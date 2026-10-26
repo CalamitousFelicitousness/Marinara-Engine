@@ -436,6 +436,15 @@ try {
         { action: "unequip", items: ["Coat", "Bow"], whole: "Coat, Bow", count: 1 },
       ],
       [` bind item="Bell"`, { action: "bind", items: ["Bell"], count: 1 }],
+      // A count written into the name (cloud re-test 2026-10-25: "Arrows ×10" was a new item at 1).
+      [` add item="Arrows ×10"`, { action: "add", items: ["Arrows"], count: 10 }],
+      [` add item="Arrows x10"`, { action: "add", items: ["Arrows"], count: 10 }],
+      [` add item="Crossbow bolts×20"`, { action: "add", items: ["Crossbow bolts"], count: 20 }],
+      [` add item="20 crossbow bolts"`, { action: "add", items: ["crossbow bolts"], count: 20 }],
+      [` add item="50 feet of hempen rope"`, { action: "add", items: ["50 feet of hempen rope"], count: 1 }],
+      [` add item="Arrows (20)"`, { action: "add", items: ["Arrows (20)"], count: 1 }],
+      [` add item="Arrows ×10" count="3"`, { action: "add", items: ["Arrows ×10"], count: 3 }],
+      [` add item="Box"`, { action: "add", items: ["Box"], count: 1 }],
     ];
     for (const [body, expected] of forms) assert.deepEqual(parseInventoryTagBody(body), expected, body);
     // What the Game Master claims happened is not part of the request.

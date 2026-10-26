@@ -810,7 +810,9 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
         kept: keep.has(opponent.id),
       };
     });
-    const allowed = enemies.some((opponent) => opponent.boss) ? budget.bossWorth : budget.worth;
+    const bossed = enemies.some((opponent) => opponent.boss);
+    const allowed = bossed ? budget.bossWorth : budget.worth;
+    const stepLabel = (bossed ? budget.bossStep : budget.step).label;
     const moved = rulesetBudgetedTiers(definition, foes, allowed, budget.members);
     const scale = combat.threat?.tiers ?? [];
     const label = (id: string | undefined) => scale.find((tier) => tier.id === id)?.label ?? id;
@@ -818,7 +820,7 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
       const tier = moved.tiers[index];
       if (tier === foes[index]!.tier || tier === undefined) return opponent;
       adjustments.push(
-        `${opponent.name} was brought down from ${label(foes[index]!.tier)} to ${label(tier)}: the fight was worth more than this party's ${budget.step.label} budget.`,
+        `${opponent.name} was brought down from ${label(foes[index]!.tier)} to ${label(tier)}: the fight was worth more than this party's ${stepLabel} budget.`,
       );
       const proposed =
         opponent.proposed && typeof opponent.proposed === "object" ? { ...opponent.proposed, tier } : opponent.proposed;
@@ -826,13 +828,13 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
     });
     if (moved.worth.after > allowed)
       adjustments.push(
-        `This fight is worth ${moved.worth.after}, more than this party's ${budget.step.label} budget of ${allowed}, with nothing left to bring down.`,
+        `This fight is worth ${moved.worth.after}, more than this party's ${stepLabel} budget of ${allowed}, with nothing left to bring down.`,
       );
     // Said when nothing was brought down too, so a fight left as it was reads as weighed (laptop
     // playtest 2026-10-25: three invented CR 3 foes, no word of the budget anywhere).
     else if (moved.worth.before <= allowed)
       adjustments.push(
-        `This fight is worth ${moved.worth.before}, within this party's ${budget.step.label} budget of ${allowed}.`,
+        `This fight is worth ${moved.worth.before}, within this party's ${stepLabel} budget of ${allowed}.`,
       );
   }
   for (const opponent of enemies) {

@@ -681,36 +681,72 @@ export function raiseRulesetCasterPools(
       .trim()} `;
     return word.trim() ? said.filter((text) => text.includes(word)).length : 0;
   };
-  let best:
-    { field: Extract<RulesetField, { type: "number" }>; value: number; paid: number; named: number } | undefined;
-  for (const field of definition.sheet.fields) {
-    if (field.type !== "number" || !field.integer) continue;
+  // Each way to open them: a number field raised alone, or an entry that sets one (5e's classes,
+  // whose own Spellcasting ability shows the slots at all), its other fields set where the sheet
+  // wrote none, then that field raised (cloud re-test 2026-10-25: a wizard with no level and no
+  // casting ability kept only its cantrips).
+  const ways: Array<{
+    label: string;
+    base: RulesetSheetBuild;
+    field: Extract<RulesetField, { type: "number" }>;
+    entry?: true;
+  }> = [];
+  for (const field of definition.sheet.fields)
+    if (field.type === "number" && field.integer) ways.push({ label: field.label, base: proposed, field });
+  for (const entries of Object.values(catalogs))
+    for (const entry of entries) {
+      const sets = entry.grants?.sets;
+      if (!sets) continue;
+      const base = structuredClone(proposed);
+      let raised: Extract<RulesetField, { type: "number" }> | undefined;
+      for (const [id, value] of Object.entries(sets)) {
+        const field = definition.sheet.fields.find((one) => one.id === id);
+        if (!field) continue;
+        if (field.type === "number" && field.integer && typeof value === "number") raised ??= field;
+        const written = proposed.fields[id];
+        const unset =
+          written === undefined ||
+          written === "" ||
+          (field.type === "enum" && written === (field.default ?? field.values[0]));
+        if (unset) base.fields[id] = value;
+      }
+      if (raised) ways.push({ label: entry.label, base, field: raised, entry: true });
+    }
+  let best: ((typeof ways)[number] & { value: number; paid: number; named: number }) | undefined;
+  for (const way of ways) {
+    const { label, base, field } = way;
     const at = (value: number) => {
-      const sheet = structuredClone(proposed);
+      const sheet = structuredClone(base);
       sheet.fields[field.id] = value;
       return sheet;
     };
     const from = typeof proposed.fields[field.id] === "number" ? (proposed.fields[field.id] as number) : field.min;
     if (from >= field.max || !open(at(field.max))) continue;
-    const most = paidFor(at(field.max));
+    // Only what its holder may cast counts: a class keeps to its own spell list.
+    const pays = (sheet: RulesetSheetBuild) => paidFor(restrictRulesetSheetEntries(definition, sheet, catalogs).sheet);
+    const most = pays(at(field.max));
     if (most === 0) continue;
     // The lowest value that pays for as many as its top does.
-    let value = from + 1;
-    while (value < field.max && paidFor(at(value)) < most) value += 1;
-    const names = named(field.label);
+    let value = Math.max(from + 1, field.min);
+    while (value < field.max && pays(at(value)) < most) value += 1;
+    const names = named(label);
     if (
       !best ||
       most > best.paid ||
       (most === best.paid && (names > best.named || (names === best.named && value < best.value)))
     )
-      best = { field, value, paid: most, named: names };
+      best = { ...way, value, paid: most, named: names };
   }
   if (!best) return { sheet: proposed, adjusted: [] };
-  const sheet = structuredClone(proposed);
+  const sheet = structuredClone(best.base);
   sheet.fields[best.field.id] = best.value;
   return {
     sheet,
-    adjusted: [`${best.field.label} was set to ${best.value}, so its spells have the pools they are paid out of.`],
+    adjusted: [
+      best.entry
+        ? `Made a ${best.label} ${best.value}, so its spells have the pools they are paid out of.`
+        : `${best.field.label} was set to ${best.value}, so its spells have the pools they are paid out of.`,
+    ],
   };
 }
 

@@ -185,6 +185,27 @@ function cleanName(value: string | undefined): string | undefined {
   return cleaned ? cleaned : undefined;
 }
 
+/** Words a leading number measures rather than counts: "50 feet of hempen rope" is one rope. */
+const MEASURE_WORDS =
+  /^(?:feet|foot|ft|inch|inches|yards?|miles?|days?|hours?|pounds?|lbs?|gallons?|pints?|quarts?|ounces?|oz|years?|percent)\b/i;
+
+/** The count a name carries in itself, and the name without it: "Arrows ×10", "Arrows x10", "10
+ *  Arrows". Null for a name with none, or a number that measures it ("50 feet of rope"). A number in
+ *  brackets may be the item's own name ("Arrows (20)"), so it stays. */
+export function inventoryNameCount(name: string): { name: string; count: number } | null {
+  const trailing = /^(.+?)\s+[×x]\s*(\d{1,4})$/i.exec(name) ?? /^(.+?)×\s*(\d{1,4})$/.exec(name);
+  if (trailing) {
+    const count = Number(trailing[2]);
+    return count > 0 ? { name: trailing[1]!.trim(), count } : null;
+  }
+  const leading = /^(\d{1,4})\s+(.+)$/.exec(name);
+  if (leading && !MEASURE_WORDS.test(leading[2]!)) {
+    const count = Number(leading[1]);
+    return count > 0 ? { name: leading[2]!.trim(), count } : null;
+  }
+  return null;
+}
+
 /**
  * Read one tag body, leniently: attributes in any order, quoted or not, `item` or `items`, `count`,
  * `quantity` or `qty`, and a bare action word (`add`, `remove`, `equip`...) in place of `action=`. An unquoted item runs to
@@ -224,7 +245,16 @@ export function parseInventoryTagBody(body: string): InventoryTagRequest | null 
   if (items.length === 0) return null;
   const whole = items.length > 1 ? cleanName(unquote(listed)) : undefined;
 
-  const countText = amount?.[1] ?? values.get("count") ?? values.get("quantity") ?? values.get("qty");
+  let countText = amount?.[1] ?? values.get("count") ?? values.get("quantity") ?? values.get("qty");
+  // A count written into one item's name, with none beside it: "Arrows ×10", "Arrows x10", "10 Arrows"
+  // (cloud re-test 2026-10-25: each a new item at 1).
+  if (countText === undefined && items.length === 1) {
+    const counted = inventoryNameCount(items[0]!);
+    if (counted) {
+      items[0] = counted.name;
+      countText = String(counted.count);
+    }
+  }
   const parsedCount = countText && /^\d{1,9}$/.test(countText.trim()) ? Number.parseInt(countText, 10) : 1;
   // Coins come by the thousand, so a payment or an earning is held only to what one stack may hold.
   const most = action === "pay" || action === "earn" ? GAME_INVENTORY_MAX_QUANTITY : INVENTORY_TAG_COUNT_MAX;

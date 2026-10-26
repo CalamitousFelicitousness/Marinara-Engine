@@ -422,7 +422,10 @@ export function proposedSheetLists(
     // A level it gives itself is read off the entry that sets it (a class), which may set more.
     const fields = (sheet as { fields?: unknown }).fields;
     // A parsed catalog of rows says so (`holds: "rows"`), so it is told apart from items and creatures.
-    if (fields && typeof fields === "object" && Object.keys(fields).length > 0) {
+    // One with rows and no fields may be given a class to cast them (cloud re-test 2026-10-25), so it
+    // reads them too.
+    const rows = sheet.lists && typeof sheet.lists === "object" && Object.keys(sheet.lists).length > 0;
+    if (rows || (fields && typeof fields === "object" && Object.keys(fields).length > 0)) {
       lists.add(RULESET_PROPOSED_FIELDS);
       for (const catalog of definition.catalogs ?? [])
         if (catalog.holds !== "items" && catalog.holds !== "creatures")

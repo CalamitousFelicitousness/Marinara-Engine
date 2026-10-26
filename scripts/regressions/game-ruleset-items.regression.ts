@@ -667,6 +667,9 @@ try {
     assert.equal(gameInventoryLooseNameKey("Crossbow, heavy"), gameInventoryLooseNameKey("Heavy Crossbows"));
     assert.equal(gameInventoryLooseNameKey("Potion of Healing"), gameInventoryLooseNameKey("healing potions"));
     assert.equal(gameInventoryLooseNameKey("Torches"), "torch");
+    // Without what a name says in brackets, last of all (cloud re-test 2026-10-25: "Arrows" for 5e's
+    // "Arrow (bow)" was a new item).
+    assert.equal(book.itemNamed("Hand axes (sharp)")?.item, "outfitter/hand-axe");
     assert.equal(book.itemOf("outfitter/arrows")?.stack, 20);
     assert.equal(book.itemOf("outfitter/hand-axe")?.stack, undefined);
     assert.equal(book.plain, "allow");

@@ -728,6 +728,7 @@ import { registerRetryAgentsRoute, type ActiveAgentRun } from "./generate/retry-
 import { fingerprintChatSummary } from "../services/prompt/chat-summary-fingerprint.js";
 import {
   endGenerationOutput,
+  generationOutputSettled,
   isSseReplyWritable,
   onGenerationOutputClose,
   rejectGenerationOutput,
@@ -1043,6 +1044,8 @@ function scopeLorebookPromptMessagesForCharacter(
 
 const PROFESSOR_MARI_INTERNAL_CHAT_MARKER = "professor-mari";
 const INDIVIDUAL_CONVERSATION_LOREBOOK_TOKEN = "__MARINARA_INDIVIDUAL_CONVERSATION_LOREBOOK__";
+/** How long a new request for a chat waits for that chat's stopped generation to unwind before refusing. */
+const STOPPED_GENERATION_RELEASE_WAIT_MS = 10_000;
 type ConversationContextMacroKey =
   "context" | "commands" | "reactRules" | "replyRules" | "memories" | "lorebook" | "aboutMe";
 type ConversationRelocationMacroKey = Exclude<ConversationContextMacroKey, "aboutMe">;
@@ -1416,6 +1419,15 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
       }
     }
 
+    // A Stop or an interrupt aborts the previous run, but its entry stays until that run unwinds (see /abort), so a
+    // turn sent right after it would be refused and lost. Give a stopped run a moment to let go first.
+    const stoppedGeneration = activeGenerations.get(input.chatId);
+    if (stoppedGeneration?.abortController.signal.aborted) {
+      const deadline = Date.now() + STOPPED_GENERATION_RELEASE_WAIT_MS;
+      while (activeGenerations.get(input.chatId) === stoppedGeneration && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    }
     if (activeGenerations.has(input.chatId)) {
       return rejectGenerationOutput(reply, 409, { error: "A generation is already in progress for this chat" });
     }
@@ -15736,6 +15748,11 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
       }
       if (conversationGenerationStartedAt != null && !conversationAssistantSaved) {
         clearGenerationInProgress(input.chatId, conversationGenerationStartedAt);
+      }
+      if (generationSignal.aborted && !clientDisconnected && !generationOutputSettled(reply)) {
+        // Stopped from elsewhere (an explicit abort, the room closing) while this stream was still open: say so, so
+        // the client ends its generating state and offers Retry instead of waiting for a reply that will not come.
+        sendSseEvent(reply, { type: "error", data: "Generation was stopped before it finished." });
       }
       stopSseKeepalive();
       detachCloseListener();

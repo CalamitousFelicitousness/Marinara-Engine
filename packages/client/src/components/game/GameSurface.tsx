@@ -3356,6 +3356,9 @@ function GameSurfaceComponent({
   const [sceneAnalysisFailed, setSceneAnalysisFailed] = useState(false);
   const [sceneStuckVisible, setSceneStuckVisible] = useState(false);
   const [generationFailed, setGenerationFailed] = useState(false);
+  /** The chat whose last typed turn failed before the server saved it, so the input holds it again. */
+  const [unsentTurnChatId, setUnsentTurnChatId] = useState<string | null>(null);
+  const [gameInputSendToken, setGameInputSendToken] = useState(0);
   const [pendingAssetGeneration, setPendingAssetGeneration] = useState<GameAssetGenerationPayload | null>(null);
   const [assetGenerationBlocksScene, setAssetGenerationBlocksScene] = useState(false);
   const [assetGenerationFailed, setAssetGenerationFailed] = useState(false);
@@ -7013,9 +7016,15 @@ function GameSurfaceComponent({
   useProvideChatGalleryActions(activeChatId, galleryActions);
 
   const retryGeneration = useCallback(() => {
+    // A turn that failed before the server saved it is back in the input (an interrupted or refused send): Retry sends
+    // it again rather than asking the Game Master to go on without it. The failure banner clears once streaming starts.
+    if (unsentTurnChatId && unsentTurnChatId === activeChatId) {
+      setGameInputSendToken((token) => token + 1);
+      return;
+    }
     setGenerationFailed(false);
     generate({ chatId: activeChatId, connectionId: null });
-  }, [activeChatId, generate]);
+  }, [activeChatId, generate, unsentTurnChatId]);
 
   const generateInitialGameTurn = useCallback(() => {
     if (experienceStartupScopeRef.current !== experienceStartupScope || experienceStartupRef.current.blocked) return;
@@ -11395,6 +11404,7 @@ function GameSurfaceComponent({
       }
       setActiveChoices(null);
       const succeeded = await sendMessage(message, attachments, options?.pendingSpatialTransition);
+      setUnsentTurnChatId(succeeded === false ? activeChatId : null);
       if (succeeded !== false && options?.commitPendingMove && pendingMapMove) {
         setPendingMapMove(null);
       }
@@ -13768,6 +13778,7 @@ function GameSurfaceComponent({
                                   inline
                                   draftKey={activeChatId}
                                   focusToken={gameInputFocusToken}
+                                  sendToken={gameInputSendToken}
                                   onIllustrate={handleManualSceneIllustration}
                                   spatialCapabilityEnabled={hierarchicalMapsActive}
                                   interruptMode={pendingInterruptMode}
@@ -13869,6 +13880,7 @@ function GameSurfaceComponent({
                               inline
                               draftKey={activeChatId}
                               focusToken={gameInputFocusToken}
+                              sendToken={gameInputSendToken}
                               onIllustrate={handleManualSceneIllustration}
                               spatialCapabilityEnabled={hierarchicalMapsActive}
                               interruptMode={pendingInterruptMode}

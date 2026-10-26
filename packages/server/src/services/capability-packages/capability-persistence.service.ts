@@ -5,6 +5,7 @@ import {
   type CapabilityChatActivityUpdate,
   type CapabilityChatMetadataUpdate,
   type CapabilityChatRecord,
+  type CapabilityChatSummaries,
   type CapabilityCreateMessageWithSwipeInput,
   type CapabilityGameStateRecord,
   type CapabilityRoleplayEventInput,
@@ -15,8 +16,10 @@ import {
   type CapabilityPersistenceHost,
   type CapabilityPersistenceSession,
   type CapabilitySpatialSnapshotStore,
+  type SessionSummary,
   type SpatialContextSnapshot,
   type SpatialSnapshotSource,
+  normalizeChatSummaryEntries,
 } from "@marinara-engine/shared";
 import type { DB } from "../../db/connection.js";
 import { logger } from "../../lib/logger.js";
@@ -191,6 +194,40 @@ async function agentWhisperNames(db: DB, chatId: string): Promise<ReadonlyMap<st
     ...(await resolveCharacterNameMap(parseStringArray(chat.characterIds), (id) => characters.getById(id))),
     [identity?.id ?? "user", identity?.name ?? "User"],
   ]);
+}
+
+function readSummaryEntries(value: unknown): CapabilityChatSummaries["day"] {
+  const entries: CapabilityChatSummaries["day"] = {};
+  for (const [key, raw] of Object.entries(parseMetadata(value) ?? {})) {
+    const entry = parseMetadata(raw);
+    if (typeof entry?.summary === "string") {
+      entries[key] = { summary: entry.summary, keyDetails: parseStringArray(entry.keyDetails) };
+    }
+  }
+  return entries;
+}
+
+/**
+ * The summaries a chat keeps in its metadata; whatever is missing or malformed reads as empty.
+ * Undated rolling entries take the chat's own update time, so repeated reads return the same values.
+ */
+function mapChatSummaries(value: unknown, chatUpdatedAt?: string): CapabilityChatSummaries {
+  const metadata = parseMetadata(value) ?? {};
+  const sessions = Array.isArray(metadata.gamePreviousSessionSummaries) ? metadata.gamePreviousSessionSummaries : [];
+  return {
+    day: readSummaryEntries(metadata.daySummaries),
+    week: readSummaryEntries(metadata.weekSummaries),
+    rolling: normalizeChatSummaryEntries(metadata.summaryEntries, {
+      legacySummary: typeof metadata.summary === "string" ? metadata.summary : null,
+      now: chatUpdatedAt,
+    }),
+    gameSessions: sessions.flatMap((entry) => {
+      const session = parseMetadata(entry);
+      return typeof session?.summary === "string" && typeof session.sessionNumber === "number"
+        ? [structuredClone(session) as unknown as SessionSummary]
+        : [];
+    }),
+  };
 }
 
 function parsePresentCharacterIds(value: unknown): string[] {
@@ -497,6 +534,15 @@ function createPersistenceSession(db: DB, assertPermission: PersistencePermissio
         return null;
       });
       return rows.map((row) => mapMessage(row, names));
+    },
+    async listChatSummaries(chatId) {
+      assertPermission("chat-read");
+      const rows = await db
+        .select({ metadata: chats.metadata, updatedAt: chats.updatedAt })
+        .from(chats)
+        .where(eq(chats.id, chatId))
+        .limit(1);
+      return mapChatSummaries(rows[0]?.metadata, rows[0]?.updatedAt);
     },
     async getGameState(chatId) {
       assertPermission("chat-read");

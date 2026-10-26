@@ -1787,6 +1787,26 @@ exit button available on every package screen and use `aria-pressed` to reflect 
 must update the button without replacing unfinished forms. Packages depending on this control
 declare capability API 1.376 or newer; older packages can keep their existing layouts.
 
+### Capability API 1.387: read a chat's summaries
+
+`persistence.listChatSummaries(chatId)` returns the summaries the Engine keeps for a chat, so a package
+does not parse the chat's metadata for them. It needs the `chat-read` permission, like `listMessages`,
+and returns copies:
+
+- `day` and `week`: Conversation summaries by date (`"DD.MM.YYYY"`, a week by its Monday), each
+  `{ summary, keyDetails }`.
+- `rolling`: the rolling summary entries in the chat's order, disabled ones included (check `enabled`).
+  A chat that only has the older single summary reads it as one entry with `origin: "legacy"`, dated
+  with the chat's last update time.
+- `gameSessions`: a Game's summary of each previous session.
+
+A chat without summaries, or one that is not found, gets empty values. Older Engines do not have the
+method: check that it exists, or declare 1.387.
+
+```ts
+const { day, week, rolling, gameSessions } = (await api.runtime.persistence.listChatSummaries?.(chatId)) ?? {};
+```
+
 ### Capability API 1.386: open a connection, and raw generation for packages
 
 The browser view gets `openConnection(connectionId)`. It opens the connection editor on that saved

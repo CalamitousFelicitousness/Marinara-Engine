@@ -332,11 +332,15 @@ export async function registerRawRoute(app: FastifyInstance) {
     const abortController = new AbortController();
     activeRawRuns.set(runId, { abortController, connectionId: body.connectionId });
 
+    // The reply, not the request: the request stream has already closed once the body was read, so a listener on it
+    // never hears the client leave, and the provider would keep generating for nobody.
+    let completed = false;
     const onClose = () => {
+      if (completed) return;
       abortController.abort();
       activeRawRuns.delete(runId);
     };
-    req.raw.on("close", onClose);
+    reply.raw.on("close", onClose);
 
     const runOptions = {
       model: conn.model,
@@ -400,7 +404,8 @@ export async function registerRawRoute(app: FastifyInstance) {
         }
         sendSseEvent(reply, { type: "done", data: "" });
       } finally {
-        req.raw.off("close", onClose);
+        completed = true;
+        reply.raw.off("close", onClose);
         activeRawRuns.delete(runId);
         stopKeepalive();
         reply.raw.end();
@@ -421,7 +426,8 @@ export async function registerRawRoute(app: FastifyInstance) {
       logger.error(err, "[raw] Generation failed");
       return reply.status(500).send({ error: err instanceof Error ? err.message : "Raw generation failed", runId });
     } finally {
-      req.raw.off("close", onClose);
+      completed = true;
+      reply.raw.off("close", onClose);
       activeRawRuns.delete(runId);
     }
   });

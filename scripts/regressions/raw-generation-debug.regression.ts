@@ -1,6 +1,7 @@
 // POST /api/generate/raw takes `debugMode` (Capability API 1.386), so a package can show the user the
 // prompt it really sent. With it, the final provider messages and the reply are logged, streaming or not,
 // and never the connection's key; without it (and without DEBUG_AGENTS) nothing is.
+// A client that leaves mid-run (a reload) stops the provider call instead of letting it generate for nobody.
 //
 // Project imports are dynamic, after the env assignments, so nothing opens a real data folder.
 import assert from "node:assert/strict";
@@ -19,10 +20,18 @@ process.env.MARINARA_LITE = "true";
 process.env.LOG_LEVEL = "silent";
 delete process.env.DEBUG_AGENTS;
 
+let hungRequestClosed = false;
 const provider = createServer(async (request, response) => {
   const chunks: Buffer[] = [];
   for await (const chunk of request) chunks.push(Buffer.from(chunk));
   const body = JSON.parse(Buffer.concat(chunks).toString());
+  if (JSON.stringify(body.messages).includes("Hang.")) {
+    // Never answers: only the Engine dropping the upstream request ends it.
+    response.on("close", () => {
+      hungRequestClosed = true;
+    });
+    return;
+  }
   const content = "The quill scratched on.";
   if (body.stream) {
     response.writeHead(200, { "content-type": "text/event-stream" });
@@ -118,6 +127,35 @@ try {
     logged.every((line) => !line.includes("fixture-secret-key")),
     "the debug lines never carry the connection's key",
   );
+
+  await app.listen({ port: 0, host: "127.0.0.1" });
+  const engineAddress = app.server.address();
+  assert(engineAddress && typeof engineAddress === "object");
+  for (const streaming of [true, false]) {
+    hungRequestClosed = false;
+    const client = new AbortController();
+    const pending = fetch(`http://127.0.0.1:${engineAddress.port}/api/generate/raw`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        connectionId: connection.id,
+        messages: [{ role: "user", content: "Hang." }],
+        streaming,
+        runId: `left-${streaming}`,
+      }),
+      signal: client.signal,
+    }).then(
+      (response) => response.text(),
+      () => null,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    client.abort();
+    await pending.catch(() => null);
+    for (let waited = 0; !hungRequestClosed && waited < 3000; waited += 50) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    assert.ok(hungRequestClosed, `a client leaving a ${streaming ? "streaming" : "plain"} run stops the provider call`);
+  }
   console.log("raw generation debug regression passed");
 } finally {
   await app.close();

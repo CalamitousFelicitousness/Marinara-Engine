@@ -350,6 +350,18 @@ function runtimeBlockReason(installed: InstalledCapabilityPackage): string | nul
   );
 }
 
+function isLegacyValidatorActivationFailure(installed: InstalledCapabilityPackage): boolean {
+  if (installed.manifest.schemaVersion === 2 && installed.manifest.capabilityApi.major !== 1) return false;
+  // ponytail: old registries have messages, not typed causes. Keep these migration matches exact;
+  // replace them with activation error codes when the registry records those causes.
+  const message = installed.error ?? installed.readinessError;
+  return (
+    typeof message === "string" &&
+    (/^[A-Za-z_$][\w$]*\.innerType is not a function$/.test(message) ||
+      message === "Cannot read properties of undefined (reading 'curve')")
+  );
+}
+
 function assertNotDowngrade(
   current: Pick<InstalledCapabilityPackage, "id" | "version"> | undefined,
   nextVersion: string,
@@ -7242,7 +7254,11 @@ export const capabilityPackageManager = {
   async runtimePackages() {
     const registry = await readRegistry();
     return registry.packages
-      .filter((installed) => installed.status !== "error" && installed.manifest.entrypoints.server)
+      .filter(
+        (installed) =>
+          installed.manifest.entrypoints.server &&
+          (installed.status !== "error" || isLegacyValidatorActivationFailure(installed)),
+      )
       .map((installed) => ({
         installed,
         serverEntrypoint: inside(

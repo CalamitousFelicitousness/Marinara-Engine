@@ -2196,6 +2196,11 @@ the same dependency-resolution contract. Legacy shared data links are refreshed 
 directory is available. Existing real directories are left alone, and fresh runtime copies resolve their dependencies
 independently of that legacy data link. A package's own declared bundled dependency tree remains intact.
 
+At startup, legacy API-1 packages disabled by the known Zod migration errors are retried through the normal
+compatibility and file-integrity checks. This lets a repaired Engine recover an already failed installation without
+deleting its maps or other package data. Other error messages remain disabled. Historical registry entries
+record only error messages, so recovery recognizes the exact legacy `innerType` and nested `curve` failures.
+
 **Declaring it.** A package that uses any of this declares `schemaVersion: 2`, `capabilityApi: { major: 1, minor: 341 }`
 and `builtAgainst`, and keeps its `engine` range. A `schemaVersion: 1` manifest is never checked against the
 capability API, so it moves to version 2. The capability API is the gate, not the Engine version: an Engine without

@@ -92,6 +92,8 @@ const Fastify = serverRequire("fastify") as typeof import("fastify").default;
 const { getDB, closeDB } = await import("../../packages/server/src/db/connection.js");
 const { capabilityModuleRuntime } =
   await import("../../packages/server/src/services/capability-packages/capability-module-runtime.service.js");
+const { capabilityPackageManager } =
+  await import("../../packages/server/src/services/capability-packages/package-manager.service.js");
 const { getCapabilityService } =
   await import("../../packages/server/src/services/capability-packages/capability-service-registry.service.js");
 const { linkCapabilityPackageDependencies } =
@@ -178,6 +180,11 @@ export async function activate(context) {
   });
 }
 `;
+const quarantinedMarker = join(dir, "unrelated-error-executed");
+const tamperedMarker = join(dir, "tampered-error-executed");
+function failedFixture(id: string, source: string, error: string) {
+  return { ...fixturePackage(id, source), status: "error", readiness: "error", error, readinessError: error };
+}
 const packages = [
   fixturePackage("externals-probe", probeSource, ["routes"]),
   fixturePackage("externals-transitive", `import "ws";\nexport function activate() {}\n`),
@@ -196,8 +203,42 @@ export function activate(context) { return context.api.registerService("external
       "node_modules/authored-runtime-fixture/index.js": "export const value = 42;",
     },
   ),
+  failedFixture(
+    "externals-recover-inner",
+    `import {z} from "zod";
+const schema = z.object({value:z.string()}).superRefine(()=>{});
+export function activate(context) {
+  const inner = schema.innerType();
+  return context.api.registerService("externals-recover-inner", {parse:(input)=>inner.parse(input)});
+}`,
+    "At.innerType is not a function",
+  ),
+  failedFixture(
+    "externals-recover-curve",
+    `import {z} from "zod";
+const settings = z.object({commission:z.object({message:z.object({curve:z.string().default("smooth")}).default({})}).default({})}).parse({});
+const curve = settings.commission.message.curve;
+export function activate(context) { return context.api.registerService("externals-recover-curve", {curve}); }`,
+    "Cannot read properties of undefined (reading 'curve')",
+  ),
+  failedFixture(
+    "externals-error-quarantined",
+    `import {writeFileSync} from "node:fs";
+writeFileSync(${JSON.stringify(quarantinedMarker)}, "executed");
+export function activate(context) { return context.api.registerService("externals-error-quarantined", true); }`,
+    "Unrelated package startup failure",
+  ),
+  failedFixture(
+    "externals-recover-tampered",
+    `import {writeFileSync} from "node:fs";
+writeFileSync(${JSON.stringify(tamperedMarker)}, "executed");
+export function activate(context) { return context.api.registerService("externals-recover-tampered", true); }`,
+    "At.innerType is not a function",
+  ),
 ];
 writeFileSync(join(dir, "capability-packages", "installed.json"), JSON.stringify({ schemaVersion: 1, packages }));
+const tamperedEntry = join(dir, "capability-packages", "versions", "externals-recover-tampered", "1.0.0", "server.mjs");
+writeFileSync(tamperedEntry, `${readFileSync(tamperedEntry, "utf8")}\n// Different from the installed artifact.\n`);
 
 const link = join(dir, "capability-packages", "node_modules");
 const linkType = process.platform === "win32" ? "junction" : "dir";
@@ -285,6 +326,44 @@ try {
   symlinkSync(serverNodeModules, join(stale, "node_modules"), linkType);
   await capabilityModuleRuntime.start(app);
   assert.equal(existsSync(stale), false, "old direct-Engine runtime links are not reused after an upgrade");
+  const recovered = getCapabilityService<{ parse: (input: unknown) => unknown }>("externals-recover-inner");
+  const curve = getCapabilityService<{ curve: string }>("externals-recover-curve");
+  const startupStates = (await capabilityPackageManager.installed()).filter((item) =>
+    [
+      "externals-recover-inner",
+      "externals-recover-curve",
+      "externals-error-quarantined",
+      "externals-recover-tampered",
+    ].includes(item.id),
+  );
+  assert.equal(existsSync(quarantinedMarker), false, "unrelated persisted failures are never imported");
+  assert.equal(existsSync(tamperedMarker), false, "a known old error never bypasses artifact verification");
+  assert.equal(getCapabilityService("externals-error-quarantined"), null);
+  assert.equal(getCapabilityService("externals-recover-tampered"), null);
+  console.info(
+    "Startup recovery states:",
+    startupStates.map(({ id, status, readiness, error }) => ({ id, status, readiness, error })),
+  );
+  assert.deepEqual(
+    [Boolean(recovered), Boolean(curve)],
+    [true, true],
+    "startup retries both persisted legacy-Zod failures with the corrected dependency mapping",
+  );
+  assert.deepEqual(recovered!.parse({ value: "ready" }), { value: "ready" });
+  assert.equal(curve!.curve, "smooth", "legacy nested defaults are usable after startup recovery");
+  for (const id of ["externals-recover-inner", "externals-recover-curve"]) {
+    const installed = startupStates.find((item) => item.id === id)!;
+    assert.equal(installed.status, "active");
+    assert.equal(installed.readiness, "ready");
+    assert.equal(installed.error, null);
+  }
+  const quarantined = startupStates.find((item) => item.id === "externals-error-quarantined")!;
+  assert.equal(quarantined.status, "error");
+  assert.equal(quarantined.error, "Unrelated package startup failure");
+  const tampered = startupStates.find((item) => item.id === "externals-recover-tampered")!;
+  assert.equal(tampered.status, "error");
+  assert.equal(tampered.readiness, "error");
+  assert.match(tampered.error ?? "", /integrity verification/);
   const upgraded = getCapabilityService<ProbeService>("externals-probe");
   assert.ok(upgraded);
   assert.deepEqual(upgraded.compat.partial, {});

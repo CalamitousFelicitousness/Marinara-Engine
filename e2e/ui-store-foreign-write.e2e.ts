@@ -206,6 +206,7 @@ ui?.getState().setRoleplayReducedPaintEffects(true);`,
       const { useUIStore } = await import("/src/stores/ui.store.ts" as string);
       const ui = useUIStore.getState();
       ui.setSidebarWidth(400);
+      ui.setRoleplayChatWidthPercent(67);
       ui.setRoleplayReducedPaintEffects(settings.roleplayReducedPaintEffects);
       ui.selectImpersonatePromptTemplate({ id: settings.activeImpersonatePromptTemplateId, prompt: "Stay in voice." });
     }, LOCAL_SETTINGS);
@@ -213,9 +214,12 @@ ui?.getState().setRoleplayReducedPaintEffects(true);`,
       .poll(async () => pick((await readStored(page))?.state ?? {}, Object.keys(LOCAL_SETTINGS)))
       .toEqual(LOCAL_SETTINGS);
     const saved = pick(await readPersisted(page), [...DROPPED_BY_V74_COPY, "sidebarWidth"]);
-    expect(pick(saved, ["imageCharacterSheetWidth", "mariConnectionId", "sidebarWidth"])).toEqual({
+    expect(
+      pick(saved, ["imageCharacterSheetWidth", "mariConnectionId", "roleplayChatWidthPercent", "sidebarWidth"]),
+    ).toEqual({
       imageCharacterSheetWidth: 1280,
       mariConnectionId: null,
+      roleplayChatWidthPercent: 67,
       sidebarWidth: 400,
     });
 

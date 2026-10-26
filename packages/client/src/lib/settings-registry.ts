@@ -1326,7 +1326,7 @@ export const SETTINGS_SEARCHABLE_CONTROLS: readonly SettingsSearchableControlMet
     labelKey: "settings.controls.roleplayChatWidth.label",
     label: "Chat area width",
     description:
-      "Choose how much of the available chat area the text column uses. Avatar and Tracker Panel space still apply. Turn this off to restore the default width.",
+      "Set text width while leaving room for avatars and Tracker Panel, or turn this off to restore the default.",
     descriptionKey: "settings.controls.roleplayChatWidth.help",
     aliases: ["roleplay", "text", "width", "resize", "reading", "column", "percentage"],
     kind: "Slider",

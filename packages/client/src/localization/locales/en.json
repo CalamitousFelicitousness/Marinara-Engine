@@ -5110,7 +5110,7 @@
   "settings.controls.roleplayChatPosition.left": "Left",
   "settings.controls.roleplayChatPosition.right": "Right",
   "settings.controls.roleplayChatWidth.enabled": "Custom chat width",
-  "settings.controls.roleplayChatWidth.help": "Choose how much of the available chat area the text column uses. Avatar and Tracker Panel space still apply. Turn this off to restore the default width.",
+  "settings.controls.roleplayChatWidth.help": "Set text width while leaving room for avatars and Tracker Panel, or turn this off to restore the default.",
   "settings.controls.roleplayChatWidth.label": "Chat area width",
   "settings.controls.scrollableAvatars.help": "When enabled, roleplay avatars stay visible while you scroll through long messages and stop at the bottom of their own message.",
   "settings.controls.scrollableAvatars.label": "Scrollable Avatars",

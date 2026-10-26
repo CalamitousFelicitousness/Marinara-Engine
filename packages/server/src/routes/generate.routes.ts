@@ -3254,11 +3254,11 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             settings: agent.settings,
           })),
         });
-        if (chatEnableAgents && chatActiveAgentIds.includes("long-term-memory")) {
+        const longTermMemoryListed = chatEnableAgents && chatActiveAgentIds.includes("long-term-memory");
+        if (longTermMemoryListed) {
           runtimeSectionEligibleAgentTypes.add("long-term-memory");
         }
-        const longTermMemoryActive =
-          chatEnableAgents && chatActiveAgentIds.includes("long-term-memory") && longTermMemoryRuntimeAvailable();
+        const longTermMemoryActive = longTermMemoryListed && longTermMemoryRuntimeAvailable();
         const chatActiveLorebookIds: string[] = Array.isArray(chatMeta.activeLorebookIds)
           ? (chatMeta.activeLorebookIds as string[])
           : [];
@@ -4159,8 +4159,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               signal: generationSignal,
             },
             summaryVectorizerAvailable: memoryRecallVectorizerAvailable,
-            includeRecallHistory:
-              chatEnableAgents && chatActiveAgentIds.includes("long-term-memory") && !input.regenerateMessageId,
+            includeRecallHistory: longTermMemoryListed && !input.regenerateMessageId,
           });
           finalMessages = preparedHistory.finalMessages;
           conversationRecallHistory = preparedHistory.recallHistoryMessages;

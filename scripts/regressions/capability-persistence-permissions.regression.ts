@@ -188,6 +188,37 @@ try {
   const [legacy] = (await trusted.listChatSummaries!(summarized.id)).rolling;
   assert.equal(legacy?.origin, "legacy");
   assert.equal(legacy?.createdAt, (await createChatsStorage(db).getById(summarized.id))?.updatedAt);
+  // Stored game sessions can lack fields (older ones hold `revelations`); each one reads back complete and stable.
+  await createChatsStorage(db).patchMetadata(summarized.id, {
+    gamePreviousSessionSummaries: [
+      { sessionNumber: 3, summary: "Partial.", revelations: ["A rumor"] },
+      { summary: "Unnumbered.", keyDiscoveries: ["Map"], revelations: ["Map", "Gate"], statsSnapshot: "bad" },
+    ],
+  });
+  const stamp = (await createChatsStorage(db).getById(summarized.id))?.updatedAt;
+  const complete = { resumePoint: "", partyDynamics: "", partyState: "", characterMoments: [], littleDetails: [] };
+  const sessions = (await trusted.listChatSummaries!(summarized.id)).gameSessions;
+  assert.deepEqual(sessions, [
+    {
+      ...complete,
+      sessionNumber: 3,
+      summary: "Partial.",
+      keyDiscoveries: ["A rumor"],
+      statsSnapshot: {},
+      npcUpdates: [],
+      timestamp: stamp,
+    },
+    {
+      ...complete,
+      sessionNumber: 2,
+      summary: "Unnumbered.",
+      keyDiscoveries: ["Map", "Gate"],
+      statsSnapshot: {},
+      npcUpdates: [],
+      timestamp: stamp,
+    },
+  ]);
+  assert.deepEqual((await trusted.listChatSummaries!(summarized.id)).gameSessions, sessions);
   for (const item of packages) {
     // Actual registry read, digest verification, runtime snapshot, module import,
     // activation and service registration; no runtime or persistence mocks.

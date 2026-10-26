@@ -208,8 +208,33 @@ function readSummaryEntries(value: unknown): CapabilityChatSummaries["day"] {
 }
 
 /**
+ * One stored Game session as a complete SessionSummary. Older entries lack fields or keep `revelations`, so each
+ * field is read on its own (as the Game routes do); a missing number is the entry's position plus one.
+ */
+function readGameSession(session: Record<string, unknown>, index: number, chatUpdatedAt?: string): SessionSummary {
+  const text = (value: unknown) => (typeof value === "string" ? value : "");
+  const stats = parseMetadata(session.statsSnapshot);
+  return {
+    sessionNumber: typeof session.sessionNumber === "number" ? session.sessionNumber : index + 1,
+    summary: text(session.summary),
+    resumePoint: text(session.resumePoint),
+    partyDynamics: text(session.partyDynamics),
+    partyState: text(session.partyState),
+    keyDiscoveries: [
+      ...new Set([...parseStringArray(session.keyDiscoveries), ...parseStringArray(session.revelations)]),
+    ],
+    characterMoments: parseStringArray(session.characterMoments),
+    littleDetails: parseStringArray(session.littleDetails),
+    statsSnapshot: stats ? structuredClone(stats) : {},
+    npcUpdates: parseStringArray(session.npcUpdates),
+    ...(typeof session.nextSessionRequest === "string" ? { nextSessionRequest: session.nextSessionRequest } : {}),
+    timestamp: typeof session.timestamp === "string" ? session.timestamp : (chatUpdatedAt ?? ""),
+  };
+}
+
+/**
  * The summaries a chat keeps in its metadata; whatever is missing or malformed reads as empty.
- * Undated rolling entries take the chat's own update time, so repeated reads return the same values.
+ * Undated entries take the chat's own update time, so repeated reads return the same values.
  */
 function mapChatSummaries(value: unknown, chatUpdatedAt?: string): CapabilityChatSummaries {
   const metadata = parseMetadata(value) ?? {};
@@ -221,11 +246,9 @@ function mapChatSummaries(value: unknown, chatUpdatedAt?: string): CapabilityCha
       legacySummary: typeof metadata.summary === "string" ? metadata.summary : null,
       now: chatUpdatedAt,
     }),
-    gameSessions: sessions.flatMap((entry) => {
+    gameSessions: sessions.flatMap((entry, index) => {
       const session = parseMetadata(entry);
-      return typeof session?.summary === "string" && typeof session.sessionNumber === "number"
-        ? [structuredClone(session) as unknown as SessionSummary]
-        : [];
+      return typeof session?.summary === "string" ? [readGameSession(session, index, chatUpdatedAt)] : [];
     }),
   };
 }

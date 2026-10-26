@@ -1798,7 +1798,9 @@ and returns copies:
 - `rolling`: the rolling summary entries in the chat's order, disabled ones included (check `enabled`).
   A chat that only has the older single summary reads it as one entry with `origin: "legacy"`, dated
   with the chat's last update time.
-- `gameSessions`: a Game's summary of each previous session.
+- `gameSessions`: a Game's summary of each previous session. Every entry is complete: a missing text
+  field reads `""`, a missing list `[]`, an older `revelations` list joins `keyDiscoveries`, and a missing
+  `sessionNumber` is the entry's position (from 1). An entry without a date takes the chat's last update time.
 
 A chat without summaries, or one that is not found, gets empty values. Older Engines do not have the
 method: check that it exists, or declare 1.387.

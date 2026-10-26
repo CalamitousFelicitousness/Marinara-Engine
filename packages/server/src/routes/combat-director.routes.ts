@@ -53,6 +53,9 @@ import {
   rulesetCatalogIdsForBuild,
   rulesetCellBlocked,
   rulesetSheetBuildsByName,
+  rulesetBudgetLevel,
+  rulesetBudgetStandIns,
+  rulesetEncounterBudget,
   type Combatant,
   type DirectedCombatView,
   type DirectedCommand,
@@ -1109,6 +1112,37 @@ export async function combatDirectorRoutes(
           (input.positioned === true && resolved?.status === "ok" && resolved.definition.combat?.distance)
             ? await gameBattlefieldHere(app.db, input.chatId, meta, battlefield.seed)
             : null;
+        // A bestiary creature far beyond the party sends lesser ones of its kind instead, swapped before
+        // the fight's units are made (Alyssa 2026-10-26: a CR 21 lich for a level 4 party). Never in a
+        // story's own fight, which is its author's.
+        let standIns: string[] = [];
+        if (
+          resolved?.status === "ok" &&
+          resolved.definition.combat?.threat?.budget &&
+          !(await latestStoryFight(app.db, input.chatId, meta))
+        ) {
+          const definition = resolved.definition;
+          const scale = definition.combat!.threat!.budget!;
+          const budget = rulesetEncounterBudget(
+            definition,
+            [...rulesetSheetBuildsByName(definition, meta.gameCharacterCards, null).values()].map((build) =>
+              rulesetBudgetLevel(scale, build.fields),
+            ),
+            normalizeGameDifficulty(setup.difficulty),
+          );
+          if (budget) {
+            const swapped = rulesetBudgetStandIns(
+              definition,
+              await loadFightCatalogs(resolved.packageId, definition, (c) => c.holds === "creatures"),
+              input.enemies,
+              budget,
+            );
+            if (swapped.lines.length > 0) {
+              input.enemies = swapped.enemies as typeof input.enemies;
+              standIns = swapped.lines;
+            }
+          }
+        }
         // A scene in the setting's own words is laid out like the battlefield it names (worldgen W6d).
         const environment =
           here?.scene ??
@@ -1358,6 +1392,7 @@ export async function combatDirectorRoutes(
                 }),
           });
           if (!built.ok) return reply.code(400).send({ error: built.error });
+          if (standIns.length > 0) built.fight.adjustments.unshift(...standIns);
           if (reworded.length) built.fight.returnedFrom = reworded;
           const clockNow = gameClockMinutes(meta.gameTime);
           backAs.forEach((back, index) => {

@@ -2144,6 +2144,12 @@ const dataDir = mkdtempSync(join(tmpdir(), "marinara-creature-sheets-"));
     );
     assert.match(unpricedLines, /Archmage Veyl may spend 3 points between turns on Cantrip, Move, Staff\./);
     assert.doesNotMatch(unpricedLines, /no legendary actions/);
+    // Its Staff three times between turns on top of its own turn is far past a CR 2's round, so that
+    // goes (laptop 2026-10-26: a CR 3 Archlich's Disrupt Life wiped four rested heroes).
+    assert.match(
+      unpricedLines,
+      /Archmage Veyl: Staff went from what its points buy: with its own turn, it would deal more in a round than the 9 of CR 2\./,
+    );
     assert.deepEqual(
       who(unpriced.encounter, "veyl")
         .actions.filter((one) => one.signature)
@@ -2151,7 +2157,6 @@ const dataDir = mkdtempSync(join(tmpdir(), "marinara-creature-sheets-"));
       [
         ["legendary_cantrip", 1],
         ["legendary_move", 1],
-        ["legendary_staff", 1],
       ],
     );
     // A skill a creature of this ruleset has, priced out of its points, is bought with them and never

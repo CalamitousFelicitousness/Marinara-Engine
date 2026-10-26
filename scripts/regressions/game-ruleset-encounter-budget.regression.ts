@@ -21,6 +21,7 @@ import {
   defaultRulesetSheetBuild,
   parseRulesetDefinition,
   rulesetBudgetedTiers,
+  rulesetBudgetStandIns,
   rulesetCrowdTimes,
   rulesetEncounterBudget,
   rulesetFightWorth,
@@ -318,6 +319,54 @@ try {
     gate,
   );
   assert.doesNotMatch(issue(794, JSON.parse(text)) ?? "", gate);
+
+  // A bestiary creature far beyond the party sends lesser ones of its kind that fit, and stays out of
+  // the fight (Alyssa 2026-10-26: a CR 21 lich for a level 4 party).
+  {
+    const definition = parsed(doc());
+    const kin = (id: string, label: string, tier: string, type: string) => ({
+      id,
+      label,
+      creature: { tier, type, health: 10, defense: 10, initiativeModifier: 0, actions: [] },
+    });
+    const bestiary = {
+      foes: [
+        kin("lich", "Lich", "cr_5", "undead"),
+        kin("skeleton", "Skeleton", "cr_1_4", "undead"),
+        kin("zombie", "Zombie", "cr_1_2", "undead"),
+        kin("wolf", "Wolf", "cr_1", "beast"),
+      ],
+    } as never;
+    const party = rulesetEncounterBudget(definition, [1, 1], "normal")!;
+    const swapped = rulesetBudgetStandIns(
+      definition,
+      bestiary,
+      [{ id: "e1", name: "Lich Morrow", creature: "Lich", boss: true }],
+      party,
+    );
+    assert.deepEqual(
+      swapped.enemies.map((one) => [one.id, one.name, one.creature, one.boss]),
+      [
+        ["e1", "Skeleton 1", "foes/skeleton", false],
+        ["e1-2", "Skeleton 2", "foes/skeleton", false],
+        ["e1-3", "Skeleton 3", "foes/skeleton", false],
+      ],
+    );
+    assert.match(
+      swapped.lines[0]!,
+      /^Lich is far beyond this party \(worth 1800, against its Moderate budget of 150\), so its servants come instead: 3 Skeleton\. Lich Morrow stays out of this fight/,
+    );
+    // One that fits, or one kept, comes as it is.
+    const zombie = rulesetBudgetStandIns(definition, bestiary, [{ id: "z", name: "Zombie" }], party);
+    assert.deepEqual(zombie.lines, []);
+    assert.deepEqual(
+      rulesetBudgetStandIns(definition, bestiary, [{ id: "e1", name: "Lich" }], party, new Set(["e1"])).lines,
+      [],
+    );
+    // Nothing of its kind: it comes as it is.
+    const alone = { foes: [kin("lich", "Lich", "cr_5", "undead"), kin("wolf", "Wolf", "cr_1", "beast")] } as never;
+    assert.deepEqual(rulesetBudgetStandIns(definition, alone, [{ id: "e1", name: "Lich" }], party).lines, []);
+  }
 
   console.log("The encounter budget brings invented foes down to what the party may meet.");
 } finally {

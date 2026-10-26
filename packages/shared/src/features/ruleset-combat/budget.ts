@@ -3,7 +3,12 @@
 // Game Master is told the budget, and the Engine brings invented opponents down a rung at a time while
 // a fight is over it. A creature of a bestiary, or one that comes back, is counted and never changed.
 import { GAME_DIFFICULTIES, type GameDifficulty } from "../combat-conditions.js";
-import type { RulesetDefinition } from "../../schemas/ruleset.schema.js";
+import type {
+  RulesetCatalogEntriesById,
+  RulesetCatalogEntry,
+  RulesetDefinition,
+} from "../../schemas/ruleset.schema.js";
+import { findRulesetCreature } from "./creatures.js";
 
 type Budget = NonNullable<NonNullable<NonNullable<RulesetDefinition["combat"]>["threat"]>["budget"]>;
 
@@ -127,4 +132,89 @@ export function rulesetBudgetedTiers(
     after = rulesetFightWorth(definition, tiers, members, times);
   }
   return { tiers, worth: { before, after } };
+}
+
+/**
+ * A bestiary creature far beyond the party, the fight it is in worth more than the party's budget with
+ * it alone, gives way to lesser creatures of its own kind that fit (Alyssa 2026-10-26: a CR 21 lich for
+ * a level 4 party sends its servants, and it stays out of the fight for the story to keep). The ones
+ * that fit best are the most worth together, at most four of one kind; nothing of its kind that fits,
+ * and it comes as it is. Each one swapped is said, for the Game Master. `kept` (one that comes back) is
+ * never swapped.
+ */
+export function rulesetBudgetStandIns<
+  T extends { id: string; name: string; creature?: string; tier?: string; boss?: unknown },
+>(
+  definition: RulesetDefinition,
+  bestiary: RulesetCatalogEntriesById,
+  enemies: readonly T[],
+  budget: RulesetEncounterBudget,
+  kept: ReadonlySet<string> = new Set(),
+): {
+  enemies: Array<T | (Omit<T, "creature" | "tier" | "boss"> & { creature: string; boss: false })>;
+  lines: string[];
+} {
+  const scale = definition.combat?.threat?.tiers ?? [];
+  const worthOf = (id: string | undefined) => scale.find((tier) => tier.id === id)?.worth ?? 0;
+  const found = enemies.map((enemy) =>
+    enemy.creature
+      ? (findRulesetCreature(bestiary, enemy.creature) ?? findRulesetCreature(bestiary, enemy.name))
+      : findRulesetCreature(bestiary, enemy.name),
+  );
+  const tierOf = (index: number) => found[index]?.entry.creature?.tier ?? enemies[index]!.tier;
+  const lines: string[] = [];
+  const out: Array<T | (Omit<T, "creature" | "tier" | "boss"> & { creature: string; boss: false })> = [];
+  enemies.forEach((enemy, index) => {
+    const own = found[index];
+    const creature = own?.entry.creature;
+    const others = enemies.flatMap((_, at) => (at === index ? [] : [tierOf(at)]));
+    const bossed = enemies.some((one, at) => at !== index && !!one.boss);
+    const allowed = bossed ? budget.bossWorth : budget.worth;
+    const step = (bossed ? budget.bossStep : budget.step).label;
+    const alone = rulesetFightWorth(definition, [...others, creature?.tier], budget.members);
+    if (!own || !creature || kept.has(enemy.id) || alone <= Math.max(allowed, budget.bossWorth)) {
+      out.push(enemy);
+      return;
+    }
+    let best: { catalogId: string; entry: RulesetCatalogEntry; count: number; worth: number } | undefined;
+    for (const [catalogId, entries] of Object.entries(bestiary))
+      for (const entry of entries) {
+        const kin = entry.creature;
+        if (!kin || entry === own.entry || worthOf(kin.tier) <= 0) continue;
+        if (creature.type === undefined || kin.type !== creature.type) continue;
+        for (let count = 4; count >= 1; count--) {
+          const worth = rulesetFightWorth(
+            definition,
+            [...others, ...Array.from({ length: count }, () => kin.tier)],
+            budget.members,
+          );
+          if (worth > allowed) continue;
+          const total = count * worthOf(kin.tier);
+          if (
+            !best ||
+            total > best.count * worthOf(best.entry.creature!.tier) ||
+            (total === best.count * worthOf(best.entry.creature!.tier) && entry.label < best.entry.label)
+          )
+            best = { catalogId, entry, count, worth };
+          break;
+        }
+      }
+    if (!best) {
+      out.push(enemy);
+      return;
+    }
+    const { creature: _creature, tier: _tier, boss: _boss, ...unit } = enemy;
+    for (let at = 0; at < best.count; at++)
+      out.push({
+        ...unit,
+        id: at === 0 ? enemy.id : `${enemy.id}-${at + 1}`,
+        name: best.count === 1 ? best.entry.label : `${best.entry.label} ${at + 1}`,
+        creature: `${best.catalogId}/${best.entry.id}`,
+        boss: false,
+      });
+    lines.push(
+      `${own.entry.label} is far beyond this party (worth ${alone}, against its ${step} budget of ${allowed}), so its servants come instead: ${best.count === 1 ? best.entry.label : `${best.count} ${best.entry.label}`}. ${enemy.name} stays out of this fight, for the story to keep.`,
+    );
+  });
+  return { enemies: out, lines };
 }

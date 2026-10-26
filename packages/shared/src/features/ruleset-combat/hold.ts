@@ -1286,6 +1286,45 @@ export function holdRulesetCombatant(
     else if (!heaviest || !shave(heaviest)) break;
     scaled = true;
   }
+  // What its points buy between turns is part of its round too, on top of its own best turn (laptop
+  // 2026-10-26: a CR 3 Archlich's borrowed Disrupt Life, on the whole party with all 3 points, came on
+  // top of a round already near the cap, and wiped four rested level-4 heroes). Each such action is
+  // scaled down until its points' worth fits what the round leaves, and goes when it cannot.
+  const points = combatant.signature?.max ?? 0;
+  if (points > 0) {
+    const plain = bestSheetRound(definition, {
+      ...combatant,
+      actions: combatant.actions.filter((action) => !action.signature),
+    }).average;
+    const room = Math.max(0, cap - plain);
+    const worth = (action: RulesetCombatAction) =>
+      (bestSheetRound(definition, { ...combatant, actions: [action], riders: [] }).average * points) /
+      Math.max(1, action.signature!.cost);
+    const scaledDown: string[] = [];
+    const dropped: string[] = [];
+    for (const action of combatant.actions.filter((one) => one.signature && one.damage)) {
+      let shaved = false;
+      for (let guard = 0; guard < 200 && worth(action) > room; guard++) {
+        const heaviest = [action.damage!, ...(action.damage!.plus ?? [])].sort(
+          (left, right) => rulesetAverageAmount(right) - rulesetAverageAmount(left),
+        )[0]!;
+        if (!shave(heaviest)) break;
+        shaved = true;
+      }
+      if (worth(action) > room) dropped.push(action.label);
+      else if (shaved) scaledDown.push(action.label);
+    }
+    if (dropped.length > 0) {
+      combatant.actions = combatant.actions.filter((action) => !dropped.includes(action.label) || !action.signature);
+      adjusted.push(
+        `${dropped.join(", ")} went from what its points buy: with its own turn, it would deal more in a round than the ${cap} of ${tier.label}.`,
+      );
+    }
+    if (scaledDown.length > 0)
+      adjusted.push(
+        `${scaledDown.join(", ")}, bought with its points, was scaled down so its turn and its points together stay inside the ${cap} of ${tier.label}.`,
+      );
+  }
   if (growth) adjusted.push("What a bigger payment buys was scaled down to fit the tier.");
   if (scaled) {
     const left = Math.round(bestSheetRound(definition, combatant).average * 100) / 100;

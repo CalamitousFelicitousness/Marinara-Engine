@@ -24,6 +24,8 @@ export const RULESET_FIGHT_NOTES = {
   budgetOver:
     "This fight is worth {{worth}}, more than this party's {{step}} budget of {{budget}}, with nothing left to bring down.",
   budgetWithin: "This fight is worth {{worth}}, within this party's {{step}} budget of {{budget}}.",
+  standIns:
+    "{{creature}} is far beyond this party (worth {{worth}}, against its {{step}} budget of {{budget}}), so its servants come instead: {{foes}}. {{name}} stays out of this fight, for the story to keep.",
   // ── An opponent ──
   byName: 'No bestiary holds "{{creature}}", so {{name}} was looked up by name.',
   noBestiary: 'No bestiary of this ruleset holds "{{creature}}".',
@@ -109,6 +111,11 @@ export const RULESET_FIGHT_NOTES = {
   unpayableOne: "{{names}} is beyond what this sheet can pay for, so dropped.",
   unpayableMany: "{{names}} are beyond what this sheet can pay for, so dropped.",
   casterKeeps: "{{names}} went: an invented caster keeps {{count}} of what it pays for out of its pools.",
+  casterSpellDamage: "{{names}} went: more damage on its own than {{tier}} deals in a round ({{high}} at most).",
+  legendaryDropped:
+    "{{names}} went from what its points buy: with its own turn, it would deal more in a round than the {{high}} of {{tier}}.",
+  legendaryScaled:
+    "{{names}}, bought with its points, was scaled down so its turn and its points together stay inside the {{high}} of {{tier}}.",
   scoreSet: "{{ability}} was set to {{to}}, as no scores were written.",
   healthAsWritten:
     "Health {{from}} is outside the {{low}} to {{high}} of {{tier}}, and it is not read off one field of the sheet, so it was left as written.",

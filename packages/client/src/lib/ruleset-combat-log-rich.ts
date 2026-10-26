@@ -116,8 +116,10 @@ export function rulesetRichLogLines(
   t: TFunction,
   /** With Debug on: the Engine's reasons for its AI's steps, after each one. */
   reasons = false,
+  /** The ruleset's own words in the player's language (1.798). */
+  text: (english: string) => string = (english) => english,
 ): RulesetLogLine[] {
-  const plain = rulesetCombatNames(definition, view, t);
+  const plain = rulesetCombatNames(definition, view, t, text);
   const sides = new Map(view.combatants.map((combatant) => [combatant.id, combatant.side]));
   const names: RulesetCombatNames = {
     ...plain,

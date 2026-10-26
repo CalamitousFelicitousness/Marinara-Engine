@@ -2687,6 +2687,86 @@ export function isRulesetCatalogAssetPath(path: string): boolean {
   return RULESET_CATALOG_ASSET_PATTERN.test(path);
 }
 
+/** A ruleset's translation into one language (Capability API 1.798): `locales/<lang>.json`, named by
+ *  the language's code as the Engine's own language packs name theirs ("ru", "pt-BR", "zh-Hans"). */
+const RULESET_LOCALE_ASSET_PATTERN = /^locales\/([a-z]{2,3}(?:-[A-Za-z0-9]{2,8}){0,2})\.json$/;
+
+/** The language a ruleset translation asset is in, or null for a path that is none. */
+export function rulesetLocaleOfAssetPath(path: string): string | null {
+  return RULESET_LOCALE_ASSET_PATTERN.exec(path)?.[1] ?? null;
+}
+
+/** Whether a declared package asset path is one of a ruleset's translations (1.798). */
+export function isRulesetLocaleAssetPath(path: string): boolean {
+  return RULESET_LOCALE_ASSET_PATTERN.test(path);
+}
+
+/** The asset path a ruleset ships its translation into `locale` under. */
+export function rulesetLocaleAssetPath(locale: string): string {
+  return `locales/${locale}.json`;
+}
+
+/** How large one translation may be: every display string of the 5e SRD, its English as the keys and a
+ *  language that takes two or three bytes a letter as the values, with room to spare. */
+export const RULESET_LOCALE_MAX_BYTES = 8 * 1024 * 1024;
+
+/** How many languages one ruleset may ship. */
+export const RULESET_LOCALE_MAX_FILES = 40;
+
+/** The longest English string a translation keys by, and the longest translation of it. */
+export const RULESET_LOCALE_KEY_MAX = 8000;
+export const RULESET_LOCALE_VALUE_MAX = 16000;
+
+/**
+ * A ruleset translation as a package ships it (1.798): the package localization catalog the Agents
+ * repository writes (`_meta`, `package`) with a `ruleset` section, each key a display string of the
+ * ruleset's data word for word and its value that string in the file's language. Display only: the
+ * rules go on reading the English. Read to the strings it translates, or the reason it does not read.
+ */
+export function readRulesetLocaleFile(
+  document: unknown,
+  locale: string,
+): { ok: true; strings: Record<string, string> } | { ok: false; issue: string } {
+  const where = rulesetLocaleAssetPath(locale);
+  if (!document || typeof document !== "object" || Array.isArray(document))
+    return { ok: false, issue: `${where} is not a JSON object` };
+  const file = document as Record<string, unknown>;
+  const extra = Object.keys(file).filter((key) => !["$schema", "_meta", "package", "ruleset"].includes(key));
+  if (extra.length) return { ok: false, issue: `${where} holds "${extra[0]}", which a translation does not have` };
+  if (file.$schema !== undefined && (typeof file.$schema !== "string" || file.$schema.length > 300))
+    return { ok: false, issue: `${where} $schema is not a short path` };
+  const meta = file._meta as Record<string, unknown> | undefined;
+  if (!meta || typeof meta !== "object" || meta.locale !== locale)
+    return { ok: false, issue: `${where} _meta.locale is not "${locale}", the language its name says` };
+  if (meta.direction !== undefined && meta.direction !== "ltr" && meta.direction !== "rtl")
+    return { ok: false, issue: `${where} _meta.direction is neither "ltr" nor "rtl"` };
+  if (file.package !== undefined) {
+    const own = file.package as Record<string, unknown>;
+    if (
+      !own ||
+      typeof own !== "object" ||
+      Array.isArray(own) ||
+      Object.values(own).some((value) => typeof value !== "string" || value.length > 4000)
+    )
+      return { ok: false, issue: `${where} package is not a few lines of text` };
+  }
+  // A package's own catalog listing in English (locales/en.json) has no ruleset section: it translates nothing.
+  const section = file.ruleset ?? {};
+  if (!section || typeof section !== "object" || Array.isArray(section))
+    return { ok: false, issue: `${where} ruleset is not a section of strings` };
+  // No prototype, so a key such as "__proto__" is only ever a string.
+  const strings = Object.create(null) as Record<string, string>;
+  for (const [english, translated] of Object.entries(section as Record<string, unknown>)) {
+    if (typeof translated !== "string")
+      return { ok: false, issue: `${where} ruleset "${english.slice(0, 60)}" is not text` };
+    if (english.length > RULESET_LOCALE_KEY_MAX || translated.length > RULESET_LOCALE_VALUE_MAX)
+      return { ok: false, issue: `${where} ruleset "${english.slice(0, 60)}" is longer than a ruleset string may be` };
+    // One not translated yet is shown in English, so it is not kept.
+    if (english.trim() && translated.trim()) strings[english] = translated;
+  }
+  return { ok: true, strings };
+}
+
 /** One plain line for the picker. Catalog text never reaches the model, so this does not carry the
  *  GM tag and macro-brace rules of `promptSafeText`; it only refuses what would break a line. */
 const catalogText = (max: number) =>

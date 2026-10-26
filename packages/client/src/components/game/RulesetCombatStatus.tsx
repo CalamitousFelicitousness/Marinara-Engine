@@ -3,6 +3,7 @@
 // Turn order, the round, every combatant's conditions in the ruleset's own words, what is left of
 // each budget for the actor on turn, and the log with the real arithmetic in it. Every number here
 // was sent by the server; this file reads the view and prints it.
+import { useRulesetText } from "../../lib/ruleset-text";
 import {
   rulesetConditionIcons,
   rulesetHideLines,
@@ -35,7 +36,8 @@ export function RulesetCombatStatus({
   view: DirectedRulesetView;
 }) {
   const { t } = useTranslation();
-  const names = useMemo(() => rulesetCombatNames(definition, view, t), [definition, view, t]);
+  const text = useRulesetText();
+  const names = useMemo(() => rulesetCombatNames(definition, view, t, text), [definition, view, t, text]);
   // Built fresh on every render rather than accumulated, so a saved fight read back, or a language
   // changed mid-battle, prints in the language on screen now. The running number is the key, so a
   // re-render adds only the lines that are new and a reader is told only about those.
@@ -46,7 +48,7 @@ export function RulesetCombatStatus({
     ...(debugMode
       ? view.adjustments.map((line, index) => ({
           seq: index - view.adjustments.length - 1,
-          text: rulesetFightNoteText(line, t),
+          text: rulesetFightNoteText(line, t, text),
         }))
       : []),
     ...rulesetCombatLogLines(view.events, names, t, -1, debugMode),
@@ -327,7 +329,7 @@ export function RulesetCombatStatus({
             <summary className="cursor-pointer py-1 text-xs">{t("game.combat.ruleset.status.adjustments")}</summary>
             <ul className="mt-1 space-y-0.5 text-xs text-[var(--muted-foreground)]">
               {view.adjustments.map((line) => (
-                <li key={line}>{rulesetFightNoteText(line, t)}</li>
+                <li key={line}>{rulesetFightNoteText(line, t, text)}</li>
               ))}
             </ul>
           </details>

@@ -63,6 +63,25 @@ export function rulesetCatalogQuery(rulesetId: string, catalogId: string, versio
   };
 }
 
+/** A ruleset's display strings in one language (1.798), as the fight screen swaps them in: empty when
+ *  it ships none in that language. Under `rulesets()`, so an install or an import refreshes it. */
+export function useRulesetStrings(rulesetId: string | undefined, version: number | undefined, locale: string) {
+  return useQuery({
+    queryKey: [...capabilityPackageKeys.rulesets(), "strings", rulesetId, version ?? "latest", locale] as const,
+    queryFn: () => {
+      const query = new URLSearchParams({ rulesetId: rulesetId!, locale });
+      if (version !== undefined) query.set("version", String(version));
+      return api.get<{ locale: string | null; strings: Record<string, string> }>(
+        `/capability-packages/rulesets/strings?${query.toString()}`,
+      );
+    },
+    enabled: !!rulesetId && locale !== "en",
+    staleTime: 30 * 60_000,
+    retry: (failures: number, error: unknown) =>
+      failures < 1 && !(error instanceof ApiError && error.status >= 400 && error.status < 500),
+  });
+}
+
 /** The picker's own query: only fetched while a picker is open. */
 export function useRulesetCatalog(rulesetId: string, catalogId: string, version: number | undefined, enabled: boolean) {
   return useQuery({

@@ -4,6 +4,7 @@
 //
 // Every number is the view's. The rows only print it; the Player/AI choice is sent to the server,
 // which owns who controls whom, exactly as the old "Party control" strip did.
+import { useRulesetText } from "../../lib/ruleset-text";
 import { Fragment } from "react";
 import {
   rulesetConditionIcons,
@@ -110,7 +111,8 @@ export function RulesetTurnOrder({
   locked: boolean;
 }) {
   const { t } = useTranslation();
-  const names = rulesetCombatNames(definition, view, t);
+  const text = useRulesetText();
+  const names = rulesetCombatNames(definition, view, t, text);
   const byId = new Map(view.combatants.map((combatant) => [combatant.id, combatant]));
   // One who takes two turns this round (1.238) is listed once.
   const order = [...new Set(view.order)].flatMap((id) => {

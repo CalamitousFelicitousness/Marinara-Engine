@@ -28,6 +28,7 @@ import {
   RULESET_LOCAL_NAMESPACE,
   RULESET_MAX_BYTES,
   RULESET_PACKAGE_FILE_MAX_BYTES,
+  rulesetLocaleAssetPath,
   supportedCapabilityApi,
   type RulesetDefinition,
 } from "@marinara-engine/shared";
@@ -91,10 +92,13 @@ function leastCapabilityApi(
   catalogs: Record<string, string>,
   /** The ruleset's own text, whose size a package of it declares (a larger one needs 1.340). */
   rulesetText: string,
+  /** The languages it is translated into (a translation needs 1.798). */
+  locales: readonly string[] = [],
 ) {
   const paths = [
     "ruleset.json",
     ...(definition.catalogs ?? []).flatMap((catalog) => (catalog.asset ? [catalog.asset] : [])),
+    ...locales.map((locale) => rulesetLocaleAssetPath(locale)),
   ];
   // Keyed by each catalog's file, as an install reads them.
   const catalogDocuments = new Map<string, unknown>(
@@ -304,7 +308,8 @@ export async function gameRulesetsRoutes(app: FastifyInstance) {
           (JSON.parse(text) as { entries?: unknown[] }).entries?.length ?? 0,
         ]),
       );
-      if (dryRun) return { status: "checked", rulesetId, version, ruleset: read.ruleset, catalogs };
+      const locales = Object.keys(read.locales).sort();
+      if (dryRun) return { status: "checked", rulesetId, version, ruleset: read.ruleset, catalogs, locales };
       try {
         const { status } = await createGameRulesetsStorage(app.db).put({
           rulesetId,
@@ -312,15 +317,17 @@ export async function gameRulesetsRoutes(app: FastifyInstance) {
           sourceKind: "local",
           definition: read.ruleset,
           catalogs: read.catalogs,
+          locales: read.locales,
         });
         logger.info(
-          "[game/rulesets] Package import of %s version %d (%d catalog files): %s",
+          "[game/rulesets] Package import of %s version %d (%d catalog files, %d translations): %s",
           rulesetId,
           version,
           Object.keys(catalogs).length,
+          locales.length,
           status,
         );
-        return { status, rulesetId, version, catalogs };
+        return { status, rulesetId, version, catalogs, locales };
       } catch (error) {
         if (error instanceof RulesetVersionConflictError) {
           return reply.status(409).send({ error: error.message, code: "ruleset_version_conflict" });
@@ -348,9 +355,16 @@ export async function gameRulesetsRoutes(app: FastifyInstance) {
         return {
           ok: true,
           issues: [],
-          capabilityApi: leastCapabilityApi(JSON.parse(read.ruleset), read.definition, read.catalogs, read.ruleset),
+          capabilityApi: leastCapabilityApi(
+            JSON.parse(read.ruleset),
+            read.definition,
+            read.catalogs,
+            read.ruleset,
+            Object.keys(read.locales),
+          ),
           ruleset: read.ruleset,
           catalogs: read.catalogs,
+          locales: Object.keys(read.locales).sort(),
         };
       }
       const sizeIssue = rulesetSizeIssue(body.data.definition);

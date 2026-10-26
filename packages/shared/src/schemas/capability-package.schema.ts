@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { experienceSetupDefaultsSchema } from "../features/world/game-intro.js";
 import { agentResultTypeSchema } from "./agent.schema.js";
-import { isRulesetCatalogAssetPath, RULESET_ASSET_PATH } from "./ruleset.schema.js";
+import { isRulesetCatalogAssetPath, isRulesetLocaleAssetPath, RULESET_ASSET_PATH } from "./ruleset.schema.js";
 
 /** Caps mirrored by the Marinara-Agents catalog build. Kept here so a hostile or
  *  broken notes document cannot push an unbounded string into a modal. */
@@ -1516,7 +1516,7 @@ const capabilityPackageManifestBaseSchema = z
 // 1.796: a rest's `clear.temp`: every pool's temporary points go as it ends (5e's temporary hit points
 //        at a long rest).
 // 1.797: `combat.signatureAtTurnStart`: signature actions also bought as a foe's turn starts.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 797 } as const);
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 798 } as const);
 
 const capabilityApiVersionSchema = z
   .object({
@@ -1959,6 +1959,22 @@ export const capabilityPackageManifestSchema = z
           code: z.ZodIssueCode.custom,
           path: ["contributions", "assets", "paths"],
           message: `A catalog asset must ship beside the ${RULESET_ASSET_PATH} that declares it`,
+        });
+      }
+    }
+    // A ruleset's translations (1.798) ship beside its ruleset. Only a ruleset package's are: another
+    // package's locales/ folder is its own business.
+    if (
+      manifest.contributions?.assets?.paths.includes(RULESET_ASSET_PATH) &&
+      manifest.contributions.assets.paths.some(isRulesetLocaleAssetPath)
+    ) {
+      const api = manifest.schemaVersion === 2 ? manifest.capabilityApi : null;
+      if (!api || api.major < 1 || (api.major === 1 && api.minor < 798)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["contributions", "assets", "paths"],
+          message:
+            "A ruleset's translations (locales/<language>.json) require schemaVersion 2 and capabilityApi 1.798 or newer",
         });
       }
     }

@@ -28,9 +28,14 @@ import {
   RULESET_CATALOG_EARLIER_MAX_BYTES,
   RULESET_CATALOG_MAX_BYTES,
   RULESET_EARLIER_MAX_BYTES,
+  RULESET_LOCALE_MAX_BYTES,
+  readRulesetLocaleFile,
+  rulesetLocaleAssetPath,
+  rulesetLocaleOfAssetPath,
   RULESET_MAX_BYTES,
   rulesetCatalogAssetPath,
   isRulesetCatalogAssetPath,
+  isRulesetLocaleAssetPath,
   isInstalledCapabilityReady,
   installedCapabilityRegistrySchema,
   installedCapabilityPackageSchema,
@@ -12697,6 +12702,16 @@ export function getCapabilityPackageInstallIssue(
   ) {
     return "A ruleset whose rest clears temporary points (clear.temp) requires schemaVersion 2 and capabilityApi 1.796 or newer";
   }
+  // A ruleset's translations beside it, 1.798 (the manifest schema says so too; an editor's check reads this).
+  if (
+    !declaresApi(798) &&
+    declaresRuleset &&
+    (manifest.contributions?.assets?.paths ?? []).some((path) =>
+      isRulesetLocaleAssetPath(tryNormalizeArchivePath(path) ?? ""),
+    )
+  ) {
+    return "A ruleset's translations (locales/<language>.json) require schemaVersion 2 and capabilityApi 1.798 or newer";
+  }
   // Signature actions bought at a foe's turn start, 1.797.
   if (!declaresApi(797) && plainRecord(plainRecord(ruleset)?.combat)?.signatureAtTurnStart !== undefined) {
     return "A ruleset whose signature actions are bought at a turn's start (combat.signatureAtTurnStart) requires schemaVersion 2 and capabilityApi 1.797 or newer";
@@ -14230,6 +14245,21 @@ async function installCatalogPackage(
     }
     const rulesetIssue = getCapabilityPackageInstallIssue(installedManifest, rulesetDocument, catalogDocuments);
     if (rulesetIssue) throw new Error(rulesetIssue);
+    // Its translations (1.798), each one the strings it translates and nothing else, within its cap.
+    for (const [name, data] of verifiedFiles) {
+      const locale = rulesetLocaleOfAssetPath(name);
+      if (!locale) continue;
+      if (data.length > RULESET_LOCALE_MAX_BYTES)
+        throw new Error(`${name} is ${data.length} bytes, over the ${RULESET_LOCALE_MAX_BYTES}-byte limit`);
+      let document: unknown;
+      try {
+        document = JSON.parse(data.toString("utf8"));
+      } catch {
+        throw new Error(`${name} is not valid JSON`);
+      }
+      const read = readRulesetLocaleFile(document, locale);
+      if (!read.ok) throw new Error(read.issue);
+    }
   }
 
   const temporary = join(ROOT, `.install-${manifest.id}-${Date.now()}`);
@@ -15181,6 +15211,41 @@ export const capabilityPackageManager = {
           logger.error(
             error,
             "[capability/rulesets] Catalog %s for %s failed integrity verification",
+            assetPath,
+            packageId,
+          );
+          return { issue: `${assetPath} is not the file that was installed` };
+        }
+      },
+    };
+  },
+
+  /** An installed ruleset package's translation into one language (1.798), as `rulesetCatalogAsset`
+   *  reads a catalog: null when the package does not ship that language. */
+  async rulesetLocaleAsset(
+    packageId: string,
+    locale: string,
+  ): Promise<{ sha256: string; read: () => Promise<{ data: Buffer } | { issue: string }> } | { issue: string } | null> {
+    const assetPath = rulesetLocaleAssetPath(locale);
+    if (rulesetLocaleOfAssetPath(assetPath) !== locale) return null;
+    const installed = (await readRegistry()).packages.find((item) => item.id === packageId);
+    if (!installed || !isInstalledCapabilityReady(installed)) return null;
+    const declared = installed.manifest.contributions?.assets?.paths ?? [];
+    if (!declared.some((path) => tryNormalizeArchivePath(path) === assetPath)) return null;
+    const declaration = installed.manifest.files.find((item) => tryNormalizeArchivePath(item.path) === assetPath);
+    if (!declaration) return { issue: `${assetPath} is not listed in the package file manifest` };
+    if (declaration.bytes > RULESET_LOCALE_MAX_BYTES) {
+      return { issue: `${assetPath} is ${declaration.bytes} bytes, over the ${RULESET_LOCALE_MAX_BYTES}-byte limit` };
+    }
+    return {
+      sha256: declaration.sha256,
+      read: async () => {
+        try {
+          return { data: (await readVerifiedInstalledPackageFile(installed, assetPath)).data };
+        } catch (error) {
+          logger.error(
+            error,
+            "[capability/rulesets] Translation %s for %s failed integrity verification",
             assetPath,
             packageId,
           );

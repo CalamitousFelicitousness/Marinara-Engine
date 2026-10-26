@@ -13,6 +13,9 @@
 // A ruleset imported from a package file (RM) may keep its catalogs as files: their texts are stored
 // once each in `game_ruleset_catalogs`, by content, and the row names them `{ <id>: <sha256> }`. The
 // map is part of the version: the same ruleset text with other catalogs is another version.
+//
+// Its translations (1.798) are kept the same way, `{ <language>: <sha256> }`, but are display only and so
+// no part of the version: importing the same version with other translations replaces them.
 // ──────────────────────────────────────────────
 
 import { createHash } from "node:crypto";
@@ -25,7 +28,11 @@ import {
   type RulesetCatalogEntriesById,
   parseRulesetDefinition,
   RULESET_CATALOG_MAX_BYTES,
+  RULESET_LOCALE_MAX_BYTES,
+  RULESET_LOCALE_MAX_FILES,
   RULESET_MAX_BYTES,
+  rulesetLocaleOfAssetPath,
+  rulesetLocaleAssetPath,
   rulesetSourceUrlSchema,
 } from "@marinara-engine/shared";
 import { and, eq, inArray } from "../../db/file-query.js";
@@ -46,6 +53,9 @@ export interface GameRulesetRow {
   definition: string;
   /** `{ <catalog id>: <sha256> }` as JSON, for a package file's catalog files; null otherwise. */
   catalogs: string | null;
+  /** `{ <language>: <sha256> }` as JSON, for a package file's translations (1.798); null (or absent, on a
+   *  row stored before them) otherwise. */
+  locales?: string | null;
   createdAt: string;
 }
 
@@ -61,6 +71,8 @@ export interface PutGameRulesetInput {
   /** A package file's catalog files, by catalog id, exactly as they arrived (RM). Only the package import
    *  sends them; every other import keeps its catalogs inline. */
   catalogs?: Record<string, string>;
+  /** A package file's translations (1.798), by language: the JSON of the strings each translates. */
+  locales?: Record<string, string>;
 }
 
 export type PutGameRulesetResult = { status: "added" | "unchanged"; row: GameRulesetRow };
@@ -186,6 +198,33 @@ function assertStorableRuleset(input: PutGameRulesetInput): void {
     }
     entriesById[id] = catalog.entries;
   }
+  const languages = Object.keys(input.locales ?? {});
+  if (languages.length > RULESET_LOCALE_MAX_FILES)
+    throw new RulesetRefusedError(
+      `The package has ${languages.length} translations; a ruleset has at most ${RULESET_LOCALE_MAX_FILES}`,
+    );
+  for (const language of languages) {
+    if (rulesetLocaleOfAssetPath(rulesetLocaleAssetPath(language)) !== language)
+      throw new RulesetRefusedError(`"${language}" is not a language a translation is named by`);
+    const text = input.locales![language]!;
+    if (Buffer.byteLength(text, "utf8") > RULESET_LOCALE_MAX_BYTES)
+      throw new RulesetRefusedError(
+        `The translation into "${language}" is over the ${RULESET_LOCALE_MAX_BYTES}-byte limit`,
+      );
+    let strings: unknown;
+    try {
+      strings = JSON.parse(text);
+    } catch {
+      throw new RulesetRefusedError(`The translation into "${language}" is not valid JSON`);
+    }
+    if (
+      !strings ||
+      typeof strings !== "object" ||
+      Array.isArray(strings) ||
+      Object.values(strings).some((value) => typeof value !== "string")
+    )
+      throw new RulesetRefusedError(`The translation into "${language}" is not a set of strings`);
+  }
   const complete = {
     ...parsed.definition,
     catalogs: parsed.definition.catalogs?.map((catalog) => ({
@@ -224,15 +263,19 @@ function catalogMap(catalogs: Record<string, string> | undefined): string | null
   return ids.length ? JSON.stringify(Object.fromEntries(ids.map((id) => [id, sha256Of(catalogs![id]!)]))) : null;
 }
 
-/** The sha256 values a row's catalogs name. */
-function namedCatalogs(row: Pick<GameRulesetRow, "catalogs">): string[] {
-  if (!row.catalogs) return [];
-  try {
-    const map = JSON.parse(row.catalogs) as unknown;
-    return map && typeof map === "object" ? Object.values(map).filter((value) => typeof value === "string") : [];
-  } catch {
-    return [];
-  }
+/** The sha256 values a row's catalogs and translations name. */
+function namedCatalogs(row: Pick<GameRulesetRow, "catalogs" | "locales">): string[] {
+  return [row.catalogs, row.locales].flatMap((json) => {
+    if (!json) return [];
+    try {
+      const map = JSON.parse(json) as unknown;
+      return map && typeof map === "object"
+        ? Object.values(map).filter((value): value is string => typeof value === "string")
+        : [];
+    } catch {
+      return [];
+    }
+  });
 }
 
 /** Remove the catalog files no stored version names any more. Inside the removal's own transaction. */
@@ -270,6 +313,15 @@ export function createGameRulesetsStorage(db: DB) {
       assertStorableRuleset(input);
       const sha256 = sha256Of(input.definition);
       const catalogs = catalogMap(input.catalogs);
+      const locales = catalogMap(input.locales);
+      // Each text once, by its content: a new version that keeps a catalog or translation adds nothing.
+      const keep = async (tx: Pick<DB, "select" | "insert">, texts: Record<string, string> | undefined) => {
+        for (const text of Object.values(texts ?? {})) {
+          const id = sha256Of(text);
+          const kept = await tx.select().from(gameRulesetCatalogs).where(eq(gameRulesetCatalogs.id, id));
+          if (!kept.length) await tx.insert(gameRulesetCatalogs).values({ id, text, createdAt: now() });
+        }
+      };
       // One transaction, so two imports of the same version cannot both see "not stored yet": the
       // second one has to come back as unchanged or as a conflict, never as a key collision.
       return db.transaction(async (tx) => {
@@ -284,6 +336,17 @@ export function createGameRulesetsStorage(db: DB) {
           if (existing.sha256 !== sha256 || (existing.catalogs ?? null) !== catalogs) {
             throw new RulesetVersionConflictError(input.rulesetId, input.version);
           }
+          // Its translations are the package's latest: a package file imported again with new or
+          // corrected ones brings them, and one with none leaves those it had.
+          if (input.locales !== undefined && locales !== null && (existing.locales ?? null) !== locales) {
+            await keep(tx, input.locales);
+            await tx
+              .update(gameRulesets)
+              .set({ locales })
+              .where(and(eq(gameRulesets.rulesetId, input.rulesetId), eq(gameRulesets.version, input.version)));
+            await pruneCatalogs(tx);
+            return { status: "unchanged" as const, row: { ...existing, locales } };
+          }
           return { status: "unchanged" as const, row: existing };
         }
         const row: GameRulesetRow = {
@@ -296,15 +359,12 @@ export function createGameRulesetsStorage(db: DB) {
           sha256,
           definition: input.definition,
           catalogs,
+          locales,
           createdAt: now(),
         };
         await tx.insert(gameRulesets).values(row);
-        // Each catalog file once, by its content: a new version that keeps a catalog adds nothing.
-        for (const text of Object.values(input.catalogs ?? {})) {
-          const id = sha256Of(text);
-          const kept = await tx.select().from(gameRulesetCatalogs).where(eq(gameRulesetCatalogs.id, id));
-          if (!kept.length) await tx.insert(gameRulesetCatalogs).values({ id, text, createdAt: now() });
-        }
+        await keep(tx, input.catalogs);
+        await keep(tx, input.locales);
         return { status: "added" as const, row };
       });
     },
@@ -342,6 +402,30 @@ export function createGameRulesetsStorage(db: DB) {
         return null;
       }
       const sha256 = map[catalogId];
+      if (typeof sha256 !== "string") return null;
+      const files = (await db.select().from(gameRulesetCatalogs).where(eq(gameRulesetCatalogs.id, sha256))) as Array<{
+        id: string;
+        text: string;
+      }>;
+      const text = files[0]?.text;
+      return text !== undefined && sha256Of(text) === sha256 ? { sha256, text } : null;
+    },
+
+    /** A stored version's translation into one language (1.798), checked against the sha256 its row
+     *  names; null when the version has none in that language. */
+    async localeText(
+      rulesetId: string,
+      version: number,
+      locale: string,
+    ): Promise<{ sha256: string; text: string } | null> {
+      const row = await this.get(rulesetId, version);
+      let map: Record<string, unknown> = {};
+      try {
+        map = row?.locales ? (JSON.parse(row.locales) as Record<string, unknown>) : {};
+      } catch {
+        return null;
+      }
+      const sha256 = map[locale];
       if (typeof sha256 !== "string") return null;
       const files = (await db.select().from(gameRulesetCatalogs).where(eq(gameRulesetCatalogs.id, sha256))) as Array<{
         id: string;

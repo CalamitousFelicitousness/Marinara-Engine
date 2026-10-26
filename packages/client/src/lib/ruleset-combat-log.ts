@@ -58,7 +58,7 @@ export interface RulesetCombatNames {
   poolUnits?: (id: string, count: number) => string | undefined;
 }
 
-function lookup(entries: Array<{ id: string; label: string }> | undefined) {
+function lookupLabel(entries: Array<{ id: string; label: string }> | undefined) {
   const byId = new Map((entries ?? []).map((entry) => [entry.id, entry.label]));
   // An id the ruleset does not declare prints as itself rather than as nothing: a fight is still
   // readable when a layer or an edit took a row away.
@@ -86,15 +86,21 @@ export function rulesetCombatNames(
   definition: RulesetDefinition,
   view: DirectedRulesetView,
   t: TFunction,
+  /** The ruleset's own words in the player's language (1.798). */
+  text: (english: string) => string = (english) => english,
 ): RulesetCombatNames {
   const combatants = new Map(view.combatants.map((combatant) => [combatant.id, combatant.name]));
   const distance = view.grid?.distance;
+  const lookup = (entries: Array<{ id: string; label: string }> | undefined) => {
+    const plain = lookupLabel(entries);
+    return (id: string) => text(plain(id));
+  };
   return {
     distance: (cells) => rulesetDistanceText(cells, distance, t),
     height: (levels) => {
       // The ruleset's own words for both, so a fall reads the same wherever the line is printed.
       const levelHeight = definition.combat?.elevation?.levelHeight;
-      const unit = definition.combat?.distance?.label;
+      const unit = definition.combat?.distance?.label && text(definition.combat.distance.label);
       return levelHeight && unit
         ? (t("game.combat.ruleset.board.distance", { amount: levels * levelHeight, unit }) as string)
         : (t("game.combat.ruleset.board.levels", { count: levels }) as string);
@@ -109,11 +115,12 @@ export function rulesetCombatNames(
     derived: lookup(definition.sheet.derived),
     tier: lookup(definition.combat?.threat?.tiers),
     style: lookup(definition.combat?.initiative.resource?.styles),
-    defense: rulesetValueLabel(definition, definition.combat?.defense),
+    defense: text(rulesetValueLabel(definition, definition.combat?.defense)),
     symbol: lookup(definition.resolution.kind === "symbol-pool" ? definition.resolution.symbols : []),
     poolUnits: (id, count) => {
       const pool = definition.sheet.live.pools.find((one) => one.id === id);
-      return count === 1 ? pool?.unit : (pool?.units ?? pool?.unit);
+      const said = count === 1 ? pool?.unit : (pool?.units ?? pool?.unit);
+      return said && text(said);
     },
   };
 }

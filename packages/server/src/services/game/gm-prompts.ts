@@ -1700,6 +1700,9 @@ export function rulesetRestAskedFor(
   return found?.label;
 }
 
+/** What a party member's sheet block says when they are dead on it (see `renderGameRulesetSheetBlocks`). */
+export const RULESET_SHEET_DEAD_MARK = "\nDEAD: healing, rest and potions do nothing for them";
+
 export function buildGmFormatReminder(
   ctx: Pick<
     GmPromptContext,
@@ -1821,6 +1824,19 @@ export function buildGmFormatReminder(
   const hasParty = partyNames.length > 0;
   // No character of the player's own: the party is who the player plays.
   const partyDirected = ctx.playerIsParty === true && hasParty;
+  // Those dead on their sheet are nobody the player directs (laptop 0706 Party B: a dead Ulfgar was
+  // still named among them).
+  const deadNames = partyNames.filter((name) =>
+    (ctx.rulesetSheetBlocks ?? []).some(
+      (block) => block.startsWith(`${name}\n`) && block.includes(RULESET_SHEET_DEAD_MARK),
+    ),
+  );
+  const directedNames = partyNames.filter((name) => !deadNames.includes(name));
+  const directedList = `${(directedNames.length ? directedNames : partyNames).join(", ")}${
+    deadNames.length && directedNames.length
+      ? `; ${deadNames.join(", ")} ${deadNames.length > 1 ? "are" : "is"} dead and do${deadNames.length > 1 ? "" : "es"} nothing until raised`
+      : ""
+  }`;
   const characterSprites = Array.isArray(ctx.characterSprites) ? ctx.characterSprites : [];
   const customSpriteLines = characterSprites
     .map((character) => ({
@@ -1994,7 +2010,7 @@ export function buildGmFormatReminder(
       `- Continue with new content directly from the player's input, treating it like a concluded beat. Do not reiterate anything.`,
       ...(partyDirected
         ? [
-            `- The player has no character of their own: they direct the whole party (${partyNames.join(", ")}). Their input says what one or more party members do or say. "You" means the party together, never one member: call each member by name when they act, speak, or are hurt or healed. Treat only quoted text as spoken aloud, by the member the input names. Never decide a member's strategic choices beyond what the player wrote.`,
+            `- The player has no character of their own: they direct the whole party (${directedList}). Their input says what one or more party members do or say. "You" means the party together, never one member: call each member by name when they act, speak, or are hurt or healed. Treat only quoted text as spoken aloud, by the member the input names. Never decide a member's strategic choices beyond what the player wrote.`,
           ]
         : [
             `- Treat only quoted player text as spoken aloud; unquoted text is action, narration, or internal thoughts that cannot be accessed by NPCs unless made observable. NEVER quote or speak for the player character (${ctx.playerName ?? "Player"}). You may indirectly narrate obvious, low-stakes participation and their thoughts (nodding during conversation, laying out details, looking around, etc.) in the second person, but never determine their strategic decisions or exact dialogue. Example:`,

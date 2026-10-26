@@ -13,7 +13,7 @@ import {
 } from "@marinara-engine/shared";
 import { requirePrivilegedAccess } from "../middleware/privileged-gate.js";
 import { EXPERIENCE_FILE_IMPORT_RATE_LIMIT, PACKAGE_UPDATE_DECLINE_RATE_LIMIT } from "../middleware/rate-limit.js";
-import { openRulesetCatalog } from "../services/game/ruleset-catalog.service.js";
+import { openRulesetCatalog, openRulesetLocale } from "../services/game/ruleset-catalog.service.js";
 import { readRulesetRegistry } from "../services/game/ruleset-registry.service.js";
 import {
   capabilityPackageManager,
@@ -42,6 +42,16 @@ const rulesetCatalogQuery = z.object({
   rulesetId: z.string().min(1).max(140),
   catalogId: z.string().min(1).max(40),
   version: z.coerce.number().int().min(1).optional(),
+});
+
+const rulesetStringsQuery = z.object({
+  rulesetId: z.string().min(1).max(140),
+  version: z.coerce.number().int().min(1).optional(),
+  locale: z
+    .string()
+    .min(2)
+    .max(30)
+    .regex(/^[a-z]{2,3}(?:-[A-Za-z0-9]{2,8}){0,2}$/),
 });
 
 /** The definition as the ruleset LIST reports it: an inline catalog's entries are replaced by their
@@ -207,6 +217,39 @@ export async function capabilityPackagesRoutes(app: FastifyInstance) {
     const read = await opened.read();
     if (!read.ok) return unusable(read.issues);
     return payload(read.entries);
+  });
+  // A ruleset's display strings in one language (1.798): what the fight screen shows in place of the
+  // ruleset's English, word for word. None is an empty set, so a screen just shows the English.
+  app.get("/rulesets/strings", async (request, reply) => {
+    const { rulesetId, version, locale } = rulesetStringsQuery.parse(request.query);
+    const registry = await readRulesetRegistry(app.db);
+    const registered = registry.get(rulesetId);
+    if (!registered) {
+      return reply.status(404).send({ error: "That ruleset is not installed", code: "ruleset_not_installed" });
+    }
+    const definition =
+      version !== undefined && version !== registered.definition.version
+        ? registered.versions?.get(version)
+        : registered.definition;
+    if (!definition) {
+      return reply
+        .status(404)
+        .send({ error: "That version of the ruleset is not installed", code: "ruleset_version_missing" });
+    }
+    const none = { rulesetId: definition.id, version: definition.version, locale: null, strings: {} };
+    if (locale === "en") return none;
+    const opened = await openRulesetLocale(registered.packageId, definition, locale);
+    if (!opened) return none;
+    const etag = `"${opened.sha256}.${opened.locale}"`;
+    reply.header("ETag", etag).header("Cache-Control", "no-cache");
+    if (ifNoneMatchSatisfied(request.headers["if-none-match"], etag)) return reply.status(304).send();
+    const read = await opened.read();
+    if (!read.ok) {
+      return reply
+        .status(422)
+        .send({ error: "That translation cannot be read", code: "ruleset_locale_unusable", issues: [read.issue] });
+    }
+    return { rulesetId: definition.id, version: definition.version, locale: opened.locale, strings: read.strings };
   });
   app.get<{ Params: { id: string } }>("/:id/release-notes", async (request) => {
     const { id } = packageParams.parse(request.params);

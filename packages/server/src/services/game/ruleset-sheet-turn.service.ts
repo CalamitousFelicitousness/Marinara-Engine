@@ -7,6 +7,7 @@ import { roomHostIdentity } from "../multiplayer/generation-policy.js";
 // with, applied or refused, and written back into the saved reply with its outcome. The live state
 // itself rides the game-state snapshot of the message and swipe, so a swipe or a regenerated turn
 // starts from the state before it and can never spend twice.
+import { RULESET_SHEET_DEAD_MARK } from "./gm-prompts.js";
 import {
   applySheetCommandTags,
   RULESET_PARTY_KEY,
@@ -151,7 +152,7 @@ export function renderGameRulesetSheetBlocks(
     // 2026-10-26: a Potion of Healing poured into a dead hero was used up, and the rest asked for with
     // it never came).
     return rulesetSheetDead(definition, card.build, stored, itemsOf?.(card.name))
-      ? `${block}\nDEAD: healing, rest and potions do nothing for them; only what raises the dead brings them back. Say so in the story, and do not spend an item on them.`
+      ? `${block}${RULESET_SHEET_DEAD_MARK}; only what raises the dead brings them back. Say so in the story, and do not spend an item on them.`
       : block;
   });
   // The player's own character dead (Alyssa 2026-10-26): while somebody of the party lives, the player

@@ -6348,9 +6348,11 @@ export function getCapabilityAgentDetailDefinitionIssue(
  *  catalog may list (the install refuses it, saying why), so an official catalog that still lists one keeps loading. */
 function officialArtifactNames(entry: CapabilityCatalogPackage): string[] {
   const base = `${entry.manifest.id}-${entry.manifest.version}`;
+  const { kind } = entry.manifest;
+  // The same kinds the install takes as files: a ruleset as its ruleset file, an Experience as its file.
   return [
-    ...(entry.manifest.kind.includes("ruleset") ? [`${base}${RULESET_PACKAGE_FILE_EXTENSION}`] : []),
-    ...(isCatalogExperience(entry) ? [`${base}${EXPERIENCE_FILE_EXTENSION}`] : []),
+    ...(kind.includes("ruleset") ? [`${base}${RULESET_PACKAGE_FILE_EXTENSION}`] : []),
+    ...(kind.includes("experience") ? [`${base}${EXPERIENCE_FILE_EXTENSION}`] : []),
     `${base}.zip`,
   ];
 }

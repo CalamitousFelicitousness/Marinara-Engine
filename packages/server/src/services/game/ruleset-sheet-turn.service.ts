@@ -50,6 +50,7 @@ import {
 import { createCharactersStorage } from "../storage/characters.storage.js";
 import { gamePartySheetRevision } from "./game-party-sheet.service.js";
 import { rollDieSecurely } from "./dice-rng.js";
+import { buildPartyNpcId, isPartyNpcId } from "../generation/game-party-utils.js";
 import { loadRulesetCatalogEntries } from "./ruleset-catalog.service.js";
 import { loadRulesetRegistry, resolveGameRuleset, type ResolvedGameRuleset } from "./ruleset-registry.service.js";
 
@@ -63,6 +64,8 @@ export interface GameRulesetSheetContext {
   playerName: string | null;
   advancementRefusal?: "save-failed";
   partyBuild?: RulesetSheetBuild | null;
+  /** The cards of those taken out of the party, whom a command to the whole party passes by. */
+  away?: string[];
 }
 
 function parseMetadata(raw: unknown): Record<string, unknown> {
@@ -187,6 +190,7 @@ export async function loadGameRulesetSheetContext(
   const persona = roomHostIdentity() ?? (personaId ? await createCharactersStorage(db).getPersona(personaId) : null);
   const playerName = persona?.name?.trim() || null;
   const built = sheetCommandCards(pinned.definition, cards);
+  const away = await cardsAwayFromParty(db, chatId, meta, built, playerName);
   // What each one carries, where the ruleset reads items (1.337): a rest's dice read Pell's Teapot.
   const stacks = normalizeGameInventoryStacks(meta.gameInventory);
   if (rulesetReadsItems(pinned.definition) && stacks.some((stack) => stack.item)) {
@@ -216,7 +220,46 @@ export async function loadGameRulesetSheetContext(
         built.map((card) => card.build),
       )?.build ?? null,
     playerName,
+    ...(away.length ? { away } : {}),
   };
+}
+
+/** The cards whose member was taken out of the party: a card stays when its member leaves, and a
+ *  command to the whole party must not reach them (laptop pass 6, 2026-10-26: a party long rest
+ *  rested two removed companions). Nobody is counted away unless every member of the stored party
+ *  list could be named, so a list the Engine cannot read in full never drops anyone. */
+async function cardsAwayFromParty(
+  db: DB,
+  chatId: string,
+  meta: Record<string, unknown>,
+  cards: SheetCommandCard[],
+  playerName: string | null,
+): Promise<string[]> {
+  if (!Array.isArray(meta.gamePartyCharacterIds)) return [];
+  const ids = (meta.gamePartyCharacterIds as unknown[]).filter(
+    (id): id is string => typeof id === "string" && id.trim().length > 0,
+  );
+  const npcs = Array.isArray(meta.gameNpcs) ? (meta.gameNpcs as Array<{ name?: unknown }>) : [];
+  const characters = createCharactersStorage(db);
+  const present = new Set<string>(playerName ? [normalizeCharacterLookupName(playerName)] : []);
+  for (const id of ids) {
+    let name: string | null = null;
+    if (isPartyNpcId(id)) {
+      const npc = npcs.find((one) => typeof one.name === "string" && buildPartyNpcId(one.name) === id);
+      name = typeof npc?.name === "string" ? npc.name : null;
+    } else {
+      try {
+        const row = await characters.getById(id, chatId);
+        const data = row ? (typeof row.data === "string" ? JSON.parse(row.data) : row.data) : null;
+        name = typeof data?.name === "string" ? data.name : null;
+      } catch {
+        name = null;
+      }
+    }
+    if (!name?.trim()) return [];
+    present.add(normalizeCharacterLookupName(name));
+  }
+  return cards.filter((card) => !present.has(normalizeCharacterLookupName(card.name))).map((card) => card.name);
 }
 
 /** The reply's inventory tags that put something on or take it off, and nothing else, as one text. */

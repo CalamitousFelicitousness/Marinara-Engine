@@ -37,6 +37,7 @@ import {
   rulesetUseKeptCall,
   rulesetUseKeptForm,
   rulesetPoolNowText,
+  readRulesetLive,
 } from "./live-state.js";
 
 /** A priced material a cast used up (1.775): whose, and how many out of which of their stacks. */
@@ -68,6 +69,9 @@ export interface SheetCommandContext {
   /** What a rest rolls for a condition that lowers health's maximum (1.260). Absent, its dice count
    *  their average. */
   roll?: (sides: number) => number;
+  /** The cards of those no longer with the party (taken out of it, their card kept): a command to
+   *  the whole party passes them by, as it does the dead. Named, they are still found. */
+  away?: readonly string[];
 }
 
 export interface SheetCommandOutcome {
@@ -130,6 +134,17 @@ export function applySheetCommandTags(
   const playerKey = ctx.playerName ? normalizeCharacterLookupName(ctx.playerName) : null;
   const playerCard = (playerKey !== null ? byName.get(playerKey)?.[0] : undefined) ?? null;
 
+  const away = new Set((ctx.away ?? []).map((name) => normalizeCharacterLookupName(name)));
+  /** Dead by the ruleset's dying saves: every failure it allows marked. */
+  const deadOnSheet = (card: SheetCommandCard): boolean => {
+    const failures = ctx.definition.combat?.dying?.failures;
+    if (!failures) return false;
+    const key = normalizeCharacterLookupName(card.name);
+    const track = readRulesetLive(ctx.definition, card.build, live[key], card.items).tracks.find(
+      (entry) => entry.id === failures,
+    );
+    return !!track && track.max > 0 && track.value >= track.max;
+  };
   const findTargets = (who: string | undefined): TargetMatch => {
     if (who === undefined)
       return playerCard ? { cards: [playerCard], who: playerCard.name } : { refusal: "unknown-character" };
@@ -139,8 +154,12 @@ export function applySheetCommandTags(
       // would charge that character twice for one command. The same tie rule as a named target:
       // the player's own card stands for a name it shares, and any other shared name is left out
       // because the game cannot tell whose sheet it would be.
+      // Nor anyone gone from the party or dead on their sheet (laptop pass 6, 2026-10-26: a party
+      // long rest put two fallen companions back on their feet, death saves cleared).
       const members = [...byName.entries()].flatMap(([groupKey, group]) =>
-        group.length === 1 || groupKey === playerKey ? [group[0]!] : [],
+        (group.length === 1 || groupKey === playerKey) && !away.has(groupKey) && !deadOnSheet(group[0]!)
+          ? [group[0]!]
+          : [],
       );
       return members.length > 0 ? { cards: members, who: PARTY_TARGET } : { refusal: "unknown-character" };
     }

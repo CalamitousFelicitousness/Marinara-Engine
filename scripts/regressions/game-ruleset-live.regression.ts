@@ -702,8 +702,12 @@ const fighter = buildFor({ level: 1, hp_max: 12 });
     party.content,
     /result="ok" now="Mira Long rest: Hit points 31\/31[^"]*Tam the Bold Long rest: Exhaustion 1"/,
   );
-  assert.deepEqual(Object.keys(party.live), ["tam the bold"], "a character back at every default drops out again");
-  assert.deepEqual(party.live["tam the bold"], { tracks: { exhaustion: 1 } });
+  // Each keeps that they rested for the reply after (laptop playtest 2026-10-26), then nothing more: a
+  // character back at every default drops out again.
+  assert.deepEqual(party.live.mira, { rested: { long: { fresh: true } } });
+  const after = applySheetCommandTags("They break camp.", { ...context, live: party.live });
+  assert.deepEqual(Object.keys(after.live), ["tam the bold"], "a character back at every default drops out again");
+  assert.deepEqual(after.live["tam the bold"], { tracks: { exhaustion: 1 } });
 
   // Four casters' long rest names all four: what does not fit says how many more, never drops one.
   const four = ["Isolde Venn", "Mother Hessa", "Brannoc Ashvale", "Pip Underbough"];
@@ -717,7 +721,11 @@ const fighter = buildFor({ level: 1, hp_max: 12 });
   });
   const said = /now="([^"]*)"/.exec(tired.content)?.[1] ?? "";
   for (const name of four) assert.ok(said.includes(name), `${name} is in the record: ${said}`);
-  assert.deepEqual(Object.keys(tired.live), [], "and all four are rested");
+  assert.deepEqual(
+    Object.values(tired.live),
+    four.map(() => ({ rested: { long: { fresh: true } } })),
+    "and all four are rested, with only that they did kept",
+  );
   assert.equal(joinSheetSummary(["a".repeat(8), "b".repeat(8), "c".repeat(8)], 24), `${"a".repeat(8)}; and 2 more`);
   // A refusal is never what the count stands for: it stays whole, and only successes are counted off.
   assert.equal(

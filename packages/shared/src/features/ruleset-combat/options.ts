@@ -45,6 +45,7 @@ import {
   rulesetItemUseLeft,
   rulesetLoaded,
   rulesetModedAction,
+  rulesetShotAsLoaded,
   rulesetShotsAvailable,
   rulesetStoredNow,
   rulesetItemChargesLeft,
@@ -3279,8 +3280,9 @@ function forecastFor(
   against?: RulesetCombatant,
 ): RulesetCombatOption["forecast"] | undefined {
   const forecast: NonNullable<RulesetCombatOption["forecast"]> = {};
-  // As the conditions its maker holds make it now (1.488).
-  action = rulesetWeaponNow(definition, state, actor, action);
+  // As the conditions its maker holds make it now (1.488), and as the ammunition it would shoot next
+  // makes it (1.644): an Arrow of Slaying's clauses on the shot it rides.
+  action = rulesetShotAsLoaded(actor, rulesetWeaponNow(definition, state, actor, action));
   // A symbol fight's attack (1.783): the dice it throws, and at whom, for its harm to read.
   let symbolDice: RulesetSymbolDice | undefined;
   let symbolTarget: RulesetCombatant | undefined;

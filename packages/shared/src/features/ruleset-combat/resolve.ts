@@ -10609,17 +10609,7 @@ export function liftRulesetFightEffects(
     }
     for (const entry of [...combatant.tracked]) {
       if (!combatant.tracked.includes(entry)) continue;
-      // A shape of their own they are still in is kept on their sheet as the fight ends (1.793), so
-      // it does not run out here (laptop 2026-10-25: the card said Wild Shape ran out, the sheet that
-      // they were still a wolf).
-      if (
-        combatant.sheet &&
-        !combatant.defeated &&
-        combatant.shape?.condition === entry.condition &&
-        !entry.concentration &&
-        (entry.source === undefined || entry.source === combatant.id)
-      )
-        continue;
+      if (keptPastFight(combatant, entry)) continue;
       if (entry.rounds !== null || entry.endsAfter || entry.endsWhenHolder || entry.concentration) {
         lift(combatant, entry.condition, "expired");
         // A clock the fight's end lets run out turns into what it `expires` into (1.261).
@@ -10658,6 +10648,53 @@ export function liftRulesetFightEffects(
     }
   }
   return events;
+}
+
+/** A shape of their own they are still in, kept on their sheet as the fight ends (1.793), so it does
+ *  not run out with it (laptop 2026-10-25: the card said Wild Shape ran out, the sheet that they were
+ *  still a wolf). */
+function keptPastFight(combatant: RulesetCombatant, entry: RulesetTrackedCondition): boolean {
+  return (
+    !!combatant.sheet &&
+    !combatant.defeated &&
+    combatant.shape?.condition === entry.condition &&
+    !entry.concentration &&
+    (entry.source === undefined || entry.source === combatant.id)
+  );
+}
+
+/** The conditions somebody holds once the fight is over: none `liftRulesetFightEffects` takes off as
+ *  it ends, a clock's, a use's, a concentration's, an aura's (laptop playtest 2026-10-26: Blessed still
+ *  listed on the party once the fight was over), unless what they wear keeps it on them too. */
+function rulesetConditionsPastFight(definition: RulesetDefinition, combatant: RulesetCombatant): string[] {
+  const ending = new Set(
+    combatant.tracked
+      .filter(
+        (entry) =>
+          !keptPastFight(combatant, entry) &&
+          (entry.rounds !== null ||
+            !!entry.endsAfter ||
+            !!entry.endsWhenHolder ||
+            !!entry.concentration ||
+            !!entry.aura ||
+            !!entry.kept),
+      )
+      .map((entry) => entry.condition),
+  );
+  if (ending.size === 0) return rulesetCombatConditions(definition, combatant);
+  // Its sheet holds what the fight put on it, which comes off with it.
+  const sheet = combatant.sheet && {
+    ...combatant.sheet,
+    live: {
+      ...combatant.sheet.live,
+      conditions: (combatant.sheet.live.conditions ?? []).filter((id) => !ending.has(id)),
+    },
+  };
+  return rulesetCombatConditions(definition, {
+    ...combatant,
+    tracked: combatant.tracked.filter((entry) => !ending.has(entry.condition)),
+    ...(sheet ? { sheet } : {}),
+  });
 }
 
 /**
@@ -19632,7 +19669,7 @@ export function rulesetEncounterSummary(
           dying: combatant.dying,
           stable: combatant.stable,
           ...(combatant.defeated ? { dead: true as const } : {}),
-          conditions: rulesetCombatConditions(definition, combatant),
+          conditions: rulesetConditionsPastFight(definition, combatant),
           ...(combatant.away?.left ? { left: true as const } : {}),
           ...(combatant.calledBy !== undefined && !combatant.calledKept ? { called: true as const } : {}),
         };

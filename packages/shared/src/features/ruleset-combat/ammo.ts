@@ -169,6 +169,32 @@ export function rulesetAmmoFirst(actor: RulesetCombatant, action: RulesetCombatA
   return held?.item.tags?.includes(action.ammo.tag) && rulesetStackLeft(actor, first) > 0 ? first : undefined;
 }
 
+/** The stack a weapon's next shot comes out of: the one its mode names, else the one its holder chose
+ *  to shoot first, else the bag's first with some left, plain before any with clauses of its own
+ *  (1.644). Undefined for a weapon that shoots nothing from the bag, or with nothing left. */
+export function rulesetNextShotStack(actor: RulesetCombatant, action: RulesetCombatAction): number | undefined {
+  if (!action.ammo || action.clip) return undefined;
+  if (action.ammoFrom !== undefined) return action.ammoFrom;
+  const first = rulesetAmmoFirst(actor, action);
+  if (first !== undefined) return first;
+  const items = actor.sheet?.items ?? [];
+  const tag = action.ammo.tag;
+  return items
+    .map((_, index) => index)
+    .filter((index) => items[index]!.item.tags?.includes(tag) && rulesetStackLeft(actor, index) > 0)
+    .sort((a, b) => Number(!!items[a]!.item.ammoRider) - Number(!!items[b]!.item.ammoRider))[0];
+}
+
+/** A shot as the ammunition it would be shot with makes it (2026-10-26, for a forecast): with the
+ *  clauses of that stack's own (1.644) on its damage, as the blow resolves with them. */
+export function rulesetShotAsLoaded(actor: RulesetCombatant, action: RulesetCombatAction): RulesetCombatAction {
+  if (!action.ammo?.riders || !action.damage) return action;
+  const stack = rulesetNextShotStack(actor, action);
+  const rider = stack !== undefined ? action.ammo.riders[String(stack)] : undefined;
+  if (!rider) return action;
+  return { ...action, damage: { ...action.damage, plus: [...(action.damage.plus ?? []), ...rider.plus] } };
+}
+
 /** How many are left of one stack of the fighter's (1.644). */
 export function rulesetStackLeft(actor: RulesetCombatant, index: number): number {
   return Math.max(0, (actor.sheet?.items?.[index]?.quantity ?? 0) - (actor.itemsUsed?.[index] ?? 0));

@@ -165,7 +165,9 @@ try {
   assert.equal(pool(picked.live[key], "slots_1")!.value, 4);
   assert.equal(pool(picked.live[key], "slots_3")!.value, 1);
   // Used up, too much picked, or a rest that does not offer it: the rest stands and says why.
-  const again = tagged(`[sheet: op="rest" rest="Short rest" use="Arcane Recovery"]`, byDefault.live[key]);
+  // A later short rest, with time passed: one taken again in the next reply is refused (2026-10-26).
+  const { rested: _rested, ...later } = byDefault.live[key]!;
+  const again = tagged(`[sheet: op="rest" rest="Short rest" use="Arcane Recovery"]`, later);
   assert.ok(again.outcomes[0]!.ok);
   assert.match(again.outcomes[0]!.now!, /Arcane Recovery: nothing it can give back now$/);
   const greedy = tagged(`[sheet: op="rest" rest="Short rest" use="Arcane Recovery" recover="slots_3:2"]`);

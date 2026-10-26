@@ -234,8 +234,11 @@ import {
   type RulesetCarriedInput,
   type RulesetCreature,
   type RulesetItemBook,
+  type RulesetItemBookEntry,
   rollRulesetCreatureInventory,
+  rulesetRolledAmount,
   rulesetCarriedLeft,
+  rulesetActionItemIndex,
   rulesetChooseAmmo,
   rulesetDrawInHand,
   rulesetInHand,
@@ -1686,6 +1689,7 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
             (name) =>
               adjustments.push(`${opponent.name}: the ruleset has no item called "${name}", so it was not given.`),
             coins,
+            (coin) => rulesetUsualPurse(definition, coin, roll),
           )
         : lines
           ? rollRulesetCreatureInventory(definition, book, lines, roll)
@@ -2000,13 +2004,64 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
 /** Where the dice for what opponents have on them (1.787) start, apart from the board's and the fight's. */
 const RULESET_CARRIED_CURSOR = 17840;
 
+/** How many of a coin a purse the Game Master gave with no count holds (laptop playtest 2026-10-26:
+ *  "Pouch, gold pieces"): what the ruleset's own loot tables drop of that coin, the first line that
+ *  names it rolled, else 2d6 of it, a few days' wages. */
+function rulesetUsualPurse(
+  definition: RulesetDefinition,
+  coin: { entry: { id: string } },
+  roll: (sides: number) => number,
+): number {
+  const line = (definition.items?.lootTables ?? [])
+    .flatMap((table) => table.entries)
+    .find((entry) => entry.coins === coin.entry.id);
+  return Math.max(1, line ? rulesetRolledAmount(line.count, roll) : roll(6) + roll(6));
+}
+
+/** What a purse is carried in, and the words it is said with ("a small leather pouch"): alone on a
+ *  line, with nothing the ruleset has in it, it is nothing to give. */
+const RULESET_PURSES = new Set(["pouch", "purse", "bag", "sack", "satchel", "wallet", "coffer", "chest", "box"]);
+const RULESET_PURSE_SAID = new Set([
+  "a",
+  "an",
+  "the",
+  "one",
+  "small",
+  "fat",
+  "heavy",
+  "leather",
+  "belt",
+  "coin",
+  "money",
+]);
+/** And what a line says around a coin's name that leaves it a purse of that coin: a count, or the
+ *  container it is in ("a pouch of 30 gold", "Pouch, gold pieces", "gold pieces x30"). */
+const RULESET_PURSE_WORDS = new Set([
+  ...RULESET_PURSE_SAID,
+  "of",
+  "with",
+  "and",
+  "in",
+  "x",
+  "containing",
+  "holding",
+  "full",
+  "some",
+  "few",
+  "handful",
+  "worth",
+]);
+
 /** The items the Game Master gave an opponent (1.787), each line one of the ruleset's by its reference
- *  or its name, any case: lines naming one item are added together, and one naming none is told. */
+ *  or its name, any case: lines naming one item are added together, and one naming none is told. A
+ *  line that is coins in a purse is that many of the coin, and a purse alone is passed over. */
 function rulesetGivenItems(
   book: Pick<RulesetItemBook, "entries" | "coins"> & Partial<Pick<RulesetItemBook, "itemNamed">>,
   lines: readonly string[],
   unknown: (name: string) => void,
   coins?: Map<string, { ref: string; name: string; count: number }>,
+  /** How many of a coin a line that gives no count holds. Absent, one. */
+  purse?: (coin: RulesetItemBookEntry) => number,
 ): Array<{ item: string; name: string; count: number }> {
   const had = new Map<string, { item: string; name: string; count: number }>();
   // A coin by its name, one or many, any case ("9 gold pieces", "a silver piece"), with how many.
@@ -2015,12 +2070,15 @@ function rulesetGivenItems(
     const wanted = line.trim();
     if (!wanted) continue;
     const counted = /^(\d+)\s*x?\s+(.+)$/i.exec(wanted);
-    const coinName = one(counted ? counted[2]! : wanted.replace(/^(a|an|one)\s+/i, ""));
+    const said = wanted.replace(/^(a|an|one)\s+/i, "");
+    const coinName = one(counted ? counted[2]! : said);
     const coin = coins
       ? book.coins.find((entry) => one(entry.name) === coinName || one(entry.entry.id) === coinName)
       : undefined;
     if (coin && coins) {
-      const count = counted ? Math.min(1000000, Number(counted[1])) : 1;
+      // One said as one ("a silver piece"); with no count at all, a purse of it ("gold pieces").
+      const single = said !== wanted || gameInventoryNameKey(said) === gameInventoryNameKey(coin.coin?.one ?? "");
+      const count = counted ? Math.min(1000000, Number(counted[1])) : single ? 1 : (purse?.(coin) ?? 1);
       if (count > 0)
         coins.set(coin.item, { ref: coin.item, name: coin.name, count: (coins.get(coin.item)?.count ?? 0) + count });
       continue;
@@ -2051,13 +2109,87 @@ function rulesetGivenItems(
       }
     }
     if (!found) {
-      unknown(wanted);
+      // Coins in a purse, or a purse alone, by the words around them.
+      const purseOf = rulesetPurseLine(book.coins, wanted);
+      if (purseOf && coins && purseOf !== "empty") {
+        const count = Math.min(1000000, purseOf.count ?? purse?.(purseOf.coin) ?? 1);
+        const before = coins.get(purseOf.coin.item)?.count ?? 0;
+        if (count > 0)
+          coins.set(purseOf.coin.item, { ref: purseOf.coin.item, name: purseOf.coin.name, count: before + count });
+      } else if (purseOf !== "empty") unknown(wanted);
       continue;
     }
     const before = had.get(found.item);
     had.set(found.item, { item: found.item, name: found.name, count: (before?.count ?? 0) + many });
   }
   return [...had.values()];
+}
+
+/**
+ * A line that is coins wherever it names them ("12 gp", "a pouch of 30 gold", "Pouch, gold pieces"):
+ * one of the ruleset's coins by its id, its name for one or many, or the first word of a name no other
+ * coin's starts with ("gold" for gold pieces), with a count before or after it, and nothing else but
+ * the words a purse is said in. `count` is absent where the line gives none ("gold pieces"), and one
+ * for a coin said as one ("a gold piece"). "empty" for a purse with no coin named ("Pouch"); null for
+ * anything else.
+ */
+function rulesetPurseLine(
+  coins: readonly RulesetItemBookEntry[],
+  line: string,
+): { coin: RulesetItemBookEntry; count?: number } | "empty" | null {
+  const one = (word: string) => word.replace(/ies$/, "y").replace(/s$/, "");
+  const words = line
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]+/gu, " ")
+    .replace(/(\d)(\p{L})|(\p{L})(\d)/gu, (_, digit, letter, before, after) =>
+      digit ? `${digit} ${letter}` : `${before} ${after}`,
+    )
+    .split(/\s+/)
+    .filter(Boolean);
+  if (words.length === 0) return null;
+  const firsts = coins.map((coin) => one(coin.name.toLowerCase().split(/\s+/)[0] ?? ""));
+  const names = coins.flatMap((coin, index) => {
+    const said = [coin.entry.id, coin.name, coin.coin?.one ?? ""].filter(Boolean);
+    const spelled = said.map((name) =>
+      name
+        .toLowerCase()
+        .split(/[^\p{L}\p{N}]+/u)
+        .filter(Boolean)
+        .map(one),
+    );
+    // The first word alone, where it says no other coin: "gold", never "pieces".
+    const first = firsts[index]!;
+    if (first && spelled.some((name) => name.length > 1) && firsts.filter((word) => word === first).length === 1)
+      spelled.push([first]);
+    return spelled.map((name) => ({ coin, name }));
+  });
+  // The longest name found anywhere in the line.
+  let found: { coin: RulesetItemBookEntry; at: number; length: number } | undefined;
+  for (const { coin, name } of names) {
+    for (let at = 0; at + name.length <= words.length; at++) {
+      if (!name.every((word, index) => one(words[at + index]!) === word)) continue;
+      if (!found || name.length > found.length) found = { coin, at, length: name.length };
+    }
+  }
+  const rest = found ? [...words.slice(0, found.at), ...words.slice(found.at + found.length)] : words;
+  const numbers = rest.filter((word) => /^\d+$/.test(word));
+  const others = rest.filter((word) => !/^\d+$/.test(word));
+  if (!found)
+    return numbers.length === 0 &&
+      others.some((word) => RULESET_PURSES.has(one(word))) &&
+      others.every((word) => RULESET_PURSE_SAID.has(one(word)) || RULESET_PURSES.has(one(word)))
+      ? "empty"
+      : null;
+  if (others.some((word) => !RULESET_PURSE_WORDS.has(one(word)) && !RULESET_PURSES.has(one(word)))) return null;
+  if (numbers.length > 1) return null;
+  if (numbers.length === 1) return { coin: found.coin, count: Number(numbers[0]) };
+  // "a gold piece", "one gold": one of it, said as one.
+  const before = words[found.at - 1];
+  const named = words.slice(found.at, found.at + found.length);
+  const single = named[named.length - 1] === one(named[named.length - 1]!);
+  return before && ["a", "an", "one"].includes(before) && single
+    ? { coin: found.coin, count: 1 }
+    : { coin: found.coin };
 }
 
 /**
@@ -7634,6 +7766,9 @@ function rulesetSparedHelpless(
   return held.length + (party.length - standing.length) >= party.length / 2 ? new Set(held.map((one) => one.id)) : none;
 }
 
+/** What a shot of ammunition with clauses of its own counts for, of its forecast (2026-10-26). */
+const RULESET_SPECIAL_SHOT_KEPT = 0.9;
+
 /** The candidates of a pick, weighed by everything the unit is and was told; `only` where there is
  *  nothing to weigh. */
 function weighChoices(
@@ -7856,6 +7991,15 @@ function weighChoices(
       if ((candidate.focus ?? 0) > 0) candidate.focus = 0;
       if ((candidate.coordination ?? 0) > 0) candidate.coordination = 0;
     }
+  // Ammunition with clauses of its own (1.644) is kept for what they reach (2026-10-26): a shot of it
+  // counts for a little less than its forecast, so one no better than a plain shot is not taken.
+  for (const candidate of candidates) {
+    const mode = candidate.action.choice.mode;
+    const action = mode ? actor.actions.find((one) => one.id === candidate.action.choice.optionId) : undefined;
+    const from = action?.modes?.find((one) => one.id === mode)?.ammoFrom;
+    if (from !== undefined && action?.ammo?.riders?.[String(from)] && (candidate.damage ?? 0) > 0)
+      candidate.damage = candidate.damage! * RULESET_SPECIAL_SHOT_KEPT;
+  }
   return { unit, actor, candidates, orders, behavior, opening };
 }
 
@@ -9403,6 +9547,9 @@ function rulesetStalled(definition: RulesetDefinition, state: CombatDirectorStat
   if (stall.rounds < RULESET_STALL_ROUNDS) return false;
   state.outcome = "flee";
   state.stalled = true;
+  // What only meant something inside it comes off, as every other ending takes it (laptop playtest
+  // 2026-10-26: Blessed still listed once the fight was over).
+  fight.encounter = settleRulesetFledFight(definition, fight.encounter, rollerFor(fight)).state;
   record(fight, [{ type: "outcome", outcome: "fled", stalled: true }]);
   return true;
 }
@@ -9563,10 +9710,6 @@ function playRulesetTurn(
   const leash = ordered ?? territory;
   // What it had done before this turn's choices, so a territorial one that does nothing says why.
   const seqBefore = fight.eventSeq;
-  // A caster or archer caught beside an opponent gets clear before it shoots (re-test 9).
-  if (!stays) getClearToShoot(definition, state, fight, actorId);
-  // A companion steps up to where it can reach whoever is dropping areas on the party.
-  const pressing = !stays && pressRulesetBlaster(definition, state, fight, actorId, orders);
   // Picked up where it was left when a window it opened was answered by a person.
   const earlier =
     fight.turnSoFar?.actorId === actorId &&
@@ -9574,6 +9717,13 @@ function playRulesetTurn(
     fight.turnSoFar.turn === fight.encounter.turn
       ? fight.turnSoFar
       : undefined;
+  // A weapon it carries taken in hand, or other ammunition picked, where that does clearly better
+  // (2026-10-26): once, as the turn begins, never again on a turn picked up after a window.
+  if (!earlier) takeBetterInHand(definition, state, fight, actorId);
+  // A caster or archer caught beside an opponent gets clear before it shoots (re-test 9).
+  if (!stays) getClearToShoot(definition, state, fight, actorId);
+  // A companion steps up to where it can reach whoever is dropping areas on the party.
+  const pressing = !stays && pressRulesetBlaster(definition, state, fight, actorId, orders);
   // Once it has dodged, got away or hidden (1.748), it does not walk back into the fight this turn.
   let defended = earlier?.defended ?? false;
   // Whether its last blow was thrown from afar (combat AI P8), and whether it keeps its distance after.
@@ -9890,6 +10040,122 @@ function rulesetShootsFromHere(
  * one of them, by a teleport another budget pays for (Misty Step). Walking off would be struck on the
  * way, and shooting from there is at a disadvantage in most rulesets. True when it moved.
  */
+/** How much more the best the Engine's own tactics could do after taking a weapon in hand, or with
+ *  other ammunition first, must be worth than the best they can do as they are before it is done: a
+ *  share of that best, and at least `RULESET_IN_HAND_FLOOR`, so two near-equal blows never swap. */
+const RULESET_IN_HAND_MARGIN = 0.2;
+const RULESET_IN_HAND_FLOOR = 0.002;
+
+/** Whether `after` is clearly worth more than `now`, as `RULESET_IN_HAND_MARGIN` has it. */
+function rulesetClearlyBetter(after: number | undefined, now: number | undefined): boolean {
+  if (after === undefined) return false;
+  const base = now ?? 0;
+  return after >= base + Math.max(RULESET_IN_HAND_FLOOR, Math.abs(base) * RULESET_IN_HAND_MARGIN);
+}
+
+/** The most the best of a turn is worth as the Engine's own tactics weigh it, of the candidates
+ *  `wanted` keeps: each scored exactly as its own pick scores it, without the wavering that pick adds,
+ *  which is drawn afresh for every list and would tell two copies of the fight apart by chance alone.
+ *  Undefined with nothing to do. */
+function rulesetBestWorth(
+  definition: RulesetDefinition,
+  state: CombatDirectorState,
+  encounter: RulesetEncounterState,
+  actorId: string,
+  wanted: (actor: RulesetCombatant, candidate: CombatAiCandidate<RulesetCandidate>) => boolean = () => true,
+): { worth: number } | undefined {
+  const actor = rulesetCombatant(encounter, actorId);
+  if (!actor) return undefined;
+  let best: { worth: number } | undefined;
+  for (const one of rankRulesetChoices(definition, state, encounter, actorId, Number.MAX_SAFE_INTEGER)) {
+    if (!wanted(actor, one.candidate)) continue;
+    const worth = Object.values(one.parts).reduce((sum, part) => sum + (part ?? 0), 0);
+    if (!best || worth > best.worth) best = { worth };
+  }
+  return best;
+}
+
+/** Whether a candidate is a blow that does harm; with `item`, one of the item at that place, and with
+ *  `plain`, made in none of its modes. */
+function rulesetBlowOf(
+  actor: RulesetCombatant,
+  candidate: CombatAiCandidate<RulesetCandidate>,
+  item?: number,
+  plain = false,
+): boolean {
+  const action = actor.actions.find((one) => one.id === candidate.action.choice.optionId);
+  if (!action?.damage || !((candidate.damage ?? 0) > 0)) return false;
+  return (item === undefined || rulesetActionItemIndex(action) === item) && (!plain || !candidate.action.choice.mode);
+}
+
+/**
+ * The fighter takes a weapon it carries in hand, with the turn's one free interaction (2026-10-26),
+ * where the best it could do with it beats the best it can do as it is by a clear margin, each read
+ * by the Engine's own tactics on a copy of the fight: a bow drawn with nobody in the sword's reach, the
+ * sword drawn back with an opponent beside the bow. Then each weapon in hand that shoots from the bag
+ * shoots first the stack its best plain shot does most with, the plain ammunition unless another
+ * does clearly better (an Arrow of Slaying only at what it slays). Never in a fight's window, and a
+ * draw refused is never asked again: this is done once, as its turn begins.
+ */
+function takeBetterInHand(
+  definition: RulesetDefinition,
+  state: CombatDirectorState,
+  fight: RulesetFightState,
+  actorId: string,
+): void {
+  const actor = rulesetCombatant(fight.encounter, actorId);
+  const mind = [...state.party, ...state.enemies].find((one) => one.id === actorId)?.tactics?.mind;
+  if (!actor?.sheet?.items || mind === "mindless" || fight.encounter.window) return;
+  if (!rulesetCombatStanding(actor) || actor.surprised) return;
+  const hands = rulesetInHand(definition, actor);
+  if (!hands) return;
+  const weapons = hands.free
+    ? hands.carried.filter((one) => !one.blockedBy && !!actor.sheet!.items![one.item]?.item.attack)
+    : [];
+  if (weapons.length) {
+    // Its best blow as it stands, against its best blow with what it took in hand.
+    const now = rulesetBestWorth(definition, state, fight.encounter, actorId, (fighter, candidate) =>
+      rulesetBlowOf(fighter, candidate),
+    )?.worth;
+    let best: { item: number; worth: number } | undefined;
+    for (const one of weapons) {
+      const trial = structuredClone(fight.encounter);
+      if (!rulesetDrawInHand(definition, rulesetCombatant(trial, actorId)!, one.item).ok) continue;
+      const after = rulesetBestWorth(definition, state, trial, actorId, (fighter, candidate) =>
+        rulesetBlowOf(fighter, candidate, one.item),
+      )?.worth;
+      if (after !== undefined && rulesetClearlyBetter(after, now) && after > (best?.worth ?? -Infinity))
+        best = { item: one.item, worth: after };
+    }
+    const drawn = best ? rulesetDrawInHand(definition, actor, best.item) : undefined;
+    if (drawn?.ok) {
+      record(fight, [drawn.event]);
+      syncRulesetCombatants(definition, state);
+    }
+  }
+  for (const weapon of rulesetInHand(definition, actor)?.ammo ?? []) {
+    if (weapon.stacks.length < 2) continue;
+    const worths = weapon.stacks.map((stack) => {
+      const trial = structuredClone(fight.encounter);
+      rulesetChooseAmmo(rulesetCombatant(trial, actorId)!, weapon.weapon, stack.item);
+      return {
+        item: stack.item,
+        worth: rulesetBestWorth(definition, state, trial, actorId, (fighter, candidate) =>
+          rulesetBlowOf(fighter, candidate, weapon.weapon, true),
+        )?.worth,
+      };
+    });
+    // The bag's own order first: plain ammunition, unless another stack does clearly better.
+    const plain = worths[0]!;
+    const better = worths
+      .slice(1)
+      .filter((one) => rulesetClearlyBetter(one.worth, plain.worth))
+      .sort((a, b) => b.worth! - a.worth!)[0];
+    const pick = (better ?? plain).item;
+    if (pick !== weapon.first) rulesetChooseAmmo(actor, weapon.weapon, pick);
+  }
+}
+
 /**
  * A companion out of reach of an opponent who has dropped an area on the party steps up to where it
  * can reach them (re-test round 3: a cult mage twelve squares back in the dusk threw a Fireball every
@@ -11061,6 +11327,8 @@ function runRulesetCommand(
       return refuse("Only honourable opponents accept a surrender.", "ruleset_combat_no_yield");
     state.outcome = "defeat";
     state.yielded = true;
+    // What only meant something inside it comes off, as every other ending takes it.
+    fight.encounter = settleRulesetFledFight(definition, fight.encounter, rollerFor(fight)).state;
     // Said in the fight's own log, so a surrender never reads as a wipe (re-test 14).
     record(fight, [{ type: "outcome", outcome: "defeat", yielded: true }]);
     return settled(state);

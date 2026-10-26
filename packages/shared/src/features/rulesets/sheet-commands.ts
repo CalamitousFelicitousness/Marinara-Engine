@@ -81,6 +81,9 @@ export interface SheetCommandContext {
    *  whoever uses it. The Engine heals them with that use once the sheet commands are done, so a
    *  restore of their health beside it is not paid again. Absent, no item is known to heal. */
   itemHealsUser?: (item: string) => boolean;
+  /** The game's clock as the reply's turn began, in minutes from its start: a rest of a kind taken
+   *  with none of it passed since the last is refused. Absent where the game keeps none. */
+  clock?: number;
 }
 
 export interface SheetCommandOutcome {
@@ -125,6 +128,35 @@ export function applySheetCommandTags(
       : (ctx.partyBuild ?? (partyDefinition ? defaultRulesetSheetBuild(partyDefinition) : null));
   const cards = ctx.cards.map((card) => ({ ...card }));
   const live: RulesetLiveStates = { ...ctx.live };
+  // The rests the reply before this one took (laptop playtest 2026-10-26: two long rests written in
+  // back-to-back turns), no longer this reply's own once it is read.
+  const restedBefore = new Map<string, Set<string>>();
+  for (const [key, state] of Object.entries(live)) {
+    const fresh = Object.entries(state.rested ?? {}).filter(([, rested]) => rested.fresh);
+    if (fresh.length === 0) continue;
+    restedBefore.set(key, new Set(fresh.map(([rest]) => rest)));
+    // What is left of each is the clock's minute, where the game keeps one.
+    const kept = Object.entries(state.rested!).flatMap(([rest, { at }]) => (at === undefined ? [] : [[rest, { at }]]));
+    const { rested: _rested, ...rest } = state;
+    if (kept.length > 0) live[key] = { ...rest, rested: Object.fromEntries(kept) };
+    else if (Object.keys(rest).length > 0) live[key] = rest;
+    else delete live[key];
+  }
+  /** Whether a rest of this kind was taken already in this reply or the one before, or with no time
+   *  passed on the game's clock since. */
+  const restedAlready = (key: string, rest: string): boolean => {
+    if (restedBefore.get(key)?.has(rest)) return true;
+    const last = live[key]?.rested?.[rest];
+    if (!last) return false;
+    if (last.fresh) return true;
+    return ctx.clock !== undefined && last.at !== undefined && ctx.clock <= last.at;
+  };
+  const restNamed = (name: string) =>
+    ctx.definition.rests.find(
+      (entry) =>
+        entry.id.toLowerCase() === name.trim().toLowerCase() ||
+        entry.label.trim().toLowerCase() === name.trim().toLowerCase(),
+    );
   const outcomes: SheetCommandOutcome[] = [];
   const rests: Array<{ who: string; rest: string }> = [];
   const materials: RulesetMaterialTaken[] = [];
@@ -347,10 +379,17 @@ export function applySheetCommandTags(
     try {
       if (op.op === "advance" && ctx.advancementRefusal) return { ok: false, reason: ctx.advancementRefusal };
       if (op.op === "use") return useOn(card, key, op);
+      const rest = op.op === "rest" ? restNamed(op.rest) : undefined;
+      if (rest && restedAlready(key, rest.id)) return { ok: false, reason: "rested-already" };
       // Dice spent on a rest (1.335) take the party's best extra die (Song of Rest), whoever has it.
       const given = op.op === "rest" && op.dice && !op.extra ? { ...op, ...partyExtra(op.rest) } : op;
       let result = applyRulesetSheetOp(ctx.definition, card.build, live[key], given, ctx.roll, card.items);
       if (result.ok && op.op === "rest" && op.use) result = restEnds(card, op, result);
+      // When it was taken, for the next.
+      if (result.ok && rest) {
+        const taken = { ...(ctx.clock !== undefined ? { at: ctx.clock } : {}), fresh: true as const };
+        result = { ...result, live: { ...result.live, rested: { ...result.live.rested, [rest.id]: taken } } };
+      }
       if (result.ok) {
         store(key, result.live);
         if (result.build) {
@@ -521,7 +560,8 @@ export function applySheetCommandTags(
         const key = normalizeCharacterLookupName(card.name);
         if (wipesFailures(op)) wiped.add(key);
         if (op.op === "restore" && healsHealth(card, op)) healed.add(key);
-        if (rest) restsTaken.set(key, new Set([...(restsTaken.get(key) ?? []), rest.id]));
+        if (rest && !restedAlready(key, rest.id))
+          restsTaken.set(key, new Set([...(restsTaken.get(key) ?? []), rest.id]));
       }
     }
     for (const key of wiped) if (healed.has(key)) revived.add(key);

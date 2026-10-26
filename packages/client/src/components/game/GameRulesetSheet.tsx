@@ -102,6 +102,7 @@ const SHEET_REFUSAL_KEYS: Readonly<Record<string, string>> = Object.freeze({
   "bad-pool": "game.ruleset.sheet.refusal.badPool",
   "cannot-heal": "game.ruleset.sheet.refusal.cannotHeal",
   "dying-saves-rolled": "game.ruleset.sheet.refusal.dyingSavesRolled",
+  "rested-already": "game.ruleset.sheet.refusal.restedAlready",
   malformed: "game.ruleset.sheet.refusal.malformed",
   "unknown-character": "game.ruleset.sheet.refusal.unknownCharacter",
   "ambiguous-character": "game.ruleset.sheet.refusal.ambiguousCharacter",

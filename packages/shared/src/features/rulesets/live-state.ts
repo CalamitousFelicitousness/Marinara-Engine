@@ -121,6 +121,17 @@ export interface RulesetLiveState {
    *  playtest 2026-10-26: a hero stabilised in the story rolled death saves again in the next fight).
    *  Read only while their health is at none. */
   stable?: true;
+  /** When each rest was last taken, by rest id (laptop playtest 2026-10-26: two long rests written in
+   *  back-to-back turns both gave everything back). A second of one kind is refused in that reply and
+   *  the next, and with no time passed on the game's clock since. */
+  rested?: Record<string, RulesetLiveRested>;
+}
+
+/** A rest as it was last taken: the game clock's minute then, where the game keeps one, and `fresh`
+ *  while it was taken in the reply that left this state. */
+export interface RulesetLiveRested {
+  at?: number;
+  fresh?: true;
 }
 
 /** A shape kept on a sheet from a use outside a fight (1.793). */
@@ -225,6 +236,11 @@ const liveStackId = z.string().min(1).max(MAX_LIVE_KEY_LENGTH);
 /** The creature a kept call called (1.790), by name: "" for an entry that calls only one. */
 const liveCalledValue = z.string().max(MAX_LIVE_KEY_LENGTH);
 const MAX_LIVE_CALLED = 20;
+const liveRestedSchema = z
+  .object({ at: z.number().int().min(0).max(1_000_000_000).optional(), fresh: z.literal(true).optional() })
+  .strict();
+/** As many as a ruleset may declare. */
+const MAX_LIVE_RESTED = 12;
 const liveShapedSchema = z
   .object({
     entry: z.string().min(1).max(MAX_LIVE_KEY_LENGTH),
@@ -278,6 +294,7 @@ export const rulesetLiveStateSchema = z
     called: boundedRecord(liveCalledValue, MAX_LIVE_CALLED, "kept calls").optional(),
     shaped: liveShapedSchema.optional(),
     stable: z.literal(true).optional(),
+    rested: boundedRecord(liveRestedSchema, MAX_LIVE_RESTED, "rests taken").optional(),
   })
   .strip();
 
@@ -875,6 +892,8 @@ function readStoredLiveStateAsIs(stored: unknown): RulesetLiveState {
   const shaped = liveShapedSchema.safeParse(source.shaped);
   if (shaped.success) state.shaped = shaped.data;
   if (source.stable === true) state.stable = true;
+  const rested = keepValid(source.rested, liveRestedSchema, MAX_LIVE_RESTED);
+  if (rested) state.rested = rested;
   return state;
 }
 
@@ -919,6 +938,8 @@ function normalizeLiveState(state: RulesetLiveState): RulesetLiveState {
   if (state.shaped) normalized.shaped = state.shaped;
   // Stable at no health, until health or a blow says otherwise.
   if (state.stable) normalized.stable = true;
+  // When each rest was last taken, through every other change.
+  if (state.rested && Object.keys(state.rested).length > 0) normalized.rested = state.rested;
   return normalized;
 }
 
@@ -1433,6 +1454,9 @@ export type RulesetSheetRefusal =
   /** Dying failures written up by hand outside a fight: only a roll or a blow while down marks them
    *  (cheap-GM playtest 2026-10-26). */
   | "dying-saves-rolled"
+  /** A rest of a kind taken again in the reply that took it or the next, or with no time passed on
+   *  the game's clock since (laptop playtest 2026-10-26: two long rests in back-to-back turns). */
+  | "rested-already"
   | "malformed";
 
 export type RulesetSheetOpResult =

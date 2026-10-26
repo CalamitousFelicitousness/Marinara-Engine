@@ -3615,6 +3615,7 @@
   "game.ruleset.sheet.refusal.noBox": "Every box that could take that mark is already marked.",
   "game.ruleset.sheet.refusal.noTemp": "that resource has no temporary buffer",
   "game.ruleset.sheet.refusal.other": "the change was not allowed",
+  "game.ruleset.sheet.refusal.restedAlready": "they took that rest just now, and no time has passed since",
   "game.ruleset.sheet.refusal.someone": "This character",
   "game.ruleset.sheet.refusal.summary": "The Engine refused a sheet change. {{list}}",
   "game.ruleset.sheet.refusal.tooMany": "too many sheet changes in one turn",

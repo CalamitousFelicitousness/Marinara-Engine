@@ -12,6 +12,8 @@
  *     and shot is written back to the inventory stack by stack.
  *   - In a shared room only the member's own player may send either, and the classic director refuses
  *     both.
+ *   - Through the real route, the answer to either command already carries the new hands and the
+ *     fight's line for the draw, so the screen shows them without a reload (cloud playtest 129eede5e).
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -29,6 +31,7 @@ import {
   rulesetFightItemChanges,
   rulesetItemBook,
   rulesetSheetItems,
+  type DirectedCombatView,
   type DirectedCommand,
   type GameInventoryStack,
   type RulesetCatalogEntry,
@@ -391,8 +394,150 @@ try {
     );
   }
 
+  // ── Through the route: the answer carries the new hands and the draw's line ──
+  // (cloud playtest 129eede5e: the row read "Longsword, Shield" and the log had no draw until a reload.)
+  {
+    const [
+      { default: Fastify },
+      { getDB, closeDB },
+      { createChatsStorage },
+      { createGameStateStorage },
+      { createGameRulesetsStorage },
+      { combatDirectorRoutes },
+    ] = await Promise.all([
+      import("../../packages/server/node_modules/fastify/fastify.js"),
+      import("../../packages/server/src/db/connection.js"),
+      import("../../packages/server/src/services/storage/chats.storage.js"),
+      import("../../packages/server/src/services/storage/game-state.storage.js"),
+      import("../../packages/server/src/services/storage/game-rulesets.storage.js"),
+      import("../../packages/server/src/routes/combat-director.routes.js"),
+    ]);
+    const db = await getDB();
+    const app = Fastify();
+    app.decorate("db", db);
+    await app.register(combatDirectorRoutes, { prefix: "/combat", chooseBoss: async () => "" });
+    try {
+      const RULESET_ID = "local/ember-in-hand";
+      await createGameRulesetsStorage(db).put({
+        rulesetId: RULESET_ID,
+        version: ember.version,
+        sourceKind: "local",
+        definition: JSON.stringify({ ...doc, id: "ember-in-hand" }),
+      });
+      const chats = createChatsStorage(db);
+      const chat = await chats.create({ name: "In hand", mode: "game", characterIds: [] });
+      const anchor = await chats.createMessage({ chatId: chat.id, role: "assistant", content: "[state: combat]" });
+      await chats.patchMetadata(chat.id, {
+        gameSetupConfig: { combatDirector: true, difficulty: "Normal" },
+        gameRuleset: { id: RULESET_ID, version: ember.version, packageId: null, options: {} },
+        gameCharacterCards: [{ name: "Ada", rulesetSheet: { v: 1, build: defaultRulesetSheetBuild(ember) } }],
+        gameInventory: stacks,
+      });
+      await createGameStateStorage(db).create({
+        chatId: chat.id,
+        messageId: anchor.id,
+        swipeIndex: 0,
+        date: "",
+        time: "",
+        location: "road",
+        weather: "",
+        temperature: "",
+        worldCustomFields: [],
+        presentCharacters: [],
+        recentEvents: [],
+        playerStats: null,
+        personaStats: null,
+        fieldLocks: {},
+        hiddenTrackerFields: [],
+        committed: true,
+      });
+      const fighter = (id: string, name: string, side: "player" | "enemy", speed: number) => ({
+        id,
+        name,
+        side,
+        hp: 30,
+        maxHp: 30,
+        attack: 8,
+        defense: 6,
+        speed,
+        level: 3,
+        skills: [],
+      });
+      const started = await app.inject({
+        method: "POST",
+        url: "/combat/start",
+        payload: {
+          chatId: chat.id,
+          anchor: anchor.id,
+          style: "ruleset",
+          party: [fighter("ada", "Ada", "player", 9)],
+          enemies: [fighter("foe", "Foe", "enemy", 1)],
+        },
+      });
+      assert.equal(started.statusCode, 200, started.body);
+      let session = started.json().session as DirectedCombatView;
+      const send = async (sent: DirectedCommand) => {
+        const answer = await app.inject({
+          method: "POST",
+          url: "/combat/command",
+          payload: {
+            chatId: chat.id,
+            anchor: anchor.id,
+            id: session.id,
+            instanceId: session.instanceId,
+            revision: session.revision,
+            requestId: crypto.randomUUID(),
+            command: sent,
+          },
+        });
+        assert.equal(answer.statusCode, 200, answer.body);
+        assert.equal(answer.json().stale, undefined, `${sent.type} is applied, not answered as stale`);
+        session = answer.json().session as DirectedCombatView;
+      };
+      for (let guard = 0; guard < 10 && session.ruleset!.actorId !== "ada"; guard++) await send({ type: "continue" });
+      const handsOf = (view: DirectedCombatView) => view.ruleset!.combatants.find((one) => one.id === "ada")!.hands!;
+      assert.equal(session.ruleset!.actorId, "ada");
+      assert.deepEqual(
+        handsOf(session).holding.map((one) => one.name),
+        ["Hand axe", "Boar spear"],
+      );
+      const seen = session.ruleset!.events.at(-1)!.seq;
+
+      await send({ type: "draw", unitId: "ada", item: 2 });
+      const hands = handsOf(session);
+      assert.deepEqual(hands.holding, [{ item: 2, name: "Hunting bow", takes: 2 }], "the answer holds the bow");
+      assert.deepEqual(
+        hands.carried.map((one) => one.name),
+        ["Hand axe", "Boar spear"],
+      );
+      assert.equal(hands.free, false);
+      const said = session.ruleset!.events.filter((one) => one.seq > seen).map((one) => one.event);
+      assert.deepEqual(said, [
+        { type: "drew", actorId: "ada", label: "Hunting bow", stowed: ["Hand axe", "Boar spear"] },
+      ]);
+      assert.equal(
+        rulesetCombatEventLine(said[0]!, rulesetCombatNames(ember, session.ruleset!, t), t),
+        "Ada takes Hunting bow in hand, putting away Hand axe, Boar spear.",
+        "the answer's log says it",
+      );
+
+      await send({ type: "ammo", unitId: "ada", weapon: 2, stack: 4 });
+      assert.equal(handsOf(session).ammo[0]!.first, 4, "and the ammunition picked, at once");
+
+      // What a reload reads is what the answers said.
+      const read = await app.inject({ url: `/combat/state?chatId=${chat.id}&anchor=${anchor.id}` });
+      const reloaded = read.json().session as DirectedCombatView;
+      assert.equal(reloaded.revision, session.revision);
+      assert.deepEqual(handsOf(reloaded), handsOf(session));
+      assert.deepEqual(reloaded.ruleset!.events, session.ruleset!.events);
+    } finally {
+      await app.close();
+      await closeDB();
+    }
+  }
+
   console.log(
-    "In hand: a swap mid-fight changes the attacks offered and is written back, a buckler refuses it, one free a turn, the ammunition picked is shot, and only the member's own player sends either.",
+    "In hand: a swap mid-fight changes the attacks offered and is written back, a buckler refuses it, one free a turn, the ammunition picked is shot, only the member's own player sends either, and the route's answer shows both at once.",
   );
 } finally {
   rmSync(dataDir, { recursive: true, force: true });

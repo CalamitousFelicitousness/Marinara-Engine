@@ -56,6 +56,7 @@ import {
 import { createCharactersStorage } from "../storage/characters.storage.js";
 import { gamePartySheetRevision } from "./game-party-sheet.service.js";
 import { rollDieSecurely } from "./dice-rng.js";
+import { gameClockMinutes } from "./time.service.js";
 import { buildPartyNpcId, isPartyNpcId } from "../generation/game-party-utils.js";
 import { loadRulesetCatalogEntries } from "./ruleset-catalog.service.js";
 import { loadRulesetRegistry, resolveGameRuleset, type ResolvedGameRuleset } from "./ruleset-registry.service.js";
@@ -75,6 +76,9 @@ export interface GameRulesetSheetContext {
   /** Whether an item the reply uses heals whoever uses it, by the name the reply gives it: the
    *  Engine's own heal for that use stands in for a restore of their health beside it. */
   itemHealsUser?: (item: string) => boolean;
+  /** The game's clock as the turn began, in minutes: a rest of a kind with none of it passed since the
+   *  last is refused. Absent where the game keeps none. */
+  clock?: number;
 }
 
 function parseMetadata(raw: unknown): Record<string, unknown> {
@@ -280,6 +284,7 @@ export async function loadGameRulesetSheetContext(
   const persona = roomHostIdentity() ?? (personaId ? await createCharactersStorage(db).getPersona(personaId) : null);
   const playerName = persona?.name?.trim() || null;
   const built = sheetCommandCards(pinned.definition, cards);
+  const clock = gameClockMinutes(meta.gameTime);
   const away = await cardsAwayFromParty(db, chatId, meta, built, playerName);
   // What each one carries, where the ruleset reads items (1.337): a rest's dice read Pell's Teapot.
   const stacks = normalizeGameInventoryStacks(meta.gameInventory);
@@ -317,6 +322,7 @@ export async function loadGameRulesetSheetContext(
     playerName,
     ...(away.length ? { away } : {}),
     ...(itemHealsUser ? { itemHealsUser } : {}),
+    ...(clock !== undefined ? { clock } : {}),
   };
 }
 

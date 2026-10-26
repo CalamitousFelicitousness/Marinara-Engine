@@ -346,6 +346,44 @@ try {
     }
   }
 
+  {
+    // Foes sent round both flanks of a party in a ring begin a step clear of its line, not beside it
+    // (laptop 0706 Party B: a bandit began next to Lyra, crossbowmen in reach of her).
+    const grid = {
+      width: 12,
+      height: 10,
+      tiles: Array.from({ length: 10 }, () => Array.from({ length: 12 }, () => "plains")),
+    } as never;
+    const placements: Record<string, { x: number; y: number }> = {
+      a: { x: 5, y: 5 },
+      b: { x: 6, y: 5 },
+      c: { x: 7, y: 5 },
+      b1: { x: 4, y: 4 },
+      b2: { x: 4, y: 6 },
+      x1: { x: 8, y: 4 },
+      x2: { x: 8, y: 6 },
+    };
+    const stands = [
+      { id: "a", side: "party" as const },
+      { id: "b", side: "party" as const },
+      { id: "c", side: "party" as const },
+      { id: "b1", side: "enemy" as const, group: "bandit" },
+      { id: "b2", side: "enemy" as const, group: "bandit" },
+      { id: "x1", side: "enemy" as const, group: "crossbow" },
+      { id: "x2", side: "enemy" as const, group: "crossbow" },
+    ];
+    const placed = rulesetStartPlacements(grid, placements, stands, {
+      b1: "flank",
+      b2: "flank",
+      x1: "flank",
+      x2: "flank",
+    });
+    for (const id of ["b1", "b2", "x1", "x2"]) {
+      const near = Math.min(...["a", "b", "c"].map((hero) => gap(placed[id]!, placements[hero]!)));
+      assert.ok(near >= 3, `${id} keeps its distance: ${JSON.stringify(placed)}`);
+    }
+  }
+
   console.info(
     "Ruleset deployment: the Game Master places opponents and anyone the story put somewhere, the player sets down the rest before the first turn.",
   );

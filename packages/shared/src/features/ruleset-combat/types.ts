@@ -4764,6 +4764,9 @@ export interface RulesetEncounterSummary {
     /** Down and no longer being rolled for. A recap that only knew `down` and `dying` could not
      *  tell a member who has stopped slipping from one who is still on the clock. */
     stable: boolean;
+    /** Dead: the ruleset's dying rule ran out for them (laptop 0706 Party B: a hero who failed his
+     *  last death save was told to the Game Master as "down", and it stood him up). */
+    dead?: true;
     conditions: string[];
     /** Gone from the fight alive, by a teleport that leaves it (1.279). */
     left?: true;

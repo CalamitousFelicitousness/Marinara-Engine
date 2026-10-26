@@ -45,4 +45,33 @@ assert.deepEqual(
 assert.deepEqual(facts[0]!.damage, { attacks: "weapon", blow: "melee" });
 assert.equal(sources(1)[0]!.modifiers![0]!.criticalDice, 1, "one level, one die");
 assert.equal(sources(0).length, 0);
+
+// Levels that each add a plain number are one term too (laptop 0706 Party B: a revival's penalty read as
+// three -1s on one death save).
+{
+  const penalty = JSON.parse(
+    readFileSync(new URL("../../docs/development/ruleset-5e-2014.example.json", import.meta.url), "utf8"),
+  );
+  penalty.combat.levels.push(
+    ...[1, 2, 3].map((at) => ({
+      track: "death_save_successes",
+      at,
+      modifiers: [
+        { to: "attacks", flat: -1 },
+        { to: "saves", flat: -1 },
+      ],
+    })),
+  );
+  const read = parseRulesetDefinition(penalty);
+  assert.ok(read.ok, read.ok ? "" : read.issues.join("; "));
+  const lines = rulesetCheckSources(read.definition, build, { tracks: { death_save_successes: 3 } }).filter((source) =>
+    source.modifiers?.some((one) => one.flat !== undefined && one.to === "saves"),
+  );
+  assert.equal(lines.length, 1, JSON.stringify(lines));
+  assert.deepEqual(
+    lines[0]!.modifiers!.map((one) => one.flat),
+    [-3, -3],
+  );
+  assert.doesNotMatch(lines[0]!.name, / \d$/, "named once, not by its level");
+}
 console.log("Critical dice line: levels that each add a weapon die on a critical are one line, summed.");

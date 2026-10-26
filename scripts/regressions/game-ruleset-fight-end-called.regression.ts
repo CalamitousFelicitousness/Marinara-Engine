@@ -72,6 +72,20 @@ try {
   assert.doesNotMatch(party, /Draft Horse/, lines.join("\n"));
   assert.ok(lines.some((line) => /^Called into the fight, not party members: Draft Horse 1\./.test(line)));
   assert.ok(!lines.some((line) => line.startsWith("Still affected") && line.includes("Draft Horse")));
+  // One whose dying ran out is dead to the Game Master, not down (laptop 0706 Party B).
+  {
+    const fallen = structuredClone(encounter);
+    Object.assign(
+      fallen.combatants.find((one) => one.id === "rook")!,
+      { down: true, dying: false, defeated: true },
+    );
+    const said = rulesetCombatRecapLines(definition, rulesetEncounterSummary(definition, fallen));
+    assert.match(
+      said.find((line) => line.startsWith("Party on"))!,
+      /Rook: [^;]*\(dead/,
+      said.join("\n"),
+    );
+  }
 
   // ── Squeezed as it ends: whole again, the condition lifted ──
   const squeezing = {

@@ -19591,6 +19591,7 @@ export function rulesetEncounterSummary(
           down: combatant.down,
           dying: combatant.dying,
           stable: combatant.stable,
+          ...(combatant.defeated ? { dead: true as const } : {}),
           conditions: rulesetCombatConditions(definition, combatant),
           ...(combatant.away?.left ? { left: true as const } : {}),
           ...(combatant.calledBy !== undefined && !combatant.calledKept ? { called: true as const } : {}),

@@ -195,6 +195,30 @@ export function rulesetCheckSources(
         folded.set(key, source);
         continue;
       }
+      // Levels that each add a plain number to the same rolls are one term, summed (laptop 0706 Party
+      // B: "Back from the dead (penalty)" read as three -1s on one death save).
+      const flats =
+        plain &&
+        !!level.modifiers?.length &&
+        level.modifiers.every(
+          (one) => typeof one.flat === "number" && Object.keys(one).every((key) => key === "to" || key === "flat"),
+        );
+      if (flats) {
+        const key = JSON.stringify([level.derived, level.track, "flat", level.modifiers!.map((one) => one.to)]);
+        const had = folded.get(key);
+        const source = {
+          ...rest,
+          name: label,
+          modifiers: level.modifiers!.map((one, index) => ({
+            ...one,
+            flat: (had?.modifiers?.[index]?.flat ?? 0) + one.flat!,
+          })),
+        } as RulesetCheckSource;
+        if (!had) sources.push(source);
+        else sources[sources.indexOf(had)] = source;
+        folded.set(key, source);
+        continue;
+      }
       sources.push({ ...level, name: `${label} ${level.at}` });
     }
   }

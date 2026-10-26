@@ -72,10 +72,10 @@ export function rulesetCombatRecapLines(definition: RulesetDefinition, summary: 
       ? (definition.sheet.live.tracks.find((track) => track.id === health.track)?.label ?? health.track)
       : (definition.sheet.live.pools.find((pool) => pool.id === health.pool)?.label ?? health.pool);
   const conditionLabel = new Map(definition.sheet.live.conditions.map((entry) => [entry.id, entry.label]));
-  // Stable outranks dying, because a member who has stopped slipping is not still on the clock, and
-  // both outrank plain "down": the ruleset's own dying rule is what put them there.
+  // Dead outranks everything. Stable outranks dying, because a member who has stopped slipping is not
+  // still on the clock, and both outrank plain "down": the ruleset's own dying rule is what put them there.
   const standing = (member: RulesetEncounterSummary["party"][number]) =>
-    member.stable ? "stable" : member.dying ? "dying" : member.down ? "down" : "";
+    member.dead ? "dead" : member.stable ? "stable" : member.dying ? "dying" : member.down ? "down" : "";
   // What was called into the fight is no member of the party (laptop 2026-10-25: Conjure Animals'
   // horses joined the story's party, still Squeezing): said apart, for the story to end.
   const members = summary.party.filter((member) => !member.called);

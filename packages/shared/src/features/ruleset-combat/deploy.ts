@@ -183,9 +183,10 @@ export function rulesetStartPlacements(
                   : place === "among"
                     ? other
                     : null;
-      // One on a flank where the sides stand apart starts out of the other side's reach (laptop pass 8
-      // 2026-10-26: a zombie began beside a hero).
-      if (target) move(one, target, place === "flank" && apart ? Math.min(back, wide) : 0);
+      // One on a flank starts out of the other side's reach (laptop pass 8 2026-10-26: a zombie began
+      // beside a hero), well back where the sides stand apart and a step clear of it in a ring (laptop
+      // 0706 Party B: bandits sent round both flanks began beside the party's line).
+      if (target) move(one, target, place === "flank" ? (apart ? Math.min(back, wide) : 2) : 0);
       else {
         // In cover: the nearest wood or ruin within six cells of its side, else where it stands.
         const cover = [...open].flatMap((cellKey) => {

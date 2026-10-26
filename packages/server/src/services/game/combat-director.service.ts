@@ -1427,6 +1427,8 @@ export function commandCombatDirector(s: CombatDirectorState, command: DirectedC
   }
   if (command.type === "yield") throw new Error("Only a ruleset fight's party may yield.");
   if (command.type === "controlCompanions") throw new Error("Only a ruleset fight hands over every companion at once.");
+  if (command.type === "draw" || command.type === "ammo")
+    throw new Error("Only a ruleset fight takes things in hand or picks ammunition.");
   if (command.type === "control") {
     const u = get(s, command.unitId);
     if (!u || side(u) !== "party" || s.window || s.actorId === u.id)

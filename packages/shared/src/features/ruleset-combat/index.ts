@@ -76,6 +76,7 @@ export {
   rulesetThingsToDrop,
   rulesetFightItemChanges,
   rulesetLoaded,
+  rulesetStackLeft,
   rulesetStoredNow,
   type RulesetFightItemChange,
 } from "./ammo.js";
@@ -158,6 +159,7 @@ export {
   rulesetAbilityNarrowing,
   rulesetAbilityScore,
   rulesetSyncAbilities,
+  rulesetSyncHeldItems,
   rulesetStoredAction,
   rulesetCheckAbility,
   rulesetCheckSkill,
@@ -403,3 +405,4 @@ export {
   rulesetAreaGrowth,
 } from "./resolve.js";
 export * from "./notes.js";
+export * from "./in-hand.js";

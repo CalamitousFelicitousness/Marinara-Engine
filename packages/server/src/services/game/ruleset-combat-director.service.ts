@@ -236,6 +236,9 @@ import {
   type RulesetItemBook,
   rollRulesetCreatureInventory,
   rulesetCarriedLeft,
+  rulesetChooseAmmo,
+  rulesetDrawInHand,
+  rulesetInHand,
   rulesetCombatantFlying,
   withRulesetSheetEvaluationCache,
   type RulesetSheetBuild,
@@ -2418,6 +2421,8 @@ export function rulesetCommandUnit(
     case "deploy":
     case "control":
     case "orders":
+    case "draw":
+    case "ammo":
       return command.unitId;
     default:
       return null;
@@ -2843,6 +2848,10 @@ function projectCombatant(
     ...(combatant.carried?.length
       ? { carrying: rulesetCarriedLeft(combatant).map((one) => ({ name: one.name, count: one.count })) }
       : {}),
+    // A party member's hands, for the In hand row (2026-10-26).
+    ...((hands) => (hands ? { hands } : {}))(
+      combatant.side === "party" ? rulesetInHand(definition, combatant) : undefined,
+    ),
     ...(deathTrack ? { deathTrack } : {}),
     ...(combatant.signature && combatant.signature.max > 0 && !combatant.defeated
       ? { legendary: { points: combatant.signature.points, max: combatant.signature.max } }
@@ -11007,7 +11016,8 @@ function runRulesetCommand(
     command.type !== "control" &&
     command.type !== "controlCompanions" &&
     command.type !== "orders" &&
-    command.type !== "spends"
+    command.type !== "spends" &&
+    command.type !== "ammo"
   )
     return refuse("Set the party down and begin the fight first.", "ruleset_combat_deploying");
 
@@ -11074,9 +11084,50 @@ function runRulesetCommand(
     return settled(state);
   }
 
+  // Which stack a weapon shoots first (2026-10-26): the fighter's own choice at any time, costing nothing.
+  if (command.type === "ammo") {
+    const combatant = rulesetCombatant(fight.encounter, command.unitId);
+    if (!combatant || combatant.side !== "party")
+      return refuse("Only a party member chooses their ammunition.", "ruleset_combat_unknown-actor");
+    if (!rulesetChooseAmmo(combatant, command.weapon, command.stack))
+      return refuse("That weapon cannot shoot that.", "ruleset_combat_no_ammo");
+    return settled(state);
+  }
+
   const actor = currentRulesetActor(fight.encounter);
   if (!actor) return refuse("Nobody is on turn.", "ruleset_combat_unknown-actor");
   const controller = rulesetController(state, fight, actor);
+
+  // A carried weapon or shield taken in hand on its holder's own turn (2026-10-26), for the turn's one
+  // free interaction: the fewest weapons in its way are put away, and the menu is read again.
+  if (command.type === "draw") {
+    if (state.window || fight.encounter.window)
+      return refuse("Resolve the open decision first.", "ruleset_combat_decision_open");
+    if (command.unitId !== actor.id || controller !== "manual")
+      return refuse("This turn is not yours to play.", "ruleset_combat_not-your-turn");
+    if (!rulesetCombatStanding(actor) || actor.surprised)
+      return refuse("They cannot act right now.", "ruleset_combat_cannot-act");
+    const drawn = rulesetDrawInHand(definition, actor, command.item);
+    if (!drawn.ok) {
+      const name = actor.sheet?.items?.[command.item]?.name ?? "That";
+      if (drawn.reason === "slots-full")
+        return refuse(
+          drawn.by.length
+            ? `${name} cannot be taken in hand: its slots are held by ${drawn.by.join(", ")}.`
+            : `${name} cannot be taken in hand: there are too few of the slots it takes.`,
+          "ruleset_combat_slots_full",
+        );
+      if (drawn.reason === "interaction-spent")
+        return refuse(
+          "The turn's free interaction with an object is already spent.",
+          "ruleset_combat_interaction_spent",
+        );
+      return refuse("That is nothing they carry to take in hand.", "ruleset_combat_not_carried");
+    }
+    record(fight, [drawn.event]);
+    syncRulesetCombatants(definition, state);
+    return settled(state);
+  }
 
   if (command.type === "ruleset") {
     if (state.window) return refuse("Resolve the open decision first.", "ruleset_combat_decision_open");

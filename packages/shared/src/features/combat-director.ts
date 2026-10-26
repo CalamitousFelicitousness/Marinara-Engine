@@ -12,6 +12,7 @@ import type {
   RulesetEncounterSummary,
   RulesetUnansweredBecause,
 } from "./ruleset-combat/types.js";
+import type { RulesetInHand } from "./ruleset-combat/in-hand.js";
 import type {
   TacticalAction,
   TacticalCombatState,
@@ -130,6 +131,12 @@ export type DirectedCommand =
   | { type: "control"; unitId: string; controller: "manual" | "ai" }
   /** Every companion at once, all but the one the player plays as their own (a ruleset fight's). */
   | { type: "controlCompanions"; controller: "manual" | "ai" }
+  /** A ruleset fight's party member takes a carried weapon or shield in hand on their own turn
+   *  (2026-10-26), by its place in their items: `DirectedRulesetCombatant.hands.carried`. */
+  | { type: "draw"; unitId: string; item: number }
+  /** Which stack a ruleset fight's party member's weapon shoots first, by places in their items:
+   *  `DirectedRulesetCombatant.hands.ammo`. */
+  | { type: "ammo"; unitId: string; weapon: number; stack: number }
   /** A companion's standing orders, or none to go back to its default. */
   | { type: "orders"; unitId: string; orders: CombatOrders | null }
   /** Whether the player chooses what their own symbol throws buy (1.382) rather than the Engine. */
@@ -227,6 +234,9 @@ export interface DirectedRulesetCombatant {
   surprised?: true;
   /** What an opponent still has on it of what it began the fight with (1.787), by name. */
   carrying?: Array<{ name: string; count: number }>;
+  /** A party member's hands (2026-10-26): what they hold, what they carry that could go in them, and
+   *  what each weapon shoots first. Absent for one with no weapon among their items. */
+  hands?: RulesetInHand;
   /** The two counts of the ruleset's dying rule, for a member the fight is still rolling for. */
   deathTrack?: { successes: number; failures: number; successesMax: number; failuresMax: number };
   /** The points it buys its legendary actions with between turns, as they stand. */

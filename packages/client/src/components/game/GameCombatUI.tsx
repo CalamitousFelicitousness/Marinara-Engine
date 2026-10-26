@@ -57,6 +57,7 @@ import type {
   TTSConfig,
 } from "@marinara-engine/shared";
 import { RulesetCombatMenu } from "./RulesetCombatMenu";
+import { RulesetInHand } from "./RulesetInHand";
 import {
   Heart,
   Droplets,
@@ -480,6 +481,9 @@ interface GameCombatUIProps {
       onYield?: () => void;
       /** Whether the player picks their own symbol spends (1.382). */
       onSpends?: (choose: boolean) => void;
+      /** A carried item taken in hand, and the stack a weapon shoots first (2026-10-26). */
+      onDraw?: (unitId: string, item: number) => void;
+      onAmmo?: (unitId: string, weapon: number, stack: number) => void;
     };
   };
   chatId: string;
@@ -1699,15 +1703,25 @@ export function GameCombatUI({
   // menu, its sub-phases or its keyboard handling is reachable while this is set.
   const rulesetFight = directed?.ruleset;
   const rulesetMenu = rulesetFight ? (
-    <RulesetCombatMenu
-      view={rulesetFight.view}
-      budgetLabel={rulesetFight.budgetLabel}
-      defenseLabel={rulesetFight.defenseLabel}
-      busy={rulesetFight.busy}
-      onChoose={rulesetFight.onChoose}
-      onFlee={rulesetFight.onFlee}
-      onYield={rulesetFight.onYield}
-    />
+    <>
+      {rulesetFight.onDraw && rulesetFight.onAmmo && (
+        <RulesetInHand
+          view={rulesetFight.view}
+          busy={rulesetFight.busy}
+          onDraw={rulesetFight.onDraw}
+          onAmmo={rulesetFight.onAmmo}
+        />
+      )}
+      <RulesetCombatMenu
+        view={rulesetFight.view}
+        budgetLabel={rulesetFight.budgetLabel}
+        defenseLabel={rulesetFight.defenseLabel}
+        busy={rulesetFight.busy}
+        onChoose={rulesetFight.onChoose}
+        onFlee={rulesetFight.onFlee}
+        onYield={rulesetFight.onYield}
+      />
+    </>
   ) : null;
 
   const actionMenu = (

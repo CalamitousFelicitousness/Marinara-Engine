@@ -20,6 +20,7 @@ import { RulesetBudgetPip, rulesetBudgetMarks, type RulesetBudgetMark } from "./
 import { RulesetCombatBoard, type RulesetCombatBoardProps } from "./RulesetCombatBoard";
 import { RulesetCombatLog } from "./RulesetCombatLog";
 import { RulesetCombatMenu, rulesetWindowPrompt } from "./RulesetCombatMenu";
+import { RulesetInHand } from "./RulesetInHand";
 import { zoneLine } from "./RulesetCombatStatus";
 import { RulesetSideBadge, RulesetTurnOrder, rulesetHealthTone, rulesetStateWord } from "./RulesetTurnOrder";
 import { rulesetDistanceText, rulesetHealthPercent, rulesetHeldCaught } from "../../lib/ruleset-combat-board";
@@ -57,6 +58,9 @@ export interface RulesetCombatScreenProps {
   /** Before the first turn (2026-10-24): one of the party set down on a square, and the fight begun. */
   onDeploy?: (unitId: string, to: { x: number; y: number }) => void;
   onDeployed?: () => void;
+  /** A carried item taken in hand, and the stack a weapon shoots first (2026-10-26): the In hand row. */
+  onDraw?: (unitId: string, item: number) => void;
+  onAmmo?: (unitId: string, weapon: number, stack: number) => void;
 }
 
 /** How far the game's top-left float (`data-game-float="map-and-party"`) reaches down into `column`
@@ -110,6 +114,8 @@ export function RulesetCombatScreen({
   ended,
   onDeploy,
   onDeployed,
+  onDraw,
+  onAmmo,
 }: RulesetCombatScreenProps) {
   const { t } = useTranslation();
   const [step, setStep] = useState<RulesetMenuStep | null>(null);
@@ -307,6 +313,9 @@ export function RulesetCombatScreen({
         </div>
       )}
       {!ended && !deploy && actor && <CurrentTurn actor={actor} marks={marks} distance={distance} t={t} />}
+      {!ended && !deploy && onDraw && onAmmo && (
+        <RulesetInHand view={view} busy={busy} onDraw={onDraw} onAmmo={onAmmo} />
+      )}
       {!ended && ownTurn && <CalloutHints view={view} byId={byId} t={t} />}
       <div ref={optionsBox} className="min-h-0 flex-1 overflow-y-auto border-t border-[var(--border)]">
         {ended ? null : deploy ? (

@@ -2356,7 +2356,8 @@ export interface RulesetCombatant {
     stuck?: boolean;
     /** Walked by a condition as they ended this turn (1.459), so ending it again goes on. */
     walkedAfter?: true;
-    /** Something dropped was picked up this turn for nothing (1.266). */
+    /** The turn's one free interaction with an object is spent: something dropped picked up for
+     *  nothing (1.266), or something taken in hand (2026-10-26). */
     pickedUp?: boolean;
     /** Spells cast this turn as the bonus-action spell rule counts them (1.697): one with its budget,
      *  and one cast any way but what it still allows. */
@@ -2495,6 +2496,9 @@ export interface RulesetCombatant {
   /** Items drawn as they are used (Capability API 1.800), by their place in `sheet.items`: true for
    *  one the fight drew as it was used, false for one it put away to make room. Absent until any was. */
   drawn?: Record<string, boolean>;
+  /** The ammunition each weapon shoots first (2026-10-26: the fight screen's ammo picker), by the
+   *  weapon's place in `sheet.items` to the stack's. Absent, it shoots in the order the bag keeps. */
+  ammoFirst?: Record<string, number>;
   loaded?: Record<string, number>;
   recoverable?: Record<string, number>;
   /** Ammunition spent as it struck (1.644), the share of it that comes back after a won fight as
@@ -3394,6 +3398,9 @@ export type RulesetCombatEvent =
   /** What a contest won took from its target (1.655), now lying at its winner's feet. */
   | { type: "takenAway"; actorId: string; targetId: string; label: string; labels: string[] }
   | { type: "pickedUp"; actorId: string; label: string }
+  /** Something taken in hand on its holder's own turn (2026-10-26: the fight screen's In hand row),
+   *  and what was put away to make room for it. */
+  | { type: "drew"; actorId: string; label: string; stowed: string[] }
   /** One attack given up for one by a creature its maker called (1.475): Pact of the Chain. */
   | { type: "lent"; actorId: string; calledId: string; label: string }
   | { type: "averted"; actorId: string; holderId: string; back?: true }

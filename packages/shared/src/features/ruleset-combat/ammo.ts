@@ -159,8 +159,18 @@ export function rulesetAmmoLeft(actor: RulesetCombatant, tag: string): number {
   return left;
 }
 
+/** The stack a weapon's holder chose for it to shoot first (2026-10-26), while it still has some of
+ *  the weapon's ammunition left; else none, and it shoots in the bag's order. */
+export function rulesetAmmoFirst(actor: RulesetCombatant, action: RulesetCombatAction): number | undefined {
+  const weapon = rulesetActionItemIndex(action);
+  const first = weapon !== undefined ? actor.ammoFirst?.[weapon] : undefined;
+  if (first === undefined || !action.ammo) return undefined;
+  const held = actor.sheet?.items?.[first];
+  return held?.item.tags?.includes(action.ammo.tag) && rulesetStackLeft(actor, first) > 0 ? first : undefined;
+}
+
 /** How many are left of one stack of the fighter's (1.644). */
-function stackLeft(actor: RulesetCombatant, index: number): number {
+export function rulesetStackLeft(actor: RulesetCombatant, index: number): number {
   return Math.max(0, (actor.sheet?.items?.[index]?.quantity ?? 0) - (actor.itemsUsed?.[index] ?? 0));
 }
 
@@ -219,7 +229,7 @@ export function rulesetShotsAvailable(actor: RulesetCombatant, action: RulesetCo
   const per = shotsPer(action);
   if (action.clip) return rulesetLoaded(actor, action.clip) >= per;
   if (action.ammo) {
-    if (action.ammoFrom !== undefined) return stackLeft(actor, action.ammoFrom) >= per;
+    if (action.ammoFrom !== undefined) return rulesetStackLeft(actor, action.ammoFrom) >= per;
     return rulesetAmmoLeft(actor, action.ammo.tag) >= per;
   }
   return true;
@@ -227,14 +237,26 @@ export function rulesetShotsAvailable(actor: RulesetCombatant, action: RulesetCo
 
 /** Takes up to `count` of the items with this tag out of the fighter's bag, first stack first, and
  *  notes the share of them that comes back after a won fight. How many were taken. Plain ammunition
- *  goes before any with clauses of its own (1.644), and `from` takes out of that stack alone. */
-function draw(actor: RulesetCombatant, tag: string, count: number, recover?: number, from?: number): number {
+ *  goes before any with clauses of its own (1.644), and `from` takes out of that stack alone. `first`
+ *  is the stack its holder chose to shoot first (2026-10-26), before all the rest. */
+function draw(
+  actor: RulesetCombatant,
+  tag: string,
+  count: number,
+  recover?: number,
+  from?: number,
+  first?: number,
+): number {
   let wanted = count;
   const items = actor.sheet?.items ?? [];
   const order = items
     .map((_, index) => index)
     .filter((index) => from === undefined || index === from)
-    .sort((a, b) => Number(!!items[a]!.item.ammoRider) - Number(!!items[b]!.item.ammoRider));
+    .sort(
+      (a, b) =>
+        Number(b === first) - Number(a === first) ||
+        Number(!!items[a]!.item.ammoRider) - Number(!!items[b]!.item.ammoRider),
+    );
   for (const index of order) {
     const held = items[index]!;
     if (wanted <= 0 || !held.item.tags?.includes(tag)) continue;
@@ -288,7 +310,7 @@ export function spendRulesetShots(
     return { ...said, left, of: action.clip.max };
   }
   if (!action.ammo) return null;
-  draw(actor, action.ammo.tag, per, action.ammo.recover, action.ammoFrom);
+  draw(actor, action.ammo.tag, per, action.ammo.recover, action.ammoFrom, rulesetAmmoFirst(actor, action));
   return { ...said, left: rulesetAmmoLeft(actor, action.ammo.tag) };
 }
 
@@ -298,7 +320,9 @@ export function reloadRulesetClip(actor: RulesetCombatant, action: RulesetCombat
   const clip = action.clip;
   if (!clip) return null;
   const now = rulesetLoaded(actor, clip);
-  const drew = action.ammo ? draw(actor, action.ammo.tag, clip.max - now) : undefined;
+  const drew = action.ammo
+    ? draw(actor, action.ammo.tag, clip.max - now, undefined, undefined, rulesetAmmoFirst(actor, action))
+    : undefined;
   const loaded = now + (drew ?? clip.max - now);
   (actor.loaded ??= {})[clip.item] = loaded;
   return {

@@ -240,6 +240,8 @@ export function DirectedCombatUI(props: Props) {
             onSpends={chooseSpends}
             onDeploy={(unitId, to) => send({ type: "deploy", unitId, to })}
             onDeployed={() => send({ type: "deployed" })}
+            onDraw={(unitId, item) => send({ type: "draw", unitId, item })}
+            onAmmo={(unitId, weapon, stack) => send({ type: "ammo", unitId, weapon, stack })}
             controls={
               <CombatAiControls
                 // A ruleset fight takes a companion's controller at any time but a decision (the
@@ -338,6 +340,8 @@ export function DirectedCombatUI(props: Props) {
                           onFlee: () => send({ type: "flee" }),
                           onYield: () => send({ type: "yield" }),
                           onSpends: chooseSpends,
+                          onDraw: (unitId, item) => send({ type: "draw", unitId, item }),
+                          onAmmo: (unitId, weapon, stack) => send({ type: "ammo", unitId, weapon, stack }),
                         },
                       }
                     : {}),

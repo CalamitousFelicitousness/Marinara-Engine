@@ -8387,6 +8387,59 @@ export function rulesetSyncAbilities(
   return changed;
 }
 
+/** A weapon's own actions on its holder's menu: its blows and its reload, by the item's place. */
+const HELD_WEAPON_ACTION = /^(?:item|offhand|reload):(\d+)$/;
+
+/**
+ * A sheet fighter's weapons read again as what they hold in hand changes on their turn (2026-10-26:
+ * the fight screen's In hand row): each item worn as the fight left it (`drawn`), their weapons'
+ * blows and reloads built afresh from that, so one taken in hand is offered and one put away is not,
+ * and their defense read again, as a shield taken up or put down changes it. Everything else they
+ * fight with stays as it is, as `rulesetSyncAbilities` leaves it.
+ */
+export function rulesetSyncHeldItems(definition: RulesetDefinition, combatant: RulesetCombatant): void {
+  const combat = definition.combat;
+  const sheet = combatant.sheet;
+  if (!combat || !sheet?.items) return;
+  // What a call lends (1.726) is lent again as the sheet is read, so it is left out here.
+  const items = sheet.items
+    .map((held, index) => {
+      const worn = combatant.drawn?.[index];
+      return worn === undefined || held.lent ? held : { ...held, worn };
+    })
+    .filter((held) => !held.lent);
+  const fresh = sheetCombatant(definition, combat, {
+    id: combatant.id,
+    name: combatant.name,
+    side: combatant.side,
+    initiativeRoll: combatant.initiativeRoll,
+    roll: () => 1,
+    build: sheet.build,
+    live: sheet.live,
+    catalogs: sheet.catalogs,
+    perCell: combat.distance?.perCell,
+    items,
+    ...(combatant.abilityConditions ? { conditions: combatant.abilityConditions } : {}),
+  });
+  const owned = (action: RulesetCombatAction) => {
+    const match = HELD_WEAPON_ACTION.exec(action.id);
+    const index = match ? Number(match[1]) : -1;
+    return index >= 0 && !!sheet.items![index] && !sheet.items![index]!.lent;
+  };
+  const weapons = fresh.actions.filter(owned);
+  // In the place the weapons stood on the menu, else ahead of everything else.
+  const at = Math.max(0, combatant.actions.findIndex(owned));
+  const rest = combatant.actions.filter((action) => !owned(action));
+  combatant.actions = [...rest.slice(0, at), ...weapons, ...rest.slice(at)];
+  for (const action of weapons) {
+    const uses = fresh.uses[action.id];
+    if (uses !== undefined && combatant.uses[action.id] === undefined) combatant.uses[action.id] = uses;
+  }
+  combatant.defense = fresh.defense;
+  if (fresh.heldDefense) combatant.heldDefense = fresh.heldDefense;
+  else delete combatant.heldDefense;
+}
+
 /** A stat block's scores, saves and checks as the conditions `ids` change its abilities (1.502): each
  *  save and each check that reads an ability's modifier moves by as much as that modifier does. */
 function syncBlockAbilities(

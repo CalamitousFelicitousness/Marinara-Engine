@@ -968,6 +968,12 @@ export function rulesetCombatEventLine(
       });
     case "pickedUp":
       return key("pickedUp", { actor: names.combatant(event.actorId), item: event.label });
+    case "drew":
+      return key(event.stowed.length ? "drewStowing" : "drew", {
+        actor: names.combatant(event.actorId),
+        item: event.label,
+        ...(event.stowed.length ? { stowed: event.stowed.join(", ") } : {}),
+      });
     case "sanctuary":
       return key(event.to ? "sanctuary" : "sanctuaryLost", {
         actor: names.combatant(event.actorId),

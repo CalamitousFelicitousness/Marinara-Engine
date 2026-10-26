@@ -377,6 +377,15 @@ const command = z.discriminatedUnion("type", [
   z.object({ type: z.literal("yield") }),
   z.object({ type: z.literal("control"), unitId: key, controller: z.enum(["manual", "ai"]) }),
   z.object({ type: z.literal("controlCompanions"), controller: z.enum(["manual", "ai"]) }),
+  /** A carried weapon or shield taken in hand, and the stack a weapon shoots first (2026-10-26), by
+   *  places in the party member's items: checked against what they carry by the resolver. */
+  z.object({ type: z.literal("draw"), unitId: key, item: z.number().int().min(0).max(10000) }),
+  z.object({
+    type: z.literal("ammo"),
+    unitId: key,
+    weapon: z.number().int().min(0).max(10000),
+    stack: z.number().int().min(0).max(10000),
+  }),
   z.object({ type: z.literal("orders"), unitId: key, orders: combatOrdersSchema.nullable() }),
   z.object({ type: z.literal("spends"), choose: z.boolean() }),
 ]);

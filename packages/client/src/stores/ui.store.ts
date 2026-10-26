@@ -1141,7 +1141,11 @@ interface UIState {
   conversationTimeZone: string;
   /** Custom Game setup chips learned from previous games. Synced so they follow the user. */
   learnedGameSetupOptions: GameSetupLearnedOptions;
-  /** Last submitted free-text Game setup fields. Synced so new games can start from the previous setup. */
+  /**
+   * Last submitted free-text Game setup fields, so a new game can start from this browser's previous setup. Kept in
+   * this browser only: the synced settings are one copy for the whole server, and a New Game wizard opened with goals
+   * typed in another browser (playtest 2026-10-26).
+   */
   rememberedGameSetupText: GameSetupRememberedText;
 
   // ── Input ──
@@ -1805,7 +1809,6 @@ export function pickSyncedSettings(state: UIState) {
     impersonateConnectionId: state.impersonateConnectionId,
     impersonateBlockAgents: state.impersonateBlockAgents,
     learnedGameSetupOptions: state.learnedGameSetupOptions,
-    rememberedGameSetupText: state.rememberedGameSetupText,
   };
 }
 

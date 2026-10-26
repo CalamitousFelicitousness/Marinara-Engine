@@ -895,7 +895,9 @@ import {
   resolveGameDiceRequests,
 } from "../services/game/dice.service.js";
 import {
+  engineIssuedD20Faces,
   loadSkillCheckModifierContext,
+  playerSubmittedD20Faces,
   resolveSkillCheckTagsInContent,
 } from "../services/game/skill-check-resolution.service.js";
 import {
@@ -5153,6 +5155,9 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         });
 
         let addressMode: "party" | "gm" | undefined;
+        // The d20 faces the player's own message threw for this turn: the only die the Game Master
+        // may write into a check for them (laptop 2026-10-26).
+        let playerD20s: number[] = [];
         if (chatMode === "game") {
           // The lore written after the GM's prompt: the game's standing instructions go in front of
           // it, so lore that comes and goes leaves them in the cached part of the system prompt.
@@ -5334,6 +5339,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               ? "gm"
               : undefined;
           const playerDiceRollSubmitted = /\[dice\b/i.test(latestUserContent);
+          playerD20s = playerSubmittedD20Faces(latestUserContent);
           // The same table object the post-save parse will use — resolved here, cached for the turn.
           const gmVerbTableForPrompt = await getGmVerbTable();
           // One-request dice (#6215): the sheet names a `[[roll: 1d8+STR]]` placeholder
@@ -9792,7 +9798,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           // and the affected tags are left sparse.
           const gameChanceSession =
             chatMode === "game" && !input.impersonate && isOneRequestDiceEnabled(chatMeta)
-              ? createGameTurnChanceSession({ db: app.db, chatId: input.chatId })
+              ? createGameTurnChanceSession({ db: app.db, chatId: input.chatId, playerD20s })
               : null;
           if (gameChanceSession) {
             const branchArm = await runGameTurnChancePass(
@@ -9904,6 +9910,12 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               // the Engine's own arithmetic.
               ...(chatMeta.gameRuleset != null ? { rulesetPinned: true } : {}),
               ...(dicePoolSession ? { pool: dicePoolSession } : {}),
+              // A die the Game Master wrote stands only when the player or the Engine threw it this
+              // turn: the player's own, a branch check's above, the dice tool's or a placeholder's.
+              issuedD20s: [
+                ...(gameChanceSession?.issuedD20s ?? playerD20s),
+                ...engineIssuedD20Faces(toolDiceRollResults),
+              ],
               // The prompt, check and sheet passes share the same catalog entries for this turn.
               loadCatalogs: async () => {
                 if (turnRulesetCatalogs) return turnRulesetCatalogs;

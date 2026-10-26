@@ -22,6 +22,7 @@ import {
   serializeSheetCommandTag,
   type SheetCommandTagOutcome,
 } from "../../utils/sheet-command-tag.js";
+import { createInventoryTagRegex, parseInventoryTagBody } from "../../utils/inventory-command-tag.js";
 import {
   applyRulesetRestRecoveries,
   applyRulesetSheetOp,
@@ -38,6 +39,8 @@ import {
   rulesetUseKeptForm,
   rulesetPoolNowText,
   rulesetPoolKeyNamed,
+  rulesetRecoveriesOfGroup,
+  rulesetRestOnlyPool,
 } from "./live-state.js";
 import { rulesetSheetDead } from "./combat-bridge.js";
 
@@ -73,6 +76,10 @@ export interface SheetCommandContext {
   /** The cards of those no longer with the party (taken out of it, their card kept): a command to
    *  the whole party passes them by, as it does the dead. Named, they are still found. */
   away?: readonly string[];
+  /** Whether an item the reply uses (`[inventory: action="use"]`), by the name it gives, heals
+   *  whoever uses it. The Engine heals them with that use once the sheet commands are done, so a
+   *  restore of their health beside it is not paid again. Absent, no item is known to heal. */
+  itemHealsUser?: (item: string) => boolean;
 }
 
 export interface SheetCommandOutcome {
@@ -358,21 +365,55 @@ export function applySheetCommandTags(
   // story says (laptop 0706 Party B: a revival wrote "Death save failures" 0 and a restore of 1 hit
   // point), whatever order it wrote them in. Either alone is refused.
   const revived = new Set<string>();
+  // In the same pass: the rests each character takes in this reply, by rest id, whatever order the
+  // reply writes them in, and whether it uses an ability on a sheet.
+  const restsTaken = new Map<string, Set<string>>();
+  let castsToo = false;
   {
     const wiped = new Set<string>();
     const healed = new Set<string>();
     for (const match of content.matchAll(createSheetCommandTagRegex())) {
       const parsed = parseSheetCommandTagBody(match[1] ?? "");
       if (!parsed.op || parsed.sheet !== undefined) continue;
+      if (parsed.op.op === "use") castsToo = true;
       const targets = findTargets(parsed.who);
       if ("refusal" in targets) continue;
+      const op = parsed.op;
+      const wanted = op.op === "rest" ? op.rest.trim().toLowerCase() : undefined;
+      const rest = wanted
+        ? ctx.definition.rests.find((one) => one.id === wanted || one.label.trim().toLowerCase() === wanted)
+        : undefined;
       for (const card of targets.cards) {
         const key = normalizeCharacterLookupName(card.name);
-        if (wipesFailures(parsed.op)) wiped.add(key);
-        if (parsed.op.op === "restore" && healsHealth(card, parsed.op)) healed.add(key);
+        if (wipesFailures(op)) wiped.add(key);
+        if (op.op === "restore" && healsHealth(card, op)) healed.add(key);
+        if (rest) restsTaken.set(key, new Set([...(restsTaken.get(key) ?? []), rest.id]));
       }
     }
     for (const key of wiped) if (healed.has(key)) revived.add(key);
+  }
+
+  // The healing items each character uses in this reply, which the Engine heals them with after the
+  // sheet commands (laptop 2026-10-26: one Potion of Healing healed twice, by its use and again by the
+  // Game Master's restore written beside it). Each such use stands for one restore of that character's
+  // health. Not where the reply also uses an ability on the sheet: that restore may be the ability's.
+  const itemHeals = new Map<string, string[]>();
+  if (ctx.itemHealsUser && !castsToo && healthPoolOf !== undefined) {
+    for (const match of content.matchAll(createInventoryTagRegex())) {
+      const body = match[1] ?? "";
+      // One already answered and refused healed nobody.
+      if (/\bresult\s*=\s*["']?refused/i.test(body)) continue;
+      const parsed = parseInventoryTagBody(body);
+      if (parsed?.action !== "use") continue;
+      const targets = findTargets(parsed.who);
+      if ("refusal" in targets || targets.cards.length !== 1) continue;
+      const key = normalizeCharacterLookupName(targets.cards[0]!.name);
+      for (const item of parsed.items) {
+        if (!ctx.itemHealsUser(item)) continue;
+        const uses = Math.min(parsed.count, MAX_SHEET_COMMANDS);
+        itemHeals.set(key, [...(itemHeals.get(key) ?? []), ...Array.from({ length: uses }, () => item)]);
+      }
+    }
   }
 
   const rewritten = content.replace(createSheetCommandTagRegex(), (_match, rawBody: string) => {
@@ -454,12 +495,50 @@ export function applySheetCommandTags(
         now: `${reads} (already paid)`,
       };
     };
+    // A restore the Engine already accounts for, or one only a rest or a feature's use may give.
+    const restored = (card: SheetCommandCard): RulesetSheetOpResult | null => {
+      if (op.op !== "restore") return null;
+      const key = normalizeCharacterLookupName(card.name);
+      // Health an item used in this reply heals: the item's use heals it, once.
+      const items = itemHeals.get(key);
+      if (items?.length && healsHealth(card, op)) {
+        const item = items.shift()!;
+        const reads = rulesetPoolNowText(ctx.definition, card.build, live[key], op.pool, card.items);
+        return {
+          ok: true,
+          live: (live[key] ?? {}) as RulesetLiveState,
+          now: `${reads ? `${reads}, ` : ""}left to the use of ${item}, which heals it`,
+        };
+      }
+      // A pool only a rest gives back (laptop 2026-10-26: a cleric's spell slots restored beside a
+      // short rest that gives back none of them) comes back with a rest the reply takes that gives it
+      // back, or through the one feature on the sheet that gives it back, which pays that feature's
+      // use (an Arcane Recovery's slot with its use left unspent); otherwise it is refused.
+      const only = rulesetRestOnlyPool(ctx.definition, card.build, live[key], op.pool, card.items);
+      if (!only) return null;
+      const taken = restsTaken.get(key);
+      if (only.rests.some((rest) => taken?.has(rest))) return null;
+      const features = only.group
+        ? rulesetRecoveriesOfGroup(ctx.definition, card.build, ctx.catalogs ?? {}, only.group).filter(
+            (feature) => feature.atRest === undefined || !!taken?.has(feature.atRest),
+          )
+        : [];
+      if (features.length !== 1 || targets.cards.length !== 1) return { ok: false, reason: "rest-only" };
+      const use = {
+        op: "use" as const,
+        name: features[0]!.name,
+        recover: [{ pool: only.label, count: op.amount }],
+      };
+      // The saved reply says it was that feature's use.
+      parsed.op = use;
+      return applyTo(card, use);
+    };
     const results = targets.cards.map((card) => ({
       card,
       result:
         raisesDead(card, op) && deadOnSheet(card) && !revived.has(normalizeCharacterLookupName(card.name))
           ? ({ ok: false, reason: "dead" } as const)
-          : (paidAlready(card) ?? applyTo(card, op)),
+          : (paidAlready(card) ?? restored(card) ?? applyTo(card, op)),
     }));
     // One target reads as the value alone; a party tag has to say whose value each one is.
     const many = results.length > 1;

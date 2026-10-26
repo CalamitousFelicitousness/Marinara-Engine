@@ -348,9 +348,9 @@ try {
       swapped.enemies.map((one) => [one.id, one.name, one.creature, one.boss]),
       [
         ["e1", "Skeleton 1", "foes/skeleton", true],
-        ["e1-2", "Skeleton 2", "foes/skeleton", false],
-        ["e1-3", "Skeleton 3", "foes/skeleton", false],
-        ["e1-4", "Skeleton 4", "foes/skeleton", false],
+        ["e1-2", "Skeleton 2", "foes/skeleton", undefined],
+        ["e1-3", "Skeleton 3", "foes/skeleton", undefined],
+        ["e1-4", "Skeleton 4", "foes/skeleton", undefined],
       ],
     );
     assert.match(

@@ -36,6 +36,7 @@ import {
   type DirectedCombatView,
   rulesetCardHolder,
   rulesetCardItems,
+  rulesetStartingGearTakenBy,
   rulesetReadsItems,
   rulesetCombatStyle,
   gameDungeonMapFromMetadata,
@@ -124,6 +125,7 @@ import {
   useRegenerateCharacterSheet,
   useRemovePartyMember,
   gameKeys,
+  isRequestCancelled,
   patchChatMetadata,
   useGameWorld,
 } from "../../hooks/use-game";
@@ -9433,19 +9435,7 @@ function GameSurfaceComponent({
       ),
     );
   }, [chatMeta.gameStartingGearTaken]);
-  // A game whose ruleset offers starting gear, with none taken and an empty inventory, says so once,
-  // with the way to it: never taken for the player (laptop pass 5 2026-10-26: a fighter and a cleric
-  // started at AC 10, the kits never offered).
-  const startingGearNudged = useRef<string | null>(null);
   const startingGearOffered = gameRuleset.status === "ok" && !!gameRuleset.definition.items?.startingGear?.length;
-  useEffect(() => {
-    if (!startingGearOffered || startingGearNudged.current === chat.id) return;
-    if (Object.keys(startingGearTaken).length > 0 || inventoryItems.length > 0) return;
-    startingGearNudged.current = chat.id;
-    toast.info(localizeUi("game.ruleset.startingGear.nudge"), {
-      action: { label: localizeUi("game.ruleset.startingGear.button"), onClick: () => setInventoryOpen(true) },
-    });
-  }, [startingGearOffered, chat.id, startingGearTaken, inventoryItems, localizeUi]);
   const handleTakeStartingGear = useCallback(
     async (
       holder: string | undefined,
@@ -9533,6 +9523,35 @@ function GameSurfaceComponent({
       ),
     [chatMeta.gameCharacterCards],
   );
+  // A game whose ruleset offers starting gear, with none taken and an empty inventory, says so once,
+  // with the way to it: never taken for the player (laptop pass 5 2026-10-26: a fighter and a cleric
+  // started at AC 10, the kits never offered). Once someone has taken gear, a party member who can
+  // still take theirs is named once too (playtest 2026-10-26: nothing said a member had gear waiting).
+  const startingGearNudged = useRef<string | null>(null);
+  const startingGearWaiting = useMemo(
+    () =>
+      startingGearOffered
+        ? inventoryBags
+            .filter((bag) => !bag.holder || startingGearHolders.has(gameInventoryBagKey(bag.holder)))
+            .filter(
+              (bag) => rulesetStartingGearTakenBy(startingGearTaken, gameInventoryBagKey(bag.holder)).length === 0,
+            )
+            .map((bag) => bag.name)
+        : [],
+    [inventoryBags, startingGearHolders, startingGearOffered, startingGearTaken],
+  );
+  useEffect(() => {
+    if (!startingGearOffered || startingGearNudged.current === chat.id) return;
+    const noneTaken = Object.keys(startingGearTaken).length === 0;
+    if (noneTaken ? inventoryItems.length > 0 : startingGearWaiting.length === 0) return;
+    startingGearNudged.current = chat.id;
+    toast.info(
+      noneTaken
+        ? localizeUi("game.ruleset.startingGear.nudge")
+        : localizeUi("game.ruleset.startingGear.nudgeWaiting", { names: startingGearWaiting.join(", ") }),
+      { action: { label: localizeUi("game.ruleset.startingGear.button"), onClick: () => setInventoryOpen(true) } },
+    );
+  }, [startingGearOffered, chat.id, startingGearTaken, startingGearWaiting, inventoryItems, localizeUi]);
   const inventoryStartingGear = useMemo(
     () =>
       gameRuleset.status === "ok" && gameRuleset.definition.items?.startingGear?.length
@@ -12725,6 +12744,8 @@ function GameSurfaceComponent({
                       if (activeChatIdRef.current !== chatId) return;
                       if (handleJsonRepairError(error)) return;
                       clearPendingSetupMapPlan(chatId);
+                      // Stopped by the player: the wizard stays open with their choices, and nothing failed.
+                      if (isRequestCancelled(error)) return;
                       setSetupFailure({
                         chatId,
                         message: error instanceof Error && error.message.trim() ? error.message.trim() : "",
@@ -12802,6 +12823,7 @@ function GameSurfaceComponent({
               }
             }}
             onCancel={dismissSetupWizard}
+            onStopGeneration={gameSetup.isPending ? gameSetup.cancel : undefined}
             isLoading={
               createGame.isPending ||
               gameSetup.isPending ||

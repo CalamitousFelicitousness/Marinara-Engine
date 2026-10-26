@@ -7686,6 +7686,21 @@ export async function gameRoutes(app: FastifyInstance, options: GameRouteOptions
           setupGenerationParameters?.customThinkingTags,
         );
         responseText = setupExtraction.content;
+        // A reply with no text is not JSON to repair: say so, rather than retrying the same wait or opening a repair
+        // dialog over nothing (playtest 2026-10-26: a world setup at maximum reasoning came back empty after 33 min).
+        if (!responseText.trim()) {
+          signal?.throwIfAborted();
+          logger.warn("[game/setup] The model returned no text (finish reason: %s)", setupFinishReason ?? "unknown");
+          rejectGenerationOutput(reply, 502, {
+            error:
+              setupFinishReason === "length" || setupExtraction.thinking.trim()
+                ? "The model returned no world, only its reasoning, before it stopped. Try again with a lower reasoning effort or a higher max output tokens on this connection, or use a different model."
+                : "The model returned an empty reply, so no world was made. Try again, or use a different model.",
+            code: "setup_empty",
+            finishReason: setupFinishReason ?? null,
+          });
+          return;
+        }
 
         if (debugLogsEnabled) {
           debugLog("[game/setup] Response length: %d chars", responseText.length);

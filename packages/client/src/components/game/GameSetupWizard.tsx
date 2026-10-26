@@ -208,6 +208,8 @@ export interface GameSetupWizardProps {
         },
   ) => void;
   onCancel: () => void;
+  /** Stops the world being generated, while it is. Absent when nothing can be stopped. */
+  onStopGeneration?: () => void;
   isLoading: boolean;
   isDraftingMap: boolean;
   isLinkingSharedWorld: boolean;
@@ -554,6 +556,7 @@ export function GameSetupWizard({
   onSetupError,
   onComplete,
   onCancel,
+  onStopGeneration,
   isLoading,
   isDraftingMap,
   isLinkingSharedWorld,
@@ -4363,11 +4366,28 @@ export function GameSetupWizard({
                           ? localizeUi("ui.game.gamesetupwizard.theGameIsReadyNowLinkingItsSharedWorld")
                           : localizeUi("ui.game.gamesetupwizard.holdOnTightTheGameIsBeingGeneratedRight")}
                     </span>
-                    <span aria-hidden="true" className="shrink-0 tabular-nums text-[var(--muted-foreground)]">
-                      {generationElapsedSeconds}
-                      {localizeUi("ui.noodle.stageprofileview.s")}
+                    <span className="flex shrink-0 items-center gap-2">
+                      <span aria-hidden="true" className="tabular-nums text-[var(--muted-foreground)]">
+                        {generationElapsedSeconds}
+                        {localizeUi("ui.noodle.stageprofileview.s")}
+                      </span>
+                      {onStopGeneration && (
+                        <button
+                          type="button"
+                          onClick={onStopGeneration}
+                          className="rounded-md border border-[var(--border)] px-2 py-0.5 text-[0.6875rem] text-[var(--muted-foreground)] transition-colors hover:bg-[var(--destructive)]/10 hover:text-[var(--destructive)]"
+                        >
+                          {localizeUi("game.setup.stopGeneration")}
+                        </button>
+                      )}
                     </span>
                   </div>
+                  {/* A reasoning model can think for many minutes with nothing to show: say it is still waiting. */}
+                  {generationElapsedSeconds >= 60 && !isDraftingMap && !isLinkingSharedWorld && (
+                    <p className="mt-1 text-[0.6875rem] text-[var(--muted-foreground)]">
+                      {localizeUi("game.setup.stillWaiting")}
+                    </p>
+                  )}
                   <div
                     className="mt-2 h-1.5 overflow-hidden rounded-full bg-[var(--muted)]/60"
                     role="progressbar"

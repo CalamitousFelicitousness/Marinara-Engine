@@ -11890,6 +11890,11 @@
                 },
                 "additionalProperties": false
               },
+              "ritual": {
+                "type": "string",
+                "maxLength": 40,
+                "pattern": "^[a-z][a-z0-9_]*$"
+              },
               "$comment": {}
             },
             "required": [
@@ -27197,6 +27202,11 @@
                   "$comment": {}
                 },
                 "additionalProperties": false
+              },
+              "ritual": {
+                "type": "string",
+                "maxLength": 40,
+                "pattern": "^[a-z][a-z0-9_]*$"
               },
               "$comment": {}
             },

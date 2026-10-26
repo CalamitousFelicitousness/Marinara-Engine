@@ -43,6 +43,8 @@ import {
   raiseRulesetSheetAbilities,
   createRulesetEncounter,
   holdRulesetSheetHealth,
+  holdRulesetLegendary,
+  rulesetAverageAmount,
   normalizeCharacterLookupName,
   parseRulesetCatalogFile,
   parseRulesetDefinition,
@@ -2340,6 +2342,29 @@ const dataDir = mkdtempSync(join(tmpdir(), "marinara-creature-sheets-"));
       }).from,
       undefined,
     );
+
+    // What points buy is held for any invented opponent, however it was built, and a burst around it
+    // counts as reaching two (laptop v3b 2026-10-26: an Archlich from a proposed block, brought down to
+    // CR 3, spent a full Disrupt Life on every hero five times).
+    const rot = structuredClone(hound);
+    const base = rot.actions.find((one) => one.damage && !one.signature)!;
+    rot.signature = { points: 3, max: 3 };
+    rot.actions = [
+      base,
+      {
+        ...structuredClone(base),
+        id: "legendary_disrupt_life",
+        label: "Disrupt Life",
+        signature: { cost: 3 },
+        around: { size: 4 },
+        damage: { ...structuredClone(base.damage!), count: 6, sides: 6, flat: 0 },
+      } as never,
+    ];
+    const cr3 = fiveE.combat!.threat!.tiers.find((one) => one.id === "cr_3")!;
+    const rotSaid = holdRulesetLegendary(fiveE, rot, cr3).join("; ");
+    assert.match(rotSaid, /Disrupt Life(, bought with its points, was scaled down| went from what its points buy)/);
+    const disrupt = rot.actions.find((one) => one.id === "legendary_disrupt_life");
+    if (disrupt) assert.ok(rulesetAverageAmount(disrupt.damage!) * 2 <= cr3.damagePerRound[1], rotSaid);
   }
   // What reaches more than one is held as if it hit two (laptop pass 6 2026-10-26: a wizard 11
   // brought down to CR 8 kept a Chain Lightning of 45 on each of four heroes, under a cap read for one).

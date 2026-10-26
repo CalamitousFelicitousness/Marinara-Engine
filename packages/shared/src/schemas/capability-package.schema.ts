@@ -1516,7 +1516,9 @@ const capabilityPackageManifestBaseSchema = z
 // 1.796: a rest's `clear.temp`: every pool's temporary points go as it ends (5e's temporary hit points
 //        at a long rest).
 // 1.797: `combat.signatureAtTurnStart`: signature actions also bought as a foe's turn starts.
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 798 } as const);
+// 1.799: a sheet list's `ritual`: a yes-or-no column whose ticked rows may be used outside a fight as a
+//        ritual, the use tag's ritual="yes", paying none of their pools (5e's ritual spells).
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 799 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

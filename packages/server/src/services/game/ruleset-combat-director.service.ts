@@ -46,6 +46,7 @@ import {
   madeTacticalBattlefield,
   foothillElevation,
   holdRulesetCombatant,
+  holdRulesetLegendary,
   holdRulesetSheetHealth,
   settleRulesetFledFight,
   rulesetLetGoOfHeld,
@@ -1553,6 +1554,19 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
     const built = rulesetCombatant(encounter, id);
     if (!built) continue;
     for (const line of holdRulesetCombatant(definition, built, tier)) adjustments.push(`${built.name}: ${line}`);
+  }
+  // Every other invented opponent with points has what they buy held to its tier too, however its
+  // block was built (laptop v3b 2026-10-26: an Archlich from a proposed block, brought down to CR 3,
+  // kept a full Disrupt Life on every hero, five times).
+  for (const opponent of enemies) {
+    if (heldToTier.has(opponent.id)) continue;
+    const entry = combatants.find((one) => one.id === opponent.id);
+    if (!entry || !("block" in entry) || !entry.block) continue;
+    const tierId = (entry.block as { tier?: string }).tier ?? opponent.tier;
+    const tier = combat.threat?.tiers.find((one) => one.id === tierId);
+    const built = tier ? rulesetCombatant(encounter, opponent.id) : undefined;
+    if (!built?.signature?.max) continue;
+    for (const line of holdRulesetLegendary(definition, built, tier!)) adjustments.push(`${built.name}: ${line}`);
   }
   // What a member's sheet keeps from a use outside a fight comes along on its own, paid for then
   // (1.790): their familiar. The Game Master's own listing of the same entry is left out for it.
@@ -3154,8 +3168,14 @@ function rulesetCandidates(
   const here = rulesetCandidatesFrom(definition, encounter, actorId, null);
   const moved = orders?.posture === "hold" ? [] : rulesetCandidatesAfterMoving(definition, encounter, actorId);
   // Standing still is preferred when it can already do its best from where it is: a candidate that
-  // walks first has to be strictly better than every one that does not, not merely as good.
-  const staying = here.reduce((most, candidate) => Math.max(most, worth(candidate)), 0);
+  // walks first has to be strictly better than every one that does not, not merely as good. A
+  // treatment of a friend down that hangs on a check is not that best: it is weighed against the
+  // walk to a blow once both are in hand (laptop 2026-10-26: Garrick's first aid beside him, 9 against
+  // DC 10, cut every walk to the Archlich his move would have reached; see `weighRulesetDowned`).
+  const staying = here.reduce(
+    (most, candidate) => (rulesetChecksOnDowned(encounter, candidate) ? most : Math.max(most, worth(candidate))),
+    0,
+  );
   // One that stands by its friends or fights beside them (1.748) also weighs walking to an opponent it
   // cannot reach from here, where it is worth anything: whoever is on a friend.
   const roams = tactics?.adjective === "protective" || tactics?.adjective === "coordinated";
@@ -3402,6 +3422,8 @@ function rulesetGiftStrikes(
   encounter: RulesetEncounterState,
   actor: RulesetCombatant,
   gives: Array<{ budget: string; count?: number }>,
+  /** Whom its orders or its ground keep it near: it walks nowhere off that to strike. */
+  leash?: RulesetLeash,
 ): number {
   const here = rulesetPositionOf(actor);
   const span = rulesetSpanOf(actor);
@@ -3411,7 +3433,11 @@ function rulesetGiftStrikes(
   const reaches = (foe: RulesetCombatant, reach: number) => {
     if (!here) return true;
     if (rulesetGapFrom(here, span, foe) <= reach) return true;
-    stands ??= rulesetWalkableCells(definition, encounter, actor.id);
+    // Nor is one it would have to leave its charge to reach (laptop 2026-10-26: a guarding fighter
+    // spent his Action Surge on a foe off his leash, and never struck with it).
+    stands ??= rulesetWalkableCells(definition, encounter, actor.id).filter(
+      (cell) => !leash || rulesetGapFrom(cell, span, leash.charge) <= leash.within,
+    );
     return stands.some((cell) => rulesetGapFrom(cell, span, foe) <= reach);
   };
   // Only what its menu would offer with the budget in hand: a handaxe in its pack is not a blow.
@@ -4881,6 +4907,10 @@ function rulesetCandidatesFrom(
         // A creature somebody called into the fight is not worth a slot or a potion (laptop playtest
         // 2026-10-25: Wren spent two 1st level slots healing the Draft Horses she had conjured).
         if (limited && target.calledBy !== undefined) continue;
+        // One it cannot get back this fight (a potion, a use a day) is never given above half, where a
+        // fifth of its worth still won with little else on offer (laptop 2026-10-26: a potion fed to
+        // Corin at 21 of 31 with nobody down, "worth the limited use it spends", in place of a blow).
+        if ((fallingAction?.itemUse || fallingAction?.uses) && !target.down && health.value > health.max / 2) continue;
         if (limited && !target.down && health.value > health.max / 2) candidate.healing *= 0.2;
       } else if (average > 0) {
         // Never its own side, and never somebody who is already down: the rules let a blow land on
@@ -7304,7 +7334,7 @@ function weighChoices(
     candidates = mindlessCandidates(encounter, actor, unit.tactics!, candidates, !!menu);
   weighRulesetTeam(definition, state, encounter, actor, candidates, orders);
   if (orders) weighRulesetOrders(definition, state, encounter, actor, orders, candidates);
-  weighRulesetDowned(encounter, actor, candidates);
+  weighRulesetDowned(definition, state, encounter, actor, candidates);
   if (!menu && actor.side === "party") weighRulesetBlasters(definition, state, encounter, actor, candidates);
   // An honourable one (combat AI T6) strikes nobody running from it, beaten or down, and fights
   // whoever is fighting it, one on one.
@@ -7396,6 +7426,19 @@ function weighChoices(
       if (!to) return true;
       const after = rulesetGapFrom(to, rulesetSpanOf(actor), territory.charge);
       return after <= territory.within || after < gap;
+    });
+    candidates.splice(0, candidates.length, ...kept);
+  }
+  // A budget handed over for this turn (Action Surge) is spent only on a blow it can walk to without
+  // leaving whom it keeps near (laptop 2026-10-26: Garrick surged, then had nothing his leash let him
+  // strike, and the extra action went on a potion and nothing).
+  const leash = (orders ? rulesetLeashOf(state, encounter, actor, orders) : undefined) ?? territory;
+  if (leash) {
+    const kept = candidates.filter((candidate) => {
+      const gives = actor.actions.find(
+        (one) => one.id === (candidate.action.option.castOf?.optionId ?? candidate.action.option.id),
+      )?.gives;
+      return !gives?.length || rulesetGiftStrikes(definition, encounter, actor, gives, leash) > 0;
     });
     candidates.splice(0, candidates.length, ...kept);
   }
@@ -8227,11 +8270,13 @@ const RULESET_DOWNED_FOCUS = 2;
  * Guardians outranked lifting a rogue three death saves from dying).
  */
 function weighRulesetDowned(
+  definition: RulesetDefinition,
+  state: CombatDirectorState,
   encounter: RulesetEncounterState,
   actor: RulesetCombatant,
   candidates: Array<CombatAiCandidate<RulesetCandidate>>,
 ): void {
-  const raises = candidates.filter((candidate) => {
+  let raises = candidates.filter((candidate) => {
     if ((candidate.healing ?? 0) <= 0) return false;
     const ids = candidate.targetId ? [candidate.targetId] : candidate.action.choice.targetIds;
     return ids.some((id) => {
@@ -8239,10 +8284,53 @@ function weighRulesetDowned(
       return !!one && one.side === actor.side && one.down && !one.defeated;
     });
   });
+  // A treatment that hangs on a check (first aid) is weighed as its chance of working, and against the
+  // blow it gives up (laptop 2026-10-26: Garrick walked 15 ft to steady a dying friend at 9 against DC
+  // 10, failed, and ended beside the Archlich with no action left, where his walk would have reached it
+  // to strike): with a blow on an opponent in reach, it comes first only when it is likely to work, and
+  // not at all while a friend still standing could heal them with a heal of their own.
+  const blows = candidates.filter((candidate) => {
+    const foe = candidate.targetId ? rulesetCombatant(encounter, candidate.targetId) : undefined;
+    return !!foe && foe.side !== actor.side && !foe.down && (candidate.damage ?? 0) > 0;
+  });
+  if (blows.length > 0 && raises.length > 0 && raises.every((one) => rulesetChecksOnDowned(encounter, one))) {
+    const bosses = new Set(fightOf(state)?.bosses ?? []);
+    const healer = encounter.combatants.some(
+      (one) =>
+        one.id !== actor.id && one.side === actor.side && !one.down && rulesetFreeHealer(definition, encounter, one),
+    );
+    // Its odds against the DC, which the treatment's healing already is; a blow on a boss raises the bar.
+    const bar = blows.some((one) => bosses.has(one.targetId!)) ? RULESET_AID_OVER_BOSS : RULESET_AID_OVER_BLOW;
+    const likely = healer ? [] : raises.filter((one) => (one.healing ?? 0) >= bar);
+    if (likely.length === 0) {
+      const dropped = new Set(raises);
+      candidates.splice(0, candidates.length, ...candidates.filter((one) => !dropped.has(one)));
+      return;
+    }
+    raises = likely;
+  }
   if (raises.length === 0) return;
   for (const candidate of raises) candidate.focus = (candidate.focus ?? 0) + RULESET_DOWNED_FOCUS;
   candidates.splice(0, candidates.length, ...raises);
 }
+
+/** Whether a pick treats a friend who is down with a check that may fail (first aid), rather than a
+ *  heal that lifts them: its healing is its chance of working. */
+function rulesetChecksOnDowned(
+  encounter: RulesetEncounterState,
+  candidate: CombatAiCandidate<RulesetCandidate>,
+): boolean {
+  if (candidate.action.option.kind !== "contest" || !candidate.targetId || !((candidate.healing ?? 0) > 0))
+    return false;
+  const actor = rulesetCombatant(encounter, candidate.action.choice.actorId);
+  const target = rulesetCombatant(encounter, candidate.targetId);
+  return !!actor && !!target && target.side === actor.side && target.down && !target.defeated;
+}
+
+/** How likely a treatment that hangs on a check must be to work to come before a blow in reach, and
+ *  before a blow on a boss (laptop 2026-10-26). */
+const RULESET_AID_OVER_BLOW = 0.6;
+const RULESET_AID_OVER_BOSS = 0.75;
 
 /** What harming an opponent who drops areas on its side is worth over anything else it could do,
  *  once one has landed; half that for one who only holds one. */

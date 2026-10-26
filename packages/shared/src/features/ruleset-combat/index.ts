@@ -113,6 +113,7 @@ export {
   raiseRulesetSheetAbilities,
   fillRulesetSheetChoices,
   holdRulesetCombatant,
+  holdRulesetLegendary,
   RULESET_INVENTED_CASTER_MOST,
   holdRulesetSheetHealth,
   readProposedRulesetSheet,

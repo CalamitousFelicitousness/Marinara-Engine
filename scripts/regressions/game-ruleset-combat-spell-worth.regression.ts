@@ -338,7 +338,8 @@ try {
     const bolt = { ...flick, id: "bolt", damage: { count: 1, sides: 10, flat: 0 } };
     assert.equal(at(36, potion, bolt)?.option.id, "bolt", "a limited mend kept at 36 of 60");
     assert.equal(at(36, cure, bolt)?.option.id, "cure", "where an unlimited one is given");
-    assert.equal(at(36, potion)?.option.id, "potion", "unless nothing better is on offer");
+    // Not even with nothing better on offer (laptop 2026-10-26: a potion fed at 21 of 31, nobody down).
+    assert.notEqual(at(36, potion)?.option.id, "potion", "not even with nothing better on offer");
     // Barely scratched, not even then (laptop playtest 2026-10-24: a potion drunk at 34 of 44).
     assert.notEqual(at(50, potion)?.option.id, "potion", "at 50 of 60 it is kept whatever else there is");
     assert.equal(at(26, potion, bolt)?.option.id, "potion", "and given at 26 of 60");

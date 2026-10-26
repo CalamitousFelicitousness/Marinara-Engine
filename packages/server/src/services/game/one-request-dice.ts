@@ -75,11 +75,13 @@ import {
 } from "./skill-check.service.js";
 import type { GameSkillModifierView } from "./gm-prompts.js";
 import {
+  inferRulesetCheckWho,
   isResolvableSkillCheckRequest,
   readRulesetDifficulty,
   loadSkillCheckModifierContext,
   resolveSkillCheckWithContext,
   rulesetRefusesUntrained,
+  takeIssuedD20s,
   type SkillCheckModifierContext,
   type SkillCheckRulesetContext,
   type SkillCheckRequest,
@@ -133,6 +135,12 @@ export interface GameTurnChanceSession {
   readonly placeholders: GameDicePlaceholderRecord[];
   /** True once an arm threw and the fallback rewrite took over. */
   failed: boolean;
+  /**
+   * The d20 faces somebody other than the Game Master threw for this turn, as the tag pass reads
+   * them (`issuedD20s`): the player's own die, then each one a branch check here rolled. Null when
+   * the caller gave none, and every `rolls="N"` is read as it always was.
+   */
+  readonly issuedD20s: number[] | null;
 }
 
 export interface GameTurnChanceSessionOptions {
@@ -142,6 +150,8 @@ export interface GameTurnChanceSessionOptions {
   roll?: DieRoller;
   /** Substitutable for a lane that must not touch the database. */
   loadModifierContext?: () => Promise<SkillCheckModifierContext>;
+  /** The d20 faces the player threw for this turn. Absent keeps every `rolls="N"` as before. */
+  playerD20s?: readonly number[];
 }
 
 /** Absent means on (2026-10-25): a rolled turn is finished in one request unless the chat turned the
@@ -184,6 +194,7 @@ export function createGameTurnChanceSession(options: GameTurnChanceSessionOption
     diceRolls: [],
     placeholders: [],
     failed: false,
+    issuedD20s: options.playerD20s ? [...options.playerD20s] : null,
   };
 }
 
@@ -349,7 +360,22 @@ export async function resolveGameTurnBranches(
     let refusal = plan.refusal;
     if (plan.check && context) {
       const definition = context.ruleset?.definition;
-      const request = readRulesetDifficulty(plan.check.request, definition);
+      let asked = plan.check.request;
+      // laptop 2026-10-26: a `rolls="N"` is the player's die only when the player threw N this turn.
+      if (
+        asked.preRolledD20 !== undefined &&
+        session.issuedD20s &&
+        !takeIssuedD20s(session.issuedD20s, [asked.preRolledD20])
+      ) {
+        asked = { ...asked, preRolledD20: undefined };
+      }
+      // The same roller the tag pass picks for a check that names nobody.
+      const inferredWho =
+        context.ruleset && !asked.who
+          ? inferRulesetCheckWho(context.ruleset, content, plan.check, asked.skill, asked.withAbility)
+          : undefined;
+      if (inferredWho) asked = { ...asked, who: inferredWho };
+      const request = readRulesetDifficulty(asked, definition);
       // Only a named difficulty is read here; a check that wrote its own number was bounded above.
       if (plan.check.request.dc === undefined && !isResolvableSkillCheckRequest(request, definition)) {
         refusal = "unrollable-check";
@@ -385,6 +411,8 @@ export async function resolveGameTurnBranches(
         });
       } else {
         result = resolveSkillCheckWithContext(context, request, () => session.roll(20));
+        // The record this writes is the Engine's own, so the tag pass after this one must vouch for it.
+        if (session.issuedD20s && result.resolution === "sum") session.issuedD20s.push(...result.rolls);
         edits.push({
           start: plan.check.start,
           end: plan.check.end,

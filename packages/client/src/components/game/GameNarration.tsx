@@ -365,6 +365,15 @@ const GAME_TTS_CHUNK_ATTEMPTS = 2;
 function GameGenerationStatus() {
   const { t: localizeUi } = useUiTranslation();
   const narrationSaved = useChatStore((s) => (s.activeChatId ? s.narrationSavedChatIds.has(s.activeChatId) : false));
+  // How long the turn has been waiting, so a slow or stalled provider is not five silent minutes
+  // (playtest 2026-10-26). Shown once the wait is long enough to wonder about.
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  useEffect(() => {
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000)), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const elapsed = `${Math.floor(elapsedSeconds / 60)}:${String(elapsedSeconds % 60).padStart(2, "0")}`;
 
   return (
     <div className="mt-2 flex items-center gap-1 text-xs text-[var(--foreground)]/50">
@@ -372,8 +381,11 @@ function GameGenerationStatus() {
       <span>
         {narrationSaved
           ? localizeUi("ui.game.gamenarration.preparingScene")
-          : localizeUi("ui.game.gamenarration.theGameMasterIsWritingTheNextSegment")}
+          : elapsedSeconds >= 60
+            ? localizeUi("ui.game.gamenarration.stillWaitingOnTheModel")
+            : localizeUi("ui.game.gamenarration.theGameMasterIsWritingTheNextSegment")}
       </span>
+      {elapsedSeconds >= 15 && <span className="tabular-nums">· {elapsed}</span>}
     </div>
   );
 }

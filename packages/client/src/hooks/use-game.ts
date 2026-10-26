@@ -1,7 +1,7 @@
 // ──────────────────────────────────────────────
 // Hook: Game Mode API
 // ──────────────────────────────────────────────
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -254,26 +254,48 @@ export function useCreateGame() {
   });
 }
 
+/** Whether a request ended because it was cancelled on this side, not because it failed. */
+export function isRequestCancelled(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "AbortError";
+}
+
+/**
+ * World setup. `cancel` stops a setup in flight: the request is dropped, and the server stops the model call when
+ * it sees the connection close (playtest 2026-10-26: a setup at maximum reasoning ran 33 minutes with no way out).
+ */
 export function useGameSetup() {
   const qc = useQueryClient();
   const store = useGameModeStore;
+  const { t } = useTranslation();
+  const controllerRef = useRef<AbortController | null>(null);
 
-  return useMutation({
+  const mutation = useMutation({
     mutationFn: (data: {
       chatId: string;
       connectionId?: string;
       promptPresetId?: string | null;
       preferences: string;
       keepSetupActive?: boolean;
-    }) =>
-      api.post<SetupResponse>("/game/setup", {
-        chatId: data.chatId,
-        connectionId: data.connectionId,
-        promptPresetId: data.promptPresetId,
-        preferences: data.preferences,
-        streaming: useUIStore.getState().enableStreaming,
-        debugMode: useUIStore.getState().debugMode,
-      }),
+    }) => {
+      const controller = new AbortController();
+      controllerRef.current = controller;
+      return api
+        .post<SetupResponse>(
+          "/game/setup",
+          {
+            chatId: data.chatId,
+            connectionId: data.connectionId,
+            promptPresetId: data.promptPresetId,
+            preferences: data.preferences,
+            streaming: useUIStore.getState().enableStreaming,
+            debugMode: useUIStore.getState().debugMode,
+          },
+          { signal: controller.signal },
+        )
+        .finally(() => {
+          if (controllerRef.current === controller) controllerRef.current = null;
+        });
+    },
     onSuccess: (res, variables) => {
       if (!variables.keepSetupActive) store.getState().setSetupActive(false);
       if (Array.isArray(res.gameNpcs)) {
@@ -286,6 +308,10 @@ export function useGameSetup() {
       }
     },
     onError: (err) => {
+      if (isRequestCancelled(err)) {
+        toast.info(t("game.setup.cancelled"));
+        return;
+      }
       console.error("[gameSetup] Error:", err);
       if (isJsonRepairApiError(err)) {
         toast.info("The model response needs a quick JSON repair before it can be applied.", { duration: 8000 });
@@ -294,6 +320,8 @@ export function useGameSetup() {
       toast.error(err.message || "Game setup failed. Try again or use a different model.", { duration: 10000 });
     },
   });
+  const cancel = useCallback(() => controllerRef.current?.abort(), []);
+  return { ...mutation, cancel };
 }
 
 export function useStartGame() {

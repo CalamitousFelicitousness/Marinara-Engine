@@ -1277,6 +1277,10 @@ const listSchema = z
       })
       .strict()
       .optional(),
+    /** A yes-or-no column (Capability API 1.799): a row with it ticked may be used outside a fight as
+     *  a ritual, the use tag's `ritual="yes"`, paying none of its pools (its slots or its counters).
+     *  What else a ritual takes, such as its longer casting time, is the story's. 5e's ritual spells. */
+    ritual: sheetId.optional(),
   })
   .strict();
 
@@ -18323,6 +18327,10 @@ function refineRulesetDefinition(def: RulesetDefinitionBase, ctx: z.RefinementCt
     if (list.display?.mark) {
       const mark = list.columns.find((column) => column.id === list.display!.mark);
       if (mark?.type !== "boolean") issue([...path, "display", "mark"], "Must name a yes-or-no column");
+    }
+    if (list.ritual) {
+      const ritual = list.columns.find((column) => column.id === list.ritual);
+      if (ritual?.type !== "boolean") issue([...path, "ritual"], "Must name a yes-or-no column");
     }
     if (list.pools) {
       const typeOf = (id: string) => list.columns.find((column) => column.id === id)?.type;

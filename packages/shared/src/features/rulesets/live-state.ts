@@ -1368,6 +1368,8 @@ export type RulesetSheetOp =
       recover?: RulesetUseRecover[];
       /** The creature it calls (1.790), by name, for an entry used outside a fight whose call stays. */
       as?: string;
+      /** Used as a ritual (1.799): a row its list's `ritual` column ticks pays none of its pools. */
+      ritual?: true;
     }
   /** Sends away what an entry used outside a fight called and kept (1.790), by the entry's name or
    *  the creature's: a familiar dismissed or lost. */
@@ -1414,6 +1416,11 @@ export type RulesetSheetRefusal =
   | "bad-pool"
   /** A heal its holder's conditions keep off (1.261): a diseased giant rat's bite. */
   | "cannot-heal"
+  /** A pool only a rest gives back, restored by a bare command with no rest that gives it back
+   *  (laptop 2026-10-26: a cleric's spell slots back on a short rest that restores none). */
+  | "rest-only"
+  /** A use as a ritual (1.799) of a row its list's `ritual` column does not tick. */
+  | "not-ritual"
   | "malformed";
 
 export type RulesetSheetOpResult =
@@ -2740,6 +2747,89 @@ export function rulesetKeptCalls(stored: unknown): Array<{ entry: string; as: st
   return Object.entries(readStoredLiveStateAsIs(stored).called ?? {}).map(([entry, as]) => ({ entry, as }));
 }
 
+/** Whether a row this entry wrote is ticked in its list's `ritual` column (1.799), so it may be used
+ *  outside a fight as a ritual. */
+export function rulesetRowIsRitual(definition: RulesetDefinition, build: RulesetSheetBuild, ref: string): boolean {
+  return definition.sheet.lists.some((list) => {
+    const rows = build.lists?.[list.id];
+    if (!list.ritual || !Array.isArray(rows)) return false;
+    return rows.some(
+      (row) =>
+        !!row &&
+        typeof row === "object" &&
+        own(row as Record<string, unknown>, RULESET_CATALOG_ROW_KEY) === ref &&
+        own(row as Record<string, unknown>, list.ritual!) === true,
+    );
+  });
+}
+
+/**
+ * A pool only a rest gives back, as one sheet holds it: its key and label, and the rests that give it
+ * back. Null for health, which heals many ways, for a pool no rest gives back, and for one a rest
+ * gives back only a fixed few of, which the story hands out too (a point of luck). A Game Master's
+ * bare restore of such a pool is a rest or a feature's use told without its command (laptop
+ * 2026-10-26: a cleric's spell slots back on a short rest that restores none of them, and a slot
+ * Arcane Recovery gave back with its use left unspent).
+ */
+export function rulesetRestOnlyPool(
+  definition: RulesetDefinition,
+  build: RulesetSheetBuild,
+  stored: unknown,
+  pool: string,
+  items?: ReadonlyArray<RulesetSheetItem>,
+): { key: string; label: string; group?: string; rests: string[] } | null {
+  const match = findPool(
+    resolveLive(definition, build, readStoredLiveState(definition, build, stored), items).pools,
+    pool,
+  );
+  if ("refusal" in match) return null;
+  const found = match.pool;
+  const health = definition.combat?.health ?? definition.battle?.health;
+  if (health && "pool" in health && health.pool === found.key) return null;
+  const rests: string[] = [];
+  for (const rest of definition.rests) {
+    const steps = rest.restore.filter((step) => {
+      if (step.pool !== undefined) return step.pool === found.key;
+      if (step.poolGroup !== undefined) return found.group === step.poolGroup;
+      if (step.listPools === undefined || found.listId !== step.listPools) return false;
+      if (step.row !== undefined && !sameName(found.label, step.row)) return false;
+      return !step.recharge || (found.recharge !== undefined && step.recharge.includes(found.recharge));
+    });
+    if (steps.some((step) => step.by !== undefined && "const" in step.by)) return null;
+    if (steps.length > 0) rests.push(rest.id);
+  }
+  if (rests.length === 0) return null;
+  return { key: found.key, label: found.label, ...(found.group ? { group: found.group } : {}), rests };
+}
+
+/** The entries on a sheet whose use gives back spent pools of this group (1.397): Arcane Recovery
+ *  for spell slots. With the rest each is offered at (1.776), where it is. */
+export function rulesetRecoveriesOfGroup(
+  definition: RulesetDefinition,
+  build: RulesetSheetBuild,
+  catalogs: RulesetCatalogEntriesById,
+  group: string,
+): Array<{ name: string; atRest?: string }> {
+  const byRef = rulesetCatalogEntriesByRef(catalogs);
+  const seen = new Set<string>();
+  const out: Array<{ name: string; atRest?: string }> = [];
+  for (const list of definition.sheet.lists) {
+    const rows = build.lists?.[list.id];
+    if (!Array.isArray(rows)) continue;
+    for (const row of rows) {
+      if (!row || typeof row !== "object") continue;
+      const ref = own(row as Record<string, unknown>, RULESET_CATALOG_ROW_KEY);
+      if (typeof ref !== "string" || seen.has(ref)) continue;
+      seen.add(ref);
+      const entry = byRef.get(ref);
+      const recovers = entry?.mechanics?.recovers;
+      if (!entry || !recovers || recovers.group !== group) continue;
+      out.push({ name: entry.label, ...(recovers.atRest !== undefined ? { atRest: recovers.atRest } : {}) });
+    }
+  }
+  return out;
+}
+
 /**
  * What using one catalog-picked ability spends, or why it cannot be worked out. Pure: nothing is
  * applied here, and the caller puts every step through `applyRulesetSheetOp` on a working copy so a
@@ -2770,6 +2860,10 @@ export function planRulesetUse(
   const found = rulesetEntryNamed(definition, build, catalogs, wanted);
   if (!found.ok) return found;
   const { ref, entry } = found;
+  // As a ritual (1.799): only a row its list's `ritual` column ticks, and then it pays none of its
+  // pools, slots or counters; a priced material it still needs (laptop 2026-10-26: a ritual Detect
+  // Magic spent a slot).
+  if (op.ritual && !rulesetRowIsRitual(definition, build, ref)) return { ok: false, reason: "not-ritual" };
 
   const resolved = readRulesetLive(definition, build, stored);
   const declared = resolved.pools.filter((pool) => !pool.listId);
@@ -2789,7 +2883,7 @@ export function planRulesetUse(
     const family = pool.group ? definition.sheet.live.pools.filter((one) => one.group === pool.group) : [];
     return family.indexOf(pool) + 1;
   };
-  const terms = borrowed ? borrowed.cost : (entry.mechanics?.cost ?? []);
+  const terms = op.ritual ? [] : borrowed ? borrowed.cost : (entry.mechanics?.cost ?? []);
   let costs: Array<{ pool: string; amount: number }> = [...terms];
   // The entry's own counter named as its pool asks for nothing different: it is spent as it always is
   // (laptop 2026-10-25: a Game Master's Wild Shape refused for naming its uses).
@@ -2866,7 +2960,7 @@ export function planRulesetUse(
         return own(cells, RULESET_CATALOG_ROW_KEY) === ref && !!name && sameName(name, wanted);
       });
     });
-  for (const list of definition.sheet.lists) {
+  for (const list of op.ritual ? [] : definition.sheet.lists) {
     const pools = list.pools;
     const rows = build.lists?.[list.id];
     if (!pools || !Array.isArray(rows)) continue;

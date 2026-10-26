@@ -171,6 +171,14 @@ export interface SkillCheckRulesetContext {
    *  not get this: it rolls with no modifier at all, because a ruleset's defaults are not neutral
    *  in every system and the Engine knows nothing about a stranger. */
   blank: EvaluatedRulesetSheet;
+  /** Each card's name as written, per normalized card name, so a roller the Engine picked itself is
+   *  written into the record the way the card spells it. */
+  names?: Map<string, string>;
+  /** Names two cards share, which a `who=` cannot pick between, so no shorter name reaches either. */
+  ambiguous?: Set<string>;
+  /** True when no card is the player's own and `playerKey` is only the first card. A check that
+   *  names nobody then picks its roller from the narration instead (laptop 2026-10-26). */
+  playerByPosition?: boolean;
 }
 
 export interface SkillCheckRequest {
@@ -275,20 +283,32 @@ async function findPlayerCharacterCard(
   meta: Record<string, unknown>,
   chatId: string,
 ): Promise<Record<string, unknown> | undefined> {
-  if (cards.length === 0) return undefined;
+  return (await findPlayerCharacterCardMatch(db, cards, chatPersonaId, meta, chatId)).card;
+}
+
+/** The player's card, and whether it is only the first card because nothing said whose it is. */
+async function findPlayerCharacterCardMatch(
+  db: DB,
+  cards: Array<Record<string, unknown>>,
+  chatPersonaId: unknown,
+  meta: Record<string, unknown>,
+  chatId: string,
+): Promise<{ card: Record<string, unknown> | undefined; byPosition: boolean }> {
+  if (cards.length === 0) return { card: undefined, byPosition: false };
   const host = roomHostIdentity();
   if (host) {
     const matches = cards.filter(
       (card) => normalizeCharacterLookupName(readTrimmedString(card.name)) === normalizeCharacterLookupName(host.name),
     );
-    return matches.length === 1 ? matches[0] : undefined;
+    return { card: matches.length === 1 ? matches[0] : undefined, byPosition: false };
   }
+  const first = { card: cards[0], byPosition: true };
   const setupConfig =
     meta.gameSetupConfig && typeof meta.gameSetupConfig === "object" && !Array.isArray(meta.gameSetupConfig)
       ? (meta.gameSetupConfig as Record<string, unknown>)
       : null;
   const personaId = readTrimmedString(chatPersonaId) || readTrimmedString(setupConfig?.personaId);
-  if (!personaId) return cards[0];
+  if (!personaId) return first;
 
   let personaName = "";
   try {
@@ -297,16 +317,40 @@ async function findPlayerCharacterCard(
   } catch (err) {
     // An unreadable persona costs the check its identity lookup, never the turn.
     logger.warn(err, "[game/skill-check] Could not read the persona for chat %s; using the first card", chatId);
-    return cards[0];
+    return first;
   }
-  if (!personaName) return cards[0];
+  if (!personaName) return first;
 
   const wanted = normalizeCharacterLookupName(personaName);
   const playerCard = cards.find((card) => normalizeCharacterLookupName(readTrimmedString(card.name)) === wanted);
-  if (playerCard) return playerCard;
+  if (playerCard) return { card: playerCard, byPosition: false };
+  // laptop 2026-10-26: a persona called by a shorter name than its card ("Lethariel" for "Lethariel
+  // Moonwhisper") is still that card, when no other card answers to the same words.
+  const keys = cards.map((card) => normalizeCharacterLookupName(readTrimmedString(card.name)));
+  const shortKey = uniqueCardKeyFor(keys, personaName);
+  if (shortKey) return { card: cards[keys.indexOf(shortKey)], byPosition: false };
 
   logger.debug("[game/skill-check] Chat %s has no card for the player; using the first card's sheet", chatId);
-  return cards[0];
+  return first;
+}
+
+/** Words a name may carry that pick out nobody on their own. */
+const CARD_NAME_PARTICLES = new Set(["the", "of", "and", "von", "van", "der", "de", "del", "la", "le", "du"]);
+
+/**
+ * The one card key a name picks out: the card's whole name, or a name every word of which is one of
+ * a single card's words ("Lethariel" for "Lethariel Moonwhisper", "Moonwhisper" too). Null when no
+ * card answers, when two do, and for a name made only of particles like "the".
+ */
+export function uniqueCardKeyFor(keys: Iterable<string>, name: string): string | null {
+  const wanted = normalizeCharacterLookupName(name);
+  if (!wanted) return null;
+  const all = [...keys].filter(Boolean);
+  if (all.includes(wanted)) return all.indexOf(wanted) === all.lastIndexOf(wanted) ? wanted : null;
+  const words = wanted.split(" ");
+  if (!words.some((word) => word.length >= 3 && !CARD_NAME_PARTICLES.has(word))) return null;
+  const matches = [...new Set(all.filter((key) => words.every((word) => key.split(" ").includes(word))))];
+  return matches.length === 1 && all.indexOf(matches[0]!) === all.lastIndexOf(matches[0]!) ? matches[0]! : null;
 }
 
 /**
@@ -359,7 +403,13 @@ export async function loadSkillCheckModifierContext(
   if (meta.gameRuleset != null) {
     const pinned = resolveGameRuleset(meta, await loadRulesetRegistry());
     if (pinned.status === "ok") {
-      const playerCard = await findPlayerCharacterCard(db, cards, chat?.personaId, meta, chatId);
+      const { card: playerCard, byPosition } = await findPlayerCharacterCardMatch(
+        db,
+        cards,
+        chat?.personaId,
+        meta,
+        chatId,
+      );
       // What each card holds, when the ruleset has items at all: its sheet may read them, and what one
       // does while worn or carried changes a check. The player's card the player's bag, every other
       // card its own.
@@ -381,14 +431,19 @@ export async function loadSkillCheckModifierContext(
         // The live state of this chat's sheets: it is where a wound track's marks live, and a
         // check cannot know what a wound costs without them. The turn's own starting state when
         // the caller handed one over, and otherwise the snapshot read above.
-        ruleset: buildSkillCheckRulesetContext(
-          pinned.definition,
-          cards,
-          playerCard,
-          turnStartLive === undefined ? parseStoredRulesetLive(snapshot?.rulesetLive) : turnStartLive,
-          undefined,
-          itemsOf,
-        ),
+        ruleset: {
+          ...buildSkillCheckRulesetContext(
+            pinned.definition,
+            cards,
+            playerCard,
+            turnStartLive === undefined ? parseStoredRulesetLive(snapshot?.rulesetLive) : turnStartLive,
+            undefined,
+            itemsOf,
+          ),
+          // Nothing said which card is the player's, so the first card is only a stand-in for a check
+          // that names nobody (laptop 2026-10-26: Dorra's Stealth was rolled for Pip's sneak).
+          ...(byPosition ? { playerByPosition: true } : {}),
+        },
       };
     }
     // A pin the install cannot honour must not be answered with another system's arithmetic.
@@ -455,6 +510,7 @@ export function buildSkillCheckRulesetContext(
   // Two cards that normalize to one name: `who=` cannot say which, so neither sheet answers it and
   // the check rolls unmodified. The player's own card is the exception; a name they share stays theirs.
   const ambiguous = new Set<string>();
+  const names = new Map<string, string>();
   for (const card of cards) {
     const key = normalizeCharacterLookupName(readTrimmedString(card.name));
     if (!key || ambiguous.has(key)) continue;
@@ -469,6 +525,7 @@ export function buildSkillCheckRulesetContext(
         builds.delete(key);
         penalties.delete(key);
         items.delete(key);
+        names.delete(key);
         ambiguous.add(key);
         logger.warn("[game/skill-check] Two party cards are named %s; checks for that name roll unmodified", key);
         continue;
@@ -484,6 +541,7 @@ export function buildSkillCheckRulesetContext(
     const held = itemsOf?.(readTrimmedString(card.name));
     sheets.set(key, evaluateRulesetSheetLive(definition, cardBuild, live?.[key], held));
     builds.set(key, cardBuild);
+    names.set(key, readTrimmedString(card.name));
     if (held?.length) items.set(key, held);
     if (penaltyTrack) {
       const penalty = readRulesetWoundPenalty(definition, cardBuild, live?.[key], penaltyTrack);
@@ -500,6 +558,8 @@ export function buildSkillCheckRulesetContext(
     penalties,
     items,
     blank: evaluateRulesetSheetLive(definition, blankBuild),
+    names,
+    ambiguous,
   };
 }
 
@@ -562,7 +622,7 @@ function planRulesetEntryCheck(
 ): RulesetCheckPurchase | null {
   const wanted = name?.trim();
   if (!wanted || ruleset.definition.resolution.kind !== "dice-pool") return null;
-  const key = who ? normalizeCharacterLookupName(who) : ruleset.playerKey;
+  const key = rulesetRollerKey(ruleset, who);
   const build = key ? ruleset.builds.get(key) : undefined;
   if (!key || !build) return null;
 
@@ -653,7 +713,7 @@ export function planRulesetCheckPurchase(
   // Whole purchases only. Half a point of will buys half a success in no system.
   if (!Number.isInteger(asked.amount) || asked.amount < offer.amount || asked.amount % offer.amount !== 0) return null;
 
-  const key = who ? normalizeCharacterLookupName(who) : ruleset.playerKey;
+  const key = rulesetRollerKey(ruleset, who);
   const build = key ? ruleset.builds.get(key) : undefined;
   // A stranger has no sheet to spend from, so there is nothing to pay with and nothing is bought.
   if (!key || !build) return null;
@@ -714,10 +774,29 @@ export function readRulesetDifficulty(request: SkillCheckRequest, definition?: R
   return step ? { ...request, dc: rulesetDifficultyStepDc(step) } : request;
 }
 
+/**
+ * The sheet key a `who=` names. The card's whole name first, then a shorter name only one card
+ * answers to: laptop 2026-10-26, `who="Lethariel"` for the card "Lethariel Moonwhisper" rolled with
+ * no modifier at all. A name two cards share stays theirs and nobody's, and a name no card answers
+ * to is kept as written, which is a stranger with no sheet.
+ */
+export function rulesetNamedKey(ruleset: SkillCheckRulesetContext, who: string): string {
+  const key = normalizeCharacterLookupName(who);
+  if (!key || ruleset.sheets.has(key) || ruleset.ambiguous?.has(key)) return key;
+  const keys = [...ruleset.sheets.keys(), ...(ruleset.ambiguous ?? [])];
+  const found = uniqueCardKeyFor(keys, key);
+  return found && ruleset.sheets.has(found) ? found : key;
+}
+
+/** Whose sheet answers a check: the card `who=` names, or the player's when it names nobody. */
+export function rulesetRollerKey(ruleset: SkillCheckRulesetContext, who?: string): string | null {
+  return who ? rulesetNamedKey(ruleset, who) : ruleset.playerKey;
+}
+
 /** What the roller's wound track costs this check. Always negative or 0, and 0 for a stranger, a
  *  ruleset that names no penalty track and anybody who is not marked. */
 export function rulesetCheckPenaltyFor(ruleset: SkillCheckRulesetContext, who?: string): number {
-  const key = who ? normalizeCharacterLookupName(who) : ruleset.playerKey;
+  const key = rulesetRollerKey(ruleset, who);
   return (key ? ruleset.penalties.get(key) : undefined) ?? 0;
 }
 
@@ -731,7 +810,7 @@ export function rulesetCheckTargetFor(
   /** What it is made for (1.739), read without case. */
   purpose?: string,
 ): RulesetCheckTarget | null {
-  const key = who ? normalizeCharacterLookupName(who) : ruleset.playerKey;
+  const key = rulesetRollerKey(ruleset, who);
   const target = matchRulesetCheckTarget(
     ruleset.definition,
     skill,
@@ -753,7 +832,7 @@ export function rulesetCheckModifierFor(
   const target = rulesetCheckTargetFor(ruleset, skill, who, withAbility);
   if (who) {
     // A name that matches nobody (or two cards at once) is a stranger: no modifier at all.
-    const named = ruleset.sheets.get(normalizeCharacterLookupName(who));
+    const named = ruleset.sheets.get(rulesetNamedKey(ruleset, who));
     return named ? rulesetCheckModifier(named, target) : 0;
   }
   const player = ruleset.playerKey ? ruleset.sheets.get(ruleset.playerKey) : undefined;
@@ -772,7 +851,7 @@ export function rulesetCheckAdjustFor(
   if (!definition.resolution.adjust?.length) return 0;
   const target = rulesetCheckTargetFor(ruleset, skill, who, withAbility);
   if (who) {
-    const key = normalizeCharacterLookupName(who);
+    const key = rulesetNamedKey(ruleset, who);
     const evaluated = ruleset.sheets.get(key);
     const build = ruleset.builds.get(key);
     return evaluated && build ? rulesetCheckAdjust(definition, build, evaluated, target) : 0;
@@ -791,7 +870,7 @@ export function rulesetCheckValueFor(
   who?: string,
 ): number | undefined {
   const { definition } = ruleset;
-  const key = who ? normalizeCharacterLookupName(who) : ruleset.playerKey;
+  const key = rulesetRollerKey(ruleset, who);
   const evaluated = (key ? ruleset.sheets.get(key) : undefined) ?? (who ? undefined : ruleset.blank);
   if (!evaluated) return undefined;
   const build = (key ? ruleset.builds.get(key) : undefined) ?? defaultRulesetSheetBuild(definition);
@@ -808,7 +887,7 @@ export function rulesetCheckEffectsFor(
   applied: readonly RulesetCheckSource[] = [],
   against?: RulesetSaveAgainst,
 ): RulesetCheckEffects {
-  const key = who ? normalizeCharacterLookupName(who) : ruleset.playerKey;
+  const key = rulesetRollerKey(ruleset, who);
   const build = key ? ruleset.builds.get(key) : undefined;
   if (!key || !build) return { modifiers: [], advantage: [], disadvantage: [], fails: [] };
   const sources = rulesetCheckSources(ruleset.definition, build, ruleset.live[key], ruleset.items.get(key));
@@ -829,7 +908,7 @@ export function rulesetContextualFor(
   request: Pick<SkillCheckRequest, "apply" | "who">,
 ): RulesetContextualItem[] {
   if (!request.apply?.length) return [];
-  const key = request.who ? normalizeCharacterLookupName(request.who) : ruleset.playerKey;
+  const key = rulesetRollerKey(ruleset, request.who);
   const build = key ? ruleset.builds.get(key) : undefined;
   if (!key || !build) return [];
   return rulesetContextualItems(ruleset.definition, build, ruleset.catalogs, request.apply, target);
@@ -858,7 +937,7 @@ export function rulesetUntrainedFor(
   const target = rulesetCheckTargetFor(ruleset, request.skill, request.who, request.withAbility);
   if (!target || target.type === "ability" || target.row) return null;
   const sheet = request.who
-    ? ruleset.sheets.get(normalizeCharacterLookupName(request.who))
+    ? ruleset.sheets.get(rulesetNamedKey(ruleset, request.who))
     : ((ruleset.playerKey ? ruleset.sheets.get(ruleset.playerKey) : undefined) ?? ruleset.blank);
   if (!sheet) return null;
   const tier = (target.type === "skill" ? sheet.skillTiers : sheet.saveTiers)[target.id];
@@ -882,7 +961,7 @@ export function rulesetCheckFloorsFor(
   if (!effects.floors?.length) return out;
   const { definition } = ruleset;
   const sheet = request.who
-    ? ruleset.sheets.get(normalizeCharacterLookupName(request.who))
+    ? ruleset.sheets.get(rulesetNamedKey(ruleset, request.who))
     : ((ruleset.playerKey ? ruleset.sheets.get(ruleset.playerKey) : undefined) ?? ruleset.blank);
   const tier = target?.type === "skill" ? sheet?.skillTiers[target.id] : undefined;
   const trained = rulesetTierAddsProficiency(definition, tier);
@@ -971,7 +1050,17 @@ function resolveRulesetSkillCheck(
   // could have rolled: thrown, so the turn saves it as the ask it still is.
   if (askedDc === undefined) throw new SkillCheckDifficultyError(request.skill);
   let modifier = rulesetCheckModifierFor(ruleset, request.skill, request.who, request.withAbility);
-  const rollerKey = request.who ? normalizeCharacterLookupName(request.who) : ruleset.playerKey;
+  const rollerKey = rulesetRollerKey(ruleset, request.who);
+  // A stranger rolls with no modifier, which is right for the guard and wrong for a party member the
+  // Game Master misnamed, so it is said rather than done silently (laptop 2026-10-26).
+  if (request.who && rollerKey && !ruleset.sheets.has(rollerKey)) {
+    logger.info(
+      '[game/skill-check] who="%s" names no party card%s; rolling %s with no sheet modifier',
+      request.who,
+      ruleset.ambiguous?.has(rollerKey) ? " (two cards share it)" : "",
+      request.skill,
+    );
+  }
   const rollerSheet =
     (rollerKey ? ruleset.sheets.get(rollerKey) : undefined) ?? (request.who ? undefined : ruleset.blank);
   const symbolRatings =
@@ -1061,7 +1150,7 @@ function resolveRulesetSkillCheck(
   // One that cannot be paid, or has nobody to persist the payment, applies nothing.
   const contextual: RulesetContextualItem[] = [];
   {
-    const key = request.who ? normalizeCharacterLookupName(request.who) : ruleset.playerKey;
+    const key = rulesetRollerKey(ruleset, request.who);
     const build = key ? ruleset.builds.get(key) : undefined;
     let live = key ? (purchase?.key === key ? purchase.live : ruleset.live[key]) : undefined;
     let paid = false;
@@ -1109,7 +1198,7 @@ function resolveRulesetSkillCheck(
   // Every skill the roller has counts, their row checks (1.161) among them.
   if (contextualCheck?.best && target?.type === "skill") {
     const roller = request.who
-      ? ruleset.sheets.get(normalizeCharacterLookupName(request.who))
+      ? ruleset.sheets.get(rulesetNamedKey(ruleset, request.who))
       : ((ruleset.playerKey ? ruleset.sheets.get(ruleset.playerKey) : undefined) ?? ruleset.blank);
     if (roller) {
       const ratings = [modifier, ...Object.values(roller.skillMods)].filter(Number.isFinite);
@@ -1386,6 +1475,114 @@ function resolveRulesetSkillCheck(
   };
 }
 
+/** How far back the narration is read for who a check that names nobody belongs to. */
+const CHECK_ROLLER_REACH = 1200;
+
+/** Where the last check tag in this text ends, or -1 when it has none. */
+function lastCheckTagEnd(text: string): number {
+  let end = -1;
+  for (const match of text.matchAll(/\[skill_check\b[^\]]*\]/gi)) end = match.index + match[0].length;
+  return end;
+}
+
+/**
+ * Who rolls a check that names nobody, in a game where no card is the player's own. laptop
+ * 2026-10-26: with no persona the first card stood in for the player, and Dorra's +1 Stealth was
+ * rolled for the sneak the narration gave Pip (+8). So: the party member the narration names last
+ * before the tag, since the check before it; else the one it names first after the tag, up to the
+ * paragraph's end; else the member with the best number for the check, which is
+ * who a party sends. Undefined wherever the player has a card of their own or there is one card to
+ * roll for: there the check is the player's, as it always was.
+ */
+export function inferRulesetCheckWho(
+  ruleset: SkillCheckRulesetContext,
+  content: string,
+  span: { start: number; end: number },
+  skill: string,
+  withAbility?: string,
+): string | undefined {
+  if (!ruleset.playerByPosition || ruleset.sheets.size < 2) return undefined;
+  const keys = [...ruleset.sheets.keys()];
+  // A card answers to its whole name and to each word of it no other card has.
+  const owners = new Map<string, number>();
+  for (const key of new Set([...keys, ...(ruleset.ambiguous ?? [])])) {
+    for (const word of new Set(key.split(" "))) owners.set(word, (owners.get(word) ?? 0) + 1);
+  }
+  const callsFor = (key: string) => [
+    key,
+    ...key.split(" ").filter((word) => word.length >= 3 && !CARD_NAME_PARTICLES.has(word) && owners.get(word) === 1),
+  ];
+  // Tags are not narration: a name in another check's `who=` says nothing about this one.
+  const named = (text: string, last: boolean): string | undefined => {
+    const read = ` ${normalizeCharacterLookupName(text.replace(/\[[^\]]*\]/g, " "))} `;
+    let best: { key: string; at: number } | undefined;
+    for (const key of keys) {
+      for (const call of callsFor(key)) {
+        const at = last ? read.lastIndexOf(` ${call} `) : read.indexOf(` ${call} `);
+        if (at >= 0 && (!best || (last ? at > best.at : at < best.at))) best = { key, at };
+      }
+    }
+    return best?.key;
+  };
+  const before = content.slice(0, span.start);
+  // The nearest mention wins, so the window only has to stop at the check before this one, and at
+  // a reach no single action's telling needs.
+  const from = Math.max(0, before.length - CHECK_ROLLER_REACH, lastCheckTagEnd(before));
+  const after = content.slice(span.end);
+  const stops = [after.indexOf("\n\n"), after.search(/\[skill_check\b/i)].filter((at) => at >= 0);
+  const key =
+    named(before.slice(from), true) ??
+    named(stops.length ? after.slice(0, Math.min(...stops)) : after, false) ??
+    keys.reduce((best, candidate) =>
+      rulesetCheckModifierFor(ruleset, skill, candidate, withAbility) + rulesetCheckPenaltyFor(ruleset, candidate) >
+      rulesetCheckModifierFor(ruleset, skill, best, withAbility) + rulesetCheckPenaltyFor(ruleset, best)
+        ? candidate
+        : best,
+    );
+  return ruleset.names?.get(key) ?? key;
+}
+
+/**
+ * The d20 faces a player's own message threw for this turn, read off its `[dice: ...]` records:
+ * `[dice: 1d20 = 14]`, or `[dice: 1d20+3 = 17 (14 +3)]` with the faces in brackets. A die of any
+ * other size is no d20 a check could stand on.
+ */
+export function playerSubmittedD20Faces(content: string): number[] {
+  const faces: number[] = [];
+  for (const match of content.matchAll(/\[dice:\s*(\d*)d20([+-]\d+)?\s*=\s*(-?\d+)(?:\s*\(([^)\]]*)\))?/gi)) {
+    const count = match[1] ? Number(match[1]) : 1;
+    const thrown = match[4]
+      ? match[4]
+          .split(",")
+          .map((part) => /^\s*(\d+)/.exec(part)?.[1])
+          .map(Number)
+      : count === 1 && !match[2]
+        ? [Number(match[3])]
+        : [];
+    faces.push(...thrown.filter((face) => Number.isInteger(face) && face >= 1 && face <= 20));
+  }
+  return faces;
+}
+
+/** The d20 faces the Engine itself threw this turn, from its own roll records (the dice tool, a
+ *  roll placeholder). */
+export function engineIssuedD20Faces(rolls: ReadonlyArray<{ notation: string; rolls: number[] }>): number[] {
+  return rolls.filter((roll) => /^\s*\d*d20(?!\d)/i.test(roll.notation)).flatMap((roll) => roll.rolls);
+}
+
+/** Take these faces out of the dice issued for this turn, all or none. False, and nothing taken,
+ *  when any of them is not there: it is not a die anybody but the Game Master threw. */
+export function takeIssuedD20s(issued: number[], faces: readonly number[]): boolean {
+  const left = [...issued];
+  for (const face of faces) {
+    const at = left.indexOf(face);
+    if (at < 0) return false;
+    left.splice(at, 1);
+  }
+  issued.splice(0, issued.length, ...left);
+  return true;
+}
+
 /** Whether a ruleset game rolls this tag: a `sum` check whose dice label, when the GM wrote one,
  *  is exactly what the ruleset throws for that mode. Anything else names another system. */
 function isRulesetRollableSkillCheckTag(tag: SkillCheckTag, definition: RulesetDefinition): boolean {
@@ -1587,6 +1784,17 @@ export interface SkillCheckTagResolutionOptions {
    * cannot know what a charm costs and will not guess, so the roll is the one it would have been.
    */
   loadCatalogs?: () => Promise<RulesetCatalogEntriesById>;
+  /**
+   * The d20 faces somebody other than the Game Master threw for this turn: the player's own
+   * `[dice: ...]` and the Engine's own rolls. Supplied by generation only.
+   *
+   * laptop 2026-10-26: a die the Game Master wrote was honoured whenever its sums held up, so it
+   * could pick its own face. With this given, a sparse `rolls="N"` is the player's die only when N
+   * is one of these, and a ruleset game's complete record is vouched for only when its dice are;
+   * each face answers one check. Anything else the Engine rolls. Absent, every written die is read
+   * as it always was, which is what a re-read of a saved turn needs.
+   */
+  issuedD20s?: readonly number[];
 }
 
 export interface SkillCheckTagResolution {
@@ -1768,10 +1976,13 @@ export async function resolveSkillCheckTagsInContent(
     return out + content.slice(cursor);
   };
 
+  /** What is left of the dice issued for this turn, spent one check at a time. */
+  const issued = options.issuedD20s ? [...options.issuedD20s] : null;
+
   try {
     const regex = createSkillCheckTagRegex();
     for (let match = regex.exec(content); match; match = regex.exec(content)) {
-      const tag = parseSkillCheckTagBody(match[1] ?? "");
+      let tag = parseSkillCheckTagBody(match[1] ?? "");
       // Not a check at all (no skill or DC) — leave whatever the model wrote.
       if (!tag) {
         left += 1;
@@ -1809,6 +2020,16 @@ export async function resolveSkillCheckTagsInContent(
         );
         left += 1;
         continue;
+      }
+      // A `rolls="N"` on a sparse check is the player's die only when the player threw it this turn.
+      if (tag.preRolledD20 !== undefined && issued && !takeIssuedD20s(issued, [tag.preRolledD20])) {
+        logger.info(
+          "[game/skill-check] rolls=%d on %s is no die thrown this turn for chat %s; the Engine rolls it",
+          tag.preRolledD20,
+          tag.skill,
+          options.chatId ?? "unknown",
+        );
+        tag = { ...tag, preRolledD20: undefined };
       }
       if (options.rulesetPinned) {
         deferred.push({ start: match.index, end: match.index + match[0].length, tag });
@@ -1908,14 +2129,23 @@ export async function resolveSkillCheckTagsInContent(
       const ruleset = loadedContext.ruleset;
       keepWho = !!ruleset;
       for (const entry of deferred) {
-        const { tag } = entry;
+        let { tag } = entry;
+        // A check that names nobody, where nobody is the player's own card, is rolled for the party
+        // member the narration gives it to, and the record says so.
+        const inferredWho =
+          ruleset && !tag.who ? inferRulesetCheckWho(ruleset, content, entry, tag.skill, tag.withAbility) : undefined;
+        if (inferredWho) tag = { ...tag, who: inferredWho };
         const request = toRequest(tag, ruleset?.definition);
         // A record claiming a save failed without a roll carries no dice to vouch for and a label no
         // ruleset throws, so it is always the Engine's to decide again from the sheet.
         const claimsNoRoll = !!tag.resolvedResult?.automatic;
+        // The numbers must be the sheet's, and the dice somebody else's: the player's, or the Engine's.
+        const vouched =
+          !!ruleset &&
+          rulesetVouchesFor(ruleset, tag) &&
+          (!issued || takeIssuedD20s(issued, tag.resolvedResult!.rolls));
         const owesRoll = ruleset
-          ? claimsNoRoll ||
-            (!rulesetVouchesFor(ruleset, tag) && isRulesetRollableSkillCheckTag(tag, ruleset.definition))
+          ? claimsNoRoll || (!vouched && isRulesetRollableSkillCheckTag(tag, ruleset.definition))
           : !tag.resolvedResult && isEngineRollableSkillCheckTag(tag);
         // A check the character cannot attempt untrained is refused below whatever it carries: no
         // numbers, dice or difficulty the Game Master wrote on it gets it past the sheet.

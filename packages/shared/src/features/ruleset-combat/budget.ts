@@ -151,7 +151,7 @@ export function rulesetBudgetStandIns<
   budget: RulesetEncounterBudget,
   kept: ReadonlySet<string> = new Set(),
 ): {
-  enemies: Array<T | (Omit<T, "creature" | "tier" | "boss"> & { creature: string; boss: T["boss"] | false })>;
+  enemies: Array<T | (Omit<T, "creature" | "tier" | "boss"> & { creature: string; boss?: T["boss"] })>;
   lines: string[];
 } {
   const scale = definition.combat?.threat?.tiers ?? [];
@@ -163,7 +163,7 @@ export function rulesetBudgetStandIns<
   );
   const tierOf = (index: number) => found[index]?.entry.creature?.tier ?? enemies[index]!.tier;
   const lines: string[] = [];
-  const out: Array<T | (Omit<T, "creature" | "tier" | "boss"> & { creature: string; boss: T["boss"] | false })> = [];
+  const out: Array<T | (Omit<T, "creature" | "tier" | "boss"> & { creature: string; boss?: T["boss"] })> = [];
   enemies.forEach((enemy, index) => {
     const own = found[index];
     const creature = own?.entry.creature;
@@ -211,8 +211,10 @@ export function rulesetBudgetStandIns<
         id: at === 0 ? enemy.id : `${enemy.id}-${at + 1}`,
         name: best.count === 1 ? best.entry.label : `${best.entry.label} ${at + 1}`,
         creature: `${best.catalogId}/${best.entry.id}`,
-        // The first that comes in a boss's place is the fight's boss in its stead (cloud re-test SB2).
-        boss: at === 0 && enemy.boss ? enemy.boss : false,
+        // The first that comes in a boss's place is the fight's boss in its stead (cloud re-test SB2),
+        // with the boss's own mark: nobody else carries one at all, not even a false one (laptop v3b
+        // 2026-10-26: `boss: false` broke the saved fight).
+        ...(at === 0 && enemy.boss ? { boss: enemy.boss } : {}),
       });
     lines.push(
       `${own.entry.label} is far beyond this party (worth ${alone}, against its ${step} budget of ${allowed}), so lesser ones of its kind come instead: ${best.count === 1 ? best.entry.label : `${best.count} ${best.entry.label}`}. ${enemy.name} stays out of this fight, for the story to keep.`,

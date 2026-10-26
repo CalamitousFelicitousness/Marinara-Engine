@@ -44,6 +44,7 @@ import {
   createInventoryTagRegex,
   parseInventoryTagBody,
   type GameInventoryParty,
+  gameInventoryStackLabel,
 } from "@marinara-engine/shared";
 import type { DB } from "../../db/connection.js";
 import { logger } from "../../lib/logger.js";
@@ -71,6 +72,9 @@ export interface GameRulesetSheetContext {
   partyBuild?: RulesetSheetBuild | null;
   /** The cards of those taken out of the party, whom a command to the whole party passes by. */
   away?: string[];
+  /** Whether an item the reply uses heals whoever uses it, by the name the reply gives it: the
+   *  Engine's own heal for that use stands in for a restore of their health beside it. */
+  itemHealsUser?: (item: string) => boolean;
 }
 
 function parseMetadata(raw: unknown): Record<string, unknown> {
@@ -279,11 +283,16 @@ export async function loadGameRulesetSheetContext(
   const away = await cardsAwayFromParty(db, chatId, meta, built, playerName);
   // What each one carries, where the ruleset reads items (1.337): a rest's dice read Pell's Teapot.
   const stacks = normalizeGameInventoryStacks(meta.gameInventory);
-  if (rulesetReadsItems(pinned.definition) && stacks.some((stack) => stack.item)) {
+  // And which items the reply uses heal their user, so the sheet commands do not heal them again.
+  const usesItems = !!reply && replyUsesItem(reply.content);
+  let itemHealsUser: ((item: string) => boolean) | undefined;
+  const readsItems = rulesetReadsItems(pinned.definition) && stacks.some((stack) => stack.item);
+  if (readsItems || usesItems) {
     // Imported here: the inventory service reads this module's cards.
     const { loadGameInventoryItemBook } = await import("./game-inventory.service.js");
     const book = await loadGameInventoryItemBook(db, { metadata: meta, resolved: pinned, playerName }, "game-master");
-    if (book) {
+    if (book && usesItems) itemHealsUser = (item) => rulesetItemHealsUser(book, stacks, item);
+    if (book && readsItems) {
       const worn = reply ? replyWearTags(reply.content) : "";
       const wearing = worn ? applyGameInventoryTags(worn, stacks, reply!.party, undefined, book).stacks : stacks;
       const itemsOf = rulesetCardItems(
@@ -307,7 +316,35 @@ export async function loadGameRulesetSheetContext(
       )?.build ?? null,
     playerName,
     ...(away.length ? { away } : {}),
+    ...(itemHealsUser ? { itemHealsUser } : {}),
   };
+}
+
+/** Whether a reply uses one of the items carried (`[inventory: action="use"]`). */
+function replyUsesItem(content: string): boolean {
+  if (!content.includes("[")) return false;
+  return [...content.matchAll(createInventoryTagRegex())].some(
+    (match) => parseInventoryTagBody(match[1] ?? "")?.action === "use",
+  );
+}
+
+/** Whether the item a use names heals whoever uses it outside a fight, as `useRulesetItemOutsideFight`
+ *  heals them: its first use a heal not aimed at the other side. Named as the ruleset names it, or as
+ *  a stack the party carries is called. */
+function rulesetItemHealsUser(
+  book: Pick<RulesetItemBook, "itemOf" | "itemNamed">,
+  stacks: readonly GameInventoryStack[],
+  name: string,
+): boolean {
+  const wanted = normalizeCharacterLookupName(name);
+  const carried = stacks.find(
+    (stack) =>
+      !!stack.item &&
+      [stack.name, gameInventoryStackLabel(stack)].some((called) => normalizeCharacterLookupName(called) === wanted),
+  );
+  const item = (carried?.item ? book.itemOf(carried.item) : book.itemNamed(name))?.entry.item;
+  const use = item?.use;
+  return use?.kind === "heal" && use.targets !== "enemy" && use.amount !== undefined;
 }
 
 /** The cards whose member was taken out of the party: a card stays when its member leaves, and a
@@ -377,13 +414,26 @@ function replyWearTags(content: string): string {
 
 /** Whether this reply asks to use something out of a catalog. Every other command is answered from
  *  the sheet alone, so a turn without one never touches a catalog file. */
-function replyUsesCatalogEntry(content: string): boolean {
+function replyUsesCatalogEntry(content: string, definition: RulesetDefinition): boolean {
   if (!content.includes("[")) return false;
+  const health = definition.combat?.health;
+  const healthPool = health && "pool" in health ? health.pool : undefined;
+  const healthLabel = definition.sheet.live.pools.find((pool) => pool.id === healthPool)?.label;
+  const plain = (text: string) => text.trim().toLowerCase();
   for (const match of content.matchAll(createSheetCommandTagRegex())) {
     const op = parseSheetCommandTagBody(match[1] ?? "").op;
     // A rest that uses a feature as it ends (1.776) reads that feature's entry too (ship readiness:
     // Arcane Recovery off the Game Master's rest tag gave back nothing).
     if (op?.op === "use" || (op?.op === "rest" && op.use)) return true;
+    // So does a restore of anything but health: a pool only a rest gives back may come back through
+    // the feature that gives it back (laptop 2026-10-26: Arcane Recovery's slot, its use unspent).
+    if (
+      op?.op === "restore" &&
+      op.pool &&
+      plain(op.pool) !== plain(healthPool ?? "") &&
+      plain(op.pool) !== plain(healthLabel ?? "")
+    )
+      return true;
   }
   return false;
 }
@@ -424,7 +474,7 @@ export async function loadTurnRulesetCatalogs(
   options?: { force?: boolean },
 ): Promise<RulesetCatalogEntriesById> {
   const declared = context.definition.catalogs;
-  if (!declared?.length || !(options?.force || replyUsesCatalogEntry(content))) return {};
+  if (!declared?.length || !(options?.force || replyUsesCatalogEntry(content, context.definition))) return {};
   const wanted = new Set(context.cards.flatMap((card) => rulesetCatalogIdsForBuild(context.definition, card.build)));
   const catalogs: RulesetCatalogEntriesById = {};
   // And the ones the party's calls kept outside a fight call from (1.790), to name the creature.

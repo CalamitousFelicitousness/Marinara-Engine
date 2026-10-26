@@ -1482,6 +1482,13 @@ function renderRulesetSheetSection(
     `The Engine keeps every character sheet. Record each change with one command per change, written where it happens:`,
     `- [sheet: who="Name" op="spend" pool="Pool" amount="N"] - uses up a resource. Refused when not enough is left.`,
     `- [sheet: who="Name" op="restore" pool="Pool" amount="N"] - gives it back, up to the maximum (healing included).`,
+    // A pool only a rest gives back (laptop 2026-10-26: a cleric's spell slots restored after a short
+    // rest that gives back none of them).
+    ...(ruleset.rests.length > 0
+      ? [
+          `  A pool only a rest gives back comes back with that rest's command, or with the use of an ability that recovers it; a bare restore of it is refused.`,
+        ]
+      : []),
     `- [sheet: who="Name" op="damage" pool="Pool" amount="N"] - takes it away, temporary points first.`,
     `- [sheet: who="Name" op="temp" pool="Pool" amount="N"] - sets temporary points on a pool that has them.`,
     `- [sheet: who="Name" op="track" track="Track" by="+1"] - or to="N" to set it.`,
@@ -1566,6 +1573,18 @@ function renderRulesetSheetSection(
             : []),
         ]
       : []),
+    // A ritual (1.799) pays no pool (laptop 2026-10-26: a ritual Detect Magic spent a slot).
+    ...(() => {
+      const marked = ruleset.sheet.lists.flatMap((list) => {
+        const column = list.ritual ? list.columns.find((one) => one.id === list.ritual) : undefined;
+        return column ? [`${column.label} on ${list.label}`] : [];
+      });
+      return marked.length && ruleset.catalogs?.some((catalog) => catalog.holds === "rows")
+        ? [
+            `- For an ability cast as a ritual outside a fight, add ritual="yes" to its use: it pays none of its pools. Only a row marked ${marked.join(" or ")} may be.`,
+          ]
+        : [];
+    })(),
     // What a use gives back that its user picks (1.397): Arcane Recovery's slots.
     ...(ruleset.catalogs?.some((catalog) => catalog.entries?.some((entry) => entry.mechanics?.recovers))
       ? [
@@ -2143,7 +2162,7 @@ export function buildGmFormatReminder(
       ...(experienceOwnsInventory
         ? []
         : [
-            `- [inventory: action="add|remove|give" item="Item A, Item B" count="3" who="Name" to="Name"] - every real item gain or loss, keep names short and use count/quantity for stacked items. Everyone in the party carries their own things: who is whose bag an item goes into or comes out of, and leaving it out means the player (a remove without who then takes from the rest of the party once the player has none). A give hands items from who to to. An item listed as "Nickname (Name)" is one item: write either name in item, never both. Never write result, reason or now yourself: the Engine adds them, and a refused one did not happen.`,
+            `- [inventory: action="add|remove|give" item="Item A, Item B" count="3" who="Name" to="Name"] - every real item gain or loss, keep names short and use count/quantity for stacked items. An add is only for what the story puts in their hands in this reply: found, looted, bought, made, or given by someone there; never to hand a character something they need right now that the story never gave them. Everyone in the party carries their own things: who is whose bag an item goes into or comes out of, and leaving it out means the player (a remove without who then takes from the rest of the party once the player has none). A give hands items from who to to. An item listed as "Nickname (Name)" is one item: write either name in item, never both. Never write result, reason or now yourself: the Engine adds them, and a refused one did not happen.`,
             // Things made to last only so long (1.747), counted on the game's clock: Creation's.
             ...(ctx.ruleset
               ? [
@@ -2185,7 +2204,7 @@ export function buildGmFormatReminder(
               : []),
             ...(ctx.ruleset?.catalogs?.some((catalog) => catalog.holds === "items")
               ? [
-                  `- [inventory: action="use" item="Name" who="Name"] - when a character uses one of the ruleset's items whose [brackets] say "use (...)". The Engine rolls what it does to whoever uses it, writes that on their sheet and spends the item, and the answer says what happened: narrate that, and what it does to anybody else. A player's message may end with an [item_used] block: the Engine already used that item the same way, so narrate it and never use or remove it again.`,
+                  `- [inventory: action="use" item="Name" who="Name"] - when a character uses one of the ruleset's items whose [brackets] say "use (...)". The Engine rolls what it does to whoever uses it, writes that on their sheet and spends the item, and the answer says what happened: narrate that, and what it does to anybody else. Every such item drunk, eaten or used takes this tag, and the tag alone: never also a [sheet:] restore for what it heals. A player's message may end with an [item_used] block: the Engine already used that item the same way, so narrate it and never use or remove it again.`,
                 ]
               : []),
             ...(coins.length

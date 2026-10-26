@@ -2,15 +2,20 @@
 // Game Master planning written out as prose
 // ──────────────────────────────────────────────
 
-/** The labels only a plan uses. A run of planning paragraphs is lifted only when one of its lines carries one. */
-const PLAN_ONLY_LABEL = /^\s*(?:[*_#>-]+\s*)?(?:opening scene|scene plan|plan|planning)(?:[*_]+)?\s*:/im;
+/**
+ * The labels only a plan uses. A run of planning paragraphs is lifted only when one of its lines carries one. "Hidden:"
+ * and "GM notes:" name what the player must not read yet (playtest 2026-10-26: a "Location / Stakes / Hidden" block
+ * opened the scene and gave its secret away).
+ */
+const PLAN_ONLY_LABEL =
+  /^\s*(?:[*_#>-]+\s*)?(?:opening scene|scene plan|plan|planning|hidden(?: (?:facts?|info|information|truths?))?|gm notes?)(?:[*_]+)?\s*:/im;
 /**
  * The labels a plan's other paragraphs open with, ahead of the plan or behind it, which no out-of-character answer
  * plausibly opens with. "Notes:", "Checks:", "Approach:", "Goals:", "Outline:" or "Next steps:" can open an answer or
  * a question to the player, so a paragraph opening with one of those ends the run.
  */
 const PLAN_PART_LABEL =
-  /^\s*(?:[*_#>-]+\s*)?(?:opening scene|scene plan|plan|planning|location|setting|beats?)(?:[*_]+)?\s*:/i;
+  /^\s*(?:[*_#>-]+\s*)?(?:opening scene|scene plan|plan|planning|location|setting|beats?|stakes|hidden(?: (?:facts?|info|information|truths?))?|gm notes?)(?:[*_]+)?\s*:/i;
 
 export interface LeadingPlanningExtraction {
   content: string;
@@ -36,6 +41,33 @@ export function extractLeadingGmPlanning(text: string): LeadingPlanningExtractio
   const content = paragraphs.slice(planned).join("").trimStart();
   if (!PLAN_ONLY_LABEL.test(planning)) return { content: text, planning: "" };
   return { content, planning };
+}
+
+/** A line that is only a markdown rule: three or more `-`, `*` or `_`, spaced or not. */
+const RULE_LINE = /^[^\S\r\n]*(?:(?:-[^\S\r\n]*){3,}|(?:\*[^\S\r\n]*){3,}|(?:_[^\S\r\n]*){3,})\r?$/;
+
+/**
+ * Drop the markdown rules (`---`, `***`, `___`) a Game Master writes between its notes and its scene (playtest
+ * 2026-10-26: a stray `---` after an OOC note showed in the story). The narration screen has no rule to draw, so a
+ * rule line is never story; a rule inside a bracket tag, such as a `[Book: ...]` the player reads, is kept.
+ */
+export function stripStrayRuleLines(text: string): string {
+  const lines = text.split("\n");
+  const kept: string[] = [];
+  let depth = 0;
+  for (const line of lines) {
+    if (depth === 0 && RULE_LINE.test(line)) continue;
+    kept.push(line);
+    for (const char of line) {
+      if (char === "[") depth++;
+      else if (char === "]" && depth > 0) depth--;
+    }
+  }
+  if (kept.length === lines.length) return text;
+  return kept
+    .join("\n")
+    .replace(/(?:\r?\n[^\S\r\n]*){3,}/g, "\n\n")
+    .trim();
 }
 
 /**

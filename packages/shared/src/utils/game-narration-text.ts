@@ -266,31 +266,46 @@ const SPEAKER_TYPE_RE = /^(?:main|side|extra|action|thought|whisper(?::[^[\]]*)?
  * Puts a speaker line written slightly off the taught `[Name] [type] [expression]: text` back into
  * that shape, so it shows as the character's line instead of raw brackets or a wrong speaker. Models
  * drift in a few fixed ways: two types (`[main] [side]`, the first is kept), a merged slot
- * (`[main|thinking]`), or a dash where the colon goes. A line with no type slot, or with no
- * bracket after the speaker, is returned as it is.
+ * (`[main|thinking]`), a dash where the colon goes, or the speaker written as a markdown link
+ * (`[Thistle](/whisper:Brannagh) [main] [scared]:`), whose target is read as one more slot. A line
+ * with no type slot, or with no bracket after the speaker, is returned as it is.
  */
 export function repairGameSpeakerLine(line: string): string {
   let at = 0;
   while (line[at] === " " || line[at] === "\t") at++;
-  const groups: string[] = [];
-  while (line[at] === "[" && groups.length < 6) {
+  const slots: string[] = [];
+  let groups = 0;
+  while (line[at] === "[" && groups < 6) {
     const close = line.indexOf("]", at);
     if (close < 0) return line;
     const inner = line.slice(at + 1, close).trim();
     if (!inner || inner.includes("[")) return line;
-    groups.push(inner);
+    slots.push(inner);
+    groups++;
     at = close + 1;
+    // A link-shaped speaker: `[Name](/whisper:Target)`. The parenthesis follows the name directly.
+    if (groups === 1 && line[at] === "(") {
+      const end = line.indexOf(")", at);
+      if (end < 0 || end - at > 120) return line;
+      const target = line
+        .slice(at + 1, end)
+        .trim()
+        .replace(/^\/+/, "");
+      if (/[[\]()\n]/.test(target)) return line;
+      if (SPEAKER_TYPE_RE.test(target)) slots.push(target);
+      at = end + 1;
+    }
     while (line[at] === " " || line[at] === "\t") at++;
   }
-  if (groups.length < 2) return line;
+  if (slots.length < 2) return line;
   let rest: string;
   if (line[at] === ":") rest = line.slice(at + 1);
   else if (/^[-–—]\s/u.test(line.slice(at, at + 2))) rest = line.slice(at + 1);
   else return line;
-  const [name, ...slots] = groups;
+  const [name, ...speakerSlots] = slots;
   // A command tag ahead of the speaker is not a speaker; the strippers take it out first.
   if (/^\w+\s*:/.test(name!)) return line;
-  const parts = slots.flatMap((slot) =>
+  const parts = speakerSlots.flatMap((slot) =>
     slot.includes("|")
       ? slot
           .split("|")

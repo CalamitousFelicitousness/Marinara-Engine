@@ -12712,6 +12712,16 @@ export function getCapabilityPackageInstallIssue(
   ) {
     return "A ruleset's translations (locales/<language>.json) require schemaVersion 2 and capabilityApi 1.798 or newer";
   }
+  // A list whose rows may be used as rituals, 1.799.
+  if (
+    !declaresApi(799) &&
+    (() => {
+      const lists = plainRecord(plainRecord(ruleset)?.sheet)?.lists;
+      return Array.isArray(lists) && lists.some((list) => plainRecord(list)?.ritual !== undefined);
+    })()
+  ) {
+    return "A ruleset whose list rows may be used as rituals (a list's ritual) requires schemaVersion 2 and capabilityApi 1.799 or newer";
+  }
   // Signature actions bought at a foe's turn start, 1.797.
   if (!declaresApi(797) && plainRecord(plainRecord(ruleset)?.combat)?.signatureAtTurnStart !== undefined) {
     return "A ruleset whose signature actions are bought at a turn's start (combat.signatureAtTurnStart) requires schemaVersion 2 and capabilityApi 1.797 or newer";

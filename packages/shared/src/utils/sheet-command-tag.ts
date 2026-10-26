@@ -211,6 +211,8 @@ export function parseSheetCommandTagBody(body: string): ParsedSheetCommandTag {
     if (recover === null) return parsed;
     // The creature it calls (1.790): `as="Owl"`, for a call that stays once the use is done.
     const as = values.get("as")?.trim();
+    // As a ritual (1.799): yes, true or on.
+    const ritual = /^(yes|true|on)$/i.test(values.get("ritual")?.trim() ?? "");
     return {
       ...parsed,
       op: {
@@ -219,6 +221,7 @@ export function parseSheetCommandTagBody(body: string): ParsedSheetCommandTag {
         ...(pool ? { pool } : {}),
         ...(recover.length ? { recover } : {}),
         ...(as ? { as } : {}),
+        ...(ritual ? { ritual: true as const } : {}),
       },
     };
   }
@@ -372,6 +375,7 @@ export function serializeSheetCommandTag(
       if (op.recover?.length)
         attribute("recover", op.recover.map((entry) => `${entry.pool}:${entry.count}`).join(", "));
       if (op.as) attribute("as", op.as);
+      if (op.ritual) attribute("ritual", "yes");
     } else if (op.op === "dismiss") {
       attribute("name", op.name);
     } else if (op.op === "pass") {

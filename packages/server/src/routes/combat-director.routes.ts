@@ -55,6 +55,7 @@ import {
   rulesetSheetBuildsByName,
   rulesetBudgetLevel,
   rulesetBudgetStandIns,
+  rulesetSheetDead,
   rulesetEncounterBudget,
   type Combatant,
   type DirectedCombatView,
@@ -1125,11 +1126,16 @@ export async function combatDirectorRoutes(
         ) {
           const definition = resolved.definition;
           const scale = definition.combat!.threat!.budget!;
+          // Weighed for those who will fight it: the party sent, and never the dead (laptop v3b 2026-10-26:
+          // two survivors were given servants worth a party of four).
+          const sent = new Set(input.party.map((member) => normalizeCharacterLookupName(member.name)));
+          const living = parseStoredRulesetLive((await visibleLiveRow(input.chatId)).row?.rulesetLive) ?? {};
+          const fighting = [...rulesetSheetBuildsByName(definition, meta.gameCharacterCards, null).entries()].filter(
+            ([key, build]) => (sent.size === 0 || sent.has(key)) && !rulesetSheetDead(definition, build, living[key]),
+          );
           const budget = rulesetEncounterBudget(
             definition,
-            [...rulesetSheetBuildsByName(definition, meta.gameCharacterCards, null).values()].map((build) =>
-              rulesetBudgetLevel(scale, build.fields),
-            ),
+            fighting.map(([, build]) => rulesetBudgetLevel(scale, build.fields)),
             normalizeGameDifficulty(setup.difficulty),
           );
           if (budget) {

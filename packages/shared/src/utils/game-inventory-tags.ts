@@ -946,6 +946,21 @@ export function refuseGameInventoryTags(content: string, reason: string): string
 /** The line a won fight's recap names what dropped on, already in the bags. */
 export const GAME_LOOT_GIVEN_LINE = "Loot (already in the party's bags): ";
 
+/** The line a fight's recap asks the Game Master for a reward on, where nothing dropped. It is for
+ *  the Game Master alone. */
+export const GAME_REWARD_PROMPT_LINE =
+  'Rewards: If a reward is narratively appropriate, decide it now and add it with [inventory: action="add" item="..."].';
+
+/** A fight's recap as the player is shown it: without the line that asks the Game Master for a
+ *  reward (cheap-GM playtest 2026-10-26: the Combat Result card read "Rewards: If a reward is
+ *  narratively appropriate, decide it now…"). Recaps saved before keep their own wording of it. */
+export function stripGameRewardPromptLine(recap: string): string {
+  return recap
+    .split("\n")
+    .filter((line) => !line.trim().startsWith("Rewards: If a reward is narratively appropriate"))
+    .join("\n");
+}
+
 /**
  * A reply's adds and earns of what a won fight already dropped, taken out once each: the recap the
  * reply answers says the loot is in the bags, and an add of it again counted it twice (laptop playtest

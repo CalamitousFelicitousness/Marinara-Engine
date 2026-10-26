@@ -265,12 +265,19 @@ export function rulesetSelfAim(view: DirectedRulesetView, option: DirectedRulese
 
 /** The alterations worth offering for an option (1.253): one that only spares its user's side
  *  (Sculpt Spells, Careful Spell) is left out of a shape no aim of which catches anybody of that
- *  side. An option aimed at targets rather than a square keeps them all. */
+ *  side. An option aimed at targets rather than a square keeps them all. One that gives it another
+ *  target (Twinned) needs somebody more to aim at, and one that stretches its range (Distant)
+ *  somebody beyond its reach (cheap-GM playtest 2026-10-26: every spell asked about Metamagic). */
 export function rulesetUsefulAlters(
   view: DirectedRulesetView,
   option: DirectedRulesetOption,
 ): NonNullable<DirectedRulesetOption["alters"]> {
-  const offers = option.alters ?? [];
+  const beyondReach = (option.beyond ?? []).some((one) => one.why === "out-of-reach");
+  const offers = (option.alters ?? []).filter(
+    (offer) =>
+      offer.id === option.alterNeeded ||
+      ((!offer.twins || option.targetIds.length > option.targets.count) && (!offer.ranges || beyondReach)),
+  );
   const sparing = (offer: (typeof offers)[number]) => !!offer.spares && offer.id !== option.alterNeeded;
   // Nothing aimed at a square catches anybody it did not pick: Light has nobody to spare.
   if (!option.area) return offers.filter((offer) => !sparing(offer));

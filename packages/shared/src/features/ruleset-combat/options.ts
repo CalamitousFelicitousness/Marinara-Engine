@@ -4428,6 +4428,10 @@ export function rulesetAlterOffers(
     const alter = one.alters;
     if (!alter || !rulesetAlterFits(alter, action) || !rulesetActionAvailable(actor, one, state, definition)) return [];
     if (!rulesetAlterLevelFits(alter, level)) return [];
+    // One that moves it to another budget only while that budget is left to spend and may pay for
+    // it (cheap-GM playtest 2026-10-26: Quickened asked about on every spell, the bonus action gone).
+    if (alter.budget && !budgetLeftFor(definition, state, actor, rulesetAlteredAction(action, [one]), alter.budget.to))
+      return [];
     const planned = planRulesetAlterCost(definition, actor, one, action);
     if (!planned) return [];
     // What it really spends: a feature with no uses to count (Sculpt Spells) costs nothing at all.
@@ -4451,9 +4455,24 @@ export function rulesetAlterOffers(
         ...(alter.spares ? { spares: alter.spares + (alter.sparesByLevel ? level : 0) } : {}),
         ...(alter.sparesByLevel ? { sparesByLevel: true as const } : {}),
         ...(alter.heightens ? { heightens: true as const } : {}),
+        ...(alter.range ? { ranges: true as const } : {}),
       },
     ];
   });
+}
+
+/** Whether the actor has this budget left to spend on the action now, on their own turn: one of it,
+ *  and no spell before it this turn that bars it (1.697). Off their turn nothing is spent from it. */
+function budgetLeftFor(
+  definition: RulesetDefinition,
+  state: RulesetEncounterState,
+  actor: RulesetCombatant,
+  action: RulesetCombatAction,
+  budget: string,
+): boolean {
+  if (!rulesetOnOwnTurn(state, actor)) return true;
+  if ((actor.budgets[budget] ?? 0) < 1) return false;
+  return !definition.combat || !rulesetBonusSpellBarred(definition, definition.combat, state, actor, action, budget);
 }
 
 /** One of the ways an attack may be made where initiative is a number attacks move. */

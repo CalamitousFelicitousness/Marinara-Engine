@@ -1115,7 +1115,7 @@ export function GameSetupWizard({
       characters.filter((c) => {
         const query = gmSearch.toLowerCase();
         const title = getCharacterTitle(c)?.toLowerCase() ?? "";
-        return c.name.toLowerCase().includes(query) || title.includes(query);
+        return (c.name ?? "").toLowerCase().includes(query) || title.includes(query);
       }),
     [characters, gmSearch],
   );
@@ -1126,7 +1126,7 @@ export function GameSetupWizard({
         if (c.id === gmCharacterId) return false;
         const query = partySearch.toLowerCase();
         const title = getCharacterTitle(c)?.toLowerCase() ?? "";
-        return c.name.toLowerCase().includes(query) || title.includes(query);
+        return (c.name ?? "").toLowerCase().includes(query) || title.includes(query);
       }),
     [characters, gmCharacterId, partySearch],
   );

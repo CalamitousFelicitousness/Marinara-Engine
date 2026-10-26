@@ -239,6 +239,12 @@ export function parseSheetCommandTagBody(body: string): ParsedSheetCommandTag {
     if (!entry) return parsed;
     return { ...parsed, op: { op: "dismiss", name: entry } };
   }
+  if (name === "prepare" || name === "unprepare") {
+    // What a caster has ready, changed in the story; `spell=` is read as `name=`, as on a use.
+    const entry = (values.get("name") ?? values.get("spell"))?.trim();
+    if (!entry) return parsed;
+    return { ...parsed, op: { op: name, name: entry } };
+  }
   const rest = values.get("rest")?.trim();
   if (!rest) return parsed;
   // Dice spent to heal on it (1.335): a count, or the tag does not say what it means.
@@ -384,7 +390,7 @@ export function serializeSheetCommandTag(
         attribute("recover", op.recover.map((entry) => `${entry.pool}:${entry.count}`).join(", "));
       if (op.as) attribute("as", op.as);
       if (op.ritual) attribute("ritual", "yes");
-    } else if (op.op === "dismiss") {
+    } else if (op.op === "dismiss" || op.op === "prepare" || op.op === "unprepare") {
       attribute("name", op.name);
     } else if (op.op === "pass") {
       attribute("days", op.days);

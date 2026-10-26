@@ -1403,7 +1403,12 @@ export type RulesetSheetOp =
     }
   /** Sends away what an entry used outside a fight called and kept (1.790), by the entry's name or
    *  the creature's: a familiar dismissed or lost. */
-  | { op: "dismiss"; name: string };
+  | { op: "dismiss"; name: string }
+  /** Ticks an entry's row in its list's prepared mark (`display.mark`, 1.378), or clears it with
+   *  `unprepare`: a cleric's spells changed after a long rest. A row the sheet does not hold is added
+   *  where the sheet's builder would let it be picked for that list. Resolved by
+   *  `applyRulesetPrepare`, because it needs the catalogs. */
+  | { op: "prepare" | "unprepare"; name: string };
 
 /** A pool a use gives back (1.397) and how many of it: one of the spell slots Arcane Recovery picks. */
 export interface RulesetUseRecover {
@@ -1451,6 +1456,10 @@ export type RulesetSheetRefusal =
   | "rest-only"
   /** A use as a ritual (1.799) of a row its list's `ritual` column does not tick. */
   | "not-ritual"
+  /** A use of an entry the sheet does not hold but could prepare, and how to. */
+  | `not-prepared: ${string}`
+  /** A prepare past what the sheet's builder lets it hold prepared, and how many that is. */
+  | `too-many-prepared: ${string}`
   /** Dying failures written up by hand outside a fight: only a roll or a blow while down marks them
    *  (cheap-GM playtest 2026-10-26). */
   | "dying-saves-rolled"
@@ -1479,6 +1488,8 @@ export const RULESET_SHEET_OP_NAMES = Object.freeze([
   "pass",
   "advance",
   "dismiss",
+  "prepare",
+  "unprepare",
 ] as const);
 
 /** How long a `now` summary may get before the tag layer would cut it anyway. */
@@ -1719,9 +1730,10 @@ export function applyRulesetSheetOp(
   /** The items the character carries, which a rest's dice read for an `itemStat` (1.337). */
   items?: ReadonlyArray<RulesetSheetItem>,
 ): RulesetSheetOpResult {
-  // `use` is turned into plain spends by `planRulesetUse` before it gets here: it needs the
-  // ruleset's catalogs, which this function deliberately does not take.
-  if (op.op === "use") return { ok: false, reason: "malformed" };
+  // `use` is turned into plain spends by `planRulesetUse` before it gets here, and `prepare` is
+  // applied by `applyRulesetPrepare`: both need the ruleset's catalogs, which this function
+  // deliberately does not take.
+  if (op.op === "use" || op.op === "prepare" || op.op === "unprepare") return { ok: false, reason: "malformed" };
   if (op.op === "advance") return advanceBuild(definition, build, stored, op);
   const next = readStoredLiveState(definition, build, stored);
   const resolved = resolveLive(definition, build, next, items);
@@ -2545,7 +2557,7 @@ export function rulesetEntryNamed(
   for (const list of definition.sheet.lists) {
     const rows = build.lists?.[list.id];
     if (!Array.isArray(rows)) continue;
-    const nameColumn = listNameColumn(definition, list);
+    const nameColumn = rulesetEntryNameColumn(definition, list);
     for (const row of rows) {
       if (!row || typeof row !== "object") continue;
       const cells = row as Record<string, unknown>;
@@ -2581,7 +2593,7 @@ export type RulesetUsePlan =
 
 /** The column a Game Master sees a row of this list under: what the sheet block prints it as, then
  *  the name a row pool is keyed by, then the first text column the list has. */
-function listNameColumn(definition: RulesetDefinition, list: RulesetList): string | undefined {
+export function rulesetEntryNameColumn(definition: RulesetDefinition, list: RulesetList): string | undefined {
   return (
     definition.gm.sheetSummary.lists.find((entry) => entry.list === list.id)?.nameColumn ??
     list.pools?.nameColumn ??
@@ -2717,7 +2729,7 @@ function rulesetSheetEntryCalling(
   for (const list of definition.sheet.lists) {
     const rows = build.lists?.[list.id];
     if (!Array.isArray(rows)) continue;
-    const nameColumn = listNameColumn(definition, list);
+    const nameColumn = rulesetEntryNameColumn(definition, list);
     for (const row of rows) {
       if (!row || typeof row !== "object") continue;
       const cells = row as Record<string, unknown>;
@@ -3398,12 +3410,33 @@ function rulesetSpendRestDice(
     if (taken > 0) plan.push({ entry, count: taken });
     left -= taken;
   }
+  // What each healed pool lacks of its maximum: dice spent only while there is some, and no more of
+  // them than it takes to fill it (cheap-GM playtest 2026-10-26: a party short rest with two dice
+  // spent them on characters already at full health).
+  const lacking = new Map<string, number>();
+  for (const entry of entries) {
+    const healed = pools.find((one) => !one.listId && one.key === entry.heals);
+    if (healed && !lacking.has(entry.heals))
+      lacking.set(entry.heals, Math.max(0, healed.max - healed.sealed - healed.value));
+  }
+  const full = (heals: string) => lacking.get(heals) === 0;
+  if (entries.every((entry) => full(entry.heals))) {
+    const labels = [...new Set(entries.map((entry) => entry.heals))].map(
+      (key) => pools.find((one) => !one.listId && one.key === key)?.label ?? key,
+    );
+    return {
+      ok: true,
+      live: readStoredLiveState(definition, build, stored),
+      now: `none spent: ${labels.join(", ")} already full`,
+    };
+  }
   if (left > 0) return { ok: false, reason: "insufficient" };
   const throwOne = (faces: number) => (roll ? Math.max(1, Math.min(faces, Math.trunc(roll(faces)))) : null);
   let live: unknown = stored;
   let last: RulesetSheetOpResult | null = null;
   const healing = new Map<string, number>();
   const rolls: Array<number | null> = [];
+  let spentCount = 0;
   for (const step of plan) {
     const sides = rulesetRestDieSides(definition, build, step.entry.die, evaluated);
     if (sides < 1) return { ok: false, reason: "malformed" };
@@ -3412,21 +3445,31 @@ function rulesetSpendRestDice(
     // Each die's healing made more (1.675): a Periapt of Wound Closure doubles it.
     const timesRead = step.entry.times ? resolveRulesetValueRef(definition, build, step.entry.times, evaluated) : 1;
     const times = Number.isFinite(timesRead) ? Math.max(1, timesRead) : 1;
+    // One die at a time, until the pool it heals is full.
+    const thrown: Array<number | null> = [];
+    let gained = 0;
+    while (thrown.length < step.count && (lacking.get(step.entry.heals) ?? Infinity) > gained) {
+      const rolled = throwOne(sides);
+      thrown.push(rolled);
+      gained += Math.max(0, (rolled ?? (sides + 1) / 2) + add) * times;
+    }
+    if (thrown.length === 0) continue;
+    const lacked = lacking.get(step.entry.heals);
+    if (lacked !== undefined) lacking.set(step.entry.heals, Math.max(0, lacked - gained));
     const spent = applyRulesetSheetOp(
       definition,
       build,
       live,
-      { op: "spend", pool: step.entry.pool, amount: step.count },
+      { op: "spend", pool: step.entry.pool, amount: thrown.length },
       roll,
       items,
     );
     if (!spent.ok) return spent;
     live = spent.live;
     last = spent;
-    const thrown = Array.from({ length: step.count }, () => throwOne(sides));
+    spentCount += thrown.length;
     rolls.push(...thrown);
-    const each = thrown.map((rolled) => Math.max(0, (rolled ?? (sides + 1) / 2) + add) * times);
-    healing.set(step.entry.heals, (healing.get(step.entry.heals) ?? 0) + each.reduce((sum, one) => sum + one, 0));
+    healing.set(step.entry.heals, (healing.get(step.entry.heals) ?? 0) + gained);
   }
   // The extra die once, whatever pools paid (Song of Rest), onto what the first of them heals.
   const extra = given ?? rulesetRestExtraDie(definition, build, restId, items, stored);
@@ -3439,6 +3482,7 @@ function rulesetSpendRestDice(
     extraSaid = ` +${gained}`;
   }
   const said = rolls.every((one) => one !== null) ? ` (${rolls.join(", ")})` : "";
+  const counted = spentCount < count ? `${spentCount} of ${count} spent${said}, full after` : `${count} spent${said}`;
   const healed: string[] = [];
   for (const [heals, amount] of healing) {
     const total = Math.floor(amount);
@@ -3463,6 +3507,6 @@ function rulesetSpendRestDice(
     last = restored;
     healed.push(restored.now);
   }
-  if (healed.length === 0) return { ...last!, now: `${count} spent${said}, no healing` };
-  return { ...last!, now: `${count} spent${said}${extraSaid}: ${healed.join("; ")}` };
+  if (healed.length === 0) return { ...last!, now: `${counted}, no healing` };
+  return { ...last!, now: `${counted}${extraSaid}: ${healed.join("; ")}` };
 }

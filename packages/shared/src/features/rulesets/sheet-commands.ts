@@ -44,6 +44,8 @@ import {
   readRulesetLive,
 } from "./live-state.js";
 import { rulesetSheetDead } from "./combat-bridge.js";
+import { applyRulesetPrepare, rulesetPreparableEntry } from "./prepare.js";
+import type { RulesetBuilderState } from "./sheet-builder.js";
 
 /** A priced material a cast used up (1.777): whose, and how many out of which of their stacks. */
 export interface RulesetMaterialTaken {
@@ -56,6 +58,9 @@ export interface SheetCommandCard {
   build: RulesetSheetBuild;
   /** What they carry, which a rest's dice read for an `itemStat` (1.337): Pell's Teapot. */
   items?: ReadonlyArray<RulesetSheetItem>;
+  /** The sheet's builder choices, whose picks say what its later steps offer: what a `prepare` may
+   *  add. Absent, what the sheet holds stands in for them. */
+  builder?: RulesetBuilderState;
 }
 
 export interface SheetCommandContext {
@@ -257,11 +262,20 @@ export function applySheetCommandTags(
   // and the first refusal refuses the whole command, with the sheet exactly as it was.
   const useOn = (card: SheetCommandCard, key: string, op: Extract<RulesetSheetOp, { op: "use" }>) => {
     const plan = planRulesetUse(ctx.definition, card.build, live[key], ctx.catalogs ?? {}, op);
-    if (!plan.ok)
-      return (
-        (plan.reason === "unknown-entry" && payNamedPool(card, key, op)) ||
-        ({ ok: false, reason: plan.reason } as const)
-      );
+    if (!plan.ok) {
+      if (plan.reason !== "unknown-entry") return { ok: false, reason: plan.reason } as const;
+      const paid = payNamedPool(card, key, op);
+      if (paid) return paid;
+      // Not on the sheet, but one it could prepare (playtest 2026-10-26: a cleric's ritual Detect
+      // Magic, swapped in for Sanctuary in the story with no command, refused as nothing known).
+      const preparable = rulesetPreparableEntry(ctx.definition, card.build, ctx.catalogs ?? {}, op.name, card.builder);
+      return preparable
+        ? ({
+            ok: false,
+            reason: `not-prepared: ${preparable} is not on ${card.name}'s sheet; prepare it first, with op=prepare name=${preparable}`,
+          } as const)
+        : ({ ok: false, reason: "unknown-entry" } as const);
+    }
     // The creature a call that stays calls (1.790), named before anything is paid for it.
     const kept = rulesetUseKeptCall(ctx.definition, card.build, ctx.catalogs ?? {}, op);
     if (kept && !kept.ok) return kept;
@@ -379,16 +393,33 @@ export function applySheetCommandTags(
     return { ...rested, live: (used.live ?? {}) as RulesetLiveState, now: [rested.now, ...used.now].join("; ") };
   };
 
+  // The pools each character's rest in this reply healed with its dice, by rest label: a restore of
+  // one written after it is left to the rest (cheap-GM playtest 2026-10-26: a sorcerer healed by his
+  // Hit Dice and again by a 2d6+2 restore the Game Master wrote beside the short rest).
+  const restHeals = new Map<string, Array<{ rest: string; pools: Set<string> }>>();
   const applyTo = (card: SheetCommandCard, op: RulesetSheetOp): RulesetSheetOpResult => {
     const key = normalizeCharacterLookupName(card.name);
     try {
-      if (op.op === "advance" && ctx.advancementRefusal) return { ok: false, reason: ctx.advancementRefusal };
+      // A prepare edits the build as an advance does, and is refused with it when the build cannot be saved.
+      if ((op.op === "advance" || op.op === "prepare" || op.op === "unprepare") && ctx.advancementRefusal)
+        return { ok: false, reason: ctx.advancementRefusal };
       if (op.op === "use") return useOn(card, key, op);
       const rest = op.op === "rest" ? restNamed(op.rest) : undefined;
       if (rest && restedAlready(key, rest.id)) return { ok: false, reason: "rested-already" };
       // Dice spent on a rest (1.335) take the party's best extra die (Song of Rest), whoever has it.
       const given = op.op === "rest" && op.dice && !op.extra ? { ...op, ...partyExtra(op.rest) } : op;
-      let result = applyRulesetSheetOp(ctx.definition, card.build, live[key], given, ctx.roll, card.items);
+      let result: RulesetSheetOpResult;
+      if (given.op === "prepare" || given.op === "unprepare") {
+        const prepared = applyRulesetPrepare(ctx.definition, card.build, ctx.catalogs ?? {}, given, card.builder);
+        result = prepared.ok
+          ? {
+              ok: true,
+              live: (live[key] ?? {}) as RulesetLiveState,
+              now: prepared.now,
+              ...(prepared.build !== card.build ? { build: prepared.build } : {}),
+            }
+          : prepared;
+      } else result = applyRulesetSheetOp(ctx.definition, card.build, live[key], given, ctx.roll, card.items);
       if (result.ok && op.op === "rest" && op.use) result = restEnds(card, op, result);
       // When it was taken, for the next.
       if (result.ok && rest) {
@@ -403,6 +434,11 @@ export function applySheetCommandTags(
         }
       }
       if (result.ok && op.op === "rest") rests.push({ who: card.name, rest: op.rest });
+      const diced = op.op === "rest" && (!!op.dice || Object.values(op.diceFrom ?? {}).some((count) => count > 0));
+      if (result.ok && rest && diced && !castsToo) {
+        const pools = new Set(rulesetRestDiceEntries(rest.dice).map((entry) => entry.heals));
+        restHeals.set(key, [...(restHeals.get(key) ?? []), { rest: rest.label, pools }]);
+      }
       return result;
     } catch {
       // A turn is never lost to its bookkeeping; an impossible command is simply refused.
@@ -687,6 +723,24 @@ export function applySheetCommandTags(
           ok: true,
           live: (live[key] ?? {}) as RulesetLiveState,
           now: `${reads ? `${reads}, ` : ""}left to the use of ${item}, which heals it`,
+        };
+      }
+      // A pool a rest's dice healed in this reply: the rest healed it, once.
+      const healedBy = restHeals.get(key);
+      const leftTo = healedBy?.findIndex(({ pools }) =>
+        [...pools].some(
+          (pool) =>
+            op.pool === pool ||
+            rulesetPoolKeyNamed(ctx.definition, card.build, live[key], op.pool, card.items) === pool,
+        ),
+      );
+      if (healedBy && leftTo !== undefined && leftTo >= 0) {
+        const { rest } = healedBy.splice(leftTo, 1)[0]!;
+        const reads = rulesetPoolNowText(ctx.definition, card.build, live[key], op.pool, card.items);
+        return {
+          ok: true,
+          live: (live[key] ?? {}) as RulesetLiveState,
+          now: `${reads ? `${reads}, ` : ""}left to the ${rest}, whose dice heal it`,
         };
       }
       // A pool only a rest gives back (laptop 2026-10-26: a cleric's spell slots restored beside a

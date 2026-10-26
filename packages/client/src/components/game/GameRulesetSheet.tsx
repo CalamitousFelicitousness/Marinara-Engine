@@ -103,11 +103,20 @@ const SHEET_REFUSAL_KEYS: Readonly<Record<string, string>> = Object.freeze({
   "cannot-heal": "game.ruleset.sheet.refusal.cannotHeal",
   "dying-saves-rolled": "game.ruleset.sheet.refusal.dyingSavesRolled",
   "rested-already": "game.ruleset.sheet.refusal.restedAlready",
+  "not-prepared": "game.ruleset.sheet.refusal.notPrepared",
+  "too-many-prepared": "game.ruleset.sheet.refusal.tooManyPrepared",
   malformed: "game.ruleset.sheet.refusal.malformed",
   "unknown-character": "game.ruleset.sheet.refusal.unknownCharacter",
   "ambiguous-character": "game.ruleset.sheet.refusal.ambiguousCharacter",
   "too-many": "game.ruleset.sheet.refusal.tooMany",
 });
+
+/** The phrase for a reason, by the code before any detail after its colon ("not-prepared: ..."). */
+function refusalKey(reason: string): string {
+  return (
+    SHEET_REFUSAL_KEYS[reason] ?? SHEET_REFUSAL_KEYS[reason.split(":")[0]!.trim()] ?? "game.ruleset.sheet.refusal.other"
+  );
+}
 
 /** One line naming every sheet change the Engine refused in a turn, or null when it refused none.
  *  The narration may well claim the spend happened, so the player is told it did not. */
@@ -121,7 +130,7 @@ export function describeRefusedSheetCommands(content: string, t: TFunction): str
           entry.sheet === "party"
             ? t("game.ruleset.party.title")
             : entry.who || t("game.ruleset.sheet.refusal.someone"),
-        reason: t(SHEET_REFUSAL_KEYS[entry.reason ?? ""] ?? "game.ruleset.sheet.refusal.other"),
+        reason: t(refusalKey(entry.reason ?? "")),
       }),
     )
     .join(" ");

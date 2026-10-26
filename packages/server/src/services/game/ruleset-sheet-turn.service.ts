@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import { roomHostIdentity } from "../multiplayer/generation-policy.js";
 // ──────────────────────────────────────────────
 // Game: one turn of a ruleset game's live sheet state
@@ -40,6 +41,9 @@ import {
   type GameInventoryStack,
   type RulesetItemBook,
   readRulesetPartySheet,
+  readRulesetBuilderState,
+  rulesetEntryNamed,
+  rulesetPrepareCatalogIds,
   applyGameInventoryTags,
   createInventoryTagRegex,
   parseInventoryTagBody,
@@ -112,7 +116,9 @@ export function sheetCommandCards(
       logger.warn("[game/sheet] The ruleset sheet for %s is unreadable; its live state is left alone", name);
       return [];
     }
-    return [{ name, build: envelope.build }];
+    // The builder's picks say what a `prepare` may add to the sheet.
+    const builder = readRulesetBuilderState(card.rulesetSheet);
+    return [{ name, build: envelope.build, ...(Object.keys(builder).length > 0 ? { builder } : {}) }];
   });
 }
 
@@ -451,7 +457,9 @@ function replyUsesCatalogEntry(content: string, definition: RulesetDefinition): 
     const op = parseSheetCommandTagBody(match[1] ?? "").op;
     // A rest that uses a feature as it ends (1.776) reads that feature's entry too (ship readiness:
     // Arcane Recovery off the Game Master's rest tag gave back nothing).
-    if (op?.op === "use" || (op?.op === "rest" && op.use)) return true;
+    // A prepare reads the catalogs its entry may be added from.
+    if (op?.op === "use" || op?.op === "prepare" || op?.op === "unprepare" || (op?.op === "rest" && op.use))
+      return true;
     // So does a restore of anything but health: a pool only a rest gives back may come back through
     // the feature that gives it back (laptop 2026-10-26: Arcane Recovery's slot, its use unspent).
     if (
@@ -488,6 +496,27 @@ export function rulesetTurnCalledCatalogs(catalogs: RulesetCatalogEntriesById, c
   );
 }
 
+/** The catalogs a `prepare` adds an entry from (a class's spell list, and the class it reads), for a
+ *  reply that prepares one, or that uses one no sheet holds: its refusal says to prepare it first,
+ *  where it could be. */
+export function rulesetTurnPrepareCatalogs(
+  context: Pick<GameRulesetSheetContext, "definition" | "cards">,
+  catalogs: RulesetCatalogEntriesById,
+  content: string,
+): string[] {
+  const ops = [...content.matchAll(createSheetCommandTagRegex())].map(
+    (match) => parseSheetCommandTagBody(match[1] ?? "").op,
+  );
+  const reads =
+    ops.some((op) => op?.op === "prepare" || op?.op === "unprepare") ||
+    ops.some(
+      (op) =>
+        op?.op === "use" &&
+        !context.cards.some((card) => rulesetEntryNamed(context.definition, card.build, catalogs, op.name).ok),
+    );
+  return reads ? rulesetPrepareCatalogIds(context.definition) : [];
+}
+
 /** The catalog entries this reply's `use` commands need: nothing at all unless the reply carries
  *  one, and then only the catalogs the party's own rows point at. A catalog that cannot be read is
  *  logged and left out, and the command is refused as naming something the Engine does not know,
@@ -510,6 +539,7 @@ export async function loadTurnRulesetCatalogs(
       const calledFrom = rulesetTurnCalledCatalogs(catalogs, content);
       wanted.clear();
       for (const id of calledFrom) if (!catalogs[id]) wanted.add(id);
+      for (const id of rulesetTurnPrepareCatalogs(context, catalogs, content)) if (!catalogs[id]) wanted.add(id);
     }
     for (const catalog of declared) {
       if (!wanted.has(catalog.id)) continue;
@@ -747,7 +777,8 @@ export async function saveGameRulesetAdvancement(
   turn: Pick<GameRulesetSheetTurn, "builds" | "baseBuilds">,
 ): Promise<void> {
   const { builds, baseBuilds } = turn;
-  if (!definition.sheet.advancement && !definition.party) return;
+  // A prepare edits the build on a ruleset with neither advancement nor a party sheet.
+  if (!definition.sheet.advancement && !definition.party && Object.keys(builds).length === 0) return;
   const chats = createChatsStorage(db);
   await withChatMetadataPatchQueue(chatId, () =>
     withMessageExtraPatchQueue(messageId, () =>
@@ -815,6 +846,13 @@ export async function saveGameRulesetAdvancement(
                       throw new Error(`Advancement conflicts with an edited ${group}.${id}`);
                     (current[group] as Record<string, string | number | boolean>)[id] = value;
                   }
+                }
+                // A list a prepare changed (its prepared marks, a row it added), whole.
+                for (const [id, rows] of Object.entries(build.lists)) {
+                  if (isDeepStrictEqual(rows, base.lists[id])) continue;
+                  if (!isDeepStrictEqual(current.lists[id], base.lists[id]))
+                    throw new Error(`Advancement conflicts with an edited lists.${id}`);
+                  current.lists[id] = rows;
                 }
                 after = rulesetSheetEnvelopeSchema.parse({
                   ...migrated,

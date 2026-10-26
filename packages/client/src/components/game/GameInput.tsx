@@ -58,6 +58,8 @@ interface GameInputProps {
   draftKey?: string;
   /** Increment to request focus on the textarea (used by the Interrupt button to jump the player into typing). */
   focusToken?: number;
+  /** Increment to send what the input holds, as Send would (Retry after a turn that failed before it was saved). */
+  sendToken?: number;
   /** Trigger the same scene illustration action exposed in the Game Gallery. */
   onIllustrate?: () => void | Promise<void>;
   spatialCapabilityEnabled?: boolean;
@@ -140,6 +142,7 @@ export function GameInput({
   inline,
   draftKey,
   focusToken,
+  sendToken,
   onIllustrate,
   spatialCapabilityEnabled = false,
   interruptMode,
@@ -312,6 +315,15 @@ export function GameInput({
       });
     }
   };
+
+  const handleSendRef = useRef(handleSend);
+  handleSendRef.current = handleSend;
+  const lastSendTokenRef = useRef(sendToken ?? 0);
+  useEffect(() => {
+    if (!sendToken || lastSendTokenRef.current === sendToken) return;
+    lastSendTokenRef.current = sendToken;
+    void handleSendRef.current();
+  }, [sendToken]);
 
   const handleKeyDown = (e: KeyboardEvent) => {
     const shouldSend = enterToSend ? e.key === "Enter" && !e.shiftKey : e.key === "Enter" && (e.metaKey || e.ctrlKey);

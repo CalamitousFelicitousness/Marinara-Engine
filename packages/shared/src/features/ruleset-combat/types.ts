@@ -4458,6 +4458,8 @@ export interface RulesetCombatAlterOffer {
   /** It gives one it catches disadvantage on their first save (Heightened), picked by `heightens`
    *  (1.255). */
   heightens?: true;
+  /** It stretches the action's range (Distant): of use only with somebody beyond its reach now. */
+  ranges?: true;
 }
 
 export interface RulesetCombatOption {

@@ -96,10 +96,11 @@ const example = () => JSON.parse(readSource("docs/development/ruleset-5e-2014.ex
   assert.equal(after.find((p) => p.key === "hp")!.value, 19, "three dice of 3 heal 9");
   assert.equal(after.find((p) => p.key === "hit_dice")!.value, 2);
   assert.equal(after.find((p) => p.key === "hit_dice_small")!.value, 0);
+  // Below full health, so the dice are wanted (at full a rest spends none).
   const tooMany = applyRulesetSheetOp(
     definition,
     build,
-    {},
+    { pools: { hp: { value: 10 } } },
     { op: "rest", rest: "short", diceFrom: { hit_dice_small: 3 } },
     () => 3,
   );

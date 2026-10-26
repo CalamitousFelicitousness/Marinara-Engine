@@ -335,10 +335,10 @@ export function repairGameSpeakerLine(line: string): string {
     while (line[at] === " " || line[at] === "\t") at++;
   }
   if (slots.length < 2) return line;
-  let rest: string;
+  let rest: string | null;
   if (line[at] === ":") rest = line.slice(at + 1);
   else if (/^[-–—]\s/u.test(line.slice(at, at + 2))) rest = line.slice(at + 1);
-  else return line;
+  else rest = null;
   const [name, ...speakerSlots] = slots;
   // A command tag ahead of the speaker is not a speaker; the strippers take it out first.
   if (/^\w+\s*:/.test(name!)) return line;
@@ -352,8 +352,41 @@ export function repairGameSpeakerLine(line: string): string {
   );
   const type = parts.find((part) => SPEAKER_TYPE_RE.test(part));
   if (!type) return line;
+  // A thought with no colon at all (cheap-GM playtest 2026-10-26: `[Saffron Reyes] [thought] ...`
+  // showed as narration) is the thought all the same. Any other type without one may be prose about
+  // the character (`[Alice] [main] [happy] waves.`), and is left as it is.
+  if (rest === null) {
+    if (type.toLowerCase() !== "thought") return line;
+    rest = line.slice(at);
+  }
   const expression = parts.filter((part) => !SPEAKER_TYPE_RE.test(part)).at(-1);
   return `[${name}] [${type}]${expression ? ` [${expression}]` : ""}: ${rest.trim()}`;
+}
+
+const BARE_THOUGHT_LINE_RE = /^\s*\[[^[\]]+\]\s*\[thought\]\s*(?:\[[^[\]]+\]\s*)?:\s*$/i;
+
+/** A thought line with nothing after it (`[Saffron Reyes] [thought]` on a line of its own) takes the
+ *  next line that has text as what they think. */
+function joinBareThoughtLines(lines: string[]): string[] {
+  const joined: string[] = [];
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index]!;
+    if (!BARE_THOUGHT_LINE_RE.test(line)) {
+      joined.push(line);
+      continue;
+    }
+    let next = index + 1;
+    while (next < lines.length && !lines[next]!.trim()) next++;
+    const text = lines[next]?.trim();
+    // Not another tagged line or a readable, which carry their own.
+    if (!text || text.startsWith("[") || text.startsWith("__READABLE_")) {
+      joined.push(line);
+      continue;
+    }
+    joined.push(`${line.trimEnd()} ${text}`);
+    index = next;
+  }
+  return joined;
 }
 
 /** Split a Game turn into the narration, dialogue and readable beats the narration screen shows. */
@@ -399,12 +432,14 @@ export function parseGameNarrationSegments(
   }
 
   // Repaired before the inline split, which would read the second slot of `[Name] [main] [side]:` as a speaker.
-  const lines = normalizeInlineVnDialogueLines(
-    source
-      .split(/\r?\n/)
-      .map((line) => repairGameSpeakerLine(line))
-      .join("\n"),
-  ).split(/\r?\n/);
+  const lines = joinBareThoughtLines(
+    normalizeInlineVnDialogueLines(
+      source
+        .split(/\r?\n/)
+        .map((line) => repairGameSpeakerLine(line))
+        .join("\n"),
+    ).split(/\r?\n/),
+  );
   const parsed: GameNarrationTextSegment[] = [];
   // Readable placeholder regex
   const readablePlaceholderRe = /^__READABLE_(\d+)__$/;

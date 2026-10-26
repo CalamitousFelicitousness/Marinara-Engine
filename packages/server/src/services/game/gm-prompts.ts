@@ -1588,6 +1588,19 @@ function renderRulesetSheetSection(
           ]
         : [];
     })(),
+    // What a caster has ready (1.378's prepared mark), changed in the story (playtest 2026-10-26: a
+    // cleric swapping Sanctuary for Detect Magic after a long rest, with no command to write).
+    ...(() => {
+      const marked = ruleset.sheet.lists.flatMap((list) => {
+        const column = list.display?.mark ? list.columns.find((one) => one.id === list.display!.mark) : undefined;
+        return column ? [`${column.label} on ${list.label}`] : [];
+      });
+      return marked.length && ruleset.catalogs?.some((catalog) => catalog.holds === "rows")
+        ? [
+            `- [sheet: who="Name" op="prepare" name="Ability"] marks it ${marked.join(" or ")}, adding it from what they could pick; op="unprepare" clears it. When the story has a caster change what they have prepared, write one for each ability changed.`,
+          ]
+        : [];
+    })(),
     // What a use gives back that its user picks (1.397): Arcane Recovery's slots.
     ...(ruleset.catalogs?.some((catalog) => catalog.entries?.some((entry) => entry.mechanics?.recovers))
       ? [

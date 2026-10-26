@@ -2897,6 +2897,7 @@
   "game.combat.ruleset.note.unreadable": "The proposed stat block for {{name}} could not be read, so its tier was used.",
   "game.combat.ruleset.note.untyped": "The damage type \"{{type}}\" is not one this ruleset has, so \"{{action}}\" deals untyped damage.",
   "game.combat.ruleset.note.valueSet": "{{field}} {{from}} was set to {{to}}.",
+  "game.combat.ruleset.note.writtenArea": "\"{{action}}\" was written as a breath or an area, so it lands in an area against a save and comes back on a recharge.",
   "game.combat.ruleset.note.writtenWeapons": "{{name}} was written with {{weapons}}, which the {{creature}} of the bestiary has none of, so it was built at {{tier}} instead.",
   "game.combat.ruleset.option.ammo": "{{count}} to shoot",
   "game.combat.ruleset.option.ammoToLoad": "{{count}} to load",

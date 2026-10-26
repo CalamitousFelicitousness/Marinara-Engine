@@ -160,6 +160,8 @@ import {
   RULESET_PROPOSED_SHEET_REPLACES,
   rulesetProposedStatBlock,
   rulesetTierStatBlock,
+  rulesetWrittenArea,
+  rulesetWrittenAreaAction,
   rulesetSheetBuildSchema,
   rulesetBestiaryReaction,
   rulesetBestiaryActionNamed,
@@ -625,6 +627,10 @@ export interface RulesetFightOpponent {
     spell?: true;
     /** What it costs out of a boss's points between turns, as the Game Master wrote it. */
     legendary?: number;
+    /** Marked as reaching more than one (an area, or every foe), and what was written of it: a breath,
+     *  a cone or a line is built as a save against an area. */
+    area?: true;
+    description?: string;
   }>;
   /** A boss's points to spend between turns, as the Game Master wrote it. */
   points?: number;
@@ -802,6 +808,45 @@ function rulesetFoeAsWritten(
     creature: found.entry.label,
     weapons: written.map((one) => one.name),
   };
+}
+
+/**
+ * An invented opponent's actions, each its writer said lands in an area built as the bestiary's breaths
+ * are, and said (laptop playtest 2026-10-26: an invented young red dragon's Rot Breath rolled to hit one
+ * hero, every round for five rounds). The same list when none is.
+ */
+function rulesetWrittenAreas<
+  T extends { name: string; damage?: unknown; area?: unknown; save?: unknown; signature?: unknown },
+>(
+  definition: RulesetDefinition,
+  bestiary: RulesetCatalogEntriesById,
+  opponent: RulesetFightOpponent,
+  actions: T[],
+  tierId: string | undefined,
+  adjustments: string[],
+): T[] {
+  const plain = (text: string) => text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+  let changed = false;
+  const built = actions.map((action) => {
+    // What its points buy is bought after, from what this leaves.
+    if (action.signature) return action;
+    const written = opponent.attacks?.find(
+      (one) => !one.reaction && !one.kind && plain(one.name) === plain(action.name),
+    );
+    const said = rulesetWrittenArea({
+      name: action.name,
+      ...(written?.description ? { description: written.description } : {}),
+      ...(written?.area ? { area: true } : {}),
+    });
+    const area = said ? rulesetWrittenAreaAction(definition, bestiary, action, said, tierId) : null;
+    if (!area) return action;
+    changed = true;
+    adjustments.push(
+      `${opponent.name}: "${action.name}" was written as a breath or an area, so it lands in an area against a save and comes back on a recharge.`,
+    );
+    return area;
+  });
+  return changed ? built : actions;
 }
 
 /** The walk most of a bestiary's creatures have, or none when no creature in it says a speed. */
@@ -1189,6 +1234,20 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
         } as unknown as typeof proposed;
       }
     }
+    // What its writer said lands in an area is a save against one, back on a recharge, before anything
+    // is bought with its points.
+    if (proposed?.success) {
+      const actions = rulesetWrittenAreas(
+        definition,
+        input.bestiary,
+        opponent,
+        proposed.data.actions,
+        opponent.tier ?? proposed.data.tier,
+        adjustments,
+      );
+      if (actions !== proposed.data.actions)
+        proposed = { success: true, data: { ...proposed.data, actions } } as unknown as typeof proposed;
+    }
     // What a boss's writer gave a price out of its points is bought with them between turns, as a
     // bestiary's legendary actions are (laptop pass 6 2026-10-26: a legendary Archmage's Ray of Frost
     // and Chill Touch at a cost of 1 were never cast): its spells as a lich's Cantrip, at the least any of
@@ -1562,11 +1621,19 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
       adjustments.push(`The tier "${opponent.tier}" is not on this ruleset's scale, so ${built.tier.label} was used.`);
     }
     adjustments.push(`${opponent.name} was built from the numbers of ${built.tier.label}.`);
+    const actions = rulesetWrittenAreas(
+      definition,
+      input.bestiary,
+      opponent,
+      built.block.actions,
+      built.tier.id,
+      adjustments,
+    );
     combatants.push({
       id: opponent.id,
       name: opponent.name,
       side: "enemy",
-      block: typed(withUsualSpeed(withReactions(built.block)), opponent.creatureType),
+      block: typed(withUsualSpeed(withReactions({ ...built.block, actions })), opponent.creatureType),
     });
   }
 

@@ -53,6 +53,8 @@ export const RULESET_FIGHT_NOTES = {
   noReaction: 'this ruleset has no reaction called "{{action}}".',
   noItem: 'the ruleset has no item called "{{item}}", so it was not given.',
   sheetSays: "its sheet says its {{keys}}, so the numbers written beside it were not used.",
+  writtenArea:
+    '"{{action}}" was written as a breath or an area, so it lands in an area against a save and comes back on a recharge.',
   // ── An invented stat block held to its tier ──
   spellListDropped: "Spellcasting carried a spell list the threat scale cannot bound, so it was dropped.",
   healingDropped: '"{{action}}" carried healing or targets the threat scale cannot bound, so they were dropped.',

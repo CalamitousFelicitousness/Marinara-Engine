@@ -1413,6 +1413,10 @@ export async function combatDirectorRoutes(
                       ...(skill.type !== "attack" ? { kind: skill.type } : {}),
                       ...(skill.spell ? { spell: true as const } : {}),
                       ...(skill.legendaryCost ? { legendary: skill.legendaryCost } : {}),
+                      // What reaches more than one, and its own words, so a breath, a cone or a line is
+                      // built as an area its targets save against (laptop playtest 2026-10-26).
+                      ...(skill.areaRadius || skill.targetScope === "all-enemies" ? { area: true as const } : {}),
+                      ...(skill.description ? { description: skill.description } : {}),
                     })),
                   }
                 : {}),

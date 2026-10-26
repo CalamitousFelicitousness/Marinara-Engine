@@ -479,6 +479,140 @@ export function rulesetTierStatBlock(
 /** How many named attacks an opponent built off its tier keeps. */
 export const RULESET_TIER_ATTACK_NAMES_MAX = 4;
 
+/** An invented action as its writer said it: its name, the words they wrote of it, and whether they
+ *  marked it as reaching an area. */
+export interface RulesetWrittenAttack {
+  name: string;
+  description?: string;
+  area?: boolean;
+}
+
+/** What a breath that lands in an area comes back on when no creature of the ruleset says: 5 or 6 on a d6. */
+const RULESET_AREA_RECHARGE_USUAL = { dice: { count: 1, sides: 6 }, from: 5 } as const;
+
+/**
+ * Whether an invented action lands in an area, by its writer's words (laptop playtest 2026-10-26: an
+ * invented young red dragon's Rot Breath rolled to hit one hero every round): a breath by its name, a
+ * cone or a line by its name or what was written of it, or one marked as an area. The shape it was
+ * said to take; null for a blow at one.
+ */
+export function rulesetWrittenArea(written: RulesetWrittenAttack): { breath: boolean; shape?: "cone" | "line" } | null {
+  const words = `${written.name} ${written.description ?? ""}`.toLowerCase().split(/[^\p{L}\p{N}]+/u);
+  const breath = words.some((word) => /^breath(e|es|ed|ing|s)?$/.test(word));
+  // A line in its description only as a shape ("in a line", "a 30-foot line"), never a line of soldiers.
+  const lined =
+    written.name
+      .toLowerCase()
+      .split(/[^\p{L}\p{N}]+/u)
+      .includes("line") || /\b(?:in a|\d+[- ]?(?:foot|feet|ft\.?)) line\b/i.test(written.description ?? "");
+  const shape = words.includes("cone") ? "cone" : lined ? "line" : undefined;
+  if (!breath && !shape && !written.area) return null;
+  return { breath, ...(shape ? { shape } : {}) };
+}
+
+/**
+ * An invented action its writer said lands in an area, built as this ruleset's bestiary builds its
+ * breaths: the bestiary's own area action nearest it (the same shape, one that recharges, a breath
+ * for a breath, then the nearest tier) lends its shape, size, save, recharge and how many it catches
+ * off a board, and the tier its difficulty. Half on a success; its damage stays its own, and it no
+ * longer rolls to hit. With no such action in the bestiary, a cone of three cells against the save its
+ * creatures roll most, back on what their recharges usually are, else a 5 or 6. Null where it cannot be
+ * one: it deals no damage, already lands in an area or asks for a save, or the sheet has no save to roll.
+ */
+export function rulesetWrittenAreaAction<
+  T extends {
+    name: string;
+    damage?: unknown;
+    area?: unknown;
+    save?: unknown;
+    sequence?: unknown;
+    casting?: unknown;
+    reaction?: unknown;
+    heal?: unknown;
+    self?: unknown;
+  },
+>(
+  definition: RulesetDefinition,
+  catalogs: RulesetCatalogEntriesById,
+  action: T,
+  said: { breath: boolean; shape?: "cone" | "line" },
+  tierId: string | undefined,
+): T | null {
+  if (!action.damage || action.area || action.save || action.sequence || action.casting || action.reaction) return null;
+  if (action.heal !== undefined || action.self) return null;
+  const saves = new Set(definition.sheet.saves.map((save) => save.id));
+  if (saves.size === 0) return null;
+  const scale = definition.combat?.threat?.tiers ?? [];
+  const rung = (id: string | undefined) => scale.findIndex((tier) => tier.id === id);
+  const at = rung(tierId);
+  type Model = { action: RulesetCreatureAction; rung: number };
+  const models: Model[] = [];
+  const counted = new Map<string, number>();
+  const recharges = new Map<string, { count: number; recharge: NonNullable<RulesetCreatureAction["recharge"]> }>();
+  for (const entries of Object.values(catalogs))
+    for (const entry of entries)
+      for (const one of entry.creature?.actions ?? []) {
+        if (one.reaction || one.lair || one.signature) continue;
+        if (one.save && saves.has(one.save.save)) counted.set(one.save.save, (counted.get(one.save.save) ?? 0) + 1);
+        if (one.recharge) {
+          const key = `${one.recharge.dice.count}d${one.recharge.dice.sides}:${one.recharge.from}`;
+          recharges.set(key, { count: (recharges.get(key)?.count ?? 0) + 1, recharge: one.recharge });
+        }
+        const area = one.area;
+        if (!area || area.around || area.aroundProp || area.shape === "wall" || !one.save || !one.damage) continue;
+        if (!saves.has(one.save.save)) continue;
+        models.push({ action: one, rung: rung(entry.creature?.tier) });
+      }
+  const breathy = (one: RulesetCreatureAction) => rulesetWrittenArea({ name: one.name })?.breath === true;
+  // The one nearest what was said: its shape first, then a recharge, a breath for a breath, the tier.
+  const score = (model: Model) => [
+    said.shape && model.action.area!.shape !== said.shape ? 1 : 0,
+    model.action.recharge ? 0 : 1,
+    said.breath && !breathy(model.action) ? 1 : 0,
+    at < 0 || model.rung < 0 ? 0 : Math.abs(model.rung - at),
+  ];
+  const model = models
+    .map((one) => ({ one, by: score(one) }))
+    .sort((left, right) => {
+      for (let index = 0; index < left.by.length; index++)
+        if (left.by[index] !== right.by[index]) return left.by[index]! - right.by[index]!;
+      return 0;
+    })[0]?.one.action;
+  const borrowed = model && (!said.shape || model.area!.shape === said.shape) ? model : undefined;
+  const most = [...counted.entries()].sort((left, right) => right[1] - left[1])[0]?.[0];
+  const save = model?.save?.save ?? most ?? definition.sheet.saves[0]!.id;
+  const usual = [...recharges.values()].sort((left, right) => right.count - left.count)[0]?.recharge;
+  const recharge = model?.recharge ?? usual ?? RULESET_AREA_RECHARGE_USUAL;
+  const tier = scale[at];
+  const difficulty = tier?.saveDifficulty ?? model?.save?.difficulty ?? 10;
+  const perCell = definition.combat?.distance?.perCell ?? 1;
+  const shape = said.shape ?? model?.area!.shape ?? "cone";
+  const {
+    toHit: _toHit,
+    autoHit: _autoHit,
+    upgrades: _upgrades,
+    range: _range,
+    targetCount: _count,
+    ...rest
+  } = action as T & { toHit?: unknown; autoHit?: unknown; upgrades?: unknown; range?: unknown; targetCount?: unknown };
+  return {
+    ...rest,
+    area: borrowed
+      ? {
+          shape,
+          size: borrowed.area!.size,
+          ...(borrowed.area!.width !== undefined ? { width: borrowed.area!.width } : {}),
+          ...(borrowed.area!.friendlyFire !== undefined ? { friendlyFire: borrowed.area!.friendlyFire } : {}),
+        }
+      : { shape, size: 3 * perCell },
+    // A burst lent from a creature that aims it somewhere is aimed as far; a cone or a line from where it stands.
+    ...(borrowed?.range !== undefined && shape === "burst" ? { range: borrowed.range } : {}),
+    save: { save, difficulty, onSuccess: "half" },
+    recharge: { dice: { ...recharge.dice }, from: recharge.from },
+    ...(model?.targetCount !== undefined ? { targetCount: model.targetCount } : { targetCount: 2 }),
+  } as unknown as T;
+}
+
 /**
  * A reaction a creature of this ruleset's bestiaries has, found by its name, as a stat block takes it
  * (laptop playtest 2026-10-25: the Game Master gave an invented duelist a "Parry", which nothing in the

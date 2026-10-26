@@ -264,6 +264,95 @@ assert.equal(
   "Game narration keeps its dedicated voice alongside the assigned persona",
 );
 
+// Execute the component's actual blocking effect with finished and interrupted playback state.
+function mentionsIdentifier(node: ts.Node, name: string): boolean {
+  if (ts.isIdentifier(node) && node.text === name) return true;
+  return ts.forEachChild(node, (child) => (mentionsIdentifier(child, name) ? true : undefined)) === true;
+}
+const voiceBlockingEffects: Array<ts.ArrowFunction | ts.FunctionExpression> = [];
+function findVoiceBlockingEffect(node: ts.Node): void {
+  if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "useEffect") {
+    const callback = node.arguments[0];
+    if (
+      callback &&
+      (ts.isArrowFunction(callback) || ts.isFunctionExpression(callback)) &&
+      mentionsIdentifier(callback, "gameVoicePlaybackBlocked") &&
+      mentionsIdentifier(callback, "stopGameVoicePlayback")
+    )
+      voiceBlockingEffects.push(callback);
+  }
+  ts.forEachChild(node, findVoiceBlockingEffect);
+}
+findVoiceBlockingEffect(narration);
+const voiceBlockingEffect = voiceBlockingEffects[0];
+assert.ok(voiceBlockingEffect);
+const blockingEffectCode = ts.transpileModule(`(${voiceBlockingEffect.getText(narration)})();`, {
+  compilerOptions: { target: ts.ScriptTarget.ES2022 },
+}).outputText;
+function runVoiceBlockingEffect(overrides: Record<string, unknown> = {}) {
+  const calls = { stopped: 0, retryCleared: 0 };
+  const state = {
+    gameVoiceEnabled: true,
+    isStreaming: false,
+    scenePreparing: false,
+    directionsActive: false,
+    gameVoicePlaybackBlocked: true,
+    gameVoiceExternallyBlocked: false,
+    gameVoicePlayingKey: null,
+    gameVoiceAudioRef: { current: null },
+    lastAutoPlayedVoiceKeyRef: { current: "finished-main" },
+    autoPlayedSideVoiceKeysRef: { current: new Set(["finished-side", "interrupted-side"]) },
+    autoPlayInFlightVoiceKeyRef: { current: "queued-main" },
+    autoPlayInFlightSideVoiceKeysRef: { current: new Set(["queued-side"]) },
+    sideVoiceAutoPlayFailuresRef: { current: new Set(["failed-side"]) },
+    clearSideVoiceAutoPlayRetry: () => calls.retryCleared++,
+    stopGameVoicePlayback: () => calls.stopped++,
+    ...overrides,
+  };
+  new Function(...Object.keys(state), blockingEffectCode)(...Object.values(state));
+  return { ...state, calls };
+}
+for (const overrides of [
+  {},
+  { gameVoicePlayingKey: "finished-main" },
+  { gameVoicePlayingKey: "finished-main", gameVoiceAudioRef: { current: { ended: true } } },
+]) {
+  const finished = runVoiceBlockingEffect(overrides);
+  assert.equal(
+    finished.lastAutoPlayedVoiceKeyRef.current,
+    "finished-main",
+    "persona speech cannot replay a finished main line",
+  );
+  assert.deepEqual([...finished.autoPlayedSideVoiceKeysRef.current], ["finished-side", "interrupted-side"]);
+  assert.equal(
+    finished.autoPlayInFlightVoiceKeyRef.current,
+    null,
+    "a blocked launch can retry after the persona finishes",
+  );
+  assert.equal(finished.autoPlayInFlightSideVoiceKeysRef.current.size, 0);
+  assert.equal(finished.calls.stopped, 1, "persona speech still stops any pending Game playback");
+}
+const interruptedMain = runVoiceBlockingEffect({
+  gameVoicePlayingKey: "finished-main",
+  gameVoiceAudioRef: { current: { ended: false } },
+});
+assert.equal(interruptedMain.lastAutoPlayedVoiceKeyRef.current, null, "an actually interrupted main line can restart");
+assert.equal(interruptedMain.autoPlayedSideVoiceKeysRef.current.size, 2, "finished side lines remain finished");
+const interruptedSide = runVoiceBlockingEffect({
+  gameVoicePlayingKey: "interrupted-side",
+  gameVoiceAudioRef: { current: { ended: false } },
+});
+assert.equal(interruptedSide.lastAutoPlayedVoiceKeyRef.current, "finished-main");
+assert.deepEqual([...interruptedSide.autoPlayedSideVoiceKeysRef.current], ["finished-side"]);
+for (const flag of ["isStreaming", "scenePreparing", "directionsActive", "gameVoiceExternallyBlocked"]) {
+  const legacy = runVoiceBlockingEffect({ [flag]: true });
+  assert.equal(legacy.lastAutoPlayedVoiceKeyRef.current, null, `${flag} retains the original reset`);
+  assert.equal(legacy.autoPlayedSideVoiceKeysRef.current.size, 0);
+}
+const unblocked = runVoiceBlockingEffect({ gameVoicePlaybackBlocked: false });
+assert.equal(unblocked.calls.stopped, 0);
+assert.equal(unblocked.lastAutoPlayedVoiceKeyRef.current, "finished-main");
+
 const jobs = game.jobs("turn-voice", [mainRequest, sideRequest], config);
 assert.deepEqual(
   jobs.map(({ tone }) => tone),

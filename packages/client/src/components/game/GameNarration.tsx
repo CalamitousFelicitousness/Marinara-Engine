@@ -2376,17 +2376,10 @@ export function GameNarration({
   const gameVoiceEnabled = Boolean(ttsConfig?.enabled && ttsConfig.autoplayGame);
   const gameVoiceConfigSignature = useMemo(() => buildVoiceConfigSignature(ttsConfig), [ttsConfig]);
   const normalizedGameVoiceVolume = Math.max(0, Math.min(1, gameVoiceVolume));
-  const [chatTtsBusy, setChatTtsBusy] = useState(() =>
-    ["loading", "playing", "paused", "blocked"].includes(ttsService.getState()),
-  );
   const [pendingPersonaReadings, setPendingPersonaReadings] = useState<Set<string>>(() => new Set());
   const voiceChatId = latestAssistant?.chatId ?? messages[0]?.chatId;
   useEffect(() => {
     setPendingPersonaReadings(new Set());
-    setChatTtsBusy(["loading", "playing", "paused", "blocked"].includes(ttsService.getState()));
-    const stop = ttsService.subscribe((state) =>
-      setChatTtsBusy(["loading", "playing", "paused", "blocked"].includes(state)),
-    );
     const onReading = (event: Event) => {
       const detail = (event as CustomEvent<TTSAutoplayVoiceDetail>).detail;
       if (!detail || detail.chatId !== voiceChatId) return;
@@ -2399,12 +2392,11 @@ export function GameNarration({
     };
     window.addEventListener(TTS_AUTOPLAY_VOICE_EVENT, onReading);
     return () => {
-      stop();
       window.removeEventListener(TTS_AUTOPLAY_VOICE_EVENT, onReading);
     };
   }, [voiceChatId]);
-  const gameVoicePlaybackBlocked =
-    (voicePlaybackBlocked ?? autoPlayBlocked) || chatTtsBusy || pendingPersonaReadings.size > 0;
+  const gameVoiceExternallyBlocked = voicePlaybackBlocked ?? autoPlayBlocked;
+  const gameVoicePlaybackBlocked = gameVoiceExternallyBlocked || pendingPersonaReadings.size > 0;
 
   const cacheGameVoiceEntry = useCallback(
     (key: string, entry: GameSegmentVoiceEntry) => {
@@ -3706,10 +3698,16 @@ export function GameNarration({
   useEffect(() => {
     if (gameVoiceEnabled && !isStreaming && !scenePreparing && !directionsActive && !gameVoicePlaybackBlocked) return;
     if (isStreaming || scenePreparing || directionsActive || gameVoicePlaybackBlocked) {
-      lastAutoPlayedVoiceKeyRef.current = null;
+      if (isStreaming || scenePreparing || directionsActive || gameVoiceExternallyBlocked) {
+        lastAutoPlayedVoiceKeyRef.current = null;
+        autoPlayedSideVoiceKeysRef.current.clear();
+      } else if (gameVoiceAudioRef.current && !gameVoiceAudioRef.current.ended) {
+        // Persona speech only restarts the Game line it actually interrupted.
+        if (lastAutoPlayedVoiceKeyRef.current === gameVoicePlayingKey) lastAutoPlayedVoiceKeyRef.current = null;
+        if (gameVoicePlayingKey) autoPlayedSideVoiceKeysRef.current.delete(gameVoicePlayingKey);
+      }
       autoPlayInFlightVoiceKeyRef.current = null;
       autoPlayInFlightSideVoiceKeysRef.current.clear();
-      autoPlayedSideVoiceKeysRef.current.clear();
       sideVoiceAutoPlayFailuresRef.current.clear();
       clearSideVoiceAutoPlayRetry();
     }
@@ -3718,7 +3716,9 @@ export function GameNarration({
     clearSideVoiceAutoPlayRetry,
     directionsActive,
     gameVoiceEnabled,
+    gameVoiceExternallyBlocked,
     gameVoicePlaybackBlocked,
+    gameVoicePlayingKey,
     isStreaming,
     scenePreparing,
     stopGameVoicePlayback,

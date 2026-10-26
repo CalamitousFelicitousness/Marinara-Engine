@@ -12,6 +12,12 @@ const silentAudio = Buffer.from(
   "base64",
 );
 
+declare global {
+  interface Window {
+    __personaGameVoiceAudios: HTMLMediaElement[];
+  }
+}
+
 async function create(request: APIRequestContext, path: string, data: unknown) {
   const response = await request.post(`/api${path}`, { data });
   expect(response.ok(), await response.text()).toBeTruthy();
@@ -201,6 +207,18 @@ for (const mode of ["conversation", "roleplay", "game"] as const) {
         return route.fulfill({ contentType: "audio/wav", body: silentAudio });
       });
       await preparePage(page, chat.id);
+      if (mode === "game") {
+        await page.addInitScript(() => {
+          window.__personaGameVoiceAudios = [];
+          const play = HTMLMediaElement.prototype.play;
+          HTMLMediaElement.prototype.play = function () {
+            if (this.src.startsWith("blob:") && (new Error().stack ?? "").includes("GameNarration.tsx")) {
+              window.__personaGameVoiceAudios.push(this);
+            }
+            return play.call(this);
+          };
+        });
+      }
       await page.goto("/");
       const send = async (text: string) => {
         const input = page.locator("textarea[data-chat-composer]").filter({ visible: true });
@@ -251,6 +269,15 @@ for (const mode of ["conversation", "roleplay", "game"] as const) {
           .toBe(true);
       }
       if (mode === "game") {
+        await expect.poll(() => page.evaluate(() => window.__personaGameVoiceAudios.at(-1)?.ended)).toBe(true);
+        const gamePlays = await page.evaluate(() => window.__personaGameVoiceAudios.length);
+        await page.evaluate(async () => {
+          const { ttsService } = await import("/src/lib/tts-service.ts" as string);
+          await ttsService.speak("A settings voice preview.", "persona-test-preview", { voice: "preview-voice" });
+        });
+        await expect.poll(() => spoken.some((row) => row.text === "A settings voice preview.")).toBe(true);
+        await page.waitForTimeout(250);
+        expect(await page.evaluate(() => window.__personaGameVoiceAudios.length)).toBe(gamePlays);
         await send("*The battle is won.*\n\n[combat_result]\nAutomatic recap must stay unspoken.\n[/combat_result]");
         expect(spoken.some((row) => /battle is won|Automatic recap must stay unspoken/.test(row.text))).toBe(false);
       }

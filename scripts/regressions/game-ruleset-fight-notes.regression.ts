@@ -19,7 +19,11 @@ import {
   RULESET_FIGHT_NOTES,
   type RulesetFightNoteKey,
 } from "../../packages/shared/src/index.js";
-import { rulesetFightNoteText } from "../../packages/client/src/lib/ruleset-combat-log.js";
+import {
+  rulesetCombatEventLine,
+  rulesetCombatNames,
+  rulesetFightNoteText,
+} from "../../packages/client/src/lib/ruleset-combat-log.js";
 
 const read = (path: string) => readFileSync(fileURLToPath(new URL(`../../${path}`, import.meta.url)), "utf8");
 const keys = Object.keys(RULESET_FIGHT_NOTES) as RulesetFightNoteKey[];
@@ -89,7 +93,8 @@ for (const path of sources) {
     for (const found of text.matchAll(/`((?:[^`\\]|\\.)*)`|(?<=push\(|said\()"((?:[^"\\]|\\.)*)"/g)) {
       const literal = found[1] ?? found[2]!;
       // Not a sentence: a prefix put before a line already written, or a reference.
-      if (/^\$\{[^}]+\}: \$\{line\}$/.test(literal) || literal.startsWith(" ") || !/[a-z] [a-z]/i.test(literal)) continue;
+      if (/^\$\{[^}]+\}: \$\{line\}$/.test(literal) || literal.startsWith(" ") || !/[a-z] [a-z]/i.test(literal))
+        continue;
       for (const sentence of expand(literal)) {
         checked++;
         const note = readRulesetFightNote(sentence);
@@ -122,6 +127,54 @@ assert.equal(
   rulesetFightNoteText("Goblin was built from the numbers of CR 1.", t),
   "Goblin was built from the numbers of CR 1.",
 );
-assert.equal(rulesetFightNoteText("Something nobody wrote a template for.", t), "Something nobody wrote a template for.");
+assert.equal(
+  rulesetFightNoteText("Something nobody wrote a template for.", t),
+  "Something nobody wrote a template for.",
+);
+
+// ── A spend line counts what it spent in the pool's own words (laptop level-4 pass 2026-10-26: "The
+//    Pale Master spends 1 1st-level slots") ──
+{
+  const english = ((key: string, options: Record<string, unknown> = {}) => {
+    const template = en[key];
+    if (template === undefined) return key;
+    return template.replace(/\{\{(\w+)\}\}/g, (_, name: string) => String(options[name]));
+  }) as never;
+  const definition = {
+    sheet: {
+      live: {
+        pools: [{ id: "slots_1", label: "1st-level slots", unit: "1st-level slot", units: "1st-level slots" }],
+        conditions: [],
+        tracks: [],
+      },
+      saves: [],
+      derived: [],
+      fields: [],
+      abilities: [],
+      skills: [],
+    },
+    resolution: { kind: "d20" },
+  } as never;
+  const names = rulesetCombatNames(
+    definition,
+    { combatants: [{ id: "pale", name: "The Pale Master" }] } as never,
+    english,
+  );
+  const spend = (amount: number) =>
+    rulesetCombatEventLine(
+      {
+        type: "spend",
+        actorId: "pale",
+        pool: "slots_1",
+        label: "1st-level slots",
+        amount,
+        on: "Magic Missile",
+      } as never,
+      names,
+      english,
+    );
+  assert.equal(spend(1), "The Pale Master spends 1 1st-level slot on Magic Missile.");
+  assert.equal(spend(2), "The Pale Master spends 2 1st-level slots on Magic Missile.");
+}
 
 console.log(`game-ruleset-fight-notes: ok (${keys.length} templates, ${checked} sentences in the code)`);

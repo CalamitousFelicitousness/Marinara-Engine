@@ -3108,7 +3108,14 @@ function rollsChance(
   if (instead && actor.sheet) {
     actor.sheet.live = instead.live;
     for (const entry of instead.cost) {
-      ctx.events.push({ type: "spend", actorId: actor.id, pool: entry.pool, label: entry.label, amount: entry.amount });
+      ctx.events.push({
+        type: "spend",
+        actorId: actor.id,
+        pool: entry.pool,
+        label: entry.label,
+        amount: entry.amount,
+        on: action.label,
+      });
     }
   }
   return false;
@@ -8505,6 +8512,7 @@ function applyChoice(
           pool: entry.pool,
           label: entry.label,
           amount: entry.amount,
+          on: granted.action.label,
         });
       }
       spendAvailability(ctx, working, granted.action);
@@ -8734,6 +8742,7 @@ function applyChoice(
         pool: entry.pool,
         label: entry.label,
         amount: entry.amount,
+        on: alter.label,
       });
     }
     spendAvailability(ctx, working, alter);
@@ -8761,6 +8770,7 @@ function applyChoice(
         pool: entry.pool,
         label: entry.label,
         amount: entry.amount,
+        on: stored.label,
       });
     }
     spendAvailability(ctx, working, stored);
@@ -10876,6 +10886,7 @@ function takeReaction(
         pool: entry.pool,
         label: entry.label,
         amount: entry.amount,
+        on: action.label,
       });
     }
     spendAvailability(ctx, taking, action);
@@ -12629,7 +12640,14 @@ function readyAction(
     if (price.live && actor.sheet) actor.sheet.live = price.live;
     countRulesetSpend(actor, price.cost);
     for (const entry of price.cost) {
-      ctx.events.push({ type: "spend", actorId: actor.id, pool: entry.pool, label: entry.label, amount: entry.amount });
+      ctx.events.push({
+        type: "spend",
+        actorId: actor.id,
+        pool: entry.pool,
+        label: entry.label,
+        amount: entry.amount,
+        on: action.label,
+      });
     }
     spendAvailability(ctx, actor, action);
     startConcentration(ctx, actor, action);

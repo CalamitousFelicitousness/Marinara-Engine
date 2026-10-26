@@ -454,6 +454,22 @@ const line = (definition: RulesetDefinition, state: RulesetEncounterState, event
     assert.equal(ended.total, 3);
     const fled = rulesetFoeFates({ ...base, combatants: [{ ...foe, left: true }] });
     assert.equal(fled.beaten, 0, "a fight every foe left alive beats none of them");
+    // One that gave itself up is beaten, and listed as such, not as gone (laptop level-4 pass 2026-10-26).
+    const yielded = rulesetFoeFates({
+      ...base,
+      combatants: [
+        { ...foe, id: "grakka", away: true, surrendered: true, defeated: true },
+        { ...foe, id: "scavenger", left: true, away: true, defeated: true },
+      ],
+    });
+    assert.deepEqual(
+      yielded.fates.map(([key, list]) => [key, list.map((one) => one.id)]),
+      [
+        ["endSurrendered", ["grakka"]],
+        ["endGone", ["scavenger"]],
+      ],
+    );
+    assert.equal(yielded.beaten, 1);
   }
 
   const menu = menuOf(fiveE, state, "brenna");

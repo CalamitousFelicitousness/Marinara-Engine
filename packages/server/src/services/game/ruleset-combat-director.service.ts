@@ -160,6 +160,9 @@ import {
   rulesetTierStatBlock,
   rulesetSheetBuildSchema,
   rulesetBestiaryReaction,
+  rulesetBestiaryActionNamed,
+  rulesetUnpricedLegendary,
+  rulesetActionAverage,
   rulesetWindowMoment,
   rulesetZonesShown,
   rulesetBoardShading,
@@ -867,10 +870,12 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
         `This fight is worth ${moved.worth.after}, more than this party's ${stepLabel} budget of ${allowed}, with nothing left to bring down.`,
       );
     // Said when nothing was brought down too, so a fight left as it was reads as weighed (laptop
-    // playtest 2026-10-25: three invented CR 3 foes, no word of the budget anywhere).
-    else if (moved.worth.before <= allowed)
+    // playtest 2026-10-25: three invented CR 3 foes, no word of the budget anywhere), and after a step
+    // down, what it is worth now (laptop level-4 pass 2026-10-26: a boss brought from CR 5 to 3, and no
+    // word of what the fight came to).
+    else
       adjustments.push(
-        `This fight is worth ${moved.worth.before}, within this party's ${stepLabel} budget of ${allowed}.`,
+        `This fight is worth ${moved.worth.after}, within this party's ${stepLabel} budget of ${allowed}.`,
       );
   }
   for (const opponent of enemies) {
@@ -971,6 +976,27 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
         }
       }
     }
+    // A boss written with no numbers is built from its tier's here, so what its points buy goes on the
+    // same block (laptop level-4 pass 2026-10-26: a Big Grakka given 3 points had nothing to spend them on).
+    if (!proposed && opponent.boss && (opponent.points ?? 0) > 0) {
+      const built = rulesetTierStatBlock(
+        definition,
+        opponent.tier,
+        (opponent.attacks ?? []).filter((one) => !one.reaction && !one.kind).map((one) => one.name),
+      );
+      if (built) {
+        if (opponent.tier && built.tier.id !== opponent.tier)
+          adjustments.push(
+            `The tier "${opponent.tier}" is not on this ruleset's scale, so ${built.tier.label} was used.`,
+          );
+        adjustments.push(`${opponent.name} was built from the numbers of ${built.tier.label}.`);
+        const { health, defense, initiativeModifier, actions } = built.block;
+        proposed = {
+          success: true,
+          data: { tier: built.tier.id, health, defense, initiativeModifier, actions },
+        } as unknown as typeof proposed;
+      }
+    }
     // What a boss's writer gave a price out of its points is bought with them between turns, as a
     // bestiary's legendary actions are (laptop pass 6 2026-10-26: a legendary Archmage's Ray of Frost
     // and Chill Touch at a cost of 1 were never cast): a spell at 1 as a lich's Cantrip, a dearer one as
@@ -982,7 +1008,9 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
       type Bought = (typeof data.actions)[number];
       const bought: Bought[] = [];
       const cost = (one: (typeof pricedOut)[number]) => Math.min(points, one.legendary!);
-      const spells = pricedOut.filter((one) => one.spell || one.kind);
+      // A spell only where it is one: a "debuff" its writer named is no spell (laptop level-4 pass
+      // 2026-10-26: Varkas the Wyvern-Knight's Terrifying Glare was bought as a Cantrip).
+      const spells = pricedOut.filter((one) => one.spell);
       const cheap = spells.filter((one) => cost(one) === 1);
       if (cheap.length > 0)
         bought.push({
@@ -1001,9 +1029,45 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
           casting: {},
           signature: { cost: Math.min(...dear.map(cost)) },
         } as Bought);
+      // A strike or a skill as itself: its own action of that name, else a creature's of this ruleset by
+      // that name, else (a strike) its best attack under that name (laptop level-4 pass 2026-10-26:
+      // Varkas's Lance Thrust and Wing Buffet, each priced, were never bought).
+      const strikes = data.actions.filter(
+        (action) =>
+          !action.signature &&
+          !action.reaction &&
+          !action.casting &&
+          (action.toHit !== undefined || action.autoHit || !!action.damage),
+      );
+      const best = strikes.reduce<(typeof strikes)[number] | undefined>(
+        (top, action) => (!top || rulesetActionAverage(action) > rulesetActionAverage(top) ? action : top),
+        undefined,
+      );
+      const slug = (name: string) =>
+        name
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "_")
+          .replace(/^_+|_+$/g, "")
+          .slice(0, 40) || "strike";
       for (const one of pricedOut.filter((attack) => !spells.includes(attack))) {
         const own = data.actions.find((action) => action.name.toLowerCase() === one.name.toLowerCase());
-        if (own && !own.signature) bought.push({ ...own, id: `legendary_${own.id}`, signature: { cost: cost(one) } });
+        const lent = own ? null : rulesetBestiaryActionNamed(definition, input.bestiary, one.name);
+        // A boss built on a sheet strikes with the sheet's weapons, none of them an action to buy: then a
+        // strike of its tier's numbers, under the name its writer gave it.
+        const strike =
+          own || one.kind
+            ? null
+            : best
+              ? { ...best, name: one.name }
+              : rulesetTierStatBlock(definition, opponent.tier ?? data.tier, [one.name])?.block.actions[0];
+        const made = own && !own.signature ? own : lent ? { ...lent, name: one.name } : (strike ?? null);
+        if (!made) {
+          adjustments.push(`${opponent.name}: this ruleset has nothing called "${one.name}" to buy with its points.`);
+          continue;
+        }
+        const id = `legendary_${own ? own.id : slug(one.name)}`;
+        if (bought.some((action) => action.id === id) || data.actions.some((action) => action.id === id)) continue;
+        bought.push({ ...structuredClone(made), id, signature: { cost: cost(one) } } as Bought);
       }
       if (bought.length > 0) {
         proposed = {
@@ -1012,6 +1076,58 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
         } as unknown as typeof proposed;
         adjustments.push(
           `${opponent.name} may spend ${points} points between turns on ${bought.map((one) => one.name).join(", ")}.`,
+        );
+      }
+    }
+    // A boss given points and nothing priced out of them still buys something with them (laptop level-4
+    // pass 2026-10-26: a Lich Morrigast asked for as the SRD lich, a Pale Master and a Big Grakka each
+    // fought with none): the legendary actions of the creature its name names, else its own.
+    if (
+      proposed?.success &&
+      opponent.boss &&
+      (opponent.points ?? 0) > 0 &&
+      !proposed.data.actions.some((action) => action.signature)
+    ) {
+      const points = Math.min(20, opponent.points!);
+      const data = proposed.data;
+      const casts =
+        !!data.spellcasting ||
+        (opponent.attacks ?? []).some((one) => one.spell) ||
+        Object.values(data.sheet?.lists ?? {}).some((rows) => rows.length > 0);
+      // A boss built on a sheet has no strike of its own among its actions: its tier's, to buy.
+      const strikes = data.actions.some(
+        (action) => !action.signature && !action.reaction && (action.toHit !== undefined || !!action.damage),
+      );
+      const tierStrikes = strikes
+        ? []
+        : (rulesetTierStatBlock(
+            definition,
+            opponent.tier ?? data.tier,
+            (opponent.attacks ?? []).filter((one) => !one.reaction && !one.kind && !one.spell).map((one) => one.name),
+          )?.block.actions ?? []);
+      const unpriced = rulesetUnpricedLegendary(definition, input.bestiary, {
+        name: opponent.name,
+        points,
+        budget: rulesetStandardBudget(combat),
+        casts,
+        actions: [...data.actions, ...(tierStrikes as unknown as typeof data.actions)],
+      });
+      if (unpriced.actions.length > 0) {
+        proposed = {
+          success: true,
+          data: {
+            ...data,
+            signaturePoints: data.signaturePoints ?? points,
+            actions: [...data.actions, ...unpriced.actions],
+          },
+        } as unknown as typeof proposed;
+        adjustments.push(
+          unpriced.from
+            ? `${opponent.name} had nothing priced out of its points, so it has the legendary actions of the ${unpriced.from}.`
+            : `${opponent.name} had nothing priced out of its points, so it buys its own actions with them.`,
+        );
+        adjustments.push(
+          `${opponent.name} may spend ${points} points between turns on ${unpriced.actions.map((one) => one.name).join(", ")}.`,
         );
       }
     }
@@ -1337,7 +1453,17 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
     );
     // One already spaced against a blast stands where that put it, not back or forward by its role,
     // which closed the gap the blast needs (re-test D5: the party began 3 apart against a 5).
-    const nudged = Object.fromEntries(Object.entries(roles).filter(([id]) => spread[id] === undefined));
+    // So does an opponent the Game Master started nowhere in particular, an archer or a caster back out
+    // of reach (laptop level-4 pass 2026-10-26: two goblin archers began beside the wizard).
+    const foeRoles = Object.fromEntries(
+      encounter.combatants
+        .filter((one) => one.side === "enemy" && !one.object && !places[one.id] && one.calledBy === undefined)
+        .map((one) => [one.id, rulesetCombatantRole(one, definition, encounter)] as const)
+        .filter(([, role]) => ["marksman", "spellcaster", "supporter", "controller"].includes(role)),
+    );
+    const nudged = Object.fromEntries(
+      Object.entries({ ...roles, ...foeRoles }).filter(([id]) => spread[id] === undefined),
+    );
     // Of a kind by its bestiary entry, else its name without a count ("Zombie 2" is a Zombie).
     const stands = combatants.map((one) => ({
       id: one.id,
@@ -10462,12 +10588,19 @@ function runRulesetCommand(
     // Its debug log says the Game Master chose, and which of the Engine's suggestions it took, so a
     // turn it played is not one with no why (laptop playtest 2026-10-24).
     const first = open.options.find((option) => option.suggested?.rank === 1);
+    // The same choice as the first, written twice (laptop level-4 pass 2026-10-26: "chose it over the
+    // Engine's first choice, Maul Smash on Garrick Thorne", 21 times, for that very Maul Smash): taken as it.
+    const same =
+      !!first &&
+      !!chosen &&
+      (first === chosen ||
+        (first.label === chosen.label && first.targetId === chosen.targetId && first.kind === chosen.kind));
     const gmPick: DirectedRulesetReason[] = chosen
       ? [
           {
             why: "gmPick",
-            ...(chosen.suggested ? { rank: chosen.suggested.rank } : {}),
-            ...(first && first !== chosen && first.label
+            ...(same ? { rank: 1 } : chosen.suggested ? { rank: chosen.suggested.rank } : {}),
+            ...(first && !same && first.label
               ? {
                   over: {
                     label: first.label,

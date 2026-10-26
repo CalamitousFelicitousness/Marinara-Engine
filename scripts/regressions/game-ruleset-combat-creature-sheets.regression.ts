@@ -2132,13 +2132,114 @@ const dataDir = mkdtempSync(join(tmpdir(), "marinara-creature-sheets-"));
     assert.doesNotMatch(lines, /no legendary actions/);
     // Not a boss, nothing is bought with points.
     assert.ok(!who(numbered(false).encounter, "veyl").actions.some((one) => one.signature));
-    // A boss given points and nothing priced out of them is said to have none (laptop pass 7).
+    // A boss given points and nothing priced out of them buys its own with them (laptop level-4 pass
+    // 2026-10-26: a Lich Morrigast, a Pale Master and a Big Grakka each fought with none): a cantrip
+    // where it casts, a move, and its one attack at 1.
     const unpriced = numbered(true, false);
-    assert.ok(!who(unpriced.encounter, "veyl").actions.some((one) => one.signature));
+    const unpricedLines = unpriced.adjustments.join("; ");
     assert.match(
-      unpriced.adjustments.join("; "),
-      /Archmage Veyl was given 3 points but nothing priced out of them, so it has no legendary actions\./,
+      unpricedLines,
+      /Archmage Veyl had nothing priced out of its points, so it buys its own actions with them\./,
     );
+    assert.match(unpricedLines, /Archmage Veyl may spend 3 points between turns on Cantrip, Move, Staff\./);
+    assert.doesNotMatch(unpricedLines, /no legendary actions/);
+    assert.deepEqual(
+      who(unpriced.encounter, "veyl")
+        .actions.filter((one) => one.signature)
+        .map((one) => [one.id.replace(/^.*?legendary_/, "legendary_"), one.signature?.cost]),
+      [
+        ["legendary_cantrip", 1],
+        ["legendary_move", 1],
+        ["legendary_staff", 1],
+      ],
+    );
+  }
+  // A boss named for a creature of the bestiary buys that creature's legendary actions, held to its own
+  // tier; one priced its writer's way buys each as itself, a strike its sheet has under another name as
+  // its best attack, and a skill nothing here has is said (laptop level-4 pass 2026-10-26: Varkas the
+  // Wyvern-Knight's Lance Thrust, Wing Buffet and Terrifying Glare, all priced, bought only a Cantrip).
+  {
+    const fight = (enemy: RulesetFightOpponent) =>
+      started({
+        definition: fiveE,
+        cards: [card("Brenna", fighterBuild())],
+        party: [{ id: "brenna", name: "Brenna" }],
+        enemies: [enemy],
+      }).rulesetFight!;
+    const strike = (id: string, name: string, toHit: number, dice: string) => ({
+      id,
+      name,
+      budget: "action",
+      toHit,
+      reach: 5,
+      damage: { dice, type: "piercing" },
+    });
+    const numbers = (actions: unknown[]) => ({ tier: "cr_3", health: 60, defense: 15, initiativeModifier: 1, actions });
+    const sentinel = fight({
+      id: "varn",
+      name: "Hollow Sentinel Varn",
+      tier: "cr_3",
+      boss: true,
+      points: 2,
+      proposed: numbers([strike("fist", "Fist", 5, "1d8")]),
+    });
+    const varn = who(sentinel.encounter, "varn");
+    const said = sentinel.adjustments.join("; ");
+    assert.match(
+      said,
+      /Hollow Sentinel Varn had nothing priced out of its points, so it has the legendary actions of the Hollow Sentinel\./,
+    );
+    assert.match(said, /Hollow Sentinel Varn may spend 2 points between turns on Watchful strike\./);
+    assert.equal(varn.actions.find((one) => one.label === "Watchful strike")?.signature?.cost, 1, said);
+
+    const knight = fight({
+      id: "varkas",
+      name: "Varkas the Wyvern-Knight",
+      tier: "cr_3",
+      boss: true,
+      points: 3,
+      proposed: numbers([
+        strike("serrated_lance", "Serrated Lance", 6, "2d6"),
+        strike("bite", "Vyvern Bite", 5, "1d6"),
+      ]),
+      attacks: [
+        { name: "Lance Thrust", legendary: 1 },
+        { name: "Wing Buffet", legendary: 2 },
+        { name: "Terrifying Glare", kind: "debuff", legendary: 1 },
+      ],
+    });
+    const varkas = who(knight.encounter, "varkas");
+    const knightSaid = knight.adjustments.join("; ");
+    assert.match(
+      knightSaid,
+      /Varkas the Wyvern-Knight may spend 3 points between turns on Lance Thrust, Wing Buffet\./,
+    );
+    assert.match(
+      knightSaid,
+      /Varkas the Wyvern-Knight: this ruleset has nothing called "Terrifying Glare" to buy with its points\./,
+    );
+    assert.deepEqual(
+      varkas.actions.filter((one) => one.signature).map((one) => [one.label, one.signature?.cost]),
+      [
+        ["Lance Thrust", 1],
+        ["Wing Buffet", 2],
+      ],
+    );
+    assert.doesNotMatch(knightSaid, /Cantrip/);
+
+    // Written with no numbers at all, it is built from its tier's, and buys with its points there too.
+    const grakka = fight({
+      id: "grakka",
+      name: "Big Grakka",
+      tier: "cr_3",
+      boss: true,
+      points: 3,
+      attacks: [{ name: "Cleaver" }],
+    });
+    const grakkaSaid = grakka.adjustments.join("; ");
+    assert.match(grakkaSaid, /Big Grakka was built from the numbers of /);
+    assert.match(grakkaSaid, /Big Grakka may spend 3 points between turns on Move, Cleaver\./);
+    assert.doesNotMatch(grakkaSaid, /no legendary actions/);
   }
   // What reaches more than one is held as if it hit two (laptop pass 6 2026-10-26: a wizard 11
   // brought down to CR 8 kept a Chain Lightning of 45 on each of four heroes, under a cap read for one).

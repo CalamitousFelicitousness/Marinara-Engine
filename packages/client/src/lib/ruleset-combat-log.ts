@@ -53,6 +53,9 @@ export interface RulesetCombatNames {
   height: (levels: number) => string;
   /** One of a symbol pool's symbols (1.783), by id. */
   symbol?: (id: string) => string;
+  /** So many of a live pool, by what one of it is called (1.378): "1 1st-level slot", "2 1st-level
+   *  slots". Undefined for a pool that names no unit. */
+  poolUnits?: (id: string, count: number) => string | undefined;
 }
 
 function lookup(entries: Array<{ id: string; label: string }> | undefined) {
@@ -108,6 +111,10 @@ export function rulesetCombatNames(
     style: lookup(definition.combat?.initiative.resource?.styles),
     defense: rulesetValueLabel(definition, definition.combat?.defense),
     symbol: lookup(definition.resolution.kind === "symbol-pool" ? definition.resolution.symbols : []),
+    poolUnits: (id, count) => {
+      const pool = definition.sheet.live.pools.find((one) => one.id === id);
+      return count === 1 ? pool?.unit : (pool?.units ?? pool?.unit);
+    },
   };
 }
 
@@ -1275,15 +1282,13 @@ export function rulesetCombatEventLine(
             x: event.to.x,
             y: event.to.y,
           });
-    case "spend":
+    case "spend": {
+      // "1 1st-level slot", not "1 1st-level slots" (laptop level-4 pass 2026-10-26).
+      const pool = names.poolUnits?.(event.pool, event.amount) ?? event.label;
       return event.on
-        ? key("spendOn", {
-            actor: names.combatant(event.actorId),
-            amount: event.amount,
-            pool: event.label,
-            on: event.on,
-          })
-        : key("spend", { actor: names.combatant(event.actorId), amount: event.amount, pool: event.label });
+        ? key("spendOn", { actor: names.combatant(event.actorId), amount: event.amount, pool, on: event.on })
+        : key("spend", { actor: names.combatant(event.actorId), amount: event.amount, pool });
+    }
     case "budget":
       return key("budget", {
         actor: names.combatant(event.actorId),
@@ -2043,11 +2048,12 @@ export function rulesetCombatLogLines(
   return lines;
 }
 
-/** Each foe's one fate when a fight ends, which the end card's count and its names both read: gone
- *  from the fight (fled, sent away), felled (down when it ended counts, since the fight is over for
- *  it), or still on its feet. `beaten` is exactly the felled list, so the tally names nobody the
- *  lines file elsewhere. */
-export type RulesetFoeFate = "endDefeated" | "endGone" | "endStanding";
+/** Each foe's one fate when a fight ends, which the end card's count and its names both read: gave
+ *  itself up (a prisoner, beaten alive), gone from the fight (fled, sent away), felled (down when it
+ *  ended counts, since the fight is over for it), or still on its feet. `beaten` is exactly the felled
+ *  and surrendered lists, so the tally names nobody the lines file elsewhere (laptop level-4 pass
+ *  2026-10-26: a Big Grakka that surrendered was listed as having left the fight). */
+export type RulesetFoeFate = "endDefeated" | "endSurrendered" | "endGone" | "endStanding";
 export function rulesetFoeFates(view: DirectedRulesetView): {
   fates: Array<[RulesetFoeFate, DirectedRulesetView["combatants"]]>;
   beaten: number;
@@ -2055,17 +2061,24 @@ export function rulesetFoeFates(view: DirectedRulesetView): {
 } {
   const foes = view.combatants.filter((combatant) => combatant.side !== "party");
   const fateOf = (one: (typeof foes)[number]): RulesetFoeFate =>
-    one.away || one.left ? "endGone" : one.defeated || one.down ? "endDefeated" : "endStanding";
+    one.surrendered
+      ? "endSurrendered"
+      : one.away || one.left
+        ? "endGone"
+        : one.defeated || one.down
+          ? "endDefeated"
+          : "endStanding";
   const by: Record<RulesetFoeFate, DirectedRulesetView["combatants"]> = {
     endDefeated: [],
+    endSurrendered: [],
     endGone: [],
     endStanding: [],
   };
   for (const one of foes) by[fateOf(one)].push(one);
-  const order: RulesetFoeFate[] = ["endDefeated", "endGone", "endStanding"];
+  const order: RulesetFoeFate[] = ["endDefeated", "endSurrendered", "endGone", "endStanding"];
   return {
     fates: order.filter((key) => by[key].length > 0).map((key) => [key, by[key]]),
-    beaten: by.endDefeated.length,
+    beaten: by.endDefeated.length + by.endSurrendered.length,
     total: foes.length,
   };
 }

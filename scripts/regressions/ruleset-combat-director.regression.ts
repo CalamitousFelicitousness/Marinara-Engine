@@ -1197,7 +1197,27 @@ for (const setup of [
     // number 3" told the player nothing).
     const first = state.window!.options.find((option) => option.suggested?.rank === 1);
     assert.ok(first?.label, "the Engine has a first choice");
-    const pick = state.window!.options.find((option) => option !== first)!;
+    // The same choice offered twice, picked as the second, is said as taking the first (laptop level-4
+    // pass 2026-10-26: "chose it over the Engine's first choice, Maul Smash on Garrick Thorne", 21 times).
+    const twin = state.window!.options.find(
+      (option) => option !== first && option.label === first!.label && option.targetId === first!.targetId,
+    );
+    assert.ok(twin, "this menu offers the first choice twice");
+    {
+      const copy = structuredClone(state);
+      const seq = copy.rulesetFight!.eventSeq;
+      assert.ok(commandRulesetCombatDirector(fiveE, copy, { type: "choose", candidateId: twin.id }).ok);
+      const said = copy.rulesetFight!.events.flatMap((entry) =>
+        entry.seq > seq && entry.event.type === "reasoning"
+          ? entry.event.reasons.filter((one) => one.why === "gmPick")
+          : [],
+      );
+      assert.deepEqual(said, [{ why: "gmPick", rank: 1 }]);
+    }
+    // Another choice, not the same one offered twice (laptop level-4 pass 2026-10-26).
+    const pick = state.window!.options.find(
+      (option) => option.label !== first!.label || option.targetId !== first!.targetId,
+    )!;
     assert.ok(pick, "and another");
     const before = state.rulesetFight!.eventSeq;
     assert.ok(commandRulesetCombatDirector(fiveE, state, { type: "choose", candidateId: pick.id }).ok);

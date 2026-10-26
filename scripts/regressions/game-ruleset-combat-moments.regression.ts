@@ -258,7 +258,8 @@ try {
     ]);
     assert.deepEqual(eventsOf(smothered.events, "damage"), [], "the toss never happens");
     assert.deepEqual(eventsOf(smothered.events, "spend"), [
-      { type: "spend", actorId: "pell", pool: "luck", label: "Luck", amount: 1 },
+      // On what, so the line names it (laptop level-4 pass 2026-10-26).
+      { type: "spend", actorId: "pell", pool: "luck", label: "Luck", amount: 1, on: "Smother" },
     ]);
     assert.equal(smothered.state.window, undefined);
     assert.notEqual(luck(), rulesetCombatant(smothered.state, "pell")!.sheet!.live.pools?.luck?.value);

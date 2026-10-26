@@ -222,6 +222,22 @@ try {
   const fits = fight({ enemies: [{ id: "pup", name: "Ash Pup", tier: "cr_1" }], budget: { difficulty: "normal" } });
   const story = fight({ enemies: enemies.slice(1) });
   assert.equal(fits.made?.pup?.tier, "cr_1");
+  // Brought down to fit, it says what the fight came to (laptop level-4 pass 2026-10-26: a boss
+  // brought from CR 5 to 3 and no word of what the fight was then worth).
+  const stepped = fight({
+    enemies: [{ id: "wolf", name: "Ash Wolf", tier: "cr_2" }],
+    budget: { difficulty: "normal" },
+  });
+  assert.ok(
+    stepped.adjustments.some((line) => /Ash Wolf was brought down from CR 2 to /.test(line)),
+    stepped.adjustments.join("; "),
+  );
+  assert.ok(
+    stepped.adjustments.some((line) =>
+      /^This fight is worth \d+, within this party's Moderate budget of 300\.$/.test(line),
+    ),
+    stepped.adjustments.join("; "),
+  );
   // Said as weighed all the same (laptop playtest 2026-10-25: no word of the budget anywhere).
   assert.deepEqual(
     fits.adjustments.filter((line) => /budget/.test(line)),

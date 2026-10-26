@@ -29,7 +29,12 @@ export const RULESET_FIGHT_NOTES = {
   givenSheet: "{{name}} was given a sheet for {{entries}}.",
   givenSheetAt: "{{name}} was given a sheet for {{entries}}, at {{tier}}.",
   points: "{{name}} may spend {{points}} points between turns on {{actions}}.",
-  pointsUnpriced: "{{name}} was given {{points}} points but nothing priced out of them, so it has no legendary actions.",
+  pointsUnpriced:
+    "{{name}} was given {{points}} points but nothing priced out of them, so it has no legendary actions.",
+  unpricedBorrowed:
+    "{{name}} had nothing priced out of its points, so it has the legendary actions of the {{creature}}.",
+  unpricedOwn: "{{name}} had nothing priced out of its points, so it buys its own actions with them.",
+  notBuyable: 'this ruleset has nothing called "{{action}}" to buy with its points.',
   unreadable: "The proposed stat block for {{name}} could not be read, so its tier was used.",
   tierUnknown: 'The tier "{{tier}}" is not on this ruleset\'s scale, so {{used}} was used.',
   builtFrom: "{{name}} was built from the numbers of {{tier}}.",
@@ -77,7 +82,8 @@ export const RULESET_FIGHT_NOTES = {
   namesNothing: '"{{action}}" named nothing this block still has, so it was dropped.',
   partLost: '"{{action}}" lost a part that is not on this block.',
   sequenceStrike: "A creature of this tier does not strike that often, so the sequence lost a strike.",
-  damageScaled: "The damage was scaled down until the best round averages {{average}}, inside the {{low}} to {{high}} of {{tier}}.",
+  damageScaled:
+    "The damage was scaled down until the best round averages {{average}}, inside the {{low}} to {{high}} of {{tier}}.",
   damageScaledBlock:
     "The damage was scaled down as far as this block goes, and the best round still averages {{average}} against the {{high}} of {{tier}}.",
   damageScaledFar:
@@ -108,7 +114,8 @@ export const RULESET_FIGHT_NOTES = {
   healthGiven: "Health {{from}} was set to the Game Master's {{to}} through its {{field}}.",
   healthGivenReset:
     "Health {{from}} was set to the Game Master's {{to}} through its {{field}} with its {{reset}} set back to the ruleset's default.",
-  healthInto: "Health {{from}} was pulled into the {{low}} to {{high}} of {{tier}} through its {{field}}, and is now {{to}}.",
+  healthInto:
+    "Health {{from}} was pulled into the {{low}} to {{high}} of {{tier}} through its {{field}}, and is now {{to}}.",
   healthIntoReset:
     "Health {{from}} was pulled into the {{low}} to {{high}} of {{tier}} through its {{field}} with its {{reset}} set back to the ruleset's default, and is now {{to}}.",
   healthToward:

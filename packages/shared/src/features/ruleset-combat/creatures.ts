@@ -505,6 +505,34 @@ export function rulesetBestiaryReaction(
   return null;
 }
 
+/**
+ * An action a creature of this ruleset's bestiaries has, found by its name as its writer gave it (laptop
+ * level-4 pass 2026-10-26: a boss's "Terrifying Glare" priced out of its points). Neither a reaction nor
+ * a lair's, and in a budget this ruleset has; null when no creature holds one of that name.
+ */
+export function rulesetBestiaryActionNamed(
+  definition: RulesetDefinition,
+  catalogs: RulesetCatalogEntriesById,
+  name: string,
+): RulesetCreatureAction | null {
+  const wanted = plainly(name);
+  const budgets = new Set(definition.combat?.economy.budgets.map((budget) => budget.id) ?? []);
+  if (!wanted) return null;
+  for (const entries of Object.values(catalogs))
+    for (const entry of entries)
+      for (const action of entry.creature?.actions ?? [])
+        if (
+          !action.reaction &&
+          !action.lair &&
+          budgets.has(action.budget) &&
+          (plainly(action.name) === wanted || plainly(action.id) === wanted)
+        ) {
+          const { inShape: _shape, signature: _signature, ...rest } = structuredClone(action);
+          return rest as RulesetCreatureAction;
+        }
+  return null;
+}
+
 /** The names of the reactions this ruleset's bestiaries hold, once each, for the Game Master. */
 export function rulesetBestiaryReactionNames(catalogs: RulesetCatalogEntriesById, max = 40): string[] {
   const names = new Map<string, string>();
@@ -514,6 +542,105 @@ export function rulesetBestiaryReactionNames(catalogs: RulesetCatalogEntriesById
         if (action.reaction && !names.has(plainly(action.name)) && names.size < max)
           names.set(plainly(action.name), action.name);
   return [...names.values()].sort((a, b) => a.localeCompare(b));
+}
+
+/** What one of a creature's actions deals on average, its first amount: written as dice (`{ dice: "2d6" }`)
+ *  or as a tier's block writes it (`{ count, sides, flat }`). 0 for one that deals nothing. */
+export function rulesetActionAverage(action: { damage?: unknown }): number {
+  const damage = action.damage as ({ dice?: string; flat?: number } & Partial<RulesetCombatAmount>) | undefined;
+  if (!damage) return 0;
+  const amount = typeof damage.count === "number" ? (damage as RulesetCombatAmount) : amountOf(damage);
+  return amount ? rulesetAverageAmount(amount) : 0;
+}
+
+/**
+ * What a boss given points with nothing priced out of them buys with those points (laptop level-4 pass
+ * 2026-10-26: a "Lich Morrigast" asked for as the SRD lich, a Pale Master and a Big Grakka each fought
+ * with none): the legendary actions of the bestiary creature its name names ("Lich" in "Lich
+ * Morrigast", the longest name that fits), or else its own, a cantrip where it casts, a move, its
+ * weakest attack at 1 and its best at 2. None costs more than it has, none is a lair's, and the boss's
+ * tier holds them with the rest of it afterwards, so a lich's numbers on a lesser boss are that boss's.
+ */
+export function rulesetUnpricedLegendary(
+  definition: RulesetDefinition,
+  catalogs: RulesetCatalogEntriesById,
+  boss: {
+    name: string;
+    points: number;
+    budget: string;
+    casts: boolean;
+    actions: readonly RulesetCreatureAction[];
+  },
+): { from?: string; actions: RulesetCreatureAction[] } {
+  const budgets = new Set(definition.combat?.economy.budgets.map((budget) => budget.id) ?? []);
+  const words = ` ${boss.name
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim()} `;
+  let best: { label: string; length: number; actions: RulesetCreatureAction[] } | undefined;
+  for (const entries of Object.values(catalogs))
+    for (const entry of entries) {
+      const own = (entry.creature?.actions ?? []).filter((action) => action.signature && !action.lair);
+      if (own.length === 0) continue;
+      const label = entry.label
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N}]+/gu, " ")
+        .trim();
+      if (label && words.includes(` ${label} `) && label.length > (best?.length ?? 0))
+        best = { label: entry.label, length: label.length, actions: own };
+    }
+  const taken = new Set(boss.actions.map((action) => action.id));
+  const named = (id: string) => {
+    let one = id.startsWith("legendary_") ? id : `legendary_${id}`;
+    for (let count = 2; taken.has(one); count++) one = `legendary_${id}_${count}`;
+    taken.add(one);
+    return one;
+  };
+  const fits = (action: RulesetCreatureAction) =>
+    (action.signature?.cost ?? 1) <= boss.points && budgets.has(action.budget) && (boss.casts || !action.casting);
+  if (best) {
+    const borrowed = best.actions.filter(fits).map((action) => {
+      // Another creature's shapes are not this one's.
+      const { inShape: _shape, ...rest } = structuredClone(action);
+      return { ...rest, id: named(action.id) } as RulesetCreatureAction;
+    });
+    if (borrowed.length > 0) return { from: best.label, actions: borrowed };
+  }
+  const bought: RulesetCreatureAction[] = [];
+  if (boss.casts)
+    bought.push({
+      id: named("cantrip"),
+      name: "Cantrip",
+      budget: boss.budget,
+      casting: { cantripsOnly: true },
+      signature: { cost: 1 },
+    } as RulesetCreatureAction);
+  bought.push({
+    id: named("move"),
+    name: "Move",
+    budget: boss.budget,
+    move: { share: 0.5 },
+    signature: { cost: 1 },
+  } as RulesetCreatureAction);
+  const attacks = boss.actions
+    .filter(
+      (action) =>
+        !action.signature &&
+        !action.reaction &&
+        !action.lair &&
+        !action.casting &&
+        !action.sequence &&
+        !action.charge &&
+        budgets.has(action.budget) &&
+        (action.toHit !== undefined || action.autoHit || !!action.damage),
+    )
+    .sort((a, b) => rulesetActionAverage(a) - rulesetActionAverage(b));
+  const weakest = attacks[0];
+  const strongest = attacks.length > 1 ? attacks[attacks.length - 1] : undefined;
+  if (weakest) bought.push({ ...structuredClone(weakest), id: named(weakest.id), signature: { cost: 1 } });
+  if (strongest && boss.points >= 2)
+    bought.push({ ...structuredClone(strongest), id: named(strongest.id), signature: { cost: 2 } });
+  return { actions: bought };
 }
 
 /** A sequence's steps with some left out (1.630), a step made after another's hit still pointing at

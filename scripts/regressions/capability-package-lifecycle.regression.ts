@@ -237,11 +237,11 @@ try {
   }
   const unsupportedMinorManifest = capabilityPackageManifestSchema.parse({
     ...manifestV2,
-    capabilityApi: { major: 1, minor: 796 },
+    capabilityApi: { major: 1, minor: supportedCapabilityApi.minor + 1 },
   });
-  assert.match(
+  assert.equal(
     getCapabilityApiCompatibilityIssue(unsupportedMinorManifest) ?? "",
-    /requires capability API 1\.796; this Engine supports 1\.797/,
+    `Package requires capability API 1.${supportedCapabilityApi.minor + 1}; this Engine supports 1.${supportedCapabilityApi.minor}`,
   );
   const startupManifest = {
     ...currentMinorManifest,

@@ -206,13 +206,11 @@ export function rulesetStartPlacements(
     const role = roles[one.id];
     const from = out[one.id];
     if (!role || !from) continue;
-    const by =
-      role === "marksman" || role === "spellcaster" || role === "supporter" || role === "controller"
-        ? -2
-        : role === "bruiser" || role === "bulwark"
-          ? 1
-          : 0;
-    if (by !== 0) move(one, { x: from.x + d.x * by, y: from.y + d.y * by });
+    const ranged = role === "marksman" || role === "spellcaster" || role === "supporter" || role === "controller";
+    const by = ranged ? -2 : role === "bruiser" || role === "bulwark" ? 1 : 0;
+    // One that fights from afar begins out of the other side's reach where the board leaves room (laptop
+    // level-4 pass 2026-10-26: two goblin archers began beside the wizard).
+    if (by !== 0) move(one, { x: from.x + d.x * by, y: from.y + d.y * by }, ranged ? 1 : 0);
   }
   return out;
 }

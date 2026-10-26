@@ -1785,6 +1785,8 @@ export function buildGmFormatReminder(
      *  hold for the whole game, written into the system prompt where a provider caches them with it,
      *  and "turn" is what changes from turn to turn, sent after the history. */
     part?: GmReminderPart;
+    /** With part "turn": this turn's own facts (`gmTurnNotices`), said just before the closing reminder. */
+    turnNotices?: string[];
   },
 ): string {
   const part = ctx.part ?? "whole";
@@ -2437,6 +2439,8 @@ export function buildGmFormatReminder(
   }
 
   if (splitTurn) {
+    const turnNotices = normalizePromptTextList(ctx.turnNotices);
+    if (turnNotices.length) lines.push(``, ...turnNotices);
     // What the system prompt teaches, said once more where the model starts writing.
     lines.push(
       ``,

@@ -17,7 +17,10 @@ export const RULESET_TEXT_AS_IS: RulesetText = (english) => english;
 
 /**
  * The lookup over one translation. A string with no entry of its own that ends in a number the fight
- * added ("Goblin 2") reads the translation of the rest; a list ("Goblin, Orc") reads each of its names.
+ * added ("Goblin 2") reads the translation of the rest; a list ("Goblin, Orc") reads each of its names;
+ * and a line the Engine joined out of the ruleset's own words ("Languages: Common, Elvish", "Wish:
+ * Fireball") reads its label on its own and each name after it on its own, since the translation is
+ * keyed by each English string exactly as the ruleset wrote it and never by what was joined from them.
  */
 export function rulesetTextLookup(strings: Readonly<Record<string, string>> | null | undefined): RulesetText {
   if (!strings || Object.keys(strings).length === 0) return RULESET_TEXT_AS_IS;
@@ -30,15 +33,30 @@ export function rulesetTextLookup(strings: Readonly<Record<string, string>> | nu
     const base = numbered ? own(numbered[1]!) : undefined;
     return base !== undefined ? `${base} ${numbered![2]}` : english;
   };
-  return (english) => {
+  const lookup = (english: string): string => {
     if (!english) return english;
     const whole = one(english);
-    if (whole !== english || !english.includes(", ")) return whole;
-    return english
-      .split(", ")
-      .map((part) => one(part))
-      .join(", ");
+    if (whole !== english) return whole;
+    const colon = english.indexOf(": ");
+    const comma = english.indexOf(", ");
+    // A list of such lines ("Wish: Fireball, Languages: Elvish") is read line by line.
+    if (comma >= 0 && (colon < 0 || comma < colon)) {
+      return english
+        .split(", ")
+        .map((part) => (part.includes(": ") ? lookup(part) : one(part)))
+        .join(", ");
+    }
+    // "<Label>: <name>, <name>": the label first, then what follows it, a list read name by name.
+    if (colon > 0) {
+      const head = english.slice(0, colon);
+      const tail = english.slice(colon + 2);
+      const label = one(head);
+      const rest = lookup(tail);
+      if (label !== head || rest !== tail) return `${label}: ${rest}`;
+    }
+    return whole;
   };
+  return lookup;
 }
 
 /** Fields of a fight's view that are words for the Engine, never for a reader: never translated. */

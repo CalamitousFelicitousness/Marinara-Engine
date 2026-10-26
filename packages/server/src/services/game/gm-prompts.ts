@@ -109,6 +109,9 @@ export interface GmPromptContext {
   perceptionHints?: string;
   /** Pre-computed party morale context */
   moraleContext?: string;
+  /** Bestiary creatures the player's latest message names, by their labels: used as written there,
+   *  never made up again (laptop 2026-10-26: an "Enraged River Queen" for the SRD's Giant Crocodile). */
+  bestiaryNamed?: string[];
   /** Available sprite expressions per character (name → expressions + custom fullBody aliases) */
   characterSprites?: CharacterSpriteInfo[];
   /** Player's current inventory items (for GM context) */
@@ -819,6 +822,7 @@ export function buildGmSceneState(
     | "weatherContext"
     | "perceptionHints"
     | "moraleContext"
+    | "bestiaryNamed"
     | "encounterHint"
     | "combatResults"
     | "playerNotes"
@@ -843,6 +847,13 @@ export function buildGmSceneState(
 
   if (ctx.moraleContext) {
     sections.push(ctx.moraleContext);
+  }
+
+  if (ctx.bestiaryNamed?.length) {
+    const names = ctx.bestiaryNamed;
+    sections.push(
+      `Engine: ${names.length === 1 ? `${names[0]} is` : `${names.slice(0, -1).join(", ")} and ${names.at(-1)} are`} in the bestiary; use ${names.length === 1 ? "that entry" : "those entries"} rather than inventing one.`,
+    );
   }
 
   if (ctx.encounterHint) {
@@ -1609,6 +1620,11 @@ function renderRulesetSheetSection(
               .label
           }), add recover="Pool:count, Pool:count" with the pools the player picks; the Engine checks what they may.`,
         ]
+      : []),
+    // A creature its bestiary holds is never made up again under another name (laptop 2026-10-26: an
+    // "Enraged River Queen" for the SRD's own Giant Crocodile).
+    ...(ruleset.combat && ruleset.catalogs?.some((catalog) => catalog.holds === "creatures")
+      ? [`- When the story or a player names a creature the bestiary holds, use that entry rather than inventing one.`]
       : []),
     `Leave out who for the player; who="party" applies to every member. Use the pool, track, field and condition names shown on the sheets. Never write result, reason or now yourself: the Engine adds them. A refused command did not happen, so do not narrate it as if it had.`,
     // Prose alone changes no number: a fall or a burn told without its command never reached the sheet.

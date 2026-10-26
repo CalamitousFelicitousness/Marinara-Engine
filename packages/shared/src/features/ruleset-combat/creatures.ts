@@ -127,7 +127,9 @@ export function findRulesetCreature(
     .replace(/\s*\([^)]*\)\s*$/u, "")
     .replace(/\s*,[^,]*$/u, "")
     .trim();
-  for (const plain of [...new Set([plainly(wanted), plainly(bare)])]) {
+  // Nor is a leading "the" (laptop 2026-10-26: "the Giant Crocodile from the river").
+  const unarticled = bare.replace(/^the\s+/iu, "");
+  for (const plain of [...new Set([plainly(wanted), plainly(bare), plainly(unarticled)])]) {
     if (!plain) continue;
     for (const [catalogId, entries] of Object.entries(catalogs)) {
       for (const entry of entries) {
@@ -137,6 +139,80 @@ export function findRulesetCreature(
     }
   }
   return null;
+}
+
+/**
+ * The type of `combat.creatureTypes` a writer said an opponent is: one named by its id or label, else
+ * the first named as a whole word among other words ("undead (skeleton)", "a skeletal undead",
+ * "constructs"). Undefined where it names none, or the ruleset has no creature types.
+ */
+export function rulesetSaidCreatureType(definition: RulesetDefinition, said: string | undefined): string | undefined {
+  const kinds = definition.combat?.creatureTypes?.types ?? [];
+  const words = (text: string) =>
+    text
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, " ")
+      .trim();
+  const text = words(said ?? "");
+  if (!text || kinds.length === 0) return undefined;
+  const exact = kinds.find((one) => [one.id, one.label].some((name) => words(name) === text));
+  if (exact) return exact.id;
+  const padded = ` ${text} `;
+  let best: { at: number; id: string } | undefined;
+  for (const one of kinds)
+    for (const name of [one.id, one.label]) {
+      const word = words(name);
+      if (!word) continue;
+      const at = [` ${word} `, ` ${word}s `].map((form) => padded.indexOf(form)).find((found) => found >= 0);
+      if (at !== undefined && (!best || at < best.at)) best = { at, id: one.id };
+    }
+  return best?.id;
+}
+
+/** How many bestiary creatures `rulesetBestiaryNamedIn` names at most. */
+export const RULESET_BESTIARY_NAMED_MOST = 3;
+
+/**
+ * The bestiary creatures some words name, by label as whole words with case aside (a plural's s or es
+ * on the last word too), longest names first and each once, up to `most`: the player's "the Giant
+ * Crocodile from the river" names the Giant Crocodile, and not the Crocodile inside it. What lets the
+ * Game Master use the entry rather than invent one (laptop 2026-10-26: an "Enraged River Queen" was
+ * made up for the SRD's own Giant Crocodile).
+ */
+export function rulesetBestiaryNamedIn(
+  catalogs: RulesetCatalogEntriesById,
+  texts: ReadonlyArray<string | undefined>,
+  most = RULESET_BESTIARY_NAMED_MOST,
+): Array<{ label: string; tier?: string }> {
+  const words = (text: string) =>
+    text
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, " ")
+      .trim();
+  let padded = texts
+    .filter((text): text is string => !!text?.trim())
+    .map((text) => ` ${words(text)} `)
+    .join(" | ");
+  if (!padded.trim()) return [];
+  const labels = new Map<string, { label: string; tier?: string; plain: string }>();
+  for (const entries of Object.values(catalogs))
+    for (const entry of entries) {
+      if (!entry.creature) continue;
+      const plain = words(entry.label).replace(/^the /u, "");
+      if (plain.length >= 3 && !labels.has(plain))
+        labels.set(plain, { label: entry.label, plain, ...(entry.creature.tier ? { tier: entry.creature.tier } : {}) });
+    }
+  const found: Array<{ label: string; tier?: string }> = [];
+  for (const one of [...labels.values()].sort((a, b) => b.plain.length - a.plain.length)) {
+    if (found.length >= most) break;
+    const forms = [one.plain, `${one.plain}s`, `${one.plain}es`];
+    const form = forms.find((each) => padded.includes(` ${each} `));
+    if (!form) continue;
+    found.push({ label: one.label, ...(one.tier ? { tier: one.tier } : {}) });
+    // Its words are spent, so a shorter name inside it is not named again.
+    padded = padded.split(` ${form} `).join(" | ");
+  }
+  return found;
 }
 
 /** A creature's amount as the fight rolls it: the dice text plus whatever flat part sits beside it. */

@@ -172,7 +172,7 @@ function amountOf(amount: RulesetCatalogMechanics["amount"]): RulesetCombatAmoun
 // ── Reading a combatant ──
 
 /** A stat block as one fight has it (1.363): its Legendary Resistance and its health (a fixed number, its
- *  dice no longer thrown) in place of its own. */
+ *  dice no longer thrown) in place of its own, and the type its writer said it is. */
 function rulesetAdjustedBlock(
   block: RulesetStatBlock,
   adjust: {
@@ -180,9 +180,11 @@ function rulesetAdjustedBlock(
     health?: number;
     calls?: Array<{ action: string; creature: string }>;
     legendary?: { points: number; actions: RulesetStatBlockAction[] };
+    type?: string;
   },
 ): RulesetStatBlock {
   const adjusted: RulesetStatBlock = { ...block };
+  if (adjust.type !== undefined) adjusted.type = adjust.type;
   // Made a boss with points and none of its own to spend them on: what they buy, beside the rest.
   if (adjust.legendary?.actions.length && !block.actions.some((action) => action.signature)) {
     adjusted.actions = [...block.actions, ...adjust.legendary.actions];

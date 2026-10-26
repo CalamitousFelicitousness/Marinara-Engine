@@ -49,6 +49,7 @@ export const RULESET_FIGHT_NOTES = {
   metBefore: "{{name}} is the same one the party met before.",
   writtenWeapons:
     "{{name}} was written with {{weapons}}, which the {{creature}} of the bestiary has none of, so it was built at {{tier}} instead.",
+  statedType: "{{name}} was said to be {{type}}, so it fights as one, on the numbers of the {{creature}}.",
   // ── Said of one opponent, after its name ──
   noEntry: 'this ruleset has no entry called "{{entry}}", so it was not given.',
   ownSpell: '"{{action}}" is this ruleset\'s own, so it may be cast once this fight.',

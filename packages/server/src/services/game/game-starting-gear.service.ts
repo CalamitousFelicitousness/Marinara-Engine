@@ -11,6 +11,7 @@ import {
   resolveRulesetStartingGear,
   rulesetStartingGearKind,
   rulesetStartingGearTakenBy,
+  rulesetStartingGearEquips,
   rulesetStartingGearUnheld,
   type GameInventoryEngineOp,
   type GameInventoryOp,
@@ -203,13 +204,12 @@ export async function takeGameStartingGear(
         };
       }
     }
-    // Armor and a shield go on as they are taken, where their slots are free; one that does not fit
-    // stays in the bag.
-    const equips: GameInventoryOp[] = [];
-    for (const [index, add] of adds.entries()) {
-      const result = added.results[index];
-      if (add.equip && result?.ok && result.id) equips.push({ op: "equip", id: result.id });
-    }
+    // Armor and a shield go on as they are taken, where their slots are free, and each of several put
+    // on alike (two shortswords, one in each hand); one that does not fit stays in the bag.
+    const equips: GameInventoryOp[] = rulesetStartingGearEquips(
+      adds,
+      added.results.map((result) => (result?.ok ? result.id : undefined)),
+    );
     const worn = equips.length > 0 ? applyGameInventoryOps(added.stacks, equips, undefined, book) : added;
     const next: GameStartingGearTaken = {
       ...taken,

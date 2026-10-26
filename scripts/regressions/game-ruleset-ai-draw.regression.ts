@@ -6,7 +6,9 @@
  *     hand with the turn's free interaction and shoots; with somebody beside it on a later turn, where
  *     a shot at somebody beside you is at disadvantage, it takes the sword back and swings.
  *   - A companion on the Engine's tactics shoots first the arrows that do more (clauses of their own,
- *     1.644), and keeps arrows that only slay one kind for that kind.
+ *     1.644), and keeps arrows that only slay one kind for that kind, even where every arrow it has
+ *     carries clauses of its own (laptop 2026-10-26: Pip shot an Arrow of Undead Slaying at a Bandit
+ *     Captain with four +1 arrows left).
  *   - The turn's free interaction already spent (on picking up what it dropped, 1.266), nothing else
  *     is taken in hand that turn; and a weapon a buckler keeps out of hand is never tried.
  */
@@ -93,7 +95,27 @@ try {
         ammoRider: { plus: [{ dice: "6d10", type: "cut", targetIs: { types: ["dragon"] } }], spentOnUse: true },
       },
     },
+    {
+      id: "keen-arrows",
+      label: "Keen arrows",
+      item: {
+        category: "ammunition",
+        rarity: "uncommon",
+        tags: ["arrow"],
+        stats: { bulk: 1 },
+        stack: 20,
+        ammoRider: { plus: [{ flat: 1, type: "cut" }], spentOnUse: true },
+      },
+    },
   );
+  // A bow that hits hard enough that a +1 arrow is no clear gain over another (a 5e longbow's 1d8 + 3).
+  const huntingBow = outfitter.entries.find((entry: { id: string }) => entry.id === "hunting-bow");
+  outfitter.entries.push({
+    ...structuredClone(huntingBow),
+    id: "war-bow",
+    label: "War bow",
+    item: { ...structuredClone(huntingBow.item), stats: { ...huntingBow.item.stats, damage: "3d8" } },
+  });
   doc.combat.attackRoll.advantage = true;
   doc.combat.ranged = { adjacentFoe: "disadvantage" };
   doc.combat.creatureTypes = {
@@ -355,6 +377,36 @@ try {
     const slayer = rulesetCombatant(dragon.fight.encounter, "archer")!;
     assert.deepEqual(slayer.ammoFirst, { 0: 2 }, "against a dragon, the slaying arrows first");
     assert.deepEqual(slayer.itemsUsed, { 2: 1 });
+
+    // Only keen and slaying arrows, the slaying first in the bag: the keen ones at a humanoid.
+    const magicQuiver = (foe: RulesetStatBlock) =>
+      fight(
+        [
+          {
+            id: "pip",
+            side: "party",
+            at: { x: 1, y: 0 },
+            stacks: [
+              stack("bow", "war-bow", 1, true),
+              stack("slaying", "slaying-arrows", 1),
+              stack("keen", "keen-arrows", 4),
+            ],
+          },
+          { id: "captain", side: "enemy", at: { x: 10, y: 0 }, block: foe },
+        ],
+        { pip: "ai" },
+      );
+    const captain = magicQuiver(block({ type: "humanoid" }));
+    const shots = said(captain, play(captain), "pip");
+    const pip = rulesetCombatant(captain.fight.encounter, "pip")!;
+    assert.ok(
+      shots.some((event) => event.type === "attack" && event.optionId === "item:0"),
+      JSON.stringify(shots),
+    );
+    assert.deepEqual(pip.itemsUsed, { 2: 1 }, "a keen arrow at the humanoid, the slaying one kept");
+    const wyrm = magicQuiver(block({ type: "dragon" }));
+    said(wyrm, play(wyrm), "pip");
+    assert.deepEqual(rulesetCombatant(wyrm.fight.encounter, "pip")!.itemsUsed, { 1: 1 }, "the slaying one at a dragon");
   }
 
   console.log(

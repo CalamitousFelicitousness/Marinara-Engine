@@ -38,6 +38,7 @@ import {
   currentRulesetActor,
   deterministicRng,
   findRulesetCreature,
+  rulesetSaidCreatureType,
   fillRulesetSheetChoices,
   generateTacticalBattlefield,
   validateTacticalBattlefieldBrief,
@@ -962,17 +963,16 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
   const usualSpeed = rulesetUsualBestiarySpeed(input.bestiary);
   const withUsualSpeed = <T extends RulesetStatBlock>(block: T): T =>
     block.speed !== undefined || block.speeds || usualSpeed === undefined ? block : { ...block, speed: usualSpeed };
-  // What an invented one is: what the Game Master said, else what a character is (laptop party A:
-  // Hold Person had nobody to hold among a cult it made up).
+  // What an invented one is: what the Game Master said, over any type its proposed block was written
+  // with (laptop 2026-10-26: husks described as undead fought as humanoids), else what a character is
+  // (laptop party A: Hold Person had nobody to hold among a cult it made up).
   const kinds = combat.creatureTypes;
   const typed = <T extends RulesetStatBlock>(block: T, said?: string): T => {
-    if (!kinds || block.type !== undefined) return block;
-    const named = said
-      ? kinds.types.find((one) =>
-          [one.id, one.label].some((name) => name.trim().toLowerCase() === said.trim().toLowerCase()),
-        )?.id
-      : undefined;
-    const type = named ?? kindNamedIn(opponentName) ?? kinds.default;
+    if (!kinds) return block;
+    const named = rulesetSaidCreatureType(definition, said);
+    if (named !== undefined) return block.type === named ? block : { ...block, type: named };
+    if (block.type !== undefined) return block;
+    const type = kindNamedIn(opponentName) ?? kinds.default;
     return type === undefined ? block : { ...block, type };
   };
   // Else the type of the bestiary creature its name says it is ("Rotting Zombie 2" is a Zombie).
@@ -1160,14 +1160,23 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
           `${opponent.name} may spend ${Math.min(20, opponent.points!)} points between turns on ${legendary.actions.map((one) => one.name).join(", ")}.`,
         );
       }
+      // A creature that only stands in for what the Game Master said it is fights as that (laptop
+      // 2026-10-26: a "skeletal husk" built on a humanoid was held by Hold Person and never turned).
+      const stated = kinds ? rulesetSaidCreatureType(definition, opponent.creatureType) : undefined;
+      const retyped = stated !== undefined && stated !== found.entry.creature?.type ? stated : undefined;
+      if (retyped)
+        adjustments.push(
+          `${opponent.name} was said to be ${kinds!.types.find((one) => one.id === retyped)?.label ?? retyped}, so it fights as one, on the numbers of the ${found.entry.label}.`,
+        );
       combatants.push({
         id: opponent.id,
         name: opponent.name,
         side: "enemy",
         creature: { catalogId: found.catalogId, entryId: found.entry.id },
-        ...(opponent.adjust || legendary?.actions.length
+        ...(opponent.adjust || legendary?.actions.length || retyped
           ? {
               adjust: {
+                ...(retyped ? { type: retyped } : {}),
                 ...(legendary?.actions.length
                   ? { legendary: { points: Math.min(20, opponent.points!), actions: legendary.actions as never } }
                   : {}),

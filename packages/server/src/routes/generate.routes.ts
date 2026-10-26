@@ -5220,6 +5220,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               chatMetadata: gamePromptMetadata,
               world: await loadGameWorld(app.db, input.chatId, gamePromptMetadata),
               ruleset: pinnedGameRuleset?.status === "ok" ? pinnedGameRuleset.definition : undefined,
+              rulesetPackageId: pinnedGameRuleset?.status === "ok" ? pinnedGameRuleset.packageId : null,
               characterIds,
               chars,
               chats,

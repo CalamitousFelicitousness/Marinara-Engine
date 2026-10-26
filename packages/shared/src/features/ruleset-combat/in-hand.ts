@@ -19,6 +19,7 @@ import type { RulesetSheetItem } from "../rulesets/sheet-math.js";
 import {
   rulesetActionItemIndex,
   rulesetAmmoFirst,
+  rulesetAmmoRank,
   rulesetHeldDrawPlan,
   rulesetItemOn,
   rulesetStackLeft,
@@ -119,14 +120,14 @@ function carriedForHand(actor: RulesetCombatant, index: number, hands: ReadonlyS
   return held.quantity - (actor.itemsUsed?.[index] ?? 0) >= 1 && handsTaken(held, hands) > 0;
 }
 
-/** The stacks an ammunition tag may be shot from, in the order a shot takes them: plain before any
- *  with clauses of its own (1.644), each with some left. */
+/** The stacks an ammunition tag may be shot from, in the order a shot takes them (`rulesetAmmoRank`),
+ *  each with some left. */
 function ammoStacks(actor: RulesetCombatant, tag: string): number[] {
   const items = actor.sheet?.items ?? [];
   return items
     .map((_, index) => index)
     .filter((index) => items[index]!.item.tags?.includes(tag) && rulesetStackLeft(actor, index) > 0)
-    .sort((a, b) => Number(!!items[a]!.item.ammoRider) - Number(!!items[b]!.item.ammoRider));
+    .sort((a, b) => rulesetAmmoRank(items[a]!.item) - rulesetAmmoRank(items[b]!.item));
 }
 
 /** A weapon's blow that shoots from the bag, at its place: its first such action on the menu. */

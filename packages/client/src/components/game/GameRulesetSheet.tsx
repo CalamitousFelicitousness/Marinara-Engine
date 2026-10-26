@@ -64,7 +64,8 @@ import {
   rulesetSheetAttacks,
   rulesetSheetSummaryShown,
 } from "../../lib/ruleset-sheet-view";
-import { rulesetCatalogQuery } from "../../hooks/use-capability-packages";
+import { rulesetCatalogQuery, useRulesetStrings } from "../../hooks/use-capability-packages";
+import { RulesetTextContext, rulesetTextLookup, useRulesetText, type RulesetText } from "../../lib/ruleset-text";
 import { useCombatScreenStore } from "../../stores/combat-screen.store";
 import { DraftNumberInput } from "../ui/DraftNumberInput";
 import { DraftTextarea } from "../ui/DraftTextarea";
@@ -144,6 +145,7 @@ function summaryFieldValue(
   evaluated: EvaluatedRulesetSheet,
   yes: string,
   no: string,
+  text: RulesetText,
 ): string {
   if (field.type === "number") return String(evaluated.numbers[field.id] ?? 0);
   const stored = build.fields?.[field.id];
@@ -151,12 +153,25 @@ function summaryFieldValue(
   if (typeof value === "boolean") return value ? yes : no;
   if (typeof value === "number") return String(value);
   if (typeof value !== "string") return "";
-  return field.type === "enum" ? (field.valueLabels?.[value] ?? value) : value;
+  // A choice's label is the ruleset's own word. A written value reads any of the ruleset's words in it
+  // ("Common, Elvish" for Languages, name by name); what a player typed in of their own stays as written.
+  return text(field.type === "enum" ? (field.valueLabels?.[value] ?? value) : value);
 }
 
 /** A number with its sign where it is a bonus: "+7", "-1", "0". */
 function signedText(value: number, signed: boolean | undefined): string {
   return signed && value > 0 ? `+${value}` : String(value);
+}
+
+/**
+ * The ruleset's own words in the player's language (1.798), as the fight screen reads them
+ * (`DirectedCombatUI`): its translation for the language on screen, or every word as written. Only
+ * what is shown goes through it; ids, and what goes back to the rules, stay the ruleset's own.
+ */
+function useSheetRulesetText(definition: RulesetDefinition): RulesetText {
+  const { i18n } = useUiTranslation();
+  const strings = useRulesetStrings(definition.id, definition.version, i18n.resolvedLanguage ?? i18n.language);
+  return useMemo(() => rulesetTextLookup(strings.data?.strings), [strings.data]);
 }
 
 /** How many conditions the "Add condition" search offers at once: it narrows as more is typed. */
@@ -181,6 +196,7 @@ function RulesetSheetConditions({
   onToggle: (condition: string, active: boolean) => void;
 }) {
   const { t: localizeUi } = useUiTranslation();
+  const text = useRulesetText();
   const [query, setQuery] = useState("");
   const active = conditions.filter((condition) => condition.active);
   const pickable = useMemo(() => {
@@ -191,7 +207,9 @@ function RulesetSheetConditions({
   }, [conditions, definition]);
   const needle = query.trim().toLowerCase();
   const matches = needle
-    ? pickable.filter((condition) => condition.label.toLowerCase().includes(needle)).slice(0, CONDITION_MATCHES_SHOWN)
+    ? pickable
+        .filter((condition) => text(condition.label).toLowerCase().includes(needle))
+        .slice(0, CONDITION_MATCHES_SHOWN)
     : [];
   if (!active.length && (!editable || !pickable.length)) return null;
   return (
@@ -205,13 +223,13 @@ function RulesetSheetConditions({
               className={`${chipClass} inline-flex items-center gap-1 border-[var(--primary)] bg-[var(--accent)] text-[var(--foreground)]`}
             >
               <ArtIcon ids={rulesetConditionIcons(definition, condition.id)} className="h-4 w-4" />
-              {condition.label}
+              {text(condition.label)}
               {editable && (
                 <button
                   type="button"
                   onClick={() => onToggle(condition.id, false)}
                   aria-label={localizeUi("game.ruleset.sheet.removeConditionAria", {
-                    name: condition.label,
+                    name: text(condition.label),
                     who: cardName,
                   })}
                   className="-mr-1 rounded-full p-0.5 text-[var(--muted-foreground)] hover:bg-[var(--secondary)] hover:text-[var(--foreground)]"
@@ -253,7 +271,7 @@ function RulesetSheetConditions({
                     ids={rulesetConditionIcons(definition, condition.id)}
                     className="mr-1 h-4 w-4 align-[-0.2em]"
                   />
-                  {condition.label}
+                  {text(condition.label)}
                 </button>
               ))}
             </div>
@@ -282,6 +300,7 @@ function RulesetSheetListView({
   rows: unknown;
   yes: string;
 }) {
+  const text = useRulesetText();
   const display = list.display;
   const nameColumn =
     definition.gm.sheetSummary.lists.find((entry) => entry.list === list.id)?.nameColumn ??
@@ -307,13 +326,13 @@ function RulesetSheetListView({
   const ordered = [...groups.entries()].sort(([left], [right]) => (left ?? -1) - (right ?? -1));
   return (
     <div className="space-y-1.5">
-      <p className={labelClass}>{list.label}</p>
+      <p className={labelClass}>{text(list.label)}</p>
       {entries.length === 0 && <p className="text-[0.6875rem] text-[var(--muted-foreground)]">—</p>}
       {ordered.map(([place, group]) => (
         <div key={place ?? "none"} className="space-y-1">
           {place !== undefined && display?.by && (
             <p className="text-[0.6875rem] font-semibold text-[var(--foreground)]">
-              {display.by.labels[place] ?? String(place)}
+              {text(display.by.labels[place] ?? String(place))}
             </p>
           )}
           <ul className="m-0 grid list-none gap-1 p-0 sm:grid-cols-2">
@@ -327,7 +346,7 @@ function RulesetSheetListView({
                     {entry.marked && <Check size={12} aria-label={yes} className="text-[var(--primary)]" />}
                   </span>
                 )}
-                <span className="min-w-0 break-words text-xs text-[var(--foreground)]">{entry.name}</span>
+                <span className="min-w-0 break-words text-xs text-[var(--foreground)]">{text(entry.name)}</span>
               </li>
             ))}
           </ul>
@@ -361,15 +380,17 @@ function WoundTrack({
   onMark: (kind: string, amount: number, box?: number) => void;
   localizeUi: TFunction;
 }) {
+  const text = useRulesetText();
+  const name = text(track.label);
   // The kind a click marks with. The lightest is the default, because that is what most harm is.
   const kinds = [...wound.kinds].sort((a, b) => a.severity - b.severity);
   const [kindId, setKindId] = useState(kinds[0]?.id ?? "");
   const chosen = kinds.find((kind) => kind.id === kindId) ?? kinds[0];
-  const markLabel = (id: string | undefined) => wound.kinds.find((kind) => kind.id === id)?.label ?? "";
+  const markLabel = (id: string | undefined) => text(wound.kinds.find((kind) => kind.id === id)?.label ?? "");
   const levelName = (index: number) =>
     wound.numbered
       ? localizeUi("game.ruleset.sheet.wound.box", { number: index + 1 })
-      : (wound.levels[index]?.label ?? "");
+      : text(wound.levels[index]?.label ?? "");
   // The box one heal clears, by the Engine's own rule: the lightest mark, the highest box among
   // equally light ones. On a sequential track that is always the last marked box.
   const severityOf = (id: string | undefined) => wound.kinds.find((kind) => kind.id === id)?.severity;
@@ -385,8 +406,8 @@ function WoundTrack({
   return (
     <div className={`space-y-1.5 ${cardClass}`}>
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <span className="min-w-0 flex-1 basis-24 truncate text-xs text-[var(--foreground)]" title={track.label}>
-          {track.label}
+        <span className="min-w-0 flex-1 basis-24 truncate text-xs text-[var(--foreground)]" title={name}>
+          {name}
         </span>
         {kinds.length > 1 && (
           <div className="flex shrink-0 flex-wrap gap-1">
@@ -397,14 +418,14 @@ function WoundTrack({
                 aria-pressed={kind.id === chosen?.id}
                 disabled={readOnly}
                 onClick={() => setKindId(kind.id)}
-                aria-label={localizeUi("game.ruleset.sheet.wound.kindAria", { kind: kind.label, name: track.label })}
+                aria-label={localizeUi("game.ruleset.sheet.wound.kindAria", { kind: text(kind.label), name })}
                 className={`${chipClass} ${
                   kind.id === chosen?.id
                     ? "border-[var(--primary)] bg-[var(--accent)] text-[var(--foreground)]"
                     : "border-[var(--border)] text-[var(--muted-foreground)] hover:bg-[var(--accent)]"
                 }`}
               >
-                {kind.label}
+                {text(kind.label)}
               </button>
             ))}
           </div>
@@ -458,7 +479,7 @@ function WoundTrack({
                 state: mark
                   ? localizeUi("game.ruleset.sheet.wound.marked", { kind: markLabel(mark) })
                   : localizeUi("game.ruleset.sheet.wound.clear"),
-                name: track.label,
+                name,
                 who: cardName,
               })}
               title={localizeUi("game.ruleset.sheet.wound.levelTitle", {
@@ -489,16 +510,16 @@ function WoundTrack({
           ? localizeUi(
               wound.penalty === 0 ? "game.ruleset.sheet.wound.boxesNoPenalty" : "game.ruleset.sheet.wound.penaltyBoxes",
               {
-                name: track.label,
+                name,
                 filled: wound.filled,
                 count: wound.levels.length,
                 penalty: wound.penalty,
               },
             )
           : wound.penalty === 0
-            ? localizeUi("game.ruleset.sheet.wound.noPenalty", { name: track.label })
+            ? localizeUi("game.ruleset.sheet.wound.noPenalty", { name })
             : localizeUi("game.ruleset.sheet.wound.penalty", {
-                name: track.label,
+                name,
                 level: levelName(wound.lowest),
                 penalty: wound.penalty,
               })}
@@ -569,6 +590,7 @@ export function GameRulesetSheet({
   const inFight = useCombatScreenStore((state) => state.round !== null || state.tacticalShowing);
   const settled = readOnly || inFight;
   const { t: localizeUi } = useUiTranslation();
+  const text = useSheetRulesetText(definition);
   const [tab, setTab] = useState<string | null>(null);
   const [draft, setDraft] = useState<RulesetSheetEnvelope | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -582,7 +604,7 @@ export function GameRulesetSheet({
   const [restOffers, setRestOffers] = useState<Record<string, RulesetRestRecovery[]>>({});
   const [restRecover, setRestRecover] = useState<Record<string, { on: boolean; counts: Record<string, number> }>>({});
 
-  const layerNames = layers?.map((layer) => layer.label).join(", ") || null;
+  const layerNames = layers?.map((layer) => text(layer.label)).join(", ") || null;
 
   const build = useMemo(() => envelope?.build ?? defaultRulesetSheetBuild(definition), [definition, envelope]);
   const resolved = useMemo(() => readRulesetLive(definition, build, live, items), [definition, build, live, items]);
@@ -785,7 +807,7 @@ export function GameRulesetSheet({
     }
   };
 
-  return (
+  const sheet = (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
@@ -796,8 +818,8 @@ export function GameRulesetSheet({
               reading the sheet can tell a Hard winter game from an ordinary one. */}
           <p className="truncate text-[0.6875rem] text-[var(--muted-foreground)]">
             {layerNames
-              ? localizeUi("game.ruleset.sheet.nameWithLayers", { name: definition.name, layers: layerNames })
-              : definition.name}
+              ? localizeUi("game.ruleset.sheet.nameWithLayers", { name: text(definition.name), layers: layerNames })
+              : text(definition.name)}
           </p>
           {/* Past the most they can carry, or encumbered: what the bag does to them, on the sheet too. */}
           {carrying && (carrying.over || carrying.encumbered) && (
@@ -878,7 +900,7 @@ export function GameRulesetSheet({
                       : "border-[var(--border)] text-[var(--muted-foreground)] hover:bg-[var(--accent)]"
                   }`}
                 >
-                  {one ?? localizeUi("game.ruleset.sheet.overview")}
+                  {one === null ? localizeUi("game.ruleset.sheet.overview") : text(one)}
                 </button>
               ))}
             </div>
@@ -901,8 +923,8 @@ export function GameRulesetSheet({
                 <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
                   {summaryFields.map((field) => (
                     <div key={field.id} className={`flex min-w-0 flex-col ${cardClass}`}>
-                      <span className={`${labelClass} truncate`} title={field.label}>
-                        {field.label}
+                      <span className={`${labelClass} truncate`} title={text(field.label)}>
+                        {text(field.label)}
                       </span>
                       <span className="truncate text-xs text-[var(--foreground)]">
                         {summaryFieldValue(
@@ -911,14 +933,15 @@ export function GameRulesetSheet({
                           evaluated,
                           localizeUi("game.ruleset.sheet.yes"),
                           localizeUi("game.ruleset.sheet.no"),
+                          text,
                         )}
                       </span>
                     </div>
                   ))}
                   {summaryDerived.map((entry) => (
                     <div key={entry.id} className={`flex min-w-0 flex-col ${cardClass}`}>
-                      <span className={`${labelClass} truncate`} title={entry.label}>
-                        {entry.label}
+                      <span className={`${labelClass} truncate`} title={text(entry.label)}>
+                        {text(entry.label)}
                       </span>
                       <span className="text-xs font-semibold tabular-nums text-[var(--foreground)]">
                         {signedText(evaluated.derived[entry.id] ?? 0, entry.signed)}
@@ -941,15 +964,17 @@ export function GameRulesetSheet({
                   key={group.section ? `section:${group.section.id}` : "none"}
                   className={group.section ? "space-y-1" : undefined}
                 >
-                  {group.section && <p className={labelClass}>{group.section.label}</p>}
+                  {group.section && <p className={labelClass}>{text(group.section.label)}</p>}
                   <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-6">
                     {group.entries.map((ability) => (
                       <div
                         key={ability.id}
                         className={`flex min-w-0 flex-col items-center ${cardClass}`}
-                        title={ability.label}
+                        title={text(ability.label)}
                       >
-                        <span className={`${labelClass} max-w-full truncate`}>{ability.short ?? ability.label}</span>
+                        <span className={`${labelClass} max-w-full truncate`}>
+                          {text(ability.short ?? ability.label)}
+                        </span>
                         {/* The score a player reads off a printed sheet, and what it adds to a roll. */}
                         <span className="text-sm font-semibold tabular-nums text-[var(--foreground)]">
                           {evaluated.abilityScores[ability.id] ?? ability.default}
@@ -965,14 +990,14 @@ export function GameRulesetSheet({
 
               {poolGroups.map((group) => (
                 <div key={group.id || "ungrouped"} className="space-y-1.5">
-                  {group.id && <p className={labelClass}>{rulesetPoolGroupLabel(group.id)}</p>}
+                  {group.id && <p className={labelClass}>{text(rulesetPoolGroupLabel(group.id))}</p>}
                   {group.pools.map((pool) => (
                     <div key={pool.key} className={`flex flex-wrap items-center gap-x-2 gap-y-1 ${cardClass}`}>
                       <span
                         className="min-w-0 flex-1 basis-24 truncate text-xs text-[var(--foreground)]"
-                        title={pool.label}
+                        title={text(pool.label)}
                       >
-                        {pool.label}
+                        {text(pool.label)}
                         {/* What its slots are cast at, where the pool says (laptop builder 2026-10-24:
                             a warlock's pact slots read no level). */}
                         {poolLevels[pool.key] !== undefined && (
@@ -993,7 +1018,10 @@ export function GameRulesetSheet({
                             type="button"
                             onClick={() => apply({ op: "spend", pool: pool.key, amount: 1 })}
                             disabled={readOnly || pool.value <= 0}
-                            aria-label={localizeUi("game.ruleset.sheet.spendAria", { name: pool.label, who: cardName })}
+                            aria-label={localizeUi("game.ruleset.sheet.spendAria", {
+                              name: text(pool.label),
+                              who: cardName,
+                            })}
                             className={stepButtonClass}
                           >
                             <Minus size={12} aria-hidden="true" />
@@ -1006,7 +1034,10 @@ export function GameRulesetSheet({
                             integer
                             disabled={readOnly}
                             selectOnFocus
-                            ariaLabel={localizeUi("game.ruleset.sheet.valueAria", { name: pool.label, who: cardName })}
+                            ariaLabel={localizeUi("game.ruleset.sheet.valueAria", {
+                              name: text(pool.label),
+                              who: cardName,
+                            })}
                             className={numberInputClass}
                           />
                           <span className="text-xs tabular-nums text-[var(--muted-foreground)]">/{pool.max}</span>
@@ -1015,7 +1046,7 @@ export function GameRulesetSheet({
                             onClick={() => apply({ op: "restore", pool: pool.key, amount: 1 })}
                             disabled={readOnly || pool.value >= pool.max}
                             aria-label={localizeUi("game.ruleset.sheet.restoreAria", {
-                              name: pool.label,
+                              name: text(pool.label),
                               who: cardName,
                             })}
                             className={stepButtonClass}
@@ -1038,7 +1069,10 @@ export function GameRulesetSheet({
                             integer
                             disabled={readOnly}
                             selectOnFocus
-                            ariaLabel={localizeUi("game.ruleset.sheet.tempAria", { name: pool.label, who: cardName })}
+                            ariaLabel={localizeUi("game.ruleset.sheet.tempAria", {
+                              name: text(pool.label),
+                              who: cardName,
+                            })}
                             className={numberInputClass}
                           />
                         </div>
@@ -1059,7 +1093,13 @@ export function GameRulesetSheet({
                         cardName={cardName}
                         readOnly={readOnly}
                         onMark={(kind, amount, box) =>
-                          apply({ op: "damage", track: track.id, kind, amount, ...(box !== undefined ? { box } : {}) })
+                          apply({
+                            op: "damage",
+                            track: track.id,
+                            kind,
+                            amount,
+                            ...(box !== undefined ? { box } : {}),
+                          })
                         }
                         localizeUi={localizeUi}
                       />
@@ -1067,9 +1107,9 @@ export function GameRulesetSheet({
                       <div key={track.id} className={`flex flex-wrap items-center gap-x-2 gap-y-1 ${cardClass}`}>
                         <span
                           className="min-w-0 flex-1 basis-24 truncate text-xs text-[var(--foreground)]"
-                          title={track.label}
+                          title={text(track.label)}
                         >
-                          {track.label}
+                          {text(track.label)}
                         </span>
                         <span className="shrink-0 text-[0.6875rem] tabular-nums text-[var(--muted-foreground)]">
                           {localizeUi("game.ruleset.sheet.range", { min: track.min, max: track.max })}
@@ -1080,7 +1120,7 @@ export function GameRulesetSheet({
                             onClick={() => apply({ op: "track", track: track.id, by: -1 })}
                             disabled={settled || track.value <= track.min}
                             aria-label={localizeUi("game.ruleset.sheet.trackDownAria", {
-                              name: track.label,
+                              name: text(track.label),
                               who: cardName,
                             })}
                             className={stepButtonClass}
@@ -1095,7 +1135,7 @@ export function GameRulesetSheet({
                             onClick={() => apply({ op: "track", track: track.id, by: 1 })}
                             disabled={settled || track.value >= track.max}
                             aria-label={localizeUi("game.ruleset.sheet.trackUpAria", {
-                              name: track.label,
+                              name: text(track.label),
                               who: cardName,
                             })}
                             className={stepButtonClass}
@@ -1115,7 +1155,7 @@ export function GameRulesetSheet({
                   {attacks.map((attack) => (
                     <div key={attack.id} className={`flex flex-wrap items-baseline gap-x-2 ${cardClass}`}>
                       <span className="min-w-0 flex-1 basis-24 break-words text-xs font-semibold text-[var(--foreground)]">
-                        {attack.label}
+                        {text(attack.label)}
                       </span>
                       {attack.toHit !== undefined && (
                         <span className="shrink-0 text-xs tabular-nums text-[var(--foreground)]">
@@ -1150,13 +1190,13 @@ export function GameRulesetSheet({
                         title={call.entry}
                         className={`${chipClass} inline-flex items-center gap-1 border-[var(--border)] text-[var(--foreground)]`}
                       >
-                        {call.as || call.entry}
+                        {text(call.as || call.entry)}
                         {!settled && !readOnly && (
                           <button
                             type="button"
                             onClick={() => apply({ op: "dismiss", name: call.entry })}
                             aria-label={localizeUi("game.ruleset.sheet.dismissKeptAria", {
-                              name: call.as || call.entry,
+                              name: text(call.as || call.entry),
                               who: cardName,
                             })}
                             className="-mr-1 rounded-full p-0.5 text-[var(--muted-foreground)] hover:bg-[var(--secondary)] hover:text-[var(--foreground)]"
@@ -1178,13 +1218,13 @@ export function GameRulesetSheet({
                       title={keptForm.entry}
                       className={`${chipClass} inline-flex items-center gap-1 border-[var(--border)] text-[var(--foreground)]`}
                     >
-                      {keptForm.as}
+                      {text(keptForm.as)}
                       {!settled && !readOnly && (
                         <button
                           type="button"
                           onClick={() => apply({ op: "dismiss", name: keptForm.entry })}
                           aria-label={localizeUi("game.ruleset.sheet.endKeptFormAria", {
-                            name: keptForm.as,
+                            name: text(keptForm.as),
                             who: cardName,
                           })}
                           className="-mr-1 rounded-full p-0.5 text-[var(--muted-foreground)] hover:bg-[var(--secondary)] hover:text-[var(--foreground)]"
@@ -1220,7 +1260,7 @@ export function GameRulesetSheet({
                   : [];
                 return said.length ? (
                   <p key={`damage-${index}`} className="text-xs text-[var(--muted-foreground)]">
-                    {source.name}: {said.join("; ")}
+                    {text(source.name)}: {said.join("; ")}
                   </p>
                 ) : (
                   []
@@ -1231,14 +1271,17 @@ export function GameRulesetSheet({
                 <div className="space-y-1.5">
                   {shownText.map((entry) => (
                     <label key={entry.id} className="flex min-w-0 flex-col gap-0.5">
-                      <span className={labelClass}>{entry.label}</span>
+                      <span className={labelClass}>{text(entry.label)}</span>
                       <DraftTextarea
                         value={entry.value}
                         onCommit={(next) => apply({ op: "note", field: entry.id, value: next })}
                         maxLength={entry.maxLength}
                         rows={1}
                         disabled={settled}
-                        aria-label={localizeUi("game.ruleset.sheet.noteAria", { name: entry.label, who: cardName })}
+                        aria-label={localizeUi("game.ruleset.sheet.noteAria", {
+                          name: text(entry.label),
+                          who: cardName,
+                        })}
                         className="w-full min-w-0 resize-y rounded-lg border border-[var(--border)] bg-[var(--card)] px-2 py-1 text-xs text-[var(--foreground)]"
                       />
                     </label>
@@ -1250,17 +1293,20 @@ export function GameRulesetSheet({
                 <div className="space-y-1.5">
                   {resolved.states.map((state) => (
                     <label key={state.id} className="flex min-w-0 flex-col gap-0.5">
-                      <span className={labelClass}>{state.label}</span>
+                      <span className={labelClass}>{text(state.label)}</span>
                       <select
                         value={state.value}
                         onChange={(event) => apply({ op: "state", state: state.id, value: event.target.value })}
                         disabled={settled}
-                        aria-label={localizeUi("game.ruleset.sheet.stateAria", { name: state.label, who: cardName })}
+                        aria-label={localizeUi("game.ruleset.sheet.stateAria", {
+                          name: text(state.label),
+                          who: cardName,
+                        })}
                         className="w-full min-w-0 rounded-lg border border-[var(--border)] bg-[var(--card)] px-2 py-1 text-xs text-[var(--foreground)]"
                       >
                         {state.values.map((value) => (
                           <option key={value} value={value}>
-                            {state.valueLabels?.[value] ?? value}
+                            {text(state.valueLabels?.[value] ?? value)}
                           </option>
                         ))}
                       </select>
@@ -1302,10 +1348,13 @@ export function GameRulesetSheet({
                             .catch(() => undefined)
                             .finally(() => setResting(false));
                         }}
-                        aria-label={localizeUi("game.ruleset.sheet.restAria", { name: rest.label, who: cardName })}
+                        aria-label={localizeUi("game.ruleset.sheet.restAria", {
+                          name: text(rest.label),
+                          who: cardName,
+                        })}
                         className={`${chipClass} border-[var(--border)] text-[var(--foreground)] hover:bg-[var(--accent)]`}
                       >
-                        {rest.label}
+                        {text(rest.label)}
                       </button>
                     ))}
                   </div>
@@ -1314,7 +1363,7 @@ export function GameRulesetSheet({
                       <span className={labelClass}>{localizeUi("game.ruleset.sheet.restDice")}</span>
                       {restDicePools.map((pool) => (
                         <label key={pool.key} className="flex items-center gap-1 text-[0.6875rem]">
-                          <span>{pool.label}</span>
+                          <span>{text(pool.label)}</span>
                           <input
                             type="number"
                             min={0}
@@ -1328,7 +1377,7 @@ export function GameRulesetSheet({
                               setRestDice((current) => ({ ...current, [pool.key]: count }));
                             }}
                             aria-label={localizeUi("game.ruleset.sheet.restDiceAria", {
-                              name: pool.label,
+                              name: text(pool.label),
                               who: cardName,
                             })}
                             className="w-12 rounded border border-[var(--border)] bg-transparent px-1 py-0.5 text-center"
@@ -1355,8 +1404,8 @@ export function GameRulesetSheet({
                               />
                               <span>
                                 {localizeUi("game.ruleset.sheet.restRecover", {
-                                  name: offer.name,
-                                  rest: rest.label,
+                                  name: text(offer.name),
+                                  rest: text(rest.label),
                                   levels: offer.upTo,
                                 })}
                               </span>
@@ -1365,7 +1414,7 @@ export function GameRulesetSheet({
                               <div className="flex flex-wrap items-center gap-2 pl-5">
                                 {offer.pools.map((pool) => (
                                   <label key={pool.key} className="flex items-center gap-1">
-                                    <span>{pool.label}</span>
+                                    <span>{text(pool.label)}</span>
                                     <input
                                       type="number"
                                       min={0}
@@ -1379,8 +1428,8 @@ export function GameRulesetSheet({
                                         set({ counts: { ...chosen.counts, [pool.key]: count } });
                                       }}
                                       aria-label={localizeUi("game.ruleset.sheet.restRecoverAria", {
-                                        name: pool.label,
-                                        feature: offer.name,
+                                        name: text(pool.label),
+                                        feature: text(offer.name),
                                         who: cardName,
                                       })}
                                       className="w-12 rounded border border-[var(--border)] bg-transparent px-1 py-0.5 text-center"
@@ -1410,13 +1459,13 @@ export function GameRulesetSheet({
                       key={group.section ? `section:${group.section.id}` : "none"}
                       className="flex flex-wrap items-center gap-1.5"
                     >
-                      {group.section && <span className={labelClass}>{group.section.label}</span>}
+                      {group.section && <span className={labelClass}>{text(group.section.label)}</span>}
                       {group.entries.map((entry) => (
                         <span
                           key={`${entry.id}-${entry.label}`}
                           className="rounded-lg border border-[var(--border)] px-1.5 py-0.5 text-[0.6875rem] text-[var(--foreground)]"
                         >
-                          {entry.label}{" "}
+                          {text(entry.label)}{" "}
                           <span className="tabular-nums">
                             {rulesetCheckValueText(definition, entry.modifier, localizeUi)}
                           </span>
@@ -1432,6 +1481,9 @@ export function GameRulesetSheet({
       )}
     </div>
   );
+
+  // What the sheet's parts draw (conditions, lists, wound tracks) reads the same words.
+  return <RulesetTextContext.Provider value={text}>{sheet}</RulesetTextContext.Provider>;
 }
 
 /** The shared sheet sits beside the party portraits. A ruleset that sets the party up through a
@@ -1454,6 +1506,7 @@ export function GameRulesetPartySheet({
   memberBuilds?: readonly RulesetSheetBuild[];
 }) {
   const { t: localizeUi } = useUiTranslation();
+  const text = useSheetRulesetText(definition);
   const [conflict, setConflict] = useState(false);
   const savePartySheet = useSavePartySheet();
   const party = useMemo(() => rulesetPartyDefinition(definition), [definition]);
@@ -1477,13 +1530,13 @@ export function GameRulesetPartySheet({
   return (
     <details className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-3">
       <summary className="cursor-pointer break-words text-xs font-semibold text-[var(--foreground)]">
-        {definition.party.label}
+        {text(definition.party.label)}
       </summary>
       <div className="mt-3 max-h-80 overflow-y-auto">
         {envelope ? (
           <GameRulesetSheet
             definition={party}
-            cardName={definition.party.label}
+            cardName={text(definition.party.label)}
             envelope={envelope}
             live={live}
             readOnly={!editable}

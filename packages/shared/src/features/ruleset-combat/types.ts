@@ -964,6 +964,9 @@ export type RulesetCombatantInput =
          *  what it buys with them (cloud re-test 2026-10-26: a bestiary ogre and young red dragon marked
          *  boss had none). */
         legendary?: { points: number; actions: RulesetStatBlockAction[] };
+        /** What its writer said it is, a type of `combat.creatureTypes`, where the creature only stands in
+         *  for it (laptop 2026-10-26: skeletal husks built on a humanoid fought as humanoids). */
+        type?: string;
       };
       /** What it has on it as the fight starts (1.787), each by its item reference. */
       carried?: ReadonlyArray<RulesetCarriedInput>;

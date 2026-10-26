@@ -2900,6 +2900,7 @@
   "game.combat.ruleset.note.standsUnpaid": "{{name}} has nothing left to pay for {{action}} with, so it is not done.",
   "game.combat.ruleset.note.standsUnpaidStand": "{{name}} has nothing left to pay for {{action}} with, so it does not stand.",
   "game.combat.ruleset.note.standsUnpaidStored": "{{name}} has nothing left to pay for {{action}} with, so it is not stored.",
+  "game.combat.ruleset.note.statedType": "{{name}} was said to be {{type}}, so it fights as one, on the numbers of the {{creature}}.",
   "game.combat.ruleset.note.tierNotOffered": "\"{{choice}}\" is not offered for {{field}}, so it was left at the ruleset's default.",
   "game.combat.ruleset.note.tierUnknown": "The tier \"{{tier}}\" is not on this ruleset's scale, so {{used}} was used.",
   "game.combat.ruleset.note.tierUnknownInstead": "The tier \"{{tier}}\" is not on this ruleset's scale, so {{used}} was used instead.",

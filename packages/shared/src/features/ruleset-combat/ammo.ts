@@ -169,9 +169,22 @@ export function rulesetAmmoFirst(actor: RulesetCombatant, action: RulesetCombatA
   return held?.item.tags?.includes(action.ammo.tag) && rulesetStackLeft(actor, first) > 0 ? first : undefined;
 }
 
+/**
+ * Which ammunition a shot takes first (1.644), lowest first: plain; then one whose clauses of its own
+ * reach anybody (an Arrow +1); then one with a clause that reaches only some targets, kept for what
+ * it is for (an Arrow of Undead Slaying). Pip, a companion, shot a slaying arrow at a humanoid with
+ * four +1 arrows left (laptop 2026-10-26).
+ */
+export function rulesetAmmoRank(item: {
+  ammoRider?: { plus: ReadonlyArray<{ targetIs?: unknown; not?: unknown; marked?: unknown }> };
+}): number {
+  if (!item.ammoRider) return 0;
+  return item.ammoRider.plus.some((clause) => clause.targetIs || clause.not || clause.marked) ? 2 : 1;
+}
+
 /** The stack a weapon's next shot comes out of: the one its mode names, else the one its holder chose
- *  to shoot first, else the bag's first with some left, plain before any with clauses of its own
- *  (1.644). Undefined for a weapon that shoots nothing from the bag, or with nothing left. */
+ *  to shoot first, else the bag's first with some left by `rulesetAmmoRank`. Undefined for a weapon
+ *  that shoots nothing from the bag, or with nothing left. */
 export function rulesetNextShotStack(actor: RulesetCombatant, action: RulesetCombatAction): number | undefined {
   if (!action.ammo || action.clip) return undefined;
   if (action.ammoFrom !== undefined) return action.ammoFrom;
@@ -182,7 +195,7 @@ export function rulesetNextShotStack(actor: RulesetCombatant, action: RulesetCom
   return items
     .map((_, index) => index)
     .filter((index) => items[index]!.item.tags?.includes(tag) && rulesetStackLeft(actor, index) > 0)
-    .sort((a, b) => Number(!!items[a]!.item.ammoRider) - Number(!!items[b]!.item.ammoRider))[0];
+    .sort((a, b) => rulesetAmmoRank(items[a]!.item) - rulesetAmmoRank(items[b]!.item))[0];
 }
 
 /** A shot as the ammunition it would be shot with makes it (2026-10-26, for a forecast): with the
@@ -262,8 +275,8 @@ export function rulesetShotsAvailable(actor: RulesetCombatant, action: RulesetCo
 }
 
 /** Takes up to `count` of the items with this tag out of the fighter's bag, first stack first, and
- *  notes the share of them that comes back after a won fight. How many were taken. Plain ammunition
- *  goes before any with clauses of its own (1.644), and `from` takes out of that stack alone. `first`
+ *  notes the share of them that comes back after a won fight. How many were taken. Ammunition goes in
+ *  the order of `rulesetAmmoRank` (1.644), and `from` takes out of that stack alone. `first`
  *  is the stack its holder chose to shoot first (2026-10-26), before all the rest. */
 function draw(
   actor: RulesetCombatant,
@@ -280,8 +293,7 @@ function draw(
     .filter((index) => from === undefined || index === from)
     .sort(
       (a, b) =>
-        Number(b === first) - Number(a === first) ||
-        Number(!!items[a]!.item.ammoRider) - Number(!!items[b]!.item.ammoRider),
+        Number(b === first) - Number(a === first) || rulesetAmmoRank(items[a]!.item) - rulesetAmmoRank(items[b]!.item),
     );
   for (const index of order) {
     const held = items[index]!;

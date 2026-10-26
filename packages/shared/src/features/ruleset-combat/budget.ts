@@ -8,7 +8,7 @@ import type {
   RulesetCatalogEntry,
   RulesetDefinition,
 } from "../../schemas/ruleset.schema.js";
-import { findRulesetCreature } from "./creatures.js";
+import { findRulesetCreature, rulesetSaidCreatureType } from "./creatures.js";
 
 type Budget = NonNullable<NonNullable<NonNullable<RulesetDefinition["combat"]>["threat"]>["budget"]>;
 
@@ -143,7 +143,7 @@ export function rulesetBudgetedTiers(
  * never swapped.
  */
 export function rulesetBudgetStandIns<
-  T extends { id: string; name: string; creature?: string; tier?: string; boss?: unknown },
+  T extends { id: string; name: string; creature?: string; tier?: string; boss?: unknown; creatureType?: string },
 >(
   definition: RulesetDefinition,
   bestiary: RulesetCatalogEntriesById,
@@ -192,6 +192,8 @@ export function rulesetBudgetStandIns<
       for (const entry of entries)
         if (entry.creature) for (const word of words(entry.label)) seen.set(word, (seen.get(word) ?? 0) + 1);
     const ownWords = words(own.entry.label);
+    // Of the kind its writer said it is, where the creature only stands in for it (laptop 2026-10-26).
+    const kind = rulesetSaidCreatureType(definition, enemy.creatureType) ?? creature.type;
     const nearness = (label: string) =>
       [...words(label)].reduce((sum, word) => sum + (ownWords.has(word) ? 1 / (seen.get(word) ?? 1) : 0), 0);
     let best: { catalogId: string; entry: RulesetCatalogEntry; count: number; worth: number; near: number } | undefined;
@@ -199,7 +201,7 @@ export function rulesetBudgetStandIns<
       for (const entry of entries) {
         const kin = entry.creature;
         if (!kin || entry === own.entry || worthOf(kin.tier) <= 0) continue;
-        if (creature.type === undefined || kin.type !== creature.type) continue;
+        if (kind === undefined || kin.type !== kind) continue;
         for (let count = 4; count >= 1; count--) {
           const worth = rulesetFightWorth(
             definition,

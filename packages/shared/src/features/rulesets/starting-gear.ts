@@ -329,3 +329,20 @@ export function rulesetStartingGearUnheld(
   }
   return { adds: out, held };
 }
+
+/**
+ * What of the gear just added is put on: for a line that puts on several ("Two shortswords"), one of
+ * them at a time, each into slots still free, so a dual-wielder starts with a blade in each hand and
+ * whatever finds no slot stays carried (laptop 2026-10-26: two shortswords were one stack, one held).
+ * `ids` is the stack each add went into, in the same order, or none where it went nowhere.
+ */
+export function rulesetStartingGearEquips(
+  adds: readonly RulesetStartingGearAdd[],
+  ids: ReadonlyArray<string | undefined>,
+): Array<{ op: "equip"; id: string }> {
+  return adds.flatMap((add, index) => {
+    const id = ids[index];
+    // A stack of several gives one of itself to each equip, and the last is put on where it lies.
+    return add.equip && id ? Array.from({ length: Math.min(add.count, 16) }, () => ({ op: "equip" as const, id })) : [];
+  });
+}

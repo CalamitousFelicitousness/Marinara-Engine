@@ -15,6 +15,11 @@
  *   - What the view keeps as written but a player reads (Spanish playtest 2026-10-26): what a creature
  *     is ("Humanoid", "Construct", kept under `kind`/`type`), the budgets' names and letters read off
  *     the ruleset itself, and its own short name for its defense.
+ *   - The character sheet (and the party's shared sheet) reads the same translation as the fight
+ *     screen: spells, features, conditions, items, tabs, pools and rests in the player's language,
+ *     while every command it sends still names the ruleset's own ids.
+ *   - A line the Engine joins out of the ruleset's words ("Languages: Common, Elvish", "Wish: Fireball")
+ *     is read label first, then name by name, as the translation is keyed by each exact English string.
  */
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -302,6 +307,19 @@ try {
   assert.equal(text("Bram"), "Bram");
   assert.equal(text("constructor"), "constructor", "nothing off a prototype");
   assert.equal(rulesetTextLookup({}), RULESET_TEXT_AS_IS);
+  // A line joined out of the ruleset's words reads its label and each name on its own.
+  const joined = rulesetTextLookup({
+    Languages: "Языки",
+    Common: "Общий",
+    Elvish: "Эльфийский",
+    Wish: "Желание",
+    Fireball: "Огненный шар",
+  });
+  assert.equal(joined("Languages: Common, Elvish"), "Языки: Общий, Эльфийский");
+  assert.equal(joined("Wish: Fireball"), "Желание: Огненный шар");
+  assert.equal(joined("Languages: Common, Kaela's cant"), "Языки: Общий, Kaela's cant", "an unknown name as written");
+  assert.equal(joined("Wish: Fireball, Languages: Elvish"), "Желание: Огненный шар, Языки: Эльфийский");
+  assert.equal(joined("Nothing: here"), "Nothing: here");
   const view = {
     combatants: [{ id: "Goblin", name: "Goblin 1", conditions: ["Prone"] }],
     options: [{ id: "spells/fire-bolt", optionId: "Fire Bolt", label: "Fire Bolt" }],
@@ -359,6 +377,45 @@ try {
     rulesetBudgetMarks(definition).map((mark) => mark.label),
     ["Action", "Bonus action", "Movement"],
   );
+}
+
+// ── The character sheet reads the same words (source-level) ──
+{
+  const sheet = readFileSync(
+    new URL("../../packages/client/src/components/game/GameRulesetSheet.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    sheet,
+    /useRulesetStrings\(definition\.id, definition\.version, i18n\.resolvedLanguage \?\? i18n\.language\)/,
+    "loaded as the fight screen loads it",
+  );
+  assert.match(sheet, /<RulesetTextContext\.Provider value=\{text\}>/, "its parts read the same words");
+  for (const shown of [
+    "text(condition.label)",
+    "text(list.label)",
+    "text(entry.name)",
+    "text(pool.label)",
+    "text(track.label)",
+    "text(kind.label)",
+    "text(attack.label)",
+    "text(rest.label)",
+    "text(offer.name)",
+    "text(source.name)",
+    "text(field.label)",
+    "text(ability.short ?? ability.label)",
+    "text(group.section.label)",
+    "text(one)",
+    "text(definition.party.label)",
+    // A written value too, name by name ("Common, Elvish" under Languages).
+    'text(field.type === "enum" ? (field.valueLabels?.[value] ?? value) : value)',
+  ])
+    assert.ok(sheet.includes(shown), `the sheet shows ${shown}`);
+  // What it sends back is the ruleset's own: ids and keys, never a translated label.
+  assert.match(sheet, /onToggle\(condition\.id, (?:true|false)\)/);
+  assert.match(sheet, /apply\(\{ op: "rest", rest: rest\.id/);
+  assert.match(sheet, /apply\(\{ op: "spend", pool: pool\.key, amount: 1 \}\)/);
+  assert.doesNotMatch(sheet, /op: "[a-z]+", [a-z]+: text\(/, "no command carries a translated word");
 }
 
 console.log(

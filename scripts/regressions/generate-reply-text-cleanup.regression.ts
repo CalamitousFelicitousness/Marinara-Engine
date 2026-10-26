@@ -34,6 +34,42 @@ const rows: Array<{
     expected: { text: "She nods.\n\nThe rain falls.", changed: true, oocMessages: ["Brb, dinner."] },
   },
   {
+    name: "an OOC-only reply stays visible instead of being discarded (#8382)",
+    text: "<ooc>The next beat should reveal the letter.</ooc>",
+    o: { ...roleplay, connectedChatId: "conv-1" },
+    expected: { text: "The next beat should reveal the letter.", changed: true },
+  },
+  {
+    name: "case-insensitive OOC-only blocks preserve their order without duplicate forwarding",
+    text: "  <OOC>First thought.</OOC>\n\n<oOc>Second thought.</oOc>  ",
+    o: { ...roleplay, connectedChatId: "conv-1" },
+    expected: { text: "First thought.\n\nSecond thought.", changed: true },
+  },
+  {
+    name: "empty OOC blocks do not hide a real OOC-only reply",
+    text: "<ooc> </ooc> <OOC>Keep the answer.</OOC>",
+    o: { ...roleplay, connectedChatId: "conv-1" },
+    expected: { text: "Keep the answer.", changed: true },
+  },
+  {
+    name: "OOC-only individual group replies survive a stripped speaker prefix",
+    text: "Alice: <OOC>Keep Alice's answer.</OOC>",
+    o: { ...individual, chatMode: "roleplay", connectedChatId: "conv-1" },
+    expected: { text: "Keep Alice's answer.", changed: true },
+  },
+  {
+    name: "OOC fallback does not revive a wrong-speaker-only group reply",
+    text: "Bob: Not Alice's turn. <OOC>Keep the speaker gate.</OOC>",
+    o: { ...individual, chatMode: "roleplay", connectedChatId: "conv-1" },
+    expected: { dropped: "wrong_speaker" },
+  },
+  {
+    name: "an unclosed OOC block remains visible",
+    text: "<OOC>Keep this unfinished block.",
+    o: { ...roleplay, connectedChatId: "conv-1" },
+    expected: { text: "<OOC>Keep this unfinished block.", changed: false },
+  },
+  {
     name: "OOC tags stay without a connected conversation",
     text: "She nods. <ooc>Brb.</ooc>",
     o: roleplay,

@@ -16,6 +16,7 @@ import {
   resolveTtsRequestTimeoutMs,
   TTS_SETTINGS_KEY,
   TTS_API_KEY_MASK,
+  elevenLabsModelSupportsSpeed,
   ttsRoleplaySpeakerExtractorResponseSchema,
   type TTSSource,
   type TTSConfig,
@@ -60,7 +61,6 @@ const ELEVENLABS_DEFAULT_VOICES: VoiceOption[] = [
 ];
 const ELEVENLABS_FALLBACK_MODELS = [
   "eleven_v4",
-  "eleven_v4_turbo",
   "eleven_v3",
   "eleven_multilingual_v2",
   "eleven_flash_v2_5",
@@ -751,13 +751,6 @@ function clampElevenLabsSpeed(speed: number) {
 
 function clampXaiSpeed(speed: number) {
   return Math.min(1.5, Math.max(0.7, Number.isFinite(speed) ? speed : 1));
-}
-
-// Eleven v3 and v4 have no speed setting.
-const ELEVENLABS_MODELS_WITHOUT_SPEED = new Set(["eleven_v3", "eleven_v4", "eleven_v4_turbo"]);
-
-export function elevenLabsModelSupportsSpeed(model: string) {
-  return !ELEVENLABS_MODELS_WITHOUT_SPEED.has(model.trim().toLowerCase());
 }
 
 function isNanoGptElevenLabsModel(model: string) {
@@ -1538,7 +1531,7 @@ export async function ttsRoutes(app: FastifyInstance) {
     if (cfg.source === "elevenlabs" && ELEVENLABS_NON_TTS_MODELS.has(normalizedModel)) {
       return reply.status(400).send({
         error: `ElevenLabs model "${model}" cannot generate text-to-speech`,
-        detail: `That model is for Text to Voice / voice design. Use "eleven_v4" or "eleven_v4_turbo" for Eleven v4 speech, "eleven_v3" for Eleven v3, or "eleven_multilingual_v2", "eleven_flash_v2_5", or "eleven_turbo_v2_5" for regular TTS.`,
+        detail: `That model is for Text to Voice / voice design. Use "eleven_v4" for Eleven v4 speech, "eleven_v3" for Eleven v3, or "eleven_multilingual_v2", "eleven_flash_v2_5", or "eleven_turbo_v2_5" for regular TTS.`,
       });
     }
 

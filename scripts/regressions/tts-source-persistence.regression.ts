@@ -5,7 +5,12 @@ import { dirname, join, resolve } from "node:path";
 import { gzipSync } from "node:zlib";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
-import { setCharacterVoiceAssignment, TTS_API_KEY_MASK, ttsConfigSchema } from "../../packages/shared/src/types/tts.js";
+import {
+  elevenLabsModelSupportsSpeed,
+  setCharacterVoiceAssignment,
+  TTS_API_KEY_MASK,
+  ttsConfigSchema,
+} from "../../packages/shared/src/types/tts.js";
 import {
   buildTTSVoiceRequests,
   cleanTTSInputText,
@@ -22,7 +27,6 @@ import {
   buildOfficialPocketTtsForm,
   buildElevenLabsTextInput,
   buildRoleplaySpeakerExtractorPrompt,
-  elevenLabsModelSupportsSpeed,
   buildRoleplaySpeakerExtractorUserPrompt,
   maskTTSConfigForResponse,
   fetchAllElevenLabsVoiceOptions,

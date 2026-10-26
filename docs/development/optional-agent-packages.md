@@ -2181,17 +2181,19 @@ copy splits state the Engine keeps in one place. Pure helpers and types may stil
 
 **Shared server libraries.** A package server may leave `zod`, `adm-zip`, `dotenv`, `nanoid` and `jsonrepair` out of
 its bundle and import them by name, as it already may for `@huggingface/transformers`, `onnxruntime-node`,
-`onnxruntime-web`, `sharp`, `pino`, `pino-pretty` and `undici`. Node resolves them through managed links in the package's
-runtime copy to `DATA_DIR/capability-packages/node_modules`, which points to the Engine's `packages/server/node_modules`.
+`onnxruntime-web`, `sharp`, `pino`, `pino-pretty` and `undici`. The Engine builds managed links in each package's
+runtime copy by resolving its server's declared dependencies with Node's package resolver. This works with direct,
+hoisted and partially hoisted dependencies, including when `DATA_DIR` is outside the Engine checkout.
 Zod is the compatibility exception: a package's `zod` import resolves to the full `zod-v3` dependency, including its
 default, named, CommonJS and subpath exports. Other libraries keep the very module instance the Engine uses. The
-Engine's own `zod` imports continue to resolve to native Zod 4. pnpm keeps only the
-server's direct dependencies there, so only those names resolve; a dependency of a dependency, such as `ws`, does not.
-The Engine keeps the names above as direct production dependencies of `packages/server`, and every install keeps that
-layout: source and launcher installs, Windows (where the data link is a junction), Android and Termux, and both
-Docker images. When it starts or activates a package, the Engine rebuilds a data link that points anywhere else,
-including one left dangling by a data folder moved from another install path. Anything there that is not a link is
-left alone.
+Engine's own `zod` imports continue to resolve to native Zod 4. The names above remain direct production dependencies
+of `packages/server`. Managed snapshots link declared dependencies; undeclared transitives such as `ws` are not part
+of the shared-library contract. Missing optional libraries are skipped, and installed development tools remain available. A missing or incompatible Zod 3 alias fails
+activation explicitly instead of letting a package silently load native Zod 4.
+Windows uses junctions for these links; source and launcher installs, Android and Termux, and both Docker images use
+the same dependency-resolution contract. Legacy shared data links are refreshed when the physical server dependency
+directory is available. Existing real directories are left alone, and fresh runtime copies resolve their dependencies
+independently of that legacy data link.
 
 **Declaring it.** A package that uses any of this declares `schemaVersion: 2`, `capabilityApi: { major: 1, minor: 341 }`
 and `builtAgainst`, and keeps its `engine` range. A `schemaVersion: 1` manifest is never checked against the

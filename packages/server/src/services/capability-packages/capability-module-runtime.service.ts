@@ -1,5 +1,4 @@
 import { pathToFileURL } from "node:url";
-import { existsSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { chmod, lstat, mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
@@ -325,10 +324,10 @@ class CapabilityModuleRuntime {
         await writeFile(output, data, { flag: "wx", mode: 0o400 });
       }
       await writeFile(join(root, "manifest.json"), JSON.stringify(installed.manifest), { flag: "wx", mode: 0o400 });
-      const nodeModules = join(DATA_DIR, "capability-packages", "node_modules");
-      if (existsSync(nodeModules) && !existsSync(join(root, "node_modules"))) {
-        await linkCapabilitySnapshotDependencies(root, nodeModules);
-      }
+      await linkCapabilitySnapshotDependencies(
+        root,
+        resolve(dirname(fileURLToPath(import.meta.url)), "../../../node_modules"),
+      );
       return {
         entrypoint: join(root, verified.entrypoint),
         cleanup: () => removeRuntimeSnapshot(root),

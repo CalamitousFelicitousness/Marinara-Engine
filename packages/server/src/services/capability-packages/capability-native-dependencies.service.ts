@@ -1,5 +1,5 @@
-import { createRequire } from "node:module";
-import { lstat, mkdir, readFile, readdir, realpath, symlink, unlink } from "node:fs/promises";
+import { createRequire, findPackageJSON } from "node:module";
+import { lstat, mkdir, readFile, realpath, symlink, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { logger } from "../../lib/logger.js";
 
@@ -88,9 +88,41 @@ export async function linkCapabilitySnapshotDependencies(
     await unlink(modules);
   }
   await mkdir(modules, { mode: 0o700 });
-  for (const name of await readdir(serverNodeModules)) {
-    if (name.startsWith(".")) continue;
-    const target = join(serverNodeModules, name === "zod" ? "zod-v3" : name);
-    await symlink(target, join(modules, name), process.platform === "win32" ? "junction" : "dir");
+  // Resolve from the server manifest: hoisted installs may have no local node_modules at all.
+  const serverManifestPath = join(dirname(serverNodeModules), "package.json");
+  const manifest = JSON.parse(await readFile(serverManifestPath, "utf8")) as {
+    dependencies?: Record<string, string>;
+    optionalDependencies?: Record<string, string>;
+    devDependencies?: Record<string, string>;
+  };
+  // Keep installed development tools available, as in the previous direct-directory view.
+  const optional = { ...manifest.devDependencies, ...manifest.optionalDependencies };
+  const dependencies = { ...manifest.dependencies, ...optional };
+  for (const name of Object.keys(dependencies)) {
+    const provider = name === "zod" ? "zod-v3" : name;
+    let target: string;
+    try {
+      const packageManifestPath = findPackageJSON(provider, serverManifestPath);
+      if (!packageManifestPath) {
+        if (name !== "zod" && Object.hasOwn(optional, name)) continue;
+        throw new Error(`Package runtime dependency ${provider} has no package manifest`);
+      }
+      const dependency = JSON.parse(await readFile(packageManifestPath, "utf8")) as { version?: string };
+      if (name === "zod" && !dependency.version?.startsWith("3.")) {
+        throw new Error("API-1 packages require the Engine's Zod 3 compatibility dependency (zod-v3)");
+      }
+      target = await realpath(dirname(packageManifestPath));
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (name !== "zod" && Object.hasOwn(optional, name) && (code === "ERR_MODULE_NOT_FOUND" || code === "ENOENT")) {
+        continue;
+      }
+      throw new Error(`Could not resolve package runtime dependency ${provider} from the Engine server`, {
+        cause: error,
+      });
+    }
+    const link = join(modules, name);
+    await mkdir(dirname(link), { recursive: true, mode: 0o700 });
+    await symlink(target, link, process.platform === "win32" ? "junction" : "dir");
   }
 }

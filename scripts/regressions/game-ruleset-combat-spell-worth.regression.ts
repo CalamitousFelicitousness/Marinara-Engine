@@ -911,6 +911,19 @@ try {
       picked?.option.label !== "Pattern" && picked?.option.label !== "Single",
       `the two held are kept: ${picked?.option.label} ${JSON.stringify(picked?.choice)}`,
     );
+    // ── Nor cast again over itself while it holds one, whoever else it would catch (cloud caster
+    // re-test 2026-10-25: Hypnotic Pattern cast over its own pattern in five rounds of seven) ──
+    for (const id of ["wolf1", "wolf2"]) rulesetCombatant(encounter, id)!.tracked = [];
+    mage.concentrating = { actionId: patternId, label: "Pattern" } as never;
+    rulesetCombatant(encounter, "wolf1")!.tracked.push({
+      condition: "paralyzed",
+      rounds: 10,
+      source: "mage",
+      concentration: true,
+      action: [patternId],
+    } as never);
+    const again = pickRulesetChoice(definition, state, encounter, "mage");
+    assert.notEqual(again?.option.label, "Pattern", `not cast over itself: ${JSON.stringify(again?.choice)}`);
   }
 
   console.log(

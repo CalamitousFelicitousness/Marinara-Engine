@@ -1205,6 +1205,10 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
       input.deploy && deployers.length > 0 ? rulesetDeployCells(laid.grid, placements, stands, deployers) : [];
     if (cells.length > 0)
       deploy = { cells, placed: everyone ? [] : input.party.flatMap((one) => (places[one.id] ? [one.id] : [])) };
+    // Hemmed in, with no open cell clear of the opponents, it begins as placed, and says so (laptop
+    // playtest 2026-10-25: a surrounded party went straight to round 1 with nothing said).
+    else if (input.deploy && deployers.length > 0)
+      adjustments.push("No room to set the party down clear of the opponents, so the fight begins where it stands.");
   }
   for (const [id, tier] of heldToTier) {
     const built = rulesetCombatant(encounter, id);
@@ -3900,10 +3904,13 @@ function biggerWays(
       },
       payWith: pool,
       // An opponent's each step above its own rung a little dearer again, on its share of the pool,
-      // so the small one is still cast when it does.
+      // so the small one is still cast when it does; a heal's twice that, whose few points more are
+      // seldom worth a bigger slot (cloud caster re-test 2026-10-25: Healing Word from 4th and 5th
+      // level slots with 1st level ones left).
       price:
         actor.side === "enemy"
-          ? paid.cost.reduce((total, entry) => total + share(entry.pool, entry.amount), 0) * (1 + 0.25 * steps)
+          ? paid.cost.reduce((total, entry) => total + share(entry.pool, entry.amount), 0) *
+            (1 + (option.heals ? 0.5 : 0.25) * steps)
           : paid.cost.reduce((total, entry) => total + entry.amount, 0) + steps,
     });
     // What grows no bigger is paid from the least pool that can pay for it, and no other (laptop
@@ -4677,6 +4684,12 @@ function rulesetCandidatesFrom(
       // it would hold, so a Bless on the same three is worth nothing more (cloud batch 2026-10-25).
       if (holds) candidate.damage = (candidate.damage ?? 0) - letGo;
     }
+    // The same held spell cast again while it still holds a foe is not cast (cloud caster re-test
+    // 2026-10-25: an Enchanter cast Hypnotic Pattern over its own pattern in five rounds of seven,
+    // aimed at one it already held). What it holds would go, and it already holds them.
+    if (rulesetHeldFoes(encounter, actor).length > 0)
+      for (let index = candidates.length - 1; index >= 0; index--)
+        if (candidates[index]!.action.option.id === held) candidates.splice(index, 1);
   }
   // Turning back gives up the form while it holds: what it was paid for and what health it has left
   // between its holder and harm (cloud probes 2026-10-25: a druid's kept Wolf let go on its first turn
@@ -7473,6 +7486,20 @@ const RULESET_TRIFLING_HELP = 0.05;
  *  that harms (a zone, a blow held up) or whose worth cannot be read. */
 /** How many rounds ahead what a summons held up would still do is counted when letting it go. */
 const RULESET_HELD_ROUNDS = 3;
+
+/** The foes still standing that carry what the spell its holder holds up put on them. */
+function rulesetHeldFoes(encounter: RulesetEncounterState, actor: RulesetCombatant): RulesetCombatant[] {
+  const held = actor.concentrating;
+  if (!held) return [];
+  return encounter.combatants.filter(
+    (one) =>
+      one.side !== actor.side &&
+      rulesetCombatStanding(one) &&
+      one.tracked.some(
+        (entry) => entry.source === actor.id && entry.concentration && entry.action?.includes(held.actionId),
+      ),
+  );
+}
 
 function rulesetHeldWorth(
   definition: RulesetDefinition,

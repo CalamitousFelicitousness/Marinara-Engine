@@ -5,7 +5,13 @@ import { dirname, join, resolve } from "node:path";
 import { gzipSync } from "node:zlib";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
-import { setCharacterVoiceAssignment, TTS_API_KEY_MASK, ttsConfigSchema } from "../../packages/shared/src/types/tts.js";
+import {
+  elevenLabsModelSupportsSpeed,
+  normalizeElevenLabsTtsModelId,
+  setCharacterVoiceAssignment,
+  TTS_API_KEY_MASK,
+  ttsConfigSchema,
+} from "../../packages/shared/src/types/tts.js";
 import {
   buildTTSVoiceRequests,
   cleanTTSInputText,
@@ -25,7 +31,6 @@ import {
   buildOfficialPocketTtsForm,
   buildElevenLabsTextInput,
   buildRoleplaySpeakerExtractorPrompt,
-  elevenLabsModelSupportsSpeed,
   buildRoleplaySpeakerExtractorUserPrompt,
   maskTTSConfigForResponse,
   fetchAllElevenLabsVoiceOptions,
@@ -1187,9 +1192,14 @@ assert.equal(restoredOpenAi.speed, 1.25);
 assert.equal(restoredOpenAi.sourceProfiles.elevenlabs?.apiKey, "encrypted:eleven-secret");
 
 // Eleven v3 and both Eleven v4 models have no speed setting; the older models keep it.
-for (const model of ["eleven_v3", "eleven_v4", "eleven_v4_turbo", " Eleven_V4 "])
+for (const model of ["eleven_v3", "tts_v3", "ElevenLabs_V3", "eleven_v4", "eleven_v4_turbo", " Eleven_V4 "])
   assert.equal(elevenLabsModelSupportsSpeed(model), false, model);
 for (const model of ["eleven_multilingual_v2", "eleven_flash_v2_5", "eleven_turbo_v2_5"])
   assert.equal(elevenLabsModelSupportsSpeed(model), true, model);
+// Ids that name Object.prototype members are not aliases.
+for (const model of ["constructor", "toString", "__proto__"]) {
+  assert.equal(normalizeElevenLabsTtsModelId(model), model);
+  assert.equal(elevenLabsModelSupportsSpeed(model), true, model);
+}
 
 console.info("TTS source persistence regression checks passed.");

@@ -48,6 +48,7 @@ import type {
 } from "@marinara-engine/shared";
 import {
   ELEVENLABS_TTS_LANGUAGE_OPTIONS,
+  elevenLabsModelSupportsSpeed,
   TTS_API_KEY_MASK,
   TTS_DIALOGUE_PAUSE_DEFAULT_SECONDS,
   TTS_DIALOGUE_PAUSE_MAX_SECONDS,
@@ -207,7 +208,6 @@ function readTTSAudioConnectionOptions(connections: unknown[] | undefined): TTSA
 
 const ELEVENLABS_TTS_MODELS = [
   "eleven_v4",
-  "eleven_v4_turbo",
   "eleven_v3",
   "eleven_multilingual_v2",
   "eleven_flash_v2_5",
@@ -1579,8 +1579,10 @@ export function TTSConfigCard() {
     ELEVENLABS_TTS_LANGUAGE_OPTIONS[0];
   const speedMin = source === "elevenlabs" || source === "xai" ? 0.7 : 0.25;
   const speedMax = source === "elevenlabs" ? 1.2 : source === "xai" ? 1.5 : 4.0;
-  const speedHelp =
-    source === "elevenlabs"
+  const speedUnavailable = source === "elevenlabs" && !elevenLabsModelSupportsSpeed(model);
+  const speedHelp = speedUnavailable
+    ? localizeUi("ui.panels.ttsconfigcard.elevenlabsModelHasNoSpeed")
+    : source === "elevenlabs"
       ? "Playback speed. ElevenLabs supports 0.7×–1.2×; wider saved values are clamped when spoken."
       : source === "xai"
         ? "Playback speed. xAI Voice supports 0.7×–1.5×; wider saved values are clamped when spoken."
@@ -2292,6 +2294,7 @@ export function TTSConfigCard() {
               max={speedMax}
               step={0.05}
               value={speedSliderValue}
+              disabled={speedUnavailable}
               onChange={(e) => {
                 setSpeed(parseFloat(e.target.value));
                 mark({ speed: parseFloat(e.target.value) });

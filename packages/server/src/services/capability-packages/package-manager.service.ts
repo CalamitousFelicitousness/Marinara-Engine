@@ -12722,6 +12722,16 @@ export function getCapabilityPackageInstallIssue(
   ) {
     return "A ruleset whose list rows may be used as rituals (a list's ritual) requires schemaVersion 2 and capabilityApi 1.799 or newer";
   }
+  // How often a rest may be taken, 1.802.
+  if (
+    !declaresApi(802) &&
+    (() => {
+      const rests = plainRecord(ruleset)?.rests;
+      return Array.isArray(rests) && rests.some((rest) => plainRecord(rest)?.every !== undefined);
+    })()
+  ) {
+    return "A ruleset whose rests may be taken only so often (a rest's every) requires schemaVersion 2 and capabilityApi 1.802 or newer";
+  }
   // Who may use a list's rows as rituals, 1.801.
   if (
     !declaresApi(801) &&

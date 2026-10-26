@@ -208,6 +208,7 @@ try {
   assert.ok(ritual.outcomes[0]!.ok, JSON.stringify(ritual.outcomes));
   assert.equal(value(ritual, ilse, "slots_1"), 1);
   assert.match(ritual.content, /ritual="yes"/);
+  assert.match(ritual.outcomes[0]!.now ?? "", /cast as a ritual, at no cost, taking the longer time/);
   const cast = run(`[sheet: op="use" name="Detect Magic"]`);
   assert.ok(cast.outcomes[0]!.ok);
   assert.equal(value(cast, ilse, "slots_1"), 0, "cast as a spell it pays its slot");

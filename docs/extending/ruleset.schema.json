@@ -40721,6 +40721,11 @@
               "additionalProperties": false
             }
           },
+          "every": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 8760
+          },
           "$comment": {}
         },
         "required": [

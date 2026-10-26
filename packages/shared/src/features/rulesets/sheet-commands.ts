@@ -149,7 +149,10 @@ export function applySheetCommandTags(
     const last = live[key]?.rested?.[rest];
     if (!last) return false;
     if (last.fresh) return true;
-    return ctx.clock !== undefined && last.at !== undefined && ctx.clock <= last.at;
+    if (ctx.clock === undefined || last.at === undefined) return false;
+    // So many hours of the game's clock from the last one's start, where the ruleset says (1.802).
+    const every = ctx.definition.rests.find((entry) => entry.id === rest)?.every;
+    return every !== undefined ? ctx.clock - last.at < every * 60 : ctx.clock <= last.at;
   };
   const restNamed = (name: string) =>
     ctx.definition.rests.find(
@@ -317,6 +320,8 @@ export function applySheetCommandTags(
     }
     // An ability that costs nothing, such as a cantrip or a passive feature, is fine and changes
     // nothing: it is the Game Master saying what happened, not asking to spend.
+    // A ritual says so, and that it takes a ritual's longer time (laptop 2026-10-26).
+    if (op.ritual) paid.unshift(`${plan.label} cast as a ritual, at no cost, taking the longer time a ritual takes`);
     if (paid.length === 0) return { ok: true, live: {}, now: `${plan.label}: no cost` } as const;
     // Only a material used up, on a sheet with nothing live yet.
     if (!state) return { ok: true, live: {}, now: paid.join(", ") } as const;

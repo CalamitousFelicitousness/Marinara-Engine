@@ -1022,10 +1022,21 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
   });
   // An opponent in no bestiary and given no tier is never built at the scale's bottom (laptop pass 11
   // 2026-10-26: "Giant Crocodile [cr_5]" missed, then fought as a 7-health CR 0): the tier a tag beside
-  // its name says, else the top of the scale for the budget below to bring down to what this party
-  // can face.
+  // its name says, else the highest tier written for anyone else in the fight (cloud re-test 2026-10-26:
+  // two untiered crocodiles outranked their CR 2 chief), else the top of the scale, for the budget below
+  // to bring down to what this party can face.
   const untiered = new Set<string>();
   const scaleIds = combat.threat?.tiers?.map((tier) => tier.id) ?? [];
+  const writtenTiers = enemies.flatMap((opponent) => {
+    const proposedTier = (opponent.proposed as { tier?: unknown } | undefined)?.tier;
+    const own =
+      opponent.tier ??
+      (typeof proposedTier === "string" ? proposedTier : undefined) ??
+      findRulesetCreature(input.bestiary, opponent.creature ?? opponent.name)?.entry.creature?.tier;
+    const at = own ? scaleIds.indexOf(own) : -1;
+    return at >= 0 ? [at] : [];
+  });
+  const ceiling = scaleIds[writtenTiers.length ? Math.max(...writtenTiers) : scaleIds.length - 1];
   if (scaleIds.length > 0)
     enemies = enemies.map((opponent) => {
       const proposedTier = (opponent.proposed as { tier?: unknown } | undefined)?.tier;
@@ -1038,7 +1049,7 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
       if (tagged) return { ...opponent, tier: tagged };
       if (!budget || !input.budget) return opponent;
       untiered.add(opponent.id);
-      return { ...opponent, tier: scaleIds[scaleIds.length - 1]! };
+      return { ...opponent, tier: ceiling! };
     });
   if (budget && input.budget) {
     const keep = new Set(input.budget.kept ?? []);
@@ -1098,6 +1109,8 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
         `This fight is worth ${moved.worth.after}, within this party's ${stepLabel} budget of ${allowed}.`,
       );
   }
+  // A tier's tag beside a name is said without it (cloud re-test 2026-10-26: "Hollow Sentinel [cr_5]").
+  const untagged = (text: string) => text.replace(/\s*\[[^\]]*\]\s*/gu, " ").trim() || text;
   for (const opponent of enemies) {
     opponentName = opponent.name;
     // By the reference the Game Master named, then by the opponent's own name, and no further: a
@@ -1107,8 +1120,8 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
     if (opponent.creature && !named) {
       adjustments.push(
         found
-          ? `No bestiary holds "${opponent.creature}", so ${opponent.name} was looked up by name.`
-          : `No bestiary of this ruleset holds "${opponent.creature}".`,
+          ? `No bestiary holds "${untagged(opponent.creature)}", so ${opponent.name} was looked up by name.`
+          : `No bestiary of this ruleset holds "${untagged(opponent.creature)}".`,
       );
     }
     if (found) {

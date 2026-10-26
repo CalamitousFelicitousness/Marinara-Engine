@@ -813,7 +813,11 @@ export function RulesetSheetBuilder({
                         className={`${chipClass} ${on ? chipOn : chipOff}`}
                       >
                         {on ? (
-                          <Check size={12} aria-hidden="true" />
+                          // Removing it says so, not only a tick (laptop 2026-10-26).
+                          <span className="inline-flex items-center gap-1">
+                            <Check size={12} aria-hidden="true" />
+                            {t("ui.rulesets.builder.remove")}
+                          </span>
                         ) : known ? (
                           t("ui.rulesets.builder.alreadyKnown")
                         ) : stored ? (

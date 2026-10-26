@@ -233,6 +233,27 @@ try {
     assert.equal(turn(long, unclocked.live).outcomes[0]!.reason, "rested-already");
     assert.equal(turn(long, turn("They walk on.", unclocked.live).live).outcomes[0]!.ok, true);
 
+    // A rest the ruleset says is taken only so often (1.802): 5e's long rest, once in 24 hours from the
+    // start of the last, whatever the clock did in between.
+    const daily = parsed(
+      (() => {
+        const doc = JSON.parse(read("../../docs/development/ruleset-5e-2014.example.json"));
+        doc.rests.find((rest: { id: string }) => rest.id === "long").every = 24;
+        return doc;
+      })(),
+    );
+    const dailyTurn = (live: RulesetLiveStates, clock: number) =>
+      applySheetCommandTags(long, {
+        definition: daily,
+        cards: [{ name: "Bran", build: cleric }],
+        playerName: "Bran",
+        live,
+        clock,
+      });
+    const slept = { [bran]: { ...(hurt as object), rested: { long: { at: 1260 } } } as never };
+    assert.equal(dailyTurn(slept, 1260 + 9 * 60).outcomes[0]!.reason, "rested-already", "the next morning");
+    assert.equal(dailyTurn(slept, 1260 + 24 * 60).outcomes[0]!.ok, true, "a day on");
+
     // The player is told in plain words.
     const sheetView = read("../../packages/client/src/components/game/GameRulesetSheet.tsx");
     assert.match(sheetView, /"rested-already": "game\.ruleset\.sheet\.refusal\.restedAlready"/);

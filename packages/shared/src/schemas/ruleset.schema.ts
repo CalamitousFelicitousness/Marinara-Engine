@@ -2587,6 +2587,9 @@ const restSchema = z
       .min(1)
       .max(8)
       .optional(),
+    /** How often it may be taken (Capability API 1.802): hours of the game's clock from the start of the
+     *  last one. 5e's long rest, once in 24 hours. Without a clock, once a reply and the next. */
+    every: z.number().int().min(1).max(8760).optional(),
   })
   .strict();
 

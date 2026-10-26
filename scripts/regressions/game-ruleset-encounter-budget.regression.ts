@@ -388,6 +388,26 @@ try {
     sized.adjustments.join("; "),
   );
   assert.ok(!sized.adjustments.some((line) => /brought down from/.test(line)));
+  // Never above the highest tier written for anyone else in the fight (cloud re-test 2026-10-26: two
+  // untiered crocodiles outranked their CR 2 chief).
+  const led = fight({
+    enemies: [
+      { id: "chief", name: "Bandit Chief", tier: "cr_1" },
+      { id: "croc", name: "Mire Croc" },
+    ],
+    budget: { difficulty: "hard" },
+  });
+  const rung = (id: string | undefined) => definition.combat!.threat!.tiers.findIndex((tier) => tier.id === id);
+  assert.ok(rung(led.made?.croc?.tier) <= rung("cr_1"), String(led.made?.croc?.tier));
+  // A miss is said without the tag beside the name.
+  const missed = fight({
+    enemies: [{ id: "m", name: "Mire Croc", creature: "Mire Croc [cr_1]" }],
+    budget: { difficulty: "normal" },
+  });
+  assert.ok(
+    missed.adjustments.some((line) => line === 'No bestiary of this ruleset holds "Mire Croc".'),
+    missed.adjustments.join("; "),
+  );
 
   console.log("The encounter budget brings invented foes down to what the party may meet.");
 } finally {

@@ -1522,7 +1522,9 @@ const capabilityPackageManifestBaseSchema = z
 //        as it is used by putting away the fewest other such items in its slots (5e's weapons).
 // 1.801: a sheet list's `ritualNeeds`: the entries a sheet must hold a row from to use its rows as
 //        rituals (5e's Ritual Casting).
-export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 801 } as const);
+// 1.802: a rest's `every`: the hours of the game's clock before it may be taken again (5e's one long
+//        rest in 24 hours).
+export const supportedCapabilityApi = Object.freeze({ major: 1, minor: 802 } as const);
 
 const capabilityApiVersionSchema = z
   .object({

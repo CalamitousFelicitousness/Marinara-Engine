@@ -3528,6 +3528,7 @@
   "generation.fallback.reason.timeout": "timed out",
   "generation.fallback.switched": "{{category}} switched to {{connection}}.",
   "generation.fallback.unnamed": "fallback",
+  "generation.stoppedWithoutReply": "The generation stopped without a reply. Retry to try again.",
   "generation.tools.failed": "{{tool}} could not run: {{reason}}",
   "generation.tools.noResult": "No result was applied. Check this chat’s tool settings.",
   "generation.tools.unknown": "Tool",

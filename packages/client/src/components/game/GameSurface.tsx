@@ -3356,6 +3356,9 @@ function GameSurfaceComponent({
   const [sceneAnalysisFailed, setSceneAnalysisFailed] = useState(false);
   const [sceneStuckVisible, setSceneStuckVisible] = useState(false);
   const [generationFailed, setGenerationFailed] = useState(false);
+  /** The chat whose last typed turn failed before the server saved it, so the input holds it again. */
+  const [unsentTurnChatId, setUnsentTurnChatId] = useState<string | null>(null);
+  const [gameInputSendToken, setGameInputSendToken] = useState(0);
   const [pendingAssetGeneration, setPendingAssetGeneration] = useState<GameAssetGenerationPayload | null>(null);
   const [assetGenerationBlocksScene, setAssetGenerationBlocksScene] = useState(false);
   const [assetGenerationFailed, setAssetGenerationFailed] = useState(false);
@@ -6905,7 +6908,9 @@ function GameSurfaceComponent({
 
   // Clear generationFailed when a new generation starts (streaming begins).
   useEffect(() => {
-    if (isStreaming) setGenerationFailed(false);
+    if (!isStreaming) return;
+    setGenerationFailed(false);
+    setUnsentTurnChatId(null);
   }, [isStreaming]);
 
   // Play blueprint intro sequence only on first-ever load (not on re-navigation)
@@ -7013,6 +7018,19 @@ function GameSurfaceComponent({
   useProvideChatGalleryActions(activeChatId, galleryActions);
 
   const retryGeneration = useCallback(() => {
+    // A turn that failed before the server saved it is back in the input (an interrupted or refused send): Retry sends
+    // it again rather than asking the Game Master to go on without it. The failure banner clears once streaming starts.
+    if (unsentTurnChatId && unsentTurnChatId === activeChatId) {
+      setGameInputSendToken((token) => token + 1);
+      return;
+    }
+    setGenerationFailed(false);
+    generate({ chatId: activeChatId, connectionId: null });
+  }, [activeChatId, generate, unsentTurnChatId]);
+
+  // The input no longer holds a turn it can send (cleared, or disabled): Retry asks the Game Master to go on instead.
+  const retryWithoutUnsentTurn = useCallback(() => {
+    setUnsentTurnChatId(null);
     setGenerationFailed(false);
     generate({ chatId: activeChatId, connectionId: null });
   }, [activeChatId, generate]);
@@ -11395,6 +11413,7 @@ function GameSurfaceComponent({
       }
       setActiveChoices(null);
       const succeeded = await sendMessage(message, attachments, options?.pendingSpatialTransition);
+      setUnsentTurnChatId(succeeded === false ? activeChatId : null);
       if (succeeded !== false && options?.commitPendingMove && pendingMapMove) {
         setPendingMapMove(null);
       }
@@ -13768,6 +13787,8 @@ function GameSurfaceComponent({
                                   inline
                                   draftKey={activeChatId}
                                   focusToken={gameInputFocusToken}
+                                  sendToken={gameInputSendToken}
+                                  onSendTokenUnsent={retryWithoutUnsentTurn}
                                   onIllustrate={handleManualSceneIllustration}
                                   spatialCapabilityEnabled={hierarchicalMapsActive}
                                   interruptMode={pendingInterruptMode}
@@ -13869,6 +13890,8 @@ function GameSurfaceComponent({
                               inline
                               draftKey={activeChatId}
                               focusToken={gameInputFocusToken}
+                              sendToken={gameInputSendToken}
+                              onSendTokenUnsent={retryWithoutUnsentTurn}
                               onIllustrate={handleManualSceneIllustration}
                               spatialCapabilityEnabled={hierarchicalMapsActive}
                               interruptMode={pendingInterruptMode}

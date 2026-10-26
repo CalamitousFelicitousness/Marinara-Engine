@@ -1243,6 +1243,9 @@ export function compactMutationResult(result: MariDbCommandResult): MariDbComman
     // read this JSON at all - it trusts only the engine-written sentinel at
     // position zero of the command output.
     readBack: result.readBack,
+    // validation rides up here for the same reason: the message tells her to read validation.notices, and a long
+    // preview used to cut them off when they sat after the summary.
+    validation: result.validation,
     command: typeof result.command === "string" ? compactTraceText(result.command, 500) : result.command,
     summary: {
       matchedRows: summary.matchedRows,
@@ -1255,8 +1258,12 @@ export function compactMutationResult(result: MariDbCommandResult): MariDbComman
       preview: preview.slice(0, 5).map(changedFieldsOnly),
       truncated: summary.truncated === true || preview.length > 5,
     },
-    validation: result.validation,
-    approval: result.approval,
+    // An applied write's review is the change card's undo window, not a wait. Its raw `status: "pending"` read to
+    // Mari as "waiting for the user's Accept", so she told users a saved change was still pending. Engine consumers
+    // (receipts, keep/undo) read the raw result, never this view.
+    ...(saved && result.approval?.status === "pending"
+      ? { changeCard: { undoUntil: result.approval.expiresAt } }
+      : { approval: result.approval }),
     journalPath: result.journalPath,
     error: result.error,
   };

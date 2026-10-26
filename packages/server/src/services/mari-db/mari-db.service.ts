@@ -1575,7 +1575,8 @@ function selectiveKeysNotice(entry: Row, label: string): string | null {
   const howTo =
     'To need two words, put one in keys, the other in secondaryKeys, and set selective: true; with several secondary keys, "and_all" needs every one and "and" needs any one.';
   if (selective && secondary.length === 0) {
-    return `${label}: selective is on but secondaryKeys is empty, so selectiveLogic does nothing and the entry fires on any one of keys ${keys}. ${howTo}`;
+    // Usually a leftover flag on an imported book, so the turn-off comes before the two-word how-to.
+    return `${label}: selective is on but secondaryKeys is empty, so selectiveLogic does nothing and the entry fires on any one of keys ${keys}. If one keyword is enough (common on imported books), set selective: false. ${howTo}`;
   }
   if (!selective && secondary.length > 0) {
     return `${label}: secondaryKeys are set but selective is off, so they are ignored and the entry fires on any one of keys ${keys}. ${howTo}`;

@@ -84,8 +84,9 @@ test("tabs that do not fit fold into a menu, and Home stays a tab", async ({ pag
   await page.goto("/");
   await expect(page.getByRole("tab", { name: "Home" })).toHaveAttribute("aria-selected", "true");
 
+  // Measure only once the installed experiences have rendered and folded.
+  await expect(page.getByRole("button", { name: "Show all experiences" })).toBeVisible();
   let row = await tabRow(page);
-  await expect(row.trigger).toBeVisible();
   await expect(row.tablist.getByRole("tab")).toHaveCount(1);
   expect(row.overflow).toBeLessThanOrEqual(1);
   expect(row.triggerInside).toBe(false);

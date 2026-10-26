@@ -8,6 +8,7 @@ import {
   getMovementRange,
   summarizeTacticalBattlefield,
   validateTacticalBattlefieldBrief,
+  salvageTacticalBattlefieldBrief,
 } from "../../packages/shared/src/features/tactical-combat/index.js";
 import { generateGrid } from "../../packages/shared/src/features/tactical-combat/grid-gen.js";
 import { deterministicRng } from "../../packages/shared/src/features/tactical-combat/rng.js";
@@ -76,6 +77,27 @@ assert.equal(
   false,
   "barriers must be impassable landmark terrain",
 );
+// What is good of a bad brief is kept (laptop interim 2026-10-26: a forest barrier threw away a defense
+// board's whole brief): its size, outline and good features, a barrier of passable terrain a wall.
+assert.deepEqual(
+  salvageTacticalBattlefieldBrief({
+    size: "medium",
+    outline: "star",
+    features: [
+      { terrain: "forest", placement: "center", shape: "barrier" },
+      { terrain: "ruin", placement: "north", shape: "patch" },
+      { terrain: "lava", placement: "south", shape: "patch" },
+    ],
+  }),
+  {
+    size: "medium",
+    features: [
+      { terrain: "wall", placement: "center", shape: "barrier" },
+      { terrain: "ruin", placement: "north", shape: "patch" },
+    ],
+  },
+);
+assert.equal(salvageTacticalBattlefieldBrief({ size: "toString" }), undefined, "nothing good, nothing kept");
 assert.equal(
   validateTacticalBattlefieldBrief({ size: "toString" }).ok,
   false,

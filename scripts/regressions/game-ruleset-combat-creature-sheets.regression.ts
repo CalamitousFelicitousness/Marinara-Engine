@@ -1914,15 +1914,16 @@ const dataDir = mkdtempSync(join(tmpdir(), "marinara-creature-sheets-"));
     enemies: [{ id: "mage", name: "Ash Mage", tier: "cr_2", proposed: plain.made!.mage!.proposed }],
   }).rulesetFight!;
   assert.deepEqual(spellsOf(again, "mage"), spellsOf(plain, "mage"), "the same spells again");
-  // Past the most it keeps, the first ones written stay and the rest go, said.
+  // Past the most it keeps, the first written of its biggest stays, then its first heal (laptop pass 6
+  // 2026-10-26: a druid's only heal went), and the rest go, said.
   const sheet = who(plain.encounter, "mage").sheet!.build;
   const two = capRulesetCasterSheet(spellbook, sheet, fightCatalogs(spellbook), 2);
   assert.deepEqual(
     two.sheet.lists.spells!.map((row) => row.name),
-    ["Frost Mote", "Spark Lash", "Warding Word"],
+    ["Frost Mote", "Spark Lash", "Kindle Heart"],
   );
   assert.deepEqual(two.adjusted, [
-    '"Kindle Heart", "Binding Glare", "Hex Counter" went: an invented caster keeps 2 of what it pays for out of its pools.',
+    '"Warding Word", "Binding Glare", "Hex Counter" went: an invented caster keeps 2 of what it pays for out of its pools.',
   ]);
   // Spread over its slots from the biggest down, not the first ones written (cloud re-test 2026-10-25:
   // a wizard 5 kept six 1st and 2nd level spells, and Fireball went).
@@ -1951,8 +1952,8 @@ const dataDir = mkdtempSync(join(tmpdir(), "marinara-creature-sheets-"));
   );
   assert.deepEqual(
     spread.sheet.lists.spells!.map((row) => row.name),
-    ["Frost Mote", "Ember Lance", "Spark Lash"],
-    "its one 2nd level spell, then its first 1st level one",
+    ["Frost Mote", "Ember Lance", "Kindle Heart"],
+    "its one 2nd level spell, then its heal",
   );
   // Written with no scores, the ability it casts with is raised to its tier; written ones stay (laptop
   // playtest 2026-10-25: a cleric 4 with "abilities": {} cast at DC 10).

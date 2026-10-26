@@ -132,6 +132,7 @@ export function rulesetStartPlacements(
     const other = sides[one.side === "party" ? "enemy" : "party"];
     const d = toward(own, other);
     const side = { x: -d.y, y: d.x };
+    const apart = Math.hypot(own.x - other.x, own.y - other.y) >= 2;
     if (place) {
       // Its rear is away from the other side through where it stands: behind its own line, or the
       // outside of a ring it is part of (an ambush, whose centre is the party's).
@@ -149,7 +150,13 @@ export function rulesetStartPlacements(
             : place === "ahead"
               ? { x: own.x + d.x * 5, y: own.y + d.y * 5 }
               : place === "flank"
-                ? { x: other.x + side.x * wide * sign, y: other.y + side.y * wide * sign }
+                ? // Off to its side, and held back as far toward its own side where the
+                  // sides stand apart (laptop interim 2026-10-26: on a defense board, flanking skeletons
+                  // began two cells from a hero); in an ambush's ring, straight out to the side.
+                  {
+                    x: other.x + side.x * wide * sign - (apart ? d.x * Math.max(back, wide) : 0),
+                    y: other.y + side.y * wide * sign - (apart ? d.y * Math.max(back, wide) : 0),
+                  }
                 : place === "behind"
                   ? { x: other.x + d.x * 3, y: other.y + d.y * 3 }
                   : place === "among"

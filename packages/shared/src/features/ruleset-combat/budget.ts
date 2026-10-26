@@ -77,14 +77,19 @@ export function rulesetCrowdTimes(definition: RulesetDefinition, opponents: numb
 }
 
 /** What opponents of these tiers are worth together, crowd counted. A tier this ruleset does not have,
- *  or one with no `worth`, counts nothing. */
+ *  or one with no `worth`, counts nothing. `times`, by place, counts one for more than its tier: an
+ *  invented boss's legendary points. */
 export function rulesetFightWorth(
   definition: RulesetDefinition,
   tiers: ReadonlyArray<string | undefined>,
   members: number,
+  times?: ReadonlyArray<number | undefined>,
 ) {
   const scale = definition.combat?.threat?.tiers ?? [];
-  const base = tiers.reduce((sum, id) => sum + (scale.find((tier) => tier.id === id)?.worth ?? 0), 0);
+  const base = tiers.reduce(
+    (sum, id, index) => sum + (scale.find((tier) => tier.id === id)?.worth ?? 0) * (times?.[index] ?? 1),
+    0,
+  );
   return Math.round(base * rulesetCrowdTimes(definition, tiers.length, members));
 }
 
@@ -96,13 +101,14 @@ export function rulesetFightWorth(
  */
 export function rulesetBudgetedTiers(
   definition: RulesetDefinition,
-  foes: ReadonlyArray<{ tier: string | undefined; kept: boolean }>,
+  foes: ReadonlyArray<{ tier: string | undefined; kept: boolean; times?: number }>,
   allowed: number,
   members: number,
 ): { tiers: Array<string | undefined>; worth: { before: number; after: number } } {
   const scale = definition.combat?.threat?.tiers ?? [];
   const tiers = foes.map((foe) => foe.tier);
-  const before = rulesetFightWorth(definition, tiers, members);
+  const times = foes.map((foe) => foe.times);
+  const before = rulesetFightWorth(definition, tiers, members, times);
   let after = before;
   const rung = (id: string | undefined) => scale.findIndex((tier) => tier.id === id);
   while (after > allowed) {
@@ -110,11 +116,15 @@ export function rulesetBudgetedTiers(
     foes.forEach((foe, index) => {
       const at = rung(tiers[index]);
       if (foe.kept || at <= 0) return;
-      if (pick < 0 || (scale[at]!.worth ?? 0) > (scale[rung(tiers[pick])]!.worth ?? 0)) pick = index;
+      if (
+        pick < 0 ||
+        (scale[at]!.worth ?? 0) * (foe.times ?? 1) > (scale[rung(tiers[pick])]!.worth ?? 0) * (foes[pick]!.times ?? 1)
+      )
+        pick = index;
     });
     if (pick < 0) break;
     tiers[pick] = scale[rung(tiers[pick]) - 1]!.id;
-    after = rulesetFightWorth(definition, tiers, members);
+    after = rulesetFightWorth(definition, tiers, members, times);
   }
   return { tiers, worth: { before, after } };
 }

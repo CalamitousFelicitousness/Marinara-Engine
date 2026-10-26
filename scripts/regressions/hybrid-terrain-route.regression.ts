@@ -269,7 +269,11 @@ try {
   assert.deepEqual(invalidTerrainInput, invalidTerrainSnapshot);
   assert.equal(recoverableTerrain.ok, true);
   if (recoverableTerrain.ok) {
-    assert.equal(recoverableTerrain.blueprint.battlefield?.terrainBrief, undefined);
+    // A barrier of terrain that does not block is made a wall, not the whole brief thrown away (laptop
+    // interim 2026-10-26), and the error still says what was wrong.
+    assert.deepEqual(recoverableTerrain.blueprint.battlefield?.terrainBrief, {
+      features: [{ terrain: "wall", placement: "center", shape: "barrier" }],
+    });
     assert.match(recoverableTerrain.blueprint.battlefield?.terrainBriefError ?? "", /barrier features/i);
     assert.notEqual(recoverableTerrain.blueprint.battlefield, invalidTerrainInput.battlefield);
   }

@@ -780,7 +780,10 @@ export function capRulesetCasterSheet(
   const uncastable: string[] = [];
   const over: string[] = [];
   // Each row paid out of a family, with how far up the family its own pool is (a spell's level).
-  const paidRows = new Map<Record<string, unknown>, { label: string; rung: number; order: number }>();
+  const paidRows = new Map<
+    Record<string, unknown>,
+    { label: string; rung: number; order: number; role?: "heal" | "control" }
+  >();
   for (const [listId, rows] of Object.entries(sheet.lists)) {
     sheet.lists[listId] = rows.filter((row) => {
       const mark = row[RULESET_CATALOG_ROW_KEY];
@@ -808,19 +811,40 @@ export function capRulesetCasterSheet(
         uncastable.push(entry.label);
         return false;
       }
-      paidRows.set(row, { label: entry.label, rung: Math.max(0, family.indexOf(own!)), order: paidRows.size });
+      const mechanics = entry.mechanics as { kind?: string; amount?: unknown; applies?: unknown[]; targets?: string };
+      const role =
+        mechanics.kind === "heal"
+          ? ("heal" as const)
+          : !mechanics.amount && (mechanics.applies?.length ?? 0) > 0 && mechanics.targets === "enemy"
+            ? ("control" as const)
+            : undefined;
+      paidRows.set(row, {
+        label: entry.label,
+        rung: Math.max(0, family.indexOf(own!)),
+        order: paidRows.size,
+        ...(role ? { role } : {}),
+      });
       return true;
     });
   }
-  // Which it keeps, spread over its pools from the biggest down, one of each in turn, as written
-  // within each (cloud re-test 2026-10-25: a wizard 5 kept its six 1st and 2nd level spells, and
-  // Fireball, Counterspell and Haste went).
+  // Which it keeps: the first of its biggest, then its first heal and its first spell that holds a
+  // foe, where it has them (laptop pass 6 2026-10-26: a druid's Cure Wounds, its only heal, went),
+  // then the rest spread over its
+  // pools from the biggest down, one of each in turn, as written within each (cloud re-test
+  // 2026-10-25: a wizard 5 kept its six 1st and 2nd level spells, and Fireball, Counterspell and
+  // Haste went).
   if (paidRows.size > most) {
     const byRung = new Map<number, Array<Record<string, unknown>>>();
     for (const [row, one] of [...paidRows].sort((a, b) => a[1].order - b[1].order))
       byRung.set(one.rung, [...(byRung.get(one.rung) ?? []), row]);
     const rungs = [...byRung.keys()].sort((a, b) => b - a);
     const keep = new Set<Record<string, unknown>>();
+    const top = byRung.get(rungs[0]!)?.[0];
+    if (top) keep.add(top);
+    for (const role of ["heal", "control"] as const) {
+      const first = [...paidRows].filter(([, one]) => one.role === role).sort((a, b) => a[1].order - b[1].order)[0];
+      if (first && keep.size < most) keep.add(first[0]);
+    }
     for (let turn = 0; keep.size < most; turn += 1)
       for (const rung of rungs) {
         const row = byRung.get(rung)![turn];

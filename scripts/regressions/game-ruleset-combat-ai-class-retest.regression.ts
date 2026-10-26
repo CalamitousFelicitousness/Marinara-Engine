@@ -36,6 +36,7 @@ import {
   rowsFromCatalogEntry,
   rulesetCombatant,
   rulesetCombatOptions,
+  rulesetGap,
   rulesetSheetBuildSchema,
   type RulesetCatalogEntry,
   type RulesetCombatAction,
@@ -1274,6 +1275,39 @@ try {
     assert.equal(blessing(sealed), undefined, "no Bless while the only foe is sealed in a sphere");
   }
 
+  // ── Sealed in a sphere, a burst it throws is worth nothing to it (cloud batch 2026-10-26: a mage in a
+  //    Bead of Force's sphere cast Fireball twice at a party it could not reach) ──
+  {
+    const burst = {
+      id: "burst",
+      name: "Burst",
+      budget: "action",
+      targets: "enemy",
+      range: 60,
+      area: { shape: "burst", size: 2 },
+      save: { save: "dex_save", difficulty: 15 },
+      saveDifficulty: 15,
+      damage: { count: 8, sides: 6, flat: 0 },
+    };
+    const scene = fight([
+      { id: "ada", name: "ada", side: "party", block: block([smash]), at: { x: 2, y: 5 } },
+      { id: "bram", name: "bram", side: "party", block: block([smash]), at: { x: 2, y: 6 } },
+      { id: "mage", name: "mage", side: "enemy", block: block([burst]), at: { x: 9, y: 5 } },
+    ]);
+    scene.encounter.turn = 2;
+    const bursts = () =>
+      ranked(scene, "mage").filter(
+        (one) => one.candidate.action.option.id === "burst" && (one.candidate.damage ?? 0) > 0,
+      );
+    assert.ok(bursts().length > 0, "free, it is worth throwing");
+    rulesetCombatant(scene.encounter, "mage")!.tracked.push({
+      condition: "sphered",
+      rounds: 10,
+      sourceId: "ada",
+    } as never);
+    assert.equal(bursts().length, 0, "sealed in, it reaches nobody");
+  }
+
   // ── A form kept from before the fight is not turned back from on its first turn to strike harder
   //    in its own (cloud probes 2026-10-25: a druid's Wolf let go at once for Conjure Animals) ──
   {
@@ -1378,6 +1412,29 @@ try {
     assert.equal(struck(), "fen", "the one still free");
     scene.state.difficulty = "hard" as never;
     assert.equal(struck(), "pell", "a hard table's foe takes the critical");
+    // A cruel one at a usual table eases off too (laptop interim 2026-10-26: the SRD's cruel ghouls).
+    scene.state.difficulty = "normal" as never;
+    rulesetCombatant(scene.encounter, "orc")!.temperament = "cruel" as never;
+    assert.equal(struck(), "fen", "a cruel foe at a usual table");
+  }
+  // With only the held in reach, it walks for the one still free rather than strike the held.
+  {
+    const scene = fight([
+      { id: "pell", name: "pell", side: "party", block: block([poke]), at: { x: 5, y: 5 } },
+      { id: "fen", name: "fen", side: "party", block: block([poke]), at: { x: 11, y: 5 } },
+      { id: "orc", name: "orc", side: "enemy", block: block([smash]), at: { x: 4, y: 5 } },
+    ]);
+    rulesetCombatant(scene.encounter, "pell")!.tracked.push({
+      condition: "paralyzed",
+      rounds: 10,
+      sourceId: "orc",
+    } as never);
+    scene.encounter.turn = 2;
+    const before = rulesetCombatant(scene.encounter, "orc")!;
+    const gap = rulesetGap(before, rulesetCombatant(scene.encounter, "fen"));
+    assert.ok(commandRulesetCombatDirector(definition, scene.state, { type: "continue" }).ok);
+    const after = scene.state.rulesetFight!.encounter;
+    assert.ok(rulesetGap(rulesetCombatant(after, "orc"), rulesetCombatant(after, "fen")) < gap, "it walked for fen");
   }
 
   // ── What ends with another put on with it lasts as that one does: Hideous Laughter's incapacitated,

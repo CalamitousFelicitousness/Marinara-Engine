@@ -755,8 +755,8 @@ try {
     };
     const definition = parsed(document([wolfOnly, thunderClap]));
     const entries = definition.catalogs!.find((catalog) => catalog.id === "spells")!.entries! as RulesetCatalogEntry[];
-    const scene = (slots: number, hurt?: number) => {
-      const encounter = fight(definition, entries, 8);
+    const scene = (slots: number, hurt?: number, on = definition) => {
+      const encounter = fight(on, entries, 8);
       const druid = who(encounter, "druid");
       druid.sheet!.build.fields.slots_max_1 = slots;
       druid.sheet!.build.fields.spellcasting_ability = "wis";
@@ -792,11 +792,22 @@ try {
         bosses: [],
         adjustments: [],
       } as never;
-      return pickRulesetChoice(definition, state, encounter, "druid")?.option.label;
+      return pickRulesetChoice(on, state, encounter, "druid")?.option.label;
     };
     assert.equal(scene(2), "Thunder Clap", "with slots, it casts");
     assert.match(scene(0) ?? "", /^Wild Shape/, "out of slots, it takes the form");
     assert.match(scene(2, 15) ?? "", /^Wild Shape/, "hurt, it takes the form's health before its own");
+    // A form that only swims is not taken on dry ground (laptop pass 6 2026-10-26: a Swarm of Quippers
+    // on land).
+    const swimmer = parsed(
+      document([wolfOnly, thunderClap], (doc) => {
+        const wolfEntry = doc.catalogs
+          .find((catalog: { holds?: string }) => catalog.holds === "creatures")
+          .entries.find((one: { id: string }) => one.id === "dire-wolf");
+        wolfEntry.creature = { ...wolfEntry.creature, speed: 0, speeds: { swim: 40 } };
+      }),
+    );
+    assert.doesNotMatch(scene(0, 15, swimmer) ?? "", /^Wild Shape/, "no swimmer's form on land");
   }
 
   // ── The install gate ──

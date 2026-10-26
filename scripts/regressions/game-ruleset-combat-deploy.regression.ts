@@ -275,6 +275,36 @@ try {
     assert.notEqual(sideOf(placed.z1!), sideOf(placed.g1!), "the ghouls take the other");
   }
 
+  {
+    // Sides apart (a defense board): a flank is off to the party's side and held back toward its own,
+    // not beside the party (laptop interim 2026-10-26: flanking skeletons began two cells from a hero).
+    const grid = {
+      width: 20,
+      height: 12,
+      tiles: Array.from({ length: 12 }, () => Array.from({ length: 20 }, () => "plains")),
+    } as never;
+    const placements: Record<string, { x: number; y: number }> = {
+      a: { x: 4, y: 5 },
+      b: { x: 4, y: 6 },
+      lich: { x: 15, y: 5 },
+      s1: { x: 15, y: 6 },
+      s2: { x: 15, y: 7 },
+    };
+    const stands = [
+      { id: "a", side: "party" as const },
+      { id: "b", side: "party" as const },
+      { id: "lich", side: "enemy" as const, group: "lich" },
+      { id: "s1", side: "enemy" as const, group: "skeleton" },
+      { id: "s2", side: "enemy" as const, group: "skeleton" },
+    ];
+    const placed = rulesetStartPlacements(grid, placements, stands, { lich: "rear", s1: "flank", s2: "flank" });
+    for (const id of ["s1", "s2"]) {
+      const near = Math.min(gap(placed[id]!, placements.a!), gap(placed[id]!, placements.b!));
+      assert.ok(near >= 4, `${id} keeps its distance: ${JSON.stringify(placed[id])}`);
+      assert.ok(placed[id]!.x > placements.a!.x, `${id} is held back toward its own side`);
+    }
+  }
+
   console.info(
     "Ruleset deployment: the Game Master places opponents and anyone the story put somewhere, the player sets down the rest before the first turn.",
   );

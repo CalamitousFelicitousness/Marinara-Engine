@@ -43,6 +43,14 @@ doc.catalogs.push({
     { id: "bad", label: "Potion of Poison", item: { category: "potion", use: poison("none") } },
     { id: "worse", label: "Potion of Worse Poison", item: { category: "potion", use: poison("half") } },
     { id: "mild", label: "Potion of Mild Poison", item: { category: "potion", use: poison("negates") } },
+    {
+      id: "heal",
+      label: "Potion of Healing",
+      item: {
+        category: "potion",
+        use: { kind: "heal", budget: "action", range: 0, targets: "ally", amount: { dice: "2d4+2" }, consumes: true },
+      },
+    },
   ],
 });
 const result = parseRulesetDefinition(doc);
@@ -114,4 +122,24 @@ const poisoned = (live: unknown) =>
   assert.deepEqual(used.live, {});
 }
 
-console.log("A fake potion drunk: its save, its harm and what it applies, on whoever drank it.");
+// The dead drink nothing back to life (laptop pass 6 2026-10-26: a Potion of Healing healed a hero with
+// every death save failed); the living still drink it.
+{
+  const stacks: GameInventoryStack[] = [{ id: "st", name: "Bottle", item: "gear/heal", quantity: 1 }];
+  const use = (live: unknown) =>
+    useRulesetItemOutsideFight({
+      definition,
+      itemOf: book.itemOf,
+      stacks,
+      stackId: "st",
+      user: { name: "Ada", build, live },
+      roll: () => 3,
+    });
+  const dead = use({ pools: { hp: { value: 0 } }, tracks: { death_save_failures: 3 } });
+  assert.equal(dead.ok ? "" : dead.reason, "dead");
+  assert.ok(use({ pools: { hp: { value: 0 } }, tracks: { death_save_failures: 2 } }).ok, "one still dying drinks it");
+}
+
+console.log(
+  "A fake potion drunk: its save, its harm and what it applies, on whoever drank it; the dead drink nothing.",
+);

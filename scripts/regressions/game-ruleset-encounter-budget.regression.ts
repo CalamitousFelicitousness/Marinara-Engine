@@ -149,6 +149,20 @@ try {
   // which fits, and nothing more moves.
   assert.deepEqual(moved.tiers, ["cr_3", "cr_3", "cr_4", "cr_2"]);
   assert.deepEqual(moved.worth, { before: 3650, after: 2950 });
+  // An invented boss's legendary points count it for more (laptop interim 2026-10-26: a lich with 3
+  // points rated "4100, within High 4400" wiped a party in three rounds): 3 points, twice its tier.
+  assert.equal(rulesetFightWorth(definition, ["cr_5", "cr_2"], 4, [2]), 4050);
+  const legendary = rulesetBudgetedTiers(
+    definition,
+    [
+      { tier: "cr_5", kept: false, times: 2 },
+      { tier: "cr_2", kept: false },
+    ],
+    3000,
+    4,
+  );
+  assert.deepEqual(legendary.tiers, ["cr_4", "cr_2"]);
+  assert.deepEqual(legendary.worth, { before: 4050, after: 2650 });
   // Only kept ones over budget: counted, unmoved.
   const stuck = rulesetBudgetedTiers(definition, [{ tier: "cr_5", kept: true }], 100, 4);
   assert.deepEqual(stuck.tiers, ["cr_5"]);

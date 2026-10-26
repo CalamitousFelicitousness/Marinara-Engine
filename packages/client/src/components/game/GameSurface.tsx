@@ -9375,7 +9375,9 @@ function GameSurfaceComponent({
                   ? "ui.game.gamesurfacecomponent.itemUseForbidden"
                   : reason === "needs-unmet"
                     ? "ui.game.gamesurfacecomponent.itemUseNeedsUnmet"
-                    : "ui.game.gamesurfacecomponent.itemUseFailed",
+                    : reason === "dead"
+                      ? "ui.game.gamesurfacecomponent.itemUseDead"
+                      : "ui.game.gamesurfacecomponent.itemUseFailed",
             { item: label },
           ),
         );

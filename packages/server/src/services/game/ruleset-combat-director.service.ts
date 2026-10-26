@@ -827,9 +827,18 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
         : findRulesetCreature(input.bestiary, opponent.name);
       if (found) return { tier: found.entry.creature?.tier, kept: true };
       const proposedTier = (opponent.proposed as { tier?: unknown } | undefined)?.tier;
+      // An invented boss's legendary points are turns its tier does not count (laptop interim
+      // 2026-10-26: an invented CR 8 lich with 3 points, "4100, within High 4400", wiped a party in
+      // three rounds): each third of them counts it once more, up to three times. A bestiary's tier counts
+      // its own.
+      const signature = (opponent.proposed as { signaturePoints?: unknown } | undefined)?.signaturePoints;
+      const points = opponent.boss
+        ? Math.min(6, opponent.points ?? (typeof signature === "number" && signature > 0 ? signature : 0))
+        : 0;
       return {
         tier: opponent.tier ?? (typeof proposedTier === "string" ? proposedTier : undefined),
         kept: keep.has(opponent.id),
+        ...(points > 0 ? { times: 1 + points / 3 } : {}),
       };
     });
     const bossed = enemies.some((opponent) => opponent.boss);
@@ -5707,6 +5716,14 @@ function rulesetFormWorth(
   if (actor.shape) return 0;
   const foes = encounter.combatants.filter((one) => one.side !== actor.side && rulesetCombatStanding(one));
   if (foes.length === 0) return 0;
+  // A form that only swims is no form for dry ground (laptop pass 6 2026-10-26: a druid became a
+  // Swarm of Quippers on land): taken only where the board has water.
+  if (
+    !form.block.speed &&
+    form.block.speeds?.swim &&
+    !encounter.board?.grid?.tiles.some((row) => row.includes("water"))
+  )
+    return 0;
   const health = rulesetCombatHealth(definition, combat, actor);
   const hurt = 1 - health.value / Math.max(1, health.max);
   const foeMean = rulesetSideHealthMean(definition, combat, encounter, foes[0]!.side);
@@ -5751,7 +5768,10 @@ export function rulesetStoppedWorth(
   }
   const stopped = rulesetStoppedCast(encounter);
   if (!stopped) return 0.4;
-  const { source, action, aimedAt } = stopped;
+  const { source, action } = stopped;
+  // Only who it can reach: a cast from inside a sphere of force lands on nobody outside it, and is
+  // not worth a slot to stop (cloud batch 2026-10-26: a Counterspell spent on one).
+  const aimedAt = stopped.aimedAt.filter((one) => !rulesetSealedApart(definition, encounter, source, one));
   const mine = aimedAt.filter((one) => one.side === actor.side);
   let worth = 0;
   const average = rulesetSafeAverage(action.damage);
@@ -5972,6 +5992,9 @@ function weighCaught(
   // Only who it may take, by what they are (class re-test 2026-10-24: Turn the Unholy weighed as
   // turning the paladin and the monk it was read out around, so it was never used on the undead).
   caught = caught.filter((target) => rulesetTargetTypesAllow(definition, target, action?.targetTypes, actor));
+  // Nor anyone sealed off from it, or anyone at all when it is the one sealed in (cloud batch
+  // 2026-10-26: a mage in a Bead of Force's sphere cast Fireball twice at a party it could not reach).
+  caught = caught.filter((target) => !rulesetSealedApart(definition, encounter, actor, target));
   // A hazard that strikes only whoever walks into it (caltrops) does nothing as it is laid to the
   // other side already standing there: they are not walking in (I3 re-test 2026-10-23: caltrops
   // laid on a wolf's own square).
@@ -6875,8 +6898,9 @@ function rulesetPassingUnit(actor: RulesetCombatant): CombatDirectorState["party
 }
 
 /** The party members an opponent eases off (laptop pass 6 2026-10-26): at a casual or a normal table,
- *  for one not cruel, those held open to criticals while half the party or more is so held or down
- *  and somebody of it still stands free. */
+ *  those held open to criticals while half the party or more is so held or down and somebody of it
+ *  still stands free. A cruel one too (laptop interim 2026-10-26: the SRD's cruel ghouls critted a
+ *  held hero down while her friend stood free, and the party of two fell). */
 function rulesetSparedHelpless(
   definition: RulesetDefinition,
   state: CombatDirectorState,
@@ -6884,7 +6908,7 @@ function rulesetSparedHelpless(
   actor: RulesetCombatant,
 ): Set<string> {
   const none = new Set<string>();
-  if (actor.side !== "enemy" || actor.temperament === "cruel") return none;
+  if (actor.side !== "enemy") return none;
   const difficulty = normalizeGameDifficulty(state.difficulty);
   if (difficulty !== "casual" && difficulty !== "normal") return none;
   const party = encounter.combatants.filter((one) => one.side === "party" && one.calledBy === undefined);
@@ -7041,6 +7065,20 @@ function weighChoices(
         )
         .map((one) => one.damage ?? 0),
     );
+    // With none of the free in reach, it goes for the nearest of them where it can walk there rather
+    // than strike the held at all; else its blows on the held count half.
+    const loose =
+      free > 0 || (actor.movementLeft ?? 0) < 1
+        ? undefined
+        : encounter.combatants
+            .filter((one) => one.side === "party" && !one.down && rulesetCombatStanding(one) && !spared.has(one.id))
+            .sort((a, b) => rulesetGap(actor, a) - rulesetGap(actor, b))
+            .find((one) => !!rulesetClosingMove(definition, encounter, actor.id, undefined, one.id));
+    if (loose) {
+      const kept = candidates.filter((one) => !(one.targetId && spared.has(one.targetId) && (one.damage ?? 0) > 0));
+      candidates.splice(0, candidates.length, ...kept);
+      rulesetTowardFree.set(actor.id, loose.id);
+    }
     for (const candidate of candidates)
       if (candidate.targetId && spared.has(candidate.targetId) && (candidate.damage ?? 0) > 0)
         candidate.damage = free > 0 ? Math.min(candidate.damage!, free * 0.9) : candidate.damage! * 0.5;
@@ -7722,6 +7760,9 @@ const RULESET_FEEBLE_BLOW = 0.1;
 /** Who, on the pick just made, left a feeble blow it would have walked up for: it stays where it is
  *  rather than walking towards the fight. Read and cleared around each pick of a turn. */
 const rulesetKeptBack = new Set<string>();
+/** Who, on the pick just made, left the held for one of the party still free (laptop interim
+ *  2026-10-26), and whom: it walks there. Read and cleared around each pick of a turn. */
+const rulesetTowardFree = new Map<string, string>();
 
 /** One who heals with no heal it can give now that anybody needs, whose every blow is feeble against
  *  every foe (cloud neutral pass 2026-10-26: a Doctor out of First Aid walking across the board to
@@ -8739,9 +8780,12 @@ function playRulesetTurn(
     );
     if (standUp) applyChoice(definition, state, fight, { actorId, optionId: standUp.id, targetIds: [] });
     rulesetKeptBack.delete(actorId);
+    rulesetTowardFree.delete(actorId);
     const ranked = pickRulesetRanked(definition, state, fight.encounter, actorId, undefined, tried);
     const keptBack =
       rulesetKeptBack.delete(actorId) || (!!actor && rulesetFeebleHealer(definition, fight.encounter, actor));
+    const towardFree = rulesetTowardFree.get(actorId);
+    rulesetTowardFree.delete(actorId);
     const picked = ranked?.candidate.action ?? null;
     const idle = !picked || picked.option.kind === "end-turn";
     if (idle && ranked?.candidate.action.spares) spared = true;
@@ -8764,6 +8808,8 @@ function playRulesetTurn(
         keepRulesetRange(definition, state, fight, actorId, false)
       )
         break;
+      if (towardFree && !stays && walkTowardsTrouble(definition, state, fight, actorId, leash, towardFree, false))
+        continue;
       if (defended || stays || aloof || feeding || keptBack) break;
       if (harmless) {
         if (action === 0) recordReasons(fight, actorId, [{ why: "harmless" }]);
@@ -8806,7 +8852,7 @@ function playRulesetTurn(
       !shotFromAfar &&
       !harmless &&
       !keptBack &&
-      walkTowardsTrouble(definition, state, fight, actorId, leash)
+      walkTowardsTrouble(definition, state, fight, actorId, leash, towardFree, !towardFree)
     )
       continue;
     // A sprint with nowhere to go is a turn spent on the spot.

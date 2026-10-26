@@ -57,6 +57,7 @@ export {
   tacticalArena,
   tacticalEngagement,
   validateTacticalBattlefieldBrief,
+  salvageTacticalBattlefieldBrief,
   type GenerateTacticalBattlefieldResult,
   type TacticalBattlefieldBriefValidation,
   type TacticalPlaceable,

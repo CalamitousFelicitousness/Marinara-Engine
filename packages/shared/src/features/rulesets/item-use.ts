@@ -22,6 +22,7 @@ import type {
   RulesetSheetBuild,
 } from "../../schemas/ruleset.schema.js";
 import { applyRulesetFightItemChanges } from "../ruleset-combat/ammo.js";
+import { rulesetSheetDead } from "./combat-bridge.js";
 import {
   parseRulesetCombatDice,
   rulesetChargesStart,
@@ -78,7 +79,9 @@ export type RulesetItemUseRefusal =
   /** A condition its user holds forbids using it (1.510): Feeblemind's magic items. */
   | "forbidden"
   /** Its user's sheet does not meet what it asks (1.652): a scroll off another class's list. */
-  | "needs-unmet";
+  | "needs-unmet"
+  /** Its user is dead on their sheet, and it does not bring back the dead. */
+  | "dead";
 
 /** One thing a use did to its user's sheet. */
 export interface RulesetItemUsePart {
@@ -167,6 +170,18 @@ export function useRulesetItemOutsideFight(input: {
     if (!rulesetItemNeedsMet(definition, user.build, bare, item.userNeeds, item.userNeedsAny))
       return { ok: false, reason: "needs-unmet" };
   }
+  // Nor by the dead, unless it brings them back (laptop pass 6 2026-10-26: a Potion of Healing stood
+  // up a hero with every death save failed).
+  if (
+    !use.revives &&
+    rulesetSheetDead(
+      definition,
+      user.build,
+      user.live,
+      rulesetSheetItems({ itemOf: input.itemOf }, stacks, stack.holder),
+    )
+  )
+    return { ok: false, reason: "dead" };
   // Nor while a condition they hold forbids it (1.510), as a fight keeps it off the menu.
   const holding = readRulesetLive(definition, user.build, user.live).conditions.filter((one) => one.active);
   const forbidding = (definition.combat?.conditions ?? []).some(

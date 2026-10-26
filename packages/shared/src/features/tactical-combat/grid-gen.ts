@@ -169,6 +169,39 @@ export function validateTacticalBattlefieldBrief(value: unknown): TacticalBattle
   };
 }
 
+/**
+ * What can be kept of a brief that does not validate (laptop interim 2026-10-26: one barrier of
+ * passable terrain threw away a whole defense board's brief): each of its size, outline and exposure
+ * that is good on its own, and each good feature, a barrier of terrain that does not block made a
+ * wall. Undefined when nothing of it is good.
+ */
+export function salvageTacticalBattlefieldBrief(value: unknown): TacticalBattlefieldBrief | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const source = value as { size?: unknown; features?: unknown; exposure?: unknown; outline?: unknown };
+  const kept: Record<string, unknown> = {};
+  for (const key of ["size", "outline", "exposure"] as const) {
+    if (source[key] !== undefined && validateTacticalBattlefieldBrief({ [key]: source[key] }).ok)
+      kept[key] = source[key];
+  }
+  const features: unknown[] = [];
+  for (const raw of Array.isArray(source.features) ? source.features : []) {
+    if (features.length >= 4) break;
+    const feature =
+      raw &&
+      typeof raw === "object" &&
+      (raw as { shape?: unknown }).shape === "barrier" &&
+      typeof (raw as { terrain?: unknown }).terrain === "string" &&
+      hasOwnKey(TERRAIN_DATA, (raw as { terrain: string }).terrain) &&
+      !TERRAIN_DATA[(raw as { terrain: TacticalTerrain }).terrain].impassable
+        ? { ...(raw as object), terrain: "wall" }
+        : raw;
+    if (validateTacticalBattlefieldBrief({ features: [...features, feature] }).ok) features.push(feature);
+  }
+  if (features.length) kept.features = features;
+  const checked = validateTacticalBattlefieldBrief(kept);
+  return checked.ok && checked.brief && Object.keys(checked.brief).length > 0 ? checked.brief : undefined;
+}
+
 // ── Environment theming ──
 // Blob weights over the five non-plains terrains, plus a density factor that
 // scales the number of blobs (sparse deserts/plains vs. dense caves/swamps).

@@ -1407,6 +1407,8 @@ export async function combatDirectorRoutes(
             const controller = kept[member.id];
             if (controller) built.fight.controllers[member.id] = controller;
           }
+          // The one the player plays while their own character is dead is theirs, not the Engine's.
+          if (built.standIn) built.fight.controllers[built.standIn] = "manual";
           // And the orders the player last gave each companion, where whom one protects is here too.
           const ordered = rememberedOrders(meta);
           for (const unit of state.party) {

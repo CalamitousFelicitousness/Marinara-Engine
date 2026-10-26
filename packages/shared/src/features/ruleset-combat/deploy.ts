@@ -112,18 +112,39 @@ export function rulesetStartPlacements(
   const span = Math.max(grid.width, grid.height);
   const back = Math.max(3, Math.round(span * 0.15));
   const wide = Math.max(4, Math.round(span * 0.1));
-  // A flank each kind keeps: the second kind takes the other one, the third the first again.
+  // A flank each kind keeps: the second kind takes the other one, the third the first again. The only
+  // kind sent to the flanks, more than one of it, is split between both (laptop pass 8 2026-10-26: four
+  // zombies sent to the flanks bunched on one side), the first half on its own flank and the rest on the
+  // other.
   const flanks = new Map<string, number>();
+  const flankers = new Map<string, string[]>();
+  for (const one of stands)
+    if (places[one.id] === "flank") {
+      const group = one.group ?? one.id;
+      flankers.set(group, [...(flankers.get(group) ?? []), one.id]);
+    }
   const flankOf = (one: Stand) => {
     const group = one.group ?? one.id;
     if (!flanks.has(group)) flanks.set(group, flanks.size % 2 === 0 ? 1 : -1);
-    return flanks.get(group)!;
+    const kind = flankers.get(group) ?? [one.id];
+    const half = kind.indexOf(one.id) < Math.ceil(kind.length / 2);
+    return flankers.size === 1 && kind.length > 1 && !half ? -flanks.get(group)! : flanks.get(group)!;
   };
-  const move = (one: Stand, target: Cell) => {
+  const move = (one: Stand, target: Cell, clear = 0) => {
     const held = new Set(
       stands.filter((other) => other.id !== one.id && out[other.id]).map((other) => key(out[other.id]!)),
     );
-    const cell = nearestOpen(target, open, held);
+    // Kept `clear` cells from every one of the other side where the board leaves room for it.
+    const foes = stands.filter((other) => other.side !== one.side && out[other.id]).map((other) => out[other.id]!);
+    const far = clear
+      ? new Set(
+          [...open].filter((cellKey) => {
+            const [x, y] = cellKey.split(",").map(Number) as [number, number];
+            return foes.every((foe) => Math.max(Math.abs(foe.x - x), Math.abs(foe.y - y)) > clear);
+          }),
+        )
+      : open;
+    const cell = nearestOpen(target, far, held) ?? (clear ? nearestOpen(target, open, held) : null);
     if (cell) out[one.id] = cell;
   };
   for (const one of stands) {
@@ -162,7 +183,9 @@ export function rulesetStartPlacements(
                   : place === "among"
                     ? other
                     : null;
-      if (target) move(one, target);
+      // One on a flank where the sides stand apart starts out of the other side's reach (laptop pass 8
+      // 2026-10-26: a zombie began beside a hero).
+      if (target) move(one, target, place === "flank" && apart ? Math.min(back, wide) : 0);
       else {
         // In cover: the nearest wood or ruin within six cells of its side, else where it stands.
         const cover = [...open].flatMap((cellKey) => {

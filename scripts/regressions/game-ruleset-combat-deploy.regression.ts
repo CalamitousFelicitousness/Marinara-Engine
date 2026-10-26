@@ -305,6 +305,47 @@ try {
     }
   }
 
+  {
+    // One kind alone on the flanks is split between both, each out of the party's reach (laptop pass 8
+    // 2026-10-26: four zombies bunched at one edge, one beside a hero).
+    const grid = {
+      width: 14,
+      height: 10,
+      tiles: Array.from({ length: 10 }, () => Array.from({ length: 14 }, () => "plains")),
+    } as never;
+    const placements: Record<string, { x: number; y: number }> = {
+      a: { x: 12, y: 3 },
+      b: { x: 12, y: 5 },
+      c: { x: 12, y: 7 },
+      lich: { x: 2, y: 5 },
+      z1: { x: 2, y: 3 },
+      z2: { x: 2, y: 4 },
+      z3: { x: 2, y: 6 },
+      z4: { x: 2, y: 7 },
+    };
+    const stands = [
+      { id: "a", side: "party" as const },
+      { id: "b", side: "party" as const },
+      { id: "c", side: "party" as const },
+      { id: "lich", side: "enemy" as const, group: "lich" },
+      ...["z1", "z2", "z3", "z4"].map((id) => ({ id, side: "enemy" as const, group: "zombie" })),
+    ];
+    const placed = rulesetStartPlacements(grid, placements, stands, {
+      lich: "front",
+      z1: "flank",
+      z2: "flank",
+      z3: "flank",
+      z4: "flank",
+    });
+    const party = centre([placements.a!, placements.b!, placements.c!]);
+    const sides = ["z1", "z2", "z3", "z4"].map((id) => Math.sign(placed[id]!.y - party.y));
+    assert.deepEqual(sides.slice().sort(), [-1, -1, 1, 1], `two on each flank: ${JSON.stringify(placed)}`);
+    for (const id of ["z1", "z2", "z3", "z4"]) {
+      const near = Math.min(...["a", "b", "c"].map((hero) => gap(placed[id]!, placements[hero]!)));
+      assert.ok(near >= 3, `${id} keeps its distance: ${JSON.stringify(placed[id])}`);
+    }
+  }
+
   console.info(
     "Ruleset deployment: the Game Master places opponents and anyone the story put somewhere, the player sets down the rest before the first turn.",
   );

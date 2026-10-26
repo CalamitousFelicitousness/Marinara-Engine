@@ -35,6 +35,7 @@ import { loadRulesetCatalogEntries } from "../services/game/ruleset-catalog.serv
 import {
   latestStoryFight,
   storyFightBlueprintEnemies,
+  blueprintEnemiesWithBoss,
   storyFightOpponents,
   storyFightPromptText,
 } from "../services/game/story-fight.service.js";
@@ -1335,6 +1336,15 @@ export async function encounterRoutes(app: FastifyInstance) {
             rulesetBrief !== null,
           ),
         };
+      }
+      {
+        const enemies = (combatState.enemies as Array<Record<string, unknown>>) ?? [];
+        const bossed = blueprintEnemiesWithBoss(combatState.visuals, enemies);
+        const made = bossed.find((one, index) => one.boss && !enemies[index]!.boss);
+        if (made) {
+          combatState = { ...combatState, enemies: bossed };
+          logger.info("[game/combat:init] chatId=%s boss fight with no boss marked: %s is the boss", chatId, made.name);
+        }
       }
       if (combatStyle === "tactical") {
         const tacticalResult = validateTacticalEncounterBlueprint(combatState);

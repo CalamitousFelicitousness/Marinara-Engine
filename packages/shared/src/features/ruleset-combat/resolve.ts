@@ -19503,7 +19503,10 @@ export function rulesetEncounterOutcome(state: RulesetEncounterState): RulesetEn
       !combatant.away?.setAside &&
       !(combatant.away?.turns && combatant.away.by === combatant.id));
   if (enemies.length > 0 && enemies.every(out)) return "victory";
-  if (party.length > 0 && party.every(out)) {
+  // Nor a party member still rolling to live (laptop pass 8 2026-10-26: "The party has fallen" as the
+  // last hero dropped, with no dying save thrown): a natural 20 gets them up, and a party all stable
+  // or dead has fallen.
+  if (party.length > 0 && party.every(out) && !party.some((one) => one.dying && !one.stable && !one.defeated)) {
     // Out of it with somebody gone alive (1.279): the party got away, it did not fall.
     return party.some((combatant) => combatant.away?.left) ? "fled" : "defeat";
   }

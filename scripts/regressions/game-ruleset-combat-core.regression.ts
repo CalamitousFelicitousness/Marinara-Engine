@@ -1388,6 +1388,19 @@ const labels = (definition: RulesetDefinition, state: RulesetEncounterState, id:
   );
   state = felled.state;
   assert.equal(rulesetEncounterOutcome(state), "ongoing", "the party is not beaten while somebody stands");
+  // Nor while one of them is still rolling to live (laptop pass 8 2026-10-26): a natural 20 gets them
+  // up. All of them stable, or dead, the party has fallen.
+  {
+    const all = structuredClone(state);
+    for (const one of all.combatants.filter((combatant) => combatant.side === "party")) {
+      one.down = true;
+      one.dying = true;
+      one.stable = false;
+    }
+    assert.equal(rulesetEncounterOutcome(all), "ongoing", "still rolling to live");
+    for (const one of all.combatants.filter((combatant) => combatant.side === "party")) one.stable = true;
+    assert.equal(rulesetEncounterOutcome(all), "defeat", "all stable");
+  }
 
   const first = endTurn(fiveE, state, "rot", 3);
   const failed = firstOf(first.events, "dying");
@@ -1502,7 +1515,12 @@ const labels = (definition: RulesetDefinition, state: RulesetEncounterState, id:
 // ── Defeat, and a fight that is over ──
 {
   const state = fight(fiveE, [fighter({ pools: { hp: { value: 3 } } }), rot()], 5, 18);
-  const over = act(fiveE, state, { actorId: "rot", optionId: "bite", targetIds: ["brenna"] }, 18, 8);
+  const dropped = act(fiveE, state, { actorId: "rot", optionId: "bite", targetIds: ["brenna"] }, 18, 8);
+  // Down, she still rolls to live, so the fight goes on (laptop pass 8 2026-10-26); stable, it is lost.
+  assert.equal(rulesetEncounterOutcome(dropped.state), "ongoing", "still rolling to live");
+  let over = endTurn(fiveE, dropped.state, "rot", 12);
+  for (const face of [14, 16]) over = endTurn(fiveE, endTurn(fiveE, over.state, "brenna").state, "rot", face);
+  assert.equal(who(over.state, "brenna").stable, true);
   assert.deepEqual(firstOf(over.events, "outcome"), { type: "outcome", outcome: "defeat" });
   assert.deepEqual(act(fiveE, over.state, { actorId: "rot", optionId: "bite", targetIds: ["brenna"] }).events, [
     { type: "refused", actorId: "rot", optionId: "bite", reason: "encounter-over" },
@@ -1511,8 +1529,8 @@ const labels = (definition: RulesetDefinition, state: RulesetEncounterState, id:
   const summary = rulesetEncounterSummary(fiveE, over.state);
   assert.deepEqual(summary, {
     outcome: "defeat",
-    rounds: 1,
-    turns: 0,
+    rounds: 3,
+    turns: 2,
     party: [
       {
         id: "brenna",
@@ -1522,7 +1540,7 @@ const labels = (definition: RulesetDefinition, state: RulesetEncounterState, id:
         temp: 0,
         down: true,
         dying: true,
-        stable: false,
+        stable: true,
         conditions: ["unconscious"],
       },
     ],

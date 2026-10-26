@@ -251,17 +251,16 @@ try {
     assert.deepEqual(at(moved.state, "dragon"), { x: 10, y: 3 }, "elsewhere it flies on");
   }
 
-  // ── A blow that ends the fight leaves nobody to fly from ──
+  // ── A blow that drops the last of the party: they still roll to live, so the fight goes on (laptop
+  //    pass 8 2026-10-26), and the dragon flies on as it would ──
   {
     const state = fight({ frail: true });
     who(state, "rogue").defeated = true;
     const step = buy(between(state), { to: { x: 18, y: 7 } });
     assert.equal(refused(step), undefined, JSON.stringify(refused(step)));
-    assert.ok(
-      step.events.some((one) => one.type === "outcome"),
-      "the fight is over",
-    );
-    assert.deepEqual(at(step.state, "dragon"), { x: 10, y: 7 }, "nowhere it needs to go");
+    assert.ok(!step.events.some((one) => one.type === "outcome"), "still rolling to live");
+    assert.equal(who(step.state, "fighter").dying, true);
+    assert.deepEqual(at(step.state, "dragon"), { x: 18, y: 7 }, "flown on");
   }
 
   // ── A distance on a speed it does not have goes nowhere ──

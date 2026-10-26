@@ -11993,6 +11993,10 @@ function GameSurfaceComponent({
               label: localizeUi("game.combat.partyFallenCheckpoint"),
               onClick: () => useUIStore.getState().openModal("game-checkpoints", { chatId: activeChatId }),
             },
+            // Playing on is the other way, and the choice stays up until one is taken (laptop pass 8
+            // 2026-10-26: a lone button that faded before it was read).
+            cancel: { label: localizeUi("game.combat.partyFallenPlayOn"), onClick: () => {} },
+            duration: Number.POSITIVE_INFINITY,
           });
 
         // Journal: record combat outcome. The server's addCombatEntry only persists

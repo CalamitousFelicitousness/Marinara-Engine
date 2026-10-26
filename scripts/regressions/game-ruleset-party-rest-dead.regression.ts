@@ -129,6 +129,10 @@ try {
     ["Mara"],
   );
   assert.ok(both.fight.adjustments.includes("Aldric is dead and stays out of the fight."));
+  // The player's own character dead, the player plays the first one still standing (Alyssa 2026-10-26),
+  // whoever they gave the Engine before.
+  assert.equal(both.standIn, "mara");
+  assert.ok(both.fight.adjustments.includes("Aldric is dead, so the player plays Mara until Aldric lives again."));
   const alone = fight(["Aldric"]);
   assert.equal(alone.ok, false);
   if (!alone.ok) assert.match(alone.error, /is dead, so there is nobody to fight it/);

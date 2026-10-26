@@ -671,7 +671,9 @@ export interface RulesetFightSeed {
   budget?: { difficulty: GameDifficulty; kept?: string[] };
 }
 
-export type RulesetFightSeedResult = { ok: true; fight: RulesetFightState } | { ok: false; error: string };
+export type RulesetFightSeedResult =
+  /** `standIn`: the party member the player plays while their own character is dead (Alyssa 2026-10-26). */
+  { ok: true; fight: RulesetFightState; standIn?: string } | { ok: false; error: string };
 
 /** The walk most of a bestiary's creatures have, or none when no creature in it says a speed. */
 function rulesetUsualBestiarySpeed(bestiary: RulesetCatalogEntriesById): number | undefined {
@@ -716,6 +718,8 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
         .map((card) => (typeof card.name === "string" ? card.name.trim() : ""))
         .find((name) => name && builds.has(normalizeCharacterLookupName(name)));
   let standIn = firstCard && !named.has(normalizeCharacterLookupName(firstCard)) ? firstCard : undefined;
+  const leadKey = normalizeCharacterLookupName(input.playerName ?? firstCard ?? "");
+  let deadLead: string | undefined;
   // A member the setup invented, with neither a sheet nor a creature, stays out of the fight
   // (2026-10-23 playtest), and the fight's numbers are only ever a sheet's.
   for (const listed of input.party) {
@@ -745,6 +749,7 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
     // pass 6 2026-10-26: a dead hero placed on the board, down, every blow on him a critical).
     if (rulesetSheetDead(definition, build, input.live?.[key], input.items?.(member.name))) {
       adjustments.push(`${member.name} is dead and stays out of the fight.`);
+      if (leadKey && key === leadKey) deadLead = member.name;
       continue;
     }
     combatants.push({
@@ -1483,7 +1488,14 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
   // 2026-10-24: "Brom takes their turn" was logged before Begin).
   record(fight, deploy ? encounter.opening.filter((event) => event.type !== "turn") : encounter.opening);
   for (const line of fight.adjustments) logger.info("[game/combat:ruleset] %s", line);
-  return { ok: true, fight };
+  // The player's own character dead, they play the first of the party still standing until that one
+  // lives again (Alyssa 2026-10-26: "1 and 3 together"), whoever they gave the Engine before.
+  const standInId = deadLead ? combatants.find((one) => one.side === "party")?.id : undefined;
+  if (deadLead && standInId) {
+    const name = combatants.find((one) => one.id === standInId)!.name;
+    fight.adjustments.push(`${deadLead} is dead, so the player plays ${name} until ${deadLead} lives again.`);
+  }
+  return { ok: true, fight, ...(standInId ? { standIn: standInId } : {}) };
 }
 
 /** Where the dice for what opponents have on them (1.785) start, apart from the board's and the fight's. */

@@ -33,6 +33,7 @@ import {
   type StoryTurnWorld,
 } from "../../packages/shared/src/index.js";
 import {
+  blueprintEnemiesWithBoss,
   storyFightBlueprintEnemies,
   storyFightPromptText,
 } from "../../packages/server/src/services/game/story-fight.service.js";
@@ -385,6 +386,22 @@ assert.deepEqual(
     item: () => undefined,
   });
   assert.match(namesTurn.prepend, /\[inventory: action="add" item="rope" count="1"\]/);
+}
+
+// A boss fight with no boss marked: the named leader is the boss (laptop pass 8 2026-10-26).
+{
+  const lich = { name: "Lich Seraphon", maxHp: 90, level: 9, aiHints: { named: true, leader: true } };
+  const zombie = { name: "Zombie", maxHp: 22, level: 1 };
+  const bossed = blueprintEnemiesWithBoss({ isBossFight: true, encounterTier: "boss" }, [zombie, lich, zombie]);
+  assert.deepEqual(
+    bossed.map((one) => !!one.boss),
+    [false, true, false],
+  );
+  assert.equal((bossed[1]!.boss as { points: number }).points, 3);
+  // Not a boss fight, or one marked already: as written.
+  assert.ok(!blueprintEnemiesWithBoss({ encounterTier: "common" }, [lich]).some((one) => one.boss));
+  const marked = { ...zombie, boss: { points: 2 } };
+  assert.deepEqual(blueprintEnemiesWithBoss({ encounterTier: "boss" }, [marked, lich]), [marked, lich]);
 }
 
 console.log("world-story-actions: ok");

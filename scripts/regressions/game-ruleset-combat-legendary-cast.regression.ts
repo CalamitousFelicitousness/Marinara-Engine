@@ -335,13 +335,15 @@ try {
     assert.equal(landed.state.order[landed.state.turn], "mage", "the next turn begins");
   }
 
-  // ── A cast that ends the fight says so once ──
+  // ── A cast that drops the last of the party says nothing of an end while they roll to live (laptop
+  //    pass 8 2026-10-26), and never says it twice ──
   {
     const state = fight({ frail: true });
     who(state, "mage").defeated = true;
     const step = buy(between(state), "cantrip>spells/bolt", { targetIds: ["fighter"] });
     assert.equal(refused(step), undefined, JSON.stringify(refused(step)));
-    assert.equal(step.events.filter((one) => one.type === "outcome").length, 1, "one outcome");
+    assert.equal(step.events.filter((one) => one.type === "outcome").length, 0, "still rolling to live");
+    assert.equal(who(step.state, "fighter").dying, true);
   }
 
   // ── Refused aims move nothing; nothing of it on its own turn ──

@@ -1773,9 +1773,10 @@ const cellsOf = (cells: Array<{ x: number; y: number }>) =>
   }
   assert.equal(who(step.state, "glass").down, true);
   assert.equal(who(step.state, "glass").x, 1);
-  // Said once. The window path can end a fight in more than one place, and a log that printed two
-  // endings would read as two fights.
-  assert.equal(eventsOf(step.events, "outcome").length, 1, "the fight ends once");
+  // Never said twice: the window path can end a fight in more than one place, and a log that printed two
+  // endings would read as two fights. Down and still rolling to live, the last of the party has not
+  // lost it yet (laptop pass 8 2026-10-26).
+  assert.equal(eventsOf(step.events, "outcome").length, 0, "the fight goes on while she rolls to live");
 }
 
 // ── Movement is a budget: spent before, between and after, and sprinting buys it again ──

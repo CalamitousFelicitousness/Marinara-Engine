@@ -173,7 +173,8 @@ const REASONING_PARAMETER_ERROR = /\breasoning(?:[_ ]effort)?\b|\bthinking\b/i;
 
 /** Request bodies whose `reasoning_effort` was inferred from the model id on a custom gateway, not asked for. */
 const inferredGatewayEfforts = new WeakSet<object>();
-/** Gateway and model pairs that refused an inferred effort, so later requests leave it out (bounded, for an hour). */
+/** Gateway and model pairs that refused an inferred effort, so later requests leave it out (bounded, for an hour on
+ *  the monotonic clock, so a clock change cannot stretch it). */
 const refusedGatewayEfforts = new Map<string, number>();
 const REFUSED_GATEWAY_EFFORT_TTL_MS = 60 * 60 * 1000;
 const REFUSED_GATEWAY_EFFORT_MAX = 256;
@@ -186,7 +187,7 @@ function gatewayRefusedEffort(baseUrl: string, model: string): boolean {
   const key = refusedGatewayEffortKey(baseUrl, model);
   const at = refusedGatewayEfforts.get(key);
   if (at === undefined) return false;
-  if (Date.now() - at < REFUSED_GATEWAY_EFFORT_TTL_MS) return true;
+  if (performance.now() - at < REFUSED_GATEWAY_EFFORT_TTL_MS) return true;
   refusedGatewayEfforts.delete(key);
   return false;
 }
@@ -196,7 +197,7 @@ function rememberGatewayRefusedEffort(baseUrl: string, model: string) {
     const oldest = refusedGatewayEfforts.keys().next().value;
     if (oldest !== undefined) refusedGatewayEfforts.delete(oldest);
   }
-  refusedGatewayEfforts.set(refusedGatewayEffortKey(baseUrl, model), Date.now());
+  refusedGatewayEfforts.set(refusedGatewayEffortKey(baseUrl, model), performance.now());
 }
 
 /** Variants that are served without reasoning even when their family reasons. */

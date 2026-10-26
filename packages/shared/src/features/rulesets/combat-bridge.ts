@@ -21,7 +21,7 @@ import {
   type RulesetSheetBuild,
 } from "../../schemas/ruleset.schema.js";
 import { normalizeCharacterLookupName } from "../../utils/character-lookup-name.js";
-import { readRulesetSheetEnvelope } from "./sheet-math.js";
+import { readRulesetSheetEnvelope, type RulesetSheetItem } from "./sheet-math.js";
 import {
   applyRulesetSheetOp,
   readRulesetLive,
@@ -174,6 +174,20 @@ export function rulesetHealthWords(definition: RulesetDefinition): string[] {
   if (!health || !("pool" in health)) return [];
   const label = definition.sheet.live?.pools?.find((pool) => pool.id === health.pool)?.label?.trim();
   return label ? [label] : [];
+}
+
+/** Whether a sheet is dead by the ruleset's dying saves: every failure it allows marked. False for a
+ *  ruleset with none. */
+export function rulesetSheetDead(
+  definition: RulesetDefinition,
+  build: RulesetSheetBuild,
+  storedLive: unknown,
+  items?: ReadonlyArray<RulesetSheetItem>,
+): boolean {
+  const failures = definition.combat?.dying?.failures;
+  if (!failures) return false;
+  const track = readRulesetLive(definition, build, storedLive, items).tracks.find((entry) => entry.id === failures);
+  return !!track && track.max > 0 && track.value >= track.max;
 }
 
 /** A sheet's health as it stands, read from the pool or track the ruleset's `battle` block names, or

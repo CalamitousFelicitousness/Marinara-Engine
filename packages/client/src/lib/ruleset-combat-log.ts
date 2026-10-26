@@ -1906,6 +1906,7 @@ function rulesetReasonText(
       return say(`couldNotAnswer_${reason.because.replace("-", "_")}`, { label: reason.label });
     case "gmPick":
       if (reason.rank === 1) return say("gmPickTop");
+      if (reason.over?.ends) return say("gmPickOverEnd");
       return reason.over
         ? say(reason.over.targetId ? "gmPickOverOn" : "gmPickOver", {
             label: reason.over.label,

@@ -1149,7 +1149,8 @@ export function holdRulesetCombatant(
   const difficultyCap = tier.saveDifficulty + RULESET_CLAMP_HEADROOM;
   for (const action of combatant.actions) {
     if (action.toHit !== undefined && action.toHit > toHitCap) {
-      adjusted.push(`"${action.label}" now hits at ${toHitCap} instead of ${action.toHit}.`);
+      if (!action.id.startsWith("granted:"))
+        adjusted.push(`"${action.label}" now hits at ${toHitCap} instead of ${action.toHit}.`);
       action.toHit = toHitCap;
     }
     const saves = [
@@ -1162,7 +1163,10 @@ export function holdRulesetCombatant(
       action.saveDifficulty = difficultyCap;
       lowered = true;
     }
-    if (lowered) adjusted.push(`The save against "${action.label}" was lowered to ${difficultyCap}.`);
+    // Said only for what it has of its own: what a condition would give it (a Sunbeam's later line)
+    // is held all the same, unsaid (laptop pass 6 2026-10-26: 17 lines for spells it did not know).
+    if (lowered && !action.id.startsWith("granted:"))
+      adjusted.push(`The save against "${action.label}" was lowered to ${difficultyCap}.`);
   }
   // A contest is won with a number added to the dice an attack throws, so it is held where a blow's
   // chance to land is.

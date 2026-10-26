@@ -143,6 +143,11 @@ async function waitForSettledMutations(page: Page) {
   await expect.poll(() => page.evaluate(() => window.__hybridTerrainFixture?.isMutating() ?? 0)).toBe(0);
 }
 
+/** The first board a mount shows waits on a cold start of the fight on the real local API, which ran
+ *  past the 10 s default now and then (ship readiness 2026-10-26: a random test of this file failed
+ *  most runs, waiting for "End Turn" or "Use generated terrain"). */
+const BOARD_READY_MS = 30_000;
+
 /** Mount the actual battle surface; start, actions and persistence use the real local API. */
 async function mountBattle(
   page: Page,
@@ -230,7 +235,9 @@ test("Hybrid battlefield preserves landmarks through a flying move, reload and r
     expect(weatherPatch.ok(), await weatherPatch.text()).toBeTruthy();
     await mountBattle(page, testInfo, chatId, brief);
     const battle = page.locator('[data-component="TacticalCombatUI"]');
-    await expect(battle.getByRole("button", { name: "End Turn", exact: true })).toBeVisible();
+    await expect(battle.getByRole("button", { name: "End Turn", exact: true })).toBeVisible({
+      timeout: BOARD_READY_MS,
+    });
     await expect.poll(() => snapshot(request, chatId)).toBeTruthy();
     const start = (await snapshot(request, chatId))!;
     expect(Number.isInteger(start.seed)).toBeTruthy();
@@ -310,7 +317,7 @@ test("Conflicting terrain requires an explicit generated fallback", async ({ pag
       ],
     });
     const fallback = page.getByRole("button", { name: "Use generated terrain", exact: true });
-    await expect(fallback).toBeVisible();
+    await expect(fallback).toBeVisible({ timeout: BOARD_READY_MS });
     expect(requests).toHaveLength(1);
     expect(await snapshot(request, chatId)).toBeFalsy();
     await page.screenshot({ path: testInfo.outputPath("hybrid-terrain-fallback.png") });
@@ -355,7 +362,7 @@ test("An invalid GM terrain brief waits for explicit fallback without another mo
       "The GM's terrain request was invalid: Unknown battlefield terrain.",
     );
     const fallback = page.getByRole("button", { name: "Use generated terrain", exact: true });
-    await expect(fallback).toBeVisible();
+    await expect(fallback).toBeVisible({ timeout: BOARD_READY_MS });
     expect(starts).toEqual([]);
     await fallback.click();
     await expect(page.getByRole("button", { name: "End Turn", exact: true })).toBeVisible();
@@ -387,7 +394,9 @@ for (const scenario of [
           { terrain: "water", placement: "west", shape: "barrier" },
         ],
       });
-      await expect(page.getByRole("button", { name: "Use generated terrain", exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Use generated terrain", exact: true })).toBeVisible({
+        timeout: BOARD_READY_MS,
+      });
     },
     shouldDelay: (payload: Record<string, unknown>) => !("battlefield" in payload),
     async trigger(page: Page) {

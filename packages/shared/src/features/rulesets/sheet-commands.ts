@@ -37,8 +37,8 @@ import {
   rulesetUseKeptCall,
   rulesetUseKeptForm,
   rulesetPoolNowText,
-  readRulesetLive,
 } from "./live-state.js";
+import { rulesetSheetDead } from "./combat-bridge.js";
 
 /** A priced material a cast used up (1.775): whose, and how many out of which of their stacks. */
 export interface RulesetMaterialTaken {
@@ -135,16 +135,8 @@ export function applySheetCommandTags(
   const playerCard = (playerKey !== null ? byName.get(playerKey)?.[0] : undefined) ?? null;
 
   const away = new Set((ctx.away ?? []).map((name) => normalizeCharacterLookupName(name)));
-  /** Dead by the ruleset's dying saves: every failure it allows marked. */
-  const deadOnSheet = (card: SheetCommandCard): boolean => {
-    const failures = ctx.definition.combat?.dying?.failures;
-    if (!failures) return false;
-    const key = normalizeCharacterLookupName(card.name);
-    const track = readRulesetLive(ctx.definition, card.build, live[key], card.items).tracks.find(
-      (entry) => entry.id === failures,
-    );
-    return !!track && track.max > 0 && track.value >= track.max;
-  };
+  const deadOnSheet = (card: SheetCommandCard): boolean =>
+    rulesetSheetDead(ctx.definition, card.build, live[normalizeCharacterLookupName(card.name)], card.items);
   const findTargets = (who: string | undefined): TargetMatch => {
     if (who === undefined)
       return playerCard ? { cards: [playerCard], who: playerCard.name } : { refusal: "unknown-character" };
@@ -404,7 +396,17 @@ export function applySheetCommandTags(
         now: `${reads} (already paid)`,
       };
     };
-    const results = targets.cards.map((card) => ({ card, result: paidAlready(card) ?? applyTo(card, op) }));
+    // The dead are not healed, rested or shielded back to life by a plain command (laptop pass 6
+    // 2026-10-26: a Game Master's restore of 1 hit point stood a dead hero up as the story went on).
+    // What raises the dead is a use of what does (a Revivify), which comes another way.
+    const raisesDead = op.op === "rest" || ((op.op === "restore" || op.op === "temp") && op.pool === healthPool);
+    const results = targets.cards.map((card) => ({
+      card,
+      result:
+        raisesDead && deadOnSheet(card)
+          ? ({ ok: false, reason: "dead" } as const)
+          : (paidAlready(card) ?? applyTo(card, op)),
+    }));
     // One target reads as the value alone; a party tag has to say whose value each one is.
     const many = results.length > 1;
     const applied = results.flatMap((entry) =>

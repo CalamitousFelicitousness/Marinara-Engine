@@ -1210,6 +1210,8 @@ for (const setup of [
     assert.deepEqual((why[0] as { over?: unknown }).over, {
       label: first!.label,
       ...(first!.targetId ? { targetId: first!.targetId } : {}),
+      // A first choice to end the turn is said as such (laptop pass 6 2026-10-26).
+      ...(first!.kind === "wait" ? { ends: true } : {}),
     });
   }
 }

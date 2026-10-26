@@ -371,7 +371,7 @@ export type DirectedRulesetReason =
   | { why: "couldNotAnswer"; label: string; because: RulesetUnansweredBecause }
   /** The Game Master's own pick: which of the Engine's suggestions it was, and, when it was not the
    *  first, what the first was (laptop pass 5 2026-10-26: "choice number 3" told the player nothing). */
-  | { why: "gmPick"; rank?: number; over?: { label: string; targetId?: string } };
+  | { why: "gmPick"; rank?: number; over?: { label: string; targetId?: string; ends?: true } };
 /** One option of the legal menu, with the combatants it may be pointed at right now. */
 export interface DirectedRulesetOption extends RulesetCombatOption {
   targetIds: string[];

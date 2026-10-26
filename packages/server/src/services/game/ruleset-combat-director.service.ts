@@ -148,6 +148,7 @@ import {
   withRulesetPlanMemo,
   withoutRulesetPlanMemo,
   rulesetSheetBuildsByName,
+  rulesetSheetDead,
   rulesetCardCreaturesByName,
   readProposedRulesetSheet,
   planRulesetUse,
@@ -729,6 +730,12 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
       adjustments.push(`${member.name} has no ruleset sheet and stays out of the fight.`);
       continue;
     }
+    // Nor one dead on their sheet, who neither fights nor counts toward the party's budget (laptop
+    // pass 6 2026-10-26: a dead hero placed on the board, down, every blow on him a critical).
+    if (rulesetSheetDead(definition, build, input.live?.[key], input.items?.(member.name))) {
+      adjustments.push(`${member.name} is dead and stays out of the fight.`);
+      continue;
+    }
     combatants.push({
       id: member.id,
       name: member.name,
@@ -744,6 +751,8 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
   // later on a raw validation error), so it is refused here, in words.
   if (input.party.length === 0) return { ok: false, error: "This fight has nobody on the party's side." };
   if (!combatants.some((one) => one.side === "party")) {
+    if (adjustments.some((line) => line.endsWith(" is dead and stays out of the fight.")))
+      return { ok: false, error: "Everyone in this party who could fight is dead, so there is nobody to fight it." };
     return { ok: false, error: "Nobody in this party has a ruleset sheet, so this fight cannot read their numbers." };
   }
 
@@ -10092,7 +10101,14 @@ function runRulesetCommand(
             why: "gmPick",
             ...(chosen.suggested ? { rank: chosen.suggested.rank } : {}),
             ...(first && first !== chosen && first.label
-              ? { over: { label: first.label, ...(first.targetId ? { targetId: first.targetId } : {}) } }
+              ? {
+                  over: {
+                    label: first.label,
+                    ...(first.targetId ? { targetId: first.targetId } : {}),
+                    // Said as such, not as "End turn" (laptop pass 6 2026-10-26).
+                    ...(first.kind === "wait" ? { ends: true as const } : {}),
+                  },
+                }
               : {}),
           },
         ]

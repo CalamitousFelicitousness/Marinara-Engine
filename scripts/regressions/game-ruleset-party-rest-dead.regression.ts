@@ -5,7 +5,9 @@
  *
  *   - `who="party"` skips a card dead by the ruleset's dying saves, and any card the sheet context
  *     counts away; the living members still rest.
- *   - Named, the dead and the away are still found: a raising spell or a rest written for them.
+ *   - Named, the away are still found; the dead are refused a heal, a rest or temporary health,
+ *     which only a use of what raises the dead gives back.
+ *   - A fight leaves the dead out, and refuses a party of none but the dead.
  *   - The sheet context counts away a card whose member left the stored party list, and nobody when
  *     a member of that list cannot be named.
  */
@@ -25,6 +27,8 @@ const { createGameRulesetsStorage } =
   await import("../../packages/server/src/services/storage/game-rulesets.storage.js");
 const { applyGameRulesetSheetTurn, loadGameRulesetSheetContext } =
   await import("../../packages/server/src/services/game/ruleset-sheet-turn.service.js");
+const { createRulesetFight } =
+  await import("../../packages/server/src/services/game/ruleset-combat-director.service.js");
 const { characterDataSchema } = await import("../../packages/shared/src/index.js");
 
 const db = await getDB();
@@ -68,14 +72,52 @@ try {
     ["Mara"],
   );
 
-  // Named, they are still found.
+  // Named, one away is still found; the dead are not healed or rested back to life (laptop pass 6
+  // 2026-10-26: a restore of 1 hit point stood a dead hero up).
   const named = applyGameRulesetSheetTurn(
     context,
-    `[sheet: who="Kesh" op="rest" rest="Long rest"] [sheet: who="Aldric" op="heal" pool="hp" amount="1"]`,
+    `[sheet: who="Kesh" op="rest" rest="Long rest"] [sheet: who="Aldric" op="heal" pool="hp" amount="1"] [sheet: who="Aldric" op="rest" rest="Long rest"]`,
     live,
   );
   assert.notDeepEqual(named.live.kesh, hurt);
-  assert.equal(named.live.aldric?.pools?.hp?.value, 1);
+  assert.deepEqual(named.live.aldric, live.aldric);
+  assert.deepEqual(
+    named.outcomes.filter((one) => one.who === "Aldric").map((one) => [one.ok, one.reason]),
+    [
+      [false, "dead"],
+      [false, "dead"],
+    ],
+  );
+  // A damage or a note still reaches them.
+  assert.equal(
+    applyGameRulesetSheetTurn(context, `[sheet: who="Aldric" op="damage" pool="hp" amount="1"]`, live).outcomes[0]?.ok,
+    true,
+  );
+
+  // Nor does a fight take the dead: not on the board, not in the budget (laptop pass 6 2026-10-26: a
+  // dead hero placed down, every blow on him a critical); a party of none but the dead is refused.
+  const fight = (party: string[]) =>
+    createRulesetFight({
+      definition: context.definition,
+      seed: 3,
+      party: party.map((name) => ({ id: name.toLowerCase(), name })),
+      enemies: [{ id: "bandit", name: "Bandit", tier: "cr_1_4" }],
+      cards: ["Aldric", "Mara"].map((name) => ({ name, rulesetSheet: { v: 1, build: context.cards[0]!.build } })),
+      playerName: "Aldric",
+      live,
+      partyCatalogs: {},
+      bestiary: {},
+    });
+  const both = fight(["Aldric", "Mara"]);
+  assert.ok(both.ok, both.ok ? "" : both.error);
+  assert.deepEqual(
+    both.fight.encounter.combatants.filter((one) => one.side === "party").map((one) => one.name),
+    ["Mara"],
+  );
+  assert.ok(both.fight.adjustments.includes("Aldric is dead and stays out of the fight."));
+  const alone = fight(["Aldric"]);
+  assert.equal(alone.ok, false);
+  if (!alone.ok) assert.match(alone.error, /is dead, so there is nobody to fight it/);
 
   // A party list member the Engine cannot name drops nobody.
   await chats.patchMetadata(chat.id, { gamePartyCharacterIds: [aldric.id, mara.id, "missing-id"] });

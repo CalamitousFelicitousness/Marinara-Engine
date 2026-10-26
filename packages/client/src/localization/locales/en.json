@@ -2449,6 +2449,7 @@
   "game.combat.ruleset.event.reason.focus": "{{target}} is the one its side most wants down",
   "game.combat.ruleset.event.reason.gmPick": "the Game Master chose it",
   "game.combat.ruleset.event.reason.gmPickOver": "the Game Master chose it over the Engine's first choice, {{label}}",
+  "game.combat.ruleset.event.reason.gmPickOverEnd": "the Game Master chose it over the Engine's first choice, to end the turn",
   "game.combat.ruleset.event.reason.gmPickOverOn": "the Game Master chose it over the Engine's first choice, {{label}} on {{target}}",
   "game.combat.ruleset.event.reason.gmPickTop": "the Game Master chose it, taking the Engine's first choice",
   "game.combat.ruleset.event.reason.guarding": "nothing in reach, so it stayed beside {{target}}, as its orders keep it",

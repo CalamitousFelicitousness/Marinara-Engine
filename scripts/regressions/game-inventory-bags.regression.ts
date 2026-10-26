@@ -1139,6 +1139,15 @@ try {
     });
     assert.match(nicknamed, /- Ada: Grandpa's rope \(Rope\) ×2; Arrow ×5/);
     assert.match(nicknamed, /An item listed as "Nickname \(Name\)" is one item: write either name in item, never both/);
+    // Starting gear not taken yet is the player's to take, never handed out by the Game Master (laptop v3
+    // 2026-10-26: the opening gave class gear, then the kit doubled it).
+    const waiting = buildGmFormatReminder({
+      ...base,
+      partyInventory: gameInventoryBags(bag()),
+      startingGearWaiting: ["Bram", "Cass"],
+    });
+    assert.match(waiting, /STARTING GEAR not taken yet by Bram, Cass: the player takes each one's kit/);
+    assert.doesNotMatch(shared, /STARTING GEAR/);
   }
 
   console.info("game inventory bag regressions passed.");

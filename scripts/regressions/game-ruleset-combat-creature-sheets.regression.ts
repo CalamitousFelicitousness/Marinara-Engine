@@ -2343,6 +2343,35 @@ const dataDir = mkdtempSync(join(tmpdir(), "marinara-creature-sheets-"));
       undefined,
     );
 
+    // A breath that waits on its recharge is never bought again as a second copy with its own (laptop
+    // 2026-10-26: a dragon's legendary Fire Breath ignored the breath's recharge).
+    const breather = rulesetUnpricedLegendary(
+      fiveE,
+      {},
+      {
+        name: "Ember Wyrm",
+        points: 3,
+        budget: "action",
+        casts: false,
+        actions: [
+          { id: "bite", name: "Bite", budget: "action", toHit: 5, damage: { dice: "2d10", type: "piercing" } },
+          { id: "claw", name: "Claw", budget: "action", toHit: 5, damage: { dice: "1d6", type: "slashing" } },
+          {
+            id: "fire_breath",
+            name: "Fire Breath",
+            budget: "action",
+            damage: { dice: "12d6", type: "fire" },
+            area: { shape: "cone", size: 30 },
+            recharge: { dice: { count: 1, sides: 6 }, from: 5 },
+          },
+        ] as never,
+      },
+    );
+    assert.deepEqual(
+      breather.actions.map((one) => one.name),
+      ["Move", "Claw", "Bite"],
+    );
+
     // What points buy is held for any invented opponent, however it was built, and a burst around it
     // counts as reaching two (laptop v3b 2026-10-26: an Archlich from a proposed block, brought down to
     // CR 3, spent a full Disrupt Life on every hero five times).

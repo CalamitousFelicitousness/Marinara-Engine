@@ -8,6 +8,10 @@ import {
   type RulesetClocks,
 } from "@marinara-engine/shared";
 import {
+  GAME_STARTING_GEAR_TAKEN_KEY,
+  readGameStartingGearTaken,
+} from "../services/game/game-starting-gear.service.js";
+import {
   currentRoomGeneration,
   resolveRoomGenerationPolicy,
   roomAgentAllowed,
@@ -328,6 +332,7 @@ import {
   replaceTrailingInventoryTags,
   gameInventoryTotals,
   gameInventoryBagKey,
+  rulesetStartingGearTakenBy,
   gameInventoryBearerStatus,
   normalizeGameInventoryStacks,
   normalizeCharacterLookupName,
@@ -5751,6 +5756,19 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               promptCharges,
             ),
             ...(gameStandIn ? { playerBagName: gameStandIn } : {}),
+            // Who has not taken the ruleset's starting gear yet, the player's own bag keyed "" (laptop v3
+            // 2026-10-26: the opening handed out class gear, then the kit doubled it).
+            ...(() => {
+              if (pinnedGameRuleset?.status !== "ok" || !pinnedGameRuleset.definition.items?.startingGear) return {};
+              const taken = readGameStartingGearTaken(chatMeta[GAME_STARTING_GEAR_TAKEN_KEY]);
+              const own = gameInventoryBagKey(personaName || gameStandIn || "");
+              const waiting = (turnSheetCards as Array<{ name?: unknown; rulesetSheet?: unknown }>).flatMap((card) => {
+                if (typeof card?.name !== "string" || !card.name.trim() || !card.rulesetSheet) return [];
+                const key = gameInventoryBagKey(card.name);
+                return rulesetStartingGearTakenBy(taken, key === own ? "" : key).length === 0 ? [card.name.trim()] : [];
+              });
+              return waiting.length > 0 ? { startingGearWaiting: waiting } : {};
+            })(),
             ...(promptItemFacts ? { inventoryItemFacts: promptItemFacts } : {}),
             ...(promptFakeNames && Object.keys(promptFakeNames).length > 0
               ? { inventoryFakeNames: promptFakeNames }

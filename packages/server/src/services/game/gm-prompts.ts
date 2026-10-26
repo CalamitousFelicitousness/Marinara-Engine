@@ -129,6 +129,9 @@ export interface GmPromptContext {
   /** Whose name the player's own bag goes by when it is not the player's (1.776 playtest): the first
    *  character card of a game with no persona, which plays as the player. */
   playerBagName?: string;
+  /** The party members who have not taken their ruleset's starting gear yet (laptop v3 2026-10-26: the
+   *  Game Master's opening handed out class gear, then the kit doubled it). */
+  startingGearWaiting?: string[];
   partyInventory?: Array<{
     holder?: string;
     items: Array<{
@@ -1737,6 +1740,7 @@ export function buildGmFormatReminder(
     | "partyNames"
     | "playerName"
     | "playerBagName"
+    | "startingGearWaiting"
     | "playerIsParty"
     | "characterSprites"
     | "playerInventory"
@@ -2439,6 +2443,14 @@ export function buildGmFormatReminder(
       ``,
       `PLAYER INVENTORY${note ? ` (${note})` : ""}: ${buildCompactInventoryLine(playerInventory) || "nothing"}`,
       ...nobodyElse,
+    );
+  }
+
+  // Starting gear the player has not taken yet is theirs to take, never the Game Master's to hand out.
+  const gearWaiting = (ctx.startingGearWaiting ?? []).map((name) => normalizePromptText(name)).filter(Boolean);
+  if (T && !experienceOwnsInventory && gearWaiting.length > 0) {
+    lines.push(
+      `STARTING GEAR not taken yet by ${gearWaiting.join(", ")}: the player takes each one's kit (weapons, armor, pack, tools) from the Starting gear panel. Never add that gear for them in a tag or hand it to them in the story; what the story itself puts in their hands is added as usual.`,
     );
   }
 

@@ -637,6 +637,10 @@ export function rulesetUnpricedLegendary(
         !action.casting &&
         !action.sequence &&
         !action.charge &&
+        // One that waits on a recharge or a count of uses is that one action, never a second copy with
+        // its own (laptop 2026-10-26: a dragon's bought Fire Breath ignored its breath's recharge).
+        !action.recharge &&
+        !(action as { uses?: unknown }).uses &&
         budgets.has(action.budget) &&
         (action.toHit !== undefined || action.autoHit || !!action.damage),
     )

@@ -351,7 +351,14 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
     return "done" as const;
   };
 
-  const withToolFormat = (prompt: string) => (textualTools ? `${prompt}\n\n${textualToolPrompt(tools)}` : prompt);
+  // #8375: the tool block goes before <workspace_context> (the per-turn lines), so it stays in the cached prefix.
+  // The last match: memories come earlier and could quote the tag.
+  const withToolFormat = (prompt: string) => {
+    if (!textualTools) return prompt;
+    const block = textualToolPrompt(tools);
+    const at = prompt.lastIndexOf("\n\n<workspace_context>");
+    return at < 0 ? `${prompt}\n\n${block}` : `${prompt.slice(0, at)}\n\n${block}${prompt.slice(at)}`;
+  };
 
   const toChatMessages = (context: TranscriptContext, asText = textualTools): ChatMessage[] => {
     const out: ChatMessage[] = [];

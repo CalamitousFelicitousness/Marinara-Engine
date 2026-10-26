@@ -1458,6 +1458,19 @@ try {
       ],
     );
     assert.deepEqual(runtimeSeen, ["pi"]);
+
+    // #8375: without native tool calls, the text tool block also stays before the per-turn lines.
+    provider = "claude_subscription";
+    const textual = await start("unused", [reply("Textual real prompt answer.")], "pi", realService, chat.id);
+    await textual.done;
+    provider = "custom";
+    const textualSystem = requests[0]!.messages.find((message) => message.role === "system")?.content ?? "";
+    const textualContextAt = textualSystem.lastIndexOf("<workspace_context>");
+    assert.ok(textualContextAt > 0, "the real textual prompt has workspace_context");
+    assert.ok(
+      textualSystem.indexOf("</text_tool_calls>") > 0 && textualSystem.indexOf("</text_tool_calls>") < textualContextAt,
+      "text_tool_calls comes before workspace_context",
+    );
   }
 
   console.log("Professor Mari pi runtime regression passed.");

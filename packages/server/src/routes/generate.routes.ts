@@ -562,10 +562,12 @@ import {
 } from "../services/memory-recall-embedding.js";
 import { postToDiscordWebhook } from "../services/discord-webhook.js";
 import {
+  longTermMemoryRuntimeAvailable,
   recallLongTermMemory,
   recordLongTermMemoryPromptAccepted,
   type LongTermMemoryRecallReceipt,
 } from "../services/generation/long-term-memory-runtime.js";
+import { resolveMemoryRecallPolicy, splitCachedLongTermMemory } from "./generate/memory-recall-policy.js";
 import {
   finalizeCapabilityAgentResults,
   prepareCapabilityAgentContexts,
@@ -3252,9 +3254,11 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
             settings: agent.settings,
           })),
         });
-        if (chatEnableAgents && chatActiveAgentIds.includes("long-term-memory")) {
+        const longTermMemoryListed = chatEnableAgents && chatActiveAgentIds.includes("long-term-memory");
+        if (longTermMemoryListed) {
           runtimeSectionEligibleAgentTypes.add("long-term-memory");
         }
+        const longTermMemoryActive = longTermMemoryListed && longTermMemoryRuntimeAvailable();
         const chatActiveLorebookIds: string[] = Array.isArray(chatMeta.activeLorebookIds)
           ? (chatMeta.activeLorebookIds as string[])
           : [];
@@ -4155,8 +4159,7 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               signal: generationSignal,
             },
             summaryVectorizerAvailable: memoryRecallVectorizerAvailable,
-            includeRecallHistory:
-              chatEnableAgents && chatActiveAgentIds.includes("long-term-memory") && !input.regenerateMessageId,
+            includeRecallHistory: longTermMemoryListed && !input.regenerateMessageId,
           });
           finalMessages = preparedHistory.finalMessages;
           conversationRecallHistory = preparedHistory.recallHistoryMessages;
@@ -5801,9 +5804,16 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
         );
         let recalledAgentVectorMemories: string[] = [];
         let memoryRecallAttempted = false;
-        if (chatMode === "conversation" && conversationContextMacroSlots.memories) {
+        // An active Long-term memory package replaces built-in recall in the main prompt (#8359).
+        const conversationMemoriesSlot = chatMode === "conversation" && conversationContextMacroSlots.memories;
+        const memoryRecallPolicy = resolveMemoryRecallPolicy({
+          longTermMemoryActive,
+          memoriesSlot: conversationMemoriesSlot,
+        });
+        let slotLongTermMemoryRecall: Awaited<ReturnType<typeof recallLongTermMemory>> = null;
+        if (conversationMemoriesSlot) {
           const memoryRecallMessages: GenerationPromptMessage[] = [];
-          if (enableMemoryRecall && memoryRecallVectorizerAvailable) {
+          if (memoryRecallPolicy.builtInRecall && enableMemoryRecall && memoryRecallVectorizerAvailable) {
             memoryRecallAttempted = true;
             recalledAgentVectorMemories = await injectMemoryRecallContext({
               db: app.db,
@@ -5819,15 +5829,43 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
               wrapFormat,
             });
           }
+          let slotLongTermMemoryText: string | undefined;
+          if (memoryRecallPolicy.longTermMemoryPlacement === "memories-slot" && input.regenerateMessageId) {
+            // Regenerate reuses the original turn's cached notes (replayed below) instead of recalling again.
+            slotLongTermMemoryText = splitCachedLongTermMemory(
+              normalizeContextInjections(parseExtra(regenMsg?.extra).contextInjections),
+            ).slotText;
+          } else if (memoryRecallPolicy.longTermMemoryPlacement === "memories-slot") {
+            slotLongTermMemoryRecall = await recallLongTermMemory({
+              chatId: input.chatId,
+              chatMode,
+              characterIds: promptCharacterIds,
+              messages: selectHistoryMessagesForRecall(
+                roleplayAgentPrompt(
+                  sharedPromptForAgents(conversationRecallHistory ?? finalMessages),
+                  roleplayTimeline,
+                  agentWhisperNames,
+                ),
+              ),
+              signal: agentSignal,
+              debugMode: requestDebug || isDebug,
+            });
+            slotLongTermMemoryText = slotLongTermMemoryRecall?.text;
+          }
           const memoryRecallBlock = memoryRecallMessages
             .map((message) => message.content)
             .filter(Boolean)
             .join("\n\n");
-          conversationMemoriesBlockValue = [conversationImportantMemoryBlock, memoryRecallBlock]
+          conversationMemoriesBlockValue = [conversationImportantMemoryBlock, memoryRecallBlock, slotLongTermMemoryText]
             .filter(Boolean)
             .join("\n\n");
           replaceConversationContextMacro(finalMessages, "memories", conversationMemoriesBlockValue);
-        } else if (!advancedMemoryEnabled && enableMemoryRecall && memoryRecallVectorizerAvailable) {
+        } else if (
+          memoryRecallPolicy.builtInRecall &&
+          !advancedMemoryEnabled &&
+          enableMemoryRecall &&
+          memoryRecallVectorizerAvailable
+        ) {
           memoryRecallAttempted = true;
           recalledAgentVectorMemories = await injectMemoryRecallContext({
             db: app.db,
@@ -7753,10 +7791,13 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           // Without this split, KR/Router cached output would be replayed in the wrong prompt
           // position with different wrapping than the original generation, subtly changing the
           // model's behavior on regenerate/swipe.
+          // Cached Long-term memory notes already sit in the conversation memories slot.
           const runtimeHandledCached = splitRuntimeHandledAgentInjections(
             finalMessages,
             runtimeAgentSectionTokens,
-            contextInjections,
+            memoryRecallPolicy.longTermMemoryPlacement === "memories-slot"
+              ? splitCachedLongTermMemory(contextInjections).replay
+              : contextInjections,
             { omitUnmatched: presetOwnsAgentPlacement },
           );
           const unmatchedCachedLongTermMemory = runtimeHandledCached.omittedInjections.filter(
@@ -7804,7 +7845,13 @@ export async function generateRoutes(app: FastifyInstance, options: GenerateRout
           clearUnusedRuntimeSectionsBeforeLtm();
         }
 
-        if (chatEnableAgents && chatActiveAgentIds.includes("long-term-memory") && !input.regenerateMessageId) {
+        if (memoryRecallPolicy.longTermMemoryPlacement === "memories-slot") {
+          // Already placed in the conversation memories slot; record it once without recalling again.
+          if (slotLongTermMemoryRecall) {
+            contextInjections.push({ agentType: "long-term-memory", text: slotLongTermMemoryRecall.text });
+            longTermMemoryRecallReceipt = slotLongTermMemoryRecall.receipt;
+          }
+        } else if (memoryRecallPolicy.longTermMemoryPlacement === "agent" && !input.regenerateMessageId) {
           const recall = await recallLongTermMemory({
             chatId: input.chatId,
             chatMode,

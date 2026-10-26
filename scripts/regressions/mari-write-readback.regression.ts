@@ -31,6 +31,7 @@ try {
     appliedMutationReadBackMismatched,
     appliedMutationReadBackVerified,
     compactMutationResult,
+    formatCommandResultForPrompt,
     READ_BACK_MISMATCH_SENTINEL,
     READ_BACK_VERIFIED_SENTINEL,
     resolveWorkspaceMutationVerification,
@@ -289,6 +290,60 @@ try {
     readBack: { status: "mismatch", checkedRows: 1, mismatchCount: 1, mismatches: [] },
   }) as { message?: string };
   assert.match(mismatchCompact.message ?? "", /does NOT match the intended change/u);
+  // The compact preview diffs nested records at any depth: only the changed extensions path survives, and
+  // app_data results drop the command echo (a third copy of the input) while CLI commands keep it.
+  const nestedBefore = {
+    name: "N",
+    description: "same",
+    data: {
+      description: "same",
+      extensions: { depth_prompt: { prompt: "same" }, onboarding: { questions: ["old", "keep"] } },
+    },
+  };
+  const nestedAfter = JSON.parse(JSON.stringify(nestedBefore));
+  nestedAfter.data.extensions.onboarding.questions = ["new", "keep"];
+  const nestedPreview = {
+    ...updated,
+    summary: { ...updated.summary, preview: [{ before: nestedBefore, after: nestedAfter }] },
+  };
+  const nestedRow = (
+    compactMutationResult({ ...nestedPreview, command: "app_data character.update {}" }) as {
+      summary: {
+        preview: Array<{
+          after: { name?: unknown; data: { description?: unknown; extensions: Record<string, unknown> } };
+        }>;
+      };
+    }
+  ).summary.preview[0]!;
+  assert.deepEqual(
+    Object.keys(nestedRow.after.data.extensions),
+    ["onboarding"],
+    "unchanged extensions siblings must be omitted",
+  );
+  assert.equal(nestedRow.after.data.description, undefined, "unchanged data fields must be omitted");
+  assert.equal(nestedRow.after.name, undefined, "unchanged top-level fields must be omitted");
+  assert.equal(
+    "command" in (compactMutationResult({ ...updated, command: "app_data character.update {}" }) as object),
+    false,
+    "an app_data result must not echo its command",
+  );
+  assert.equal(
+    (compactMutationResult({ ...updated, command: "mari db patch characters --apply" }) as { command?: string })
+      .command,
+    "mari db patch characters --apply",
+    "a CLI command keeps its command echo",
+  );
+  const createCall = {
+    id: "c1",
+    name: "app_data",
+    input: { action: "character.create", data: { name: "Echo" } },
+    output: "ok",
+    success: true,
+  };
+  const pi = formatCommandResultForPrompt([createCall], { echoInput: false });
+  assert.doesNotMatch(pi, /<input>/u, "pi results must not echo the call input");
+  assert.match(pi, /<workspace_command_result name="app_data" action="character.create" success="true">/u);
+  assert.match(formatCommandResultForPrompt([createCall]), /<input>/u, "the default format still echoes the input");
   // A read after an unverified apply still verifies, exactly as before.
   const readResult = { id: "r1", name: "read", input: { path: "x" }, output: "y", success: true };
   assert.equal(

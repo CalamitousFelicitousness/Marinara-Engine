@@ -882,7 +882,7 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
       input.commandResults.push(result);
       current.results.push(result);
       // The executor's refusals are shared with the JSON runtime and name its `say` field; say it in pi's words.
-      text = formatCommandResultForPrompt([result]);
+      text = formatCommandResultForPrompt([result], { echoInput: false });
       if (!result.success) {
         text = text.replace(
           /in say WITH the commands in the same response/gu,

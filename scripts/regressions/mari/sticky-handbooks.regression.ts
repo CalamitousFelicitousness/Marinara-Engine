@@ -60,6 +60,7 @@ try {
   assert.deepEqual(activeHandbookIds([read(C), quiet, quiet, quiet]), [], "dropped after the 3rd quiet turn");
   assert.deepEqual(activeHandbookIds([read(C), quiet, touch(C), quiet, quiet]), [C], "a write keeps it");
   assert.deepEqual(activeHandbookIds([touch(C), quiet]), [], "a write alone never adds one");
+  assert.deepEqual(activeHandbookIds([read(C), quiet, quiet, quiet, touch(C)]), [], "nor brings back a dropped one");
   assert.deepEqual(
     activeHandbookIds([read(C), read("builtin-onboarding"), read("builtin-lorebook")]),
     ["builtin-onboarding", "builtin-lorebook"],

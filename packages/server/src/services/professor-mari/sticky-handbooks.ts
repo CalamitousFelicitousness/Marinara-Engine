@@ -49,6 +49,8 @@ export function parseHandbookTurn(value: unknown): MariHandbookTurn {
 export function activeHandbookIds(turns: MariHandbookTurn[]): string[] {
   let active: Array<{ id: string; lastTurn: number }> = [];
   turns.forEach((turn, index) => {
+    // Only what was in this turn's prompt can be refreshed: a dropped handbook needs a new read, not a touch.
+    active = active.filter((entry) => index - 1 - entry.lastTurn < STICKY_HANDBOOK_QUIET_TURNS);
     for (const id of turn.read) {
       active = active.filter((entry) => entry.id !== id);
       active.push({ id, lastTurn: index });

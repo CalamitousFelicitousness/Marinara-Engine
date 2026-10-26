@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import {
   elevenLabsModelSupportsSpeed,
+  normalizeElevenLabsTtsModelId,
   setCharacterVoiceAssignment,
   TTS_API_KEY_MASK,
   ttsConfigSchema,
@@ -967,5 +968,10 @@ for (const model of ["eleven_v3", "tts_v3", "ElevenLabs_V3", "eleven_v4", "eleve
   assert.equal(elevenLabsModelSupportsSpeed(model), false, model);
 for (const model of ["eleven_multilingual_v2", "eleven_flash_v2_5", "eleven_turbo_v2_5"])
   assert.equal(elevenLabsModelSupportsSpeed(model), true, model);
+// Ids that name Object.prototype members are not aliases.
+for (const model of ["constructor", "toString", "__proto__"]) {
+  assert.equal(normalizeElevenLabsTtsModelId(model), model);
+  assert.equal(elevenLabsModelSupportsSpeed(model), true, model);
+}
 
 console.info("TTS source persistence regression checks passed.");

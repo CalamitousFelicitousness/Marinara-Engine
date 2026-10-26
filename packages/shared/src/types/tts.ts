@@ -327,7 +327,8 @@ const ELEVENLABS_TTS_MODEL_ALIASES: Record<string, string> = {
 
 export function normalizeElevenLabsTtsModelId(model: string): string {
   const trimmed = model.trim();
-  return ELEVENLABS_TTS_MODEL_ALIASES[trimmed.toLowerCase()] ?? trimmed;
+  const key = trimmed.toLowerCase();
+  return Object.hasOwn(ELEVENLABS_TTS_MODEL_ALIASES, key) ? ELEVENLABS_TTS_MODEL_ALIASES[key]! : trimmed;
 }
 
 // Eleven v3 and v4 have no speed setting, so speech requests leave it out and the slider is off.

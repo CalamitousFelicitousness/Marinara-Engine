@@ -324,12 +324,21 @@ export function GameInput({
   const onSendTokenUnsentRef = useRef(onSendTokenUnsent);
   onSendTokenUnsentRef.current = onSendTokenUnsent;
   const lastSendTokenRef = useRef(sendToken ?? 0);
+  // A resend already under way has emptied the input, so a second press must not read that as nothing to send.
+  const tokenSendInFlightRef = useRef(false);
   useEffect(() => {
     if (!sendToken || lastSendTokenRef.current === sendToken) return;
     lastSendTokenRef.current = sendToken;
-    void handleSendRef.current().then((sent) => {
-      if (sent === false) onSendTokenUnsentRef.current?.();
-    });
+    if (tokenSendInFlightRef.current) return;
+    tokenSendInFlightRef.current = true;
+    void handleSendRef
+      .current()
+      .then((sent) => {
+        if (sent === false) onSendTokenUnsentRef.current?.();
+      })
+      .finally(() => {
+        tokenSendInFlightRef.current = false;
+      });
   }, [sendToken]);
 
   const handleKeyDown = (e: KeyboardEvent) => {

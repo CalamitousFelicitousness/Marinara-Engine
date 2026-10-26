@@ -108,7 +108,8 @@ const input = read("packages/client/src/components/game/GameInput.tsx");
 assert.match(input, /if \(!hasTurnContent \|\| disabled \|\| rollingQueuedDice\) return false;/u);
 assert.match(
   input,
-  /lastSendTokenRef\.current = sendToken;\s*void handleSendRef\.current\(\)\.then\(\(sent\) => \{\s*if \(sent === false\) onSendTokenUnsentRef\.current\?\.\(\);/u,
+  /lastSendTokenRef\.current = sendToken;\s*if \(tokenSendInFlightRef\.current\) return;\s*tokenSendInFlightRef\.current = true;\s*void handleSendRef\s*\.current\(\)\s*\.then\(\(sent\) => \{\s*if \(sent === false\) onSendTokenUnsentRef\.current\?\.\(\);\s*\}\)\s*\.finally\(\(\) => \{\s*tokenSendInFlightRef\.current = false;/u,
+  "a second Retry while a resend is under way neither resends nor falls back",
 );
 
 console.log("generate-interrupted-retry regression passed");

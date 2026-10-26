@@ -1,6 +1,6 @@
 ---
 name: Interactive onboarding
-description: Writing, editing, reviewing or debugging a character's interactive onboarding: the persona template, persona questions, character questions, and conditions.
+description: Read before writing, editing, reviewing or debugging a character's interactive onboarding: its persona template and questions.
 ---
 
 # Interactive onboarding

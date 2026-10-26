@@ -1,6 +1,6 @@
 ---
 name: Characters and personas
-description: Read before creating or editing a character or persona card: the fields and aliases, where each value really lives, what a patch replaces, About Me, avatars, folders, and the writes that report success while saving the wrong thing.
+description: Read before creating or editing a character or persona card (its fields and aliases), or when a card write reports success but saved the wrong thing.
 ---
 
 # Characters and personas

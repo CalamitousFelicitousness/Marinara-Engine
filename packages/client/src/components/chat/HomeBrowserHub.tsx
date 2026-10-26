@@ -1145,8 +1145,12 @@ export function HomeBrowserHub({ pageActive, onOpenCredits }: HomeBrowserHubProp
     retry: 1,
   });
   const latestNoodleRefreshMarker = noodleRefreshIndicator.data?.marker ?? null;
+  // A disabled query keeps its last data, so an uninstalled Noodle must not leave its badge on the tab menu.
   const noodleRefreshUnread = Boolean(
-    latestNoodleRefreshMarker && latestNoodleRefreshMarker !== seenNoodleRefreshMarker && activeTab !== "noodle",
+    noodleBrowserPackage &&
+    latestNoodleRefreshMarker &&
+    latestNoodleRefreshMarker !== seenNoodleRefreshMarker &&
+    activeTab !== "noodle",
   );
   const activeWidgetSlots = widgetLayouts[gridColumns];
   const allWidgetIds = useMemo<HomeWidgetId[]>(

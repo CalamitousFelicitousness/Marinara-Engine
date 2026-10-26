@@ -1175,14 +1175,14 @@ export function formatMariReadTruncation(truncation: MariDbReadTruncation | unde
   return lines.length > 0 ? lines.join("\n") : null;
 }
 
+// Deep enough for card JSON (data.extensions.<plugin>.<field> is four); past it a record is shown whole.
+const CHANGED_FIELDS_MAX_DEPTH = 8;
+
 /**
  * A preview row that has both sides keeps only what differs, recursing through nested records (a card's `data` fields, and
  * `data.extensions` keys, count one by one). A one-word card edit echoed the whole card twice, ~16k chars of
  * "nothing to see here" around the line that said nothing was saved. Inserts and deletes stay whole.
  */
-// Deep enough for card JSON (data.extensions.<plugin>.<field> is four); past it a record is shown whole.
-const CHANGED_FIELDS_MAX_DEPTH = 8;
-
 function changedFieldsOnly(item: unknown): unknown {
   if (!isRecord(item) || !isRecord(item.before) || !isRecord(item.after)) return item;
   const diff = (before: Record<string, unknown>, after: Record<string, unknown>, depth: number) => {

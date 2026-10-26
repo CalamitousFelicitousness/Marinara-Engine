@@ -284,10 +284,16 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
   // Decided once per connection: only these connections ever parse text as tool calls.
   const textualTools =
     isLocalSidecarConnection(input.connection) || !supportsNativeToolCalls(input.connection.provider);
-  const systemPrompt = input.messages
-    .filter((message) => message.role === "system")
-    .map((message) => message.content)
-    .join("\n\n");
+  const systemMessages = input.messages.filter((message) => message.role === "system");
+  const systemPrompt = systemMessages.map((message) => message.content).join("\n\n");
+  // #8375: where the <workspace_context> message (the last prompt block, with the per-turn lines) starts in
+  // systemPrompt, or -1. Found by message, not by searching the text: memories and the injections after it can
+  // quote the tag.
+  const contextMessage = systemMessages.map((message) => message.contextKind).lastIndexOf("prompt");
+  const contextAt =
+    contextMessage >= 0 && systemMessages[contextMessage]!.content.startsWith("<workspace_context>")
+      ? systemMessages.slice(0, contextMessage).reduce((chars, message) => chars + message.content.length + 2, 0)
+      : -1;
   const history = input.messages.filter((message) => message.role !== "system");
   const last = history[history.length - 1];
   if (!last || last.role !== "user") throw new Error("The pi runtime needs the current user message last.");
@@ -351,13 +357,14 @@ export async function runPiLoop(input: PiRunInput & { commands: WorkspaceCommand
     return "done" as const;
   };
 
-  // #8375: the tool block goes before <workspace_context> (the per-turn lines), so it stays in the cached prefix.
-  // The last match: memories come earlier and could quote the tag.
+  // #8375: the tool block goes before <workspace_context>, so it stays in the cached prefix. pi's prompt is
+  // systemPrompt plus its own <cwd> line, so contextAt holds there too; the startsWith check guards that.
   const withToolFormat = (prompt: string) => {
     if (!textualTools) return prompt;
     const block = textualToolPrompt(tools);
-    const at = prompt.lastIndexOf("\n\n<workspace_context>");
-    return at < 0 ? `${prompt}\n\n${block}` : `${prompt.slice(0, at)}\n\n${block}${prompt.slice(at)}`;
+    return contextAt >= 0 && prompt.startsWith("<workspace_context>", contextAt)
+      ? `${prompt.slice(0, contextAt)}${block}\n\n${prompt.slice(contextAt)}`
+      : `${prompt}\n\n${block}`;
   };
 
   const toChatMessages = (context: TranscriptContext, asText = textualTools): ChatMessage[] => {

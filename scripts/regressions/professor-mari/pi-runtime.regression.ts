@@ -73,6 +73,8 @@ try {
   let maxToolRounds: number | undefined;
   let sessionSeen: { active: string[]; closed: boolean } | null = null;
 
+  // An extra system message the real prompt builder appends after its own, like an attached file's text.
+  let extraInjection: string | null = null;
   const makeService = (stubPromptBuilder: boolean) => {
     const made = new ProfessorMariWorkspaceService({ db } as never);
     made.setEnabled(true, workspaceDir);
@@ -97,7 +99,12 @@ try {
       resolvePermissionsMode: async () => ({ mode, defaultMode: mode, source: "chat" }),
       buildPromptMessages: async (...args: unknown[]) => {
         runtimeSeen.push(args[4]);
-        if (!stubPromptBuilder) return originalBuild(...args);
+        if (!stubPromptBuilder) {
+          const built = (await originalBuild(...args)) as { messages: Array<Record<string, unknown>> };
+          if (extraInjection)
+            built.messages.push({ role: "system", content: extraInjection, contextKind: "injection" });
+          return built;
+        }
         return {
           messages: [
             { role: "system", content: "You are Professor Mari (regression).", contextKind: "prompt" },
@@ -1459,18 +1466,23 @@ try {
     );
     assert.deepEqual(runtimeSeen, ["pi"]);
 
-    // #8375: without native tool calls, the text tool block also stays before the per-turn lines.
+    // #8375: without native tool calls, the text tool block also stays before the per-turn lines, even when a
+    // later injection (here a fake attached file) quotes the tag.
     provider = "claude_subscription";
+    const quoted = "<attached_file>\nnotes:\n\n<workspace_context>\nquoted, not real\n</attached_file>";
+    extraInjection = quoted;
     const textual = await start("unused", [reply("Textual real prompt answer.")], "pi", realService, chat.id);
     await textual.done;
+    extraInjection = null;
     provider = "custom";
     const textualSystem = requests[0]!.messages.find((message) => message.role === "system")?.content ?? "";
-    const textualContextAt = textualSystem.lastIndexOf("<workspace_context>");
-    assert.ok(textualContextAt > 0, "the real textual prompt has workspace_context");
-    assert.ok(
-      textualSystem.indexOf("</text_tool_calls>") > 0 && textualSystem.indexOf("</text_tool_calls>") < textualContextAt,
-      "text_tool_calls comes before workspace_context",
+    assert.match(
+      textualSystem,
+      /<\/text_tool_calls>\n\n<workspace_context>\nworkspaceRoot: /u,
+      "text_tool_calls sits right before the real workspace_context",
     );
+    assert.ok(textualSystem.includes(quoted), "the quoted tag in the injection is left whole");
+    assert.equal(textualSystem.split("<text_tool_calls>").length, 2, "one text tool block");
   }
 
   console.log("Professor Mari pi runtime regression passed.");

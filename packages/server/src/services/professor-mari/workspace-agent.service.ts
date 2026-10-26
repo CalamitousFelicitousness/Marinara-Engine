@@ -1180,6 +1180,9 @@ export function formatMariReadTruncation(truncation: MariDbReadTruncation | unde
  * `data.extensions` keys, count one by one). A one-word card edit echoed the whole card twice, ~16k chars of
  * "nothing to see here" around the line that said nothing was saved. Inserts and deletes stay whole.
  */
+// Deep enough for card JSON (data.extensions.<plugin>.<field> is four); past it a record is shown whole.
+const CHANGED_FIELDS_MAX_DEPTH = 8;
+
 function changedFieldsOnly(item: unknown): unknown {
   if (!isRecord(item) || !isRecord(item.before) || !isRecord(item.after)) return item;
   const diff = (before: Record<string, unknown>, after: Record<string, unknown>, depth: number) => {
@@ -1188,7 +1191,7 @@ function changedFieldsOnly(item: unknown): unknown {
       if (JSON.stringify(before[key]) === JSON.stringify(after[key])) continue;
       const left = before[key];
       const right = after[key];
-      if (depth < 8 && isRecord(left) && isRecord(right)) {
+      if (depth < CHANGED_FIELDS_MAX_DEPTH && isRecord(left) && isRecord(right)) {
         const inner = diff(left, right, depth + 1);
         out.before[key] = inner.before;
         out.after[key] = inner.after;
@@ -1205,7 +1208,10 @@ function changedFieldsOnly(item: unknown): unknown {
 
 // Exported for the read-back regression: the lane proves the serialized
 // result carries the '"readBack": { "status": "verified"' marker end to end.
-export function compactMutationResult(result: MariDbCommandResult): MariDbCommandResult | Record<string, unknown> {
+export function compactMutationResult(
+  result: MariDbCommandResult,
+  options: { dropCommand?: boolean } = {},
+): MariDbCommandResult | Record<string, unknown> {
   if (!isRecord(result) || !isRecord(result.summary)) return result;
   const summary = result.summary as Record<string, unknown>;
   const preview = Array.isArray(summary.preview) ? summary.preview : [];
@@ -1246,8 +1252,9 @@ export function compactMutationResult(result: MariDbCommandResult): MariDbComman
     // validation rides up here for the same reason: the message tells her to read validation.notices, and a long
     // preview used to cut them off when they sat after the summary.
     validation: result.validation,
-    // app_data's command string is "app_data <action> <whole input JSON>": a third copy of what the call already carried.
-    ...(typeof result.command === "string" && result.command.startsWith("app_data ")
+    // app_data passes dropCommand: its command string is "app_data <action> <whole input JSON>", a third copy of
+    // what the call already carried. A `mari` CLI command line is the call itself, so it stays.
+    ...(options.dropCommand
       ? {}
       : { command: typeof result.command === "string" ? compactTraceText(result.command, 500) : result.command }),
     summary: {

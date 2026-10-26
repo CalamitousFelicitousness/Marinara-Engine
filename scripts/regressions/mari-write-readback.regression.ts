@@ -307,7 +307,7 @@ try {
     summary: { ...updated.summary, preview: [{ before: nestedBefore, after: nestedAfter }] },
   };
   const nestedRow = (
-    compactMutationResult({ ...nestedPreview, command: "app_data character.update {}" }) as {
+    compactMutationResult({ ...nestedPreview, command: "app_data character.update {}" }, { dropCommand: true }) as {
       summary: {
         preview: Array<{
           after: { name?: unknown; data: { description?: unknown; extensions: Record<string, unknown> } };
@@ -323,7 +323,8 @@ try {
   assert.equal(nestedRow.after.data.description, undefined, "unchanged data fields must be omitted");
   assert.equal(nestedRow.after.name, undefined, "unchanged top-level fields must be omitted");
   assert.equal(
-    "command" in (compactMutationResult({ ...updated, command: "app_data character.update {}" }) as object),
+    "command" in
+      (compactMutationResult({ ...updated, command: "app_data character.update {}" }, { dropCommand: true }) as object),
     false,
     "an app_data result must not echo its command",
   );

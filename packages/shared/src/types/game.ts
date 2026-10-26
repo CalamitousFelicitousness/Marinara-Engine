@@ -270,6 +270,9 @@ export interface GameSetupConfig {
   /** A cruel opponent (a `cruel` temperament, combat AI T3) may strike those already down. Absent is
    *  never: off unless the game asks for it. */
   cruelOpponents?: boolean;
+  /** The player plays every companion in a fight themselves. Absent, each companion fights on its
+   *  own (the Engine plays it) until the player takes it (Alyssa 2026-10-26). */
+  playerRunsCompanions?: boolean;
   /** Optional tactical battlefield preferences used for newly-created encounters. */
   tacticalBattlefield?: TacticalBattlefieldSetup;
   /** Who acts when in a new tactical fight (combat C6c): one unit at a time in a rolled order, or the

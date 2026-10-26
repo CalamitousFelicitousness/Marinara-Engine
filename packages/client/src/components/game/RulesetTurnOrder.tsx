@@ -96,6 +96,7 @@ export function RulesetTurnOrder({
   selectedId,
   onSelect,
   onControl,
+  onControlCompanions,
   onSpends,
   locked,
 }: {
@@ -106,6 +107,8 @@ export function RulesetTurnOrder({
   selectedId: string | null;
   onSelect: (id: string | null) => void;
   onControl: (id: string, controller: CombatController) => void;
+  /** Every companion at once (Alyssa 2026-10-26: "let this toggle be easy to find"). */
+  onControlCompanions?: (controller: CombatController) => void;
   /** Whether the player picks their own symbol spends (1.382), in a fight that has them. */
   onSpends?: (choose: boolean) => void;
   locked: boolean;
@@ -120,9 +123,15 @@ export function RulesetTurnOrder({
     return combatant ? [combatant] : [];
   });
   const unitById = new Map(units.map((unit) => [unit.id, unit]));
-  // The leader is whoever of the party is still standing first, as the old controls said: they are
-  // always the player's, so their choice is shown and locked.
-  const leader = units.find((unit) => unit.side === "player" && unit.hp > 0)?.id;
+  // The leader is the character the player plays as their own, as the fight says; else whoever of the
+  // party is still standing first, as the old controls said. Theirs is shown and locked.
+  const leader = view.lead ?? units.find((unit) => unit.side === "player" && unit.hp > 0)?.id;
+  // The companions, all at once: every party member but the leader, whoever was called aside.
+  const companions = view.combatants.filter(
+    (combatant) => combatant.side === "party" && combatant.id !== leader && unitById.has(combatant.id),
+  );
+  const companionControllers = new Set(companions.map((combatant) => unitById.get(combatant.id)?.controller ?? "ai"));
+  const companionsValue = companionControllers.size === 1 ? [...companionControllers][0]! : "mixed";
   const defenseShort = rulesetDefenseShort(definition, names);
   const showDefense = !definition.combat?.display?.defense?.hide;
   const answering = view.window?.actorId;
@@ -138,6 +147,25 @@ export function RulesetTurnOrder({
           {t("game.combat.ruleset.status.round", { round: view.round })}
         </span>
       </div>
+      {onControlCompanions && companions.length > 0 && (
+        <label className="flex items-center gap-2 px-3.5 pb-1.5 text-xs text-[var(--muted-foreground)]">
+          <span className="flex-1">{t("game.combat.ai.allCompanions")}</span>
+          <select
+            value={companionsValue}
+            disabled={locked}
+            onChange={(event) => onControlCompanions(event.target.value as CombatController)}
+            className="h-6 min-w-0 rounded-md border border-[var(--border)] bg-[var(--background)] px-1 text-[0.7rem] text-[var(--foreground)] disabled:opacity-60"
+          >
+            {companionsValue === "mixed" && (
+              <option value="mixed" disabled>
+                {t("game.combat.ai.allCompanionsMixed")}
+              </option>
+            )}
+            <option value="ai">{t("game.combat.ai.allCompanionsAi")}</option>
+            <option value="manual">{t("game.combat.ai.allCompanionsManual")}</option>
+          </select>
+        </label>
+      )}
       {view.spends && onSpends && (
         <RulesetSpendToggle choose={view.spends.choose} locked={locked} onChange={onSpends} className="px-3.5 pb-1.5" />
       )}

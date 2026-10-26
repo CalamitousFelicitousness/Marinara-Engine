@@ -80,6 +80,7 @@ import {
   directedRulesetView,
   releaseRulesetHeldGround,
   rulesetBeginFight,
+  rulesetCompanionIds,
   rulesetDeployers,
   rulesetDirectorStage,
   rulesetFightLiveStates,
@@ -364,6 +365,7 @@ const command = z.discriminatedUnion("type", [
   z.object({ type: z.literal("flee") }),
   z.object({ type: z.literal("yield") }),
   z.object({ type: z.literal("control"), unitId: key, controller: z.enum(["manual", "ai"]) }),
+  z.object({ type: z.literal("controlCompanions"), controller: z.enum(["manual", "ai"]) }),
   z.object({ type: z.literal("orders"), unitId: key, orders: combatOrdersSchema.nullable() }),
   z.object({ type: z.literal("spends"), choose: z.boolean() }),
 ]);
@@ -1351,6 +1353,8 @@ export async function combatDirectorRoutes(
             })),
             cards,
             playerName: persona?.name ?? null,
+            // Companions fight on their own unless the game says the player plays them (Alyssa 2026-10-26).
+            companionsOnTheirOwn: setup.playerRunsCompanions !== true,
             live: parseStoredRulesetLive(liveRow?.rulesetLive),
             // What each member holds as the fight starts, when the ruleset's sheet reads items.
             ...(fightItems ? { items: fightItems, holders: rulesetCardHolder(cardNames, persona?.name ?? null) } : {}),
@@ -1537,7 +1541,7 @@ export async function combatDirectorRoutes(
     const input = parsed.data;
     // Who the player hands to the Engine, or takes back, is kept for the chat's next fights too
     // (laptop party A 2026-10-25: companions back on Player at every fight).
-    let controlled: { unitId: string; controller: "manual" | "ai" } | undefined;
+    let controlled: Array<{ unitId: string; controller: "manual" | "ai" }> | undefined;
     let ordered: { unitId: string; orders: CombatOrders | null } | undefined;
     try {
       const result = await serialized(input.chatId, async () => {
@@ -1631,7 +1635,11 @@ export async function combatDirectorRoutes(
         const refused = step(input.command as DirectedCommand);
         // A refusal changed nothing, so nothing is saved and no request id is spent on it.
         if (refused) return { refusal: refused };
-        if (input.command.type === "control" && ruleset) controlled = input.command;
+        if (input.command.type === "control" && ruleset) controlled = [input.command];
+        if (input.command.type === "controlCompanions" && ruleset && state.rulesetFight) {
+          const controller = input.command.controller;
+          controlled = rulesetCompanionIds(state, state.rulesetFight).map((unitId) => ({ unitId, controller }));
+        }
         if (input.command.type === "orders" && ruleset) ordered = input.command;
         state.requests = [...state.requests, input.requestId].slice(-256);
         // What it spends is kept only while the step is saved: a save that fails takes it back.
@@ -1657,13 +1665,13 @@ export async function combatDirectorRoutes(
           )
           .catch((err) => logger.warn(err, "Unable to remember a companion's orders"));
       }
-      if (controlled) {
-        const { unitId, controller } = controlled;
+      if (controlled?.length) {
+        const chosen = Object.fromEntries(controlled.map(({ unitId, controller }) => [unitId, controller]));
         await chats
           .patchMetadata(
             input.chatId,
             (current) => ({
-              [COMBAT_CONTROLLERS_KEY]: { ...rememberedControllers(current), [unitId]: controller },
+              [COMBAT_CONTROLLERS_KEY]: { ...rememberedControllers(current), ...chosen },
             }),
             { touchUpdatedAt: false },
           )

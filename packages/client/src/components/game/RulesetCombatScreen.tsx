@@ -44,6 +44,8 @@ export interface RulesetCombatScreenProps {
   /** Giving the party up, offered while every foe standing would take it (combat AI T6). */
   onYield?: () => void;
   onControl: (id: string, controller: CombatController) => void;
+  /** Every companion at once, all but the player's own character. */
+  onControlCompanions?: (controller: CombatController) => void;
   /** The companions' standing orders, under the turn order. */
   controls?: ReactNode;
   /** Whether the player picks their own symbol spends (1.382). */
@@ -101,6 +103,7 @@ export function RulesetCombatScreen({
   onFlee,
   onYield,
   onControl,
+  onControlCompanions,
   controls,
   onSpends,
   notice,
@@ -296,6 +299,7 @@ export function RulesetCombatScreen({
             selectedId={hovered ?? selected}
             onSelect={setSelected}
             onControl={onControl}
+            onControlCompanions={onControlCompanions}
             onSpends={onSpends}
             locked={busy}
           />
@@ -496,6 +500,7 @@ export function RulesetCombatScreen({
               selectedId={selected}
               onSelect={setSelected}
               onControl={onControl}
+              onControlCompanions={onControlCompanions}
               onSpends={onSpends}
               locked={busy}
             />

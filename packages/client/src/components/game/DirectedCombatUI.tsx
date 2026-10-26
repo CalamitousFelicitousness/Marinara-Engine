@@ -236,6 +236,7 @@ export function DirectedCombatUI(props: Props) {
             onFlee={() => send({ type: "flee" })}
             onYield={() => send({ type: "yield" })}
             onControl={(unitId, controller) => send({ type: "control", unitId, controller })}
+            onControlCompanions={(controller) => send({ type: "controlCompanions", controller })}
             onSpends={chooseSpends}
             onDeploy={(unitId, to) => send({ type: "deploy", unitId, to })}
             onDeployed={() => send({ type: "deployed" })}

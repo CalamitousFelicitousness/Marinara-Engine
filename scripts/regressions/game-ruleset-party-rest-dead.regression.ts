@@ -188,6 +188,33 @@ try {
   assert.equal(alone.ok, false);
   if (!alone.ok) assert.match(alone.error, /is dead, so there is nobody to fight it/);
 
+  // Companions fight on their own unless the player plays them (Alyssa 2026-10-26): the player's own
+  // character is theirs, every other is the Engine's; with the lead dead, the one in its place is theirs.
+  const onTheirOwn = (party: string[], liveNow: typeof live) =>
+    createRulesetFight({
+      definition: context.definition,
+      seed: 3,
+      party: party.map((name) => ({ id: name.toLowerCase(), name })),
+      enemies: [{ id: "bandit", name: "Bandit", tier: "cr_1_4" }],
+      cards: ["Aldric", "Kesh", "Mara"].map((name) => ({
+        name,
+        rulesetSheet: { v: 1, build: context.cards[0]!.build },
+      })),
+      playerName: "Aldric",
+      companionsOnTheirOwn: true,
+      live: liveNow,
+      partyCatalogs: {},
+      bestiary: {},
+    });
+  const living = onTheirOwn(["Mara", "Aldric", "Kesh"], {});
+  assert.ok(living.ok, living.ok ? "" : living.error);
+  assert.equal(living.fight.lead, "aldric");
+  assert.deepEqual(living.fight.controllers, { mara: "ai", kesh: "ai" });
+  const leadDead = onTheirOwn(["Aldric", "Mara", "Kesh"], live);
+  assert.ok(leadDead.ok, leadDead.ok ? "" : leadDead.error);
+  assert.equal(leadDead.fight.lead, "mara");
+  assert.deepEqual(leadDead.fight.controllers, { kesh: "ai" });
+
   // The Game Master reads who is dead on their sheet, so a potion or a rest is not spent on them in
   // the story (laptop pass 6 2026-10-26: a potion poured into a dead hero was used up).
   const blocks = renderGameRulesetSheetBlocks(

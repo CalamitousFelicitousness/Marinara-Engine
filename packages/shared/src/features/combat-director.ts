@@ -128,6 +128,8 @@ export type DirectedCommand =
   | { type: "continue" }
   | { type: "fallback" }
   | { type: "control"; unitId: string; controller: "manual" | "ai" }
+  /** Every companion at once, all but the one the player plays as their own (a ruleset fight's). */
+  | { type: "controlCompanions"; controller: "manual" | "ai" }
   /** A companion's standing orders, or none to go back to its default. */
   | { type: "orders"; unitId: string; orders: CombatOrders | null }
   /** Whether the player chooses what their own symbol throws buy (1.382) rather than the Engine. */
@@ -415,6 +417,8 @@ export interface DirectedRulesetView {
   /** Every opponent still standing is honourable (combat AI T6): the party may yield to them. */
   canYield?: true;
   order: string[];
+  /** The party member the player plays as their own character; the others may be the Engine's. */
+  lead?: string;
   /** The board, when the fight is on one, with what this ruleset calls one cell's worth of
    *  distance. Absent from a fight that is theatre of the mind, which is every fight until a
    *  ruleset declares `combat.distance` and the game asks for a positioned one. */

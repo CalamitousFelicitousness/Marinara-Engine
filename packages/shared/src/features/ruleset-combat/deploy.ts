@@ -191,7 +191,19 @@ export function rulesetStartPlacements(
       // one at its rear; one at its front is out of the other side's reach (laptop v3b 2026-10-26: a
       // hero started "rear" in a skirmish began beside three husks, two of them started "front").
       if (target)
-        move(one, target, place === "flank" ? (apart ? Math.min(back, wide) : 2) : place === "behind" || place === "rear" ? 2 : place === "front" ? 1 : 0);
+        move(
+          one,
+          target,
+          place === "flank"
+            ? apart
+              ? Math.min(back, wide)
+              : 2
+            : place === "behind" || place === "rear"
+              ? 2
+              : place === "front"
+                ? 1
+                : 0,
+        );
       else {
         // In cover: the nearest wood or ruin within six cells of its side, else where it stands.
         const cover = [...open].flatMap((cellKey) => {

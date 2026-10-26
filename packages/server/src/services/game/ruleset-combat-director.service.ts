@@ -267,6 +267,8 @@ export interface RulesetFightState {
   events: Array<{ seq: number; event: DirectedRulesetEvent }>;
   /** Who plays each party member. An opponent is never in here. */
   controllers: Record<string, "manual" | "ai">;
+  /** The party member the player plays as their own character, or plays in their dead one's place. */
+  lead?: string;
   /** The set-ups already called out (`<target>:<way>`), so each is said once while it stands. */
   calledOut?: string[];
   /** The player chooses what their own symbol throws buy (1.382): every party member they play is
@@ -646,6 +648,9 @@ export interface RulesetFightSeed {
   /** The chat's own party cards, which is where a sheet build lives. */
   cards: unknown;
   playerName: string | null;
+  /** Every companion the player does not play themselves is the Engine's from the start (Alyssa
+   *  2026-10-26: "companions should default to AI in solo games"). */
+  companionsOnTheirOwn?: boolean;
   /** The stored live sheet state of the whole game. */
   live: RulesetLiveStates | null;
   /** What each party member holds, by name, when the ruleset's sheet reads items. */
@@ -1692,6 +1697,17 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
         : `${lead} is not in this fight, so the player plays ${name}.`,
     );
   }
+  // Who the player plays: their own character, else the one in its place, else the first of the party.
+  const partyIds = combatants.filter((one) => one.side === "party").map((one) => one.id);
+  const leadId =
+    standInId ??
+    combatants.find((one) => one.side === "party" && leadKey && normalizeCharacterLookupName(one.name) === leadKey)
+      ?.id ??
+    partyIds[0];
+  if (leadId) fight.lead = leadId;
+  if (input.companionsOnTheirOwn)
+    for (const id of partyIds)
+      if (id !== leadId && input.party.some((member) => member.id === id)) fight.controllers[id] = "ai";
   return { ok: true, fight, ...(standInId ? { standIn: standInId } : {}) };
 }
 
@@ -2083,6 +2099,16 @@ export function trimRulesetFightEvents<T extends { event: { type: string } }>(ev
   const first = kept.findIndex((entry) => entry.event.type !== "reasoning");
   const cut = eventsCut ? first : 0;
   return cut > 0 ? kept.slice(cut) : kept;
+}
+
+/** The player's companions in a fight: every party member they play but the one that is their own,
+ *  leaving out whoever was called to the party's side. */
+export function rulesetCompanionIds(state: CombatDirectorState, fight: RulesetFightState): string[] {
+  const lead = fight.lead ?? state.party[0]?.id;
+  return state.party.flatMap((unit) => {
+    const combatant = rulesetCombatant(fight.encounter, unit.id);
+    return combatant && combatant.side === "party" && !combatant.calledBy && unit.id !== lead ? [unit.id] : [];
+  });
 }
 
 /** Who plays this combatant: the player, the Engine's own picker, or the Game Master. */
@@ -2935,6 +2961,7 @@ function rulesetViewOf(definition: RulesetDefinition, state: CombatDirectorState
         }
       : {}),
     controller,
+    ...(fight.lead ? { lead: fight.lead } : {}),
     ...(callouts.length ? { callouts } : {}),
     combatants: encounter.combatants.map((combatant) =>
       projectCombatant(definition, combatant, encounter, actor && !over ? actor : undefined, praying),
@@ -10534,6 +10561,7 @@ function runRulesetCommand(
     fight.deploy &&
     command.type !== "flee" &&
     command.type !== "control" &&
+    command.type !== "controlCompanions" &&
     command.type !== "orders" &&
     command.type !== "spends"
   )
@@ -10575,6 +10603,13 @@ function runRulesetCommand(
     if (state.window) return refuse("Resolve the open decision first.", "ruleset_combat_decision_open");
     fight.controllers[combatant.id] = command.controller;
     // The party panel reads the unit's own controller: said at once, not at the next turn.
+    syncRulesetCombatants(definition, state);
+    return settled(state);
+  }
+
+  if (command.type === "controlCompanions") {
+    if (state.window) return refuse("Resolve the open decision first.", "ruleset_combat_decision_open");
+    for (const id of rulesetCompanionIds(state, fight)) fight.controllers[id] = command.controller;
     syncRulesetCombatants(definition, state);
     return settled(state);
   }

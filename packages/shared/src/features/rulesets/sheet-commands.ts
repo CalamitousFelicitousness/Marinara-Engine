@@ -41,6 +41,7 @@ import {
   rulesetPoolKeyNamed,
   rulesetRecoveriesOfGroup,
   rulesetRestOnlyPool,
+  readRulesetLive,
 } from "./live-state.js";
 import { rulesetSheetDead } from "./combat-bridge.js";
 
@@ -401,6 +402,99 @@ export function applySheetCommandTags(
   // past them, and a revival that takes Unconscious or Prone off is the one change that reaches them.
   const raisesDead = (card: SheetCommandCard, op: RulesetSheetOp) =>
     op.op === "rest" || op.op === "condition" || wipesFailures(op) || healsHealth(card, op);
+
+  // The dying rule's counts outside a fight (cheap-GM playtest 2026-10-26: a hero stabilised in the
+  // story stayed dying and rolled death saves again in the next fight, and the Game Master wrote two
+  // death save failures with no roll). Failures come from a roll or a blow, never a pen: one written
+  // up is refused, and a blow on somebody already at no health marks what a blow while down marks in
+  // a fight. Their successes written up to the full count is the story's stabilising, as a fight's
+  // is: both counts go back and they stay stable, which the next fight reads, until their health
+  // comes back or they are hurt again.
+  const dying = ctx.definition.combat?.dying;
+  const successes = dying?.successes;
+  const successesLabel = ctx.definition.sheet.live.tracks.find((track) => track.id === successes)?.label;
+  const namesSuccesses = (op: RulesetSheetOp) =>
+    op.op === "track" &&
+    successes !== undefined &&
+    (plain(op.track) === plain(successes) || (!!successesLabel && plain(op.track) === plain(successesLabel)));
+  const trackOf = (card: SheetCommandCard, state: unknown, id: string) =>
+    readRulesetLive(ctx.definition, card.build, state, card.items).tracks.find((track) => track.id === id);
+  const healthAt = (card: SheetCommandCard, state: unknown) =>
+    healthPoolOf === undefined
+      ? undefined
+      : readRulesetLive(ctx.definition, card.build, state, card.items).pools.find(
+          (pool) => !pool.listId && pool.key === healthPoolOf,
+        )?.value;
+  const hurtsHealth = (card: SheetCommandCard, op: RulesetSheetOp) =>
+    op.op === "damage" &&
+    "pool" in op &&
+    op.amount > 0 &&
+    healthPoolOf !== undefined &&
+    (op.pool === healthPoolOf ||
+      rulesetPoolKeyNamed(
+        ctx.definition,
+        card.build,
+        live[normalizeCharacterLookupName(card.name)],
+        op.pool,
+        card.items,
+      ) === healthPoolOf);
+  /** Failures written up by hand, which only a roll or a blow may mark. */
+  const writesFailuresUp = (card: SheetCommandCard, op: RulesetSheetOp): boolean => {
+    if (op.op !== "track" || !wipesFailures(op) || !failures) return false;
+    const now = trackOf(card, live[normalizeCharacterLookupName(card.name)], failures)?.value ?? 0;
+    const to = op.to ?? now + (op.by ?? 0);
+    return to > now;
+  };
+  /** What the dying rule makes of a command just applied: the failures a blow while down marks, the
+   *  stable the full successes make, and stable lost again. */
+  const settleDying = (card: SheetCommandCard, op: RulesetSheetOp, before: unknown, result: RulesetSheetOpResult) => {
+    if (!result.ok || !dying || dying.kind !== "saves") return result;
+    let state = result.live;
+    const said: string[] = [];
+    const at = (track: string, value: number) => {
+      const done = applyRulesetSheetOp(ctx.definition, card.build, state, { op: "track", track, to: value }, ctx.roll);
+      if (done.ok) state = done.live;
+      return done;
+    };
+    const healthBefore = healthAt(card, before);
+    const hurtDown = hurtsHealth(card, op) && healthBefore !== undefined && healthBefore <= 0;
+    if (hurtDown && failures && dying.damageWhileDown !== "none") {
+      const marked = applyRulesetSheetOp(
+        ctx.definition,
+        card.build,
+        state,
+        { op: "track", track: failures, by: dying.damageWhileDown === "two-failures" ? 2 : 1 },
+        ctx.roll,
+      );
+      if (marked.ok) {
+        state = marked.live;
+        said.push(`${failuresLabel ?? failures} ${marked.now}`);
+      }
+    }
+    const health = healthAt(card, state);
+    const counted = successes ? trackOf(card, state, successes) : undefined;
+    if (
+      namesSuccesses(op) &&
+      health !== undefined &&
+      health <= 0 &&
+      counted &&
+      counted.max > 0 &&
+      counted.value >= counted.max
+    ) {
+      for (const track of [successes!, failures].filter((id): id is string => !!id)) {
+        const declared = trackOf(card, state, track);
+        if (declared) at(track, declared.start ?? declared.min);
+      }
+      state = { ...state, stable: true };
+      said.push("stable");
+    } else if (state.stable && ((health ?? 0) > 0 || hurtDown)) {
+      state = { ...state };
+      delete state.stable;
+    }
+    if (state === result.live) return result;
+    store(normalizeCharacterLookupName(card.name), state);
+    return { ...result, live: state, now: [result.now, ...said].join("; ") };
+  };
   // A reply that both clears a dead hero's dying saves and gives them health back raises them, as the
   // story says (laptop 0706 Party B: a revival wrote "Death save failures" 0 and a restore of 1 hit
   // point), whatever order it wrote them in. Either alone is refused.
@@ -578,7 +672,11 @@ export function applySheetCommandTags(
       result:
         raisesDead(card, op) && deadOnSheet(card) && !revived.has(normalizeCharacterLookupName(card.name))
           ? ({ ok: false, reason: "dead" } as const)
-          : (paidAlready(card) ?? restored(card) ?? applyTo(card, op)),
+          : writesFailuresUp(card, op)
+            ? ({ ok: false, reason: "dying-saves-rolled" } as const)
+            : (paidAlready(card) ??
+              restored(card) ??
+              settleDying(card, op, live[normalizeCharacterLookupName(card.name)], applyTo(card, op))),
     }));
     // One target reads as the value alone; a party tag has to say whose value each one is.
     const many = results.length > 1;

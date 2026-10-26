@@ -649,6 +649,11 @@ export interface RulesetFightSeed {
   /** The chat's own party cards, which is where a sheet build lives. */
   cards: unknown;
   playerName: string | null;
+  /** The game's whole party, when it keeps a list the Engine can read: a card with a sheet the setup
+   *  left out of `party` joins the fight, unless its member has left the party (`away`) or never
+   *  fights (`sitsOut`), each by name. `idFor` is the id a joining member fights under. Left out (a
+   *  test, a preview), the fight's party is `party` as it was sent. */
+  roster?: { away: string[]; sitsOut: string[]; idFor: (name: string) => string };
   /** Every companion the player does not play themselves is the Engine's from the start (Alyssa
    *  2026-10-26: "companions should default to AI in solo games"). */
   companionsOnTheirOwn?: boolean;
@@ -684,6 +689,56 @@ export interface RulesetFightSeed {
 export type RulesetFightSeedResult =
   /** `standIn`: the party member the player plays while their own character is dead (Alyssa 2026-10-26). */
   { ok: true; fight: RulesetFightState; standIn?: string } | { ok: false; error: string };
+
+/**
+ * The fight's party: the members the setup sent, then every other card of the game's party with a
+ * sheet, in the cards' order (cheap-GM playtest 2026-10-26: combat:init listed one of three heroes,
+ * and one fought alone). A member who left the party, or never fights, is said to stay out; one dead
+ * on their sheet joins the list and is left out as the dead are. The card a sheetless member will
+ * fight as (`standIn`) is theirs, not a second member. Only with a `roster`.
+ */
+function rulesetFightWholeParty(
+  input: RulesetFightSeed,
+  builds: ReadonlyMap<string, RulesetSheetBuild>,
+  creatures: ReadonlyMap<string, unknown>,
+  standIn: string | undefined,
+  adjustments: string[],
+): RulesetFightSeed["party"] {
+  const roster = input.roster;
+  if (!roster) return input.party;
+  const party = [...input.party];
+  const key = normalizeCharacterLookupName;
+  const listed = new Set(party.map((member) => key(member.name)));
+  const takenBy =
+    standIn && party.some((member) => !builds.has(key(member.name)) && !creatures.has(key(member.name)))
+      ? key(standIn)
+      : undefined;
+  const away = new Set(roster.away.map(key));
+  const sitsOut = new Set(roster.sitsOut.map(key));
+  const ids = new Set(party.map((member) => member.id));
+  for (const card of Array.isArray(input.cards) ? (input.cards as Array<{ name?: unknown }>) : []) {
+    const name = typeof card?.name === "string" ? card.name.trim() : "";
+    const at = key(name);
+    if (!name || !builds.has(at) || listed.has(at) || at === takenBy) continue;
+    listed.add(at);
+    if (away.has(at)) {
+      adjustments.push(`${name} has left the party and stays out of the fight.`);
+      continue;
+    }
+    if (sitsOut.has(at)) {
+      adjustments.push(`${name} does not fight and stays out of the fight.`);
+      continue;
+    }
+    const base = roster.idFor(name).trim() || `party-${at.replace(/[^a-z0-9]+/g, "-")}`;
+    let id = base;
+    for (let nth = 2; ids.has(id); nth++) id = `${base}-${nth}`;
+    ids.add(id);
+    party.push({ id, name });
+    if (!rulesetSheetDead(input.definition, builds.get(at)!, input.live?.[at], input.items?.(name)))
+      adjustments.push(`${name} was left out of the fight's party and joins it.`);
+  }
+  return party;
+}
 
 /** Words in a strike's name that say nothing of which weapon it is ("Spear Attack" is a spear). */
 const RULESET_PLAIN_STRIKE_WORDS = new Set(["attack", "strike", "melee", "ranged", "weapon", "basic", "hit"]);
@@ -782,9 +837,10 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
   let standIn = firstCard && !named.has(normalizeCharacterLookupName(firstCard)) ? firstCard : undefined;
   const leadKey = normalizeCharacterLookupName(input.playerName ?? firstCard ?? "");
   let deadLead: string | undefined;
+  const party = rulesetFightWholeParty(input, builds, creatures, standIn, adjustments);
   // A member the setup invented, with neither a sheet nor a creature, stays out of the fight
   // (2026-10-23 playtest), and the fight's numbers are only ever a sheet's.
-  for (const listed of input.party) {
+  for (const listed of party) {
     let member = listed;
     if (
       standIn &&
@@ -1605,7 +1661,7 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
     const cells =
       input.deploy && deployers.length > 0 ? rulesetDeployCells(laid.grid, placements, stands, deployers) : [];
     if (cells.length > 0)
-      deploy = { cells, placed: everyone ? [] : input.party.flatMap((one) => (places[one.id] ? [one.id] : [])) };
+      deploy = { cells, placed: everyone ? [] : party.flatMap((one) => (places[one.id] ? [one.id] : [])) };
     // Hemmed in, with no open cell clear of the opponents, it begins as placed, and says so (laptop
     // playtest 2026-10-25: a surrounded party went straight to round 1 with nothing said).
     else if (input.deploy && deployers.length > 0)
@@ -1764,7 +1820,7 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
   const leadMissing =
     !deadLead &&
     !!leadBuild &&
-    !input.party.some((member) => normalizeCharacterLookupName(member.name) === leadKey) &&
+    !party.some((member) => normalizeCharacterLookupName(member.name) === leadKey) &&
     !combatants.some((one) => one.side === "party" && normalizeCharacterLookupName(one.name) === leadKey);
   const leadDeadAway =
     leadMissing && rulesetSheetDead(definition, leadBuild!, input.live?.[leadKey], input.items?.(leadName));
@@ -1788,7 +1844,7 @@ export function createRulesetFight(input: RulesetFightSeed): RulesetFightSeedRes
   if (leadId) fight.lead = leadId;
   if (input.companionsOnTheirOwn)
     for (const id of partyIds)
-      if (id !== leadId && input.party.some((member) => member.id === id)) fight.controllers[id] = "ai";
+      if (id !== leadId && party.some((member) => member.id === id)) fight.controllers[id] = "ai";
   return { ok: true, fight, ...(standInId ? { standIn: standInId } : {}) };
 }
 
@@ -2286,6 +2342,13 @@ export function rulesetFightLiveStates(fight: RulesetFightState): RulesetLiveSta
     } else if (state?.shaped) {
       state = { ...state };
       delete state.shaped;
+    }
+    // Left down and stable, they start the next fight so; anything else starts it as its health says.
+    const stable = combatant.down && combatant.stable && !combatant.defeated;
+    if (stable && !state?.stable) state = { ...state, stable: true };
+    else if (!stable && state?.stable) {
+      state = { ...state };
+      delete state.stable;
     }
     live[normalizeCharacterLookupName(combatant.name)] = state;
   }

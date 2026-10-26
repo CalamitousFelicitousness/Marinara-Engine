@@ -7330,6 +7330,9 @@ export function createRulesetEncounter(input: RulesetEncounterInput): RulesetEnc
     if (health.value <= 0 && health.max > 0) {
       combatant.down = true;
       combatant.dying = !!combat.dying;
+      // Stable as the story or the last fight left them, they roll no saves until hurt again (cheap-GM
+      // playtest 2026-10-26: a hero stabilised in the story rolled death saves again in the next fight).
+      if (combat.dying && readStoredLive(entry.live).stable === true) combatant.stable = true;
       if (combat.dying?.condition) {
         writeRulesetSheet(definition, combatant, { op: "condition", condition: combat.dying.condition, active: true });
       }

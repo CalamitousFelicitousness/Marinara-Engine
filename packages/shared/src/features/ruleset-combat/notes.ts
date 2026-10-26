@@ -17,6 +17,9 @@ export const RULESET_FIGHT_NOTES = {
   deadOut: "{{name}} is dead and stays out of the fight.",
   deadLead: "{{name}} is dead, so the player plays {{standIn}} until {{name}} lives again.",
   leadAway: "{{name}} is not in this fight, so the player plays {{standIn}}.",
+  partyJoined: "{{name}} was left out of the fight's party and joins it.",
+  partyLeft: "{{name}} has left the party and stays out of the fight.",
+  partySitsOut: "{{name}} does not fight and stays out of the fight.",
   noRoom: "No room to set the party down clear of the opponents, so the fight begins where it stands.",
   // ── The encounter budget ──
   budgetDown:

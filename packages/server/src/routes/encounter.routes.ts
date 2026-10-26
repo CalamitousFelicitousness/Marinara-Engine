@@ -574,6 +574,31 @@ export interface EncounterRulesetBrief {
   sheet: EncounterSheetBrief;
   /** The reactions its bestiaries hold, by name: the only ones an invented enemy can take. */
   reactions?: string[];
+  /** The enemies that got away from an earlier fight and are kept to come back, by the name they
+   *  are kept under. */
+  returning?: string[];
+}
+
+/** How many kept enemies the prompt names: past this, the ones kept first are left unsaid. */
+const ENCOUNTER_RETURNING_MAX = 12;
+
+/** The names of the enemies a game keeps to come back (`gameReturningFoes`), each once, the latest
+ *  kept last. Only a name the Game Master writes again brings one back as it left (cheap-GM playtest
+ *  2026-10-26: a foe that fled the first fight came back renamed, a tier higher and at full health),
+ *  and nothing told it the name. */
+export function encounterReturningNames(stored: unknown): string[] {
+  if (!stored || typeof stored !== "object" || Array.isArray(stored)) return [];
+  const names: string[] = [];
+  const seen = new Set<string>();
+  for (const foe of Object.values(stored as Record<string, unknown>)) {
+    const name = (foe as { name?: unknown } | null)?.name;
+    if (typeof name !== "string" || !name.trim()) continue;
+    const key = name.trim().toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    names.push(name.trim());
+  }
+  return names.slice(-ENCOUNTER_RETURNING_MAX);
 }
 
 /** The sheet brief, with the names each catalog-fed list offers read out of the catalogs that feed
@@ -900,6 +925,9 @@ export function buildInitPrompt(
     inst += ruleset.reactions?.length
       ? `- Reactions: an enemy's reaction is one of its "attacks" with "kind": "buff", named exactly as this ruleset's bestiary has it, and only these work: ${ruleset.reactions.join(", ")}. Write no other reaction for it.\n`
       : `- Reactions: this ruleset's bestiary has none, so write no reaction for an enemy.\n`;
+    if (ruleset.returning?.length) {
+      inst += `- Enemies that got away from an earlier fight, which the Engine keeps as they left it: ${ruleset.returning.join(", ")}. One of them back in this fight is written under exactly that name, never a new one or a new title; the Engine brings it back with the tier and the wounds it left with, whatever else is written for it.\n`;
+    }
     inst += `- Lair: give "inLair": true to an enemy the party is fighting inside its own lair (a dragon in its cave, a lich in its tomb). Its lair then acts each round. Leave it out anywhere else.\n`;
     if (tactical) {
       inst += `- Where each begins on the board: you place every enemy. Give an enemy "start" when the scene says where it is: "front" or "rear" of its own side, "ahead" of it alone, on the party's "flank", "behind" the party, "among" them, or "hidden" in cover. Leave it out to keep it in its side's formation. The players place their own characters, so give a party member "start" ONLY when the story put them somewhere as the fight began (the wizard who walked into the cavern first is at the "front" when the goblins spring); leave it out for everybody else.\n`;
@@ -1207,6 +1235,8 @@ export async function encounterRoutes(app: FastifyInstance) {
           cards: chatMeta.gameCharacterCards,
           difficulty: normalizeGameDifficulty(setupConfig?.difficulty),
         });
+        const returning = encounterReturningNames(chatMeta.gameReturningFoes);
+        if (rulesetBrief && returning.length) rulesetBrief.returning = returning;
         items.guess = resolved.definition.items?.native !== false;
         if (resolved.definition.items) {
           items.ruleset = gameInventoryFightLines(normalizeGameInventoryStacks(chatMeta.gameInventory)).flatMap(

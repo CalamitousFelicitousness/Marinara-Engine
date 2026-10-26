@@ -372,13 +372,33 @@ async function cardsAwayFromParty(
   cards: SheetCommandCard[],
   playerName: string | null,
 ): Promise<string[]> {
-  if (!Array.isArray(meta.gamePartyCharacterIds)) return [];
+  const present = await gamePartyRoster(db, chatId, meta, playerName);
+  if (!present) return [];
+  return cards.filter((card) => !present.has(normalizeCharacterLookupName(card.name))).map((card) => card.name);
+}
+
+/**
+ * Who is in a game's party now, by normalized name, with the id each is known by (a library
+ * character's own id, a party NPC's `npc:` id; the player's own character by `playerId` when given).
+ * Null when the game keeps no party list, or one of its members cannot be named: then nobody can be
+ * told apart as having left it.
+ */
+export async function gamePartyRoster(
+  db: DB,
+  chatId: string,
+  meta: Record<string, unknown>,
+  playerName: string | null,
+  playerId?: string | null,
+): Promise<Map<string, string> | null> {
+  if (!Array.isArray(meta.gamePartyCharacterIds)) return null;
   const ids = (meta.gamePartyCharacterIds as unknown[]).filter(
     (id): id is string => typeof id === "string" && id.trim().length > 0,
   );
   const npcs = Array.isArray(meta.gameNpcs) ? (meta.gameNpcs as Array<{ name?: unknown }>) : [];
   const characters = createCharactersStorage(db);
-  const present = new Set<string>(playerName ? [normalizeCharacterLookupName(playerName)] : []);
+  const present = new Map<string, string>(
+    playerName ? [[normalizeCharacterLookupName(playerName), playerId?.trim() || ""]] : [],
+  );
   for (const id of ids) {
     let name: string | null = null;
     if (isPartyNpcId(id)) {
@@ -393,10 +413,11 @@ async function cardsAwayFromParty(
         name = null;
       }
     }
-    if (!name?.trim()) return [];
-    present.add(normalizeCharacterLookupName(name));
+    if (!name?.trim()) return null;
+    const key = normalizeCharacterLookupName(name);
+    if (!present.has(key)) present.set(key, id);
   }
-  return cards.filter((card) => !present.has(normalizeCharacterLookupName(card.name))).map((card) => card.name);
+  return present;
 }
 
 /** The reply's inventory tags that put something on or take it off, and nothing else, as one text. */

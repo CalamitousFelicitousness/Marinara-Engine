@@ -116,6 +116,11 @@ export interface RulesetLiveState {
    *  name, the form's, and the form's own health once a fight has taken some. They start every fight
    *  in it until it ends: a druid's Wild Shape. */
   shaped?: RulesetLiveShaped;
+  /** Down at no health and stable, by the ruleset's dying rule: stabilised in a fight, or in the story
+   *  by its dying successes. The next fight starts them stable rather than dying again (cheap-GM
+   *  playtest 2026-10-26: a hero stabilised in the story rolled death saves again in the next fight).
+   *  Read only while their health is at none. */
+  stable?: true;
 }
 
 /** A shape kept on a sheet from a use outside a fight (1.793). */
@@ -272,6 +277,7 @@ export const rulesetLiveStateSchema = z
     wardsOff: boundedRecord(liveStackId, MAX_LIVE_CONDITIONS, "what conditions ward off").optional(),
     called: boundedRecord(liveCalledValue, MAX_LIVE_CALLED, "kept calls").optional(),
     shaped: liveShapedSchema.optional(),
+    stable: z.literal(true).optional(),
   })
   .strip();
 
@@ -868,6 +874,7 @@ function readStoredLiveStateAsIs(stored: unknown): RulesetLiveState {
   if (called) state.called = called;
   const shaped = liveShapedSchema.safeParse(source.shaped);
   if (shaped.success) state.shaped = shaped.data;
+  if (source.stable === true) state.stable = true;
   return state;
 }
 
@@ -910,6 +917,8 @@ function normalizeLiveState(state: RulesetLiveState): RulesetLiveState {
   if (state.called && Object.keys(state.called).length > 0) normalized.called = state.called;
   // And a kept shape (1.793) until it ends.
   if (state.shaped) normalized.shaped = state.shaped;
+  // Stable at no health, until health or a blow says otherwise.
+  if (state.stable) normalized.stable = true;
   return normalized;
 }
 
@@ -1421,6 +1430,9 @@ export type RulesetSheetRefusal =
   | "rest-only"
   /** A use as a ritual (1.799) of a row its list's `ritual` column does not tick. */
   | "not-ritual"
+  /** Dying failures written up by hand outside a fight: only a roll or a blow while down marks them
+   *  (cheap-GM playtest 2026-10-26). */
+  | "dying-saves-rolled"
   | "malformed";
 
 export type RulesetSheetOpResult =

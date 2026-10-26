@@ -113,6 +113,7 @@ import {
   storyFightAdjustsFor,
 } from "../services/game/story-fight.service.js";
 import { buildPartyNpcId } from "../services/generation/game-party-utils.js";
+import { gamePartyRoster } from "../services/game/ruleset-sheet-turn.service.js";
 import { logger } from "../lib/logger.js";
 import { resolveVisibleGameStateAnchor } from "./generate/generate-route-utils.js";
 
@@ -1301,6 +1302,17 @@ export async function combatDirectorRoutes(
             reworded.push(found[0]);
             others.splice(others.indexOf(found), 1);
           });
+          // The game's whole party fights, not only those the setup named (cheap-GM playtest
+          // 2026-10-26: combat:init listed one of three heroes, accepted without a word, and he fought
+          // alone): only where its party list can be read, so who left it is known.
+          const roster = await gamePartyRoster(app.db, input.chatId, meta, persona?.name ?? null, persona?.id);
+          const partyRoster = roster
+            ? {
+                away: cardNames.filter((name) => !roster.has(normalizeCharacterLookupName(name))),
+                sitsOut: cardNames.filter((name) => noncombatants.has(buildPartyNpcId(name))),
+                idFor: (name: string) => roster.get(normalizeCharacterLookupName(name)) ?? "",
+              }
+            : undefined;
           const built = createRulesetFight({
             definition,
             seed: battlefield.seed,
@@ -1359,6 +1371,7 @@ export async function combatDirectorRoutes(
             })),
             cards,
             playerName: persona?.name ?? null,
+            ...(partyRoster ? { roster: partyRoster } : {}),
             // Companions fight on their own unless the game says the player plays them (Alyssa 2026-10-26).
             companionsOnTheirOwn: setup.playerRunsCompanions !== true,
             live: parseStoredRulesetLive(liveRow?.rulesetLive),
@@ -1448,9 +1461,9 @@ export async function combatDirectorRoutes(
           }
           // Who the player last gave the Engine, or kept, in this chat's fights.
           const kept = rememberedControllers(meta);
-          for (const member of input.party) {
-            const controller = kept[member.id];
-            if (controller) built.fight.controllers[member.id] = controller;
+          for (const id of fought.keys()) {
+            const controller = kept[id];
+            if (controller) built.fight.controllers[id] = controller;
           }
           // The one the player plays while their own character is dead is theirs, not the Engine's.
           if (built.standIn) built.fight.controllers[built.standIn] = "manual";

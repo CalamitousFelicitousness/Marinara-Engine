@@ -6454,6 +6454,10 @@ function windowOptions(
   const source = "sourceId" in window.trigger ? window.trigger.sourceId : "";
   const trigger = window.trigger;
   const cause = rulesetWindowCause(state, trigger);
+  // A hit an answer before theirs turned into a miss leaves its maker nothing to add to it (cheap-GM
+  // playtest 2026-10-26: Open Hand Technique knocked a captain prone on a hit his Parry had just
+  // turned into a miss). The maker is asked last (1.241), so the hit is read as it now stands.
+  if (trigger.kind === "hit" && actorId === source && rulesetHeldHitNowMisses(definition, state)) return [];
   // A hit's maker answers it once with each thing they hold (1.241).
   const taken = trigger.kind === "hit" && actorId === source ? (window.taken ?? []) : [];
   return rulesetReactionsAt(definition, combat, state, actor, moment, source, cause)
@@ -6513,6 +6517,26 @@ export function rulesetAnswerDeflects(
   const attacker = window.resume?.kind === "action" ? rulesetCombatant(state, window.resume.actorId) : undefined;
   const blow = attacker && window.resume?.kind === "action" ? actionOf(attacker, window.resume.optionId) : undefined;
   return held.roll.total < rulesetDefenseAgainst(definition, combat, state, target, attacker, blow).defense + gain;
+}
+
+/**
+ * On a held hit, whether its roll now misses: checked against the defense its target has now, as the
+ * attack is checked again once the window closes. A natural face, and a symbol throw, stand as they
+ * were thrown. False with no held hit.
+ */
+export function rulesetHeldHitNowMisses(definition: RulesetDefinition, state: RulesetEncounterState): boolean {
+  const combat = definition.combat;
+  const window = state.window;
+  const resume = window?.resume?.kind === "action" ? window.resume : undefined;
+  const held = resume?.held;
+  if (!combat || window?.trigger.kind !== "hit" || !resume || !held || held.roll.natural) return false;
+  if (rulesetCombatIsSymbol(combat)) return false;
+  const target = rulesetCombatant(state, held.targetId);
+  if (!target) return false;
+  const attacker = rulesetCombatant(state, resume.actorId);
+  const blow = attacker ? actionOf(attacker, resume.optionId) : undefined;
+  const defense = rulesetDefenseAgainst(definition, combat, state, target, attacker, blow).defense;
+  return held.roll.total < (rulesetCombatIsPool(combat) ? Math.max(1, defense) : defense);
 }
 
 /** Which moment a window is, for the reactions that wait for one. A walk and the turn between two
